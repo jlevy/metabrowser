@@ -14,18 +14,18 @@ parallel, they took every connection the Commits tab needed
 (`explorations/tree-summary-storm/README.md`).
 
 This browserless session runs the shell’s summary refresh, the block of `static/app.js`
-from its introducing comment to the tree cache, verbatim against
-`createRootSummaryRefresh` in `static/navigation.js`. Only the browser is a double: the
-clock and its timers, `fetch` and a server that answers each request after a set time,
-and the document’s summary row, Files panel, and visibility.
+from its introducing comment to the tree cache, and `paintTreeSummary`, which draws the
+line in place, verbatim against `createRootSummaryRefresh` in `static/navigation.js`.
+Only the browser is a double: the clock and its timers, `fetch` and a server that
+answers each request after a set time, and the document’s summary row, Files panel, and
+visibility.
 
 Each step lists what the page `did`, in order: each request it sent, how many were then
 in flight, when the server answered, and what it painted.
 Its `after` counts the asks, the requests, and the most requests in flight at once, and
-says what the tree cache holds: the summary line a source swap paints back, which the
-refresh rewrites with each answer.
-The line is the shell’s own markup, so a cache rewrite that stopped matching it would
-leave the first paint’s pending line there.
+says what the summary row `shows`, with how many of its figures are held pending.
+The line is the shell’s own markup, and the shell writes the row only when that markup
+changes, so an answer that leaves the line as it was paints nothing.
 The page had no totals from its shell, so its first line held the ignored line, and each
 answer, which counts nothing ignored, keeps that line as “No ignored files”.
 The transcript pins these behaviors:
@@ -38,8 +38,8 @@ The transcript pins these behaviors:
   writes stop.
 - An isolated change on a quiet tree is requested after the debounce alone.
 - An answer the server gives mid-walk, provisional (`scanning`) and counting nothing
-  ignored yet, leaves the line held, its figures and its ignored line pending; the next
-  settled answer fills it.
+  ignored yet, leaves the first paint’s line held, its figures and its ignored line
+  pending; the next settled answer fills it.
 - A failed request is asked again after a backoff that doubles with each failure.
 - A hidden page, or a Files panel behind another tab, requests nothing, and is refreshed
   once when it is shown again.
@@ -69,7 +69,7 @@ $ node tests/dom/root-summary-refresh-session.js
           "requests": 4,
           "maxInFlight": 1,
           "inFlight": 1,
-          "cached": "3 files (3.0 KB) No ignored files"
+          "shows": "3 files (3.0 KB) No ignored files"
         }
       },
       {
@@ -86,7 +86,7 @@ $ node tests/dom/root-summary-refresh-session.js
           "requests": 5,
           "maxInFlight": 1,
           "inFlight": 0,
-          "cached": "5 files (5.0 KB) No ignored files"
+          "shows": "5 files (5.0 KB) No ignored files"
         }
       }
     ]
@@ -107,7 +107,7 @@ $ node tests/dom/root-summary-refresh-session.js
           "requests": 2,
           "maxInFlight": 1,
           "inFlight": 1,
-          "cached": "1 file (1.0 KB) No ignored files"
+          "shows": "1 file (1.0 KB) No ignored files"
         }
       }
     ]
@@ -127,7 +127,7 @@ $ node tests/dom/root-summary-refresh-session.js
           "requests": 1,
           "maxInFlight": 1,
           "inFlight": 0,
-          "cached": "1 file (1.0 KB) No ignored files"
+          "shows": "1 file (1.0 KB) No ignored files"
         }
       },
       {
@@ -142,7 +142,7 @@ $ node tests/dom/root-summary-refresh-session.js
           "requests": 2,
           "maxInFlight": 1,
           "inFlight": 0,
-          "cached": "2 files (2.0 KB) No ignored files"
+          "shows": "2 files (2.0 KB) No ignored files"
         }
       }
     ]
@@ -154,15 +154,14 @@ $ node tests/dom/root-summary-refresh-session.js
         "step": "one write, answered provisionally",
         "did": [
           "t=500 sent #1 /api/tree?depth=0 (1 in flight)",
-          "t=800 #1 answered provisionally: scanning",
-          "t=800 painted \"\" (3 pending)"
+          "t=800 #1 answered provisionally: scanning"
         ],
         "after": {
           "asks": 1,
           "requests": 1,
           "maxInFlight": 1,
           "inFlight": 0,
-          "cached": ""
+          "shows": "(3 pending)"
         }
       },
       {
@@ -177,7 +176,7 @@ $ node tests/dom/root-summary-refresh-session.js
           "requests": 2,
           "maxInFlight": 1,
           "inFlight": 0,
-          "cached": "2 files (2.0 KB) No ignored files"
+          "shows": "2 files (2.0 KB) No ignored files"
         }
       }
     ]
@@ -201,7 +200,7 @@ $ node tests/dom/root-summary-refresh-session.js
           "requests": 3,
           "maxInFlight": 1,
           "inFlight": 0,
-          "cached": "3 files (3.0 KB) No ignored files"
+          "shows": "3 files (3.0 KB) No ignored files"
         }
       }
     ]
@@ -217,7 +216,7 @@ $ node tests/dom/root-summary-refresh-session.js
           "requests": 0,
           "maxInFlight": 0,
           "inFlight": 0,
-          "cached": ""
+          "shows": "(3 pending)"
         }
       },
       {
@@ -232,7 +231,7 @@ $ node tests/dom/root-summary-refresh-session.js
           "requests": 1,
           "maxInFlight": 1,
           "inFlight": 0,
-          "cached": "1 file (1.0 KB) No ignored files"
+          "shows": "1 file (1.0 KB) No ignored files"
         }
       }
     ]
@@ -248,7 +247,7 @@ $ node tests/dom/root-summary-refresh-session.js
           "requests": 0,
           "maxInFlight": 0,
           "inFlight": 0,
-          "cached": ""
+          "shows": "(3 pending)"
         }
       },
       {
@@ -263,7 +262,7 @@ $ node tests/dom/root-summary-refresh-session.js
           "requests": 1,
           "maxInFlight": 1,
           "inFlight": 0,
-          "cached": "1 file (1.0 KB) No ignored files"
+          "shows": "1 file (1.0 KB) No ignored files"
         }
       }
     ]

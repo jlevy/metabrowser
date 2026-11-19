@@ -1506,6 +1506,59 @@ async function paintStory(panel, selection = false) {
     );
     inSlot.dispose();
     assert(slot.childNodes.length === 0, "a disposed list leaves the toolbar");
+    // With the band under the toolbar too, as the shell draws it (server.py), the count and
+    // connection lines are the band's, outside the scroller that holds the list, so their rule
+    // runs the pane's width and they stay in view while the list scrolls (mb-vgx3); a
+    // disposed list leaves the band as it leaves the slot.
+    const bandSlot = new FakeElement("div");
+    const band = new FakeElement("div");
+    const banded = new FakeElement("div");
+    const inBand = panel.mountPullsPanel(
+      banded,
+      {
+        kind: "pull-request-list",
+        pullsNav: {
+          filter: "all",
+          current: null,
+          shown: true,
+          refreshAhead: false,
+          toolbar: bandSlot,
+          metadata: band,
+          scrollRoot: null,
+          open() {},
+          file: null,
+          fileHref: () => null,
+          pageFor: () => null,
+          onPageChange: () => () => {},
+          filterChanged() {},
+        },
+      },
+      mb,
+    );
+    await settle();
+    const firstClass = (node) => node.className.split(" ")[0];
+    story["with the host's toolbar and band: what each holds"] = {
+      toolbar: bandSlot.childNodes.map(firstClass),
+      band: band.childNodes.map(firstClass),
+      tab: banded.childNodes.slice(0, 2).map(firstClass),
+    };
+    assert(
+      band.childNodes.length === 2 &&
+        band.childNodes[0].classList.contains("github-pulls-status") &&
+        band.childNodes[1].classList.contains("github-pulls-connection"),
+      "the count and connection lines fill the host's band",
+    );
+    assert(
+      !banded.childNodes.some((node) => node.classList?.contains("nav-metadata")),
+      "the list's container holds no metadata line",
+    );
+    inBand.dispose();
+    story["with the host's toolbar and band: what each holds once disposed"] = {
+      toolbar: bandSlot.childNodes.length,
+      band: band.childNodes.length,
+      tab: banded.childNodes.length,
+    };
+    assert(band.childNodes.length === 0, "a disposed list leaves the band");
     return story;
   } finally {
     Date.now = realNow;

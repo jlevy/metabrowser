@@ -72,6 +72,7 @@
    *   loadView(kind: string): Promise<MetabrowserPublicViewSpec | null | undefined>,
    *   container(): HTMLElement | null,
    *   toolbar?(): HTMLElement | null,
+   *   metadata?(): HTMLElement | null,
    *   scrollRoot(): HTMLElement | null,
    *   openPull(route: {number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean}): Promise<unknown>,
    *   pageFor(number: number): unknown,
@@ -142,6 +143,8 @@
                 checkout,
                 // The tab's toolbar in the navigation's slot, which its filters fill.
                 toolbar: deps.toolbar?.() ?? null,
+                // The band under it, which the list's count and connection lines fill.
+                metadata: deps.metadata?.() ?? null,
                 scrollRoot: deps.scrollRoot(),
                 open: (
                   /** @type {{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean}} */ route,
@@ -745,6 +748,7 @@
       },
       container: () => document.getElementById("tab-pulls"),
       toolbar: () => document.getElementById("nav-toolbar-pulls"),
+      metadata: () => document.getElementById("nav-metadata-pulls"),
       scrollRoot: () => document.getElementById("tree-content"),
       openPull: (route) =>
         shell.openPullRequest(route).catch((error) => {

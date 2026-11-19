@@ -4470,6 +4470,23 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
   of its own, the line stands in the slot and its text sits as far from either rule as
   it does under the Files and Pulls toolbars.
   Consecutive lines are one band: padding above the first, below the last, and one rule.
+- **Placement.** Every line stands in the fixed chrome over its panel, never in the
+  panel’s scroller, so it stays in view while the tree or the list scrolls, and its rule
+  runs the pane’s full width, as the tab bar’s and the toolbar’s do.
+  On Commits the line is the toolbar slot; on Files and Pulls the lines are a band of
+  their own directly under the toolbar, `.nav-metadata-band`, which the shell draws
+  empty under each toolbar, the tab fills, and which shows only while its toolbar does.
+  The scroller reserves its scrollbar’s gutter (`scrollbar-gutter: stable`) and clips
+  what it holds at its padding box, so a line inside it ended its rule a gutter short of
+  the pane’s edge, 11 px with classic scrollbars, at every pane width.
+  While the panel says it could not load, the band gives way to that alert, as the lines
+  went with it when they were the panel’s; they show again with the next list.
+  The cost, accepted: a line that comes or goes while the reader has scrolled, such as a
+  recency window’s note that its list may be out of date, moves the scroller’s top and
+  the rows with it, by a line’s height.
+  In the scroller, scroll anchoring held the rows still.
+  Holding them from the band takes a script that watches the band’s height on every
+  page, which the move out of the scroller did not add to the shell’s startup scripts.
 - **Spacing.** `--nav-metadata-gap` between a line’s items and between the words of an
   item built of spans, about a word space and a half.
 - **Pending.** A figure still being counted is the pending tally inside the span its
@@ -4478,8 +4495,8 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
 - **The Files totals.** The tracked count is the first line and the gitignored count a
   line of its own under it.
   Each is one line in every pane: in a pane too narrow for it, its size is cut short at
-  its end, “+ 7,906 ignored (133.4 …” at the 180 px minimum, never wrapped, and its
-  whole phrase is its tooltip, which the shell shows only while it is cut
+  its end, as “+ 10,000 ignored (1001.4 MB)” is at the 180 px minimum, never wrapped,
+  and its whole phrase is its tooltip, which the shell shows only while it is cut
   ([Tooltips Add Information](#tooltips-add-information)). So the band’s height is
   decided by whether it has the ignored line, never by the figures’ lengths.
   The shell inlines the root’s totals with its first rows (the root’s own entry carries
@@ -4531,7 +4548,10 @@ at one wide enough for every text: the Files totals settled, pending, counting,
 filtered, with the outside-filter note, and with the stale recent-files note; the
 Commits tally settled, as the server ships it pending, and failed; and the Pulls lines
 loading, updated, unreachable, signed out, and with no gh; and the Pulls count cut short
-in a narrow pane.
+in a narrow pane. It also holds every section rule on Files, Commits, and Pulls, the tab
+bar’s, the toolbar’s, and the band’s, to the pane’s full width, at the narrowest pane,
+the default, and a wide one, with the content under them overflowing its scroller and
+not.
 
 ### Section Headings
 

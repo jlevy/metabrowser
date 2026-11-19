@@ -546,6 +546,9 @@ The landing pane gives the neutral selection instruction while the list owns sta
 `reader` follows a selected PR through its cache-only read and explicit detail fetch.
 `paint` checks tree roles, absolute positions, numeric-only emphasis, text-only titles,
 cached append behavior, and changed-file tree retention.
+Given the shell’s toolbar slot and the band under it, the filters fill the slot, the
+count and connection lines fill the band, outside the list’s scroller, and a disposed
+list leaves both empty.
 `numbers` runs the production shortcut registry and plugin facade around the panel: the
 Open, Closed, and All chips and Reload take `1` to `4` in reading order, before the
 page’s numbered link, and each number asks for what its control’s click asks for.
@@ -943,7 +946,25 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "whileExpanded": 10,
       "afterClosingAll": 9
     },
-    "disposed: what is left in the tab": 0
+    "disposed: what is left in the tab": 0,
+    "with the host's toolbar and band: what each holds": {
+      "toolbar": [
+        "github-pulls-filters"
+      ],
+      "band": [
+        "github-pulls-status",
+        "github-pulls-connection"
+      ],
+      "tab": [
+        "github-pulls-list",
+        "github-pulls-empty"
+      ]
+    },
+    "with the host's toolbar and band: what each holds once disposed": {
+      "toolbar": 0,
+      "band": 0,
+      "tab": 0
+    }
   },
   "numbers": {
     "the Pulls tab, loading": [
