@@ -144,7 +144,8 @@
                 ui-serif "New York"); no web fonts are fetched.
      Clean is the default and lives in this :root base; each additional set is a
      `html[data-app-font="<value>"]` block below (see "system"). To add a set:
-     add a _FONT_SETS entry (server) and one such block here. */
+     add a _FONT_SETS entry (server) and one such block here, which repoints both
+     --font-sans and --font-sans-ex-height (tests/test_short_commit.py checks each). */
   --app-sans-clean:
     "Source Sans 3 Variable", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     sans-serif;
@@ -156,8 +157,9 @@
      block repoints it with --font-sans. Measured 2026-11-19 in Chrome 152 at 12-14 px:
      Source Sans 3 0.486, system-ui (SF Pro) 0.526. Not a ratio of sizes, since the mono
      face is the engine's: one would be 0.889 (Clean) and 0.962 (System) for Chromium's
-     Menlo, x-height 0.547, but 0.924 and 1.0 for WebKit's SF Mono, 0.526. The record:
-     "Short Commit IDs" in explorations/performance-loop/design-rule-measurements.md. */
+     Menlo, x-height 0.547, but about 0.917 and 0.992 for WebKit's SF Mono, 0.530 in a
+     WKWebView on macOS 26.5 the same day. The record: "Short Commit IDs" in
+     explorations/performance-loop/design-rule-measurements.md. */
   --app-sans-clean-ex-height: 0.486;
   --app-sans-system-ex-height: 0.526;
   --font-sans-ex-height: var(--app-sans-clean-ex-height);

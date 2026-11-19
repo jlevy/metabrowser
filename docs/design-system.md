@@ -1309,7 +1309,8 @@ type, then the View on GitHub button, which opts in to the strut’s baseline, s
 label is on the title’s first baseline; `tests/dom/view-header-chrome.mjs` and
 `tests/dom/github-pull-header-chrome.mjs` measure the two baselines equal in Chrome.
 The Git commit summary’s metadata line sets a monospace revision beside sans text, and
-aligning the two faces on one baseline would grow the line, so it stays centered.
+aligning the two faces on one baseline would grow the line, so it stays centered; that
+was measured before a revision took its line’s size, and has not been measured again.
 [Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#row-baselines)
 has the offsets behind these three decisions.
 
@@ -1705,7 +1706,8 @@ it.**
   the ramp matched only the line it was chosen for: the navigation heading’s ID read
   larger than the name beside it.
   No context sets an ID’s size, and its line box is its glyphs’ (`line-height: normal`),
-  so it never makes its line taller.
+  so in the lines measured, a ref selector row, a commit’s page, and a pull request’s
+  commit row, it does not make its line taller.
 
 It holds in the branch and tag chooser’s button and rows, the navigation heading of a
 pin with no mirror, a commit’s page and hover card, a mirror’s freshness row, and a pull

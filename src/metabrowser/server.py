@@ -1417,8 +1417,10 @@ def _static_asset_url(rel_path: str) -> str:
 # Interface-font sets offered by the settings dropdown. The first entry is the
 # default. Each set's actual font stacks live in styles.css as a
 # `html[data-app-font="<value>"]` block (the default uses the :root base). To add
-# a set, append one entry here and one CSS block there — the dropdown options and
-# the pre-paint bootstrap both derive from this single list, so they stay in sync.
+# a set, append one entry here and one CSS block there, which sets both --font-sans and
+# the sans's x-height, --font-sans-ex-height (tests/test_short_commit.py checks each) —
+# the dropdown options and the pre-paint bootstrap both derive from this single list,
+# so they stay in sync.
 _FONT_SETS: tuple[dict[str, str], ...] = (
     {"value": "clean", "label": "Clean Fonts"},
     {"value": "system", "label": "System Fonts"},
@@ -1523,7 +1525,8 @@ def _source_ref_label_html(pin: GitRevisionSubject | None, *, checkout: bool) ->
         name = ref_short_name(pin.ref)
     if name:
         return html_escape(name)
-    # As much of the ID as the navigation heading shows: the page has the full ID alone.
+    # The short ID every line that names a commit shows (docs/design-system.md, "Short
+    # Commit IDs"); the navigation heading's tooltip has the full ID.
     return (
         f'Commit: <span class="git-commit-sha">{html_escape(short_commit(pin.commit_oid))}</span>'
     )
@@ -1582,7 +1585,7 @@ async def index(
         initial_root = html_escape(status["name"] or pin_oid, quote=True)
         mirror_attrs = _mirror_heading_attrs(status)
         # What styles a mirror's headings apart from a folder's: its root is a name,
-        # which is cut at its end, and its commit has a copy control beside it.
+        # which is cut at its end, and a control after the name copies its commit.
         mirror_class = " mirror-source" if mirror_attrs else ""
         # Core holds no provider URL grammar: the served mirror asks the installed
         # providers, and only a hosted repository's has an answer (a GitHub mirror's

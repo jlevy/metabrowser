@@ -123,7 +123,9 @@ For
   top at a device pixel ratio of 1.
 - Aligning the Git commit summary’s monospace revision on one baseline with the
   body-size sans beside it grows that line by 1.25px at a device pixel ratio of 2, so it
-  stays centered.
+  stays centered. That was measured with the revision at `--nav-font-size` and the line’s
+  line height, before an ID took its line’s size with `line-height: normal`
+  ([Short Commit IDs](#short-commit-ids)), and has not been measured again since.
 
 ## Disclosure Motion
 
@@ -173,8 +175,9 @@ The faces’ x-heights per em, at 12, 13, and 14 px, by the `ex` unit and by the
 Fonts), SF Pro at its text optical size, 0.526, and 0.508 at 100 px and above; Menlo,
 which Chrome draws for the monospace stack since it cannot reach SF Mono by name, 0.547,
 the same as its OS/2 table.
-SF Mono, which WebKit draws, is 0.526 in its OS/2 table (1077 of 2048 units); it was not
-measured in the macOS app.
+SF Mono, which WebKit draws, is 0.526 in its OS/2 table (1077 of 2048 units) and
+measured 0.530 in a standalone WKWebView on macOS 26.5, the engine the macOS app uses,
+in the pull request’s review the same day.
 Chrome reported the faces it drew through `CSS.getPlatformFontsForNode`.
 
 The x-height of an ID and of the line around it, in px.
@@ -203,7 +206,9 @@ No ref selector row or commit page line changed height.
 The same change then dropped the ref and the ID from a served mirror’s heading and a
 checkout’s revision’s, which are the name alone; the heading rows above measure the
 navigation heading’s line, which a pin with no mirror still sets an ID in.
-WebKit honored `font-size-adjust` on a span in a QuickLook render of a static page.
+In that WKWebView, at 13 px in System Fonts, the line’s x-height was 6.843 px and the
+ID’s, adjusted to 0.526, 6.838 px; adjusted to Clean’s 0.486, the ID measured 6.318 px
+against Clean’s 6.32 above, so `font-size-adjust` holds in WebKit.
 
 ## Regions That Moved
 

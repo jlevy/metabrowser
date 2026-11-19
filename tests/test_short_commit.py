@@ -27,6 +27,7 @@ import re
 import tomllib
 from pathlib import Path
 
+from metabrowser import server
 from metabrowser.commit_ids import SHORT_COMMIT_CHARS, short_commit
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -284,12 +285,28 @@ def test_the_commit_id_face_is_one_face_one_gray_and_its_lines_size() -> None:
     assert sizes == []
     assert adjustments == [(styles, "var(--font-sans-ex-height)")]
     # Each font set states its sans's x-height beside its sans, so the ID matches whichever
-    # sans the reader chose.
+    # sans the reader chose: the default in :root, and every other set the server offers
+    # (`_FONT_SETS`) in its own block, which repoints both, so a set added without its
+    # x-height fails here. Each sans token has its measured x-height token beside it.
     sheet = (PACKAGE / "static" / "styles.css").read_text(encoding="utf-8")
     root = re.search(r"^:root \{(?P<body>.*?)^\}", sheet, re.DOTALL | re.MULTILINE)
-    system = re.search(r'^html\[data-app-font="system"\] \{(?P<body>[^}]*)\}', sheet, re.MULTILINE)
-    assert root is not None and system is not None
-    assert "--font-sans: var(--app-sans-clean);" in root["body"]
-    assert "--font-sans-ex-height: var(--app-sans-clean-ex-height);" in root["body"]
-    assert "--font-sans: var(--app-sans-system);" in system["body"]
-    assert "--font-sans-ex-height: var(--app-sans-system-ex-height);" in system["body"]
+    assert root is not None
+    font_sets = [entry["value"] for entry in server._FONT_SETS]  # pyright: ignore[reportPrivateUsage]
+    assert len(font_sets) > 1, font_sets
+    blocks = {font_sets[0]: root["body"]}
+    for value in font_sets[1:]:
+        block = re.search(
+            rf'^html\[data-app-font="{re.escape(value)}"\] \{{(?P<body>[^}}]*)\}}',
+            sheet,
+            re.MULTILINE,
+        )
+        assert block is not None, f"font set {value!r} has no block in styles.css"
+        blocks[value] = block["body"]
+    for value, body in blocks.items():
+        sans = re.search(r"^\s*--font-sans:\s*var\((--[\w-]+)\);", body, re.MULTILINE)
+        assert sans is not None, f"font set {value!r} sets no --font-sans"
+        assert f"--font-sans-ex-height: var({sans[1]}-ex-height);" in body, value
+        measured = re.search(
+            rf"^\s*{re.escape(sans[1])}-ex-height:\s*0\.\d+;", root["body"], re.MULTILINE
+        )
+        assert measured is not None, f"{sans[1]} has no x-height in :root"
