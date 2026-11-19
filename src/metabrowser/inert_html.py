@@ -132,8 +132,15 @@ ALLOWED_ATTRIBUTES: Final = {
     "td": ("colspan", "rowspan", "align"),
     "th": ("colspan", "rowspan", "align"),
     "details": ("open",),
+    "pre": ("lang",),
     **{f"h{level}": ("id",) for level in range(1, 7)},
 }
+# The one language a block keeps: a Mermaid diagram's, spelled as GitHub's own fallback
+# markup spells it, `<pre lang="mermaid">`, so the page can draw it as an image
+# (builtin_plugins/markdown/diagrams.js). KPress marks the block with this class inside
+# its diagram figure, and the figure and its class do not survive the allowlist.
+DIAGRAM_LANGUAGE: Final = "mermaid"
+_DIAGRAM_SOURCE_CLASS: Final = "kpress-diagram-source"
 # Every heading anchor begins with this, as on github.com: the document's names stay
 # apart from the application's ids and from window properties.
 ANCHOR_PREFIX: Final = "user-content-"
@@ -377,6 +384,11 @@ def allowed_attributes(
             kept.append(("align", align))
     elif tag == "details" and "open" in attrs:
         kept.append(("open", ""))
+    elif tag == "pre" and (
+        (attrs.get("lang") or "").lower() == DIAGRAM_LANGUAGE
+        or _DIAGRAM_SOURCE_CLASS in (attrs.get("class") or "").split()
+    ):
+        kept.append(("lang", DIAGRAM_LANGUAGE))
     return kept
 
 

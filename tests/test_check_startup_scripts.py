@@ -162,7 +162,11 @@ def _bundled_at_startup(html: str) -> list[str]:
         urlsplit(asset["src"]).path for asset in bundles["shell-tools"]
     }
     startup = set(check.startup_script_paths(html))
-    bundled = {urlsplit(asset["src"]).path for assets in bundles.values() for asset in assets}
+    bundled = {
+        urlsplit(asset.get("src") or asset["module"]).path
+        for assets in bundles.values()
+        for asset in assets
+    }
     return sorted(bundled & startup)
 
 

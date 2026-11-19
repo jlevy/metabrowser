@@ -46,6 +46,22 @@ independent of Metabrowser’s license.
   [Chart.js annotation plugin](https://www.chartjs.org/chartjs-plugin-annotation/)). The
   browser bundle is vendored under `src/metabrowser/static/vendor/`.
 
+- **Mermaid** v12.3.0
+  ([MIT License](src/metabrowser/static/vendor/licenses/mermaid.txt),
+  [mermaid.js.org](https://mermaid.js.org)). Its ES module build is vendored under
+  `src/metabrowser/static/vendor/mermaid/`. The build bundles its own dependencies,
+  among them DOMPurify (MPL-2.0 or Apache-2.0), D3 (ISC), dagre (MIT), Cytoscape (MIT),
+  KaTeX (MIT), and the Eclipse Layout Kernel’s elkjs (EPL-2.0 or GPL-3.0-or-later, used
+  here under GPL-3.0-or-later, which is compatible with Metabrowser’s license).
+  The license texts of all its production dependencies are vendored as
+  [mermaid.bundled.txt](src/metabrowser/static/vendor/licenses/mermaid.bundled.txt).
+
+- **Lucide diagram controls**
+  ([ISC License](https://github.com/lucide-icons/lucide/blob/896aba0d195a4fec38ad7c4a90d00cb3389ebfea/LICENSE),
+  [Lucide](https://github.com/lucide-icons/lucide)). The diagram toolbar and dialog
+  glyphs in `src/metabrowser/builtin_plugins/markdown/diagrams.js` are from release
+  1.17.0, as the [icon catalog](docs/design-system-icons.md) lists.
+
 - **Primer Octicons GitHub mark**
   ([MIT License](https://github.com/primer/octicons/blob/ea8e6bb79894cc7e85564ee9b53d86b418738d04/LICENSE),
   [Primer Octicons](https://github.com/primer/octicons)). The inline GitHub destination

@@ -1,6 +1,6 @@
 import { enhanceRenderedLinks } from "./link-enhancer.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
-import { placeRendered } from "./place-rendered.js";
+import { drawDiagrams, placeRendered } from "./place-rendered.js";
 import { mountPrintIndicator } from "./print-indicator.js";
 import { kpressTocConfig } from "./toc-toggle.js";
 import { transclusionKey } from "./transclusion.js";
@@ -147,6 +147,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   let disposeLinks = null;
   /** @type {(() => void) | null} */
   let disposePrintIndicator = null;
+  /** @type {{dispose(): void, ready: Promise<void>} | null} */
+  let diagrams = null;
   const dispose = () => {
     if (disposed) {
       return;
@@ -163,6 +165,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
     disposeToc = null;
     disposePrintIndicator?.();
     disposePrintIndicator = null;
+    diagrams?.dispose();
+    diagrams = null;
   };
 
   container.classList.add("metabrowser-kpress-host", "metabrowser-markdown-document");
@@ -265,6 +269,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       if (options.printIndicator === true) {
         disposePrintIndicator = mountPrintIndicator(container, mb);
       }
+      diagrams = drawDiagrams(container, mb, !!inertRender);
+      await diagrams?.ready;
     } catch (error) {
       if (disposed || mb.errors.isAbortError(error)) {
         return;

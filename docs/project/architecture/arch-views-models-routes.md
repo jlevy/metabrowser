@@ -52,6 +52,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | --- | --- | --- | --- |
 | `folder` | Directories | Overview `O`, Treemap `M` | Folder envelope and [File Rollup Format](file-rollup-format/file-rollup-format.md) |
 | `markdown` | `.md` | Document `V`, Source `S` | File envelope; KPress render |
+| `mermaid` | `.mmd`, `.mermaid` | Diagram `V`, Source `S` | File envelope; drawn in the browser by the vendored Mermaid |
 | `html` | `.html`, `.htm` | Preview `V`, Source `S` | File envelope; sandboxed raw document |
 | `text` | Text files | Source | File envelope |
 | `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Source `S` | File envelope and the `structured/parsed` hook |

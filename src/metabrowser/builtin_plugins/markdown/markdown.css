@@ -154,3 +154,155 @@
     }
   }
 }
+
+/* Mermaid diagrams (diagrams.js). The figure is KPress's; the toolbar, error note, and
+   dialog are the host's. The toolbar shows on hover or focus, as a code block's copy
+   button does, and never prints. */
+.kpress-diagram.kpress-mermaid {
+  position: relative;
+}
+
+.metabrowser-diagram-toolbar {
+  position: absolute;
+  inset-block-start: 0.35rem;
+  inset-inline-end: 0.35rem;
+  z-index: 1;
+  display: flex;
+  gap: 0.15rem;
+  padding: 0.1rem;
+  border: var(--panel-border);
+  border-radius: var(--radius-tag);
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.kpress-mermaid:hover > .metabrowser-diagram-toolbar,
+.metabrowser-diagram-toolbar:focus-within {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .metabrowser-diagram-toolbar {
+    opacity: 1;
+  }
+}
+
+.kpress-mermaid:not([data-kpress-diagram-status="rendered"]) .metabrowser-diagram-expand,
+.kpress-mermaid:not([data-kpress-diagram-status="rendered"]) .metabrowser-diagram-toggle-source {
+  display: none;
+}
+
+.kpress-diagram-rendered[hidden],
+.kpress-mermaid .kpress-diagram-source[hidden] {
+  display: none;
+}
+
+.metabrowser-diagram-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+}
+
+.metabrowser-diagram-error {
+  margin-block-end: 0.5rem;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+}
+
+.metabrowser-diagram-error-detail {
+  margin: 0.25rem 0 0;
+  color: var(--status-error);
+  white-space: pre-wrap;
+}
+
+@media print {
+  .metabrowser-diagram-toolbar {
+    display: none;
+  }
+}
+
+.metabrowser-diagram-dialog {
+  width: calc(100vw - 2rem);
+  max-width: none;
+  height: calc(100vh - 2rem);
+  max-height: none;
+  padding: 0;
+  border: var(--panel-border);
+  border-radius: var(--radius-document);
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+
+.metabrowser-diagram-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.metabrowser-diagram-dialog::backdrop {
+  background: oklch(0% 0 0 / 0.45);
+}
+
+.metabrowser-diagram-dialog-controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.15rem;
+  padding: 0.35rem;
+  border-block-end: var(--panel-border);
+}
+
+.metabrowser-diagram-dialog-close {
+  margin-inline-start: 0.75rem;
+}
+
+.metabrowser-diagram-viewport {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.metabrowser-diagram-viewport.is-dragging {
+  cursor: grabbing;
+}
+
+.metabrowser-diagram-viewport:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+
+.metabrowser-diagram-stage {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  transform-origin: 0 0;
+  width: max-content;
+}
+
+.metabrowser-diagram-stage > svg,
+.metabrowser-diagram-stage > img {
+  display: block;
+  max-width: none;
+}
+
+/* A `.mmd` file's Diagram view (mermaid-view.js), outside any KPress article. */
+.metabrowser-diagram-host {
+  padding: 1rem;
+}
+
+.metabrowser-diagram-file {
+  margin: 0;
+  padding: 1rem;
+  border: var(--panel-border);
+  border-radius: var(--radius-document);
+}
+
+.metabrowser-diagram-file > .kpress-diagram-source {
+  margin: 0;
+  overflow-x: auto;
+}

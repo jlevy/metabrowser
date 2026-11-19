@@ -1285,6 +1285,12 @@
         await _loadKpressTocModule(url);
         continue;
       }
+      // The Markdown plugin draws Mermaid diagrams itself (builtin_plugins/markdown/
+      // diagrams.js) and never defines the `globalThis.mermaid` KPress's behavior asks
+      // for, so that module could only return; it is not fetched.
+      if (asset?.id === "js/diagrams.js" || url.endsWith("/diagrams.js")) {
+        continue;
+      }
       await _loadScript(url, asset.loading);
     }
   }
@@ -1346,6 +1352,17 @@
       return Promise.reject(new Error("metabrowser.ensureAsset: asset loader is not available"));
     }
     return assets.ensureAsset(name);
+  }
+
+  // The namespace of an on-demand module bundle (asset-loader.js), such as the
+  // vendored Mermaid entry, imported the first time a consumer asks for it.
+  /** @param {string} name @returns {Promise<unknown>} */
+  function ensureModule(name) {
+    const assets = global.MetabrowserAssets;
+    if (!assets || typeof assets.ensureModule !== "function") {
+      return Promise.reject(new Error("metabrowser.ensureModule: asset loader is not available"));
+    }
+    return assets.ensureModule(name);
   }
 
   // Load the plugins that declare support for a file kind. This is public so
@@ -1829,6 +1846,7 @@
     fetchKpressRender: fetchKpressRender,
     loadKpressAssets: loadKpressAssets,
     ensureAsset: ensureAsset,
+    ensureModule: ensureModule,
     ensureKindAssets: ensureKindAssets,
     whenIdle: whenIdle,
     kpressInitToc: kpressInitToc,

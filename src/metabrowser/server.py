@@ -2052,6 +2052,13 @@ async def index(
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # Mermaid 12.3.0's ESM entry (static/vendor/mermaid/), imported by the Markdown
+        # plugin's diagram renderer only when a mounted view holds a diagram. The entry
+        # imports the chunks of each diagram type it draws by relative specifiers, so a
+        # document fetches the 30,936-byte entry and its types' chunks, and a document
+        # with no diagram fetches nothing (docs/project/specs/active/
+        # plan-2026-08-21-mermaid-diagram-rendering.md has the measurement).
+        "mermaid": [{"module": _static_asset_url("vendor/mermaid/mermaid.esm.min.mjs")}],
         # A file's and a folder's view header: its builders, and the folder line's live
         # refresh. renderFile draws a header only after loadViewComposition, which fetches
         # this beside the compositor and the SDK's view helpers, so the first tree never

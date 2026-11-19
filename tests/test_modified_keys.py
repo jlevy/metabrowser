@@ -159,6 +159,14 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             unmounted="the row's own guard, which this PR did not change",
         ),
     ),
+    "builtin_plugins/markdown/diagrams.js": (
+        Listener(
+            "a diagram dialog's zoom, pan, and reset keys",
+            "if (event.ctrlKey || event.metaKey || event.altKey) { return null; }",
+            via=("onKey", "keyAction"),
+            checks=("tests/dom/markdown-diagrams-session.js",),
+        ),
+    ),
     "builtin_plugins/folder/treemap.js": (
         Listener(
             "the tree map's cells",

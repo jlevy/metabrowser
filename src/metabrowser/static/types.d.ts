@@ -1651,6 +1651,8 @@ type MetabrowserSdk = {
   ): Promise<MetabrowserSyntaxTokenLines | null>;
   isLargeTextPreview(data: Record<string, unknown>): boolean;
   ensureAsset(name: string): Promise<void>;
+  /** The namespace of an on-demand module bundle, imported once. */
+  ensureModule(name: string): Promise<unknown>;
   ensureKindAssets(kind: string): Promise<void>;
   /** Run *callback* when the page is idle, no later than *timeout* ms; returns its cancel. */
   whenIdle(callback: () => void, options?: { timeout?: number }): () => void;
@@ -4116,6 +4118,7 @@ declare global {
     MetabrowserAssets?: {
       ensureAsset(name: string): Promise<void>;
       assetLoaded(name: string): boolean;
+      ensureModule(name: string): Promise<unknown>;
     };
     MetabrowserCharts?: MetabrowserChartRuntime;
     MetabrowserDocumentWidth: MetabrowserDocumentWidthRuntime;

@@ -160,6 +160,26 @@ def test_both_sides_make_the_same_inert_markup_of_a_hostile_document(
     assert _tokens(browser) == _tokens(server)
 
 
+@pytest.mark.parametrize(
+    ("markup", "kept"),
+    [
+        # KPress's Mermaid figure: its block keeps GitHub's fallback language.
+        (_kpress("```mermaid\nflowchart LR\n  A --> B\n```\n"), True),
+        # GitHub's own fallback spelling, whatever its case.
+        ('<pre lang="Mermaid"><code>graph TD</code></pre>', True),
+        # Any other language, and the attribute on any other element, is dropped.
+        ('<pre lang="python"><code>x = 1</code></pre>', False),
+        ('<p lang="mermaid">graph TD</p>', False),
+    ],
+)
+def test_a_mermaid_block_keeps_its_language_and_nothing_else_does(markup: str, kept: bool) -> None:
+    server = harden(markup, None)
+    browser = _node({"tree": html_tree(markup), "base": None})
+    assert _tokens(browser) == _tokens(server)
+    assert ('<pre lang="mermaid">' in server) is kept
+    assert server.count("lang=") == int(kept)
+
+
 HOSTILE_LINKS = json.loads(
     (REPO_ROOT / "tests" / "fixtures" / "inert-html-hostile-links.json").read_text(encoding="utf-8")
 )

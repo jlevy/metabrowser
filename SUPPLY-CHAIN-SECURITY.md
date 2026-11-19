@@ -390,6 +390,28 @@ Its source is [pygments/pygments](https://github.com/pygments/pygments), its lic
 BSD-2-Clause, and its Python requirement, `>=3.9`, covers this project’s supported
 range. Its registry artifact hashes in `uv.lock` are unchanged.
 
+### Mermaid (November 18, 2026)
+
+`mermaid` 12.3.0 is a new development dependency, vendored by
+`devtools/vendor_assets.py` into `src/metabrowser/static/vendor/mermaid/` so Markdown
+documents draw their Mermaid diagrams as GitHub does.
+12.3.0 is the release GitHub’s own renderer embeds, and nothing in this repository draws
+diagrams without it.
+Its source is [mermaid-js/mermaid](https://github.com/mermaid-js/mermaid), published by
+that project’s maintainers, and its license is MIT. It was published on November 3,
+2026, so it satisfies the 14-day cool-off without an exception, and `min-release-age` in
+`.npmrc` held every transitive release to the same age at install.
+
+The lock delta is 116 added packages and the root entry’s new pin: no existing package
+changes version or record, and none of the added ones has an install script.
+Their licenses are MIT (67), ISC (33), Apache-2.0 (6), BSD-3-Clause (6), Unlicense (1),
+DOMPurify’s MPL-2.0 or Apache-2.0, elkjs’s EPL-2.0 or GPL-3.0-or-later, and khroma’s MIT
+license file with no declared field; [NOTICE.md](NOTICE.md) records how they apply.
+The vendored tree is only the ESM entry and its chunks; source maps are left out, and
+`TOTAL_CAP_BYTES` in `devtools/vendor_assets.py` records the measured size.
+The browser imports the entry only for a document with a diagram, and Mermaid runs with
+`securityLevel: "strict"`, which sanitizes labels and disables `click` callbacks.
+
 ### Node Type Declarations (November 11, 2026)
 
 `@types/node` 24.19.2 is a new development dependency.

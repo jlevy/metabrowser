@@ -1,5 +1,5 @@
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
-import { placeRendered } from "./place-rendered.js";
+import { drawDiagrams, placeRendered } from "./place-rendered.js";
 import { kpressTocConfig } from "./toc-toggle.js";
 
 /** Bounds recursive embedding depth. */
@@ -334,6 +334,8 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
   let nestedHandle = null;
   /** @type {(() => void) | null} */
   let disposeToc = null;
+  /** @type {{dispose(): void} | null} */
+  let diagrams = null;
   const abortParent = () => dispose();
   if (options.signal?.aborted) {
     disposed = true;
@@ -360,6 +362,8 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
     nestedHandle = null;
     disposeToc?.();
     disposeToc = null;
+    diagrams?.dispose();
+    diagrams = null;
   }
 
   function clearClaimTimeout() {
@@ -469,6 +473,7 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
               },
             })
           : mb.kpressInitToc?.(aside, kpressTocConfig(aside)) || null;
+      diagrams = drawDiagrams(aside, mb, !!inertRender);
     } catch (error) {
       if (disposed || options.signal?.aborted) {
         return;

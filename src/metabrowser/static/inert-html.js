@@ -101,8 +101,11 @@
     td: Object.freeze(["colspan", "rowspan", "align"]),
     th: Object.freeze(["colspan", "rowspan", "align"]),
     details: Object.freeze(["open"]),
+    pre: Object.freeze(["lang"]),
     ...Object.fromEntries(HEADINGS.map((tag) => [tag, Object.freeze(["id"])])),
   });
+  // The one language a block keeps, a Mermaid diagram's, as inert_html.py keeps it.
+  const DIAGRAM_LANGUAGE = "mermaid";
 
   // Every heading anchor begins with this, as on github.com: the document's names stay
   // apart from the application's ids and from window properties.
@@ -343,6 +346,12 @@
       }
     } else if (tag === "details" && read("open") !== null) {
       kept.push(["open", ""]);
+    } else if (
+      tag === "pre" &&
+      ((read("lang") ?? "").toLowerCase() === DIAGRAM_LANGUAGE ||
+        (read("class") ?? "").split(/\s+/).includes("kpress-diagram-source"))
+    ) {
+      kept.push(["lang", DIAGRAM_LANGUAGE]);
     }
     return kept;
   }
