@@ -11,19 +11,21 @@ The owner took every decision under [Key Decisions](#key-decisions), RT-1 to RT-
 parent plan below, whose Decision 19 this plan answers and whose mixed list it designs;
 [What This Plan Takes Over](#what-this-plan-takes-over) lists the parts, and
 [Settled](#settled) says which of the parent’s decisions this plan rests on.
-Written against `main` at `a1100bca6`.
+Written against `main` at `4a5b9e825`. Clarifications dated 2026-11-19, from an
+independent review, are marked at the decisions they touch.
 
 ## Overview
 
 Metabrowser gains a fourth main tab, **Recent**, beside Files, Pulls, and Commits.
 It answers one question about the served root: what has been happening here?
 
-The answer has three tiers, by what the root is:
+The answer has three levels, by what the root is:
 
-- **A plain folder:** the files that changed.
-- **A Git repository:** also commits, moved refs, and uncommitted changes.
-- **A GitHub repository:** also pull requests: each one opened, closed, or merged, and
-  the pushes, comments, and reviews on it.
+- **The folder level,** for a plain folder: the files that changed.
+- **The Git level,** for a Git repository: also commits, moved refs, and uncommitted
+  changes.
+- **The GitHub level,** for a GitHub repository: also pull requests: each one opened,
+  closed, or merged, and the pushes, comments, and reviews on it.
 
 Each row is one of two things.
 An **update** is a group of changes to one subject within a stretch of time: fourteen
@@ -41,7 +43,7 @@ The owner decided these on 2026-11-18, and this plan does not reopen them:
 - **Recent is a main navigation tab,** which answers the parent plan’s
   [Decision 19](plan-2026-11-14-object-data-model-and-views.md#decision-19-where-recent-changes-lives)
   as its option C. Option B’s address survives as `/recent`.
-- **It is one surface with three tiers,** keyed on what the served root is.
+- **It is one surface with three levels,** keyed on what the served root is.
 - **The parent plan’s forms apply:** SoftSchema contracts, `pull-request` as that type’s
   one spelling, and UTC strings at second precision.
 - **Mixed lists are composed on the server,** the parent plan’s
@@ -56,7 +58,7 @@ Recent tab.
 | In the parent plan | Here |
 | --- | --- |
 | Its Overview’s third motivating surface | The Recent tab. A page of cards survives as `/recent`, the tab’s list address, in R4 |
-| [Mixed Lists](plan-2026-11-14-object-data-model-and-views.md#mixed-lists): a collection may hold several types, in one total order, paged by a cursor | The sources, what each can answer today, and their coverage ([Tiers and Sources](#tiers-and-sources)); how changes form rows ([Clumping](#clumping)) |
+| [Mixed Lists](plan-2026-11-14-object-data-model-and-views.md#mixed-lists): a collection may hold several types, in one total order, paged by a cursor | The sources, what each can answer today, and their coverage ([Levels and Sources](#levels-and-sources)); how changes form rows ([Clumping](#clumping)) |
 | Decision 18, composing a mixed list on the server | Which sources the first version covers, and each one’s cost |
 | Decision 19, decided as C | The tab’s design. Option A is dropped, and folder scope is an [open question](#open-questions) |
 | Phase 2, the core types and the folder page | The Recent phases, [R1 to R4](#implementation-plan): the sources, the routes, `[[collection_source]]`, and the page. `R` is the tab’s letter, so no folder view takes it |
@@ -72,8 +74,8 @@ Paths below are under `src/metabrowser/` unless they start with `docs/` or `test
 Three things are named Recent:
 
 - **The Files tab’s Recent view.** Setting **Modified within** turns the tree into “the
-  Recent view” (`docs/browsing-files.md:61`), read from `/api/recent` and drawn by
-  `renderRecentList` (`static/app.js:5575`). It was a tab until the
+  Recent view” (`docs/browsing-files.md:80`), read from `/api/recent` and drawn by
+  `renderRecentList` (`static/app.js:5506`). It was a tab until the
   [nav filter plan](../done/plan-2026-08-09-nav-filter-controls.md) folded it into
   Files, and three documents still call it “the Recent tab”
   (`docs/project/architecture/arch-recent-targets.md:18`,
@@ -90,28 +92,32 @@ File Diff Format already has a `worktree` snapshot (`diff/format.py:69`).
 
 ## Design
 
-### Tiers and Sources
+### Levels and Sources
 
 The tab reads one collection, `recent`, which the server composes from registered
 **sources**. A source answers its changes in time order, and says whether it applies to
 the served root and to the view the server shows.
-A tier is the set of sources that apply, so each tier is the one before plus sources.
+A **level** is the set of sources that apply, so each level is the one before plus
+sources.
 
-| Source | Tier | Plain folder | Repository folder, working tree | Repository folder, a revision | Mirror |
+| Source | Level | Plain folder | Repository folder, working tree | Repository folder, a revision | Mirror |
 | --- | --- | --- | --- | --- | --- |
-| `files` | 1 | Yes | Yes; narrowed to uncommitted paths in R2 ([RT-4](#rt-4-file-changes-in-a-repository-folder)) | No: a revision has no modification times | No |
-| `working-tree` | 2 | No | Yes | No: the view is a revision | No: a mirror has no working tree |
-| `commits` | 2 | No | Yes | Yes | Yes |
-| `refs` | 2 | No | Yes, from the reflog | Yes | Only moves this server’s refreshes made, once recorded |
-| `pull-requests` | 3 | No | Where `origin` is on github.com | The same | Where the origin is on github.com |
+| `files` | Folder | Yes | Yes; narrowed to uncommitted paths in R2 ([RT-4](#rt-4-file-changes-in-a-repository-folder)) | No: a revision has no modification times | No |
+| `working-tree` | Git | No | Yes | No: the view is a revision | No: a mirror has no working tree |
+| `commits` | Git | No | Yes | Yes | Yes |
+| `refs` | Git | No | Yes, from the reflog | Yes | Only moves this server’s refreshes made, once recorded |
+| `pull-requests` | GitHub | No | Where `origin` is on github.com | The same | Where the origin is on github.com |
 
-- **The tier is decided where the tabs are.** Tier 2 applies where the shell draws
-  Commits and tier 3 where it draws Pulls (`server.py:1689`, `:1683`).
+- **The level is decided where the tabs are.** The Git level applies where the shell
+  draws Commits and the GitHub level where it draws Pulls (`server.py:1724`, `:1718`).
 - **The tab is about the root, not the view.** The `commits` source walks the history’s
   `all` scope, every branch and tag (`resolve_history_scope`, `git/history.py:317`). The
   default scope of a revision is its own ancestors alone (`git/history.py:303`).
-- **Core registers four sources, and the GitHub plugin its own,** through the
-  `[[collection_source]]` block that the plugin authoring plan specifies
+- **Core registers its four sources in Python, and the GitHub plugin its own in its
+  manifest.** Core’s are declared in `objects/registry.py`, beside its types and
+  collections, and not through a manifest block.
+  A plugin’s source joins through the `[[collection_source]]` block that the plugin
+  authoring plan specifies
   ([Manifest Blocks](plan-2026-11-18-plugin-authoring-objects-views.md#manifest-blocks)).
 - **Coverage is said.** The answer names every registered source with a state: `ready`,
   `pending`, `stale`, `failed`, or `unsupported` for one that applies to the root and
@@ -127,16 +133,17 @@ Two costs are recorded: the browser’s for a full `/api/recent` answer
 
 | Source | Reads today | Needs |
 | --- | --- | --- |
-| `files` | The newest files in a window, capped, with no cursor (`server.py:3084`, `inventory_engine/contract.py:1172`): current modification times, not a log of writes. The Python provider filters and sorts the whole index for each query (`inventory_engine/providers/python_inventory.py:2718-2747`) | To page, a cursor below a time, from every inventory provider. For edit history, the recorder of [R4](#r4-later-each-alone) |
+| `files` | The newest files in a window, capped, with no cursor (`server.py:3163`, `inventory_engine/contract.py:1172`): current modification times, not a log of writes. The Python provider filters and sorts the whole index for each query (`inventory_engine/providers/python_inventory.py:2718-2747`) | To page, a cursor below a time, from every inventory provider. For edit history, the recorder of [R4](#r4-later-each-alone) |
 | `commits` | A log in `--date-order`, which follows topology, with each commit’s time (`git/history.py:641`, `git/log.py:49`) | First, the `all` scope’s first page, ordered by commit time. To page, a bounded walk before a time |
 | `working-tree` | Nothing | `GET /api/git/status`, measured by the status plan’s Phase 0. It never pages |
-| `refs` | Nothing: no reflog is read, and a mirror records when it last fetched, not what moved (`cache/records.py:341`) | A reflog read; a record of a mirror’s fetches |
+| `refs` | Nothing: no reflog is read, and a mirror records when it last fetched, not what moved (`cache/records.py:357`) | A reflog read; a record of a mirror’s fetches |
 | `pull-requests` | Catalog rows with `created_at`, `updated_at`, `closed_at`, `merged_at`, and `head_oid`, indexed by `(state, number)` (`github/pull_list.py:99`, `github/pull_catalog.py:122`); a timeline of commits, comments, and reviews, one pull request at a time (`github/pull_timeline.py:47`) | First, the newest rows by `updated_at`: an event belongs to a row updated at or after it, so they hold every event above a bound. To page, an index on `updated_at` and a table of events |
 
 ### Updates and Events
 
-A source answers **changes**, each `{subject, at, kind}`. The registry declares each
-kind as **clumping** or **standalone**.
+A source answers **changes**, each `{subject, at, kind}`, and declares each kind it
+answers as **clumping** or **standalone**: a core source in Python, and a plugin’s in
+the `kinds` table of its `[[collection_source]]` block.
 
 | Subject | Clumping kinds, which form updates | Standalone kinds, which are events |
 | --- | --- | --- |
@@ -202,7 +209,8 @@ move without input.
 - **Identity.** One for each served root:
   `{type: working-tree-changes, id: working-tree}`. It is never minted again.
   Its `head`, Git’s `HEAD` commit and ref, and its `generation`, the status plan’s
-  digest over status facts, move as a pull request’s head does.
+  digest over status facts, change as a pull request’s head does.
+  A digest has no order, so a reader compares two generations for equality alone.
   Were either its key, a link to it would end at every commit or save.
   What is minted over time is its updates, by the clumping rule.
 - **Summary.** `head{ref, sha}`, `generation`, `clean`, `truncated`, and
@@ -211,7 +219,7 @@ move without input.
 - **Change totals.** The `changes` facet is the shared change-totals sub-object
   (`ChangeSums`, `github/pull_change_sums.py:38`), keyed by `head.sha` and `generation`.
   Status letters come from the status records; a line count may be unknown, which
-  `changeLine` draws as “?” (`static/formatters.js:304`).
+  `changeLine` draws as “?” (`static/formatters.js:315`).
 - **Diff.** A `diff/comparison` document from the `HEAD` commit, or `empty` on an unborn
   branch, to a `worktree` snapshot.
   The status plan’s `GitWorkingTreeDiffSource` builds one entry’s comparison; this plan
@@ -235,7 +243,7 @@ move without input.
 **Order and key.** Files, Recent, Pulls, Commits: the two tabs every root has come
 first, so the tabs that come and go never shift them.
 The tab joins `MAIN_TABS` (`static/main-tabs.js:7`), the server draws its button
-(`server.py:2256`), and its panel registers as Commits’ does (`registerNavPanel`,
+(`server.py:2320`), and its panel registers as Commits’ does (`registerNavPanel`,
 `static/main-tabs.js:210`). Its letter is `R`, which no shell key or view holds
 (`keymap.py:66`, `tests/test_keymap.py:115`); Command-R stays the browser’s.
 
@@ -253,6 +261,9 @@ local day. Selecting one opens its `href`, which is always its subject’s page:
 `static/main-tabs.js:36`), so a commit opened from Recent would bring Commits forward.
 The rule gains a case: a row opened from the tab in front keeps that tab in front, and a
 load at the address reveals the item in its own tab.
+`/status` belongs to Commits, where the status plan’s Changes section lists the same
+paths: a load at `/status` reveals it in Commits, and a working-tree update opened from
+Recent keeps Recent in front, by this case.
 [Navigation Reveals the Item](../../../design-system.md#navigation-reveals-the-item)
 changes with it.
 
@@ -271,13 +282,16 @@ Each is the shared header plus:
 | `metabrowser.objects:Event/v1` | `kind`; `subject`; `detail`, small and by kind, such as a moved ref’s `from` and `to` | `changes` |
 | `metabrowser.objects:WorkingTreeChanges/v1` | As [above](#working-tree-changes) | `changes` |
 
+The implementation map’s C2 registers `WorkingTreeChanges` with the other core types,
+and R1, which follows C2, registers `Update` and `Event` in the same registry.
+
 An event’s `id` is its subject, kind, and time.
 Its `kind` is a token its source declares, so core’s contract names no GitHub concept.
 A first page in a GitHub checkout, as `--api --format yaml` prints an envelope, with
 synthetic values:
 
 ```yaml
-generation: 318
+generation: "…"                     # opaque: compared for equality
 complete: false
 truncated: false
 next_after: "…"                       # opaque: the last row's position
@@ -346,7 +360,7 @@ rows:
   `GET /api/git/working-tree` answers the working-tree changes object.
   These are where a reference to each type leads.
 - **The CLI.** `--api` reaches them, and no mode is added: `--recent` is the recent
-  targets’ (`cli/main.py:659`).
+  targets’ (`cli/main.py:670`).
 - **View state.** In the view model plan’s
   [view state](plan-2026-11-18-view-model-and-view-state.md#the-view-state), `nav.tab`
   is `recent`, `nav.current` is the row’s reference, an `update` or an `event`, and
@@ -360,7 +374,7 @@ rows:
 
 | Row | Tier | Evidence |
 | --- | --- | --- |
-| `/api/recent`, `/api/recent/item`, `/api/git/working-tree` | Route, covered | `--api` goldens over fixture roots with pinned times: a plain folder, a repository, and a GitHub cache home built as `tests/test_github_drawn_from_disk.py` builds one |
+| `/api/recent`, `/api/recent/item`, `/api/git/working-tree` | Route, covered | `--api` goldens over fixture roots with pinned times: a plain folder, a repository, and a GitHub cache home built as `tests/test_github_drawn_from_disk.py` builds one. `/api/git/working-tree`’s row and golden arrive first, with the implementation map’s T1.3, and `--show /status`’s with its T1.5 |
 | `recent.membership`, `recent.paging`, `recent.coverage` | Data, owned by `/api/recent` | Gap and span splits, standalone kinds, order, and ties; pages cut at every row equal the unpaged answer; each source state, on a revision, on a mirror, and when empty |
 | `recent.panel` | Interaction | `tests/dom/recent-panel-session.js` runs the production `describe` functions, the patch of an `open` row, the offer, and the reveal case |
 | `recent.row-paint` | Paint-exempt | In headless Chrome: a row’s height holds when its change line arrives, and four tabs fit the default pane |
@@ -381,8 +395,9 @@ source’s gap, the member cap, the page size, and the debounce of `recent.chang
   watches the bus and the page receives one small event.
   A pinned revision has no stream today (`events_route.py:773`), so a mirror’s tab
   refreshes when its source does.
-- **A first-page read is not free.** Tier 1 is a pass over the index, tier 2 adds a
-  status read, and tier 3 a catalog read that scans until `updated_at` has an index.
+- **A first-page read is not free.** The folder level is a pass over the index, the Git
+  level adds a status read, and the GitHub level a catalog read that scans until
+  `updated_at` has an index.
   A large repository sets the bounds: a storm of build output, a branch switch that
   touches every file, and a catalog of tens of thousands of pull requests.
 - **Loading.** The panel loads on first show, and the list host windows its rows.
@@ -399,7 +414,7 @@ The owner took all seven on 2026-11-18.
 **Needed for:** R1.
 
 - **A. Two derived types, `update` and `event`,** each naming a subject by reference.
-  One row vocabulary for every tier, and “opened” and “pushed to” are separate rows of
+  One row vocabulary for every level, and “opened” and “pushed to” are separate rows of
   one pull request.
 - **B. The subjects themselves in a mixed list,** ordered by `updated_at`, as the parent
   plan first drew it. A pull request has one row, which cannot say what happened, and
@@ -438,6 +453,11 @@ The owner took all seven on 2026-11-18.
 **Decided 2026-11-18: A,** which changes the status plan, as its
 [Requirements From the Recent Tab Plan](plan-2026-08-26-git-status-and-working-tree-diffs.md#requirements-from-the-recent-tab-plan)
 records; B if its gate finds a path the codec cannot spell.
+
+**Clarified 2026-11-19:** the Commits tab owns `/status` and `/status/<path>`, since the
+status plan’s Changes section lives there.
+A load at either reveals it in Commits, and a row opened from Recent keeps Recent in
+front ([The Tab](#the-tab)).
 
 ### RT-4: File Changes in a Repository Folder
 
@@ -482,14 +502,20 @@ B from R2.**
 
 **Needed for:** R1, before anything else.
 
-- **A. The recent slice: tier 1 and commits, on the list host,** after the store and the
-  list host of the parent plan’s object slice.
+- **A. The recent slice: the folder level and commits, on the list host,** after the
+  store and the list host of the parent plan’s object slice.
   The tab is the host’s first navigation panel and its first mixed list.
 - **B. A panel built by hand, before the list host.** Sooner, and one more
   implementation of row mechanics for the parent plan’s Phase 3 to replace.
-- **C. Wait for the status plan,** and ship tier 2 whole.
+- **C. Wait for the status plan,** and ship the Git level whole.
 
 **Decided 2026-11-18: A.**
+
+**Clarified 2026-11-19:** R1 also follows the object contract registry, the
+implementation map’s C2. It adds two contracts with a corpus, and the registry, the
+compiled schemas, and the corpus checks they need arrive there.
+The tab’s rows use the navigation-column key contract, which the list host provides
+beside the pane’s.
 
 ## Implementation Plan
 
@@ -498,14 +524,16 @@ these among the parent plan’s stacks.
 
 ### R1: The Recent Slice
 
-After the store and the list host of the parent plan’s Phase 1.
+After the store and the list host of the parent plan’s Phase 1, and after the contract
+registry of its Phase 2, the implementation map’s C2.
 
 - [ ] Add `updates/`: the source registry, the clumping function, the composer, and the
-  routes; the `files` and `commits` sources; the `Update` and `Event` contracts with
-  their corpus.
+  routes; the `files` and `commits` sources, declared in `objects/registry.py`; the
+  `Update` and `Event` contracts with their corpus, registered in the object contract
+  registry.
 - [ ] Add the tab: its button, `R`, and `static/recent-panel.js`, loaded on demand, with
-  `nav-row` views for both types, day headings, and the change line that opens to an
-  update’s files.
+  `nav-row` views for both types on the list host’s navigation-column key contract, day
+  headings, and the change line that opens to an update’s files.
 - [ ] Add `recent.change`, the live rule, the reveal case, and `/recent` with a
   placeholder page.
 - [ ] Make RT-6’s renames, and change the documents that say “the Recent tab”, the
@@ -522,19 +550,20 @@ the implementation map’s Tier 1, to this plan’s definition.
 - [ ] Add the `working-tree` source, the narrowing of `/status` to an update, and RT-4
   B. Where Tier 1 has landed, this joins R1.
 
-### R3: The GitHub Tier
+### R3: The GitHub Level
 
-- [ ] Add `[[collection_source]]` and the `pull-requests` source: events from catalog
-  rows, with an index on `updated_at`, which is a catalog schema change; updates from
-  cached records and timelines.
+- [ ] Add `[[collection_source]]`, with its `kinds` table, and the `pull-requests`
+  source: events from catalog rows, with an index on `updated_at`, which is a catalog
+  schema change; updates from cached records and timelines.
 - [ ] Count the Recent tab as a shown list of `pulls`, so the catalog refreshes while
   Recent is in front (the parent plan’s Decision 14).
 
 ### R4: Later, Each Alone
 
 - [ ] The `refs` source.
-- [ ] `/recent` as a page of cards, the first real use of the `card` shape, whose frame
-  is built for it and not before, in the implementation map’s C5 (the parent plan’s
+- [ ] `/recent` as a page of cards, the first real use of the `card` shape.
+  Its frame is built here and not before, with the commit’s and the pull request’s cards
+  (the parent plan’s
   [Decision 11](plan-2026-11-14-object-data-model-and-views.md#decision-11-the-set-of-shapes)).
 - [ ] Cursors that reach past each source’s first read.
 - [ ] The tab’s `nav.list` facet.
@@ -570,8 +599,6 @@ the implementation map’s Tier 1, to this plan’s definition.
   measured, and one gap may not suit both file writes and pull request activity.
 - **Is a parent folder’s time right for a deleted path?** It moves again when a sibling
   is added.
-- **Which tab is home to `/status`?** The status plan puts a Changes section in Commits,
-  over the same paths.
 - **Where do ref moves come from?** Does a reflog read fit the read-only rule and the
   process policy, and what should a mirror record of its fetches?
 - **Scoping to a folder.** A `path` parameter would give a folder what Decision 19 A

@@ -9,7 +9,10 @@ The owner took every decision under [Key Decisions](#key-decisions), VM-1 to VM-
 2026-11-18, with the parent plan’s Decisions 1 to 23. A companion to
 [Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), the
 parent plan below, which defines the objects, references, collections, and shapes this
-plan names. Written against `main` at `a1100bca6`.
+plan names. Written against `main` at `4a5b9e825`. An independent review’s findings were
+applied on 2026-11-19: the `control` default is computed for each request, as
+[Decision VM-5](#decision-vm-5-consent-and-trust) marks; a publish has refusal codes of
+its own; and `/api/ui/types` serves the table of object routes.
 
 ## Overview
 
@@ -70,20 +73,20 @@ Everything else is module state or DOM, in the page alone.
 | What is selected | The address ([URL grammar](../../architecture/arch-views-models-routes.md#browser-url-grammar)) |
 | The revision a page was drawn for | The pin token its data requests name (`static/source-pin-guard.js:1-12`) |
 | Main tab, and each tab’s last destination | `activeNavPanelId`, `mainTabDestinations` (`static/main-tabs.js:115`, `:120`) |
-| Files filter, Group by, expansion, and current row | A snapshot reset on every page (`static/filter-state.js:5-21`); DOM classes (`static/tree-expansion.js:125`); `setSelectedPath` (`static/app.js:4153`) |
-| Pulls filter, closed stacks, and current row | `setFilter`, `closedStacks`, `setCurrent` (`github/pulls-panel.js:2871`, `:863`, `:3027`) |
+| Files filter, Group by, expansion, and current row | A snapshot reset on every page (`static/filter-state.js:5-21`); DOM classes (`static/tree-expansion.js:125`); `setSelectedPath` (`static/app.js:4086`) |
+| Pulls filter, closed stacks, and current row | `setFilter`, `closedStacks`, `setCurrent` (`github/pulls-panel.js:2877`, `:869`, `:3033`) |
 | Active page view | A flag per view container (`static/view-state.js:18`) |
-| Display preferences | Host-only cookies, not `localStorage` (`static/app.js:534`, `static/plugin-sdk.js:675`) |
+| Display preferences | Host-only cookies, not `localStorage` (`static/app.js:478`, `static/plugin-sdk.js:679`) |
 | Windows, tabs, and each tab’s page | The macOS app’s `session.json` ([Session Restore](../../architecture/arch-macos-app.md#session-restore)) |
 
 Four facts shape the design.
 
 - **Nothing sees a running page.** The server knows a page only as an event-stream
   connection, and `metab --api` runs its own application in process
-  (`docs/project/architecture/arch-cli.md:106`), so it reaches every route and no page.
-- **`--present` cannot confirm.** It reports `confirmed: false` (`cli/present.py:795`),
+  (`docs/project/architecture/arch-cli.md:108`), so it reaches every route and no page.
+- **`--present` cannot confirm.** It reports `confirmed: false` (`cli/present.py:1560`),
   because the app cannot reply and the page “never calls into the app”
-  (`docs/project/architecture/arch-macos-app.md:15`).
+  (`docs/project/architecture/arch-macos-app.md:16`).
 - **Showing an item is already one rule.**
   [Navigation Reveals the Item](../../../design-system.md#navigation-reveals-the-item)
   lists the routes by which a reader reaches an item, and `revealPlan` applies one rule
@@ -108,7 +111,7 @@ reader something.
 
 | Component | Where | Job |
 | --- | --- | --- |
-| View model contracts | `ui/` (new package), compiled under `data/ui-format/` | `ViewState` and `Intent`, the viewer registry, the `control` setting, and the routes `/api/ui/viewers`, `/api/ui/viewer`, and `/api/ui/intents` |
+| View model contracts | `ui/` (new package), compiled under `data/ui-format/` | `ViewState` and `Intent`, the viewer registry, the `control` setting, and the routes `/api/ui/viewers`, `/api/ui/viewer`, `/api/ui/intents`, and, until the object registry serves its table, `/api/ui/types` |
 | View state publisher | `static/ui-state.js`, deferred | The `describe` function of each summary field and facet, the publisher, `openAddress`, and the applier for `present` |
 | View state SDK surface | `mb.ui`, in a later slice | A page view declares its named parts and reports their values, which the publisher prints as `pane.parts` |
 
@@ -143,7 +146,7 @@ The view model adds no vocabulary of its own where the object model has one:
 | Summary and facets | A view state’s summary, and its facets by surface |
 | `href` and its inverse | `address` and `object` |
 | Collection envelope | The list of viewers |
-| `generation` | A view state’s counter |
+| `generation` | A view state’s `generation`, an opaque token compared for equality, as every other is |
 | Contract registry | A second family, `metabrowser.ui` |
 
 1. **The page is the authority, and the server is where it is read.** A page publishes
@@ -169,7 +172,7 @@ shell.
 They behave the same in a standalone browser tab, in the macOS app’s web view, and
 in a later host such as the VS Code host design (`mb-x4y5`). The page talks to its
 server over HTTP and server-sent events and never calls into the app
-(`docs/project/architecture/arch-macos-app.md:14-15`), and the view model keeps that
+(`docs/project/architecture/arch-macos-app.md:14-16`), and the view model keeps that
 rule: a view state is published to the server, and an intent arrives on the server’s
 stream.
 
@@ -187,7 +190,7 @@ verifies both there before either ships:
 - **Viewer identity.** No shell module reads `sessionStorage` today, so
   [Decision VM-6](#decision-vm-6-viewer-identity) is its first use.
   To verify in the app’s `WKWebView`, which uses the persistent default data store
-  (`docs/project/architecture/arch-macos-app.md:77-78`): that `sessionStorage` is
+  (`docs/project/architecture/arch-macos-app.md:78-79`): that `sessionStorage` is
   available; that it survives a full load in one web view; that a tab the app discarded
   comes back with none, since it gave up its web view, and so is a new viewer; and that
   a window opened from a page copies its opener’s, which is the duplicated-tab case that
@@ -217,7 +220,7 @@ version changes only on a break.
 | Summary field | Meaning | From |
 | --- | --- | --- |
 | `viewer` | The tab’s identifier ([Decision VM-6](#decision-vm-6-viewer-identity)) | `sessionStorage` |
-| `generation` | A count of changes to what is shown | Assigned by the server on publish, and returned to the page |
+| `generation` | A token that changes when what is shown changes. A reader compares two for equality and never for order | Assigned by the server on publish, and returned to the page |
 | `attention` | `focused`, `visible`, or `hidden`; it does not move `generation` | `document.hasFocus()`, `visibilityState` |
 | `served` | `{revision, ref}`: `working-tree` or a commit, and the ref it was resolved from | The pin token, or `working-tree` where a page names none |
 | `address` | Path, query, and fragment | `location` |
@@ -237,7 +240,7 @@ There `nav.tab` is `recent`, and `nav.current` is the row’s reference, an `upd
 `pane.view` and `pane.views` hold registered `[[view]]` identifiers and nothing else.
 A page that draws tabs of its own has one registered view.
 The pull request page is `pull-request` at all three of its addresses
-(`github/manifest.toml:149-150`), and `--show` prints `views: pull-request (default)`
+(`github/manifest.toml:157-158`), and `--show` prints `views: pull-request (default)`
 for it, with the tab in its model line as `tab=conversation`
 (`tests/golden/cli-github-checkout.txt:346-350`). The tab stays in `address`
 (`PULL_ROUTE_TABS`, `view_routes.py:24`) and later becomes a `pane.parts` value, so the
@@ -253,13 +256,13 @@ page and `--show` agree at every pull request address.
 | `content` | `ready` |
 | `error` | `failed`, or `not_found` where the answer was a 404 |
 | `idle` | `idle`: nothing is selected, and `object` is null |
-| `external` | The owner’s own status. The pull request page and the commit page claim the pane and paint for themselves (`static/app.js:9295`, `static/git-panel.js:2707`), so each reports `loading`, `ready`, `not_found`, or `failed` |
+| `external` | The owner’s own status. The pull request page and the commit page claim the pane and paint for themselves (`static/app.js:9138`, `static/git-panel.js:2713`), so each reports `loading`, `ready`, `not_found`, or `failed` |
 | `unreachable` | Never published. A page that cannot reach the server cannot publish, so the server holds the last state through the grace period of [Decision VM-7](#decision-vm-7-persistence) |
 
 Two of these rows are work for the view slice.
 The lifecycle records a 404 as `error`, and only an open’s result tells the two apart
 today (`settleFileSelectionFailure`, `static/navigation.js:1236`;
-`QuickFileOpenOutcome`, `static/app.js:976`), so the lifecycle must keep that fact.
+`QuickFileOpenOutcome`, `static/app.js:921`), so the lifecycle must keep that fact.
 An `external` owner reports nothing to the lifecycle now, so the lifecycle gains a call
 by which the owner settles its claim.
 
@@ -271,7 +274,7 @@ by which the owner settles its claim.
 | `pane.parts` | Named parts of a page, each open or closed, or one of a set of values: a table of contents, the Diff summary, the diff layout, the pull request page’s tab | The page view, through `mb.ui` |
 | `overlay` | The modal or menu that is open | The overlay controller (`createModal`, `static/overlay-layer.js:177`) |
 | `display` | Theme, reading font, and width | The preference cookies |
-| `commands` | The registered commands available now, by identifier | The shortcut registry (`create`, `static/keyboard-shortcuts.js:651`) |
+| `commands` | The registered commands available now, by identifier | The shortcut registry (`create`, `static/keyboard-shortcuts.js:661`) |
 
 - **Bounds.** A view state grows with the rows in view, never with a collection:
   `expanded` and `closed_sections` are capped and say `truncated`, and `window` names
@@ -285,8 +288,11 @@ by which the owner settles its claim.
   module loads with the deferred shell tools, and no click waits on it.
 - **The publish route.** A publish is `POST /api/ui/viewers`, the route that lists
   viewers. Its answer gives the `generation` the state was assigned.
-  The page keeps that number, and whether anything it shows has changed since, for the
+  The page keeps that value, and whether anything it shows has changed since, for the
   `stale` check under [Writing](#writing).
+  A publish is refused as `invalid` where the `ViewState` model refuses it, as
+  `too_large` over `MAX_VIEW_STATE_BYTES`, and as `control_off` where the `control`
+  setting is `off`.
 
 ### Reading
 
@@ -316,7 +322,7 @@ by which the owner settles its claim.
   So a multi-row answer, and the answer to an intent, print as `--format yaml` prints
   any route today: the envelope as plain YAML, with no header (`cli/api_cli.py:95-102`).
 - **Several viewers.** Each tab is a viewer, in a browser or in the app.
-  A tab the app has discarded (`docs/project/architecture/arch-macos-app.md:442`) has no
+  A tab the app has discarded (`docs/project/architecture/arch-macos-app.md:586`) has no
   viewer until it is shown.
   Windows and their order are the shell’s, platform behavior the parity rule exempts; a
   viewer reports only its own `attention`.
@@ -330,8 +336,9 @@ by which the owner settles its claim.
   [Phase 3](plan-2026-11-10-native-macos-app.md#phase-3-host-mode-the-registry-and-the-agent-front-door).
   They take this plan’s names and payloads, as the host mode plan’s
   [Reaching a Gated Server](plan-2026-11-18-host-mode.md#reaching-a-gated-server) maps
-  them. `clients` answers the list of viewers, and is named `viewers`. `navigate` is an
-  event there and not a verb, and it is the `ui.intent` event below.
+  them. `clients` answers the list of viewers and is named `viewers`: it is
+  `GET /api/ui/viewers`, with the record route `GET /api/ui/viewer` beside it.
+  `navigate` is an event there and not a verb, and it is the `ui.intent` event below.
   `present`, which pushes that event to the most recently visible page
   (`docs/project/research/research-2026-11-10-native-app-server-topology.md:507-508`),
   carries an intent to `rows[0]`, and the intent’s own field has the verb’s name,
@@ -342,14 +349,21 @@ needs the route each type’s reference leads to:
 
 | `type` | Route | Answers |
 | --- | --- | --- |
-| `file`, `folder` | `GET /api/file?path=<id>` | The file or folder envelope, for a working tree and for a pin (`server.py:3375-3380`). No route answers a `File` or `Folder` object: the tree and Recent stay compact, and their adapters run in the browser |
+| `file`, `folder` | `GET /api/file?path=<id>` | The file or folder envelope, for a working tree and for a pin (`server.py:3474-3479`). No route answers a `File` or `Folder` object: the tree and Recent stay compact, and their adapters run in the browser |
 | `commit` | `GET /api/git/commit/<id>` | `GitCommitDetail` today; a `Commit` object once the parent plan’s Phase 2 conforms the Git routes |
 | `pull-request` | `GET /api/plugin/github/pull?number=<id>` | The pull record today; the object with its facets in the parent plan’s Phase 3 |
 
+Each row is its type’s **object route**, which answers one object by its `id`
+([Decision 15](plan-2026-11-14-object-data-model-and-views.md#decision-15-routes)). A
+type’s batch route, where it declares one, serves the browser’s store and is not where a
+reference leads.
+
 In the view slice the table is a constant in `ui/`, beside the list of types an intent
-may name. `/api/object-types` serves it once the registry exists
-([Decision 15](plan-2026-11-14-object-data-model-and-views.md#decision-15-routes)). The
-Recent tab plan adds a row for each of its three types, `update`, `event`, and
+may name, and `GET /api/ui/types` serves it, so an agent learns from `metab` which route
+a reference leads to.
+`/api/object-types` supersedes that route once the registry exists, in the
+implementation map’s C3, which removes it with its readers in one commit.
+The Recent tab plan adds a row for each of its three types, `update`, `event`, and
 `working-tree-changes`
 ([Routes, the CLI, and the View Model](plan-2026-11-18-recent-tab-updates-and-events.md#routes-the-cli-and-the-view-model)).
 
@@ -372,10 +386,10 @@ agent ◄── outcome: a status and the view state ── server ◄── a p
   A viewer the server does not hold is refused as `unknown_viewer`, and an intent with
   no viewer connected as `no_viewer`. An intent that sends `if_generation` must name its
   `viewer`, and one that does not is refused as `invalid`: a generation is one viewer’s
-  counter, so without the viewer it could be compared with another viewer’s count.
+  token, so without the viewer it could be compared with another viewer’s.
 - **Sent through `--api`.** The view slice’s write is
   `metab --api /api/ui/intents --server URL --data FILE`, where `--data` makes the
-  request a `POST` (`cli/main.py:598-604`). `--data` sends a file’s bytes today, and the
+  request a `POST` (`cli/main.py:608-614`). `--data` sends a file’s bytes today, and the
   route takes JSON, so the agent interface plan’s
   [Output Forms](plan-2026-11-18-agent-interface.md#output-forms) says how an intent
   written as a YAML artifact becomes that body.
@@ -392,13 +406,13 @@ agent ◄── outcome: a status and the view state ── server ◄── a p
   The plan calls that client an observer, since “watcher” is the capability’s name.
 - **Applied as an open.** The page turns the target into an address and opens it through
   one `openAddress`, which dispatches to the openers that exist: `navigateToPath`,
-  `openQuickSearchPull`, and the Git panel’s `selectCommit` (`static/app.js:9850`,
-  `:9234`, `static/git-panel.js:2519`). Where none applies it loads the address, as a
+  `openQuickSearchPull`, and the Git panel’s `selectCommit` (`static/app.js:9693`,
+  `:9077`, `static/git-panel.js:2525`). Where none applies it loads the address, as a
   followed link does. What it loads is the address rebuilt from the parse through the
   encoders, never the caller’s string.
   The reveal rule then does what it does for Quick Search: the tab comes forward, the
-  row is revealed, focus stays, and no filter changes (`docs/design-system.md:4103`,
-  `:4154`). The Recent tab plan adds a case to that rule, for an item two tabs hold
+  row is revealed, focus stays, and no filter changes (`docs/design-system.md:4523`,
+  `:4574`). The Recent tab plan adds a case to that rule, for an item two tabs hold
   ([The Tab](plan-2026-11-18-recent-tab-updates-and-events.md#the-tab)): `present` with
   an `update` or an `event` reveals it in Recent, and `present` with the subject in the
   subject’s own tab.
@@ -436,13 +450,20 @@ agent ◄── outcome: a status and the view state ── server ◄── a p
   can give the other two, `busy` and `stale`. `invalid` is the code for whatever the
   `Intent` contract’s model refuses, an `if_generation` with no `viewer` included, so
   that rule adds no code.
+  A publish has three codes of its own, `invalid`, `too_large`, and `control_off`, under
+  [The View State](#the-view-state).
 - **`--present`, later.** The flag and the intent’s field share a word and are two
   things: `metab --present` is the command that hands a target to a viewer, and
   `present` is what an intent carries.
   Today the command sends no intent.
-  It starts no server and hands its target to the app through `open -b`
-  (`cli/present.py:4-6`, `:38-40`), so it has no server address to send an intent to
+  To the app it hands its target through `open -b` and starts no server
+  (`cli/present.py:4-6`, `:56-57`), so it has no server address to send an intent to
   until the live-server registry (`mb-baee`, split from `mb-5xi4` on 2026-11-19) exists.
+  To a browser, since #582, it starts a detached server and reports its address
+  (`serve_detached`, `cli/present.py:1261`), which the host mode plan’s
+  [Three Ways a Server Exists](plan-2026-11-18-host-mode.md#three-ways-a-server-exists)
+  counts as a server the agent started.
+  The app handoff still learns no address, so the wait for the registry stands.
   An intent also admits no root, and opening a root is most of what `--present`
   delivers. So every change to `--present` waits for the slice that has the registry.
   There, where it resolves a `page` (`cli/present.py`, `cli/selection_href.py:16`) and
@@ -450,18 +471,12 @@ agent ◄── outcome: a status and the view state ── server ◄── a p
   `confirmed: true` with the outcome.
   Confirmation becomes an observation of the view state, whichever channel delivered the
   target, so the app never has to reply.
-  On `main` after the `a1100bca6` these citations name, #582 gave `--present` a second
-  delivery, to a browser on a detached server it starts and whose address it reports.
-  The app handoff still learns no address, so the wait for the registry stands; the host
-  mode plan’s
-  [Three Ways a Server Exists](plan-2026-11-18-host-mode.md#three-ways-a-server-exists)
-  counts the browser delivery as a server the agent started.
 
 What untrusted content cannot do:
 
 - A write is a `POST` with `Content-Type: application/json` and origin proof, which a
   sandboxed preview’s `Origin: null`, a form, and an image cannot produce
-  (`server.py:781`, `:829`). A `GET` changes nothing.
+  (`server.py:784`, `:832`). A `GET` changes nothing.
 - An intent names only an object of one of
   [Decision 5](plan-2026-11-14-object-data-model-and-views.md#decision-5-identity)’s
   types, or an address the route parsers accept: never a URL with a host, `/raw`, or
@@ -477,9 +492,9 @@ What untrusted content cannot do:
 ### UI Contracts
 
 Two SoftSchema contracts form a `metabrowser.ui` family, with a registry built from its
-own specs as the cache’s is (`cache/contracts.py:231`): `metabrowser.ui:ViewState/v1`
-and `metabrowser.ui:Intent/v1`, under the envelope keys `view_state` and `intent`. An
-outcome is not a third contract.
+own specs as the cache’s is (`cache_contract_registry`, `cache/contracts.py:232`):
+`metabrowser.ui:ViewState/v1` and `metabrowser.ui:Intent/v1`, under the envelope keys
+`view_state` and `intent`. An outcome is not a third contract.
 It is the intents route’s envelope around a view state, internal as every route envelope
 is.
 
@@ -568,7 +583,7 @@ intent:
 A running server validates a published state and an intent with the contract’s Pydantic
 model alone, not through `validate_record`, whose first pass is a JSON Schema validator
 (`plugin_loader/artifact_contracts.py:447`), so serving loads no schema library and the
-startup gate holds (`devtools/check_distribution.py:62`). The full check,
+startup gate holds (`devtools/check_distribution.py:63`). The full check,
 `validate_record`, runs in the tests, the corpus, and the CLI, which validates the
 artifacts it reads and prints.
 The browser runs a strict normalizer over the same corpus.
@@ -577,8 +592,9 @@ The browser runs a strict normalizer over the same corpus.
 
 | Row | Tier | Evidence |
 | --- | --- | --- |
-| `/api/ui/viewers` | Route, covered | A new golden. `--api` reads the empty collection, and `--api --data` publishes: once accepted, printing the `generation` it is given, and twice refused, as `invalid` and as over `MAX_VIEW_STATE_BYTES` |
+| `/api/ui/viewers` | Route, covered | A new golden. `--api` reads the empty collection, and `--api --data` publishes: once accepted, printing the `generation` it is given, and three times refused: as `invalid`, as `too_large` over `MAX_VIEW_STATE_BYTES`, and as `control_off` under `--ui-control off` |
 | `/api/ui/viewer` | Route, covered | The same golden. `--api` in process answers `no_viewer`; the harness transcript of `ui.viewer-order` reads the viewer attended last and one named by `?viewer=<id>` |
+| `/api/ui/types` | Route, covered | The same golden: `--api` reads the table of types an intent may name, each with its object route. The row and the route go when `/api/object-types` supersedes them |
 | `/api/ui/intents` | Route, covered | A new golden. `--api --data` in process, where no page is connected, pins the six codes a server gives without a page, `control_off` under `--ui-control off`, and `invalid` for an `if_generation` that names no `viewer` |
 | `ui.view-state` | Interaction | `tests/dom/ui-view-state-session.js` runs the production `describe` functions and publisher through a session and prints the view state after each step |
 | `ui.intent-apply` | Interaction | The same session applies intents: applied and found, applied and not found, offered, cancelled by input, and the two codes only a page gives, `busy` and `stale`, with an unpublished change among the stale cases. It prints each publish with the intent it names, the history length, and the focused element, which an applied intent leaves where it was |
@@ -700,7 +716,7 @@ the two are one question, decided there.
 
 This decision answers two questions together: what an intent does when it arrives, and
 who may send one. The pin guard’s rule is that nothing changes under a reader
-(`docs/project/architecture/arch-source-sessions-and-pins.md:235`). That rule is about
+(`docs/project/architecture/arch-source-sessions-and-pins.md:236`). That rule is about
 changes nobody asked for.
 
 - **A. One setting, `control`, on by default where the server and the caller are
@@ -709,7 +725,8 @@ changes nobody asked for.
   is the standing `--present` has.
   `offer` shows a notice that names the target, and the reader accepts it: nothing moves
   unasked, and the main use takes two steps.
-  `off` stops pages publishing, and both routes refuse with `control_off`.
+  `off` stops pages publishing, and a publish and an intent are both refused with
+  `control_off`.
 - **B. Off unless a flag allows it,** as `--allow-edits` is.
 - **C. The reader allows it in the page,** per viewer.
 - **D. Applied silently.** The reader cannot tell why the page changed.
@@ -729,8 +746,10 @@ These points state A exactly.
   `UNTRUSTED_CAPABILITIES` (`capabilities.py:79-82`, `:92-105`). A `control` switch
   there would be off on every pin, and the mirror a GitHub pull request URL opens is a
   pin, which is the case the view slice exists for.
-  So `control` is a setting of its own in `ui/`: three-valued, resolved once per
-  process, and the same for a working tree and a pin.
+  So `control` is a setting of its own in `ui/`: three-valued, and the same for a
+  working tree and a pin.
+  An explicit setting is resolved once, as the server starts.
+  Where none is given, the default is computed for each request, as “Local” below says.
 - **Its flag is `--ui-control apply|offer|off`.** `METAB_UI_CONTROL` sets it from the
   process environment only.
   It joins the names the import guard keeps out of the `.env` allowlist
@@ -740,12 +759,12 @@ These points state A exactly.
 - **`--untrusted` does not decide `control`.** `--untrusted` is trust in content, and
   `control` is trust in the caller, so the default is the same under either content
   profile. A GitHub pull request URL implies `--untrusted`
-  (`cli/git_pin_cli.py:114-124`), so a default that followed that flag would leave the
+  (`cli/git_pin_cli.py:115-125`), so a default that followed that flag would leave the
   view slice’s main case offer-only.
   Content trust does not change the harm either: an applied intent runs no file’s
   scripts, since it opens an HTML file on Source, as the last point here says.
 - **“Local” is tested, not assumed.** The origin check accepts any request that sends
-  neither `Origin` nor `Sec-Fetch-Site` (`server.py:840-841`), so the server cannot tell
+  neither `Origin` nor `Sec-Fetch-Site` (`server.py:843-844`), so the server cannot tell
   a local command from any other peer that sends neither.
   With a non-loopback `--host`, or a remote server reached through a forwarded port,
   local is whoever reaches the port.
@@ -754,13 +773,22 @@ These points state A exactly.
   Two are the server’s, made once as it starts: its bind host is loopback
   (`loopback_host`, `:107`), and its environment names no remote session
   (`remote_session`, `:97`). The third is the request’s: it came from a loopback peer
-  that names no proxy (`loopback_peer`, `:124`). The default does not read
-  `serving_locally()` (`:102`). `cli/serve.py:385-387` sets that flag from the same two
-  server tests and `local_client`, which `cli/main.py:1009` sets to `--exit-on-eof`, so
-  it holds only for a server the macOS app starts, and a server started with
-  `metab ROOT`, by the user or an agent, would default to `offer`. This corrects the
-  plan’s reading of the code to fit the decided intent, that the default follows whether
-  the server and its caller are local, and is not a new decision.
+  that names no proxy (`loopback_peer`, `:124`). **Clarified 2026-11-19:** the default
+  is therefore computed for each request, and only an explicit `--ui-control` or
+  `METAB_UI_CONTROL` is resolved once for the process.
+  `loopback_peer` answers false for a request that carries no client address
+  (`:126-128`), as one over a Unix socket is likely to, so a request over the owner-only
+  control socket of the host mode plan’s
+  [HM-4](plan-2026-11-18-host-mode.md#decision-hm-4-what-the-control-socket-speaks)
+  passes the third test by its transport: the socket’s owner check, which admits the
+  server’s own user alone, stands in for the loopback test.
+  The default does not read `serving_locally()` (`:102`). `cli/serve.py:385-387` sets
+  that flag from the same two server tests and `local_client`, which `cli/main.py:1009`
+  sets to `--exit-on-eof`, so it holds only for a server the macOS app starts, and a
+  server started with `metab ROOT`, by the user or an agent, would default to `offer`.
+  This corrects the plan’s reading of the code to fit the decided intent, that the
+  default follows whether the server and its caller are local, and is not a new
+  decision.
 - **It departs from the `mutations` precedent, on purpose.** The one write switch in
   `capabilities.py` is off by default (`DEFAULT_CAPABILITIES`, `:79`), and
   `--allow-edits` turns it on.
@@ -788,8 +816,8 @@ These points state A exactly.
 
 - **A. Per document, in memory.** No storage.
   Every load is a new viewer, and controls in four modules load a page in full
-  (`static/source-freshness.js:886`, `static/source-ref-selector.js:814`,
-  `builtin_plugins/diff/index.js:301`, `github/pull-page.js:7003`).
+  (`static/source-freshness.js:898`, `static/source-ref-selector.js:960`,
+  `builtin_plugins/diff/index.js:321`, `github/pull-page.js:7291`).
 - **B. Per tab, in `sessionStorage`.** It survives a load, and the applier keeps the
   intent it is applying beside it, so the publish after a full load still names that
   intent. A duplicated tab copies it, so the server reassigns a second live claim.
@@ -947,16 +975,21 @@ says what an outside writer of an intent is promised.
 - [ ] Add `ui/` with the two contracts, their schemas and corpus under
   `data/ui-format/`, the family’s registry, the fixed list of types with the route each
   one’s reference leads to, the model’s rule that `if_generation` names its `viewer`,
-  and the `control` setting with its `--ui-control` flag and its default by caller; have
-  `devtools/check_artifact_contracts.py` compare that registry with a contract table in
-  a new `docs/project/architecture/arch-view-model.md`. The check compares one registry
-  with one document today, and the parent plan’s Phase 2 adds a pair too, so it is
-  changed once, to take a list of pairs.
+  and the `control` setting with its `--ui-control` flag and its default, computed for
+  each request from the caller; have `devtools/check_artifact_contracts.py` compare that
+  registry with a contract table in a new
+  `docs/project/architecture/arch-view-model.md`, linked from
+  [Architecture](../../../architecture.md) and `docs/project/README.md`, as
+  `tests/test_docs_discipline.py` requires of every architecture document.
+  The check compares one registry with one document today, and the parent plan’s Phase 2
+  and the host mode plan’s H2 each add a pair too, so it is changed once, to take a list
+  of pairs.
 - [ ] Add the viewer registry, `GET` and `POST /api/ui/viewers`, the record route
-  `GET /api/ui/viewer`, and `/api/ui/intents` with its outcome envelope; give the event
-  stream `?viewer=<id>`, and serve it for every subject, with `ui` events alone where
-  the subject has no `watcher` capability, since a pinned revision’s page has no stream
-  today (`events_route.py:773`, `static/app.js:9109`).
+  `GET /api/ui/viewer`, `GET /api/ui/types` for the table of object routes, and
+  `/api/ui/intents` with its outcome envelope; give the event stream `?viewer=<id>`, and
+  serve it for every subject, with `ui` events alone where the subject has no `watcher`
+  capability, since a pinned revision’s page has no stream today (`events_route.py:773`,
+  `static/app.js:8952`).
 - [ ] Teach the pane’s lifecycle the two facts `pane.status` needs: a 404 apart from
   another failure, and the status of an owner that paints for itself
   ([The View State](#the-view-state)).
@@ -965,11 +998,12 @@ says what an outside writer of an intent is promised.
   `nav.current`, the publisher, `openAddress`, the applier for `present` with `object`
   or `address`, which enforces `if_generation` and names the intent in its publish, and
   the notice.
-- [ ] Add `--api --server URL` and the artifact form of `--format yaml`. `--present`
-  does not change in this slice.
-- [ ] Add the parity rows, the browserless session, the agreement test, a design-system
-  entry naming a local command as a route of Navigation Reveals the Item, and the rows
-  of [Views, Models, and Routes](../../architecture/arch-views-models-routes.md).
+- [ ] Add `--api --server URL` and the artifact form of `--format yaml`, printed for a
+  record and read from `--data`. `--present` does not change in this slice.
+- [ ] Add the parity rows, the browserless session, the agreement test, with `--show`
+  splitting a fragment off an address so such addresses join it, a design-system entry
+  naming a local command as a route of Navigation Reveals the Item, and the rows of
+  [Views, Models, and Routes](../../architecture/arch-views-models-routes.md).
 
 **Later slices,** each mapped above, independent, and added as a facet or a settable
 field:

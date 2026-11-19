@@ -9,8 +9,10 @@ The owner took Decisions HM-1 to HM-6 under [Key Decisions](#key-decisions) on
 2026-11-19, each as this plan recommended, and the beads were split the same day to
 follow [HM-1](#decision-hm-1-when-discovery-lands) A, so agents can find a server before
 the credential is built.
-What the [native macOS app plan](plan-2026-11-10-native-macos-app.md) decided stays
-decided, and [Settled Decisions](#settled-decisions) cites it.
+Clarifications dated 2026-11-19, from an independent review, are marked at the decisions
+they touch.
+What the [native macOS app plan](plan-2026-11-10-native-macos-app.md) decided
+stays decided, and [Settled Decisions](#settled-decisions) cites it.
 A companion to
 [View Model and View State](plan-2026-11-18-view-model-and-view-state.md),
 [Agent Interface for Objects and View State](plan-2026-11-18-agent-interface.md), and
@@ -69,8 +71,9 @@ Paths are under `src/metabrowser/` unless they start with `docs/`, `apps/`, `tes
   server started with it, on a loopback bind, outside a remote session
   (`cli/main.py:1009`, `cli/serve.py:385-387`). The `control` default of
   [VM-5](plan-2026-11-18-view-model-and-view-state.md#decision-vm-5-consent-and-trust)
-  makes the bind and environment tests itself and does not read the flag, so a server
-  started with `metab ROOT`, on its default loopback bind, is local too.
+  makes the bind and environment tests itself, tests each request’s peer, and does not
+  read the flag, so a server started with `metab ROOT`, on its default loopback bind, is
+  local too.
 - **The announcement is text.** `Serving <root> at <url>` is printed before the socket
   listens (`cli/serve.py:412`), so the app parses it, as the `serving` line
   [its contract with `metab`](../../architecture/arch-app-contract.md) declares, and
@@ -213,6 +216,25 @@ It never holds a credential.
 - **Every server writes one,** whoever started it, through `metabrowser.home`’s
   owner-only helpers, once its socket accepts connections.
   Writing never fails or delays a serve, as recording a recent target does not.
+- **Where they live.** Entries, a server’s control socket, and the find-or-start lock
+  sit in one owner-only runtime directory, named in code, below the configuration
+  directory that holds recent targets.
+  `home.py` supplies every step: `configuration_directory` (`:793`) resolves the root,
+  `ensure_storage_root` (`:810`) and `ensure_private_directory` (`:562`) create the
+  directory for the owner alone, `write_private_file_atomic` (`:849`) publishes an
+  entry, and `read_private_file_bounded` (`:615`) reads one.
+  The lock is a file there held by `flock`, as the recent targets list’s writer lock is
+  (`_writing`, `recent_targets.py:539`), so the kernel frees it when its holder dies.
+  The directory is not in the cache, which a user may delete while servers run, and not
+  in a temporary directory.
+  [Durable Storage](../../../../AGENTS.md#durable-storage) forbids keeping what a later
+  step or a lock depends on where a restart empties it.
+  These files describe live processes alone, and a restart ends the processes they
+  describe, so nothing durable depends on their surviving one: a reader drops an entry
+  by the two tests below, and a lock left behind is free.
+  A socket’s file name is short, so its path fits the platform’s limit for a socket
+  address under an ordinary home; a server that cannot bind one serves without it, and
+  its record names none.
 - **A reader makes two tests.** It drops an entry whose process is gone.
   It then asks the entry’s address for `/api/identity` and requires the entry’s boot ID,
   which a reused process ID, or another program on the port, cannot give.
@@ -237,7 +259,7 @@ alone:
 | The macOS plan’s verb | Route | Carries |
 | --- | --- | --- |
 | `identity` | `GET /api/identity` | The naming fields and `pid`, `boot_id`, `version` |
-| `clients` | `GET /api/ui/viewers`, `GET /api/ui/viewer` | `ViewState` records |
+| `clients`, named `viewers` | `GET /api/ui/viewers`, the list, with the record route `GET /api/ui/viewer` beside it | `ViewState` records |
 | `present` | `POST /api/ui/intents` | An `Intent`, whose field is `present` |
 | `navigate`, an event | `ui.intent`, on the viewer’s stream | The intent, to the page |
 | `close` | A route that stops the server, new | Nothing |
@@ -253,6 +275,11 @@ alone:
   So the socket grants only what any process of the user may already do: read which page
   the reader is on, and present an address of a served root, under the `control`
   setting. It admits no root, serves no content, and hands out no token.
+  For that setting’s default a request over the socket counts as local: the owner check
+  stands in for the loopback-peer test of
+  [VM-5](plan-2026-11-18-view-model-and-view-state.md#decision-vm-5-consent-and-trust),
+  which such a request would fail, since it carries no client address (`loopback_peer`,
+  `delivery.py:124`).
 - **A sandbox needs a rule either way.** One that refuses loopback refuses a socket path
   too
   ([What Agents Can Reach](../../research/research-2026-11-10-native-app-server-topology.md#what-agents-can-reach)),
@@ -357,11 +384,17 @@ So the token waits for discovery, and discovery waits for nothing.
 The beads were split the same day, as the [Implementation Plan](#implementation-plan)
 lists.
 
+**Clarified 2026-11-19:** of the implementation map’s groundwork, discovery’s steps H1
+to H3 need only T0.7, the contract check that takes a pair for each registry.
+H2 brings the `metabrowser.host` family’s own registry, as V2 brings `metabrowser.ui`’s,
+and the server record names no object, so it uses nothing of V2 or of the shared object
+definitions.
+
 ### Decision HM-2: One Server Record
 
-- **A. One contract,** in a `metabrowser.host` family beside `metabrowser.ui`: the ready
-  line prints it, the registry entry stores it, the listing answers it, and
-  `/api/contract` serves its schema.
+- **A. One contract,** in a `metabrowser.host` family beside `metabrowser.ui`, with a
+  registry of its own: the ready line prints it, the registry entry stores it, the
+  listing answers it, and `/api/contract` serves its schema.
   Its protocol number is a hard gate, as `PLUGIN_SDK_VERSION` is: a reader skips an
   entry it does not know and says so.
 - **B. Three shapes,** each fitted to its reader, for one fact.
@@ -372,6 +405,10 @@ lists.
 consumers that cannot update with the producer are named: a running server of another
 release, and the macOS app, which is replaced by hand and reads `metab` through
 [its contract](../../architecture/arch-app-contract.md).
+
+**Clarified 2026-11-19:** the entry, the socket, and the find-or-start lock live in an
+owner-only runtime directory below the configuration directory, as
+[Discovery](#discovery) sets out with the helpers that create it.
 
 ### Decision HM-3: A Mode or a Route
 
@@ -397,6 +434,10 @@ would leak every open folder’s name over a port that asks for no credential.
   which AI-1 ruled out.
 
 **Decided 2026-11-19: A,** over a protocol of its own (B).
+
+**Clarified 2026-11-19:** a request over the socket counts as local for the `control`
+default, since the socket’s owner check stands in for the loopback-peer test
+([Reaching a Gated Server](#reaching-a-gated-server)).
 
 ### Decision HM-5: Which Servers Are Gated
 
@@ -438,22 +479,32 @@ macOS app epic like the beads they split from.
 | Step | Work | Bead | Slot in Ordering 2 |
 | --- | --- | --- | --- |
 | H1 | The ready moment after bind; the boot ID; `pid`, `boot_id`, and `version` on `/api/identity` | `mb-hhzd`, from `mb-qzny` and `mb-1zyp` | Beside Tier 0: additive, and no page changes |
-| H2 | The server record’s contract and the ready-line flag, which the app adopts through its `ServerLaunch` seam in place of the `serving` line [its contract](../../architecture/arch-app-contract.md) declares | `mb-wpel`, from `mb-qzny` | After T0.7 and V2, whose family registry it follows |
+| H2 | The server record’s contract and the ready-line flag, which the app adopts through its `ServerLaunch` seam in place of the `serving` line [its contract](../../architecture/arch-app-contract.md) declares | `mb-wpel`, from `mb-qzny` | After T0.7, the one groundwork pull request discovery needs |
 | H3 | The registry entry, the liveness tests, and the listing mode | `mb-baee`, from `mb-5xi4` | Beside Tier 1, before V5 |
 | H4 | `--live` on `--api` | `mb-77x9` | Stack V, after V5 |
-| H5 | The find-or-start lock; `--present` finds the root’s server, sends the `present` intent, and reports `confirmed` from the view state; idle exit for a detached server; the skill and the guide follow | `mb-5xi4`, `mb-idri`, `mb-ko5d`, and `mb-k3yz`, from `mb-qzny` | The later V slice, after V7 |
+| H5 | The find-or-start lock; `--present` finds the root’s server, sends the `present` intent, and reports `confirmed` from the view state; idle exit for a detached server; the skill and the guide follow | `mb-5xi4`, `mb-idri`, `mb-ko5d`, and `mb-k3yz`, from `mb-qzny` | The later V slice, after V8, which adds the skill’s sections |
 | H6 | The sticky port; pages reload once on a new boot ID and refuse a root mismatch | `mb-e74k`, from `mb-qzny`; `mb-54r1`, whose follow half is V4’s applier | After Stack V |
 | H7 | The control socket, with `close` | `mb-1zyp` | After H3 |
 | H8 | The token: a measurement first, then the stdin token, the shell’s helper, the first-load and event-stream gates, and the Credentials check | `mb-qzny` | Last, after H7 |
 | H9 | The app’s link scheme, rendezvous, attach, and confirmation; the VS Code host on the same contract | `mb-rtgh`, `mb-x4y5` | After H8 |
 
 - **Tier 0** keeps its cap, and **Tier 1** and **Stack P** need nothing here.
+  H1 to H3 need T0.7 and nothing else of Tier 0.
+- **H2’s registry, document, and check.** The `metabrowser.host` family builds its
+  registry from its own specs, as the cache’s family does.
+  A new `docs/project/architecture/arch-host-mode.md` holds its contract table, which
+  `devtools/check_artifact_contracts.py` compares with that registry once T0.7 lets the
+  check take a pair for each registry.
+  The document is linked from [Architecture](../../../architecture.md) and
+  `docs/project/README.md`, as `tests/test_docs_discipline.py` requires.
 - **Stack V** gains `--live` after V5, and its later slice, H5, stops waiting on the
   token.
 - **Beads outside Stack H** that waited on the old `mb-qzny` or `mb-5xi4` now wait on
   the part they use: the app’s relaunch on its root’s port (`mb-w4kd`) on the sticky
   port, the resident server (`mb-obgj`) on the control socket, the rootless spare
-  (`mb-bbod`) on both, and the page’s folder switcher (`mb-9lf4`) on discovery.
+  (`mb-bbod`) on both, and the page’s folder switcher (`mb-9lf4`) on discovery and, as
+  before, on the token (`mb-qzny`), since under HM-3 C the route that serves the listing
+  to a page arrives behind the credential.
 
 ## Testing Strategy
 
@@ -470,10 +521,10 @@ macOS app epic like the beads they split from.
 
 ## Open Questions
 
-- **Where do entries and sockets live?** They need an owner-only directory, a socket
-  path within macOS’s length limit, and contents that a restart may discard.
-  A root’s sticky port must outlive its server: in its recent target, which can be
-  turned off and forgotten, or in a file of its own?
+- **Where does a root’s sticky port live?** It must outlive its server, unlike the
+  entries of [Discovery](#discovery): in its recent target, which can be turned off and
+  forgotten, or in a file of its own?
+  H6 decides it.
 - **Does `metab ROOT` in a terminal join a live server for its root,** or start a
   second, as today?
 - **Browsed content under the token.** An image, a sandboxed preview frame, and a

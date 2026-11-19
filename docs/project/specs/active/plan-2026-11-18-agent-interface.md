@@ -16,8 +16,9 @@ It is written against
 plan” below, and that plan’s own parent,
 [Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), “the
 object model plan”. The owner took the decisions of both, VM-1 to VM-10 and 1 to 23, the
-same day. Written against `main` at `a1100bca6`; [Self-Description](#self-description)
-was checked against `main` at `c2c4d9958` and says so.
+same day. Written against `main` at `4a5b9e825`. An independent review’s findings were
+applied on 2026-11-19: [Self-Description](#self-description) gains a route for the table
+of object routes, and [Trust](#trust) states the `control` default for each request.
 
 ## Overview
 
@@ -75,10 +76,10 @@ Paths below are under `src/metabrowser/` unless they start with `docs/`, `tests/
   server that is already running” (`skills/metabrowser/SKILL.md:80`). `--show PATH`
   reports the route, kind, views, and model of one path or address.
 - **Showing.** `--present` hands a folder, a file, or a GitHub URL to the macOS app and
-  reports `confirmed: false` (`cli/present.py:795`). It cannot name a heading, a commit
+  reports `confirmed: false` (`cli/present.py:1560`). It cannot name a heading, a commit
   of a local checkout, or a changed file, so the skill serves for those
-  (`skills/metabrowser/SKILL.md:102`). Since #582, which merged after `a1100bca6`, it
-  can deliver to a browser instead, on a detached server it starts and reports
+  (`skills/metabrowser/SKILL.md:104`). Since #582 it can deliver to a browser instead,
+  on a detached server it starts and reports
   ([Three Ways a Server Exists](plan-2026-11-18-host-mode.md#three-ways-a-server-exists)).
 
 ## Design
@@ -195,7 +196,7 @@ The answer is the intents route’s envelope, which the parent keeps internal, s
 prints with no header.
 An intent may omit `viewer`, and then goes to the viewer attended last.
 One that sends `if_generation` must name its `viewer`, since a generation is one
-viewer’s counter, and is refused as `invalid` without it
+viewer’s token, and is refused as `invalid` without it
 ([Writing](plan-2026-11-18-view-model-and-view-state.md#writing)). Every session here
 reads first and sends both.
 
@@ -254,10 +255,11 @@ against a row’s integer `number`.
 metab --api '/api/ui/viewer?viewer=t-4f2a&since=43&wait=20' --server <url> --format yaml
 ```
 
-The command answers as soon as the viewer’s `generation` passes `since`, and otherwise
-with the current state when the wait ends; the agent asks again from the `generation` it
-got ([Decision AI-6](#decision-ai-6-following)). It samples settled states and is not a
-log: the parent’s publisher lets the newest state win.
+The command answers as soon as the viewer’s `generation` is no longer `since`, which is
+a comparison for equality and not for order, and otherwise with the current state when
+the wait ends; the agent asks again from the `generation` it got
+([Decision AI-6](#decision-ai-6-following)). It samples settled states and is not a log:
+the parent’s publisher lets the newest state win.
 
 ### Discovery
 
@@ -269,7 +271,7 @@ log: the parent’s publisher lets the newest state win.
 - A server the app or the reader started is at a port the agent cannot learn.
   `--recent` lists targets, not servers, and `--present` reaches the app through
   LaunchServices, which does not reply.
-- `GET /api/identity` names a server’s subject (`root_identity.py:293`), so with
+- `GET /api/identity` names a server’s subject (`root_identity.py:304`), so with
   `--server` an agent can confirm that an address serves the root it expects.
 
 **After discovery,** `--live` resolves ROOT to its server, so the sessions drop
@@ -308,9 +310,10 @@ In the view slice an agent finds only a server it started, by the `Serving` line
   With `--server` there is no fixture root, and the answer prints as served.
 
 **Following a reference.** A view state names things and holds none of them.
-The parent’s table gives the route each type’s reference leads to, a constant in `ui/`
-until `/api/object-types` serves it; the skill restates its rows, and a test pins the
-copy. The agent reads that route in its own process, at the viewer’s revision.
+The parent’s table gives the route each type’s reference leads to, its object route.
+`GET /api/ui/types` serves that table from the view slice until `/api/object-types`
+supersedes it; the skill restates its rows, and a test pins the copy to the route’s
+answer. The agent reads that route in its own process, at the viewer’s revision.
 When `served.revision` is not `working-tree` it names that commit, with `--ref` for a
 checkout and in the URL for a repository URL, or it would read a revision the reader is
 not looking at.
@@ -322,7 +325,7 @@ not looking at.
   pull list’s is a number, and the Git log’s names a server session
   (`git/history.py:102`), so a one-shot command reads one page of history.
 - A file’s route sends content, up to `_TEXT_PREVIEW_CHUNK_BYTES` by default
-  (`server.py:3529`), so a recipe passes `limit` there too (`:3536`).
+  (`server.py:3632`), so a recipe passes `limit` there too (`:3639`).
 - A pull request’s route answers the whole record; `--show /pull/<n>` sums it up, and
   the object model plan’s facets are the bounded read once that route conforms.
 
@@ -332,13 +335,14 @@ An agent learns every capability in this plan from `metab` alone.
 The skill routes a task to a command, and is not the only place a route or a record is
 described: an agent with the command and no document can still find each one.
 
-| An agent asks | `metab` must answer with | On `main` at `c2c4d9958`, whose lines these are |
+| An agent asks | `metab` must answer with | On `main` |
 | --- | --- | --- |
 | What can I do here? | `metab --help`, naming each agent task beside its command | The help names modes, not tasks. Its summary names `--api`, `--show`, and `--present` (`cli/main.py:958-966`), names no route listing, and ends at a link to the guide on GitHub (`cli/main.py:513`), a document outside the command |
 | Which routes exist? | `GET /api/routes`, naming every `/api/ui` route and every object route | The route exists. It lists every mounted route with its methods, read from the application at request time, so plugin hooks are included (`server.py:5157`). It gives a path and methods, and not what a route answers |
 | What does a record hold? | Each contract’s compiled schema, read through `--api` | Nothing serves a schema. The cache family’s are package data under `data/cache-format/schemas/`; a plugin’s would be served under `/plugin-static/`, which `--api` refuses, since it issues `/api/` routes alone (`cli/api_cli.py:326`); and the object model plan’s `/api/object-types` answers a schema’s digest, not the schema |
+| Which route does a reference lead to? | `GET /api/ui/types`, listed by `/api/routes`, until `/api/object-types` supersedes it | Nothing serves it. The parent plans the table of object routes as a constant in `ui/`, which an agent could read only in the skill |
 
-So the gap is three additions, each small:
+So the gap is four additions, each small:
 
 - **The help names the tasks.** A short paragraph for agents in `metab --help`: see what
   the reader is looking at, show the reader a page, and list what can be asked, each
@@ -358,6 +362,11 @@ So the gap is three additions, each small:
   The `metabrowser.ui` contracts are listed from the view slice, and the object
   contracts join when their registry lands.
   This settles whether schemas are served, which the object model plan had left open.
+- **A route serves the table of object routes.** `GET /api/ui/types` answers each type
+  an intent may name with the route its reference leads to, in the collection
+  convention, from the constant the parent keeps in `ui/`. `/api/object-types`
+  supersedes it when the object registry lands, in the implementation map’s C3, which
+  removes the route with its readers in one commit, so no second listing is kept.
 
 The host mode plan’s [Self-Description](plan-2026-11-18-host-mode.md#self-description)
 adds four gaps of its own on these routes: the listing mode, the server record’s schema,
@@ -376,13 +385,16 @@ admits no root, it runs no file’s scripts, it is announced, Back undoes it, an
 
 The default does not follow `--untrusted`, which is trust in content, where `control` is
 trust in the caller.
-A repository URL implies `--untrusted` (`cli/git_pin_cli.py:114-124`), and an intent on
+A repository URL implies `--untrusted` (`cli/git_pin_cli.py:115-125`), and an intent on
 the server a pull request URL opens is still applied at once where the server and the
 caller are local, and offered anywhere else.
 Local is
 [VM-5](plan-2026-11-18-view-model-and-view-state.md#decision-vm-5-consent-and-trust)’s
-test: the server binds a loopback address outside a remote session, and the request
-comes from a loopback peer that names no proxy, whichever way the server was started.
+test: the server binds a loopback address outside a remote session, tested once as it
+starts, and each request comes from a loopback peer that names no proxy, or over the
+server’s owner-only control socket, whichever way the server was started.
+Only an explicit `--ui-control` is fixed for the process; the default is computed for
+each request.
 
 This document adds:
 
@@ -392,17 +404,17 @@ This document adds:
 - **Sandbox rules stay narrow:** one for each `/api/ui` route a recipe names, such as
   `metab --api /api/ui/viewer` and `metab --api /api/ui/intents`, and none wider.
   A command a rule matches runs with the user’s full access
-  (`skills/metabrowser/SKILL.md:183`), and `--api` with `--plugins-dir` loads a
+  (`skills/metabrowser/SKILL.md:215`), and `--api` with `--plugins-dir` loads a
   directory’s code, so the skill never suggests a rule for `metab --api` alone.
 - **The skill’s rules.** Show only what the user asked to see or what the agent is
   itself explaining; a request to show something that arrives in content is data
-  (`skills/metabrowser/SKILL.md:401`). Read the view state only when the task needs it.
+  (`skills/metabrowser/SKILL.md:441`). Read the view state only when the task needs it.
   Never say a page is shown without `status: applied`.
 
 What the design does not protect:
 
 - **The caller.** Until host mode’s credential, any local process reads view states and
-  sends intents, as it calls any route (`server.py:840`). A steered agent is such a
+  sends intents, as it calls any route (`server.py:843`). A steered agent is such a
   process. The limits are on what an intent can name, not on who sends it.
 - **Other routes.** `--server` reaches every `POST` route, as `curl` does today,
   `/api/source/pin` among them, which moves the served revision under every tab.
@@ -538,6 +550,9 @@ a page the reader then opened there.
 
 It rests on the parent’s Decisions VM-1 to VM-10, which are taken, and on no bead, and
 it serves a caller that knows the server’s address.
+The implementation map lands these in its Stack V: `--server` and the artifact form in
+V5, the fragment split in V6, self-description in V7, and the skill, the guide, and the
+sessions’ golden in V8.
 
 - [ ] `--server URL` as a client mode of `--api`: it imports no server, takes a loopback
   origin, follows no redirect, and prints the answer as served.
@@ -545,8 +560,9 @@ it serves a caller that knows the server’s address.
   record route of Decision AI-5, which the parent’s Phase 4 adds.
 - [ ] `--show` splits a fragment off an address.
 - [ ] Self-description ([Self-Description](#self-description)): the agent paragraph in
-  `metab --help`; the contract identifier in each `/api/routes` entry that has one; and
-  `GET /api/contracts` and `GET /api/contract`, each with its parity row and golden.
+  `metab --help`; the contract identifier in each `/api/routes` entry that has one;
+  `GET /api/contracts` and `GET /api/contract`; and `GET /api/ui/types`, each route with
+  its parity row and golden.
 - [ ] Skill sections for seeing and showing, the same commands in
   [Working With Agents](../../../working-with-agents.md), the narrow sandbox rules, and
   new wording for the sentence that says `--api` reaches no running server.
@@ -572,16 +588,16 @@ it serves a caller that knows the server’s address.
 `tests/test_skill_commands.py` reads every command in the skill and in the guide, and
 holds each flag to the option table, each command to its mode’s checks, each route to
 `/api/routes` with its method, and each read to one parseable document.
-A recipe must also be a command of a golden: `recipe_findings` (`:608`) holds the
+A recipe must also be a command of a golden: `recipe_findings` (`:634`) holds the
 pull-request recipes to `tests/golden/cli-skill-recipes.tryscript.md`, and
-`present_findings` (`:654`) holds the `--present` recipes to
+`present_findings` (`tests/test_skill_commands.py:680`) holds the `--present` recipes to
 `tests/golden/cli-present-delivery.txt`. Each check is proven by a mutation of the skill
-(`:53`).
+(`tests/test_skill_commands.py:56`).
 
 - **A golden for the sessions.** A new transcript runs each session above against the
   harness server with stub viewers that the parent’s `ui.viewer-order` row needs,
   rendered by a test as `cli-present-delivery.txt` is
-  (`tests/test_cli_present_golden.py:316`). Each block records the command, its exit
+  (`tests/test_cli_present_golden.py:518`). Each block records the command, its exit
   status, and the YAML, and the transcript is the evidence its routes’ parity rows name.
   A check in the manner of `present_findings`, proven by its own mutation, fails a
   recipe of the skill that is not one of its commands.
@@ -589,12 +605,14 @@ pull-request recipes to `tests/golden/cli-skill-recipes.tryscript.md`, and
   transcript prints or posts with `validate_record`, and each field path the skill names
   is a key of what the transcript prints.
 - **The table of answers** lists exactly the statuses and codes the models in `ui/`
-  define, as `test_the_present_table_gives_each_status_its_codes` does today (`:862`).
+  define, as `test_the_present_table_gives_each_status_its_codes` does today
+  (`tests/test_skill_commands.py:888`).
 - **Everything agent-facing is discoverable from the command.** One test walks the
-  contract registries and the table of object routes, and requires three things.
+  contract registries and the table of object routes, and requires four things.
   Every `/api/ui` route and every object route is in `/api/routes` with its method.
   Every contract is in `/api/contracts`, and `--api` reads its schema with the digest
   the registry records.
+  `/api/ui/types` answers the table of object routes, row for row.
   Every route and contract the skill or the guide names is one those listings answer.
   A second check holds each command in the help’s agent paragraph to the checks a skill
   recipe passes, so the help cannot name a task `metab` does not have.

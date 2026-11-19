@@ -435,8 +435,12 @@ confirms that root in the app.
 - [ ] The live-server registry (`mb-baee`, once part of `mb-5xi4`) with a per-root
   find-or-start lock (`mb-5xi4`).
 - [ ] Control verbs on an owner-only socket: identity, present, clients, close
-  (`mb-1zyp`).
-- [ ] Pages follow `navigate` events and reload once on a new boot id (`mb-54r1`).
+  (`mb-1zyp`). The host mode plan’s
+  [Reaching a Gated Server](plan-2026-11-18-host-mode.md#reaching-a-gated-server) maps
+  each to a route: `present` is `POST /api/ui/intents`, and `clients`, named `viewers`,
+  is `GET /api/ui/viewers`, with `GET /api/ui/viewer` beside it.
+- [ ] Pages follow `navigate` events and reload once on a new boot id (`mb-54r1`). By
+  the same mapping, `navigate` is the `ui.intent` event on a viewer’s stream.
 - [ ] The agent front door, `metab TARGET --present`, which reports a declined
   confirmation as blocked (`mb-idri`).
 - [ ] The app’s `metabrowser://` scheme, rendezvous handler, and attach, with that

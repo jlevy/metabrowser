@@ -12,7 +12,8 @@ plan’s VM-1 to VM-10. A companion to
 the parent plan below, and to
 [View Model and View State](plan-2026-11-18-view-model-and-view-state.md), the view
 model plan, which holds the view state and its Phase 4. Written against `main` at
-`a1100bca6`.
+`4a5b9e825`. Clarifications dated 2026-11-19, from an independent review, are marked at
+the decisions they touch.
 
 ## Overview
 
@@ -44,8 +45,8 @@ Four facts about today’s plugin contract constrain the design.
 - **Unknown manifest keys are refused** (`plugin_loader/manifest.py:348`), so a new
   block is part of the SDK gate ([Versioning](#versioning)).
 - **A plugin’s code loads by kind.** The shell indexes a plugin’s assets under the kinds
-  its `[[kind]]` and `[[view]]` blocks name (`server.py:4946-4947`) and loads them when
-  one is selected (`static/plugin-sdk.js:378`). A list drawn on another plugin’s page
+  its `[[kind]]` and `[[view]]` blocks name (`server.py:5057-5058`) and loads them when
+  one is selected (`static/plugin-sdk.js:382`). A list drawn on another plugin’s page
   selects none of them
   ([Decision PS-6](#decision-ps-6-loading-the-plugins-a-list-needs)).
 - **A plugin cannot register an address**
@@ -74,7 +75,8 @@ file key follows the plain-filename rule of `extra_scripts` (`:472`).
 | `corpus` | string, required | The conformance corpus, a JSON file there | The file is absent |
 | `model` | string | `module:Class`, read only by the drift check | The plugin’s Python does not run in the server |
 | `page_kind` | string | The kind whose `[[view]]` tabs are this type’s page | No loaded plugin declares or draws that kind |
-| `route` | string | The object route a reference leads to: a GET data hook answering `?ids=` and `?facets=` in the collection convention | This plugin has no such `[[data_hook]]` |
+| `route` | string | The type’s object route, where a reference leads: a GET data hook answering one object by `?id=<id>`, with `?facets=` naming the facets wanted | This plugin has no such `[[data_hook]]` |
+| `batch_route` | string | Optional. A GET data hook answering many objects by `?ids=` and `?facets=` in the collection convention. The store’s default loader uses it where it is declared, and otherwise asks `route` once for each reference | This plugin has no such `[[data_hook]]`, or the type declares no `route` |
 | `facets` | list of strings | The type’s facets | A name repeats |
 
 **`[[object_view]]`** declares a drawing of a type, its own or another’s, in a row
@@ -113,9 +115,7 @@ defines what a source answers: changes, not objects.
 | `collection` | string, required | The core collection joined | It admits no sources |
 | `type` | string, required | The type of the subjects this source’s changes name | This plugin does not own it |
 | `route` | string, required | A GET data hook answering this source’s changes in time order, each `{subject, at, kind}`, from memory or cache alone | This plugin has no such `[[data_hook]]` |
-
-A source also declares each `kind` it answers as clumping or standalone.
-The key for that is not designed yet ([Open Questions](#open-questions)).
+| `kinds` | table, required | Each kind token this source answers, mapped to `clumping` or `standalone`, as in `kinds = { opened = "standalone", comment = "clumping" }` | It is empty, or a value is neither word |
 
 **`[[view.part]]`**, nested under a `[[view]]`, declares a part of that page which a
 view state reports and `present` may set: an entry of the view model plan’s `pane.parts`
@@ -128,9 +128,9 @@ facet ([The View State](plan-2026-11-18-view-model-and-view-state.md#the-view-st
 
 `[[kind]]`, `[[view]]`, and `[[data_hook]]` are unchanged.
 A type is not a kind (the parent plan’s Decision 4), and `page_kind` joins the two; a
-`[[view]]` is the `page` shape; and every `route` above names a `[[data_hook]]`, still
-the only Python a manifest mounts, so `--api` reaches each by construction.
-An operator-directory plugin is JavaScript-only
+`[[view]]` is the `page` shape; and every `route` and `batch_route` above names a
+`[[data_hook]]`, still the only Python a manifest mounts, so `--api` reaches each by
+construction. An operator-directory plugin is JavaScript-only
 ([Discovery](../../architecture/arch-plugin-system.md#discovery)), so it may declare
 `[[object_view]]` and `[[view.part]]` and is refused the three blocks that name routes.
 
@@ -145,7 +145,7 @@ An operator-directory plugin is JavaScript-only
   the header is required.
 - A declared `model` compiles to the packaged schema.
 
-Problems print as they do now (`cli/plugins.py:374`):
+Problems print as they do now (`cli/plugins.py:421`):
 
 ```text
 metab --doctor: 1 problem(s):
@@ -153,12 +153,12 @@ metab --doctor: 1 problem(s):
     object_type 'agent-session' does not declare
 ```
 
-`metab --plugin NAME --json` gains the four lists (`cli/plugins.py:96`), and
+`metab --plugin NAME --json` gains the four lists (`cli/plugins.py:103`), and
 `GET /api/object-types` answers the merged registry with each schema’s digest.
 
 ### JavaScript SDK
 
-`MetabrowserSdk` (`static/types.d.ts:1419`) gains `objects` and `ui`:
+`MetabrowserSdk` (`static/types.d.ts:1527`) gains `objects` and `ui`:
 
 ```typescript
 type MetabrowserObjectRef = Readonly<{ type: string; id: string; parent?: MetabrowserObjectRef }>;
@@ -186,6 +186,7 @@ type MetabrowserObjectsApi = Readonly<{
       request: { facets: ReadonlyArray<string>; signal: AbortSignal }): Promise<ReadonlyArray<unknown>>;
   }>): void;
   registerCollection(name: string, open: (ref: MetabrowserCollectionRef) => MetabrowserCollectionHandle): void;
+  // A generation is opaque: the store compares two for equality, never for order.
   put(value: unknown, origin: { feed: string; generation: string | number }): void;
   // Draw.
   registerView<T extends MetabrowserObject, D>(type: string, shape: MetabrowserRowShape, spec: Readonly<{
@@ -234,8 +235,10 @@ list facet: `collection`, `shape`, `focused`, `expanded`, `closed_sections`, and
 `meta`, and `trail` for a `wide-row` and `title`, `byline`, and `body` for a `card`; the
 design-system section for each shape settles the names.
 
-**What needs no JavaScript.** A type with a manifest `route` gets a default loader, and
-a `[[collection]]` is read from its route by the collection convention
+**What needs no JavaScript.** A type with a manifest `route` gets a default loader,
+which asks its `batch_route` for the references wanted where one is declared and
+otherwise its `route` once for each, and a `[[collection]]` is read from its route by
+the collection convention
 ([Decision PS-2](#decision-ps-2-default-loaders-and-collections)). `load` and
 `registerCollection` are for a controller of the plugin’s own, as the Pulls panel’s is.
 A minimal type registers `normalize` and its views.
@@ -256,9 +259,9 @@ receives it in its render context, as any open.
 - **Registration** (`registerType`, `registerCollection`, `registerView`,
   `registerParts`) runs once, synchronously, while the plugin’s module evaluates.
   It records, loads nothing, and has no disposer.
-  The host evaluates one plugin at a time (`static/plugin-sdk.js:387-389`), so it knows
+  The host evaluates one plugin at a time (`static/plugin-sdk.js:391-393`), so it knows
   whose registration each is, and it checks each against the declarations the shell
-  injects beside the asset index (`server.py:4918`).
+  injects beside the asset index (`server.py:5029`).
 - **A mount owns what it starts.** `mountList` returns at once with `ready` and an
   idempotent `dispose`, the form a view handle has
   ([Registration and Lifecycle](../../../plugins.md#registration-and-lifecycle)). A
@@ -275,14 +278,14 @@ receives it in its render context, as any open.
 | --- | --- |
 | The store, and every `mb.objects` call but the list host | The `sdk-views` on-demand bundle, in place before any plugin code runs (`static/plugin-sdk-views.js:11-16`) |
 | The list host | Its own on-demand bundle, fetched by the first `mountList` and prefetched in idle time |
-| `mb.ui` | Recording stubs in `sdk-views`; the publisher takes them when the deferred `static/ui-state.js` loads, as plugin shortcuts are queued (`static/plugin-sdk.js:181`) |
+| `mb.ui` | Recording stubs in `sdk-views`; the publisher takes them when the deferred `static/ui-state.js` loads, as plugin shortcuts are queued (`static/plugin-sdk.js:185`) |
 | A plugin’s functions | With the plugin, when a kind it names is selected, or a list mounts whose types it declares or draws ([Decision PS-6](#decision-ps-6-loading-the-plugins-a-list-needs)) |
 
 **Errors.**
 
 | Where | Failure | Result |
 | --- | --- | --- |
-| Any registration | A malformed argument | Throws, as `registerView` does (`static/plugin-sdk.js:479`); the e2e test reports a load error |
+| Any registration | A malformed argument | Throws, as `registerView` does (`static/plugin-sdk.js:483`); the e2e test reports a load error |
 | Any registration | No loaded manifest declares it, it repeats, or a later plugin’s `[[object_view]]` replaces it | Ignored, with one console warning |
 | `put` | `normalize` throws | Nothing is held, and the caller gets the error |
 | A default loader or collection | A failed request, a `plugin_error` body, or a row `normalize` refuses | `ensure` rejects, or the handle’s `error` is set; the list keeps its rows and shows a local failure |
@@ -332,8 +335,9 @@ A type’s Python is a contract, a projection, and routes.
 A hypothetical extension of the built-in `agent-log` plugin, a candidate type in the
 parent plan: an agent session, listed under a folder.
 
-**Manifest**, added to `builtin_plugins/agent_log/manifest.toml`, with two
-`[[data_hook]]` routes, `sessions` and `session`:
+**Manifest**, added to `builtin_plugins/agent_log/manifest.toml`, with three
+`[[data_hook]]` routes: `sessions`, the collection; `session`, one session by its `id`;
+and `session-batch`, many by `?ids=`:
 
 ```toml
 [[object_type]]
@@ -344,6 +348,7 @@ corpus = "agent-session-conformance.json"
 model = "metabrowser.builtin_plugins.agent_log.objects:AgentSession"
 page_kind = "agent-log"
 route = "session"
+batch_route = "session-batch"
 facets = ["tally"]
 
 [[collection]]
@@ -404,8 +409,8 @@ The summary is what a folder listing holds, plus the adapter, sniffed from each 
 first records as the Charts projection sniffs it (`charts.py:131`); `sessions` bounds
 how many logs it sniffs for one answer and records the measurement.
 The `tally` facet is what a full parse yields: the `summary` that projection builds
-(`charts.py:168-173`), read through its fingerprint memo (`charts.py:43`) by `session`,
-for the rows in view.
+(`charts.py:168-173`), read through its fingerprint memo (`charts.py:43`) by `session`
+for one object and by `session-batch` for the rows in view.
 `project_session` and `project_tally` are the projections.
 The corpus has a `claude` base record, a valid case for each agent and for a `tally`,
 and the four invalid cases.
@@ -462,15 +467,16 @@ const parts = mb.ui.bind(container, {
 });
 ```
 
-It registers no collection and no loader: the store reads `sessions` and `session`. With
-the Log view open, the view state’s `pane` holds `kind: agent-log`, `view: log`, and
+It registers no collection and no loader: the store reads `sessions` and
+`session-batch`, and a reference leads to `session`. With the Log view open, the view
+state’s `pane` holds `kind: agent-log`, `view: log`, and
 `parts: {tool-output: {open: true}}`.
 
 **The evidence it needs:**
 
 | Evidence | Form |
 | --- | --- |
-| The routes `sessions` and `session` | Route rows in the [Parity Registry](../../architecture/arch-parity-registry.md), with `--api` goldens in `cli-api-plugins.tryscript.md`, where the plugin’s `charts` route is pinned |
+| The routes `sessions`, `session`, and `session-batch` | Route rows in the [Parity Registry](../../architecture/arch-parity-registry.md), with `--api` goldens in `cli-api-plugins.tryscript.md`, where the plugin’s `charts` route is pinned |
 | The type | Validated rows in the `sessions` golden, the parent plan’s rule for a type `--show` does not report ([Decision PS-5](#decision-ps-5-a-type-whose-objects-are-files)) |
 | `agent-log.session-views` | An interaction row naming `describeSessionWideRow` and `describeSessionCard`; its session prints each description of each corpus object, pinned as `cli-ui-agent-log-session-views.tryscript.md` |
 | `agent-log.log-parts` | An interaction row naming `describeLogParts`; its session ends by printing the view state |
@@ -518,12 +524,14 @@ A plugin’s own contract carries its own version.
 Phases 1 to 3 are the parent plan’s, and Phase 4 is the view model plan’s. Core types
 are declared by `objects/registry.py`, not a manifest, and the shell registers their
 sources through its internal seam.
+Core’s sources of the Recent tab’s list are declared in that Python registry too, and
+never through `[[collection_source]]`, which is a plugin’s block.
 
 | Phase | `github` | `folder` | `diff` |
 | --- | --- | --- | --- |
 | 1 | `[[object_type]]` for the pull request, with `changes` among its `facets`; `[[collection]]` `pulls`; a `wide-row` view; `registerCollection` from the Pulls controller, and a `load` over the `pull-files-summary` lane. By the parent plan’s Decision 22 D the blocks wait for Phase 2, the registrations do not, and the check of one against the other starts with the blocks | Nothing | Nothing |
 | 2 | A `card`, once the frame’s first real use builds it; a `[[collection_source]]` for the Recent tab, in that plan’s R3; the comment types once a comment is listed outside its pull request, each with a `[[collection]]` whose `parent` is the pull request | `wide-row` views of the core `file` and `folder` types; the Files tab, a `[[view]]` that mounts a list | Nothing |
-| 3 | A `nav-row` view as the Pulls panel moves to the list host; `pull` becomes the type’s `route` | A `nav-row` view of `file` and `folder` in place of the tree’s two builders | If its rows converge: a `changed-file` type, its `nav-row` view, and a `[[collection]]` |
+| 3 | A `nav-row` view as the Pulls panel moves to the list host; `pull` becomes the type’s `route`, its object route, taking the number as `id` | A `nav-row` view of `file` and `folder` in place of the tree’s two builders | If its rows converge: a `changed-file` type, its `nav-row` view, and a `[[collection]]` |
 | 4 | `[[view.part]]` `tab`, with the page’s three tabs as its `values`, and the page’s `describe` | Parts for Overview and Treemap, where a control is worth setting | `[[view.part]]` `layout`, with `values`, and `diff-summary`, with their `describe` |
 
 ## Key Decisions
@@ -555,6 +563,14 @@ The owner took all seven on 2026-11-18, each at A.
 
 **Decided 2026-11-18: A.** The Pulls panel still registers its own.
 
+**Clarified 2026-11-19:** a type’s object route and its batch route are separate
+declarations. Its object route, `route`, answers one object by its `id` and is where a
+reference leads, for an agent and in `/api/object-types`, by the parent plan’s
+[Decision 15](plan-2026-11-14-object-data-model-and-views.md#decision-15-routes).
+Its optional `batch_route` answers many by `?ids=` and `?facets=` in the collection
+convention. The default loader uses the batch route where one is declared, and otherwise
+asks the object route once for each reference.
+
 ### Decision PS-3: What a Collection Source Names
 
 **Needed for:** Phase 2.
@@ -565,6 +581,10 @@ The owner took all seven on 2026-11-18, each at A.
   Decision 15 declines for a dispatcher.
 
 **Decided 2026-11-18: A.**
+
+**Clarified 2026-11-19:** the block also carries `kinds`, a table that maps each kind
+token the source answers to `clumping` or `standalone`
+([Manifest Blocks](#manifest-blocks)).
 
 ### Decision PS-4: How a Page Declares Its Parts
 
@@ -635,9 +655,6 @@ projection’s tests.
   binding test and the describe session need Node.
 - **A container’s children.** A container kind could declare them as a `[[collection]]`
   whose `parent` is the file, which would answer the parent plan’s question.
-- **A source’s kinds.** The Recent tab plan has each source declare its kinds as
-  clumping or standalone.
-  Which `[[collection_source]]` key carries them waits for that plan’s R3.
 
 ## References
 
