@@ -4,14 +4,14 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft. A design direction for review, and nothing here is built.
-The owner took Decisions 1 to 8, 10, 12, 19, 20, and 22 on 2026-11-18. Decisions 9, 11,
-13 to 18, 21, and 23 are accepted at their recommendations and under the owner’s review.
-[Key Decisions](#key-decisions) gives each one’s standing.
+**Status:** Decided, and nothing here is built.
+The owner took every decision here, 1 to 23, on 2026-11-18, and
+[Key Decisions](#key-decisions) gives each choice.
 Revised 2026-11-18 against `main` at `a1100bca6`, and against the pull requests under
-[Work in Flight](#work-in-flight).
-Some of what the plan proposes now exists on `main`: a shared page header, a drawing of
-an author, and a pull request’s change totals served and drawn as one facet.
+[Work in Flight](#work-in-flight), of which #550, #552, and #534 have since merged.
+Some of what the plan proposes now exists on `main`: a shared page header, a view header
+for files and folders, a drawing of an author, and a pull request’s change totals served
+and drawn as one facet.
 The plan builds on those pieces instead of designing them again.
 
 Five companion plans carry parts of the design, and this plan is the parent of each:
@@ -139,7 +139,7 @@ Each object has several models, one per surface.
 | `/api/events` change | `FsEntry`: `path`, `parent`, `name`, `type`, `ext`, `kind`, `size`, `mtime_ns`, `mtime_hash`, `active`, `views`, `labels` | `fs_record.py:46`, `events.py:317` |
 | `/api/recent` row | `name`, `path`, `type`, `size`, `mtime`, `ext`, optional `gitignored` | `recent.py:56` |
 | `/api/catalog` row | `{"p": path, "e": logical extension}`; size and time dropped on purpose | `events_route.py:1253` |
-| `/api/file` envelope | A dict per content type: `type`, `kind`, `views`, `path`, `ext`, `size`, `mtime_hash`, and a content window; no `name`, and no time until #550 adds `mtime` in epoch seconds | `server.py:3726` |
+| `/api/file` envelope | A dict per content type: `type`, `kind`, `views`, `path`, `ext`, `size`, `mtime_hash`, and a content window; no `name`. Since #550, which merged after `a1100bca6`, it also carries `mtime` in epoch seconds, left out where the time cannot be read (`_mtime_field` in `server.py`) | `server.py:3726` |
 | On a pinned revision | `path` as a `GitPath` wire, plus `display`, `mode`, `git_kind`, `symlink`, `gitlink`, `oid`; no time | `git/content_routes.py:245` |
 | Quick Search result | `kind: "file"`, `id`, `label`, `description`, `path`, `logicalExtension`, ranking fields | `static/search-controller.js:103` |
 
@@ -193,7 +193,7 @@ page opened from a row asks for nothing (`github/pull-summary-brief.js`).
 
 | Fact | Spellings |
 | --- | --- |
-| A file’s modification time | `mtime` in seconds (`wire_models.py:58`), `mtime_ns` (`fs_record.py:46`), `mtime_hash` (`server.py:3595`), `newest_mtime_ns` for a folder, absent in the catalog and on a pin |
+| A file’s modification time | `mtime` in seconds (`wire_models.py:58`, and on the `/api/file` envelope since #550), `mtime_ns` (`fs_record.py:46`), `mtime_hash` (`server.py:3595`), `newest_mtime_ns` for a folder, absent in the catalog and on a pin |
 | A time, in general | Epoch seconds in the tree and Git wires (`git/wire.py`, module docstring); UTC strings at second precision in GitHub models (`github/pull_record.py:108`) and with optional milliseconds in cache records (`cache/records.py:58`); nanoseconds in the event stream |
 | A pull request’s state | `state` and `draft` and `merged_at` in a row; `state`, `draft`, and `merged` in a record; one four-valued `state` in search; and “state” also names every envelope’s cache state |
 | That four-valued state | Derived four times: `displayState` (`github/pull-state.js:43`), the search projection (`github/pull_catalog.py:640`), a record’s summary line (`github/pulls.py:1239`), and `--show` (`cli/show_cli.py:248`); and inverted once, in `withListedState` (`github/pull-state.js:118`) |
@@ -462,7 +462,7 @@ a phase builds on, so a phase starts from whatever of it has landed.
 
 | Work | What it does | Bearing on this plan | Before Phase 1? |
 | --- | --- | --- | --- |
-| [#550](https://github.com/jlevy/metabrowser/pull/550) and [#552](https://github.com/jlevy/metabrowser/pull/552) | One view header for files and folders, `viewHeaderHtml(parts)` over `MetabrowserViewHeaderParts{eyebrow, iconHtml, title, end, line}`; `mtime` on `/api/file`; a GitHub toggle at the header’s end | The `page` shape’s frame for all four types; a time on the file envelope ([Decision 7](#decision-7-the-shared-header), [Decision 8](#decision-8-timestamps)) | Merged on 2026-11-18, after the `a1100bca6` this plan was revised against; the header’s builders are in an on-demand `view-header` bundle |
+| [#550](https://github.com/jlevy/metabrowser/pull/550) and [#552](https://github.com/jlevy/metabrowser/pull/552) | One view header for files and folders, `viewHeaderHtml(parts)` over `MetabrowserViewHeaderParts{path, eyebrow, iconHtml, title, line}`, which also writes the header’s corner, `.view-header-end`; `mtime` on `/api/file`; a GitHub control in that corner | The `page` shape’s frame for all four types; a time on the file envelope ([Decision 7](#decision-7-the-shared-header), [Decision 8](#decision-8-timestamps)) | Merged on 2026-11-18, after the `a1100bca6` this plan was revised against; the header’s builders are in an on-demand `view-header` bundle |
 | Bead mb-7t5s | Moves the pull request and commit pages onto the view header | The SDK frame through which a plugin draws the header, which [Decision 12](#decision-12-how-a-view-is-defined) decides it builds | Not started; it lands before the `/pulls` page |
 | [#380](https://github.com/jlevy/metabrowser/pull/380) | Plugin sources and out-of-process environments: one `sdk_version` under a caret rule, read before schema validation; third-party Python in a worker | How a manifest block versions ([Decision 20](#decision-20-plugin-declaration-and-the-sdk-gate)); whether the host can import a plugin’s model ([Plugins](#plugins)) | Unlikely; a draft awaiting the owner’s decisions |
 | [#534](https://github.com/jlevy/metabrowser/pull/534) | Opening any target from the CLI, the skill, and the macOS app; its code landed in #539 and #540 | Agrees with [Decision 5](#decision-5-identity) A; adds spellings of a kind, which that decision renames to the type tokens | Merged on 2026-11-18; the code is on `main` |
@@ -514,8 +514,8 @@ Several existing names sit near these and mean something else.
   and the recent targets `metab --recent` keeps for the macOS app’s Open Recent
   ([Recent Targets](../../architecture/arch-recent-targets.md)). The Recent tab of
   [Decision 19](#decision-19-where-recent-changes-lives) is a third, and the Recent tab
-  plan’s open [RT-6](plan-2026-11-18-recent-tab-updates-and-events.md#rt-6-the-name)
-  recommends retiring the name from the Files view.
+  plan’s [RT-6](plan-2026-11-18-recent-tab-updates-and-events.md#rt-6-the-name) retires
+  the name from the Files view.
 - The **view header** (#550) and the **page header** (#487) are drawings of the shared
   header below, in the `page` shape.
 
@@ -578,9 +578,8 @@ The identifier is the one each type already uses:
 | `commit` | The full commit ID | `/commit/<id>` | Commit time |
 | `pull-request` | The number, as a string | `/pull/<id>` | GitHub’s `updated_at` |
 
-The Recent tab plan adds three core types, under its own open decisions:
-`working-tree-changes`, a checkout’s uncommitted changes, with the one `id`
-`working-tree` and the address `/status`
+The Recent tab plan adds three core types: `working-tree-changes`, a checkout’s
+uncommitted changes, with the one `id` `working-tree` and the address `/status`
 ([Working-Tree Changes](plan-2026-11-18-recent-tab-updates-and-events.md#working-tree-changes));
 and `update` and `event`, the rows of the Recent tab
 ([Contracts](plan-2026-11-18-recent-tab-updates-and-events.md#contracts)).
@@ -611,7 +610,7 @@ side `selection_view_href` in `cli/selection_href.py:16`), which the
 The function has an inverse: a core type with a page of its own registers both
 directions, `href(id)` and `parse(address)`. A plugin cannot register an address
 ([Non-Goals](#non-goals)), so a plugin type’s page is a kind’s page at a `/view/`
-address, and what that address parses to is the plugin authoring plan’s open
+address, and that address still parses to a `file`, by the plugin authoring plan’s
 [Decision PS-5](plan-2026-11-18-plugin-authoring-objects-views.md#decision-ps-5-a-type-whose-objects-are-files).
 The parsers exist: `parse` and `parseCommit` (`static/navigation.js:210`, `:39`),
 `parsePull` (`static/pull-route.js:83`), and the server’s decoders in `view_routes.py`.
@@ -820,8 +819,9 @@ The metadata line of a `wide-row` follows the view header’s line rules from #5
 age last, and an item that does not fit leaves the line whole.
 
 The set is closed and owned by the host, because a shape is a contract with the list
-host about height and activation ([Decision 11](#decision-11-the-set-of-shapes)). Two
-more are visible in today’s code and left for later: a Quick Search option, and an
+host about height and activation ([Decision 11](#decision-11-the-set-of-shapes)). `card`
+is named in the set now, and its frame is built with its first real use.
+Two more are visible in today’s code and left for later: a Quick Search option, and an
 inline mention such as a ref chip.
 
 #### One Model, Several Views
@@ -842,9 +842,12 @@ function paintPullWideRow(frame, description) {
 mb.objects.registerView("pull-request", "wide-row", {
   describe: describePullWideRow,
   paint: paintPullWideRow,
-  facets: ["stack"], // optional: facets to request for the rows in view
 });
 ```
+
+The facets a view reads are declared in the manifest, as `facets = ["stack"]` on its
+`[[object_view]]`, and the list host requests them for the rows in view
+([Decision PS-1](plan-2026-11-18-plugin-authoring-objects-views.md#decision-ps-1-where-structure-is-declared)).
 
 - **`describe` is the tested half.** It is what `describeRow` is today: every decision
   about what a row says, as data.
@@ -1013,6 +1016,10 @@ mb.objects.put(object, { feed, generation })        // hold a summary or facets,
 - **A source per type.** A type registers how its objects are held and loaded, through
   `registerType`. Commits, pull requests, and plugin types use a default table keyed by
   `id`, bounded per type at a measured size.
+  A type or a collection whose manifest declares a route needs no loader of its own: the
+  store reads the route by the collection convention, and `load` and
+  `registerCollection` are for a controller of the plugin’s own
+  ([Decision PS-2](plan-2026-11-18-plugin-authoring-objects-views.md#decision-ps-2-default-loaders-and-collections)).
   In the browser “source” means only this.
   A collection is registered with `registerCollection` and has no source of its own, and
   the server’s `[[collection_source]]` is a different thing: a source of the Recent
@@ -1093,7 +1100,7 @@ An agent reads it to learn what the reader is looking at, and writes to it to sh
 reader something.
 
 [View Model and View State](plan-2026-11-18-view-model-and-view-state.md) holds that
-design: the view state each viewer publishes, the `show` intent, the `metabrowser.ui`
+design: the view state each viewer publishes, the `present` intent, the `metabrowser.ui`
 contracts, Phase 4, and Decisions VM-1 to VM-10. It adds no vocabulary where this plan
 has one, and uses these as defined here:
 
@@ -1116,12 +1123,13 @@ Objects are served by the layer that owns them, through routes that mostly exist
 | Route | Serves | Change |
 | --- | --- | --- |
 | `GET /api/object-types` | The registry: each type’s contract and schema digest, its views by shape, its collections, its page kind, and the route a reference to it leads to | New, core |
+| `GET /api/contracts`, `GET /api/contract` | Every contract a build registers, with its digest, and one compiled schema, so an agent reads a schema through `--api` | New, core; specified by the agent interface plan’s [Self-Description](plan-2026-11-18-agent-interface.md#self-description) |
 | `GET /api/plugin/github/pulls` | The pull request collection; `rows` are `PullRequest` summaries | Rows conform, Phase 1 |
 | `POST /api/plugin/github/pulls-refresh` | A refresh; its answer nests the `pulls` list envelope, with no rows | Conforms with `pulls`, Phase 1 |
 | `GET /api/plugin/github/pull` | One pull request with its facets | Phase 3 |
 | `GET /api/plugin/github/pull-files-summary` | The `changes` facet of up to `MAX_SUMMARY_NUMBERS` pull requests, from the cache | None; it becomes the facet’s loader |
 | `GET /api/plugin/github/stack-change` | A stack’s change totals | None until a stack is a type |
-| `GET /api/tree`, `/api/recent` | Files and folders, in their compact encodings, read through adapters | None here. The Recent tab plan’s open [RT-6](plan-2026-11-18-recent-tab-updates-and-events.md#rt-6-the-name) recommends renaming this `/api/recent` to `/api/recent-files` |
+| `GET /api/tree`, `/api/recent` | Files and folders, in their compact encodings, read through adapters | None here. The Recent tab plan’s [RT-6](plan-2026-11-18-recent-tab-updates-and-events.md#rt-6-the-name) renames this `/api/recent` to `/api/recent-files` |
 | `GET /api/file?path=<id>` | The file or folder envelope, which is where a `file` or `folder` reference leads | None |
 | `GET /api/git/log`, `/api/git/commit/<rev>` | Commits; the log row is close to the summary already | Rows conform, Phase 2 |
 | The Recent tab’s routes | The mixed collection, one of its items, and the working-tree changes object | New, core; named and built by the Recent tab plan ([Routes, the CLI, and the View Model](plan-2026-11-18-recent-tab-updates-and-events.md#routes-the-cli-and-the-view-model)) |
@@ -1188,11 +1196,14 @@ id = "pull-request"
 contract = "metabrowser.github:PullRequest/v1"
 model = "metabrowser.builtin_plugins.github.objects:PullRequestObject"
 schema = "pull-request-v1.schema.yaml"
+corpus = "pull-request-conformance.json"
 page_kind = "pull-request"
+facets = ["description", "merge", "stack", "checks", "changes"]
 
 [[object_view]]
 type = "pull-request"
 shape = "wide-row"
+facets = ["stack"]
 
 [[collection]]
 name = "pulls"
@@ -1202,25 +1213,24 @@ route = "pulls"
 
 A collection’s key is `name`, the `name` of a collection reference and of
 `registerCollection`. A type’s key is `id`, as a kind’s and a view’s are.
+The manifest declares every structure, a type’s facets and a view’s among them, and
+JavaScript supplies functions only (Decision PS-1).
 
 - **Validation at load.** The loader refuses a type another plugin declares, a view for
   a shape the host does not define, a collection naming a route the plugin does not
   declare, and a contract identifier outside the registry’s grammar.
 - **The model is not imported at load.** A sidekick is imported at startup, and the
   GitHub sidekick imports nothing from the cache for that reason
-  (`github/sidekick.py:13`). The loader records `model` as text.
-  For a plugin whose Python runs in the server, `metab --doctor`, the contract checks,
-  and `--api` validation import it.
-- **The packaged schema is the authority where the host cannot import the model.** #380
-  proposes running a third-party plugin’s Python in a worker on its own environment,
-  where the host cannot import its model.
-  For such a plugin validation reads the compiled `schema` it packages, and `model` is
-  allowed only for a plugin whose Python runs in the server.
-  That is two validation paths for one kind of declaration.
-  The plugin authoring plan’s open
-  [Decision PS-7](plan-2026-11-18-plugin-authoring-objects-views.md#decision-ps-7-one-validation-path)
-  recommends one: the packaged schema for every plugin, with `model` read by the drift
-  check alone.
+  (`github/sidekick.py:13`). The loader records `model` as text, and only the drift
+  check reads it, for a plugin whose Python runs in the server.
+- **The packaged schema is the authority, for every plugin.** #380 proposes running a
+  third-party plugin’s Python in a worker on its own environment, where the host cannot
+  import its model. Validating such a plugin by its schema and an in-process plugin by
+  its model would be two validation paths for one kind of declaration.
+  So validation reads the compiled `schema` each plugin packages, by the plugin
+  authoring plan’s
+  [Decision PS-7](plan-2026-11-18-plugin-authoring-objects-views.md#decision-ps-7-one-validation-path),
+  and `model` serves the drift check alone.
 - **A view for someone else’s type.** A plugin may register a view for a type it does
   not own, as it may add a tab to another plugin’s kind.
 - **Two views of one type in one shape.** A later `[[object_view]]` for the same type
@@ -1239,10 +1249,9 @@ A collection’s key is `name`, the `name` of a collection reference and of
   view with no `registerView`, it fails an `[[object_view]]` with no
   `mb.objects.registerView`.
 - **Later:** a `[[collection_source]]`, by which a plugin’s source joins the Recent
-  tab’s list, in that plan’s R3. Whether the block names a sidekick callable or a
-  data-hook route is the plugin authoring plan’s open
-  [Decision PS-3](plan-2026-11-18-plugin-authoring-objects-views.md#decision-ps-3-what-a-collection-source-names),
-  which recommends a route.
+  tab’s list, in that plan’s R3. The block names a data-hook route, by the plugin
+  authoring plan’s
+  [Decision PS-3](plan-2026-11-18-plugin-authoring-objects-views.md#decision-ps-3-what-a-collection-source-names).
 
 This moves pull requests toward the plugin without a new registration surface for panels
 or routes. The Pulls tab stays on the internal shell seam, and a container’s children
@@ -1251,17 +1260,18 @@ panel is a small step, and it is not part of this plan.
 
 [Plugin Authoring for Objects, Views, and View State](plan-2026-11-18-plugin-authoring-objects-views.md)
 specifies this surface key by key and call by call.
-Its decisions, PS-1 to PS-7, are open, and three more of them would change what this
-section says:
+Its decisions, PS-1 to PS-7, were taken on 2026-11-18, each at A, and this section is
+written to them. Beyond PS-3 and PS-7 above, three shape it:
 
-- **PS-1** moves a view’s `facets`, a type’s facets, and a page’s parts into the
-  manifest, where the server, `--doctor`, and the parity check can read them.
-  Here a view states its `facets` in `registerView`, and no block declares a type’s.
-- **PS-2** has the store read a declared route with no JavaScript, where here every type
-  and collection is registered in JavaScript.
-- **PS-6** decides how the plugins a list needs are loaded.
-  A plugin’s code loads by kind today, so a list drawn outside its type’s own page
-  selects none of them.
+- **PS-1** puts a view’s `facets`, a type’s facets, and a page’s parts in the manifest,
+  where the server, `--doctor`, and the parity check can read them.
+- **PS-2** has the store read a declared route by the collection convention, with no
+  JavaScript, so `registerCollection` and a type’s `load` are for a controller of the
+  plugin’s own, as the Pulls panel’s is.
+- **PS-6** indexes a plugin’s assets by type as well as kind, so `mountList` loads the
+  plugins that declare or draw its collection’s members before first paint.
+  A plugin’s code loads by kind today, so a list drawn outside its type’s own page would
+  otherwise select none of them.
 
 That plan also keeps as an open question that `mb.registerView` and
 `mb.objects.registerView` share a name and take different arguments.
@@ -1323,15 +1333,14 @@ That plan also keeps as an open question that `mb.registerView` and
 
 ## Key Decisions
 
-Each decision gives the phase that needs it settled, the options, their trade-offs, and
-the decision where one is taken, or else a recommendation.
-Each decision’s section states its standing, and this table gathers them.
+Each decision gives the phase that needs it settled, the options it weighed, their
+trade-offs, and the decision.
+The owner took all of them on 2026-11-18, and this table gathers them.
 
 | Standing, as of 2026-11-18 | Decisions |
 | --- | --- |
-| Taken by the owner on 2026-11-18 | **1,** with VM-8: SoftSchema contracts for objects and for UI state. **2** A: internal, described contracts. **3** A: a convention on the internal envelope. **4** A: two registries and one rule. **5:** `type` and `id`, with `pull-request` and one vocabulary of types everywhere. **6** A: one contract, a summary and whole facets. **7** A: a literal shared header. **8:** UTC strings at second precision. **10** A: the contract carries Metabrowser’s meaning. **12:** the host frame, with the header through an SDK frame that mb-7t5s builds. **19** C: a main tab named Recent, designed in the Recent tab plan. **20:** no SDK bump for an addition, and #380’s versioning rule if #380 is accepted. **22** D: the page first, the contract half second |
-| Accepted at the recommendation, under the owner’s review | 9, 11, 13 to 18, 21, and 23. The owner is reviewing them a group at a time from first principles, so none of them is final |
-| Open, at the recommendation | None in this plan. The companion plans’ decisions are open: VM-1 to VM-10 except VM-8, PS-1 to PS-7, RT-1 to RT-7, and AI-1 to AI-6 |
+| Taken by the owner on 2026-11-18 | **1** A, with VM-8: SoftSchema contracts for objects and for UI state. **2** A: internal, described contracts. **3** A: a convention on the internal envelope. **4** A: two registries and one rule. **5** A: `type` and `id`, with `pull-request` and one vocabulary of types everywhere. **6** A: one contract, a summary and whole facets. **7** A: a literal shared header. **8** A: UTC strings at second precision. **9** A: core owns files, folders, and commits, and the GitHub plugin pull requests. **10** A: the contract carries Metabrowser’s meaning. **11** A: a closed set of shapes, with the `card` frame built at its first real use. **12** C: the host frame, with the header through an SDK frame that mb-7t5s builds. **13** A: one store interface, a source per type. **14** A: a collection’s one reader runs while any list of it is shown. **15** A: the owning layer’s routes. **16** A: validation in tests, goldens, and at trust boundaries. **17** A: a page is a page view that mounts list hosts. **18** A: a mixed list is composed on the server. **19** C: a main tab named Recent, designed in the Recent tab plan. **20** A: no SDK bump for an addition, and #380’s versioning rule if #380 is accepted. **21** A: arrows move focus, and Enter opens. **22** D: the page first, the contract half second. **23** A: convergence is decided after Phase 2 |
+| Open | None in this plan. The companion plans’ decisions were taken the same day: VM-1 to VM-10, PS-1 to PS-7, RT-1 to RT-7, AI-1 to AI-6, and the implementation map’s Ordering 2. One is open, the agent interface plan’s [AI-7](plan-2026-11-18-agent-interface.md#decision-ai-7-finding-a-server-the-agent-did-not-start) |
 
 Decisions 24 to 33 are VM-1 to VM-10 in
 [View Model and View State](plan-2026-11-18-view-model-and-view-state.md#key-decisions),
@@ -1350,7 +1359,8 @@ Neither needs the other’s code.
 What the view slice needs of the object half is a set of definitions and decisions,
 listed under
 [Phase 4](plan-2026-11-18-view-model-and-view-state.md#phase-4-the-view-model), and
-Decision VM-10 recommends the order of the two.
+Decision VM-10 sets the order of the two: the view slice first, or beside the object
+slice.
 
 ### Decision 1: What Describes an Object
 
@@ -1584,10 +1594,10 @@ the types and from each other (`cli/present.py:126-128`, `cache/urls.py:77`):
 
 **Decided 2026-11-18: A,** with C’s drawing kept where it now lives, in a view.
 #487 and #550 have built the presentation header as a drawing, not as data:
-`MetabrowserViewHeaderParts{eyebrow, iconHtml, title, end, line}` (#550,
-`static/types.d.ts` on its branch) is what a page’s header `describe` returns, filled
-from the object’s `title`, `actor`, and `updated_at`. So the object stays
-self-describing, and the header every page shows is one view of that header.
+`MetabrowserViewHeaderParts{path, eyebrow, iconHtml, title, line}` (#550, in
+`static/types.d.ts` on `main` since it merged) is what a page’s header `describe`
+returns, filled from the object’s `title`, `actor`, and `updated_at`. So the object
+stays self-describing, and the header every page shows is one view of that header.
 
 ### Decision 8: Timestamps
 
@@ -1606,7 +1616,7 @@ self-describing, and the header every page shows is one view of that header.
   projection and its browser readers convert in Phase 1.
 
 **Decided 2026-11-18: A,** a UTC string at second precision.
-Its costs are the ones listed under A, and one more since #550, which adds `mtime` to
+Its costs are the ones listed under A, and one more since #550, which added `mtime` to
 `/api/file` in epoch seconds: the file projection converts that field too.
 Two forms were ruled out.
 The cache’s canonical timestamp has optional milliseconds (`cache/records.py:58`), so
@@ -1627,8 +1637,8 @@ comments, whenever one becomes a type ([Extension Path](#extension-path)).
 - **C. Move Git into a built-in plugin first,** so every view is a plugin’s. Consistent,
   and a large move this plan does not need.
 
-**Accepted at the recommendation, under review: A.** Under A, core would also own the
-three types the Recent tab plan proposes, `update`, `event`, and `working-tree-changes`
+**Decided 2026-11-18: A.** Under A, core also owns the three types the Recent tab plan
+adds, `update`, `event`, and `working-tree-changes`
 ([Contracts](plan-2026-11-18-recent-tab-updates-and-events.md#contracts)).
 
 ### Decision 10: How Far a Contract Normalizes Its Source
@@ -1657,8 +1667,13 @@ three types the Recent tab plan proposes, `update`, `event`, and `working-tree-c
   Nothing else could draw that shape for other types, so a mixed list would fall back
   for most of its items.
 
-**Accepted at the recommendation, under review: A,** adding a shape to the host when a
-second type needs it.
+**Decided 2026-11-18: A,** adding a shape to the host when a second type needs it.
+`card` stays in the named set, and its frame is built only with its first real use: the
+`/recent` page in the Recent tab plan’s
+[R4](plan-2026-11-18-recent-tab-updates-and-events.md#r4-later-each-alone), or the
+implementation map’s
+[C5](plan-2026-11-18-object-model-implementation-map.md#stacks-c-r-and-x). Until then no
+code draws a card, and nothing reserves a frame for one.
 A shape’s frame is written to the most demanding row that uses it, so `nav-row` admits a
 facet line as its one child, as the Pulls row has since #491 ([Shapes](#shapes)).
 
@@ -1696,7 +1711,7 @@ So mb-7t5s lands before any page this plan draws under the header.
 - **C. Today’s stores, with conventions.** No new code, and every new surface writes its
   own, as now.
 
-**Accepted at the recommendation, under review: A.**
+**Decided 2026-11-18: A.**
 
 ### Decision 14: Who Reads a Collection
 
@@ -1714,9 +1729,8 @@ panel.
 - **C. A second controller for the pane.** No change to the panel.
   Two readers poll one route and can hold two generations of one list.
 
-**Accepted at the recommendation, under review: A.** The Recent tab counts as a shown
-list of `pulls` too, so the catalog refreshes while Recent is in front, in that plan’s
-R3.
+**Decided 2026-11-18: A.** The Recent tab counts as a shown list of `pulls` too, so the
+catalog refreshes while Recent is in front, in that plan’s R3.
 
 ### Decision 15: Routes
 
@@ -1731,8 +1745,8 @@ R3.
   Uniform addresses. It adds a Python registration surface and a second route to
   everything that has one.
 
-**Accepted at the recommendation, under review: A.** With each type’s object route in
-the registry, a reference found in a view state can be followed without a dispatcher.
+**Decided 2026-11-18: A.** With each type’s object route in the registry, a reference
+found in a view state can be followed without a dispatcher.
 For `file` and `folder` that route is `/api/file?path=<id>`, which answers an envelope
 and not an object ([Routes and the CLI](#routes-and-the-cli)). Where the view slice
 lands before the registry route, it states the same table as a constant
@@ -1757,11 +1771,10 @@ The cost in question is validation time per row.
 - **C. A schema validator in the browser.** It ships a validator to every page for data
   the same artifact produced.
 
-**Accepted at the recommendation, under review: A,** with B open for a route where a
-measurement shows it is cheap.
-The view model adds one trust boundary to A’s list: what a page or an agent sends to the
-`/api/ui` routes, which a running server checks with the contract’s Pydantic model alone
-([UI Contracts](plan-2026-11-18-view-model-and-view-state.md#ui-contracts)).
+**Decided 2026-11-18: A,** with B open for a route where a measurement shows it is
+cheap. The view model adds one trust boundary to A’s list: what a page or an agent sends
+to the `/api/ui` routes, which a running server checks with the contract’s Pydantic
+model alone ([UI Contracts](plan-2026-11-18-view-model-and-view-state.md#ui-contracts)).
 
 ### Decision 17: Composing a Page of Several Lists
 
@@ -1777,8 +1790,7 @@ of several.
 - **C. A collection as a Folder Overview panel,** through the panel registry.
   It fits a summary inside Overview and not a page of its own.
 
-**Accepted at the recommendation, under review: A,** with C a natural later addition for
-Overview.
+**Decided 2026-11-18: A,** with C a natural later addition for Overview.
 
 ### Decision 18: Composing a Mixed List
 
@@ -1792,8 +1804,8 @@ Overview.
   No new route. Order and membership would then be browser logic, which the parity rule
   assigns to a route, and the sources would still need time-ordered reads.
 
-**Accepted at the recommendation, under review: A.** The Recent tab plan designs on it,
-and says which sources the first version covers and what each one costs.
+**Decided 2026-11-18: A.** The Recent tab plan designs on it, and says which sources the
+first version covers and what each one costs.
 
 ### Decision 19: Where Recent Changes Lives
 
@@ -1814,8 +1826,9 @@ The tab draws rows, which answers C’s cost.
 Option B’s address survives as `/recent`, the tab’s list address and its page of cards.
 Option A is dropped, and scoping the list to a folder is an open question in that plan.
 The name collides with the Files tab’s Recent view and Open Recent’s targets
-([Approach](#approach)), which that plan’s open
-[RT-6](plan-2026-11-18-recent-tab-updates-and-events.md#rt-6-the-name) weighs.
+([Approach](#approach)), which that plan’s
+[RT-6](plan-2026-11-18-recent-tab-updates-and-events.md#rt-6-the-name) settles: the
+Files filter keeps its control and gives up the name.
 
 ### Decision 20: Plugin Declaration and the SDK Gate
 
@@ -1858,8 +1871,8 @@ both rules for each kind of change.
   with the first row the reader moved to.
 - **C. Native link order only.** A Tab stop per row in a list of hundreds.
 
-**Accepted at the recommendation, under review: A,** as a new design-system section
-beside Navigational Row Collections, with the list host registered in the same check.
+**Decided 2026-11-18: A,** as a new design-system section beside Navigational Row
+Collections, with the list host registered in the same check.
 A wide row with a facet line under it takes the Pulls tab’s rule for that line: Right
 moves to it, and Enter or Space there toggles what it owns.
 
@@ -1870,7 +1883,7 @@ moves to it, and Enter or Space there toggles what it owns.
 This decision chooses the **object slice**, the object model’s first step.
 The view model’s first step, the view slice, is
 [Decision VM-10](plan-2026-11-18-view-model-and-view-state.md#decision-vm-10-the-view-models-first-slice)’s,
-which also recommends the order of the two.
+which also sets the order of the two.
 
 - **A. The pull requests page, on the model.** The wide row shows what the catalog row
   holds: state, title, labels, number, author, opened and updated ages, and both
@@ -1905,11 +1918,11 @@ The phases below are written for D: the contract, the manifest blocks, and the r
 route with its validation and parity rules are Phase 2 items, and the architecture
 document’s contract and declaration tables arrive with them.
 Which type the object model reaches first is a separate matter of order.
-The [implementation map](plan-2026-11-18-object-model-implementation-map.md#orderings)
-recommends a checkout’s working-tree changes ahead of the pull requests page.
-The object slice reuses what has landed since the plan was first written: the `changes`
-facet’s route and memory, the view header for the page, `actorIdentity` for the author,
-and the drawn-from-disk fixture for the corpus.
+The [implementation map](plan-2026-11-18-object-model-implementation-map.md#orderings)’s
+Ordering 2, decided the same day, puts a checkout’s working-tree changes ahead of the
+pull requests page. The object slice reuses what has landed since the plan was first
+written: the `changes` facet’s route and memory, the view header for the page,
+`actorIdentity` for the author, and the drawn-from-disk fixture for the corpus.
 Three things are left out of the object slice on purpose.
 Review decision, check status, and comment counts are not in the catalog, whose query is
 kept light (`github/pull_list_refresh.py:81`); adding them is a separate change with its
@@ -1926,8 +1939,8 @@ objects. The route’s search answer keeps its shape.
 - **B. Commit now** to moving every row builder onto the model.
 - **C. Never.** New surfaces use the model, and the old ones stay.
 
-**Accepted at the recommendation, under review: A.** The duplicate builders are a real
-cost, and the Files tree and the Git graph are also the most measured code in the shell.
+**Decided 2026-11-18: A.** The duplicate builders are a real cost, and the Files tree
+and the Git graph are also the most measured code in the shell.
 The Pulls row has grown since the plan was first written, to three lines, a facet line
 as a second focus stop, and stack sections that read their own data, so moving it is the
 largest of the Phase 3 items, and the list host is specified to carry it
@@ -2046,7 +2059,9 @@ contract half for every type.
 - [ ] Add a **Files** view to the `folder` kind: the folder’s children as wide rows,
   read from `/api/tree`.
 - [ ] Register the commit’s `card`, from the compact commit summary, and a `card` for
-  the pull request. Their first user is the `/recent` page, in the Recent tab plan’s R4.
+  the pull request, with the `card` frame, when their first real use lands and not
+  before ([Decision 11](#decision-11-the-set-of-shapes)): the `/recent` page, in the
+  Recent tab plan’s R4.
 - [ ] Add Files to
   [Folder Views Are Tabs](../../../design-system.md#folder-views-are-tabs), which names
   only Overview, Treemap, and a future Files, with its key.
@@ -2111,12 +2126,6 @@ The view model and the Recent tab ship as their own plans set out.
 
 ## Open Questions
 
-- **In what order do the object slice and the view slice land?**
-  [Decision 22](#decision-22-the-first-slice) is decided as D, the page before the
-  contract half.
-  [Decision VM-10](plan-2026-11-18-view-model-and-view-state.md#decision-vm-10-the-view-models-first-slice)
-  recommends the view slice first, or beside the object slice, and is open.
-
 - **How large can a folder’s Files view be?** A directory with very many direct children
   arrives as one tree response today; the
   [flat-tree plan](plan-2026-09-15-flat-tree-delivery-cost.md) owns that cost, and the
@@ -2144,9 +2153,6 @@ The view model and the Recent tab ship as their own plans set out.
   could point to. Decisions 1 and VM-8 were taken without answering it, and the view
   model adds an argument for it
   ([Decision VM-8](plan-2026-11-18-view-model-and-view-state.md#decision-vm-8-the-schema-form)).
-
-- **Should the schemas be served,** and at what route, or is the packaged file with the
-  registry’s digest enough?
 
 - **Are generated type declarations worth a generator,** or does a test that compares
   hand-written declarations with the schema’s properties suffice?

@@ -4,17 +4,12 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft. A design direction for review, and nothing here is built.
-A companion to
+**Status:** Decided, and nothing here is built.
+The owner took every decision under [Key Decisions](#key-decisions), VM-1 to VM-10, on
+2026-11-18, with the parent plan’s Decisions 1 to 23. A companion to
 [Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), the
 parent plan below, which defines the objects, references, collections, and shapes this
-plan names. The owner took Decision VM-8 on 2026-11-18, with the parent plan’s Decision
-1; every other item under [Key Decisions](#key-decisions) is open, at its
-recommendation. Of the parent plan’s decisions, the owner took 1 to 8, 10, 12, 19, 20,
-and 22 that day, and 9, 11, 13 to 18, 21, and 23 are accepted at their recommendations
-and under the owner’s review; its
-[Key Decisions](plan-2026-11-14-object-data-model-and-views.md#key-decisions) gives each
-one’s standing. Written against `main` at `a1100bca6`.
+plan names. Written against `main` at `a1100bca6`.
 
 ## Overview
 
@@ -42,9 +37,9 @@ how a plugin’s page declares its parts.
 ## Goals
 
 - One view state per viewer, built from the objects’ references and the UI’s own state,
-  that an agent can read through `metab` and a route, and one intent, `show`, by which
-  an agent asks a viewer to show something, applied through the reader’s own paths and
-  answered with the view state that results.
+  that an agent can read through `metab` and a route, and one intent, `present`, by
+  which an agent asks a viewer to show something, applied through the reader’s own paths
+  and answered with the view state that results.
 - One vocabulary with the object model: a reference, a collection reference, a shape, a
   summary and facets, and a `generation`, each defined once, in the parent plan’s
   [Approach](plan-2026-11-14-object-data-model-and-views.md#approach).
@@ -113,8 +108,8 @@ reader something.
 
 | Component | Where | Job |
 | --- | --- | --- |
-| View model contracts | `ui/` (new package), compiled under `data/ui-format/` | `ViewState` and `Intent`, the viewer registry, the `control` setting, and `/api/ui/viewers` and `/api/ui/intents` |
-| View state publisher | `static/ui-state.js`, deferred | The `describe` function of each summary field and facet, the publisher, `openAddress`, and the applier for `show` |
+| View model contracts | `ui/` (new package), compiled under `data/ui-format/` | `ViewState` and `Intent`, the viewer registry, the `control` setting, and the routes `/api/ui/viewers`, `/api/ui/viewer`, and `/api/ui/intents` |
+| View state publisher | `static/ui-state.js`, deferred | The `describe` function of each summary field and facet, the publisher, `openAddress`, and the applier for `present` |
 | View state SDK surface | `mb.ui`, in a later slice | A page view declares its named parts and reports their values, which the publisher prints as `pane.parts` |
 
 ### Terms and Rules
@@ -162,10 +157,53 @@ The view model adds no vocabulary of its own where the object model has one:
    The three that are neither each publish one facet from the module that owns them.
 4. **A summary and facets.** The summary is small and always published; a facet is whole
    or absent, and published while a reader asks for it.
-5. **A write has a read’s shape.** `show` takes a view state’s settable fields under the
-   same names, so an agent reads, changes a field, and writes it back.
+5. **A write has a read’s shape.** `present` takes a view state’s settable fields under
+   the same names, so an agent reads, changes a field, and writes it back.
 6. **An applied intent has the standing of the reader’s own open,** and runs the code a
    click or Quick Search runs.
+
+### Hosts
+
+The shell is host-agnostic, and the view state’s publisher and applier are part of the
+shell.
+They behave the same in a standalone browser tab, in the macOS app’s web view, and
+in a later host such as the VS Code host design (`mb-x4y5`). The page talks to its
+server over HTTP and server-sent events and never calls into the app
+(`docs/project/architecture/arch-macos-app.md:14-15`), and the view model keeps that
+rule: a view state is published to the server, and an intent arrives on the server’s
+stream.
+
+- **Nothing in the view slice requires the app.** A browser tab on a server started in a
+  terminal is a complete viewer.
+- **A host is one more reader and writer of the same routes.** The app may read
+  `/api/ui/viewers` to save a session as view states, or send an intent where it now
+  loads an address, and it gets no route or event of its own.
+  What a host alone knows, its windows and their order, stays out of a view state
+  ([Reading](#reading)).
+
+Two parts of the design are new to WebKit’s web view, and the view slice’s first item
+verifies both there before either ships:
+
+- **Viewer identity.** No shell module reads `sessionStorage` today, so
+  [Decision VM-6](#decision-vm-6-viewer-identity) is its first use.
+  To verify in the app’s `WKWebView`, which uses the persistent default data store
+  (`docs/project/architecture/arch-macos-app.md:77-78`): that `sessionStorage` is
+  available; that it survives a full load in one web view; that a tab the app discarded
+  comes back with none, since it gave up its web view, and so is a new viewer; and that
+  a window opened from a page copies its opener’s, which is the duplicated-tab case that
+  decision already handles.
+  A server restarted after a failure returns on a new port, a new origin with empty
+  storage, and its registry is new as well.
+- **The event stream.** The app’s pages hold the stream today.
+  What is new is a stream on a pinned revision’s page, which is every GitHub repository
+  the app opens, and so one more held connection for each such tab against WebKit’s
+  limit for a host. The measurement counts connections in WebKit with several tabs open,
+  with the
+  [WKWebView probe](../../../../explorations/performance-loop/README.md#wkwebview-probe).
+  It also records whether a background tab’s page still receives an intent and
+  publishes: WebKit throttles a hidden web view, and suspends one removed from its
+  window, which stops its stream
+  (`docs/project/research/research-2026-11-10-native-app-server-topology.md:260-264`).
 
 ### The View State
 
@@ -188,7 +226,7 @@ the same address, and `object` is what its new `object:` line prints
 ([Routes and the CLI](plan-2026-11-14-object-data-model-and-views.md#routes-and-the-cli)).
 
 [The Recent Tab](plan-2026-11-18-recent-tab-updates-and-events.md#routes-the-cli-and-the-view-model)
-proposes a fourth main tab.
+adds a fourth main tab.
 There `nav.tab` is `recent`, and `nav.current` is the row’s reference, an `update` or an
 `event`, while `object` stays what the address selects.
 
@@ -250,10 +288,15 @@ by which the owner settles its claim.
 
 - **Routes.** `GET /api/ui/viewers` answers the view states in the
   [collection convention](plan-2026-11-14-object-data-model-and-views.md#decision-3-the-collection-envelope),
-  most recently attended first, so `rows[0]` is the viewer the reader looked at last;
-  `?viewer=<id>` selects one.
-  A later slice adds `?facets=`, and a stream of states for an observer
-  ([Writing](#writing)).
+  most recently attended first, so `rows[0]` is the viewer the reader looked at last.
+  `GET /api/ui/viewer` answers one view state as a record, as `pull` sits beside
+  `pulls`: the viewer attended last, or the one `?viewer=<id>` names, and `no_viewer`
+  when there is none, by the agent interface plan’s
+  [Decision AI-5](plan-2026-11-18-agent-interface.md#decision-ai-5-reading-one-viewer).
+  A later slice adds `?facets=`; a bounded wait on the record route, `since` and `wait`,
+  for an agent that follows a viewer
+  ([Decision AI-6](plan-2026-11-18-agent-interface.md#decision-ai-6-following)); and a
+  stream of states for an observer ([Writing](#writing)).
 - **`metab`.** `--api` reaches these routes in process, where no page is connected, so
   its goldens pin the empty collection, the contracts, a publish accepted and a publish
   refused, and the refusals a server makes without a page
@@ -261,7 +304,7 @@ by which the owner settles its claim.
   is new: `--api ROUTE --server URL` issues the route to it as a client that starts no
   server, as `--present` is.
   `--live`, which finds ROOT’s server, waits for the registry (`mb-5xi4`).
-- **`--format yaml`.** An answer that is one contract record, which `?viewer=<id>`
+- **`--format yaml`.** An answer that is one contract record, which `/api/ui/viewer`
   gives, prints as a SoftSchema artifact: a `softschema:` header and the record under
   its envelope key, the form `serialize_artifact` writes
   (`plugin_loader/artifact_contracts.py:479-502`). That form holds one record.
@@ -285,7 +328,8 @@ by which the owner settles its claim.
   there and not a verb, and it is the `ui.intent` event below.
   `present`, which pushes that event to the most recently visible page
   (`docs/project/research/research-2026-11-10-native-app-server-topology.md:507-508`),
-  carries an intent’s `show` to `rows[0]`.
+  carries an intent to `rows[0]`, and the intent’s own field has the verb’s name,
+  `present`.
 
 **Following a reference.** A view state names things and holds none of them, so an agent
 needs the route each type’s reference leads to:
@@ -310,14 +354,19 @@ agent ── POST /api/ui/intents ──► server ── ui.intent, on the view
 agent ◄── outcome: a status and the view state ── server ◄── a publish naming the intent ──┘
 ```
 
-- **One verb.** `show` carries a partial view state.
+- **One verb.** `present` carries a partial view state.
   The view slice accepts exactly one of `object` or `address`. Later slices add
   `pane.view`, `nav.tab`, a list’s `params` and `expanded`, and `pane.inner`, applied in
-  that order.
+  that order. The name is the agent interface plan’s
+  [Decision AI-4](plan-2026-11-18-agent-interface.md#decision-ai-4-one-word-for-the-act):
+  one word for the act, from the `--present` flag to the control verb to this field.
+  `metab --show` is a different thing, a report of a selection that changes nothing.
 - **The viewer.** An intent names the `viewer` it is for, or names none and goes to
   `rows[0]`, the viewer the reader attended last.
   A viewer the server does not hold is refused as `unknown_viewer`, and an intent with
-  no viewer connected as `no_viewer`.
+  no viewer connected as `no_viewer`. An intent that sends `if_generation` must name its
+  `viewer`, and one that does not is refused as `invalid`: a generation is one viewer’s
+  counter, so without the viewer it could be compared with another viewer’s count.
 - **Sent through `--api`.** The view slice’s write is
   `metab --api /api/ui/intents --server URL --data FILE`, where `--data` makes the
   request a `POST` (`cli/main.py:598-604`). `--data` sends a file’s bytes today, and the
@@ -344,8 +393,8 @@ agent ◄── outcome: a status and the view state ── server ◄── a p
   The reveal rule then does what it does for Quick Search: the tab comes forward, the
   row is revealed, focus stays, and no filter changes (`docs/design-system.md:4103`,
   `:4154`). The Recent tab plan adds a case to that rule, for an item two tabs hold
-  ([The Tab](plan-2026-11-18-recent-tab-updates-and-events.md#the-tab)): `show` with an
-  `update` or an `event` reveals it in Recent, and `show` with the subject in the
+  ([The Tab](plan-2026-11-18-recent-tab-updates-and-events.md#the-tab)): `present` with
+  an `update` or an `event` reveals it in Recent, and `present` with the subject in the
   subject’s own tab.
 - **History.** One pushed entry, so Back undoes it; none when the address is already
   shown (`static/navigation.js:1410`).
@@ -356,6 +405,7 @@ agent ◄── outcome: a status and the view state ── server ◄── a p
   follow a link either, it is refused as `busy`.
 - **A base.** `if_generation` refuses as `stale` when the viewer changed after the agent
   read it, and the page enforces it, not the server.
+  It is sent with the `viewer` it was read from, as the rule above requires.
   A `generation` is assigned on a debounced publish, so the server’s copy trails the
   page, and a check there would pass after the reader moved and before the page said so.
   The page refuses when `if_generation` is not the generation its last publish was
@@ -377,17 +427,28 @@ agent ◄── outcome: a status and the view state ── server ◄── a p
   then reports as `applied` or `cancelled`.
 - **Refusals.** The server gives six codes without a page: `invalid`, `control_off`,
   `not_an_address`, `unsupported_field`, `unknown_viewer`, and `no_viewer`. Only a page
-  can give the other two, `busy` and `stale`.
-- **`--present`, later.** `--present` starts no server and hands its target to the app
-  through `open -b` (`cli/present.py:4-6`, `:38-40`), so it has no server address to
-  send an intent to until the live-server registry (`mb-5xi4`) exists.
-  `show` also admits no root, and opening a root is most of what `--present` delivers.
-  So every change to `--present` waits for the slice that has the registry.
+  can give the other two, `busy` and `stale`. `invalid` is the code for whatever the
+  `Intent` contract’s model refuses, an `if_generation` with no `viewer` included, so
+  that rule adds no code.
+- **`--present`, later.** The flag and the intent’s field share a word and are two
+  things: `metab --present` is the command that hands a target to a viewer, and
+  `present` is what an intent carries.
+  Today the command sends no intent.
+  It starts no server and hands its target to the app through `open -b`
+  (`cli/present.py:4-6`, `:38-40`), so it has no server address to send an intent to
+  until the live-server registry (`mb-5xi4`) exists.
+  An intent also admits no root, and opening a root is most of what `--present`
+  delivers. So every change to `--present` waits for the slice that has the registry.
   There, where it resolves a `page` (`cli/present.py`, `cli/selection_href.py:16`) and
-  finds the root’s server with a viewer, it sends `show: {address: page}` and reports
+  finds the root’s server with a viewer, it sends `present: {address: page}` and reports
   `confirmed: true` with the outcome.
   Confirmation becomes an observation of the view state, whichever channel delivered the
   target, so the app never has to reply.
+  On `main` after the `a1100bca6` these citations name, #582 gave `--present` a second
+  delivery, to a browser on a detached server it starts and whose address it reports.
+  The app handoff still learns no address, so the wait for the registry stands; the
+  agent interface plan’s [Launch Modes](plan-2026-11-18-agent-interface.md#launch-modes)
+  counts the browser delivery as a server the agent started.
 
 What untrusted content cannot do:
 
@@ -465,7 +526,8 @@ An intent, and the route’s answer to it:
 ```yaml
 softschema: {contract: "metabrowser.ui:Intent/v1", envelope: intent, status: enforced}
 intent:
-  show:
+  viewer: t-4f2a
+  present:
     object: {type: pull-request, id: "562"}
   if_generation: 42
 ```
@@ -509,7 +571,8 @@ The browser runs a strict normalizer over the same corpus.
 | Row | Tier | Evidence |
 | --- | --- | --- |
 | `/api/ui/viewers` | Route, covered | A new golden. `--api` reads the empty collection, and `--api --data` publishes: once accepted, printing the `generation` it is given, and twice refused, as `invalid` and as over `MAX_VIEW_STATE_BYTES` |
-| `/api/ui/intents` | Route, covered | A new golden. `--api --data` in process, where no page is connected, pins the six codes a server gives without a page, `control_off` under `--ui-control off` |
+| `/api/ui/viewer` | Route, covered | The same golden. `--api` in process answers `no_viewer`; the harness transcript of `ui.viewer-order` reads the viewer attended last and one named by `?viewer=<id>` |
+| `/api/ui/intents` | Route, covered | A new golden. `--api --data` in process, where no page is connected, pins the six codes a server gives without a page, `control_off` under `--ui-control off`, and `invalid` for an `if_generation` that names no `viewer` |
 | `ui.view-state` | Interaction | `tests/dom/ui-view-state-session.js` runs the production `describe` functions and publisher through a session and prints the view state after each step |
 | `ui.intent-apply` | Interaction | The same session applies intents: applied and found, applied and not found, offered, cancelled by input, and the two codes only a page gives, `busy` and `stale`, with an unpublished change among the stale cases. It prints each publish with the intent it names, the history length, and the focused element, which an applied intent leaves where it was |
 | `ui.viewer-order` | Data, owned by `/api/ui/viewers` | A transcript through `--api --server` against a harness server with stub viewers: order by attention, the default viewer, the caps, and a `pending` outcome followed through its `status_route` |
@@ -536,13 +599,13 @@ Three checks make the parity rule stronger than it is today.
 
 ## Key Decisions
 
-Each decision gives the options, their trade-offs, and a recommendation, or the decision
-where one is taken. All ten belong to [Phase 4](#phase-4-the-view-model).
+Each decision gives the options it weighed, their trade-offs, and the decision.
+All ten belong to [Phase 4](#phase-4-the-view-model).
 
 | Standing, as of 2026-11-18 | Decisions |
 | --- | --- |
-| Taken by the owner on 2026-11-18 | VM-8, with the parent plan’s Decision 1: SoftSchema contracts for objects and for UI state |
-| Open, at the recommendation | VM-1 A, VM-2 B, VM-3 C, VM-5 A, VM-6 B, VM-7 A, VM-9 A, and VM-10 A. VM-4 is folded into VM-5 |
+| Taken by the owner on 2026-11-18 | **VM-1** A: the page publishes, and the server holds the latest. **VM-2** B: a summary and a facet per surface. **VM-3** C: one verb, `present`. **VM-4** is folded into VM-5. **VM-5** A: one `control` setting, whose default follows the caller and not `--untrusted`. **VM-6** B: a viewer per tab, in `sessionStorage`. **VM-7** A: no persistence. **VM-8** A, with the parent plan’s Decision 1: SoftSchema contracts. **VM-9** A: the tab’s one stream, and a `POST`. **VM-10** A: the summary and `present`, with the view slice first or beside the object slice |
+| Open | None |
 
 These were the parent plan’s Decisions 24 to 33 until this plan was split from it on
 2026-11-18:
@@ -567,8 +630,8 @@ is the parent plan’s, chosen in its
 [Decision 22](plan-2026-11-14-object-data-model-and-views.md#decision-22-the-first-slice).
 Neither needs the other’s code.
 What the view slice needs of the object half is a set of definitions and decisions,
-listed under [Phase 4](#phase-4-the-view-model), and Decision VM-10 recommends the order
-of the two.
+listed under [Phase 4](#phase-4-the-view-model), and Decision VM-10 sets the order of
+the two.
 
 ### Decision VM-1: Where the View State Lives
 
@@ -585,7 +648,7 @@ of the two.
 - **E. The macOS app owns it.** One shell would have it, and the page would have to call
   into the app.
 
-**Recommendation: A,** with C’s mechanism for facets.
+**Decided 2026-11-18: A,** with C’s mechanism for facets.
 
 ### Decision VM-2: What a View State Holds
 
@@ -598,7 +661,7 @@ of the two.
 - **C. A component or accessibility tree.** Complete by construction.
   It is the DOM under another name, unbounded, with no vocabulary an agent can rely on.
 
-**Recommendation: B,** with A as its spine.
+**Decided 2026-11-18: B,** with A as its spine.
 
 ### Decision VM-3: The Write Model
 
@@ -609,20 +672,20 @@ of the two.
 - **B. Verbs:** open, select, expand, set a filter, run a command.
   Each maps to one input; an agent must learn and order them, and nothing ties them to
   what it read.
-- **C. `show`, a partial view state applied through the reader’s paths.** One verb,
+- **C. `present`, a partial view state applied through the reader’s paths.** One verb,
   whose settable fields grow by slice.
   It needs a stated settable set and a fixed order of application.
 - **D. A generic patch over the view state.** Most fields are derived, and a patch
   cannot be applied as input.
 
-**Recommendation: C.** In the view slice it equals A. B’s one verb worth keeping is
+**Decided 2026-11-18: C.** In the view slice it equals A. B’s one verb worth keeping is
 `run`, a registered command by identifier, deferred until a use appears.
 
 ### Decision VM-4: The Standing of an Applied Intent
 
 Folded into [Decision VM-5](#decision-vm-5-consent-and-trust).
 What an intent does when it arrives is a value of the setting that decision chooses, so
-the two are one question, and it stays open there.
+the two are one question, decided there.
 
 ### Decision VM-5: Consent and Trust
 
@@ -644,13 +707,14 @@ changes nobody asked for.
 - **C. The reader allows it in the page,** per viewer.
 - **D. Applied silently.** The reader cannot tell why the page changed.
 
-**Recommendation: A** for showing an address of the served root, which grants nothing
-that `--present` and `open -b` do not already grant to any local process; **B** for
-whatever is not showing, such as `run` or a switch of the served revision.
+**Decided 2026-11-18: A** for showing an address of the served root, which grants
+nothing that `--present` and `open -b` do not already grant to any local process; **B**
+for whatever is not showing, such as `run` or a switch of the served revision, which
+stays off unless a flag allows it.
 Under host mode the routes sit behind its credential, and no intent admits a root, as
 that plan requires.
 
-Five points state A exactly.
+These points state A exactly.
 
 - **`control` is trust in the caller, and is held outside `Capabilities`.** That block
   is content trust. Each of its switches is a boolean (`as_wire() -> dict[str, bool]`,
@@ -664,10 +728,15 @@ Five points state A exactly.
   process environment only.
   It joins the names the import guard keeps out of the `.env` allowlist
   (`dotenv.py:124`), so a browsed repository’s `.env` cannot set it.
-  Under `--untrusted` the default is `offer`: that flag asks for every conservative
-  value, and the one way content reaches these routes is an agent steered by text it
-  read. `--untrusted --ui-control apply` lifts it, as `--untrusted --allow-edits` lifts
-  `mutations` (`capabilities.py:147-149`).
+  An explicit `--ui-control offer` or `off`, or `METAB_UI_CONTROL`, sets it whatever the
+  default would be.
+- **`--untrusted` does not decide `control`.** `--untrusted` is trust in content, and
+  `control` is trust in the caller, so the default is the same under either content
+  profile. A GitHub pull request URL implies `--untrusted`
+  (`cli/git_pin_cli.py:114-124`), so a default that followed that flag would leave the
+  view slice’s main case offer-only.
+  Content trust does not change the harm either: an applied intent runs no file’s
+  scripts, since it opens an HTML file on Source, as the last point here says.
 - **“Local” is tested, not assumed.** The origin check accepts any request that sends
   neither `Origin` nor `Sec-Fetch-Site` (`server.py:840-841`), so the server cannot tell
   a local command from any other peer that sends neither.
@@ -682,9 +751,9 @@ Five points state A exactly.
   `capabilities.py` is off by default (`DEFAULT_CAPABILITIES`, `:79`), and
   `--allow-edits` turns it on.
   An edit changes the reader’s files, and the page cannot undo it.
-  A `show` changes what one tab shows; it is announced; Back undoes it; and it reaches
-  nothing a local process cannot already reach through `--present`. Whatever is not
-  showing keeps the precedent, which is the B half of the recommendation.
+  A `present` changes what one tab shows; it is announced; Back undoes it; and it
+  reaches nothing a local process cannot already reach through `--present`. Whatever is
+  not showing keeps the precedent, which is the B half of the decision.
 - **An applied intent does not run a file’s scripts.** An HTML file opens on Preview,
   its default view (`builtin_plugins/html/manifest.toml:15-20`), which loads the file in
   a sandboxed frame where its scripts run while active content is on
@@ -713,7 +782,8 @@ Five points state A exactly.
 - **C. Per connection, assigned by the server.** A reconnect is a new viewer.
 - **D. The app’s window and tab identifiers.** The app alone has them.
 
-**Recommendation: B.**
+**Decided 2026-11-18: B.** [Hosts](#hosts) lists what is verified in the app’s web view
+before it ships.
 
 ### Decision VM-7: Persistence
 
@@ -727,7 +797,7 @@ Five points state A exactly.
 - **C. The page persists its own.** Filters reset on every page by design
   (`static/filter-state.js:19-21`).
 
-**Recommendation: A.**
+**Decided 2026-11-18: A.**
 
 ### Decision VM-8: The Schema Form
 
@@ -778,19 +848,19 @@ validation of objects, and the two parity rules.
   again.
 - **D. Polling.** A delay on every intent, or a held request, which is B.
 
-**Recommendation: A.** Under host mode the same payloads move to its owner-only socket
-and credential with the control verbs.
+**Decided 2026-11-18: A.** Under host mode the same payloads move to its owner-only
+socket and credential with the control verbs.
 
 ### Decision VM-10: The View Model’s First Slice
 
 **Needed for:** Phase 4, before anything else.
 
-This decision chooses the **view slice**, the view model’s first step, and recommends
-its order with the object slice of
+This decision chooses the **view slice**, the view model’s first step, and its order
+with the object slice of
 [Decision 22](plan-2026-11-14-object-data-model-and-views.md#decision-22-the-first-slice).
 
-- **A. The summary, and `show` with an object or an address.** What the reader sees and
-  “open this file or pull request”, the owner’s scope.
+- **A. The summary, and `present` with an object or an address.** What the reader sees
+  and “open this file or pull request”, the owner’s scope.
   An agent writes through `--api --server`.
 - **B. Reading only.** An agent can see what the reader sees and can show nothing.
 - **C. Wait for the list host, and ship lists with it.** Nothing until the parent plan’s
@@ -799,10 +869,10 @@ its order with the object slice of
 - **D. Confirmation for `--present` alone.** It waits for the live-server registry
   (`mb-5xi4`), builds the relay, and leaves it with one caller.
 
-**Recommendation: A.** Every later slice is a facet or a settable field added to these
-contracts, which is not a break.
+**Decided 2026-11-18: A.** Every later slice is a facet or a settable field added to
+these contracts, which is not a break.
 
-**Recommendation on order: the view slice first, or beside the object slice.** The
+**Decided 2026-11-18, on order: the view slice first, or beside the object slice.** The
 owner’s stated initial core is the view slice: knowing what the reader sees, and opening
 files and pull requests.
 It needs no code from Phases 1 to 3, and what it needs of the object half is a short
@@ -820,8 +890,9 @@ phase’s items among them, as its Stack V.
 ### Phase 4: The View Model
 
 Phase 4 is listed last, and its first step, the view slice, waits for no other phase’s
-code. [Decision VM-10](#decision-vm-10-the-view-models-first-slice) recommends that it
-land first, or beside the object slice.
+code.
+By [Decision VM-10](#decision-vm-10-the-view-models-first-slice) it lands first, or
+beside the object slice.
 
 **The view slice: what the reader sees, and “open this”.** It needs no code from Phases
 1 to 3: an address and a reference convert both ways through parsers that exist and that
@@ -851,29 +922,32 @@ says what an outside writer of an intent is promised.
 - [ ] Measure the publish and the pinned page’s stream in Chrome and WebKit before
   either ships. The measurement comes first, because it sets `MAX_VIEWERS`,
   `MAX_VIEW_STATE_BYTES`, and the publisher’s debounce.
+  With it, verify viewer identity and the stream in the app’s web view, as
+  [Hosts](#hosts) lists.
 - [ ] Add the reference and collection reference definitions in `objects/`, and the
   `object:` line in `--show`, each unless the object slice has landed it.
   The implementation map lands both as groundwork, before either slice.
 - [ ] Add `ui/` with the two contracts, their schemas and corpus under
   `data/ui-format/`, the family’s registry, the fixed list of types with the route each
-  one’s reference leads to, and the `control` setting with its `--ui-control` flag; have
+  one’s reference leads to, the model’s rule that `if_generation` names its `viewer`,
+  and the `control` setting with its `--ui-control` flag and its default by caller; have
   `devtools/check_artifact_contracts.py` compare that registry with a contract table in
   a new `docs/project/architecture/arch-view-model.md`. The check compares one registry
   with one document today, and the parent plan’s Phase 2 adds a pair too, so it is
   changed once, to take a list of pairs.
-- [ ] Add the viewer registry, `GET` and `POST /api/ui/viewers`, and `/api/ui/intents`
-  with its outcome envelope; give the event stream `?viewer=<id>`, and serve it for
-  every subject, with `ui` events alone where the subject has no `watcher` capability,
-  since a pinned revision’s page has no stream today (`events_route.py:773`,
-  `static/app.js:9109`).
+- [ ] Add the viewer registry, `GET` and `POST /api/ui/viewers`, the record route
+  `GET /api/ui/viewer`, and `/api/ui/intents` with its outcome envelope; give the event
+  stream `?viewer=<id>`, and serve it for every subject, with `ui` events alone where
+  the subject has no `watcher` capability, since a pinned revision’s page has no stream
+  today (`events_route.py:773`, `static/app.js:9109`).
 - [ ] Teach the pane’s lifecycle the two facts `pane.status` needs: a 404 apart from
   another failure, and the status of an owner that paints for itself
   ([The View State](#the-view-state)).
 - [ ] Add `static/ui-state.js` in the deferred tier: the registry of `describe`
   functions and the summary’s functions, with an adapter in each navigation panel for
-  `nav.current`, the publisher, `openAddress`, the applier for `show` with `object` or
-  `address`, which enforces `if_generation` and names the intent in its publish, and the
-  notice.
+  `nav.current`, the publisher, `openAddress`, the applier for `present` with `object`
+  or `address`, which enforces `if_generation` and names the intent in its publish, and
+  the notice.
 - [ ] Add `--api --server URL` and the artifact form of `--format yaml`. `--present`
   does not change in this slice.
 - [ ] Add the parity rows, the browserless session, the agreement test, a design-system
@@ -885,11 +959,12 @@ field:
 
 | Slice | Waits for |
 | --- | --- |
+| The bounded wait on `/api/ui/viewer`, `since` and `wait` | Nothing more; a measured cap on the wait, in `ui/` |
 | `pane.list` for `/pulls`; facets on request; an observer’s stream of states | The parent plan’s Phase 1 list host |
-| `--live`; every change to `--present`: its `show` after the handoff, its confirmed report, and the `ui.present-confirmation` row | The live-server registry (`mb-5xi4`) |
-| `nav.list` for Pulls, Commits, and Files, and for Recent, which is on the list host from the start; `show` sets `nav.tab`, `params`, and `expanded` | Each panel’s move to the list host in the parent plan’s Phase 3, until which the view slice’s adapter publishes `nav.current` alone; the Recent tab plan’s R4 |
-| `pane.parts` and `mb.ui`; `pane.inner`; `show` sets `pane.view` and `pane.inner` | A page view’s declaration of its parts through `mb.ui`; a contract for the nested types `pane.inner` names |
-| `overlay`, `display`, `commands`; a `run` verb; the app’s session saved as view states; MCP tools, one per route (`mb-5lgp`) | A need for each |
+| `--live`; every change to `--present`: the intent it sends after the handoff, its confirmed report, and the `ui.present-confirmation` row | The live-server registry (`mb-5xi4`) |
+| `nav.list` for Pulls, Commits, and Files, and for Recent, which is on the list host from the start; `present` sets `nav.tab`, `params`, and `expanded` | Each panel’s move to the list host in the parent plan’s Phase 3, until which the view slice’s adapter publishes `nav.current` alone; the Recent tab plan’s R4 |
+| `pane.parts` and `mb.ui`; `pane.inner`; `present` sets `pane.view` and `pane.inner` | A page view’s declaration of its parts through `mb.ui`; a contract for the nested types `pane.inner` names |
+| `overlay`, `display`, `commands`; a `run` verb; the app’s session saved as view states | A need for each |
 
 ## Testing Strategy
 
@@ -916,15 +991,12 @@ Agent control ships under the `control` setting of
 
 ## Open Questions
 
-- **In what order with the object slice?**
-  [Decision VM-10](#decision-vm-10-the-view-models-first-slice) recommends the view
-  slice first, or beside the object slice.
-  The owner chooses.
-
 - **Finding a running server.** Reading from ROOT, and every change to `--present`, need
   the live-server registry (`mb-5xi4`), which is planned and not built.
   Until it lands, the view slice serves a caller that knows the server’s address,
-  through `--api --server`.
+  through `--api --server`. The agent interface plan’s open
+  [Decision AI-7](plan-2026-11-18-agent-interface.md#decision-ai-7-finding-a-server-the-agent-did-not-start)
+  asks whether the registry’s discovery half comes forward, ahead of host mode.
 
 - **What publishing costs.** One request per settled change, and one held stream on a
   pinned page that has none today.
@@ -950,34 +1022,17 @@ Agent control ships under the `control` setting of
   slice.
 
 - **The served revision.** A `/view/` address names no revision, and a switch moves
-  every tab, so `show` leaves `served` read-only.
+  every tab, so `present` leaves `served` read-only.
 
 - **Forged publishes.** Any process that reaches the port can publish a state for a
   viewer, as it can call any route; host mode’s credential is the answer.
 
-- **Does `if_generation` require `viewer`?** A generation belongs to one viewer, and an
-  intent that names none goes to `rows[0]`, so `if_generation` alone can be compared
-  with another viewer’s count ([Writing](#writing)).
-
-- **Does an implied `--untrusted` count?** An acquired Git source always runs under the
-  untrusted profile (`cli/git_pin_cli.py:114-120`), and under `--untrusted` the default
-  of [Decision VM-5](#decision-vm-5-consent-and-trust) is `offer`. So a `show` on the
-  server a pull request URL opens would wait on the reader, although that decision calls
-  that mirror the case the view slice exists for.
-
 - **Which routes answer a contract record?** `--format yaml` prints an artifact for an
   answer that is one contract record ([Reading](#reading)), and nothing yet tells the
   command which routes those are.
-  The family’s registry is the likely place.
-  The agent interface plan’s
-  [Decision AI-5](plan-2026-11-18-agent-interface.md#decision-ai-5-reading-one-viewer)
-  proposes a record route beside the list, and its
-  [Decision AI-6](plan-2026-11-18-agent-interface.md#decision-ai-6-following) a bounded
-  wait on the read where this plan has an observer’s stream.
-
-- **The verb’s name.** The agent interface plan’s
-  [Decision AI-4](plan-2026-11-18-agent-interface.md#decision-ai-4-one-word-for-the-act)
-  recommends `present` in place of `show`. This plan keeps `show` until that is settled.
+  The family’s registry is the likely place, and the agent interface plan’s
+  [Self-Description](plan-2026-11-18-agent-interface.md#self-description) asks the route
+  listing to say it.
 
 - **Parts of an embedded view.** The example under [UI Contracts](#ui-contracts) reports
   `diff-summary` and `layout` under the pull request page, which embeds the diff view.

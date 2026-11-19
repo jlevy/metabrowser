@@ -69,25 +69,27 @@ It links each document below and the contributor standards in `docs/`.
   pull request’s Changes that opens a changed file at the pull request’s head in the
   main UI, replacing the standalone revision page; approved 2026-11-17
 - [Object data model and views](specs/active/plan-2026-11-14-object-data-model-and-views.md):
-  a draft for one modeled object per file, folder, commit, and pull request, drawn in
-  several view shapes; the parent of the five plans below, with some of its key
-  decisions taken and the rest under the owner’s review
+  one modeled object per file, folder, commit, and pull request, drawn in several view
+  shapes; the parent of the five plans below; its decisions were taken on 2026-11-18,
+  and nothing is built
 - [View model and view state](specs/active/plan-2026-11-18-view-model-and-view-state.md):
   a view state each viewer publishes, by reference to those objects, that an agent can
-  read and ask to change with a `show` intent; a draft
+  read and ask to change with a `present` intent; decided 2026-11-18, not built
 - [Implementation map for objects, views, and view state](specs/active/plan-2026-11-18-object-model-implementation-map.md):
   the object model, view model, and Recent tab plans as stacks of pull requests, with
-  safe groundwork first and a checkout’s uncommitted changes as the first object type; a
-  draft
+  safe groundwork first and a checkout’s uncommitted changes as the first object type;
+  the order was decided on 2026-11-18, and nothing is built
 - [Plugin authoring for objects, views, and view state](specs/active/plan-2026-11-18-plugin-authoring-objects-views.md):
   what a plugin’s manifest, JavaScript, and Python declare for object types, views,
-  collections, and view state parts; a draft
+  collections, and view state parts; decided 2026-11-18, not built
 - [The Recent tab: updates, events, and working-tree changes](specs/active/plan-2026-11-18-recent-tab-updates-and-events.md):
   a main tab of what changed in the served root, by folder, Git, and GitHub tier, with
-  changes clumped into updates and notable events on their own rows; a draft
+  changes clumped into updates and notable events on their own rows; decided 2026-11-18,
+  not built
 - [Agent interface for objects and view state](specs/active/plan-2026-11-18-agent-interface.md):
   how an agent reads what the reader sees and asks a viewer to show a file or a pull
-  request, through `metab` and the agent skill; a draft
+  request, through `metab` and the agent skill; decided 2026-11-18 except one open
+  decision, on finding a server the agent did not start, and not built
 - [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked

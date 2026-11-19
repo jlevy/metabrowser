@@ -4,16 +4,14 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft. Nothing here is built.
-A companion to
+**Status:** Decided, and nothing here is built.
+The owner took every decision under [Key Decisions](#key-decisions), RT-1 to RT-7, on
+2026-11-18, with the parent plan’s Decisions 1 to 23. A companion to
 [Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), the
 parent plan below, whose Decision 19 this plan answers and whose mixed list it designs;
-[What This Plan Takes Over](#what-this-plan-takes-over) lists the parts.
-The owner took the parent plan’s Decisions 1 to 8, 10, 12, 19, 20, and 22 on 2026-11-18,
-and its Decisions 9, 11, 13 to 18, 21, and 23 are accepted at their recommendations and
-under the owner’s review; [Settled](#settled) says which of them this plan rests on.
-Every item under [Key Decisions](#key-decisions), RT-1 to RT-7, is open, at its
-recommendation. Written against `main` at `a1100bca6`.
+[What This Plan Takes Over](#what-this-plan-takes-over) lists the parts, and
+[Settled](#settled) says which of the parent’s decisions this plan rests on.
+Written against `main` at `a1100bca6`.
 
 ## Overview
 
@@ -46,10 +44,6 @@ The owner decided these on 2026-11-18, and this plan does not reopen them:
 - **It is one surface with three tiers,** keyed on what the served root is.
 - **The parent plan’s forms apply:** SoftSchema contracts, `pull-request` as that type’s
   one spelling, and UTC strings at second precision.
-
-One more is accepted at its recommendation and under the owner’s review, so this plan
-designs on it without treating it as final:
-
 - **Mixed lists are composed on the server,** the parent plan’s
   [Decision 18](plan-2026-11-14-object-data-model-and-views.md#decision-18-composing-a-mixed-list)
   A.
@@ -133,7 +127,7 @@ Two costs are recorded: the browser’s for a full `/api/recent` answer
 
 | Source | Reads today | Needs |
 | --- | --- | --- |
-| `files` | The newest files in a window, capped, with no cursor (`server.py:3084`, `inventory_engine/contract.py:1172`): current modification times, not a log of writes. The Python provider filters and sorts the whole index for each query (`inventory_engine/providers/python_inventory.py:2718-2747`) | To page, a cursor below a time, from every inventory provider |
+| `files` | The newest files in a window, capped, with no cursor (`server.py:3084`, `inventory_engine/contract.py:1172`): current modification times, not a log of writes. The Python provider filters and sorts the whole index for each query (`inventory_engine/providers/python_inventory.py:2718-2747`) | To page, a cursor below a time, from every inventory provider. For edit history, the recorder of [R4](#r4-later-each-alone) |
 | `commits` | A log in `--date-order`, which follows topology, with each commit’s time (`git/history.py:641`, `git/log.py:49`) | First, the `all` scope’s first page, ordered by commit time. To page, a bounded walk before a time |
 | `working-tree` | Nothing | `GET /api/git/status`, measured by the status plan’s Phase 0. It never pages |
 | `refs` | Nothing: no reflog is read, and a mirror records when it last fetched, not what moved (`cache/records.py:341`) | A reflog read; a record of a mirror’s fetches |
@@ -188,6 +182,8 @@ Three properties follow, and each is a test:
 
 One limit is said in the tab: a file update lists the files *last* modified in its span.
 A file written twice appears once, at its later time, and leaves the earlier update.
+The [edit-history recorder](#r4-later-each-alone) lifts the limit for the writes it saw,
+and R1 ships with the limit.
 
 **Live.** The server watches what the sources read, coalesces, and sends one
 `recent.change` event with the collection’s `generation` on the page’s stream.
@@ -221,8 +217,11 @@ move without input.
   The status plan’s `GitWorkingTreeDiffSource` builds one entry’s comparison; this plan
   needs one manifest over every path, with hunks deferred, which is new work for that
   plan’s measurement gate.
+  The status plan records it under
+  [Requirements From the Recent Tab Plan](plan-2026-08-26-git-status-and-working-tree-diffs.md#requirements-from-the-recent-tab-plan).
 - **Address.** `/status`, and `/status/<path>` for one file in it
-  ([RT-3](#rt-3-the-working-trees-address)); `?since=&until=` narrows it to one update.
+  ([RT-3](#rt-3-the-working-trees-address)), which the status plan records in the same
+  section; `?since=&until=` narrows it to one update.
 - **Members and freshness.** Its entries are `changed-file` references that name it as
   their parent. A working-tree update holds the entries whose modification time falls in
   its span; a deleted path has no time and takes its parent folder’s. The status plan’s
@@ -353,9 +352,9 @@ rows:
   is `recent`, `nav.current` is the row’s reference, an `update` or an `event`, and
   `nav.list` names `{name: recent, params: {}}`. `object` stays what the address
   selects: the commit or the pull request.
-- **Intents.** `show` with an `update` or an `event` opens its `href` with Recent in
+- **Intents.** `present` with an `update` or an `event` opens its `href` with Recent in
   front and that row current.
-  `show` with the subject itself is unchanged, and reveals it in its own tab.
+  `present` with the subject itself is unchanged, and reveals it in its own tab.
 
 ### Parity and Testing
 
@@ -392,7 +391,8 @@ source’s gap, the member cap, the page size, and the debounce of `recent.chang
 
 ## Key Decisions
 
-None is resolved.
+Each gives the phase that needs it, the options it weighed, and the decision.
+The owner took all seven on 2026-11-18.
 
 ### RT-1: The Item Model
 
@@ -405,7 +405,7 @@ None is resolved.
   plan first drew it. A pull request has one row, which cannot say what happened, and
   file changes have no subject to gather under.
 
-**Recommendation: A.**
+**Decided 2026-11-18: A.**
 
 ### RT-2: The Clumping Rule
 
@@ -420,7 +420,7 @@ None is resolved.
 - **D. A gap, with a cap measured from the newest change.** Every boundary in a chain
   moves when the chain grows, and rows and identifiers with it.
 
-**Recommendation: A,** with the span and the gaps chosen from recorded sessions.
+**Decided 2026-11-18: A,** with the span and the gaps chosen from recorded sessions.
 
 ### RT-3: The Working Tree’s Address
 
@@ -435,8 +435,9 @@ None is resolved.
   digest no reader can write.
 - **C. A second space, `/changes`.** Two addresses for one file’s uncommitted diff.
 
-**Recommendation: A,** which changes the status plan; B if its gate finds a path the
-codec cannot spell.
+**Decided 2026-11-18: A,** which changes the status plan, as its
+[Requirements From the Recent Tab Plan](plan-2026-08-26-git-status-and-working-tree-diffs.md#requirements-from-the-recent-tab-plan)
+records; B if its gate finds a path the codec cannot spell.
 
 ### RT-4: File Changes in a Repository Folder
 
@@ -447,8 +448,8 @@ codec cannot spell.
 - **B. Only the paths Git status reports,** with a status letter and a diff.
   It needs the status plan.
 
-**Recommendation: A in R1,** labelled “files changed” and never “uncommitted”, **and B
-from R2.**
+**Decided 2026-11-18: A in R1,** labelled “files changed” and never “uncommitted”, **and
+B from R2.**
 
 ### RT-5: What Stands Alone
 
@@ -459,7 +460,7 @@ from R2.**
 - **B. Commits that arrive by one ref move clump under it.** Fewer rows after a pull.
   It needs the `refs` source, and folds away commits the owner asked to see.
 
-**Recommendation: A,** with B weighed again when `refs` exists.
+**Decided 2026-11-18: A,** with B weighed again once a `refs` source exists.
 
 ### RT-6: The Name
 
@@ -475,7 +476,7 @@ from R2.**
 - **C. Fold the Files filter into the tab.** It loses the filter’s composition with
   type, size, and grouping, which is why the earlier tab was folded into Files.
 
-**Recommendation: A.**
+**Decided 2026-11-18: A.**
 
 ### RT-7: The First Slice
 
@@ -488,7 +489,7 @@ from R2.**
   implementation of row mechanics for the parent plan’s Phase 3 to replace.
 - **C. Wait for the status plan,** and ship tier 2 whole.
 
-**Recommendation: A.**
+**Decided 2026-11-18: A.**
 
 ## Implementation Plan
 
@@ -531,8 +532,37 @@ the implementation map’s Tier 1, to this plan’s definition.
 
 ### R4: Later, Each Alone
 
-The `refs` source; `/recent` as a page of cards; cursors that reach past each source’s
-first read; the tab’s `nav.list` facet; `/compare/` for a pushed range.
+- [ ] The `refs` source.
+- [ ] `/recent` as a page of cards, the first real use of the `card` shape, whose frame
+  is built for it and not before, in the implementation map’s C5 (the parent plan’s
+  [Decision 11](plan-2026-11-14-object-data-model-and-views.md#decision-11-the-set-of-shapes)).
+- [ ] Cursors that reach past each source’s first read.
+- [ ] The tab’s `nav.list` facet.
+- [ ] `/compare/` for a pushed range.
+- [ ] An edit-history recorder, so that a file update is real edit history and not a
+  group by last modification time.
+  R1 does not wait for it.
+  - **What it records.** It subscribes to the bus the composer watches and logs each
+    file change as it happens: the path, the time, and the kind of change, never
+    content. The `files` source answers from the log wherever the log covers a span, so a
+    file written twice appears in both updates, and falls back to modification times
+    elsewhere.
+  - **What it cannot know.** It sees only what a running server saw.
+    A change made while no server ran, or before the log begins, is listed by its
+    modification time, and the source’s coverage says where the log starts.
+  - **Measured and bounded.** The log is new persisted state.
+    Its write rate under a build’s storm of output, its size, and its retention are
+    measured before it ships, and each bound is a constant with its measurement beside
+    it.
+  - **Where it is kept.** In durable storage the user owns, readable by the owner alone,
+    since it holds private file names, and never in a temporary directory, which
+    [Durable Storage](../../../../AGENTS.md#durable-storage) rules out for anything a
+    later session depends on.
+    The log cannot be computed again, so by the reasoning that put recent targets in the
+    configuration directory
+    ([Recent Targets](../../architecture/arch-recent-targets.md)) it does not belong in
+    the cache, which may be deleted at any time; its measured size decides whether it
+    sits beside them or in a directory of its own.
 
 ## Open Questions
 

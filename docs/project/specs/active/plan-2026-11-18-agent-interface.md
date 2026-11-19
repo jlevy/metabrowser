@@ -4,31 +4,30 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft. A design direction for review: every item under
-[Key Decisions](#key-decisions), AI-1 to AI-6, is open, and nothing here is built.
+**Status:** Decided except for one decision, and nothing here is built.
+The owner took Decisions AI-1 to AI-6 on 2026-11-18, and
+[Decision AI-7](#decision-ai-7-finding-a-server-the-agent-did-not-start), on finding a
+server the agent did not start, is open.
 It is written against
 [View Model and View State](plan-2026-11-18-view-model-and-view-state.md), “the parent
 plan” below, and that plan’s own parent,
 [Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), “the
-object model plan”. Of the decisions it rests on, the owner took the parent’s VM-8 and
-the object model plan’s Decisions 1 to 8, 10, 12, 19, 20, and 22 on 2026-11-18. The
-object model plan’s Decisions 9, 11, 13 to 18, 21, and 23 are accepted at their
-recommendations and under the owner’s review.
-The parent’s other VM decisions are open, so each choice here that rests on one names
-it. Written against `main` at `a1100bca6`.
+object model plan”. The owner took the decisions of both, VM-1 to VM-10 and 1 to 23, the
+same day. Written against `main` at `a1100bca6`; [Self-Description](#self-description)
+and [Launch Modes](#launch-modes) were checked against `main` at `c2c4d9958` and say so.
 
 ## Overview
 
 The object model plan gives each object a contract.
-The parent plan gives each viewer a **view state**, and lets an agent send a `show`
+The parent plan gives each viewer a **view state**, and lets an agent send a `present`
 **intent**. This document says how an agent uses them end to end: the command for each
 task, the YAML that comes back, how the agent finds a running server, and what bounds
 misuse.
 
 It adds one rule: an agent has one vocabulary.
 Every read is a registered route, every record is a contract’s, and every change is an
-`Intent`. The command line, the agent skill, and a later MCP adapter carry those routes
-and records, and none adds verbs or shapes of its own.
+`Intent`. The command line and the agent skill carry those routes and records, and
+neither adds verbs or shapes of its own.
 
 The scope is the parent’s **view slice**: knowing what the reader sees, and showing a
 file or a pull request.
@@ -41,6 +40,10 @@ file or a pull request.
   says what the viewer then showed.
 - Every recipe the skill teaches runs as written against the `metab` of its commit, and
   a golden pins it.
+- An agent learns every capability here from `metab` alone
+  ([Self-Description](#self-description)).
+- An agent can find and reach a server however it came to exist: one the agent started,
+  one the user started, and one the macOS app launched ([Launch Modes](#launch-modes)).
 
 ## Non-Goals
 
@@ -48,6 +51,8 @@ file or a pull request.
   object model plan’s.
 - Telling one agent from another: host mode’s credential authenticates the user, not the
   agent (`docs/project/specs/active/plan-2026-11-10-native-macos-app.md:410`).
+- An MCP adapter: one could be added later as an optional wrapper over the same routes
+  (`mb-5lgp`), and nothing in this plan depends on it.
 
 ## Background
 
@@ -66,7 +71,9 @@ Paths below are under `src/metabrowser/` unless they start with `docs/`, `tests/
 - **Showing.** `--present` hands a folder, a file, or a GitHub URL to the macOS app and
   reports `confirmed: false` (`cli/present.py:795`). It cannot name a heading, a commit
   of a local checkout, or a changed file, so the skill serves for those
-  (`skills/metabrowser/SKILL.md:102`).
+  (`skills/metabrowser/SKILL.md:102`). Since #582, which merged after `a1100bca6`, it
+  can deliver to a browser instead, on a detached server it starts and reports
+  ([Launch Modes](#launch-modes)).
 
 ## Design
 
@@ -76,26 +83,33 @@ Paths below are under `src/metabrowser/` unless they start with `docs/`, `tests/
 | --- | --- | --- |
 | `metab ROOT --api ROUTE` | Every route, in process, with no page | Reads objects and collections. Unchanged |
 | `metab ROOT --show ADDRESS` | One selection, in process | Checks an address before it is shown |
-| `metab --api ROUTE --server URL` | A running server | Reads view states and sends intents. New, proposed by the parent |
-| `metab --present …` | The app | Unchanged in the view slice; it sends intents once the registry lands |
+| `metab --api ROUTE --server URL` | A running server | Reads view states and sends intents. New, with the view slice |
+| `metab --present …` | The app, or a browser | Hands a target to a viewer. Unchanged in the view slice; once the registry lands it sends the intent itself |
 | `--live` | ROOT’s server, through the registry | Takes the place of `--server` once `mb-5xi4` lands |
 | The skill, `skills/metabrowser/SKILL.md` | — | Routes a task to these commands, and is tested against them |
-| An MCP adapter, `metab --mcp` (`mb-5lgp`) | Whatever `metab` reaches | The same routes, as tools |
 
-**The command line, taught by the skill, is primary**
-([Decision AI-1](#decision-ai-1-the-primary-surface)). `--api` reaches every registered
-route by construction ([AGENTS.md](../../../../AGENTS.md#cli-and-functional-ui-parity)),
-so a facet the view model adds later is readable with no new agent surface.
+**The command line, taught by the skill, is the complete agent surface**
+([Decision AI-1](#decision-ai-1-the-agent-surface)). Every agent need is a route
+reachable through `metab`, and nothing depends on another protocol.
+`--api` reaches every registered route by construction
+([AGENTS.md](../../../../AGENTS.md#cli-and-functional-ui-parity)), so a facet the view
+model adds later is readable with no new agent surface.
 A command line driven through a skill is the channel coding agents use most reliably
 (`docs/project/research/research-2026-11-10-native-app-server-topology.md:315`).
 
-The MCP adapter serves an agent with no shell, and one whose sandbox blocks loopback, as
-Codex’s default does (the same brief, `:73`). It is generated, not written by hand: a
-generic `api` tool that takes a route, and one tool per route that takes a contract,
-whose input schema is that contract’s compiled schema.
-A field added to `Intent` then reaches the command line, the skill, and the tool from
-one definition. Ruled out as second vocabularies: MCP verbs such as `open_file`, shell
+**A sandbox that blocks loopback needs a rule.** Reading a view state or sending an
+intent is a request to a loopback address, which Codex’s default sandbox blocks and
+Claude Code’s, where it is on, allows only when configured (the same brief, `:73`). So
+an agent in such a sandbox needs the user to allow a narrow sandbox rule for the
+command, as `--present` already does
+([When a Sandbox Blocks It](../../../../skills/metabrowser/SKILL.md#when-a-sandbox-blocks-it)).
+[Trust](#trust) says how narrow.
+Where the user allows none, the agent can still read content through `--api` in its own
+process, and gives an address in its reply in place of showing it.
+
+Ruled out as second vocabularies: verbs of another protocol such as `open_file`, shell
 wrappers that live only in the skill, and `metab` flags that mirror an intent’s fields.
+A field added to `Intent` reaches the command line and the skill from one definition.
 
 ### Sessions
 
@@ -105,12 +119,13 @@ agent’s own.
 **What is the reader looking at?**
 
 ```shell
-metab --api /api/ui/viewers --server <url> --format yaml
+metab --api /api/ui/viewer --server <url> --format yaml
 ```
 
 ```yaml
-rows:
-- viewer: t-4f2a
+softschema: {contract: "metabrowser.ui:ViewState/v1", envelope: view_state, status: enforced}
+view_state:
+  viewer: t-4f2a
   generation: 42
   attention: focused
   served: {revision: working-tree, ref: null}
@@ -118,23 +133,30 @@ rows:
   object: {type: pull-request, id: "561"}
   nav: {tab: pulls, current: {type: pull-request, id: "561"}}
   pane: {kind: pull-request, view: pull-request, views: [pull-request], status: ready}
+```
+
+The record route answers the viewer the reader attended last, as one artifact
+([Decision AI-5](#decision-ai-5-reading-one-viewer)), and `?viewer=<id>` names another.
+The `address` carries the pull request’s tab and the changed file, which the view slice
+publishes nowhere else.
+Answered `no_viewer`, no page is connected, and the agent says so.
+With `attention: hidden`, it says what the reader last had open, not what they are
+looking at.
+
+The list answers every viewer, most recently attended first, for an agent that must
+choose among tabs. It is an envelope, so it prints with no header:
+
+```shell
+metab --api /api/ui/viewers --server <url> --format yaml
+```
+
+```yaml
+rows:
+- {viewer: t-4f2a, generation: 42, attention: focused}   # and the other fields above
 next_after: null
 complete: true
 truncated: false
 generation: 7
-```
-
-`rows[0]` is the viewer the reader attended last.
-The `address` carries the pull request’s tab and the changed file, which the view slice
-publishes nowhere else.
-With no rows, no page is connected, and the agent says so.
-With `attention: hidden`, it says what the reader last had open, not what they are
-looking at. `?viewer=t-4f2a` answers that one record, which prints as an artifact
-([Decision AI-5](#decision-ai-5-reading-one-viewer)):
-
-```yaml
-softschema: {contract: "metabrowser.ui:ViewState/v1", envelope: view_state, status: enforced}
-view_state: {viewer: t-4f2a, generation: 42}   # and the other fields above
 ```
 
 **Show the reader this pull request, file, or changed file.** The agent writes an intent
@@ -144,7 +166,7 @@ and posts it:
 softschema: {contract: "metabrowser.ui:Intent/v1", envelope: intent, status: enforced}
 intent:
   viewer: t-4f2a
-  show: {object: {type: pull-request, id: "562"}}
+  present: {object: {type: pull-request, id: "562"}}
   if_generation: 42
 ```
 
@@ -165,10 +187,13 @@ view_state:              # attention, served, and nav as above
 
 The answer is the intents route’s envelope, which the parent keeps internal, so it
 prints with no header.
-The parent lets an intent name its `viewer` or go to `rows[0]`, and its example names
-none; the sessions here always send one ([Open Questions](#open-questions)).
+An intent may omit `viewer`, and then goes to the viewer attended last.
+One that sends `if_generation` must name its `viewer`, since a generation is one
+viewer’s counter, and is refused as `invalid` without it
+([Writing](plan-2026-11-18-view-model-and-view-state.md#writing)). Every session here
+reads first and sends both.
 
-| To show | `show` carries |
+| To show | `present` carries |
 | --- | --- |
 | A pull request | `object: {type: pull-request, id: "562"}` |
 | A file | `object: {type: file, id: docs/plan.md}` |
@@ -181,8 +206,10 @@ none; the sessions here always send one ([Open Questions](#open-questions)).
 | `applied`, and `pane.status: not_found` or `failed` | Says the address opened nothing |
 | `offered` | Says a notice in the tab asks the reader, and does not wait |
 | `cancelled` | Stops: the reader moved |
+| `pending` | Follows the `status_route` once, and reports what it answers |
 | `refused` as `stale` | Reads again, and asks before a second try |
 | `refused` as `busy`, `control_off`, or `no_viewer` | Gives the address in its reply, or hands the page over as the skill does today |
+| `refused` as `invalid`, `not_an_address`, `unsupported_field`, or `unknown_viewer` | Corrects the intent: each names a mistake in what was sent |
 
 **Show the line I am talking about.** A line anchor is part of the address.
 It opens the Source view with the lines marked
@@ -218,7 +245,7 @@ against a row’s integer `number`.
 **Follow what the reader does.**
 
 ```shell
-metab --api '/api/ui/viewers?viewer=t-4f2a&since=43&wait=20' --server <url> --format yaml
+metab --api '/api/ui/viewer?viewer=t-4f2a&since=43&wait=20' --server <url> --format yaml
 ```
 
 The command answers as soon as the viewer’s `generation` passes `since`, and otherwise
@@ -245,10 +272,46 @@ itself.
 
 **Under host mode** (`mb-qzny`), the control verbs move to an owner-only socket
 (`mb-1zyp`) with the same records, under the names the parent gives them: `viewers`
-answers `ViewState` rows, `present` carries an intent’s `show`, and the page’s
-`navigate` event (`mb-54r1`) is the parent’s `ui.intent`. `metab` picks the transport,
-so no recipe changes, and an agent keeps reading content through `--api` in its own
-process (`docs/project/research/research-2026-11-10-native-app-server-topology.md:473`).
+answers `ViewState` rows, `present` carries an intent, whose own field is `present` too,
+and the page’s `navigate` event (`mb-54r1`) is the parent’s `ui.intent`. `metab` picks
+the transport, so no recipe changes, and an agent keeps reading content through `--api`
+in its own process
+(`docs/project/research/research-2026-11-10-native-app-server-topology.md:473`).
+
+### Launch Modes
+
+A server comes to exist in three ways, and the owner asks that an agent can find and
+reach all three. Today it sees one.
+“Today” is `main` at `c2c4d9958`.
+
+|  | The agent starts it | The user starts it | The macOS app launches it |
+| --- | --- | --- | --- |
+| **How** | `metab ROOT --no-open`, or `--present --open-in browser`, which starts one detached (#582) | `metab ROOT` in a terminal | `metab ROOT --no-open --exit-on-eof` on a loopback port the app picks (`docs/project/architecture/arch-macos-app.md:58`) |
+| **Today** | Found: the agent reads the `Serving` line, or `--present`’s report of the address and process ID. Reached only by a raw HTTP client, since `--api` runs a server of its own | Not found, unless the user gives the address | Not found: the app reports no address, and `--present` gets no reply |
+| **In the view slice** | Found the same way, and reached with `--api --server URL`: the one complete loop | Reached with `--server` once the user gives the address; `/api/identity` confirms the root | Not found. An agent can show a page through `--present` and cannot read what the reader sees |
+| **After the registry** (`mb-5xi4`) | Listed; `--live` resolves ROOT | Listed; `--live` resolves ROOT | Listed, with the app as its owner; `--live` resolves ROOT |
+| **Under host mode** (`mb-qzny`, `mb-1zyp`) | The same records over the server’s owner-only socket | The same, through the socket | Through the socket alone: its loopback port needs a token only the app holds |
+
+- **Only the first column works before the registry,** and the registry waits on host
+  mode (`mb-qzny` blocks `mb-5xi4`).
+  [Decision AI-7](#decision-ai-7-finding-a-server-the-agent-did-not-start), which is
+  open, would bring its discovery half forward.
+- **The credential.** Host mode puts content routes behind a token in the
+  `Authorization` header that a client sends only to its own origin, and no client’s
+  credential is a cookie
+  (`docs/project/specs/active/plan-2026-11-10-native-macos-app.md:416-424`). An agent
+  never holds the token of a server the app launched, and a listing must never print
+  one. It reaches that server through the owner-only socket of `mb-1zyp`, where socket
+  ownership authenticates the user
+  (`docs/project/specs/active/plan-2026-11-10-native-macos-app.md:410-411`, `:426-427`),
+  for the control verbs alone: identity, `viewers`, and `present`. It reads content in
+  its own process through `--api`, as now.
+  Whether a server started outside the app carries a token at all is that plan’s to
+  settle, and the socket serves either answer.
+- **A socket is a sandbox rule too.** Codex’s and Claude Code’s sandboxes refuse a Unix
+  socket unless its path is allowed
+  (`docs/project/research/research-2026-11-10-native-app-server-topology.md:447`), so
+  the narrow rule under [Surfaces](#surfaces) still applies.
 
 ### Output Forms
 
@@ -256,9 +319,9 @@ process (`docs/project/research/research-2026-11-10-native-app-server-topology.m
   [Reading](plan-2026-11-18-view-model-and-view-state.md#reading) section sets out: the
   form `serialize_artifact` writes (`plugin_loader/artifact_contracts.py:479`) for one
   contract record, and today’s `--format yaml` for a list and for an intent’s answer.
-  The command must know which routes answer a record of which contract; the family’s
-  registry is the place to say so, which the parent keeps as an
-  [open question](plan-2026-11-18-view-model-and-view-state.md#open-questions).
+  The command must know which routes answer a record of which contract.
+  The family’s registry holds that, and [Self-Description](#self-description) has the
+  route listing publish it.
 - **An artifact is read as one.** `--data` sends a file’s bytes today
   (`cli/api_cli.py:186`). A file that opens with a `softschema:` header is instead
   validated against the contract it names and sent as JSON.
@@ -286,6 +349,39 @@ not looking at.
 - A pull request’s route answers the whole record; `--show /pull/<n>` sums it up, and
   the object model plan’s facets are the bounded read once that route conforms.
 
+### Self-Description
+
+An agent learns every capability in this plan from `metab` alone.
+The skill routes a task to a command, and is not the only place a route or a record is
+described: an agent with the command and no document can still find each one.
+
+| An agent asks | `metab` must answer with | On `main` at `c2c4d9958`, whose lines these are |
+| --- | --- | --- |
+| What can I do here? | `metab --help`, naming each agent task beside its command | The help names modes, not tasks. Its summary names `--api`, `--show`, and `--present` (`cli/main.py:958-966`), names no route listing, and ends at a link to the guide on GitHub (`cli/main.py:513`), a document outside the command |
+| Which routes exist? | `GET /api/routes`, naming every `/api/ui` route and every object route | The route exists. It lists every mounted route with its methods, read from the application at request time, so plugin hooks are included (`server.py:5157`). It gives a path and methods, and not what a route answers |
+| What does a record hold? | Each contract’s compiled schema, read through `--api` | Nothing serves a schema. The cache family’s are package data under `data/cache-format/schemas/`; a plugin’s would be served under `/plugin-static/`, which `--api` refuses, since it issues `/api/` routes alone (`cli/api_cli.py:326`); and the object model plan’s `/api/object-types` answers a schema’s digest, not the schema |
+
+So the gap is three additions, each small:
+
+- **The help names the tasks.** A short paragraph for agents in `metab --help`: see what
+  the reader is looking at, show the reader a page, and list what can be asked, each
+  with its command, and `/api/routes` named as the listing.
+- **The route listing says what a route answers.** A route that answers or takes a
+  contract record carries that contract’s identifier in its `/api/routes` entry, read
+  from the family registries.
+  It also settles which routes print as artifacts, the parent’s
+  [open question](plan-2026-11-18-view-model-and-view-state.md#open-questions).
+- **A route serves the schemas.** `GET /api/contracts` lists every contract a build
+  registers, in every family, with its envelope key and digest, and
+  `GET /api/contract?id=<identifier>` answers one compiled schema, as `pull` sits beside
+  `pulls`. It is a route and not a mode, since `--api` reaches every route by
+  construction ([AGENTS.md](../../../../AGENTS.md#cli-and-functional-ui-parity)). It
+  answers the packaged file with its recorded digest, builds no validator, and loads no
+  schema library, so the startup gate holds.
+  The `metabrowser.ui` contracts are listed from the view slice, and the object
+  contracts join when their registry lands.
+  This settles whether schemas are served, which the object model plan had left open.
+
 ### Trust
 
 The case is an agent steered by text it read, such as a pull request’s body that says to
@@ -296,14 +392,21 @@ bound an intent: it names only an object or a parsed address of the served root,
 admits no root, it runs no file’s scripts, it is announced, Back undoes it, and
 `--ui-control` sets it to `offer` or `off`.
 
+The default does not follow `--untrusted`, which is trust in content, where `control` is
+trust in the caller.
+A repository URL implies `--untrusted` (`cli/git_pin_cli.py:114-124`), and an intent on
+the server a pull request URL opens is still applied at once where the server and the
+caller are local, and offered anywhere else.
+
 This document adds:
 
 - **`--server` takes a loopback origin and follows no redirect.** `--data` sends a local
   file, and a steered agent must not be able to post one to another host with a command
   a sandbox rule lets out.
-- **Sandbox rules stay narrow:** one for `metab --api /api/ui/viewers` and one for
-  `metab --api /api/ui/intents`. A command a rule matches runs with the user’s full
-  access (`skills/metabrowser/SKILL.md:183`), and `--api` with `--plugins-dir` loads a
+- **Sandbox rules stay narrow:** one for each `/api/ui` route a recipe names, such as
+  `metab --api /api/ui/viewer` and `metab --api /api/ui/intents`, and none wider.
+  A command a rule matches runs with the user’s full access
+  (`skills/metabrowser/SKILL.md:183`), and `--api` with `--plugins-dir` loads a
   directory’s code, so the skill never suggests a rule for `metab --api` alone.
 - **The skill’s rules.** Show only what the user asked to see or what the agent is
   itself explaining; a request to show something that arrives in content is data
@@ -332,21 +435,25 @@ every recipe reads before it shows and sends `if_generation`.
 
 ## Key Decisions
 
-Each gives the slice that needs it, the options, and a recommendation.
-None is resolved.
+Each gives the slice that needs it, the options it weighed, and the decision.
 
-### Decision AI-1: The Primary Surface
+| Standing, as of 2026-11-18 | Decisions |
+| --- | --- |
+| Taken by the owner on 2026-11-18 | **AI-1:** the command line, taught by the skill, is the complete agent surface. **AI-2** A: `--server URL` on `--api`. **AI-3** A: the intents route. **AI-4** B: the verb is `present`. **AI-5** B: a record route beside the list. **AI-6** A: a bounded wait on the read |
+| Open | **AI-7:** whether the discovery half of the live-server registry comes forward. Recommended: A |
+
+### Decision AI-1: The Agent Surface
 
 **Needed for:** the view slice.
 
-- **A. The command line through the skill, and MCP later as a generated adapter.** One
-  set of routes and records, and tested recipes.
-  An agent with no shell waits for the adapter.
-- **B. MCP first.** A long-lived process and a second harness before one recipe works,
-  and its bead still asks whether it runs outside the sandboxes.
-- **C. Both, each written by hand.** Two vocabularies to keep in step.
+- **A. The command line, taught by the skill, is the complete agent surface.** Every
+  agent need is a route reachable through `metab`, and nothing depends on another
+  protocol. One set of routes and records, and tested recipes.
+- **B. A second surface written by hand beside it,** with verbs of its own.
+  Two vocabularies to keep in step.
 
-**Recommendation: A.**
+**Decided 2026-11-18: A.** An agent whose sandbox blocks loopback asks the user for the
+narrow rule under [Surfaces](#surfaces).
 
 ### Decision AI-2: Reaching a Running Server Before the Registry
 
@@ -359,7 +466,7 @@ None is resolved.
 - **C. `curl` recipes in the skill.** No change to `metab`, no validation, and a client
   the skill’s test cannot hold to the option table.
 
-**Recommendation: A,** the parent’s proposal with its bounds stated.
+**Decided 2026-11-18: A,** with its bounds as [Trust](#trust) states them.
 
 ### Decision AI-3: The Show Recipe in the View Slice
 
@@ -369,69 +476,131 @@ None is resolved.
   Two steps, a file and a post, and nothing interim to remove.
   `--present` becomes the one command when the registry lands.
 - **B. `--present --server URL` now.** One command, with today’s handoff as its
-  fallback. It puts an interim flag on a mode that opens no connection, and `show` admits
-  no root, which is most of what `--present` delivers.
+  fallback. It puts an interim flag on a mode that opens no connection, and an intent
+  admits no root, which is most of what `--present` delivers.
 - **C. A new mode.** Against the preference for a route over a mode.
 
-**Recommendation: A.**
+**Decided 2026-11-18: A.**
 
 ### Decision AI-4: One Word for the Act
 
 **Needed for:** the view slice, before the contracts are compiled.
 
-`--show` reports a selection and changes nothing, `--present` hands a target to a
-viewer, and the intent’s verb is `show`.
+`--show` reports a selection and changes nothing, and `--present` hands a target to a
+viewer. The intent’s verb was first drafted as `show`.
 
 - **A. Keep `show`.** It reads naturally in YAML. An agent told “show the user X”
   reaches for `--show`, which shows nobody anything.
 - **B. Name the verb `present`.** One word from the flag to the control verb to the
-  intent. The parent’s examples change by one key.
+  intent. The examples change by one key.
 - **C. Rename `--show`.** It changes a released flag, the skill, and the goldens for a
   draft’s sake.
 
-**Recommendation: B.** The examples above keep `show` until it is settled.
+**Decided 2026-11-18: B.** The intent’s field and verb are `present` in every plan.
+`metab --show` keeps its name and its meaning.
+`metab --present` and the field are then one word for one act at two levels: the flag is
+the command that hands a target to a viewer, through the app or a browser today, and the
+field is what an intent carries.
+Once the registry lands the command sends the field
+([Writing](plan-2026-11-18-view-model-and-view-state.md#writing)).
 
 ### Decision AI-5: Reading One Viewer
 
 **Needed for:** the view slice.
 
-- **A. The list, then `?viewer=<id>`,** as the parent has it.
-  No new route. The first read is an envelope with no header, and the record takes a
-  second command.
+- **A. The list, then `?viewer=<id>`.** No new route.
+  The first read is an envelope with no header, and the record takes a second command.
 - **B. A record route beside the list,** `GET /api/ui/viewer`, as `pull` sits beside
   `pulls`. It answers the viewer an intent with no `viewer` reaches, and `no_viewer`
   when there is none. One command, one artifact, and one more route.
 - **C. A YAML stream, one artifact per row.** Standard output stops being one document,
   which the skill’s test requires.
 
-**Recommendation: B.**
+**Decided 2026-11-18: B.** `?viewer=<id>` selects on the record route, so the list
+always answers the collection envelope.
+The parent’s [Reading](plan-2026-11-18-view-model-and-view-state.md#reading) section
+defines the route.
 
 ### Decision AI-6: Following
 
 **Needed for:** the slice after the view slice.
 
 - **A. A bounded wait on the read,** `since` and `wait`. One request and one document,
-  so it works through `--api`, a tool call, and a golden.
+  so it works through `--api` and a golden.
   It holds one request per follower, for at most a measured constant in `ui/`.
 - **B. The parent’s stream of states for an observer.** It delivers every state.
   `--api` refuses a stream (`cli/asgi_client.py:315`), so it needs a new mode, and an
   agent reads results, not streams.
 - **C. Polling with no wait.** Nothing new, and either a delay or a storm.
 
-**Recommendation: A** for agents, with B kept for a shell such as the app.
+**Decided 2026-11-18: A** for agents, with B kept for a shell such as the app.
+
+### Decision AI-7: Finding a Server the Agent Did Not Start
+
+**Needed for:** an agent that reads what the reader sees in a server the user or the
+macOS app started, which is two of the three [launch modes](#launch-modes).
+
+**Open.** The owner has not answered it.
+
+The view slice exists to answer “what is the reader looking at?”, and the reader’s page
+is most often in a server the agent did not start: the app’s, or one from a terminal.
+Finding that server waits on the live-server registry (`mb-5xi4`), which the macOS plan
+puts after host mode (`mb-qzny`). So until the end of that plan’s Phase 3 the view slice
+answers only for a server the agent started and a page the reader then opened there.
+
+The registry has two halves, and only one needs host mode.
+**Discovery** is one owner-only state file for each live server, written after bind and
+removed at exit, with its roots, URL, process ID, and version; a listing an agent reads
+through `metab`; and a liveness probe that drops an entry whose process is gone or whose
+`/api/identity` does not answer for its root.
+**Coordination** is the per-root find-or-start lock, sticky ports, and host mode’s
+credential, which stay in the macOS plan under every option.
+
+- **A. Bring discovery forward, into this design, ahead of host mode.** Every server
+  writes its entry, whoever started it; `--live` resolves ROOT through the listing; and
+  all three launch modes are found and reached from the view slice on.
+  It costs a second kind of persisted state with its own failures: stale files, reused
+  process IDs, and start races, which the probe and the removal at exit must cover and a
+  fixture runtime directory must test.
+  An entry is read by a `metab` of another version than the server that wrote it, so its
+  format is a versioned contract and not an internal envelope.
+  It also lowers what a steered agent must do to reach a window it did not open.
+  The bounds on an intent, and `control`’s default by caller, still hold.
+- **B. Keep the macOS plan’s order.** No new state here.
+  The view slice’s main use stays out of reach until host mode and the registry land.
+- **C. The app publishes its own servers,** in a file it writes or a menu item that
+  copies an address. It covers one launch mode, with a mechanism the registry later
+  replaces.
+- **D. The agent scans loopback ports and probes `/api/identity`.** No new state.
+  It is slow, a sandbox blocks it, and it depends on the port ranges the app happens to
+  walk.
+
+**Recommendation: A.** Discovery needs nothing host mode adds: a state file, a probe,
+and a listing work for the servers that exist today.
+Without it the design’s first question has no answer for the page the reader is on.
+Its cost is bounded by keeping it read-only: an entry carries no credential, a reader
+signals no server, and nothing starts or stops a server because of the listing.
+When host mode adds a token, an entry still names only the server’s socket and URL, and
+an agent reaches a server the app launched through the owner-only socket of `mb-1zyp`,
+as [Launch Modes](#launch-modes) sets out.
+If the owner chooses A, the listing is a route where one fits, so that `--api` reaches
+it, and the macOS plan’s `mb-5xi4` keeps the lock alone.
 
 ## Implementation Plan
 
 ### With the View Slice
 
-It needs the parent’s Decisions VM-1 to VM-10 and no bead, and it serves a caller that
-knows the server’s address.
+It rests on the parent’s Decisions VM-1 to VM-10, which are taken, and on no bead, and
+it serves a caller that knows the server’s address.
 
 - [ ] `--server URL` as a client mode of `--api`: it imports no server, takes a loopback
   origin, follows no redirect, and prints the answer as served.
-- [ ] The artifact form, printed for a record and read from `--data`; the record read of
-  Decision AI-5.
+- [ ] The artifact form, printed for a record and read from `--data`; the recipe for the
+  record route of Decision AI-5, which the parent’s Phase 4 adds.
 - [ ] `--show` splits a fragment off an address.
+- [ ] Self-description ([Self-Description](#self-description)): the agent paragraph in
+  `metab --help`; the contract identifier in each `/api/routes` entry that has one; and
+  `GET /api/contracts` and `GET /api/contract`, each with its parity row and golden.
 - [ ] Skill sections for seeing and showing, the same commands in
   [Working With Agents](../../../working-with-agents.md), the narrow sandbox rules, and
   new wording for the sentence that says `--api` reaches no running server.
@@ -440,13 +609,14 @@ knows the server’s address.
 ### After the View Slice
 
 - [ ] The bounded wait, which needs nothing more.
-- [ ] `--live`, and a listing of live servers (`mb-5xi4`, which waits on `mb-qzny`).
+- [ ] `--live`, and a listing of live servers (`mb-5xi4`, which waits on `mb-qzny`). If
+  [Decision AI-7](#decision-ai-7-finding-a-server-the-agent-did-not-start) is taken as
+  A, the state file, the listing, and the probe come first, with the view slice or right
+  after it, and `mb-5xi4` keeps the find-or-start lock.
 - [ ] `--present` sends the intent and reports `confirmed: true` (`mb-idri`, which waits
   on `mb-5xi4`, `mb-1zyp`, and `mb-56nq`); the skill’s recipe becomes that one command
   (`mb-ko5d`).
 - [ ] The same records over the owner-only socket (`mb-1zyp`, `mb-54r1`).
-- [ ] The MCP adapter (`mb-5lgp`, which waits on `mb-idri`), generated from the route
-  table and the contract registry.
 - [ ] A recipe for each of the parent’s later slices, none of which adds a surface.
 
 ## Testing Strategy
@@ -472,8 +642,15 @@ pull-request recipes to `tests/golden/cli-skill-recipes.tryscript.md`, and
   is a key of what the transcript prints.
 - **The table of answers** lists exactly the statuses and codes the models in `ui/`
   define, as `test_the_present_table_gives_each_status_its_codes` does today (`:862`).
-- **The adapter** gains the rule its bead names, that each tool names one registered
-  route, and a transcript of its tool list and of one call per tool.
+- **Everything agent-facing is discoverable from the command.** One test walks the
+  contract registries and the table of object routes, and requires three things.
+  Every `/api/ui` route and every object route is in `/api/routes` with its method.
+  Every contract is in `/api/contracts`, and `--api` reads its schema with the digest
+  the registry records.
+  Every route and contract the skill or the guide names is one those listings answer.
+  A second check holds each command in the help’s agent paragraph to the checks a skill
+  recipe passes, so the help cannot name a task `metab` does not have.
+  Each is proven by a mutation, as the skill’s checks are.
 
 ## Open Questions
 
@@ -481,17 +658,8 @@ pull-request recipes to `tests/golden/cli-skill-recipes.tryscript.md`, and
   root’s path and a cursor from the tool that asked for them.
 - **Across roots.** Each root has its own server.
   Does the front door answer for the viewer attended last on any of them, or does the
-  agent ask each server the registry lists?
-- **An intent’s `viewer`.** A generation belongs to one viewer, and an intent that names
-  none goes to `rows[0]`, so `if_generation` alone can be compared with another viewer’s
-  count. Should `if_generation` require `viewer`? The parent, which owns `Intent`, keeps
-  the same [question](plan-2026-11-18-view-model-and-view-state.md#open-questions).
-- **A repository URL’s server.** It implies `--untrusted` (`cli/git_pin_cli.py:117`),
-  where the parent’s default is `offer`. Does a show on the server a pull request URL
-  opens wait on the reader by default?
-  The parent keeps this one too, since its Decision VM-5 sets that default.
-- **The adapter before the front door.** It needs the client mode and not `mb-idri`.
-  Should the bead’s dependency loosen?
+  agent ask each server the listing of
+  [Decision AI-7](#decision-ai-7-finding-a-server-the-agent-did-not-start) names?
 
 ## References
 

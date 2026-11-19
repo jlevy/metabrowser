@@ -4,19 +4,15 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft, and nothing here is built.
-A companion to
+**Status:** Decided, and nothing here is built.
+The owner took every decision here, PS-1 to PS-7, on 2026-11-18, each at A, with the
+decisions this document rests on: the parent plan’s Decisions 1 to 23 and the view model
+plan’s VM-1 to VM-10. A companion to
 [Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), called
 the parent plan below, and to
 [View Model and View State](plan-2026-11-18-view-model-and-view-state.md), the view
-model plan, which holds the view state and its Phase 4. Every decision here, PS-1 to
-PS-7, is open, at its recommendation.
-Of the decisions this document rests on, the owner took the parent plan’s Decisions 1 to
-8, 10, 12, 19, 20, and 22 and the view model plan’s VM-8 on 2026-11-18; the parent
-plan’s Decisions 9, 11, 13 to 18, 21, and 23 are accepted at their recommendations and
-under the owner’s review; and the other VM decisions are open.
-Written against `main` at `a1100bca6`, and it says where a choice depends on a decision
-that is not taken.
+model plan, which holds the view state and its Phase 4. Written against `main` at
+`a1100bca6`.
 
 ## Overview
 
@@ -91,6 +87,9 @@ shape.
 | `facets` | list of strings | The facets its `describe` reads, which the list host requests for the rows in view | The type declares no such facet |
 
 One manifest may not repeat a type and shape.
+`card` is in the set by the parent plan’s
+[Decision 11](plan-2026-11-14-object-data-model-and-views.md#decision-11-the-set-of-shapes),
+and its frame is built with its first real use, so a `card` view draws from then.
 Across plugins the later one in discovery order replaces the earlier, as a `[[view]]`
 does, and `metab --doctor` names both.
 
@@ -119,7 +118,7 @@ A source also declares each `kind` it answers as clumping or standalone.
 The key for that is not designed yet ([Open Questions](#open-questions)).
 
 **`[[view.part]]`**, nested under a `[[view]]`, declares a part of that page which a
-view state reports and `show` may set: an entry of the view model plan’s `pane.parts`
+view state reports and `present` may set: an entry of the view model plan’s `pane.parts`
 facet ([The View State](plan-2026-11-18-view-model-and-view-state.md#the-view-state)).
 
 | Key | Type | Meaning | Refused at load when |
@@ -224,7 +223,7 @@ type MetabrowserUiApi = Readonly<{
   registerParts<S>(kind: string, view: string, spec: Readonly<{ describe(state: S): MetabrowserParts }>): void;
   bind<S>(container: HTMLElement, binding: Readonly<{
     state(): S;
-    show?(request: Readonly<{ parts: MetabrowserParts }>, options: { signal: AbortSignal }): void | Promise<void>;
+    present?(request: Readonly<{ parts: MetabrowserParts }>, options: { signal: AbortSignal }): void | Promise<void>;
   }>): Readonly<{ changed(): void; dispose(): void }>;
 }>;
 ```
@@ -245,7 +244,7 @@ A minimal type registers `normalize` and its views.
 `mountList` writes no view-state code, and a page view with no parts writes none.
 One with parts registers a pure `describe` from its own state to its declared parts and
 binds each mount: `state()` gives that state, `changed()` asks the publisher to describe
-again, and `show` applies a request.
+again, and `present` applies a request.
 The server refuses an intent naming an undeclared part as `unsupported_field`, and a
 value outside `values` as `invalid`, before it reaches the page.
 `pane.view` and `pane.inner` need no call: the shell switches to a registered view, and
@@ -288,7 +287,7 @@ receives it in its render context, as any open.
 | `put` | `normalize` throws | Nothing is held, and the caller gets the error |
 | A default loader or collection | A failed request, a `plugin_error` body, or a row `normalize` refuses | `ensure` rejects, or the handle’s `error` is set; the list keeps its rows and shows a local failure |
 | `describe` or `paint` | Throws | That row draws the header fallback, with one console error per type and shape |
-| A binding’s `show` | Throws | Logged. The outcome stays `applied`, and the view state it carries reports each part’s real value |
+| A binding’s `present` | Throws | Logged. The outcome stays `applied`, and the view state it carries reports each part’s real value |
 
 ### Python: Contracts and Projections
 
@@ -300,7 +299,10 @@ A type’s Python is a contract, a projection, and routes.
   (`cache/contracts.py:238`), into the `schema` file, with every definition inlined,
   since the registry admits only local references
   (`plugin_loader/artifact_contracts.py:286`). The file ships in the wheel beside the
-  manifest, and `/plugin-static/` serves it as it serves any plugin file, which answers
+  manifest, and `/plugin-static/` serves it as it serves any plugin file.
+  `--api` issues `/api/` routes alone, so an agent reads a schema through the contracts
+  route of the agent interface plan’s
+  [Self-Description](plan-2026-11-18-agent-interface.md#self-description), which answers
   the parent plan’s question of whether schemas are served.
 - **The packaged schema is the authority, for every plugin**
   ([Decision PS-7](#decision-ps-7-one-validation-path)). The host builds the type’s
@@ -453,7 +455,7 @@ mb.ui.registerParts("agent-log", "log", { describe: describeLogParts });
 // In the Log view's render; its dispose calls parts.dispose().
 const parts = mb.ui.bind(container, {
   state: () => state,
-  show(request) {
+  present(request) {
     const part = request.parts["tool-output"];
     if (part && "open" in part) setToolOutput(part.open);
   },
@@ -485,7 +487,7 @@ A plugin’s own contract carries its own version.
 | --- | --- | --- |
 | Landing the blocks, `mb.objects`, and `mb.ui` | No bump, under the parent plan’s Decision 20 A; an older host refuses a manifest that uses them, as an unknown key | A patch bump and an `sdk-changes.toml` entry; an older host refuses by version, read before the keys |
 | An added optional key, call, shape, slot, or optional contract field | No bump | Patch |
-| A removed or renamed key, call, slot, or convention key; a changed `describe`, `paint`, or `show` signature | A bump, with every built-in manifest in the commit | Minor |
+| A removed or renamed key, call, slot, or convention key; a changed `describe`, `paint`, or `present` signature | A bump, with every built-in manifest in the commit | Minor |
 | A break in the header, a shared sub-object, or a core contract | The same | Minor |
 | A break in a plugin’s own contract | None; another plugin’s view of that type breaks unguarded ([Open Questions](#open-questions)) | None |
 
@@ -520,14 +522,14 @@ sources through its internal seam.
 | Phase | `github` | `folder` | `diff` |
 | --- | --- | --- | --- |
 | 1 | `[[object_type]]` for the pull request, with `changes` among its `facets`; `[[collection]]` `pulls`; a `wide-row` view; `registerCollection` from the Pulls controller, and a `load` over the `pull-files-summary` lane. By the parent plan’s Decision 22 D the blocks wait for Phase 2, the registrations do not, and the check of one against the other starts with the blocks | Nothing | Nothing |
-| 2 | A `card`; a `[[collection_source]]` for the Recent tab, in that plan’s R3; the comment types once a comment is listed outside its pull request, each with a `[[collection]]` whose `parent` is the pull request | `wide-row` views of the core `file` and `folder` types; the Files tab, a `[[view]]` that mounts a list | Nothing |
+| 2 | A `card`, once the frame’s first real use builds it; a `[[collection_source]]` for the Recent tab, in that plan’s R3; the comment types once a comment is listed outside its pull request, each with a `[[collection]]` whose `parent` is the pull request | `wide-row` views of the core `file` and `folder` types; the Files tab, a `[[view]]` that mounts a list | Nothing |
 | 3 | A `nav-row` view as the Pulls panel moves to the list host; `pull` becomes the type’s `route` | A `nav-row` view of `file` and `folder` in place of the tree’s two builders | If its rows converge: a `changed-file` type, its `nav-row` view, and a `[[collection]]` |
 | 4 | `[[view.part]]` `tab`, with the page’s three tabs as its `values`, and the page’s `describe` | Parts for Overview and Treemap, where a control is worth setting | `[[view.part]]` `layout`, with `values`, and `diff-summary`, with their `describe` |
 
 ## Key Decisions
 
-Each gives the phase that needs it, the options, and a recommendation.
-None is resolved.
+Each gives the phase that needs it, the options it weighed, and the decision.
+The owner took all seven on 2026-11-18, each at A.
 
 ### Decision PS-1: Where Structure Is Declared
 
@@ -535,12 +537,12 @@ None is resolved.
 
 - **A. The manifest declares every structure,** facets and parts included, and
   JavaScript supplies functions only.
-- **B. The parent plan’s split.** The manifest names types, views, and collections;
-  `registerView` states `facets`, and a page declares its parts through `mb.ui`. The
-  server, `--doctor`, and an intent’s refusal see neither.
+- **B. The split the parent plan first drew.** The manifest names types, views, and
+  collections; `registerView` states `facets`, and a page declares its parts through
+  `mb.ui`. The server, `--doctor`, and an intent’s refusal see neither.
 - **C. JavaScript only,** the parent plan’s Decision 20 C.
 
-**Recommendation: A.**
+**Decided 2026-11-18: A.**
 
 ### Decision PS-2: Default Loaders and Collections
 
@@ -548,10 +550,10 @@ None is resolved.
 
 - **A. The store reads a declared route by the collection convention,** and
   `registerCollection` and `load` are for a controller of the plugin’s own.
-- **B. Every type and collection is registered in JavaScript,** as the parent plan
-  writes it. Each plugin restates paging and freshness.
+- **B. Every type and collection is registered in JavaScript,** as the parent plan first
+  wrote it. Each plugin restates paging and freshness.
 
-**Recommendation: A.** The Pulls panel still registers its own.
+**Decided 2026-11-18: A.** The Pulls panel still registers its own.
 
 ### Decision PS-3: What a Collection Source Names
 
@@ -562,7 +564,7 @@ None is resolved.
 - **B. A sidekick callable:** a second Python registration surface, which that plan’s
   Decision 15 declines for a dispatcher.
 
-**Recommendation: A.**
+**Decided 2026-11-18: A.**
 
 ### Decision PS-4: How a Page Declares Its Parts
 
@@ -574,7 +576,7 @@ None is resolved.
 - **C. Functions on the view’s handle,** with no `mb.ui`: one namespace fewer, and no
   named function for the parity check to credit before a mount exists.
 
-**Recommendation: A.**
+**Decided 2026-11-18: A.**
 
 ### Decision PS-5: A Type Whose Objects Are Files
 
@@ -584,12 +586,12 @@ An agent session’s address is its file’s, and one address parses to one type
 
 - **A. The address stays a `file`.** A view state reports `object: {type: file, …}` with
   `pane.kind: agent-log`, and `/api/object-types` names the types whose `page_kind` that
-  is. `show` takes the session’s reference and opens its `href`.
+  is. `present` takes the session’s reference and opens its `href`.
 - **B. The most specific type wins the parse.** What an agent reads would change with
   the plugins installed.
 - **C. No file-backed plugin types,** which leaves a plugin type no page at all.
 
-**Recommendation: A.**
+**Decided 2026-11-18: A.**
 
 ### Decision PS-6: Loading the Plugins a List Needs
 
@@ -600,7 +602,7 @@ An agent session’s address is its file’s, and one address parses to one type
 - **B. Draw the header fallback, then repaint.** Rows change under the reader.
 - **C. Load every plugin with an object view eagerly,** against the loading tiers.
 
-**Recommendation: A.**
+**Decided 2026-11-18: A.**
 
 ### Decision PS-7: One Validation Path
 
@@ -609,10 +611,10 @@ An agent session’s address is its file’s, and one address parses to one type
 - **A. The packaged schema validates every plugin’s type,** and `model` serves the drift
   check alone.
 - **B. The model for in-process plugins and the schema for workers,** as the parent plan
-  has it: two kinds of evidence for one declaration.
+  first had it: two kinds of evidence for one declaration.
 - **C. Ask the worker to validate,** a call on every check.
 
-**Recommendation: A.** Its cost is the model’s semantic layer, which moves to the
+**Decided 2026-11-18: A.** Its cost is the model’s semantic layer, which moves to the
 projection’s tests.
 
 ## Open Questions
