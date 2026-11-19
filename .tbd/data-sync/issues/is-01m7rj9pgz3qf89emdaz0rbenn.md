@@ -5,7 +5,7 @@ title: "One rule for the app's command-line dependencies (metab, gh, future tool
 kind: feature
 status: in_progress
 priority: 1
-version: 8
+version: 9
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-19T00:11:26.622Z
-updated_at: 2026-11-19T02:17:25.071Z
+updated_at: 2026-11-19T03:06:34.667Z
 started_at: 2026-11-19T00:12:06.859Z
 ---
 Owner, 2026-11-18, verbatim: "another question for us to review is to be clear about the dependency between metab CLI and the native app. Let's figure out what the best way to handle this is. Probably it's just to have a minimum version dependency represented in each native app build and then to instruct the user on how to upgrade metab if necessary. And same for gh and potentially, in the future, other CLI dependencies". Today: MetabRequirement.minimumRelease (apps/macos ShellCore) for metab; the gh status check (mb-si2g, PR #581) for gh. Goal: one declared requirement per tool in each app build (name, minimum version, how it is found, how its version is read, upgrade instructions by install method), one status/remedy UI in the app, one doc, and the rule for when a minimum is raised.
@@ -32,3 +32,6 @@ Progress 2026-11-18 (PR #596, branch claude/doctor-check-setup, head c22544545+d
 
 
 CI 2026-11-18: PR #596 head 7afa78fd0 all checks pass (macOS 26 job included; stack-integration skipped). First run failed tests/test_icon_catalog.py (Check Setup SF Symbols uncataloged); fixed by rows in docs/design-system-icons.md. Not merged; awaiting owner decisions 1-8 in the plan.
+
+
+Review A on #596 (3 Medium, 6 Low) fixed 2026-11-18 at head 723f83172 (commits 6e55a1087 metab, a7799dc5a app, a66395e31 docs; merges main a36923688): plugins and open_in are checks; github.remedy {text, command, url} (command only for gh_status._COMMANDS); app rows only from checks + github, CodingKeys with raw values, lossy per-check decoding (unreadable row); config dir problem reported once (open_in "not read" detail; METABROWSER_OPEN_IN error stays a problem); override warning when an app is found (app servers get no storage vars); low free space warning via low_free_space_bytes() (first-clone limit x1.1; LOW_FREE_SPACE_BYTES default) and not-creatable dir problem; METABROWSER_DOCTOR_APP (DoctorRun.spec sets the app bundle) for the metab check's minimum, open_in unchanged; one checkout rule (.venv beside pyproject.toml with name = "metabrowser") both sides, pinned per case and marker; Check Again always enabled; gh_too_old wording and docs (uncached PR + doctor check need 2.81.0); hand-check stand-ins runnable. Golden pins METABROWSER_MAX_FIRST_CLONE_KB=1. Changelog has an App contract entry. Dispositions: https://github.com/jlevy/metabrowser/pull/596#issuecomment-6998435819. Local: lint-check pass, focused pytest 361 pass, 4 goldens pass, Swift suites pass (quarantine-helper script check fails locally, environmental). #593 lands first: then add the contract entries (doctor command, DoctorReport.swift JSON reader, app_side MetabrowserMinimumMetab, MetabInstall copy, [[env]] METABROWSER_DOCTOR_APP).
