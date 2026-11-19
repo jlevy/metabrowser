@@ -179,6 +179,9 @@ It links each document below and the contributor standards in `docs/`.
 A research record stays here while it informs open work, and moves to
 [`research/archive/`](research/archive/) once its questions are answered.
 
+- [Operational visibility into Claude Code and Codex](research/research-2026-11-19-agent-home-visibility.md):
+  every file format under `~/.claude` and `~/.codex`, what Metabrowser shows of them
+  today, and a proposed agents plugin built on the public plugin contract
 - [Why CI takes twenty minutes](research/research-2026-11-16-ci-speed.md): where a CI
   run’s minutes go by job, step, and test, what flakes cost, and the options for the
   fast CI plan
