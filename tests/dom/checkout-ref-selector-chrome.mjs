@@ -503,6 +503,17 @@ const LAYOUT = `({
     && window.__firstToggle.closest("#source-ref-selector")?.querySelector(".source-ref-selector-panel") != null,
 })`;
 
+// The layout sampled so far, read once a frame has run since the wait before it. The waits
+// ask the DOM, which can hold the tree's rows before any frame has drawn them: on a loaded
+// runner a new document's first frame can come after the wait answers, and a read then
+// finds no top for the tree at all (mb-hujg). A frame's callbacks run in the order they
+// were asked for, so the sampler's, asked for in the frame before, runs ahead of this one.
+async function sampledLayout() {
+  await chrome.evaluate(
+    "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))",
+  );
+  return chrome.evaluate(LAYOUT);
+}
 const result = {};
 try {
   await chrome.send("Page.enable");
@@ -515,7 +526,7 @@ try {
   result.workingTreeLoadMs = await load("/view/README.md");
   takeDataRequests();
   result.workingTree = await chrome.evaluate(PAGE);
-  result.workingTreeLayout = await chrome.evaluate(LAYOUT);
+  result.workingTreeLayout = await sampledLayout();
   // What the selector's bundle cost this page: the guard and the selector, on demand.
   result.bundle = await chrome.evaluate(`performance.getEntriesByType("resource")
     .filter((entry) => /source-(pin-guard|ref-selector)\\.js/.test(entry.name))
@@ -538,7 +549,7 @@ try {
   result.toBranch = await switchBy(rowNamed("feature"), true);
   const switched = switchAsked;
   result.branch = await chrome.evaluate(PAGE);
-  result.branchLayout = await chrome.evaluate(LAYOUT);
+  result.branchLayout = await sampledLayout();
   await capture("revision");
 
   // 3. Its lists.
