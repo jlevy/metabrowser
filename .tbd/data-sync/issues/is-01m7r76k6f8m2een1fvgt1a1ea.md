@@ -5,7 +5,7 @@ title: Revise the object data model plan against main as of 2026-11-18 and the P
 kind: task
 status: in_progress
 priority: 2
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-11-14-object-data-model-and-views.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7f2vek3t6sca32adhd4gq33
 hold: null
 hold_until: null
 created_at: 2026-11-18T20:57:30.574Z
-updated_at: 2026-11-19T06:35:37.173Z
+updated_at: 2026-11-19T16:42:58.855Z
 started_at: 2026-11-18T20:57:35.381Z
 ---
 Since #453 merged, #487, #491, #484, #536, #522, #529, #506, #528, #558, #546, #540, #559, #511, #493 landed and #550/#552, #380, #534, the fdu stack are open. Fold reuse points (pull-files-summary, ChangeSums, actorIdentity, page/view header, drawn-from-disk fixture), fix Background, terms (view, recent, kind), Pulls row structure, readers list, decision options, and 33 drifted anchors. Decisions stay open for the owner.
@@ -36,3 +36,5 @@ Walkthrough, 2026-11-18: the owner confirmed group 5: Decision 18 A, 19 C (taken
 Owner, 2026-11-18: MCP must not be a required part of the architecture; the CLI (metab, taught by the skill) is the complete agent surface. In the final pass, AI-1 says so, and the MCP adapter (mb-5lgp, already optional, P3) is described as outside this design, a dependency of nothing.
 
 Walkthrough complete, 2026-11-18: the owner confirmed group 6 and asked to record all. VM-1 A, VM-2 B, VM-3 C, VM-4/5 A with correction 1 (drop the --untrusted to offer coupling; the default follows whether the caller is local; --ui-control offer stays available), VM-6 B, VM-7 A, VM-9 A. Correction 2: an intent that sends if_generation must name its viewer. AI-1 A reworded (the CLI through the skill is the complete agent surface; MCP is outside the design), AI-2 A, AI-3 A, AI-4 B (the intent verb is present), AI-5 B, AI-6 A. Every decision in the six plans is now taken.
+
+2026-11-19: the owner asked for a seventh plan, host mode (plan-2026-11-18-host-mode.md), made the CLI the complete agent surface with MCP only an optional future idea, and took HM-1 to HM-6 at their recommendations (discovery lands ahead of the token). Every decision in the seven plans is now taken. Next: bead splits under HM-1 A, then a final independent review of #570.
