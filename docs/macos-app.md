@@ -16,6 +16,8 @@ What the app adds is what a browser tab cannot give:
 ## Opening Folders and Files
 
 - **File > Open Folder…** (Command-O) chooses one or more folders or files.
+  It shows hidden folders and files, such as `~/.claude` with an agent’s logs;
+  Command-Shift-Period hides them in the panel.
 - **Finder’s Open With and the Dock icon** accept folders.
   A file opens through File > Open Folder…, a drop on a window, or
   `open -a Metabrowser path/to/file`.

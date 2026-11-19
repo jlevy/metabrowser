@@ -61,7 +61,7 @@ Set `APP` to the development build and make some folders:
 ```shell
 APP="$PWD/apps/macos/build/dev/Metabrowser.app"
 LOGS="$HOME/Library/Logs/Metabrowser"
-mkdir -p /tmp/mb-check/{a/sub,b,c,d,e,f,g} "$HOME/Documents/mb-check"
+mkdir -p /tmp/mb-check/{a/sub,b,c,d,e,f,g,.hidden} "$HOME/Documents/mb-check"
 echo '# notes' > /tmp/mb-check/a/notes.md; echo '# deep' > /tmp/mb-check/a/sub/deep.md
 log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the app log
 ```
@@ -150,6 +150,10 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
     On a branch that `origin` did not have at your last fetch, the GitHub mark’s tooltip
     says so, and the link opens the commit.
     A folder with no GitHub remote shows no toggle.
+12. **Hidden folders.** In File > Open Folder…, press Command-Shift-G and go to
+    `/tmp/mb-check`: the panel lists `.hidden` without Command-Shift-Period, and
+    choosing it opens it.
+    Command-Shift-Period hides the hidden folders, and pressed again shows them.
 
 ## GitHub Links
 
