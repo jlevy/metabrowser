@@ -1283,15 +1283,21 @@ def _initial_path_html() -> str:
 def _pin_label_html(status: SourceStatus) -> str:
     """The navigation heading for a pinned revision.
 
-    A served mirror's is the repository's name, where a folder's name stands and with
-    the same `.path-base` emphasis, then the ref and the short commit, muted: the page
-    is called what a checkout of the repository would be, and the commit it is pinned
-    to stays in sight beside it, in the commit-ID face (`.git-commit-sha`) a commit has
-    wherever it appears. The full commit is in the heading's tooltip.
+    A served mirror's is the repository's name alone, where a folder's name stands and
+    with the same `.path-base` emphasis: the page is called what a checkout of the
+    repository would be. The ref selector in the Files toolbar names the ref, and the
+    heading's tooltip (`_mirror_tip`) the full commit, so the heading repeats neither: the
+    owner found them clutter beside the name (mb-qq4e).
 
-    A pin with no mirror has no origin to take a name from. Its ref stands as the name
-    with the short commit after it, or the short commit alone when no ref is known, in
-    the same face, and the full commit is its served root.
+    A revision a folder's server shows of its own checkout is headed by the folder's name,
+    which the working tree's page has too, so the ref and the short commit follow it,
+    muted, the commit in the commit-ID face (`.git-commit-sha`) a commit has wherever it
+    appears: they tell the revision's page from the working tree's before the selector is
+    opened.
+
+    A pin with no mirror has no origin to take a name from, and no ref selector. Its ref
+    stands as the name with the short commit after it, or the short commit alone when no
+    ref is known, in the same face, and the full commit is its served root.
     """
 
     short = html_escape(short_commit(status["pin"] or ""))
@@ -1301,6 +1307,8 @@ def _pin_label_html(status: SourceStatus) -> str:
     def base(text: str) -> str:
         return f'<span class="path"><span class="path-base">{text}</span></span>'
 
+    if name is not None and status["origin"] is not None:
+        return base(html_escape(name))
     commit = f'<span class="header-revision git-commit-sha">{short}</span>'
     if name is None:
         if ref_name is None:

@@ -510,13 +510,15 @@ def test_the_shell_names_the_repository_and_its_pinned_revision(
     assert 'data-served-root="origin"' in shell.text
     assert '<span class="path-base">origin</span>' in shell.text
     assert f'data-served-root="{origin.second}"' not in shell.text
-    # The ref and the short commit follow it, muted, each in its own element so a
-    # narrow column drops the ref first.
-    assert (
-        '<span class="path"><span class="path-base">origin</span></span>'
-        '<span class="header-revision header-ref">topic</span>'
-        f'<span class="header-revision git-commit-sha">{short_commit(origin.second)}</span></a>'
-    ) in shell.text
+    # The heading is the name alone: the ref selector names the ref, and the heading's
+    # tooltip the full commit, so neither follows the name (mb-qq4e).
+    assert '<span class="path"><span class="path-base">origin</span></span></a>' in shell.text
+    assert "header-revision" not in shell.text
+    tip = shell.text[shell.text.index('data-mirror-tip="') :].split('"', 2)[1]
+    assert tip.startswith("Mirror of ") and f" at {origin.second}, stored in " in tip, tip
+    assert '<span class="source-ref-selector-label">topic</span>' in shell.text, (
+        "the ref selector names the ref the heading no longer does"
+    )
     # The tab is called by the repository's name, as a folder's is by its own: the
     # title is /api/identity's.
     assert "<title>origin \u2022 Metabrowser</title>" in shell.text
@@ -538,29 +540,43 @@ _PIN = "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
 
 
 @pytest.mark.parametrize(
-    ("name", "ref_name", "heading"),
+    ("name", "origin", "ref_name", "heading"),
     [
         # A pin with no mirror and no ref is named by its commit alone, which is a short
         # commit ID in the commit-ID face as everywhere else (docs/design-system.md,
         # "Short Commit IDs").
-        (None, None, f'<span class="git-commit-sha">{short_commit(_PIN)}</span></span></span>'),
         (
+            None,
+            None,
+            None,
+            f'<span class="git-commit-sha">{short_commit(_PIN)}</span></span></span>',
+        ),
+        # With a ref, the ref is its name. It has no ref selector, so the commit follows.
+        (
+            None,
             None,
             "topic",
             f'topic</span></span><span class="header-revision git-commit-sha">{short_commit(_PIN)}</span>',
         ),
+        # A checkout's revision has the working tree's name, so its ref and commit follow it.
         (
-            "origin",
+            "squares",
             None,
-            f'origin</span></span><span class="header-revision git-commit-sha">{short_commit(_PIN)}</span>',
+            "topic",
+            'squares</span></span><span class="header-revision header-ref">topic</span>'
+            f'<span class="header-revision git-commit-sha">{short_commit(_PIN)}</span>',
         ),
+        # A served mirror is its repository's name alone, with or without a ref: the ref
+        # selector names the ref, and the tooltip the commit (mb-qq4e).
+        ("origin", "https://example.com/origin.git", "topic", "origin</span></span>"),
+        ("origin", "https://example.com/origin.git", None, "origin</span></span>"),
     ],
-    ids=["commit", "ref", "mirror"],
+    ids=["commit", "ref", "checkout", "mirror", "mirror-no-ref"],
 )
-def test_a_pinned_heading_names_its_commit_by_its_short_id(
-    name: str | None, ref_name: str | None, heading: str
+def test_a_pinned_heading_is_its_name_and_what_tells_it_apart(
+    name: str | None, origin: str | None, ref_name: str | None, heading: str
 ) -> None:
-    status = cast(SourceStatus, {"pin": _PIN, "name": name, "ref_name": ref_name})
+    status = cast(SourceStatus, {"pin": _PIN, "name": name, "origin": origin, "ref_name": ref_name})
     label = server._pin_label_html(status)  # pyright: ignore[reportPrivateUsage]
     assert label == f'<span class="path"><span class="path-base">{heading}'
 

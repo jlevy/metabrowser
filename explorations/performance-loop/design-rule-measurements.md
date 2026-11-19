@@ -160,6 +160,49 @@ fixed chip size the ratio replaced.
 | A pull request’s header | 14px branch line | 12.6px | 12px |
 | The ref selector’s button and list | 12px | 10.8px | 12px |
 
+## Short Commit IDs
+
+For [Short Commit IDs](../../docs/design-system.md#short-commit-ids), recorded on
+2026-11-19 (mb-qq4e), when an ID took its line’s size with its monospace face scaled to
+the sans’s x-height, in place of `--nav-font-size` and the ref selector’s chip ratio.
+Measured in headless Chrome 152 on macOS 26.5 against a served mirror of a public
+repository and a revision of a local checkout, in both font sets.
+
+The faces’ x-heights per em, at 12, 13, and 14 px, by the `ex` unit and by the ink of
+“x” on a canvas, which agreed: Source Sans 3 (Clean Fonts) 0.486; system-ui (System
+Fonts), SF Pro at its text optical size, 0.526, and 0.508 at 100 px and above; Menlo,
+which Chrome draws for the monospace stack since it cannot reach SF Mono by name, 0.547,
+the same as its OS/2 table.
+SF Mono, which WebKit draws, is 0.526 in its OS/2 table (1077 of 2048 units); it was not
+measured in the macOS app.
+Chrome reported the faces it drew through `CSS.getPlatformFontsForNode`.
+
+The x-height of an ID and of the line around it, in px.
+Before is the ID’s computed size times Menlo’s measured ratio, and on a checkout’s
+heading the old rule put back in the page; after is the width of `100ex` in each, over
+100\. A heading’s line figure is 13 px times the regular sans’s ratio, since its sans is
+the bold name, whose x-height measured 6.45 in Clean and 6.99 in System.
+
+| Context, line size | Font set | Before: ID / line | After: ID / line |
+| --- | --- | --- | --- |
+| A checkout’s revision’s heading, 13 px | Clean | 7.109 / 6.32 (+12.5%) | 6.316 / 6.32 |
+| A checkout’s revision’s heading, 13 px | System | 7.109 / 6.84 (+3.9%) | 6.836 / 6.84 |
+| A commit’s page and hover card, 14 px | Clean | 7.11 / 6.80 (+4.5%) | 6.803 / 6.805 |
+| A commit’s page and hover card, 14 px | System | 7.11 / 7.37 (−3.5%) | 7.361 / 7.369 |
+| The ref selector’s rows, 12 px | Clean | 5.91 / 5.83 (+1.2%) | 5.830 / 5.833 |
+| The ref selector’s rows, 12 px | System | 5.91 / 6.32 (−6.5%) | 6.311 / 6.316 |
+
+With the line’s ratio inherited, an ID’s line box was a whole 21 px line around 15 px of
+glyphs, whose half-leading put its top above the sans’s, and a Conversation commit row,
+which aligns its items on their baselines, was 22 px, so two commits’ glyphs stood 22 px
+apart against the 20 px rhythm; with `line-height: normal` on the ID the row is 21 px
+and the rhythm holds.
+In Clean Fonts the old ID made a checkout’s revision’s heading 24.5 px tall, and it is
+23.5 px now, as in System Fonts.
+No ref selector row or commit page line changed height.
+A served mirror’s heading has no ID now.
+WebKit honored `font-size-adjust` on a span in a QuickLook render of a static page.
+
 ## Regions That Moved
 
 For [Regions Keep Their Boxes](../../docs/design-system.md#regions-keep-their-boxes):

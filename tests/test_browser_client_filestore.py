@@ -886,7 +886,8 @@ def test_a_mirrors_note_takes_nothing_from_the_address_and_is_whole_or_absent() 
     assert "color: var(--muted);" in note and "font-size" not in note
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b|rgb\(|oklch\(", note + text)
 
-    # In the navigation heading the ref narrows before the name, and the commit never.
+    # In a checkout's revision's navigation heading the ref narrows before the name, and the
+    # commit never; a mirror's heading is its name alone.
     # The copy control keeps its size, and shows as the file header's does.
     assert shrink(".header-ref") > 1
     assert "flex: none;" in block(".header-revision")

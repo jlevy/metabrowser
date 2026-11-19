@@ -10,9 +10,11 @@ A folder’s page is headed by the folder’s name, and its main heading’s eye
 with the folder’s path.
 A page served from a mirror showed the full commit ID in both places, and said nowhere
 that its files came out of the cache.
-It is now headed by the repository’s name, as a checkout of it would be called, with the
-ref and the short commit beside it and a control that copies the full commit, and its
-main heading’s eyebrow ends with a note that says where the mirror is kept.
+It is now headed by the repository’s name alone, as a checkout of it would be called,
+with a control after it that copies the full commit, and its main heading’s eyebrow ends
+with a note that says where the mirror is kept.
+The ref and the short commit no longer follow the name: the ref selector in the Files
+toolbar names the ref, and the heading’s tooltip names the full commit.
 
 The mirror is a bare Git repository, and each page is read from a Git object at the
 pinned commit, so no folder holds these files.
@@ -144,8 +146,8 @@ $ node tests/dom/mirror-heading-session.js
       "writes": []
     },
     "navigationHeading": {
-      "html": "<span class=\"path\"><span class=\"path-base\">squares</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision git-commit-sha\">42382ea</span>",
-      "text": "squares topic 42382ea",
+      "html": "<span class=\"path\"><span class=\"path-base\">squares</span></span>",
+      "text": "squares",
       "commitCopy": {
         "attributes": {
           "type": "button",
@@ -206,8 +208,8 @@ $ node tests/dom/mirror-heading-session.js
       "writes": []
     },
     "navigationHeading": {
-      "html": "<span class=\"path\"><span class=\"path-base\">a&lt;b&gt;&amp;�x</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision git-commit-sha\">42382ea</span>",
-      "text": "a<b>&�x topic 42382ea",
+      "html": "<span class=\"path\"><span class=\"path-base\">a&lt;b&gt;&amp;�x</span></span>",
+      "text": "a<b>&�x",
       "commitCopy": {
         "attributes": {
           "type": "button",
