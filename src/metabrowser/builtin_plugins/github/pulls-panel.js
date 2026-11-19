@@ -570,22 +570,20 @@ function isEnvelope(value) {
 }
 
 /**
- * What the Pulls tab says of a pull request the address names that its list does not hold.
- * A list read only part of the way, newest first, may hold an older one further down, so
- * it says only what it has loaded (*read*: whether the list has read as far as *number*).
+ * What the Pulls tab says of a pull request a navigation named that its list cannot show
+ * (`noteOutside`). *catalogued*: whether the server's catalog holds it. One it holds is in
+ * the list further down than the list draws, newest first, so the list says only what it
+ * has loaded. One the whole catalog lacks is in no list. A pull request the filter leaves
+ * out is never noted: a navigation moves the list to one that draws it (`placeSought`), and
+ * a filter the reader chose says by its chip what the list holds.
  *
  * @param {number} number
- * @param {string} filter
- * @param {boolean} read
+ * @param {boolean} catalogued
  */
-export function outsideText(number, filter, read) {
-  const label = LIST_LABELS[/** @type {keyof typeof LIST_LABELS} */ (filter)];
-  if (!read) {
-    return `#${number} is not among the pull requests loaded.`;
-  }
-  return filter === "all" || label === undefined
-    ? `#${number} is not in this list.`
-    : `#${number} is not listed under ${label}.`;
+export function outsideText(number, catalogued) {
+  return catalogued
+    ? `#${number} is not among the pull requests loaded.`
+    : `#${number} is not in this list.`;
 }
 
 /**
@@ -626,6 +624,7 @@ function pinChanged(response) {
  *   markAnchor(previous: number | null, next: number | null, focus: boolean): void,
  *   reveal(number: number): void,
  *   markOutside?(text: string | null): void,
+ *   focusPlace?(): "list" | "body" | "elsewhere",
  *   open(route: {
  *     number: number,
  *     tab: string,
@@ -720,6 +719,35 @@ export function createPullsController(deps, options = {}) {
   /** @type {number | null} */
   let current = options.current ?? null;
   let revealCurrent = true;
+  /**
+   * The pull request a navigation asked the list to reveal (docs/design-system.md,
+   * "Navigation Reveals the Item"), until the address names another, a tab's landing keeps
+   * the list's place, or the reader picks a filter. Only it is noted when the list cannot
+   * show its row (`noteOutside`): one the reader's own filter leaves out needs no word.
+   * @type {number | null}
+   */
+  let sought = current;
+  /**
+   * Whether *sought* is still to be placed (`placeSought`): until the list holds its row,
+   * or the catalog has said where it is and the list has moved there or stays. Meanwhile
+   * the list says nothing of it.
+   */
+  let placing = sought !== null;
+  /**
+   * Where the catalog has *sought* (`readSought`): its state, and whether All's drawn rows
+   * reach it; "absent" once the whole catalog lacks it; null until a read says.
+   * @type {{state: "open" | "closed", reach: boolean} | {state: "absent"} | null}
+   */
+  let soughtFound = null;
+  /** The read of *sought*'s place in flight. @type {AbortController | null} */
+  let soughtRead = null;
+  /**
+   * Whether *sought*'s row is still to be revealed (`revealRow`): the first read that brings
+   * it reveals it, though the list has moved for it and its first read there failed.
+   */
+  let revealPending = sought !== null;
+  /** Whether focus was in the list when it moved for *sought*, so its row takes focus. */
+  let refocus = false;
   /**
    * What the list says of a current pull request it does not hold (`noteOutside`).
    * @type {string | null}
@@ -1695,8 +1723,9 @@ export function createPullsController(deps, options = {}) {
 
   /**
    * Show the current pull request's row: a closed stack that holds it opens, as a file the
-   * address names opens its folders, and the row scrolls into view; a row the list has not
-   * reached yet is chased, and one it does not hold is noted (`noteOutside`).
+   * address names opens its folders, and the row scrolls into view; one the filter leaves
+   * out moves the list to one that draws it (`placeSought`), a row the list has not reached
+   * yet is chased, and one it cannot show is noted (`noteOutside`).
    *
    * @param {number | null} number
    */
@@ -1708,10 +1737,11 @@ export function createPullsController(deps, options = {}) {
       render();
     }
     settleAnchor(true);
+    if (placeSought(true)) {
+      return;
+    }
     if (number !== null && held().keys.has(number)) {
-      if (revealCurrent) {
-        deps.reveal(number);
-      }
+      revealRow(number);
     } else {
       chaseCurrent();
     }
@@ -1719,20 +1749,186 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * Say so when the current pull request is not in the list, rather than leave the reader
-   * looking for its row: the filter leaves it out, or All has not listed it. Only once the
-   * list has its rows, and not while a chase may still reach it.
+   * A navigation named *number*, or, for null, none is to be placed: the address names no
+   * pull request, a tab's landing keeps the list's place, or the reader picked a filter.
+   *
+   * @param {number | null} number
+   */
+  function seek(number) {
+    sought = number;
+    placing = number !== null;
+    revealPending = number !== null;
+    soughtFound = null;
+    soughtRead?.abort();
+    soughtRead = null;
+    refocus = false;
+  }
+
+  /**
+   * Reveal a row the list holds; the pull request a navigation named also takes focus when
+   * focus was in the list as the list moved for it (`placeSought`), since the move drew the
+   * list again and the row that had focus went with it. Only while focus is where that left
+   * it, in the list or nowhere: focus the reader moved elsewhere while the list read is
+   * theirs.
+   *
+   * @param {number} number
+   */
+  function revealRow(number) {
+    if (revealCurrent) {
+      deps.reveal(number);
+    }
+    if (number !== sought) {
+      return;
+    }
+    revealPending = false;
+    if (refocus) {
+      refocus = false;
+      if (deps.focusPlace?.() !== "elsewhere") {
+        anchorChosen = true;
+        const previous = anchor;
+        anchor = number;
+        deps.markAnchor(previous, number, true);
+      }
+    }
+  }
+
+  /**
+   * Put the pull request a navigation named where the list draws it. Open and Closed hold
+   * only their state's pull requests, so for one the filter leaves out the list moves, as a
+   * reveal opens a stack the reader closed: to All, which holds every pull request, when
+   * All's drawn rows reach it, so that a stack walk across open and merged pull requests
+   * stays on one list, and otherwise to the list of its own state, which reaches as far or
+   * further, All included: All draws only its newest rows, so an older pull request is
+   * further down All than it draws. Where it is comes from the catalog (`readSought`), not
+   * from the windows the list has read, which cannot tell an older pull request from one the
+   * filter leaves out, nor a catalog still being read from GitHub from one that has ended. A
+   * list that holds it, or one that draws it, stays. A filter the reader picks afterwards is
+   * theirs. Whether the list moved.
+   *
+   * @param {boolean} [mayRead] Whether this may ask the catalog: at a navigation and after a
+   *   poll, so a place still unknown, as a catalog being read from GitHub leaves it, is asked
+   *   for once a poll, and not at every window the list pages in.
+   */
+  function placeSought(mayRead = false) {
+    if (!placing || sought === null || sought !== current) {
+      return false;
+    }
+    const list = held();
+    if (list.keys.has(sought) || list.envelope?.reason === "not_github") {
+      placing = false;
+      return false;
+    }
+    if (soughtFound === null) {
+      if (mayRead) {
+        void readSought();
+      }
+      return false;
+    }
+    placing = false;
+    if (soughtFound.state === "absent") {
+      return false;
+    }
+    const target = filter === soughtFound.state || !soughtFound.reach ? soughtFound.state : "all";
+    if (target === filter) {
+      return false;
+    }
+    refocus = deps.focusPlace?.() === "list";
+    setFilter(target, { reveal: true });
+    return true;
+  }
+
+  /**
+   * Ask the catalog where *sought* is: one indexed read of All from just above its number,
+   * whose first row is that pull request when the catalog holds it, and one of All's newest
+   * row. At most their difference of pull requests are newer than it, so All's drawn rows
+   * reach it when the difference is under All's display limit. Both are local, and run no
+   * gh. A number past the largest a pull request may have is refused from the first read:
+   * then the newest row says, since no pull request is newer, and the catalog lacks any
+   * other number the route refuses. A read that fails otherwise, or a number the catalog
+   * lacks while it is still being read from GitHub, leaves the place unknown, and the next
+   * poll asks again (`placeSought`).
+   */
+  async function readSought() {
+    if (sought === null || soughtRead !== null) {
+      return;
+    }
+    const number = sought;
+    const controller = new AbortController();
+    soughtRead = controller;
+    try {
+      const [at, top] = await Promise.all([
+        deps.request("GET", `${PULLS_ROUTE}?state=all&limit=1&after=${number + 1}`, {
+          signal: controller.signal,
+        }),
+        deps.request("GET", `${PULLS_ROUTE}?state=all&limit=1`, { signal: controller.signal }),
+      ]);
+      if (disposed || controller.signal.aborted || sought !== number) {
+        return;
+      }
+      const from = at.status === 200 && isEnvelope(at.body) ? at.body : null;
+      const refused = at.status >= 400 && at.status < 500 && !pinChanged(at);
+      if (top.status !== 200 || !isEnvelope(top.body) || (from === null && !refused)) {
+        return;
+      }
+      const newest = top.body.rows[0];
+      const row = from === null ? newest : from.rows[0];
+      if (row?.number === number) {
+        soughtFound = {
+          state: row.state === "open" ? "open" : "closed",
+          reach:
+            Math.max(number, newest?.number ?? number) - number <
+            (lists.get("all")?.displayLimit ?? DISPLAY_ROWS),
+        };
+      } else if (from === null || (from.complete && from.reason === null)) {
+        soughtFound = { state: "absent" };
+      } else {
+        return;
+      }
+    } catch {
+      return;
+    } finally {
+      if (soughtRead === controller) {
+        soughtRead = null;
+      }
+    }
+    if (placeSought()) {
+      return;
+    }
+    chaseCurrent();
+    noteOutside();
+  }
+
+  /**
+   * Say so when a pull request a navigation named is in no row the list can draw, rather
+   * than leave the reader looking for it: the catalog lacks it, or it is in this list
+   * further down than the list draws. Only once its place is known and the list stays,
+   * and not while the list is still reading toward it. A pull request the reader's own
+   * filter leaves out is not noted.
    */
   function noteOutside() {
     const list = held();
-    // The rows are newest first, and *nextAfter* is where the next window starts.
-    const unread = current !== null && list.nextAfter !== null && current < list.nextAfter;
-    const settled =
+    let next = null;
+    if (
       current !== null &&
+      current === sought &&
+      !placing &&
+      soughtFound !== null &&
       list.envelope !== null &&
-      !list.keys.has(current) &&
-      !(filter === "all" && unread && list.rows.length < list.displayLimit);
-    const next = settled && current !== null ? outsideText(current, filter, !unread) : null;
+      list.error === null &&
+      !list.keys.has(current)
+    ) {
+      if (soughtFound.state === "absent") {
+        next = outsideText(current, false);
+      } else if (
+        (filter === "all" || filter === soughtFound.state) &&
+        // The rows are newest first, and *nextAfter* is where the next window starts.
+        list.nextAfter !== null &&
+        current < list.nextAfter &&
+        list.rows.length >= list.displayLimit
+      ) {
+        next = outsideText(current, true);
+      }
+    }
     if (next !== outside) {
       outside = next;
       deps.markOutside?.(next);
@@ -1740,15 +1936,16 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * Read further windows for a current row the panel has not reached, as far as it can be.
-   * Only All holds every pull request: in Open or Closed the address may name one the list
-   * does not have, and chasing it would read every window to the end for nothing.
+   * Read further windows for a current row the panel has not reached, as far as it can be:
+   * under All, which holds every pull request, or under the filter of the state the catalog
+   * says a navigated pull request has (`readSought`). Otherwise the address may name one
+   * the list does not have, and chasing it would read every window to the end for nothing.
    */
   let chasing = false;
   function chaseCurrent() {
     const list = held();
     if (
-      filter !== "all" ||
+      !(filter === "all" || (current === sought && soughtFound?.state === filter)) ||
       current === null ||
       list.keys.has(current) ||
       list.nextAfter === null ||
@@ -1999,8 +2196,15 @@ export function createPullsController(deps, options = {}) {
         visibleCores.map((row) => [row.number, row.updatedAt]),
       ]);
     }
-    if (first && shown && revealCurrent && current !== null && list.keys.has(current)) {
-      deps.reveal(current);
+    // A list's first rows reveal the current row, and so does any read that brings the row
+    // of a pull request a navigation named before it has been revealed.
+    const awaited = first || (revealPending && sought === current);
+    if (awaited && shown && current !== null && list.keys.has(current)) {
+      revealRow(current);
+    }
+    if (placeSought(true)) {
+      // The list it moved to reveals it, and this list's reads end with its filter.
+      return;
     }
     chaseCurrent();
     // Fill the reader's display budget from cached metadata, independently of provider paging.
@@ -2601,11 +2805,14 @@ export function createPullsController(deps, options = {}) {
     if (!disposed && epoch === requestEpoch && name === filter) {
       settleAnchor();
       render();
-      if (chasing && current !== null && list.keys.has(current)) {
+      // A chase, or a list filling its rows before a navigation's pull request is revealed.
+      const waited = chasing || (revealPending && sought === current);
+      if (waited && current !== null && list.keys.has(current)) {
         chasing = false;
-        if (revealCurrent) {
-          deps.reveal(current);
-        }
+        revealRow(current);
+      }
+      if (placeSought()) {
+        return;
       }
       if (advanced && list.nextAfter !== null && list.rows.length < list.displayLimit) {
         await loadWindow();
@@ -2842,6 +3049,9 @@ export function createPullsController(deps, options = {}) {
 
   function cancelReads() {
     arrivalBaseline = null;
+    // The next poll asks again for a navigation's pull request still to be placed.
+    soughtRead?.abort();
+    soughtRead = null;
     clearCoreWindow();
     visibleCores = [];
     visibleCoreAt = 0;
@@ -2869,14 +3079,19 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * The list rows changed under the panel: a new filter, or it became visible.
+   * The list rows changed under the panel: a new filter, or it became visible. A filter the
+   * reader or the list's address picks ends a navigation's reveal; *reveal* is the move a
+   * reveal makes itself (`placeSought`).
    *
    * @param {string} name
-   * @param {{fromAddress?: boolean}} [how]
+   * @param {{fromAddress?: boolean, reveal?: boolean}} [how]
    */
   function setFilter(name, how = {}) {
     if (disposed || !LISTS.includes(name) || name === filter) {
       return;
+    }
+    if (how.reveal !== true) {
+      seek(null);
     }
     cancelReads();
     filter = name;
@@ -3013,8 +3228,8 @@ export function createPullsController(deps, options = {}) {
         stopWarming();
         return;
       }
-      if (revealCurrent && current !== null && held().keys.has(current)) {
-        deps.reveal(current);
+      if (current !== null && held().keys.has(current)) {
+        revealRow(current);
       }
       wake();
     },
@@ -3036,15 +3251,18 @@ export function createPullsController(deps, options = {}) {
       }
       if (options.preserveScroll) {
         revealCurrent = false;
+        seek(null);
       }
       if (number === current) {
         if (options.again === true && number !== null) {
           revealCurrent = true;
+          seek(number);
           showCurrent(number);
         }
         return;
       }
       revealCurrent = !options.preserveScroll;
+      seek(options.preserveScroll ? null : number);
       // The address moved by itself, by Back or by a link on the page: a row that is still
       // waiting for its record to open does not open over it.
       cancelCoreRetry();
@@ -3257,6 +3475,7 @@ export function createPullsController(deps, options = {}) {
       clearTimer();
       clearWalk();
       cancelReads();
+      seek(null);
       peeked.clear();
     },
     /**
@@ -4956,6 +5175,15 @@ export function mountPullsPanel(container, ctx, mb) {
         if (!outsideNote.isConnected) {
           connection.after(outsideNote);
         }
+      },
+      // A row, walked to by J and K or focused for Control-N, Control-P, or a keyboard Back,
+      // or nothing, as when the row that had focus was drawn away.
+      focusPlace() {
+        const active = document.activeElement;
+        if (active === null || active === document.body) {
+          return "body";
+        }
+        return list.contains(active) ? "list" : "elsewhere";
       },
       open: (route) => nav.open(route),
       filterChanged: (state) => nav.filterChanged(state),

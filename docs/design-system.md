@@ -4686,15 +4686,33 @@ Each exception has a reason:
   the file lacks it. A file in a folder the reader closed gets no note.
   Under Group by, the file is looked for in its own section first, then in each other
   section.
-- **A pull request outside the list is named.** Open and Closed hold only their state’s
-  pull requests, and the list reads its windows from the newest.
-  A pull request the list does not hold is named under its band: “#8 is not listed under
-  Open.”, or under All, “#8 is not in this list.”
-  A list that has not read as far says only “#8 is not among the pull requests loaded.”,
-  since it may be further down.
-  Under All, the list keeps reading for one older than the rows it has read, up to its
-  display limit, and reveals it when it arrives.
-  A reveal never changes the filter, which is the reader’s choice.
+- **A pull request the list does not draw moves the list to a filter that draws it.**
+  Open and Closed hold only their state’s pull requests, and every list reads its
+  windows from the newest, up to its display limit.
+  A navigation to one that Open or Closed leaves out moves the list, as a reveal opens a
+  stack the reader closed: to All, which holds every pull request, when All’s drawn rows
+  reach it, so that a stack walk across open and merged pull requests stays on one list,
+  and otherwise to the filter of its own state, which reaches as far or further.
+  A navigation under All to one further down than All draws moves the list to its
+  state’s filter the same way.
+  Where it is comes from the catalog, by two one-row indexed reads: the pull request
+  itself, and the newest, since no more pull requests than the difference of their
+  numbers are newer than it (`readSought` in `pulls-panel.js`). The windows a list has
+  read cannot say it: they do not tell an older pull request from one the filter leaves
+  out, nor a catalog still being read from GitHub from one read to its end.
+  While the catalog cannot say yet, the list stays and says nothing, and asks again at
+  its next poll. The list a navigation moved to reveals the row at the first read that
+  brings it, though its first read failed.
+  When the list moves while focus is on one of its rows, the revealed row takes focus,
+  unless the reader has moved focus out of the list by the time it arrives.
+  A filter the reader picks while a pull request is shown is theirs: the list says
+  nothing of a pull request it leaves out, since the filter’s chip says what it holds,
+  and a note that a filter leaves a pull request out reads as a row gone missing.
+  The list reads on for the pull request, up to its display limit, and reveals it when
+  it arrives. Only one the list still cannot show is named under its band: one further
+  down than the list draws, “#8 is not among the pull requests loaded.”, or one the
+  catalog, read to its end, lacks, “#8 is not in this list.”
+  (`outsideText`).
 - **A commit outside the history read is not chased.** Commits reads history from the
   newest commit, 250 commits a page.
   A commit’s address reveals its row once the pages read hold it, so the first page’s
