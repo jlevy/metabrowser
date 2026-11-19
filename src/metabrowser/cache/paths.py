@@ -11,8 +11,8 @@ from typing import Final, Literal
 
 from metabrowser.cache.identity import is_slug, is_store_key
 from metabrowser.cache.locks import is_entry_name
+from metabrowser.config_file import CONFIG_MAX_BYTES, CONFIG_RECORD
 
-CONFIG_RECORD: Final = "config.yml"
 CACHE_ROOT: Final = "."
 LAYOUT_RECORD: Final = "layout.yml"
 STAGING: Final = "staging"
@@ -143,6 +143,7 @@ def staging_entry(entry: str) -> str:
 
 __all__ = [
     "CACHE_ROOT",
+    "CONFIG_MAX_BYTES",
     "CONFIG_RECORD",
     "LAYOUT_RECORD",
     "MAX_PULL_REQUEST_NUMBER",

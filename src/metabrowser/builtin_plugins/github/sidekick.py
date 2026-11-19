@@ -247,6 +247,7 @@ async def pull_markdown_handler(request: Request) -> Response:
     from metabrowser.builtin_plugins.github.pull_markdown import render_part
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
+        pull_answer,
         pull_host,
         pull_view,
         requested_number,
@@ -258,10 +259,21 @@ async def pull_markdown_handler(request: Request) -> Response:
         return _invalid_request(str(exc))
     await _resolve(request)
     view = pull_view(pull_host(request.app), get_source_session().subject, number)
+
+    async def current_core() -> PullCorePreview | None:
+        # The preview the pull route would answer now, revoked ones dropped as it drops them,
+        # so the description renders only what a page may show.
+        envelope, _freshness = await asyncio.to_thread(pull_answer, view)
+        preview = envelope["core_preview"]
+        if envelope["record"] is not None or preview is None:
+            return None
+        return preview if await _preview_current(view, preview) else None
+
     # A page that goes away, or scrolls past a text, leaves the render to no one, and an
     # abandoned render must not hold the Markdown child.
     answer = await unless_disconnected(
-        request, render_part(view, request.query_params.get("part", ""))
+        request,
+        render_part(view, request.query_params.get("part", ""), current_core=current_core),
     )
     if answer is None:
         return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)

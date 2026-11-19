@@ -153,7 +153,7 @@ def test_plugins_doctor_json_reports_a_damaged_cache_contract(damaged_cache_sche
 
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
-    assert set(payload) == {"ok", "plugin_count", "problems"}
+    assert set(payload) == {"ok", "plugin_count", "problems", "open_in"}
     assert payload["ok"] is False
     assert any(problem.startswith("cache record contracts:") for problem in payload["problems"])
     assert any(damaged_cache_schemas in problem for problem in payload["problems"])

@@ -52,10 +52,10 @@ selected. Opening a path inside a Git repository at the repository’s root is p
 | Status | Meaning |
 | --- | --- |
 | 0 | Success |
-| 1 | A refusal or failure, printed as one `Error:` line on stderr; `--api` when the route answers outside 2xx |
+| 1 | A refusal or failure, printed as one `Error:` line on stderr; `--api` when the route answers outside 2xx; `--present` when the server it started exited first |
 | 2 | A usage error, such as two modes or an option the mode does not use; a `--diff` that cannot be computed |
 | 3 | `--present`: ROOT cannot be presented, and the refusal says why |
-| 4 | `--present`: no app takes the target, so nothing was sent; the report’s `code` says why |
+| 4 | `--present`: no app takes the target under `open_in` `app`, or a browser would and `present_browser` is false, so nothing was sent; the report’s `code` says why |
 | 5 | `--present`: LaunchServices could not be asked or did not take the target, as in a sandbox |
 | 129, 130 | Stopped by a terminal hangup or Ctrl-C |
 | 143 | Stopped by `SIGTERM` while cloning |
@@ -73,7 +73,7 @@ selected. Opening a path inside a Git repository at the repository’s root is p
 | `--no-serve` | Clone or reuse a Git source in the cache, and serve nothing |
 | `--remote HOST` | Serve a directory on another machine through an SSH tunnel |
 | `--plugins`, `--plugin NAME`, `--doctor` | List, show, or validate plugins |
-| `--present` | Hand a folder, a file, or a GitHub URL to the [macOS app](macos-app.md) |
+| `--present` | Open a folder, a file, or a GitHub URL in the [macOS app](macos-app.md) or a browser |
 | `--recent`, `--recent-add`, `--recent-forget`, `--recent-clear` | List or change the [recent targets](#recent-targets) |
 
 The modes read, with three exceptions: a Git source is cloned into the cache by
@@ -481,25 +481,70 @@ For the underlying data, `--api` is more direct.
 The plugin modes take `--plugins-dir` and `--json`; [plugins](plugins.md) says where
 plugins are discovered.
 
-## Handing a Target to the App: `--present`
+## Presenting a Target: `--present`
 
 ```shell
 metab ./notes --present                          # a folder
 metab ./notes/report.md --present                # a file, in the folder metab serves
 metab https://github.com/owner/repo/pull/123 --present
-metab ./notes --present --dry-run --format json  # what would be sent, sending nothing
+metab ./notes --present --open-in browser        # in a browser, never the app
+metab ./notes --present --dry-run --format json  # where it would go, sending nothing
 ```
 
-`--present` hands one folder, file, or GitHub URL to the
-[Metabrowser macOS app](macos-app.md) and reports what it did.
+`--present` opens one folder, file, or GitHub URL in the
+[Metabrowser macOS app](macos-app.md) or in a browser, and reports what it did.
 It reads ROOT as every mode does, and `--path` selects a file or folder inside a local
-ROOT as serve mode reads it, but it clones nothing, fetches nothing, and starts no
-server: the app runs `metab` on what it receives, as it does for a folder opened in
-Finder. Unlike serve mode, `--present` refuses `--path` with a URL (`path_with_url`):
-present the URL of the file or folder itself.
+ROOT as serve mode reads it.
+For the app it clones nothing, fetches nothing, and starts no server: the app runs
+`metab` on what it receives, as it does for a folder opened in Finder.
+For a browser it starts `metab ROOT`, which does.
+Unlike serve mode, `--present` refuses `--path` with a URL (`path_with_url`): present
+the URL of the file or folder itself.
 
-`--dry-run` stops after reading ROOT and prints what would be sent.
-With `--format json` it is one object, which is how the app checks what a user types:
+### Choosing the App or a Browser
+
+The `open_in` preference chooses where a target opens:
+
+- **`auto`**, the default: the app when an installed build takes the target, and
+  otherwise a browser.
+- **`app`**: the app, or nowhere, with [status](#exit-status) 4.
+- **`browser`**: a browser, without looking for the app.
+
+It is read from the first of three places that sets it, and is `auto` when none does:
+`--open-in WHERE`; the `METABROWSER_OPEN_IN` variable; and `open_in` in the `config`
+mapping of `config.yml`, in the [configuration directory](#storage-locations):
+
+```yaml
+softschema:
+  contract: metabrowser.config:ApplicationConfig/v1
+  envelope: config
+  status: permissive
+config:
+  format: f01
+  written_by: 0.12.1
+  upgrades: []
+  open_in: browser
+```
+
+Metabrowser writes `config.yml` when it first clones a repository; add `open_in` to the
+`config` mapping there, or, before then, write the whole file as above.
+A value that is not `auto`, `app`, or `browser` is an `Error:` line that names where it
+was read, before anything is looked up or started; the flag and the variable are read
+first, so either still chooses while `config.yml` is broken.
+Under `auto`, a target LaunchServices cannot be asked about goes nowhere with
+`lookup_failed`, as under `app`: in a sandbox that keeps `metab` from LaunchServices, a
+browser it started would be kept from the screen as well.
+Bare `metab ROOT` does not read the preference; it serves and opens a browser as it
+always has.
+`present_browser: false` in the same mapping keeps `--present` from opening a
+browser whatever the preference says
+([Turning Browser Delivery Off](#turning-browser-delivery-off)).
+
+### Checking a Target: `--dry-run`
+
+`--dry-run` reads ROOT, decides where it would go, and prints both, sending nothing and
+starting no server; it looks the app up unless the preference is `browser`. With
+`--format json` it is one object, which is how the app checks what a user types:
 
 ```console
 $ metab https://github.com/owner/repo/pull/123/files --present --dry-run --format json
@@ -510,7 +555,17 @@ $ metab https://github.com/owner/repo/pull/123/files --present --dry-run --forma
   "handoff": [
     "https://github.com/owner/repo/pull/123/files"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "app",
+    "open_in": "auto",
+    "open_in_source": "default",
+    "bundle_id": "io.github.jlevy.metabrowser",
+    "bundle_path": "/Applications/Metabrowser.app",
+    "code": "app_found",
+    "reason": "the app at /Applications/Metabrowser.app takes the target",
+    "fallback": null
+  }
 }
 ```
 
@@ -544,27 +599,43 @@ $ metab https://github.com/owner/repo/pull/123/files --present --dry-run --forma
   source that is not on GitHub is `unsupported_source`.
   `tests/golden/cli-present.tryscript.md` shows these and most others, `--path` with a
   URL among them.
+- **`decision`:** null with a refusal; otherwise where the target would go,
+  `delivers_to`, `app`, `browser`, or `none`, under the preference `open_in` read from
+  `open_in_source`, `flag`, `environment`, `config`, or `default`. `code` is
+  `app_found`, `browser_preferred`, `browser_fallback` (no app takes the target under
+  `auto`, and `fallback` says why), `preference_unreadable`, or the delivery code below
+  that sends it nowhere.
+  The status of a dry run says only whether ROOT resolved, so a preference that cannot
+  be read, which the app’s check never uses, is a decision and not a failure.
 
 A file named alone goes where the app places any file it is handed: in the most specific
 folder it has open that holds the file, and otherwise in the folder `root` reports.
 A file named with `--path` opens in ROOT, unless a folder inside ROOT that holds the
 file is open already, which is more specific.
 
-Without `--dry-run`, `--present` asks LaunchServices for the app: the release build,
-then the development build every local build is, or the one `--app-bundle-id ID` or
-`METABROWSER_APP_BUNDLE_ID` names.
+### Opening in the App
+
+Unless the preference is `browser`, `--present` asks LaunchServices for the app: the
+release build, then the development build every local build is, or the one
+`--app-bundle-id ID` or `METABROWSER_APP_BUNDLE_ID` names.
 It sends the handoff with `open -b` and prints a report; `--format json` prints it as
-one object whose `target` is the object above:
+one object whose `target` is the object above, without `decision`:
 
 ```json
 {
   "delivered_to": "app",
+  "open_in": "auto",
+  "open_in_source": "default",
   "bundle_id": "io.github.jlevy.metabrowser",
   "bundle_path": "/Applications/Metabrowser.app",
+  "url": null,
+  "pid": null,
+  "log": null,
   "target": {"kind": "folder", "root": "/path/to/notes", "page": "/view/", "handoff": ["/path/to/notes"], "refusal": null},
   "confirmed": false,
   "code": "not_confirmed",
-  "reason": "LaunchServices took the target; the app does not reply yet, ..."
+  "reason": "LaunchServices took the target; the app does not reply yet, ...",
+  "fallback": null
 }
 ```
 
@@ -572,9 +643,10 @@ one object whose `target` is the object above:
 That does not mean a window shows it, and the app cannot answer yet, so `confirmed` is
 always `false`. `bundle_path` is the bundle LaunchServices named for `bundle_id`, or
 null when none was looked up or found.
-Otherwise `delivered_to` is `none`, and `code` is a refusal’s code or one of these;
-nothing was handed over, except that an `open` that did not return in time may still
-deliver what it was given:
+Under `auto`, a target no app takes opens in a browser instead, as the next section
+describes. Otherwise `delivered_to` is `none`, and `code` is a refusal’s code or one of
+these; nothing was handed over, except that an `open` that did not return in time may
+still deliver what it was given:
 
 | Code | Meaning |
 | --- | --- |
@@ -619,10 +691,86 @@ each `metab` it might run for the flags it needs
 ([Choosing a metab](macos-app.md#choosing-a-metab)).
 
 In an agent’s sandbox, LaunchServices may not answer, or may refuse what `open` asks,
-and `--present` reports `lookup_failed` or `open_failed`. Run it outside the sandbox:
+and `--present` reports `lookup_failed` or `open_failed`. Run it again outside the
+sandbox with `--open-in app`, as `metab --present ROOT --open-in app`: under `auto`, the
+command outside looks the app up again, and when no app takes the target it starts a
+server there.
 [Working with agents](working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)
 has the Claude Code and Codex settings, which match a command by its first words, so
-write it as `metab --present ROOT`, and says when such a setting is safe.
+write `metab --present` first, and says when such a setting is safe.
+Such a setting also lets `--present` start a server outside the sandbox for any path the
+agent names, unless `present_browser` is false
+([Turning Browser Delivery Off](#turning-browser-delivery-off)).
+
+### Opening in a Browser
+
+Under `browser`, and under `auto` when no app takes the target, `--present` starts
+`metab ROOT`, with its `--path`, as a server of its own: in a session of its own, with
+its output in a log file in the temporary folder, so it outlives the command and the
+terminal. It waits for the server’s `Serving <root> at <url>` line, and then for that
+address to answer `GET /api/identity` as a server of the target’s root, and reports it.
+The second wait is what says this server started: two servers started together can both
+find the same port free and print it, and the second to bind exits.
+The server opens the page in your browser once it answers, as `metab ROOT` in a terminal
+does, and serves until it is stopped:
+
+```json
+{
+  "delivered_to": "browser",
+  "open_in": "auto",
+  "open_in_source": "default",
+  "bundle_id": null,
+  "bundle_path": null,
+  "url": "http://127.0.0.1:8411/view/",
+  "pid": 41235,
+  "log": "/tmp/metab-present-k2v9q1x8.log",
+  "target": {"kind": "folder", "root": "/path/to/notes", "page": "/view/", "handoff": ["/path/to/notes"], "refusal": null},
+  "confirmed": false,
+  "code": "server_started",
+  "reason": "a metab server for the target runs detached at http://127.0.0.1:8411/view/ ...",
+  "fallback": {"code": "app_not_found", "reason": "LaunchServices knows no app ..."}
+}
+```
+
+| Code | Meaning |
+| --- | --- |
+| `server_started` | The server printed `url`, which answers as a server of the target, and opens it in a browser once the page answers; nothing confirms a browser shows it |
+| `server_starting` | The server runs, but has not printed its address, or its address has not answered as the target’s, in the time `--present` waits, as a first clone can take minutes; `url` is null, the server opens the page once it answers, and `log` will hold the address |
+| `server_failed` | The server exited first, before or after it printed an address, or could not start; `reason` names its last line and `log` holds the rest, and the status is 1 |
+
+`pid` is the server’s process ID: `kill PID` stops it.
+`fallback`, under `auto`, is the code and reason that no app took the target.
+`server_announce_timeout_s` in `cli/present.py` is how long `--present` waits, with the
+measurement that set it.
+Each `--present` starts a server of its own; to show another page under the same root,
+open it on that server’s address rather than presenting again.
+
+### Turning Browser Delivery Off
+
+```yaml
+config:
+  # ... format, written_by, and upgrades, as above
+  present_browser: false
+```
+
+`present_browser: false` in the `config` mapping of `config.yml` keeps `--present` from
+starting a server for a browser: it opens a target in the app or nowhere, whatever
+`open_in` says and wherever it was read.
+No option of the command turns it back on, and `--present` refuses `--config-dir`, so it
+holds for a command an agent runs outside its sandbox through a rule for
+`metab --present`
+([Working with agents](working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)).
+The configuration directory is still the environment’s to choose
+([Storage Locations](#storage-locations)): `METABROWSER_CONFIG_DIR`, `XDG_CONFIG_HOME`,
+and `HOME` name it, and a directory without `config.yml` allows a browser.
+Unset, or `true`, a browser may be used.
+`--present` reads it only when it would start a server, and a `config.yml` it cannot
+read then is an `Error:` line, so a broken file starts nothing; a target for the app is
+sent as before. `--dry-run` reports the decision, and `--doctor` the setting:
+
+| Code | Meaning |
+| --- | --- |
+| `browser_off` | A browser would take the target, and `present_browser` is false, so nothing was sent and no server started; under `auto`, `fallback` says why no app took it, and the status is 4 |
 
 ## Recent Targets
 
@@ -714,11 +862,12 @@ defaults and environment.
 | Cache: mirrors and pull-request records | `~/.cache/metabrowser` | `--cache-dir DIR` | `METABROWSER_CACHE_DIR` |
 | Configuration: `config.yml` | `~/.config/metabrowser` | `--config-dir DIR` | `METABROWSER_CONFIG_DIR` |
 
-A flag takes precedence over its variable.
-Without either, `XDG_CACHE_HOME` and `XDG_CONFIG_HOME` choose the base directories, with
-`/metabrowser` appended.
-A variable must be a nonempty absolute path with no `..`; a flag may be relative to the
-current directory. The two directories may not overlap.
+A flag takes precedence over its variable, and `--present` refuses `--config-dir`
+([Turning Browser Delivery Off](#turning-browser-delivery-off)). Without either,
+`XDG_CACHE_HOME` and `XDG_CONFIG_HOME` choose the base directories, with `/metabrowser`
+appended. A variable must be a nonempty absolute path with no `..`; a flag may be
+relative to the current directory.
+The two directories may not overlap.
 
 Serving a folder creates no cache and no `config.yml`; it creates the configuration
 directory, owner-only, for the one file it writes there, the recent targets.
@@ -776,6 +925,7 @@ Every variable is read from the process environment, so export it in the shell t
 | `METABROWSER_INERT_RENDER_DEADLINE_MS` | How long one untrusted Markdown document may take to render, in milliseconds and at least 1, before its source is shown instead |
 | `METABROWSER_BINARY_PREVIEW_BYTES`, `METABROWSER_BINARY_PREVIEW_MAX_BYTES`, `METABROWSER_BINARY_PREVIEW_MAX_CHUNK_BYTES` | Byte-view budgets, in bytes |
 | `STRUCTURED_PARSE_MAX_BYTES`, `STRUCTURED_CACHE_SIZE` | JSON and YAML tree-view budgets: the largest file parsed, in bytes, and how many parses are kept |
+| `METABROWSER_OPEN_IN` | Where `--present` opens a target, `auto`, `app`, or `browser`, as `--open-in`, which overrides it; see [choosing the app or a browser](#choosing-the-app-or-a-browser) |
 | `METABROWSER_APP_BUNDLE_ID` | The app `--present` hands a target to, as `--app-bundle-id`, which overrides it |
 | `METABROWSER_ALLOW_UNINSTALLED_APP` | `1` lets `--present` hand a target to an app outside the install locations, such as a development build |
 | `METABROWSER_METAB` | Read by the [macOS app](macos-app.md), not by `metab`: the `metab` the app runs |
