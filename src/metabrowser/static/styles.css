@@ -1645,8 +1645,8 @@ body {
   margin-left: auto;
 }
 /* A pinned revision's heading: the repository's name at the heading's weight,
-   then the ref and the short commit, muted. The full commit is in the
-   heading's tooltip. A pin with no mirror has no name, and its ref stands in
+   then the ref and the short commit, muted, the commit in the commit-ID face
+   (.git-commit-sha). The full commit is in the heading's tooltip. A pin with no mirror has no name, and its ref stands in
    the name's place. */
 .header-revision {
   flex: none;
@@ -1667,7 +1667,7 @@ body {
   text-overflow: ellipsis;
 }
 /* A served mirror's heading is the repository's name, the ref, then the commit.
-   The ref gives way before the name does: the ref selector under the heading
+   The ref gives way before the name does: the ref selector in the Files toolbar
    names it too. */
 .header-ref {
   flex: 0 1000 auto;
@@ -2739,25 +2739,37 @@ html.theme-anim .menu {
   white-space: nowrap;
 }
 
-/* The branch and tag selector of a served mirror or checkout: one compact
-   button under the header naming what is served, and a .menu panel below it
-   listing the branches or tags with a filter box. A pin with a mirror has one,
-   and so does a folder that is a repository's root, whose panel begins with its
-   working tree. */
+/* The branch and tag chooser of a served mirror or checkout. It chooses what the Files
+   tab shows and nothing else, so it leads that tab's toolbar row, beside Group by
+   (server.py), as a `.chip-menu-trigger` like Group by's, and wraps with the row
+   (`.nav-toolbar-row`). Its list, a .menu, opens under the toolbar and across the pane
+   rather than under the button, since a ref's name, its commit, and the commit's age
+   need the room. A pin with a mirror has one, and so does a folder that is a
+   repository's root, whose list begins with its working tree. */
 .source-ref-selector[hidden] {
   display: none;
 }
+/* Not positioned, so the list is placed on the toolbar (`.nav-filter-bar`). */
 .source-ref-selector {
-  position: relative;
-  flex: 0 0 auto;
-  padding: 4px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--sidebar-bg);
-  font-size: var(--ui-small-font-size);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
 }
-/* The trigger is a `.chip-menu-trigger`: it names the served ref and opens a list, as a
-   select does. Only what a long name needs is local. */
+/* Only what a long name needs is local. The button keeps its width, and Group by moves
+   to the next line instead; a name longer than the row shortens. Its span is what a ref
+   chip's copy control is placed against (.git-ref-copy-host), so the list's containing
+   block stays the toolbar. */
+.source-ref-selector-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+}
 .source-ref-selector-toggle {
+  flex: 0 0 auto;
+  min-width: 0;
   max-width: 100%;
 }
 .source-ref-selector-label {
@@ -2771,9 +2783,10 @@ html.theme-anim .menu {
 .source-ref-selector-panel {
   position: absolute;
   top: calc(100% + 2px);
-  left: 12px;
-  right: 12px;
+  left: var(--pane-header-padding-x);
+  right: var(--pane-header-padding-x);
   gap: 4px;
+  font-size: var(--ui-small-font-size);
 }
 .source-ref-selector-panel[hidden] {
   display: none;
@@ -2809,14 +2822,38 @@ html.theme-anim .menu {
   text-overflow: ellipsis;
 }
 .source-ref-selector-badge {
+  flex: 0 0 auto;
   padding: 0 4px;
   border: 1px solid var(--border);
   border-radius: var(--radius-chrome);
   color: var(--muted);
 }
+/* A ref's commit as the history shows one: Git's short ID in the commit-ID face
+   (`.git-commit-sha`), muted beside the ref's name, then its age, whose tier sets its
+   colour and weight (`.age-*`). Neither shrinks: the name gives way first. The age ends
+   the row in a column as wide as the widest compact age, so the IDs line up. */
 .source-ref-selector-commit {
+  flex: 0 0 auto;
   color: var(--muted);
-  font-variant-numeric: var(--tabular-numerals);
+}
+/* A commit ID sits one step below the sans beside it (`.git-commit-sha`), and this list
+   and the button are at the small size, the ramp's last step before the micro marks. So
+   here an ID takes the ratio a ref chip takes to its text, and reads at the size of the
+   ref names it sits among; at the history's size it read larger than them. A mirror's
+   offer of a newer commit, in the freshness row, names it the same way. */
+.source-ref-selector .git-commit-sha,
+.source-freshness .git-commit-sha {
+  font-size: var(--git-ref-font-size);
+}
+/* The age column is as wide as the widest compact age, "12mo". In em, not ch: a tier's
+   weight widens its "0", so 4ch was 24.2px at weight 500 and 25.3px at 700, while "12mo"
+   was 28.7px. Measured 2026-11-18 in Chrome at 12px: "12mo" is 2.39em in Clean Fonts
+   (Source Sans 3) and 2.78em in System Fonts, and the next widest, "60m" at weight 700,
+   2.28em; tests/test_checkout_ref_selector_chrome.py holds the column. */
+.source-ref-selector-age {
+  flex: 0 0 auto;
+  min-width: 2.8em;
+  text-align: end;
 }
 .source-ref-selector-note,
 .source-ref-selector-error {
@@ -2827,32 +2864,49 @@ html.theme-anim .menu {
 .source-ref-selector-error {
   color: var(--status-warning-strong);
 }
-/* A checkout's working tree: a row like a ref's, above the lists and ruled off
-   from them, since it is the one choice that is not a ref. What it is stands
-   where a ref's commit does. */
+/* A checkout's working tree: a row like a ref's, above the lists and ruled off from
+   them, since it is the one choice that is not a ref. The folder's path stands where a
+   ref's commit does, muted, with its last part, the folder's own name, in the row's
+   colour. The path gives way before the name, and what is before the folder's name
+   gives way before it, entirely: a share of the shortfall, however small, cut the
+   folder's name too. */
 .source-ref-selector-working-tree {
   flex: 0 0 auto;
   border-bottom: 1px solid var(--border);
   border-radius: var(--radius-chrome) var(--radius-chrome) 0 0;
 }
-.source-ref-selector-working-tree[hidden],
-.source-ref-selector-stale[hidden] {
-  display: none;
+.source-ref-selector-working-tree-name {
+  flex: 0 0 auto;
 }
-/* What a checkout's page says, beside its button, once the server shows
-   something else: the words and the one action, as the freshness row offers
-   a reload on a mirror. */
-.source-ref-selector-stale {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 8px;
+.source-ref-selector-location {
+  display: flex;
+  min-width: 0;
+  margin-left: auto;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.source-ref-selector-location > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.source-ref-selector-location-directory {
+  flex: 0 1 auto;
+}
+.source-ref-selector-location > .path-base {
+  flex: 0 0 auto;
+  max-width: 100%;
   color: var(--text);
+}
+.source-ref-selector-working-tree[hidden] {
+  display: none;
 }
 
 /* A served mirror's freshness, at the foot of the navigation pane where a
    folder shows crawl progress: when it was last fetched, and an offer when a
-   refresh moved the pinned ref. Quiet unless a refresh failed. */
+   refresh moved the pinned ref. Quiet unless a refresh failed. A checkout's page
+   offers its reload in the same row (.source-ref-selector-stale), so every tab
+   shows it. */
 .source-freshness[hidden] {
   display: none;
 }
@@ -3901,9 +3955,12 @@ a.tab-btn {
    filled, on a pinned revision's page missing its path codec, shows at once. Where
    another tab's toolbar is in front the bar is hidden, and the tree is not held. The
    totals' band between the bar and the tree (`.nav-metadata-band`) is held with the
-   tree, since the bar's fill moves it as far. */
-.nav-filter-bar:not([hidden]):has(> .tally-pending) ~ .nav-metadata-band,
-.nav-filter-bar:not([hidden]):has(> .tally-pending) ~ .tree-content:not(:has(> [role="alert"])) {
+   tree, since the bar's fill moves it as far. The placeholder is looked for anywhere in
+   the bar: on a page with the branch and tag chooser the server ships the bar's row, the
+   chooser first and the placeholder after it, and the bar app.js fills holds no
+   placeholder at any depth. */
+.nav-filter-bar:not([hidden]):has(.tally-pending) ~ .nav-metadata-band,
+.nav-filter-bar:not([hidden]):has(.tally-pending) ~ .tree-content:not(:has(> [role="alert"])) {
   visibility: hidden;
   animation: mb-delayed-loading-reveal 0s linear 1s forwards;
 }

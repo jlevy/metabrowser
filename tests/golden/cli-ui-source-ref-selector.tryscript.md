@@ -45,9 +45,11 @@ revisions are read with is refused in the server’s own words.
 (`static/source-pin-guard.js`), which is how a tab left behind is refused: a revision
 its commit, a checkout’s working tree the word `working-tree`, and a plain folder
 nothing, since its server can serve nothing else.
-`hold` is what the page’s own data requests do while it switches: the server may serve
-the other subject before the page has gone, so each waits for the answer and is held
-while the page goes.
+`folders` is where the Working tree row cuts a folder’s path to keep the folder’s own
+name whole: at the name the server sends, whichever separator the path was joined with,
+and nowhere when the folder is the home directory, whose path is `~`. `hold` is what the
+page’s own data requests do while it switches: the server may serve the other subject
+before the page has gone, so each waits for the answer and is held while the page goes.
 The guard sends them when the switch is refused or changes nothing, when the selector is
 taken away, when the back/forward cache shows the page again, and at the hold’s bound,
 which runs from the ask; an earlier switch’s bound does not end a later hold, and a
@@ -96,8 +98,8 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "topic 42382ea2303b [default] [current]",
-          "feature c7ae2a331f54"
+          "topic 42382ea2303b 2026-01-01T01:00:00Z [default] [current]",
+          "feature c7ae2a331f54 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -115,8 +117,8 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "topic 42382ea2303b [default] [current]",
-          "feature c7ae2a331f54"
+          "topic 42382ea2303b 2026-01-01T01:00:00Z [default] [current]",
+          "feature c7ae2a331f54 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -136,7 +138,7 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "feature c7ae2a331f54"
+          "feature c7ae2a331f54 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -158,7 +160,7 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "feature c7ae2a331f54"
+          "feature c7ae2a331f54 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -197,7 +199,7 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "v1 fcb9d63c3c85"
+          "v1 fcb9d63c3c85 2026-01-01T00:00:00Z"
         ],
         "note": "",
         "error": null
@@ -217,7 +219,7 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "topic 42382ea2303b [default] [current]"
+          "topic 42382ea2303b 2026-01-01T01:00:00Z [default] [current]"
         ],
         "note": "Showing 1 of 2 branches; filter to narrow.",
         "error": null
@@ -276,8 +278,8 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": true,
         "rows": [
-          "topic 42382ea2303b [default] [current]",
-          "feature c7ae2a331f54"
+          "topic 42382ea2303b 2026-01-01T01:00:00Z [default] [current]",
+          "feature c7ae2a331f54 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -295,8 +297,8 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": true,
         "rows": [
-          "topic 42382ea2303b [default] [current]",
-          "feature c7ae2a331f54"
+          "topic 42382ea2303b 2026-01-01T01:00:00Z [default] [current]",
+          "feature c7ae2a331f54 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -353,8 +355,8 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "topic 42382ea2303b [default] [current]",
-          "feature c7ae2a331f54"
+          "topic 42382ea2303b 2026-01-01T01:00:00Z [default] [current]",
+          "feature c7ae2a331f54 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": "That ref is no longer in the mirror."
@@ -430,7 +432,7 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Working tree",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic [current]",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
             "branch",
             "tag",
@@ -441,9 +443,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "topic 42382ea2303b [checked out] (local chip)",
-            "feature c7ae2a331f54 (local chip)",
-            "local-work 25e0a2a76ab4 (local chip)"
+            "topic 42382ea2303b 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "feature c7ae2a331f54 2026-01-01T02:00:00Z (local chip)",
+            "local-work 25e0a2a76ab4 2026-02-01T00:00:00Z (local chip)"
           ],
           "note": "",
           "error": null
@@ -458,7 +460,7 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Working tree",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic [current]",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
             "branch",
             "tag",
@@ -469,8 +471,8 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "origin/feature c7ae2a331f54 (remote chip)",
-            "origin/topic 42382ea2303b (remote chip)"
+            "origin/feature c7ae2a331f54 2026-01-01T02:00:00Z (remote chip)",
+            "origin/topic 42382ea2303b 2026-01-01T01:00:00Z (remote chip)"
           ],
           "note": "",
           "error": null
@@ -485,7 +487,7 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Working tree",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic [current]",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
             "branch",
             "tag",
@@ -496,8 +498,8 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "local-tag c7ae2a331f54 (tag chip)",
-            "v1 fcb9d63c3c85 (tag chip)"
+            "local-tag c7ae2a331f54 2026-01-01T02:00:00Z (tag chip)",
+            "v1 fcb9d63c3c85 2026-01-01T00:00:00Z (tag chip)"
           ],
           "note": "",
           "error": null
@@ -512,7 +514,7 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Working tree",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic [current]",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
             "branch",
             "tag",
@@ -523,9 +525,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": true,
           "rows": [
-            "topic 42382ea2303b [checked out] (local chip)",
-            "feature c7ae2a331f54 (local chip)",
-            "local-work 25e0a2a76ab4 (local chip)"
+            "topic 42382ea2303b 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "feature c7ae2a331f54 2026-01-01T02:00:00Z (local chip)",
+            "local-work 25e0a2a76ab4 2026-02-01T00:00:00Z (local chip)"
           ],
           "note": "",
           "error": null
@@ -538,7 +540,7 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Working tree",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic [current]",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
             "branch",
             "tag",
@@ -549,9 +551,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": true,
           "rows": [
-            "topic 42382ea2303b [checked out] (local chip)",
-            "feature c7ae2a331f54 (local chip)",
-            "local-work 25e0a2a76ab4 (local chip)"
+            "topic 42382ea2303b 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "feature c7ae2a331f54 2026-01-01T02:00:00Z (local chip)",
+            "local-work 25e0a2a76ab4 2026-02-01T00:00:00Z (local chip)"
           ],
           "note": "",
           "error": null
@@ -578,7 +580,7 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Branch: feature",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout)",
           "lists": [
             "branch",
             "tag",
@@ -589,9 +591,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "topic 42382ea2303b [checked out] (local chip)",
-            "feature c7ae2a331f54 [current] (local chip)",
-            "local-work 25e0a2a76ab4 (local chip)"
+            "topic 42382ea2303b 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "feature c7ae2a331f54 2026-01-01T02:00:00Z [current] (local chip)",
+            "local-work 25e0a2a76ab4 2026-02-01T00:00:00Z (local chip)"
           ],
           "note": "",
           "error": null
@@ -606,7 +608,7 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Branch: feature",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout)",
           "lists": [
             "branch",
             "tag",
@@ -617,9 +619,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": true,
           "rows": [
-            "topic 42382ea2303b [checked out] (local chip)",
-            "feature c7ae2a331f54 [current] (local chip)",
-            "local-work 25e0a2a76ab4 (local chip)"
+            "topic 42382ea2303b 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "feature c7ae2a331f54 2026-01-01T02:00:00Z [current] (local chip)",
+            "local-work 25e0a2a76ab4 2026-02-01T00:00:00Z (local chip)"
           ],
           "note": "",
           "error": null
@@ -671,7 +673,7 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Working tree",
           "open": true,
-          "workingTree": "Working tree: Live local files, on topic [current]",
+          "workingTree": "Working tree: /sandbox/checkout (kept whole: checkout) [current]",
           "lists": [
             "branch",
             "tag",
@@ -682,9 +684,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "topic 42382ea2303b [checked out] (local chip)",
-            "feature c7ae2a331f54 (local chip)",
-            "local-work 25e0a2a76ab4 (local chip)"
+            "topic 42382ea2303b 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "feature c7ae2a331f54 2026-01-01T02:00:00Z (local chip)",
+            "local-work 25e0a2a76ab4 2026-02-01T00:00:00Z (local chip)"
           ],
           "note": "",
           "error": "That ref is no longer in the checkout."
@@ -729,7 +731,7 @@ $ node tests/dom/source-ref-selector-session.js
         "paint": {
           "button": "Working tree",
           "open": true,
-          "workingTree": "Working tree: Live local files [current]",
+          "workingTree": "Working tree [current]",
           "lists": [
             "branch",
             "tag",
@@ -766,6 +768,12 @@ $ node tests/dom/source-ref-selector-session.js
       "a checkout's revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b; refused when another is served: true; while its own is: false",
       "a mirror's pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b; refused when another is served: true; while its own is: false",
       "a plain folder": "nothing"
+    },
+    "folders": {
+      "under the home directory": "~/src/[checkout]",
+      "with the platform's other separator": "~\\src\\[checkout]",
+      "the home directory itself": "[~]",
+      "outside the home directory": "/srv/[checkout]"
     },
     "hold": [
       {

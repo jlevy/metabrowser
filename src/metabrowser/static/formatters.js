@@ -90,6 +90,17 @@
     return age(epochSeconds).className;
   }
 
+  // How much of a commit ID a line shows wherever it names a commit, in the commit-ID
+  // face: the navigation heading, the ref chooser's button and rows, and a mirror's offer
+  // of its ref's newer commit. The server's copy, which draws the heading and the button,
+  // is `SHORT_COMMIT_CHARS` in root_identity.py; tests/test_short_commit.py holds them equal.
+  const SHORT_COMMIT_CHARS = 12;
+
+  /** A commit ID as a line names it. @param {string} commit @returns {string} */
+  function shortCommit(commit) {
+    return String(commit).slice(0, SHORT_COMMIT_CHARS);
+  }
+
   // A title's conventional-commit prefix, "feat(ledger):", is drawn regular and the rest at
   // the title's weight (docs/design-system.md, "Titles"): a type of lowercase letters, an
   // optional scope of anything but parentheses, an optional "!", and the colon, at most 16
@@ -420,6 +431,7 @@
     formatBytes,
     formatFileCount,
     formatInteger,
+    shortCommit,
     sizeClass,
     titleHtml,
     titleNodes,

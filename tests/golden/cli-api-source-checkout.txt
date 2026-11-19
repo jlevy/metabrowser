@@ -50,7 +50,9 @@ status: 200
   "working_tree": {
     "current": true,
     "head": "refs/heads/topic",
-    "head_name": "topic"
+    "head_name": "topic",
+    "name": "checkout",
+    "location": "<ROOT>"
   },
   "total": 3,
   "truncated": false,
@@ -59,6 +61,7 @@ status: 200
       "name": "topic",
       "ref": "refs/heads/topic",
       "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "committed_at": 1767229200.0,
       "default": false,
       "checked_out": true,
       "current": false
@@ -67,6 +70,7 @@ status: 200
       "name": "feature",
       "ref": "refs/heads/feature",
       "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "committed_at": 1767232800.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -75,6 +79,7 @@ status: 200
       "name": "local-work",
       "ref": "refs/heads/local-work",
       "commit": "25e0a2a76ab47a407f3dee083221e6efdcca6283",
+      "committed_at": 1769904000.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -104,7 +109,9 @@ status: 200
   "working_tree": {
     "current": true,
     "head": "refs/heads/topic",
-    "head_name": "topic"
+    "head_name": "topic",
+    "name": "checkout",
+    "location": "<ROOT>"
   },
   "total": 2,
   "truncated": false,
@@ -113,6 +120,7 @@ status: 200
       "name": "origin/feature",
       "ref": "refs/remotes/origin/feature",
       "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "committed_at": 1767232800.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -121,6 +129,7 @@ status: 200
       "name": "origin/topic",
       "ref": "refs/remotes/origin/topic",
       "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "committed_at": 1767229200.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -148,7 +157,9 @@ status: 200
   "working_tree": {
     "current": true,
     "head": "refs/heads/topic",
-    "head_name": "topic"
+    "head_name": "topic",
+    "name": "checkout",
+    "location": "<ROOT>"
   },
   "total": 2,
   "truncated": false,
@@ -157,6 +168,7 @@ status: 200
       "name": "local-tag",
       "ref": "refs/tags/local-tag",
       "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "committed_at": 1767232800.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -165,6 +177,7 @@ status: 200
       "name": "v1",
       "ref": "refs/tags/v1",
       "commit": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+      "committed_at": 1767225600.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -446,6 +459,112 @@ route: /view/g1-RkVBVFVSRS5tZA
 kind: markdown
 views: rendered (default, key V), source (key S)
 model: text envelope; size=17 content_bytes=17 content_truncated=False
+--- stderr ---
+
+== The Commits tab is the checkout's whichever revision the Files tab shows: on feature, the repository's HEAD is still the checked-out topic, and the history starts there, at second, as it does on the working tree.
+
+# metab checkout --ref feature --api /api/git/repo
+exit: 0
+--- stdout ---
+api: /api/git/repo
+status: 200
+{
+  "is_repo": true,
+  "root": "",
+  "head": {
+    "ref": "refs/heads/topic",
+    "revision": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "detached": false,
+    "unborn": false
+  }
+}
+--- stderr ---
+
+# metab checkout --ref feature --api '/api/git/log?limit=2'
+exit: 0
+--- stdout ---
+api: /api/git/log?limit=2
+status: 200
+{
+  "is_repo": true,
+  "commits": [
+    {
+      "id": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "short_id": "42382ea",
+      "parent_ids": [
+        "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e"
+      ],
+      "author": {
+        "name": "Mirror",
+        "email": "mirror@example.invalid"
+      },
+      "authored_at": 1767229200.0,
+      "committed_at": 1767229200.0,
+      "subject": "second",
+      "refs": [
+        {
+          "id": "refs/heads/topic",
+          "name": "topic",
+          "kind": "branch",
+          "revision": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "is_head": true
+        },
+        {
+          "id": "refs/remotes/origin/HEAD",
+          "name": "origin/HEAD",
+          "kind": "remote",
+          "revision": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "remote": "origin"
+        },
+        {
+          "id": "refs/remotes/origin/topic",
+          "name": "origin/topic",
+          "kind": "remote",
+          "revision": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "remote": "origin"
+        }
+      ]
+    },
+    {
+      "id": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+      "short_id": "fcb9d63",
+      "parent_ids": [],
+      "author": {
+        "name": "Mirror",
+        "email": "mirror@example.invalid"
+      },
+      "authored_at": 1767225600.0,
+      "committed_at": 1767225600.0,
+      "subject": "first",
+      "refs": [
+        {
+          "id": "refs/tags/v1",
+          "name": "v1",
+          "kind": "tag",
+          "revision": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e"
+        }
+      ]
+    }
+  ],
+  "cursor": null,
+  "has_more": false,
+  "page": 0,
+  "page_cursor": "<CURSOR>",
+  "previous_cursor": null,
+  "scope": "default",
+  "scope_refs": [
+    "HEAD",
+    "@{upstream}"
+  ],
+  "scope_fingerprint": "77531ab97ae7a07db786f0d2f77a0026057639febd2e0380382abbe20f95bdf5",
+  "graph_checkpoint": {
+    "version": 1,
+    "prior_swimlanes": [],
+    "color_index": -1,
+    "head_revision": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "scope_fingerprint": "77531ab97ae7a07db786f0d2f77a0026057639febd2e0380382abbe20f95bdf5"
+  }
+}
 --- stderr ---
 
 == --ref takes a tag, a remote-tracking branch, and a commit ID. A window of a revision is still called by its folder, and its full name adds what is shown. The two identities run with HOME at the sandbox, so the folder is named from ~.
