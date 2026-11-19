@@ -49,6 +49,7 @@ from metabrowser.recent_targets import (
     recording_enabled,
 )
 from tests.child_io import read_line
+from tests.test_nav_metadata_chrome import _free_port
 
 _STAMP = "2026-11-18T03:14:15Z"
 
@@ -922,6 +923,9 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
             str(served / "a.txt" if root_is_file else served),
             "--no-open",
             "--exit-on-eof",
+            # Not the default port, which parallel workers' servers search from too.
+            "--port",
+            str(_free_port()),
         ],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -942,7 +946,14 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
         # A server of another folder that is not an open, as one the macOS app restores
         # is not, serves and leaves the list as it was.
         quiet = subprocess.Popen(
-            [str(console_script), str(tmp_path), "--no-open", "--exit-on-eof"],
+            [
+                str(console_script),
+                str(tmp_path),
+                "--no-open",
+                "--exit-on-eof",
+                "--port",
+                str(_free_port()),
+            ],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
