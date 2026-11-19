@@ -225,6 +225,159 @@ async function heldPostCadence(page, full) {
   await check({ peek: true });
 }
 
+// The record that follows a core preview, at the controller (mb-d59o, review A on #589). Its
+// description is the core's, so it is rendered once: a render on its way when the record
+// lands serves it, one that fails is asked again under the record, and one the route answers
+// from a record the page has not read yet waits for the page's read of it. In each, the text
+// stays pending, a placeholder and never its source, until its render serves it.
+async function coreRecordHandoff(page, full, preview) {
+  const answer = (revision, extra = {}) => ({
+    status: 200,
+    body: {
+      number: 7,
+      part: "body",
+      fetched_at: null,
+      record_revision: null,
+      core_revision: null,
+      ...revision,
+      html: "rendered description",
+      assets: {},
+      ...extra,
+    },
+  });
+  // Each case its own text: a render kept by an earlier case would answer at once.
+  async function session(label) {
+    const text = `${preview.core_preview.pull.body} (${label})`;
+    const core = structuredClone(preview);
+    core.core_preview.pull.body = text;
+    const record = structuredClone(full);
+    record.record.pull.body = text;
+    let now = 0;
+    const box = { current: core };
+    const tasks = new Map();
+    const asked = [];
+    const told = [];
+    const controller = page.createPullController(
+      {
+        request: async (method, route) => {
+          if (route.includes("pull-markdown")) {
+            return new Promise((resolve) => asked.push(resolve));
+          }
+          if (method === "POST") {
+            return { status: 202, etag: null, body: { pull: box.current } };
+          }
+          return { status: 200, etag: null, body: box.current };
+        },
+        schedule(callback, delay) {
+          const token = Symbol();
+          tasks.set(token, { callback, at: now + delay });
+          return token;
+        },
+        cancel: (token) => tasks.delete(token),
+        now: () => now,
+        isVisible: () => true,
+        render() {},
+        renderMarkdown(part, _rendered, shown) {
+          told.push(["rendered", part, shown === text]);
+        },
+        textUnavailable(part, shown) {
+          told.push(["unavailable", part, shown === text]);
+        },
+        reload() {},
+        navigate() {},
+      },
+      { number: 7, tab: "", reader: null },
+    );
+    async function advance(target) {
+      for (;;) {
+        const next = [...tasks]
+          .filter(([, task]) => task.at <= target)
+          .sort((a, b) => a[1].at - b[1].at)[0];
+        if (!next) {
+          break;
+        }
+        now = next[1].at;
+        tasks.delete(next[0]);
+        next[1].callback();
+        await settle();
+      }
+      now = target;
+    }
+    await controller.start();
+    await settle();
+    controller.requestMarkdown("body", text);
+    await settle();
+    assert.equal(asked.length, 1, "the core's description is asked for");
+    assert.equal(controller.pending("body", text), true);
+    return {
+      controller,
+      asked,
+      told,
+      box,
+      record,
+      text,
+      advance,
+      now: () => now,
+    };
+  }
+  const core = { core_revision: preview.core_preview.revision };
+  const record = { record_revision: full.record_revision };
+
+  // The record lands while the core's render is on its way; the page asks again for its
+  // description, the same text, and that joins the core's render.
+  {
+    const s = await session("joined");
+    s.box.current = s.record;
+    await s.advance(1000);
+    s.controller.requestMarkdown("body", s.text);
+    await settle();
+    assert.equal(s.asked.length, 1, "the record's description joins the core's render");
+    assert.equal(s.controller.pending("body", s.text), true, "and stays a placeholder");
+    s.asked[0](answer(core));
+    await settle();
+    assert.deepEqual(s.told, [["rendered", "body", true]], "the core's render serves the record");
+    assert.equal(s.controller.pending("body", s.text), false);
+    s.controller.dispose();
+  }
+  // The core's render fails after the record joined it: the record's is asked for, and the
+  // text stays a placeholder until it renders, saying nothing of the failure.
+  {
+    const s = await session("joined, failed");
+    s.box.current = s.record;
+    await s.advance(1000);
+    s.controller.requestMarkdown("body", s.text);
+    await settle();
+    s.asked[0]({ status: 503, body: { code: "renderer_busy" } });
+    await settle();
+    assert.equal(s.asked.length, 2, "the record's description is asked for in its own right");
+    assert.deepEqual(s.told, [], "the failed render shows no source");
+    assert.equal(s.controller.pending("body", s.text), true);
+    s.asked[1](answer(record));
+    await settle();
+    assert.deepEqual(s.told, [["rendered", "body", true]]);
+    assert.equal(s.controller.pending("body", s.text), false);
+    s.controller.dispose();
+  }
+  // The record lands between the page's read and the route's: the render comes from a
+  // revision the page has not read. The text stays a placeholder, the page reads at once,
+  // and the render serves the record it reads, asking nothing again.
+  {
+    const s = await session("unread record");
+    s.asked[0](answer(record));
+    await settle();
+    assert.deepEqual(s.told, [], "a render from an unread record shows no source");
+    assert.equal(s.controller.pending("body", s.text), true, "the text stays a placeholder");
+    s.box.current = s.record;
+    await s.advance(s.now());
+    s.controller.requestMarkdown("body", s.text);
+    await settle();
+    assert.deepEqual(s.told, [["rendered", "body", true]], "read at once, the record renders");
+    assert.equal(s.asked.length, 1, "from the render already answered");
+    assert.equal(s.controller.pending("body", s.text), false);
+    s.controller.dispose();
+  }
+}
+
 async function retentionCapability(routes) {
   for (const retainable of [true, false]) {
     let claim = 0,
@@ -356,6 +509,7 @@ async function run() {
       comparison_state: "no_store",
     },
   };
+  await coreRecordHandoff(page, full, preview);
   const absent = {
     ...preview,
     state: "absent",

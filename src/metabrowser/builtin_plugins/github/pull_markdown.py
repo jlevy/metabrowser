@@ -104,7 +104,6 @@ async def render_part(
     )
     if preview is not None:
         text = str(preview["pull"].get("body") or "")
-        stamp = preview["observed_at"]
         link_base = str(preview["pull"].get("html_url") or "")
         answered = {
             "fetched_at": None,
@@ -118,12 +117,15 @@ async def render_part(
         if found is None:
             return 404, {"error": "the record has no such part", "code": "unknown_part"}
         text = found
-        stamp = record.fetched_at
         link_base = record.pull.html_url
         answered = {"fetched_at": record.fetched_at, "record_revision": revision}
-    # KPress caches a render by this key, so a page that asks again, or a reload, costs
-    # nothing until a refresh changes the text.
-    key = hashlib.sha256(f"{stamp}\0{part}\0{text}".encode()).hexdigest()[:16]
+    # KPress caches a render by this key, and the Markdown child joins a request to one in
+    # flight with the same key (`InertRender.flight_key`). A render is of the part's text
+    # and the page its links resolve against alone, so the key is those and not when the
+    # text was read: a page that asks again, a reload, a refresh that left the text as it
+    # was, and the record that follows a core preview with its description unchanged all
+    # reuse one render (mb-d59o).
+    key = hashlib.sha256(f"{part}\0{link_base}\0{text}".encode()).hexdigest()[:16]
     try:
         # KPress's sanitized mode keeps what a document may load; in the page it must not,
         # so the child reduces the HTML to the allowlist against the pull request's page.

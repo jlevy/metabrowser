@@ -1901,6 +1901,9 @@ export function createPullController(deps, options) {
   /** When `timer` fires, by `deps.now()`. */
   let timerDue = 0;
   let polling = false;
+  // A render from a revision newer than the page's answered while a read was on its way
+  // (`pollNow`): the page reads again as soon as that read answers.
+  let readAgain = false;
   let hasPolled = false;
   let inFlightRefreshes = 0;
   let disposed = false;
@@ -1970,19 +1973,49 @@ export function createPullController(deps, options) {
   const queue = [];
   /**
    * The parts asked for, with the text and the revision each was asked for: an answer
-   * rendered from another revision is not the render of that text.
+   * rendered from another revision is not the render of that text. A part `joined` sent
+   * nothing of its own: the same text was already on its way under an earlier revision, and
+   * that render serves it, or the part is asked again if it fails.
    *
-   * @type {Map<string, {text: string | null, revision: string | null}>}
+   * @type {Map<string, {text: string | null, revision: string | null, joined?: boolean}>}
    */
   const asked = new Map();
   /**
-   * The text each part's Markdown is coming for: queued, or asked and not yet answered. The
-   * glue shows such a text as a placeholder, never as its source (`pending`).
+   * How many requests for each part's text are on their way: queued, sent and not answered,
+   * or answered from a revision the page has not read yet (`ahead`). The glue shows such a
+   * text as a placeholder, never as its source (`pending`), until every one has settled.
    *
-   * @type {Map<string, string>}
+   * @type {Map<string, Map<string, number>>}
    */
   const coming = new Map();
+  /**
+   * Renders answered from a revision newer than the page's, by part: a record that landed
+   * between the page's read and the route's. Each serves its part once the page reads that
+   * revision, and keeps the text it was asked for pending until then.
+   *
+   * @type {Map<string, {revision: string, rendered: Record<string, any>, text: string}>}
+   */
+  const ahead = new Map();
   let inFlight = 0;
+
+  /**
+   * @param {string} part
+   * @param {string} text
+   * @param {number} step 1 for a request on its way, -1 for one settled.
+   */
+  function counted(part, text, step) {
+    const texts = coming.get(part) ?? new Map();
+    const count = (texts.get(text) ?? 0) + step;
+    if (count > 0) {
+      texts.set(text, count);
+      coming.set(part, texts);
+    } else {
+      texts.delete(text);
+      if (texts.size === 0) {
+        coming.delete(part);
+      }
+    }
+  }
 
   /** A direct link's cold miss, which the page asks to fill once it is visible. */
   function coldMiss() {
@@ -2298,14 +2331,30 @@ export function createPullController(deps, options) {
       cancelIdleComparison();
       // Another record or preview: its texts may differ, so nothing rendered from the last
       // one is shown again. The page asks again for the parts a reader sees. A render still
-      // on its way is answered all the same, and serves the part if its text is unchanged.
+      // on its way is answered all the same, and serves the part if its text is unchanged;
+      // the same text asked again joins it (`requestMarkdown`).
       markdownFor = revision;
       markdown.clear();
-      asked.clear();
       for (const part of queue) {
-        coming.delete(part);
+        const text = asked.get(part)?.text;
+        if (typeof text === "string") {
+          counted(part, text, -1);
+        }
       }
+      asked.clear();
       queue.length = 0;
+      // A render answered from this revision before the page read it is this revision's
+      // render of its part's text; one from any other revision serves nothing now.
+      const source = textSource(next);
+      for (const [part, early] of ahead) {
+        const text = partText(source, part);
+        if (early.revision === revision && text !== null) {
+          markdown.set(part, { rendered: early.rendered, text });
+          rememberRendered(next.source ?? null, options.number, part, text, early.rendered);
+        }
+        counted(part, early.text, -1);
+      }
+      ahead.clear();
     }
     return true;
   }
@@ -2361,11 +2410,15 @@ export function createPullController(deps, options) {
     if (disposed) {
       return;
     }
+    const again = readAgain;
+    readAgain = false;
     // A waiting read spent part (or all) of the interval already.
     afterRead(
-      waitStarted === null
-        ? FAST_POLL_MS
-        : Math.max(0, FAST_POLL_MS - Math.max(0, deps.now() - waitStarted)),
+      again
+        ? 0
+        : waitStarted === null
+          ? FAST_POLL_MS
+          : Math.max(0, FAST_POLL_MS - Math.max(0, deps.now() - waitStarted)),
     );
   }
 
@@ -2849,8 +2902,8 @@ export function createPullController(deps, options) {
         )
         .then((response) => {
           const body = /** @type {Record<string, any> | null} */ (response.body);
-          if (text !== null && coming.get(part) === text) {
-            coming.delete(part);
+          if (text !== null) {
+            counted(part, text, -1);
           }
           const rendered =
             !disposed &&
@@ -2858,29 +2911,52 @@ export function createPullController(deps, options) {
             body !== null &&
             typeof body.html === "string" &&
             text !== null;
-          // A render is of its text alone (`pull_markdown.render_part`), so one asked under a
-          // record or preview the page has since replaced still serves the same text: the
-          // full record that follows a core preview usually has its description unchanged.
+          const from = rendered ? (body.record_revision ?? body.core_revision ?? null) : null;
+          const shows = partText(textSource(envelope), part);
+          // A render is of its revision's text alone (`pull_markdown.render_part`). One of the
+          // revision it was asked under renders the text asked for, and one of the revision
+          // the page shows renders the text the page shows: either serves the part while the
+          // page shows that text. The full record that follows a core preview usually has its
+          // description unchanged, and may land between the page's read and the route's.
           const current =
             rendered &&
-            (body.record_revision ?? body.core_revision ?? null) === revision &&
-            (revision === markdownFor || partText(textSource(envelope), part) === text);
-          if (!current || text === null) {
-            // A render of a text the page no longer shows, or none at all: the
-            // plain text stays, and a newer record is asked for again. A text the
-            // server would not render says why.
-            if (!disposed && text !== null) {
-              deps.textUnavailable?.(part, text, refusedTextNote(response.status, body));
-            }
+            ((from === revision && (revision === markdownFor || shows === text)) ||
+              (from !== null && from === markdownFor && shows === text));
+          if (current && text !== null) {
+            markdown.set(part, { rendered: body, text });
+            rememberRendered(source, options.number, part, text, body);
+            deps.renderMarkdown(part, body, text);
             return;
           }
-          markdown.set(part, { rendered: body, text });
-          rememberRendered(source, options.number, part, text, body);
-          deps.renderMarkdown(part, body, text);
+          if (rendered && from !== null && from !== revision && from !== markdownFor) {
+            // Rendered from a revision the page has not read: the route read a record that
+            // landed after the page's read. The text stays a placeholder, and the page reads
+            // now; that revision's read lets this render serve its part (`accept`).
+            const early = ahead.get(part);
+            if (early !== undefined) {
+              counted(part, early.text, -1);
+            }
+            ahead.set(part, { revision: from, rendered: body, text: /** @type {string} */ (text) });
+            counted(part, /** @type {string} */ (text), 1);
+            pollNow();
+            return;
+          }
+          if (unanswered(part, text, revision)) {
+            return;
+          }
+          // A render of a text the page no longer shows, or none at all: the
+          // plain text stays, and a newer record is asked for again. A text the
+          // server would not render says why.
+          if (!disposed && text !== null) {
+            deps.textUnavailable?.(part, text, refusedTextNote(response.status, body));
+          }
         })
         .catch(() => {
-          if (text !== null && coming.get(part) === text) {
-            coming.delete(part);
+          if (text !== null) {
+            counted(part, text, -1);
+          }
+          if (unanswered(part, text, revision)) {
+            return;
           }
           if (!disposed && text !== null) {
             deps.textUnavailable?.(part, text);
@@ -2891,6 +2967,50 @@ export function createPullController(deps, options) {
           pump();
         });
     }
+  }
+
+  /**
+   * Whether a part that joined this answer's request under a newer revision is asked again
+   * now, as its own request: the request it joined did not render, and the part has nothing
+   * else on its way. Once only, so a text the newer revision cannot render either says why.
+   *
+   * @param {string} part
+   * @param {string | null} text
+   * @param {string | null} revision The revision the answer was asked under.
+   */
+  function unanswered(part, text, revision) {
+    const now = asked.get(part);
+    if (
+      disposed ||
+      text === null ||
+      now === undefined ||
+      now.joined !== true ||
+      now.text !== text ||
+      now.revision === revision
+    ) {
+      return false;
+    }
+    asked.set(part, { text, revision: now.revision });
+    counted(part, text, 1);
+    queue.push(part);
+    return true;
+  }
+
+  /** Read the pull route now, as a render from a newer revision shows one has landed. */
+  function pollNow() {
+    if (disposed) {
+      return;
+    }
+    if (polling) {
+      // A read on its way may have left before that revision landed: read again after it.
+      readAgain = true;
+      return;
+    }
+    clearTimer();
+    timer = deps.schedule(() => {
+      timer = null;
+      void poll();
+    }, 0);
   }
 
   /**
@@ -2921,22 +3041,29 @@ export function createPullController(deps, options) {
     if (markdownFor === null || asked.has(part)) {
       return;
     }
+    if (text !== null && (coming.get(part)?.get(text) ?? 0) > 0) {
+      // The same text is on its way under an earlier revision, the core preview's whose
+      // record has just landed: its render serves this part, so the text is rendered once.
+      asked.set(part, { text, revision: markdownFor, joined: true });
+      return;
+    }
     asked.set(part, { text, revision: markdownFor });
     if (text !== null) {
-      coming.set(part, text);
+      counted(part, text, 1);
     }
     queue.push(part);
     pump();
   }
 
   /**
-   * Whether *text*'s Markdown is on its way for *part*: queued, or asked and not answered.
+   * Whether *text*'s Markdown is on its way for *part*: queued, asked and not answered, or
+   * answered from a revision the page is reading now.
    *
    * @param {string} part
    * @param {string} text
    */
   function pending(part, text) {
-    return !disposed && coming.get(part) === text;
+    return !disposed && (coming.get(part)?.get(text) ?? 0) > 0;
   }
 
   /**
@@ -4503,9 +4630,12 @@ export function mountPullPage(container, ctx, mb) {
     if (plain === null || textOf.get(element) !== value) {
       return;
     }
+    // A text already refused shows its source and says why while it is asked again, rather
+    // than turn back into a placeholder under that line.
     plain.classList.toggle(
       "github-pull-plain-pending",
-      controller.pending(part, value) || inserting.get(part) === value,
+      refusedNotes.get(part)?.text !== value &&
+        (controller.pending(part, value) || inserting.get(part) === value),
     );
   }
 
