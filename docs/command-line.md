@@ -37,8 +37,13 @@ Two rules decide between a path and a source, in this order:
    directory. To serve a folder with such a name, write `./https://host/x`.
 2. Any other argument that names an existing path is that path.
    A folder called `file:notes` or `me@host:dir` is served, and a symbolic link is
-   followed. Only an argument that names nothing on disk is read as an scp-like address,
-   such as `git@github.com:owner/repo`, or refused as malformed.
+   followed. Only an argument that names nothing on disk is read as anything else: an
+   scp-like address, such as `git@github.com:owner/repo`; a GitHub URL without its
+   `https://`, such as `github.com/owner/repo`, which opens as the full URL; or a
+   malformed source, which is refused.
+   `owner/repo` alone is a path.
+   So `github.com/owner/repo` is a folder of that name when one exists; write the
+   `https://` to open the repository whatever is on disk.
 
 A path that exists but cannot be read is a usage error.
 An empty argument is refused; write `.` for the current directory.
