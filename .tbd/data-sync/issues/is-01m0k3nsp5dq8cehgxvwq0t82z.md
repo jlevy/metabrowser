@@ -1,11 +1,11 @@
 ---
 type: is
 id: is-01m0k3nsp5dq8cehgxvwq0t82z
-title: Call kpressInitDiagrams from the Markdown rendered view with disposal
+title: Write the Mermaid renderer and mount it from rendered and transcluded Markdown
 kind: task
 status: open
 priority: 1
-version: 13
+version: 14
 spec_path: docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md
 labels: []
 dependencies:
@@ -21,6 +21,6 @@ dependencies:
     target: is-01m7rq6nb765kp3wkacedx6qts
 parent_id: is-01m0k3nbmdvy9x8g3r8t9ckzjt
 created_at: 2026-08-21T21:29:49.509Z
-updated_at: 2026-11-19T01:37:09.990Z
+updated_at: 2026-11-19T01:37:27.473Z
 ---
-In builtin_plugins/markdown/rendered.js, call mb.kpressInitDiagrams(container) beside the existing kpressInitToc call, only when the container holds a [data-kpress-diagram="mermaid"] figure, and store its disposer beside disposeToc so replacement and navigation away dispose it. Phase 1 of docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md.
+builtin_plugins/markdown/diagrams.js: mountDiagrams(root, mb, {mode}) finds KPress figures (trusted) or pre[lang=mermaid] (inert), loads Mermaid via ensureModule, initializes GitHub's observable config with securityLevel strict, renders in document order yielding between diagrams, keeps Mermaid's error message visible with the source, and returns {dispose, ready}. Never sets globalThis.mermaid; plugin-sdk.js loadKpressAssets skips KPress js/diagrams.js. rendered.js and transclusion.js import it on demand only when the root holds a diagram, and dispose with the view.
