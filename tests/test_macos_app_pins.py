@@ -20,6 +20,7 @@ import io
 import os
 import plistlib
 import re
+import tomllib
 from pathlib import Path
 from typing import Any, cast, get_args
 
@@ -50,6 +51,8 @@ APP = Path(__file__).resolve().parent.parent / "apps" / "macos"
 SHELL_CORE = APP / "Sources" / "ShellCore"
 SHELL_CORE_TESTS = APP / "Tests" / "ShellCoreTests"
 GOLDEN = Path(__file__).resolve().parent / "golden"
+PYPROJECT = Path(__file__).resolve().parent.parent / "pyproject.toml"
+CHANGELOG = PYPROJECT.parent / "CHANGELOG.md"
 
 
 def _swift_value(relative: str, declaration: str) -> str:
@@ -81,6 +84,76 @@ def _swift_int(relative: str, declaration: str) -> int:
 
 
 DEADLINE = "Supervision/StartupDeadline.swift"
+
+
+def _minimum_metab() -> tuple[int, int, int]:
+    value = _swift_value("Setup/MetabVersion.swift", "minimumRelease")
+    match = re.fullmatch(r"\[(\d+), (\d+), (\d+)\]", value)
+    assert match, f"MetabRequirement.minimumRelease is not [X, Y, Z]: {value}"
+    major, minor, patch = (int(part) for part in match.groups())
+    return major, minor, patch
+
+
+def test_the_apps_minimum_metab_is_a_minor_release() -> None:
+    """The minimum is ``X.Y.0`` (``docs/publishing.md#choosing-a-version``), and a checkout
+    reports the next minor release as its development version, so it can meet it. With the
+    default patch bump a checkout past 0.12.0 reported ``0.12.1.devN``, below ``0.13.0``.
+    """
+
+    minimum = _minimum_metab()
+    assert minimum[2] == 0, (
+        f"MetabRequirement.minimumRelease is {list(minimum)}, a patch release: a change "
+        "the app needs ships in a new minor or major release "
+        "(docs/publishing.md#choosing-a-version), so the minimum is X.Y.0"
+    )
+    tool = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["tool"]
+    assert tool["uv-dynamic-versioning"]["bump"] == {"enable": True, "index": 1}, (
+        "a checkout must report the next minor release as its development version, so it "
+        "meets a minimum raised to that release"
+    )
+
+
+def test_a_checkout_rebuilds_its_version_after_a_commit_or_a_tag() -> None:
+    """``make install`` is what the app tells a checkout's user to run, and it reaches a
+    raised minimum only if the editable install's version is rebuilt when the commit or
+    the tags change; by default uv rebuilds it only when ``pyproject.toml`` changes.
+    """
+
+    tool = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["tool"]
+    keys = tool["uv"]["cache-keys"]
+    assert {"file": "pyproject.toml"} in keys
+    assert {"git": {"commit": True, "tags": True}} in keys
+
+
+def test_the_apps_minimum_metab_is_released_or_next() -> None:
+    """The minimum is the latest release's next minor at most, since a checkout reports
+    that as its development version, and ``isReleased`` is true only once the latest
+    release meets it, or the app would send users to an upgrade PyPI cannot satisfy.
+
+    The latest release is the first ``## X.Y.Z`` heading in ``CHANGELOG.md``, which the
+    release-preparation pull request adds before the tag (``docs/publishing.md``).
+    """
+
+    headings = re.findall(
+        r"^## (\d+)\.(\d+)\.(\d+)$", CHANGELOG.read_text(encoding="utf-8"), re.MULTILINE
+    )
+    assert headings, "CHANGELOG.md names no release"
+    major, minor, patch = (int(part) for part in headings[0])
+    latest = (major, minor, patch)
+    minimum = _minimum_metab()
+    released = _swift_value("Setup/MetabVersion.swift", "isReleased")
+    assert released in {"true", "false"}, f"MetabRequirement.isReleased is {released}"
+    assert minimum <= (major, minor + 1, 0), (
+        f"MetabRequirement.minimumRelease is {list(minimum)}, beyond {major}.{minor + 1}.0, "
+        f"the next minor after the latest release, {major}.{minor}.{patch}: a checkout "
+        "reports that as its development version, so the app would refuse every one"
+    )
+    if minimum > latest:
+        assert released == "false", (
+            f"MetabRequirement.minimumRelease is {list(minimum)}, newer than the latest "
+            f"release, {major}.{minor}.{patch}, so isReleased must be false: the upgrade "
+            "command the app shows would ask PyPI for a release it does not have"
+        )
 
 
 def test_the_acquisition_bounds_are_metabs() -> None:

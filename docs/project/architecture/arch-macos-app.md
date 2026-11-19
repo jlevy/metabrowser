@@ -424,6 +424,11 @@ line. Below the floor, discovery tries the next place.
 `MetabRequirement.upgradeCommand` asks uv for a floor rather than a pin, because uv
 keeps the requirement in the tool’s receipt.
 
+The floor is a minor release, raised as
+[Choosing a Version](../../publishing.md#choosing-a-version) says.
+`accepts` compares only the release segments, so a checkout’s development build of the
+floor, `X.Y.0.devN`, counts as `X.Y.0`.
+
 The app notices an upgrade by the executable’s fingerprint (`FileFingerprint`: device,
 inode, size, modification time, and mode), compared every `SetupWatch.interval` and when
 the app becomes active.

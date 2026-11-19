@@ -41,10 +41,10 @@ import Testing
         let old = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .tooOld(version: "0.12.0"))
         let steps = guide(tried: [old], uv: bin + "/uv", loginPath: [bin]).steps
         #expect(steps == [.upgradeMetab(path: bin + "/metab", version: "0.12.0", inNewTerminal: false)])
-        #expect(steps[0].command == "uv tool install --upgrade 'metabrowser>=0.12.1'")
+        #expect(steps[0].command == "uv tool install --upgrade 'metabrowser>=0.13.0'")
         #expect(steps[0].title(home: "/Volumes/Home")
-            == "Upgrade metab: ~/.local/bin/metab is metab 0.12.0, and Metabrowser needs 0.12.1 or later.")
-        #expect(guide(tried: [old], uv: bin + "/uv").heading == "Metabrowser needs metab 0.12.1 or later")
+            == "Upgrade metab: ~/.local/bin/metab is metab 0.12.0, and Metabrowser needs 0.13.0 or later.")
+        #expect(guide(tried: [old], uv: bin + "/uv").heading == "Metabrowser needs metab 0.13.0 or later")
         #expect(guide(uv: bin + "/uv").heading == "Metabrowser needs the metab command-line tool")
     }
 
@@ -52,19 +52,40 @@ import Testing
     /// `--present`, or `--recent` meets the number, so the steps name the newest flag such
     /// a build lacks rather than compare the numbers.
     @Test func aBuildFromBeforeTheServeFlagIsNamedForTheFlag() {
-        let version = "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"
+        let version = "0.13.0.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"
         let old = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .tooOld(version: version))
         let upgrade = guide(tried: [old], uv: bin + "/uv", loginPath: [bin]).steps
         #expect(upgrade == [.upgradeMetab(path: bin + "/metab", version: version, inNewTerminal: false)])
-        #expect(upgrade[0].command == "uv tool install --upgrade 'metabrowser>=0.12.1'")
+        #expect(upgrade[0].command == "uv tool install --upgrade 'metabrowser>=0.13.0'")
         #expect(upgrade[0].title(home: "/Volumes/Home")
-            == "Upgrade metab: ~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, built before --recent,"
+            == "Upgrade metab: ~/.local/bin/metab is metab 0.13.0.dev38+5f0c2a1, built before --recent,"
             + " which Metabrowser needs.")
         let checkout = guide(tried: [old], uv: bin + "/uv", loginPath: [bin], released: false).steps
         #expect(checkout[0].title(home: "/Volumes/Home")
             == "Build metab in the source checkout this app was built from, then choose its .venv/bin/metab"
-            + " with Choose metab… below: ~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, built before"
-            + " --recent, and Metabrowser needs metab 0.12.1 or later, which is not on PyPI yet.")
+            + " with Choose metab… below: ~/.local/bin/metab is metab 0.13.0.dev38+5f0c2a1, built before"
+            + " --recent, and Metabrowser needs metab 0.13.0 or later, which is not on PyPI yet.")
+    }
+
+    /// An installed 0.12.1.dev38, from before the minimum moved to the minor release and
+    /// before `--exit-on-eof`, is refused for its number, and the steps say so: while the
+    /// minimum is unreleased they point to the checkout, which `make install` brings to
+    /// 0.13.0.devN, and once it is released to uv's upgrade, which PyPI can satisfy.
+    @Test func anInstalledBuildFromBeforeTheMinorMinimumIsRefusedForItsNumber() {
+        let version = "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"
+        #expect(MetabRequirement.flagShortfall(version) == nil)
+        let old = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .tooOld(version: version))
+        let checkout = guide(tried: [old], uv: bin + "/uv", loginPath: [bin], released: false).steps
+        #expect(checkout == [.buildFromCheckout(oldPath: bin + "/metab", oldVersion: version, inNewTerminal: false)])
+        #expect(checkout[0].command == "make install")
+        #expect(checkout[0].title(home: "/Volumes/Home")
+            == "Build metab in the source checkout this app was built from, then choose its .venv/bin/metab"
+            + " with Choose metab… below: ~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, and Metabrowser"
+            + " needs metab 0.13.0 or later, which is not on PyPI yet.")
+        let upgrade = guide(tried: [old], uv: bin + "/uv", loginPath: [bin]).steps
+        #expect(upgrade[0].title(home: "/Volumes/Home")
+            == "Upgrade metab: ~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, and Metabrowser needs 0.13.0 or later.")
+        #expect(upgrade[0].command == "uv tool install --upgrade 'metabrowser>=0.13.0'")
     }
 
     /// `uv tool install` says a broken tool is already installed and changes nothing.
@@ -101,12 +122,12 @@ import Testing
         #expect(fresh.steps[1].command == "make install")
         #expect(fresh.steps[1].title(home: "/Volumes/Home")
             == "Build metab in the source checkout this app was built from, then choose its .venv/bin/metab"
-            + " with Choose metab… below: Metabrowser needs metab 0.12.1 or later, which is not on PyPI yet.")
+            + " with Choose metab… below: Metabrowser needs metab 0.13.0 or later, which is not on PyPI yet.")
         #expect(fresh.steps[1].note
             == "In a new Terminal window, so that it finds uv, at the root of the checkout:")
         #expect(fresh.endsWithChoice)
         #expect(!guide().endsWithChoice)
-        #expect(fresh.heading == "Metabrowser needs metab 0.12.1 or later")
+        #expect(fresh.heading == "Metabrowser needs metab 0.13.0 or later")
         let old = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .tooOld(version: "0.12.0"))
         let upgrade = guide(tried: [old], uv: bin + "/uv", loginPath: [bin], released: false).steps
         #expect(upgrade == [.buildFromCheckout(oldPath: bin + "/metab", oldVersion: "0.12.0", inNewTerminal: false)])
@@ -114,7 +135,7 @@ import Testing
         #expect(upgrade[0].title(home: "/Volumes/Home")
             == "Build metab in the source checkout this app was built from, then choose its .venv/bin/metab"
             + " with Choose metab… below: ~/.local/bin/metab is metab 0.12.0, and Metabrowser needs metab"
-            + " 0.12.1 or later, which is not on PyPI yet.")
+            + " 0.13.0 or later, which is not on PyPI yet.")
         let broken = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .rejected("could not run: x"))
         #expect(guide(tried: [broken], uv: bin + "/uv", loginPath: [bin], released: false).steps
             == [.buildFromCheckout(oldPath: nil, oldVersion: nil, inNewTerminal: false)])

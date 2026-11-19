@@ -244,7 +244,7 @@ Your login shell’s `PATH` comes last: the login shell runs only when the other
 miss `metab`, `git`, or `gh`, and it runs your shell’s startup files in the app’s name,
 which can take seconds.
 
-- **The version:** the app runs `metab` 0.12.1 or later, and checks each candidate by
+- **The version:** the app runs `metab` 0.13.0 or later, and checks each candidate by
   running `metab --exit-on-eof --present --recent --version`. A build from before any of
   those flags is too old whatever its number says.
 - **Trust:** the app runs a `metab` it found only if no other account can change it.
