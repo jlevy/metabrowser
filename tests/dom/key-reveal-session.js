@@ -50,6 +50,7 @@ const MODULES = [
   "overlay-layer.js",
   "keyboard-help.js",
   "key-reveal.js",
+  "nav-collapse.js",
   "shell-keymap.js",
   "tree-keyboard-navigation.js",
   "search-palette.js",
@@ -340,8 +341,27 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   );
   const selectorHost = element(document, "div", { id: "source-ref-selector" });
   const preview = element(document, "main", { id: "preview-pane" });
-  const app = element(document, "div", { class: "app" }, navPane, selectorHost, preview);
+  // The chevron that hides the navigation pane, in the main frame beside the page, as
+  // server.py writes it; static/nav-collapse.js runs on it as app.js creates it.
+  const navToggleButton = element(document, "button", {
+    "aria-controls": "tree-pane",
+    "aria-expanded": "true",
+    "aria-label": "Hide navigation",
+    class: "icon-btn nav-collapse-toggle disclosure-toggle",
+    id: "nav-collapse-toggle",
+    type: "button",
+  });
+  const frame = element(document, "div", { class: "preview-frame" }, preview, navToggleButton);
+  const app = element(document, "div", { class: "app" }, navPane, selectorHost, frame);
   document.body.append(app);
+  const navCollapse = context.MetabrowserNavCollapse.create({
+    button: navToggleButton,
+    container: app,
+    document,
+    focusFallback: () => preview,
+    frame,
+    pane: navPane,
+  });
 
   // ── What app.js does around the modules ───────────────────────
   /** @type {any} */
@@ -367,6 +387,12 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     // runs it.
     goHome() {
       did.push("went home");
+    },
+    navToggle: () => navToggleButton,
+    // app.js toggleNav, the chevron's click, through the production nav-collapse.js.
+    toggleNav() {
+      navCollapse.toggle();
+      did.push(`${navCollapse.isCollapsed() ? "hid" : "showed"} the navigation pane`);
     },
     openFolder(dir) {
       did.push(`opened the folder "${dir}"`);
@@ -1041,6 +1067,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     },
     location,
     mainTabs,
+    navCollapse,
     measure,
     menuFocus,
     drawerOpen,
@@ -1554,6 +1581,55 @@ const PARTS = {
   },
 
   /**
+   * Hiding the navigation pane: `\` and Shift-\ from the main page and from a tree row,
+   * through the production static/nav-collapse.js. tests/dom/nav-collapse-session.js runs
+   * it, and cli-ui-nav-collapse.tryscript.md pins it.
+   */
+  async nav() {
+    const steps = [];
+    const page = plainPage();
+    page.open(files["data.json"]);
+    steps.push(page.record("a file is open with the navigation pane shown"));
+    // `\` hides the navigation pane from anywhere, through the chevron's own path. Hidden,
+    // the pane is inert, so its keys leave the live keymap and focus on one of its rows
+    // goes to the main page; `\` stays live on the chevron, which the main frame holds.
+    // Shift-\, which types | on a US keyboard, is `\` by its key, and shows the pane again.
+    const navRow = page.document.querySelector(".tree-item");
+    navRow?.focus();
+    steps.push(
+      page.record("\\ hides the navigation pane, and only the main page's keys stay live", {
+        pressed: { key: "\\", handled: page.press("\\", { code: "Backslash" }) },
+        nav: {
+          inert: page.document.querySelector(".tree-pane").hasAttribute("inert"),
+          expanded: page.document
+            .getElementById("nav-collapse-toggle")
+            .getAttribute("aria-expanded"),
+          label: page.document.getElementById("nav-collapse-toggle").getAttribute("aria-label"),
+          // Focus was on a tree row, which the inert pane cannot hold: the main page takes it.
+          focus: page.document.activeElement.id,
+        },
+      }),
+    );
+    steps.push(
+      page.record("Shift-\\, which types | on a US keyboard, shows it again", {
+        pressed: {
+          key: "|",
+          handled: page.press("|", { code: "Backslash", shiftKey: true }),
+        },
+        nav: {
+          inert: page.document.querySelector(".tree-pane").hasAttribute("inert"),
+          expanded: page.document
+            .getElementById("nav-collapse-toggle")
+            .getAttribute("aria-expanded"),
+          label: page.document.getElementById("nav-collapse-toggle").getAttribute("aria-label"),
+        },
+      }),
+    );
+
+    return { steps, pages: [page] };
+  },
+
+  /**
    * Command, Control, and Option chords are the browser's (mb-i1wy): Command-R reloads
    * wherever focus is, and so does every other chord. Each place focus can be is entered
    * once, and every letter, digit, and named key is pressed there with each chord; none
@@ -1828,16 +1904,20 @@ const PARTS = {
   },
 };
 
-async function main() {
-  const part = process.argv[2] ?? "keymap";
+/** Run one part and print its transcript: the command line's, or the one a caller names. */
+async function main(part = process.argv[2] ?? "keymap") {
   if (!Object.hasOwn(PARTS, part)) {
     throw new Error(`Unknown part ${part}; the parts are ${Object.keys(PARTS).join(", ")}`);
   }
   const { steps, pages, chords, keys } = await PARTS[part]();
+  // The keymap's parts print the shell keys they registered; these register the same
+  // keymap and print only what their keys did.
   if (part === "modified") {
-    // The keymap's parts print the shell keys they registered; this one registers the
-    // same keymap and prints only what the chords did.
     process.stdout.write(`${render({ part, chords, keys, steps })}\n`);
+    return;
+  }
+  if (part === "nav") {
+    process.stdout.write(`${render({ part, steps })}\n`);
     return;
   }
   const shellKeys = new Set(pages.flatMap((page) => [...page.shellKeys]));
@@ -1847,7 +1927,11 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+// tests/dom/nav-collapse-session.js runs the `nav` part as a session of its own.
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+module.exports = { main };

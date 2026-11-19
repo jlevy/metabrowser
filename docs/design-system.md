@@ -4331,6 +4331,37 @@ Source view, Commits, and the root at Treemap.
 It also checks that the pane never blanks on the way, that the tooltip survives the
 click, and that the name is called “Home: <folder>”.
 
+### Hiding the Navigation Pane
+
+**A chevron on the main page’s left edge hides the navigation pane, and so does
+`\`.** The page slides left over the pane to fill the window, and the chevron turns to point right; a second press slides the page back and shows the pane as it was. Shift-`\`,
+which types `|` on a US keyboard, is the same key, as Shift changes no key
+([Keyboard Shortcuts](#keyboard-shortcuts)).
+
+The chevron is the shared disclosure chevron in an icon button
+([Every Icon-Only Control Is the Same Control](#every-icon-only-control-is-the-same-control)),
+muted at rest with the hover surface, pointing left at the pane it hides.
+It sits in the main frame, just right of the pane’s shadow, centered on the shortcut
+strip’s row, so it reads as the strip’s neighbour while belonging to the page; it stays
+there, and on that row, while the pane is hidden.
+It has the page’s ground as a plate, since the page’s content can run under it.
+
+The pane does not shrink.
+Hidden, it leaves the layout, keeps its width under the frame, and is `inert`, so no Tab
+stop or key reaches a control in it: `0`, the main tabs’ letters, and the filters’
+numbers do nothing until it is shown, and focus in it moves to the main page.
+`\` stays live on the chevron.
+The frame keeps its full width for the whole slide and reflows once, at the start of a
+hide or the end of a show, so a long document is laid out once per toggle; the slide is
+a transform on the frame, which already carries one for KPress’s floating UI. Under
+reduced motion the page moves at once.
+The state belongs to the page and is not kept across a reload.
+
+`static/nav-collapse.js` owns it, and `static/shell-keymap.js` binds the key.
+`tests/dom/key-reveal-session.js`, pinned by `cli-ui-nav-collapse.tryscript.md`, runs
+both on the production code; `tests/test_nav_collapse_chrome.py` measures the chevron’s
+place and the slide in headless Chrome with real keys.
+
 ### Navigation Reveals the Item
 
 Navigating to an item by any route shows it in the navigation pane.

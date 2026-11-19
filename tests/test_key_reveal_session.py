@@ -397,3 +397,36 @@ def test_the_session_runs_on_the_recording() -> None:
         "afterCancel": "Tree",
     }
     assert by_name["the keymap after a pageshow rebuild"]["sameAsBefore"] is True
+
+
+def test_backslash_hides_the_navigation_pane_and_its_keys() -> None:
+    """`\\` hides the pane: its keys leave the keymap, focus leaves it, and `|` undoes it.
+
+    ``tests/dom/nav-collapse-session.js`` runs the production static/nav-collapse.js under
+    the shell keymap (``cli-ui-nav-collapse.tryscript.md``; docs/design-system.md, "Hiding
+    the Navigation Pane").
+    """
+    steps = {step["step"]: step for step in run_session("nav-collapse-session.js")["steps"]}
+    shown, hidden, back = steps.values()
+    commands = {
+        name: [command for _key, command, _target in step["keys"]] for name, step in steps.items()
+    }
+
+    assert ["\\", "shell.nav-toggle", "Hide navigation"] in shown["keys"]
+    assert hidden["pressed"] == {"key": "\\", "handled": True}
+    assert hidden["nav"] == {
+        "inert": True,
+        "expanded": "false",
+        "label": "Show navigation",
+        "focus": "preview-pane",
+    }
+    assert ["\\", "shell.nav-toggle", "Show navigation"] in hidden["keys"]
+    hidden_commands = commands[hidden["step"]]
+    # The pane's own keys are gone while it is hidden; the main page's stay.
+    for gone in ("shell.home", "main-tabs.files", "numbered"):
+        assert gone in commands[shown["step"]] and gone not in hidden_commands, gone
+    assert {"help.open", "view-tabs.v", "header.parent"} <= set(hidden_commands)
+    # Shift-\, `|` by its physical key, shows it again with every key it had.
+    assert back["pressed"] == {"key": "|", "handled": True}
+    assert back["nav"] == {"inert": False, "expanded": "true", "label": "Hide navigation"}
+    assert commands[back["step"]] == commands[shown["step"]]

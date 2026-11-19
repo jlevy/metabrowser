@@ -1,6 +1,6 @@
-// The shell's own keys: Home, the main pane's view tabs, the header's Up, a pin's branch
-// switcher, the numbers of the navigation pane's filters, and the letters of their menus'
-// rows.
+// The shell's own keys: Home, hiding the navigation pane, the main pane's view tabs, the
+// header's Up, a pin's branch switcher, the numbers of the navigation pane's filters, and
+// the letters of their menus' rows.
 //
 // Each command runs the activation path its control's click runs, which the shell
 // injects, plus the focus a keyboard user needs next; none synthesizes a click. Each is
@@ -217,6 +217,35 @@
     /** @type {MetabrowserPublicShortcutTarget | null} */
     let homeTarget = homeHeading
       ? shortcuts.attachTarget("shell.home", homeHeading, { placement: "beside" })
+      : null;
+
+    // `\` hides the navigation pane and shows it again; Shift+\, `|` on a US keyboard, is
+    // the same key. Its target is the chevron on the main page's left edge, which stays on
+    // screen while the pane is hidden, so the key is live either way, and its badge sits
+    // beside the icon button (docs/design-system.md, "Hiding the Navigation Pane").
+    const releaseNavToggle = registerCommand({
+      copy: {
+        action: "Hide or show navigation",
+        description: "Hide the navigation pane so the page fills the window, or show it again.",
+        hint: "Navigation",
+      },
+      group: "anywhere",
+      handler: () => {
+        shell.toggleNav();
+        return true;
+      },
+      id: "shell.nav-toggle",
+      key: "\\",
+      order: 40,
+      // Not on the revealed strip, whose seven items are measured (REVEAL_STRIP_MAX_ITEMS
+      // in keyboard-help.js): Shift badges the chevron itself, so the key is shown where
+      // it acts, and the strip keeps its room for keys that have no badge.
+      surfaces: { help: "always" },
+    });
+    const navToggle = shell.navToggle();
+    /** @type {MetabrowserPublicShortcutTarget | null} */
+    let navToggleTarget = navToggle
+      ? shortcuts.attachTarget("shell.nav-toggle", navToggle, { placement: "beside" })
       : null;
 
     /**
@@ -585,6 +614,9 @@
         homeTarget?.detach();
         homeTarget = null;
         releaseHome();
+        navToggleTarget?.detach();
+        navToggleTarget = null;
+        releaseNavToggle();
       });
       disposed = true;
     }

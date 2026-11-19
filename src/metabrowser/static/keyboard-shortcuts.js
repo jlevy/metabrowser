@@ -129,6 +129,7 @@
   const KEY_DEFINITIONS = Object.freeze({
     " ": Object.freeze({ aria: "Space", spoken: "Space", visible: "Space" }),
     "/": Object.freeze({ aria: "", spoken: "slash", visible: "/" }),
+    "\\": Object.freeze({ aria: "", spoken: "Backslash", visible: "\\" }),
     "?": Object.freeze({ aria: "", spoken: "Question mark", visible: "?" }),
     ArrowDown: Object.freeze({ aria: "ArrowDown", spoken: "Down arrow", visible: "↓" }),
     ArrowLeft: Object.freeze({ aria: "ArrowLeft", spoken: "Left arrow", visible: "←" }),
@@ -264,8 +265,14 @@
     if (isDigitKey(key)) {
       return "digit";
     }
-    return key === "?" || key === "/" ? "punctuation" : "named";
+    return key === "?" || key === "/" || key === "\\" ? "punctuation" : "named";
   }
+
+  // The physical key of a punctuation binding whose shifted character is another one: on
+  // a US keyboard Shift+\ types `|`, so the physical pass matches `\` by its key, as it
+  // matches a digit by its digit-row key, and Shift changes nothing.
+  /** @type {Readonly<Record<string, string>>} */
+  const PUNCTUATION_CODES = Object.freeze({ "\\": "Backslash" });
 
   /** @param {ShortcutBinding} binding @returns {Readonly<ShortcutBinding>} */
   function normalizeBinding(binding) {
@@ -351,7 +358,8 @@
    * It never matches in a text field, even for a command that opted in, since
    * macOS moves the caret with Control+N and Control+P there.
    *
-   * The physical pass matches a digit binding by its digit-row key, for an
+   * The physical pass matches `\` by its key, so Shift+\, `|`, is `\`, and a
+   * digit binding by its digit-row key, for an
    * event whose character is not a digit: US Shift+1 types `!` and Shift+0 `)`,
    * and AZERTY's unshifted digit row types `&é"'(` and `à`. The dispatcher takes
    * it only after the character matched nothing, so German Shift+7, which types
@@ -380,6 +388,10 @@
     }
     const bindingClass = keyClass(normalized.key);
     if (matchOptions.physical) {
+      if (bindingClass === "punctuation") {
+        const code = PUNCTUATION_CODES[normalized.key];
+        return code !== undefined && event.key !== normalized.key && event.code === code;
+      }
       return (
         bindingClass === "digit" &&
         // Digit0 through Digit9: the situational numbers' keys, and Home's `0`.

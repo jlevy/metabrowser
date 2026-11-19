@@ -1611,6 +1611,7 @@ async def index(
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
     tree_expansion_url = _static_asset_url("tree-expansion.js")
+    nav_collapse_url = _static_asset_url("nav-collapse.js")
     tree_filter_model_url = _static_asset_url("tree-filter-model.js")
     pending_tally_diagnostics_url = _static_asset_url("pending-tally-diagnostics.js")
     known_file_catalog_url = _static_asset_url("known-file-catalog.js")
@@ -1997,6 +1998,9 @@ async def index(
             {"src": overlay_layer_url},
             {"src": keyboard_help_url},
             {"src": key_reveal_url},
+            # Hiding the navigation pane: app.js draws its chevron at first paint, and a
+            # click before this bundle arrives loads it and then hides the pane.
+            {"src": nav_collapse_url},
             {"src": shell_keymap_url},
             {"src": plugin_shortcuts_url},
             {"src": tree_keyboard_navigation_url},
@@ -2332,6 +2336,13 @@ async def index(
       <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
         {preview_loading}
       </div>
+      <!-- Hides and shows the navigation pane, as the backslash key does: on the main
+           page's left edge, beside the pane's shadow, on the shortcut strip's row. It
+           is in the frame, not the pane, so it stays when the pane is hidden and slides
+           with the page. app.js draws its chevron; static/nav-collapse.js runs it. -->
+      <button class="icon-btn nav-collapse-toggle disclosure-toggle" id="nav-collapse-toggle" type="button"
+              aria-controls="tree-pane" aria-expanded="true"
+              aria-label="Hide navigation"></button>
     </div>
   </main>
   <!-- Core shell scripts are local and first-paint critical. Optional

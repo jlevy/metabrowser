@@ -17,6 +17,7 @@ work.
 | `?` | Help | Always |
 | `T` or `/` | Quick Search, the file finder | Always |
 | `0` | Home: the served folder’s home view, every tab at its first | Always |
+| `\` | Hide or show the navigation pane | Always |
 | `F` | The Files tab | Always |
 | `P` | The Pulls tab | The Pulls tab is shown, for a GitHub repository |
 | `H` | The Commits tab: commit History | The served folder is a Git repository’s root, or a repository opened by its URL |
@@ -42,6 +43,11 @@ shows the folder as a fresh load shows it, with Files in front at the folder’s
 every filter and Group by at its default, and every tab back at its first view.
 What has been read, such as pull requests and history, stays in memory, so only the tree
 and the folder’s view are read again.
+
+`\` does what a click on the chevron at the foot of the main page’s left edge does: it hides the navigation pane, and the page slides over it to fill the window, or shows the pane again. Shift-`\`,
+which types `|` on a US keyboard, is the same key.
+While the pane is hidden, the keys of its controls, such as `0`, `F`, and the filters’
+numbers, do nothing until it is shown again.
 
 ## Keys in a Menu
 
