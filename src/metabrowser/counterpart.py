@@ -75,7 +75,6 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from metabrowser.cache.providers import CounterpartHost, counterpart_host_for
 from metabrowser.checkout_revisions import checkout_revisions
 from metabrowser.git.process import (
     GIT_NO_HOOK_ARGS,
@@ -99,6 +98,7 @@ from metabrowser.view_routes import (
 )
 
 if TYPE_CHECKING:
+    from metabrowser.cache.providers import CounterpartHost
     from metabrowser.cache.urls import RepositorySelection
     from metabrowser.git.tree_source import GitRevisionSubject
 
@@ -272,6 +272,10 @@ async def page_counterpart(page: str, mirror: MirrorSession | None) -> Counterpa
     repository = await _served_repository(subject, pin, mirror)
     if repository is None:
         return _none(page, "no_repository")
+    # Imported once a repository is found, so a plain folder's server loads no provider
+    # module (tests/test_plugin_public_api.py).
+    from metabrowser.cache.providers import counterpart_host_for
+
     hosted = counterpart_host_for(repository.context)
     if hosted is None:
         # No provider hosts it, or its owner or name is not one the provider admits.
