@@ -83,9 +83,9 @@ The quality, test, audit, and build targets install both locked environments fir
 Make keeps the stages ordered under parallel jobs.
 `make lint` applies the ordinary auto-fixes and then runs the repository’s own checks
 (public hygiene, file-type colors, tooltips, supply chain, CI workflow coverage,
-artifact contracts, parity, goldens, and changelog fragments); `make lint-check` runs
-the same checks without changing files, plus the startup-script budget and a Flowmark
-check.
+artifact contracts, parity, the macOS app’s contract, goldens, and changelog fragments);
+`make lint-check` runs the same checks without changing files, plus the startup-script
+budget and a Flowmark check.
 
 ### The Verify Gate
 

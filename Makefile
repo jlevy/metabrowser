@@ -66,6 +66,7 @@ lint:
 	$(UV_RUN) python -m devtools.check_ci
 	$(UV_RUN) python -m devtools.check_artifact_contracts
 	$(UV_RUN) python -m devtools.check_parity
+	$(UV_RUN) python -m devtools.check_app_contract check --against $(CHANGELOG_BASE)
 	$(UV_RUN) python -m devtools.check_goldens
 	$(UV_RUN) python -m devtools.changelog check --against $(CHANGELOG_BASE)
 
@@ -96,6 +97,7 @@ lint-check:
 	$(UV_RUN) python -m devtools.check_ci
 	$(UV_RUN) python -m devtools.check_artifact_contracts
 	$(UV_RUN) python -m devtools.check_parity
+	$(UV_RUN) python -m devtools.check_app_contract check --against $(CHANGELOG_BASE)
 	$(UV_RUN) python -m devtools.check_goldens
 	$(UV_RUN) python -m devtools.changelog check --against $(CHANGELOG_BASE)
 	$(UV_RUN) python -m devtools.check_startup_scripts
@@ -284,6 +286,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_github_comparison_recovery.py \
 	tests/test_github_pull_snapshot.py \
 	tests/test_github_pull_publication.py \
+	tests/test_app_contract_golden.py \
 	tests/test_admitted_git_gate.py
 
 test-admitted-git:
@@ -356,6 +359,7 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_cli_source_checkout_golden.py \
 	tests/test_cli_present_golden.py \
+	tests/test_app_contract_golden.py \
 	tests/test_diff_comparison_cache.py
 
 golden-update:

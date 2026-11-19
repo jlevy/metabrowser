@@ -595,6 +595,8 @@ the method, every figure, and the print and drop checks.
 The host protocol is a contract between the app and `metab`, so a change to it lands in
 both in one commit, as [AGENTS.md](../../../AGENTS.md#compatibility-and-legacy-code)
 asks of internal contracts.
+[The App’s Contract with metab](arch-app-contract.md) declares everything the app reads
+of `metab` today, and the checks there fail a change that only one side makes.
 Nothing in `apps/` ships to PyPI: `devtools/check_distribution.py` fails the build if an
 `apps` path reaches the sdist or wheel.
 A separate repository would make sense if the app gained its own release cadence, needed

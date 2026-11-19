@@ -50,6 +50,9 @@ It links each document below and the contributor standards in `docs/`.
   and asset loading tiers
 - [macOS app](architecture/arch-macos-app.md): server supervision, windows and tabs,
   restore, and WebKit differences
+- [App contract](architecture/arch-app-contract.md): what the macOS app reads of
+  `metab`, the one file that declares it, the golden that records it, and the checks
+  that hold both sides to it
 - [Recent targets](architecture/arch-recent-targets.md): the list of folders and
   repositories opened lately, what records an open, and the shells that read it
 
