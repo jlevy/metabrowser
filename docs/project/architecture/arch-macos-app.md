@@ -423,14 +423,19 @@ too old whatever its number; anything else rejects the `metab` with the probe’
 line. Below the floor, discovery tries the next place.
 `MetabRequirement.upgradeCommand(for:)` upgrades a `metab` with the tool that installed
 it, which `MetabInstall` reads from beside the canonical executable: uv’s receipt,
-pipx’s metadata, or a checkout’s `.venv` beside its `pyproject.toml`. uv and pipx are
-asked for a floor rather than a pin, because uv keeps the requirement in the tool’s
-receipt, and a checkout runs `git pull && make install` at its root.
-`metab --doctor` names the same steps (`METAB_UPGRADE_COMMANDS` in `cli/doctor.py`),
-which `tests/test_macos_app_pins.py` holds to these.
+pipx’s metadata, or a checkout’s `.venv` beside a `pyproject.toml` with the line
+`name = "metabrowser"`. uv and pipx are asked for a floor rather than a pin, because uv
+keeps the requirement in the tool’s receipt, and a checkout runs
+`git pull && make install` at its root.
+`metab --doctor` reads its own install from the same files the same way and names the
+same steps (`metab_install` and `METAB_UPGRADE_COMMANDS` in `cli/doctor.py`);
+`tests/test_macos_app_pins.py` holds each case’s command and each file’s name to these.
+The doctor’s PyPI step for a uv or pipx install cannot succeed while the floor is
+unreleased (`isReleased`), where the app offers `make install` instead: the doctor
+cannot tell, and the app’s first-run steps are where that case is met.
 The app’s `Info.plist` declares the floor as `MetabrowserMinimumMetab`, which the same
 test holds to `minimumRelease`, so the doctor in a terminal can compare its `metab` with
-the app `--present` would open.
+the app `--present` would open, and Check Setup… with the app that runs it.
 
 The floor is a minor release, raised as
 [Choosing a Version](../../publishing.md#choosing-a-version) says.
@@ -470,19 +475,28 @@ It never runs an installer itself.
 Help > Check Setup…, and Settings’ button of the same name, run `metab --doctor --json`
 from the accepted runtime in a server’s environment (`DoctorRun`, `ChildEnvironment`),
 bounded by `RuntimeDiscovery.doctorTimeout`, and show the report as rows
-(`DoctorReport`): the plugins, `open_in`, the `github` object, and each entry of
-`checks`, whose shape `cli/doctor.py` documents.
-The app reads `gh`’s and `git`’s path, version, and minimum only from the report, which
-ran with the tool directories first on `PATH`, so they are the tools its servers run; it
-never runs either itself.
+(`DoctorReport`): each entry of `checks`, the plugins and `open_in` among them, then the
+`github` object, whose shapes `cli/doctor.py` documents.
+Every row and step comes from those objects and their `remedy`, decoded by `CodingKeys`
+that spell each key as `metab` does; the app never sorts a problem by its words or
+treats a sentence as a command.
+`DoctorRun.spec` names the app’s own bundle in `METABROWSER_DOCTOR_APP`, so the `metab`
+row compares with this build’s floor rather than the app LaunchServices finds first.
+The doctor reads only that bundle’s `Info.plist`; the `open_in` row keeps a terminal’s
+lookup.
+The app reads `gh`’s and `git`’s path, version, and minimum only from the report,
+which ran with the tool directories first on `PATH`, so they are the tools its servers
+run; it never runs either itself.
 The window adds what only the app knows: its build, its floor, and the `metab` it ran
 and how it found it, which head Copy Report’s text.
 
 - **Unknown keys** are ignored and an unknown state is shown as named, so a newer
   `metab`’s report still reads.
+- **An entry that does not decode,** a check or `github`, is one unreadable row with its
+  `id` when it has one, and the rest of the report still shows.
 - **No `checks`:** a development build of the floor from before the setup checks meets
-  the floor, so the window shows its other rows, says the checks are missing, and offers
-  the upgrade for its install.
+  the floor, so the window lists its `problems` as it words them in one row, says the
+  checks are missing, and offers the upgrade for its install.
 - **No report:** a `metab` that cannot start, runs out the deadline, or prints no single
   JSON object (`JSONAnswer`) is shown with the reason and its output.
 

@@ -303,16 +303,40 @@ one fixes it). The text output prints one line per check and the remedy under it
 
 ### What Phase 2 Built
 
-`cli/doctor.py` has the checks `metab`, `git`, `config`, and `cache`, in that order.
-`python` is a detail of the `metab` check, and `macos_app` is that check’s comparison
-with the app `--present` would open, whose `Info.plist` declares its minimum.
-`plugins` stays the doctor’s verdict and `problems`, and the app shows it as a row.
-No check reports `skipped`, so the states are `ok`, `warning`, and `problem`.
+`cli/doctor.py` has the checks `plugins`, `open_in`, `metab`, `git`, `config`, and
+`cache`, in that order, and the app shows one row for each and one for the `github`
+object, whose step is a `remedy` of the checks’ shape, so it reads no row or step from a
+sentence (review A2 on jlevy/metabrowser#596). `python` is a detail of the `metab`
+check, and `macos_app` is that check’s comparison with the app that runs Check Setup…,
+or else the app `--present` would open, whose `Info.plist` declares its minimum.
+`plugins` is also still the doctor’s verdict and `problems`. No check reports `skipped`,
+so the states are `ok`, `warning`, and `problem`.
+
+Of the other ways a setup breaks that [Background](#background) lists:
+
+- **Configuration overrides** are built: a directory that `METABROWSER_CONFIG_DIR`,
+  `METABROWSER_CACHE_DIR`, or an `XDG_` variable names in a terminal is a warning when
+  an app was found, naming the directory the app’s servers use, since the app passes
+  none of them (`ChildEnvironment`). The reverse cannot happen: the app sets none.
+
+- **A full disk** is built: free space on the cache’s volume below the largest first
+  clone the app’s servers admit (`LOW_FREE_SPACE_BYTES`) is a warning, and a missing
+  directory that cannot be created is a problem.
+
+- **Two `metab`s** is deferred: the doctor knows only the `metab` that runs it, and
+  Check Setup… runs the app’s, whose path heads Copy Report; comparing it with
+  Terminal’s needs the login shell’s `PATH`, which the app reads only at discovery.
+
+- **Folder privacy prompts** are deferred: the doctor runs as the app’s child but holds
+  no folder, and macOS reports a denial only when a folder is read, so no read here
+  could tell a denial from a folder the user has not opened.
 
 - **Not uv.** `metab` never runs uv, so a missing or old uv breaks nothing the doctor
   can see; uv appears only in the step that upgrades a uv install.
+
 - **Not the network.** Off by default, as [Owner Decisions](#owner-decisions) item 6
   proposes; `gh auth status` already reaches github.com when `gh` is signed in.
+
 - **Not built, as follow-ups:** `markdown_renderer` (starting the child adds seconds to
   every doctor run), `browser`, `recent_targets`, `locks`, and the stale editable
   install. Each needs its own bound and fixture, and none blocks serving a folder.

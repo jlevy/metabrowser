@@ -331,7 +331,7 @@ def stated_values() -> list[Stated]:
         Stated(
             "docs/installation.md",
             "the GitHub CLI minimum",
-            r"GitHub work needs `gh` (\d+\.\d+\.\d+) or later",
+            r"the doctor.s GitHub check, need `gh` (\d+\.\d+\.\d+) or later",
             (GH_MINIMUM_LABEL,),
         ),
         Stated(

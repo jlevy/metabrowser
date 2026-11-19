@@ -120,8 +120,10 @@ accepts. Showing another branch or tag of a local checkout needs the same Git, a
 newer one in a partial clone (`git clone --filter`), whose refusal names it; browsing
 the folder and reading its commits and diffs do not.
 
-GitHub work needs `gh` 2.81.0 or later, which reports the signed-in account; an older
-`gh` is reported with the command that upgrades it.
+Opening a pull request that is not cached, and the doctor’s GitHub check, need `gh`
+2.81.0 or later, which reports the signed-in account; an older `gh` is reported with the
+command that upgrades it.
+A public clone and a pull request already cached still open with an older `gh`.
 
 Check the tools and the signed-in account in the terminal that runs `metab`:
 

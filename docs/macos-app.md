@@ -294,16 +294,21 @@ which can take seconds.
 
 Help > Check Setup… runs `metab --doctor --json` with the `metab`, `git`, and `gh` the
 app hands its servers, and shows the report: one row each for the plugins, opening from
-a terminal, GitHub CLI, `metab`, Git, the configuration directory, and the cache
-directory, with its state, what it found, and the step that fixes it, a command to copy
-or a page to open. [Diagnostics](command-line.md#diagnostics-and-plugins) says what each
-check covers. Settings’ Check Setup… opens the same window.
+a terminal, `metab`, Git, the configuration directory, the cache directory, and GitHub
+CLI, with its state, what it found, and the step that fixes it, a command to copy or a
+page to open.
+[Diagnostics](command-line.md#diagnostics-and-plugins) says what each check
+covers. Settings’ Check Setup… opens the same window.
+The `metab` row compares with the oldest `metab` this build of the app runs.
 
-- **Check Again** runs it again, as after following a step.
+- **Check Again** runs it again, as after following a step or choosing a `metab` in
+  Settings.
 - **Copy Report** copies the report as text, headed by the app’s build and the `metab`
   it ran, for a bug report.
-- **A `metab` built before the setup checks** still shows its other rows, says the
-  checks are missing, and offers the upgrade for how it was installed.
+- **A `metab` built before the setup checks** shows its problems as it words them, says
+  the checks are missing, and offers the upgrade for how it was installed.
+- **A row this app cannot read,** such as a check from a later `metab`, says so, and the
+  other rows still show.
 - **No report:** when `metab` cannot run, does not finish within a minute, or prints
   something other than a report, the window says so and shows what it printed.
 

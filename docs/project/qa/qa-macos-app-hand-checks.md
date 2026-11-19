@@ -640,22 +640,39 @@ mkdir -p "$stand_in"
 
 1. **A clean report.** Help > Check Setup…. Within seconds the window names the
    development build, the oldest `metab` it runs, and the checkout’s `metab`, then rows
-   for Plugins, Opening from Terminal, GitHub CLI, metab, Git, Configuration, and Cache,
-   each marked ok. The metab row’s app detail names a Metabrowser app and the `metab` it
-   runs. Copy Report, then `pbpaste` prints the same rows as text under the two header
-   lines. Settings > Check Setup… brings the same window forward.
+   for Plugins, Opening from a terminal, metab, Git, Configuration, Cache, and GitHub
+   CLI, each marked ok.
+   The metab row’s app detail names this development build and the `metab` it runs, even
+   with a release app installed too.
+   Copy Report, then `pbpaste` prints the same rows as text under the two header lines.
+   Settings > Check Setup… brings the same window forward.
+
 2. **A problem with its row.** Choose a stand-in that points the cache somewhere `metab`
    refuses:
-   `printf '#!/bin/sh METABROWSER_CACHE_DIR=relative exec "%s" "$@" ' "$real" > "$stand_in/metab"; chmod 755 "$stand_in/metab"`,
+
+   ```shell
+   printf '#!/bin/sh\nMETABROWSER_CACHE_DIR=relative exec "%s" "$@"\n' "$real" > "$stand_in/metab"
+   chmod 755 "$stand_in/metab"
+   ```
+
    then Settings > Choose metab… and `$stand_in/metab`. Check Again: the heading says
    `metab` found problems, Cache is marked as a problem with the override’s message, and
    Plugins stays ok.
+
 3. **No report.** Replace the stand-in with one whose doctor fails:
-   `printf '#!/bin/sh case "$*" in *--doctor*) echo boom; exit 3;; esac exec "%s" "$@" ' "$real" > "$stand_in/metab"`,
+
+   ```shell
+   printf '#!/bin/sh\ncase "$*" in\n*--doctor*) echo boom; exit 3;;\nesac\nexec "%s" "$@"\n' "$real" > "$stand_in/metab"
+   ```
+
    and Check Again. The window says `metab --doctor --json` printed no answer (exit
    status 3) and shows `boom`; Copy Report includes both.
-4. **Back to the checkout.** Choose `$real` again, Check Again shows the clean report,
-   and `rm -r "$stand_in"`.
+
+4. **No metab, then one.** In Settings, forget the chosen `metab` so none is selected,
+   and Check Again: the window says none is selected, and Check Again stays enabled.
+   Choose `$real` in Settings, then Check Again in the open window: it shows the clean
+   report without reopening it from the Help menu.
+   Then `rm -r "$stand_in"`.
 
 ## Setup Flows
 
