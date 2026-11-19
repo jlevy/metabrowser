@@ -287,6 +287,8 @@ data hooks:
   (none)
 
 assets in static_root:
+  - diagram-frame-entry.js
+  - diagram-frame.js
   - diagrams.js
   - dom-traversal.js
   - github-localizer.js
@@ -397,6 +399,8 @@ $ metab --plugin markdown --json
     "data_hooks": [],
     "disabled_data_hooks": [],
     "assets": [
+      "diagram-frame-entry.js",
+      "diagram-frame.js",
       "diagrams.js",
       "dom-traversal.js",
       "github-localizer.js",
