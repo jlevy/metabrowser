@@ -12,7 +12,7 @@ plan’s VM-1 to VM-10. A companion to
 the parent plan below, and to
 [View Model and View State](plan-2026-11-18-view-model-and-view-state.md), the view
 model plan, which holds the view state and its Phase 4. Written against `main` at
-`4a5b9e825`. Clarifications dated 2026-11-19, from an independent review, are marked at
+`42e4bd1bb`. Clarifications dated 2026-11-19, from an independent review, are marked at
 the decisions they touch.
 
 ## Overview
@@ -45,8 +45,8 @@ Four facts about today’s plugin contract constrain the design.
 - **Unknown manifest keys are refused** (`plugin_loader/manifest.py:348`), so a new
   block is part of the SDK gate ([Versioning](#versioning)).
 - **A plugin’s code loads by kind.** The shell indexes a plugin’s assets under the kinds
-  its `[[kind]]` and `[[view]]` blocks name (`server.py:5057-5058`) and loads them when
-  one is selected (`static/plugin-sdk.js:382`). A list drawn on another plugin’s page
+  its `[[kind]]` and `[[view]]` blocks name (`server.py:5061-5062`) and loads them when
+  one is selected (`static/plugin-sdk.js:384`). A list drawn on another plugin’s page
   selects none of them
   ([Decision PS-6](#decision-ps-6-loading-the-plugins-a-list-needs)).
 - **A plugin cannot register an address**
@@ -158,7 +158,7 @@ metab --doctor: 1 problem(s):
 
 ### JavaScript SDK
 
-`MetabrowserSdk` (`static/types.d.ts:1527`) gains `objects` and `ui`:
+`MetabrowserSdk` (`static/types.d.ts:1526`) gains `objects` and `ui`:
 
 ```typescript
 type MetabrowserObjectRef = Readonly<{ type: string; id: string; parent?: MetabrowserObjectRef }>;
@@ -259,9 +259,9 @@ receives it in its render context, as any open.
 - **Registration** (`registerType`, `registerCollection`, `registerView`,
   `registerParts`) runs once, synchronously, while the plugin’s module evaluates.
   It records, loads nothing, and has no disposer.
-  The host evaluates one plugin at a time (`static/plugin-sdk.js:391-393`), so it knows
+  The host evaluates one plugin at a time (`static/plugin-sdk.js:393-395`), so it knows
   whose registration each is, and it checks each against the declarations the shell
-  injects beside the asset index (`server.py:5029`).
+  injects beside the asset index (`server.py:5033`).
 - **A mount owns what it starts.** `mountList` returns at once with `ready` and an
   idempotent `dispose`, the form a view handle has
   ([Registration and Lifecycle](../../../plugins.md#registration-and-lifecycle)). A
@@ -278,14 +278,14 @@ receives it in its render context, as any open.
 | --- | --- |
 | The store, and every `mb.objects` call but the list host | The `sdk-views` on-demand bundle, in place before any plugin code runs (`static/plugin-sdk-views.js:11-16`) |
 | The list host | Its own on-demand bundle, fetched by the first `mountList` and prefetched in idle time |
-| `mb.ui` | Recording stubs in `sdk-views`; the publisher takes them when the deferred `static/ui-state.js` loads, as plugin shortcuts are queued (`static/plugin-sdk.js:185`) |
+| `mb.ui` | Recording stubs in `sdk-views`; the publisher takes them when the deferred `static/ui-state.js` loads, as plugin shortcuts are queued (`static/plugin-sdk.js:187`) |
 | A plugin’s functions | With the plugin, when a kind it names is selected, or a list mounts whose types it declares or draws ([Decision PS-6](#decision-ps-6-loading-the-plugins-a-list-needs)) |
 
 **Errors.**
 
 | Where | Failure | Result |
 | --- | --- | --- |
-| Any registration | A malformed argument | Throws, as `registerView` does (`static/plugin-sdk.js:483`); the e2e test reports a load error |
+| Any registration | A malformed argument | Throws, as `registerView` does (`static/plugin-sdk.js:485`); the e2e test reports a load error |
 | Any registration | No loaded manifest declares it, it repeats, or a later plugin’s `[[object_view]]` replaces it | Ignored, with one console warning |
 | `put` | `normalize` throws | Nothing is held, and the caller gets the error |
 | A default loader or collection | A failed request, a `plugin_error` body, or a row `normalize` refuses | `ensure` rejects, or the handle’s `error` is set; the list keeps its rows and shows a local failure |

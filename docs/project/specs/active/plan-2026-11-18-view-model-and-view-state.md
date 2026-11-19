@@ -9,7 +9,7 @@ The owner took every decision under [Key Decisions](#key-decisions), VM-1 to VM-
 2026-11-18, with the parent plan’s Decisions 1 to 23. A companion to
 [Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), the
 parent plan below, which defines the objects, references, collections, and shapes this
-plan names. Written against `main` at `4a5b9e825`. An independent review’s findings were
+plan names. Written against `main` at `42e4bd1bb`. An independent review’s findings were
 applied on 2026-11-19: the `control` default is computed for each request, as
 [Decision VM-5](#decision-vm-5-consent-and-trust) marks; a publish has refusal codes of
 its own; and `/api/ui/types` serves the table of object routes.
@@ -76,7 +76,7 @@ Everything else is module state or DOM, in the page alone.
 | Files filter, Group by, expansion, and current row | A snapshot reset on every page (`static/filter-state.js:5-21`); DOM classes (`static/tree-expansion.js:125`); `setSelectedPath` (`static/app.js:4086`) |
 | Pulls filter, closed stacks, and current row | `setFilter`, `closedStacks`, `setCurrent` (`github/pulls-panel.js:2877`, `:869`, `:3033`) |
 | Active page view | A flag per view container (`static/view-state.js:18`) |
-| Display preferences | Host-only cookies, not `localStorage` (`static/app.js:478`, `static/plugin-sdk.js:679`) |
+| Display preferences | Host-only cookies, not `localStorage` (`static/app.js:478`, `static/plugin-sdk.js:681`) |
 | Windows, tabs, and each tab’s page | The macOS app’s `session.json` ([Session Restore](../../architecture/arch-macos-app.md#session-restore)) |
 
 Four facts shape the design.
@@ -256,7 +256,7 @@ page and `--show` agree at every pull request address.
 | `content` | `ready` |
 | `error` | `failed`, or `not_found` where the answer was a 404 |
 | `idle` | `idle`: nothing is selected, and `object` is null |
-| `external` | The owner’s own status. The pull request page and the commit page claim the pane and paint for themselves (`static/app.js:9138`, `static/git-panel.js:2713`), so each reports `loading`, `ready`, `not_found`, or `failed` |
+| `external` | The owner’s own status. The pull request page and the commit page claim the pane and paint for themselves (`static/app.js:9138`, `static/git-panel.js:2990`), so each reports `loading`, `ready`, `not_found`, or `failed` |
 | `unreachable` | Never published. A page that cannot reach the server cannot publish, so the server holds the last state through the grace period of [Decision VM-7](#decision-vm-7-persistence) |
 
 Two of these rows are work for the view slice.
@@ -322,7 +322,7 @@ by which the owner settles its claim.
   So a multi-row answer, and the answer to an intent, print as `--format yaml` prints
   any route today: the envelope as plain YAML, with no header (`cli/api_cli.py:95-102`).
 - **Several viewers.** Each tab is a viewer, in a browser or in the app.
-  A tab the app has discarded (`docs/project/architecture/arch-macos-app.md:586`) has no
+  A tab the app has discarded (`docs/project/architecture/arch-macos-app.md:598`) has no
   viewer until it is shown.
   Windows and their order are the shell’s, platform behavior the parity rule exempts; a
   viewer reports only its own `attention`.
@@ -349,7 +349,7 @@ needs the route each type’s reference leads to:
 
 | `type` | Route | Answers |
 | --- | --- | --- |
-| `file`, `folder` | `GET /api/file?path=<id>` | The file or folder envelope, for a working tree and for a pin (`server.py:3474-3479`). No route answers a `File` or `Folder` object: the tree and Recent stay compact, and their adapters run in the browser |
+| `file`, `folder` | `GET /api/file?path=<id>` | The file or folder envelope, for a working tree and for a pin (`server.py:3478-3483`). No route answers a `File` or `Folder` object: the tree and Recent stay compact, and their adapters run in the browser |
 | `commit` | `GET /api/git/commit/<id>` | `GitCommitDetail` today; a `Commit` object once the parent plan’s Phase 2 conforms the Git routes |
 | `pull-request` | `GET /api/plugin/github/pull?number=<id>` | The pull record today; the object with its facets in the parent plan’s Phase 3 |
 
@@ -407,12 +407,12 @@ agent ◄── outcome: a status and the view state ── server ◄── a p
 - **Applied as an open.** The page turns the target into an address and opens it through
   one `openAddress`, which dispatches to the openers that exist: `navigateToPath`,
   `openQuickSearchPull`, and the Git panel’s `selectCommit` (`static/app.js:9693`,
-  `:9077`, `static/git-panel.js:2525`). Where none applies it loads the address, as a
+  `:9077`, `static/git-panel.js:2802`). Where none applies it loads the address, as a
   followed link does. What it loads is the address rebuilt from the parse through the
   encoders, never the caller’s string.
   The reveal rule then does what it does for Quick Search: the tab comes forward, the
-  row is revealed, focus stays, and no filter changes (`docs/design-system.md:4523`,
-  `:4574`). The Recent tab plan adds a case to that rule, for an item two tabs hold
+  row is revealed, focus stays, and no filter changes (`docs/design-system.md:4639`,
+  `:4690`). The Recent tab plan adds a case to that rule, for an item two tabs hold
   ([The Tab](plan-2026-11-18-recent-tab-updates-and-events.md#the-tab)): `present` with
   an `update` or an `event` reveals it in Recent, and `present` with the subject in the
   subject’s own tab.
@@ -476,7 +476,7 @@ What untrusted content cannot do:
 
 - A write is a `POST` with `Content-Type: application/json` and origin proof, which a
   sandboxed preview’s `Origin: null`, a form, and an image cannot produce
-  (`server.py:784`, `:832`). A `GET` changes nothing.
+  (`server.py:785`, `:833`). A `GET` changes nothing.
 - An intent names only an object of one of
   [Decision 5](plan-2026-11-14-object-data-model-and-views.md#decision-5-identity)’s
   types, or an address the route parsers accept: never a URL with a host, `/raw`, or
@@ -764,7 +764,7 @@ These points state A exactly.
   Content trust does not change the harm either: an applied intent runs no file’s
   scripts, since it opens an HTML file on Source, as the last point here says.
 - **“Local” is tested, not assumed.** The origin check accepts any request that sends
-  neither `Origin` nor `Sec-Fetch-Site` (`server.py:843-844`), so the server cannot tell
+  neither `Origin` nor `Sec-Fetch-Site` (`server.py:844-845`), so the server cannot tell
   a local command from any other peer that sends neither.
   With a non-loopback `--host`, or a remote server reached through a forwarded port,
   local is whoever reaches the port.
@@ -817,7 +817,7 @@ These points state A exactly.
 - **A. Per document, in memory.** No storage.
   Every load is a new viewer, and controls in four modules load a page in full
   (`static/source-freshness.js:898`, `static/source-ref-selector.js:960`,
-  `builtin_plugins/diff/index.js:321`, `github/pull-page.js:7291`).
+  `builtin_plugins/diff/index.js:321`, `github/pull-page.js:7364`).
 - **B. Per tab, in `sessionStorage`.** It survives a load, and the applier keeps the
   intent it is applying beside it, so the publish after a full load still names that
   intent. A duplicated tab copies it, so the server reassigns a second live claim.

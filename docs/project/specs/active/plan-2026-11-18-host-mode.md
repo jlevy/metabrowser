@@ -17,7 +17,7 @@ A companion to
 [View Model and View State](plan-2026-11-18-view-model-and-view-state.md),
 [Agent Interface for Objects and View State](plan-2026-11-18-agent-interface.md), and
 the [implementation map](plan-2026-11-18-object-model-implementation-map.md).
-Written against `main` at `4a5b9e825`.
+Written against `main` at `42e4bd1bb`.
 
 ## Overview
 
@@ -83,7 +83,7 @@ Paths are under `src/metabrowser/` unless they start with `docs/`, `apps/`, `tes
 - **The port is a walk** up from `--port`, which refuses 0 (`cli/main.py:761`), so a
   root can return on another port, which is another origin.
 - **There is no credential.** A request with neither `Origin` nor `Sec-Fetch-Site`
-  passes the `/api` origin check (`server.py:832-854`), so any process that reaches the
+  passes the `/api` origin check (`server.py:833-855`), so any process that reaches the
   port calls any route.
 - **`--present` delivers to the app or a browser**
   ([Opening Anything from the CLI and the App](plan-2026-11-17-open-anything-from-cli-and-app.md)).
@@ -91,7 +91,7 @@ Paths are under `src/metabrowser/` unless they start with `docs/`, `apps/`, `tes
   (`cli/present.py:1261`), a new one on every call.
 - **Nothing lists live servers.** No state file, socket, token, ready line, sticky port,
   or idle exit exists; `GET /api/identity` answers naming fields alone
-  (`root_identity.py:124-137`); and no shell module reads `sessionStorage`.
+  (`root_identity.py:115-128`); and no shell module reads `sessionStorage`.
 
 Host mode is planned in the macOS plan’s
 [Phase 3](plan-2026-11-10-native-macos-app.md#phase-3-host-mode-the-registry-and-the-agent-front-door),
@@ -293,7 +293,7 @@ An agent with `metab` and no document can learn everything above.
 | An agent asks | `metab` answers with | On `main` |
 | --- | --- | --- |
 | What can I do? | `metab --help` | Exists. It names modes and not tasks, and of the host parts only `--exit-on-eof` (`cli/main.py:775`) |
-| Which routes exist? | `GET /api/routes` | Exists (`server.py:5157`): path, methods, and kind, and not what a route answers or which transport serves it |
+| Which routes exist? | `GET /api/routes` | Exists (`server.py:5161`): path, methods, and kind, and not what a route answers or which transport serves it |
 | Which servers are live? | The listing mode | Missing. `--recent` lists targets, not servers |
 | What does a ready line or a listing row hold? | The server record’s schema, through `--api` | Missing: no record, and no route serves a schema |
 | Which verbs reach a gated server? | A mark on each `/api/routes` entry the socket serves | Missing |

@@ -7,7 +7,7 @@
 **Status:** Decided, and nothing here is built.
 The owner took every decision here, 1 to 23, on 2026-11-18, and
 [Key Decisions](#key-decisions) gives each choice.
-Revised 2026-11-18, and written against `main` at `4a5b9e825`, which holds #550, #552,
+Revised 2026-11-18, and written against `main` at `42e4bd1bb`, which holds #550, #552,
 and #534 of the pull requests under [Work in Flight](#work-in-flight).
 Clarifications dated 2026-11-19, from an independent review, are marked at the decisions
 they touch. Some of what the plan proposes now exists on `main`: a shared page header, a
@@ -140,7 +140,7 @@ Each object has several models, one per surface.
 | `/api/events` change | `FsEntry`: `path`, `parent`, `name`, `type`, `ext`, `kind`, `size`, `mtime_ns`, `mtime_hash`, `active`, `views`, `labels` | `fs_record.py:46`, `events.py:317` |
 | `/api/recent` row | `name`, `path`, `type`, `size`, `mtime`, `ext`, optional `gitignored` | `recent.py:56` |
 | `/api/catalog` row | `{"p": path, "e": logical extension}`; size and time dropped on purpose | `events_route.py:1253` |
-| `/api/file` envelope | A dict per content type: `type`, `kind`, `views`, `path`, `ext`, `size`, `mtime_hash`, and a content window; no `name`. Since #550 it also carries `mtime` in epoch seconds, left out where the time cannot be read (`_mtime_field` in `server.py`) | `server.py:3835` |
+| `/api/file` envelope | A dict per content type: `type`, `kind`, `views`, `path`, `ext`, `size`, `mtime_hash`, and a content window; no `name`. Since #550 it also carries `mtime` in epoch seconds, left out where the time cannot be read (`_mtime_field` in `server.py`) | `server.py:3839` |
 | On a pinned revision | `path` as a `GitPath` wire, plus `display`, `mode`, `git_kind`, `symlink`, `gitlink`, `oid`; no time | `git/content_routes.py:245` |
 | Quick Search result | `kind: "file"`, `id`, `label`, `description`, `path`, `logicalExtension`, ranking fields | `static/search-controller.js:103` |
 
@@ -150,7 +150,7 @@ Each object has several models, one per surface.
 | --- | --- | --- |
 | `/api/tree` row | `DirNode`: `name`, `path`, `type`, `children`, `total_files`, `total_size`, `mtime`, optional `has_children`, `gitignored`, `empty` | `wire_models.py:87` |
 | `/api/events` change | `FsEntry` with `total_files`, `total_size`, `unignored_files`, `unignored_size`, `newest_mtime_ns`, `empty` | `fs_record.py:46` |
-| `/api/file` envelope | `type: "folder"`, `kind`, `path`, `name`, `views`, `dir{…totals, mtime, gitignored, state}`, `readme_path` | `server.py:3449` |
+| `/api/file` envelope | `type: "folder"`, `kind`, `path`, `name`, `views`, `dir{…totals, mtime, gitignored, state}`, `readme_path` | `server.py:3453` |
 | `/api/rollup` node | `RollupDirNode`: totals, `state`, `dominant_ext`, `children`, `rest` | `wire_models.py:228` |
 | Browser totals store | `{path, revision, state, totalFiles, totalBytes, unignoredFiles, unignoredBytes}` | `static/directory-totals-store.js:44` |
 
@@ -158,8 +158,8 @@ Each object has several models, one per surface.
 
 | Where | Shape | Defined at |
 | --- | --- | --- |
-| `/api/git/log` row | `GitCommit`: `id`, `short_id`, `parent_ids`, `author{name, email}`, `authored_at`, `committed_at` (seconds), `subject`, optional `refs` | `git/wire.py:100` |
-| `/api/git/commit/<rev>` | `GitCommitDetail`: `commit`, `body`, `stats`, `files`, `files_truncated` | `git/wire.py:263` |
+| `/api/git/log` row | `GitCommit`: `id`, `short_id`, `parent_ids`, `author{name, email}`, `authored_at`, `committed_at` (seconds), `subject`, optional `refs` | `git/wire.py:103` |
+| `/api/git/commit/<rev>` | `GitCommitDetail`: `commit`, `body`, `stats`, `files`, `files_truncated` | `git/wire.py:266` |
 | In a pull request’s timeline | `kind: "commit"`, `oid`, `subject`, `committed_at` (ISO string) | `github/pull_timeline.py:74` |
 | In a pull-request record | `commits`, a count | `github/pull_record.py:204` |
 | The `/commit/<rev>` page | A `diff/comparison` document in File Diff Format; `--show` reads this and not `/api/git/commit` | `cli/show_cli.py:449` |
@@ -175,12 +175,12 @@ Each object has several models, one per surface.
 | Navigation row, in the browser | `PullRow`: camel case (`stateLabel`, `updatedAt`, `meta`), no branches, and the head commit as `head`, which the row does not show but which its change line is read again for when it moves | `github/pulls-panel.js:240`, `:318` |
 | Change totals, `GET pull-files-summary?numbers=` | `FilesSummaryWire`: `head`, `base`, `base_ref`, `generation`, nullable `files`, `additions`, and `deletions`, `exact`, and `statuses`; batched up to `MAX_SUMMARY_NUMBERS`, answered from the cache alone | `github/pull_files_summary.py:98`, `:64` |
 | A stack’s change totals, `GET stack-change` | `StackChangeEnvelope`: the stack’s combined change, not a sum of its members’ | `github/pull_stack_change.py:109` |
-| Page header, in the browser | A second description built from the record | `github/pull-page.js:1176` |
+| Page header, in the browser | A second description built from the record | `github/pull-page.js:1177` |
 
 A pull request’s nested parts are modeled the same way, once per use: comments and
 reviews as record items (`github/pull_record.py:221`, `:233`, `:246`) and again as
 timeline events that carry only a kind and an identifier (`github/pull_timeline.py:81`),
-which the page joins to the record’s cards by `kind/id` (`github/pull-page.js:5706`);
+which the page joins to the record’s cards by `kind/id` (`github/pull-page.js:5779`);
 check runs (`github/pull_record.py:270`); changed files (`github/pull_list.py:299`); and
 stacks (`github/pull_stacks.py:76`).
 
@@ -194,13 +194,13 @@ page opened from a row asks for nothing (`github/pull-summary-brief.js`).
 
 | Fact | Spellings |
 | --- | --- |
-| A file’s modification time | `mtime` in seconds (`wire_models.py:58`, and on the `/api/file` envelope since #550), `mtime_ns` (`fs_record.py:46`), `mtime_hash` (`server.py:3699`), `newest_mtime_ns` for a folder, absent in the catalog and on a pin |
+| A file’s modification time | `mtime` in seconds (`wire_models.py:58`, and on the `/api/file` envelope since #550), `mtime_ns` (`fs_record.py:46`), `mtime_hash` (`server.py:3703`), `newest_mtime_ns` for a folder, absent in the catalog and on a pin |
 | A time, in general | Epoch seconds in the tree and Git wires (`git/wire.py`, module docstring); UTC strings at second precision in GitHub models (`github/pull_record.py:108`) and with optional milliseconds in cache records (`cache/records.py:59`); nanoseconds in the event stream |
 | A pull request’s state | `state` and `draft` and `merged_at` in a row; `state`, `draft`, and `merged` in a record; one four-valued `state` in search; and “state” also names every envelope’s cache state |
-| That four-valued state | Derived four times: `displayState` (`github/pull-state.js:43`), the search projection (`github/pull_catalog.py:640`), a record’s summary line (`github/pulls.py:1239`), and `--show` (`cli/show_cli.py:248`); and inverted once, in `withListedState` (`github/pull-state.js:108`) |
+| That four-valued state | Derived four times: `displayState` (`github/pull-state.js:43`), the search projection (`github/pull_catalog.py:640`), a record’s summary line (`github/pulls.py:1239`), and `--show` (`cli/show_cli.py:248`); and inverted once, in `withListedState` (`github/pull-state.js:136`) |
 | A pull request’s branches | `base_ref`, `head_ref`, `head_repository`, `head_oid` in a row; `base.ref`, `head.sha`, `head.repository` in a record |
 | A commit’s identifier | `id`, `oid`, `revision`, `head_revision`, `sha` |
-| A change’s totals | `GitCommitStats` with six counts (`git/wire.py:243`); the diff format’s `Totals{files, additions, deletions, exact}` (`diff/format.py:170`); per-file `additions` and `deletions` in `GitFileChange` and `PullFileRow`, whose status words differ; on the server, `ChangeSums{files, additions, deletions, exact, statuses, short}`, which fixes the status words (`github/pull_change_sums.py:38`); in the browser, the `{files, additions, deletions, exact}` that `changeSummary` and `changeLine` draw, where an unknown count draws as “?” (`static/formatters.js:315`, `:404`) |
+| A change’s totals | `GitCommitStats` with six counts (`git/wire.py:246`); the diff format’s `Totals{files, additions, deletions, exact}` (`diff/format.py:170`); per-file `additions` and `deletions` in `GitFileChange` and `PullFileRow`, whose status words differ; on the server, `ChangeSums{files, additions, deletions, exact, statuses, short}`, which fixes the status words (`github/pull_change_sums.py:38`); in the browser, the `{files, additions, deletions, exact}` that `changeSummary` and `changeLine` draw, where an unknown count draws as “?” (`static/formatters.js:316`, `:405`) |
 | What kind of thing | `type` is `file` or `dir` in a tree row and `text`, `folder`, or `image` in an envelope; `kind` is a view classifier in an envelope, a ref’s kind in Git, and a blob or tree on a pin; `--present` prints a `kind` of `folder`, `file`, `repository`, `pull_request`, `commit`, or `tree`, which the macOS app reads (`cli/present.py:155`); and a selection’s `SelectionKind` is `repository`, `tree`, `blob`, `commit`, or `pull_request` (`cache/urls.py:77`) |
 
 ### How Each Object Is Drawn Today
@@ -216,14 +216,14 @@ and change totals.
 | Files tree | `renderTreeNodes` (`static/app.js:2471`) and, for live inserts, `_buildRowHtml` (`static/app.js:8053`) | Two builders over two shapes of one entry, which the design system holds together with a test ([Navigation Tree Folders](../../../design-system.md#navigation-tree-folders)) |
 | Recent | `renderRecentList` (`static/app.js:5506`) | Reuses `renderTreeNodes` over a clustered tree |
 | Quick Search | `appendFileResult` and `appendPullResult` (`static/search-palette.js:436`, `:472`) | An option builder per kind of result, over a `file` or `pull` result union |
-| Commit row | `renderRow` (`static/git-panel.js:2189`) | Reads the log row |
+| Commit row | `renderRow` (`static/git-panel.js:2466`) | Reads the log row |
 | Commit summary | `renderCommitSummary` (`static/git-panel.js:449`) | One component in two projections: the page’s header and, with `compact`, the hover card |
 | Pull request row | `describeRow` then `buildRow` (`github/pulls-panel.js:318`, `:3965`) | A pure description, then paint. Three lines: the title first, then the number and author, then the change line, which is the row’s one child and its own focus stop ([The Pulls Tab](../../../design-system.md#the-pulls-tab)) |
 | Stack heading | `createStackLines` (`github/stack-lines.js:234`) | A section heading that reads data of its own, the stack’s change line from `stack-change`; a row in a stack sits one slot in, a row in none flush left |
-| Pull request header | `describeCore` then `paintHeader` (`github/pull-page.js:1176`, `:5257`) | A second description of the same pull request |
+| Pull request header | `describeCore` then `paintHeader` (`github/pull-page.js:1177`, `:5326`) | A second description of the same pull request |
 | Page header | `.page-header` on the commit and pull request pages | Lines in one order: title, author, place, age, then the Diff summary ([Page Headers](../../../design-system.md#page-headers)) |
 | Author | `metabrowser.actorIdentity(name, {avatar, placeholder})` (`static/plugin-sdk-views.js:1063`) | The commit page, the pull request page, and the Pulls rows draw an author through it |
-| Change totals | `changeLine` and `changeSummary` (`static/formatters.js:315`, `:404`) | One drawing on the commit card, the commit totals, the Diff summary, the Pulls rows, the stack headings, and the pull request page’s brief line |
+| Change totals | `changeLine` and `changeSummary` (`static/formatters.js:316`, `:405`) | One drawing on the commit card, the commit totals, the Diff summary, the Pulls rows, the stack headings, and the pull request page’s brief line |
 | Folder Overview | A panel stack (`builtin_plugins/folder/overview.js:83`) | Totals, type breakdown, README; no list of children |
 
 Four of these are precedents this plan builds on.
@@ -244,10 +244,10 @@ Long lists are windowed three ways: a fixed-height window for Git history
 The keyboard rules for these lists are one contract,
 [Navigational Row Collections](../../../design-system.md#navigational-row-collections),
 implemented four times (`static/tree-keyboard-navigation.js:491`,
-`static/git-panel.js:1829`, `static/pulls-nav.js:464`, and the changed-files tree) and
+`static/git-panel.js:2106`, `static/pulls-nav.js:464`, and the changed-files tree) and
 held together by a source-text check,
 `test_nav_like_row_sets_share_the_vertical_keyboard_contract`
-(`tests/test_design_vocabulary.py:557`). In the Pulls tab, Right moves to a row’s change
+(`tests/test_design_vocabulary.py:563`). In the Pulls tab, Right moves to a row’s change
 line, Space on the row is consumed and does nothing, and Up and Down never expand.
 
 ### Browser Stores Today
@@ -264,7 +264,7 @@ stores. Each surface also keeps its own:
 | Known-file catalog (`static/known-file-catalog.js`) | Path | One bulk read, then catalog deltas |
 | Git pages and details (`static/git-panel.js:76`, `:120`) | Page number; revision | A generation that moves with HEAD |
 | Pull lists (`github/pulls-panel.js:716`) | Filter name | A content generation, entity tags, and polling |
-| Listed states (`github/pull-state.js:60`) | Source, then number | Written as rows arrive |
+| Listed states (`github/pull-state.js:61`) | Source, then number | Written as rows arrive |
 | Row change lines (`documentRowLines`, `github/row-lines.js:157`) | Number and head | Read again when a row’s head moves; bounded, per document |
 | Stack change lines (`documentStackLines`, `github/stack-lines.js`) | Stack | Read again when a member’s head moves |
 
@@ -281,7 +281,7 @@ Four findings matter for the design.
   The change-line lane is created in the same mount (`:5047`), and asks for no lines
   while the panel is hidden (`:4558-4564`).
 - **A row and its page reconcile by hand.** The page reads a different model from the
-  row, so `withListedState` (`github/pull-state.js:108`) patches a cached record with
+  row, so `withListedState` (`github/pull-state.js:136`) patches a cached record with
   the state the list saw later.
   That is a merge of two partial copies of one object, written for one field.
 - **A facet already arrives by a lane of its own, matched by revision.** The change
@@ -341,14 +341,14 @@ envelope is produced and consumed by one artifact in one request.
 [Plugin Authoring](../../../plugins.md) describe the contract.
 A manifest declares `[[kind]]` rules, `[[view]]` tabs, and `[[data_hook]]` routes
 (`plugin_loader/manifest.py:164`, `:184`, `:275`); the browser side is
-`mb.registerView(kind, viewId, {render, dispose})` (`static/plugin-sdk.js:483`).
+`mb.registerView(kind, viewId, {render, dispose})` (`static/plugin-sdk.js:485`).
 `PLUGIN_SDK_VERSION` (`plugin_loader/manifest.py:43`) refuses a manifest written for
 another SDK.
 
 Four facts shape what follows:
 
 - **The SDK has no list, row, or object primitive.** It offers formatters, icons, ref
-  chips, and data fetches (`static/plugin-sdk.js:1806`), and drawings of parts of an
+  chips, and data fetches (`static/plugin-sdk.js:1816`), and drawings of parts of an
   object: `actorIdentity` for an author and `changeLine` for change totals.
 - **One composition contract exists already.** Folder Overview panels register with
   `resolve`, `mount`, and `update`, and a composer owns order and layout
@@ -674,7 +674,7 @@ work, settled before each contract is written:
   no facet yet holds the record’s `base.sha` and `base.repository`
   (`github/pull_record.py:176`, `:216`).
 - **Unknown and partial change totals.** A commit at a shallow boundary has every count
-  null (`git/wire.py:243`), while File Diff Format’s `Totals.files` is a required count
+  null (`git/wire.py:246`), while File Diff Format’s `Totals.files` is a required count
   (`diff/format.py:170`), so the one change-totals sub-object must be able to say
   “unknown”. `ChangeSums` adds a third state, `short`, for a list that stopped before its
   end (`github/pull_change_sums.py:38`), and `FilesSummaryWire` makes each count
@@ -737,7 +737,7 @@ Three levels of modeling, chosen by what a thing must do:
 | Comment, review, review comment | GitHub plugin | The Recent tab lists a comment as an update’s member; until then an update counts comments without listing them |
 | Check run | GitHub plugin | A checks list appears outside the pull request page |
 | Stack | GitHub plugin, from `github/pull_stacks.py` and `stack-change` | A stack is listed or linked outside the Pulls tab; its heading already draws its own change totals |
-| Branch, tag | Core, from `GitRef` (`git/wire.py:69`) or the chooser’s `SourceRef` and `WorkingTree` (`source_routes.py:246`, `:265`) | Now: #559’s branch and tag chooser is a branches list, with a second model of a ref beside `GitRef`; the type picks one of the two |
+| Branch, tag | Core, from `GitRef` (`git/wire.py:72`) or the chooser’s `SourceRef` and `WorkingTree` (`source_routes.py:246`, `:265`) | Now: #559’s branch and tag chooser is a branches list, with a second model of a ref beside `GitRef`; the type picks one of the two |
 | Changed file | Diff plugin, from File Diff Format’s file entry | A changes list is drawn outside a comparison. Its row is not always a link: “View on branch” is a link only where the served revision is the diff’s head, and otherwise a button that switches the revision first (#511) |
 | Issue | GitHub plugin | Issues are added at all |
 | Agent session | The `agent-log` plugin | Sessions are listed |
@@ -1148,7 +1148,7 @@ Objects are served by the layer that owns them, through routes that mostly exist
 - **No route answers a `File` or `Folder` object.** The tree and Recent stay compact,
   and the adapters that make objects of their rows run in the browser.
   A reference to a file or a folder therefore leads to `/api/file?path=<id>`, which
-  answers the envelope for either (`server.py:3449`, `:3474`), and the registry names
+  answers the envelope for either (`server.py:3453`, `:3478`), and the registry names
   that route for both types, as it names every type’s
   ([Decision 15](#decision-15-routes)).
 - **The registry route builds no validator.** It answers from the manifests and each
@@ -1308,7 +1308,7 @@ That plan also keeps as an open question that `mb.registerView` and
   - **The store** (`static/object-store.js`) is in the `sdk-views` on-demand bundle,
     beside `registerView`. Its first writer is the Pulls panel, plugin code that already
     waits on that bundle, and `pulls-nav`, which the shell loads whenever it serves a
-    GitHub repository (`server.py:1718`), mounts the panel in idle time
+    GitHub repository (`server.py:1721`), mounts the panel in idle time
     (`static/pulls-nav.js:368-374`). A bundle of its own would be fetched in nearly
     every such session anyway.
     Its bytes are measured against that bundle, which records its own measured size
@@ -1485,7 +1485,7 @@ convention.
   `rows` (`github/pull_files_route.py:549`, `github/pull_catalog.py:648`), and the cache
   routes say `next_after` (`cache/wire.py:202`). So the pull request list keeps its
   keys, and the Git log is the main rename: its `commits` and `cursor`
-  (`git/wire.py:207-208`) become `rows` and `next_after`, and its `cursor` parameter
+  (`git/wire.py:210-211`) become `rows` and `next_after`, and its `cursor` parameter
   becomes `after`. A cursor is opaque to the store, a number for pull requests and a
   string for the cache, and is passed back as `after`. `generation` is the one name for
   a token that changes when a thing changes: a collection’s here, a facet loader’s, and
@@ -1569,7 +1569,7 @@ the types and from each other (`cli/present.py:155-157`, `cache/urls.py:77`):
 - **A separate field keeps a repository’s root apart from a named tree.** With both
   spelled `folder`, the kind no longer says whether a ref was named, and three readers
   tell the two apart by the kind today.
-  A bare repository URL prints no selection lines (`cli/selection.py:297`). It opens the
+  A bare repository URL prints no selection lines (`cli/selection.py:298`). It opens the
   default revision, with no pin resolved from the URL (`cli/git_pin_cli.py:199`). And it
   resolves to the default branch, where a tree or a blob resolves the ref and path it
   names (`cache/resolve.py:775`). So the selection and `--present`’s report carry “the
@@ -1999,7 +1999,7 @@ object types are spelled its way from the start; the implementation map lands it
   (`apps/macos/metab-contract.toml:78`, which `devtools/check_app_contract.py` holds to
   the code), and its `minimumRelease` in the same commit, and add the field that keeps a
   repository’s root with no ref named apart from a named tree, moving the readers at
-  `cli/selection.py:297`, `cli/git_pin_cli.py:199`, and `cache/resolve.py:775` onto it.
+  `cli/selection.py:298`, `cli/git_pin_cli.py:199`, and `cache/resolve.py:775` onto it.
 
 ### Phase 1: The Model and the Pull Requests Page
 
@@ -2019,7 +2019,7 @@ The contract half is in Phase 2.
   (`:318`), `describePulls` (`:436`), `pumpCores` (`:1022`), `holdRows` (`:1593`),
   `holdEnvelope` (`:1616`), `holdContent` (`:1776`), `arrivalsFromTop` (`:1842`), `ask`
   (`:2102`), and `loadWindow` (`:2522`); `noteListed`, which takes the held descriptions
-  (`github/pull-state.js:70`); and the readers of the description’s `head`, which the
+  (`github/pull-state.js:71`); and the readers of the description’s `head`, which the
   change lines are read again by: `pulls-panel.js:4065`, `:4146`, and `:4562`,
   `createRowLines` (`github/row-lines.js:173`), `createStackLines`
   (`github/stack-lines.js:234`), and `github/pull-summary-brief.js`. The `pulls-refresh`

@@ -16,7 +16,7 @@ It is written against
 plan” below, and that plan’s own parent,
 [Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), “the
 object model plan”. The owner took the decisions of both, VM-1 to VM-10 and 1 to 23, the
-same day. Written against `main` at `4a5b9e825`. An independent review’s findings were
+same day. Written against `main` at `42e4bd1bb`. An independent review’s findings were
 applied on 2026-11-19: [Self-Description](#self-description) gains a route for the table
 of object routes, and [Trust](#trust) states the `control` default for each request.
 
@@ -271,8 +271,8 @@ the parent’s publisher lets the newest state win.
 - A server the app or the reader started is at a port the agent cannot learn.
   `--recent` lists targets, not servers, and `--present` reaches the app through
   LaunchServices, which does not reply.
-- `GET /api/identity` names a server’s subject (`root_identity.py:304`), so with
-  `--server` an agent can confirm that an address serves the root it expects.
+- `GET /api/identity` names a server’s subject (`api_identity`, `root_identity.py:342`),
+  so with `--server` an agent can confirm that an address serves the root it expects.
 
 **After discovery,** `--live` resolves ROOT to its server, so the sessions drop
 `--server`, and `--present` sends the intent itself: the host mode plan’s
@@ -325,7 +325,7 @@ not looking at.
   pull list’s is a number, and the Git log’s names a server session
   (`git/history.py:102`), so a one-shot command reads one page of history.
 - A file’s route sends content, up to `_TEXT_PREVIEW_CHUNK_BYTES` by default
-  (`server.py:3632`), so a recipe passes `limit` there too (`:3639`).
+  (`server.py:3636`), so a recipe passes `limit` there too (`:3643`).
 - A pull request’s route answers the whole record; `--show /pull/<n>` sums it up, and
   the object model plan’s facets are the bounded read once that route conforms.
 
@@ -338,7 +338,7 @@ described: an agent with the command and no document can still find each one.
 | An agent asks | `metab` must answer with | On `main` |
 | --- | --- | --- |
 | What can I do here? | `metab --help`, naming each agent task beside its command | The help names modes, not tasks. Its summary names `--api`, `--show`, and `--present` (`cli/main.py:958-966`), names no route listing, and ends at a link to the guide on GitHub (`cli/main.py:513`), a document outside the command |
-| Which routes exist? | `GET /api/routes`, naming every `/api/ui` route and every object route | The route exists. It lists every mounted route with its methods, read from the application at request time, so plugin hooks are included (`server.py:5157`). It gives a path and methods, and not what a route answers |
+| Which routes exist? | `GET /api/routes`, naming every `/api/ui` route and every object route | The route exists. It lists every mounted route with its methods, read from the application at request time, so plugin hooks are included (`server.py:5161`). It gives a path and methods, and not what a route answers |
 | What does a record hold? | Each contract’s compiled schema, read through `--api` | Nothing serves a schema. The cache family’s are package data under `data/cache-format/schemas/`; a plugin’s would be served under `/plugin-static/`, which `--api` refuses, since it issues `/api/` routes alone (`cli/api_cli.py:326`); and the object model plan’s `/api/object-types` answers a schema’s digest, not the schema |
 | Which route does a reference lead to? | `GET /api/ui/types`, listed by `/api/routes`, until `/api/object-types` supersedes it | Nothing serves it. The parent plans the table of object routes as a constant in `ui/`, which an agent could read only in the skill |
 
@@ -414,7 +414,7 @@ This document adds:
 What the design does not protect:
 
 - **The caller.** Until host mode’s credential, any local process reads view states and
-  sends intents, as it calls any route (`server.py:843`). A steered agent is such a
+  sends intents, as it calls any route (`server.py:844`). A steered agent is such a
   process. The limits are on what an intent can name, not on who sends it.
 - **Other routes.** `--server` reaches every `POST` route, as `curl` does today,
   `/api/source/pin` among them, which moves the served revision under every tab.

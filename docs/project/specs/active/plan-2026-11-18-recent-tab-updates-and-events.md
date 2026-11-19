@@ -11,7 +11,7 @@ The owner took every decision under [Key Decisions](#key-decisions), RT-1 to RT-
 parent plan below, whose Decision 19 this plan answers and whose mixed list it designs;
 [What This Plan Takes Over](#what-this-plan-takes-over) lists the parts, and
 [Settled](#settled) says which of the parent’s decisions this plan rests on.
-Written against `main` at `4a5b9e825`. Clarifications dated 2026-11-19, from an
+Written against `main` at `42e4bd1bb`. Clarifications dated 2026-11-19, from an
 independent review, are marked at the decisions they touch.
 
 ## Overview
@@ -79,7 +79,7 @@ Three things are named Recent:
   [nav filter plan](../done/plan-2026-08-09-nav-filter-controls.md) folded it into
   Files, and three documents still call it “the Recent tab”
   (`docs/project/architecture/arch-recent-targets.md:18`,
-  `docs/project/architecture/arch-open-modes.md:204`, `docs/browsing-history.md:116`).
+  `docs/project/architecture/arch-open-modes.md:204`, `docs/browsing-history.md:120`).
 - **Recent targets,** the roots a reader opened, kept by `metab --recent` for File >
   Open Recent ([Recent Targets](../../architecture/arch-recent-targets.md)).
 - **This tab.** [RT-6](#rt-6-the-name) settles the collision.
@@ -109,7 +109,7 @@ sources.
 | `pull-requests` | GitHub | No | Where `origin` is on github.com | The same | Where the origin is on github.com |
 
 - **The level is decided where the tabs are.** The Git level applies where the shell
-  draws Commits and the GitHub level where it draws Pulls (`server.py:1724`, `:1718`).
+  draws Commits and the GitHub level where it draws Pulls (`server.py:1727`, `:1721`).
 - **The tab is about the root, not the view.** The `commits` source walks the history’s
   `all` scope, every branch and tag (`resolve_history_scope`, `git/history.py:317`). The
   default scope of a revision is its own ancestors alone (`git/history.py:303`).
@@ -133,7 +133,7 @@ Two costs are recorded: the browser’s for a full `/api/recent` answer
 
 | Source | Reads today | Needs |
 | --- | --- | --- |
-| `files` | The newest files in a window, capped, with no cursor (`server.py:3163`, `inventory_engine/contract.py:1172`): current modification times, not a log of writes. The Python provider filters and sorts the whole index for each query (`inventory_engine/providers/python_inventory.py:2718-2747`) | To page, a cursor below a time, from every inventory provider. For edit history, the recorder of [R4](#r4-later-each-alone) |
+| `files` | The newest files in a window, capped, with no cursor (`server.py:3167`, `inventory_engine/contract.py:1172`): current modification times, not a log of writes. The Python provider filters and sorts the whole index for each query (`inventory_engine/providers/python_inventory.py:2718-2747`) | To page, a cursor below a time, from every inventory provider. For edit history, the recorder of [R4](#r4-later-each-alone) |
 | `commits` | A log in `--date-order`, which follows topology, with each commit’s time (`git/history.py:641`, `git/log.py:49`) | First, the `all` scope’s first page, ordered by commit time. To page, a bounded walk before a time |
 | `working-tree` | Nothing | `GET /api/git/status`, measured by the status plan’s Phase 0. It never pages |
 | `refs` | Nothing: no reflog is read, and a mirror records when it last fetched, not what moved (`cache/records.py:357`) | A reflog read; a record of a mirror’s fetches |
@@ -219,7 +219,7 @@ move without input.
 - **Change totals.** The `changes` facet is the shared change-totals sub-object
   (`ChangeSums`, `github/pull_change_sums.py:38`), keyed by `head.sha` and `generation`.
   Status letters come from the status records; a line count may be unknown, which
-  `changeLine` draws as “?” (`static/formatters.js:315`).
+  `changeLine` draws as “?” (`static/formatters.js:316`).
 - **Diff.** A `diff/comparison` document from the `HEAD` commit, or `empty` on an unborn
   branch, to a `worktree` snapshot.
   The status plan’s `GitWorkingTreeDiffSource` builds one entry’s comparison; this plan
@@ -243,7 +243,7 @@ move without input.
 **Order and key.** Files, Recent, Pulls, Commits: the two tabs every root has come
 first, so the tabs that come and go never shift them.
 The tab joins `MAIN_TABS` (`static/main-tabs.js:7`), the server draws its button
-(`server.py:2320`), and its panel registers as Commits’ does (`registerNavPanel`,
+(`server.py:2323`), and its panel registers as Commits’ does (`registerNavPanel`,
 `static/main-tabs.js:210`). Its letter is `R`, which no shell key or view holds
 (`keymap.py:66`, `tests/test_keymap.py:115`); Command-R stays the browser’s.
 
