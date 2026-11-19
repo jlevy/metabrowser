@@ -2332,7 +2332,6 @@ html.theme-anim .container,
 html.theme-anim .tree-pane,
 html.theme-anim .preview-pane,
 html.theme-anim .preview-frame,
-html.theme-anim .nav-collapse-toggle,
 html.theme-anim .app-header,
 html.theme-anim .tree-content,
 html.theme-anim .preview-empty,
@@ -3030,16 +3029,20 @@ html.theme-anim .menu {
 }
 /* The chevron: an icon button on the main page's left edge, beside the pane's shadow,
    on the shortcut strip's row. The module centers it on the strip; `bottom` holds it
-   near there until the first measurement. It has the page's ground at rest, as a plate,
-   since the page's content can run under it, and the hover surface over that. The shared
-   chevron points right; turned, it points left, at the pane it hides, and it turns back
-   when the pane is hidden. */
+   near there until the first measurement. It sits 1px in from the edge and has no
+   plate, so the edge and the pane's shadow show through it: only the hover surface
+   fills it. The shared chevron points right; turned, it points left, at the pane it
+   hides, and it turns back when the pane is hidden. */
 .nav-collapse-toggle {
   position: absolute;
-  left: 4px;
+  left: 1px;
   bottom: 5px;
   z-index: var(--z-resize-handle);
-  background: var(--bg);
+}
+/* Its Shift badge is in the frame, over the button's inline end like every `beside`
+   badge, and needs the button's level to paint over it rather than under it. */
+.nav-collapse-toggle ~ .kbd-badge {
+  z-index: var(--z-resize-handle);
 }
 .nav-collapse-toggle svg {
   transform: rotate(180deg);

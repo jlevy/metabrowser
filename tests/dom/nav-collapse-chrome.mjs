@@ -12,7 +12,8 @@
 // tell is held here (docs/design-system.md, "Hiding the Navigation Pane"):
 //
 // - the chevron sits on the main page's left edge, right of the pane's border, centered on
-//   the shortcut strip's row, pointing left at the pane;
+//   the shortcut strip's row, pointing left at the pane, with no plate of its own;
+// - holding Shift shows its `\` badge, painted over the button rather than under it;
 // - a real `\`, sent through the DevTools input domain, slides the frame from the pane's
 //   edge to the window's in every frame without moving back, at its full width throughout,
 //   and leaves the pane covered and inert and the chevron pointing right, on the same row;
@@ -76,7 +77,24 @@ const READ = `(() => {
     pointsLeft: Math.abs(turn.a + 1) < 0.01,
     pointsRight: Math.abs(turn.a - 1) < 0.01,
     animations: frame.getAnimations().length,
+    buttonGround: getComputedStyle(button).backgroundColor,
   };
+})()`;
+
+// In the page: whether the chevron's badge is what a point on its center hits. A badge
+// takes no pointer, so it takes one for the test; hit testing follows the paint order.
+const BADGE_ON_TOP = `(() => {
+  const badge = [...document.querySelectorAll(".preview-frame > .kbd-badge")].find(
+    (each) => each.textContent === "\\\\",
+  );
+  if (!badge) {
+    return null;
+  }
+  badge.style.pointerEvents = "auto";
+  const box = badge.getBoundingClientRect();
+  const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+  badge.style.pointerEvents = "";
+  return hit === badge;
 })()`;
 
 // In the page: record the frame's left edge and layout width in every frame for a while.
@@ -116,6 +134,17 @@ async function pressBackslash(shift) {
   await browser.send("Input.dispatchKeyEvent", { type: "keyUp", ...key });
 }
 
+/** Press or release Shift through the DevTools input domain. */
+async function shift(type) {
+  await browser.send("Input.dispatchKeyEvent", {
+    type,
+    key: "Shift",
+    code: "ShiftLeft",
+    windowsVirtualKeyCode: 16,
+    modifiers: type === "keyDown" ? SHIFT : 0,
+  });
+}
+
 /** Run an action while sampling every frame, and return the samples once the slide ends. */
 async function sampled(action) {
   await browser.evaluate(SAMPLE);
@@ -137,8 +166,13 @@ function checkChevron(where, at) {
   );
   check(
     `${where}: the chevron sits just inside the main page's left edge`,
-    at.button.left >= at.frame.left + 2 - TOLERANCE_PX && at.button.left <= at.frame.left + 8,
+    at.button.left >= at.frame.left - TOLERANCE_PX && at.button.left <= at.frame.left + 4,
     JSON.stringify({ button: at.button.left, frame: at.frame.left }),
+  );
+  check(
+    `${where}: the chevron has no plate at rest`,
+    at.buttonGround === "rgba(0, 0, 0, 0)",
+    at.buttonGround,
   );
 }
 
@@ -220,6 +254,19 @@ try {
   checkShown("at load", shown);
   const paneWidth = shown.pane.width;
 
+  phase("shift badges the chevron");
+  await shift("keyDown");
+  await browser.waitFor(
+    `[...document.querySelectorAll(".preview-frame > .kbd-badge")].some(
+       (each) => each.textContent === "\\\\")`,
+    STEP_MS,
+  );
+  check(
+    "holding Shift: the chevron's badge is painted over it",
+    await browser.evaluate(BADGE_ON_TOP),
+  );
+  await shift("keyUp");
+
   phase("backslash hides");
   const hiding = await sampled(() => pressBackslash(false));
   const hidden = await read();
@@ -253,6 +300,12 @@ try {
   await browser.waitFor(
     `document.querySelector(".preview-frame").getAnimations().length === 0 &&
      document.querySelector(".preview-frame").getBoundingClientRect().left === 0`,
+    STEP_MS,
+  );
+  // The pointer leaves the chevron, so it is at rest, without the hover surface.
+  await browser.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 640, y: 400 });
+  await browser.waitFor(
+    `document.getElementById("nav-collapse-toggle").getAnimations().length === 0`,
     STEP_MS,
   );
   checkHidden("after a click on the chevron", await read());

@@ -4467,7 +4467,10 @@ muted at rest with the hover surface, pointing left at the pane it hides.
 It sits in the main frame, just right of the pane’s shadow, centered on the shortcut
 strip’s row, so it reads as the strip’s neighbour while belonging to the page; it stays
 there, and on that row, while the pane is hidden.
-It has the page’s ground as a plate, since the page’s content can run under it.
+It has no plate of its own, so the page’s edge and the pane’s shadow show through it;
+only the hover surface fills it.
+Holding Shift badges it with Backslash, over its inline end, as every icon button’s
+badge sits.
 
 The pane does not shrink.
 Hidden, it leaves the layout, keeps its width under the frame, and is `inert`, so no Tab
