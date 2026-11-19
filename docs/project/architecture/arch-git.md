@@ -220,6 +220,7 @@ The read-only routes, registered as `GIT_ROUTES` in `git/routes.py`:
 | `/api/git/summary` | History depth for the panel header: commit count in scope and oldest root-commit date |
 | `/api/git/log` | One page of a history session |
 | `/api/git/commit/{revision}` | One commit’s message, files, and counts |
+| `/api/git/commit-markdown/{revision}` | One commit’s body rendered as Markdown, with its trailers as written |
 
 `tests/test_git_arch_doc.py` compares this table to `GIT_ROUTES`. The routes also appear
 in the [views, models, and routes map](arch-views-models-routes.md).
@@ -245,6 +246,18 @@ work. On a served mirror the commit view can ask for the fetch such a commit wai
 `POST /api/source/refresh` with `{"for": "commit"}`; the functional row
 `git.unfetched-commit` in the [parity registry](arch-parity-registry.md) pins that
 sequence.
+
+`/api/git/commit-markdown/{revision}` reads the commit’s message with one `git show -s`
+and renders its body through the path a pull request’s description takes: KPress in the
+Markdown child under its deadline, then the inert allowlist.
+The commit page asks for it beside the commit route, which keeps the message as written
+for the hover card and for a body that is not rendered.
+The `git/message.py` docstring says what differs from a description: Git’s trailers are
+split off as written, links resolve against `COMMIT_MESSAGE_LINK_BASE`, so only an
+absolute one keeps its address, and a body past `GIT_COMMIT_BODY_MARKDOWN_MAX_BYTES`
+(`settings.py`) answers 422 `body_too_large` and is shown as written.
+The same 404 and 400 answers apply, and a revision that names an object that is not a
+commit is not found.
 
 ## Answers Kept Under the Refs’ State
 
