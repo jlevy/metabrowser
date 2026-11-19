@@ -3,12 +3,16 @@ type: is
 id: is-01m7rrz0nqayqnha5hj3j2q238
 title: "Flaky: test_e2e_filesystem_to_sse.py:216 counts more events than expected under load"
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
+delegate: claude-code@spud10
 labels: []
 dependencies: []
+hold: null
+hold_until: null
 created_at: 2026-11-19T02:07:56.598Z
-updated_at: 2026-11-19T02:07:56.598Z
+updated_at: 2026-11-19T02:08:25.657Z
+started_at: 2026-11-19T02:08:25.656Z
 ---
 Seen on #586's CI, run 44440236584, in unit (3.12, 1/2): assert (6, 210) == (4, 180) at tests/test_e2e_filesystem_to_sse.py:216. The PR changed only apps/macos, docs and changelog.d. A rerun passed. Likely a timing-dependent count of filesystem events reaching SSE; it should assert a bound or settle before counting.
