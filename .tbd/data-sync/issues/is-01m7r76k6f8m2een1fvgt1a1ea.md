@@ -5,7 +5,7 @@ title: Revise the object data model plan against main as of 2026-11-18 and the P
 kind: task
 status: in_progress
 priority: 2
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-11-14-object-data-model-and-views.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7f2vek3t6sca32adhd4gq33
 hold: null
 hold_until: null
 created_at: 2026-11-18T20:57:30.574Z
-updated_at: 2026-11-19T06:21:13.409Z
+updated_at: 2026-11-19T06:31:52.285Z
 started_at: 2026-11-18T20:57:35.381Z
 ---
 Since #453 merged, #487, #491, #484, #536, #522, #529, #506, #528, #558, #546, #540, #559, #511, #493 landed and #550/#552, #380, #534, the fdu stack are open. Fold reuse points (pull-files-summary, ChangeSums, actorIdentity, page/view header, drawn-from-disk fixture), fix Background, terms (view, recent, kind), Pulls row structure, readers list, decision options, and 33 drifted anchors. Decisions stay open for the owner.
@@ -32,3 +32,5 @@ Walkthrough, 2026-11-18: the owner confirmed group 3 at the recommendations: Dec
 Walkthrough, 2026-11-18: the owner confirmed group 4: Decision 22 D (already taken), VM-10 A with the view slice first or beside the object slice, and the implementation map's Ordering 2 (groundwork capped at eight PRs, then the working tree, with V and P in parallel). Next: group 5 (18, 19, RT-1 to RT-7).
 
 Walkthrough, 2026-11-18: the owner confirmed group 5: Decision 18 A, 19 C (taken), RT-1 to RT-7 at their recommendations (RT-4 A in R1 then B from R2; RT-5 A, with B revisited once a refs source exists). The owner asked to add later a bounded recorder of file-change events from the event stream, so file updates become real edit history rather than current modification times; plan it as an R4-or-later item in the Recent plan. Next: group 6 (VM-1 to VM-9, AI-1 to AI-6).
+
+Owner, 2026-11-18: MCP must not be a required part of the architecture; the CLI (metab, taught by the skill) is the complete agent surface. In the final pass, AI-1 says so, and the MCP adapter (mb-5lgp, already optional, P3) is described as outside this design, a dependency of nothing.
