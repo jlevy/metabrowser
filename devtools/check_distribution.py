@@ -322,8 +322,8 @@ def _locked_source_requirements() -> list[str]:
     for package in lock.get("package", []):
         if package.get("name") not in sources:
             continue
-        git = package.get("source", {}).get("git")
-        if not git:
+        git: object = package.get("source", {}).get("git")
+        if not isinstance(git, str) or not git:
             raise RuntimeError(f"{package['name']}: only a Git source is supported here")
         parts = urlsplit(git)
         if not parts.fragment:
