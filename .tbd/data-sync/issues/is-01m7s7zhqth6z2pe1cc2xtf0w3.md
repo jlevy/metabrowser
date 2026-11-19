@@ -3,17 +3,21 @@ type: is
 id: is-01m7s7zhqth6z2pe1cc2xtf0w3
 title: View on GitHub sits on the title's baseline on every view (file, folder, pull request, commit)
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 6
+version: 7
 delegate: claude-code@spud10
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T06:30:22.713Z
-updated_at: 2026-11-19T08:53:38.528Z
+updated_at: 2026-11-19T08:59:18.525Z
 started_at: 2026-11-19T06:31:15.384Z
+closed_at: 2026-11-19T08:59:18.524Z
+close_reason: "PR #608 merged"
+resolution: null
+duplicate_of: null
 ---
 Owner, 2026-11-18, verbatim: "on the main file view, the up arrow can do without a box except on hover, like the collapse chevron. / also on the main file view that path, e.g. ~/wrk/github should be cleanly aligned with the main folder name, same baseline, same padding / also on that, the border below it should be the same and aligned with the border below the main folder name in the nav bar. / the other main page views for commits and PRs don't have a parent folder applicable so this i sjust skipped for these / for all, the View on GitHub button should be aligned with same baseline as the main title (large text filename, PR title, or commit title)". Then: "When done, the top bar should have the same rhythm on the nav panel and on the right, and the title and the Open View on GitHub buttons should all look the same and be aligned properly. The only difference will be that the file view has an extra section at the top for the parent folder." Done together with mb-48rf (nav path row padding) in one PR, branch claude/nav-root-padding.
 
