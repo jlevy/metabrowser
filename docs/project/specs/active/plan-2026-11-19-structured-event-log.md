@@ -175,32 +175,64 @@ without a server, per the CLI parity rule, and `cli-api-event-log.tryscript.md` 
 ### GitHub and Network Failures
 
 Each failed `gh` or `git` network call keeps its cause.
-One shared classifier, extended from the ones that exist (`GhFailureState` and
-`_NETWORK_TEXT` in `gh.py`, `classify_remote_failure` in `cache/origin.py`, and the
-app’s `GitHubFailure.swift`, which reads the server’s states), names it from what the
-process reported: DNS failure, connection timed out or refused, TLS error, proxy error,
-GitHub’s HTTP status (401 or 403 for sign-in, 403 or 429 for the rate limit with its
-reset, 404, 5xx with GitHub’s message), gh not signed in, an exit with gh’s or Git’s own
-error line, or a timeout with no answer.
+A failure has two names.
+Its *state* says what to do and stays as it was: `GhFailureState` in `gh.py`, and
+`RemoteFailureState` in `cache/origin.py`, whose values the app’s `GitHubFailure.swift`
+reads. Its *cause* says what happened, in one vocabulary both tools share (`CAUSES` in
+`network_cause.py`): `dns_failed`, `connect_refused`, `connect_timeout`,
+`network_unreachable`, `connect_failed`, `connection_reset`, `tls_failed`,
+`proxy_auth_required`, `proxy_failed`, `stalled`, `no_answer`, `auth_refused`,
+`forbidden`, `not_found`, `rate_limited`, `server_error`, and `not_signed_in`. One
+classifier (`network_cause.classify`) reads it from Go’s errors, which `gh` prints, and
+curl’s, which Git prints; `classify_remote_failure` now derives Git’s states from it,
+and `gh.py`’s text tables are gone.
+An HTTP answer’s status gives its cause directly.
+The cause is an attribute of the failed process’s record and of the job or request that
+asked, and the message leads with it.
+The app reads only states and shows the server’s message as written, so it names the
+cause with no change of its own.
 
-A timeout with no answer runs a bounded connectivity probe, at most once a minute: DNS
-for `api.github.com`, then a TCP connect to port 443, each with a short deadline and its
-time recorded as a `probe` span.
-It says whether GitHub was reachable from this machine when `gh` stalled, which a 15 s
-deadline alone cannot.
+`gh`’s, Git’s, and GitHub’s own error text are never shown, as before: they can carry
+paths or private repository names.
+The record keeps them, redacted: the process’s stderr tail, and GitHub’s `message` on a
+5xx as `server_message`.
 
-The page’s failure line leads with the cause in plain words, such as “Couldn’t reach
-GitHub from this machine: the connection timed out” or “GitHub answered 503: …”, says
-how often it has happened in the last hour, and links to the records behind it through
-`/api/event-log`.
+A `gh` that times out, or cannot connect, is followed by a connectivity probe
+(`network_cause.probe`): DNS for `api.github.com`, then a TCP connect to each address it
+returned (up to `PROBE_ADDRESSES`), through the proxy `gh` would use when one is set,
+within `PROBE_TIMEOUT_S`, at most once per `PROBE_INTERVAL_S`, recorded as a `probe`
+span with every address and how its connection ended.
+When none connects, one connection to a host outside GitHub (`CONTROL_TARGET`, the host
+macOS’s own captive-portal check connects to) tells “GitHub unreachable from this
+network” from “this network is down”.
+On 2026-11-19 the owner’s machine showed why addresses matter: DNS answered
+`api.github.com` sometimes with an address the network could not connect to and
+sometimes with one it could, so the failures were intermittent.
+
+Messages lead with the cause, and name the address when one is known:
+
+- “Couldn’t connect to GitHub (api.github.com at 20.172.24.160): the connection timed
+  out after 3 s; other sites are reachable; gh gave up after 15 s”
+- “gh did not answer within 15 s, although api.github.com (140.82.114.5) accepted a
+  connection in 38 ms”: the network works, and `gh` or GitHub was slow.
+- “Couldn’t reach GitHub: api.github.com did not resolve (DNS)”
+- “GitHub answered HTTP 503”, and the rate limit as before, with its reset.
+
+A failure that is not the first in an hour says how many calls could not reach GitHub in
+that time (`event_log.recent_failures`). `GET /api/event-log/failures` groups the
+failures since a moment by cause, with links to their records, and `/api/event-log`
+filters by `cause`.
 
 **The 15 s deadline.** `GH_TIMEOUT_S` in `gh.py` bounds `gh auth status`, which a
 refresh runs twice. Its comment says it bounds a hung gh, not a slow one; `gh_status.py`
 measured the same command at 0.61 to 0.65 s at load average 116. So 15 s is about 23
 times the slowest measured run, and the timeouts the owner saw were network stalls: a
 measurement on this machine the same afternoon found a TCP connect to `api.github.com`
-hanging for 20 s while other hosts answered in about 20 ms.
-The deadline stays; the probe tells a stall from a slow gh.
+hanging for 20 s while other hosts answered in about 20 ms, and a later one found DNS
+returning an address no connection to which ever opened.
+A connection that never opens fails at any deadline, so a shorter one would only make
+the message arrive sooner, at the cost of failing a slow but working gh.
+The deadline stays; the probe tells a stall from a slow gh within `PROBE_TIMEOUT_S`.
 
 ### Browser Reports
 
@@ -225,9 +257,11 @@ One stack of pull requests.
   point and stderr tail.
 - [x] `GET /api/event-log` with its golden, parity row, and route map row; the location
   in `docs/realtime-debugging.md`; overhead and sizes measured beside the constants.
-- [ ] The shared failure classifier, the connectivity probe, and the page’s failure line
-  that leads with the cause, with stand-in `gh` and `git` for each class and a golden of
-  recent failures with their causes.
+- [x] The shared cause classifier, the connectivity probe, cause-led messages with the
+  recent count, `GET /api/event-log/failures` and the `cause` filter, with stand-in `gh`
+  and `git` for each class and a golden of recent failures with their causes.
+- [ ] A link from the page’s failure line to the failures behind it (with the browser
+  reports, which touch the same page code).
 - [ ] The browser reports and `POST /api/event-log/client`, the pull request page’s Diff
   summary wait, and a browserless test of the reporter.
 
@@ -248,12 +282,22 @@ total, redaction, `gh` argument logging, a request’s span and the job it start
 refresh job that never ends, the comparison a Diff summary waits for, a `gh` stand-in
 that never answers, and a failing `git`. `cli-api-event-log.tryscript.md` pins the route
 on fixture segments that tell the stuck-page story.
+`tests/test_network_cause.py` holds each class of `gh` failure (stand-in `gh` scripts
+printing gh 2.98.0’s error forms, one captured from a real failure) to its state, cause,
+message, and record, the probe to its verdicts against local ports, and a `git` that
+cannot connect to its cause; `tests/test_cache_origin.py` keeps Git’s captured errors on
+their states. `cli-api-event-log-failures.tryscript.md` pins the failure summary on a
+segment that tells the 2026-11-19 outage.
 
 ## Open Questions
 
 - Should the macOS app point the child’s state directory at
   `~/Library/Logs/Metabrowser/` so Console.app shows the event log beside the server
   log? Phase 1 keeps the XDG location for every platform.
+- Is a connection to `captive.apple.com` the right control for the probe?
+  It sends no request and goes only to a host macOS already checks, and only after
+  GitHub could not be reached; `METABROWSER_NETWORK_PROBE_CONTROL` replaces or turns it
+  off.
 
 ## References
 

@@ -84,6 +84,45 @@ took longer than `OPEN_AFTER_MS` is a `loop` record, so a blocked loop is on rec
 The log holds request paths and folder names but never a token: command lines drop field
 and header values, and process text is redacted.
 
+## GitHub Failures
+
+A failed `gh` or `git` call to GitHub carries a `cause` in the vocabulary
+`metabrowser/network_cause.py` defines for both tools (`CAUSES`): a name that did not
+resolve (`dns_failed`), a connection refused or timed out (`connect_refused`,
+`connect_timeout`), a TLS or proxy failure, an answer that stalled or never came
+(`stalled`, `no_answer`), or GitHub’s own refusal (`auth_refused`, `forbidden`,
+`not_found`, `rate_limited`, `server_error`). The refresh message on a page leads with
+it, as in “Couldn’t connect to GitHub (api.github.com at 20.172.24.160): the connection
+timed out”.
+GitHub’s own error text, and `gh`’s and Git’s, are never shown; the event log
+keeps them, redacted.
+
+A `gh` that gives up with no answer says nothing about why, so Metabrowser then probes
+the network itself (`network_cause.probe`): it resolves `api.github.com`, connects to
+each address DNS gave (through the proxy `gh` would use, when one is set), and, when
+none answers, connects once to a host outside GitHub (`CONTROL_TARGET`). The probe sends
+no request and no credential, runs at most once per `PROBE_INTERVAL_S`, and is a `probe`
+record in the log. Its finding says which it was: GitHub unreachable from this network
+("other sites are reachable"), the network down ("other sites are not reachable
+either"), or GitHub reachable and `gh` or GitHub slow ("gh did not answer within N s,
+although api.github.com accepted a connection in M ms"). `METABROWSER_NETWORK_PROBE=0`
+turns the probe off, and `METABROWSER_NETWORK_PROBE_CONTROL=0` turns off the outside
+host.
+
+To see what has been failing, and how often:
+
+```shell
+metab . --api '/api/event-log/failures'
+metab . --api '/api/event-log/failures?since=2026-11-19T21:00:00Z&kind=subprocess'
+metab . --api '/api/event-log?cause=connect_timeout&event=end'
+```
+
+The summary groups the failures since `since` (an hour ago by default) by cause, with
+how many, which work, the addresses that failed, the latest message, a `details` link to
+each example’s records, and the latest probe that failed.
+When the addresses vary between failures, DNS is answering a GitHub name with addresses
+the network reaches only some of the time.
+
 ## Debug Endpoints
 
 ```shell

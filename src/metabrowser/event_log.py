@@ -48,6 +48,7 @@ through :func:`redact`.
 from __future__ import annotations
 
 import asyncio
+import collections
 import contextlib
 import itertools
 import json
@@ -117,6 +118,11 @@ MAX_LINE_BYTES: Final[int] = 8 * 1024
 # The longest text kept from a process's stderr or an error message: enough for gh's or
 # Git's last error lines.
 MAX_TEXT_CHARS: Final[int] = 600
+# How far back recent_failures counts, and the most failures it remembers: a message
+# can say a failure is one of many in the last hour. An hour of gh calls failing at the
+# measured worst (one refresh every few seconds) is well under the kept count.
+RECENT_WINDOW_S: Final[float] = 3600.0
+RECENT_FAILURES_KEPT: Final[int] = 2048
 # Where the log's files live below the state directory, and how they are named:
 # ``events-<UTC start>-p<pid>-<segment>.jsonl``, so names sort by start, then segment.
 EVENTS_DIRECTORY: Final = "events"
@@ -419,6 +425,31 @@ def mark(kind: Kind, name: str, **attrs: Any) -> None:
         sink.write(sink.record("mark", kind, name, attrs=attrs))
 
 
+def recent_failures(
+    *,
+    causes: Iterable[str] | None = None,
+    kind: str = "subprocess",
+    window_s: float = RECENT_WINDOW_S,
+) -> int:
+    """How many *kind* spans failed with one of *causes* in the last *window_s* seconds.
+
+    The count is this process's, since its log opened; with no log open it is 0. The
+    default counts processes, one per failed gh or git call, so a job and the call it
+    failed on are not counted twice.
+    """
+
+    sink = _sink
+    if sink is None:
+        return 0
+    wanted = None if causes is None else frozenset(causes)
+    since = time.monotonic() - window_s
+    return sum(
+        1
+        for at, failed_kind, cause in sink.failures()
+        if at >= since and failed_kind == kind and (wanted is None or cause in wanted)
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class OpenSpan:
     """A span this process has not ended yet, as the log route reports it."""
@@ -480,6 +511,11 @@ class EventLog:
         self._watcher: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._ping: Span | None = None
+        # The recent failures that named a cause: (monotonic time, kind, cause), for
+        # recent_failures. Bounded, so a long outage costs a fixed amount of memory.
+        self._failures: collections.deque[tuple[float, str, str]] = collections.deque(
+            maxlen=RECENT_FAILURES_KEPT
+        )
         self._roll()
 
     # ── writing ─────────────────────────────────────────────────
@@ -652,6 +688,9 @@ class EventLog:
             )
 
     def finish(self, span: Span, outcome: Outcome) -> None:
+        cause = span.attrs.get("cause")
+        if outcome != "ok" and isinstance(cause, str):
+            self._failures.append((time.monotonic(), span.kind, cause))
         with self._open_lock:
             self._open.pop(span.id, None)
         duration = span.age_ms()
@@ -668,6 +707,11 @@ class EventLog:
                 attrs=span.attrs,
             )
         )
+
+    def failures(self) -> list[tuple[float, str, str]]:
+        """The failures kept for recent_failures: (monotonic time, kind, cause)."""
+
+        return list(self._failures)
 
     def open_now(self) -> list[OpenSpan]:
         now = time.perf_counter()
@@ -955,6 +999,8 @@ __all__ = [
     "MAX_FILE_BYTES",
     "MAX_LINE_BYTES",
     "MAX_TEXT_CHARS",
+    "RECENT_FAILURES_KEPT",
+    "RECENT_WINDOW_S",
     "MAX_TOTAL_BYTES",
     "NULL_SPAN",
     "OPEN_AFTER_MS",
@@ -978,6 +1024,7 @@ __all__ = [
     "list_files",
     "log_directory",
     "mark",
+    "recent_failures",
     "open_log",
     "open_spans",
     "parse_file_name",

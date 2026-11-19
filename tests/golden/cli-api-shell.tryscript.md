@@ -434,6 +434,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/event-log/failures",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/events",
       "methods": [
         "GET",
@@ -909,7 +917,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 71
+  "count": 72
 }
 ? 0
 ```

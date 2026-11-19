@@ -368,7 +368,7 @@ status: 200
   "refreshing": false,
   "last_refresh": {
     "outcome": "network_error",
-    "message": "gh could not reach api.github.com",
+    "message": "Couldn't reach GitHub: the connection to api.github.com failed",
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
@@ -412,7 +412,7 @@ status: 202
     "refreshing": true,
     "last_refresh": {
       "outcome": "network_error",
-      "message": "gh could not reach api.github.com",
+      "message": "Couldn't reach GitHub: the connection to api.github.com failed",
       "reset_at": null,
       "at": "2026-09-17T12:00:00Z"
     },
