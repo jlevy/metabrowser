@@ -3,9 +3,9 @@ type: is
 id: is-01m0k3nbmdvy9x8g3r8t9ckzjt
 title: Render Mermaid diagrams in rendered Markdown, GitHub-equivalent or better
 kind: feature
-status: in_progress
+status: closed
 priority: 1
-version: 21
+version: 22
 spec_path: docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md
 delegate: claude-code@spud10
 labels: []
@@ -29,8 +29,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-21T21:29:35.117Z
-updated_at: 2026-11-19T07:21:03.704Z
+updated_at: 2026-11-19T19:24:14.794Z
 started_at: 2026-11-19T01:37:39.010Z
+closed_at: 2026-11-19T19:24:14.793Z
+close_reason: Merged in jlevy/metabrowser#597 (8e84f1076), pinned to jlevy/kpress#80 at 5a8e9ae. The repin to a KPress release stays open as mb-d515.
+resolution: null
+duplicate_of: null
 ---
 Epic for Mermaid support: docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md. Research: docs/project/research/research-2026-08-21-mermaid-diagram-support.md.
 
