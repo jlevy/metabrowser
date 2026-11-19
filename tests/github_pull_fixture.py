@@ -1165,10 +1165,11 @@ def _patched(target: object, name: str, value: object) -> Generator[None]:
         setattr(target, name, original)
 
 
-def build_home(directory: Path, *, files: bool = False) -> None:
+def build_home(directory: Path, *, files: bool = False, guided: bool = False) -> None:
     """Cache the mirror and pull requests 7 to 10 through the production CLI path.
 
     With *files*, :func:`build_file_lists` adds lists of changed files.
+    With *guided*, the fake GitHub serves guides against known fixture comparisons.
 
     The seams are the in-process goldens' own: the origin URL, the Git floor (the
     machine's Git may be below it), the clock, and a fake ``gh`` first on ``PATH``.
@@ -1184,6 +1185,8 @@ def build_home(directory: Path, *, files: bool = False) -> None:
 
     origin = build_origin(directory)
     answers = scenario(origin)
+    if guided:
+        _add_guides(origin, answers)
     environment = install_fake_gh(directory, answers)
     version, _raw = detect_git_version()
     local = origin.url
@@ -1211,6 +1214,45 @@ def build_home(directory: Path, *, files: bool = False) -> None:
             build_file_lists(directory, answers)
     write_damaged_records(directory / "home")
     (directory / "root").mkdir(exist_ok=True)
+
+
+def guide_body(origin: Origin) -> str:
+    """An author-written description for the stand-in pull request 7."""
+    return f"""The app learns to count to two.
+
+```guided-pr
+softschema:
+  contract: metabrowser.github:GuidedPR/v1
+  envelope: guide
+  status: enforced
+guide:
+  comparison:
+    merge_base: "{origin["base"]}"
+    head: "{origin["fork_head"]}"
+  feature: Teach the app to count to two.
+  architecture: The app's count and its explanation live in separate files.
+  steps:
+    - title: Start with the count
+      commentary: Check that the original value is preserved.
+      references:
+        - {{path: src/app.txt, side: new, start_line: 1, end_line: 2}}
+    - title: Read the new guide
+      commentary: Check the new docs against the behavior.
+      references:
+        - {{path: docs/new.md, side: new, start_line: 1, end_line: 1}}
+        - {{path: src/app.txt}}
+        - {{path: missing.txt}}
+        - {{path: src/app.txt, side: old, start_line: 2, end_line: 4}}
+```
+"""
+
+
+def _add_guides(origin: Origin, answers: dict[str, Any]) -> None:
+    fence = guide_body(origin)
+    api = answers["api"]
+    api["repos/octo/demo/pulls/7"]["body"]["body"] = fence
+    api["repos/octo/demo/pulls/8"]["body"]["body"] = fence
+    api["repos/octo/demo/pulls/9"]["body"]["body"] = fence + "\n" + fence
 
 
 def _source_slug() -> str:
@@ -1432,10 +1474,13 @@ if __name__ == "__main__":
         serve_stand_in(Path(sys.argv[1]).resolve(), int(sys.argv[3]), int(sys.argv[4]))
     elif len(sys.argv) == 3 and sys.argv[2] == "--files":
         build_home(Path(sys.argv[1]).resolve(), files=True)
+    elif len(sys.argv) == 3 and sys.argv[2] == "--guided":
+        build_home(Path(sys.argv[1]).resolve(), guided=True)
     elif len(sys.argv) == 2:
         build_home(Path(sys.argv[1]).resolve())
     else:
         raise SystemExit(
-            "usage: github_pull_fixture.py <directory> [--files | --checkout | --serve <number> <port>] "
+            "usage: github_pull_fixture.py <directory> "
+            "[--files | --guided | --checkout | --serve <number> <port>] "
             "or --files-refresh <metab arguments>"
         )

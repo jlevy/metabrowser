@@ -638,12 +638,14 @@ after the build’s tag changes, as an upgrade or an edit of an editable install
 changes it, and `test_every_pull_requests_diff_summary_answers_from_disk` reads several
 pull requests’ Diff summaries after each was prepared.
 
-Four routes compute from local data rather than read a stored answer: `pull-comparison`
-takes its manifest from the bank and runs Git only to check that the store answers for
-both commits and their merge base and to print the first files’ hunks; `pull-image`
-reads an image from the head’s tree; `pull-rendered-diff` renders both sides off the
-event loop; and `pull-markdown` renders the record’s text through KPress, which keeps
-the render for the process.
+Several routes compute from local data rather than read a stored answer:
+`pull-comparison` takes its manifest from the bank and runs Git only to check that the
+store answers for both commits and their merge base and to print the first files’ hunks;
+`pull-image` reads an image from the head’s tree; `pull-rendered-diff` renders both
+sides off the event loop; and `pull-markdown` renders the record’s text through KPress,
+which keeps the render for the process.
+`guided-pr` reads the description and comparison manifest, then hydrates only the files
+whose excerpts the selected step needs.
 
 What a surface draws that does not answer from disk is in `GAPS`, a strict expected
 failure:
@@ -681,6 +683,7 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `pull-rendered-diff` | `GET` | One changed Markdown, YAML, or JSON file, rendered |
 | `pull-timeline` | `POST` | Conversation’s order of commits, comments, and reviews |
 | `pull-markdown` | `GET` | One text of the record, or a core preview’s description, rendered inert |
+| `guided-pr` | `GET` | One ordered step and its excerpts from the cached PR description and pinned comparison |
 | `pulls` | `GET` | A catalog window, or a search with `q` |
 | `pulls-refresh` | `POST` | The catalog job |
 | `pull-files` | `GET` | A pull request’s changed files |
@@ -696,9 +699,22 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `status` | `POST` | [The GitHub status check](#the-github-status-check): `gh`, the account, its scopes, and one state |
 
 The plugin registers two views: `pull-request`, which the shell mounts at `/pull/<n>`,
-`/pull/<n>/files`, and `/pull/<n>/checks` (`pull-page.js`), and `pull-request-list`, the
-Pulls tab and `/pulls` (`pulls-panel.js`). Their visual rules are in the
-[design system](../../design-system.md#the-pulls-tab).
+`/pull/<n>/files`, `/pull/<n>/guided`, and `/pull/<n>/checks` (`pull-page.js`), and
+`pull-request-list`, the Pulls tab and `/pulls` (`pulls-panel.js`). Their visual rules
+are in the [design system](../../design-system.md#the-pulls-tab).
+
+### Guided PR
+
+`guided_pr.py` extracts a top-level fence from the raw, bounded PR description and
+validates its artifact against the installed `GuidedPR/v1` SoftSchema.
+The request names a PR and an optional one-based step.
+The handler checks both comparison endpoints, rejects a known newer head, and hydrates
+just the paths that the chosen step needs through the same manifest and diff adapter as
+Changes. It reports unresolved references in place.
+The limits in `guided_pr.py` cap the per-step hydration and excerpt text.
+Guide text and diff lines are inserted as text.
+`guided-pr.js` loads on demand when the tab opens, aborts reads on disposal, and matches
+results to the page’s record revision.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

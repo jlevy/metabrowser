@@ -191,21 +191,22 @@ const MARKDOWN_ROUTE = "/api/plugin/github/pull-markdown";
 const TIMELINE_ROUTE = "/api/plugin/github/pull-timeline";
 // Give a transient queue or provider failure one chance to clear while the reader stays.
 export const TIMELINE_RETRY_MS = 1000;
-export const TABS = Object.freeze(["", "files", "checks"]);
+export const TABS = Object.freeze(["", "files", "guided", "checks"]);
 /** How far a title may overhang its two-line box and still be whole: its descenders. */
 const TITLE_OVERHANG_PX = 4;
 /**
- * Each tab's label and key, in `TABS` order. Every label starts with C, so Conversation, the
- * default, keeps it, and the others take a free letter of their label: chan-*g*es, and
- * ch-*e*-cks, whose H is the Commits tab's (History) and whose K moves a row up
- * (docs/design-system.md, "Keyboard Shortcuts"). `C` is also the Charts tab's, which is
- * never shown beside a page.
+ * Each tab's label and key, in `TABS` order. The other tabs take available letters of
+ * their labels: chan-*g*es, gui-*d*-ed, and ch-*e*-cks.
+ * `C` is also the Charts tab's, which is never shown beside a page.
  */
 const PULL_TABS = Object.freeze([
   Object.freeze({ id: "", label: "Conversation", key: "c" }),
   Object.freeze({ id: "files", label: "Changes", key: "g" }),
+  Object.freeze({ id: "guided", label: "Guided PR", key: "d" }),
   Object.freeze({ id: "checks", label: "Checks", key: "e" }),
 ]);
+// A cheap tab visibility hint. The server's Markdown parser decides if a guide exists.
+const GUIDED_FENCE = /^ {0,3}(?:`{3,}|~{3,})[ \t]*guided-pr[ \t]*$/m;
 
 /** @type {Readonly<Record<string, string>>} */
 const ABSENCE = Object.freeze({
@@ -4051,7 +4052,7 @@ export function createStackMenu(initial, number, deps) {
 }
 
 /**
- * Give the page's tab links their keys, `C`, `G`, and `E`, through the SDK's shortcut
+ * Give the page's tab links their keys through the SDK's shortcut
  * surface. A key runs `setTab`, the page handle's own path, which moves the address as a
  * click on the link does. The links are kept across paints, so each key lasts until
  * `signal` aborts, as the page's disposal aborts it. Returns one handle per link, in
@@ -4322,8 +4323,10 @@ export function mountPullPage(container, ctx, mb) {
   let firstPaint = null;
   let firstPaintSpent = false;
   /** What the body last painted: another tab's content is never held on screen. */
-  /** @type {"none" | "loading" | "conversation" | "checks" | "files"} */
+  /** @type {"none" | "loading" | "conversation" | "checks" | "files" | "guided"} */
   let bodyShows = "none";
+  /** @type {{view: ReturnType<typeof import("./guided-pr.js").mountGuidedPR> | null} | null} */
+  let guided = null;
   let active = false;
   /** @type {{revision: string, source: string, projection: TimelineProjection | null,
    *   settled: boolean, cacheMiss: boolean, retryPending: boolean,
@@ -4967,8 +4970,12 @@ export function mountPullPage(container, ctx, mb) {
   /** One link per tab, kept across paints so a poll does not take focus from one. */
   const tabLinks = PULL_TABS.map(({ id, label }) => {
     const link = pageLink({ number, tab: id }, "tab-btn", [label]);
+    if (id === "guided") {
+      link.classList.add("github-pull-guide-tab");
+    } else {
+      tabBar.append(link);
+    }
     link.setAttribute("role", "tab");
-    tabBar.append(link);
     return { id, link };
   });
   /** The links' keys, from `attachTabKeys` once the page can end them. @type {MetabrowserPublicPluginShortcutHandle[]} */
@@ -5555,7 +5562,15 @@ export function mountPullPage(container, ctx, mb) {
     if (model.pull === null && model.status === "unavailable") {
       tabColumn.remove();
     } else {
-      for (const { id, link } of tabLinks) {
+      for (const [at, { id, link }] of tabLinks.entries()) {
+        if (id === "guided") {
+          if (model.tab !== id && !GUIDED_FENCE.test(model.pull?.text ?? "")) {
+            link.remove();
+          } else if (link.parentNode === null) {
+            tabBar.insertBefore(link, tabLinks[at + 1].link);
+            tabKeys[at]?.retarget(link);
+          }
+        }
         link.classList.toggle("active", model.tab === id);
         link.setAttribute("aria-selected", String(model.tab === id));
       }
@@ -6690,10 +6705,53 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
+  function disposeGuided() {
+    guided?.view?.dispose();
+    guided = null;
+  }
+
+  /** @param {PullModel} model */
+  function paintGuided(model) {
+    const moved = model.newCommits !== null;
+    if (guided !== null) {
+      guided.view?.show(model.recordRevision, moved);
+      return;
+    }
+    const host = h("section", { class: "github-pull-guided-pr", "aria-label": "Guided PR" }, [
+      h("div", { class: "mb-delayed-loading", role: "status", "aria-label": "Loading the guide" }, [
+        h("div", { class: "recent-loading github-pull-loading", "aria-hidden": "true" }),
+      ]),
+    ]);
+    /** @type {{view: ReturnType<typeof import("./guided-pr.js").mountGuidedPR> | null}} */
+    const mount = { view: null };
+    guided = mount;
+    body.replaceChildren(host);
+    void import("./guided-pr.js").then(
+      ({ mountGuidedPR }) => {
+        if (guided !== mount || shown === null) {
+          return;
+        }
+        host.replaceChildren();
+        mount.view = mountGuidedPR(host, number, openChangedFile);
+        mount.view.show(shown.recordRevision, shown.newCommits !== null);
+      },
+      () => {
+        if (guided === mount) {
+          host.replaceChildren(
+            h("p", { class: "github-pull-quiet", role: "status" }, ["Could not load Guided PR."]),
+          );
+        }
+      },
+    );
+  }
+
   /** @param {PullModel} model */
   function paint(model) {
     container.dataset.corePreview = String(model.corePreview);
     shown = model;
+    if (model.tab !== "guided" || model.pull === null) {
+      disposeGuided();
+    }
     if (model.tab !== "files") {
       wantedFile = null;
     }
@@ -6701,7 +6759,7 @@ export function mountPullPage(container, ctx, mb) {
       // Another tab holds the body now: the conversation paints as it is when it returns.
       releaseFirstPaint("closed");
     }
-    const conversation = model.pull !== null && model.tab !== "files" && model.tab !== "checks";
+    const conversation = model.pull !== null && model.tab === "";
     const key = conversation ? conversationKey(model) : null;
     const action =
       key === null
@@ -6715,7 +6773,7 @@ export function mountPullPage(container, ctx, mb) {
     // Markdown, so the title shows as soon as the record is in hand (exp-099).
     paintHeader(model);
     paintStacks(model);
-    // Conversation and Checks use the reading column. Changes uses the full pane.
+    // Changes uses the full pane. The other tabs use the reading column.
     body.classList.toggle("page-reading-column", model.pull === null || model.tab !== "files");
     if (model.pull === null) {
       disposeDiff();
@@ -6753,6 +6811,15 @@ export function mountPullPage(container, ctx, mb) {
     }
     disposeDiff();
     wantComparison(model);
+    if (model.tab === "guided") {
+      bodyKey = "";
+      bodyShows = "guided";
+      discussion = null;
+      texts.clear();
+      observer?.disconnect();
+      paintGuided(model);
+      return;
+    }
     if (model.tab === "checks") {
       const key = JSON.stringify([
         "checks",
@@ -6810,7 +6877,7 @@ export function mountPullPage(container, ctx, mb) {
     if (firstPaintSpent || model.textRevision === null || pull === null) {
       return null;
     }
-    if (bodyShows === "files" || bodyShows === "checks") {
+    if (bodyShows === "files" || bodyShows === "checks" || bodyShows === "guided") {
       // A reader's own tab switch, from content that is not the conversation: paint now.
       firstPaintSpent = true;
       return null;
@@ -7368,6 +7435,7 @@ export function mountPullPage(container, ctx, mb) {
     filesRefresh = null;
     wantedFile = null;
     listening.abort();
+    disposeGuided();
     summaryBrief?.dispose();
     cancelTimeline();
     body.querySelector(".github-pull-diff-loading")?.remove();

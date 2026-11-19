@@ -565,6 +565,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/guided-pr",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/labels",
       "methods": [
         "GET",
@@ -889,7 +897,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 69
+  "count": 70
 }
 ? 0
 ```

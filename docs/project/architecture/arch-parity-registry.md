@@ -57,6 +57,7 @@ registered, any other status, and a golden that never runs the route.
 | `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-checkout-overlay.txt`, `cli-github-pulls-prefetch.txt` |
 | `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt`, `cli-github-checkout-idle.txt` |
 | `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pulls-refresh.txt` |
+| `/api/plugin/github/guided-pr` | covered | `--api` | `cli-github-guided-pr.tryscript.md` |
 | `/api/plugin/github/pull-timeline` | covered | `--api --data` | `cli-github-pull-timeline.txt` |
 | `/api/plugin/github/pull-image` | covered | `--api` | `cli-github-pull-image.txt` |
 | `/api/plugin/github/pull-rendered-diff` | covered | `--api` | `cli-github-pull-rendered.txt` |
@@ -149,6 +150,7 @@ interaction session and fails when a named function did not execute.
 | `git.history-stale-cursor` | interaction | `static/git-history-window.js#classifyPageFailure` | `/api/git/log` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `git.unfetched-commit` | interaction | `static/source-freshness.js#openMissingCommit`, `static/source-freshness.js#describeMissingCommit`, `static/source-freshness.js#fetchMissing` | `/api/git/commit`, `/api/source/status`, `/api/source/refresh` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `github.pull-page` | interaction | `builtin_plugins/github/pull-page.js#describePull`, `builtin_plugins/github/pull-page.js#hunkView`, `builtin_plugins/github/pull-page.js#tintOnFirstOpen`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh`, `/api/plugin/github/pull-markdown`, `/api/source/pin` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `github.guided-pr` | interaction | `builtin_plugins/github/guided-pr.js#createGuideNavigation` | `/api/plugin/github/guided-pr` | `node tests/dom/github-guided-pr-session.js` | `cli-ui-github-guided-pr.tryscript.md` |
 | `github.pull-timeline-data` | data | `/api/plugin/github/pull-timeline` | `owned-route` | `metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-timeline --data timeline.json` | `cli-github-pull-timeline.txt` |
 | `github.pull-checks-tab` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-page-tab-keys` | interaction | `builtin_plugins/github/pull-page.js#attachTabKeys`, `builtin_plugins/github/pull-page.js#numberHeaderControls` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |

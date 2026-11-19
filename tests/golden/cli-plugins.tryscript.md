@@ -28,12 +28,12 @@ The setup checks that end the report depend on the host, so they are elided here
 ```console
 $ metab --plugins
 NAME           SOURCE   KINDS       VIEWS  HOOKS
--------------  -------  ----------  -----  ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------  -------  ----------  -----  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 agent-log      builtin  agent-log   3      charts
 binary         builtin  -           1      chunk
 diff           builtin  diff        1      document,children,comparison
 folder         builtin  -           2      -
-github         builtin  -           2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
+github         builtin  -           2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-timeline,pull-markdown,guided-pr,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
 html           builtin  html        2      -
 image          builtin  -           1      -
 markdown       builtin  markdown    2      -
@@ -141,6 +141,7 @@ $ metab --plugins --json
         "pull-rendered-diff",
         "pull-timeline",
         "pull-markdown",
+        "guided-pr",
         "pulls",
         "pulls-refresh",
         "stacks",

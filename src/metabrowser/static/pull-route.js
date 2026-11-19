@@ -20,7 +20,7 @@
   const PULL_PREFIX = "/pull/";
   // Keep aligned with view_routes._PULL_NUMBER and PULL_ROUTE_TABS.
   const PULL_NUMBER_PATTERN = /^[1-9][0-9]{0,9}$/;
-  const PULL_TABS = Object.freeze(["", "files", "checks"]);
+  const PULL_TABS = Object.freeze(["", "files", "guided", "checks"]);
   // Keep aligned with view_routes.PULLS_ROUTE and cache.paths.PULL_LIST_NAMES.
   const PULLS_PATH = "/pulls";
   const PULL_LISTS = Object.freeze(["open", "closed", "all"]);
@@ -44,7 +44,8 @@
 
   /**
    * Encode a pull request's page: `/pull/<n>` for Conversation, `/pull/<n>/files`
-   * for Changes, and `/pull/<n>/checks` for Checks. Only Changes can name a file,
+   * for Changes, `/pull/<n>/guided` for Guided PR, and `/pull/<n>/checks` for Checks.
+   * Only Changes can name a file,
    * with each segment of the path percent-encoded.
    *
    * @param {number} number

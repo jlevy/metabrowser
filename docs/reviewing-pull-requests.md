@@ -123,7 +123,7 @@ sign of the background work.
 A cached page shows at once and refreshes in the background; the
 [design system](design-system.md#the-pull-request-page) describes how it draws.
 
-The page has three tabs:
+### Tabs
 
 - **Conversation** (`C`): the description, then comments, reviews, and commits in
   GitHub’s order, joined by a timeline line.
@@ -134,7 +134,55 @@ The page has three tabs:
   (`L` switches). Markdown files open as rendered changes, as the next section describes.
   The changed-file list on the Pulls tab moves through this diff, and the selected file
   follows the diff as you scroll.
+- **Guided PR** (`D`), when the description includes a guide: the feature’s purpose, an
+  architecture overview, and ordered review steps with commentary above selected diff
+  excerpts.
 - **Checks** (`E`): the check runs and commit statuses, with links to their details.
+
+### Guided PR
+
+Use **Previous** and **Next** to follow the author’s review order.
+A step can bring changes from several files together.
+**Open full diff** goes to the file in Changes.
+
+To publish a guide, have the author or their agent add one top-level `guided-pr` fenced
+YAML block to the GitHub PR description.
+Give the agent the PR description and the diff from its merge base to its head.
+Ask it to explain the feature, trace the main components, and choose the code to review
+in dependency or execution order.
+Each step should explain why the reviewer is looking there and what to verify.
+
+````markdown
+```guided-pr
+softschema:
+  contract: metabrowser.github:GuidedPR/v1
+  envelope: guide
+  status: enforced
+guide:
+  comparison:
+    merge_base: "<full merge-base commit ID>"
+    head: "<full PR head commit ID>"
+  feature: Readers can keep using cached data while a refresh runs.
+  architecture: A request serves the last snapshot while a worker builds the next one.
+  steps:
+    - title: Inspect the request path
+      commentary: Does the request return the snapshot before the worker finishes?
+      references:
+        - {path: src/cache.py, side: new, start_line: 42, end_line: 51}
+```
+````
+
+Use the changed path shown in Changes, the `old` or `new` side, and an inclusive line
+range within one diff hunk.
+A `path` alone links to the file, including binary changes and renames without a text
+diff. The
+[compiled SoftSchema](../src/metabrowser/builtin_plugins/github/guided-pr-v1.schema.yaml)
+describes the payload.
+
+The guide is read from the cached description and its excerpts come from the cached
+comparison. If the merge base or head changes, update the guide’s references and commit
+IDs in the PR description.
+A stale guide cannot show excerpts against the new comparison.
 
 ### Code Controls
 
