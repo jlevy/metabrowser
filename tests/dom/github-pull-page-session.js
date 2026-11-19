@@ -149,10 +149,11 @@ function summarize(model) {
           },
     notes: model.notes,
     browse: browseCode(model),
+    // The offer's two commits as its sentence names them, each a short commit ID.
     headOffer:
       model.headOffer === null
         ? null
-        : `${model.headOffer.text} [Switch to the head] -> ${model.headOffer.ref}`,
+        : `code ${window.metabrowser.shortCommit(model.headOffer.pin)}, head ${window.metabrowser.shortCommit(model.headOffer.head)} [Switch to the head] -> ${model.headOffer.ref}`,
     comparison:
       model.comparison === null
         ? null

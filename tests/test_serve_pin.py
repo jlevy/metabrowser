@@ -25,7 +25,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -53,6 +53,7 @@ from metabrowser.source import (
     get_source_session,
     serve_subject_opener,
 )
+from metabrowser.source_routes import SourceStatus
 from tests.github_pull_fixture import allowlist_violations
 from tests.golden_harness import (
     block,
@@ -531,6 +532,37 @@ def test_the_shell_names_the_repository_and_its_pinned_revision(
     assert client.get(f"/view/{_wire('README.md')}").status_code == 200
     assert client.get("/view/README.md").status_code == 400
     assert client.get(f"/commit/{origin.first}").status_code == 200
+
+
+_PIN = "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
+
+
+@pytest.mark.parametrize(
+    ("name", "ref_name", "heading"),
+    [
+        # A pin with no mirror and no ref is named by its commit alone, which is a short
+        # commit ID in the commit-ID face as everywhere else (docs/design-system.md,
+        # "Short Commit IDs").
+        (None, None, f'<span class="git-commit-sha">{short_commit(_PIN)}</span></span></span>'),
+        (
+            None,
+            "topic",
+            f'topic</span></span><span class="header-revision git-commit-sha">{short_commit(_PIN)}</span>',
+        ),
+        (
+            "origin",
+            None,
+            f'origin</span></span><span class="header-revision git-commit-sha">{short_commit(_PIN)}</span>',
+        ),
+    ],
+    ids=["commit", "ref", "mirror"],
+)
+def test_a_pinned_heading_names_its_commit_by_its_short_id(
+    name: str | None, ref_name: str | None, heading: str
+) -> None:
+    status = cast(SourceStatus, {"pin": _PIN, "name": name, "ref_name": ref_name})
+    label = server._pin_label_html(status)  # pyright: ignore[reportPrivateUsage]
+    assert label == f'<span class="path"><span class="path-base">{heading}'
 
 
 def test_the_status_and_the_page_say_where_the_mirror_is_kept(

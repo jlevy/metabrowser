@@ -3469,8 +3469,8 @@ declare global {
   type MetabrowserSourceRef = {
     name: string;
     ref: string;
+    /** The commit's full ID, which the list shows as a short commit ID (`shortCommit`). */
     commit: string;
-    /** The commit's ID as Git abbreviates it, which the list shows. */
     /** When the commit was made, in epoch seconds; null when Git gives no date. */
     committed_at: number | null;
     default: boolean;

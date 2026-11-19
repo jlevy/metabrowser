@@ -1631,8 +1631,13 @@ length, always monospace, always the same gray.**
 
 It holds in the branch and tag chooser’s button and rows, the navigation heading, a
 commit’s page and hover card, a mirror’s freshness row, and a pull request’s timeline
-and offers. `tests/test_short_commit.py` holds the two lengths equal and fails a display
-that abbreviates a commit any other way.
+and offers, a linked ID among them, which hovers with an underline and stays gray.
+It holds outside the page too: a development version’s label (`commit-length` in
+`pyproject.toml`), the version line after it, and the macOS app’s About box
+(`AppIdentity.shortCommitChars`), which cuts the full ID the build records.
+`tests/test_short_commit.py` holds the lengths equal, the app’s through
+`tests/test_macos_app_pins.py`, and fails a display that abbreviates a commit any other
+way.
 
 ### Branch Chips
 
@@ -2455,8 +2460,8 @@ Its measurements in Chrome and the app’s WebKit are in
 | File of a review comment | Sans, bold, at the card head’s size | A path is chrome, and in the main view it reads at the body size, as a diff file bar’s does ([Type Scale](#type-scale)) |
 | Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it |
 | View on GitHub | The [View on GitHub](#view-on-github) button in the header’s corner, the page’s own counterpart on github.com | One button in one place on every page that has a counterpart, so it is never a link in the metadata |
-| GitHub action: a check’s action on GitHub, a conversation commit hash | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows, and the same in both. A check is GitHub’s by the rule that gives a link the GitHub mark, so its look and its mark agree |
-| Conversation commit hash | `.git-commit-sha` at its own `--nav-font-size` | A [revision](#git-commit-summary) sits one step below the sans beside it, and a commit row is set at `--body-font-size` ([Conversation Timeline](#conversation-timeline)) |
+| GitHub action: a check’s action on GitHub | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows. A check is GitHub’s by the rule that gives a link the GitHub mark, so its look and its mark agree |
+| Conversation commit hash | `.git-commit-sha` at its own `--nav-font-size`, a link to the commit on GitHub with the leading GitHub mark, in the commit-ID gray at rest, on hover, and on focus; hover underlines it | A [short commit ID](#short-commit-ids) is the same gray wherever it appears. A [revision](#git-commit-summary) sits one step below the sans beside it, and a commit row is set at `--body-font-size` ([Conversation Timeline](#conversation-timeline)) |
 | Browse code, and a review comment’s file | [Text action](#control-families): a link, or `.github-pull-text-action` on a button where it first serves the pull request’s head | The look of the Link row in both forms, so moving the pin never looks like something else |
 | Section title | [`.section-heading`](#section-headings) |  |
 | Note about the content | [`.notice`](#notices) | `warning` when a text, list, or hunk was cut or a part could not be read; `error` when Changes cannot be drawn; no severity for the offer of newer changes, which carries its own control |

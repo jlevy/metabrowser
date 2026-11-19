@@ -19,6 +19,7 @@ from types import ModuleType
 import pytest
 
 from metabrowser import build_version
+from metabrowser.commit_ids import short_commit
 from tests.required_tools import require_git
 
 
@@ -269,7 +270,7 @@ def test_a_tracked_source_tree_still_reports_its_repository(
     assert source.source_checkout() == repository.resolve()
     state = source.build_state()
     assert "+1 commits" in state
-    assert _git(repository, "rev-parse", "--short", "HEAD") in state
+    assert short_commit(_git(repository, "rev-parse", "HEAD")) in state
     assert "dirty" not in state
 
 
@@ -301,7 +302,7 @@ def test_a_linked_worktree_reports_itself(
     assert source.source_checkout() == worktree.resolve()
     state = source.build_state()
     assert "+2 commits" in state
-    assert _git(worktree, "rev-parse", "--short", "HEAD") in state
+    assert short_commit(_git(worktree, "rev-parse", "HEAD")) in state
     assert "dirty" not in state
 
 
@@ -350,8 +351,8 @@ def test_a_hook_exported_repository_does_not_redirect_the_answer(
 
     assert source.source_checkout() == repository.resolve()
     state = source.build_state()
-    assert _git(repository, "rev-parse", "--short", "HEAD") in state
-    assert _git(decoy, "rev-parse", "--short", "HEAD") not in state
+    assert short_commit(_git(repository, "rev-parse", "HEAD")) in state
+    assert short_commit(_git(decoy, "rev-parse", "HEAD")) not in state
 
 
 def test_an_undecodable_tag_does_not_fail_the_command(repository: Path, source_copy: Path) -> None:
@@ -368,7 +369,7 @@ def test_an_undecodable_tag_does_not_fail_the_command(repository: Path, source_c
 
     shown = source.display_version("0.9.1")
     assert shown.startswith("0.9.1 (")
-    assert head[:7] in shown
+    assert short_commit(head) in shown
 
 
 def test_reading_the_state_never_rewrites_the_index(repository: Path, source_copy: Path) -> None:

@@ -448,6 +448,13 @@ metab = "the identity `/api/identity` answers, which a window shows in its place
 pinned_by = "apps/macos/Tests/ShellCoreTests/AppContractTests.swift::aWindowIsNamedAsTheServerNamesIt"
 
 [[copy]]
+swift = "AppIdentity.shortCommitChars"
+source = "Sources/ShellCore/App/AppIdentity.swift"
+metab = "SHORT_COMMIT_CHARS in commit_ids.py: how much of a commit ID a line shows, which the About box shows of the commit the build records"
+pinned_by = "tests/test_macos_app_pins.py::test_the_about_box_cuts_a_commit_as_every_line_does"
+values = ["metabrowser.commit_ids:SHORT_COMMIT_CHARS"]
+
+[[copy]]
 swift = "GitHubViewRequests.marker"
 source = "Sources/ShellCore/Web/GitHubViewRequests.swift"
 metab = "the hook `counterpartButton` in static/plugin-sdk-views.js gives the button's main link"

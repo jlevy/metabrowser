@@ -18,6 +18,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import server
+from metabrowser.commit_ids import short_commit
 from metabrowser.mirror_refresh import MirrorDisplay
 from metabrowser.root_identity import (
     RootIdentity,
@@ -29,6 +30,8 @@ from metabrowser.root_identity import (
 
 HOME = Path("/srv/people/reader")
 COMMIT = "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
+# The commit as a line names it (docs/design-system.md, "Short Commit IDs").
+SHORT = short_commit(COMMIT)
 REPLACED = "\ufffd"
 
 
@@ -260,8 +263,8 @@ def test_an_unrecognized_origin_is_shown_as_it_is() -> None:
             "refs/tags/v1.0.0",
             _mirror("tbd", "github.com/jlevy/tbd@v1.0.0"),
         ),
-        # A commit pinned by its ID shows its first twelve hex digits.
-        ("https://github.com/jlevy/tbd", None, _mirror("tbd", "github.com/jlevy/tbd@42382ea2303b")),
+        # A commit pinned by its ID shows its short ID.
+        ("https://github.com/jlevy/tbd", None, _mirror("tbd", f"github.com/jlevy/tbd@{SHORT}")),
         # A pull request's head is named as GitHub writes a pull request.
         (
             "https://github.com/jlevy/tbd",
@@ -276,14 +279,14 @@ def test_an_unrecognized_origin_is_shown_as_it_is() -> None:
         (
             "ssh://git@example.com/owner/tbd.git",
             None,
-            _mirror("tbd", "example.com/owner/tbd@42382ea2303b"),
+            _mirror("tbd", f"example.com/owner/tbd@{SHORT}"),
         ),
         (
             "file://~/git/tbd.git",
             "refs/remotes/origin/topic",
             _mirror("tbd", "~/git/tbd.git@topic"),
         ),
-        ("file:///srv/git/tbd.git", None, _mirror("tbd", "/srv/git/tbd.git@42382ea2303b")),
+        ("file:///srv/git/tbd.git", None, _mirror("tbd", f"/srv/git/tbd.git@{SHORT}")),
         # Another ref keeps its full spelling rather than being guessed at.
         (
             "https://github.com/jlevy/tbd",
@@ -348,9 +351,9 @@ def test_a_mirror_name_is_display_text() -> None:
 @pytest.mark.parametrize(
     ("ref", "expected"),
     [
-        ("refs/remotes/origin/topic", _mirror("topic", "topic@42382ea2303b")),
-        ("refs/tags/v1", _mirror("v1", "v1@42382ea2303b")),
-        (None, _mirror("42382ea2303b", "42382ea2303b")),
+        ("refs/remotes/origin/topic", _mirror("topic", f"topic@{SHORT}")),
+        ("refs/tags/v1", _mirror("v1", f"v1@{SHORT}")),
+        (None, _mirror(SHORT, SHORT)),
     ],
     ids=["branch", "tag", "commit"],
 )

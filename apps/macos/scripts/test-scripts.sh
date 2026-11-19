@@ -233,7 +233,7 @@ else
   fail "variant_of_bundle_id did not map the bundle identifiers"
 fi
 
-# source_commit: HEAD's short hash, marked -dirty when apps/macos has changes. A Git
+# source_commit: HEAD's full ID, marked -dirty when apps/macos has changes. A Git
 # hook exports GIT_DIR and friends, which would point these commands at this checkout.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 repo="$work/repo"
@@ -241,7 +241,6 @@ mkdir -p "$repo/apps/macos"
 git -C "$repo" init -q
 git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -q --allow-empty -m one
 head="$(git -C "$repo" rev-parse HEAD)"
-head="${head:0:7}"
 clean="$(cd "$repo/apps/macos" && source_commit)"
 touch "$repo/apps/macos/changed"
 dirty="$(cd "$repo/apps/macos" && source_commit)"

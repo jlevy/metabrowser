@@ -319,6 +319,11 @@ const MEASURE = `async (arrangement, width, theme) => {
   probe.style.fontSize = "var(--nav-font-size)";
   container.append(probe);
   const navSize = getComputedStyle(probe).fontSize;
+  // The commit-ID face, as a short commit ID is set wherever it appears
+  // (docs/design-system.md, "Short Commit IDs"): the one gray and the monospace face.
+  probe.style.color = "var(--muted)";
+  probe.style.fontFamily = "var(--font-mono)";
+  const idFace = { color: getComputedStyle(probe).color, family: getComputedStyle(probe).fontFamily };
   probe.remove();
   const items = [...body().children].map((node) => {
     const kind = node.classList.contains("github-pull-commit")
@@ -345,6 +350,7 @@ const MEASURE = `async (arrangement, width, theme) => {
         age: type(node.querySelector(".github-pull-age")),
         sha: type(node.querySelector(".git-commit-sha")),
       };
+      item.shaText = node.querySelector(".git-commit-sha")?.textContent ?? null;
     } else if (kind === "card") {
       const head = node.querySelector(":scope > .github-pull-card-head");
       const author = head?.querySelector(".github-pull-author");
@@ -421,6 +427,8 @@ const MEASURE = `async (arrangement, width, theme) => {
     rhythm,
     threads,
     navSize,
+    idFace,
+    shortCommit: mb.shortCommit("0123456789abcdef0123456789abcdef01234567"),
     items,
     // To the conversation's end: the page past it is the window's.
     height: Math.ceil(body().getBoundingClientRect().bottom + scrollY),
@@ -563,6 +571,19 @@ function hold(measured, image) {
       `${label} sets its hash one step below its text, as a revision`,
       row.type.sha?.size === measured.navSize,
       `${row.type.sha?.size} against ${measured.navSize}`,
+    );
+    // A short commit ID, as every line names one: its length, the one gray, and the
+    // commit-ID face, though it links to the commit on GitHub.
+    check(
+      `${label} names its commit by a short commit ID`,
+      row.shaText?.length === measured.shortCommit.length,
+      `${JSON.stringify(row.shaText)} against ${measured.shortCommit.length} characters`,
+    );
+    check(
+      `${label} sets its commit ID in the commit-ID face and gray`,
+      row.type.sha?.color === measured.idFace.color &&
+        row.type.sha?.family === measured.idFace.family,
+      `${row.type.sha?.color} ${row.type.sha?.family} against ${measured.idFace.color} ${measured.idFace.family}`,
     );
   }
 
@@ -835,6 +856,37 @@ const LAYOUTS = [
   ["held", 980, "dark"],
 ];
 
+/**
+ * A commit's ID under the pointer: a link, so it underlines, and still the commit-ID gray
+ * (docs/design-system.md, "Short Commit IDs"). The pointer moves away after, before the
+ * next layout's screenshot.
+ *
+ * @param {Awaited<ReturnType<typeof launchChrome>>} chrome
+ * @param {{arrangement: string, width: number, theme: string, idFace: {color: string}}} measured
+ */
+async function holdHover(chrome, measured) {
+  const where = `${measured.arrangement} at ${measured.width} px, ${measured.theme}`;
+  const at = await chrome.evaluate(`(() => {
+    const id = document.querySelector(".github-pull-commit .git-commit-sha");
+    id.scrollIntoView({ block: "center" });
+    const r = id.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`);
+  await chrome.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: at.x, y: at.y });
+  const hovered = await chrome.evaluate(`(() => {
+    const id = document.querySelector(".github-pull-commit .git-commit-sha");
+    const s = getComputedStyle(id);
+    return { hover: id.matches(":hover"), color: s.color, line: s.textDecorationLine };
+  })()`);
+  await chrome.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 0, y: 0 });
+  await chrome.evaluate("window.scrollTo(0, 0)");
+  check(
+    `${where}: a commit ID under the pointer underlines and stays the commit-ID gray`,
+    hovered.hover && hovered.line === "underline" && hovered.color === measured.idFace.color,
+    JSON.stringify(hovered),
+  );
+}
+
 const server = await serve();
 const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
 /** @type {Awaited<ReturnType<typeof launchChrome>> | null} */
@@ -866,6 +918,7 @@ try {
       fs.writeFileSync(path.join(SHOTS, `${arrangement}-${width}-${theme}.png`), png);
     }
     hold(measured, decodePng(png));
+    await holdHover(chrome, measured);
     await chrome.evaluate("window.__dispose()");
   }
 } finally {

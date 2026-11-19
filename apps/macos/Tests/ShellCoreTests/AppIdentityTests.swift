@@ -12,7 +12,10 @@ import Testing
 @Suite struct AppIdentityTests {
     private let home = URL(filePath: "/Volumes/Home", directoryHint: .isDirectory)
 
-    private func info(variant: String?, commit: String? = "abc1234") -> [String: Any] {
+    /// The full ID the build records, which a line shows as `abc1234`.
+    private static let commit = "abc1234def5678901234567890abcdef12345678"
+
+    private func info(variant: String?, commit: String? = Self.commit) -> [String: Any] {
         var info: [String: Any] = [
             "CFBundleName": "Metabrowser", "CFBundleIdentifier": "io.github.jlevy.metabrowser.dev",
             "CFBundleShortVersionString": "0.1.0", "CFBundleVersion": "2466",
@@ -65,6 +68,16 @@ import Testing
         #expect(AppIdentity(infoDictionary: sameName).supportDirectory(home: home)
             == AppIdentity(infoDictionary: info(variant: "dev")).supportDirectory(home: home),
             "an identifier alone does not keep the session apart")
+    }
+
+    /// The build records the commit's full ID, so a release check compares it whole, and
+    /// the About box shows it as every line shows a commit, keeping the `-dirty` mark.
+    @Test func theAboutBoxShowsTheShortCommit() {
+        #expect(AppIdentity.shortCommitChars == 7)
+        #expect(AppIdentity(infoDictionary: info(variant: "dev")).commit == Self.commit)
+        #expect(AppIdentity(infoDictionary: info(variant: "dev", commit: Self.commit + "-dirty")).buildLine
+            == "Development build · 0.1.0 (2466) · abc1234-dirty")
+        #expect(AppIdentity.shortCommit("abc12") == "abc12")
     }
 
     @Test func aBuildWithoutItsCommitLeavesItOut() {
