@@ -949,9 +949,15 @@ page builds a github.com URL itself.
 together.
 
 Each counterpart is `https://github.com/<owner>/<repository>/` followed by the shape
-below. `<sha>` is the commit the page shows its content from: a pin’s, or `HEAD`’s for
-the working tree. `<hash>` is GitHub’s anchor for a changed file, the SHA-256 of its
-path. Every page also has none when the served folder has no repository on github.com
+below. `<sha>` is the commit the page shows its content from: a pin’s, or, for the
+working tree, the newest commit origin has in `HEAD`’s history.
+That is `HEAD`’s own commit once it is pushed, and before then its merge base with the
+upstream branch, or else with origin’s default branch.
+So neither unpushed commits nor a file’s local edits take a page’s button away: it links
+to the version origin has.
+Only a path no commit origin has holds goes without one.
+`<hash>` is GitHub’s anchor for a changed file, the SHA-256 of its path.
+Every page also has none when the served folder has no repository on github.com
 (`no_repository`), and an address that is none of these pages has none (`not_a_page`).
 
 | Page | Counterpart | Other reasons it has none |

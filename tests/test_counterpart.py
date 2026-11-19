@@ -24,6 +24,7 @@ from metabrowser.builtin_plugins.github.urls import (
     pulls_url,
     repository_url,
 )
+from metabrowser.cache.providers import counterpart_host_for
 from metabrowser.cache.urls import (
     FileAnchor,
     GitSource,
@@ -31,6 +32,7 @@ from metabrowser.cache.urls import (
     classify_root_argument,
 )
 from metabrowser.counterpart import MAX_PAGE_CHARS, PAGES, REASONS, CounterpartReason
+from metabrowser.repository_context import RepositoryContext
 from tests.golden_harness import run_session
 
 DESIGN_SYSTEM = Path(__file__).resolve().parents[1] / "docs" / "design-system.md"
@@ -192,6 +194,36 @@ def test_a_pull_request_commit_keeps_no_anchor() -> None:
 def test_the_list_of_pull_requests_is_beside_the_repository() -> None:
     assert pulls_url(repository_url("octo", "demo")) == f"{CANONICAL}/pulls"
     assert pulls_url("https://example.com/octo/demo") is None
+
+
+def _context(host: str, owner: str = "octo", name: str = "demo") -> RepositoryContext:
+    return RepositoryContext(
+        branch="main",
+        branch_on_origin=True,
+        host=host,
+        name=name,
+        owner=owner,
+        revision=COMMIT,
+        served_prefix="",
+    )
+
+
+def test_the_route_reaches_github_through_its_provider() -> None:
+    """``counterpart.py`` names no provider: the host comes from ``cache/providers.py``."""
+
+    source = (Path(__file__).resolve().parents[1] / "src/metabrowser/counterpart.py").read_text(
+        encoding="utf-8"
+    )
+    assert "metabrowser.builtin_plugins" not in source
+    hosted = counterpart_host_for(_context("github.com", "Octo", "Demo"))
+    assert hosted is not None
+    host, clone_url = hosted
+    assert (host.provider, host.label, clone_url) == ("github", "View on GitHub", CANONICAL)
+    assert host.pulls_url(clone_url) == f"{CANONICAL}/pulls"
+    assert host.file_anchor(b"README.md") == FileAnchor(README_DIGEST)
+    selection = RepositorySelection(kind="tree", ref_and_path=(COMMIT.encode(), b"docs"))
+    assert host.web_url(clone_url, selection) == f"{CANONICAL}/tree/{COMMIT}/docs"
+    assert counterpart_host_for(_context("gitlab.com")) is None
 
 
 def test_the_button_is_one_menu_button_and_the_corner_follows_the_page() -> None:

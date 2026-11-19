@@ -20,13 +20,11 @@ such as a timeout, with the status its error names, as a Git route's is.
 **Which repository.** The one the Pulls tab is drawn for: a served checkout's ``origin``
 on github.com (:func:`~metabrowser.repository_context.discover_repository_context`), or
 the repository a served mirror's provider names
-(:func:`~metabrowser.cache.providers.repository_context_for`). Only a github.com
-repository has one today, so the URL, its label, and its provider are the GitHub
-plugin's (``builtin_plugins/github/urls.py``), and every URL is built by its
-:meth:`~metabrowser.builtin_plugins.github.urls.GithubUrlReducer.web_url`, but for the
-list of pull requests, which no selection names (``pulls_url``). That module is
-imported only once a repository is found, as ``cache/providers.py`` imports it, so a
-plain folder's server never loads it.
+(:func:`~metabrowser.cache.providers.repository_context_for`). The provider that hosts
+it names the URL, the link's label, and itself
+(:func:`~metabrowser.cache.providers.counterpart_host_for`), so this module names no
+provider; only GitHub's has one today (``builtin_plugins/github/urls.py``). It is
+imported only once a repository is found, so a plain folder's server never loads it.
 
 **Which commit a file or folder is at.** The one ``/api/file`` reads it from: a pin's
 commit, or else the working tree.
@@ -34,24 +32,32 @@ commit, or else the working tree.
 - A mirror's pin is its commit. A mirror holds only its origin's commits.
 - A revision of a checkout (``metab PATH --ref NAME``, or the ref selector) is its
   commit, when origin has that commit.
-- The working tree is ``HEAD``'s commit, when origin has it and the item is what it is
-  there: a file tracked at ``HEAD`` with no change in the index or the working tree, or a
-  folder in ``HEAD``'s tree. Untracked and ignored files inside a folder do not change
-  the folder's page on github.com, so they do not stop it from mapping; a folder that
-  ``HEAD`` lacks is ``untracked`` or ``ignored`` by what it holds.
+- The working tree is the newest commit origin has in ``HEAD``'s history: ``HEAD``'s
+  own commit when origin has it, and otherwise its merge base with ``HEAD``'s upstream
+  branch, or else with origin's default branch (``refs/remotes/origin/HEAD``), when
+  origin has that. A file or a folder in ``HEAD``'s tree maps there when that commit has
+  it too, so neither a file's local edits, staged or not, nor commits not yet pushed
+  take a page's button away: it links to the version origin has, as a folder holding
+  untracked or ignored files links to the folder origin has. A path that ``HEAD``
+  lacks is ``uncommitted``, ``untracked``, ``ignored``, or ``missing`` by what the
+  working tree holds there, and one that only commits origin lacks hold is
+  ``not_on_origin``.
 
 "Origin has it" means a ``refs/remotes/origin/*`` ref reaches the commit, as the
 checkout last fetched it, and in a mirror any of its refs, which are all its origin's.
 Nothing is fetched to ask. A pull request's pages and the list map whenever the
 repository is on github.com, and a commit's page when origin has the commit.
 
-A file's reason is asked before its commit's, since an untracked file stays untracked
-once its commit is pushed. Each question is one Git command, under the request-path
+A path's reason comes before its commit's, since an untracked file stays untracked once
+its commit is pushed. Each question is one Git command, under the request-path
 deadline and output bound of :mod:`metabrowser.git.process`: what the commit holds at
-the path (``ls-tree``, or a pin's own tree reader), how the working tree differs there
-(``status``, asked only of a file in the commit and of a path the commit lacks), and
-whether origin has the commit (``rev-list``). With no Git installed origin cannot be
-asked, and a page that needs it answers ``not_on_origin``.
+the path (``ls-tree``, or a pin's own tree reader), what the working tree holds at a
+path ``HEAD`` lacks (``status``), whether origin has the commit (``rev-list``), and, for
+a working tree whose ``HEAD`` origin lacks, each merge base (``merge-base``, then
+``rev-list``) until origin has one, and what it holds at the path (``ls-tree``). For the
+working tree, what ``HEAD`` holds and where origin's copy is are asked at once. With no
+Git installed origin cannot be asked, and a page that needs it answers
+``not_on_origin``.
 
 There is no commits-list page to map: a pull request's page has no Commits tab
 (``PULL_ROUTE_TABS``), and the Commits tab is a pane, not an address.
@@ -69,6 +75,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from metabrowser.cache.providers import CounterpartHost, counterpart_host_for
 from metabrowser.checkout_revisions import checkout_revisions
 from metabrowser.git.process import (
     GIT_NO_HOOK_ARGS,
@@ -110,8 +117,8 @@ type CounterpartReason = Literal[
     # shell's parser refuses, or a commit's page named by anything but a full commit ID,
     # which the commit page refuses too.
     "not_a_page",
-    # The file differs from the commit in the index or the working tree, or the path is
-    # in the index only, staged and not committed.
+    # The path is in the index only: staged, and in no commit. A file the index or the
+    # working tree changes maps to the version origin has.
     "uncommitted",
     # The file or folder is not tracked; a folder the commit lacks holds an untracked
     # file.
@@ -119,7 +126,8 @@ type CounterpartReason = Literal[
     # The file or folder is ignored; a folder the commit lacks holds nothing else.
     "ignored",
     # Origin is not known to have the commit the page shows: no ref of origin reaches it,
-    # the repository lacks it, or no Git is installed to ask.
+    # the repository lacks it, or no Git is installed to ask. For the working tree, only
+    # commits origin lacks hold the path, or ``HEAD`` has no merge base origin has.
     "not_on_origin",
     # The commit has nothing at the path and the working tree has nothing there either:
     # a deleted file, an entry inside a container file such as a patch, or an empty
@@ -192,6 +200,13 @@ PAGES: Final[dict[PageKind, PageCounterpart]] = {
 _CHECKOUT_ORIGIN_REFS: Final = ("--remotes=origin",)
 _MIRROR_ORIGIN_REFS: Final = ("--all",)
 
+# What a working tree whose ``HEAD`` origin lacks maps at instead, in order: its merge
+# base with ``HEAD``'s upstream branch, and with origin's default branch. An upstream can
+# be another remote's branch or a local one, so origin is asked about each merge base.
+# A detached ``HEAD`` has no upstream, and a clone made by ``git init`` and ``git fetch``
+# has no ``origin/HEAD``; each is skipped then.
+_MERGE_BASE_REFS: Final = ("HEAD@{upstream}", "refs/remotes/origin/HEAD")
+
 
 class Counterpart(TypedDict):
     """A page's github.com counterpart: who hosts it, what its link says, and where it goes."""
@@ -257,28 +272,21 @@ async def page_counterpart(page: str, mirror: MirrorSession | None) -> Counterpa
     repository = await _served_repository(subject, pin, mirror)
     if repository is None:
         return _none(page, "no_repository")
-    selection = await _selection(parsed, repository)
+    hosted = counterpart_host_for(repository.context)
+    if hosted is None:
+        # No provider hosts it, or its owner or name is not one the provider admits.
+        return _none(page, "no_repository")
+    host, clone_url = hosted
+    selection = await _selection(parsed, repository, host)
     if isinstance(selection, str):
         return _none(page, selection)
-    from metabrowser.builtin_plugins.github.urls import (
-        COUNTERPART_LABEL,
-        COUNTERPART_PROVIDER,
-        GithubUrlReducer,
-        pulls_url,
-        repository_url,
-    )
-
-    clone_url = repository_url(repository.context["owner"], repository.context["name"])
-    if selection is None:
-        url = pulls_url(clone_url)
-    else:
-        url = GithubUrlReducer().web_url(clone_url, selection)
+    # The list of pull requests is the one page no selection names.
+    url = host.pulls_url(clone_url) if selection is None else host.web_url(clone_url, selection)
     if url is None:
-        # An owner or a name the github.com grammar does not admit.
         return _none(page, "no_repository")
     return CounterpartAnswer(
         page=page,
-        counterpart=Counterpart(provider=COUNTERPART_PROVIDER, label=COUNTERPART_LABEL, url=url),
+        counterpart=Counterpart(provider=host.provider, label=host.label, url=url),
         reason=None,
     )
 
@@ -365,11 +373,10 @@ async def _served_repository(
 
 
 async def _selection(
-    page: _Page, repository: _Repository
+    page: _Page, repository: _Repository, host: CounterpartHost
 ) -> RepositorySelection | CounterpartReason | None:
     """*page*'s counterpart as a selection, ``None`` for the list, or why it has none."""
 
-    from metabrowser.builtin_plugins.github.urls import file_anchor
     from metabrowser.cache.urls import RepositorySelection
 
     match page.kind:
@@ -384,12 +391,12 @@ async def _selection(
                 kind="pull_request",
                 pull_request=page.number,
                 pull_tab="files",
-                pull_file=file_anchor(page.path[0]),
+                pull_file=host.file_anchor(page.path[0]),
             )
         case "commit" | "commit_file":
             if not await _on_origin(repository, page.commit):
                 return "not_on_origin"
-            anchor = file_anchor(page.path[0]) if page.kind == "commit_file" else None
+            anchor = host.file_anchor(page.path[0]) if page.kind == "commit_file" else None
             return RepositorySelection(kind="commit", commit=page.commit, pull_file=anchor)
         case "view":
             return await _item_selection(page, repository)
@@ -405,20 +412,22 @@ async def _item_selection(
     pin = repository.pin
     if pin is not None:
         found = await _pinned_kind(page, pin)
-        commit = pin.commit_oid
-        path = page.path
-    else:
-        if git_executable() is None:
+        if found not in ("blob", "tree"):
+            return found
+        if not repository.pin_on_origin and not await _on_origin(repository, pin.commit_oid):
             return "not_on_origin"
-        commit = repository.context["revision"]
-        prefix = repository.context["served_prefix"]
-        path = (*(os.fsencode(prefix).split(b"/") if prefix else ()), *page.path)
-        found = await _working_tree_kind(repository.location, commit, path, page.logical)
-    if found not in ("blob", "tree"):
-        return found
-    if not repository.pin_on_origin and not await _on_origin(repository, commit):
+        return RepositorySelection(
+            kind=found, ref_and_path=(pin.commit_oid.encode("ascii"), *page.path)
+        )
+    if git_executable() is None:
         return "not_on_origin"
-    return RepositorySelection(kind=found, ref_and_path=(commit.encode("ascii"), *path))
+    prefix = repository.context["served_prefix"]
+    path = (*(os.fsencode(prefix).split(b"/") if prefix else ()), *page.path)
+    located = await _working_tree_item(repository, path, page.logical)
+    if isinstance(located, str):
+        return located
+    commit, kind = located
+    return RepositorySelection(kind=kind, ref_and_path=(commit.encode("ascii"), *path))
 
 
 async def _pinned_kind(
@@ -437,21 +446,63 @@ async def _pinned_kind(
     return "blob" if entry.is_blob else "tree"
 
 
-async def _working_tree_kind(
-    location: GitLocation, commit: str, path: tuple[bytes, ...], logical: str
-) -> Literal["blob", "tree"] | CounterpartReason:
-    """What ``HEAD``'s *commit* holds at *path*, and whether the working tree agrees.
+async def _working_tree_item(
+    repository: _Repository, path: tuple[bytes, ...], logical: str
+) -> tuple[str, Literal["blob", "tree"]] | CounterpartReason:
+    """The commit origin has that a working tree's item maps at, and what it is there.
 
     *path* is the repository path, *logical* the same item's path below the served root,
-    which ``status`` reads it by. ``"blob"`` and ``"tree"`` map; anything else is why not.
+    which ``status`` reads it by. The item maps when ``HEAD``'s commit has it and so does
+    :func:`_origin_base`'s commit, whatever the index and the working tree hold.
     """
 
-    kind = await _tree_kind(location, commit, path)
-    if kind == "tree":
-        return "tree"
+    location = repository.location
+    head = repository.context["revision"]
+    # Asked at once, since neither answer waits for the other: a file's page was answered
+    # in 34 ms asked one after the other and 19 ms asked at once, medians of 3 and 5 on a
+    # machine at a load average near 8 (2026-11-18), and the button waits for the answer.
+    kind, base = await asyncio.gather(
+        _tree_kind(location, head, path), _origin_base(repository, head)
+    )
+    if kind is None:
+        return await _absent_reason(location, logical)
+    if base is None:
+        return "not_on_origin"
+    if base != head:
+        kind = await _tree_kind(location, base, path)
+        if kind is None:
+            # Added by a commit origin does not have yet.
+            return "not_on_origin"
+    return base, kind
+
+
+async def _origin_base(repository: _Repository, head: str) -> str | None:
+    """The newest commit origin has in *head*'s history, or ``None`` when none is found.
+
+    *head* itself when origin has it, and otherwise the first merge base of
+    :data:`_MERGE_BASE_REFS` that origin has.
+    """
+
+    if await _on_origin(repository, head):
+        return head
+    for ref in _MERGE_BASE_REFS:
+        try:
+            out = await run_git_at(["merge-base", head, ref], repository.location)
+        except GitCommandError as exc:
+            # No such branch, no upstream, a detached HEAD, or histories with no common
+            # commit (exit status 1).
+            log.debug("merge-base with %s: %s", ref, failure_detail(exc))
+            continue
+        base = out.decode("ascii", errors="replace").strip()
+        if is_full_revision(base) and await _on_origin(repository, base):
+            return base
+    return None
+
+
+async def _absent_reason(location: GitLocation, logical: str) -> CounterpartReason:
+    """Why a path ``HEAD``'s commit lacks has no counterpart, by the working tree there."""
+
     changes = await _status_codes(location, logical or ".")
-    if kind == "blob":
-        return "uncommitted" if changes else "blob"
     if any(code not in (b"??", b"!!") for code in changes):
         return "uncommitted"
     if b"??" in changes:

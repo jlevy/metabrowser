@@ -76,7 +76,7 @@ import re
 import string
 import unicodedata
 from dataclasses import dataclass, replace
-from typing import Final
+from typing import TYPE_CHECKING, Final
 from urllib.parse import quote_from_bytes
 
 from metabrowser.cache.urls import (
@@ -88,10 +88,14 @@ from metabrowser.cache.urls import (
 )
 from metabrowser.invisible_chars import hidden_at
 
+if TYPE_CHECKING:
+    from metabrowser.repository_context import RepositoryContext
+
 CANONICAL_HOST: Final = "github.com"
 # What a link to a Metabrowser page's github.com counterpart names as its provider, and
 # what it says. ``GET /api/counterpart`` (``metabrowser/counterpart.py``) answers both
-# beside the URL, so every page's control and ``metab --api`` name the link alike.
+# beside the URL, through :class:`GithubCounterpartHost`, so every page's control and
+# ``metab --api`` name the link alike.
 COUNTERPART_PROVIDER: Final = "github"
 COUNTERPART_LABEL: Final = "View on GitHub"
 _WEB_HOSTS: Final = frozenset({"github.com", "www.github.com"})
@@ -670,6 +674,34 @@ class GithubUrlReducer:
                 return url + _anchored(selection.pull_file)
 
 
+class GithubCounterpartHost:
+    """The installed :class:`~metabrowser.cache.providers.CounterpartHost` for GitHub."""
+
+    @property
+    def provider(self) -> str:
+        return COUNTERPART_PROVIDER
+
+    @property
+    def label(self) -> str:
+        return COUNTERPART_LABEL
+
+    def clone_url(self, context: RepositoryContext) -> str | None:
+        if context["host"] != CANONICAL_HOST:
+            return None
+        url = repository_url(context["owner"], context["name"])
+        # An owner or a name the github.com grammar does not admit has no page there.
+        return url if parse_repository_url(url) is not None else None
+
+    def web_url(self, clone_url: str, selection: RepositorySelection) -> str | None:
+        return GithubUrlReducer().web_url(clone_url, selection)
+
+    def pulls_url(self, clone_url: str) -> str | None:
+        return pulls_url(clone_url)
+
+    def file_anchor(self, path: bytes) -> FileAnchor:
+        return file_anchor(path)
+
+
 def _anchored(anchor: FileAnchor | None) -> str:
     """A file anchor's fragment, ``#diff-<hash>`` and its line, or nothing."""
 
@@ -699,6 +731,7 @@ __all__ = [
     "COUNTERPART_LABEL",
     "COUNTERPART_PROVIDER",
     "RESERVED_OWNERS",
+    "GithubCounterpartHost",
     "GithubUrlReducer",
     "file_anchor",
     "parse_repository_url",

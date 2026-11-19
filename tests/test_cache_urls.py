@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from metabrowser.cache.providers import installed_providers, url_reducers
+from metabrowser.cache.providers import counterpart_hosts, installed_providers, url_reducers
 from metabrowser.cache.urls import (
     GitSource,
     ReducerArbitrationError,
@@ -59,4 +59,12 @@ def test_url_reducers_are_the_providers_reducers() -> None:
     # written apart; this holds them equal.
     assert [type(reducer) for reducer in url_reducers()] == [
         type(provider.reducer) for provider in installed_providers()
+    ]
+
+
+def test_counterpart_hosts_are_the_providers_hosts() -> None:
+    # `counterpart_hosts()` imports each host without its provider, as `url_reducers()`
+    # imports each reducer, so the two lists are written apart; this holds them equal.
+    assert [type(host) for host in counterpart_hosts()] == [
+        type(provider.counterpart) for provider in installed_providers()
     ]

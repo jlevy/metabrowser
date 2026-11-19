@@ -54,6 +54,24 @@ before: >-
   printf 'Ahead of origin.\n' > AHEAD.md &&
   git add AHEAD.md &&
   git commit -q -m 'ahead' &&
+  printf 'Edited here.\n' >> docs/guide.md &&
+  cd .. &&
+  git clone -q checkout topic &&
+  cd topic &&
+  git remote set-url origin https://github.com/octo/demo.git &&
+  git checkout -q -b topic &&
+  printf 'On a branch with no upstream.\n' > TOPIC.md &&
+  git add TOPIC.md &&
+  git commit -q -m 'topic' &&
+  cd .. &&
+  git clone -q checkout alone &&
+  cd alone &&
+  git remote set-url origin https://github.com/octo/demo.git &&
+  git remote set-head origin -d &&
+  git checkout -q -b alone &&
+  printf 'No upstream, and no default branch of origin.\n' > ALONE.md &&
+  git add ALONE.md &&
+  git commit -q -m 'alone' &&
   cd .. &&
   mkdir elsewhere &&
   cd elsewhere &&
@@ -82,7 +100,11 @@ every machine:
   Its working tree differs from `main`: `README.md` is edited, `docs/staged.md` is
   staged and not committed, `notes.txt` and `scratch/` are untracked, and `debug.log`
   and `build/` are ignored.
-- `ahead`, a clone of `checkout` with the same `origin`, one commit past it.
+- `ahead`, a clone of `checkout` with the same `origin`, one commit past its upstream
+  branch, with `docs/guide.md` edited.
+- `topic`, a clone on a branch with no upstream, one commit past the clone’s
+  `origin/HEAD`.
+- `alone`, the same with no `origin/HEAD` either.
 - `elsewhere`, a repository whose `origin` is not on github.com, and `plain`, a folder.
 - `home`, by `tests/github_pull_fixture.py`: a mirror of `https://github.com/octo/demo`
   with pull request 7’s head, which only `refs/pull/7/head` reaches.
@@ -181,9 +203,10 @@ status: 200
 ? 0
 ```
 
-## Test: a file the working tree or the index changed is uncommitted
+## Test: an edited file maps to the version origin has, and a staged one is uncommitted
 
-`README.md` is edited, and `docs/staged.md` is in the index only.
+`README.md` is edited, so its button links to the version origin has.
+`docs/staged.md` is in the index only, so origin has no version of it.
 
 ```console
 $ metab checkout --api '/api/counterpart?page=/view/README.md'
@@ -191,8 +214,12 @@ api: /api/counterpart?page=/view/README.md
 status: 200
 {
   "page": "/view/README.md",
-  "counterpart": null,
-  "reason": "uncommitted"
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/blob/6df6ba6b3b36f70b432b10b50b9a156ba27bc348/README.md"
+  },
+  "reason": null
 }
 ? 0
 ```
@@ -336,10 +363,29 @@ status: 200
 ? 0
 ```
 
-## Test: HEAD’s commit not on origin leaves the working tree without a counterpart
+## Test: a HEAD origin lacks maps at its merge base with its upstream branch
 
-`ahead`’s HEAD is a commit no `refs/remotes/origin/*` reaches.
-Its pull-request pages still map, since they do not depend on a commit.
+`ahead`’s HEAD is a commit no `refs/remotes/origin/*` reaches, so its working tree maps
+at the merge base with its upstream branch, the commit origin has.
+The root, an unchanged file, and an edited file all map there, and a file only the
+unpushed commit added has no counterpart.
+Its pull-request pages map as they always do, since they do not depend on a commit.
+
+```console
+$ metab ahead --api '/api/counterpart?page=/view/'
+api: /api/counterpart?page=/view/
+status: 200
+{
+  "page": "/view/",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/tree/6df6ba6b3b36f70b432b10b50b9a156ba27bc348"
+  },
+  "reason": null
+}
+? 0
+```
 
 ```console
 $ metab ahead --api '/api/counterpart?page=/view/README.md'
@@ -347,6 +393,38 @@ api: /api/counterpart?page=/view/README.md
 status: 200
 {
   "page": "/view/README.md",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/blob/6df6ba6b3b36f70b432b10b50b9a156ba27bc348/README.md"
+  },
+  "reason": null
+}
+? 0
+```
+
+```console
+$ metab ahead --api '/api/counterpart?page=/view/docs/guide.md'
+api: /api/counterpart?page=/view/docs/guide.md
+status: 200
+{
+  "page": "/view/docs/guide.md",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/blob/6df6ba6b3b36f70b432b10b50b9a156ba27bc348/docs/guide.md"
+  },
+  "reason": null
+}
+? 0
+```
+
+```console
+$ metab ahead --api '/api/counterpart?page=/view/AHEAD.md'
+api: /api/counterpart?page=/view/AHEAD.md
+status: 200
+{
+  "page": "/view/AHEAD.md",
   "counterpart": null,
   "reason": "not_on_origin"
 }
@@ -365,6 +443,51 @@ status: 200
     "url": "https://github.com/octo/demo/pull/7"
   },
   "reason": null
+}
+? 0
+```
+
+## Test: a branch with no upstream maps at its merge base with origin’s default branch
+
+`topic` has no upstream, so its working tree maps at its merge base with `origin/HEAD`.
+`alone` has neither, so no commit origin has is known for it.
+
+```console
+$ metab topic --api '/api/counterpart?page=/view/README.md'
+api: /api/counterpart?page=/view/README.md
+status: 200
+{
+  "page": "/view/README.md",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/blob/6df6ba6b3b36f70b432b10b50b9a156ba27bc348/README.md"
+  },
+  "reason": null
+}
+? 0
+```
+
+```console
+$ metab topic --api '/api/counterpart?page=/view/TOPIC.md'
+api: /api/counterpart?page=/view/TOPIC.md
+status: 200
+{
+  "page": "/view/TOPIC.md",
+  "counterpart": null,
+  "reason": "not_on_origin"
+}
+? 0
+```
+
+```console
+$ metab alone --api '/api/counterpart?page=/view/README.md'
+api: /api/counterpart?page=/view/README.md
+status: 200
+{
+  "page": "/view/README.md",
+  "counterpart": null,
+  "reason": "not_on_origin"
 }
 ? 0
 ```
