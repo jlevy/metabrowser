@@ -131,7 +131,7 @@ def _is_github_remote(url: str) -> bool:
     return url.startswith(_GITHUB_HTTPS)
 
 
-def _first_clone_limit_kb() -> int:
+def first_clone_limit_kb() -> int:
     """The environment's whole number of kilobytes above zero, or else the default."""
 
     raw = os.environ.get(MAX_FIRST_CLONE_ENV, "").strip()
@@ -275,7 +275,7 @@ class GithubProvider:
             log.debug("skipped the size check for %s: unexpected answer", source.normalized)
             return
         size_kb = int(text)
-        limit_kb = _first_clone_limit_kb()
+        limit_kb = first_clone_limit_kb()
         if size_kb > limit_kb:
             raise RepositoryTooLargeError(
                 source.normalized,
@@ -341,4 +341,5 @@ __all__ = [
     "GithubProvider",
     "GithubSignInRequiredError",
     "credential_helper_args",
+    "first_clone_limit_kb",
 ]

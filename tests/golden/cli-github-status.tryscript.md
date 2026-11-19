@@ -43,6 +43,7 @@ status: 200
   "state": "ok",
   "message": "GitHub CLI is signed in to github.com as octo-reader.",
   "fix": null,
+  "remedy": null,
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
   "gh_minimum": "2.81.0",
@@ -72,6 +73,7 @@ status: 200
   "state": "ok",
   "message": "GitHub CLI is signed in to github.com as octo-reader.",
   "fix": null,
+  "remedy": null,
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
   "gh_minimum": "2.81.0",
@@ -98,6 +100,11 @@ status: 200
   "state": "missing_scope",
   "message": "GitHub CLI is signed in to github.com as octo-reader, but its token lacks the repo scope, so it reads public repositories only. To read private ones: gh auth refresh --hostname github.com --scopes repo.",
   "fix": "gh auth refresh --hostname github.com --scopes repo",
+  "remedy": {
+    "text": "Give gh's token the repo scope.",
+    "command": "gh auth refresh --hostname github.com --scopes repo",
+    "url": null
+  },
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
   "gh_minimum": "2.81.0",
@@ -126,6 +133,7 @@ status: 200
   "state": "ok",
   "message": "GitHub CLI is signed in to github.com as octo-reader.",
   "fix": null,
+  "remedy": null,
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
   "gh_minimum": "2.81.0",
@@ -147,6 +155,11 @@ status: 200
   "state": "not_logged_in",
   "message": "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
   "fix": "gh auth login --hostname github.com",
+  "remedy": {
+    "text": "Sign in to GitHub CLI.",
+    "command": "gh auth login --hostname github.com",
+    "url": null
+  },
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
   "gh_minimum": "2.81.0",
@@ -168,6 +181,11 @@ status: 200
   "state": "not_logged_in",
   "message": "GitHub refused gh's token for octo-reader. To sign in again: gh auth login --hostname github.com.",
   "fix": "gh auth login --hostname github.com",
+  "remedy": {
+    "text": "Sign in to GitHub CLI.",
+    "command": "gh auth login --hostname github.com",
+    "url": null
+  },
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
   "gh_minimum": "2.81.0",
@@ -193,6 +211,11 @@ status: 200
   "state": "not_logged_in",
   "message": "GitHub refused the token in GH_TOKEN. To sign in again: replace the token in GH_TOKEN, or unset it and run gh auth login --hostname github.com.",
   "fix": "replace the token in GH_TOKEN, or unset it and run gh auth login --hostname github.com",
+  "remedy": {
+    "text": "Replace the token in GH_TOKEN, or unset it and run gh auth login --hostname github.com.",
+    "command": null,
+    "url": null
+  },
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
   "gh_minimum": "2.81.0",
@@ -214,6 +237,7 @@ status: 200
   "state": "network_error",
   "message": "gh is signed in as octo-reader but could not check its token: gh could not reach api.github.com.",
   "fix": null,
+  "remedy": null,
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
   "gh_minimum": "2.81.0",
@@ -233,8 +257,13 @@ status: 200
 {
   "host": "github.com",
   "state": "gh_too_old",
-  "message": "GitHub CLI 2.20.2 cannot report the signed-in account; Metabrowser needs gh 2.81.0 or later. To update it: https://cli.github.com/.",
+  "message": "GitHub CLI 2.20.2 cannot report the signed-in account, so Metabrowser opens no pull request it has not cached; that needs gh 2.81.0 or later. To update it: https://cli.github.com/.",
   "fix": "https://cli.github.com/",
+  "remedy": {
+    "text": "Update GitHub CLI.",
+    "command": null,
+    "url": "https://cli.github.com/"
+  },
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.20.2",
   "gh_minimum": "2.81.0",
@@ -256,6 +285,11 @@ status: 200
   "state": "gh_failed",
   "message": "gh auth status did not report an account; run gh auth status --hostname github.com to see why.",
   "fix": "gh auth status --hostname github.com",
+  "remedy": {
+    "text": "See what gh reports.",
+    "command": "gh auth status --hostname github.com",
+    "url": null
+  },
   "gh_path": "[FAKE_GH]",
   "gh_version": null,
   "gh_minimum": "2.81.0",
@@ -313,7 +347,7 @@ github: not_logged_in: GitHub CLI is not signed in to github.com. Run gh auth lo
 $ FAKE_GH_STATUS=too-old metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
 metab --doctor: 11 plugin(s) OK
-github: gh_too_old: GitHub CLI 2.20.2 cannot report the signed-in account; Metabrowser needs gh 2.81.0 or later. To update it: https://cli.github.com/.
+github: gh_too_old: GitHub CLI 2.20.2 cannot report the signed-in account, so Metabrowser opens no pull request it has not cached; that needs gh 2.81.0 or later. To update it: https://cli.github.com/.
   gh: [FAKE_GH] (version 2.20.2; needs 2.81.0 or later)
   fix: https://cli.github.com/
 ...
@@ -337,6 +371,7 @@ $ FAKE_GH_STATUS=offline metab --doctor --json 2>/dev/null
     "state": "network_error",
     "message": "gh is signed in as octo-reader but could not check its token: gh could not reach api.github.com.",
     "fix": null,
+    "remedy": null,
     "gh_path": "[FAKE_GH]",
     "gh_version": "2.98.0",
     "gh_minimum": "2.81.0",

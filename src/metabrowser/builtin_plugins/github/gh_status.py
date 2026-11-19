@@ -26,6 +26,12 @@ compares it, and a check that does not falls back on ``gh auth status --json`` r
 the flag, which a ``gh`` below the minimum does. The app reads ``gh_minimum`` from
 ``metab --doctor --json`` and never declares one of its own.
 
+``fix`` is text for a terminal. ``remedy`` is the same step as a reader shows it, in the
+shape of a setup check's (:class:`~metabrowser.tool_install.Remedy`): ``command`` only for
+one of the commands this module names (:data:`_COMMANDS`), ``url`` only for
+:data:`INSTALL_PAGE`, and a sentence, such as replacing a refused token, as ``text`` alone,
+so no reader parses ``fix`` to tell a command from a sentence.
+
 The answer is kept for :data:`GH_STATUS_TTL_S` per ``gh`` and configuration, and callers
 in one event loop share a check in flight, so a page and the app asking at once run
 ``gh`` once. :func:`forget_github_status`, which a ``fresh`` request calls, starts a new
@@ -58,7 +64,7 @@ from metabrowser.builtin_plugins.github.gh import (
     replace_token_step,
 )
 from metabrowser.cache.providers import ProviderStatus
-from metabrowser.tool_install import install_method
+from metabrowser.tool_install import Remedy, install_method
 
 # `gh auth status --active --hostname github.com --json hosts` asks GitHub about the
 # active token. Measured 2026-11-18 with gh 2.98.0 on one macOS machine at a load average
@@ -90,6 +96,19 @@ GH_UPGRADE_COMMANDS: Final = {"homebrew": "brew upgrade gh", "macports": "sudo p
 _RELEASE = re.compile(r"^([0-9]+)\.([0-9]+)(?:\.([0-9]+))?")
 SCOPE_COMMAND: Final = f"gh auth refresh --hostname {GH_HOSTNAME} --scopes {REQUIRED_SCOPE}"
 REPORT_COMMAND: Final = f"gh auth status --hostname {GH_HOSTNAME}"
+# Every `fix` that is a command to run as it is; any other `fix` but INSTALL_PAGE is a
+# sentence (`GithubStatus.remedy`).
+_COMMANDS: Final = frozenset(
+    {SIGN_IN_COMMAND, SCOPE_COMMAND, REPORT_COMMAND, *GH_UPGRADE_COMMANDS.values()}
+)
+# What each state's remedy says before its command or page.
+_REMEDY_TEXT: Final[dict[str, str]] = {
+    "gh_missing": "Install GitHub CLI.",
+    "gh_too_old": "Update GitHub CLI.",
+    "not_logged_in": "Sign in to GitHub CLI.",
+    "missing_scope": f"Give gh's token the {REQUIRED_SCOPE} scope.",
+    "gh_failed": "See what gh reports.",
+}
 # What gh reads its configuration and token from, besides the keychain: an answer is
 # reused only while these and the gh found on PATH are the same. Only whether a token
 # variable is set is compared, never its value.
@@ -135,12 +154,27 @@ class GithubStatus:
 
         return self.state in SIGN_IN_STATES
 
+    @property
+    def remedy(self) -> Remedy | None:
+        """``fix`` as a reader shows it: a command, the install page, or a sentence."""
+
+        if self.fix is None:
+            return None
+        text = _REMEDY_TEXT.get(self.state, "To fix it:")
+        if self.fix == INSTALL_PAGE:
+            return Remedy(text, url=INSTALL_PAGE)
+        if self.fix in _COMMANDS:
+            return Remedy(text, command=self.fix)
+        return Remedy(f"{self.fix[:1].upper()}{self.fix[1:]}.")
+
     def to_json(self) -> dict[str, object]:
+        remedy = self.remedy
         return {
             "host": GH_HOSTNAME,
             "state": self.state,
             "message": self.message,
             "fix": self.fix,
+            "remedy": remedy.to_json() if remedy is not None else None,
             "gh_path": self.gh_path,
             "gh_version": self.gh_version,
             "gh_minimum": GH_MINIMUM_LABEL,
@@ -196,8 +230,8 @@ def _too_old(path: str, version: str | None) -> GithubStatus:
     fix = gh_upgrade_fix(path)
     found = f"GitHub CLI {version}" if version is not None else "This GitHub CLI"
     message = (
-        f"{found} cannot report the signed-in account; Metabrowser needs gh "
-        f"{GH_MINIMUM_LABEL} or later. To update it: {fix}."
+        f"{found} cannot report the signed-in account, so Metabrowser opens no pull request "
+        f"it has not cached; that needs gh {GH_MINIMUM_LABEL} or later. To update it: {fix}."
     )
     return GithubStatus("gh_too_old", message, fix, gh_path=path, gh_version=version)
 

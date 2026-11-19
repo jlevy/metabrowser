@@ -432,6 +432,7 @@ $ metab --doctor --json 2>/dev/null
     "state": "ok",
     "message": "GitHub CLI is signed in to github.com as octo-reader.",
     "fix": null,
+    "remedy": null,
     "gh_path": "[FAKE_GH]",
     "gh_version": "2.98.0",
     "gh_minimum": "2.81.0",

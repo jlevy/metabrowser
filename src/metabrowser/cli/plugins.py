@@ -380,21 +380,25 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
     problems.extend(_view_key_problems(result.plugins))
 
     providers = _provider_sections()
+    plugin_problems = tuple(problems)
     # Where `--present` opens a target, and the app it would find (`cli/present.py`).
     from metabrowser.cli.present import doctor_open_in
 
     open_in = doctor_open_in()
-    problems.extend(open_in.problems)
-    # This metab, Git, and the two directories (`cli/doctor.py`); imported here, as the
-    # registry is, so `--version` loads none of it.
-    from metabrowser.cli.doctor import setup_checks
+    # The plugins, open_in, this metab, Git, and the two directories as checks
+    # (`cli/doctor.py`); imported here, as the registry is, so `--version` loads none of it.
+    from metabrowser.cli.doctor import doctor_checks
 
-    checks = setup_checks(
-        app_path=open_in.app_path,
-        app_minimum=open_in.app_minimum_metab,
-        looked_up=open_in.section.get("app") is not None,
+    checks = doctor_checks(
+        plugin_count=len(result.plugins), plugin_problems=plugin_problems, open_in=open_in
     )
-    problems.extend(check.problem for check in checks if check.problem is not None)
+    # The plugins' problems are listed already; open_in's are its own, less any the config
+    # check reports at their cause; the setup checks add one line each.
+    open_in_check = checks[1]
+    problems.extend(
+        problem for problem in open_in.problems if ("problem", problem) in open_in_check.details
+    )
+    problems.extend(check.problem for check in checks[2:] if check.problem is not None)
 
     if as_json:
         report: dict[str, object] = {
@@ -410,18 +414,21 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
             raise typer.Exit(code=1)
         return
 
+    # The plugin verdict and open_in's line say what their checks would, so the text
+    # prints the other checks after the provider sections.
+    setup = checks[2:]
     if problems:
         typer.echo(f"metab --doctor: {len(problems)} problem(s):", err=True)
         for problem in problems:
             typer.echo(f"  • {problem}", err=True)
-        _echo_sections(providers, checks, err=True)
+        _echo_sections(providers, setup, err=True)
         raise typer.Exit(code=1)
 
     # A run with a problem writes nothing to stdout, so the preference's line is part of
     # the answer of a clean one.
     typer.echo(open_in.line)
     typer.echo(f"metab --doctor: {len(result.plugins)} plugin(s) OK")
-    _echo_sections(providers, checks, err=False)
+    _echo_sections(providers, setup, err=False)
 
 
 def _echo_sections(

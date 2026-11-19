@@ -94,6 +94,7 @@ from metabrowser.cli.exit_codes import (
 from metabrowser.errors import CLIError
 from metabrowser.invisible_chars import display_segment
 from metabrowser.open_in import (
+    OPEN_IN_ENV,
     PRESENT_BROWSER_SETTING,
     OpenInPreference,
     browser_delivery_allowed,
@@ -1404,14 +1405,23 @@ class DoctorOpenIn:
 
     section: dict[str, object]
     """The ``open_in`` object of ``--doctor --json``."""
-    line: str
-    """The line ``--doctor`` prints."""
+    summary: str
+    """What ``--present`` does with these settings, as one sentence."""
     problems: tuple[str, ...]
     """A setting that cannot be read, or settings under which nothing takes a target."""
+    unread: tuple[str, ...] = ()
+    """The problems among :attr:`problems` that are a setting ``config.yml`` could not give,
+    which the ``config`` check reports at their cause when the directory is the problem."""
     app_path: str | None = None
     """The app that takes a target, when one was looked for and found."""
     app_minimum_metab: str | None = None
     """The oldest ``metab`` that app runs, from its :data:`MINIMUM_METAB_KEY`, if it names one."""
+
+    @property
+    def line(self) -> str:
+        """The line ``--doctor`` prints."""
+
+        return f"metab --doctor: {self.summary}"
 
 
 def doctor_open_in() -> DoctorOpenIn:
@@ -1426,11 +1436,15 @@ def doctor_open_in() -> DoctorOpenIn:
     """
 
     problems: list[str] = []
+    unread: list[str] = []
     try:
         preference: OpenInPreference | None = resolve_open_in(None)
     except CLIError as exc:
         preference = None
         problems.append(f"open_in: {exc}")
+        # Without the variable, it is config.yml's setting that could not be read.
+        if not os.environ.get(OPEN_IN_ENV):
+            unread.append(problems[-1])
     finding: AppFinding | None = None
     if preference is None or preference.value != "browser":
         try:
@@ -1464,7 +1478,8 @@ def doctor_open_in() -> DoctorOpenIn:
         browser: bool | None = browser_delivery_allowed()
     except CLIError as exc:
         browser = None
-        problems.append(f"open_in: {exc}")
+        unread.append(f"open_in: {exc}")
+        problems.append(unread[-1])
     if preference is not None and finding is not None and finding.refusal is not None and no_app:
         if preference.value == "app":
             problems.append(
@@ -1500,8 +1515,9 @@ def doctor_open_in() -> DoctorOpenIn:
     )
     return DoctorOpenIn(
         section,
-        f"metab --doctor: open_in {named}; {found}{off}",
+        f"open_in {named}; {found}{off}",
         tuple(problems),
+        tuple(unread),
         app_path=app_path,
         app_minimum_metab=minimum_metab,
     )

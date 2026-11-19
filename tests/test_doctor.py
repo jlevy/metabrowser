@@ -7,6 +7,7 @@ and the package manager each tool's path names.
 
 from __future__ import annotations
 
+import plistlib
 import sys
 from pathlib import Path
 
@@ -21,15 +22,28 @@ from metabrowser.builtin_plugins.github.gh_status import (
 )
 from metabrowser.cli import doctor
 from metabrowser.cli.doctor import (
+    CHECKOUT_PROJECT,
+    CHECKOUT_VENV,
+    DOCTOR_APP_ENV,
+    LOW_FREE_SPACE_BYTES,
     METAB_UPGRADE_COMMANDS,
     PIPX_METADATA,
     UV_RECEIPT,
     Check,
+    cache_check,
+    config_check,
+    declares_this_project,
+    doctor_checks,
+    low_free_space_bytes,
     meets_release,
     metab_check,
     metab_install,
     metab_upgrade_remedy,
+    open_in_check,
+    plugins_check,
+    running_app,
 )
+from metabrowser.cli.present import MINIMUM_METAB_KEY, DoctorOpenIn
 from metabrowser.git.process import GIT_DOWNLOAD_PAGE, git_upgrade_remedy
 from metabrowser.tool_install import Remedy, install_method
 
@@ -54,37 +68,75 @@ def test_a_release_meets_a_minimum_by_its_release_numbers(
     assert meets_release(version, minimum) is meets
 
 
-def _prefix(monkeypatch: pytest.MonkeyPatch, prefix: Path, checkout: Path | None) -> None:
+def _prefix(monkeypatch: pytest.MonkeyPatch, prefix: Path) -> None:
+    prefix.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(sys, "prefix", str(prefix))
-    monkeypatch.setattr(doctor, "source_checkout", lambda: checkout)
+
+
+def _project(root: Path, name: str = "metabrowser") -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "pyproject.toml").write_text(f'[project]\nname = "{name}"\n', encoding="utf-8")
+    return root
 
 
 def test_a_uv_tool_install_is_known_by_its_receipt_before_a_checkout(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """``uv tool install --editable`` makes both a receipt and a checkout's source."""
+    """``uv tool install --editable`` into a checkout's ``.venv`` makes a receipt there."""
 
-    (tmp_path / UV_RECEIPT).write_text("[tool]\n", encoding="utf-8")
-    _prefix(monkeypatch, tmp_path, tmp_path / "checkout")
-    assert metab_install() == ("uv_tool", tmp_path)
+    venv = _project(tmp_path / "metabrowser") / ".venv"
+    _prefix(monkeypatch, venv)
+    (venv / UV_RECEIPT).write_text("[tool]\n", encoding="utf-8")
+    assert metab_install() == ("uv_tool", venv)
 
 
 def test_a_pipx_install_is_known_by_its_metadata(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    _prefix(monkeypatch, tmp_path)
     (tmp_path / PIPX_METADATA).write_text("{}", encoding="utf-8")
-    _prefix(monkeypatch, tmp_path, None)
     assert metab_install() == ("pipx", tmp_path)
 
 
-def test_a_checkout_and_any_other_environment(
+def test_a_checkout_is_a_venv_beside_this_projects_pyproject(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    checkout = tmp_path / "metabrowser"
-    _prefix(monkeypatch, tmp_path / ".venv", checkout)
+    """The rule ``MetabInstall.of`` reads in the app, so both name the same step."""
+
+    checkout = _project(tmp_path / "metabrowser")
+    _prefix(monkeypatch, checkout / CHECKOUT_VENV)
     assert metab_install() == ("checkout", checkout)
-    _prefix(monkeypatch, tmp_path / "venv", None)
-    assert metab_install() == ("environment", tmp_path / "venv")
+    # Another project's `.venv` with metabrowser installed in it is not a checkout.
+    other = _project(tmp_path / "notes", name="notes")
+    _prefix(monkeypatch, other / CHECKOUT_VENV)
+    assert metab_install() == ("environment", other / CHECKOUT_VENV)
+    # Nor is an environment named otherwise, beside this project or not.
+    _prefix(monkeypatch, checkout / "venv")
+    assert metab_install() == ("environment", checkout / "venv")
+
+
+def test_the_project_line_is_the_one_this_repository_declares() -> None:
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    assert declares_this_project(pyproject)
+
+
+@pytest.mark.parametrize(
+    ("pyproject", "declares"),
+    [
+        ('name = "metabrowser"', True),
+        ('name="metabrowser"  ', True),
+        ('[project]\r\nname = "metabrowser"\r\n', True),
+        ('name = "metabrowser-extras"', False),
+        ('  name = "metabrowser"', False),
+        ('names = "metabrowser"', False),
+        ('# name = "metabrowser"', False),
+        ('name\n= "metabrowser"', False),
+    ],
+)
+def test_a_checkouts_project_is_named_on_its_own_line(pyproject: str, declares: bool) -> None:
+    """The cases ``aCheckoutsProjectIsNamedOnItsOwnLine`` in ``MetabVersionTests`` reads."""
+
+    assert (CHECKOUT_PROJECT.search(pyproject) is not None) is declares
 
 
 @pytest.mark.parametrize(
@@ -105,8 +157,8 @@ def test_each_install_method_has_its_own_upgrade(method: str, command: str, tmp_
 
 
 def _metab(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, version: str) -> None:
+    _prefix(monkeypatch, tmp_path)
     (tmp_path / UV_RECEIPT).write_text("[tool]\n", encoding="utf-8")
-    _prefix(monkeypatch, tmp_path, None)
     monkeypatch.setattr(doctor, "__version__", version)
     monkeypatch.setattr(doctor, "display_version", lambda shown: shown)
 
@@ -253,3 +305,224 @@ def test_ghs_minimum_is_the_release_that_added_auth_status_json() -> None:
 
     assert gh_status.GH_MINIMUM == (2, 81, 0)
     assert GH_MINIMUM_LABEL == "2.81.0"
+
+
+def test_the_plugins_are_a_check_with_each_problem_a_detail() -> None:
+    clean = plugins_check(11, ())
+    assert (clean.state, clean.summary) == (
+        "ok",
+        "11 plugins and the packaged cache record contracts check out",
+    )
+    broken = plugins_check(1, ("plugin 'x': index.js missing in /p",))
+    assert broken.state == "problem"
+    assert ("problem", "plugin 'x': index.js missing in /p") in broken.details
+    assert broken.problem is not None, "doctor_plugins lists the details instead"
+
+
+def _open_in(problems: tuple[str, ...], unread: tuple[str, ...]) -> DoctorOpenIn:
+    section: dict[str, object] = {
+        "value": "auto",
+        "source": "default",
+        "present_browser": None,
+        "app": None,
+    }
+    return DoctorOpenIn(section, "open_in auto (default)", problems, unread)
+
+
+def test_a_configuration_directory_that_is_a_problem_is_reported_once() -> None:
+    """``config`` reports the directory; ``open_in`` notes what it could not read there."""
+
+    unread = "open_in: The Metabrowser storage directory is accessible to other users"
+    settled = "open_in is app (environment), and no app takes a target: none"
+    check = open_in_check(_open_in((unread, settled), (unread,)), config_unreadable=True)
+    assert ("not read", unread) in check.details
+    assert ("problem", unread) not in check.details
+    assert ("problem", settled) in check.details
+    assert check.state == "problem"
+    only_unread = open_in_check(_open_in((unread,), (unread,)), config_unreadable=True)
+    assert only_unread.state == "warning"
+    readable = open_in_check(_open_in((unread,), (unread,)), config_unreadable=False)
+    assert (readable.state, ("problem", unread) in readable.details) == ("problem", True)
+
+
+def _storage(monkeypatch: pytest.MonkeyPatch, home: Path, **variables: str) -> None:
+    for name in ("METABROWSER_CONFIG_DIR", "XDG_CONFIG_HOME", "METABROWSER_CACHE_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(home))
+    for name, value in variables.items():
+        monkeypatch.setenv(name, value)
+
+
+def test_an_override_the_apps_servers_do_not_get_is_a_warning(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The app gives its servers none of the storage variables (``ChildEnvironment``)."""
+
+    mine = tmp_path / "xdg"
+    mine.mkdir(mode=0o700)
+    (mine / "metabrowser").mkdir(mode=0o700)
+    _storage(monkeypatch, tmp_path / "home", XDG_CONFIG_HOME=str(mine))
+    app = "/Applications/Metabrowser.app"
+
+    check = config_check(app_path=app)
+    servers = str(tmp_path / "home" / ".config" / "metabrowser")
+    assert check.state == "warning"
+    assert ("app's servers", servers) in check.details
+    assert check.summary.startswith("XDG_CONFIG_HOME names this directory")
+    assert check.remedy is not None
+    assert config_check(app_path=None).state == "ok", "without an app there is nothing to differ"
+
+
+def test_low_free_space_on_the_caches_volume_is_a_warning(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    cache = tmp_path / "cache"
+    cache.mkdir(mode=0o700)
+    _storage(monkeypatch, tmp_path, METABROWSER_CACHE_DIR=str(cache))
+    monkeypatch.delenv("METABROWSER_MAX_FIRST_CLONE_KB", raising=False)
+    monkeypatch.setattr(doctor, "_free_bytes", lambda _directory: LOW_FREE_SPACE_BYTES - 1)
+    low = cache_check()
+    assert low.state == "warning"
+    assert low.summary.startswith("the cache's volume has 1.5 GB free, less than the 1.5 GB")
+    monkeypatch.setattr(doctor, "_free_bytes", lambda _directory: LOW_FREE_SPACE_BYTES)
+    assert cache_check().state == "ok"
+
+
+def test_the_free_space_floor_holds_the_largest_first_clone_packed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pack is 1.0 to 1.1 times GitHub's reported size (beside ``MAX_FIRST_CLONE_KB``),
+    and the floor follows the limit ``METABROWSER_MAX_FIRST_CLONE_KB`` sets."""
+
+    from metabrowser.builtin_plugins.github.provider import (
+        MAX_FIRST_CLONE_ENV,
+        MAX_FIRST_CLONE_KB,
+    )
+
+    monkeypatch.delenv(MAX_FIRST_CLONE_ENV, raising=False)
+    assert MAX_FIRST_CLONE_KB * 1024 * 1.1 <= LOW_FREE_SPACE_BYTES + 1
+    assert low_free_space_bytes() == LOW_FREE_SPACE_BYTES
+    monkeypatch.setenv(MAX_FIRST_CLONE_ENV, "1000")
+    assert low_free_space_bytes() == int(1000 * 1024 * 1.1)
+
+
+def test_a_missing_cache_directory_metab_cannot_create_is_a_problem(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The host's free space is not what this test is about.
+    monkeypatch.setattr(doctor, "_free_bytes", lambda _directory: LOW_FREE_SPACE_BYTES)
+    locked = tmp_path / "locked"
+    locked.mkdir(mode=0o500)
+    try:
+        _storage(monkeypatch, tmp_path, METABROWSER_CACHE_DIR=str(locked / "cache"))
+        check = cache_check()
+        assert check.state == "problem"
+        assert check.summary == (
+            "the cache directory does not exist, and metab cannot create it: "
+            f"{locked} is not writable by this user"
+        )
+        assert check.remedy == Remedy(
+            "Create it with mode 700 yourself, or set METABROWSER_CACHE_DIR to a private "
+            "directory you own."
+        )
+        _storage(monkeypatch, tmp_path, METABROWSER_CACHE_DIR=str(tmp_path / "fresh" / "cache"))
+        assert cache_check().state == "ok"
+    finally:
+        locked.chmod(0o700)
+
+
+@pytest.mark.parametrize(
+    ("state", "fix", "remedy"),
+    [
+        ("gh_missing", INSTALL_PAGE, Remedy("Install GitHub CLI.", url=INSTALL_PAGE)),
+        (
+            "gh_too_old",
+            "brew upgrade gh",
+            Remedy("Update GitHub CLI.", command="brew upgrade gh"),
+        ),
+        (
+            "not_logged_in",
+            "gh auth login --hostname github.com",
+            Remedy("Sign in to GitHub CLI.", command="gh auth login --hostname github.com"),
+        ),
+        # A sentence is never a command to copy.
+        (
+            "not_logged_in",
+            "replace the token in GH_TOKEN, or unset it and run gh auth login --hostname "
+            "github.com",
+            Remedy(
+                "Replace the token in GH_TOKEN, or unset it and run gh auth login --hostname "
+                "github.com."
+            ),
+        ),
+        ("network_error", None, None),
+    ],
+)
+def test_githubs_remedy_names_a_command_only_for_one_it_runs(
+    state: str, fix: str | None, remedy: Remedy | None
+) -> None:
+    status = gh_status.GithubStatus(state, "message", fix)  # pyright: ignore[reportArgumentType]
+    assert status.remedy == remedy
+    assert status.to_json()["remedy"] == (remedy.to_json() if remedy is not None else None)
+
+
+def _bundle(root: Path, minimum: str | None) -> Path:
+    contents = root / "Metabrowser.app" / "Contents"
+    contents.mkdir(parents=True)
+    info: dict[str, object] = {"CFBundleIdentifier": "io.github.jlevy.metabrowser.dev"}
+    if minimum is not None:
+        info[MINIMUM_METAB_KEY] = minimum
+    (contents / "Info.plist").write_bytes(plistlib.dumps(info))
+    return root / "Metabrowser.app"
+
+
+def test_the_metab_check_compares_with_the_app_running_the_check(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Check Setup… names its own build, which LaunchServices may not find first."""
+
+    running = _bundle(tmp_path / "build", "99.0.0")
+    monkeypatch.setenv(DOCTOR_APP_ENV, str(running))
+    assert running_app() == (str(running), "99.0.0")
+    _storage(monkeypatch, tmp_path / "home")
+    checks = doctor_checks(plugin_count=1, plugin_problems=(), open_in=_open_in((), ()))
+    metab = next(check for check in checks if check.id == "metab")
+    assert metab.state == "warning"
+    assert ("app", f"{running} runs metab 99.0.0 or later") in metab.details
+    open_in = next(check for check in checks if check.id == "open_in")
+    assert open_in.summary == "open_in auto (default)", "a terminal's lookup is unchanged"
+
+
+def test_a_running_app_the_doctor_cannot_read_is_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    for named in ("", "relative/Metabrowser.app", str(tmp_path / "missing.app")):
+        monkeypatch.setenv(DOCTOR_APP_ENV, named)
+        assert running_app() is None
+    monkeypatch.setenv(DOCTOR_APP_ENV, str(_bundle(tmp_path, None)))
+    assert running_app() == (str(tmp_path / "Metabrowser.app"), None)
+
+
+@pytest.mark.parametrize(("variable", "unread"), [("sometimes", False), (None, True)])
+def test_only_a_setting_config_yml_could_not_give_is_unread(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, variable: str | None, unread: bool
+) -> None:
+    """``METABROWSER_OPEN_IN`` is read before ``config.yml``, so its error is its own,
+    which the ``config`` check never reports for it."""
+
+    from metabrowser.cli import present
+
+    shared = tmp_path / "shared"
+    shared.mkdir(mode=0o755)
+    shared.chmod(0o755)
+    _storage(monkeypatch, tmp_path, METABROWSER_CONFIG_DIR=str(shared))
+    if variable is None:
+        monkeypatch.delenv("METABROWSER_OPEN_IN", raising=False)
+    else:
+        monkeypatch.setenv("METABROWSER_OPEN_IN", variable)
+    monkeypatch.setattr(present, "look_up_app", lambda _ids: None)
+    report = present.doctor_open_in()
+    first = report.problems[0]
+    assert first.startswith("open_in: ")
+    assert (first in report.unread) is unread
