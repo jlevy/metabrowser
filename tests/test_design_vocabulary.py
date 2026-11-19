@@ -1552,6 +1552,7 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".source-ref-selector-panel"): "a chip's menu",
     ("styles.css", ".chip"): "a chip",
     ("styles.css", ".chip-menu-count"): "a chip menu's count",
+    ("styles.css", ".counterpart-status"): "a split button's result, where its menu was",
     ("styles.css", ".filter-check"): "a filter",
     ("styles.css", ".chip-clear"): "a chip's control",
     ("styles.css", ".file-header-badge"): "a badge",

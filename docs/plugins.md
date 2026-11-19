@@ -496,10 +496,13 @@ Useful helpers include:
   [View on GitHub](design-system.md#view-on-github) button.
   `mountCounterpart` asks the server for the counterpart of `page`, an address as
   `location.pathname` spells it, once per address, and puts the button in `corner`, a
-  header’s `.view-header-end`, or leaves it empty; `counterpartButton` draws one from
-  the server’s answer, `{provider, label, url}`. Mark the corner `data-counterpart` from
-  first paint, so the header leaves it its room, and never build a github.com address
-  yourself;
+  header’s `.view-header-end`, or leaves it empty.
+  A page answered before is drawn at once with its last answer, which a new one replaces
+  only when it differs; `prefetchCounterpart(page)` starts the request before the header
+  exists, and `mountCounterpart` waits for it.
+  `counterpartButton` draws one from the server’s answer, `{provider, label, url}`. Mark
+  the corner `data-counterpart` from first paint, so the header leaves it its room, and
+  never build a github.com address yourself;
 - `renderSourceView(container, data, options)` for the standard bounded, copyable Source
   surface, with truncation controls, the shared language mapping, a line-number gutter,
   and `#L10`-style line anchors; `options.parts`, a list of `{text, language}` that

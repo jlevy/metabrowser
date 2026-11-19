@@ -907,8 +907,10 @@ It is a split button, a [joined chip group](#control-families) of two parts:
   tooltip is the address.
 - **The chevron**, a chip menu’s trigger with the shell’s caret, muted until the pointer
   is on it or its menu is open, whose menu holds **Copy Link** and **Open in Browser**.
-  Copy Link puts the address on the clipboard and says “Link copied” in the chevron’s
-  tooltip; Open in Browser is a link to the same address in a new tab.
+  Copy Link puts the address on the clipboard and says “Link copied”, or “Copy failed”,
+  for a moment in a status line under the button, where the menu was, which a screen
+  reader announces as a polite live region; Open in Browser is a link to the same
+  address in a new tab.
 
 Both parts take a chip’s hover fill and focus ring, from tokens in both themes.
 The menu is the shell’s `.menu` of `.menu-item` rows, opened under the button with its
@@ -917,7 +919,8 @@ opens it with focus on its first item, ArrowDown or ArrowUp on the chevron opens
 its first or last item, and the arrow keys, Home, and End move among the items.
 Escape, a second click on the chevron, or choosing an item closes it and gives focus
 back to the chevron; Tab or a press outside the button closes it and leaves focus where
-the key or the press puts it.
+the key or the press puts it, and so does focus that moves to another element, such as a
+framed preview, which sends the page no press.
 A key held with Command, Control, or Option is the browser’s and the app’s, as on every
 page, but Option-Tab, with which Safari moves focus, closes the menu as Tab does.
 The button is not numbered for the header’s number keys: it is the page’s, not a control
@@ -929,6 +932,9 @@ The button is `counterpartButton` in `static/plugin-sdk-views.js`, the on-demand
 helpers, and `mountCounterpart` asks the server for a page’s counterpart and puts the
 button in a corner, once per address; both are on `window.metabrowser` for a plugin, as
 the pull request page uses them.
+The button comes with its header when it can: the shell asks for a file’s or a folder’s
+counterpart as the page starts loading (`prefetchCounterpart`), and a page drawn again
+shows its last answer at once and replaces it only when the server’s new one differs.
 Another place that shows a page can hold the same button by giving it a corner.
 
 **The macOS app** shows a counterpart in a native popover of its own rather than leaving

@@ -228,11 +228,18 @@ def test_the_route_reaches_github_through_its_provider() -> None:
 
 def test_the_button_is_one_menu_button_and_the_corner_follows_the_page() -> None:
     """``tests/dom/counterpart-session.js`` over the production SDK: the app's hooks, the
-    menu's keyboard and pointer, Copy Link, and what a corner asks the server and keeps."""
+    menu's keyboard and pointer, Copy Link and its status line, and what a corner asks the
+    server and keeps."""
 
     told = run_session("counterpart-session.js")
     markup = told["markup"]
-    group, menu = markup["children"]
+    group, menu, status = markup["children"]
+    # Copy Link's result is announced: a polite live region, empty until a copy.
+    assert (status["class"], status["role"], status.get("children")) == (
+        "counterpart-status",
+        "status",
+        None,
+    )
     link, chevron = group["children"]
     assert markup["data-view-on-github"] == ""
     assert (link["tag"], link["data-view-on-github"], link["target"], link["rel"]) == (
@@ -263,6 +270,16 @@ def test_the_button_is_one_menu_button_and_the_corner_follows_the_page() -> None
         ("Copy failed", "Copy Link or Open in Browser"),
         ("Copy failed", "Copy Link or Open in Browser"),
     ]
+    # The status line shows the result for the confirmation's time, a later copy's its own.
+    assert [(step["status"], step["statusAfter"]) for step in told["copy"][:3]] == [
+        (["Link copied", "copied"], ["", None]),
+        (["Copy failed", "failed"], ["", None]),
+        (["Copy failed", "failed"], ["", None]),
+    ]
+    assert told["copy"][3]["statusBetween"] == ["Link copied", "copied"]
+    # Focus that leaves for a frame closes the menu, which sends the document no press.
+    closes = {step["step"]: step["menu"] for step in told["menu"]}
+    assert (closes["focus into a frame"], closes["focus to nothing"]) == ("closed", "open")
     mount = {step["step"]: step for step in told["mount"]}
     assert mount["the same page again"]["asked"] == []
     assert mount["a page with none"]["corner"] == "empty"
@@ -272,3 +289,14 @@ def test_the_button_is_one_menu_button_and_the_corner_follows_the_page() -> None
     assert mount["a page with a space and a hash"]["asked"] == [
         "/api/counterpart?page=%2Fview%2Fa%20b%23c.md"
     ]
+    # A page answered before comes with its header (review A4 on #595), and is asked again.
+    redrawn = mount["a new corner for a page answered before"]
+    assert redrawn["drawnBeforeTheAnswer"] == redrawn["corner"] and redrawn["sameButton"]
+    assert len(redrawn["asked"]) == 1
+    changed = mount["a page whose answer changed since"]
+    assert changed["drawnBeforeTheAnswer"] != changed["corner"]
+    # A page asked for as it starts loading is asked once, and its answer, once in hand,
+    # comes with the header.
+    came = mount["a page whose answer came before its header"]
+    assert came["drawnBeforeTheAnswer"] == came["corner"] and len(came["asked"]) == 1
+    assert len(mount["a page whose answer is in flight when its header is drawn"]["asked"]) == 1

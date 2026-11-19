@@ -6636,6 +6636,12 @@ async function selectFile(path, preferredViewId) {
           };
         }
         var retainedPreview = beginPreviewNavigation(previewClaim);
+        // The page's View on GitHub link is asked for while its file loads, so it can come
+        // with the header (plugin-sdk-views.js, prefetchCounterpart). Only a page whose
+        // repository is on github.com draws the button (view-header.js).
+        if (window.METABROWSER_REPOSITORY_CONTEXT) {
+          window.metabrowser?.prefetchCounterpart?.(location.pathname);
+        }
         await settleHoverPrefetchForSelection(path);
         if (currentPath !== path || !isPreviewClaimCurrent(previewClaim)) {
           return { status: "cancelled" };

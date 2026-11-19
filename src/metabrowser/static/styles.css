@@ -4601,6 +4601,26 @@ a.tab-btn {
 .counterpart-menu[hidden] {
   display: none;
 }
+/* Copy Link's result, under the button where the menu was, for as long as a code copy's
+   confirmation shows; empty, it draws nothing and stays a live region. Its words say
+   which result, in the text ink, so the line reads at 12 px in both themes. */
+.counterpart-status {
+  position: absolute;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-end: 0;
+  z-index: var(--z-overlay);
+  color: var(--text);
+  font-size: var(--ui-small-font-size);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.counterpart-status:not(:empty) {
+  padding: 2px 8px;
+  background: var(--viz-surface-raised);
+  border: 1px solid var(--viz-border-strong);
+  border-radius: var(--radius-chrome);
+  box-shadow: var(--shadow-lg);
+}
 .file-header-path {
   font-family: var(--font-sans);
   font-weight: var(--weight-bold);

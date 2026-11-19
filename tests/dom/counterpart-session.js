@@ -10,15 +10,19 @@
 // - `markup`: the button's tree, with the hooks the macOS app reads (mb-4wqh);
 // - `menu`: the menu button's states through a click, the arrow keys, Home, End, Escape,
 //   Tab, a second click, a press outside and inside, and chords held with Command,
-//   Control, or Option, which are the browser's, with where focus is, whether the
-//   menu is open, whether a key's default was prevented or its propagation stopped, and how
-//   many listeners the button holds on the document;
+//   Control, or Option, which are the browser's, and focus that leaves the button for
+//   another element or for none, with where focus is, whether the menu is open, whether a
+//   key's default was prevented or its propagation stopped, and how many listeners the
+//   button holds on the document;
 // - `copy`: Copy Link with a clipboard that takes the link, one that refuses it, and none,
-//   and the chevron's tooltip before and after its confirmation's time;
+//   and a second copy before the first one's confirmation ends, with the status line, a
+//   polite live region, and the chevron's tooltip before and after its confirmation's time;
 // - `mount`: what `mountCounterpart` asks the server and leaves in a corner, for an answer
 //   with a counterpart, the same page again, a page with none, an answer that lands after
 //   the corner was asked for another page, an address that is not https, a failed request,
-//   a refused one, and another provider's answer.
+//   a refused one, and another provider's answer; then a new corner for a page answered
+//   before, drawn before any answer, an answer that changed since, and a page
+//   `prefetchCounterpart` asked for first, asked once.
 //
 // The session asserts what it tells, so a change that breaks the contract fails here before
 // the golden is read.
@@ -258,8 +262,12 @@ document.body.append(button);
 const open = button.querySelector(".counterpart-open");
 const more = button.querySelector(".counterpart-more");
 const menu = button.querySelector(".counterpart-menu");
+const status = button.querySelector(".counterpart-status");
 const [copy, external] = menu.childNodes;
 const markup = describe(button);
+// The status line is a polite live region from the start, and empty.
+assert.equal(status.getAttribute("role"), "status");
+assert.equal(status.textContent, "");
 // The app's hooks (mb-4wqh), exactly.
 assert.equal(button.getAttribute("data-view-on-github"), "");
 assert.equal(open.getAttribute("data-view-on-github"), "open");
@@ -277,6 +285,12 @@ function focusName() {
   }
   if (active === null) {
     return "nothing";
+  }
+  if (active === document.body) {
+    return "the page";
+  }
+  if (active.tagName === "IFRAME") {
+    return "a frame";
   }
   return active.textContent || active.className;
 }
@@ -331,6 +345,26 @@ more.dispatch("click");
 steps.push(state("Control-End", chord(document.activeElement, "End", "ctrlKey")));
 steps.push(state("Command-Escape", chord(document.activeElement, "Escape", "metaKey")));
 steps.push(state("Option-Tab", chord(document.activeElement, "Tab", "altKey")));
+// Focus that leaves the button: for another element, such as a framed preview a click went
+// into, which sends the document no press, the menu closes once focus has landed; for none,
+// a press outside has closed it, and a press inside leaves it open.
+const frame = document.createElement("iframe");
+document.body.append(frame);
+const leave = (to) => {
+  timers.length = 0;
+  document.activeElement.dispatch("focusout");
+  to.focus();
+  for (const timer of timers.splice(0)) {
+    timer.callback();
+  }
+};
+more.dispatch("click");
+leave(frame);
+steps.push(state("focus into a frame"));
+more.dispatch("click");
+leave(document.body);
+steps.push(state("focus to nothing"));
+press(document.body);
 assert.deepEqual(steps.map(({ step, menu: shown, focus }) => [step, shown, focus]).slice(1, 13), [
   ["a click on the chevron", "open", "Copy Link"],
   ["ArrowDown", "open", "Open in Browser"],
@@ -357,6 +391,8 @@ assert.deepEqual(
     ["Control-End", "open", "Copy Link"],
     ["Command-Escape", "open", "Copy Link"],
     ["Option-Tab", "closed", "Copy Link"],
+    ["focus into a frame", "closed", "a frame"],
+    ["focus to nothing", "open", "the page"],
   ],
 );
 assert.ok(
@@ -370,6 +406,7 @@ assert.ok(steps.every((step) => step.outsideListeners === (step.menu === "open" 
 async function copySteps() {
   const told = [];
   const tip = () => more.dataset.tipText;
+  const said = () => [status.textContent, status.dataset.result ?? null];
   for (const answer of ["takes", "refuses", "none"]) {
     clipboard.answer = answer;
     const held = sandbox.navigator.clipboard;
@@ -384,14 +421,31 @@ async function copySteps() {
       `Copy Link, a clipboard that ${answer === "none" ? "is not there" : answer}`,
     );
     after.tip = tip();
+    after.status = said();
     after.confirmedFor = timers.map((timer) => timer.ms);
     for (const timer of timers.splice(0)) {
       timer.callback();
     }
     after.tipAfter = tip();
+    after.statusAfter = said();
     told.push(after);
     sandbox.navigator.clipboard = held;
   }
+  // A second copy before the first one's confirmation ends keeps its own time.
+  clipboard.answer = "takes";
+  timers.length = 0;
+  more.dispatch("click");
+  copy.dispatch("click");
+  await settle();
+  more.dispatch("click");
+  copy.dispatch("click");
+  await settle();
+  const twice = state("Copy Link twice, the first confirmation's time ending");
+  timers.shift().callback();
+  twice.statusBetween = said();
+  timers.shift().callback();
+  twice.statusAfter = said();
+  told.push(twice);
   told.push({ written: clipboard.written });
   return told;
 }
@@ -483,6 +537,86 @@ async function mountSteps() {
   await tell("another provider's answer", "/view/elsewhere.md");
   answers.set("/view/a b#c.md", { status: 200, body: { counterpart: null, reason: "missing" } });
   await tell("a page with a space and a hash", "/view/a b#c.md");
+  // A new corner, as a repaint or a return to a page draws: a page answered before is
+  // drawn before its promise is returned, and asked again; the same answer keeps the
+  // button, and one that changed replaces it.
+  const again = document.createElement("span");
+  again.className = "view-header-end";
+  document.body.append(again);
+  const redraw = async (step, page) => {
+    asked.length = 0;
+    const promised = mb.mountCounterpart(again, page);
+    const before = again.querySelector(".counterpart");
+    const returned = await promised;
+    const after = again.querySelector(".counterpart");
+    told.push({
+      step,
+      drawnBeforeTheAnswer:
+        before === null
+          ? "nothing"
+          : before.querySelector(".counterpart-open").getAttribute("href"),
+      asked: [...asked],
+      corner:
+        after === null ? "empty" : after.querySelector(".counterpart-open").getAttribute("href"),
+      sameButton: before !== null && before === after && returned === after,
+    });
+  };
+  answers.set("/view/README.md", counterpart(URL_OF_PAGE));
+  await redraw("a new corner for a page answered before", "/view/README.md");
+  const moved =
+    "https://github.com/octo/demo/blob/89abcdef0123456789abcdef0123456789abcdef/README.md";
+  answers.set("/view/README.md", counterpart(moved));
+  again.replaceChildren();
+  const fresh = document.createElement("span");
+  fresh.className = "view-header-end";
+  document.body.append(fresh);
+  asked.length = 0;
+  const changing = mb.mountCounterpart(fresh, "/view/README.md");
+  const stale = fresh.querySelector(".counterpart-open")?.getAttribute("href");
+  await changing;
+  told.push({
+    step: "a page whose answer changed since",
+    drawnBeforeTheAnswer: stale ?? "nothing",
+    asked: [...asked],
+    corner: fresh.querySelector(".counterpart-open").getAttribute("href"),
+  });
+  answers.set(
+    "/view/docs/",
+    counterpart("https://github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567/docs"),
+  );
+  // Asked for as the page starts loading: an answer that lands before the header is
+  // drawn with it, and one still in flight is waited for; either is asked for once.
+  for (const [step, page, lands] of [
+    ["a page whose answer came before its header", "/view/docs/", true],
+    ["a page whose answer is in flight when its header is drawn", "/view/src/", false],
+  ]) {
+    answers.set(
+      page,
+      counterpart(
+        `https://github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567${page.slice(5, -1)}`,
+      ),
+    );
+    asked.length = 0;
+    mb.prefetchCounterpart(page);
+    if (lands) {
+      await settle();
+    }
+    const prefetched = [...asked];
+    again.replaceChildren();
+    const corner = document.createElement("span");
+    corner.className = "view-header-end";
+    document.body.append(corner);
+    asked.length = 0;
+    const promised = mb.mountCounterpart(corner, page);
+    const before = corner.querySelector(".counterpart-open")?.getAttribute("href") ?? "nothing";
+    await promised;
+    told.push({
+      step,
+      drawnBeforeTheAnswer: before,
+      asked: [...prefetched, ...asked],
+      corner: corner.querySelector(".counterpart-open").getAttribute("href"),
+    });
+  }
   return told;
 }
 
@@ -498,7 +632,44 @@ async function run() {
       ["Copy failed", "Copy Link or Open in Browser", "the chevron", "closed"],
     ],
   );
+  assert.deepEqual(
+    copyTold.slice(0, 3).map(({ status: shown, statusAfter }) => [shown, statusAfter]),
+    [
+      [
+        ["Link copied", "copied"],
+        ["", null],
+      ],
+      [
+        ["Copy failed", "failed"],
+        ["", null],
+      ],
+      [
+        ["Copy failed", "failed"],
+        ["", null],
+      ],
+    ],
+  );
+  assert.deepEqual(
+    [copyTold[3].statusBetween, copyTold[3].statusAfter],
+    [
+      ["Link copied", "copied"],
+      ["", null],
+    ],
+  );
   const mountTold = await mountSteps();
+  const byStep = Object.fromEntries(mountTold.map((step) => [step.step, step]));
+  const answered = byStep["a new corner for a page answered before"];
+  assert.equal(answered.drawnBeforeTheAnswer, URL_OF_PAGE);
+  assert.equal(answered.asked.length, 1);
+  assert.equal(answered.sameButton, true);
+  const changed = byStep["a page whose answer changed since"];
+  assert.equal(changed.drawnBeforeTheAnswer, URL_OF_PAGE);
+  assert.notEqual(changed.corner, URL_OF_PAGE);
+  const came = byStep["a page whose answer came before its header"];
+  assert.equal(came.drawnBeforeTheAnswer, came.corner, "an answer in hand comes with the header");
+  assert.equal(came.asked.length, 1, "a prefetched page is asked once");
+  const flying = byStep["a page whose answer is in flight when its header is drawn"];
+  assert.equal(flying.asked.length, 1, "a request in flight is waited for, not repeated");
   process.stdout.write(
     `${JSON.stringify({ markup, menu: steps, copy: copyTold, mount: mountTold }, null, 2)}\n`,
   );

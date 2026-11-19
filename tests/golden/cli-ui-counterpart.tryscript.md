@@ -12,7 +12,8 @@ containment.
 
 `markup` is the button’s tree: a joined chip group of the link, the GitHub mark and its
 label, and the chevron, a menu button, then the menu of Copy Link and Open in Browser,
-hidden. The root, the link, and Open in Browser carry the hooks the macOS app reads
+hidden, and an empty status line, a polite live region.
+The root, the link, and Open in Browser carry the hooks the macOS app reads
 (`data-view-on-github`, `="open"`, and `="external"`), and both links open the
 counterpart in a new tab.
 
@@ -25,11 +26,16 @@ Open in Browser close it and give focus back to the chevron; and a press outside
 button closes it while one on an item does not.
 A chord held with Command, Control, or Option is the browser’s: it neither opens the
 menu nor moves in it, and Option-Tab, with which Safari moves focus, closes it as Tab
-does. The button holds its one listener on the document only while the menu is open.
+does.
+Focus that leaves the button for a frame, which sends the document no press, closes
+the menu once it lands; focus that goes nowhere leaves the menu to a press.
+The button holds its one listener on the document only while the menu is open.
 
 `copy` is Copy Link with a clipboard that takes the link, one that refuses it, and none:
-the menu closes, focus goes back to the chevron, and the chevron’s tooltip says “Link
-copied” or “Copy failed” for 1.5 s, then its own words again.
+the menu closes, focus goes back to the chevron, and the status line under the button
+and the chevron’s tooltip say “Link copied” or “Copy failed” for 1.5 s, then the line
+empties and the tooltip says its own words again.
+A second copy before the first one’s time ends keeps its confirmation for its own time.
 
 `mount` is what a header’s corner asks the server and keeps: the page’s address encoded
 into one `GET /api/counterpart` per page, asked once for a page the corner already
@@ -37,6 +43,10 @@ shows; the button for an answer with a counterpart, under the provider’s own h
 label for another provider; an empty corner for a page with none, an address that is not
 https, a failed request, and a refused one; and the answer for the page asked last, when
 an earlier page’s answer lands after it.
+A new corner for a page answered before, as a repaint or a return draws, shows its last
+answer before the new one lands, and keeps the button when the answer is the same.
+A page the shell asked for as it started loading (`prefetchCounterpart`) is asked once,
+and its answer, when it lands first, is drawn with the header.
 
 ```console
 $ node tests/dom/counterpart-session.js
@@ -138,6 +148,11 @@ $ node tests/dom/counterpart-session.js
             ]
           }
         ]
+      },
+      {
+        "tag": "span",
+        "class": "counterpart-status",
+        "role": "status"
       }
     ]
   },
@@ -331,6 +346,20 @@ $ node tests/dom/counterpart-session.js
       "outsideListeners": 0,
       "prevented": false,
       "stopped": false
+    },
+    {
+      "step": "focus into a frame",
+      "menu": "closed",
+      "expanded": "false",
+      "focus": "a frame",
+      "outsideListeners": 0
+    },
+    {
+      "step": "focus to nothing",
+      "menu": "open",
+      "expanded": "true",
+      "focus": "the page",
+      "outsideListeners": 1
     }
   ],
   "copy": [
@@ -341,10 +370,18 @@ $ node tests/dom/counterpart-session.js
       "focus": "the chevron",
       "outsideListeners": 0,
       "tip": "Link copied",
+      "status": [
+        "Link copied",
+        "copied"
+      ],
       "confirmedFor": [
         1500
       ],
-      "tipAfter": "Copy Link or Open in Browser"
+      "tipAfter": "Copy Link or Open in Browser",
+      "statusAfter": [
+        "",
+        null
+      ]
     },
     {
       "step": "Copy Link, a clipboard that refuses",
@@ -353,10 +390,18 @@ $ node tests/dom/counterpart-session.js
       "focus": "the chevron",
       "outsideListeners": 0,
       "tip": "Copy failed",
+      "status": [
+        "Copy failed",
+        "failed"
+      ],
       "confirmedFor": [
         1500
       ],
-      "tipAfter": "Copy Link or Open in Browser"
+      "tipAfter": "Copy Link or Open in Browser",
+      "statusAfter": [
+        "",
+        null
+      ]
     },
     {
       "step": "Copy Link, a clipboard that is not there",
@@ -365,13 +410,38 @@ $ node tests/dom/counterpart-session.js
       "focus": "the chevron",
       "outsideListeners": 0,
       "tip": "Copy failed",
+      "status": [
+        "Copy failed",
+        "failed"
+      ],
       "confirmedFor": [
         1500
       ],
-      "tipAfter": "Copy Link or Open in Browser"
+      "tipAfter": "Copy Link or Open in Browser",
+      "statusAfter": [
+        "",
+        null
+      ]
+    },
+    {
+      "step": "Copy Link twice, the first confirmation's time ending",
+      "menu": "closed",
+      "expanded": "false",
+      "focus": "the chevron",
+      "outsideListeners": 0,
+      "statusBetween": [
+        "Link copied",
+        "copied"
+      ],
+      "statusAfter": [
+        "",
+        null
+      ]
     },
     {
       "written": [
+        "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/README.md",
+        "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/README.md",
         "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/README.md",
         "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/README.md"
       ]
@@ -500,7 +570,41 @@ $ node tests/dom/counterpart-session.js
       "corner": "empty",
       "hook": null,
       "label": null
+    },
+    {
+      "step": "a new corner for a page answered before",
+      "drawnBeforeTheAnswer": "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/README.md",
+      "asked": [
+        "/api/counterpart?page=%2Fview%2FREADME.md"
+      ],
+      "corner": "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/README.md",
+      "sameButton": true
+    },
+    {
+      "step": "a page whose answer changed since",
+      "drawnBeforeTheAnswer": "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/README.md",
+      "asked": [
+        "/api/counterpart?page=%2Fview%2FREADME.md"
+      ],
+      "corner": "https://github.com/octo/demo/blob/89abcdef0123456789abcdef0123456789abcdef/README.md"
+    },
+    {
+      "step": "a page whose answer came before its header",
+      "drawnBeforeTheAnswer": "https://github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567/docs",
+      "asked": [
+        "/api/counterpart?page=%2Fview%2Fdocs%2F"
+      ],
+      "corner": "https://github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567/docs"
+    },
+    {
+      "step": "a page whose answer is in flight when its header is drawn",
+      "drawnBeforeTheAnswer": "nothing",
+      "asked": [
+        "/api/counterpart?page=%2Fview%2Fsrc%2F"
+      ],
+      "corner": "https://github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567/src"
     }
   ]
 }
+? 0
 ```

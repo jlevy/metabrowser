@@ -1579,6 +1579,9 @@ type MetabrowserSdk = {
   /** Ask `GET /api/counterpart` for `page`'s counterpart and put its button in `corner`,
    *  a header's `.view-header-end`; resolves to the button, or null when there is none. */
   mountCounterpart(corner: Element, page: string): Promise<HTMLElement | null>;
+  /** Start asking for `page`'s counterpart before its header is drawn; `mountCounterpart`
+   *  waits for this request rather than making another. */
+  prefetchCounterpart(page: string): void;
   /** View-phase destination mark; a state icon may come only from trusted view metadata. */
   decorateExternalLink<T extends HTMLElement>(
     anchor: T,

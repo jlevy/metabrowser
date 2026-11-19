@@ -89,6 +89,7 @@
 //                                          the person glyph in the box without an avatar
 //     actorIdentityHtml(name, opts?)      — its markup, the box holding the glyph
 //     mountCounterpart(corner, page)      — a page's View on GitHub button in a corner
+//     prefetchCounterpart(page)           — ask for it before the header is drawn
 //     counterpartButton(counterpart)      — the button, from the server's answer
 //     filterControls                      — shared filter markup and interaction
 //                                          helpers, installed before plugins load
