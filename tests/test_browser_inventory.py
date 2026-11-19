@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from watchfiles import Change
 
 import metabrowser.inventory_engine.providers.python_inventory as inventory_module
 from metabrowser.constants import LOGS_DIR, STATE_DIR
@@ -62,6 +63,7 @@ from metabrowser.inventory_engine.providers.python_inventory import (
 )
 from metabrowser.walker import depth_of as _depth_of
 from metabrowser.walker import walk_tree
+from metabrowser.watch_backends import _emit_batch
 
 
 class _CountingValuesEntries(dict[str, FsEntry]):
@@ -1299,6 +1301,31 @@ def _make_newdir(root: Path) -> None:
     (root / "newdir" / "nested" / "y.txt").write_bytes(b"y" * 20)
 
 
+def _pause_walks_after(
+    monkeypatch: pytest.MonkeyPatch, stored: int
+) -> tuple[asyncio.Event, asyncio.Event]:
+    """Make later walks pause once *stored* entries are stored, until released.
+
+    Call it after the boot walk, which reads the same ``walk_tree``.
+    """
+
+    paused = asyncio.Event()
+    resume = asyncio.Event()
+    real_walk_tree = inventory_module.walk_tree
+
+    async def _pausing_walk(*args: Any, **kwargs: Any) -> AsyncIterator[FsEntry]:
+        count = 0
+        async for entry in real_walk_tree(*args, **kwargs):
+            yield entry
+            count += 1
+            if count == stored:
+                paused.set()
+                await resume.wait()
+
+    monkeypatch.setattr(inventory_module, "walk_tree", _pausing_walk)
+    return paused, resume
+
+
 def test_concurrent_rewalks_of_one_new_directory_count_it_once(tmp_path: Path) -> None:
     """The watcher and an activity, priority, or explicit refresh can rewalk the same
     new directory at once. Each rewalk awaits before it indexes anything, so a delta
@@ -1330,31 +1357,19 @@ def test_live_write_during_a_rewalk_counts_the_file_once(
     the root at once, and the rewalk's own result counts the same file again."""
 
     _build_tree(tmp_path)
-    walker_paused = asyncio.Event()
-    resume_walker = asyncio.Event()
-    real_walk_tree = inventory_module.walk_tree
-
-    async def _pausing_walk(*args: Any, **kwargs: Any) -> AsyncIterator[FsEntry]:
-        # Pause once the rewalk has stored its placeholder for the new directory.
-        paused = False
-        async for entry in real_walk_tree(*args, **kwargs):
-            yield entry
-            if not paused:
-                paused = True
-                walker_paused.set()
-                await resume_walker.wait()
 
     async def _run() -> tuple[FsEntry, FsEntry]:
         inv = await _drive_inventory(tmp_path)
         _make_newdir(tmp_path)
-        monkeypatch.setattr(inventory_module, "walk_tree", _pausing_walk)
+        # Pause once the rewalk has stored its placeholder for the new directory.
+        paused, resume = _pause_walks_after(monkeypatch, 1)
         rewalk = asyncio.create_task(inv.rewalk_subtree("newdir"))
-        await walker_paused.wait()
+        await paused.wait()
         live = tmp_path / "newdir" / "x.txt"
         inv.apply_live_entry(
             FsEntry.for_stat(path="newdir/x.txt", parent="newdir", name="x.txt", stat=live.stat())
         )
-        resume_walker.set()
+        resume.set()
         await rewalk
         root = inv.get("")
         subtree = inv.get("newdir")
@@ -1366,6 +1381,77 @@ def test_live_write_during_a_rewalk_counts_the_file_once(
     assert (subtree.total_files, subtree.total_size) == (2, 30)
     assert (root.total_files, root.total_size) == (6, 280)
     assert (root.unignored_files, root.unignored_size) == (6, 280)
+
+
+def test_a_rewalked_folder_counts_a_file_its_walk_missed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file created after a rewalk has listed its folder reaches the index through
+    another writer. The folder takes its totals from the index, as its ancestors do,
+    rather than from what the walk saw, so the two agree."""
+
+    _build_tree(tmp_path)
+
+    async def _run() -> tuple[FsEntry, FsEntry, FsEntry]:
+        inv = await _drive_inventory(tmp_path)
+        _make_newdir(tmp_path)
+        # Pause after the placeholders for `newdir` and its first child, `nested`: the
+        # walk has listed `newdir` by then.
+        paused, resume = _pause_walks_after(monkeypatch, 2)
+        rewalk = asyncio.create_task(inv.rewalk_subtree("newdir"))
+        await paused.wait()
+        late = tmp_path / "newdir" / "late.txt"
+        late.write_bytes(b"l" * 5)
+        inv.apply_live_entry(
+            FsEntry.for_stat(
+                path="newdir/late.txt", parent="newdir", name="late.txt", stat=late.stat()
+            )
+        )
+        resume.set()
+        await rewalk
+        root = inv.get("")
+        subtree = inv.get("newdir")
+        nested = inv.get("newdir/nested")
+        assert root is not None
+        assert subtree is not None
+        assert nested is not None
+        return root, subtree, nested
+
+    root, subtree, nested = asyncio.run(_run())
+    assert (nested.total_files, nested.total_size) == (1, 20)
+    assert (subtree.total_files, subtree.total_size) == (3, 35)
+    assert (subtree.unignored_files, subtree.unignored_size) == (3, 35)
+    assert (root.total_files, root.total_size) == (7, 285)
+
+
+def test_a_polled_delete_comes_off_the_folders_above_it_once(tmp_path: Path) -> None:
+    """Polling reports a deleted file together with its folder's modification, and the
+    batch refreshes the folder first, by path. The folder's rewalk no longer finds the
+    file, and the delete then removes it. While a rewalk applied a delta, the folders
+    above lost the file twice: the root read (2, 50)."""
+
+    _build_tree(tmp_path)
+
+    async def _run() -> tuple[FsEntry, FsEntry]:
+        inv = await _drive_inventory(tmp_path)
+        deleted = tmp_path / "sub1" / "file_b.log"
+        deleted.unlink()
+        await _emit_batch(
+            inv.refresh,
+            tmp_path,
+            ((Change.deleted, str(deleted)), (Change.modified, str(tmp_path / "sub1"))),
+        )
+        root = inv.get("")
+        folder = inv.get("sub1")
+        assert root is not None
+        assert folder is not None
+        assert inv.get("sub1/file_b.log") is None
+        return root, folder
+
+    root, folder = asyncio.run(_run())
+    assert (folder.total_files, folder.total_size) == (1, 25)
+    assert (root.total_files, root.total_size) == (3, 150)
+    assert (root.unignored_files, root.unignored_size) == (3, 150)
 
 
 # ── remove ────────────────────────────────────────────────────

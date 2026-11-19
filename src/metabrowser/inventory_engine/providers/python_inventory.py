@@ -3749,7 +3749,18 @@ class _PythonInventoryStore:
             else:
                 rebased_path = f"{rel}/{entry.path}"
                 rebased_parent = f"{rel}/{entry.parent}" if entry.parent else rel
-            rebased = _internal_entry(replace(entry, path=rebased_path, parent=rebased_parent))
+            # A folder the walk finalizes takes its totals from the index, not from the
+            # walk's own sums. The walk is post-order, so every file it saw beneath the
+            # folder is already stored; the counters also hold any file another writer
+            # stored meanwhile that the walk missed, which its ancestors count as well.
+            totals = (
+                self._indexed_totals(rebased_path)
+                if entry.type == "dir" and entry.total_files is not None
+                else {}
+            )
+            rebased = _internal_entry(
+                replace(entry, path=rebased_path, parent=rebased_parent, **totals)
+            )
             self._apply_walker_entry(rebased)
 
         current_subtree = self._entries.get(rel)
@@ -3974,10 +3985,7 @@ class _PythonInventoryStore:
             newest_mtime = self._direct_child_newest(path)
             repaired = replace(
                 existing,
-                total_files=self._descendant_file_counts.get(path, 0),
-                total_size=self._descendant_file_sizes.get(path, 0),
-                unignored_files=self._descendant_unignored_file_counts.get(path, 0),
-                unignored_size=self._descendant_unignored_file_sizes.get(path, 0),
+                **self._indexed_totals(path),
                 newest_mtime_ns=newest_mtime,
                 empty=self._descendant_leaf_counts.get(path, 0) == 0,
                 mtime_ns=newest_mtime,
@@ -4164,17 +4172,32 @@ class _PythonInventoryStore:
             else (),
         )
 
+    def _indexed_totals(self, path: str) -> dict[str, int]:
+        """The totals of directory *path* as the index holds them, as ``FsEntry`` fields.
+
+        The end-of-walk repair, each folder a rewalk finalizes, and every ancestor a
+        write restates (which reads the same counters inline) take their totals from
+        these counters. They move exactly once per indexed file, inside the synchronous
+        write that stores or removes it, so they cannot count a file twice.
+        """
+
+        return {
+            "total_files": self._descendant_file_counts.get(path, 0),
+            "total_size": self._descendant_file_sizes.get(path, 0),
+            "unignored_files": self._descendant_unignored_file_counts.get(path, 0),
+            "unignored_size": self._descendant_unignored_file_sizes.get(path, 0),
+        }
+
     def _update_ancestor_aggregates(self, *, parent: str) -> list[FsEntry]:
         """Restate every finalized directory from *parent* to the root from the index.
 
-        The totals come from the descendant counters, which every write moves exactly
-        once per indexed file, not from a caller's delta. A delta is right only if
-        nothing else counted the same files first, and ``rewalk_subtree`` cannot promise
-        that: its walk awaits, and meanwhile a second refresh of the same new directory,
-        or a live write inside it, can add part of the subtree to these ancestors.
-        Adding the walk's delta afterwards counted that part twice. Restating is
-        idempotent, so concurrent writers leave the true totals in whatever order they
-        finish.
+        The totals are the descendant counters :meth:`_indexed_totals` reads, not a
+        caller's delta. A delta is right only if nothing else counted the same files
+        first, and ``rewalk_subtree`` cannot promise that: its walk awaits, and
+        meanwhile a second refresh of the same new directory, or a live write inside it,
+        can add part of the subtree to these ancestors. Adding the walk's delta
+        afterwards counted that part twice. Restating is idempotent, so concurrent
+        writers leave the true totals in whatever order they finish.
         """
 
         updates: list[FsEntry] = []
@@ -4188,6 +4211,10 @@ class _PythonInventoryStore:
                 and existing.total_size is not None
             ):
                 newest_mtime_ns = self._direct_child_newest(cursor)
+                # `_indexed_totals`, read inline: every live write and removal runs this
+                # loop once per ancestor, and the helper's call and dict made a burst of
+                # 1,000 live writes and their removals 4% slower (median of 20
+                # alternating pairs).
                 updated = replace(
                     existing,
                     total_files=self._descendant_file_counts.get(cursor, 0),

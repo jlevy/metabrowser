@@ -163,6 +163,14 @@ and test fixtures use `conftest.SyntheticIndexWriter` for the same reason.
   A rewalk awaits while it walks, so a delta taken before the walk would count a new
   directory twice once a second refresh, or a live write inside it, had counted it first
   (`tests/test_browser_inventory.py::test_concurrent_rewalks_of_one_new_directory_count_it_once`).
+  A rewalk also sets each folder it finalizes, the rewalked folder included, from the
+  counters rather than from the walk’s own sums, so a file another writer stored after
+  the walk listed its folder counts there as it does above
+  (`tests/test_browser_inventory.py::test_a_rewalked_folder_counts_a_file_its_walk_missed`).
+  The boot walk keeps its own sums; the end-of-walk repair restates from the counters
+  any folder whose finalization a concurrent refresh made stale.
+  A rewalk does not remove indexed children it no longer finds, so until their delete
+  arrives a folder and those above it still count them.
 - **Subtree aggregates are evicted, not rebuilt.** A write drops the changed path and
   its ancestors; sibling subtrees stay valid, so a rollup recomputes only what moved.
   Eviction walks the whole ancestor chain, recording an epoch even for a directory that
