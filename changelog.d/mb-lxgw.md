@@ -4,9 +4,8 @@
   same item it is as you left it.
   Its header has Back, Forward, the github.com location, Copy Link, and Open in Browser,
   and while it has the keyboard View > Back, Forward, Reload Page, and zoom act on it.
-  The button’s menu copies the link or opens it in your default browser, a Command-click
-  on the button opens your browser, and a GitHub link sent to the app still opens
-  Metabrowser’s view of it.
+  A Command-click on the button opens your default browser instead, and a GitHub link
+  sent to the app still opens Metabrowser’s view of it.
   The macOS app guide’s View on GitHub section has the details.
 
 - In the macOS app, signing in to github.com in the View on GitHub popover holds in

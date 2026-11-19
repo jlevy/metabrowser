@@ -374,7 +374,12 @@ Start signed out: choose Metabrowser > Clear GitHub Data… and Clear.
    Back returns to `README.md`. Close it, wait longer than
    `GitHubPopoverState.keptAfterClosing`, and open it: it loads `README.md` again, with
    Back dimmed. Open `CHANGELOG.md` in the page and click View on GitHub: the popover
-   shows `CHANGELOG.md`.
+   shows `CHANGELOG.md`. Turn Wi-Fi off, open `CHANGELOG.md`’s parent folder in the
+   page, and click View on GitHub: the header says the page did not load.
+   Turn Wi-Fi on, close the popover, and open it again: the folder loads; do it again
+   offline and press Command-R once back online: it loads too.
+   On a pull request, type a comment without sending it, close the popover, wait longer
+   than `keptAfterClosing`, and open it: the comment is still there.
 3. **The header and the menus.** With the popover open, Command-[ and Command-] go back
    and forward in it, Command-R reloads it, and Command-+ zooms it; Command-0 returns it
    to actual size. The page behind keeps its own zoom, and a new tab opens at the page’s
@@ -388,6 +393,10 @@ Start signed out: choose Metabrowser > Clear GitHub Data… and Clear.
    Download ZIP, from the repository’s Code menu, opens the default browser, which
    downloads it. Signed in, drag a screenshot from Finder onto a pull request’s comment
    box in the popover: GitHub attaches it, and Metabrowser opens no folder.
+   Click “Paste, drop, or click to add files” under the same box: a file panel opens
+   over the popover, which stays open, and the file chosen is attached.
+   Edit one of your own comments, change it, and click Cancel: GitHub asks whether to
+   discard the change, over the popover, and Cancel there keeps the edit.
 5. **Only the button.** With the popover open,
    `open -b "$APP_ID" "$REPO/blob/main/README.md"` brings the window forward at that
    page, and the popover closes.

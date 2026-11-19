@@ -124,7 +124,9 @@ public nonisolated enum GitHubViewPolicy {
 /// A window keeps its popover's web view for `keptAfterClosing` after the popover closes,
 /// so opening View on GitHub again for the same item within that time shows the popover at
 /// once, as it was left, wherever the user went on github.com since, with its Back and
-/// Forward history; opening it for another item loads that item's page in it.
+/// Forward history; opening it for another item loads that item's page in it, and so does
+/// opening it for an item whose page never loaded. While the page holds text the user has
+/// not sent (`unsentTextProbe`), the web view stays.
 public nonisolated struct GitHubPopoverState: Equatable, Sendable {
     /// How long a closed popover keeps its web view, and with it a WebContent process of its
     /// own, which `TabDiscardPolicy` does not count.
@@ -150,17 +152,37 @@ public nonisolated struct GitHubPopoverState: Equatable, Sendable {
 
     public init() {}
 
-    /// The button was clicked for the item whose page is `page`. Returns the page to load,
-    /// or nil to show the popover as it was left.
-    public mutating func open(_ page: URL) -> URL? {
-        guard page != openedFor else { return nil }
+    /// The button was clicked for the item whose page is `page`; `hasPage` says whether the
+    /// web view has a committed page. Returns the page to load, or nil to show the popover
+    /// as it was left. A page that never loaded, such as one asked for offline, loads again.
+    public mutating func open(_ page: URL, hasPage: Bool) -> URL? {
+        guard page != openedFor || !hasPage else { return nil }
         openedFor = page
         return page
     }
 
+    /// For Reload Page, and after Clear GitHub Data…: the page to load in place of a reload,
+    /// which does nothing in a web view without a committed page (`PageReload`), or nil to
+    /// reload the page shown.
+    public func pageToLoad(hasPage: Bool) -> URL? { hasPage ? nil : openedFor }
+
     /// The popover's web view was let go: `keptAfterClosing` passed after it closed, the
     /// tab gave up its pages to save memory, or the window closes.
     public mutating func discard() { openedFor = nil }
+
+    /// Evaluated in the app's content world before a closed popover's web view is let go:
+    /// whether a text area, or a text, URL, or email field, holds text other than what the
+    /// page put there, such as a comment the user has not sent. While one does, the web
+    /// view stays for another `keptAfterClosing`, so closing the popover to look at the page
+    /// behind it does not lose the comment. A password field never counts.
+    public static let unsentTextProbe = """
+        (() => {
+            const typed = (field) => field.value !== field.defaultValue;
+            if (Array.from(document.querySelectorAll("textarea")).some(typed)) return true;
+            return Array.from(document.querySelectorAll("input")).some((field) =>
+                ["text", "url", "email"].includes(field.type) && typed(field));
+        })()
+        """
 }
 
 /// Where the popover opens and how large it is.

@@ -582,6 +582,10 @@ view first built for `mb-lxgw`).
   on a comment box; a dropped file outside a drop zone would navigate to `file://`,
   which the policy cancels.
   Its zoom is its own, starts at 100%, and is never saved.
+  Its UI delegate, `GitHubViewUI`, answers the page’s file panel and its `alert`,
+  `confirm`, and `prompt`, which the popover shows as app-modal panels while it holds
+  itself open (`NSPopover.Behavior.applicationDefined`), and sends a new window to
+  `GitHubViewPolicy.decideNewWindow`.
 - **Navigation.** `GitHubViewPolicy` keeps a main-frame `https` page on github.com,
   githubusercontent.com, or githubassets.com, with their subdomains, in the popover;
   GitHub Pages (`github.io`) runs anyone’s script and is not one of them.
@@ -603,21 +607,27 @@ view first built for `mb-lxgw`).
   out.
 - **Lifetime.** A closed popover keeps its web view for
   `GitHubPopoverState.keptAfterClosing`, so opening it again for the same item shows it
-  as it was left, and then lets it go; a tab that gives up its page, and a window that
-  closes, let it go at once.
+  as it was left, and then lets it go, unless the page holds text the user has not sent
+  (`GitHubPopoverState.unsentTextProbe`, evaluated in the app’s content world), which
+  keeps it for another while; a tab that gives up its page, and a window that closes,
+  let it go at once. A page that never committed, such as one asked for offline, loads
+  again when the popover opens or reloads (`GitHubPopoverState.pageToLoad`), since
+  WebKit’s reload does nothing without a committed page.
+  The `NSPopover` holds its content, the controller, so the controller makes one each
+  time the popover opens and lets it go when it closes, and a closed window frees both.
   Its WebContent process is outside `TabDiscardPolicy`, bounded by that time instead;
   the constant’s comment holds what one github.com page costs, measured, and notes that
   WebKit, not the app, decides when a released view’s process ends.
 - **Tests.** `GitHubViewTests` cover the button’s page, the message’s shape, the anchor
-  and the size, the policy, the popover’s state, and the location;
+  and the size, the policy, the popover’s state and reloads, and the location;
   `GitHubViewWebKitTests` cover the shared persistent store, the pages’ default store, a
   cookie one popover’s web view sets reaching another and not the pages, the web view’s
-  own drops and zoom, and the script in a real `WKWebView`: a user’s click on the button
-  reaches the handler with where the button is, and a scripted click, a Command-click,
-  the menu’s Open in Browser, and a plain link to the same page do not, and the page
-  cannot see the handler.
-  [The hand checks](../qa/qa-macos-app-hand-checks.md#view-on-github) cover the popover
-  and signing in.
+  own drops and zoom, its dialogs, file panel, and new windows, the unsent-text probe,
+  and the script in a real `WKWebView`: a user’s click on the button reaches the handler
+  with where the button is, and a scripted click, a Command-click, the menu’s Open in
+  Browser, and a plain link to the same page do not, and the page cannot see the
+  handler. [The hand checks](../qa/qa-macos-app-hand-checks.md#view-on-github) cover the
+  popover and signing in.
 
 ## The Title-Bar Accessory
 

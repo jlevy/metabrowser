@@ -11,6 +11,9 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
     var windows = 0
     var departures: [URL] = []
     var departureModifiers: [NSEvent.ModifierFlags] = []
+    /// Other loads away from the fixture, such as a GitHub view loading a page in place,
+    /// which it cancels.
+    var elsewhere: [URL] = []
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { loaded = true }
 
@@ -20,8 +23,11 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
     ) {
         // A link with a target of a new window asks here first, with no target frame, and
         // then for the window.
-        guard action.navigationType == .linkActivated, action.targetFrame != nil, let url = action.request.url else {
-            return decisionHandler(.allow)
+        guard let url = action.request.url, action.targetFrame != nil else { return decisionHandler(.allow) }
+        guard action.navigationType == .linkActivated else {
+            guard url.host() != nil, url.host() != "127.0.0.1" else { return decisionHandler(.allow) }
+            elsewhere.append(url)
+            return decisionHandler(.cancel)
         }
         departures.append(url)
         departureModifiers.append(action.modifierFlags)
@@ -56,7 +62,7 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
         <div data-view-on-github style="position:absolute;left:300px;top:20px">
           <a id="open" data-view-on-github="open" href="\(readme)"
             style="display:block;width:200px;height:100px"><span id="mark">View on GitHub</span></a>
-          <a id="external" data-view-on-github="external" target="_blank" href="\(readme)"
+          <a id="external" data-view-on-github="external" target="_blank" rel="noopener" href="\(readme)"
             style="display:block;width:200px;height:100px">Open in Browser</a>
         </div>
         <a id="plain" target="_blank" href="\(readme)"
@@ -206,6 +212,120 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
         #expect(await eventually(within: .seconds(10)) { watcher.windows == 2 })
         #expect(watcher.departures.count == 1)
         #expect(requests.count == 1)
+    }
+
+    // MARK: - The popover's web view as a UI delegate
+
+    /// A GitHub view, as the popover makes it but with a store that leaves nothing behind,
+    /// with `ui` as its UI delegate, on `html`.
+    private func gitHubView(_ html: String, ui: GitHubViewUI) async -> (WKWebView, PageWatcher) {
+        let configuration = WebConfiguration.makeGitHub()
+        configuration.websiteDataStore = .nonPersistent()
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), configuration: configuration)
+        let watcher = PageWatcher()
+        webView.navigationDelegate = watcher
+        webView.uiDelegate = ui
+        webView.loadHTMLString(html, baseURL: origin)
+        #expect(await eventually { watcher.loaded })
+        return (webView, watcher)
+    }
+
+    /// github.com's `alert`, `confirm`, and `prompt` reach the app, which answers them;
+    /// without a delegate WebKit would answer `confirm` and `prompt` with Cancel.
+    @Test func theGitHubViewsDialogsAreTheApps() async throws {
+        let asked = Recorder<GitHubViewUI.Request>()
+        let ui = GitHubViewUI(
+            present: { request, answer in
+                asked.append(request)
+                switch request {
+                case .alert: answer(.dismissed)
+                case .confirm: answer(.confirmed(true))
+                case .prompt: answer(.text("typed"))
+                case .openFiles: answer(.files(nil))
+                }
+            }, openExternally: { _ in })
+        let (webView, _) = await gitHubView("<p>A comment</p>", ui: ui)
+        #expect(try await webView.evaluateJavaScript("confirm('Discard your changes?')") as? Bool == true)
+        #expect(try await webView.evaluateJavaScript("prompt('Name?', 'octo')") as? String == "typed")
+        _ = try await webView.evaluateJavaScript("alert('Saved'); 1")
+        #expect(asked.all == [
+            .confirm("Discard your changes?"), .prompt("Name?", defaultText: "octo"), .alert("Saved"),
+        ])
+    }
+
+    /// Cancel, or an answer of another kind, is Cancel to the page.
+    @Test func cancelIsCancel() async throws {
+        let ui = GitHubViewUI(present: { _, answer in answer(.dismissed) }, openExternally: { _ in })
+        let (webView, _) = await gitHubView("<p>A comment</p>", ui: ui)
+        #expect(try await webView.evaluateJavaScript("confirm('Discard your changes?')") as? Bool == false)
+        #expect(try await webView.evaluateJavaScript("prompt('Name?') === null") as? Bool == true)
+    }
+
+    /// "Click to add files": a file input asks the app for its panel, and gets the files
+    /// the user chose.
+    @Test func aFileInputOpensTheAppsPanel() async throws {
+        let file = FileManager.default.temporaryDirectory.appending(path: "mb-4wqh-\(UUID().uuidString).txt")
+        try Data("attached".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let asked = Recorder<GitHubViewUI.Request>()
+        let ui = GitHubViewUI(
+            present: { request, answer in
+                asked.append(request)
+                answer(.files([file]))
+            }, openExternally: { _ in })
+        let (webView, _) = await gitHubView("<input id='files' type='file' multiple>", ui: ui)
+        _ = try await webView.evaluateJavaScript("document.getElementById('files').click()")
+        #expect(await eventually(within: .seconds(10)) { asked.count == 1 })
+        #expect(asked.all == [.openFiles(multiple: true, directories: false)])
+        var name = ""
+        for _ in 0..<100 where name != file.lastPathComponent {
+            try await Task.sleep(for: .milliseconds(100))
+            name = try await webView.evaluateJavaScript(
+                "document.getElementById('files').files[0]?.name ?? ''") as? String ?? ""
+        }
+        #expect(name == file.lastPathComponent)
+    }
+
+    /// A new window to GitHub loads in the view itself; anything else on the web goes to the
+    /// default browser.
+    @Test func aNewWindowLoadsHereOrOpensTheBrowser() async throws {
+        let opened = Recorder<URL>()
+        let ui = GitHubViewUI(present: { _, answer in answer(.dismissed) }, openExternally: { opened.append($0) })
+        let (webView, watcher) = await gitHubView("<p>A comment</p>", ui: ui)
+        _ = try await webView.evaluateJavaScript("window.open('https://example.com/docs'); 1")
+        #expect(await eventually(within: .seconds(10)) { opened.count == 1 })
+        #expect(opened.all.map(\.absoluteString) == ["https://example.com/docs"])
+        _ = try await webView.evaluateJavaScript("window.open('\(readme)'); 1")
+        #expect(await eventually(within: .seconds(10)) { watcher.elsewhere.map(\.absoluteString) == [readme] })
+        #expect(opened.count == 1)
+    }
+
+    /// Text the user typed and has not sent keeps a closed popover's web view; what the page
+    /// put in a field, and a password, do not.
+    @Test func theProbeFindsTextNotYetSent() async throws {
+        let ui = GitHubViewUI(present: { _, answer in answer(.dismissed) }, openExternally: { _ in })
+        let (webView, _) = await gitHubView(
+            """
+            <textarea id="comment"></textarea><input id="title" value="Fix"><input id="secret" type="password">
+            <input id="flag" type="checkbox">
+            """, ui: ui)
+        func unsent() async throws -> Bool? {
+            try await webView.evaluateJavaScript(
+                GitHubPopoverState.unsentTextProbe, in: nil, contentWorld: .defaultClient) as? Bool
+        }
+        #expect(try await unsent() == false)
+        _ = try await webView.evaluateJavaScript("document.getElementById('comment').value = 'A draft'; 1")
+        #expect(try await unsent() == true)
+        _ = try await webView.evaluateJavaScript(
+            "document.getElementById('comment').value = ''; document.getElementById('title').value = 'Fix it'; 1")
+        #expect(try await unsent() == true)
+        _ = try await webView.evaluateJavaScript(
+            """
+            document.getElementById('title').value = 'Fix';
+            document.getElementById('secret').value = 'hunter2';
+            document.getElementById('flag').checked = true; 1
+            """)
+        #expect(try await unsent() == false)
     }
 
     private func click(

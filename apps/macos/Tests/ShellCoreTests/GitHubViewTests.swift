@@ -151,30 +151,47 @@ import Testing
     @Test func theFirstOpeningLoadsTheItemsPage() {
         var state = GitHubPopoverState()
         #expect(state.openedFor == nil)
-        #expect(state.open(readme) == readme)
+        #expect(state.open(readme, hasPage: false) == readme)
         #expect(state.openedFor == readme)
     }
 
     /// Opened again for the same item, it shows as it was left, with no load.
     @Test func theSameItemShowsItAsItWasLeft() {
         var state = GitHubPopoverState()
-        _ = state.open(readme)
-        #expect(state.open(readme) == nil)
+        _ = state.open(readme, hasPage: false)
+        #expect(state.open(readme, hasPage: true) == nil)
+    }
+
+    /// A first load that failed, offline say, left no page: opening it again loads it.
+    @Test func aPageThatNeverLoadedLoadsWhenOpenedAgain() {
+        var state = GitHubPopoverState()
+        _ = state.open(readme, hasPage: false)
+        #expect(state.open(readme, hasPage: false) == readme)
     }
 
     @Test func anotherItemLoadsItsPage() {
         var state = GitHubPopoverState()
-        _ = state.open(readme)
-        #expect(state.open(guide) == guide)
-        #expect(state.open(readme) == readme)
+        _ = state.open(readme, hasPage: false)
+        #expect(state.open(guide, hasPage: true) == guide)
+        #expect(state.open(readme, hasPage: true) == readme)
     }
 
     @Test func afterItsWebViewIsLetGoItLoadsAgain() {
         var state = GitHubPopoverState()
-        _ = state.open(readme)
+        _ = state.open(readme, hasPage: false)
         state.discard()
         #expect(state.openedFor == nil)
-        #expect(state.open(readme) == readme)
+        #expect(state.open(readme, hasPage: false) == readme)
+    }
+
+    /// Reload Page reloads a page that loaded, and loads one that never did, since WebKit's
+    /// reload does nothing without a committed page.
+    @Test func reloadingAPageThatNeverLoadedLoadsIt() {
+        var state = GitHubPopoverState()
+        #expect(state.pageToLoad(hasPage: false) == nil)
+        _ = state.open(readme, hasPage: false)
+        #expect(state.pageToLoad(hasPage: false) == readme)
+        #expect(state.pageToLoad(hasPage: true) == nil)
     }
 }
 

@@ -198,7 +198,10 @@ the window, without leaving Metabrowser’s page.
 
 - **Closing it:** Escape, Command-W, or a click outside the popover closes it.
   Opened again soon after for the same item, it is as you left it, with its Back and
-  Forward history; after it has stayed closed a while, it loads the page again.
+  Forward history; after it has stayed closed a while, it loads the page again, unless
+  you had typed a comment or other text there and not sent it, which it keeps.
+  A page that did not load, offline say, loads again when you open the popover or press
+  Command-R.
 - **In the popover:** a header holds Back and Forward, the github.com location the
   popover shows, Copy Link, and Open in Browser, which opens that page in your default
   browser and closes the popover.
@@ -208,6 +211,9 @@ the window, without leaving Metabrowser’s page.
 - **The button’s menu:** Copy Link copies the github.com address, and Open in Browser
   opens it in your default browser instead of the popover.
   A Command-click on the button opens your browser too.
+- **Files and dialogs:** a file panel GitHub asks for, such as “click to add files” on a
+  comment box, and a question it asks, such as whether to discard an edit, open over the
+  popover, which stays open behind them.
 - **Links in the popover:** pages on github.com and on GitHub’s content and asset sites
   (githubusercontent.com and githubassets.com) stay in the popover.
   A link to any other site, and a download, opens in your default browser.
@@ -357,6 +363,8 @@ The app moves nothing itself.
   URL… with Settings set to tabs, or from Merge All Windows.
 - The View on GitHub popover cannot be resized: it takes most of the window each time it
   opens, so a larger window gives a larger popover.
+- Text typed in the View on GitHub popover and not sent is lost when its window closes,
+  or when its tab gives up its page to save memory.
 - A restarted server comes back on a new port, and local storage is per origin, so what
   a page kept there starts fresh, as with the CLI.
 - The app does not pass state-location variables (`XDG_CACHE_HOME`,
