@@ -219,6 +219,16 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     # Another tab switched the server back: this page is refused, and offers a reload.
     assert (result["switchedOutside"], result["refused"]) == (200, 409)
     assert result["stale"]["stale"] == "The server now shows the working treeReload"
+    # It sits at the pane's foot, after the indexing row and under the tree: outside the
+    # Files toolbar and the metadata band under it, which hide with the Files tab.
+    stale_at = {
+        "after": "index-progress",
+        "inToolbarOrBand": False,
+        "shown": True,
+        "underTree": True,
+        "inPane": True,
+    }
+    assert result["staleAt"] == {**stale_at, "front": "files"}
     # The reload asks for the revision's address, which the server sends to the folder's.
     reloaded = result["reloaded"]
     assert (reloaded["kind"], reloaded["path"], reloaded["button"]) == (
@@ -255,6 +265,12 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     # is the checkout's, whose HEAD chip is on the checked-out topic, and the button went
     # with the Files toolbar.
     assert result["revisionCommits"] == {"head": "topic", "button": False}
+    # A switch from another tab with Commits in front: the history still answers, the
+    # tree does not, and the offer to reload shows on the Commits tab, where it was.
+    assert result["commitsSwitched"] == {
+        "statuses": [409, 200],
+        "at": {**stale_at, "front": "git"},
+    }
 
     for name in ("toBranch", "toTag", "toWorkingTree"):
         assert result[name]["rowsMs"] < SWITCH_BOUND_MS, f"{name}: {result[name]}"

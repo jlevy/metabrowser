@@ -17,14 +17,16 @@
 //      untracked file, and the document's policy;
 //   3. reads each list there, with the served branch marked;
 //   4. switches the server back from outside the page, as another tab would, asks the page
-//      for data, and reads the offer to reload that the selector then makes;
+//      for data, and reads the offer to reload that the selector then makes, and where
+//      it sits: at the pane's foot, under the tree and the Files toolbar's band;
 //   5. reloads, which lands on the working tree through the server's translation of the
 //      revision's address, and chooses the Working tree row from a revision again;
 //   6. goes Back onto the revision's address while the working tree is served;
 //   7. browses a revision's page, a file and its history, and reads how every data
 //      request of each page was answered: none of a current page's is refused, and the
 //      page that switched sent none after it asked. Its Commits tab is the checkout's, and
-//      hides the button with the Files toolbar.
+//      hides the button with the Files toolbar; when another tab switches the server
+//      there, its history still answers and the offer to reload shows on that tab.
 //
 // It times each switch from the click to the new document's first tree rows and to its
 // selector being mounted, and the working tree's page from navigation to its selector.
@@ -263,6 +265,26 @@ const PAGE = `(() => {
       .map((node) => node.textContent.trim())
       .filter(Boolean),
     preview: (document.querySelector("#preview-pane")?.innerText ?? "").slice(0, 400),
+  };
+})()`;
+
+/**
+ * Where the offer to reload sits: at the pane's foot after the indexing row, under the
+ * tree, and outside every tab's toolbar and the metadata band under it, which hide while
+ * another tab is in front, so it shows whichever tab is.
+ */
+const STALE_AT = `(() => {
+  const stale = document.querySelector(".source-ref-selector-stale");
+  const box = stale.getBoundingClientRect();
+  const tree = document.getElementById("tree-content").getBoundingClientRect();
+  const pane = document.querySelector(".tree-pane").getBoundingClientRect();
+  return {
+    after: stale.previousElementSibling?.id ?? null,
+    inToolbarOrBand: stale.closest("[data-nav-toolbar], .nav-metadata-band") !== null,
+    shown: stale.checkVisibility() && box.height > 0,
+    underTree: box.top >= tree.bottom - 0.5,
+    inPane: box.bottom <= pane.bottom + 0.5,
+    front: document.querySelector(".tab-btn.active")?.dataset.tab ?? null,
   };
 })()`;
 
@@ -516,6 +538,7 @@ try {
   );
   await chrome.waitFor(`!document.querySelector(".source-ref-selector-stale").hidden`);
   result.stale = await chrome.evaluate(PAGE);
+  result.staleAt = await chrome.evaluate(STALE_AT);
   await capture("stale");
 
   // 5. Reload lands on the working tree, through the server's translation of the address.
@@ -573,6 +596,21 @@ try {
     head: document.querySelector('[class*="-ref-head"]')?.textContent.trim() ?? null,
     button: document.getElementById("source-ref-selector")?.checkVisibility() ?? null,
   })`);
+  // Another tab switches the server while Commits is in front: the tab's history still
+  // answers, since it is the checkout's whichever revision is served, and the Files
+  // tree's is refused, and the offer to reload shows on this tab.
+  await chrome.evaluate(`fetch("/api/source/pin", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ working_tree: true }),
+  }).then((response) => response.status)`);
+  const statuses = await chrome.evaluate(
+    `Promise.all([fetch("/api/tree?depth=1"), fetch("/api/git/log?limit=1")])
+      .then((answers) => answers.map((answer) => answer.status))`,
+  );
+  await chrome.waitFor(`!document.querySelector(".source-ref-selector-stale").hidden`);
+  result.commitsSwitched = { statuses, at: await chrome.evaluate(STALE_AT) };
+  await capture("commits-stale");
 
   result.documents = documents;
   console.log(JSON.stringify(result));
