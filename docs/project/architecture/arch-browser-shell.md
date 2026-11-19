@@ -243,10 +243,11 @@ in-flight map make concurrent callers share one load.
 A bundle can instead be one ES module, `{module: url}`, for a library whose build
 imports its own parts by relative specifiers: `ensureModule(name)` imports it once and
 resolves to its namespace, and the browser fetches only the parts a caller reaches.
-Mermaid is one, and its chunks are fetched unstamped beside the stamped entry.
-KPress’s diagram renderer and controls are two more, `kpress-diagrams` and
-`kpress-diagram-controls`, published at the stamped URLs a render’s manifest names, so
-they share the document’s one KPress runtime.
+Mermaid is one, and its chunks are fetched unstamped beside the stamped entry, and
+answered immutable all the same, because each one’s name is a hash of its content
+(`_SELF_NAMED_STATIC` in `server.py`). KPress’s diagram renderer and controls are two
+more, `kpress-diagrams` and `kpress-diagram-controls`, published at the stamped URLs a
+render’s manifest names, so they share the document’s one KPress runtime.
 KPress loads through `loadKpressAssets` in `static/plugin-sdk.js` instead: its
 stylesheets first, then the import map the KPress asset manifest carries, when it has
 one, then the manifest’s module and classic entry points as scripts, with its

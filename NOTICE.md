@@ -52,7 +52,10 @@ independent of Metabrowser’s license.
   `src/metabrowser/static/vendor/mermaid/`. The build bundles its own dependencies,
   among them DOMPurify (MPL-2.0 or Apache-2.0), D3 (ISC), dagre (MIT), Cytoscape (MIT),
   KaTeX (MIT), and the Eclipse Layout Kernel’s elkjs (EPL-2.0 or GPL-3.0-or-later, used
-  here under GPL-3.0-or-later, which is compatible with Metabrowser’s license).
+  here under GPL-3.0-or-later, which is compatible with Metabrowser’s license; its text
+  is [elkjs.GPL-3.0.txt](src/metabrowser/static/vendor/licenses/elkjs.GPL-3.0.txt)). The
+  source code of elkjs is available from
+  [github.com/kieler/elkjs](https://github.com/kieler/elkjs).
   The license texts of all its production dependencies are vendored as
   [mermaid.bundled.txt](src/metabrowser/static/vendor/licenses/mermaid.bundled.txt).
 

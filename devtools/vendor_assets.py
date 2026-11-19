@@ -128,6 +128,14 @@ def _resolve(name: str, parent: Path) -> Path | None:
         here = here.parent
 
 
+# Mermaid bundles elkjs, dual-licensed "EPL-2.0 OR GPL-3.0-or-later", and NOTICE.md elects
+# GPL-3.0-or-later, the one compatible with Metabrowser's AGPL. elkjs ships only the EPL
+# text, so the elected text is committed beside the generated ones: the FSF's canonical
+# gpl-3.0.txt, by its SHA-256. `--write` leaves it in place.
+ELKJS_ELECTED_LICENSE = VENDOR_DIR / "licenses" / "elkjs.GPL-3.0.txt"
+ELKJS_ELECTED_LICENSE_SHA256 = "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+
+
 def _bundled_licenses(package: str) -> str:
     """Every license text in *package*'s production dependency closure, in name order."""
     seen: dict[str, Path] = {}
@@ -305,6 +313,9 @@ def check() -> list[str]:
         bundled = VENDOR_DIR / "licenses" / f"{tree.package.replace('/', '__')}.bundled.txt"
         if not bundled.is_file():
             problems.append(f"missing bundled license texts for {tree.package}")
+    elected = ELKJS_ELECTED_LICENSE
+    if not elected.is_file() or _sha256(elected) != ELKJS_ELECTED_LICENSE_SHA256:
+        problems.append(f"{ELKJS_ELECTED_LICENSE.name}: not the GPL-3.0 text NOTICE.md elects")
     if total > TOTAL_CAP_BYTES:
         problems.append(f"vendored total over cap: {total} bytes")
     return problems

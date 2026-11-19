@@ -388,7 +388,9 @@ A description or comment that takes longer than a few seconds to render stays pl
 text, under one line saying so; the same line says when the renderer is busy with other
 texts or could not start, and reloading the page then tries again.
 A repository URL is served under the untrusted profile.
-Files of a local folder keep that folder’s
+There a description’s or comment’s Mermaid diagrams are drawn as pictures, as GitHub
+draws them; beside a checkout, whose page may not have that profile’s protections, they
+show their source. Files of a local folder keep that folder’s
 [content-trust](command-line.md#content-trust) settings; reviewing a pull request does
 not change them.
 

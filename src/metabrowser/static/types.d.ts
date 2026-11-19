@@ -1310,6 +1310,13 @@ type MarkdownBuiltins = {
     },
   ) => DisposableHandle;
   renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
+  /** Draw the Mermaid diagrams in a placed KPress render under *root*: images unless
+   * `inert: false` says the render is trusted. Null when *root* holds no diagram, so
+   * nothing is fetched; otherwise `dispose` stops drawing and leaves the figures. */
+  drawDiagrams?: (
+    root: ParentNode,
+    options?: { inert?: boolean },
+  ) => { dispose(): void; ready: Promise<void> } | null;
 };
 
 type MetabrowserBuiltins = {

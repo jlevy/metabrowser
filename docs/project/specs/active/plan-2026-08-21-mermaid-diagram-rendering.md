@@ -117,24 +117,34 @@ controls. The renderer and controls first written here moved into KPress
 (jlevy/kpress#80, `js/diagrams.js` and `js/diagram-controls.js`), designed with this
 host, and Metabrowser keeps a host adapter that never sets `globalThis.mermaid`.
 [Division of Work](#division-of-work-kpress-and-metabrowser) lists who owns what.
-Until KPress releases that work, Metabrowser builds KPress from the pull request’s
-branch (`[tool.uv.sources]` in `pyproject.toml`), and a Metabrowser release waits for
-the KPress release.
+Until KPress releases that work, Metabrowser builds KPress from a commit on the pull
+request’s branch (`[tool.uv.sources]` in `pyproject.toml`), and a Metabrowser release
+waits for the KPress release.
 
 A trusted render places the SVG in the document.
 An inert render places it as an image: Mermaid runs on Metabrowser’s own code path under
 `securityLevel: "strict"`, and its SVG is shown through
-`<img src="data:image/svg+xml…">`, where it can run no script, load nothing, and
-navigate nowhere, whatever Mermaid let through.
+`<img src="data:image/svg+xml…">`, where the finished drawing can run no script, load
+nothing, and navigate nowhere.
 The untrusted page’s CSP already admits `data:` images and the application’s own
 scripts, and blocks inline script and handlers during the render.
 
+Mermaid still lays the diagram out in the page, where a label’s HTML is live while it is
+measured: an `<img src>` in a label would load.
+KPress’s image placement therefore keeps labels to formatting tags with no attribute but
+`class` (Mermaid’s `dompurifyConfig`, which a diagram cannot loosen), so a README’s
+`<b>Title</b><br/>detail` still formats as GitHub draws it.
+Mermaid’s image shape (`A@{ img: "…" }`) loads its URL itself during layout; the
+untrusted page’s `img-src` bounds that to Metabrowser’s own origin, `data:`, and GitHub
+avatars.
+
 The same CSP admits no `<style>` element, and Mermaid measures its labels inside a
 scratch element that holds one, so in an inert render Chrome logs that style as a
-blocked inline style, once per diagram, and Mermaid measures in the browser’s default
-font. Labels then came out clipped (“truste” for “trusted”). Image mode therefore gives
-Mermaid a measuring host whose inline `style` attribute, which the CSP admits for
-attributes, sets Mermaid’s own font family and size (KPress’s image placement).
+blocked inline style, once per diagram, and Mermaid would measure in the browser’s
+default font.
+Labels then came out clipped (“truste” for “trusted”). Image mode therefore
+gives Mermaid a measuring host whose inline style, set through the CSSOM, sets Mermaid’s
+own font family and size (KPress’s image placement).
 The console messages remain and are harmless: the rule they report is the one meant to
 hold.
 
@@ -220,6 +230,17 @@ The zoom and pan arithmetic is pure, and KPress’s own tests drive it.
 **`builtin_plugins/markdown/rendered.js` and `transclusion.js`.** After placing a
 render, mount diagrams when the root holds one, and dispose them with the view.
 
+**`builtin_plugins/github/pull-page.js`.** A pull request’s description and comments
+draw their Mermaid blocks as images, as github.com draws them there.
+A text whose inert render keeps a `pre[lang="mermaid"]` reads the Markdown plugin’s host
+as `mb.builtins.markdown.drawDiagrams`, the documented render-time namespace, so the
+GitHub plugin neither imports another plugin’s files nor copies the adapter; a binding
+ends with its text’s section or the page.
+Only a pinned revision’s page draws them: it is always under the untrusted policy, whose
+`img-src` and script rules bound what Mermaid does while it lays a diagram out in the
+page. A folder’s page has that policy only when served untrusted, which the SDK does not
+say, so there a block stays its source.
+
 **`inert_html.py` and `static/inert-html.js`.** Reduce a KPress Mermaid figure to
 `<pre lang="mermaid"><code>…</code></pre>`, GitHub’s own fallback markup, and allow
 `lang` on `pre` only with the value `mermaid`.
@@ -268,6 +289,10 @@ on GitHub rendering here.
   fragment (`mb-xm9c`)
 - [x] Move the renderer and controls into KPress, with a host adapter here, and pass
   `diagrams="mermaid"` (jlevy/kpress#80, `mb-1g14`)
+- [x] Draw a pull request’s description and comments’ diagrams as images on a pinned
+  revision’s page, through the Markdown plugin’s published host (review A3)
+- [ ] Draw them on a folder’s page served untrusted too, which needs the SDK to say the
+  page’s trust
 - [ ] Return the KPress pin to an exact release once jlevy/kpress#80 is released
 
 ## Testing Strategy
@@ -279,6 +304,14 @@ document placement and an inert one, rebuilt into figures, in image placement; t
 theme, Mermaid loader, tooltip, and copy hooks reach KPress; and disposal, early or
 late, holds. The drawing states, errors, theme redraw, toolbar, and dialog are KPress’s,
 pinned by its vitest suite (`tests/js/diagrams.test.js` in KPress).
+The pull request page’s `textDiagrams` story
+(`tests/dom/github-pull-page-mount-behavior.js`, golden
+`cli-ui-github-pull-page.tryscript.md`) runs that adapter through the Markdown plugin’s
+`index.js` from the production page: a description and a comment bind in image
+placement, a page with no block and a folder’s page load nothing, and a binding survives
+a poll and a tab and ends with its section, before its plugin arrives, or with the page.
+`tests/test_github_pulls.py` pins that the `pull-markdown` route keeps a text’s
+`<pre lang="mermaid">`.
 
 **Data parity.** The `mermaid` kind and its views through `/api/file`, and the inert
 `<pre lang="mermaid">` through `/api/kpress/render`, each pinned by a golden.

@@ -307,7 +307,7 @@ def _locked_source_requirements() -> list[str]:
     """Each package `[tool.uv.sources]` builds from Git, as the commit `uv.lock` records.
 
     uv honors a source only in this checkout: the wheel's metadata keeps the bare
-    requirement, which no index may satisfy while the source names an unreleased branch.
+    requirement, which no index may satisfy while the source names an unreleased commit.
     The smoke installs therefore name the locked commit beside the wheel, so they test
     the wheel against what the lock pins. publish.yml refuses a release while any source
     is set, so a published wheel never depends on one.

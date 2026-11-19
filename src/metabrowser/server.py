@@ -604,6 +604,14 @@ _sys.modules[__name__].__class__ = _ProcBrowserModule
 STATIC_DIR: Path = Path(__file__).parent / "static"
 # The stamp `?v=` names: each static file's own bytes (asset_stamps.StampedStaticFiles).
 _STATIC_TREE = StampedTree(STATIC_DIR, live=editable_install("metabrowser"))
+# Mermaid's chunks, which its build names `<name>-<hash>.mjs` by a hash of each one's
+# content and its entry imports by relative specifiers that drop the entry's `?v=`. The
+# name names the bytes, so a chunk the stamp holds is answered immutable at its plain
+# address. Before this, each chunk a page imported, of 105 (5,404,632 bytes), was
+# `no-cache` and asked for again on every load with a conditional request answered 304
+# (measured 2026-11-19). Its bytes change only with its name: `devtools/vendor_assets.py
+# --check` refuses vendored bytes its manifest does not pin.
+_SELF_NAMED_STATIC = ("vendor/mermaid/chunks/",)
 # The reading-width state machine is first-paint configuration and only 1 KiB
 # compressed. Embed its exact tested source once instead of spending a startup
 # request on it; keeping the file authoritative preserves the browserless
@@ -5239,7 +5247,11 @@ routes = [
     Route("/raw/{path:path}", raw_file),
     Route("/kpress-static/{path:path}", kpress_static_asset),
     Mount(
-        "/static", app=StampedStaticFiles(directory=STATIC_DIR, tree=_STATIC_TREE), name="static"
+        "/static",
+        app=StampedStaticFiles(
+            directory=STATIC_DIR, tree=_STATIC_TREE, self_named=_SELF_NAMED_STATIC
+        ),
+        name="static",
     ),
     # Read-only git history, kept as its own collection in
     # ``metabrowser.git.routes``: separate wire model, separate failure

@@ -20,14 +20,14 @@ PROJECT_FILE = Path(__file__).resolve().parent.parent / "pyproject.toml"
 SOURCE_DIR = PROJECT_FILE.parent / "src" / "metabrowser"
 
 
-# The repository KPress's branch is built from while a Metabrowser change waits on an
-# unreleased KPress change (pyproject.toml, `[tool.uv.sources]`). publish.yml refuses a
-# release while any source is set.
+# The repository an unreleased KPress commit is built from while a Metabrowser change
+# waits on it (pyproject.toml, `[tool.uv.sources]`). publish.yml refuses a release while
+# any source is set.
 KPRESS_REPOSITORY = "https://github.com/jlevy/kpress"
 
 
 def _kpress_selection() -> tuple[str, dict[str, str] | None]:
-    """The KPress requirement and, when it is built from a branch, that branch's source."""
+    """The KPress requirement and, when it is built from a commit, that commit's source."""
 
     project = tomllib.loads(PROJECT_FILE.read_text(encoding="utf-8"))
     pins = [d for d in project["project"]["dependencies"] if d.startswith("kpress")]
@@ -37,17 +37,20 @@ def _kpress_selection() -> tuple[str, dict[str, str] | None]:
 
 
 def test_kpress_is_a_required_runtime_dependency_with_one_selection() -> None:
-    """A release pins KPress exactly; a branch build names KPress's own repository."""
+    """A release pins KPress exactly; a commit build names KPress's repository and commit."""
 
     project = tomllib.loads(PROJECT_FILE.read_text(encoding="utf-8"))
     pin, source = _kpress_selection()
     if source is None:
         assert re.fullmatch(r"kpress==\d+\.\d+\.\d+", pin), pin
     else:
-        # Never a workspace or path checkout: the build is the branch's own commit,
-        # which uv.lock records.
-        assert set(source) == {"git", "branch"}, source
+        # Never a workspace, path, or branch: a branch moves with `uv lock --upgrade` and
+        # is deleted when its pull request merges. The commit is the one uv.lock records.
+        assert set(source) == {"git", "rev"}, source
         assert source["git"] == KPRESS_REPOSITORY, source
+        assert re.fullmatch(r"[0-9a-f]{40}", source["rev"]), source
+        lock = (PROJECT_FILE.parent / "uv.lock").read_text(encoding="utf-8")
+        assert f'#{source["rev"]}"' in lock, "uv.lock does not record the pinned commit"
         assert re.fullmatch(r"kpress>=\d+\.\d+\.\d+\.dev\d+", pin), pin
     assert "kpress" not in project["project"].get("optional-dependencies", {})
     assert "kpress" not in project.get("dependency-groups", {}).get("dev", [])
@@ -57,14 +60,14 @@ def test_the_kpress_selection_is_the_one_reviewed_for_the_cool_off() -> None:
     """The selection and its supply-chain record move together.
 
     KPress is first-party and exempt from the cool-off, but the exemption is
-    per-selection: each release, or the branch a change is built from, is reviewed
+    per-selection: each release, or the commit a change is built from, is reviewed
     against its predecessor. Changing the selection without updating that record would
     leave the exemption naming a version nobody ships, which reads as reviewed when it
     is not.
     """
 
     pin, source = _kpress_selection()
-    recorded = f"`{pin}`" if source is None else f"`kpress` branch `{source['branch']}`"
+    recorded = f"`{pin}`" if source is None else f"`kpress` commit `{source['rev'][:7]}`"
     policy = (PROJECT_FILE.parent / "SUPPLY-CHAIN-SECURITY.md").read_text(encoding="utf-8")
     assert recorded in policy, f"{recorded} is not recorded in SUPPLY-CHAIN-SECURITY.md"
 

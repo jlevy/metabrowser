@@ -276,8 +276,12 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       if (options.printIndicator === true) {
         disposePrintIndicator = mountPrintIndicator(container, mb);
       }
+      // Not awaited: the view's `ready`, which the shell's stage commit and the folder
+      // Overview await, settles with the prose. Fetching Mermaid and laying out every
+      // diagram follows, each drawing over the source block that already holds its place.
+      // Printing calls `window.print()` and waits on nothing, so a diagram not yet drawn
+      // prints as its source.
       diagrams = drawDiagrams(container, mb, !!inertRender);
-      await diagrams?.ready;
     } catch (error) {
       if (disposed || mb.errors.isAbortError(error)) {
         return;

@@ -199,12 +199,22 @@
     return pending;
   }
 
-  /** @type {Map<string, Promise<unknown>>} */
+  /**
+   * Each module bundle's import, in flight or settled successfully.
+   * @type {Map<string, Promise<unknown>>}
+   */
   const modules = new Map();
+  /** Module bundles whose import succeeded. @type {Set<string>} */
+  const importedModules = new Set();
 
-  /** @param {string} name @returns {boolean} */
+  /**
+   * Whether the named bundle is ready: its scripts ran, or its module was imported. A
+   * load or import still in flight, or one that failed, is not.
+   * @param {string} name
+   * @returns {boolean}
+   */
   function assetLoaded(name) {
-    return loaded.has(name) || modules.has(name);
+    return loaded.has(name) || importedModules.has(name);
   }
 
   /**
@@ -224,10 +234,16 @@
     if (!url) {
       return Promise.reject(new Error(`Unknown module bundle: ${name}`));
     }
-    const pending = import(url).catch((error) => {
-      modules.delete(name);
-      throw error;
-    });
+    const pending = import(url).then(
+      (namespace) => {
+        importedModules.add(name);
+        return namespace;
+      },
+      (error) => {
+        modules.delete(name);
+        throw error;
+      },
+    );
     modules.set(name, pending);
     return pending;
   }

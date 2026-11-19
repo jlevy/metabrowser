@@ -408,6 +408,11 @@ answers shows a placeholder in its place, never its Markdown source.
 A text farther off keeps its plain text, which find in page reaches, and is asked for as
 it nears the view, so a jump straight to it shows that text until it is asked for.
 Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
+A text whose render keeps a `pre[lang="mermaid"]` is drawn as an image on a pinned
+revision’s page, which is under the untrusted policy, through the Markdown plugin’s
+`mb.builtins.markdown.drawDiagrams` (`drawTextDiagrams` in `pull-page.js`): the page
+then loads Metabrowser’s own KPress diagram modules and vendored Mermaid, none of which
+the text names; a folder’s page leaves the block as its source.
 The trust model behind that allowlist is in
 [Server and Content](arch-server-and-content.md).
 

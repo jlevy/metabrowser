@@ -10,7 +10,8 @@
 //
 // The folder is served trusted and `--untrusted`. Under each it checks:
 //
-// - a document with no diagram fetches no file of the vendored Mermaid;
+// - a document with no diagram fetches no file of the vendored Mermaid, of KPress's
+//   diagram modules, or of the Markdown plugin's diagram adapter;
 // - the document's two good diagrams are drawn with a size, as SVG in the page when
 //   trusted and as images that loaded when untrusted, and the broken one shows an error
 //   with its source;
@@ -18,8 +19,11 @@
 //   which an untrusted render's allowlist drops and KPress's controls fetch again;
 // - the expand button opens the dialog with the diagram drawn in it, fitted and centered,
 //   and Escape closes it;
+// - each copy button carries the app's tooltip and copies its own diagram's source;
 // - the `.mmd` file's Diagram view draws its diagram as the document does;
-// - no page throws.
+// - no page throws, and the only content security policy violations are the expected
+//   `style-src-elem` ones under `--untrusted`, from the `<style>` Mermaid measures with
+//   (`untrusted_shell_csp` in capabilities.py says why they are harmless).
 //
 // Each step writes `phase <name> <ms since start>` to stderr. It prints
 // `markdown diagrams in Chrome: <n> checks passed`, or the failures and exits 1.
@@ -36,8 +40,21 @@ if (!metab || !root || !port || !state || !process.env.CHROME_BIN) {
 const base = `http://127.0.0.1:${port}`;
 const started = Date.now();
 const phase = (name) => process.stderr.write(`phase ${name} ${Date.now() - started}\n`);
-// The vendored library's files, which a page fetches only when it draws a diagram.
-const MERMAID_FILES = "/static/vendor/mermaid/";
+// What a page fetches only when it draws a diagram: the vendored library, KPress's
+// diagram modules, and the Markdown plugin's adapter.
+const DIAGRAM_FILES = [
+  "/static/vendor/mermaid/",
+  "/js/diagrams.js",
+  "/js/diagram-controls.js",
+  "/markdown/diagrams.js",
+];
+const isDiagramFile = (url) => DIAGRAM_FILES.some((part) => new URL(url).pathname.includes(part));
+const MERMAID_FILES = DIAGRAM_FILES[0];
+// Every policy violation the page reports, from its first script on.
+const RECORD_VIOLATIONS = `globalThis.__violations = [];
+document.addEventListener("securitypolicyviolation", (event) => {
+  globalThis.__violations.push(event.effectiveDirective + " " + (event.blockedURI || "inline"));
+});`;
 
 const failures = [];
 let checks = 0;
@@ -149,6 +166,11 @@ async function checkProfile(profile) {
   const requested = [];
   /** @type {string[]} */
   const thrown = [];
+  /** @type {string[]} */
+  const violations = [];
+  const collectViolations = async () => {
+    violations.push(...((await page.evaluate("globalThis.__violations ?? []")) ?? []));
+  };
   page.on("Network.requestWillBeSent", ({ request }) => requested.push(request.url));
   page.on("Runtime.exceptionThrown", ({ exceptionDetails }) =>
     thrown.push(JSON.stringify(exceptionDetails).slice(0, 400)),
@@ -159,6 +181,7 @@ async function checkProfile(profile) {
     await page.send("Network.enable");
     // The browser's cache would hide a second page's requests from the count.
     await page.send("Network.setCacheDisabled", { cacheDisabled: true });
+    await page.send("Page.addScriptToEvaluateOnNewDocument", { source: RECORD_VIOLATIONS });
 
     // A document with no diagram asks for nothing of Mermaid's.
     requested.length = 0;
@@ -166,10 +189,11 @@ async function checkProfile(profile) {
     await page.waitFor(`!!${VIEW}?.querySelector("article.kpress p")`);
     await page.evaluate(frames());
     check(
-      `${profile} plain: no Mermaid file fetched`,
-      !requested.some((url) => url.includes(MERMAID_FILES)),
-      requested.filter((url) => url.includes(MERMAID_FILES)),
+      `${profile} plain: no diagram file fetched`,
+      !requested.some(isDiagramFile),
+      requested.filter(isDiagramFile),
     );
+    await collectViolations();
     phase(`${profile} plain`);
 
     // The document: two diagrams and a broken one.
@@ -212,6 +236,24 @@ async function checkProfile(profile) {
       `${profile} the toolbar's three glyphs are in the page`,
       toolbar.length === 3 && toolbar.every((glyph) => glyph.found),
       toolbar,
+    );
+    // Each copy button is the page's: its tooltip is the app's, and it copies its own
+    // diagram's source.
+    const copies = await page.evaluate(`${FIGURES}.map((figure) => {
+      const button = figure.querySelector(".kpress-diagram-copy");
+      return {
+        tip: button?.getAttribute("data-tip-text") ?? null,
+        copy: button?.getAttribute("data-mb-copy-text") ?? null,
+      };
+    })`);
+    check(
+      `${profile} each copy button carries the app's tooltip and its diagram's source`,
+      copies.length === 3 &&
+        copies.every((copy) => copy.tip === "Copy diagram source") &&
+        copies[0].copy?.startsWith("flowchart LR\n  A[Start here]") &&
+        copies[1].copy?.startsWith("sequenceDiagram\n  Alice->>Bob") &&
+        copies[2].copy === "flowchart LR\n  A -->",
+      copies,
     );
     phase(`${profile} document`);
 
@@ -266,6 +308,7 @@ async function checkProfile(profile) {
     });
     await page.waitFor(`!document.querySelector("dialog.kpress-diagram-dialog")`);
     check(`${profile} Escape closes the dialog`, true);
+    await collectViolations();
     phase(`${profile} dialog`);
 
     // A `.mmd` file's Diagram view.
@@ -281,8 +324,20 @@ async function checkProfile(profile) {
         file.width > 40,
       file,
     );
+    await collectViolations();
     phase(`${profile} file`);
     check(`${profile} no page threw`, thrown.length === 0, thrown);
+    // Only Mermaid's measuring <style>, and only where the untrusted policy blocks it.
+    const unexpected = violations.filter(
+      (violation) => trusted || !violation.startsWith("style-src-elem inline"),
+    );
+    check(`${profile} no unexpected policy violation`, unexpected.length === 0, unexpected);
+    if (!trusted) {
+      check(
+        `${profile} Mermaid's measuring style is the policy's one refusal`,
+        violations.length > 0,
+      );
+    }
   } finally {
     await page.close();
   }

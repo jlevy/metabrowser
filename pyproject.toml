@@ -125,12 +125,14 @@ commit-length = 7
 cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
 
 [tool.uv.sources]
-# KPress's diagram support (jlevy/kpress#80) comes from its branch until that pull
-# request merges and KPress releases it; then this goes and the pin returns to `==`.
-# The owner chose this on 2026-11-19 for jlevy/metabrowser#597. A release of this
-# package cannot ship while it is here: the published metadata would name a KPress
-# release without the diagram API.
-kpress = { git = "https://github.com/jlevy/kpress", branch = "claude/diagrams-mermaid-mode" }
+# KPress's diagram support (jlevy/kpress#80) comes from a commit on its branch,
+# `claude/diagrams-mermaid-mode`, until that pull request merges and KPress releases it;
+# then this goes and the pin returns to `==`. The owner chose this on 2026-11-19 for
+# jlevy/metabrowser#597. It names the commit, not the branch: KPress deletes a branch
+# when it merges, and a branch source would also move with `uv lock --upgrade`.
+# A release of this package cannot ship while it is here: the published metadata would
+# name a KPress release without the diagram API.
+kpress = { git = "https://github.com/jlevy/kpress", rev = "5a8e9aed12d804cb0a9a2e65ffb350279ae469a8" }
 
 [tool.hatch.build]
 exclude = [

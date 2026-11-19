@@ -128,11 +128,23 @@ class Element {
     const nodes = direct
       ? this.children.filter((node) => typeof node !== "string")
       : [...this.descendants()];
-    return nodes.filter((node) =>
-      wanted === "a[href]"
-        ? node.tag === "a" && node.attributes.has("href")
-        : wanted.startsWith(".") && node.classes.has(wanted.slice(1)),
-    );
+    // A list of compounds: a class, `a[href]`, or an attribute's value with or without its
+    // tag, as the page and the Markdown plugin probe a text for a diagram
+    // (`pre[lang="mermaid"]`, `[data-kpress-diagram="mermaid"]`).
+    const compounds = wanted.split(",").map((part) => {
+      const compound = part.trim();
+      const valued = /^([a-z]*)\[([a-z-]+)="([^"]*)"\]$/.exec(compound);
+      if (compound === "a[href]") {
+        return (node) => node.tag === "a" && node.attributes.has("href");
+      }
+      if (valued !== null) {
+        return (node) =>
+          (valued[1] === "" || node.tag === valued[1]) &&
+          node.attributes.get(valued[2]) === valued[3];
+      }
+      return (node) => compound.startsWith(".") && node.classes.has(compound.slice(1));
+    });
+    return nodes.filter((node) => compounds.some((matches) => matches(node)));
   }
   querySelector(selector) {
     return this.querySelectorAll(selector)[0] ?? null;
@@ -744,6 +756,277 @@ async function textRefusal() {
   await poll();
   look("a newer record whose Markdown renders");
   handle.dispose();
+  return steps;
+}
+
+// A text's Mermaid blocks on the mounted page (A3 of the review of #597): github.com draws
+// them in a description and in comments, and so does the page, each as an image, since a
+// text is untrusted. The page reads the Markdown plugin's published host
+// (`mb.builtins.markdown.drawDiagrams`) once a text has a block, and a page with none asks
+// for nothing; so does a folder's page, which may lack the untrusted policy that bounds what
+// Mermaid loads while it lays a diagram out. A binding lasts as long as its text's
+// section: a poll or a tab that keeps
+// the section keeps it, a section the conversation drops ends it, one dropped before the
+// plugin arrives never binds, and the page's end ends them all. The Markdown plugin's
+// index.js, place-rendered.js, and diagrams.js run as production code; KPress's two diagram
+// modules are stubs that `ensureModule` returns, and record the placement each binding asks
+// for, the figures it holds, and its disposal. Returns what each step asked and bound.
+async function textDiagrams() {
+  const pullPage = pathToFileURL(
+    path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js"),
+  ).href;
+  const markdownPlugin = path.join(root, "src/metabrowser/builtin_plugins/markdown");
+  const page = await importPage(`${pullPage}?text-diagrams`);
+  // Loaded once up front, as the browser keeps a module: place-rendered.js imports it on the
+  // first diagram, and an import from the module cache settles within the session's turns.
+  await import(pathToFileURL(path.join(markdownPlugin, "diagrams.js")).href);
+  const timers = new Map();
+  globalThis.document = {
+    visibilityState: "visible",
+    addEventListener() {},
+    removeEventListener() {},
+    createElement: (tag) => new Element(tag),
+    importNode: () => new Element("svg"),
+  };
+  globalThis.window = {
+    location: { pathname: "/pull/7" },
+    setTimeout(callback, delay) {
+      const id = Symbol();
+      timers.set(id, { callback, delay });
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
+  };
+  // The allowlist is a dependency boundary here, as in markdownOwnership: a line
+  // `mermaid: <source>` of a text stands for the `<pre lang="mermaid">` both sides of the
+  // allowlist keep (tests/test_inert_html.py), and any other line for a paragraph.
+  const inert = {
+    sanitizeHtml: (html) => html,
+    kpressProse(html) {
+      const prose = document.createElement("div");
+      prose.className = "kpress-prose";
+      for (const line of String(html).split("\n")) {
+        const diagram = line.startsWith("mermaid: ");
+        const block = document.createElement(diagram ? "pre" : "p");
+        if (diagram) {
+          block.setAttribute("lang", "mermaid");
+        }
+        block.append(diagram ? line.slice("mermaid: ".length) : line);
+        prose.append(block);
+      }
+      return prose;
+    },
+  };
+  const record = (revision, description, comment) => {
+    const answer = structuredClone(recorded.current);
+    answer.body.record_revision = revision.repeat(64);
+    answer.body.record.pull.body = description;
+    answer.body.record.issue_comments[0].body = comment;
+    answer.body.record.issue_comments.splice(1);
+    answer.body.record.reviews = [];
+    answer.body.record.review_comments = [];
+    answer.body.record.comparison = null;
+    answer.body.record.unavailable.comparison = "no_store";
+    return answer;
+  };
+  let current = record("a", "No diagram here.", "Nor here.");
+  const response = (status, body) => ({
+    status,
+    headers: { get: () => null },
+    json: async () => body,
+  });
+  globalThis.fetch = async (route) => {
+    if (route.startsWith("/api/plugin/github/pull-markdown")) {
+      const part = new URL(route, "http://page").searchParams.get("part");
+      const held = current.body.record;
+      return response(200, {
+        number: 7,
+        fetched_at: current.body.fetched_at,
+        record_revision: current.body.record_revision,
+        part,
+        html: part === "body" ? held.pull.body : held.issue_comments[0].body,
+        assets: {},
+      });
+    }
+    return route.startsWith("/api/plugin/github/pull?")
+      ? response(200, current.body)
+      : { status: 304, headers: { get: () => null } };
+  };
+  /** What the page asked to load, in order, since the last step. */
+  const asked = [];
+  /** Every binding KPress's stub made, in order. */
+  const bound = [];
+  const partOf = (node) => {
+    let at = node;
+    while (at && at.getAttribute?.("data-part") === null) {
+      at = at.parentNode;
+    }
+    return at?.getAttribute?.("data-part") ?? "outside any text";
+  };
+  const modules = {
+    "kpress-diagrams": {
+      mermaidFigureFor(pre) {
+        const figure = document.createElement("figure");
+        figure.setAttribute("data-kpress-diagram", "mermaid");
+        pre.replaceWith(figure);
+        figure.append(pre);
+        return figure;
+      },
+      initKpressDiagrams(root, options) {
+        const binding = {
+          part: partOf(root),
+          placement: options.placement,
+          figures: root.querySelectorAll('[data-kpress-diagram="mermaid"]').length,
+          mermaid: typeof options.mermaid === "function",
+          disposed: false,
+        };
+        bound.push(binding);
+        return {
+          figures: [],
+          ready: Promise.resolve(),
+          rerender() {},
+          dispose() {
+            binding.disposed = true;
+          },
+        };
+      },
+    },
+    "kpress-diagram-controls": { diagramControls: () => ({}) },
+  };
+  // Opened by the story to hold the Markdown plugin's arrival.
+  let arrives = Promise.resolve();
+  const loads = [];
+  // A pinned revision's page, always under the untrusted policy, unless a step serves a
+  // folder's, whose policy the SDK does not say.
+  let served = "git_revision";
+  const sdk = {
+    perf,
+    builtins: {},
+    registerView() {},
+    renderSourceView() {},
+    ensureAsset: async () => {
+      window.MetabrowserInertHtml = inert;
+    },
+    loadKpressAssets: () => Promise.resolve(),
+    ensureKindAssets(kind) {
+      asked.push(`${kind} plugin`);
+      if (kind !== "markdown") {
+        return Promise.resolve();
+      }
+      // The plugin's index.js publishes its namespace on the SDK it finds, this one.
+      const load = arrives.then(() => {
+        window.metabrowser = sdk;
+        return import(`${pathToFileURL(path.join(markdownPlugin, "index.js")).href}?pull-text`);
+      });
+      loads.push(load);
+      return load;
+    },
+    async ensureModule(name) {
+      asked.push(name);
+      return modules[name];
+    },
+    ...require("./sdk-ref-fixture.js").refHelpers(document),
+    formatAge: () => ({ label: "now", className: "age" }),
+    formatTimestamp: () => "now",
+    navigation: { href: () => "/view/", async open() {} },
+    sourceKind: () => served,
+    icons: { toggle: "" },
+  };
+  const settled = async () => {
+    await settle();
+    await Promise.all(loads.splice(0));
+    await settle();
+  };
+  const poll = async () => {
+    const ready = [...timers.values()];
+    timers.clear();
+    for (const timer of ready) {
+      timer.callback();
+    }
+    await settled();
+  };
+  /** The page the story looks at. */
+  let shownIn = new Element("main");
+  const mount = async () => {
+    shownIn = new Element("main");
+    const handle = page.mountPullPage(
+      shownIn,
+      { number: 7, tab: "", reader: { initial: current, fetchAfterMs: 0 } },
+      sdk,
+    );
+    await settled();
+    // The first paint's bounded hold, if the Markdown did not already end it.
+    await poll();
+    return handle;
+  };
+  const steps = [];
+  const look = (label) => {
+    // The blocks the page shows, and how many of them KPress's stub made a figure of.
+    const blocks = shownIn.querySelectorAll('pre[lang="mermaid"]');
+    const figures = blocks.filter(
+      (pre) => pre.parentNode?.getAttribute("data-kpress-diagram") === "mermaid",
+    );
+    const shown = `${blocks.length} block${blocks.length === 1 ? "" : "s"}, ${figures.length} in a figure`;
+    const loaded = asked.splice(0);
+    const bindings = bound.map(
+      (binding) =>
+        `${binding.part} as ${binding.placement}, ${binding.figures} figure` +
+        `${binding.mermaid ? ", Mermaid on demand" : ""}${binding.disposed ? ", disposed" : ""}`,
+    );
+    steps.push(
+      `${label}: ${shown}; asked ${loaded.length === 0 ? "nothing" : loaded.join(", ")}; ` +
+        `bindings ${bindings.length === 0 ? "none" : bindings.join("; ")}`,
+    );
+  };
+  const plain = await mount();
+  look("a description and a comment with no Mermaid block");
+  plain.dispose();
+
+  current = record("b", "Two boxes:\nmermaid: flowchart LR; A --> B", "mermaid: pie; a: 1");
+  served = "filesystem";
+  const folder = await mount();
+  look("the same with Mermaid blocks, on a folder's page");
+  folder.dispose();
+  served = "git_revision";
+  const handle = await mount();
+  look("a description and a comment each with a Mermaid block");
+  await poll();
+  look("a poll of the same record");
+  handle.land({ tab: "files" });
+  handle.land({ tab: "" });
+  await settled();
+  look("Changes and back to Conversation");
+  current = record(
+    "c",
+    "Two boxes, renamed:\nmermaid: flowchart LR; A --> C",
+    "mermaid: pie; a: 1",
+  );
+  await poll();
+  look("the description edited, the comment not");
+  current = record("d", "No diagram any more.", "mermaid: pie; a: 1");
+  await poll();
+  look("the description's block taken out");
+  let arrive = () => {};
+  arrives = new Promise((resolve) => {
+    arrive = resolve;
+  });
+  current = record("e", "mermaid: flowchart TD; X --> Y", "mermaid: pie; a: 1");
+  const waiting = poll();
+  await settle();
+  current = record("f", "Plain again.", "mermaid: pie; a: 1");
+  const ready = [...timers.values()];
+  timers.clear();
+  for (const timer of ready) {
+    timer.callback();
+  }
+  await settle();
+  arrive();
+  await waiting;
+  await settled();
+  look("a block whose text is replaced before the Markdown plugin arrives");
+  handle.dispose();
+  await settled();
+  look("the page ends");
   return steps;
 }
 
@@ -3441,6 +3724,7 @@ async function run() {
   const counterpartStepsTold = await counterpartSteps(page);
   const tabKeySteps = await tabKeys(page);
   const textRefusalSteps = await textRefusal();
+  const textDiagramSteps = await textDiagrams();
   const switchUnavailableSteps = await switchUnavailable(page);
   for (const label of [
     "githubPull:decode",
@@ -3472,6 +3756,7 @@ async function run() {
     counterpart: counterpartStepsTold,
     tabKeys: tabKeySteps,
     textRefusal: textRefusalSteps,
+    textDiagrams: textDiagramSteps,
     switchUnavailable: switchUnavailableSteps,
   };
 }
