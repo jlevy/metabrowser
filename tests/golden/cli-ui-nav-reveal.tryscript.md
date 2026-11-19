@@ -1014,19 +1014,21 @@ and the catalog’s one-row lookups.
 Closed reads on for one past its first window; an open pull request among All’s first
 500 rows moves the list to All, and an older one to Open, which draws it, from All too;
 and a closed one further down than Closed draws stays, and is noted, as it is once the
-list has moved to Closed from All.
+list has moved to Closed from All; the pages the reader scrolls in keep the note, with
+no flicker, until the page that brings the row, which reveals it.
 `crawling` names a pull request the catalog has not read from GitHub yet: the list stays
 and says nothing, and once the catalog has it, the next poll reveals it under Closed.
 One opened since the catalog’s last read is noted until a poll brings its row, which
-reveals it. `failing` has the Closed list fail, which the catalog’s lookups do not need,
-then the lookups fail, which leaves the list where it is until the next poll asks again,
-and then the list the navigation moved to fails its first read, so its next poll reveals
-the row. `answers that come late` holds the lookups until a newer navigation, a filter
-the reader picks, or hiding the panel has let them go: their answers are ignored, and a
-panel shown again asks again.
-`focus` moves the list for a pull request while focus is on a row, as Control-N does:
-when its read arrives, the row takes focus if focus is still in the list or on no
-element, where the move left it, and not if the reader moved it elsewhere.
+reveals it; under the other filter, the list asks again only after a poll says the
+catalog has read more, and then goes to All and reveals it.
+`failing` has the Closed list fail, which the catalog’s lookups do not need, then the
+lookups fail, which leaves the list where it is until the next poll asks again, and then
+the list the navigation moved to fails its first read, so its next poll reveals the row.
+`answers that come late` holds the lookups until a newer navigation, a filter the reader
+picks, or hiding the panel has let them go: their answers are ignored, and a panel shown
+again asks again. `focus` moves the list for a pull request while focus is on a row, as
+Control-N does: when its read arrives, the row takes focus if focus is still in the list
+or on no element, where the move left it, and not if the reader moved it elsewhere.
 `a number the route refuses` names the largest number a pull request may have, which the
 route refuses as the start of a read: the newest row says the catalog lacks it, and no
 poll asks again.
@@ -1164,6 +1166,31 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
           "note: #1500 is not among the pull requests loaded.",
           "filter closed"
         ]
+      },
+      {
+        "step": "the reader scrolls to the list's end: Closed reads a page of 100 more, and the note stays as it was",
+        "read": [
+          "closed after #2401"
+        ],
+        "told": []
+      },
+      {
+        "step": "the reader scrolls on, nine pages more: the note stays until the page that brings #1500, which reveals it, and then goes",
+        "read": [
+          "closed after #2301",
+          "closed after #2201",
+          "closed after #2101",
+          "closed after #2001",
+          "closed after #1901",
+          "closed after #1801",
+          "closed after #1701",
+          "closed after #1601",
+          "closed after #1501"
+        ],
+        "told": [
+          "note gone",
+          "revealed #1500"
+        ]
       }
     ],
     "crawling": [
@@ -1208,6 +1235,45 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
         ],
         "told": [
           "note gone",
+          "revealed #2995"
+        ]
+      },
+      {
+        "step": "a link names open #2995 under Closed, opened since the catalog's last read: the catalog, read to its end, lacks it, so the list stays and says so",
+        "read": [
+          "lookup: #2995 or the next older",
+          "lookup: the newest"
+        ],
+        "told": [
+          "note: #2995 is not in this list."
+        ]
+      },
+      {
+        "step": "time passes, and the catalog has read nothing new: the next poll does not ask again",
+        "read": [
+          "closed"
+        ],
+        "told": []
+      },
+      {
+        "step": "the catalog reads #2995, and time passes: Closed's next poll says the catalog has read more, so the list asks again, goes to All, and reveals it",
+        "read": [
+          "closed",
+          "closed after #2801",
+          "closed after #2701",
+          "closed after #2601",
+          "closed after #2501",
+          "lookup: #2995 or the next older",
+          "lookup: the newest",
+          "all",
+          "all after #2901",
+          "all after #2801",
+          "all after #2701",
+          "all after #2601"
+        ],
+        "told": [
+          "note gone",
+          "filter all",
           "revealed #2995"
         ]
       }

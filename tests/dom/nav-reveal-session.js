@@ -45,11 +45,12 @@
 // a tab landing's kept place, one the filter leaves out moves the list to a filter that
 // draws it, a filter the reader picks says nothing of the pull request it leaves out, and
 // only one the list still cannot show is named under the band. `beyond the rows read`, the
-// part `pulls-depth` prints, serves lists longer than the panel draws, a catalog still being read from GitHub,
-// failing reads, a number the route refuses, and slow answers that come after a newer
-// navigation, a filter the reader picks, or the panel was hidden, over the route's windows
-// and the catalog's one-row lookups; a row the list moved for takes focus only while focus
-// is where the move left it.
+// part `pulls-depth` prints, serves lists longer than the panel draws, with the pages a
+// reader scrolls in, a catalog still being read from GitHub, a pull request opened since
+// its last read, failing reads, a number the route refuses, and slow answers that come
+// after a newer navigation, a filter the reader picks, or the panel was hidden, over the
+// route's windows and the catalog's one-row lookups; a row the list moved for takes focus
+// only while focus is where the move left it.
 //
 // `invariants` are relations every step holds.
 
@@ -1207,7 +1208,7 @@ async function pullsDepthController(catalog, filter) {
     reads.length = 0;
     told.length = 0;
     letGo.length = 0;
-    act();
+    await act();
     await settle();
     steps.push({
       step: what,
@@ -1279,6 +1280,19 @@ async function pullsDepthStory() {
     "closed #1500 named under All: All's rows do not reach it, so the list goes to Closed, which reaches furthest, and says it is further down than Closed draws too",
     () => controller.setCurrent(1500),
   );
+  await step(
+    "the reader scrolls to the list's end: Closed reads a page of 100 more, and the note stays as it was",
+    () => controller.reachedEnd(),
+  );
+  await step(
+    "the reader scrolls on, nine pages more: the note stays until the page that brings #1500, which reveals it, and then goes",
+    async () => {
+      for (let page = 0; page < 9; page += 1) {
+        await controller.reachedEnd();
+        await settle();
+      }
+    },
+  );
   controller.dispose();
 
   const crawling = { cached: 200, complete: false, down: new Set() };
@@ -1311,6 +1325,25 @@ async function pullsDepthStory() {
     },
   );
   newer.controller.dispose();
+
+  const elsewhere = { cached: 2001, complete: true, down: new Set(), newest: 2990 };
+  const across = await pullsDepthController(elsewhere, "closed");
+  await across.step(
+    "a link names open #2995 under Closed, opened since the catalog's last read: the catalog, read to its end, lacks it, so the list stays and says so",
+    () => across.controller.setCurrent(2995),
+  );
+  await across.step(
+    "time passes, and the catalog has read nothing new: the next poll does not ask again",
+    () => across.timePasses(),
+  );
+  await across.step(
+    "the catalog reads #2995, and time passes: Closed's next poll says the catalog has read more, so the list asks again, goes to All, and reveals it",
+    () => {
+      elsewhere.newest = undefined;
+      across.timePasses();
+    },
+  );
+  across.controller.dispose();
 
   const failing = { cached: 2001, complete: true, down: new Set(["closed"]) };
   const failed = await pullsDepthController(failing, "closed");
@@ -1455,7 +1488,7 @@ async function pullsDepthStory() {
   refused.controller.dispose();
   return {
     "past what the list draws": deep.steps,
-    crawling: [...crawl.steps, ...newer.steps],
+    crawling: [...crawl.steps, ...newer.steps, ...across.steps],
     failing: [...failed.steps, ...moved.steps],
     "answers that come late": late.steps,
     focus: focus.steps,

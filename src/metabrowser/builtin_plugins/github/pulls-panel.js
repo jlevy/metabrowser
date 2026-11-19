@@ -587,6 +587,20 @@ export function outsideText(number, catalogued) {
 }
 
 /**
+ * The catalog as a list's envelope describes it: its epoch, which a new reader or source
+ * starts again, and how many pull requests it has read, which only grows within an epoch,
+ * as it does when one is opened. Every list's envelope carries both.
+ *
+ * @param {PullsEnvelope | null} envelope
+ */
+function catalogMark(envelope) {
+  if (envelope === null) {
+    return "";
+  }
+  return `${envelope.generation?.split(":")[0] ?? ""}:${envelope.catalog_fetched}`;
+}
+
+/**
  * Whether *response* is the pin guard's refusal of a page whose pin moved. The guard answers it
  * by reloading the page onto the commit now served, so the list says nothing of its own for it,
  * whatever order the events arrive in: a page Back restores polls before the guard's check, and
@@ -730,13 +744,15 @@ export function createPullsController(deps, options = {}) {
   /**
    * Whether *sought* is still to be placed (`placeSought`): until the list holds its row,
    * or the catalog has said where it is and the list has moved there or stays. Meanwhile
-   * the list says nothing of it.
+   * the list says nothing of it, except that the catalog lacks it: a pull request opened
+   * since the catalog's last read is placed once the catalog reads it.
    */
   let placing = sought !== null;
   /**
    * Where the catalog has *sought* (`readSought`): its state, and whether All's drawn rows
-   * reach it; "absent" once the whole catalog lacks it; null until a read says.
-   * @type {{state: "open" | "closed", reach: boolean} | {state: "absent"} | null}
+   * reach it; "absent" while the whole catalog lacks it, with the catalog as it stood then
+   * (`catalogMark`); null until a read says.
+   * @type {{state: "open" | "closed", reach: boolean} | {state: "absent", mark: string} | null}
    */
   let soughtFound = null;
   /** The read of *sought*'s place in flight. @type {AbortController | null} */
@@ -1807,7 +1823,8 @@ export function createPullsController(deps, options = {}) {
    *
    * @param {boolean} [mayRead] Whether this may ask the catalog: at a navigation and after a
    *   poll, so a place still unknown, as a catalog being read from GitHub leaves it, is asked
-   *   for once a poll, and not at every window the list pages in.
+   *   for once a poll, and not at every window the list pages in; and one the catalog lacked
+   *   is asked for again after a poll whose list says the catalog has read more since.
    */
   function placeSought(mayRead = false) {
     if (!placing || sought === null || sought !== current) {
@@ -1818,16 +1835,15 @@ export function createPullsController(deps, options = {}) {
       placing = false;
       return false;
     }
-    if (soughtFound === null) {
-      if (mayRead) {
+    if (soughtFound === null || soughtFound.state === "absent") {
+      // A catalog that lacked it is asked again once it has read more pull requests, as it
+      // does when one is opened, so an unchanged catalog is not asked at every poll.
+      if (mayRead && (soughtFound === null || soughtFound.mark !== catalogMark(list.envelope))) {
         void readSought();
       }
       return false;
     }
     placing = false;
-    if (soughtFound.state === "absent") {
-      return false;
-    }
     const target = filter === soughtFound.state || !soughtFound.reach ? soughtFound.state : "all";
     if (target === filter) {
       return false;
@@ -1845,8 +1861,8 @@ export function createPullsController(deps, options = {}) {
    * gh. A number past the largest a pull request may have is refused from the first read:
    * then the newest row says, since no pull request is newer, and the catalog lacks any
    * other number the route refuses. A read that fails otherwise, or a number the catalog
-   * lacks while it is still being read from GitHub, leaves the place unknown, and the next
-   * poll asks again (`placeSought`).
+   * lacks while it is still being read from GitHub, leaves the place as it was, and the
+   * next poll asks again (`placeSought`).
    */
   async function readSought() {
     if (sought === null || soughtRead !== null) {
@@ -1880,7 +1896,7 @@ export function createPullsController(deps, options = {}) {
             (lists.get("all")?.displayLimit ?? DISPLAY_ROWS),
         };
       } else if (from === null || (from.complete && from.reason === null)) {
-        soughtFound = { state: "absent" };
+        soughtFound = { state: "absent", mark: catalogMark(top.body) };
       } else {
         return;
       }
@@ -1902,7 +1918,9 @@ export function createPullsController(deps, options = {}) {
    * Say so when a pull request a navigation named is in no row the list can draw, rather
    * than leave the reader looking for it: the catalog lacks it, or it is in this list
    * further down than the list draws. Only once its place is known and the list stays,
-   * and not while the list is still reading toward it. A pull request the reader's own
+   * and not while the list is still filling its rows toward it; once said, a page the
+   * reader asks for at the list's end keeps it until a page brings the row, rather than
+   * take it back for the page's read and say it again. A pull request the reader's own
    * filter leaves out is not noted.
    */
   function noteOutside() {
@@ -1911,12 +1929,13 @@ export function createPullsController(deps, options = {}) {
     if (
       current !== null &&
       current === sought &&
-      !placing &&
       soughtFound !== null &&
+      (!placing || soughtFound.state === "absent") &&
       list.envelope !== null &&
       list.error === null &&
       !list.keys.has(current)
     ) {
+      const further = outsideText(current, true);
       if (soughtFound.state === "absent") {
         next = outsideText(current, false);
       } else if (
@@ -1924,9 +1943,9 @@ export function createPullsController(deps, options = {}) {
         // The rows are newest first, and *nextAfter* is where the next window starts.
         list.nextAfter !== null &&
         current < list.nextAfter &&
-        list.rows.length >= list.displayLimit
+        (list.rows.length >= list.displayLimit || outside === further)
       ) {
-        next = outsideText(current, true);
+        next = further;
       }
     }
     if (next !== outside) {
