@@ -791,6 +791,14 @@
     mb-delayed-loading-reveal 0s linear var(--loading-state-delay) forwards,
     tally-pending-pulse 1.6s ease-in-out infinite;
 }
+@media (prefers-reduced-motion: reduce) {
+  /* The rows keep their shape and contrast and stop pulsing, as the shell's skeletons do
+     (static/styles.css); the reveal stays, or the placeholder would never show. */
+  .github-pull-plain-pending::after {
+    animation: mb-delayed-loading-reveal 0s linear var(--loading-state-delay) forwards;
+    opacity: 0.7;
+  }
+}
 /* A text's type, spacing, tables, and code are KPress's, as in a Markdown file. The card's
    padding is the space around a text, so the first and last block have none of their own. */
 .github-pull-text .kpress-prose > :first-child {
