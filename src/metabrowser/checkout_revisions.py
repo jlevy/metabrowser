@@ -168,7 +168,7 @@ def checkout_ref_name(ref: str | None) -> str | None:
 PARTIAL_CLONE_GIT_MINIMUM: Final = (2, 45, 0)
 
 
-def _partial_clone_version_label() -> str:
+def partial_clone_version_label() -> str:
     """The admitted releases that read a partial clone's missing object as missing."""
 
     track = ".".join(str(part) for part in PARTIAL_CLONE_GIT_MINIMUM[:2])
@@ -336,7 +336,7 @@ class CheckoutRevisions:
         if version < PARTIAL_CLONE_GIT_MINIMUM and await _names_a_promisor(target):
             raise CheckoutGitUnsupportedError(
                 "git version " + ".".join(str(part) for part in version),
-                _partial_clone_version_label(),
+                partial_clone_version_label(),
                 partial_clone=True,
             )
         return target, context.head
@@ -581,4 +581,5 @@ __all__ = [
     "checkout_revisions",
     "lifespan_checkout",
     "open_on_ref",
+    "partial_clone_version_label",
 ]

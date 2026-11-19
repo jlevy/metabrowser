@@ -49,6 +49,7 @@ from metabrowser.cli.present import (
     DELIVERY_EXIT_CODES,
     DEV_BUNDLE_ID,
     INFO_PLIST_MAX_BYTES,
+    MINIMUM_METAB_KEY,
     OPENS_URLS_KEY,
     RELEASE_BUNDLE_ID,
     SERVER_LOG_PREFIX,
@@ -1314,12 +1315,41 @@ def test_doctor_reports_the_app_auto_finds(monkeypatch: pytest.MonkeyPatch, home
             "bundle_path": str(bundle),
             "code": "app_found",
             "reason": "the app takes a target",
+            "minimum_metab": None,
         },
     }
     assert report.line == (
         f"metab --doctor: open_in auto (default); the app: {bundle} ({DEV_BUNDLE_ID})"
     )
     assert report.problems == ()
+    assert (report.app_path, report.app_minimum_metab) == (str(bundle), None)
+
+
+@pytest.mark.parametrize(
+    ("declared", "minimum"),
+    [
+        ("0.13.0", "0.13.0"),
+        # Only a nonempty string names a release: anything else is no minimum.
+        ("", None),
+        (13, None),
+        (["0.13.0"], None),
+    ],
+)
+def test_doctor_reads_the_minimum_metab_the_app_found_declares(
+    monkeypatch: pytest.MonkeyPatch, home: Path, declared: object, minimum: str | None
+) -> None:
+    """The `metab` check of `--doctor` compares this `metab` with it (`cli/doctor.py`)."""
+
+    bundle = _installed(home, {**_CURRENT_INFO, MINIMUM_METAB_KEY: declared})
+    _lookup_from(monkeypatch, {DEV_BUNDLE_ID: bundle})
+    monkeypatch.delenv(BUNDLE_ID_ENV, raising=False)
+
+    report = doctor_open_in()
+
+    app = report.section["app"]
+    assert isinstance(app, dict)
+    assert app["minimum_metab"] == minimum
+    assert (report.app_path, report.app_minimum_metab) == (str(bundle), minimum)
 
 
 @pytest.mark.parametrize(

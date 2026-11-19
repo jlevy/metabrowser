@@ -23,6 +23,7 @@ from typing import get_args
 import click
 from watchfiles import DefaultFilter
 
+from metabrowser.builtin_plugins.github.gh_status import GH_MINIMUM_LABEL
 from metabrowser.builtin_plugins.github.provider import MAX_FIRST_CLONE_ENV
 from metabrowser.cli.exit_codes import (
     INTERRUPTED_EXIT_CODE,
@@ -326,6 +327,12 @@ def stated_values() -> list[Stated]:
             "the Git security floor",
             r"a Git older than (\d+\.\d+\.\d+)",
             (".".join(str(part) for part in ACQUISITION_MINIMUM),),
+        ),
+        Stated(
+            "docs/installation.md",
+            "the GitHub CLI minimum",
+            r"GitHub work needs `gh` (\d+\.\d+\.\d+) or later",
+            (GH_MINIMUM_LABEL,),
         ),
         Stated(
             "docs/installation.md",

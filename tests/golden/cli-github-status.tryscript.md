@@ -23,7 +23,9 @@ One check reports what GitHub work needs from GitHub CLI: where `gh` is, its ver
 the account it is signed in to, that account’s token scopes, and one state with the step
 that fixes it. `metab --doctor` prints it after the plugin verdict, and
 `POST /api/plugin/github/status` serves the same report.
-The state table is in the GitHub plugin’s `gh_status.py`.
+The state table is in the GitHub plugin’s `gh_status.py`, beside `GH_MINIMUM`, the
+oldest `gh` it works with, which the report names as `gh_minimum`. The setup checks
+`--doctor` prints after it are elided here (`...`); `cli-doctor.tryscript.md` pins them.
 
 `gh` here is `tests/fixtures/github-status/gh`, which answers `gh --version` and
 `gh auth status --json hosts` as `FAKE_GH_STATUS` names and fails anything else, so no
@@ -43,6 +45,7 @@ status: 200
   "fix": null,
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
+  "gh_minimum": "2.81.0",
   "account": "octo-reader",
   "token_source": "keyring",
   "scopes": [
@@ -71,6 +74,7 @@ status: 200
   "fix": null,
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
+  "gh_minimum": "2.81.0",
   "account": "octo-reader",
   "token_source": "keyring",
   "scopes": [
@@ -96,6 +100,7 @@ status: 200
   "fix": "gh auth refresh --hostname github.com --scopes repo",
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
+  "gh_minimum": "2.81.0",
   "account": "octo-reader",
   "token_source": "keyring",
   "scopes": [
@@ -123,6 +128,7 @@ status: 200
   "fix": null,
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
+  "gh_minimum": "2.81.0",
   "account": "octo-reader",
   "token_source": "GH_TOKEN",
   "scopes": null
@@ -143,6 +149,7 @@ status: 200
   "fix": "gh auth login --hostname github.com",
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
+  "gh_minimum": "2.81.0",
   "account": null,
   "token_source": null,
   "scopes": null
@@ -163,6 +170,7 @@ status: 200
   "fix": "gh auth login --hostname github.com",
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
+  "gh_minimum": "2.81.0",
   "account": "octo-reader",
   "token_source": "keyring",
   "scopes": null
@@ -187,6 +195,7 @@ status: 200
   "fix": "replace the token in GH_TOKEN, or unset it and run gh auth login --hostname github.com",
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
+  "gh_minimum": "2.81.0",
   "account": null,
   "token_source": "GH_TOKEN",
   "scopes": null
@@ -207,6 +216,7 @@ status: 200
   "fix": null,
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.98.0",
+  "gh_minimum": "2.81.0",
   "account": "octo-reader",
   "token_source": "keyring",
   "scopes": null
@@ -223,10 +233,11 @@ status: 200
 {
   "host": "github.com",
   "state": "gh_too_old",
-  "message": "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.",
+  "message": "GitHub CLI 2.20.2 cannot report the signed-in account; Metabrowser needs gh 2.81.0 or later. To update it: https://cli.github.com/.",
   "fix": "https://cli.github.com/",
   "gh_path": "[FAKE_GH]",
   "gh_version": "2.20.2",
+  "gh_minimum": "2.81.0",
   "account": null,
   "token_source": null,
   "scopes": null
@@ -247,6 +258,7 @@ status: 200
   "fix": "gh auth status --hostname github.com",
   "gh_path": "[FAKE_GH]",
   "gh_version": null,
+  "gh_minimum": "2.81.0",
   "account": null,
   "token_source": null,
   "scopes": null
@@ -291,8 +303,9 @@ $ FAKE_GH_STATUS=signed-out metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
 metab --doctor: 11 plugin(s) OK
 github: not_logged_in: GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.
-  gh: [FAKE_GH] (version 2.98.0)
+  gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   fix: gh auth login --hostname github.com
+...
 ? 0
 ```
 
@@ -300,9 +313,10 @@ github: not_logged_in: GitHub CLI is not signed in to github.com. Run gh auth lo
 $ FAKE_GH_STATUS=too-old metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
 metab --doctor: 11 plugin(s) OK
-github: gh_too_old: This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.
-  gh: [FAKE_GH] (version 2.20.2)
+github: gh_too_old: GitHub CLI 2.20.2 cannot report the signed-in account; Metabrowser needs gh 2.81.0 or later. To update it: https://cli.github.com/.
+  gh: [FAKE_GH] (version 2.20.2; needs 2.81.0 or later)
   fix: https://cli.github.com/
+...
 ? 0
 ```
 
@@ -325,10 +339,12 @@ $ FAKE_GH_STATUS=offline metab --doctor --json 2>/dev/null
     "fix": null,
     "gh_path": "[FAKE_GH]",
     "gh_version": "2.98.0",
+    "gh_minimum": "2.81.0",
     "account": "octo-reader",
     "token_source": "keyring",
     "scopes": null
-  }
+  },
+...
 }
 ? 0
 ```
@@ -342,6 +358,7 @@ metab --doctor: 11 plugin(s) OK
 github: gh_missing: Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.
   gh: not found on PATH
   fix: https://cli.github.com/
+...
 ? 0
 ```
 
