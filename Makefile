@@ -324,6 +324,7 @@ GOLDEN_RECORDERS := \
 	tests/test_key_reveal_session.py \
 	tests/test_diff_view_file_session.py \
 	tests/test_diff_markdown_session.py \
+	tests/test_diff_structured_session.py \
 	tests/test_github_pull_page_session.py \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_github_pulls_panel_session.py \

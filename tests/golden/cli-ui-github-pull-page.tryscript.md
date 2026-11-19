@@ -1719,14 +1719,16 @@ $ node tests/dom/github-pull-page-mount-behavior.js
 ```
 
 The selected and direct cold-page cases hold the POST until a description preview is
-ready. It verifies plain text, explicit unfinished sections, no premature Markdown or
-comparison actions, full-record priority, and cancellation without losing the previous
-useful surface. Checks has its own route and loading state, and it retains the existing
-check links and notices once the record is ready.
+ready.
+It verifies that the preview’s description is asked for once and rendered from the
+core, explicit unfinished sections, no premature comparison actions, full-record
+priority, and cancellation without losing the previous useful surface.
+Checks has its own route and loading state, and it retains the existing check links and
+notices once the record is ready.
 
 ```console
 $ node tests/dom/github-pull-core-preview-behavior.js
-{"description":"plain preview before full conversation","pendingParts":["discussion","checks"],"checkResults":{"route":"/pull/7/checks","links":2,"empty":true,"pending":true},"waitCorePost":{"number":7,"retry":true,"wait_core":true},"previewMarkdownRequests":0,"fullMarkdownRequests":1,"fullRecordWins":true,"crossOwnerRetirement":true,"stagedReplacement":"A retained through B cancellation until C commits"}
+{"description":"rendered preview before full conversation","pendingParts":["discussion","checks"],"checkResults":{"route":"/pull/7/checks","links":2,"empty":true,"pending":true},"waitCorePost":{"number":7,"retry":true,"wait_core":true},"previewMarkdownRequests":1,"fullMarkdownRequests":1,"fullRecordWins":true,"crossOwnerRetirement":true,"stagedReplacement":"A retained through B cancellation until C commits"}
 ? 0
 ```
 
@@ -1826,17 +1828,19 @@ loading blocks that had shown stay over the held body until it shows (`landing`,
 `landingAfterBlocksShowed`), and a page replaced while held stays out of sight
 (`cancelledWhileHeld`). A revisit and a refreshed record with the same text paint the
 render kept for that text at once, keeping its node (`revisit`, `refreshedSameText`).
-Past the bound the text shows plain and its Markdown follows (`pastTheBound`). The state
-badge’s first paint is the fresher of the cached record and the repository’s list
-(`listedState`). Changes with rendered Markdown stays out of sight until its first
-screen settles or `CHANGES_FIRST_SCREEN_MS` passes, and a page that goes while it waits
-keeps it out of sight and records the wait as cancelled (`changes`). The kept renders
-are bounded by count and by characters, descriptions apart from other parts (`bounded`).
-Under a held first paint over the loading page the header does not wait: its tab column
-is live and badged while Shift is held, all three keys act, and a link that has focus
-keeps it, as at release (`tabKeysWhileHeld`). A stack that arrives during the hold
-paints its menu at once, and Control-N and Control-P are live and in the Shift strip and
-walk the stack, while N alone opens nothing.
+Past the bound the page shows with a placeholder in the text’s place and its Markdown
+follows (`pastTheBound`). When the record follows a core preview, whose first paint is
+spent, the comments in view are asked for and pending before the record’s frame paints
+(`recordAfterCore`). The state badge’s first paint is the fresher of the cached record
+and the repository’s list (`listedState`). Changes with rendered Markdown stays out of
+sight until its first screen settles or `CHANGES_FIRST_SCREEN_MS` passes, and a page
+that goes while it waits keeps it out of sight and records the wait as cancelled
+(`changes`). The kept renders are bounded by count and by characters, descriptions apart
+from other parts (`bounded`). Under a held first paint over the loading page the header
+does not wait: its tab column is live and badged while Shift is held, all three keys
+act, and a link that has focus keeps it, as at release (`tabKeysWhileHeld`). A stack
+that arrives during the hold paints its menu at once, and Control-N and Control-P are
+live and in the Shift strip and walk the stack, while N alone opens nothing.
 
 ```console
 $ node tests/dom/github-pull-first-paint-behavior.js
@@ -1844,7 +1848,7 @@ $ node tests/dom/github-pull-first-paint-behavior.js
   "firstVisit": "held, then final",
   "refreshedSameText": "kept",
   "revisit": "final at first paint",
-  "pastTheBound": "plain, then Markdown",
+  "pastTheBound": "a placeholder, then Markdown",
   "comments": {
     "texts": 5,
     "asked": 5,
@@ -1906,6 +1910,10 @@ $ node tests/dom/github-pull-first-paint-behavior.js
       "outcome": "met",
       "rounds": 4
     }
+  },
+  "recordAfterCore": {
+    "commentsInView": 4,
+    "pendingAtPaint": true
   },
   "ages": [
     "186 min",

@@ -214,6 +214,7 @@ selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
+gh auth status
 gh api repos/octo/demo --jq .size
 gh auth status
 gh api repos/octo/demo/pulls/7
@@ -867,32 +868,29 @@ using the clone of https://github.com/octo/demo cached in <HOME>, fetched less t
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/11
+gh auth status
 # metab https://github.com/octo/demo/pull/11 --no-serve
-exit: 0
+exit: 1
 --- stdout ---
 acquired: https://github.com/octo/demo
 slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
-selection: pull_request
-pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
-pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry. (not_logged_in); the pin is the default branch)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
+Error: pull request 11 of https://github.com/octo/demo: GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry. (not_logged_in)
 --- gh ---
 gh auth status
 # metab https://github.com/octo/demo/pull/11 --no-serve
-exit: 0
+exit: 1
 --- stdout ---
 acquired: https://github.com/octo/demo
 slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
-selection: pull_request
-pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
-pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com. (gh_too_old); the pin is the default branch)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
+Error: pull request 11 of https://github.com/octo/demo: This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com. (gh_too_old)
 --- gh ---
 gh auth status
 # metab https://github.com/octo/demo/pull/11 --no-serve
@@ -1069,43 +1067,10 @@ gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
 gh auth status
 # metab https://github.com/octo/demo/pull/11 --api '/api/plugin/github/pull?number=11'
-exit: 0
+exit: 1
 --- stdout ---
-api: /api/plugin/github/pull?number=11
-status: 200
-{
-  "state": "absent",
-  "reason": "not_cached",
-  "source": "https://github.com/octo/demo",
-  "number": 11,
-  "pin": "c691256511d05858850bc7684ae062fea0d41132",
-  "pin_ref": "refs/remotes/origin/topic",
-  "fetched_at": null,
-  "verified_at": null,
-  "verified_by": null,
-  "head_moved": false,
-  "checks_pending": false,
-  "record_revision": null,
-  "fresh_for_s": 60.0,
-  "refreshing": false,
-  "last_refresh": {
-    "outcome": "gh_missing",
-    "message": "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.",
-    "reset_at": null,
-    "at": "2026-09-17T12:00:00Z"
-  },
-  "comparison_route": null,
-  "image_route": null,
-  "rendered_route": null,
-  "record": null,
-  "core_preview": null,
-  "repository_labels": [],
-  "labels_pending": false
-}
 --- stderr ---
-selection: pull_request
-pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
-pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. (gh_missing); the pin is the default branch)
+Error: pull request 11 of https://github.com/octo/demo: Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. (gh_missing)
 --- gh ---
 # metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull?number=7'
 exit: 0

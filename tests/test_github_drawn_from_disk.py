@@ -636,6 +636,7 @@ JOBS: Final[dict[str, str]] = {
     "labels-refresh": "starts the label set's read",
     "pulls-prefetch": "reports or replaces the background lane's queue, from memory",
     "cache-clear": "removes the plugin's files for the repository",
+    "status": "runs gh auth status, the GitHub status check, which reads no repository",
 }
 
 

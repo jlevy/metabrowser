@@ -229,6 +229,11 @@ are deferred.
   commit. The working tree is a separate choice, and it is what a folder opens on.
 - **The page says which view it shows.** The chooser reads “Working tree” or names the
   ref, and a revision’s name carries `@<ref>`, as a mirror’s does.
+- **The view is the Files tab’s.** The chooser leads the Files tab’s toolbar, and the
+  other tabs do not follow it: Pulls never depended on it, and Commits is the checkout’s
+  history whichever view Files shows, read from the folder
+  ([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
+  A commit’s page and its diffs are read as the view’s are.
 - **A tab names its view.** A page left on one view is refused, not answered from the
   other, once the server shows another
   ([the pin guard](arch-source-sessions-and-pins.md#switching-the-pin-and-the-pin-guard)).
@@ -479,14 +484,14 @@ opened by URL, a GitHub link sent to the app or a URL entered in Open URL… amo
   already reads, so the page and the app cannot disagree.
 - **It shows the mode and not the view.** A repository folder keeps the folder icon
   while it shows a revision.
-  The chooser beside the name and the `@<ref>` in the name say which view is shown.
+  The chooser in the Files toolbar and the `@<ref>` in the name say which view is shown.
 
 **A recommendation, for the owner to confirm:** a plain folder and a repository folder
 show the same folder icon.
 The indicator answers one question, whether the root is the reader’s own folder or
 Metabrowser’s cached copy, and both folder modes give one answer.
-A repository folder already looks different where it matters: it has the ref chooser
-under its name and the Commits tab, and a plain folder has neither.
+A repository folder already looks different where it matters: it has the ref chooser in
+its Files toolbar and the Commits tab, and a plain folder has neither.
 A third glyph, such as a folder with a branch badge, would carry the legibility risk the
 cloud over the GitHub mark has, and the heading would need Git’s answer before its first
 paint, where one icon for each `kind` needs none.

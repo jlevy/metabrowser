@@ -1383,7 +1383,7 @@ const PULLS_ROWS = `async (rows, width) => {
     const chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     chevron.setAttribute("class", "toggle-chevron");
     chevron.setAttribute("viewBox", "0 0 24 24");
-    const anchor = h("a", { class: "github-pulls-row", href: "#", role: "treeitem", "aria-expanded": "true" }, [
+    const anchor = h("a", { class: "github-pulls-row", href: "#", role: "treeitem", "aria-expanded": "false" }, [
       state.pullStateIcon("open"),
       title,
       age,
@@ -1396,10 +1396,11 @@ const PULLS_ROWS = `async (rows, width) => {
     ]);
     const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron]);
     const line = h("span", { class: "github-pulls-change-line" });
-    const change = h("div", { class: "github-pulls-change disclosure-toggle collapsed", role: "treeitem", "aria-expanded": "false" }, [toggle, line]);
+    // As pulls-panel.js#buildRow draws a pull request's item, its three lines (mb-1z7j).
+    const words = h("span", { class: "github-pulls-change-words", hidden: "" });
+    const change = h("div", { class: "github-pulls-change disclosure-toggle collapsed", "aria-hidden": "true" }, [toggle, line, words]);
     const item = h("li", { class: "github-pulls-item", role: "none", "data-level": "2" }, [
-      anchor,
-      h("div", { class: "github-pulls-change-group", role: "group" }, [change]),
+      h("div", { class: "github-pulls-entry" }, [anchor, change]),
     ]);
     list.append(item);
     return { item, anchor, change, toggle, line, place, number, title, age, row };

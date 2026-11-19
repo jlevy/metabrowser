@@ -61,12 +61,52 @@ log = logging.getLogger(__name__)
 
 
 def session_git_location() -> GitLocation:
-    """The Git command location for the active repository subject."""
+    """The Git command location for the active repository subject.
+
+    A commit's view and every comparison are read here, so a revision of a checkout reads
+    them from its Git directory under the store policies, which run no program the
+    checkout's configuration names (:attr:`GitLocation.diff_driver_args`).
+    """
 
     pin = as_git_revision_subject(get_source_session().subject)
     if pin is not None:
         return GitLocation.revision(pin.command_target, pin.commit_oid)
     return GitLocation.filesystem(session_filesystem_root())
+
+
+async def history_git_location(request: Request) -> GitLocation:
+    """Where the Commits tab's history is read, whichever revision the Files tab shows.
+
+    A folder that is a repository's root shows one of its branches or tags in the Files tab
+    as a pinned revision (``checkout_revisions.py``). The chooser is the Files tab's, so its
+    Commits tab stays the checkout's history, read from the folder as its working tree's
+    page reads it: ``HEAD``, its upstream, and the trunk refs, and every ref with
+    ``scope=all``. Those reads, ``log``, ``for-each-ref``, ``rev-parse``, and
+    ``symbolic-ref``, diff nothing, so they run no diff driver, and every command sets
+    ``log.showSignature=false`` (:attr:`GitLocation.config_args`); nothing about them
+    writes. A commit's view and its diffs stay the session's (:func:`session_git_location`).
+
+    A mirror has no working tree, so its Commits tab walks the origin's default branch as
+    the mirror holds it, whichever branch, tag, or commit the Files tab shows: a pinned
+    location's default walk is its commit's ancestry, and ``scope=all`` every ref's. That
+    costs the request one read of the store's record and one ``for-each-ref``. A mirror
+    that has recorded no default branch, or no longer holds it, and a pin with no mirror,
+    walk the pin.
+    """
+
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is None:
+        return GitLocation.filesystem(session_filesystem_root())
+    from metabrowser.checkout_revisions import checkout_revisions
+
+    checkout = checkout_revisions()
+    if checkout is not None:
+        return GitLocation.filesystem(checkout.root)
+    from metabrowser.mirror_refresh import mirror_session
+
+    mirror = mirror_session(request.app)
+    tip = None if mirror is None else await mirror.mirror.default_tip()
+    return GitLocation.revision(pin.command_target, tip or pin.commit_oid)
 
 
 def _negative_payload(info: GitRepoInfo) -> dict[str, object]:
@@ -108,14 +148,14 @@ def _git_failure_response(exc: GitError) -> JSONResponse:
     return JSONResponse({"error": "git command failed"}, status_code=500)
 
 
-async def api_git_repo(_request: Request) -> JSONResponse:
+async def api_git_repo(request: Request) -> JSONResponse:
     """``GET /api/git/repo`` — repository presence, root, and HEAD.
 
     The cheapest endpoint and the one the browser calls first: its
     ``is_repo`` decides whether the Git tab exists at all. TTL-cached in
     :mod:`metabrowser.git.repo`, so polling it is inexpensive.
     """
-    _context, info = await _resolve(session_git_location())
+    _context, info = await _resolve(await history_git_location(request))
     return JSONResponse(dict(info))
 
 
@@ -124,7 +164,7 @@ async def api_git_refs(request: Request) -> Response:
 
     Kept under the ref state and the checked-out branch, which marks one ref as HEAD.
     """
-    location = session_git_location()
+    location = await history_git_location(request)
     context, info = await _resolve(location)
     if context is None:
         return JSONResponse(_negative_payload(info))
@@ -159,7 +199,7 @@ async def api_git_summary(request: Request) -> Response:
     Kept under the ref state: the commits the refs reach cannot change while the refs
     do not, and ``shallow`` and ``info/grafts``, which bound the walk, are in the state.
     """
-    location = session_git_location()
+    location = await history_git_location(request)
     context, info = await _resolve(location)
     if context is None:
         return JSONResponse(_negative_payload(info))
@@ -209,15 +249,16 @@ async def api_git_log(request: Request) -> Response:
         ``all`` walks every ref. The default walks HEAD, its upstream,
         and whichever trunk refs exist, because ``--all`` in a
         many-ref repository shows whichever branch commits most often
-        and buries the rest. A pinned revision's default walk is that
-        object id only, not the store's ambient HEAD.
+        and buries the rest. A mirror's default walk is its default branch's
+        commit and that commit's ancestry, not the store's ambient HEAD, whichever
+        revision is served (:func:`history_git_location`).
 
     A page's body is a function of its session and page number, which its
     ``page_cursor`` names, so that is its entity tag. A first page asked for
     again under the same ref state is the same session's, and a client that
     holds it is answered 304.
     """
-    location = session_git_location()
+    location = await history_git_location(request)
     context, info = await _resolve(location)
     if context is None:
         return JSONResponse(_negative_payload(info))

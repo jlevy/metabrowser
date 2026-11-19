@@ -1079,11 +1079,8 @@ function renderInitialTreeRows() {
   // where they will stay. Omitting it cost 43 px of downward shift the moment
   // the fetch returned -- a jump this inline had itself introduced, since
   // before it there were no rows in place to push.
-  _lastTreeRender = {
-    tree: rows,
-    chromeHtml: treeSummaryHtml(rootTotals().totals(), null, null),
-    tallyCacheStatus: "scanning",
-  };
+  paintTreeSummary(treeSummaryHtml(rootTotals().totals(), null, null));
+  _lastTreeRender = { tree: rows, chromeHtml: "", tallyCacheStatus: "scanning" };
   // Measured here rather than around the call, so the span exists only when
   // this path actually paints. Every return above declined to — no inlined
   // rows, something already on screen, a filter the server did not know about
@@ -1189,9 +1186,9 @@ async function loadTree(options = {}) {
         pathEl.dataset.tipSize = nullableDataValue(summarySize);
         pathEl.dataset.tipMtime = nullableDataValue(newestMtime);
       }
-      // Summary row sits at the top of the scrollable tree listing, not
-      // in the sticky header — visible on first paint, scrolls away with
-      // the rest of the tree. Keeps the upper nav header clean.
+      // The summary row stands in its band under the filter bar, out of the
+      // tree's scroller, so it stays in view as the tree scrolls and its rule
+      // runs the pane's width; every source the panel shows keeps it.
       // The root's totals, never partial (docs/design-system.md, "The Files totals").
       if (data.summary) {
         rootTotals().fromSummary(data.summary, data.tally_cache_status);
@@ -1204,9 +1201,7 @@ async function loadTree(options = {}) {
         holding ? null : summaryFiles,
         holding ? null : summarySize,
       );
-      // Cached so the recency source, which paints over the whole panel,
-      // can keep the same tally row above its own filtered count.
-      _lastTreeSummaryHtml = summaryHtml;
+      paintTreeSummary(summaryHtml);
       // Walker truncation banner. The provider
       // walker stops at INVENTORY_MAX_FILES; finalized dirs still
       // emit accumulated totals so the UI is usable, but the user
@@ -1225,7 +1220,7 @@ async function loadTree(options = {}) {
       _filteredTreeTotals = data.filtered || null;
       _lastTreeRender = {
         tree: data.tree,
-        chromeHtml: truncationHtml + summaryHtml,
+        chromeHtml: truncationHtml,
         tallyCacheStatus: data.tally_cache_status,
       };
       // A recency request, or a grouping, may have started while this tree request was
@@ -1233,7 +1228,7 @@ async function loadTree(options = {}) {
       // newer source selection.
       if (!filesPanelUsesRecentSource() && !filesPanelUsesGroupedSource()) {
         if (_inlineTreeBaseline || reconcileMountedRoot) {
-          reconcileMountedTree(data.tree, truncationHtml + summaryHtml);
+          reconcileMountedTree(data.tree, truncationHtml);
         } else {
           renderFilesFromTree(options.asHome === true);
         }
@@ -1695,9 +1690,7 @@ function renderGroupedSections(sections, truncationHtml) {
     )
     .join("");
   panel.innerHTML =
-    truncationHtml +
-    (_lastTreeSummaryHtml || "") +
-    (body || '<div class="recent-empty">No files match the filters.</div>');
+    truncationHtml + (body || '<div class="recent-empty">No files match the filters.</div>');
   applyTreeFilters();
   reconcilePendingTallyDiagnostics();
   synchronizeTreeNow();
@@ -1877,22 +1870,21 @@ function rootTotals() {
   return _rootTotals;
 }
 
-// Draw the totals line in place, and keep both caches of it in step: chromeHtml feeds a
-// source swap back to the tree, and _lastTreeSummaryHtml is what the recency source
-// prepends.
+// Draw the totals line in place: the first line of the Files metadata band, outside the
+// panel, so a source swap repaints the panel and leaves the band's lines as they are.
 /** @param {string} html */
 function paintTreeSummary(html) {
   var row = document.querySelector(".tree-summary");
-  if (row && row.outerHTML !== html) {
+  if (!row) {
+    filesMetadataBand()?.insertAdjacentHTML("afterbegin", html);
+  } else if (row.outerHTML !== html) {
     row.outerHTML = html;
   }
-  _lastTreeSummaryHtml = html;
-  if (_lastTreeRender) {
-    _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
-      /<div class="tree-summary(?: tree-summary-split)? nav-metadata">.*?<\/div>$/,
-      html,
-    );
-  }
+}
+
+// The band the Files totals and the remarks on them stand in (server.py draws it).
+function filesMetadataBand() {
+  return document.getElementById("nav-metadata-files");
 }
 
 // The root's tallies, asked of the server again, for the filter menus' counts and the
@@ -2033,8 +2025,6 @@ var _lastTreeRender = null;
 // Match totals from the last filtered /api/tree response, or null when
 // nothing is filtered. Shape: {files, size, entries}.
 var _filteredTreeTotals = null;
-// The tally row alone, so the recency source can reuse it verbatim.
-var _lastTreeSummaryHtml = "";
 
 /**
  * The folders the Files tree opens when it is drawn for Home (*asHome*), as a fresh load of
@@ -2189,11 +2179,6 @@ function reconcileMountedTree(nextTree, chromeHtml) {
 
       var chrome = document.createElement("div");
       chrome.innerHTML = chromeHtml;
-      var summary = panel.querySelector(":scope > .tree-summary");
-      var nextSummary = chrome.querySelector(":scope > .tree-summary");
-      if (summary && nextSummary) {
-        summary.replaceWith(nextSummary);
-      }
       var truncation = panel.querySelector(":scope > .tree-truncation-note");
       var nextTruncation = chrome.querySelector(":scope > .tree-truncation-note");
       if (truncation && nextTruncation) {
@@ -4135,7 +4120,7 @@ function renderSelectionOutsideFilterNote(selectedPath) {
     return;
   }
   var path = selectedPath === undefined ? currentPath : selectedPath;
-  var existing = panel.querySelector(".tree-selection-note");
+  var existing = document.querySelector(".tree-selection-note");
   var filtered = filterState ? filterHasConstraints(filterState.get()) : false;
   var absent = filtered && !!path && treeOmitsPath(panel, path);
   if (!absent) {
@@ -4151,12 +4136,21 @@ function renderSelectionOutsideFilterNote(selectedPath) {
   note.className = "tree-selection-note nav-metadata nav-metadata-note";
   note.setAttribute("role", "status");
   note.textContent = text;
+  addFilesRemark(note);
+}
+
+/**
+ * Add a remark to the Files metadata band, under the totals and the filter's remark.
+ *
+ * @param {HTMLElement} note
+ */
+function addFilesRemark(note) {
   var anchor =
-    panel.querySelector(".tree-summary-filtered") || panel.querySelector(".tree-summary");
+    document.querySelector(".tree-summary-filtered") || document.querySelector(".tree-summary");
   if (anchor) {
     anchor.insertAdjacentElement("afterend", note);
   } else {
-    panel.insertAdjacentElement("afterbegin", note);
+    filesMetadataBand()?.insertAdjacentElement("afterbegin", note);
   }
 }
 
@@ -5117,7 +5111,8 @@ function initNavScrollShadow() {
     // Whichever chrome is bottom-most *and visible* carries it, and the
     // others are cleared so a tab switch cannot leave two shadows armed.
     // The chrome is the pane's own children, so a scroll visits those and not
-    // the document (44 to 510 us a call on 1,871 to 23,232 elements).
+    // the document (44 to 510 us a call on 1,871 to 23,232 elements). A metadata
+    // band under the toolbar takes its shadow while it has lines (styles.css).
     const target = pane.querySelector(":scope > [data-nav-toolbar]:not([hidden])") ?? tabBar;
     for (const chrome of pane.querySelectorAll(":scope > :is([data-nav-toolbar], .nav-tab-bar)")) {
       chrome.classList.toggle("scrolled", chrome === target && scrollContent.scrollTop > 0);
@@ -5248,11 +5243,7 @@ function markRecentTotalAsRetainedLowerBound(lowerBound) {
   if (!filterState) {
     return;
   }
-  var state = filterState.get();
-  var panel = recentResultsHost();
-  if (panel) {
-    _renderFilteredTally(panel, state, recentTotalMatching);
-  }
+  _renderFilteredTally(filterState.get(), recentTotalMatching);
 }
 // Server-published set of dir paths the Recent panel paints gray.
 // Pathspec is a backend concern; the SPA never re-derives this. A
@@ -5422,7 +5413,7 @@ function paintRecentView(results, state, inputCount, view) {
     { items: inputCount },
   );
   scheduleRecentExpiryRecheck(entries);
-  _renderFilteredTally(results, state, entries.length);
+  _renderFilteredTally(state, entries.length);
   // Rendering replaces the whole panel, so restore any retry status that a
   // live repaint displaced while the authoritative repair is still pending.
   setRecentContinuityStatus(recentContinuity.status());
@@ -5490,11 +5481,7 @@ function recentResultsHost() {
 
 /** @param {"fresh" | "retrying" | "stale"} status */
 function setRecentContinuityStatus(status) {
-  var panel = recentResultsHost();
-  if (!panel) {
-    return;
-  }
-  var existing = panel.querySelector(".recent-stale-note");
+  var existing = document.querySelector(".recent-stale-note");
   if (status === "fresh" || !filesPanelUsesRecentSource()) {
     existing?.remove();
     return;
@@ -5511,13 +5498,7 @@ function setRecentContinuityStatus(status) {
   note.className = "recent-stale-note nav-metadata nav-metadata-note";
   note.setAttribute("role", "status");
   note.textContent = text;
-  var anchor =
-    panel.querySelector(".tree-summary-filtered") || panel.querySelector(".tree-summary");
-  if (anchor) {
-    anchor.insertAdjacentElement("afterend", note);
-  } else {
-    panel.insertAdjacentElement("afterbegin", note);
-  }
+  addFilesRemark(note);
 }
 
 function renderRecentList(data) {
@@ -5536,11 +5517,10 @@ function renderRecentList(data) {
   // viewport-bounded expansion planner can select compact folders;
   // the Recent tree builder leaves ``expanded`` unset on those
   // nodes so explicit cluster-collapse state still wins.
-  var body = renderTreeNodes(tree, true, { dirMetric: TREE_DIR_METRIC_COUNT });
-  // Keep the summary row this source would otherwise paint over.
-  // renderRecentFromBase writes its filtered tally from the exact
-  // model entries after this markup is mounted.
-  return (_lastTreeSummaryHtml || "") + body;
+  // The summary row stays in its band over the panel, and
+  // renderRecentFromBase writes its filtered tally there from the
+  // exact model entries after this markup is mounted.
+  return renderTreeNodes(tree, true, { dirMetric: TREE_DIR_METRIC_COUNT });
 }
 
 // ── Navigation filter bar ───────────────────────────────────────
@@ -5946,7 +5926,13 @@ function renderNavFilterBar() {
   // so a key, a pick, or a tally refresh never drops it on the page (docs/design-system.md,
   // "Keys in a Menu").
   var restoreFocus = fc.keepFocus(bar);
+  // A page with the branch and tag chooser ships it leading the row, and its module owns
+  // it: it is carried over, not drawn (static/source-ref-selector.js#keepFocusAcross).
+  var chooser = document.getElementById("source-ref-selector");
   bar.innerHTML = main + drawer;
+  if (chooser) {
+    bar.firstElementChild?.prepend(chooser);
+  }
   // An open menu is sized to its rows and the window now that it has geometry, before
   // the frame paints it.
   fc.fitOpenMenus(bar);
@@ -6279,8 +6265,10 @@ function _applyTreeSourceFilters(panel, state) {
           ));
     row.classList.toggle("tree-item-filter-hidden", hide);
   }
-  _renderFilteredTally(panel, state, _filteredTreeTotals ? _filteredTreeTotals.files : null);
+  _renderFilteredTally(state, _filteredTreeTotals ? _filteredTreeTotals.files : null);
   renderSelectionOutsideFilterNote();
+  // A recency window's remark on its own freshness goes with it.
+  setRecentContinuityStatus("fresh");
 }
 
 // How many files the filter is actually showing, as a second line
@@ -6293,8 +6281,8 @@ function _applyTreeSourceFilters(panel, state) {
 // capped by depth and the renderer pages long child lists, so a DOM count
 // would report how much has been mounted. A null count means the filter has
 // nothing to report and the line comes down.
-function _renderFilteredTally(panel, state, count) {
-  var existing = panel.querySelector(".tree-summary-filtered");
+function _renderFilteredTally(state, count) {
+  var existing = document.querySelector(".tree-summary-filtered");
   if (!filterHasConstraints(state) || typeof count !== "number") {
     if (existing) {
       existing.remove();
@@ -6321,7 +6309,7 @@ function _renderFilteredTally(panel, state, count) {
     existing.replaceChildren(remark);
     return;
   }
-  var summary = panel.querySelector(".tree-summary");
+  var summary = document.querySelector(".tree-summary");
   var line = document.createElement("div");
   line.className = "tree-summary-filtered nav-metadata nav-metadata-note";
   line.setAttribute("role", "status");
@@ -6329,7 +6317,7 @@ function _renderFilteredTally(panel, state, count) {
   if (summary) {
     summary.insertAdjacentElement("afterend", line);
   } else {
-    panel.insertAdjacentElement("afterbegin", line);
+    filesMetadataBand()?.insertAdjacentElement("afterbegin", line);
   }
 }
 // Rows arriving from the event stream have to be classified too, or a

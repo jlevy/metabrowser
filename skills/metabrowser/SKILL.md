@@ -65,7 +65,7 @@ route named here, the build is older than the skill: report that, and use a sour
 or the build’s own `--help`. Use one build for one cache: an older `metab` reads a
 record a newer one wrote as `absent`, with the reason `schema_mismatch` or `unreadable`.
 The macOS app is a separate front end over the same server, and this skill hands it
-pages with `--present`; the app needs `metab` 0.12.1 or later, the first release with
+pages with `--present`; the app needs `metab` 0.13.0 or later, the first release with
 `--present`, and no release on PyPI has it yet.
 
 ## Route the Task
@@ -92,39 +92,54 @@ pages with `--present`; the app needs `metab` 0.12.1 or later, the first release
 
 ## Hand the User a Page
 
-Hand the page to the Metabrowser app on the user’s Mac, which opens it in a window, or
-serve it and give the user an address for a browser:
+Present the page, which opens it where the user prefers, or serve it yourself and give
+the user an address for a browser:
 
-- **The app** takes a folder, a file, or a GitHub URL: a repository, a pull request or
-  one of its tabs, a commit, or a file or folder at a branch, tag, or commit.
-  Try it first when the user is at this Mac.
-  Anywhere else it reports that no app takes the target, and you serve instead
-- **A server** answers any address, so serve for what a target cannot name, such as a
-  heading, a commit of a local checkout, or one file of a pull request’s changes; when
-  the user asks for a browser; and whenever presenting falls back
+- **Presenting** takes a folder, a file, or a GitHub URL: a repository, a pull request
+  or one of its tabs, a commit, or a file or folder at a branch, tag, or commit.
+  Use it when the user is at this machine.
+  It opens the page in the Metabrowser app on the user’s Mac when an installed build
+  takes it, and otherwise in their browser, on a `metab` server it starts and leaves
+  running. The user’s `open_in` preference can choose the app only or the browser only
+- **A server you start** answers any address, so serve for what a target cannot name,
+  such as a heading, a commit of a local checkout, or one file of a pull request’s
+  changes; in a headless environment; and whenever presenting fails
 
 ### Present It in the App
 
 ```shell
 <invocation> --present <target> --format json
 <invocation> --present <root> --path <relative-path> --format json
+<invocation> --present <target> --open-in browser --format json
 ```
+
+- Add `--open-in browser` when the user asks for a browser; otherwise leave the choice
+  to the user’s preference.
+  A delivery to a browser starts a server, so never run it outside the sandbox: see
+  [When a Sandbox Blocks It](#when-a-sandbox-blocks-it)
 
 - A file named alone as `<target>` opens in the most specific folder the app already has
   open that holds it, and otherwise in its own folder.
   With `--path`, the file opens in `<root>`, unless a folder inside `<root>` that holds
   it is open already
+
 - Write a relative `<target>` or `<root>` that begins with `-` as `./<name>`, or `metab`
   reads it as an option
+
 - Run the command alone, without a redirect, pipe, `cd`, or `&&`, and with `--present`
   first, so that a sandbox rule for the prefix `metab --present` matches it; see
   [When a Sandbox Blocks It](#when-a-sandbox-blocks-it)
+
 - It prints one JSON report on standard output, except after a usage error or an
   `Error:` line. `.code` names the outcome and `.reason` says it in words.
-  `.target` is what was handed over: `.target.kind`; `.target.root`, the folder `metab`
-  would serve, or the repository; `.target.page`, the address in that root, which is
-  null where only the repository’s mirror knows it, and the app then opens where its
-  server resolves the URL; and `.target.handoff`, what the app was given, a file last
+  `.delivered_to` says where the page went: `app`, `browser`, or `none`. `.target` is
+  what was presented: `.target.kind`; `.target.root`, the folder `metab` would serve, or
+  the repository; `.target.page`, the address in that root, which is null where only the
+  repository’s mirror knows it, and the app or the server then opens where the server
+  resolves the URL; and `.target.handoff`, what the app is given, a file last.
+  For a browser, `.url` is the address the server printed once it answered for the
+  target, `.pid` its process ID, and `.log` the file its output goes to; under the
+  default preference, `.fallback` says why no app took the page
 
 Act on the exit status, which the
 [exit-status table](https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md#exit-status)
@@ -133,11 +148,14 @@ also lists:
 | Status | `.code` | What to do |
 | --- | --- | --- |
 | 0 | `not_confirmed` | Tell the user what you handed the app. For a `file`, name the file, the last entry of `.target.handoff`: the app shows it in the most specific folder it has open that holds it, and `.target.root` and `.target.page` say where it opens only when no such folder is open. For any other kind, name `.target.root` and `.target.page`. The report says `"confirmed": false` because the app does not reply yet, so say the app was handed the page, not that a window shows it |
+| 0 | `server_started` | A server runs detached at `.url`, which answers for `.target.root`, and opens it in the user’s browser once the page answers: give the user `.url`, and say a browser was asked to open it, not that it shows it. The server serves every page under `.target.root`, so give other addresses on its origin rather than presenting again. Stop it with `kill` and `.pid` when the user is done, unless they ask to keep it |
+| 0 | `server_starting` | The server runs but has not printed its address, or its address has not answered for the target, yet, as a first clone can take minutes; `.url` is null, and it opens the browser once the page answers. Read the address from the `Serving <root> at <url>` line in `.log` later, and stop it with `kill` and `.pid` |
+| 1 | `server_failed` | The server exited before it served, before or after it printed an address: `.reason` gives its last line and `.log` holds the rest. Serve it yourself to see the error |
 | 3 | A refusal’s code | The target cannot be presented: tell the user `.reason`, which names the fix |
-| 4 | `not_macos`, `app_not_found`, `app_not_installed`, `app_not_marked`, `app_cannot_select_folder` | No app takes the target, and nothing was sent: serve it, and pass `.reason` on when the user expected the app |
+| 4 | `not_macos`, `app_not_found`, `app_not_installed`, `app_not_marked`, `app_cannot_select_folder`, `browser_off` | Nothing was sent: under `--open-in app`, or the user’s `open_in: app`, no app takes the target; with `browser_off`, a browser would, and the user’s `present_browser: false` turns that off. Serve it yourself, inside the sandbox, and pass `.reason` on when the user expected the app |
 | 5 | `lookup_failed`, `open_failed` | LaunchServices could not be asked or did not take the target, which in an agent’s shell is most often its sandbox: see [When a Sandbox Blocks It](#when-a-sandbox-blocks-it) |
-| 2 | None: a usage error | Standard error names what `metab` could not read. Only `No such option: --present` means the build predates `--present`, and then you serve instead; anything else is a mistake in the command, such as a target that begins with `-`, so fix it |
-| 1 | None: an `Error:` line | Standard error says why: serve instead |
+| 2 | None: a usage error | Standard error names what `metab` could not read. Only `No such option: --present` means the build predates `--present`, and then you serve instead; `No such option: --open-in` means it predates the browser, so serve for a browser; anything else is a mistake in the command, such as a target that begins with `-`, so fix it |
+| 1 | None: an `Error:` line | Standard error says why, such as an `open_in` setting that is not `auto`, `app`, or `browser`: fix what it names, or serve instead |
 
 - A GitHub URL makes the app clone the repository into its cache, and read it with the
   user’s `gh` sign-in, when the cache does not hold it yet.
@@ -156,8 +174,22 @@ also lists:
 `metab` from LaunchServices, which is how it reaches the app.
 Do not run `open` on the app yourself instead: `--present` checks that the bundle is the
 installed Metabrowser app before it sends anything.
-Rerun the same command outside the sandbox where your harness lets the user approve
-that, or serve instead.
+Where your harness lets the user approve it, rerun the same command outside the sandbox
+with `--open-in app` added, or serve instead:
+
+```shell
+<invocation> --present <target> --open-in app --format json
+```
+
+Every rerun outside the sandbox carries `--open-in app`, whatever the first report said.
+Without it, the rerun looks the app up again under the user’s preference, and under the
+default `auto`, when no app takes the target, it starts a `metab` server that would run
+outside the sandbox, serve any path, and outlive the session.
+With it, a target no app takes ends with status 4 and starts nothing.
+Never rerun a delivery to a browser outside the sandbox, nor ask the user to approve
+one: a command with `--open-in browser`, or one whose report says
+`"delivered_to": "browser"` or a `server_started`, `server_starting`, or `server_failed`
+code. Serve those pages yourself inside the sandbox instead ([Serve It](#serve-it)).
 
 A rule can let the command run outside the sandbox every time.
 It is the user’s to add, and it matches the command as typed, so a `metab` run by its
@@ -180,17 +212,25 @@ path needs that path in place of `metab`:
   prefix_rule(pattern = ["metab", "--present"], decision = "allow")
   ```
 
-A command such a rule matches runs with the user’s full access.
-So suggest a rule only for a `metab` installed outside every folder you can write, its
-code included, such as one `uv tool install` made, which keeps the command in
+A command such a rule matches runs with the user’s full access, and the rule matches
+whatever follows `metab --present`: under `--open-in browser`, or under the default
+`auto` when no app takes the target, the command starts a `metab` server outside the
+sandbox for any path, which serves it on a loopback address and keeps running after the
+session ends. With any rule, tell the user to set `present_browser: false` in
+`config.yml`, which keeps `--present` to the app whatever its options say
+([Turning Browser Delivery Off](https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md#turning-browser-delivery-off)).
+`METABROWSER_CONFIG_DIR`, `XDG_CONFIG_HOME`, and `HOME` choose the folder that holds
+`config.yml`, and one without it allows a browser, so never set them for a `--present`
+command. Suggest a rule only for a `metab` installed outside every folder you can write,
+its code included, such as one `uv tool install` made, which keeps the command in
 `~/.local/bin` and its code under `~/.local/share/uv/tools`. Never suggest one for a
 `metab` in a folder you can write: a source checkout’s `.venv/bin/metab` runs the
 checkout’s own code, so in a checkout you work in, a rule naming it runs code you can
 change, unsandboxed.
 For a source build, the rule, and the app’s Settings > Choose metab…, name a separate
 checkout you never work in.
-Otherwise, rerun with the user’s approval each time, or serve the page.
-The
+Otherwise, rerun with `--open-in app` and the user’s approval each time, or serve the
+page. The
 [guide](https://github.com/jlevy/metabrowser/blob/main/docs/working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)
 explains each setting.
 
@@ -418,8 +458,9 @@ which names the far port; the address answers once the far server is up.
 - Parse JSON from standard output; human-readable diagnostics, such as the `selection`
   and `pull_request` lines of a URL-backed `--api` or `--show`, use standard error.
   `--no-serve` prints its report for a person on standard output
-- In a headless environment, avoid opening a browser and report the local URL and
-  whether the server is still running
+- In a headless environment, avoid opening a browser: serve with `--no-open` rather than
+  presenting, which may start a browser, and report the local URL and whether the server
+  is still running
 - Preserve nonzero exits from all plugin modes; discovery errors mean the registry is
   partial even when some plugins were returned
 
@@ -427,9 +468,9 @@ which names the far port; the address answers once the far server is up.
 
 State what Metabrowser opened or inspected; for a page handed to the app, what you
 handed it, the file itself for a file, and that the app was handed it without confirming
-a window shows it; for a server, the served root, the selected file when applicable,
-each address you handed the user, and whether the server is still running; and any
-plugin or validation errors.
+a window shows it; for a server, whether you or `--present` started it, the served root,
+the selected file when applicable, each address you handed the user, and whether the
+server is still running; and any plugin or validation errors.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -122,7 +122,7 @@ def test_the_files_tree_holds_its_first_paint_until_its_toolbar_is_filled() -> N
     css = _css()
     hold = _rule(
         css,
-        ".nav-filter-bar:not([hidden]):has(> .tally-pending) ~ .tree-content:not(:has(> "
+        ".nav-filter-bar:not([hidden]):has(.tally-pending) ~ .tree-content:not(:has(> "
         '[role="alert"]))',
     )
     assert "visibility: hidden;" in hold
@@ -134,7 +134,13 @@ def test_the_files_tree_holds_its_first_paint_until_its_toolbar_is_filled() -> N
     # app.js draws replaces it.
     server = (REPO_ROOT / "src" / "metabrowser" / "server.py").read_text(encoding="utf-8")
     assert "pending_tally = '<span class=\"count tally-pending\"></span>'" in server
-    assert 'data-nav-toolbar="files"{filter_bar_behind}>{pending_tally}</div>' in server
+    assert 'data-nav-toolbar="files"{filter_bar_behind}>{filter_bar_content}</div>' in server
+    # A page with the branch and tag chooser ships the row, the chooser leading it and the
+    # placeholder after it, which the hold finds at any depth; the filled bar has none.
+    assert (
+        "f'<div class=\"nav-filter-bar-main nav-toolbar-row\">{source_ref_selector}'\n"
+        '        f"{pending_tally}</div>"'
+    ) in server
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     assert "bar.innerHTML = main + drawer;" in _function(app, "renderNavFilterBar")
     # Filled in the task that draws the first rows, before them, so the rows are never

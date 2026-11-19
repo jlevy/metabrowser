@@ -308,7 +308,7 @@ them; the note beside the budget says why.
 | The Diff summary’s tree | On demand, at the summary’s first opening, asked for on the header’s hover or focus | `renderDiffSummary` in `builtin_plugins/diff/diff-view.js` | The comment at the head of `builtin_plugins/diff/diff-summary.js` |
 | Inert Markdown render with its table of contents, and the step that places a render | On demand: the first at the first inert render, the second at the first Markdown render | `builtin_plugins/markdown/place-rendered.js` | exp-037 and the comment at its head |
 | A refused Markdown render’s source and notice | On demand, at a Markdown view’s first refused render | `builtin_plugins/markdown/rendered.js` | The comment beside the import |
-| A pull request’s rendered Markdown layer | On demand, beside a comparison that names a rendered route | `markdownLayer` in `builtin_plugins/diff/index.js` | The comment beside it |
+| A pull request’s rendered layer for Markdown, YAML, and JSON | On demand, beside a comparison that names a rendered route; the structured plugin’s tree, through `ensureKindAssets("structured")`, with the first screen’s prefetch and when the first YAML or JSON file is added | `markdownLayer` and `prefetchMarkdown` in `builtin_plugins/diff/index.js`, `ensureStructured` in `builtin_plugins/diff/diff-markdown.js` | The comments beside `markdownLayer` and `ensureStructured` |
 
 Measured on 2026-10-01 as compressed bytes saved, these would move next if the budget
 tightens:

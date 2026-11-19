@@ -711,6 +711,13 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/status",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/structured/parsed",
       "methods": [
         "GET",

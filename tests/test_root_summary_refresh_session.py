@@ -151,11 +151,10 @@ def test_a_provisional_answer_leaves_the_line_held(
     """Mid-walk the server's tally is provisional, and can count nothing ignored yet: the
     refresh passes its status, so the line keeps its ignored line and its figures pending
     rather than say "9,000 files" and "No ignored files" (createRootTotals). Passing a
-    settled status instead fails here."""
+    settled status instead fails here. The held line is the first paint's, and the shell
+    writes the row only when its markup changes, so nothing is painted over it."""
 
     provisional, settled = scenarios[PROVISIONAL]
-    assert provisional["did"][-2:] == [
-        "t=800 #1 answered provisionally: scanning",
-        't=800 painted "" (3 pending)',
-    ]
+    assert provisional["did"][-1] == "t=800 #1 answered provisionally: scanning"
+    assert provisional["after"]["shows"] == "(3 pending)"
     assert settled["did"][-1] == 't=20800 painted "2 files (2.0 KB) No ignored files"'

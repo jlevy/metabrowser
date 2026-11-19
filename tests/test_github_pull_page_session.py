@@ -843,7 +843,7 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         "firstVisit": "held, then final",
         "refreshedSameText": "kept",
         "revisit": "final at first paint",
-        "pastTheBound": "plain, then Markdown",
+        "pastTheBound": "a placeholder, then Markdown",
         # The comments and reviews the first screen shows wait with the description, so none is
         # plain at the paint that makes the page ready (review A6).
         "comments": {"texts": 5, "asked": 5, "plainAtReady": 0},
@@ -911,6 +911,10 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
                 "rounds": 4,
             },
         },
+        # The record that follows a core preview asks for its comments in view as it paints,
+        # each a placeholder at that paint and never its source (review A5 on #589); before,
+        # the observer asked after the frame, which showed them as source.
+        "recordAfterCore": {"commentsInView": 4, "pendingAtPaint": True},
         # Kept cards tell their ages as of the paint, not as of when they were built (review A5).
         "ages": ["186 min", "185 min", "4 min"],
         # A stale record paints the list's state when the list saw a later update.
@@ -971,11 +975,11 @@ def test_selected_core_preview_waits_for_description_and_keeps_parts_pending() -
     """A cold selected page retains prior content until its honest core is ready."""
 
     assert run_session("github-pull-core-preview-behavior.js") == {
-        "description": "plain preview before full conversation",
+        "description": "rendered preview before full conversation",
         "pendingParts": ["discussion", "checks"],
         "checkResults": {"route": "/pull/7/checks", "links": 2, "empty": True, "pending": True},
         "waitCorePost": {"number": 7, "retry": True, "wait_core": True},
-        "previewMarkdownRequests": 0,
+        "previewMarkdownRequests": 1,
         "fullMarkdownRequests": 1,
         "fullRecordWins": True,
         "crossOwnerRetirement": True,

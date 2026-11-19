@@ -12,6 +12,7 @@ restores them so `make golden-update` is a single reviewable step:
   reports, and `[STORE_KEY]` for the store's key in it when the origin is a sandbox
   address, from which the key is derived
 * `[BUILTIN]` for the absolute checkout prefix of builtin plugin paths
+* `[FAKE_GH]` for the stand-in gh that the GitHub status goldens put on PATH
 * `[VERSION]` for the installed package version
 * the second copy of the KPress asset manifest in the shell transcript
 * the KPress icon sprite at the head of a rendered document, which is tens of
@@ -114,6 +115,9 @@ FIXUPS: list[tuple[str, str]] = [
         r"\1[STORE_KEY]\2",
     ),
     (r"/\S*/builtin_plugins", "[BUILTIN]"),
+    # The stand-in gh the GitHub status goldens put first on PATH, by its absolute
+    # checkout path; quoted in a JSON envelope too, so not \S*.
+    (r'/[^\s"]*/tests/fixtures/github-status/gh', "[FAKE_GH]"),
     # The trailing group is the build annotation a checkout adds; see
     # metabrowser.build_version. It varies per commit, so it elides with the
     # version rather than beside it.

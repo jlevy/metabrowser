@@ -33,6 +33,7 @@ from typing import Any
 
 import pytest
 
+from metabrowser.builtin_plugins.github.gh_status import SIGN_IN_STATES
 from metabrowser.cache import pull_refs
 from metabrowser.cache.urls import GitSource
 from metabrowser.git.process import GitCommandError
@@ -282,6 +283,12 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     for state, answers in refusals:
         session.answer(answers)
         refused = session.run(f"{PULL}/11", "--no-serve")
+        if state in SIGN_IN_STATES:
+            # Only gh reads a pull request, so the default branch would answer another
+            # URL: the command stops with the step that fixes it.
+            assert refused.exit_code == 1, (state, refused.stdout)
+            assert refused.stderr.rstrip().endswith(f"({state})"), (state, refused.stderr)
+            continue
         assert refused.exit_code == 0, (state, refused.stderr)
         assert f"({state}); the pin is the default branch)" in refused.stdout, (
             state,
@@ -337,10 +344,8 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
 
     monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
     missing = session.run(f"{PULL}/11", "--api", f"{ROUTE}?number=11")
-    assert (
-        missing.exit_code == 0 and "(gh_missing); the pin is the default branch)" in missing.stderr
-    )
-    assert missing.payload()["reason"] == "not_cached"
+    assert missing.exit_code == 1 and missing.stderr.rstrip().endswith("(gh_missing)")
+    assert missing.stdout == ""
     # The cached record outlived every failed refresh.
     kept = session.run(f"{PULL}/7", "--api", f"{ROUTE}?number=7")
     assert kept.exit_code == 0 and kept.payload()["record"] == envelope["record"]
