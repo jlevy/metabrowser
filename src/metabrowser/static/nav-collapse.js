@@ -1,7 +1,7 @@
-// Hiding the navigation pane: the chevron at the start of the main page's top row, and
-// `\` (docs/keyboard-shortcuts.md), close the pane and open it again. The stylesheet
-// places the chevron (`.nav-collapse-toggle`), on the row's fixed height, so nothing here
-// measures it.
+// Hiding the navigation pane: the chevron at the start of the main page's foot, on the
+// shortcut strip's row, and `\` (docs/keyboard-shortcuts.md), close the pane and open it
+// again. The stylesheet places the chevron (`.nav-collapse-toggle`) from the strip's row,
+// which this measures, since a row under the strip moves it.
 //
 // The pane does not shrink. Hidden, it leaves the layout, and the main frame, which
 // already floats over it with its left shadow, slides left over it to the window's
@@ -54,6 +54,7 @@
 
   /**
    * @param {{
+   *   anchor?: HTMLElement | null,
    *   button: HTMLButtonElement,
    *   container: HTMLElement,
    *   document?: Document,
@@ -218,6 +219,32 @@
       toggle();
     }
 
+    // The chevron sits on the shortcut strip's row, which moves when a row under it, the
+    // scan's progress or a mirror's freshness, shows or hides. The strip starts where the
+    // pane starts, as the frame and the divider do, so its place below its rule, given to
+    // the container, places the chevron in the frame and stops the divider's resize reach
+    // above it (`.nav-collapse-toggle` and `.resize-handle::after` in styles.css).
+    /** @type {ResizeObserver | null} */
+    let alignment = null;
+    const anchor = options.anchor ?? null;
+    if (anchor && typeof global.ResizeObserver === "function") {
+      alignment = new global.ResizeObserver(() => {
+        container.style.setProperty(
+          "--nav-shortcut-row-top",
+          `${anchor.offsetTop + anchor.clientTop}px`,
+        );
+        container.style.setProperty("--nav-shortcut-row-height", `${anchor.clientHeight}px`);
+      });
+      alignment.observe(pane);
+      for (
+        let node = /** @type {Element | null} */ (anchor);
+        node;
+        node = node.nextElementSibling
+      ) {
+        alignment.observe(node);
+      }
+    }
+
     button.addEventListener("click", onClick);
     renderButton();
 
@@ -233,6 +260,7 @@
       },
       dispose() {
         finishSlide();
+        alignment?.disconnect();
         button.removeEventListener("click", onClick);
         listeners.clear();
       },

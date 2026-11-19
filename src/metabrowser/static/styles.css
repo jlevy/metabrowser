@@ -728,6 +728,10 @@
      px centered in the row's 33 and its 19.5 px line 3 px into that box); 41 px put it
      10.75 px under, which read as loose beside the tabs. */
   --pane-header-row-height: 34px;
+  /* The shortcut strip's row under its rule (`.nav-shortcut-hints`): its padding, a
+     hint's padding, and a keycap's border and 1.5 lines. static/nav-collapse.js gives the
+     container the strip's measured height in its place, which this is until it does. */
+  --nav-shortcut-row-height: calc(12px + 6px + 2px + 1.5 * var(--kbd-font-size));
   /* A view header's rhythm (docs/design-system.md, "View Headers"): the pad above the
      heading row, under the eyebrow's rule or, with no eyebrow, the page's top, and the
      pad under the last row; the metadata line's height, which it holds whatever fills
@@ -2676,7 +2680,7 @@ html.theme-anim .menu {
 .nav-shortcut-hints[hidden] {
   display: flex;
   visibility: hidden;
-  min-height: calc(1px + 12px + 6px + 2px + 1.5em);
+  min-height: calc(1px + var(--nav-shortcut-row-height));
 }
 /* An item the row has no room for. Its own rule below would otherwise keep it drawn. */
 .nav-shortcut-hints > [hidden] {
@@ -3036,15 +3040,15 @@ html.theme-anim .menu {
   z-index: var(--z-resize-handle);
   transition: background var(--transition-fast);
 }
-/* The handle's reach, 4 px either side of the divider, starts under the top row: in the
-   row the main page's side is the chevron's (`.nav-collapse-toggle`), which fills the
-   gutter there, and the reach took a press on its first 4 px for a resize (Chrome 152,
-   2026-11-19). The divider's own 4 px are the handle's in the row too. */
+/* The handle's reach, 4 px either side of the divider, stops above the shortcut strip's
+   row: on the row the main page's side is the chevron's (`.nav-collapse-toggle`), which
+   fills the gutter there, and the reach took a press on its first 4 px for a resize
+   (Chrome 152, 2026-11-19). The divider's own 4 px are the handle's on the row too. */
 .resize-handle::after {
   content: "";
   position: absolute;
-  top: var(--pane-header-row-height);
-  bottom: 0;
+  top: 0;
+  bottom: calc(100% - var(--nav-shortcut-row-top, 100% - var(--nav-shortcut-row-height)));
   left: -4px;
   right: -4px;
   cursor: col-resize;
@@ -3068,29 +3072,32 @@ html.theme-anim .menu {
 .container[data-nav-collapsed] > .resize-handle {
   display: none;
 }
-/* The chevron: an icon button at the start of the main page's top row, the band the
-   navigation's path row makes across the window (`--pane-header-row-height`), centered
-   in the gutter before the content's edge and on the row's line, above its 1 px rule: the
-   line the navigation's name and Metabrowser menu and the eyebrow's Up and address are
-   centered on, so it sits across from the menu's gear (mb-tl7p). A page with no eyebrow,
-   a pull request's or a commit's, has it at the same place. It is in the frame, so it
-   stays when the pane is hidden and slides with the page. Its box is the eyebrow's Up
-   control's, so the two icon buttons in the row are one size, and fills the gutter, the
-   divider's resize reach kept out of the row (`.resize-handle::after`); it has no plate,
-   so the page's edge and the pane's shadow show through it, and only the hover surface
-   fills it. The shared chevron points right; turned, it points
-   left, at the pane it hides, and it turns back when the pane is hidden. On the shortcut
-   strip's row at the page's foot, it was a script's measurement to keep there. */
+/* The chevron: an icon button at the start of the main page's foot, centered in the
+   gutter before the content's edge, and on the shortcut strip's row (mb-yw18): centered
+   on the strip below its rule, the line its keys are on, across the divider. The strip
+   moves when a row under it shows, the scan's progress or a mirror's freshness, so
+   static/nav-collapse.js measures it and gives the container `--nav-shortcut-row-top`
+   and `--nav-shortcut-row-height`; until it does, the row is the strip's height at the
+   pane's foot. It is in the frame, so it stays when the pane is hidden and slides with the
+   page. Its box is the eyebrow's Up control's, so the page's icon buttons are one size,
+   and fills the gutter, the divider's resize reach kept off the row
+   (`.resize-handle::after`); it has no plate, so the page's edge and the pane's shadow
+   show through it, and only the hover surface fills it. The shared chevron points right;
+   turned, it points left, at the pane it hides, and it turns back when the pane is
+   hidden. */
 .nav-collapse-toggle {
   --icon-btn-size: var(--view-header-up-size);
   position: absolute;
-  inset-block-start: calc((var(--pane-header-row-height) - 1px - var(--icon-btn-size)) / 2);
+  inset-block-start: calc(
+    var(--nav-shortcut-row-top, 100% - var(--nav-shortcut-row-height)) +
+    (var(--nav-shortcut-row-height) - var(--icon-btn-size)) /
+    2
+  );
   inset-inline-start: calc((var(--content-padding-x) - var(--icon-btn-size)) / 2);
   z-index: var(--z-resize-handle);
 }
 /* Its Shift badge is in the frame, over the button's inline end like every `beside`
-   badge, and needs the button's level to paint over it rather than under it, and over
-   the eyebrow's Up control beside it. */
+   badge, and needs the button's level to paint over it rather than under it. */
 .nav-collapse-toggle ~ .kbd-badge {
   z-index: var(--z-resize-handle);
 }
@@ -3226,9 +3233,22 @@ html[data-prose-font="sans"] .kpress-prose h2,
      resolves it as the scroll root. No transform here; see .preview-frame. */
   container: kpress-doc / inline-size;
 }
+/* The main page's focus ring, on the frame over the pane rather than on the pane: the
+   pane's own outline, inset, paints under a positioned box in it with a ground of its
+   own, so a page drawn on the file stage (`.preview-file-stage`), as a pull request's
+   tab bar is, covered the ring (the macOS app; in Chrome 152 on 2026-11-19 a band placed
+   at the pane's top covered it too, tests/dom/nav-collapse-chrome.mjs). Over the frame's
+   content, it takes no press (mb-0rop). */
 .preview-pane:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: none;
+}
+.preview-frame:has(> .preview-pane:focus-visible)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--link);
+  pointer-events: none;
+  z-index: var(--z-overlay);
 }
 .preview-file-stage {
   position: absolute;

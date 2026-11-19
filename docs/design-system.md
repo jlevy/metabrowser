@@ -4563,8 +4563,8 @@ click, and that the name is called “Home: <folder>”.
 
 ### Hiding the Navigation Pane
 
-**A chevron at the start of the main page’s top row hides the navigation pane, and so
-does the Backslash key.** The page slides left over the pane to fill the window, and the
+**A chevron at the start of the main page’s foot hides the navigation pane, and so does
+the Backslash key.** The page slides left over the pane to fill the window, and the
 chevron turns to point right; a second press slides the page back and shows the pane as
 it was. Shift-Backslash, which types `|` on a US keyboard, does the same, as Shift
 changes no key ([Keyboard Shortcuts](#keyboard-shortcuts)); the key is read by the
@@ -4574,20 +4574,20 @@ is not it.
 The chevron is the shared disclosure chevron in an icon button
 ([Every Icon-Only Control Is the Same Control](#every-icon-only-control-is-the-same-control)),
 muted at rest with the hover surface, pointing left at the pane it hides.
-It fills the main frame’s gutter at the start of the top row, before a file’s or a
-folder’s Up and address, centered on that row as the navigation title’s gear is across
-the divider, so the two read as the one top bar’s ends.
-It is a target of Up’s size, with space before Up, and the divider’s resize reach stops
-under the row, so a press anywhere in it hides the pane.
-A pull request’s and a commit’s page, which have no eyebrow, have it in the same place,
-in the gutter at the page’s top.
-It stays there while the pane is hidden.
-The stylesheet places it from the row’s height token, `--pane-header-row-height`, the
-gutter’s, `--content-padding-x`, and Up’s size, `--view-header-up-size`, so no script
-measures it. It has no plate of its own, so the page’s edge and the pane’s shadow show
-through it; only the hover surface fills it.
+It fills the main frame’s gutter, before the content’s edge, on the shortcut strip’s row
+at the foot: centered on the strip below its rule, the line the strip’s keys are on
+across the divider, so it reads as the strip’s last control.
+It is a target of Up’s size, and the divider’s resize reach stops above the row, so a
+press anywhere in it hides the pane.
+Every page has it in the same place, and it stays there while the pane is hidden.
+The strip moves up when a row under it shows, the scan’s progress or a mirror’s
+freshness, so `static/nav-collapse.js` measures the strip’s row and gives the container
+`--nav-shortcut-row-top` and `--nav-shortcut-row-height`, and the stylesheet places the
+chevron from them, the gutter’s `--content-padding-x`, and Up’s size,
+`--view-header-up-size`. It has no plate of its own, so the page’s edge and the pane’s
+shadow show through it; only the hover surface fills it.
 Holding Shift badges it with Backslash, over its inline end, as every icon button’s
-badge sits, and over the Up beside it.
+badge sits.
 
 The pane does not shrink.
 Hidden, it leaves the layout, keeps its width under the frame, and is `inert`, so no Tab

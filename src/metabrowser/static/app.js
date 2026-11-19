@@ -10092,6 +10092,7 @@ function startNavCollapse() {
   }
   button.removeEventListener("click", onEarlyNavCollapseClick);
   navCollapse = window.MetabrowserNavCollapse.create({
+    anchor: document.getElementById("nav-shortcut-hints"),
     button: button,
     container: container,
     focusFallback: () => document.getElementById("preview-pane"),
