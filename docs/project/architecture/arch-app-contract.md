@@ -5,8 +5,9 @@
 `make lint-check`, `tests/test_app_contract_golden.py` compares the golden,
 `AppContractTests` in the app’s Swift tests reads it back, and
 `tests/test_check_app_contract.py` checks the checker.
-Proposed: the release rule in [Versioning](#versioning), which the checks already hold
-and the owner has not yet confirmed.
+The release rule that [Versioning](#versioning) enforces is written in
+[Choosing a Version](../../publishing.md#choosing-a-version), where two of its points
+are proposals the owner has not yet decided.
 
 The [macOS app](arch-macos-app.md) runs the `metab` a user installed, as a subprocess,
 and talks to the server it starts.
@@ -82,7 +83,7 @@ writes, and each such `[[line]]` names its test.
 | `AppContractTests` | The macOS workflow, on a change under `apps/macos` or to the golden | A builder in the app writes a command line the golden does not have; a reader in the app reads a recorded answer as anything but its scenario; the golden gains or loses a scenario the suite does not follow |
 | `check_app_contract.py`, the sources | `make lint-check`, in every job | A Swift source names a flag, a route, or a `METABROWSER_` variable the declaration lacks; a file starts a process, decodes JSON, sends a request, or scripts a page and is not listed; the declaration names something the sources no longer do; the declared probe is not `MetabRequirement.requiredFlags` and `--version` |
 | `check_app_contract.py`, the golden | The same | A declared command or route has no block; a block’s command line is not the declared argument list; a block holds a key or a line the declaration does not; a declared value or line is shown nowhere; a `pinned_by` names no test; the macOS workflow’s path filter does not name the golden |
-| `check_app_contract.py`, the changelog | The same | A branch changes the declaration or the golden and no changelog fragment says so; a patch release’s section holds a change to the contract |
+| `check_app_contract.py`, the changelog | The same | A branch changes the declared surface or the golden and no changelog fragment says so; a fragment calls a change to the declared surface a fix; a patch release’s section holds a change to the contract |
 
 The Swift sources are read as text, by `devtools/swift_text.py`, which tells a string
 literal from a comment.
@@ -109,14 +110,19 @@ app adds, for `window.print`, is listed under `[files.script]`.
 
 ## Versioning
 
-The owner’s rule, of 2026-11-18, is that a change to `metab` that is incompatible with
-the app ships in a new minor or major release, and never in a patch release unless it is
-a bug fix. Here that becomes two checks and one tool.
+[Choosing a Version](../../publishing.md#choosing-a-version) holds the rule: a change to
+what the app reads from `metab` ships in a minor or major release, and a bug fix that
+keeps what the app reads may ship in a patch.
+Two checks hold a release to it, and a tool asks any `metab`.
 
-- **A change to the contract is named.** A branch whose declaration or golden differs
-  from its merge base with `main` adds a changelog fragment with an entry that starts
-  `- **App contract:**`, or `- **App contract fix:**` for a bug fix.
-  The author knows which it is; the release reads it later.
+- **A change to the contract is named.** A branch whose declared surface or golden
+  differs from its merge base with `main` adds a changelog fragment with an entry that
+  starts `- **App contract:**`. The declared surface is what the app sends and reads:
+  commands, routes, keys, values, lines, and variables, and not a note or the test that
+  pins an entry. When only the golden differs, `metab` answers the same surface
+  differently; if the old answer was a bug, the entry may start
+  `- **App contract fix:**`, which is the fix that keeps what the app reads.
+  The author knows which it is, and the release reads it later.
 - **A patch release holds no change.** A section of `CHANGELOG.md` headed `X.Y.Z` with
   `Z` above zero may hold `App contract fix` entries and no `App contract` entry.
   The pull request that prepares a release adds that heading, so choosing a patch
@@ -128,14 +134,10 @@ a bug fix. Here that becomes two checks and one tool.
   extended to every declared command.
   It starts nothing and writes nothing, and it asks no route, which needs a server.
 
-Proposed, for the owner to confirm:
-
-- **Before 1.0, the minor release is the contract’s level.** A `0.Y.0` may add what the
-  app reads and may change it; a `0.Y.Z` changes it only to fix a bug.
-- **Adding counts as changing.** A field or flag the app begins to read is new in the
-  declaration, so it is an `App contract` entry and ships in a minor release.
-  A field the app does not read is no part of the contract, and `metab` may add one in
-  any release.
+A field or flag the app begins to read is new in the declaration, so it is a change and
+ships in a minor release.
+A field the app does not read is no part of the contract, and `metab` may add one in any
+release without touching the golden.
 
 ## What the Contract Leaves Out
 

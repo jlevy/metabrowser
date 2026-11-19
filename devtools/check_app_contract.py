@@ -15,8 +15,9 @@ both sides:
   CI job and the app's own tests run only on macOS.
 - **The golden.** Every declared command and route has a block whose command line is the
   declared argument list, and a block holds exactly the declared keys and lines.
-- **The changelog.** A branch that changes the declaration or the golden names the change
-  in a changelog fragment, and no patch release's section holds one that is not a fix.
+- **The changelog.** A branch that changes the declared surface or the golden names the
+  change in a changelog fragment, and no patch release's section holds one that is not a
+  fix.
 
 What it cannot see, and what covers it: whether the app's code builds the declared
 argument lists and reads the recorded answers is ``AppContractTests.swift``, which runs
@@ -37,7 +38,7 @@ import argparse
 import re
 import subprocess
 import sys
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Final, cast
 
@@ -49,8 +50,6 @@ APP: Final = "apps/macos"
 DECLARATION: Final = f"{APP}/metab-contract.toml"
 GOLDEN_DIR: Final = "tests/golden"
 GOLDEN: Final = f"{GOLDEN_DIR}/{app_contract.GOLDEN_NAME}"
-# What a change to the contract changes: the two files a fragment must then name.
-CONTRACT_FILES: Final = (DECLARATION, GOLDEN)
 # The workflow that runs the app's tests, on a change to a path its filters name.
 APP_WORKFLOW: Final = ".github/workflows/macos-app.yml"
 # The app's live tests run the real `metab`, so what they pass it is searched too.
@@ -61,8 +60,9 @@ SPAWN_FILE: Final = "Sources/ShellCore/Supervision/ServerProcess.swift"
 REQUIREMENT_FILE: Final = "Sources/ShellCore/Setup/MetabVersion.swift"
 PROBE_ID: Final = "version-probe"
 
-# A changelog entry that names a change to the contract, and one that names a fix to it.
-# The first ships in a minor or major release; the second may ship in a patch.
+# A changelog entry that names a change to the contract, and one that names a fix: metab
+# answered the same surface wrongly. The first ships in a minor or major release; the
+# second may ship in a patch (docs/publishing.md, "Choosing a Version").
 CHANGE_MARK: Final = "- **App contract:**"
 FIX_MARK: Final = "- **App contract fix:**"
 
@@ -545,10 +545,6 @@ def workflow_problems(root: Path) -> list[str]:
 # ── The changelog ───────────────────────────────────────────────────
 
 
-def _is_marked(entry: str) -> bool:
-    return entry.startswith((CHANGE_MARK, FIX_MARK))
-
-
 def release_problems(changelog_text: str) -> list[str]:
     """Patch releases whose changelog section names a change to the contract.
 
@@ -590,26 +586,43 @@ def _at(root: Path, revision: str, path: str) -> str | None:
         return None
 
 
-def change_problems(root: Path, against: str) -> list[str]:
-    """A branch that changes the contract and does not say so in a changelog fragment.
+def declared_surface(text: str | None) -> object:
+    """What a declaration's *text* says the app sends and reads, or None for no
+    declaration or one that does not parse.
 
-    The contract changed when the declaration or the golden differs from the merge base
-    of *against* and ``HEAD``, and from *against* itself, which a merge of it in progress
-    brings. The change is named when a fragment the branch adds or edits holds an entry
-    that starts with one of the two marks.
+    Two declarations with the same surface differ only in what a release need not name:
+    a note, the test that pins an entry, or which Swift file holds a reader.
     """
 
+    if text is None:
+        return None
     try:
-        base = _git(root, "merge-base", against, "HEAD").strip()
-    except changelog.ChangelogError as error:
-        return [f"{error}\nThe app contract check compares with the merge base of {against}."]
-    changed = [
-        path
-        for path in CONTRACT_FILES
-        if (now := _read(root, path)) != _at(root, base, path) and now != _at(root, against, path)
-    ]
-    if not changed:
-        return []
+        contract = app_contract.parse(text)
+    except ContractError:
+        return None
+    return (
+        tuple(
+            (
+                surface.id,
+                surface.argv,
+                surface.json,
+                tuple(sorted(surface.values.items())),
+                surface.stdout,
+                surface.stderr,
+                surface.shown,
+                surface.app_runs,
+            )
+            for surface in contract.surfaces
+        ),
+        tuple((line.id, line.pattern.pattern) for line in contract.lines),
+        tuple(variable.name for variable in contract.variables),
+    )
+
+
+def _branch_marks(root: Path, base: str) -> set[str]:
+    """The marks among the entries of the fragments this branch added or edited."""
+
+    marks: set[str] = set()
     directory = root / changelog.FRAGMENTS
     names = sorted(path.name for path in directory.glob("*.md")) if directory.is_dir() else []
     for name in names:
@@ -621,16 +634,57 @@ def change_problems(root: Path, against: str) -> list[str]:
             entries = changelog.parse_fragment(name, text).entries
         except changelog.ChangelogError:
             continue  # `changelog check` reports a fragment it cannot read
-        if any(_is_marked(entry) for entry in entries):
-            return []
+        marks |= {
+            mark for mark in (CHANGE_MARK, FIX_MARK) for entry in entries if entry.startswith(mark)
+        }
+    return marks
+
+
+def change_problems(root: Path, against: str) -> list[str]:
+    """A branch that changes the contract and does not say so in a changelog fragment.
+
+    A file changed when it differs from the merge base of *against* and ``HEAD``, and
+    from *against* itself, which a merge of it in progress brings. A change to the
+    declared surface, what the app sends and reads, is a change to the contract, and a
+    fragment the branch adds or edits must name it with :data:`CHANGE_MARK`. A change to
+    the golden alone is ``metab`` answering the same surface differently, which is either
+    that or a bug fix, so either mark names it.
+    """
+
+    try:
+        base = _git(root, "merge-base", against, "HEAD").strip()
+    except changelog.ChangelogError as error:
+        return [f"{error}\nThe app contract check compares with the merge base of {against}."]
+
+    def differs(path: str, read: Callable[[str | None], object]) -> bool:
+        now = read(_read(root, path))
+        return now != read(_at(root, base, path)) and now != read(_at(root, against, path))
+
+    surface = differs(DECLARATION, declared_surface)
+    golden = differs(GOLDEN, lambda text: text)
+    marks = _branch_marks(root, base)
+    if not (surface or golden) or CHANGE_MARK in marks or (FIX_MARK in marks and not surface):
+        return []
+    where = f"since the merge base with {against} ({base[:12]})"
+    remedy = (
+        f"Name it in a changelog fragment, {changelog.FRAGMENTS}/<bead>.md, with an entry "
+        f"that starts `{CHANGE_MARK}`, which ships in a minor or major release of metab"
+    )
+    after = (
+        "Change the app in the same commit, and raise MetabRequirement.minimumRelease if the "
+        "app now needs the newer metab (docs/project/architecture/arch-app-contract.md)."
+    )
+    if surface:
+        fix = f" An entry marked `{FIX_MARK}` does not name it: a fix keeps what the app reads."
+        return [
+            f"{DECLARATION} declares a different surface {where}, so this branch changes what "
+            f"the macOS app sends to metab or reads from it. {remedy}."
+            f"{fix if FIX_MARK in marks else ''} {after}"
+        ]
     return [
-        f"{' and '.join(changed)} changed since the merge base with {against} ({base[:12]}), "
-        "so this branch changes what the macOS app depends on in metab. Name the change in "
-        f"a changelog fragment, {changelog.FRAGMENTS}/<bead>.md, with an entry that starts "
-        f"`{CHANGE_MARK}`, which ships in a minor or major release of metab, or "
-        f"`{FIX_MARK}` for a bug fix, which may ship in a patch. Change the app in the same "
-        "commit, and raise MetabRequirement.minimumRelease if the app now needs the newer "
-        "metab (docs/project/architecture/arch-app-contract.md)."
+        f"{GOLDEN} changed {where}, so metab answers the macOS app differently in something "
+        f"the app reads. {remedy}, or `{FIX_MARK}` when the old answer was a bug, which may "
+        f"ship in a patch. {after}"
     ]
 
 

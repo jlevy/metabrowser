@@ -25,6 +25,10 @@ What differs from the app's own runs, and why:
   no test may clone; the clone report and the mirror's identity are the same code.
 - **The sandbox names its own configuration and cache directories,** as the app's live
   tests do, so nothing is read from or written to the account that runs the tests.
+- **A link's dry run looks for no app.** Where ``--present`` would deliver a target is
+  part of its answer and no part of what the app reads, and deciding it asks
+  LaunchServices about the Mac the tests run on, so the sandbox sets
+  ``METABROWSER_OPEN_IN=browser``, as ``cli-present.tryscript.md`` does.
 """
 
 from __future__ import annotations
@@ -45,6 +49,7 @@ from devtools.app_contract import SCENARIO_SECTION, SHOWN_OUTPUT, Surface
 from metabrowser import recent_targets
 from metabrowser.home import METABROWSER_CACHE_DIR_ENV
 from metabrowser.normalize import ROOT_PLACEHOLDER
+from metabrowser.open_in import OPEN_IN_ENV
 from tests.cache_home_fixture import build_populated_home
 from tests.golden_harness import (
     Invocation,
@@ -144,6 +149,7 @@ class _Sandbox:
         self.config = tmp_path / "config"
         monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(self.config))
         monkeypatch.setenv("METABROWSER_PLUGINS_DIRS", "")
+        monkeypatch.setenv(OPEN_IN_ENV, "browser")
         monkeypatch.setenv("TERM", "dumb")
         # Outside the sandbox, so a folder's full name is its path until a block says
         # otherwise.

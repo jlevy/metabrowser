@@ -310,7 +310,7 @@ def _repository(tmp_path: Path) -> Path:
     _write(
         root,
         {
-            DECLARATION: "# the declaration\n",
+            DECLARATION: (ROOT / DECLARATION).read_text(encoding="utf-8"),
             GOLDEN: "# the golden\n",
             "CHANGELOG.md": CHANGELOG.format(patch=""),
             "changelog.d/README.md": "# Changelog Fragments\n",
@@ -328,16 +328,41 @@ def test_a_branch_that_changes_the_contract_names_the_change(tmp_path: Path) -> 
     root = _repository(tmp_path)
     assert check_app_contract.change_problems(root, "main") == []
 
+    # The same surface, answered differently: a change, or a fix.
     _write(root, {GOLDEN: "# the golden, changed\n"})
     problems = check_app_contract.change_problems(root, "main")
-    assert len(problems) == 1 and GOLDEN in problems[0] and CHANGE_MARK in problems[0]
-
-    # An unmarked entry, and a marked one in a fragment this branch did not write.
+    assert len(problems) == 1 and GOLDEN in problems[0]
+    assert CHANGE_MARK in problems[0] and FIX_MARK in problems[0]
     _write(root, {"changelog.d/mb-new1.md": "- The list shows a new field.\n"})
     assert check_app_contract.change_problems(root, "main")
+    _write(root, {"changelog.d/mb-new1.md": f"{FIX_MARK} `--recent --json` is UTC again.\n"})
+    assert check_app_contract.change_problems(root, "main") == []
     _write(root, {"changelog.d/mb-new1.md": f"{CHANGE_MARK} `--recent --json` gains `pinned`.\n"})
     assert check_app_contract.change_problems(root, "main") == []
+
+
+def test_a_change_to_the_declared_surface_is_not_a_fix(tmp_path: Path) -> None:
+    root = _repository(tmp_path)
+    declaration = (ROOT / DECLARATION).read_text(encoding="utf-8")
+
+    # A note, a comment, and the test that pins an entry are no part of the surface.
+    reworded = declaration.replace('note = "File > Open Recent and the Dock menu."', 'note = "x"')
+    assert reworded != declaration
+    _write(root, {DECLARATION: reworded + "\n# A comment.\n"})
+    assert check_app_contract.change_problems(root, "main") == []
+
+    # A key the app begins to read is, and a fix does not name it.
+    wider = declaration.replace(
+        '"targets[].opened_at", "problem"]', '"targets[].opened_at", "limit", "problem"]'
+    )
+    assert wider != declaration
+    _write(root, {DECLARATION: wider})
+    problems = check_app_contract.change_problems(root, "main")
+    assert len(problems) == 1 and "declares a different surface" in problems[0]
     _write(root, {"changelog.d/mb-new1.md": f"{FIX_MARK} `--recent --json` is UTC again.\n"})
+    problems = check_app_contract.change_problems(root, "main")
+    assert len(problems) == 1 and "a fix keeps what the app reads" in problems[0]
+    _write(root, {"changelog.d/mb-new1.md": f"{CHANGE_MARK} The app reads `limit`.\n"})
     assert check_app_contract.change_problems(root, "main") == []
 
 
@@ -346,10 +371,10 @@ def test_a_change_main_made_is_not_this_branchs(tmp_path: Path) -> None:
 
     root = _repository(tmp_path)
     _git(root, "checkout", "-q", "main")
-    _write(root, {DECLARATION: "# the declaration, changed on main\n"})
+    _write(root, {GOLDEN: "# the golden, changed on main\n"})
     _git(root, "commit", "-qam", "main changes the contract")
     _git(root, "checkout", "-q", "topic")
-    _write(root, {DECLARATION: "# the declaration, changed on main\n"})
+    _write(root, {GOLDEN: "# the golden, changed on main\n"})
     assert check_app_contract.change_problems(root, "main") == []
 
 
