@@ -302,11 +302,11 @@ note = "Set only by the app's live tests, so that a test's folder stays out of t
 # records, so that a changed value is a change to the contract.
 
 [[behavior]]
-id = "view-on-github-link"
-source = "Sources/ShellCore/Web/GitHubViewRequests.swift"
-what = "A page marks its View on GitHub button's main link `data-view-on-github=\"open\"`: an `a` whose `href` is the item's page on github.com, with `target=\"_blank\"` and `rel=\"noopener\"`. The app's script takes a plain click on that link and opens its popover there; any other click is the link's own, which opens a new window that the app hands to the default browser."
+id = "web-view-link"
+source = "Sources/ShellCore/Web/WebViewRequests.swift"
+what = "A page marks a link that opens in the app's web pane `data-web-view=\"open\"`, as the View on GitHub button's main link is: an `a` whose `href` is a page on a site the app knows (`WebSite.known`), with `target=\"_blank\"` and `rel=\"noopener\"`. The app's script takes a plain click on that link and opens its pane there, in a popover; any other click is the link's own, which opens a new window that the app hands to the default browser."
 pinned_by = "tests/golden/cli-ui-counterpart.tryscript.md"
-holds = '"data-view-on-github": "open"'
+holds = '"data-web-view": "open"'
 
 [[behavior]]
 id = "json-framing"
@@ -448,8 +448,8 @@ metab = "the identity `/api/identity` answers, which a window shows in its place
 pinned_by = "apps/macos/Tests/ShellCoreTests/AppContractTests.swift::aWindowIsNamedAsTheServerNamesIt"
 
 [[copy]]
-swift = "GitHubViewRequests.marker"
-source = "Sources/ShellCore/Web/GitHubViewRequests.swift"
+swift = "WebViewRequests.marker"
+source = "Sources/ShellCore/Web/WebViewRequests.swift"
 metab = "the hook `counterpartButton` in static/plugin-sdk-views.js gives the button's main link"
 pinned_by = "tests/test_macos_app_pins.py::test_the_link_the_apps_script_takes_is_the_one_the_page_marks"
 
@@ -513,12 +513,12 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 "Sources/ShellCore/Folders/FolderIdentity.swift" = ["identity", "source-status"]
 "Sources/ShellCore/Supervision/ReadinessProbe.swift" = ["entry-page-answers"]
 "Sources/Metabrowser/FolderPage.swift" = ["own: the page a window loads, which the web view requests"]
-"Sources/Metabrowser/GitHubPopover.swift" = ["own: github.com, in the View on GitHub popover"]
+"Sources/Metabrowser/WebPane.swift" = ["own: a known site's pages, such as github.com's, in the web pane"]
 
 [files.script]
 "Sources/ShellCore/Web/PagePrint.swift" = ["own: window.print, which WebKit gives the app no public way to receive"]
-"Sources/ShellCore/Web/GitHubViewRequests.swift" = ["view-on-github-link"]
-"Sources/Metabrowser/GitHubPopover.swift" = ["own: whether the popover's github.com page holds text not yet sent"]
+"Sources/ShellCore/Web/WebViewRequests.swift" = ["web-view-link"]
+"Sources/Metabrowser/WebPane.swift" = ["own: whether the pane's page holds text not yet sent"]
 
 # ── What the scans pass over ────────────────────────────────────────────────────────────
 #

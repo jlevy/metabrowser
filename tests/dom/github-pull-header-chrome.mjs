@@ -1262,8 +1262,8 @@ const CORNER = `async (width, theme, longTitle, maxChars) => {
   };
   const title = header.querySelector(".github-pull-title");
   const group = button.querySelector(".counterpart-group");
-  const open = button.querySelector('[data-view-on-github="open"]');
-  const external = button.querySelector('[data-view-on-github="external"]');
+  const open = button.querySelector('[data-web-view="open"]');
+  const external = button.querySelector('[data-web-view="external"]');
   const more = button.querySelector(".counterpart-more");
   const frame = getComputedStyle(group);
   const at = box(container);

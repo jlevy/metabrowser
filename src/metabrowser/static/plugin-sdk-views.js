@@ -1858,11 +1858,12 @@
    * `GET /api/counterpart` answers, so the provider supplies the label and the URL, and
    * another provider draws the same control.
    *
-   * The markup is the macOS app's contract (mb-4wqh): the root carries
-   * `data-view-on-<provider>`, the link `data-view-on-<provider>="open"`, and the menu's
-   * Open in Browser `data-view-on-<provider>="external"`. In a browser the link opens the
-   * page in a new tab; the app shows a plain click on it in a popover of its own. Nothing
-   * here knows of the app.
+   * The root carries `data-view-on-<provider>`, which names the button. The links carry
+   * the macOS app's contract, which names no site (mb-730z): the link
+   * `data-web-view="open"`, and the menu's Open in Browser `data-web-view="external"`. In
+   * a browser the link opens the page in a new tab; the app shows a plain click on it in a
+   * web pane of its own, in a popover, when the page is on a site it knows. Nothing here
+   * knows of the app.
    *
    * The menu is a menu button's: the chevron opens it with focus on its first item, the
    * arrow keys, Home, and End move among the items, and Escape, a second click on the
@@ -1892,7 +1893,7 @@
     group.dataset.layout = "joined";
     const open = doc.createElement("a");
     open.className = "chip counterpart-open";
-    open.setAttribute(hook, "open");
+    open.setAttribute("data-web-view", "open");
     open.setAttribute("href", counterpart.url);
     open.setAttribute("target", "_blank");
     open.setAttribute("rel", "noopener");
@@ -1939,7 +1940,7 @@
     copy.setAttribute("type", "button");
     copy.dataset.counterpartAction = "copy";
     const external = menuItem(doc.createElement("a"), "Open in Browser");
-    external.setAttribute(hook, "external");
+    external.setAttribute("data-web-view", "external");
     external.setAttribute("href", counterpart.url);
     external.setAttribute("target", "_blank");
     external.setAttribute("rel", "noopener");

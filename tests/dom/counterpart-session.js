@@ -270,9 +270,9 @@ assert.equal(status.getAttribute("role"), "status");
 assert.equal(status.textContent, "");
 // The app's hooks (mb-4wqh), exactly.
 assert.equal(button.getAttribute("data-view-on-github"), "");
-assert.equal(open.getAttribute("data-view-on-github"), "open");
+assert.equal(open.getAttribute("data-web-view"), "open");
 assert.equal(open.getAttribute("href"), URL_OF_PAGE);
-assert.equal(external.getAttribute("data-view-on-github"), "external");
+assert.equal(external.getAttribute("data-web-view"), "external");
 assert.equal(external.getAttribute("href"), URL_OF_PAGE);
 assert.equal(external.getAttribute("target"), "_blank");
 assert.equal(external.getAttribute("rel"), "noopener");

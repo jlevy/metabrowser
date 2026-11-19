@@ -352,10 +352,10 @@ def _elements(markup: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def test_the_link_the_apps_script_takes_is_the_one_the_page_marks() -> None:
-    """``GitHubViewRequests.marker`` selects the View on GitHub button's main link.
+    """``WebViewRequests.marker`` selects the View on GitHub button's main link.
 
     The app's user script takes a plain click on the element its selector matches and
-    opens the popover; the page only marks its links and knows nothing of the app. So the
+    opens its web pane; the page only marks its links and knows nothing of the app. So the
     selector is a copy of the page's hook: renamed on one side alone, the button would
     open the default browser in the app with every test of either side green. The link
     is also what the script and the window expect of it: a page on github.com, and a
@@ -363,9 +363,9 @@ def test_the_link_the_apps_script_takes_is_the_one_the_page_marks() -> None:
     alone goes (``NavigationPolicy.decideNewWindow``).
     """
 
-    marker = _swift_value("Web/GitHubViewRequests.swift", "marker")
+    marker = _swift_value("Web/WebViewRequests.swift", "marker")
     selector = re.fullmatch(r'#"(\w+)\[([\w-]+)="(\w+)"\]"#', marker)
-    assert selector, f'GitHubViewRequests.marker is not tag[attribute="value"]: {marker}'
+    assert selector, f'WebViewRequests.marker is not tag[attribute="value"]: {marker}'
     tag, attribute, value = selector.groups()
 
     markup = run_session("counterpart-session.js")["markup"]

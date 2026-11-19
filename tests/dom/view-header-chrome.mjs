@@ -112,8 +112,8 @@ const BUTTON_SOURCE = `(corner) => {
     return out;
   };
   const group = button.querySelector('.counterpart-group');
-  const open = button.querySelector('[data-view-on-github=open]');
-  const external = button.querySelector('[data-view-on-github=external]');
+  const open = button.querySelector('[data-web-view=open]');
+  const external = button.querySelector('[data-web-view=external]');
   const more = button.querySelector('.counterpart-more');
   const paint = (el) => ({ ink: getComputedStyle(el).color, fill: getComputedStyle(el).backgroundColor });
   const frame = getComputedStyle(group);

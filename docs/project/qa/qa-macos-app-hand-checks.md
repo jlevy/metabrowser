@@ -365,7 +365,7 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
 
 With the development build open on a checkout of this repository at a pushed commit,
 `README.md` shown, and `APP_ID` and `REPO` set as in [GitHub Links](#github-links).
-Start signed out: choose Metabrowser > Clear GitHub Data… and Clear.
+Start signed out: choose Metabrowser > Clear Website Data…, All Websites, and Clear.
 
 1. **The popover.** Scroll `README.md` a little, then click View on GitHub.
    A popover opens below the button, pointing at it, over most of the window, with a
@@ -378,10 +378,10 @@ Start signed out: choose Metabrowser > Clear GitHub Data… and Clear.
 2. **It keeps its place for a while.** In the popover, follow a link to `docs/` on
    github.com, close the popover, and open it again at once: it is still at `docs/`, and
    Back returns to `README.md`. Close it, wait longer than
-   `GitHubPopoverState.keptAfterClosing`, and open it: it loads `README.md` again, with
-   Back dimmed. Open `CHANGELOG.md` in the page and click View on GitHub: the popover
-   shows `CHANGELOG.md`. Turn Wi-Fi off, open `CHANGELOG.md`’s parent folder in the
-   page, and click View on GitHub: the header says the page did not load.
+   `WebPaneState.keptAfterClosing`, and open it: it loads `README.md` again, with Back
+   dimmed. Open `CHANGELOG.md` in the page and click View on GitHub: the popover shows
+   `CHANGELOG.md`. Turn Wi-Fi off, open `CHANGELOG.md`’s parent folder in the page, and
+   click View on GitHub: the header says the page did not load.
    Turn Wi-Fi on, close the popover, and open it again: the folder loads; do it again
    offline and press Command-R once back online: it loads too.
    On a pull request, type a comment without sending it, close the popover, wait longer
@@ -423,13 +423,15 @@ Start signed out: choose Metabrowser > Clear GitHub Data… and Clear.
    shows it, and no popover is left over it.
    Click View on GitHub there, go to a pull request in the popover, and type a comment
    without sending it. Switch the window to the first folder and back to the second
-   within `GitHubPopoverState.keptAfterClosing`, and click View on GitHub: the comment
-   is still there. With the popover open, choose File > Close Folder: the folder closes,
-   and the popover with it.
-8. **Clear GitHub Data.** Metabrowser > Clear GitHub Data… asks first, with Cancel the
-   default: Return keeps the sign-in.
-   Clear signs you out: an open popover reloads, signed out, and so does every other
-   folder’s popover the next time it opens, in a window or in the background.
+   within `WebPaneState.keptAfterClosing`, and click View on GitHub: the comment is
+   still there. With the popover open, choose File > Close Folder: the folder closes, and
+   the popover with it.
+8. **Clear Website Data.** Metabrowser > Clear Website Data… asks first, with a menu of
+   All Websites and each site that stored something, `github.com` among them, and Cancel
+   the default: Return keeps the sign-in.
+   Clear with `github.com` chosen signs you out of GitHub; so does All Websites: an open
+   popover reloads, signed out, and so does every other folder’s popover the next time
+   it opens, in a window or in the background.
    Metabrowser’s own settings, such as its theme, are unchanged, and so is
    `gh auth status`.
 
