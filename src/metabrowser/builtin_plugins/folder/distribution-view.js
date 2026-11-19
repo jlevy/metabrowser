@@ -10,6 +10,23 @@ function element(parent, className) {
 
 let distributionViewSequence = 0;
 
+/**
+ * Make the section's status line a `.notice` of one severity, or plain muted text for
+ * `null`. A line that says something is incomplete or failed is a notice; progress and a
+ * neutral fact are not.
+ *
+ * @param {Element} status
+ * @param {"warning" | "error" | null} severity
+ */
+export function setStatusNotice(status, severity) {
+  status.classList?.toggle("notice", severity !== null);
+  if (severity === null) {
+    status.removeAttribute?.("data-severity");
+  } else {
+    status.setAttribute?.("data-severity", severity);
+  }
+}
+
 /** @param {DistributionHandle} handle @param {string} key */
 function controlledRowId(handle, key) {
   return `${handle.idPrefix}-${encodeURIComponent(key).replace(/%/g, "_")}`;
@@ -169,8 +186,9 @@ export function updateDistributionView(handle, model) {
   if (model.state === "failed") {
     resetBody(handle, "failed");
     const failure = element(handle.body, "file-type-summary-status");
+    setStatusNotice(failure, "error");
     failure.setAttribute("role", "status");
-    failure.textContent = "Indexing failed; no file summary is available.";
+    failure.textContent = "Could not scan this folder; no file summary is available.";
     return;
   }
   if (model.state === "unavailable") {
@@ -211,13 +229,16 @@ export function updateDistributionView(handle, model) {
   handle.status.hidden = false;
   handle.status.replaceChildren();
   handle.status.classList?.remove("file-type-summary-status-progress");
+  setStatusNotice(handle.status, null);
   if (model.state === "truncated") {
-    handle.status.textContent = `Summary is partial: ${(model.indexedFiles ?? 0).toLocaleString()} files indexed at the ${(model.maxFiles ?? 0).toLocaleString()}-file cap.`;
+    setStatusNotice(handle.status, "warning");
+    handle.status.textContent = `Only the first ${model.maxFilesText ?? "0 files"} were scanned; percentages cover those files.`;
   } else if (model.indexFailed) {
+    setStatusNotice(handle.status, "warning");
     handle.status.textContent =
-      "Indexing failed; percentages cover files indexed before the failure.";
+      "Could not finish scanning this folder; percentages cover the files found before it stopped.";
   } else if (model.scanning) {
-    renderScanningProgress(handle.status, model.indexedFiles);
+    renderScanningProgress(handle.status, model.indexedFilesText);
   } else if (model.state === "zero-bytes") {
     handle.status.textContent = "All included files are zero bytes.";
   } else {
@@ -237,17 +258,16 @@ export function updateDistributionView(handle, model) {
  * that has not arrived yet falls back to the bare label.
  *
  * @param {HTMLElement} status
- * @param {number | undefined} indexedFiles
+ * @param {string | undefined} indexedFilesText the formatted count, "" or absent before one arrives
  */
-function renderScanningProgress(status, indexedFiles) {
+function renderScanningProgress(status, indexedFilesText) {
   status.classList?.add("file-type-summary-status-progress");
   const spinner = document.createElement("span");
   spinner.className = "index-progress-spinner";
   spinner.setAttribute("aria-hidden", "true");
   const text = document.createElement("span");
   text.className = "index-progress-text";
-  const files = typeof indexedFiles === "number" && indexedFiles > 0 ? indexedFiles : null;
-  text.textContent = files === null ? "Scanning…" : `~${files.toLocaleString()} files scanned`;
+  text.textContent = indexedFilesText ? `~${indexedFilesText} files scanned` : "Scanning…";
   status.append(spinner, text);
 }
 
@@ -607,7 +627,7 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
 /** @typedef {{countClass: (value: number) => string, sizeClass: (value: number) => string}} MetricClasses */
 /** @typedef {(path: string) => {svg: string, className: string}} FileTypeIconResolver */
 /** @typedef {(name: string) => string} CategoryIconResolver */
-/** @typedef {{state: "pending" | "failed" | "unavailable" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", metric?: "files" | "size", rows: ReadonlyArray<SummaryRow>, legend?: ReadonlyArray<SummaryLegendEntry>, groups?: ReadonlyArray<SummaryGroup>, caption?: string, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
+/** @typedef {{state: "pending" | "failed" | "unavailable" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", metric?: "files" | "size", rows: ReadonlyArray<SummaryRow>, legend?: ReadonlyArray<SummaryLegendEntry>, groups?: ReadonlyArray<SummaryGroup>, caption?: string, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number, indexedFilesText?: string, maxFilesText?: string}} SummaryModel */
 /** @typedef {{body: HTMLTableSectionElement}} SummaryGroupHandle */
 /** @typedef {{tr: HTMLTableRowElement, icon: HTMLElement, label: HTMLElement, disclosure: HTMLButtonElement, disclosureLabel: HTMLElement, metricCell: HTMLTableCellElement, metricValue: HTMLElement, metricFill: HTMLElement, metricPercent: HTMLElement}} SummaryRowHandle */
 /** @typedef {import("./distribution-hover.js").DistributionHover} DistributionHover */

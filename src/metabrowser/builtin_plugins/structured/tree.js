@@ -207,6 +207,11 @@
     return html;
   }
 
+  // The registry's chevron, the one every disclosure in the product wears.
+  function disclosureIcon() {
+    return global.MetabrowserIcons?.toggle || "";
+  }
+
   function renderRowHtml(row, indentChars) {
     var indentStyle = pv.calculateIndentStyle(row.level, indentChars);
     var stylePart = ` style="padding-left:${indentStyle.paddingLeft};"`;
@@ -215,7 +220,7 @@
     if (row.kind === "open") {
       rowClass += " srow-container disclosure-toggle";
       rowClass += row.expanded ? " srow-expanded" : " srow-collapsed";
-      chevronHtml = '<span class="srow-chevron" aria-hidden="true">▸</span>';
+      chevronHtml = `<span class="srow-chevron" aria-hidden="true">${disclosureIcon()}</span>`;
     } else if (row.kind === "empty") {
       rowClass += " srow-empty";
       chevronHtml = '<span class="srow-chevron srow-chevron-empty"></span>';

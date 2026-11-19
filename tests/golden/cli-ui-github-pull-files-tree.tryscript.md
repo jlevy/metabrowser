@@ -302,7 +302,7 @@ $ node tests/dom/github-pull-files-tree-session.js
       "capped": false,
       "truncated": false,
       "failure": "rate_limited",
-      "says": "GitHub's rate limit lifts at 2026-09-23T16:46:00Z. No automatic attempt runs before then."
+      "says": "GitHub rate limit reached. Next attempt after 2026-09-23T16:46:00Z."
     },
     "a list the pull request has changed since": {
       "status": "stale",
@@ -410,7 +410,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "rate_limited",
-        "says": "GitHub's rate limit lifts at 2026-09-17T12:14:06Z. No automatic attempt runs before then."
+        "says": "GitHub rate limit reached. Next attempt after 2026-09-17T12:14:06Z."
       },
       "gh_missing": {
         "status": "stale",
@@ -933,7 +933,7 @@ $ node tests/dom/github-pull-files-opening-behavior.js
   "offerKeepsNotices": {
     "stopped": {
       "line": "200 files so far, 2 of 3 pages",
-      "notice": "GitHub's rate limit lifts at 2026-09-23T16:46:00Z. No automatic attempt runs before then.",
+      "notice": "GitHub rate limit reached. Next attempt after 2026-09-23T16:46:00Z.",
       "offer": "Show 5 more files"
     },
     "failedPoll": {

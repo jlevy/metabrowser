@@ -1873,16 +1873,16 @@ async function headerShape(page) {
   const STATUS = {
     failed: "The last refresh failed: gh could not reach api.github.com",
     "behind the head":
-      "This page's code is f7c5a99, not the pull request's head 85fcb2f. Switch to the head",
+      "This page’s code is f7c5a99, not the pull request’s head 85fcb2f. Switch to the head",
     "a checkout at the head":
-      "This checkout's HEAD is this pull request's head. Browse the checkout",
+      "This checkout’s HEAD is this pull request’s head. Browse the checkout",
     "on its way, its last refresh failed":
       "Fetching the pull request…The last refresh failed: gh could not reach api.github.com",
   };
   /** What each variant's note says where it is not the record's fetch, null where none. */
   const NOTE = {
     "on its way, its last refresh failed": null,
-    "held by a rate limit": /^GitHub rate limit · next check at /,
+    "held by a rate limit": /^GitHub rate limit reached\. Next attempt after /,
     "on its way": /^(Fetching the pull request…|This pull request has not been fetched yet\.)$/,
     "no GitHub repository": /^This server serves no GitHub repository\.$/,
   };

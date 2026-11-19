@@ -608,6 +608,6 @@ def test_the_session_runs_on_the_recording() -> None:
     pressed = by_name["a press with no room in the queue says why"]
     assert pressed["requests"] == ["POST /api/source/refresh {}"]
     refusal = recording["queue_full_refresh"]["body"]["error"]
-    assert pressed["paint"]["error"] == f"Refresh refused: {refusal}"
+    assert pressed["paint"]["error"] == f"Refresh refused: {refusal}."
     shown = by_name["the origin no longer shows the repository"]["paint"]["detail"]
     assert shown.startswith("The repository was not found, or it is private and could not be read.")

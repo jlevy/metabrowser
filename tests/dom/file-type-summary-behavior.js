@@ -851,7 +851,7 @@ function familyRow() {
   check(
     "failed index has terminal status copy",
     handle.status.textContent ===
-      "Indexing failed; percentages cover files indexed before the failure.",
+      "Could not finish scanning this folder; percentages cover the files found before it stopped.",
     handle.status.textContent,
   );
 
@@ -860,6 +860,7 @@ function familyRow() {
     indexFailed: false,
     scanning: true,
     indexedFiles: 1234,
+    indexedFilesText: "1,234",
   });
   check(
     "a running scan shows the nav panel's spinner and count, not a sentence",
@@ -899,7 +900,8 @@ function familyRow() {
   });
   check(
     "failed index without totals replaces the loading skeleton",
-    handle.body.children[0].textContent === "Indexing failed; no file summary is available.",
+    handle.body.children[0].textContent ===
+      "Could not scan this folder; no file summary is available.",
   );
 
   view.updateDistributionView(handle, {
