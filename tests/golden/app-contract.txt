@@ -16,7 +16,7 @@ version
 exit: 2
 --- stdout ---
 --- stderr ---
-│ No such option: --no-such-option-for-the-app-contract                        │
+<text>--no-such-option-for-the-app-contract<text>
 --- contract ---
 unknown-option
 # metab --recent --json
@@ -44,7 +44,7 @@ exit: 0
     {
       "mode": "folder",
       "root": "<ROOT>/served",
-      "opened_at": "2026-11-18T03:14:15Z"
+      "opened_at": "<opaque>"
     }
   ],
   "problem": null
@@ -73,12 +73,12 @@ exit: 0
     {
       "mode": "mirror",
       "root": "https://github.com/octo/demo",
-      "opened_at": "2026-11-18T03:14:16Z"
+      "opened_at": "<opaque>"
     },
     {
       "mode": "folder",
       "root": "<ROOT>/served",
-      "opened_at": "2026-11-18T03:14:15Z"
+      "opened_at": "<opaque>"
     }
   ],
   "problem": null
@@ -103,7 +103,7 @@ exit: 0
 --- stdout ---
 {
   "targets": [],
-  "problem": "The recent targets file uses format mf99, and this release reads formats up to mf01. Upgrade Metabrowser to list or record recent targets."
+  "problem": "<text>"
 }
 --- stderr ---
 --- contract ---
@@ -162,8 +162,8 @@ exit: 0
 --- stdout ---
 Serving file://<ROOT>/origin.git at http://127.0.0.1:8475/view/  [dev build: <STATE>]
 --- stderr ---
-cloning file://<ROOT>/origin.git into <HOME>
-cloned file://<ROOT>/origin.git in 0.0 s; starting the server
+cloning file://<ROOT>/origin.git into <text>
+cloned file://<ROOT>/origin.git in <text>
 --- contract ---
 serve/repository-cloned
 # metab file://<ROOT>/origin.git --no-open --exit-on-eof --host 127.0.0.1 --port 8475
@@ -171,7 +171,7 @@ exit: 0
 --- stdout ---
 Serving file://<ROOT>/origin.git at http://127.0.0.1:8475/view/  [dev build: <STATE>]
 --- stderr ---
-using the clone of file://<ROOT>/origin.git cached in <HOME>, fetched less than a minute ago
+using the clone of file://<ROOT>/origin.git cached in <text>
 --- contract ---
 serve/repository-cached
 # metab file://<ROOT>/origin.git --api /api/identity
@@ -287,7 +287,7 @@ exit: 3
   "handoff": null,
   "refusal": {
     "code": "unsupported_github_url",
-    "message": "GitHub issues pages are not opened; open the repository at https://github.com/octo/demo"
+    "message": "<text>"
   }
 }
 --- stderr ---
@@ -355,12 +355,12 @@ exit: 0
       "problems": []
     }
   ],
-  "next_after": "github-com--pallets--flask--74fe6e07e4b9"
+  "next_after": "<opaque>"
 }
 --- stderr ---
 --- contract ---
 cache-sources/first-page
-# metab <ROOT>/support --api '/api/cache/sources?limit=2&after=github-com--pallets--flask--74fe6e07e4b9' --format json
+# metab <ROOT>/support --api '/api/cache/sources?limit=2&after=<opaque>' --format json
 exit: 0
 --- stdout ---
 {

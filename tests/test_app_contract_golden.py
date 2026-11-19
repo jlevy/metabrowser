@@ -3,10 +3,23 @@
 ``apps/macos/metab-contract.toml`` declares every command the app runs and every route it
 asks. This runs each one, with the argument list the declaration gives, through the
 console script's entry point, and records in ``tests/golden/app-contract.txt`` what the
-app reads of the answer and nothing else: the exit status, the declared keys of a JSON
-answer, and the declared lines of a stream (``devtools/app_contract.py``). An answer
-that lacks a declared key fails here, so the transcript changes only when something the
-app reads changes, and never because ``metab`` added a field for another reader.
+app reads of the answer and nothing else (``devtools/app_contract.py``):
+
+- **the exit status;**
+- **the declared keys of a JSON answer, in the framing ``metab`` printed it in.** The app
+  finds a command's answer by the lines of its output, so an answer that began to be
+  printed on one line, or with its text escaped, changes the transcript. An answer that
+  lacks a declared key fails here;
+- **the part of each declared line that the app parses,** with ``<text>`` for the rest;
+- **that a value is there, and not what it says,** for text the app only shows and for a
+  value it keeps or hands back unread: ``<text>`` and ``<opaque>``. A reworded message
+  changes nothing here;
+- **the lines of stderr that a reader looking for a JSON answer would take,** since one
+  pipe carries both streams to the app.
+
+So the transcript changes only when something the app reads changes, and never because
+``metab`` added a field for another reader. ``tests/golden/app-contract-copies.txt``
+records beside it what ``metab`` defines for each value the app holds a copy of.
 
 The app's own tests read the transcript back (``AppContractTests.swift``): its argument
 builders must write these command lines, and its readers must read these answers. So
@@ -19,8 +32,9 @@ What differs from the app's own runs, and why:
   runs it. The stdin watch ``--exit-on-eof`` starts is replaced, since it would read this
   process's stdin; ``tests/test_stdin_lifeline.py`` runs the real one.
 - **A route is asked with ``--api``,** which issues the request the app issues and prints
-  the status the app checks. ``--api`` writes the folder it serves as ``<ROOT>``, which
-  is ``<SERVED>`` here, where ``<ROOT>`` is the sandbox.
+  the status the app checks. The app decodes a route's answer whole, so its framing is
+  ``--api``'s and not part of the contract. ``--api`` writes the folder it serves as
+  ``<ROOT>``, which is ``<SERVED>`` here, where ``<ROOT>`` is the sandbox.
 - **A repository is a ``file://`` origin** built here. The app's is a GitHub URL, which
   no test may clone; the clone report and the mirror's identity are the same code.
 - **The sandbox names its own configuration and cache directories,** as the app's live
@@ -33,19 +47,21 @@ What differs from the app's own runs, and why:
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import re
+import tomllib
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Final
+from typing import Final, TypeAliasType, cast, get_args
 from unittest.mock import patch
 
 import pytest
 
 import metabrowser
 from devtools import app_contract, swift_text
-from devtools.app_contract import SCENARIO_SECTION, SHOWN_OUTPUT, Surface
+from devtools.app_contract import OPAQUE, SCENARIO_SECTION, SHOWN_OUTPUT, Surface
 from metabrowser import recent_targets
 from metabrowser.home import METABROWSER_CACHE_DIR_ENV
 from metabrowser.normalize import ROOT_PLACEHOLDER
@@ -61,17 +77,17 @@ from tests.golden_harness import (
     pin_git_dates,
     quoted,
     run_metab,
+    stable_console,
 )
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 from tests.test_serve_pin import _origin
 
-pytestmark = [
-    pytest.mark.skipif(os.name != "posix", reason="the owner-only cache is POSIX-only"),
-    needs_git,
-]
+posix_only = pytest.mark.skipif(os.name != "posix", reason="the owner-only cache is POSIX-only")
 
 CONTRACT: Final = app_contract.load()
+REPO_ROOT: Final = Path(__file__).resolve().parent.parent
+SHELL_CORE: Final = app_contract.APP_ROOT / "Sources" / "ShellCore"
 GH_STAND_IN: Final = Path(__file__).resolve().parent / "fixtures" / "github-status"
 VERSION_PLACEHOLDER: Final = "<VERSION>"
 SERVED_PLACEHOLDER: Final = "<SERVED>"
@@ -84,16 +100,18 @@ FOLDER_PORT: Final = "8411"
 REPOSITORY_PORT: Final = "8475"
 
 
+def _swift(relative: str) -> str:
+    return (SHELL_CORE / relative).read_text(encoding="utf-8")
+
+
 def _app_version_pattern() -> re.Pattern[str]:
     """``MetabVersion``'s pattern, read from its Swift source.
 
     The one extended regex literal in the file, whose syntax here is Python's too.
     """
 
-    source = (
-        app_contract.APP_ROOT / "Sources" / "ShellCore" / "Setup" / "MetabVersion.swift"
-    ).read_text(encoding="utf-8")
-    literals = [segment.text for segment in swift_text.segments(source) if segment.kind == "regex"]
+    segments = swift_text.segments(_swift("Setup/MetabVersion.swift"))
+    literals = [segment.text for segment in segments if segment.kind == "regex"]
     assert len(literals) == 1, f"MetabVersion.swift holds {len(literals)} regex literals, not 1"
     return re.compile(literals[0].removeprefix("#/").removesuffix("/#"))
 
@@ -128,12 +146,84 @@ def test_the_version_metab_prints_is_one_the_app_reads() -> None:
     assert not pattern.fullmatch("v0.13.0")
 
 
+def test_the_names_the_app_runs_and_installs_are_the_packages() -> None:
+    """The app looks for a file named ``metab``, and tells uv to install ``metabrowser``.
+
+    Neither name is a flag or a field, so no command shows it: the console script and the
+    distribution are named in ``pyproject.toml``, and the app spells both by itself.
+    """
+
+    project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    discovery = [
+        segment.text for segment in swift_text.strings(_swift("Runtime/RuntimeDiscovery.swift"))
+    ]
+    requirement = [
+        segment.text for segment in swift_text.strings(_swift("Setup/MetabVersion.swift"))
+    ]
+    assert "metab" in project["scripts"]
+    assert "/metab" in discovery, "RuntimeDiscovery.swift no longer looks for a file named metab"
+    name = project["name"]
+    assert f"uv tool install {name}" in discovery
+    assert any(
+        literal.startswith(f"uv tool install --upgrade '{name}>=") for literal in requirement
+    )
+
+
+# ── What metab defines for each value the app copies ─────────────────
+
+
+def _defined(reference: str) -> str:
+    """What *reference* is set to, as one line of text that changes when it does.
+
+    ``module:NAME`` is a module's attribute: a ``type`` alias of literals is its members,
+    and a set is its members in order. ``pyproject.toml:dotted.key`` is that key of the
+    project file, a table as its keys: the app depends on which console scripts there
+    are, not on where each points.
+    """
+
+    source, _, name = reference.partition(":")
+    value: object
+    if source == "pyproject.toml":
+        value = tomllib.loads((REPO_ROOT / source).read_text(encoding="utf-8"))
+        for key in name.split("."):
+            value = cast("dict[str, object]", value)[key]
+        if isinstance(value, dict):
+            value = sorted(cast("dict[str, object]", value))
+    else:
+        value = getattr(importlib.import_module(source), name)
+        if isinstance(value, TypeAliasType):
+            value = sorted(get_args(value.__value__))
+        elif isinstance(value, set | frozenset):
+            value = sorted(cast("set[str]", value))
+    return json.dumps(value, ensure_ascii=False)
+
+
+def test_golden_app_contract_copies() -> None:
+    """Each definition of ``metab``'s that the app holds a copy of, as ``metab`` has it.
+
+    ``tests/test_macos_app_pins.py`` holds the app's copy to the definition, so the two
+    change together; this makes that change a change to a golden, which the changelog
+    rule then requires a release to name (``devtools/check_app_contract.py``).
+    """
+
+    defined = {reference: _defined(reference) for reference in CONTRACT.value_references}
+    assert app_contract.COPIES_NAME == "app-contract-copies.txt"
+    check_golden("app-contract-copies.txt", app_contract.copies_text(defined))
+
+
+# ── The transcript ───────────────────────────────────────────────────
+
+
 class _Sandbox:
     """The folders, the origin, and the homes the transcript's commands run against."""
 
     def __init__(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         self.root = tmp_path
         self.monkeypatch = monkeypatch
+        # Values the transcript writes as a label: a cursor is whatever the cache made it.
+        self.labels: dict[str, str] = {}
+        # The whole answer of the last command that printed JSON.
+        self.answer: object = None
         self.served = tmp_path / "served"
         (self.served / "sub dir").mkdir(parents=True)
         (self.served / "README.md").write_text("# Served\n", encoding="utf-8")
@@ -148,6 +238,7 @@ class _Sandbox:
         build_populated_home(self.populated)
         self.absent = tmp_path / "absent"
         self.config = tmp_path / "config"
+        stable_console(monkeypatch)
         monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(self.config))
         monkeypatch.setenv("METABROWSER_PLUGINS_DIRS", "")
         monkeypatch.setenv(OPEN_IN_ENV, "browser")
@@ -155,7 +246,6 @@ class _Sandbox:
         # nor anything the app reads; this gh answers it, so none a developer signed in
         # is asked.
         monkeypatch.setenv("PATH", f"{GH_STAND_IN}{os.pathsep}{os.environ.get('PATH', '')}")
-        monkeypatch.setenv("TERM", "dumb")
         # Outside the sandbox, so a folder's full name is its path until a block says
         # otherwise.
         monkeypatch.setenv("HOME", str(tmp_path / "elsewhere"))
@@ -228,27 +318,45 @@ class _Sandbox:
             said = bool(result.stdout.strip() or result.stderr.strip())
             return (f"{SHOWN_OUTPUT}\n" if said else "", "")
         if surface.json:
-            start = result.stdout.find("{")
-            assert start >= 0, f"{scenario}: printed no JSON object: {result.stdout!r}"
-            answer = json.loads(result.stdout[start:])
-            read = app_contract.project(answer, surface.json)
-            # The lines above a route's answer: the route, and the status the app checks.
-            printed = result.stdout[:start] + json.dumps(read, indent=2, ensure_ascii=False)
-            return printed.replace(ROOT_PLACEHOLDER, SERVED_PLACEHOLDER) + "\n", ""
+            return self._read_json(surface, result, scenario)
         patterns = {
             stream: [line.pattern for name in names if (line := CONTRACT.line(name))]
             for stream, names in (("stdout", surface.stdout), ("stderr", surface.stderr))
         }
-        stdout = app_contract.kept_lines(result.stdout, patterns["stdout"])
-        stderr = app_contract.kept_lines(result.stderr, patterns["stderr"])
+        stdout = app_contract.read_lines(result.stdout, patterns["stdout"])
+        stderr = app_contract.read_lines(result.stderr, patterns["stderr"])
         if result.exit_code == 0 and surface.stdout:
             assert stdout, f"{scenario}: printed none of the lines the app reads on stdout"
         return stdout, stderr
 
+    def _read_json(self, surface: Surface, result: Invocation, scenario: str) -> tuple[str, str]:
+        """A JSON answer cut to its declared keys, and the stderr beside it.
+
+        A command's answer keeps the framing it was printed in, and what was printed
+        before and after it, because the app finds it among the lines of both streams. A
+        route's is re-serialized: the app decodes the response whole.
+        """
+
+        try:
+            before, answer, raw, after = app_contract.split_json(result.stdout)
+            read = app_contract.project(answer, surface.json, surface.masks)
+            self.answer = answer
+            if surface.kind == "route":
+                printed = before + json.dumps(read, indent=2, ensure_ascii=False) + "\n"
+                return printed.replace(ROOT_PLACEHOLDER, SERVED_PLACEHOLDER), ""
+            framed = app_contract.dump(read, app_contract.framing_of(raw, answer))
+        except app_contract.ContractError as error:
+            pytest.fail(f"{scenario}: {error}")
+        return before + framed + after, app_contract.framing_lines(result.stderr)
+
     def _normalized(self, text: str) -> str:
+        for value, label in self.labels.items():
+            text = text.replace(value, label)
         return normalize_console(label_home(text, self.home), self.root)
 
 
+@posix_only
+@needs_git
 def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     sandbox = _Sandbox(tmp_path, monkeypatch)
     run = sandbox.run
@@ -311,17 +419,20 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     short = {"folder": support, "limit": "2", "after": ""}
     blocks.append(run("cache-sources/none", page, cache=sandbox.absent))
     blocks.append(run("cache-sources/held", page, cache=sandbox.populated))
-    first = run("cache-sources/first-page", short, cache=sandbox.populated)
-    blocks.append(first)
-    cursor = re.search(r'"next_after": "([a-z0-9-]+)"', first)
-    assert cursor, "a page shorter than the cache gave no cursor"
+    blocks.append(run("cache-sources/first-page", short, cache=sandbox.populated))
+    # The cursor is the cache's to choose, so the transcript shows that the page gave one
+    # and that handing it back gives the next page, and not what it is.
+    cursor = cast("dict[str, object]", sandbox.answer)["next_after"]
+    assert isinstance(cursor, str) and cursor, "a page shorter than the cache gave no cursor"
+    sandbox.labels[cursor] = OPAQUE
     blocks.append(
         run(
             "cache-sources/next-page",
-            {**short, "after": f"&after={cursor[1]}"},
+            {**short, "after": f"&after={cursor}"},
             cache=sandbox.populated,
         )
     )
+    assert cast("dict[str, object]", sandbox.answer)["next_after"] is None
     blocks.append(run("doctor"))
     assert app_contract.GOLDEN_NAME == "app-contract.txt"
     check_golden("app-contract.txt", "".join(blocks))

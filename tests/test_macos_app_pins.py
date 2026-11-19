@@ -26,6 +26,7 @@ from typing import Any, cast, get_args
 
 import pytest
 
+from devtools import app_contract
 from metabrowser.builtin_plugins.github import gh as github_gh
 from metabrowser.builtin_plugins.github import provider as github_provider
 from metabrowser.builtin_plugins.github import urls as github_urls
@@ -198,9 +199,14 @@ def test_the_cache_answer_the_app_reads_is_metabs(
     into the repository, which is what the app compares ``display_url`` with.
     """
 
+    # The keys and the value are the ones the app's contract declares for this route
+    # (apps/macos/metab-contract.toml), which is the one list of them.
+    declared = app_contract.load().surface("cache-sources")
+    assert declared is not None, "the app's contract no longer declares cache-sources"
+    read = {segment.removesuffix("[]") for path in declared.json for segment in path.split(".")}
+    read |= {value for values in declared.values.values() for value in values}
     swift = (SHELL_CORE / "Folders" / "RepositoryCache.swift").read_text(encoding="utf-8")
-    read = ("sources", "identity", "display_url", "publication", "published", "problems")
-    for literal in (*read, "next_after"):
+    for literal in sorted(read):
         assert f'"{literal}"' in swift, f"RepositoryCache.swift no longer reads {literal!r}"
 
     home = tmp_path / "home"

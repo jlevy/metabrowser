@@ -13,17 +13,32 @@ both sides:
   until it is declared, and a declared one the sources no longer name fails as stale.
   The sources are read as text (``devtools/swift_text.py``), because this runs in every
   CI job and the app's own tests run only on macOS.
-- **The golden.** Every declared command and route has a block whose command line is the
-  declared argument list, and a block holds exactly the declared keys and lines.
-- **The changelog.** A branch that changes the declared surface or the golden names the
-  change in a changelog fragment, and no patch release's section holds one that is not a
-  fix.
+- **The goldens.** Every declared command and route has a block whose command line is
+  the declared argument list, and a block holds exactly the declared keys and lines,
+  with text the app only shows recorded as present and not word for word. Every value
+  of ``metab``'s that the app copies is a line of the copies golden.
+- **The changelog.** A branch that changes what is declared, a golden, or a copied value
+  names the change in a changelog fragment, and no patch release's section holds one
+  that is not a fix.
 
-What it cannot see, and what covers it: whether the app's code builds the declared
-argument lists and reads the recorded answers is ``AppContractTests.swift``, which runs
-the app's own builders and readers against the golden; and a new reader of a line of
-output, which is ordinary Swift string handling that no search can tell from any other,
-is review's to declare, as a new functional aspect is in the parity registry.
+Whether the app's code builds the declared argument lists and reads the recorded answers
+is not this check's: ``AppContractTests.swift`` runs the app's own builders and readers
+against the golden.
+
+**What no search here finds,** so review declares it, as it declares a new functional
+aspect in the parity registry:
+
+- a new reader of a line of output, which is ordinary string handling;
+- a key a listed JSON file comes to read through an Optional property of a ``Decodable``
+  type: a subscript and a coding key's raw value are searched, a bare property is not,
+  and a missing Optional reads as nil, so the app's tests pass without it;
+- a command built as ``.init(…)`` where the type is inferred, which is not spelled
+  ``LaunchSpec(``; and a request made as ``webView.load(.init(url:))`` or
+  ``Data(contentsOf:)``, which names neither ``URLRequest`` nor ``URLSession``;
+- a short flag, and a flag or a route assembled from parts;
+- a route not spelled ``api/…``, such as a page's address;
+- anything the app comes to rely on in a page except through its own script, which is
+  listed under ``[files.script]``.
 
     python -m devtools.check_app_contract check --against origin/main
     python -m devtools.check_app_contract report
@@ -50,6 +65,9 @@ APP: Final = "apps/macos"
 DECLARATION: Final = f"{APP}/metab-contract.toml"
 GOLDEN_DIR: Final = "tests/golden"
 GOLDEN: Final = f"{GOLDEN_DIR}/{app_contract.GOLDEN_NAME}"
+COPIES: Final = f"{GOLDEN_DIR}/{app_contract.COPIES_NAME}"
+# What `metab` answers and defines: a change to either is a change to the contract.
+GOLDENS: Final = (GOLDEN, COPIES)
 # The workflow that runs the app's tests, on a change to a path its filters name.
 APP_WORKFLOW: Final = ".github/workflows/macos-app.yml"
 # The app's live tests run the real `metab`, so what they pass it is searched too.
@@ -67,7 +85,12 @@ CHANGE_MARK: Final = "- **App contract:**"
 FIX_MARK: Final = "- **App contract fix:**"
 
 _FLAG: Final = re.compile(r"(?<![\w-])--[a-z][a-z0-9-]*")
-_VARIABLE: Final = re.compile(r"\bMETAB(?:ROWSER)?_[A-Z0-9_]+\b")
+# A variable of metab's, or of the interpreter that runs it.
+_VARIABLE: Final = re.compile(r"\b(?:METAB(?:ROWSER)?_[A-Z0-9_]+|PYTHON[A-Z]+)\b")
+# A key a Swift file reads of a JSON object: a subscript, or a coding key's raw value.
+_SUBSCRIPT_KEY: Final = re.compile(r'\[\s*"([a-z][a-z0-9_]*)"\s*\]')
+_CODING_KEYS: Final = re.compile(r"\benum\s+CodingKeys\b[^{]*\{([^}]*)\}")
+_RAW_VALUE: Final = re.compile(r'\bcase\s+\w+\s*=\s*"([a-z][a-z0-9_]*)"')
 _ROUTE: Final = re.compile(r"/?\bapi/[a-z0-9_-]+(?:/[a-z0-9_-]+)*")
 _FILE_USE: Final = {
     "launch": re.compile(r"\bLaunchSpec\("),
@@ -82,6 +105,13 @@ _FILE_USE_SAYS: Final = {
     "json": "decodes JSON",
     "http": "sends a request",
     "script": "scripts a page",
+}
+# What a file's line in `[files.*]` says when what it uses is the app's own.
+_FILE_USE_OWN: Final = {
+    "launch": "what it runs",
+    "json": "whose JSON it is",
+    "http": "what it requests",
+    "script": "what it scripts",
 }
 _SPAWN: Final = re.compile(r"\bposix_spawnp?\(|\bProcess\(\)|\bNSTask\b")
 _REQUIRED_FLAGS: Final = re.compile(r"static\s+let\s+requiredFlags\s*=\s*\[([^\]]*)\]")
@@ -184,8 +214,8 @@ def source_problems(contract: Contract, sources: Mapping[str, str]) -> list[str]
         if flag not in declared_flags | contract.other_flags:
             problems.append(
                 f"{', '.join(files)}: passes or shows `{flag}`, which the contract does not "
-                "declare. Declare the command it belongs to as a [[command]], or list it "
-                "under [other] flags if it is another tool's"
+                f"declare. If metab takes it, add it to the `argv` of its [[command]] in "
+                f'{DECLARATION}; if another tool does, add "{flag}" to `flags` under [other]'
             )
     needed = {
         flag
@@ -203,8 +233,11 @@ def source_problems(contract: Contract, sources: Mapping[str, str]) -> list[str]
         if name not in declared_variables | contract.other_env:
             problems.append(
                 f"{', '.join(files)}: names `{name}`, which the contract does not declare. "
-                "Declare it as an [[env]] if metab reads it, or list it under [other] env if "
-                "it is the app's own"
+                f"If metab reads it, add to {DECLARATION}:\n"
+                f'    [[env]]\n    name = "{name}"\n    source = "{files[0]}"\n'
+                '    metab = "src/metabrowser/<the module that reads it>"\n'
+                f"  If it is the app's own or the interpreter's, add \"{name}\" to `env` "
+                "under [other]"
             )
     for name in sorted((declared_variables | contract.other_env) - set(used_variables)):
         problems.append(f"the contract declares `{name}`, which no Swift source names any more")
@@ -215,8 +248,11 @@ def source_problems(contract: Contract, sources: Mapping[str, str]) -> list[str]
         route = "/" + spelled.lstrip("/")
         if route not in declared_routes:
             problems.append(
-                f"{', '.join(files)}: asks for `{route}`, which the contract does not declare "
-                "as a [[route]]"
+                f"{', '.join(files)}: asks for `{route}`, which the contract does not "
+                f"declare. Add to {DECLARATION}:\n"
+                f'    [[route]]\n    id = "<a name>"\n    route = "{route}"\n'
+                f'    literal = "{spelled}"\n    source = "{files[0]}"\n'
+                '    json = ["<each key the app reads>"]'
             )
     for surface in contract.surfaces:
         source = sources.get(surface.source, "")
@@ -235,12 +271,14 @@ def source_problems(contract: Contract, sources: Mapping[str, str]) -> list[str]
             if count and path not in declared:
                 problems.append(
                     f"{path}: {_FILE_USE_SAYS[kind]}, and [files.{kind}] does not list it. "
-                    "List it with what it runs or reads; if that is metab's, declare it"
+                    f"{_file_line(kind, path, count)}"
                 )
             elif kind == "launch" and path in declared and count != declared[path].sites:
                 problems.append(
                     f"{path}: builds a command in {count} places, and [files.launch] says "
-                    f"{declared[path].sites}. Declare what the new one runs"
+                    f"{declared[path].sites}. Set `sites = {count}` on its line in "
+                    f"[files.launch] of {DECLARATION}, and add to its `runs` the id of the "
+                    "[[command]] the new one runs"
                 )
         for path in declared:
             source = sources.get(path)
@@ -277,7 +315,58 @@ def source_problems(contract: Contract, sources: Mapping[str, str]) -> list[str]
                         f"{surface.source} no longer names it"
                     )
 
+    problems += _read_key_problems(contract, sources)
     problems += _probe_problems(contract, sources)
+    return problems
+
+
+def _file_line(kind: str, path: str, count: int) -> str:
+    """The line to add for a file `[files.<kind>]` does not list, ready to paste."""
+
+    own = f'"own: <{_FILE_USE_OWN[kind]}>"'
+    value = f"{{ sites = {count}, runs = [{own}] }}" if kind == "launch" else f"[{own}]"
+    return (
+        f'Add to [files.{kind}] in {DECLARATION}:\n    "{path}" = {value}\n'
+        "  If what it uses is metab's, declare that as a [[command]], [[route]], or "
+        "[[behavior]], and write its id in place of the `own:` text"
+    )
+
+
+def _read_key_problems(contract: Contract, sources: Mapping[str, str]) -> list[str]:
+    """A key a listed file reads of a JSON answer, which that answer's entry lacks.
+
+    In a file `[files.json]` lists with a contract id, every key in a subscript
+    (``page["sources"]``) or a coding key's raw value (``case openedAt = "opened_at"``)
+    is a segment of a path that one of its entries declares.
+    """
+
+    problems: list[str] = []
+    for path, use in contract.files["json"].items():
+        surfaces = [found for name in use.ids if (found := contract.surface(name))]
+        source = sources.get(path)
+        if not surfaces or source is None:
+            continue
+        declared = {
+            segment.removesuffix("[]")
+            for surface in surfaces
+            for declared_path in surface.json
+            for segment in declared_path.split(".")
+        }
+        # Comments are prose, and a key in one reads nothing.
+        text = "".join(
+            f'"{segment.text}"' if segment.kind == "string" else segment.text
+            for segment in swift_text.segments(source)
+            if segment.kind in ("code", "string")
+        )
+        read = set(_SUBSCRIPT_KEY.findall(text))
+        for body in _CODING_KEYS.findall(text):
+            read |= set(_RAW_VALUE.findall(body))
+        for key in sorted(read - declared):
+            ids = ", ".join(surface.id for surface in surfaces)
+            problems.append(
+                f"{path}: reads the key `{key}`, which {ids} does not declare. Add its path "
+                f"to that entry's `json` in {DECLARATION}"
+            )
     return problems
 
 
@@ -343,18 +432,26 @@ def _probe_problems(contract: Contract, sources: Mapping[str, str]) -> list[str]
 # ── The declaration against the goldens ─────────────────────────────
 
 
-def _test_exists(root: Path, reference: str) -> bool:
-    """Whether *reference*, ``path::name``, names a test function of a Python module or
-    of one of the app's Swift suites."""
+def _pin_problem(root: Path, reference: str, holds: str) -> str | None:
+    """Why *reference* pins nothing, or None.
+
+    ``path::name`` names a test function of a Python module or of one of the app's Swift
+    suites. A path alone names a browserless session or a golden, which must contain
+    *holds*: the selector, the message, or the line that the entry depends on.
+    """
 
     path, _, name = reference.partition("::")
     text = _read(root, path)
-    if not name or text is None:
-        return False
+    if text is None:
+        return f"`{path}` is missing"
+    if not name:
+        return None if holds in text else f"`{path}` does not contain `{holds}`"
     if path.endswith(".swift"):
         declares = rf"@Test\b[^\n]*\bfunc {re.escape(name)}\("
-        return re.search(declares, swift_text.code(text)) is not None
-    return re.search(rf"^(?:async )?def {re.escape(name)}\(", text, re.MULTILINE) is not None
+        found = re.search(declares, swift_text.code(text))
+    else:
+        found = re.search(rf"^(?:async )?def {re.escape(name)}\(", text, re.MULTILINE)
+    return None if found else f"`{reference}` names no test"
 
 
 def _block_problems(contract: Contract, block: Block) -> list[str]:
@@ -388,6 +485,19 @@ def _block_problems(contract: Contract, block: Block) -> list[str]:
             return [*problems, f"{where}: {error}"]
         if read != answer:
             problems.append(f"{where}: records keys the contract does not declare the app reads")
+        for path, mask in surface.masks.items():
+            for value in app_contract.values_at(answer, path):
+                if value is not None and value != mask:
+                    problems.append(
+                        f"{where}: records what `{path}` says, and the app only shows it or "
+                        f"keeps it unread; the golden holds `{mask}` there"
+                    )
+        for line in block.stderr.splitlines():
+            if line != app_contract.TEXT and not line.strip().startswith(("{", "}")):
+                problems.append(
+                    f"{where}: records the stderr line `{line}`, which no reader of a JSON "
+                    f"answer takes; the golden holds `{app_contract.TEXT}` for it"
+                )
         return problems
     for stream, names, text in (
         ("stdout", surface.stdout, block.stdout),
@@ -395,11 +505,31 @@ def _block_problems(contract: Contract, block: Block) -> list[str]:
     ):
         patterns = [line.pattern for name in names if (line := contract.line(name))]
         for line in text.splitlines():
-            if not any(pattern.search(line) for pattern in patterns):
+            if not app_contract.is_read_line(line, patterns):
                 problems.append(
-                    f"{where}: records the {stream} line `{line}`, which is none of the "
-                    "lines the contract declares the app reads there"
+                    f"{where}: records the {stream} line `{line}`, which is not the part of "
+                    "a declared line that the app parses"
                 )
+    return problems
+
+
+def copies_problems(contract: Contract, root: Path) -> list[str]:
+    """The copies golden holds a line for each definition an entry names, and no other."""
+
+    text = _read(root, COPIES)
+    if text is None:
+        return [f"{COPIES} is missing; `make golden-update` writes it"]
+    recorded = set(app_contract.read_copies(text))
+    named = set(contract.value_references)
+    problems = [
+        f"{COPIES}: has no line for `{name}`, which an entry's `values` names; "
+        "`make golden-update` writes it"
+        for name in sorted(named - recorded)
+    ]
+    problems += [
+        f"{COPIES}: records `{name}`, which no entry's `values` names"
+        for name in sorted(recorded - named)
+    ]
     return problems
 
 
@@ -497,11 +627,13 @@ def golden_problems(contract: Contract, root: Path) -> list[str]:
         elif not any(variable.name in block.environment for block in blocks):
             problems.append(f"{where}: no block of {GOLDEN} sets it")
 
-    references = [(f"[[line]] {line.id}", line.pinned_by) for line in contract.lines]
-    references += [(f"[[{item.kind}]] {item.id}", item.pinned_by) for item in contract.pinned]
-    for where, reference in references:
-        if reference and not _test_exists(root, reference):
-            problems.append(f"{where}: `{reference}` names no test")
+    references = [(f"[[line]] {line.id}", line.pinned_by, line.holds) for line in contract.lines]
+    references += [
+        (f"[[{item.kind}]] {item.id}", item.pinned_by, item.holds) for item in contract.pinned
+    ]
+    for where, reference, holds in references:
+        if reference and (problem := _pin_problem(root, reference, holds)):
+            problems.append(f"{where}: {problem}")
     for item in contract.pinned:
         if item.golden and _read(root, f"{GOLDEN_DIR}/{item.golden}") is None:
             problems.append(f"[[{item.kind}]] {item.id}: its golden {item.golden} is missing")
@@ -587,8 +719,9 @@ def _at(root: Path, revision: str, path: str) -> str | None:
 
 
 def declared_surface(text: str | None) -> object:
-    """What a declaration's *text* says the app sends and reads, or None for no
-    declaration or one that does not parse.
+    """What a declaration's *text* says the app depends on, or None for no declaration
+    or one that does not parse: what it sends and reads, and each behavior, copied value,
+    and thing ``metab`` reads of the app, with the definitions it names.
 
     Two declarations with the same surface differ only in what a release need not name:
     a note, the test that pins an entry, or which Swift file holds a reader.
@@ -611,11 +744,14 @@ def declared_surface(text: str | None) -> object:
                 surface.stderr,
                 surface.shown,
                 surface.app_runs,
+                surface.shown_keys,
+                surface.opaque,
             )
             for surface in contract.surfaces
         ),
         tuple((line.id, line.pattern.pattern) for line in contract.lines),
         tuple(variable.name for variable in contract.variables),
+        tuple((item.kind, item.id, item.values) for item in contract.pinned),
     )
 
 
@@ -645,10 +781,11 @@ def change_problems(root: Path, against: str) -> list[str]:
 
     A file changed when it differs from the merge base of *against* and ``HEAD``, and
     from *against* itself, which a merge of it in progress brings. A change to the
-    declared surface, what the app sends and reads, is a change to the contract, and a
+    declared surface, what the app depends on, is a change to the contract, and a
     fragment the branch adds or edits must name it with :data:`CHANGE_MARK`. A change to
-    the golden alone is ``metab`` answering the same surface differently, which is either
-    that or a bug fix, so either mark names it.
+    a golden alone is ``metab`` answering the same surface differently, or defining a
+    value the app copies differently, which is either that or a bug fix, so either mark
+    names it.
     """
 
     try:
@@ -661,9 +798,9 @@ def change_problems(root: Path, against: str) -> list[str]:
         return now != read(_at(root, base, path)) and now != read(_at(root, against, path))
 
     surface = differs(DECLARATION, declared_surface)
-    golden = differs(GOLDEN, lambda text: text)
+    goldens = [path for path in GOLDENS if differs(path, lambda text: text)]
     marks = _branch_marks(root, base)
-    if not (surface or golden) or CHANGE_MARK in marks or (FIX_MARK in marks and not surface):
+    if not (surface or goldens) or CHANGE_MARK in marks or (FIX_MARK in marks and not surface):
         return []
     where = f"since the merge base with {against} ({base[:12]})"
     remedy = (
@@ -678,13 +815,13 @@ def change_problems(root: Path, against: str) -> list[str]:
         fix = f" An entry marked `{FIX_MARK}` does not name it: a fix keeps what the app reads."
         return [
             f"{DECLARATION} declares a different surface {where}, so this branch changes what "
-            f"the macOS app sends to metab or reads from it. {remedy}."
+            f"the macOS app depends on in metab. {remedy}."
             f"{fix if FIX_MARK in marks else ''} {after}"
         ]
     return [
-        f"{GOLDEN} changed {where}, so metab answers the macOS app differently in something "
-        f"the app reads. {remedy}, or `{FIX_MARK}` when the old answer was a bug, which may "
-        f"ship in a patch. {after}"
+        f"{' and '.join(goldens)} changed {where}, so metab answers the macOS app differently "
+        f"in something the app reads, or defines a value the app copies differently. {remedy}, "
+        f"or `{FIX_MARK}` when the old answer was a bug, which may ship in a patch. {after}"
     ]
 
 
@@ -700,6 +837,7 @@ def check(root: Path = REPO_ROOT, against: str | None = None) -> list[str]:
         return [str(error)]
     problems = source_problems(contract, app_sources(root))
     problems += golden_problems(contract, root)
+    problems += copies_problems(contract, root)
     problems += workflow_problems(root)
     text = _read(root, changelog.CHANGELOG)
     if text is not None:
@@ -798,7 +936,7 @@ def accepts(contract: Contract, executable: str) -> list[str]:
 def referenced_files(contract: Contract) -> list[str]:
     """Every file the check reads besides the app's sources, by path from the root."""
 
-    files = {DECLARATION, GOLDEN, APP_WORKFLOW, changelog.CHANGELOG, f"{APP}/{LIVE_TESTS}"}
+    files = {DECLARATION, *GOLDENS, APP_WORKFLOW, changelog.CHANGELOG, f"{APP}/{LIVE_TESTS}"}
     goldens: Iterable[str] = [
         *(surface.values_in for surface in contract.surfaces),
         *(line.golden for line in contract.lines),

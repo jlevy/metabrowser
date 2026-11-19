@@ -9,23 +9,37 @@ on reading as checked.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import stat
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from devtools import app_contract, check_app_contract, swift_text
 from devtools.app_contract import ContractError
-from devtools.check_app_contract import CHANGE_MARK, DECLARATION, FIX_MARK, GOLDEN
+from devtools.check_app_contract import CHANGE_MARK, COPIES, DECLARATION, FIX_MARK, GOLDEN
 from tests.test_changelog import _git, _write
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = "apps/macos/Sources"
 RECENT = f"{SOURCES}/ShellCore/Folders/RecentTargets.swift"
 OPEN_TARGET = f"{SOURCES}/ShellCore/Folders/OpenTarget.swift"
+CACHE = f"{SOURCES}/ShellCore/Folders/RepositoryCache.swift"
+# A behavior pinned by a golden, as one the app's own script relies on in a page is
+# pinned by the session or the transcript that shows the page emits it.
+PINNED_BY_A_FILE = """
+[[behavior]]
+id = "page-marker"
+source = "Sources/ShellCore/Web/PagePrint.swift"
+what = "The page marks the link the app's script looks for."
+pinned_by = "tests/golden/cli-serve-exit-on-eof.tryscript.md"
+holds = "{holds}"
+"""
 
 
 def _copy(tmp_path: Path) -> Path:
@@ -183,11 +197,49 @@ def test_a_copy_of_what_the_check_reads_passes(tmp_path: Path) -> None:
         ),
         (
             _replace(GOLDEN, "  [dev build: <STATE>]\n", "  [dev build: <STATE>]\nPlugins: text\n"),
-            "records the stdout line `Plugins: text`, which is none of the lines",
+            "records the stdout line `Plugins: text`, which is not the part of a declared",
         ),
         (
             _replace(GOLDEN, "METABROWSER_RECORD_RECENT=0 metab", "METABROWSER_QUIET=1 metab"),
             "sets `METABROWSER_QUIET`, which the contract does not declare",
+        ),
+        # Text the app only shows is recorded as present, and not word for word.
+        (
+            _replace(GOLDEN, '"message": "<text>"', '"message": "Issues are not opened"'),
+            "records what `refusal.message` says, and the app only shows it",
+        ),
+        (
+            _replace(GOLDEN, "origin.git in <text>", "origin.git in 0.0 s; starting"),
+            "which is not the part of a declared line that the app parses",
+        ),
+        # A value the app copies is a line of the copies golden, and no other is.
+        (
+            _replace(COPIES, "metabrowser.settings:DEFAULT_BROWSER_PORT = 8411\n", ""),
+            f"{COPIES}: has no line for `metabrowser.settings:DEFAULT_BROWSER_PORT`",
+        ),
+        (
+            _append(COPIES, "metabrowser.settings:OTHER = 1\n"),
+            "records `metabrowser.settings:OTHER`, which no entry's `values` names",
+        ),
+        # A key a listed file reads of an answer, by a subscript or a coding key.
+        (
+            _append(CACHE, '\nfunc slug(_ source: [String: Any]) -> Any? { source["slug"] }\n'),
+            "RepositoryCache.swift: reads the key `slug`, which cache-sources does not declare",
+        ),
+        (
+            _replace(RECENT, 'case openedAt = "opened_at"', 'case openedAt = "opened"'),
+            "RecentTargets.swift: reads the key `opened`, which recent-list does not declare",
+        ),
+        # The interpreter's variables are named too.
+        (
+            _append(OPEN_TARGET, '\nlet home = "PYTHONHOME"\n'),
+            "names `PYTHONHOME`, which the contract does not declare",
+        ),
+        # A pin that is a session or a golden holds what the entry depends on.
+        (
+            _append(DECLARATION, PINNED_BY_A_FILE.format(holds="no such text")),
+            "[[behavior]] page-marker: `tests/golden/cli-serve-exit-on-eof.tryscript.md` "
+            "does not contain `no such text`",
         ),
         # The app's tests run when the golden changes.
         (
@@ -212,12 +264,72 @@ def test_a_flag_in_a_comment_is_prose(tmp_path: Path) -> None:
     assert check_app_contract.check(root) == []
 
 
+def test_a_problem_says_the_line_to_add(tmp_path: Path) -> None:
+    """A file the declaration does not list is answered with its line, ready to paste."""
+
+    root = _copy(tmp_path)
+    _new_file(f"{SOURCES}/Metabrowser/Popover.swift", "let s = URLSession.shared\n")(root)
+    _new_file(
+        f"{SOURCES}/ShellCore/Folders/Extra.swift",
+        'func extra() -> LaunchSpec { LaunchSpec(executable: "x") }\n',
+    )(root)
+    problems = "\n".join(check_app_contract.check(root))
+    assert (
+        f"Add to [files.http] in {DECLARATION}:\n"
+        '    "Sources/Metabrowser/Popover.swift" = ["own: <what it requests>"]'
+    ) in problems
+    assert (
+        '    "Sources/ShellCore/Folders/Extra.swift" = '
+        '{ sites = 1, runs = ["own: <what it runs>"] }'
+    ) in problems
+    # Pasting the lines, with what each is, is all it takes.
+    declaration = root / DECLARATION
+    text = declaration.read_text(encoding="utf-8")
+    text = text.replace(
+        "[files.http]\n",
+        '[files.http]\n"Sources/Metabrowser/Popover.swift" = ["own: a page of the app\'s"]\n',
+    ).replace(
+        "[files.launch]\n",
+        '[files.launch]\n"Sources/ShellCore/Folders/Extra.swift" = '
+        '{ sites = 1, runs = ["own: a tool"] }\n',
+    )
+    declaration.write_text(text, encoding="utf-8")
+    assert check_app_contract.check(root) == []
+
+
+def test_a_behavior_is_pinned_by_a_session_or_a_golden_that_holds_it(tmp_path: Path) -> None:
+    """What the app's own script relies on in a page has no Python or Swift test to name."""
+
+    root = _copy(tmp_path)
+    held = PINNED_BY_A_FILE.format(holds="Stopping Metabrowser: stdin closed.")
+    _append(DECLARATION, held)(root)
+    assert check_app_contract.check(root) == []
+
+    text = (ROOT / DECLARATION).read_text(encoding="utf-8")
+    with pytest.raises(ContractError, match="with what it must contain in `holds`"):
+        app_contract.parse(
+            text + held.replace('holds = "Stopping Metabrowser: stdin closed."\n', "")
+        )
+    with pytest.raises(ContractError, match="names a test function"):
+        app_contract.parse(
+            text + held.replace("cli-serve-exit-on-eof.tryscript.md", "x.tryscript.md::test_x")
+        )
+    with pytest.raises(ContractError, match="`pinned_by` is a test function"):
+        app_contract.parse(text + held.replace("tests/golden/", "docs/"))
+
+
 def test_a_declaration_with_a_key_the_check_does_not_read_is_refused() -> None:
     text = (ROOT / DECLARATION).read_text(encoding="utf-8")
     with pytest.raises(ContractError, match="keys this check does not read: reads"):
         app_contract.parse(text.replace('stdout = ["version"]', 'reads = ["version"]', 1))
     with pytest.raises(ContractError, match="says why it is here in `because`"):
         app_contract.parse(text.replace("app_runs = false\n", "", 1))
+    with pytest.raises(ContractError, match="shown names `page`, which `json` does not list"):
+        app_contract.parse(text.replace('shown = ["refusal.message"]', 'shown = ["page"]', 1))
+    with pytest.raises(ContractError, match="`metabrowser.settings` names no definition"):
+        app_contract.parse(
+            text.replace('"metabrowser.settings:DEFAULT_BROWSER_PORT"', '"metabrowser.settings"', 1)
+        )
 
 
 # ── Projection ──────────────────────────────────────────────────────
@@ -239,6 +351,56 @@ def test_projection_keeps_the_declared_keys_and_refuses_a_missing_one() -> None:
     with pytest.raises(ContractError, match=r"targets\[0\]\.opened_at: the app reads this key"):
         app_contract.project(answer, ["targets[].opened_at"])
     assert app_contract.values_at(answer, "targets[].mode") == ["folder"]
+
+
+def test_text_the_app_only_shows_is_recorded_as_present() -> None:
+    answer = {"targets": [{"root": "/a", "opened_at": "2026-11-18T03:14:15Z"}], "problem": None}
+    paths = ["targets[].root", "targets[].opened_at", "problem"]
+    masks = {"targets[].opened_at": app_contract.OPAQUE, "problem": app_contract.TEXT}
+    assert app_contract.project(answer, paths, masks) == {
+        "targets": [{"root": "/a", "opened_at": "<opaque>"}],
+        "problem": None,
+    }
+    said = app_contract.project({**answer, "problem": "The file is damaged."}, paths, masks)
+    assert cast("dict[str, object]", said)["problem"] == "<text>"
+    with pytest.raises(ContractError, match="problem: is declared as text"):
+        app_contract.project({**answer, "problem": 3}, paths, masks)
+
+
+def test_a_line_is_recorded_as_the_part_the_app_parses() -> None:
+    cloned = re.compile(r"^cloned \S+://\S+ in ")
+    option = re.compile(r"--no-such-option")
+    printed = (
+        "cloned https://github.com/octo/demo in 104 s (742.0 MiB); starting the server\n"
+        "Plugins: text\n"
+        "│ No such option: --no-such-option      │\n"
+    )
+    read = app_contract.read_lines(printed, [cloned, option])
+    assert read == "cloned https://github.com/octo/demo in <text>\n<text>--no-such-option<text>\n"
+    assert all(app_contract.is_read_line(line, [cloned, option]) for line in read.splitlines())
+    assert not app_contract.is_read_line("cloned https://github.com/octo/demo in 104 s", [cloned])
+
+
+def test_a_json_answer_keeps_the_framing_it_was_printed_in() -> None:
+    """The app finds an answer by its lines, so the golden records them as printed."""
+
+    answer = {"targets": [], "limit": 50, "problem": "café"}
+    for indent, ensure_ascii in ((2, False), (2, True), (None, False)):
+        raw = json.dumps(answer, indent=indent, ensure_ascii=ensure_ascii)
+        before, found, text, after = app_contract.split_json(f"warning\n{raw}\n")
+        assert (before, found, text, after) == ("warning\n", answer, raw, "\n")
+        framing = app_contract.framing_of(text, found)
+        assert (framing.indent, framing.ensure_ascii) == (indent, ensure_ascii)
+        read = app_contract.project(found, ["targets", "problem"])
+        assert app_contract.dump(read, framing) == json.dumps(
+            {"targets": [], "problem": "café"}, indent=indent, ensure_ascii=ensure_ascii
+        )
+    with pytest.raises(ContractError, match="a framing this driver does not know"):
+        app_contract.framing_of(json.dumps(answer, indent="\t"), answer)
+    # What a reader of both streams would take as part of an answer is kept as written.
+    assert app_contract.framing_lines('a warning\n{\n  {"x": 1}\n}\n') == (
+        '<text>\n{\n  {"x": 1}\n}\n'
+    )
 
 
 def test_a_command_line_is_held_to_the_declared_words() -> None:
@@ -312,6 +474,7 @@ def _repository(tmp_path: Path) -> Path:
         {
             DECLARATION: (ROOT / DECLARATION).read_text(encoding="utf-8"),
             GOLDEN: "# the golden\n",
+            COPIES: "metabrowser.server_utils:DEFAULT_PORT_SEARCH_COUNT = 32\n",
             "CHANGELOG.md": CHANGELOG.format(patch=""),
             "changelog.d/README.md": "# Changelog Fragments\n",
             "changelog.d/mb-old1.md": "- An entry already on main.\n",
@@ -364,6 +527,26 @@ def test_a_change_to_the_declared_surface_is_not_a_fix(tmp_path: Path) -> None:
     assert len(problems) == 1 and "a fix keeps what the app reads" in problems[0]
     _write(root, {"changelog.d/mb-new1.md": f"{CHANGE_MARK} The app reads `limit`.\n"})
     assert check_app_contract.change_problems(root, "main") == []
+
+
+def test_a_copied_value_and_a_behavior_are_part_of_the_contract(tmp_path: Path) -> None:
+    """A port walk that shrinks changes no command and no answer, and an installed app
+    still holds the old number."""
+
+    root = _repository(tmp_path)
+    _write(root, {COPIES: "metabrowser.server_utils:DEFAULT_PORT_SEARCH_COUNT = 16\n"})
+    problems = check_app_contract.change_problems(root, "main")
+    assert len(problems) == 1 and COPIES in problems[0] and "copies differently" in problems[0]
+    _write(root, {"changelog.d/mb-new1.md": f"{CHANGE_MARK} The port walk tries 16 ports.\n"})
+    assert check_app_contract.change_problems(root, "main") == []
+
+    # A behavior the app begins to rely on is a different surface, whatever the goldens say.
+    (root / "changelog.d/mb-new1.md").unlink()
+    _write(root, {COPIES: "metabrowser.server_utils:DEFAULT_PORT_SEARCH_COUNT = 32\n"})
+    declaration = (ROOT / DECLARATION).read_text(encoding="utf-8")
+    _write(root, {DECLARATION: declaration + PINNED_BY_A_FILE.format(holds="x")})
+    problems = check_app_contract.change_problems(root, "main")
+    assert len(problems) == 1 and "declares a different surface" in problems[0]
 
 
 def test_a_change_main_made_is_not_this_branchs(tmp_path: Path) -> None:

@@ -12,9 +12,10 @@
 # - devtools/check_app_contract.py, in `make lint-check`, compares this file with the
 #   app's Swift sources and with the golden, in both directions.
 #
-# A change here or in the golden is a change to the contract, which ships in a minor or
-# major release of `metab` and is named in the changelog (the architecture document's
-# "Versioning"). `python -m devtools.check_app_contract report` prints the inventory.
+# A change to what this file declares, to the golden, or to a value the app copies is a
+# change to the contract, which ships in a minor or major release of `metab` and is named
+# in the changelog (the architecture document's "Versioning").
+# `python -m devtools.check_app_contract report` prints the inventory.
 
 # ── Commands ────────────────────────────────────────────────────────────────────────────
 #
@@ -22,7 +23,10 @@
 # Swift file that writes it. `json` lists the keys the app reads, `a.b` for a key of an
 # object and `a[].b` for a key of each element; `values` lists the values of a key the
 # app tells apart; `stdout` and `stderr` name the `line` entries the app reads there.
-# `output = "shown"` is output the app shows a person as written and reads nothing of.
+# `shown` lists keys whose text the app shows a person and never reads, and `opaque` keys
+# whose value it keeps or hands back unread: the golden records that each is there, as
+# `<text>` or `<opaque>`, and not what it says, so a reworded message is no change to the
+# contract. `output = "shown"` is a whole output the app shows as written.
 # `app_runs = false` is a command the app never runs, kept because the golden needs it to
 # show something the app depends on; `because` says what.
 
@@ -70,6 +74,7 @@ argv = ["{link}", "--present", "--dry-run", "--format", "json"]
 source = "Sources/ShellCore/Folders/PresentPlan.swift"
 json = ["kind", "root", "handoff", "refusal.code", "refusal.message"]
 values = { kind = ["repository", "pull_request", "commit", "tree", "file"] }
+shown = ["refusal.message"]
 note = "What a GitHub link opens, for a link sent to the app and for File > Open URL…. Exit 0 with a plan; a refusal exits nonzero and still prints the object."
 
 [[command]]
@@ -78,6 +83,8 @@ argv = ["--recent", "--json"]
 source = "Sources/ShellCore/Folders/RecentTargets.swift"
 json = ["targets[].mode", "targets[].root", "targets[].opened_at", "problem"]
 values = { "targets[].mode" = ["folder", "mirror"] }
+shown = ["problem"]
+opaque = ["targets[].opened_at"]
 note = "File > Open Recent and the Dock menu."
 
 [[command]]
@@ -104,6 +111,7 @@ argv = ["{folder}", "--api", "/api/cache/sources?limit={limit}{after}", "--forma
 source = "Sources/ShellCore/Folders/RepositoryCache.swift"
 json = ["sources[].identity.display_url", "sources[].publication", "sources[].problems", "next_after"]
 values = { "sources[].publication" = ["published"] }
+opaque = ["next_after"]
 note = "Whether the cache holds a repository, asked before a link clones one. The app's limit is `RepositoryCache.pageLimit`; a smaller one in the golden shows the cursor."
 
 [[command]]
@@ -148,14 +156,16 @@ note = "Whether a repository's server found what its link names. The three state
 
 # ── Lines ───────────────────────────────────────────────────────────────────────────────
 #
-# Lines of a command's output that the app reads as text. `pattern` matches the line as
-# `metab` prints it and as a golden records it. A line with `golden` is shown by that
-# golden, not by the contract's own; one with `pinned_by` cannot be shown by a transcript,
-# and that test holds the app's samples of it to what `metab` writes.
+# Lines of a command's output that the app reads as text. `pattern` matches the part of
+# the line the app parses, as `metab` prints it and as a golden records it; the golden
+# records that part and `<text>` for whatever else the line holds, which the app shows or
+# passes over. A line with `golden` is shown by that golden, not by the contract's own;
+# one with `pinned_by` cannot be shown by a transcript, and that test holds the app's
+# samples of it to what `metab` writes.
 
 [[line]]
 id = "version"
-pattern = '^metab \S+'
+pattern = '^metab \S+(?: \(.*\))?$'
 source = "Sources/ShellCore/Runtime/RuntimeDiscovery.swift"
 note = "`metab VERSION`, then for a checkout a description. The golden's driver holds VERSION to `MetabVersion`'s pattern before it elides it."
 
@@ -173,22 +183,22 @@ note = "The server's announcement of its address, on stdout, before its socket l
 
 [[line]]
 id = "clone-started"
-pattern = '^cloning \S+://\S+ into \S'
+pattern = '^cloning \S+://\S+ into '
 source = "Sources/ShellCore/Supervision/StartProgress.swift"
 
 [[line]]
 id = "cloned"
-pattern = '^cloned \S+://\S+ in \S'
+pattern = '^cloned \S+://\S+ in '
 source = "Sources/ShellCore/Supervision/StartProgress.swift"
 
 [[line]]
 id = "clone-cached"
-pattern = '^using the clone of \S+://\S+ cached in \S'
+pattern = '^using the clone of \S+://\S+ cached in '
 source = "Sources/ShellCore/Supervision/StartProgress.swift"
 
 [[line]]
 id = "clone-status"
-pattern = '^cloning \S+://\S+: \S'
+pattern = '^cloning \S+://\S+: '
 source = "Sources/ShellCore/Supervision/StartProgress.swift"
 pinned_by = "tests/test_macos_app_pins.py::test_the_clone_report_the_app_reads_is_metabs"
 note = "Written only when a clone has run ten seconds since its last line, which no transcript waits for."
@@ -234,8 +244,39 @@ note = "Set only by the app's live tests, so that a test's folder stays out of t
 
 # ── Behavior ────────────────────────────────────────────────────────────────────────────
 #
-# What the app relies on that is neither a field nor a line. Each names the test that
-# holds `metab` to it, and a golden where a transcript shows it.
+# What the app relies on that is neither a field nor a line. Each names what holds
+# `metab` to it in `pinned_by`: a Python test or a test of the app's, as `path::name`, or
+# a browserless session under tests/dom or a golden, as its path, with the text in `holds`
+# that the file must contain. So what the app's own script relies on in a page, such as a
+# selector, is declared here and pinned by the session that renders the page.
+# `values` names what `metab` defines for it, which tests/golden/app-contract-copies.txt
+# records, so that a changed value is a change to the contract.
+
+[[behavior]]
+id = "json-framing"
+source = "Sources/ShellCore/Folders/PresentPlan.swift"
+what = "A JSON answer on stdout is one block from a line that is exactly `{` to a line that is exactly `}`, and no other line of either stream is `{`, `}`, or a whole object: the app finds the answer by those lines in the one pipe that carries both streams."
+pinned_by = "apps/macos/Tests/ShellCoreTests/AppContractTests.swift::openRecentListsWhatMetabRecorded"
+
+[[behavior]]
+id = "python-environment"
+source = "Sources/ShellCore/Runtime/ChildEnvironment.swift"
+what = "The app starts every `metab` with PYTHONUNBUFFERED=1 and PYTHONNOUSERSITE=1, which the interpreter reads: the Serving line reaches the pipe as it is printed, and a package in the user's site directory does not shadow one of metab's."
+pinned_by = "apps/macos/Tests/ShellCoreTests/RuntimeDiscoveryTests.swift::keepsIdentityLocaleAgentAndProxiesAndDropsEverythingElse"
+
+[[behavior]]
+id = "executable-name"
+source = "Sources/ShellCore/Runtime/RuntimeDiscovery.swift"
+what = "The package installs a console script named `metab`, which is the file the app looks for in each place it searches."
+pinned_by = "tests/test_app_contract_golden.py::test_the_names_the_app_runs_and_installs_are_the_packages"
+values = ["pyproject.toml:project.scripts"]
+
+[[behavior]]
+id = "distribution-name"
+source = "Sources/ShellCore/Runtime/RuntimeDiscovery.swift"
+what = "The distribution is `metabrowser`, which the install and upgrade commands the app shows name to uv, the upgrade with a PEP 440 floor."
+pinned_by = "tests/test_app_contract_golden.py::test_the_names_the_app_runs_and_installs_are_the_packages"
+values = ["pyproject.toml:project.name"]
 
 [[behavior]]
 id = "stdin-lifeline"
@@ -266,37 +307,59 @@ pinned_by = "tests/test_stdin_lifeline.py::test_a_server_whose_stdin_closes_stop
 #
 # Values of `metab`'s that the app holds a copy of, where nothing imports them. Each names
 # the test that holds the copy to its definition: a Python test that reads the Swift
-# source, or a test of the app's that reads the golden.
+# source, or a test of the app's that reads the golden. `values` names the definitions,
+# as `module:NAME`; tests/golden/app-contract-copies.txt records each, so a change to one
+# changes a golden, and the app that copied the old value is the reason it is a change to
+# the contract.
 
 [[copy]]
 swift = "MetabAcquisition.remoteProbe, fetch, validation, attempts, progressLineInterval"
 source = "Sources/ShellCore/Supervision/StartupDeadline.swift"
 metab = "REMOTE_PROBE_TIMEOUT_S, GIT_ACQUISITION_TIMEOUT_S, RESERVATION_WAIT_S, LOG_INTERVAL_S"
 pinned_by = "tests/test_macos_app_pins.py::test_the_acquisition_bounds_are_metabs"
+values = [
+    "metabrowser.cache.origin:REMOTE_PROBE_TIMEOUT_S",
+    "metabrowser.git.process:GIT_ACQUISITION_TIMEOUT_S",
+    "metabrowser.cache.acquire:RESERVATION_WAIT_S",
+    "metabrowser.cli.clone_report:LOG_INTERVAL_S",
+]
 
 [[copy]]
 swift = "CLIServeLaunch.defaultBasePort, portSearchCount, repositoryBasePort"
 source = "Sources/ShellCore/Supervision/ServerLaunch.swift"
 metab = "DEFAULT_BROWSER_PORT, DEFAULT_PORT_SEARCH_COUNT"
 pinned_by = "tests/test_macos_app_pins.py::test_the_port_walk_is_metabs"
+values = [
+    "metabrowser.settings:DEFAULT_BROWSER_PORT",
+    "metabrowser.server_utils:DEFAULT_PORT_SEARCH_COUNT",
+]
 
 [[copy]]
 swift = "GitHubLink.hosts"
 source = "Sources/ShellCore/Folders/PresentPlan.swift"
 metab = "_WEB_HOSTS and _RAW_HOST in builtin_plugins/github/urls.py"
 pinned_by = "tests/test_macos_app_pins.py::test_the_link_hosts_are_the_github_reducers"
+values = [
+    "metabrowser.builtin_plugins.github.urls:_WEB_HOSTS",
+    "metabrowser.builtin_plugins.github.urls:_RAW_HOST",
+]
 
 [[copy]]
 swift = "RepositoryCache.pageLimit"
 source = "Sources/ShellCore/Folders/RepositoryCache.swift"
 metab = "MAX_PAGE_LIMIT in cache/projection.py"
 pinned_by = "tests/test_macos_app_pins.py::test_the_cache_page_is_the_routes_largest"
+values = ["metabrowser.cache.projection:MAX_PAGE_LIMIT"]
 
 [[copy]]
 swift = "GitHubFailure.kinds, errorPrefix, installHint"
 source = "Sources/ShellCore/Folders/GitHubFailure.swift"
 metab = "RemoteFailureState, GhFailureState, describe_remote_failure, GithubProvider.credential_hint"
 pinned_by = "tests/test_macos_app_pins.py::test_the_github_failures_the_app_reads_are_metabs"
+values = [
+    "metabrowser.cache.origin:RemoteFailureState",
+    "metabrowser.builtin_plugins.github.gh:GhFailureState",
+]
 
 [[copy]]
 swift = "MetabVersion.pattern"
@@ -324,11 +387,13 @@ pinned_by = "apps/macos/Tests/ShellCoreTests/AppContractTests.swift::aWindowIsNa
 id = "bundle-identifiers"
 what = "RELEASE_BUNDLE_ID and DEV_BUNDLE_ID in cli/present.py are the identifiers scripts/common.sh builds the two variants with."
 pinned_by = "tests/test_present.py::test_the_bundle_identifiers_are_the_ones_the_app_is_built_with"
+values = ["metabrowser.cli.present:RELEASE_BUNDLE_ID", "metabrowser.cli.present:DEV_BUNDLE_ID"]
 
 [[app_side]]
 id = "opens-urls-marker"
 what = "Resources/Info.plist declares MetabrowserOpensURLs, which --present reads before it sends a URL, and RecentTargets.opensURLsKey names the same key."
 pinned_by = "tests/test_macos_app_pins.py::test_the_app_declares_what_present_reads"
+values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 
 # ── Where the app starts a process, decodes JSON, sends a request, or scripts a page ─────
 #
@@ -345,6 +410,8 @@ pinned_by = "tests/test_macos_app_pins.py::test_the_app_declares_what_present_re
 "Sources/ShellCore/Folders/RepositoryCache.swift" = { sites = 1, runs = ["cache-sources"] }
 "Sources/Metabrowser/AppDelegate.swift" = { sites = 1, runs = ["doctor"] }
 
+# In a file that reads one of the contract's answers, every key it names in a subscript
+# or as a coding key's raw value is one the answer's entry declares.
 [files.json]
 "Sources/ShellCore/Folders/PresentPlan.swift" = ["present-dry-run"]
 "Sources/ShellCore/Folders/RecentTargets.swift" = ["recent-list"]
@@ -357,14 +424,15 @@ pinned_by = "tests/test_macos_app_pins.py::test_the_app_declares_what_present_re
 [files.http]
 "Sources/ShellCore/Folders/FolderIdentity.swift" = ["identity", "source-status"]
 "Sources/ShellCore/Supervision/ReadinessProbe.swift" = ["entry-page-answers"]
-"Sources/Metabrowser/BrowserWindowController.swift" = ["own: the page a window loads, which the web view requests"]
+"Sources/Metabrowser/FolderPage.swift" = ["own: the page a window loads, which the web view requests"]
 
 [files.script]
 "Sources/ShellCore/Web/PagePrint.swift" = ["own: window.print, which WebKit gives the app no public way to receive"]
 
 # ── What the scans pass over ────────────────────────────────────────────────────────────
 #
-# Flags of other tools in commands the app runs or shows, and variables of the app's own.
+# Flags of other tools in commands the app runs or shows, and variables that are the
+# app's own or the interpreter's.
 
 [other]
 flags = [
@@ -377,4 +445,6 @@ flags = [
 env = [
     "METABROWSER_METAB",            # which metab the app runs, for a development run
     "METABROWSER_SHELL_TEST_METAB", # the metab the live tests run
+    "PYTHONUNBUFFERED",             # the interpreter's: the behavior python-environment
+    "PYTHONNOUSERSITE",             # the interpreter's: the behavior python-environment
 ]

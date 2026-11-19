@@ -30,14 +30,20 @@ nonisolated struct ContractBlock: Sendable {
 
 /// The golden that `tests/test_app_contract_golden.py` writes: every command the app runs
 /// and every route it asks, as `apps/macos/metab-contract.toml` declares them, with what
-/// the app reads of each answer and nothing else.
+/// the app reads of each answer and nothing else. A command's JSON answer is in the lines
+/// `metab` printed it in, which is what the app's readers search.
 nonisolated enum ContractGolden {
-    /// Where the golden's sandbox, the folder it serves, and its cache are, here.
+    /// Where the golden's sandbox and the folder it serves are, here.
     static let sandbox = "/ROOT"
     static let served = "/ROOT/served"
-    static let cache = "/CACHE"
     /// What stands for output the app shows a person and reads nothing of.
     static let shown = "<shown as written, not read>"
+    /// What the golden holds for text the app shows and never reads: a message, or the
+    /// rest of a line after the part the app parses. The words are `metab`'s to change.
+    static let text = "<text>"
+    /// What a value the app keeps or hands back unread is here: the golden says only that
+    /// there is one, as `<opaque>`, and a cursor must survive being put in a query.
+    static let opaque = "opaque-value"
 
     static var url: URL {
         var root = URL(filePath: #filePath)
@@ -51,7 +57,7 @@ nonisolated enum ContractGolden {
         let text = try String(contentsOf: url, encoding: .utf8)
             .replacingOccurrences(of: "<SERVED>", with: served)
             .replacingOccurrences(of: "<ROOT>", with: sandbox)
-            .replacingOccurrences(of: "<HOME>", with: cache)
+            .replacingOccurrences(of: "<opaque>", with: opaque)
             .replacingOccurrences(of: "<VERSION>", with: MetabRequirement.minimum)
         var blocks: [String: ContractBlock] = [:]
         var lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)[...]
@@ -225,13 +231,15 @@ nonisolated enum ContractGolden {
             #expect(block.words.first?.contains("://") == true)
             #expect(launch.endpoint(announcedBy: block.stdout[0])?.origin == origin)
         }
+        // The app parses the start of each line and shows the rest as `metab` wrote it,
+        // which the golden holds as `<text>`.
+        let rest = ContractGolden.text
         let cloned = try block("serve/repository-cloned")
-        let finished = StartProgress.cloned("in 0.0 s; starting the server")
-        #expect(cloned.stderr.map(StartProgress.parse) == [.cloning(into: ContractGolden.cache), finished])
+        let finished = StartProgress.cloned("in \(rest)")
+        #expect(cloned.stderr.map(StartProgress.parse) == [.cloning(into: rest), finished])
         #expect(launch.startProgress(in: cloned.result.output) == finished)
         let cached = try block("serve/repository-cached")
-        #expect(cached.stderr.map(StartProgress.parse)
-            == [.cached("cached in \(ContractGolden.cache), fetched less than a minute ago")])
+        #expect(cached.stderr.map(StartProgress.parse) == [.cached("cached in \(rest)")])
     }
 
     /// The page the app opens for a file is the address `metab` announces for it.
@@ -249,8 +257,9 @@ nonisolated enum ContractGolden {
     // MARK: - Recent targets
 
     @Test func openRecentListsWhatMetabRecorded() throws {
-        let folder = RecentTarget(mode: .folder, root: ContractGolden.served, openedAt: "2026-11-18T03:14:15Z")
-        let mirror = RecentTarget(mode: .mirror, root: demo.absoluteString, openedAt: "2026-11-18T03:14:16Z")
+        let opened = ContractGolden.opaque
+        let folder = RecentTarget(mode: .folder, root: ContractGolden.served, openedAt: opened)
+        let mirror = RecentTarget(mode: .mirror, root: demo.absoluteString, openedAt: opened)
         let listings: [(String, [RecentTarget])] = [
             ("recent-list/empty", []), ("recent-list/after-an-open", [folder]), ("recent-list/listed", [mirror, folder]),
         ]
@@ -268,7 +277,7 @@ nonisolated enum ContractGolden {
             return
         }
         #expect(unread.targets.isEmpty)
-        #expect(unread.problem?.isEmpty == false)
+        #expect(unread.problem == ContractGolden.text)
     }
 
     @Test func theListIsChangedWithTheRecordedCommands() throws {
@@ -341,9 +350,9 @@ nonisolated enum ContractGolden {
     @Test func aRefusalIsReadWithItsStatus() throws {
         let block = try block("present-dry-run/refused")
         #expect(block.exit != 0)
+        // The code is `metab`'s name for the refusal; the message is shown as written.
         #expect(PresentDryRun.answer(block.result) == .refused(PresentRefusal(
-            code: "unsupported_github_url",
-            message: "GitHub issues pages are not opened; open the repository at https://github.com/octo/demo")))
+            code: "unsupported_github_url", message: ContractGolden.text)))
     }
 
     // MARK: - The cache
@@ -372,6 +381,7 @@ nonisolated enum ContractGolden {
             Issue.record("a short page gave no cursor")
             return
         }
+        #expect(cursor == ContractGolden.opaque)
         let next = try block("cache-sources/next-page")
         #expect(next.words == short(RepositoryCache.arguments(folder: folder, after: cursor)))
         #expect(RepositoryCache.read(next.result, looking: flask) == .found)
