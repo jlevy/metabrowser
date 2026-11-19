@@ -181,9 +181,10 @@
 
   // ── Smart default expansion ────────────────────────────────────
   //
-  // Walks the tree and returns a Set of path strings (JsonViewer-style
-  // dot-and-bracket form, e.g. "$.bundle.summary.topDomains[0]") that
-  // should be pre-expanded on first render.
+  // Walks the tree and returns a Set of the paths that should be
+  // pre-expanded on first render. A path is positional, as tree.js
+  // draws it: "$" and each child's index among its parent's entries,
+  // so "$/2/0" is the first entry of the root's third.
   //
   // Heuristic:
   //   - Always expand "$" (root).
@@ -212,12 +213,12 @@
     var entries = [];
     if (Array.isArray(value)) {
       for (var i = 0; i < value.length; i++) {
-        entries.push({ path: `${parentPath}[${i}]`, value: value[i] });
+        entries.push({ path: `${parentPath}/${i}`, value: value[i] });
       }
     } else if (value && typeof value === "object") {
       var keys = Object.keys(value);
       for (var k = 0; k < keys.length; k++) {
-        entries.push({ path: `${parentPath}.${keys[k]}`, value: value[keys[k]] });
+        entries.push({ path: `${parentPath}/${k}`, value: value[keys[k]] });
       }
     }
     return entries;

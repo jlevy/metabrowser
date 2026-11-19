@@ -1106,7 +1106,7 @@ unsettled rather than consistently offset.
 | File tree row, in Files and Recent | Name, age, size, and a container child’s change letter | Icon, chevron, activity spinner, loading skeletons |
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
 | Pull request row, in [the Pulls tab](#the-pulls-tab) | The title, alone on the first line; the number’s line and the age, on the second | State icon, on the first line; chevron, on the change line |
-| Diff file bar | Change letter, path, change stats, and notes | Chevron, Markdown **Rendered** \| **Source** chooser, View file or View on branch control, copy button |
+| Diff file bar | Change letter, path, change stats, and notes | Chevron, a Markdown, YAML, or JSON file’s **Rendered** \| **Source** chooser, View file or View on branch control, copy button |
 
 The row keeps `align-items: center`, and each text child opts in with
 `align-self: baseline`. A box aligned to the baseline would sit its bottom edge on the

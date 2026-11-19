@@ -104,6 +104,7 @@ CHROME_TESTS = (
     "tests.test_chrome_starts",
     "tests.test_control_chords_chrome",
     "tests.test_diff_markdown_fold_chrome",
+    "tests.test_diff_structured_chrome",
     "tests.test_document_print_chrome",
     "tests.test_folder_home_chrome",
     "tests.test_folder_overview_alignment",

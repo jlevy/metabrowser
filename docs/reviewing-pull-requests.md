@@ -183,6 +183,43 @@ These files open in **Source**:
 Rendered also shows math and Mermaid diagrams as their source text, and does not
 highlight code blocks.
 
+A Markdown file’s front matter shows as the Frontmatter disclosure the file’s Document
+view shows above it.
+It stays closed when the front matter did not change, and opens with each changed key’s
+old value removed and new value added when it did.
+Front matter that does not load, or is too large for the rendered view, shows no
+disclosure, and its change appears only in **Source**; the rest of the file still
+renders. So does a value whose type changed and whose text did not, such as `false` that
+became `"False"`.
+
+### Rendered YAML and JSON in Changes
+
+A changed `.yaml`, `.yml`, or `.json` file opens in **Rendered** as the tree its file
+view draws.
+An added or removed key or item is marked in the change gutter, and a changed
+value shows its old row removed and its new row added.
+Every mapping and list that holds a change is open, as far as the first screen’s row
+budget allows; an unchanged one is closed with the file view’s preview of it, and a
+click opens it. A long mapping or list draws its entries a page at a time, and its last
+row, `… N more`, draws the next page and counts the changes the rest holds.
+A changed value wraps, so a long string shows where it changed.
+An alias (`*name`) and a merge key (`<<`) read as the values they name.
+
+The tree shows what the data says, so a change to a comment, quoting, indentation, or
+the order of a mapping’s keys appears only in **Source**, and a file whose only change
+is of that kind says so above its tree.
+The tree reads YAML 1.2, where `no`, `off`, and `y` are strings, so a change between
+`no` and `"no"`, which a YAML 1.1 reader takes as `false` and a string, shows only in
+**Source** too. A value whose type changed and whose text did not, such as a date that
+became the string that spells it, or the key `1` that became `"1"`, is drawn unchanged,
+and the tree says above it that **Source** shows a change it draws as unchanged.
+
+These files open in **Source**:
+
+- YAML or JSON that does not parse
+- a file with a key twice in one mapping, which two programs may read differently
+- files too large, or too deeply nested, for the rendered view
+
 ## Find a Pull Request with Quick Search
 
 Press `/` or `T` to open Quick Search, and type `#` to see recent pull requests in every

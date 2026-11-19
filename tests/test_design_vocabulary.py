@@ -1940,7 +1940,10 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     "diff/diff-summary.js": (
         '"changed-file-row diff-summary-row diff-summary-folder disclosure-toggle"',
     ),
-    "diff/diff-markdown.js": ('summary.className = "disclosure-toggle"',),
+    "diff/diff-markdown.js": (
+        'heading.className = "disclosure-toggle"',
+        'summary.className = "disclosure-toggle"',
+    ),
     "github/pulls-panel.js": (
         '"github-pulls-change disclosure-toggle collapsed"',
         '"github-pulls-row github-pulls-stack-row disclosure-toggle"',
@@ -1993,6 +1996,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ),
     ),
     "diff/diff-markdown.js": (
+        ('createElement("summary")', 'heading.className = "disclosure-toggle"'),
         ('createElement("summary")', 'summary.className = "disclosure-toggle"'),
     ),
     "github/pulls-panel.js": (
