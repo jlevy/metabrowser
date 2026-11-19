@@ -1708,12 +1708,11 @@ body {
 .app-header > .settings-toggle {
   margin-left: auto;
 }
-/* A checkout's revision's heading: the folder's name at the heading's weight, then
-   the ref and the short commit, muted, the commit in the commit-ID face
-   (.git-commit-sha), which tell it from the working tree's page of the same name. A
-   pin with no mirror has no name, and its ref stands in the name's place. A served
-   mirror's heading is the repository's name alone (server.py, _pin_label_html): its
-   ref selector names the ref and its tooltip the commit. */
+/* A pin with no mirror's heading: it has no name and no ref selector, so its ref
+   stands in the name's place at the heading's weight, then its short commit, muted,
+   in the commit-ID face (.git-commit-sha). A served mirror's heading and a checkout's
+   revision's are the name alone (server.py, _pin_label_html): the ref selector names
+   the ref and the tooltip the commit. */
 .header-revision {
   flex: none;
   margin-left: 6px;
@@ -1721,8 +1720,8 @@ body {
   font-weight: var(--weight-normal);
 }
 /* The commit is the identity and must stay visible, so on a narrow column the
-   branch name is what gives way. Its own rule: an engine without :has() drops
-   a whole selector list, and then the heading simply truncates as before. */
+   ref is what gives way. Its own rule: an engine without :has() drops a whole
+   selector list, and then the heading simply truncates as before. */
 .header-path:has(> .header-revision) {
   display: flex;
   align-items: baseline;
@@ -1732,17 +1731,8 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* A checkout's revision's heading is the folder's name, the ref, then the commit.
-   The ref gives way before the name does: the ref selector in the Files toolbar
-   names it too. */
-.header-ref {
-  flex: 0 1000 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* The control that copies the full commit stands right after the heading, after
-   a mirror's name or a revision's short commit, so the heading ends at its text,
+/* The control that copies the full commit stands right after the heading's name,
+   a mirror's or a checkout's revision's, so the heading ends at its text,
    as every heading does, and the menu keeps the far end. It shows while the
    pointer is over the header, as the file header's copy control does. */
 .header-copy {

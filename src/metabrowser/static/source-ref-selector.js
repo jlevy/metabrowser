@@ -98,7 +98,7 @@
     if (pull !== null) {
       return { kind: "Pull request", name: `#${pull[1]}` };
     }
-    // As the navigation heading and every row name a commit (`shortCommit`).
+    // As every row names a commit (`shortCommit`).
     return { kind: "Commit", name: window.MetabrowserFormatters.shortCommit(shown.pin) };
   }
 

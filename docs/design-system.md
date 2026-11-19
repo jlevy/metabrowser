@@ -1707,12 +1707,12 @@ it.**
   No context sets an ID’s size, and its line box is its glyphs’ (`line-height: normal`),
   so it never makes its line taller.
 
-It holds in the branch and tag chooser’s button and rows, the navigation heading, a
-commit’s page and hover card, a mirror’s freshness row, and a pull request’s timeline
-and offers, a linked ID among them, which hovers with an underline and stays gray.
-It holds outside the page too: a development version’s label (`commit-length` in
-`pyproject.toml`), the version line after it, and the macOS app’s About box
-(`AppIdentity.shortCommitChars`), which cuts the full ID the build records.
+It holds in the branch and tag chooser’s button and rows, the navigation heading of a
+pin with no mirror, a commit’s page and hover card, a mirror’s freshness row, and a pull
+request’s timeline and offers, a linked ID among them, which hovers with an underline
+and stays gray. It holds outside the page too: a development version’s label
+(`commit-length` in `pyproject.toml`), the version line after it, and the macOS app’s
+About box (`AppIdentity.shortCommitChars`), which cuts the full ID the build records.
 `tests/test_short_commit.py` holds the lengths equal, the app’s through
 `tests/test_macos_app_pins.py`, and fails a display that abbreviates a commit any other
 way.
@@ -4540,8 +4540,8 @@ Home keeps what a fresh load would only fetch again, or keeps itself:
 The name reads as a link home.
 Its box is the name’s own, and it takes a folder crumb’s treatment: the hover surface
 under the name and the link-colored ring on keyboard focus.
-Its accessible name is “Home:” and the name it shows, read from its own content, so a
-mirror’s ref and commit are in it too.
+Its accessible name is “Home:” and the name it shows, read from its own content, so the
+ref and commit that head a pin with no mirror are in it too.
 It stays a link to `/view/`, so a modified or middle click and its context menu do what
 they do on any link.
 A plain click, or Enter on it, stays in the page.
@@ -5285,14 +5285,16 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   The ages end the rows in one column, so the IDs line up.
   A pin that names no ref puts “Commit:” and the same face on the button.
 
-- **A commit reads the same wherever a line names it.** The navigation heading, the
-  button, the rows, and a mirror’s offer of its ref’s newer commit all show it by the
-  one rule in [Short Commit IDs](#short-commit-ids).
+- **A commit reads the same wherever a line names it.** The button, the rows, and a
+  mirror’s offer of its ref’s newer commit all show it by the one rule in
+  [Short Commit IDs](#short-commit-ids).
 
-- **On a mirror, the button names the ref and the heading does not.** A served mirror’s
-  navigation heading is the repository’s name alone (`_pin_label_html` in `server.py`):
-  this button names its ref, and the heading’s tooltip its full commit, so a ref and a
-  commit beside the name only repeated them, and the owner found them clutter.
+- **The button names the ref and the heading does not.** A served mirror’s navigation
+  heading is the repository’s name alone, and a checkout’s revision’s is the folder’s
+  (`_pin_label_html` in `server.py`): this button names the ref, and the heading’s
+  tooltip the full commit, so a ref and a commit beside the name only repeated them, and
+  the owner found them clutter.
+  A pin with no mirror has no selector, so its heading is its ref and its short commit.
 
 A checkout adds three things, and each uses a primitive the control already had:
 
@@ -5314,10 +5316,10 @@ A checkout adds three things, and each uses a primitive the control already had:
   the `.source-ref-selector-badge` a mirror’s default branch says “default” in.
 
 - **The button says “Working tree” in words,** with no chip, since a chip is a ref.
-  On a revision it is the ref’s chip, as on a mirror, and the navigation heading carries
-  the ref and the short commit, in the commit-ID face, beside the folder’s name, so a
-  revision’s page is told from the working tree’s in two places before the list is
-  opened.
+  On a revision it is the ref’s chip, as on a mirror, so the button is what tells a
+  revision’s page from the working tree’s before the list is opened: both are headed by
+  the folder’s name. The main heading’s note says “committed revision of” the folder, and
+  the navigation heading’s tooltip names the full commit.
 
 - **A page the server has moved on from says so at the foot of the pane,** in the
   freshness row a mirror offers its reload in, with one `.btn`, “Reload”

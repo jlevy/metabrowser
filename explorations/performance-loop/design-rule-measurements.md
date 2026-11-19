@@ -197,10 +197,12 @@ glyphs, whose half-leading put its top above the sans’s, and a Conversation co
 which aligns its items on their baselines, was 22 px, so two commits’ glyphs stood 22 px
 apart against the 20 px rhythm; with `line-height: normal` on the ID the row is 21 px
 and the rhythm holds.
-In Clean Fonts the old ID made a checkout’s revision’s heading 24.5 px tall, and it is
-23.5 px now, as in System Fonts.
+In Clean Fonts the old ID made a checkout’s revision’s heading 24.5 px tall, and the
+adjusted ID 23.5 px, as in System Fonts.
 No ref selector row or commit page line changed height.
-A served mirror’s heading has no ID now.
+The same change then dropped the ref and the ID from a served mirror’s heading and a
+checkout’s revision’s, which are the name alone; the heading rows above measure the
+navigation heading’s line, which a pin with no mirror still sets an ID in.
 WebKit honored `font-size-adjust` on a span in a QuickLook render of a static page.
 
 ## Regions That Moved

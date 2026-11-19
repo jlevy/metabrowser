@@ -1,9 +1,8 @@
-- A repository opened by its URL is headed by its name alone in the navigation column:
-  the branch and the short commit no longer follow it there.
+- A repository opened by its URL is headed by its name alone in the navigation column,
+  and a branch or tag of a local checkout by the folder’s name alone: the branch and the
+  short commit no longer follow the name there.
   The branch and tag selector under the heading names the branch, and the heading’s
   tooltip names the full commit.
-  A revision of a local checkout still shows its branch and short commit beside the
-  folder’s name, which its working tree’s page shares.
 
 - A short commit ID is the size of the text around it wherever it appears, in a commit’s
   page and hover card, the branch and tag selector, the freshness row, and a pull

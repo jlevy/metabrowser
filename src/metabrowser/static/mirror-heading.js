@@ -17,8 +17,8 @@
 //   note and of the root's name: the sentence that says what the directory is, with the
 //   origin and the full commit.
 // - The navigation heading gets a control that copies the full commit, through the
-//   SDK's owner-stamped copy delegate. A mirror's heading is its name alone, and its
-//   tooltip names the commit; a checkout's revision's ends with the short commit.
+//   SDK's owner-stamped copy delegate. A mirror's heading and a checkout's revision's
+//   are the name alone, and the tooltip names the commit.
 //
 // tests/dom/mirror-heading-session.js runs this file on what the server served.
 

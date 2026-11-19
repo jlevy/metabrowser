@@ -558,22 +558,16 @@ _PIN = "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
             "topic",
             f'topic</span></span><span class="header-revision git-commit-sha">{short_commit(_PIN)}</span>',
         ),
-        # A checkout's revision has the working tree's name, so its ref and commit follow it.
-        (
-            "squares",
-            None,
-            "topic",
-            'squares</span></span><span class="header-revision header-ref">topic</span>'
-            f'<span class="header-revision git-commit-sha">{short_commit(_PIN)}</span>',
-        ),
-        # A served mirror is its repository's name alone, with or without a ref: the ref
-        # selector names the ref, and the tooltip the commit (mb-qq4e).
+        # A checkout's revision is the folder's name alone, and a served mirror its
+        # repository's, with or without a ref: the ref selector names the ref, and the
+        # tooltip the commit (mb-qq4e).
+        ("squares", None, "topic", "squares</span></span>"),
         ("origin", "https://example.com/origin.git", "topic", "origin</span></span>"),
         ("origin", "https://example.com/origin.git", None, "origin</span></span>"),
     ],
     ids=["commit", "ref", "checkout", "mirror", "mirror-no-ref"],
 )
-def test_a_pinned_heading_is_its_name_and_what_tells_it_apart(
+def test_a_pinned_heading_is_its_name_or_what_names_a_pin_without_one(
     name: str | None, origin: str | None, ref_name: str | None, heading: str
 ) -> None:
     status = cast(SourceStatus, {"pin": _PIN, "name": name, "origin": origin, "ref_name": ref_name})

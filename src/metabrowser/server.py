@@ -1283,43 +1283,33 @@ def _initial_path_html() -> str:
 def _pin_label_html(status: SourceStatus) -> str:
     """The navigation heading for a pinned revision.
 
-    A served mirror's is the repository's name alone, where a folder's name stands and
-    with the same `.path-base` emphasis: the page is called what a checkout of the
-    repository would be. The ref selector in the Files toolbar names the ref, and the
-    heading's tooltip (`_mirror_tip`) the full commit, so the heading repeats neither: the
-    owner found them clutter beside the name (mb-qq4e).
+    A pin with a name is headed by the name alone, where a folder's name stands and with
+    the same `.path-base` emphasis: a served mirror by the repository's name, as a
+    checkout of it would be called, and a revision a folder's server shows of its own
+    checkout by the folder's name. The ref selector in the Files toolbar names the ref,
+    and the heading's tooltip (`_mirror_tip`) the full commit, so the heading repeats
+    neither: the owner found them clutter beside the name (mb-qq4e).
 
-    A revision a folder's server shows of its own checkout is headed by the folder's name,
-    which the working tree's page has too, so the ref and the short commit follow it,
-    muted, the commit in the commit-ID face (`.git-commit-sha`) a commit has wherever it
-    appears: they tell the revision's page from the working tree's before the selector is
-    opened.
-
-    A pin with no mirror has no origin to take a name from, and no ref selector. Its ref
-    stands as the name with the short commit after it, or the short commit alone when no
-    ref is known, in the same face, and the full commit is its served root.
+    A pin with no mirror has no origin to take a name from, and no ref selector, so its
+    heading is the only place that names it. Its ref stands as the name with the short
+    commit after it, muted, in the commit-ID face (`.git-commit-sha`) a commit has
+    wherever it appears, or the short commit alone when no ref is known; the full commit
+    is its served root.
     """
-
-    short = html_escape(short_commit(status["pin"] or ""))
-    name = status["name"]
-    ref_name = status["ref_name"]
 
     def base(text: str) -> str:
         return f'<span class="path"><span class="path-base">{text}</span></span>'
 
-    if name is not None and status["origin"] is not None:
+    name = status["name"]
+    if name is not None:
         return base(html_escape(name))
-    commit = f'<span class="header-revision git-commit-sha">{short}</span>'
-    if name is None:
-        if ref_name is None:
-            return base(f'<span class="git-commit-sha">{short}</span>')
-        return base(html_escape(ref_name)) + commit
-    ref = (
-        ""
-        if ref_name is None
-        else f'<span class="header-revision header-ref">{html_escape(ref_name)}</span>'
+    short = html_escape(short_commit(status["pin"] or ""))
+    ref_name = status["ref_name"]
+    if ref_name is None:
+        return base(f'<span class="git-commit-sha">{short}</span>')
+    return (
+        base(html_escape(ref_name)) + f'<span class="header-revision git-commit-sha">{short}</span>'
     )
-    return base(html_escape(name)) + ref + commit
 
 
 def _mirror_tip(status: SourceStatus) -> str | None:
@@ -2271,8 +2261,8 @@ async def index(
              plain activation in the page and shows the folder's home view as a fresh load
              of this address does, every tab at its first, and `0` does the same. Its
              accessible name is "Home:" and then the name it shows, read from its own
-             content, so the name a mirror's heading shows, its ref and commit with it,
-             stays in it. The header anchors the key's badge, which sits beside the name
+             content, so a pin with no mirror's ref and commit, which stand as its name,
+             stay in it. The header anchors the key's badge, which sits beside the name
              because the name clips. -->
         <a href="{VIEW_ROUTE_PREFIX}" class="header-path" id="header-home"
            aria-labelledby="header-home-label header-home"
