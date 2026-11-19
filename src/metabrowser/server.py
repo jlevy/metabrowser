@@ -2046,6 +2046,19 @@ async def index(
         # with no diagram fetches nothing (docs/project/specs/active/
         # plan-2026-08-21-mermaid-diagram-rendering.md has the measurement).
         "mermaid": [{"module": _static_asset_url("vendor/mermaid/mermaid.esm.min.mjs")}],
+        # KPress's diagram renderer and its opt-in controls, at the stamped URLs a
+        # render's asset manifest names, so they import the one KPress runtime the
+        # document's other modules share. Fetched with the first diagram, beside Mermaid.
+        "kpress-diagrams": [
+            {"module": kpress_adapter.kpress_static_url("js/diagrams.js", prefix=kpress_prefix)}
+        ],
+        "kpress-diagram-controls": [
+            {
+                "module": kpress_adapter.kpress_static_url(
+                    "js/diagram-controls.js", prefix=kpress_prefix
+                )
+            }
+        ],
         # A file's and a folder's view header: its builders, and the folder line's live
         # refresh. renderFile draws a header only after loadViewComposition, which fetches
         # this beside the compositor and the SDK's view helpers, so the first tree never
@@ -2420,7 +2433,14 @@ async def index(
     return HTMLResponse(
         html,
         headers={
-            "Content-Security-Policy": untrusted_shell_csp(nonce, origin),
+            "Content-Security-Policy": untrusted_shell_csp(
+                nonce,
+                origin,
+                tuple(
+                    kpress_adapter.kpress_static_url(module, prefix=kpress_prefix)
+                    for module in kpress_adapter.DIAGRAM_MODULES
+                ),
+            ),
             "X-Frame-Options": "DENY",
         },
     )

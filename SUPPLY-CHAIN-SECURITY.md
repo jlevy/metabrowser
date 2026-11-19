@@ -52,6 +52,7 @@ introduces.
 | Package | Reviewed against | Notes |
 | --- | --- | --- |
 | `kpress==0.3.8` | `0.3.6` | Browser assets plus two names in the public CSS contract (0.3.7 and 0.3.8 together): TOC scrollspy without `IntersectionObserver`, over host-rewritten same-document links, and past headings with no layout box; a reload scroll restore confirmed one frame later; the public `--kpress-code-border` and `--kpress-code-radius` tokens; TOC inset and blockquote defaults; `kbd`, `samp`, and link-preview code in the shipped mono face; runtime dependencies unchanged; lock delta is `kpress` alone, wheel SHA-256 `99c32266…f5b0efa9` and sdist `1db5df40…465833bd` match `uv.lock` |
+| `kpress` branch `claude/diagrams-mermaid-mode` | `0.3.8` | Built from jlevy/kpress#80 until it merges and KPress releases it, by owner decision; the commit is the one `uv.lock` records, and publish.yml refuses a release while `[tool.uv.sources]` names it. The branch adds the Mermaid diagram renderer and its opt-in controls (`js/diagrams.js`, `js/diagram-controls.js`), their styles and sprite symbols, and the `diagrams` render-request field; runtime dependencies unchanged; lock delta is `kpress` alone |
 | `flowmark-rs==0.3.2` | `0.3.1` | Formatting output unchanged |
 | `softschema==0.8.1` | `0.8.0` | Runtime contract validation; adds SoftSchema and upgrades `frontmatter-format` from 0.3.0 to 0.4.0 |
 | `tryscript==0.3.0` | `0.1.7` | Removes the vulnerable fast-glob/micromatch/braces chain; adds tinyglobby discovery and the tsx loader |

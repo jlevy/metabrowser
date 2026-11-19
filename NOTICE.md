@@ -56,12 +56,6 @@ independent of Metabrowser’s license.
   The license texts of all its production dependencies are vendored as
   [mermaid.bundled.txt](src/metabrowser/static/vendor/licenses/mermaid.bundled.txt).
 
-- **Lucide diagram controls**
-  ([ISC License](https://github.com/lucide-icons/lucide/blob/896aba0d195a4fec38ad7c4a90d00cb3389ebfea/LICENSE),
-  [Lucide](https://github.com/lucide-icons/lucide)). The diagram toolbar and dialog
-  glyphs in `src/metabrowser/builtin_plugins/markdown/diagrams.js` are from release
-  1.17.0, as the [icon catalog](docs/design-system-icons.md) lists.
-
 - **Primer Octicons GitHub mark**
   ([MIT License](https://github.com/primer/octicons/blob/ea8e6bb79894cc7e85564ee9b53d86b418738d04/LICENSE),
   [Primer Octicons](https://github.com/primer/octicons)). The inline GitHub destination

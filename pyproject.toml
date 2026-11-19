@@ -43,7 +43,7 @@ dependencies = [
     "funlog>=0.2.1",
     "json5>=0.15.0",
     "jsonschema>=4.26.0",
-    "kpress==0.3.8",
+    "kpress>=0.3.9.dev0",
     "markdown-it-py==4.2.0",
     "pathspec>=1.1.1",
     "prettyfmt>=0.4.1",
@@ -118,6 +118,14 @@ bump = { enable = true, index = 1 }
 # took 0.05 to 0.09 s, and the rebuild it does once after each commit or tag 2.4 to
 # 3.6 s; a tag added or deleted in a worktree, where .git is a file, rebuilt it.
 cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
+
+[tool.uv.sources]
+# KPress's diagram support (jlevy/kpress#80) comes from its branch until that pull
+# request merges and KPress releases it; then this goes and the pin returns to `==`.
+# The owner chose this on 2026-11-19 for jlevy/metabrowser#597. A release of this
+# package cannot ship while it is here: the published metadata would name a KPress
+# release without the diagram API.
+kpress = { git = "https://github.com/jlevy/kpress", branch = "claude/diagrams-mermaid-mode" }
 
 [tool.hatch.build]
 exclude = [

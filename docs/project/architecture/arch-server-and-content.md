@@ -251,6 +251,8 @@ With active content off, the shell also carries a Content-Security-Policy and
 `capabilities.untrusted_shell_csp` is the policy: scripts run only from the
 application’s own static paths and, for the shell’s inline scripts, by a nonce fresh on
 every response; no inline event handler runs, and the application writes none.
+The one KPress script source is the set of modules that draw Mermaid diagrams as images,
+`kpress_adapter.DIAGRAM_MODULES`, each admitted by its exact stamped path.
 The browsed tree’s files under `/raw` are never script sources.
 Images admit this origin, `data:` images the stylesheet draws, and the exact avatar host
 for application-owned author portraits, whose URLs provider and browser code validate.

@@ -110,12 +110,16 @@ Pin Mermaid 12.3.0, GitHub’s release, and vendor its ESM build.
 Load it through the on-demand tier, as a module, the first time a mounted view holds a
 diagram, and never otherwise.
 
-Metabrowser draws the diagram itself, in a renderer module in the Markdown plugin that
-reads KPress’s figure contract and never sets `globalThis.mermaid`. KPress 0.3.8’s
-`initKpressDiagrams` cannot meet the goals as it stands: it has no theme or disposal,
-swallows Mermaid’s error, renders only in the document, and draws no controls.
-[Division of Work](#division-of-work-kpress-and-metabrowser) lists what KPress should
-grow so the renderer can move there.
+KPress draws the diagram.
+KPress 0.3.8’s `initKpressDiagrams` could not meet the goals: it had no theme or
+disposal, swallowed Mermaid’s error, rendered only in the document, and drew no
+controls. The renderer and controls first written here moved into KPress
+(jlevy/kpress#80, `js/diagrams.js` and `js/diagram-controls.js`), designed with this
+host, and Metabrowser keeps a host adapter that never sets `globalThis.mermaid`.
+[Division of Work](#division-of-work-kpress-and-metabrowser) lists who owns what.
+Until KPress releases that work, Metabrowser builds KPress from the pull request’s
+branch (`[tool.uv.sources]` in `pyproject.toml`), and a Metabrowser release waits for
+the KPress release.
 
 A trusted render places the SVG in the document.
 An inert render places it as an image: Mermaid runs on Metabrowser’s own code path under
@@ -130,9 +134,9 @@ scratch element that holds one, so in an inert render Chrome logs that style as 
 blocked inline style, once per diagram, and Mermaid measures in the browser’s default
 font. Labels then came out clipped (“truste” for “trusted”). Image mode therefore gives
 Mermaid a measuring host whose inline `style` attribute, which the CSP admits for
-attributes, sets Mermaid’s own font family and size (`measuringHost` in
-`builtin_plugins/markdown/diagrams.js`). The console messages remain and are harmless:
-the rule they report is the one meant to hold.
+attributes, sets Mermaid’s own font family and size (KPress’s image placement).
+The console messages remain and are harmless: the rule they report is the one meant to
+hold.
 
 ### Division of Work: KPress and Metabrowser
 
@@ -146,24 +150,29 @@ the rule they report is the one meant to hold.
 | Reducing an inert render to `<pre lang="mermaid">` | Metabrowser | `inert_html.py` and `inert-html.js` are the allowlist |
 | Theme source and live re-render | Metabrowser | It owns `data-theme` |
 | Mount, replacement, and disposal per view | Metabrowser | It replaces documents in place |
-| Controls: copy, source, expand, zoom, pan | Metabrowser now, KPress later | Published KPress sites want the same parity |
+| Drawing: Mermaid configuration, document or image placement, errors, theme redraw | KPress | Every host draws the same figure the same way |
+| Controls: copy, source, expand, zoom, pan | KPress, opt-in | Published KPress sites want the same parity |
+| Control glyphs in a render whose sanitizer dropped the sprites | KPress | `ensureDiagramSprites` fetches them; no glyph is copied into a host |
+| The diagram modules a strict script policy admits | KPress names them, Metabrowser admits them | `PUBLIC_DIAGRAM_SCRIPT_MODULES`; the untrusted page’s CSP |
+| Tooltips and copy through the shell’s own delegates | Metabrowser | KPress’s `decorate` and `copy` hooks |
 | `.mmd` and `.mermaid` files | Metabrowser | A file kind, not Markdown |
 
-KPress work, filed against KPress rather than here:
+KPress work, done in jlevy/kpress#80:
 
 1. **`diagrams="mermaid"` draws Mermaid only.** Today every mode but `off` also draws
    `svg` fences. GitHub shows them as code, and Metabrowser’s inert render deletes them.
-   Metabrowser passes `diagrams="mermaid"` once a release has it (`mb-1g14`).
+   Metabrowser passes `diagrams="mermaid"` (`mb-1g14`), through the new
+   `KPressRenderRequest.diagrams` field.
 2. **A host-configured renderer.** `initKpressDiagrams(root, {mermaid, config})` takes
    the Mermaid API and site configuration (theme, `securityLevel`) from the host rather
    than `globalThis`, merges rather than resets the host’s configuration, and returns a
    binding with `dispose()` and `rerender()`.
 3. **Visible errors.** Keep Mermaid’s message on the figure rather than swallowing it.
 4. **Controls.** Copy, expand, zoom, and pan, with the behavior below, so a published
-   site matches GitHub too.
-
-With 2 through 4 released, Metabrowser’s renderer reduces to a host adapter over
-KPress’s behavior, and the controls move upstream.
+   site matches GitHub too, with hooks for a host’s tooltips and copy.
+5. **A host without the sprites.** The controls fetch KPress’s sprites into a document
+   that lacks them, and the contract names the modules and sprites a strict policy must
+   admit.
 
 ### Components
 
@@ -180,27 +189,33 @@ share the import.
 `server.py` publishes a `mermaid` module bundle at the vendored entry’s
 stamped URL, so its relative chunk imports resolve under the same stamp.
 
-**`builtin_plugins/markdown/diagrams.js`.** The renderer, loaded by the plugin on demand
-when a view holds a diagram.
-`mountDiagrams(root, mb, {mode})` finds KPress figures (trusted) or
-`pre[lang="mermaid"]` blocks (inert), loads Mermaid, renders in document order yielding
-between diagrams, and returns `{dispose, ready}`. It initializes Mermaid with GitHub’s
-observable configuration, except `securityLevel`, which is `strict`: in Mermaid,
-`strict` and `antiscript` sanitize labels the same way, and `strict` also disables
-`click`, whose navigation GitHub’s CSP blocks anyway.
+**KPress `js/diagrams.js`.** The renderer.
+`initKpressDiagrams(root, options)` finds the figures, loads Mermaid through the host’s
+loader, renders in document order yielding between diagrams, and returns
+`{figures, ready, rerender, dispose}`. It initializes Mermaid with GitHub’s observable
+configuration, except `securityLevel`, which is `strict`: in Mermaid, `strict` and
+`antiscript` sanitize labels the same way, and `strict` also disables `click`, whose
+navigation GitHub’s CSP blocks anyway.
 The theme is `dark` or `default` from the resolved `data-theme`, as on GitHub, and a
 diagram’s own `%%{init}%%` or front-matter theme still wins.
 A theme change re-renders every drawn diagram.
 A failure keeps the source visible with Mermaid’s message above it, including the
 `maxTextSize` and `maxEdges` refusals.
 
-**Diagram controls**, in the same module.
-A toolbar on hover or focus: copy source, show source or diagram, and expand.
+**`builtin_plugins/markdown/diagrams.js`.** The host adapter, loaded by the plugin on
+demand when a view holds a diagram.
+`mountDiagrams(root, mb, {mode})` imports KPress’s two modules as the `kpress-diagrams`
+and `kpress-diagram-controls` module bundles, turns an inert render’s
+`pre[lang="mermaid"]` back into a figure (`mermaidFigureFor`), and binds KPress with the
+vendored Mermaid, the page’s theme, document or image placement, and controls whose
+buttons take the app’s tooltips and whose copy is the shell’s.
+
+**Diagram controls**, in KPress’s `js/diagram-controls.js`. A toolbar on hover or focus:
+copy source, show source or diagram, and expand.
 Expand opens a modal dialog filling the window, with zoom in, zoom out, reset, and four
 pan buttons, as GitHub has, plus what GitHub lacks: wheel and pinch zoom about the
 pointer, drag to pan, and keys (`+`, `-`, `0`, arrows, Escape).
-The zoom and pan arithmetic is a pure state machine (`viewTransform`), so a browserless
-session drives it.
+The zoom and pan arithmetic is pure, and KPress’s own tests drive it.
 
 **`builtin_plugins/markdown/rendered.js` and `transclusion.js`.** After placing a
 render, mount diagrams when the root holds one, and dispose them with the view.
@@ -209,12 +224,16 @@ render, mount diagrams when the root holds one, and dispose them with the view.
 `<pre lang="mermaid"><code>…</code></pre>`, GitHub’s own fallback markup, and allow
 `lang` on `pre` only with the value `mermaid`.
 
-**`static/plugin-sdk.js`.** `loadKpressAssets` skips KPress’s `js/diagrams.js`: the host
-draws diagrams, and loading a module that can only no-op costs a request.
+**`static/plugin-sdk.js`.** `loadKpressAssets` skips KPress’s `js/diagrams.js` as a
+script: the Markdown plugin imports it at the same URL, through the module bundle.
+
+**`capabilities.untrusted_shell_csp`.** Admits KPress’s diagram modules, by exact
+stamped path, as the one KPress script source of an untrusted page.
 
 **The `mermaid` kind.** The Markdown plugin claims `.mmd` and `.mermaid` with a default
-Diagram view, which mounts the renderer on the file’s text, and a Source view.
-The view draws an image when active content is off, like an inert render.
+Diagram view, the Document view of the file’s text inside one `mermaid` fence
+(`mermaid-view.js#mermaidFence`), and a Source view, so it follows the page’s trust as a
+document does.
 
 ### API Changes
 
@@ -247,17 +266,19 @@ on GitHub rendering here.
 - [x] Add the `mermaid` kind for `.mmd` and `.mermaid` files (`mb-1vn6`)
 - [x] Browserless session, golden, parity rows, Chrome evidence, docs, and changelog
   fragment (`mb-xm9c`)
-- [ ] Pass `diagrams="mermaid"` once KPress releases it (`mb-1g14`, blocked on KPress)
+- [x] Move the renderer and controls into KPress, with a host adapter here, and pass
+  `diagrams="mermaid"` (jlevy/kpress#80, `mb-1g14`)
+- [ ] Return the KPress pin to an exact release once jlevy/kpress#80 is released
 
 ## Testing Strategy
 
 **Browserless session** (`tests/dom/markdown-diagrams-session.js`, golden
-`cli-ui-markdown-diagrams.tryscript.md`) runs the production renderer against a stub
-Mermaid: a diagram-free root never asks for Mermaid; a root with diagrams moves each
-figure from `source` through `rendering` to `rendered`; a failure reaches `error` with
-the message and source; a theme change re-renders; disposal removes listeners and
-dialogs; replacement does not accumulate; inert mode places an image; the toolbar copies
-source and toggles it; and the dialog’s zoom and pan transitions are pinned.
+`cli-ui-markdown-diagrams.tryscript.md`) runs the production adapter against stubs of
+KPress’s two modules: a diagram-free root loads nothing; a trusted root binds in
+document placement and an inert one, rebuilt into figures, in image placement; the
+theme, Mermaid loader, tooltip, and copy hooks reach KPress; and disposal, early or
+late, holds. The drawing states, errors, theme redraw, toolbar, and dialog are KPress’s,
+pinned by its vitest suite (`tests/js/diagrams.test.js` in KPress).
 
 **Data parity.** The `mermaid` kind and its views through `/api/file`, and the inert
 `<pre lang="mermaid">` through `/api/kpress/render`, each pinned by a golden.

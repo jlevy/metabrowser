@@ -377,10 +377,10 @@ $ metab --plugin markdown --json
         "label": "Diagram",
         "key": "v",
         "default": true,
-        "container_class": "content-body metabrowser-diagram-host",
+        "container_class": "content-body metabrowser-kpress-host md-body",
         "printable": false,
         "print_profile": "plain",
-        "render_runtime": "client"
+        "render_runtime": "kpress"
       },
       {
         "kind": "mermaid",

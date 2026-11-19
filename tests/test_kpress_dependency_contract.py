@@ -9,45 +9,70 @@ from pathlib import Path
 from typing import Any
 
 from kpress import runtime
+from kpress.contract import PUBLIC_DIAGRAM_SCRIPT_MODULES
 from kpress.runtime import KPressRenderRequest, get_static_asset
 from pytest import MonkeyPatch
 
-from metabrowser.kpress_adapter import render_kpress_view
+from metabrowser.kpress_adapter import DIAGRAM_MODULES, render_kpress_view
 from tests.test_design_vocabulary import _rules_of
 
 PROJECT_FILE = Path(__file__).resolve().parent.parent / "pyproject.toml"
 SOURCE_DIR = PROJECT_FILE.parent / "src" / "metabrowser"
 
 
-def test_kpress_is_an_exact_required_runtime_dependency() -> None:
-    project = tomllib.loads(PROJECT_FILE.read_text(encoding="utf-8"))
-
-    assert "kpress==0.3.8" in project["project"]["dependencies"]
-    assert "kpress" not in project["project"].get("optional-dependencies", {})
-    assert "kpress" not in project.get("dependency-groups", {}).get("dev", [])
+# The repository KPress's branch is built from while a Metabrowser change waits on an
+# unreleased KPress change (pyproject.toml, `[tool.uv.sources]`). publish.yml refuses a
+# release while any source is set.
+KPRESS_REPOSITORY = "https://github.com/jlevy/kpress"
 
 
-def test_the_pinned_kpress_release_is_the_one_reviewed_for_the_cool_off() -> None:
-    """The pin and its supply-chain record move together.
-
-    KPress is first-party and exempt from the cool-off, but the exemption is
-    per-release: each one is reviewed against its predecessor. Bumping the pin
-    without updating that record would leave the exemption naming a version
-    nobody ships, which reads as reviewed when it is not.
-    """
+def _kpress_selection() -> tuple[str, dict[str, str] | None]:
+    """The KPress requirement and, when it is built from a branch, that branch's source."""
 
     project = tomllib.loads(PROJECT_FILE.read_text(encoding="utf-8"))
     pins = [d for d in project["project"]["dependencies"] if d.startswith("kpress")]
     assert len(pins) == 1, pins
+    sources = project.get("tool", {}).get("uv", {}).get("sources", {})
+    return pins[0], sources.get("kpress")
 
-    policy = (PROJECT_FILE.parent / "SUPPLY-CHAIN-SECURITY.md").read_text(encoding="utf-8")
-    assert f"`{pins[0]}`" in policy, f"{pins[0]} is not recorded in SUPPLY-CHAIN-SECURITY.md"
 
+def test_kpress_is_a_required_runtime_dependency_with_one_selection() -> None:
+    """A release pins KPress exactly; a branch build names KPress's own repository."""
 
-def test_kpress_does_not_resolve_from_the_monorepo_workspace() -> None:
     project = tomllib.loads(PROJECT_FILE.read_text(encoding="utf-8"))
+    pin, source = _kpress_selection()
+    if source is None:
+        assert re.fullmatch(r"kpress==\d+\.\d+\.\d+", pin), pin
+    else:
+        # Never a workspace or path checkout: the build is the branch's own commit,
+        # which uv.lock records.
+        assert set(source) == {"git", "branch"}, source
+        assert source["git"] == KPRESS_REPOSITORY, source
+        assert re.fullmatch(r"kpress>=\d+\.\d+\.\d+\.dev\d+", pin), pin
+    assert "kpress" not in project["project"].get("optional-dependencies", {})
+    assert "kpress" not in project.get("dependency-groups", {}).get("dev", [])
 
-    assert "kpress" not in project.get("tool", {}).get("uv", {}).get("sources", {})
+
+def test_the_kpress_selection_is_the_one_reviewed_for_the_cool_off() -> None:
+    """The selection and its supply-chain record move together.
+
+    KPress is first-party and exempt from the cool-off, but the exemption is
+    per-selection: each release, or the branch a change is built from, is reviewed
+    against its predecessor. Changing the selection without updating that record would
+    leave the exemption naming a version nobody ships, which reads as reviewed when it
+    is not.
+    """
+
+    pin, source = _kpress_selection()
+    recorded = f"`{pin}`" if source is None else f"`kpress` branch `{source['branch']}`"
+    policy = (PROJECT_FILE.parent / "SUPPLY-CHAIN-SECURITY.md").read_text(encoding="utf-8")
+    assert recorded in policy, f"{recorded} is not recorded in SUPPLY-CHAIN-SECURITY.md"
+
+
+def test_the_diagram_modules_are_the_ones_kpress_names() -> None:
+    """The shell names them without importing KPress; an untrusted page admits only these."""
+
+    assert DIAGRAM_MODULES == PUBLIC_DIAGRAM_SCRIPT_MODULES
 
 
 def test_markdown_uses_the_kpress_toc_only_when_the_document_has_one(

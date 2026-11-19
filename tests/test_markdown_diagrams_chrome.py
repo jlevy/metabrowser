@@ -1,12 +1,14 @@
 """Mermaid diagrams are drawn, with a size, in Chrome, trusted and ``--untrusted``.
 
-Which figures draw, their states, toolbar, dialog, theme redraw, and disposal are
-browserless (``tests/dom/markdown-diagrams-session.js``). Mermaid lays a diagram out by
-measuring its labels in the page's fonts, and an inert render's image of that SVG paints
-only in a browser, so ``tests/dom/markdown-diagrams-chrome.mjs`` checks in headless
-Chrome that a trusted document draws SVG, an untrusted one draws images that loaded, a
-broken diagram shows its error, the dialog draws the diagram fitted, a ``.mmd`` file
-draws, and a document with no diagram fetches nothing of Mermaid's. Without Chrome this
+KPress draws the figures, their states, toolbar, dialog, and theme redraw, and its own
+tests pin them; how Metabrowser binds KPress is browserless
+(``tests/dom/markdown-diagrams-session.js``). Mermaid lays a diagram out by measuring its
+labels in the page's fonts, and an inert render's image of that SVG paints only in a
+browser, so ``tests/dom/markdown-diagrams-chrome.mjs`` checks in headless Chrome that a
+trusted document draws SVG, an untrusted one draws images that loaded, a broken diagram
+shows its error, every control's glyph is in the page, the dialog draws the diagram
+fitted and centered, a ``.mmd`` file draws as a document does, and a document with no
+diagram fetches nothing of Mermaid's. Without Chrome this
 skips (``require_chrome`` in ``tests/required_tools.py``).
 """
 

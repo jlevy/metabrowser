@@ -195,9 +195,9 @@ const DIAGRAM_PROBE = '[data-kpress-diagram="mermaid"], pre[lang="mermaid"]';
 /**
  * Draw the Mermaid diagrams a placed render holds, or do nothing when it holds none.
  *
- * The renderer (diagrams.js) and Mermaid itself are imported only for a render that has a
- * diagram, so a document without one fetches neither. An inert render's diagrams are
- * drawn as images. Returns null when there is nothing to draw.
+ * The host (diagrams.js), KPress's diagram modules, and Mermaid itself are imported only
+ * for a render that has a diagram, so a document without one fetches none of them. An
+ * inert render's diagrams are drawn as images. Returns null when there is nothing to draw.
  *
  * @param {ParentNode} root
  * @param {MetabrowserPublicSdk} mb

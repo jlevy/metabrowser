@@ -244,6 +244,9 @@ A bundle can instead be one ES module, `{module: url}`, for a library whose buil
 imports its own parts by relative specifiers: `ensureModule(name)` imports it once and
 resolves to its namespace, and the browser fetches only the parts a caller reaches.
 Mermaid is one, and its chunks are fetched unstamped beside the stamped entry.
+KPress’s diagram renderer and controls are two more, `kpress-diagrams` and
+`kpress-diagram-controls`, published at the stamped URLs a render’s manifest names, so
+they share the document’s one KPress runtime.
 KPress loads through `loadKpressAssets` in `static/plugin-sdk.js` instead: its
 stylesheets first, then the import map the KPress asset manifest carries, when it has
 one, then the manifest’s module and classic entry points as scripts, with its
@@ -308,7 +311,7 @@ them; the note beside the budget says why.
 | GitPath wire codec | Eager on a pin’s shell, the only page whose addresses spell it | `PIN_STARTUP_SCRIPTS` | exp-037 |
 | The pin guard | Inline on a pin’s shell, before any script can fetch. On demand on the working-tree page of a checkout, with the ref selector that can make its server serve a revision, so a folder’s first paint carries none of it | `_SOURCE_PIN_GUARD_SCRIPT`; `source-ref-selector` in `on_demand_script_bundles` | The comment beside the bundle |
 | Chart.js and its plugins | On demand, at the first chart | `chart` | The comment beside it |
-| Mermaid, and the module that draws its diagrams | On demand, at the first rendered document or `.mmd` file with a diagram; Mermaid then fetches only the chunks of the diagram types drawn | `mermaid` (a module bundle), and `drawDiagrams` in `builtin_plugins/markdown/place-rendered.js` | The comment beside the bundle in `server.py`, and `TOTAL_CAP_BYTES` in `devtools/vendor_assets.py` |
+| Mermaid, and KPress’s modules that draw its diagrams | On demand, at the first rendered document or `.mmd` file with a diagram; Mermaid then fetches only the chunks of the diagram types drawn | `mermaid`, `kpress-diagrams`, and `kpress-diagram-controls` (module bundles), and `drawDiagrams` in `builtin_plugins/markdown/place-rendered.js` | The comment beside the bundle in `server.py`, and `TOTAL_CAP_BYTES` in `devtools/vendor_assets.py` |
 | The changed-files tree every diff and the Pulls tab draw with | On demand: a diff asks beside its comparison, a pull request’s page warms it with the diff plugin on every tab, for its header’s Diff summary and for Changes, and the Pulls tab asks as it mounts | `changed-files-tree`, reached through `metabrowser.loadChangedFilesTree()` | The comment beside the bundle in `server.py` |
 | The Diff summary’s tree | On demand, at the summary’s first opening, asked for on the header’s hover or focus | `renderDiffSummary` in `builtin_plugins/diff/diff-view.js` | The comment at the head of `builtin_plugins/diff/diff-summary.js` |
 | Inert Markdown render with its table of contents, and the step that places a render | On demand: the first at the first inert render, the second at the first Markdown render | `builtin_plugins/markdown/place-rendered.js` | exp-037 and the comment at its head |

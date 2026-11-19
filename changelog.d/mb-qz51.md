@@ -8,6 +8,9 @@
   `.mmd` and `.mermaid` files open as one diagram, with a Diagram view and a Source
   view. See [Browsing Files](docs/browsing-files.md#markdown).
 
+- A fenced `svg` block in Markdown now shows as code, as GitHub shows it, where it was
+  drawn as an image.
+
 - For plugin authors: `metabrowser.ensureModule(name)` imports a published ES module
   bundle once and resolves to its namespace, beside `ensureAsset` for script bundles.
   The inert render now keeps `lang="mermaid"` on a `pre`, and no other `lang` value.

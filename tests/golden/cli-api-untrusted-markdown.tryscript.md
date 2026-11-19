@@ -277,8 +277,8 @@ $ grep -E '^        "(id|loading)":' rich.txt
 KPress wraps a `mermaid` fence in a figure whose class and `data-*` the allowlist drops.
 The block keeps one attribute instead, `lang="mermaid"`, as GitHub’s own fallback spells
 it, so the page draws it, as an image (`builtin_plugins/markdown/diagrams.js`). An `svg`
-fence, which KPress 0.3.8 draws as inline SVG and the allowlist drops with its content,
-is lost; `mb-1g14` keeps it as code once KPress can.
+fence stays code, as GitHub shows it: Metabrowser asks KPress for `diagrams="mermaid"`
+(`kpress_adapter.render_kpress_view`).
 
 ```console
 $ metab diagrams --untrusted --api '/api/kpress/render?path=README.md&view=document' > diagrams-inert.txt
@@ -287,11 +287,12 @@ $ metab diagrams --untrusted --api '/api/kpress/render?path=README.md&view=docum
 
 ```console
 $ grep -E '^  "html":' diagrams-inert.txt
-  "html": "\n<div><div><h1 id=\"user-content-diagrams\">Diagrams</h1>\n<pre lang=\"mermaid\"><code>flowchart LR\n  A --&gt; B\n</code></pre>\n</div></div>",
+  "html": "\n\n<div><div><h1 id=\"user-content-diagrams\">Diagrams</h1>\n<pre lang=\"mermaid\"><code>flowchart LR\n  A --&gt; B\n</code></pre>\n<pre><code>&lt;svg viewBox=\"0 0 1 1\"&gt;&lt;/svg&gt;\n</code></pre></div></div>",
 ? 0
 ```
 
-A trusted render keeps KPress’s figure, which the page draws in the document.
+A trusted render keeps KPress’s Mermaid figure, which the page draws in the document,
+and the `svg` fence is still code.
 
 ```console
 $ metab diagrams --api '/api/kpress/render?path=README.md&view=document' > diagrams-trusted.txt
@@ -301,6 +302,5 @@ $ metab diagrams --api '/api/kpress/render?path=README.md&view=document' > diagr
 ```console
 $ grep -oE 'data-kpress-diagram=\\"[a-z]+\\"' diagrams-trusted.txt
 data-kpress-diagram=\"mermaid\"
-data-kpress-diagram=\"svg\"
 ? 0
 ```

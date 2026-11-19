@@ -1289,9 +1289,10 @@
         await _loadKpressTocModule(url);
         continue;
       }
-      // The Markdown plugin draws Mermaid diagrams itself (builtin_plugins/markdown/
-      // diagrams.js) and never defines the `globalThis.mermaid` KPress's behavior asks
-      // for, so that module could only return; it is not fetched.
+      // The Markdown plugin imports KPress's diagram module itself, with the figures and
+      // the Mermaid it supplies (builtin_plugins/markdown/diagrams.js, through the
+      // `kpress-diagrams` module bundle at this same URL). Loaded here, it would bind its
+      // zero-configuration behavior, which draws nothing without `globalThis.mermaid`.
       if (asset?.id === "js/diagrams.js" || url.endsWith("/diagrams.js")) {
         continue;
       }

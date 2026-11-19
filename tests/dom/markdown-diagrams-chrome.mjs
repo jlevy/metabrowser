@@ -14,8 +14,11 @@
 // - the document's two good diagrams are drawn with a size, as SVG in the page when
 //   trusted and as images that loaded when untrusted, and the broken one shows an error
 //   with its source;
-// - the expand button opens the dialog with the diagram drawn in it, and Escape closes it;
-// - the `.mmd` file's Diagram view draws its diagram as an image that loaded;
+// - every toolbar and dialog button's glyph resolves to a KPress sprite symbol in the page,
+//   which an untrusted render's allowlist drops and KPress's controls fetch again;
+// - the expand button opens the dialog with the diagram drawn in it, fitted and centered,
+//   and Escape closes it;
+// - the `.mmd` file's Diagram view draws its diagram as the document does;
 // - no page throws.
 //
 // Each step writes `phase <name> <ms since start>` to stderr. It prints
@@ -111,7 +114,7 @@ const SETTLED = (count) =>
 const DESCRIBE = `${FIGURES}.map((figure) => {
   const drawn = figure.querySelector(":scope > .kpress-diagram-rendered > svg, :scope > .kpress-diagram-rendered > img");
   const box = drawn?.getBoundingClientRect();
-  const error = figure.querySelector(":scope > .metabrowser-diagram-error");
+  const error = figure.querySelector(":scope > .kpress-diagram-error");
   const source = figure.querySelector(":scope > .kpress-diagram-source, :scope > pre");
   return {
     status: figure.dataset.kpressDiagramStatus,
@@ -123,6 +126,15 @@ const DESCRIBE = `${FIGURES}.map((figure) => {
     errorShown: error ? error.getBoundingClientRect().height > 0 : false,
     sourceShown: source ? source.getBoundingClientRect().height > 0 : false,
   };
+})`;
+
+// Every button's glyph under *scope*: the sprite symbol its `<use>` names, and whether the
+// page holds that symbol.
+const GLYPHS = (
+  scope,
+) => `[...(${scope}).querySelectorAll(".kpress-diagram-button")].map((button) => {
+  const href = button.querySelector("use")?.getAttribute("href") ?? "";
+  return { label: button.getAttribute("aria-label"), href, found: !!href && !!document.querySelector(href) };
 })`;
 
 const frames = () =>
@@ -192,35 +204,53 @@ async function checkProfile(profile) {
       `${profile} the document fetched Mermaid`,
       requested.some((url) => url.includes(MERMAID_FILES)),
     );
+    await page
+      .waitFor(`${GLYPHS(`${FIGURES}[0]`)}.every((glyph) => glyph.found)`, 10000)
+      .catch(() => {});
+    const toolbar = await page.evaluate(GLYPHS(`${FIGURES}[0]`));
+    check(
+      `${profile} the toolbar's three glyphs are in the page`,
+      toolbar.length === 3 && toolbar.every((glyph) => glyph.found),
+      toolbar,
+    );
     phase(`${profile} document`);
 
     // The dialog: the expand button opens it with the diagram drawn in it.
-    await page.evaluate(`${FIGURES}[0].querySelector(".metabrowser-diagram-expand").click(), true`);
-    await page.waitFor(`!!document.querySelector("dialog.metabrowser-diagram-dialog[open]")`);
+    await page.evaluate(`${FIGURES}[0].querySelector(".kpress-diagram-expand").click(), true`);
+    await page.waitFor(`!!document.querySelector("dialog.kpress-diagram-dialog[open]")`);
     await page.evaluate(frames());
     const dialog = await page.evaluate(`(() => {
-      const dialog = document.querySelector("dialog.metabrowser-diagram-dialog[open]");
-      const drawn = dialog.querySelector(".metabrowser-diagram-stage > svg, .metabrowser-diagram-stage > img");
+      const dialog = document.querySelector("dialog.kpress-diagram-dialog[open]");
+      const drawn = dialog.querySelector(".kpress-diagram-stage > svg, .kpress-diagram-stage > img");
       const box = drawn?.getBoundingClientRect();
-      const viewport = dialog.querySelector(".metabrowser-diagram-viewport").getBoundingClientRect();
+      const viewport = dialog.querySelector(".kpress-diagram-viewport").getBoundingClientRect();
       return {
+        glyphs: ${GLYPHS("dialog")},
+        centered: !!box && Math.abs(box.left + box.width / 2 - (viewport.left + viewport.width / 2)) < 2 &&
+          Math.abs(box.top + box.height / 2 - (viewport.top + viewport.height / 2)) < 2,
         modal: dialog.matches(":modal"),
         drawing: drawn ? drawn.tagName.toLowerCase() : null,
         width: box ? Math.round(box.width) : 0,
         height: box ? Math.round(box.height) : 0,
         viewport: { width: Math.round(viewport.width), height: Math.round(viewport.height) },
-        transform: dialog.querySelector(".metabrowser-diagram-stage").style.transform,
+        transform: dialog.querySelector(".kpress-diagram-stage").style.transform,
       };
     })()`);
     check(
-      `${profile} the dialog draws the diagram, fitted`,
+      `${profile} the dialog draws the diagram, fitted and centered`,
       dialog.modal &&
+        dialog.centered &&
         dialog.drawing === drawing &&
         dialog.width > 40 &&
         dialog.width <= dialog.viewport.width + 1 &&
         dialog.height <= dialog.viewport.height + 1 &&
         dialog.transform.includes("scale("),
       dialog,
+    );
+    check(
+      `${profile} the dialog's eight glyphs are in the page`,
+      dialog.glyphs.length === 8 && dialog.glyphs.every((glyph) => glyph.found),
+      dialog.glyphs,
     );
     await page.send("Input.dispatchKeyEvent", {
       type: "keyDown",
@@ -234,7 +264,7 @@ async function checkProfile(profile) {
       code: "Escape",
       windowsVirtualKeyCode: 27,
     });
-    await page.waitFor(`!document.querySelector("dialog.metabrowser-diagram-dialog")`);
+    await page.waitFor(`!document.querySelector("dialog.kpress-diagram-dialog")`);
     check(`${profile} Escape closes the dialog`, true);
     phase(`${profile} dialog`);
 
@@ -244,8 +274,11 @@ async function checkProfile(profile) {
     await page.evaluate(frames());
     const [file] = await page.evaluate(DESCRIBE);
     check(
-      `${profile} the .mmd file is drawn as an image that loaded`,
-      file?.status === "rendered" && file.drawing === "img" && file.loaded && file.width > 40,
+      `${profile} the .mmd file is drawn as ${drawing}`,
+      file?.status === "rendered" &&
+        file.drawing === drawing &&
+        file.loaded !== false &&
+        file.width > 40,
       file,
     );
     phase(`${profile} file`);

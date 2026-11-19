@@ -33,7 +33,9 @@ and each definition carries a comment naming its Lucide id, which the Icon colum
 repeats. Every one is inline SVG that strokes or fills `currentColor`, so the element
 around it sets its ink.
 Rendered Markdown draws its own chrome from KPress’s icon set, the same Lucide release
-([KPress icons](https://github.com/jlevy/kpress/blob/v0.3.0/docs/kpress-icons.md)).
+([KPress icons](https://github.com/jlevy/kpress/blob/v0.3.0/docs/kpress-icons.md)),
+Mermaid diagrams’ toolbar and dialog included: in an untrusted document, whose allowlist
+drops KPress’s inline sprites, KPress’s diagram controls fetch them.
 
 A glyph enters the registry only when a folder’s first paint can draw it: every page
 fetches the registry before it paints, so each glyph there is paid for by every folder
@@ -184,16 +186,6 @@ The state’s word beside the row’s title carries the meaning without the colo
 | `checkmark` | SF Symbol | The folder this window shows, in the Switch Folder panel’s list | `apps/macos/Sources/Metabrowser/SwitchFolderWindow.swift` | Secondary label color, or the selection’s ink on the selected row | The row’s default symbol size |
 | `.section-disclosure-trigger::after`, Lucide `chevron-right` | CSS mask | Show or hide a section, after its heading, and a rendered document’s `summary` | `static/styles.css` | `--section-disclosure-chevron-color` | `--section-disclosure-chevron-size`, in `em` of the heading |
 | `copy`, Lucide `copy` | Registry | Copy an identifier or a block’s content to the clipboard; also the Archives category’s shape | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph`; smaller in a branch chip (`.git-ref-copy`) |
-| `code`, Lucide `code` | Plugin | Show a diagram’s source in place of its drawing, in the diagram’s toolbar | `builtin_plugins/markdown/diagrams.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
-| `expand`, Lucide `maximize-2` | Plugin | Open a diagram in its zoomable dialog | `builtin_plugins/markdown/diagrams.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
-| `zoomIn`, Lucide `zoom-in` | Plugin | Zoom a diagram in, in its dialog | `builtin_plugins/markdown/diagrams.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
-| `zoomOut`, Lucide `zoom-out` | Plugin | Zoom a diagram out, in its dialog | `builtin_plugins/markdown/diagrams.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
-| `reset`, Lucide `rotate-ccw` | Plugin | Return a diagram to its fitted view, in its dialog | `builtin_plugins/markdown/diagrams.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
-| `panUp`, Lucide `chevron-up` | Plugin | Pan a diagram up, in its dialog | `builtin_plugins/markdown/diagrams.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
-| `panDown`, Lucide `chevron-down` | Plugin | Pan a diagram down, in its dialog | `builtin_plugins/markdown/diagrams.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
-| `panLeft`, Lucide `chevron-left` | Plugin | Pan a diagram left, in its dialog | `builtin_plugins/markdown/diagrams.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
-| `panRight`, Lucide `chevron-right` | Plugin | Pan a diagram right, in its dialog | `builtin_plugins/markdown/diagrams.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
-| `close`, Lucide `x` | Plugin | Close a diagram’s dialog | `builtin_plugins/markdown/diagrams.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
 | `print`, Lucide `printer` | Registry | Print the document | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
 | `gear`, Lucide `settings` | Registry | Open the Metabrowser menu | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
 | `monitor`, Lucide `monitor` | Registry | The system theme, in the menu’s theme chooser; also the Media category’s shape | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`: a segment’s glyph is its whole label (`.menu-seg svg`) |

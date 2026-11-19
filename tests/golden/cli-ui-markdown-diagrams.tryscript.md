@@ -5,379 +5,252 @@ sandbox: false
 # Golden Test: Mermaid Diagrams in a Document
 
 A fenced `mermaid` block in a Markdown document is drawn as a diagram, as GitHub draws
-it. KPress marks each block as a figure with its source inside, and
-`builtin_plugins/markdown/diagrams.js` draws the figures it finds: `drawDiagrams` in
-`place-rendered.js` imports it only when a render has one, so a document without a
-diagram asks for nothing.
-A trusted render draws Mermaid’s SVG into the page.
-An inert render, whose content security policy admits no inline style, draws each
-diagram as an image of that SVG instead.
+it. KPress draws it: its `js/diagrams.js` marks each block as a figure that holds its
+source and draws the figures with a Mermaid the host supplies, and its opt-in
+`js/diagram-controls.js` gives each figure a toolbar and a zoom and pan dialog.
+KPress tests that drawing, the controls, their keys, and the view arithmetic itself.
 
-This browserless session runs the production modules with a stub Mermaid that draws a
-labelled SVG and fails on demand.
+This golden pins what Metabrowser decides around them: the host,
+`builtin_plugins/markdown/diagrams.js`; `drawDiagrams` in `place-rendered.js`, which
+imports the host only for a render that holds a diagram; and `mermaidFence` in
+`mermaid-view.js`, the Markdown a `.mmd` file’s Diagram view renders.
+The browserless session runs those production modules with KPress’s two modules as stubs
+that `mb.ensureModule` returns, which record what they receive and draw nothing.
 The transcript pins these behaviors:
 
-- The dialog’s view math: fit, zoom about a point, pan, reset, the scale bounds, the
-  keys that act, the wheel and pinch, and the transform the stage takes.
-- Mermaid’s configuration: strict security, no error diagram, and the theme the page
-  shows.
-- A render without a diagram returns no handle and loads no module.
-- A trusted render loads the `mermaid` module once, draws the figures one at a time,
-  shows a parse error with the source beside it, and gives each figure a copy button the
-  shell owns, a source toggle, and an expand button.
-- A theme change redraws every figure in the new theme, keeping the toggled state.
-- The expanded dialog’s controls, keys, and close.
-- Disposal, including disposal while a diagram is still drawing, leaves no listener.
-- An over-long diagram and a failed module load show their error without drawing.
-- An inert render draws an image whose source is the SVG as a `data:` address.
-- A `.mmd` file’s Diagram view reads a truncated file whole and draws it as an image.
+- A render without a diagram returns no handle and asks for no module.
+- A trusted render asks for both KPress modules, and for the `mermaid` module only when
+  KPress calls the loader the host passes, and places its figures in the document.
+- The theme KPress reads is the page’s resolved `data-theme`, and KPress redraws through
+  `MetabrowserTheme`, or subscribes to nothing without it.
+- Each copy button is the shell’s copy delegate for the figure’s source, marked as the
+  page’s own, and each button’s label is the app’s tooltip in place of the browser’s
+  `title`.
+- `ready` settles after KPress’s, and disposing twice disposes KPress’s binding once and
+  leaves the figures.
+- An inert render’s `<pre lang="mermaid">` blocks become figures placed as images, and a
+  block already inside a figure is not wrapped again.
+- Only the mode `image` places as an image, the host’s own theme, subscription, and
+  yield reach KPress unchanged, and `figures` fills once KPress has bound.
+- Disposing before the KPress modules arrive binds nothing, and a handle disposed at
+  once asks for nothing.
+- A module that fails to load writes one warning and `ready` still settles; after
+  disposal it writes none.
+- A `.mmd` file’s text becomes one `mermaid` fence longer than any backtick run inside,
+  and reads back whole, where a three-backtick fence would not for a line that is a
+  fence.
+
+How Mermaid lays out and paints a diagram is checked in headless Chrome by
+`tests/test_markdown_diagrams_chrome.py`.
 
 ```console
 $ node tests/dom/markdown-diagrams-session.js
 {
-  "view": {
-    "steps": [
-      {
-        "action": "fit",
-        "view": {
-          "scale": 2,
-          "x": 100,
-          "y": 100
-        }
-      },
-      {
-        "action": "zoom-in",
-        "view": {
-          "scale": 2.5,
-          "x": 0,
-          "y": 50
-        }
-      },
-      {
-        "action": "zoom-in",
-        "view": {
-          "scale": 3.125,
-          "x": -125,
-          "y": -12.5
-        }
-      },
-      {
-        "action": "pan-left",
-        "view": {
-          "scale": 3.125,
-          "x": -45,
-          "y": -12.5
-        }
-      },
-      {
-        "action": "pan-up",
-        "view": {
-          "scale": 3.125,
-          "x": -45,
-          "y": 67.5
-        }
-      },
-      {
-        "action": "zoom-out",
-        "view": {
-          "scale": 2.5,
-          "x": 64,
-          "y": 114
-        }
-      },
-      {
-        "action": "pan-right",
-        "view": {
-          "scale": 2.5,
-          "x": -16,
-          "y": 114
-        }
-      },
-      {
-        "action": "pan-down",
-        "view": {
-          "scale": 2.5,
-          "x": -16,
-          "y": 34
-        }
-      },
-      {
-        "action": "reset",
-        "view": {
-          "scale": 2,
-          "x": 100,
-          "y": 100
-        }
-      }
-    ],
-    "bounds": {
-      "most": 10,
-      "least": 0.1
-    },
-    "largeDiagramFits": {
-      "scale": 0.25,
-      "x": 0,
-      "y": 262.5
-    },
-    "keys": {
-      "0": "reset",
-      "+": "zoom-in",
-      "=": "zoom-in",
-      "-": "zoom-out",
-      "_": "zoom-out",
-      "ArrowUp": "pan-up",
-      "ArrowLeft": "pan-left",
-      "a": null
-    },
-    "keyWithCommand": null,
-    "pinch": {
-      "scale": 1.649,
-      "x": -64.872,
-      "y": -64.872
-    },
-    "scroll": {
-      "scale": 1,
-      "x": -30,
-      "y": -40
-    },
-    "transform": "translate(-20px, 10px) scale(1.5)"
-  },
-  "config": {
-    "light": {
-      "startOnLoad": false,
-      "securityLevel": "strict",
-      "suppressErrorRendering": true,
-      "theme": "default",
-      "flowchart": {
-        "diagramPadding": 48
-      },
-      "sequence": {
-        "diagramMarginY": 40
-      }
-    },
-    "dark": "dark"
-  },
   "noDiagram": {
     "handle": null,
     "modulesAsked": []
   },
   "trusted": {
     "modulesAsked": [
-      "mermaid"
+      "kpress-diagrams",
+      "kpress-diagram-controls"
     ],
-    "whileTheFirstDraws": [
-      "rendering",
-      "source",
-      "source"
+    "wrapped": 0,
+    "options": [
+      "controls",
+      "mermaid",
+      "placement",
+      "subscribeTheme",
+      "theme",
+      "yieldBetween"
     ],
-    "figures": [
-      {
-        "status": "rendered",
-        "drawing": "svg in default theme",
-        "drawingShown": true,
-        "sourceShown": false,
-        "error": null
-      },
-      {
-        "status": "error",
-        "drawing": null,
-        "drawingShown": null,
-        "sourceShown": true,
-        "error": "Parse error on line 2:"
-      },
-      {
-        "status": "rendered",
-        "drawing": "svg in default theme",
-        "drawingShown": true,
-        "sourceShown": false,
-        "error": null
-      }
-    ],
-    "renders": [
-      "flowchart LR (page)",
-      "sequenceDiagram (page)",
-      "graph TD (page)"
-    ],
-    "themes": [
-      "default",
-      "default",
-      "default"
-    ],
-    "toolbar": {
-      "buttons": [
-        "Copy diagram source",
-        "Show source",
-        "Expand diagram"
+    "placement": "document",
+    "yieldBetween": "not passed",
+    "figuresBound": 2,
+    "mermaidLoader": {
+      "modulesAsked": [
+        "mermaid"
       ],
-      "copies": "flowchart LR\n  A --> B",
-      "copyIsOwned": true,
-      "toggle": "Show source"
+      "returnsTheModule": true
+    },
+    "theme": {
+      "dark": "dark",
+      "light": "light",
+      "sepia": "light",
+      "(none)": "light"
+    },
+    "themeSubscription": {
+      "listening": 1,
+      "heard": [
+        "redraw"
+      ],
+      "listeningAfterUnsubscribe": 0,
+      "withoutRuntime": "function"
+    },
+    "controls": {
+      "hostHooks": [
+        "copy",
+        "decorate"
+      ],
+      "handedToKpress": true,
+      "copyButtons": [
+        {
+          "label": "Copy diagram source",
+          "tooltip": "Copy diagram source",
+          "title": null,
+          "copy": "text",
+          "copyText": "flowchart LR\n  A --> B",
+          "copyLabel": "Copy diagram source",
+          "ownedByThePage": true
+        },
+        {
+          "label": "Copy diagram source",
+          "tooltip": "Copy diagram source",
+          "title": null,
+          "copy": "text",
+          "copyText": "sequenceDiagram\n  Alice->>Bob: Hi",
+          "copyLabel": "Copy diagram source",
+          "ownedByThePage": true
+        }
+      ],
+      "delegatesOwned": 2
+    },
+    "readyBeforeKpress": false,
+    "readyAfterKpress": true,
+    "dispose": {
+      "bindingDisposals": 1,
+      "controlsDetached": 2,
+      "figuresLeft": 2
     }
   },
-  "toggle": {
-    "on": {
-      "status": "rendered",
-      "drawing": "svg in default theme",
-      "drawingShown": false,
-      "sourceShown": true,
-      "error": null
+  "inert": {
+    "modulesAsked": [
+      "kpress-diagrams",
+      "kpress-diagram-controls"
+    ],
+    "placement": "image",
+    "wrapped": [
+      "pre lang=mermaid",
+      "pre lang=mermaid"
+    ],
+    "eachInAFigure": true,
+    "figuresBound": 2,
+    "copyTexts": [
+      "flowchart LR\n  A --> B",
+      "graph TD\n  C --> D"
+    ],
+    "otherBlocksLeft": true
+  },
+  "blockInAFigure": {
+    "wrapped": 0,
+    "figuresBound": 1
+  },
+  "mountOptions": {
+    "placementByMode": {
+      "document": "document",
+      "image": "image",
+      "svg": "document",
+      "(none)": "document"
     },
-    "label": "Show diagram",
-    "off": {
-      "status": "rendered",
-      "drawing": "svg in default theme",
-      "drawingShown": true,
-      "sourceShown": false,
-      "error": null
+    "passedThrough": {
+      "theme": true,
+      "subscribeTheme": true,
+      "yieldBetween": true
+    },
+    "figures": {
+      "beforeBinding": 0,
+      "afterReady": 2
     }
   },
-  "themeChange": {
-    "figures": [
-      {
-        "status": "rendered",
-        "drawing": "svg in dark theme",
-        "drawingShown": false,
-        "sourceShown": true,
-        "error": null
-      },
-      {
-        "status": "error",
-        "drawing": null,
-        "drawingShown": null,
-        "sourceShown": true,
-        "error": "Parse error on line 2:"
-      },
-      {
-        "status": "rendered",
-        "drawing": "svg in dark theme",
-        "drawingShown": true,
-        "sourceShown": false,
-        "error": null
-      }
-    ],
-    "themes": [
-      "default",
-      "default",
-      "default",
-      "dark",
-      "dark",
-      "dark"
-    ]
-  },
-  "dialog": {
-    "open": true,
-    "label": "Diagram",
-    "controls": [
-      "Zoom in",
-      "Zoom out",
-      "Reset view",
-      "Pan up",
-      "Pan down",
-      "Pan left",
-      "Pan right",
-      "Close"
-    ],
-    "drawing": {
-      "tag": "svg",
-      "width": "400px",
-      "maxWidth": "none"
+  "decorateButton": {
+    "labelled": {
+      "tooltip": "Zoom in",
+      "title": null
     },
-    "transforms": [
-      "translate(100px, 100px) scale(2)",
-      "translate(0px, 50px) scale(2.5)",
-      "translate(100px, 100px) scale(2)",
-      "translate(180px, 100px) scale(2)",
-      "translate(231.898px, 100px) scale(3.297)",
-      "translate(271.898px, 80px) scale(3.297)",
-      "translate(100px, 100px) scale(2)"
-    ],
-    "pointerCaptured": [
-      7
-    ],
-    "viewportFocused": true,
-    "removedOnClose": true,
-    "listenersLeft": 0
+    "unlabelled": {
+      "tooltip": null,
+      "title": null
+    }
   },
-  "escapeRemovesDialog": true,
-  "dispose": {
-    "dialogsLeft": 0,
-    "rendersAfterDispose": 0,
-    "themeListeners": 0,
-    "figuresKept": [
-      "rendered",
-      "error",
-      "rendered"
+  "copyWithoutOwnDelegate": {
+    "label": "Copy diagram source",
+    "tooltip": "Copy diagram source",
+    "title": null,
+    "copy": "text",
+    "copyText": "graph A",
+    "copyLabel": "Copy diagram source",
+    "ownedByThePage": false
+  },
+  "disposeBeforeModules": {
+    "modulesAsked": [
+      "kpress-diagrams",
+      "kpress-diagram-controls"
+    ],
+    "wrapped": 0,
+    "bound": 0,
+    "figures": 0,
+    "warnings": []
+  },
+  "drawDisposedAtOnce": {
+    "modulesAsked": [],
+    "bound": 0
+  },
+  "loadFailure": {
+    "modulesAsked": [
+      "kpress-diagrams",
+      "kpress-diagram-controls"
+    ],
+    "bound": 0,
+    "ready": "settled",
+    "warnings": [
+      [
+        "metabrowser markdown: the diagrams could not be drawn",
+        "Failed to fetch dynamically imported module"
+      ]
     ]
   },
-  "disposeWhileDrawing": {
-    "rendersStarted": 1,
-    "figures": [
-      "rendered",
-      "source"
-    ]
+  "loadFailureAfterDispose": {
+    "warnings": []
   },
-  "tooLong": {
-    "figure": {
-      "status": "error",
-      "drawing": null,
-      "drawingShown": null,
-      "sourceShown": true,
-      "error": "This diagram's source is 50,009 characters; Mermaid draws at most 50,000."
-    },
-    "renders": 0
-  },
-  "loadFailure": [
+  "mermaidFence": [
     {
-      "status": "error",
-      "drawing": null,
-      "drawingShown": null,
-      "sourceShown": true,
-      "error": "Mermaid could not load: Failed to fetch dynamically imported module"
+      "case": "plain",
+      "markdown": "```mermaid\nflowchart LR\n  A --> B\n```\n",
+      "roundTrips": true,
+      "aThreeBacktickFenceWould": true
     },
     {
-      "status": "error",
-      "drawing": null,
-      "drawingShown": null,
-      "sourceShown": true,
-      "error": "Mermaid could not load: Failed to fetch dynamically imported module"
+      "case": "ends in a newline",
+      "markdown": "```mermaid\nflowchart LR\n  A --> B\n```\n",
+      "roundTrips": true,
+      "aThreeBacktickFenceWould": true
+    },
+    {
+      "case": "a backtick label",
+      "markdown": "```mermaid\nflowchart LR\n  A[\"`**bold**`\"] --> B\n```\n",
+      "roundTrips": true,
+      "aThreeBacktickFenceWould": true
+    },
+    {
+      "case": "a line that is a fence",
+      "markdown": "````mermaid\ngraph TD\n```\n  A --> B\n````\n",
+      "roundTrips": true,
+      "aThreeBacktickFenceWould": false
+    },
+    {
+      "case": "a longer run inside",
+      "markdown": "``````mermaid\ngraph TD\n  A[\"`````\"] --> B\n  C[\"```\"] --> D\n``````\n",
+      "roundTrips": true,
+      "aThreeBacktickFenceWould": true
+    },
+    {
+      "case": "empty",
+      "markdown": "```mermaid\n\n```\n",
+      "roundTrips": true,
+      "aThreeBacktickFenceWould": true
     }
   ],
-  "inert": {
-    "figure": {
-      "status": "rendered",
-      "drawing": "image",
-      "drawingShown": true,
-      "sourceShown": false,
-      "error": null
-    },
-    "wrapsTheBlock": true,
-    "imageAddress": "data:image/svg+xml;charset=utf-8",
-    "imageSvg": "<svg id=\"metabrowser-mermaid-8\" viewBox=\"0 0 400 200\" data-theme=\"default\" width=\"400\" height=\"200\" xmlns=\"http://www.w3.org/2000/svg\"><g><text>flowchart LR</text></g></svg>",
-    "render": [
-      {
-        "host": "measuring",
-        "attached": true
-      }
-    ],
-    "measuringHostsLeft": 0
-  },
-  "fileView": {
-    "figure": {
-      "status": "rendered",
-      "drawing": "image",
-      "drawingShown": true,
-      "sourceShown": false,
-      "error": null
-    },
-    "classes": "kpress-diagram kpress-mermaid metabrowser-diagram-file",
-    "readWhole": [
-      "flow.mmd"
-    ],
-    "drew": [
-      "Whole --> File"
-    ]
-  },
-  "listenersLeft": 0,
+  "warningsLeft": [],
   "failures": []
 }
 ? 0
