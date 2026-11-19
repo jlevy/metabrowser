@@ -1,5 +1,5 @@
-- The navigation pane can be hidden: a chevron at the start of the main page’s top row,
-  across from the navigation title’s gear, slides the page over the pane to fill the
+- The navigation pane can be hidden: a chevron at the start of the main page’s foot, on
+  the row of the navigation’s shortcut hints, slides the page over the pane to fill the
   window and turns to point back, and a second click shows the pane again.
   Backslash does the same from anywhere outside a text field, and so does
   Shift-Backslash (`|`). Help lists it, and holding Shift shows it on the chevron.
