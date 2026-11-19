@@ -23,8 +23,11 @@ Convention
 * Revisions are full object ids: 40 hexadecimal characters for SHA-1
   repositories and 64 for SHA-256 repositories. ``short_id`` carries
   the abbreviation git itself chose, which respects the repository's
-  ``core.abbrev`` and grows as the repository does — recomputing it
-  client-side by truncating would eventually collide.
+  ``core.abbrev`` and grows as the repository does, so a caller can
+  hand it back to Git. The page does not show it: a line names a
+  commit by a fixed length cut from ``id``, as GitHub does
+  (``shortCommit`` in ``static/formatters.js``), and keeps ``id`` for
+  copying and addresses.
 * Paths in :class:`GitFileChange` are served-root-relative, like every
   other path Metabrowser puts on the wire. The one exception is flagged:
   see :attr:`GitFileChange.outside_root`.

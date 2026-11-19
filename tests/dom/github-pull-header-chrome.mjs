@@ -62,6 +62,15 @@ const check = (label, ok, detail = "") => {
     failures.push(`${label}${detail ? `: ${detail}` : ""}`);
   }
 };
+// A record's title is as tall as its own lines, one or two, and the cold header's holds two
+// (mb-wcbc, github/styles.css): how much shorter a header is than the cold one for its
+// title, and whether that is nothing or the one line a one-line title gives back.
+const titleGivesBack = (shape, cold) => {
+  const title = (measured) =>
+    measured.rows.find((row) => row.row === "title")?.height ?? Number.NaN;
+  const delta = Math.round((title(shape) - title(cold)) * 100) / 100;
+  return { delta, title: title(shape), ok: delta === 0 || delta === -title(cold) / 2 };
+};
 
 // The scripts the SDK's ref helpers need, in the order tests/dom/sdk-sandbox.js loads them.
 const SDK = [
@@ -255,6 +264,7 @@ const MEASURE = `async (name, change, tab, width) => {
       mountRefCopies: mb.mountRefCopies,
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
+      shortCommit: mb.shortCommit,
       countPartsNodes: mb.countPartsNodes,
       // Ages of the lengths a record's have, one per time in the order the page asks, so no
       // two read the same and the row of ages is as long as a real one: "now" for all of them
@@ -411,6 +421,7 @@ const MEASURE = `async (name, change, tab, width) => {
         currentTitle: "",
         named: change.stackChip === 2,
         titleNodes: mb.titleNodes,
+        shortCommit: mb.shortCommit,
         onOpen() {},
       }),
     );
@@ -636,6 +647,8 @@ const MEASURE = `async (name, change, tab, width) => {
     rows,
     lines,
     rowGap: parseFloat(getComputedStyle(header).rowGap),
+    // The page's one gap under a title, before its first metadata line (mb-wcbc).
+    titleGap: parseFloat(getComputedStyle(header).getPropertyValue("--page-title-gap")),
     // How many labels the record names, or null while there is no record.
     recordLabels: body.record ? body.record.pull.labels.length : null,
     refresh: refresh
@@ -885,6 +898,7 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
       mountRefCopies: mb.mountRefCopies,
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
+      shortCommit: mb.shortCommit,
       countPartsNodes: mb.countPartsNodes,
       changeLine: mb.changeLine,
       changeLineNodes: mb.changeLineNodes,
@@ -1023,10 +1037,14 @@ const PENDING_EM = 14.5;
 // its record. Every frame from the mount to the landing is read: whether the header and the
 // tab column show, the cold header or the record's, where the tab bar is against the same
 // record mounted in hand, and what the Diff summary's row holds. Its placeholder's own
-// reveal, the same quiet period's (`.mb-delayed-loading`), ends with it.
-const COLD_LANDING = `async (width, labelled, outcome) => {
+// reveal, the same quiet period's (`.mb-delayed-loading`), ends with it. A `seeded` page
+// has the Pulls tab's row for its pull request in hand, as the list notes it
+// (`noteListed`), so its cold header is titled as the record will be; the note outlives the
+// mount, so the seeded landings run last.
+const COLD_LANDING = `async (width, labelled, outcome, seeded) => {
   const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
   const page = window.__page ??= await import("/github/pull-page.js");
+  const states = window.__states ??= await import("/github/pull-state.js");
   const body = structuredClone(recorded.current.body);
   const holder = body.record?.same_as;
   if (holder !== undefined) {
@@ -1034,6 +1052,12 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
   }
   if (!labelled) {
     body.record.pull.labels = [];
+  }
+  if (seeded) {
+    const pull = body.record.pull;
+    states.noteListed("https://github.com/octo/demo", [
+      { number: body.number, state: states.displayState(pull), updatedAt: pull.updated_at, title: pull.title },
+    ]);
   }
   const realFetch = window.__realFetch ??= window.fetch;
   const pane = document.getElementById("preview-pane");
@@ -1053,6 +1077,7 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
     mountRefCopies: mb.mountRefCopies,
     actorIdentity: mb.actorIdentity,
     titleNodes: mb.titleNodes,
+    shortCommit: mb.shortCommit,
     countPartsNodes: mb.countPartsNodes,
     formatAge: () => ({ label: "now", className: "age" }),
     formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
@@ -1073,6 +1098,7 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
   await document.fonts.ready;
   await frames();
   const landsAt = tabBarOf(inHand);
+  const inHandTitle = round(inHand.querySelector(".github-pull-header > h1").getBoundingClientRect().height);
   opened.dispose();
   document.documentElement.style.setProperty("--loading-state-delay", "60s");
   let answer = null;
@@ -1102,7 +1128,10 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
       step,
       header: getComputedStyle(header).opacity,
       column: tabColumn ? getComputedStyle(tabColumn).opacity : null,
-      cold: (header.querySelector("h1")?.textContent ?? "").startsWith("Pull request #"),
+      cold: header.classList.contains("github-pull-cold"),
+      // The cold title the Pulls tab's row titles, the record's shape, or "Pull request #7".
+      seeded: header.querySelector("h1")?.classList.contains("github-pull-title-with-state") ?? false,
+      title: round(header.querySelector("h1")?.getBoundingClientRect().height ?? 0),
       tabBar: tabColumn ? tabBarOf(container) : null,
       live: tabColumn ? [...tabColumn.querySelectorAll(".tab-btn")].map((link) => link.checkVisibility({ visibilityProperty: true }) && !link.closest("[inert]")) : [],
       // The Diff summary's row: its pending placeholder from first paint (mb-30dz), and
@@ -1153,11 +1182,15 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
   // A held landing's conversation is still out of sight, waiting for its Markdown.
   const bodyHeld =
     container.querySelector(".github-pull-body")?.classList.contains("github-pull-body-holding") ?? null;
+  // Whether the record's title keeps the cold title's two lines (the held class).
+  const held = header.classList.contains("github-pull-title-held");
   handle.dispose();
   document.documentElement.style.removeProperty("--loading-state-delay");
   window.fetch = realFetch;
   return {
     landsAt,
+    inHandTitle,
+    held,
     before,
     shownCold,
     landed,
@@ -1167,13 +1200,38 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
     tabBarsShown: [...new Set(seen.filter((state) => Number(state.header) > 0).map((state) => state.tabBar))],
   };
 }`;
+// The baselines of the title's first line and of the corner's button label, which the
+// corner sets on one line (mb-tatf; docs/design-system.md, "View on GitHub"): a probe of no
+// size before each one's first text rests on its first line's baseline. The title's text
+// is a clamped box and the label a flex item, so each text is wrapped in an inline span
+// with its probe for the read, and put back.
+const CORNER_BASELINE = `(title, label) => {
+  const first = (node) => {
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, {
+      acceptNode: (text) => (text.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
+    });
+    const text = walker.nextNode();
+    if (!text) return null;
+    const probe = document.createElement("span");
+    probe.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline";
+    const wrap = document.createElement("span");
+    text.parentNode.insertBefore(wrap, text);
+    wrap.append(probe, text);
+    const y = probe.getBoundingClientRect().top;
+    wrap.replaceWith(text);
+    return Math.round(y * 100) / 100;
+  };
+  return { title: first(title), label: label ? first(label) : null };
+}`;
+
 // The View on GitHub button in the pull request header's corner (mb-4wqh;
 // docs/design-system.md, "View on GitHub"), drawn by the SDK's `mountCounterpart` from what
 // `GET /api/counterpart` answers, here a stand-in answer for the page's address, which
 // tests/golden/cli-api-counterpart.tryscript.md pins. Read: where the button is in the page,
-// its size, where the title's text and number end, the title's room for it, and the inks and
-// fills of its parts and frame, beside the tokens each should resolve to in this theme, read
-// from a probe painted with them. The reading column is the width the server gives a page by
+// its label's baseline and the title's first one (CORNER_BASELINE), its size, where the
+// title's text and number end, the title's room for it, and the inks and fills of its parts
+// and frame, beside the tokens each should resolve to in this theme, read from a probe
+// painted with them. The reading column is the width the server gives a page by
 // default, *maxChars* characters (`--doc-max-chars`), so a wide pane's column ends short of
 // the button. The page stays mounted, in `window.__corner`, so the pointer can be put on the
 // chevron; CORNER_HOVERED reads it there and CORNER_DONE unmounts it.
@@ -1223,6 +1281,7 @@ const CORNER = `async (width, theme, longTitle, maxChars) => {
       mountRefCopies: mb.mountRefCopies,
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
+      shortCommit: mb.shortCommit,
       countPartsNodes: mb.countPartsNodes,
       formatAge: () => ({ label: "now", className: "age" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
@@ -1278,6 +1337,7 @@ const CORNER = `async (width, theme, longTitle, maxChars) => {
       width: round(placed.width),
     },
     afterTitle: corner.previousElementSibling === title,
+    baselines: (${CORNER_BASELINE})(title.querySelector(".github-pull-title-text"), button.querySelector(".counterpart-label")),
     marked: corner.hasAttribute("data-counterpart"),
     hooks: {
       root: button.hasAttribute("data-view-on-github"),
@@ -2078,13 +2138,25 @@ async function main() {
                 Math.abs(shape.refresh.rightEdge) <= 0.5,
               JSON.stringify({ refresh: shape.refresh, lines: shape.lines }),
             );
+            // The first metadata line is the page's title gap under the title, every page's
+            // (mb-wcbc), and each row after it the header's one gap under the row before it.
+            const gapAfter = (row) => (row.row === "title" ? shape.titleGap : shape.rowGap);
             check(
-              `${where}: each row is the header's one gap under the row before it`,
-              shape.lines.every(
-                (each, at) =>
-                  at === 0 || Math.abs(each.top - shape.lines[at - 1].bottom - shape.rowGap) <= 0.5,
-              ),
-              JSON.stringify({ rowGap: shape.rowGap, lines: shape.lines }),
+              `${where}: the first row is the title gap under the title, each after it the header's one gap under the row before it`,
+              shape.titleGap > shape.rowGap &&
+                shape.lines[0]?.row === "title" &&
+                shape.lines.every(
+                  (each, at) =>
+                    at === 0 ||
+                    Math.abs(
+                      each.top - shape.lines[at - 1].bottom - gapAfter(shape.lines[at - 1]),
+                    ) <= 0.5,
+                ),
+              JSON.stringify({
+                rowGap: shape.rowGap,
+                titleGap: shape.titleGap,
+                lines: shape.lines,
+              }),
             );
             if (shape.recordLabels === 0) {
               // The next row shown, the status line or the summary, is one gap under it.
@@ -2123,16 +2195,26 @@ async function main() {
           const base = none ? unlabelled : reference;
           const offered = OFFERED.has(shape.label);
           const extra = offered ? agesHeight + shape.rowGap : 0;
+          // A record's one-line title gives back the second line the cold title holds, and
+          // moves the rows under it up by that line (mb-wcbc).
+          const title = titleGivesBack(shape, reference);
           const expected = {
-            header: base.header + extra,
-            tabBar: base.tabBar + extra,
-            rows: base.rows.map((row) =>
-              row.row === "status" ? { ...row, height: offered ? agesHeight : 0 } : row,
-            ),
+            header: base.header + extra + title.delta,
+            tabBar: base.tabBar + extra + title.delta,
+            rows: base.rows.map((row) => {
+              if (row.row === "status") {
+                return { ...row, height: offered ? agesHeight : 0 };
+              }
+              if (row.row === "title") {
+                return { ...row, height: title.title };
+              }
+              return row;
+            }),
           };
           check(
-            `${width} px, ${key}: the header lays out to the empty record's height${none ? " less its labels row and that row's gap" : ""}${extra > 0 ? ", with its status line" : ""}, row by row`,
-            Math.abs(shape.header - expected.header) <= (none ? 0.5 : 0) &&
+            `${width} px, ${key}: the header lays out to the empty record's height${none ? " less its labels row and that row's gap" : ""}${title.delta < 0 ? " less its title's second line" : ""}${extra > 0 ? ", with its status line" : ""}, row by row`,
+            title.ok &&
+              Math.abs(shape.header - expected.header) <= (none ? 0.5 : 0) &&
               Math.abs(shape.tabBar - expected.tabBar) <= (none ? 0.5 : 0) &&
               JSON.stringify(shape.rows) === JSON.stringify(expected.rows),
             JSON.stringify({ expected, [key]: shape }),
@@ -2300,77 +2382,106 @@ async function main() {
       }
       if (runs("cold-landing")) {
         const landings = [];
-        for (const width of [560, 360]) {
-          for (const labelled of [false, true]) {
-            const kind = labelled ? "a labelled pull request" : "an unlabelled pull request";
-            for (const outcome of ["quiet", "held", "slow"]) {
-              const where = `${width} px, ${kind}, ${outcome}`;
-              const run = await browser.evaluate(
-                `(${COLD_LANDING})(${width}, ${labelled}, ${JSON.stringify(outcome)})`,
-              );
-              landings.push({ where, run });
-              const { before, shownCold, landed } = run;
-              check(
-                `${where}: the cold page's Diff summary row holds the placeholder from first paint, in its quiet period`,
-                before.pending === "hidden",
-                JSON.stringify(before),
-              );
-              check(
-                `${where}: the cold page is held unseen in the quiet period, its tab keys live`,
-                before.cold &&
-                  before.header === "0" &&
-                  before.column === "0" &&
-                  before.live.length === 3 &&
-                  before.live.every(Boolean),
-                JSON.stringify(before),
-              );
-              check(
-                `${where}: the record lands where it lands in hand, the header and tab column shown together`,
-                !landed.cold &&
-                  landed.header === "1" &&
-                  landed.column === "1" &&
-                  landed.tabBar === run.landsAt &&
-                  run.halfShown === 0,
-                JSON.stringify({ landsAt: run.landsAt, landed, halfShown: run.halfShown }),
-              );
-              if (outcome === "slow") {
-                // A read slower than the quiet period shows the cold header, rows held: one
-                // with labels lands moving nothing, and one with none moves the tab bar up by
-                // the labels row and its gap as it lands, the one move left (mb-2u08).
+        for (const [seeded, outcomes] of [
+          [false, ["quiet", "held", "slow"]],
+          [true, ["quiet", "slow"]],
+        ]) {
+          for (const width of [560, 360]) {
+            for (const labelled of [false, true]) {
+              const kind = labelled ? "a labelled pull request" : "an unlabelled pull request";
+              for (const outcome of outcomes) {
+                const where = `${width} px, ${kind}, ${outcome}${seeded ? ", its Pulls row in hand" : ""}`;
+                const run = await browser.evaluate(
+                  `(${COLD_LANDING})(${width}, ${labelled}, ${JSON.stringify(outcome)}, ${seeded})`,
+                );
+                landings.push({ where, run });
+                const { before, shownCold, landed } = run;
                 check(
-                  `${where}: after the quiet period the cold header shows, rows held`,
-                  shownCold.cold && shownCold.header === "1" && shownCold.column === "1",
-                  JSON.stringify(shownCold),
+                  `${where}: the cold page's Diff summary row holds the placeholder from first paint, in its quiet period`,
+                  before.pending === "hidden",
+                  JSON.stringify(before),
                 );
                 check(
-                  `${where}: the placeholder shows with the cold header, so its row is never seen empty`,
-                  shownCold.pending === "visible",
-                  JSON.stringify(shownCold),
+                  `${where}: the cold page is held unseen in the quiet period, its tab keys live`,
+                  before.cold &&
+                    before.header === "0" &&
+                    before.column === "0" &&
+                    before.live.length === 3 &&
+                    before.live.every(Boolean),
+                  JSON.stringify(before),
                 );
                 check(
-                  `${where}: ${labelled ? "the record lands moving nothing" : "the record lands moving the tab bar up by the labels row and its gap"}`,
-                  labelled ? shownCold.tabBar === landed.tabBar : shownCold.tabBar > landed.tabBar,
-                  JSON.stringify({ shownCold, landed }),
+                  `${where}: the cold title is ${seeded ? "the Pulls row's, the record's shape" : '"Pull request #", held at two lines'}`,
+                  before.seeded === seeded &&
+                    (seeded ||
+                      before.title === 2 * run.inHandTitle ||
+                      before.title === run.inHandTitle),
+                  JSON.stringify({ before, inHandTitle: run.inHandTitle }),
                 );
-              } else {
+                // A record seen landing on a cold title held at two lines keeps them, so it
+                // lands moving nothing; one that lands unseen, or under its row's title, has its
+                // own lines, where it lands in hand.
+                const keeps = outcome === "slow" && !seeded;
+                const kept = landed.title - run.inHandTitle;
                 check(
-                  `${where}: the cold header never shows, so the tab bar never moves`,
-                  run.coldShown === 0 && run.tabBarsShown.length === 1,
-                  JSON.stringify({ coldShown: run.coldShown, tabBarsShown: run.tabBarsShown }),
+                  `${where}: the record lands where it lands in hand${keeps ? ", but for its title keeping the cold title's two lines" : ""}, the header and tab column shown together`,
+                  !landed.cold &&
+                    landed.header === "1" &&
+                    landed.column === "1" &&
+                    run.held === keeps &&
+                    (keeps ? kept === 0 || kept === run.inHandTitle : kept === 0) &&
+                    landed.tabBar === run.landsAt + kept &&
+                    run.halfShown === 0,
+                  JSON.stringify({
+                    landsAt: run.landsAt,
+                    inHandTitle: run.inHandTitle,
+                    held: run.held,
+                    landed,
+                    halfShown: run.halfShown,
+                  }),
                 );
-              }
-              if (outcome === "held") {
-                check(
-                  `${where}: a record that lands in the quiet period shows its header while the conversation still waits for its Markdown`,
-                  !landed.cold && landed.header === "1" && run.bodyHeld === true,
-                  JSON.stringify({ landed, bodyHeld: run.bodyHeld }),
-                );
+                if (outcome === "slow") {
+                  // A read slower than the quiet period shows the cold header, rows held, its
+                  // title the Pulls row's or two lines the record keeps: one with labels lands
+                  // moving nothing, and one with none moves the tab bar up by the labels row
+                  // and its gap (mb-2u08; review A on #608).
+                  check(
+                    `${where}: after the quiet period the cold header shows, rows held`,
+                    shownCold.cold && shownCold.header === "1" && shownCold.column === "1",
+                    JSON.stringify(shownCold),
+                  );
+                  check(
+                    `${where}: the placeholder shows with the cold header, so its row is never seen empty`,
+                    shownCold.pending === "visible",
+                    JSON.stringify(shownCold),
+                  );
+                  check(
+                    `${where}: ${labelled ? "the record lands moving nothing" : "the record lands moving the tab bar up by the labels row and its gap"}`,
+                    labelled
+                      ? shownCold.tabBar === landed.tabBar
+                      : shownCold.tabBar > landed.tabBar,
+                    JSON.stringify({ shownCold, landed }),
+                  );
+                } else {
+                  check(
+                    `${where}: the cold header never shows, so the tab bar never moves`,
+                    run.coldShown === 0 && run.tabBarsShown.length === 1,
+                    JSON.stringify({ coldShown: run.coldShown, tabBarsShown: run.tabBarsShown }),
+                  );
+                }
+                if (outcome === "held") {
+                  check(
+                    `${where}: a record that lands in the quiet period shows its header while the conversation still waits for its Markdown`,
+                    !landed.cold && landed.header === "1" && run.bodyHeld === true,
+                    JSON.stringify({ landed, bodyHeld: run.bodyHeld }),
+                  );
+                }
               }
             }
           }
         }
         process.stderr.write(
-          `cold-landing: ${JSON.stringify(landings.map(({ where, run }) => ({ where, landsAt: run.landsAt, cold: run.shownCold.tabBar, landed: run.landed.tabBar, coldShown: run.coldShown })))}\n`,
+          `cold-landing: ${JSON.stringify(landings.map(({ where, run }) => ({ where, landsAt: run.landsAt, cold: run.shownCold.tabBar, landed: run.landed.tabBar, held: run.held, coldShown: run.coldShown })))}\n`,
         );
         lap("the cold landings");
       }
@@ -2415,10 +2526,14 @@ async function main() {
                   hooks.externalRel === "noopener",
                 JSON.stringify({ label: read.label, hooks, url: read.url }),
               );
+              // On the title's first line, at the corner's end inset, its label on the
+              // title's baseline (mb-tatf), as a file's and a folder's is on theirs.
               check(
-                `${where}: the button is at the corner's insets from the page's top and right edges`,
-                near(button.top, tokens.insetTop) && near(button.end, tokens.insetEnd),
-                JSON.stringify({ button, tokens }),
+                `${where}: the button is at the corner's end inset, its label on the title's first baseline`,
+                near(button.end, tokens.insetEnd) &&
+                  read.baselines.label !== null &&
+                  read.baselines.label === read.baselines.title,
+                JSON.stringify({ button, tokens, baselines: read.baselines }),
               );
               check(
                 `${where}: the button is the corner's height`,
@@ -2637,12 +2752,21 @@ async function main() {
                 .every((chip) => chip.color === null && chip.tip === null),
             JSON.stringify({ known: paint(known), own: paint(shape) }),
           );
+          // Less the second line the cold title holds, where the record's title is one line
+          // (mb-wcbc).
+          const title = titleGivesBack(shape, empty);
           check(
-            `${theme}: a header with labels of every color lays out to the empty record's height, row by row`,
-            shape.header === empty.header &&
-              shape.tabBar === empty.tabBar &&
-              JSON.stringify(shape.rows) === JSON.stringify(empty.rows),
-            JSON.stringify({ empty: empty.rows, labels: shape.rows }),
+            `${theme}: a header with labels of every color lays out to the empty record's height${title.delta < 0 ? " less its title's second line" : ""}, row by row`,
+            title.ok &&
+              shape.header === empty.header + title.delta &&
+              shape.tabBar === empty.tabBar + title.delta &&
+              JSON.stringify(shape.rows) ===
+                JSON.stringify(
+                  empty.rows.map((row) =>
+                    row.row === "title" ? { ...row, height: title.title } : row,
+                  ),
+                ),
+            JSON.stringify({ empty: empty.rows, labels: shape.rows, title }),
           );
         }
         lap("the labels in both themes");

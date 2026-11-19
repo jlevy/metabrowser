@@ -258,6 +258,8 @@ const MEASURE = `async (which, width) => {
   const out = {
     title: { cls: title.className, height: round(title.getBoundingClientRect().height), ...type(title) },
     gap: getComputedStyle(header).rowGap,
+    // The space under the title, a page title's gap to its metadata (mb-wcbc).
+    titleGap: getComputedStyle(document.documentElement).getPropertyValue("--page-title-gap").trim(),
     body: getComputedStyle(document.documentElement).getPropertyValue("--body-font-size").trim(),
     lines: read(),
     author: author(),
@@ -325,12 +327,16 @@ async function main() {
         const where = `at ${width} px`;
         const body = commit.body;
         check(`${where}: the body size is 14 px`, body === "14px", body);
-        // One title: the same size, weight, and line on both pages, two lines tall.
+        // One title: the same size, weight, and line on both pages, each as tall as its own
+        // lines, with no line held empty under it (mb-wcbc).
+        const lines = (title) => title.height / Number.parseFloat(title.lineHeight);
         check(
           `${where}: both titles are one treatment`,
-          ["size", "weight", "lineHeight", "height"].every(
-            (key) => commit.title[key] === pull.title[key],
-          ) && commit.title.size === "24px",
+          ["size", "weight", "lineHeight"].every((key) => commit.title[key] === pull.title[key]) &&
+            commit.title.size === "24px" &&
+            [commit.title, pull.title].every(
+              (title) => Number.isInteger(lines(title)) && lines(title) >= 1,
+            ),
           JSON.stringify({ commit: commit.title, pull: pull.title }),
         );
         check(
@@ -435,11 +441,21 @@ async function main() {
             pullOrder[3] === pull.lines.length - 1,
           JSON.stringify(pull.lines.map((line) => line.cls)),
         );
+        // The first line is a page title's gap under the title, the gap a view header leaves
+        // between its title and its metadata line, on both pages (mb-wcbc).
         check(
-          `${where}: each header's first line is 6 px under its title`,
-          commit.lines[0].top === pull.lines[0].top &&
-            commit.lines[0].top === commit.title.height + 6,
-          JSON.stringify([commit.lines[0].top, pull.lines[0].top, commit.title.height]),
+          `${where}: each header's first line is --page-title-gap under its title`,
+          Number.parseFloat(commit.titleGap) > 0 &&
+            pull.titleGap === commit.titleGap &&
+            commit.lines[0].top === commit.title.height + Number.parseFloat(commit.titleGap) &&
+            pull.lines[0].top === pull.title.height + Number.parseFloat(pull.titleGap),
+          JSON.stringify([
+            commit.lines[0].top,
+            pull.lines[0].top,
+            commit.title.height,
+            pull.title.height,
+            commit.titleGap,
+          ]),
         );
         // One identity: the box, the same size on both pages, holding the person glyph for an
         // author with no avatar, then the bold name, starting at the same x on both.

@@ -474,22 +474,23 @@ def test_group_by_and_the_three_filters_are_dropdowns() -> None:
         assert label in fn_block, f"missing any-label {label}"
 
 
-def test_group_by_and_show_ignored_ride_the_row_and_the_filters_sit_in_the_drawer() -> None:
-    """Group by leads the row: it removes nothing, so it needs no drawer. Show ignored
-    follows it, its tick stating its own direction. The three filters sit behind the
-    disclosure, whose badge counts only them; Clear, which resets Show ignored too,
-    shows while any filter is set (mb-sogv, mb-x1h6)."""
+def test_group_by_rides_the_row_and_the_filters_and_show_ignored_sit_in_the_drawer() -> None:
+    """Group by leads the row: it removes nothing, so it needs no drawer. The three
+    filters sit behind the disclosure, and Show ignored follows them there, its tick
+    stating its own direction; the chevron's name counts the ones set, Show ignored
+    turned off among them, and it shows no count badge, which would push Clear and the
+    chevron off Group by's line in a checkout (mb-as1w). Clear, on the row, shows while any of them is set (mb-sogv, mb-x1h6,
+    mb-ey0d)."""
 
     fn_block = _render_nav_filter_bar()
     main = fn_block[fn_block.index("var main =") : fn_block.index("var drawer =")]
     drawer = fn_block[fn_block.index("var drawer =") :]
-    group_at = main.index('key: "group"')
-    assert group_at < main.index('"Show ignored"') < main.index("nav-filter-bar-end")
-    for menu in ("recencyMenu", "typeMenu", "sizeMenu"):
-        assert menu not in main
-    assert "recencyMenu +\n    typeMenu +\n    sizeMenu +" in drawer
-    assert '"Show ignored"' not in drawer
-    assert "badge: drawerCount," in main
+    assert main.index('key: "group"') < main.index("nav-filter-bar-end")
+    for control in ("recencyMenu", "typeMenu", "sizeMenu", "ignoredCheck", '"Show ignored"'):
+        assert control not in main
+    assert "recencyMenu +\n    typeMenu +\n    sizeMenu +\n    ignoredCheck +" in drawer
+    assert "badge:" not in main
+    assert "` (${drawerCount} active)`" in main
     assert "treeFilterModel.drawerFilterCount(st)" in fn_block
 
 
@@ -613,15 +614,20 @@ def test_plain_text_actions_use_the_shared_button_primitive() -> None:
         assert "file-header-action" not in source, (
             "the header no longer restates partial progress; the notice owns it"
         )
-    assert 'class="btn parent-nav-btn parent-nav-btn-icon-only folder-up"' in header
+    # Up alone, in a view header's eyebrow, is an icon button: the arrow at rest, and
+    # the hover surface only while hovered or focused, as the navigation's chevron
+    # (mb-igva). Parent navigation with a label stays the bordered `.btn`.
+    assert 'class="icon-btn folder-up"' in header
+    assert "parent-nav-btn-icon-only" not in header + css
     assert '<span class="parent-nav-arrow" aria-hidden="true">↑</span>' in header
     assert ".btn {" in css
     assert ".btn:focus-visible {" in css
     assert ".parent-nav-btn {" in css
-    assert ".parent-nav-btn-icon-only {" in css
-    parent_nav = css[css.index(".parent-nav-btn {") : css.index(".parent-nav-btn-icon-only {")]
+    parent_nav = css[css.index(".parent-nav-btn {") : css.index(".parent-nav-arrow {")]
     assert "height: var(--icon-btn-size);" in parent_nav
     assert "border-color: var(--viz-border-strong);" in parent_nav
+    up = css[css.index(".view-header-eyebrow > .folder-up {") :]
+    assert "--icon-btn-size: var(--view-header-up-size);" in up.split("}")[0]
     assert 'aria-label="Open parent folder ${esc(label)}"' in header
 
 

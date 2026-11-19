@@ -182,9 +182,9 @@ id = "identity"
 route = "/api/identity"
 literal = "api/identity"
 source = "Sources/ShellCore/Folders/FolderIdentity.swift"
-json = ["short_name", "full_name", "kind", "kind_label", "title"]
+json = ["short_name", "full_name", "kind", "kind_label", "title", "repository"]
 values = { kind = ["folder", "mirror"] }
-note = "Names each window. Status 200, or the window keeps the name it derived."
+note = "Names each window. Status 200, or the window keeps the name it derived. `repository` puts a link's new mirror window beside an open checkout of the same GitHub repository (`CheckoutWindow`)."
 
 [[route]]
 id = "source-status"
@@ -448,6 +448,13 @@ metab = "the identity `/api/identity` answers, which a window shows in its place
 pinned_by = "apps/macos/Tests/ShellCoreTests/AppContractTests.swift::aWindowIsNamedAsTheServerNamesIt"
 
 [[copy]]
+swift = "AppIdentity.shortCommitChars"
+source = "Sources/ShellCore/App/AppIdentity.swift"
+metab = "SHORT_COMMIT_CHARS in commit_ids.py: how much of a commit ID a line shows, which the About box shows of the commit the build records"
+pinned_by = "tests/test_macos_app_pins.py::test_the_about_box_cuts_a_commit_as_every_line_does"
+values = ["metabrowser.commit_ids:SHORT_COMMIT_CHARS"]
+
+[[copy]]
 swift = "GitHubViewRequests.marker"
 source = "Sources/ShellCore/Web/GitHubViewRequests.swift"
 metab = "the hook `counterpartButton` in static/plugin-sdk-views.js gives the button's main link"
@@ -519,6 +526,7 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 "Sources/ShellCore/Web/PagePrint.swift" = ["own: window.print, which WebKit gives the app no public way to receive"]
 "Sources/ShellCore/Web/GitHubViewRequests.swift" = ["view-on-github-link"]
 "Sources/Metabrowser/GitHubPopover.swift" = ["own: whether the popover's github.com page holds text not yet sent"]
+"Sources/ShellCore/Web/PageFind.swift" = ["own: the page's selection, which find reads and starts from, through the DOM's own Selection"]
 
 # ── What the scans pass over ────────────────────────────────────────────────────────────
 #

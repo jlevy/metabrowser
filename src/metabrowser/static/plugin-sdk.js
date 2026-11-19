@@ -64,6 +64,8 @@
 //     formatTimestamp(secondsSinceEpoch) — local-time short form
 //     titleNodes(title)                  — a commit or PR title's nodes: a conventional-
 //                                          commit prefix in span.title-prefix, then the rest
+//     shortCommit(commit)                — a commit ID as every line names one, for an
+//                                          element of class git-commit-sha
 //     countPartsNodes(parts)             — a count summary's nodes, its numbers bold, its
 //                                          marks muted, and its status counts, "21 A",
 //                                          bold in their statuses' ink: the shell's one
@@ -1617,6 +1619,14 @@
     return global.MetabrowserFormatters.titleNodes(global.document, title);
   }
 
+  // A commit ID as every line names one: its first characters, the shell's one length
+  // (docs/design-system.md, "Short Commit IDs"). Shown, it is in the commit-ID face,
+  // `.git-commit-sha`, and its full ID is a copy or a link away.
+  /** @param {string} commit @returns {string} */
+  function shortCommit(commit) {
+    return global.MetabrowserFormatters.shortCommit(commit);
+  }
+
   // The shell's painters of a count summary and a brief change line, into the page's
   // document (docs/design-system.md, "Count Summaries Bold Their Numbers", "Brief Change
   // Line").
@@ -1863,6 +1873,7 @@
     formatAge: formatAge,
     formatTimestamp: formatTimestamp,
     titleNodes: titleNodes,
+    shortCommit: shortCommit,
     countPartsNodes: countPartsNodes,
     changeLine: changeLine,
     changeLineNodes: changeLineNodes,

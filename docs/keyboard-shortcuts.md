@@ -44,10 +44,9 @@ every filter and Group by at its default, and every tab back at its first view.
 What has been read, such as pull requests and history, stays in memory, so only the tree
 and the folder’s view are read again.
 
-Backslash does what a click on the chevron at the foot of the main page’s left edge
-does: it hides the navigation pane, and the page slides over it to fill the window, or
-shows the pane again.
-Shift-Backslash, which types `|` on a US keyboard, does the same.
+Backslash does what a click on the chevron at the start of the main page’s top row does:
+it hides the navigation pane, and the page slides over it to fill the window, or shows
+the pane again. Shift-Backslash, which types `|` on a US keyboard, does the same.
 The key is read by the character it types, so the key in the same place on a UK or
 German keyboard, which types `#`, does nothing; where Backslash needs Option or AltGr,
 the chevron is the way to hide the pane.

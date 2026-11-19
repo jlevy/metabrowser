@@ -21,8 +21,8 @@ Each subject the source session can hold (:mod:`metabrowser.source`) is named th
   repository's name, as a checkout would be called (``MirrorDisplay.name``).
   ``full_name`` is the origin abbreviated by :func:`abbreviate_origin`, never the cache
   path, then what the pin is: ``@<ref>`` for a branch or tag, by the name the origin
-  knows it by, as in ``github.com/jlevy/tbd@main``, and ``@<the commit's first 12 hex
-  digits>`` for a commit with no ref.
+  knows it by, as in ``github.com/jlevy/tbd@main``, and ``@<its short commit>``
+  (:func:`~metabrowser.commit_ids.short_commit`) for a commit with no ref.
 - **A pull request's head** is a mirror pinned to ``refs/pull/<n>/head``, which a
   pull-request URL serves and a pin switch onto its head serves again. It is named as
   GitHub writes a pull request: ``short_name`` ``tbd #123`` and ``full_name``
@@ -35,7 +35,7 @@ Each subject the source session can hold (:mod:`metabrowser.source`) is named th
   since the mode is how the root was opened, and ``short_name`` is the folder's name.
   ``full_name`` is the folder's path and then what is shown, as a mirror's is its origin
   and then its pin: ``~/src/tbd@topic``, with a remote-tracking branch as ``@origin/topic``
-  and a commit with no ref as its first 12 hex digits.
+  and a commit with no ref as its short commit.
 - **A pin with no mirror** has no origin to take a name from, and is named as the
   navigation heading names it: by its ref's short name, or by its short commit when it
   has no ref. Every CLI mode serves a pin with its mirror, so only an in-process caller
@@ -55,6 +55,7 @@ the life of a document, and no page fetches this route.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from pathlib import Path
@@ -70,6 +71,7 @@ from metabrowser.checkout_revisions import (
     checkout_ref_name,
     checkout_revisions,
 )
+from metabrowser.commit_ids import short_commit
 from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
     MirrorDisplay,
@@ -78,6 +80,7 @@ from metabrowser.mirror_refresh import (
     pull_head_number,
 )
 from metabrowser.paths_safe import tilde_path
+from metabrowser.repository_context import RepositoryContext, discover_repository_context
 from metabrowser.source import (
     UnsupportedSourceCapabilityError,
     as_git_revision_subject,
@@ -89,18 +92,6 @@ from metabrowser.source import (
 APP_NAME: Final = "Metabrowser"
 # U+2022 BULLET between single spaces, as in ``fdu • Metabrowser``.
 TITLE_SEPARATOR: Final = " \u2022 "
-# How much of a commit ID a line shows wherever it names a commit: a commit pin's full
-# name, the navigation heading, the ref chooser's button and rows, and a mirror's offer of
-# its ref's newer commit. One length, so one commit reads the same in each. The page's copy
-# is `SHORT_COMMIT_CHARS` in static/formatters.js (`shortCommit`), which
-# tests/test_short_commit.py holds to this one.
-SHORT_COMMIT_CHARS: Final = 12
-
-
-def short_commit(commit: str) -> str:
-    """*commit* as a line names it: its first :data:`SHORT_COMMIT_CHARS` characters."""
-
-    return commit[:SHORT_COMMIT_CHARS]
 
 
 type IdentityKind = Literal["folder", "mirror"]
@@ -122,7 +113,7 @@ _NO_NAME: Final = frozenset({"", ".", ".."})
 
 
 class RootIdentity(TypedDict):
-    """The envelope of ``GET /api/identity``.
+    """What the served subject is called, which ``GET /api/identity`` answers.
 
     ``short_name`` is what a window is called, ``full_name`` the longer name that tells
     two of the same short name apart, and ``kind`` whether the subject is a local
@@ -300,14 +291,65 @@ def root_identity(
     return folder_identity(session_filesystem_root(), home=user_home())
 
 
-async def api_identity(request: Request) -> JSONResponse:
-    """``GET /api/identity`` -- what this server's subject is called, as a window titles it."""
+class IdentityEnvelope(RootIdentity):
+    """The envelope of ``GET /api/identity``: the subject's names, and its repository.
 
+    ``repository`` is the GitHub repository the subject belongs to, as the canonical URL
+    ``https://github.com/<owner>/<repo>`` in lowercase, which is how
+    ``metab URL --present --dry-run`` names a link's ``root``, or ``None`` when it has none
+    on github.com. A folder belongs to the repository its checkout's ``origin`` names,
+    found by :func:`~metabrowser.repository_context.discover_repository_context`, which
+    walks up from a folder below the checkout's root, so a subfolder's window belongs to
+    it too. A mirror belongs to the repository it mirrors. The macOS app reads it to put
+    a link's mirror beside an open checkout of the same repository. It is a name to
+    compare, not a promise: a checkout's ``.git/config`` can name any repository.
+    """
+
+    repository: str | None
+
+
+def _canonical_repository(context: RepositoryContext | None) -> str | None:
+    """*context*'s repository as ``github/urls.py``'s ``repository_url`` spells it."""
+
+    if context is None:
+        return None
+    return f"https://{context['host']}/{context['owner'].lower()}/{context['name'].lower()}"
+
+
+async def served_repository(
+    mirror: MirrorSession | None, checkout: CheckoutRevisions | None = None
+) -> str | None:
+    """The GitHub repository the active session's subject belongs to, or ``None``.
+
+    A folder's is read from its checkout's Git files, bounded and off the event loop, as
+    the shell's repository context is; a mirror's is its provider's, which runs no Git.
+    """
+
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is None:
+        root = session_filesystem_root()
+        return _canonical_repository(await asyncio.to_thread(discover_repository_context, root))
+    if checkout is not None and checkout.serves(pin):
+        context = await asyncio.to_thread(discover_repository_context, checkout.root)
+        return _canonical_repository(context)
+    if mirror is None:
+        return None
+    return _canonical_repository(
+        mirror.mirror.repository_context(revision=pin.commit_oid, branch=None)
+    )
+
+
+async def api_identity(request: Request) -> JSONResponse:
+    """``GET /api/identity`` -- what this server's subject is called, as a window titles it,
+    and the GitHub repository it belongs to."""
+
+    mirror, checkout = mirror_session(request.app), checkout_revisions()
     try:
-        identity = root_identity(mirror_session(request.app), checkout_revisions())
+        identity = root_identity(mirror, checkout)
+        repository = await served_repository(mirror, checkout)
     except UnsupportedSourceCapabilityError as exc:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
-    return JSONResponse(dict(identity))
+    return JSONResponse(dict(IdentityEnvelope(**identity, repository=repository)))
 
 
 IDENTITY_ROUTES = [Route("/api/identity", api_identity)]
@@ -317,7 +359,6 @@ __all__ = [
     "APP_NAME",
     "IDENTITY_ROUTES",
     "KIND_LABELS",
-    "SHORT_COMMIT_CHARS",
     "TITLE_SEPARATOR",
     "IdentityKind",
     "RootIdentity",
@@ -327,6 +368,5 @@ __all__ = [
     "folder_identity",
     "mirror_identity",
     "root_identity",
-    "short_commit",
     "user_home",
 ]

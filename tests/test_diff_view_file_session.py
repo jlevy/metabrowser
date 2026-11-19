@@ -36,6 +36,7 @@ from metabrowser import server
 from metabrowser.builtin_plugins.github.pull_route import image_route
 from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.records import StoreOperation
+from metabrowser.commit_ids import SHORT_COMMIT_CHARS
 from metabrowser.git.tree_source import GitPath
 from metabrowser.mirror_refresh import serve_mirror
 from metabrowser.source import reset_source_session
@@ -338,7 +339,9 @@ def test_a_module_that_does_not_load_is_said_and_logged() -> None:
     assert folder["bars"] and not any(controls for controls in folder["bars"].values())
 
 
-_LINK = re.compile(r"link (/view/\S+) · Open .* at ([0-9a-f]{12}), ")
+# A link names its commit as every line does (`short_commit`), which Git resolves as it
+# would any abbreviation the fixture's small repository leaves unique.
+_LINK = re.compile(rf"link (/view/\S+) · Open .* at ([0-9a-f]{{{SHORT_COMMIT_CHARS}}}), ")
 _SWITCH = re.compile(r"POST /api/source/pin \[content-type: application/json\] (\{.*\})$")
 
 

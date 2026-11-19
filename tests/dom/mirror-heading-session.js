@@ -34,6 +34,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+// A commit as every line of the page names one, by the shell's own formatter.
+const { shortCommit } = require("./changed-files-tree-fixture.js").shellFormatters();
 
 const repoRoot = path.resolve(__dirname, "../..");
 const staticDir = path.join(repoRoot, "src/metabrowser/static");
@@ -548,7 +550,7 @@ async function main() {
 
     // The repository's name is the root, in both headings, with the commit beside it.
     assert(
-      page.navigationHeading.text === `${name} ${ref} ${pin.slice(0, 12)}`,
+      page.navigationHeading.text === `${name} ${ref} ${shortCommit(pin)}`,
       `${page.subject}: the navigation heading reads ${page.navigationHeading.text}`,
     );
     // A mirror's root has no directory above it: its eyebrow is the note alone.
@@ -559,7 +561,7 @@ async function main() {
     );
     // The address is the name and the path under it: no commit, and no directory.
     const address = file.text.slice(0, file.text.indexOf(where));
-    assert(!address.includes(pin.slice(0, 12)), `${page.subject}: the address names the commit`);
+    assert(!address.includes(shortCommit(pin)), `${page.subject}: the address names the commit`);
     assert(!address.includes(location), `${page.subject}: the address names the cache`);
     // The note follows the last crumb; it is not the address's prefix.
     for (const html of [page.raw.root, file.html]) {

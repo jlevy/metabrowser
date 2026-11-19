@@ -56,6 +56,7 @@ from metabrowser.cli.present import (
     Presentable,
     resolve_target,
 )
+from metabrowser.commit_ids import SHORT_COMMIT_CHARS
 from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
 from metabrowser.git.progress import GitProgress
 from metabrowser.home import METABROWSER_CACHE_DIR_ENV
@@ -201,6 +202,13 @@ def test_the_link_hosts_are_the_github_reducers() -> None:
 
 def test_the_cache_page_is_the_routes_largest() -> None:
     assert _swift_int("Folders/RepositoryCache.swift", "pageLimit") == MAX_PAGE_LIMIT
+
+
+def test_the_about_box_cuts_a_commit_as_every_line_does() -> None:
+    # The build records the full ID (scripts/common.sh, `source_commit`), and the About
+    # box shows it as the page and the CLI show a commit (docs/design-system.md, "Short
+    # Commit IDs").
+    assert _swift_int("App/AppIdentity.swift", "shortCommitChars") == SHORT_COMMIT_CHARS
 
 
 @pytest.mark.skipif(os.name != "posix", reason="owner-only storage needs POSIX")

@@ -39,6 +39,7 @@ from starlette.testclient import TestClient
 from metabrowser import server
 from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.urls import GitSource, classify_root_argument
+from metabrowser.commit_ids import short_commit
 from tests.git_pin_harness import fast_import_store, pinned_client
 from tests.golden_harness import (
     SANDBOX_STAND_IN,
@@ -241,7 +242,7 @@ def test_a_pin_with_no_mirror_is_headed_as_before_and_carries_nothing_of_one(
         "module": False,
         "heading": [
             '<span class="path"><span class="path-base">topic</span></span>'
-            f'<span class="header-revision git-commit-sha">{commit[:12]}</span>'
+            f'<span class="header-revision git-commit-sha">{short_commit(commit)}</span>'
         ],
         "status": [None, None, None],
     }
@@ -260,7 +261,7 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
         f"Mirror of file://~/git/squares.git at {pin}, stored in {location}: "
         "a bare Git repository, with no checked-out files."
     )
-    assert mirror["navigationHeading"]["text"] == f"squares topic {pin[:12]}"
+    assert mirror["navigationHeading"]["text"] == f"squares topic {short_commit(pin)}"
     assert mirror["mainHeading"]["file"]["text"] == f"\u2191 squares / docs mirror in {location}"
     assert mirror["mainHeading"]["root"] == f"\u2191 mirror in {location} squares"
     assert mirror["tooltips"] == {
