@@ -8,13 +8,17 @@ through gh landed and the page's next poll read it. Measured in headless Chrome 
 jlevy/metabrowser through the Pulls tab, at a load average of 14 to 19 (2026-11-18), the
 source showed for 1.0 and 2.0 s.
 
-So this serves a checkout of the GitHub stand-in with a fake ``gh``, prepares the cores of
-pull requests 7 and 10 through ``pull-cores-prepare`` as a Pulls row's view does, and
-``tests/dom/github-pull-core-markdown-chrome.mjs`` opens 7's page by its address, where
-it shows the core, then watches the record that follows it, then opens 10 from its row in
-the Pulls tab. A sampler reads every animation frame from navigation start. The description
-must never be on screen as source while its Markdown is on its way, and its render must
-arrive within the Markdown route's own bound. Which texts are placeholders, and when, is
+So this serves a checkout of the GitHub stand-in with a fake ``gh`` that holds each pull
+request's record fetch until the script releases it, and prepares the cores of pull
+requests 7 and 10 through ``pull-cores-prepare`` alone, as a Pulls row's view does, so
+the server's Markdown child is still cold. ``tests/dom/github-pull-core-markdown-chrome.mjs``
+opens 7's page by its address, where it shows the core and its own first read starts the
+child, releases 7's record and watches it land, then opens 10 from its row in the Pulls
+tab with the description's render held past the page's first-paint hold, so the page
+shows with the placeholder, and last releases 10's record. A sampler reads every
+animation frame from navigation start. The description must never be on screen as source
+while its Markdown is on its way, and its render must arrive within the Markdown route's
+own bound. Which texts are placeholders, and when, is
 browserless (``tests/dom/github-pull-first-paint-behavior.js`` and
 ``tests/dom/github-pull-core-preview-behavior.js``); what is on screen each frame is the
 browser's.
@@ -72,22 +76,28 @@ _PREPARE_BUDGET_S = 30.0
 # A cold Chrome start, which tests/dom/chrome-session.mjs bounds at 30 s, then three page
 # loads and a fake gh fetch, each bounded at 30 s in the script.
 _MEASUREMENT_BUDGET_S = 120.0
-# A gh in front of the fake one that holds pull request 10's record fetch, every read of its
-# pull, reviews, comments, timeline, and checks but its changed files, until the file
-# RECORD_RELEASE names exists, or for the measurement's budget at most. The Pulls tab reads
-# the records of rows near the one shown ahead of a click, so 10's would otherwise land
-# before its row is pressed, or not, as the machine's load decides; held, 10 opens on its
-# core every run, as a pull request does whose record GitHub has not yet answered.
+# A gh in front of the fake one that holds the record fetches of pull requests 7 and 10,
+# every read of each one's pull, reviews, comments, timeline, and checks but its changed
+# files, until the directory RECORD_RELEASE names holds a file named for its number, or for
+# the measurement's budget at most. A page that opens on a core fetches its record at once,
+# and the Pulls tab reads the records of rows near the one shown ahead of a click, so
+# either record could land before its core is judged, or not, as the machine's load
+# decides; held, each page opens on its core every run, as a pull request does whose record
+# GitHub has not yet answered.
 _HELD_GH = """#!/bin/sh
+held=""
 case " $* " in
-  *"/pulls/10/files"*) ;;
-  *"/pulls/10 "*|*"/pulls/10/"*|*"/pulls/10?"*|*" number=10 "*)
-    tries=0
-    while [ ! -e "$RECORD_RELEASE" ] && [ "$tries" -lt {tries} ]; do
-      /bin/sleep 0.1
-      tries=$((tries + 1))
-    done ;;
+  *"/pulls/7/files"*|*"/pulls/10/files"*) ;;
+  *"/pulls/7 "*|*"/pulls/7/"*|*"/pulls/7?"*|*" number=7 "*) held=7 ;;
+  *"/pulls/10 "*|*"/pulls/10/"*|*"/pulls/10?"*|*" number=10 "*) held=10 ;;
 esac
+if [ -n "$held" ]; then
+  tries=0
+  while [ ! -e "$RECORD_RELEASE/$held" ] && [ "$tries" -lt {tries} ]; do
+    /bin/sleep 0.1
+    tries=$((tries + 1))
+  done
+fi
 exec {gh} "$@"
 """
 LIFECYCLE_S = (
@@ -149,26 +159,20 @@ def _prepare_cores(base: str) -> None:
         asked: list[tuple[int, Any]] = []
 
         def prepared(number: int = number, asked: list[tuple[int, Any]] = asked) -> bool:
-            # A source runs one core job at a time, so the batch before this one, its core
-            # already written, can answer ``busy`` until its job unwinds; and a catalog
-            # refresh still settling can move the generation under a batch (``not_owner``).
-            # Either way, ask again.
-            if not asked or asked[-1][1].get("preparation") in ("busy", "not_owner"):
-                window = {"id": f"visible-{number}", "generation": generation() or ""}
-                ask = {"state": "all", "window": window, "numbers": [number]}
-                asked.append(_call(base, "/api/plugin/github/pull-cores-prepare", ask))
-                assert asked[-1][0] in (200, 202), asked[-1]
-            status, answer = _call(base, f"/api/plugin/github/pull?number={number}")
-            return status == 200 and answer["record"] is None and answer["core_preview"] is not None
+            # Asked until the batch answers it ready, its core written. Nothing here reads
+            # the pull route, whose read starts the Markdown child for the page that follows
+            # it (`pull_handler`), so the child is still cold when Chrome opens 7. A source
+            # runs one core job at a time, so a batch can answer ``busy`` until the one
+            # before it unwinds, and a catalog refresh still settling can move the
+            # generation under it (``not_owner``); a batch on its way answers ``joined``.
+            window = {"id": f"visible-{number}", "generation": generation() or ""}
+            ask = {"state": "all", "window": window, "numbers": [number]}
+            asked.append(_call(base, "/api/plugin/github/pull-cores-prepare", ask))
+            status, answer = asked[-1]
+            assert status in (200, 202), asked[-1]
+            return answer.get("preparation") == "ready" and number in answer["ready_numbers"]
 
-        _until(
-            f"pull request {number}'s core",
-            prepared,
-            lambda number=number, asked=asked: (
-                asked[-1:],
-                _call(base, f"/api/plugin/github/pull?number={number}"),
-            ),
-        )
+        _until(f"pull request {number}'s core", prepared, lambda asked=asked: asked[-1:])
 
 
 def test_a_core_previews_description_never_shows_as_markdown_source_in_chrome(
@@ -191,7 +195,7 @@ def test_a_core_previews_description_never_shows_as_markdown_source_in_chrome(
         encoding="utf-8",
     )
     (held / "gh").chmod(0o700)
-    release = tmp_path / "release-10"
+    release = _private(tmp_path / "released")
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
     env.update(fake)
     env["RECORD_RELEASE"] = str(release)

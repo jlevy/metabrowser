@@ -1,27 +1,33 @@
 // A pull request's description never shows as Markdown source, in headless Chrome against a
 // live `metab` server whose cache holds the cores of pull requests 7 and 10 and no record.
 //
-//   CHROME_BIN=... CHROME_PROFILES=<dir> RECORD_RELEASE=<file> \
+//   CHROME_BIN=... CHROME_PROFILES=<dir> RECORD_RELEASE=<dir> \
 //     node tests/dom/github-pull-core-markdown-chrome.mjs <base URL>
 //
 // tests/test_github_pull_core_markdown_chrome.py serves a checkout of the GitHub stand-in with a
-// fake `gh`, prepares the two cores, holds pull request 10's record fetch until this script writes
-// the file RECORD_RELEASE names, owns the profile directory, and stops this process's whole group,
-// Chrome included, however the run ends (tests/process_group.py).
+// fake `gh`, prepares the two cores without starting the Markdown child, holds each pull request's
+// record fetch until this script writes a file named for its number in the directory
+// RECORD_RELEASE names, owns the profile directory, and stops this process's whole group, Chrome
+// included, however the run ends (tests/process_group.py).
 //
 // A sampler reads every animation frame from navigation start: the description's state, which is
-// `source` while its Markdown source is on screen, `placeholder` while its source is out of sight
-// for a render on its way (`.github-pull-plain-pending`), `rendered` once its Markdown is in, and
-// `hidden` while the page holds its first paint out of sight. Four steps, in one document:
+// `source` while its Markdown source is on screen, `quiet` while its source is out of sight for a
+// render on its way (`.github-pull-plain-pending`) and the loading period's quiet start has not
+// passed, `placeholder` once its gray rows show, `rendered` once its Markdown is in, and `hidden`
+// while the page holds its first paint out of sight. Four steps, in one document:
 //
-// 1. Pull request 7 by its address, the core preview, with the Markdown child cold.
-// 2. Its record, which follows the core by itself, with the description unchanged.
-// 3. Pull request 10 from its row in the Pulls tab, the core preview, with the child warm.
+// 1. Pull request 7 by its address, the core preview, with the Markdown child cold: the page's
+//    own first read starts it.
+// 2. Its record, released once its core has been judged, with the description unchanged.
+// 3. Pull request 10 from its row in the Pulls tab, the core preview, with the child warm and the
+//    description's render held past the page's first-paint hold (`LATE_RENDER_MS`), so the page
+//    shows with the placeholder in its place.
 // 4. 10's record, released once its core has been judged.
 //
 // On each, no frame shows the description's source, and it renders within the Markdown route's
 // own bound. Each page's timeline goes to stderr.
 import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
 
 const [base] = process.argv.slice(2);
@@ -37,6 +43,11 @@ const STEP_MS = 30000;
 // deadline, each INERT_RENDER_DEADLINE_MS (diff/markdown_projection_worker.py), past which the
 // route refuses the text and the page shows its source with the line that says why.
 const ROUTE_BOUND_MS = 10000;
+// How long step 3 holds its description's render: past the page's first-paint hold,
+// DESCRIPTION_HOLD_MS (200 ms in pull-page.js), and the loading period's quiet start,
+// --loading-state-delay (50 ms in static/styles.css), with room for frames on a loaded runner,
+// so the placeholder's rows show for a while before the render replaces them.
+const LATE_RENDER_MS = 1500;
 
 const failures = [];
 let checks = 0;
@@ -69,7 +80,7 @@ const SAMPLER = `(() => {
     if (plain && visible(plain)) return "source";
     if (rendered && visible(rendered)) return "rendered";
     if (plain && plain.classList.contains("github-pull-plain-pending") && visible(text)) {
-      return "placeholder";
+      return getComputedStyle(plain, "::after").visibility === "visible" ? "placeholder" : "quiet";
     }
     return "hidden";
   };
@@ -114,9 +125,10 @@ try {
 
   /**
    * Hold one page's frames from *since* to the rule, and say them on stderr: the state in effect
-   * at *since*, then each change, of the page numbered *page* alone.
+   * at *since*, then each change, of the page numbered *page* alone. With *late*, the render was
+   * held past the first-paint hold, so the placeholder's rows must show before it.
    */
-  const judge = async (name, since, { core, page }) => {
+  const judge = async (name, since, { core, page, late = false }) => {
     // A frame past the render, so the sampler has seen it.
     await evaluate("new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))");
     const all = JSON.parse(await evaluate("JSON.stringify(window.__description.trail)")).filter(
@@ -130,7 +142,9 @@ try {
     process.stderr.write(
       `${name}: ${seen.map(([at, shows, isCore]) => `${at - since} ms ${shows}${isCore ? " (core)" : ""}`).join(", ")}\n`,
     );
-    const shown = seen.filter(([, shows]) => shows !== "none" && shows !== "hidden");
+    const shown = seen.filter(
+      ([, shows]) => shows !== "none" && shows !== "hidden" && shows !== "quiet",
+    );
     check(
       `${name}: the description never shows its Markdown source`,
       shown.every(([, shows]) => shows !== "source"),
@@ -144,6 +158,14 @@ try {
         `${name}: it renders within the route's bound of its first sight`,
         done[0] - first[0] <= ROUTE_BOUND_MS,
         `${done[0] - first[0]} ms`,
+      );
+    }
+    if (late) {
+      const placeholder = shown.findIndex(([, shows]) => shows === "placeholder");
+      check(
+        `${name}: the placeholder's rows show while its render is held`,
+        placeholder >= 0 && shown.findIndex(([, shows]) => shows === "rendered") > placeholder,
+        JSON.stringify(seen),
       );
     }
     if (core) {
@@ -162,15 +184,25 @@ try {
   const seven = await shownPage();
   await judge("7 by its address", 0, { core: true, page: seven });
 
-  // 2. The record follows the core by itself, fetched as the page opened, its description the
-  // same text.
+  // 2. The record follows the core, fetched as the page opened and let through now, its
+  // description the same text.
   const opened = await now();
+  writeFileSync(join(release, "7"), "");
   await waitFor(`document.querySelector(".github-pull")?.dataset.corePreview === "false"`);
   await settle();
   check("7's record replaces its core in place", (await shownPage()) === seven);
   await judge("7's record", opened, { core: false, page: seven });
 
-  // 3. Pull request 10's core, from its row in the Pulls tab, as the owner opens one.
+  // 3. Pull request 10's core, from its row in the Pulls tab, as the owner opens one, its
+  // description's render held past the first-paint hold.
+  await chrome.send("Fetch.enable", {
+    patterns: [{ urlPattern: "*/pull-markdown*number=10*part=body*", requestStage: "Request" }],
+  });
+  chrome.on("Fetch.requestPaused", ({ requestId }) => {
+    setTimeout(() => {
+      chrome.send("Fetch.continueRequest", { requestId }).catch(() => {});
+    }, LATE_RENDER_MS);
+  });
   const row10 = `document.querySelector('#tab-pulls .github-pulls-row[data-number="10"]')`;
   await waitFor(`${row10} !== null`);
   const followed = await evaluate(`(() => {
@@ -184,11 +216,12 @@ try {
   );
   await settle();
   const ten = await shownPage();
-  await judge("10 from its row", followed, { core: true, page: ten });
+  await judge("10 from its row", followed, { core: true, page: ten, late: true });
+  await chrome.send("Fetch.disable");
 
   // 4. 10's record, let through now, follows its core.
   const released = await now();
-  writeFileSync(release, "");
+  writeFileSync(join(release, "10"), "");
   await waitFor(`document.querySelector(".github-pull")?.dataset.corePreview === "false"`);
   await settle();
   check("10's record replaces its core in place", (await shownPage()) === ten);
