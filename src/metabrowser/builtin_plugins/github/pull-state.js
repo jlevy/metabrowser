@@ -52,10 +52,11 @@ export function displayState(pull) {
 
 /**
  * What the repository's list of pull requests last said of each row, by source and number:
- * its state and when GitHub last updated it. The Pulls tab writes it as rows arrive; a page
- * reads it, so a cached record older than the list paints the list's state at once.
+ * its state, when GitHub last updated it, and its title. The Pulls tab writes it as rows
+ * arrive; a page reads it, so a cached record older than the list paints the list's state at
+ * once, and a page with no record yet titles its cold header as the record will be titled.
  *
- * @type {Map<string, Map<number, {state: PullState, updatedAt: string}>>}
+ * @type {Map<string, Map<number, {state: PullState, updatedAt: string, title: string | null}>>}
  */
 const listedStates = new Map();
 // A source is a served repository: a page has one, and a few at most across a session.
@@ -65,7 +66,7 @@ const LISTED_SOURCES = 4;
  * Note the list's rows for *source*, replacing what an older list said of them.
  *
  * @param {string} source
- * @param {{number: number, state: PullState, updatedAt: string | null}[]} rows
+ * @param {{number: number, state: PullState, updatedAt: string | null, title?: string}[]} rows
  */
 export function noteListed(source, rows) {
   let held = listedStates.get(source);
@@ -81,7 +82,11 @@ export function noteListed(source, rows) {
   }
   for (const row of rows) {
     if (row.updatedAt !== null) {
-      held.set(row.number, { state: row.state, updatedAt: row.updatedAt });
+      held.set(row.number, {
+        state: row.state,
+        updatedAt: row.updatedAt,
+        title: typeof row.title === "string" && row.title !== "" ? row.title : null,
+      });
     }
   }
 }
@@ -94,6 +99,29 @@ export function noteListed(source, rows) {
  */
 export function listedState(source, number) {
   return source === null ? null : (listedStates.get(source)?.get(number) ?? null);
+}
+
+/**
+ * What the lists said of *number* for a page that does not know its source yet, as a page
+ * with no record does not: the row of the one source that lists it, or null where none does
+ * or more than one does, since a number names a pull request only within its repository.
+ *
+ * @param {number} number
+ */
+export function listedAnywhere(number) {
+  /** @type {{state: PullState, updatedAt: string, title: string | null} | null} */
+  let found = null;
+  for (const held of listedStates.values()) {
+    const row = held.get(number);
+    if (row === undefined) {
+      continue;
+    }
+    if (found !== null) {
+      return null;
+    }
+    found = row;
+  }
+  return found;
 }
 
 /**

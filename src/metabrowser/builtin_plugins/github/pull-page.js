@@ -52,6 +52,7 @@ import {
 } from "./pull-stacks.js";
 import {
   displayState,
+  listedAnywhere,
   listedState,
   PULL_STATES,
   pullStateIcon,
@@ -355,8 +356,8 @@ const TRUNCATED = Object.freeze({
 /**
  * What Browse code is. One server has one pin, and other tabs share it, so opening a pull
  * request moves nothing: a `link` goes to the root of what is served, and a `switch` first
- * serves this pull request's head, by its commit and under its ref. `at` is the commit that
- * opens, as a reader sees it.
+ * serves this pull request's head, by its commit and under its ref. `at` is the full ID of the
+ * commit that opens, which a tooltip names short (`mb.shortCommit`).
  *
  * @typedef {{kind: "link", at: string} | {kind: "switch", ref: string, head: string, at: string}} BrowseCode
  */
@@ -400,7 +401,7 @@ const TRUNCATED = Object.freeze({
  *   browse: BrowseCode | null,
  *   filesUnavailable: string,
  *   changesPending: boolean,
- *   headOffer: {ref: string, head: string, pin: string, text: string} | null,
+ *   headOffer: {ref: string, head: string, pin: string} | null,
  *   checkoutAtHead: string | null,
  *   newCommits: string | null,
  * }} PullModel
@@ -1469,21 +1470,16 @@ export function describePull(envelope, page) {
   model.baseRef = text(pull.base?.ref) || null;
   const headRef = `refs/pull/${pull.number}/head`;
   if (envelope.pin !== null && head !== "") {
-    model.browse = { kind: "link", at: envelope.pin.slice(0, 12) };
+    model.browse = { kind: "link", at: envelope.pin };
     if (envelope.pin !== head && envelope.pin_ref === headRef) {
       // Served from this pull request's head, and a refresh found a newer one: the ref
       // moved, which the refresh fetched, so the page offers it rather than switching
       // under the reader.
-      model.headOffer = {
-        ref: headRef,
-        head,
-        pin: envelope.pin,
-        text: `This page's code is ${envelope.pin.slice(0, 12)}, not the pull request's head ${head.slice(0, 12)}.`,
-      };
+      model.headOffer = { ref: headRef, head, pin: envelope.pin };
     } else if (envelope.pin !== head) {
       // Anything else, such as a branch, a tag, or another pull request. Nothing is wrong,
       // so nothing is said: reading a pull request does not need its code served.
-      model.browse = { kind: "switch", ref: headRef, head, at: head.slice(0, 12) };
+      model.browse = { kind: "switch", ref: headRef, head, at: head };
     }
   }
   if (envelope.pin === null && head !== "" && page.checkoutHead === head) {
@@ -4824,10 +4820,11 @@ export function mountPullPage(container, ctx, mb) {
     if (browse === null) {
       return {};
     }
+    const at = mb.shortCommit(browse.at);
     const detail =
       browse.kind === "link"
-        ? `Open ${what} at ${browse.at}, the commit this page shows`
-        : `Switch to ${browse.at}, this pull request's head, and open ${what}`;
+        ? `Open ${what} at ${at}, the commit this page shows`
+        : `Switch to ${at}, this pull request's head, and open ${what}`;
     return { "data-tip-text": detail, "aria-label": `${label}: ${detail}` };
   }
 
@@ -5085,6 +5082,30 @@ export function mountPullPage(container, ctx, mb) {
     return node;
   }
 
+  /**
+   * A title: the state's icon, the title, and its number. A conventional-commit prefix is
+   * regular and the rest bold (docs/design-system.md, "Titles"); the number is outside the
+   * clamped text, so a title cut short keeps it.
+   *
+   * @param {import("./pull-state.js").PullState} state
+   * @param {string} title
+   * @param {number} number
+   */
+  function titleHeading(state, title, number) {
+    const titleText = h("span", { class: "github-pull-title-text" }, mb.titleNodes(title));
+    const heading = h(
+      "h1",
+      { class: "page-heading github-pull-title github-pull-title-with-state" },
+      [
+        pullStateIcon(state, { named: false }),
+        titleText,
+        " ",
+        h("span", { class: "github-pull-number" }, [`#${number}`]),
+      ],
+    );
+    return { heading, titleText };
+  }
+
   // A sizer of every state's label, each a badge's box of no height, after the badge: the
   // slot is as wide as the widest, so a stale record that turns out merged does not widen
   // the badge under the reader (github/styles.css, `.github-pull-state-slot`).
@@ -5178,15 +5199,25 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
+   * A commit named in a sentence, as every line names one: its short ID in the commit-ID
+   * face (docs/design-system.md, "Short Commit IDs").
+   *
+   * @param {string} commit
+   */
+  function commitId(commit) {
+    return h("span", { class: "git-commit-sha" }, [mb.shortCommit(commit)]);
+  }
+
+  /**
    * An offer at the status row's end: its sentence is cut short before its control is,
    * so a narrow pane still shows the control inside the header (styles.css, "The offers").
    *
-   * @param {string} text
+   * @param {Array<Node | string>} sentence
    * @param {HTMLElement} control
    */
-  function offer(text, control) {
+  function offer(sentence, control) {
     return h("span", { class: "github-pull-offer" }, [
-      tipWhenCut(h("span", { class: "github-pull-offer-text" }, [text])),
+      tipWhenCut(h("span", { class: "github-pull-offer-text" }, sentence)),
       " ",
       control,
     ]);
@@ -5213,6 +5244,36 @@ export function mountPullPage(container, ctx, mb) {
   let coldHeld = null;
 
   /**
+   * The cold header's title, decided at its first paint and kept: the Pulls tab's row for
+   * this pull request where the list has one, so the cold title is the record's, its icon,
+   * text, and number, and has the record's lines; null where the list has none, and the cold
+   * title is "Pull request #7", held at the two lines a record's title takes at most.
+   * Undefined before the first cold paint.
+   *
+   * @type {{state: import("./pull-state.js").PullState, title: string} | null | undefined}
+   */
+  let coldSeed;
+
+  /**
+   * Whether the cold header has been seen: the shell's quiet period, the hold's animation,
+   * is over. Without the animation API, in a document no browser lays out, nothing has been
+   * seen.
+   */
+  function coldHeaderShown() {
+    return (
+      typeof header.getAnimations === "function" &&
+      !header
+        .getAnimations()
+        .some(
+          (animation) =>
+            typeof CSSAnimation === "function" &&
+            animation instanceof CSSAnimation &&
+            animation.animationName === "github-pull-cold-hold",
+        )
+    );
+  }
+
+  /**
    * A page mounted with no record in hand keeps its header and tab column out of sight for
    * the shell's quiet period (`.github-pull-cold`, `--loading-state-delay`), and shows them
    * at once with the first header that has a record or core. A read that lands within the
@@ -5220,6 +5281,11 @@ export function mountPullPage(container, ctx, mb) {
    * labels drops as it lands; a slower one shows the cold header as it is, rows held, once
    * the quiet period is over. Opacity alone, so the rows keep their layout and the tab keys
    * stay live (docs/design-system.md, "Layout").
+   *
+   * A cold header that was seen with its title held at two lines, the Pulls tab having no row
+   * to title it with, has the record's title keep those two lines for the page's life
+   * (`.github-pull-title-held`), so the record lands moving nothing; a record that lands
+   * unseen, or under its row's title, has its own lines.
    *
    * @param {PullModel} model
    */
@@ -5234,6 +5300,9 @@ export function mountPullPage(container, ctx, mb) {
       return;
     } else {
       coldHeld = false;
+      if (coldSeed === null && coldHeaderShown()) {
+        header.classList.add("github-pull-title-held");
+      }
     }
     for (const part of [header, tabColumn]) {
       part.classList.toggle("github-pull-cold", coldHeld);
@@ -5312,20 +5381,7 @@ export function mountPullPage(container, ctx, mb) {
       const repeatsOpened = !repeatsClosed && age(pull.created).textContent === updated;
       const also = { label: "updated", iso: pull.updated };
       const title = headerPart("title", [pull.state, pull.title, pull.number], () => {
-        // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
-        // "Titles").
-        const titleText = h("span", { class: "github-pull-title-text" }, mb.titleNodes(pull.title));
-        // The number is outside the clamped text, so a title cut short keeps it.
-        const heading = h(
-          "h1",
-          { class: "page-heading github-pull-title github-pull-title-with-state" },
-          [
-            pullStateIcon(pull.state, { named: false }),
-            titleText,
-            " ",
-            h("span", { class: "github-pull-number" }, [`#${pull.number}`]),
-          ],
-        );
+        const { heading, titleText } = titleHeading(pull.state, pull.title, pull.number);
         // Two lines at most: a title cut short there carries the whole of it in its
         // tooltip. Cut short is a line or more hidden; a title of two lines that fit
         // overhangs its box by a pixel or two of descender (62 against 60 px, Chrome 152).
@@ -5399,14 +5455,24 @@ export function mountPullPage(container, ctx, mb) {
         children.push(labelsRow);
       }
     } else {
+      if (coldSeed === undefined) {
+        const listed = listedAnywhere(model.number);
+        coldSeed = listed?.title ? { state: listed.state, title: listed.title } : null;
+      }
+      const seed = coldSeed;
       children.push(
-        headerPart("loading title", model.number, () =>
-          h("h1", { class: "page-heading github-pull-title" }, [`Pull request #${model.number}`]),
+        headerPart("loading title", [model.number, seed], () =>
+          seed === null
+            ? h("h1", { class: "page-heading github-pull-title" }, [
+                `Pull request #${model.number}`,
+              ])
+            : titleHeading(seed.state, seed.title, model.number).heading,
         ),
         counterpartCorner,
       );
       // While the record is on its way the header keeps the rows it will have, empty, at
-      // their heights, so the record lands without moving the tab bar. The labels row is
+      // their heights, and its title the Pulls tab's row's or two lines held (`coldSeed`,
+      // `holdColdPage`), so the record lands without moving the tab bar. The labels row is
       // among them while the labels are unknown, so a record with labels lands moving
       // nothing; one with none takes the row and its gap away in the paint that lands it,
       // the one paint that changes the header and the body together (mb-2u08).
@@ -5475,9 +5541,9 @@ export function mountPullPage(container, ctx, mb) {
     /** @type {Element[]} */
     const ending = [];
     if (model.headOffer !== null) {
-      const text = model.headOffer.text;
+      const { pin, head } = model.headOffer;
       const switchNow = () => void controller.switchToHead();
-      const held = headerPart("switch offer", text, () => {
+      const held = headerPart("switch offer", [pin, head], () => {
         // A text action, as Refresh is: following it switches the served pin.
         const button = h(
           "button",
@@ -5485,7 +5551,14 @@ export function mountPullPage(container, ctx, mb) {
           ["Switch to the head"],
         );
         button.addEventListener("click", switchNow);
-        return { offer: offer(text, button), button };
+        const sentence = [
+          "This page's code is ",
+          commitId(pin),
+          ", not the pull request's head ",
+          commitId(head),
+          ".",
+        ];
+        return { offer: offer(sentence, button), button };
       });
       numbered.set("switch", { element: held.button, run: switchNow });
       ending.push(held.offer);
@@ -5495,7 +5568,7 @@ export function mountPullPage(container, ctx, mb) {
       const href = mb.navigation.href({ path: "" });
       const held = headerPart("checkout offer", [checkoutAtHead, href], () => {
         const link = h("a", { href }, ["Browse the checkout"]);
-        return { offer: offer(checkoutAtHead, link), link };
+        return { offer: offer([checkoutAtHead], link), link };
       });
       numbered.set("checkout", {
         element: held.link,
@@ -5622,7 +5695,7 @@ export function mountPullPage(container, ctx, mb) {
           mb,
           href,
           "",
-          [event.oid.slice(0, 7)],
+          [mb.shortCommit(event.oid)],
           "github-pull-commit-id git-commit-sha github-pull-external-action",
         ),
         { icon: "github", position: "before" },
@@ -6672,9 +6745,9 @@ export function mountPullPage(container, ctx, mb) {
       });
       body.querySelector(".github-pull-newer-offer")?.remove();
       const said = notice(null, [
-        diffFor?.right === comparison.right
-          ? "The comparison has changed. "
-          : `The pull request now ends at ${comparison.right.slice(0, 12)}. `,
+        ...(diffFor?.right === comparison.right
+          ? ["The comparison has changed. "]
+          : ["The pull request now ends at ", commitId(comparison.right), ". "]),
         offer,
       ]);
       said.classList.add("github-pull-newer-offer");

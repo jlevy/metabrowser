@@ -520,6 +520,10 @@ Useful helpers include:
   holds: a conventional-commit prefix such as `feat(ledger):` in a `span.title-prefix`,
   which the host draws at regular weight, then the rest, which keeps the element’s
   weight; a title with no prefix is its text alone ([Titles](design-system.md#titles));
+- `shortCommit(commit)` for a commit’s ID as every line names one, cut from its full ID
+  to the host’s one length; put it in an element of class `git-commit-sha`, which sets
+  it in the commit-ID face and gray, and keep the full ID for copying and links
+  ([Short Commit IDs](design-system.md#short-commit-ids));
 - `countPartsNodes(parts)` for a count summary, such as “3 success · 1 failure”, as the
   nodes its element holds, painted as the host paints every count summary: the parts are
   words as strings, `{number}`, drawn bold, `{punctuation}` for a list’s comma and

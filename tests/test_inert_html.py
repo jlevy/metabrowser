@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 
 from metabrowser import inert_html, kpress_adapter
+from metabrowser.git.message import COMMIT_MESSAGE_LINK_BASE
 from metabrowser.inert_html import harden
 from tests.github_pull_fixture import HOSTILE_COMMENT, allowlist_violations, html_tree
 from tests.golden_harness import check_recording, run_session
@@ -148,7 +149,10 @@ def test_the_browser_and_the_server_share_one_allowlist() -> None:
     assert lists["prefix"] == inert_html.ANCHOR_PREFIX
 
 
-@pytest.mark.parametrize(("base", "images"), [(None, True), (PR_PAGE, False)])
+# A commit message's base keeps only absolute http(s) addresses (git/message.py).
+@pytest.mark.parametrize(
+    ("base", "images"), [(None, True), (PR_PAGE, False), (COMMIT_MESSAGE_LINK_BASE, False)]
+)
 def test_both_sides_make_the_same_inert_markup_of_a_hostile_document(
     base: str | None, images: bool
 ) -> None:
@@ -171,7 +175,7 @@ def _numeric(text: str) -> str:
     return "".join(f"&#{ord(character)};" for character in text)
 
 
-@pytest.mark.parametrize("base", [None, PR_PAGE])
+@pytest.mark.parametrize("base", [None, PR_PAGE, COMMIT_MESSAGE_LINK_BASE])
 @pytest.mark.parametrize("written", [lambda href: html.escape(href, quote=True), _numeric])
 def test_neither_side_keeps_a_link_that_is_not_http(base: str | None, written: Any) -> None:
     """A link keeps its address only when it is ``http`` or ``https``, on both sides.
@@ -243,7 +247,7 @@ def test_a_document_never_names_the_application_or_a_bare_scheme_ambiguously() -
 
 
 def test_harden_is_idempotent() -> None:
-    for base in (None, PR_PAGE):
+    for base in (None, PR_PAGE, COMMIT_MESSAGE_LINK_BASE):
         once = harden(_kpress(HOSTILE_README), base)
         assert harden(once, base) == once
 

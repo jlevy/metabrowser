@@ -14,8 +14,8 @@ opens the Modified within menu in both. This judges what it measured against
 - the Modified within menu, with few rows, keeps its natural height in both windows;
 - Group by is the row, and the three filters and Show ignored wait in the closed drawer,
   which opens to hold them whole on lines one row's height and gap apart; the row fits
-  the default pane at its widest, under every Group by value with Clear and the
-  chevron's badge showing, and the badge counts Show ignored turned off; Group by's rows read
+  the default pane at its widest, under every Group by value with Clear showing and no
+  count badge, and the chevron's name counts Show ignored turned off; Group by's rows read
   as its trigger does, and its open menu's letters choose them while T stays Quick
   Search's with the menu closed; every key that opens a menu focuses its checked row,
   Escape and a choice that closes it give focus back to its trigger, and a pick in File
@@ -256,25 +256,26 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert row["row"] == ["menu:group", "nav-filter-bar-end"], row
     assert row["drawer"] == ["recency", "types", "size", "showIgnored"], row
     assert row["drawerOpen"] == "false" and row["drawerInert"] is True, row
-    # The row fits the default pane at its widest, a filter set so Clear and the badge
-    # show, under every Group by value: nothing overflows or is clipped, and the row's gap
-    # is left between Group by and Clear. "No grouping" is the widest trigger, with
-    # 95.05 px to spare on 2026-11-18 (the measurements are beside
-    # `.nav-filter-bar-end > .chip-badge` in styles.css).
+    # The row fits the default pane at its widest, a filter set so Clear shows, under
+    # every Group by value: nothing overflows or is clipped, and the row's gap is left
+    # between Group by and Clear. The chevron shows no count badge; its name carries the
+    # count (mb-as1w; the measurements are beside `.nav-filter-bar-end` in styles.css).
     for group, fit in measured["rowFit"].items():
         assert fit["content"] <= fit["row"], (group, fit)
         assert not fit["triggerClipped"], (group, fit)
         assert fit["spare"] >= 0, (group, fit)
-        assert fit["clear"] and fit["badge"] == "1", (group, fit)
+        assert fit["clear"] and fit["badge"] is None, (group, fit)
+        assert fit["name"] == "Show filters (1 active)", (group, fit)
     assert [fit["trigger"] for fit in measured["rowFit"].values()] == [
         "No grouping",
         "By age",
         "By file type",
     ], measured["rowFit"]
-    # Show ignored off alone: Clear shows, since it resets every filter, and the badge
-    # counts it, since the closed drawer hides it.
+    # Show ignored off alone: Clear shows, since it resets every filter, and the chevron's
+    # name counts it, since the closed drawer hides it.
     off = measured["ignoredOff"]
-    assert off["clear"] and off["badge"] == "1", off
+    assert off["clear"] and off["badge"] is None, off
+    assert off["name"] == "Show filters (1 active)", off
     # The open drawer holds the three filters, then Show ignored, each whole inside the bar
     # and one line tall, the checkbox centred in its line as the row's controls are, and
     # its lines the toolbar's line and gap apart: two lines at the default pane, the three

@@ -5871,7 +5871,8 @@ function renderNavFilterBar() {
     '<div class="nav-filter-bar-main nav-toolbar-row">' +
     // Group by leads the row: splitting the tree by age or by type is the simplest way to
     // see a folder, and it removes nothing, so it needs no drawer. The filters and Show
-    // ignored, which remove rows, sit behind the chevron, whose badge counts the ones set
+    // ignored, which remove rows, sit behind the chevron, whose name counts the ones set; it
+    // has no visible count, so Clear and the chevron fit beside Group by
     // (docs/design-system.md, "Grouping the Files Tree").
     fc.menuGroupHtml({
       key: "group",
@@ -5897,7 +5898,6 @@ function renderNavFilterBar() {
       icon: ICONS.toggle || "",
       className: "filter-drawer-toggle disclosure-toggle",
       pressed: filterDrawerOpen,
-      badge: drawerCount,
       // A glyph-only control needs a name that says what happens, and
       // the badge is decorative once the count is spoken here.
       ariaLabel:
@@ -10092,7 +10092,6 @@ function startNavCollapse() {
   }
   button.removeEventListener("click", onEarlyNavCollapseClick);
   navCollapse = window.MetabrowserNavCollapse.create({
-    anchor: document.getElementById("nav-shortcut-hints"),
     button: button,
     container: container,
     focusFallback: () => document.getElementById("preview-pane"),

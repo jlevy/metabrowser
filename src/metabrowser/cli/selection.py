@@ -47,6 +47,7 @@ from metabrowser.cache.resolve import (
 from metabrowser.cache.urls import FileAnchor, RepositorySelection
 from metabrowser.cli.common import maybe_cli_logging
 from metabrowser.cli.selection_href import selection_view_href
+from metabrowser.commit_ids import short_commit
 from metabrowser.errors import CLIError
 from metabrowser.git.process import GitError, repository_store_target
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject
@@ -186,7 +187,7 @@ async def resolve_for_cli(
 
 
 def _missing_path_message(source_url: str, resolved: ResolvedSelection) -> str:
-    where = display_ref(resolved.name) if resolved.name else resolved.commit[:12]
+    where = display_ref(resolved.name) if resolved.name else short_commit(resolved.commit)
     return f"{GitPath(resolved.path).display()} is not in {source_url} at {where} (path_not_found)"
 
 

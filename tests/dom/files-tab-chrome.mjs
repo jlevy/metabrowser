@@ -333,7 +333,8 @@ const ROW = `(() => ({
 }))()`;
 
 // Whether the row fits its pane: Group by's trigger at its natural width, the room to
-// spare before Clear and the chevron, and what the badge counts. `spare` is the space
+// spare before Clear and the chevron, any count badge, and the chevron's name, which
+// carries the count. `spare` is the space
 // between Group by and the trailing span beyond the row's gap, less how far that span
 // runs past the row's edge: positive when the row fits with room left, negative by the
 // overflow when it does not (the span's auto margin is 0 then, so the space alone cannot
@@ -357,6 +358,7 @@ const ROW_FIT = `(() => {
     triggerClipped: trigger.scrollWidth > trigger.clientWidth,
     clear: Boolean(end.querySelector("[data-chip-clear]")),
     badge: end.querySelector(".chip-badge")?.textContent.trim() || null,
+    name: end.querySelector(".filter-drawer-toggle")?.getAttribute("aria-label") ?? null,
   };
 })()`;
 
@@ -645,8 +647,8 @@ try {
   const result = { gear };
   // Group by is the row; the three filters and Show ignored wait in the closed drawer.
   result.row = await browser.evaluate(ROW);
-  // The row at its widest: a filter set, so Clear and the badge show, under each Group by
-  // value. Then Show ignored off alone: Clear shows, and the badge counts it.
+  // The row at its widest: a filter set, so Clear shows, under each Group by value. Then
+  // Show ignored off alone: Clear shows, and the chevron's name counts it.
   const setFilters = async (patch) => {
     await browser.evaluate(`window.metabrowser.filterState.set(${JSON.stringify(patch)}), true`);
     await browser.evaluate(frames);

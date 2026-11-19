@@ -36,6 +36,7 @@ from starlette.testclient import TestClient
 from metabrowser import server
 from metabrowser.cache.acquire import acquire_source
 from metabrowser.cache.records import StoreOperation
+from metabrowser.commit_ids import short_commit
 from metabrowser.git.process import UnsupportedGitVersionError
 from metabrowser.git.tree_source import GitPath
 from metabrowser.mirror_refresh import serve_mirror
@@ -283,7 +284,7 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
         "Branch: feature (local chip)",
         "Remote branch: origin/feature (remote chip)",
         "Tag: v1 (tag chip)",
-        f"Commit: {recording['switch_branch']['body']['status']['pin'][:12]}",
+        f"Commit: {short_commit(recording['switch_branch']['body']['status']['pin'])}",
     ]
     pin = recording["switch_branch"]["body"]["status"]["pin"]
     refused = "refused when another is served: true; while its own is: false"

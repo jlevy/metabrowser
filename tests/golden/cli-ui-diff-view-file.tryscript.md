@@ -103,18 +103,18 @@ $ node tests/dom/diff-view-file-session.js
       "requests": [],
       "bars": {
         "M README.md": [
-          "[View file] link /view/g1-UkVBRE1FLm1k · Open README.md at 6ac4c8b5eb94, the commit this page shows"
+          "[View file] link /view/g1-UkVBRE1FLm1k · Open README.md at 6ac4c8b, the commit this page shows"
         ],
         "A added.txt": [
-          "[View file] link /view/g1-YWRkZWQudHh0 · Open added.txt at 6ac4c8b5eb94, the commit this page shows"
+          "[View file] link /view/g1-YWRkZWQudHh0 · Open added.txt at 6ac4c8b, the commit this page shows"
         ],
         "D gone.txt": [],
         "M latin1-�.txt": [
-          "[View file] link /view/g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at 6ac4c8b5eb94, the commit this page shows"
+          "[View file] link /view/g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at 6ac4c8b, the commit this page shows"
         ],
         "M link": [],
         "R100 src/old_name.py → src/new_name.py": [
-          "[View file] link /view/g1-c3Jj/g1-bmV3X25hbWUucHk · Open src/new_name.py at 6ac4c8b5eb94, the commit this page shows"
+          "[View file] link /view/g1-c3Jj/g1-bmV3X25hbWUucHk · Open src/new_name.py at 6ac4c8b, the commit this page shows"
         ],
         "M vendor/lib": []
       }
@@ -137,18 +137,18 @@ $ node tests/dom/diff-view-file-session.js
       "requests": [],
       "bars": {
         "M README.md": [
-          "[View file] button[type=button] · Switch to 6ac4c8b5eb94 and open README.md"
+          "[View file] button[type=button] · Switch to 6ac4c8b and open README.md"
         ],
         "A added.txt": [
-          "[View file] button[type=button] · Switch to 6ac4c8b5eb94 and open added.txt"
+          "[View file] button[type=button] · Switch to 6ac4c8b and open added.txt"
         ],
         "D gone.txt": [],
         "M latin1-�.txt": [
-          "[View file] button[type=button] · Switch to 6ac4c8b5eb94 and open latin1-�.txt"
+          "[View file] button[type=button] · Switch to 6ac4c8b and open latin1-�.txt"
         ],
         "M link": [],
         "R100 src/old_name.py → src/new_name.py": [
-          "[View file] button[type=button] · Switch to 6ac4c8b5eb94 and open src/new_name.py"
+          "[View file] button[type=button] · Switch to 6ac4c8b and open src/new_name.py"
         ],
         "M vendor/lib": []
       }
@@ -215,26 +215,26 @@ $ node tests/dom/diff-view-file-session.js
       "requests": [],
       "bars": {
         "A README.md": [
-          "[View file] button[type=button] · Switch to a5232ab93056 and open README.md"
+          "[View file] button[type=button] · Switch to a5232ab and open README.md"
         ],
         "A changes.patch": [
-          "[View file] button[type=button] · Switch to a5232ab93056 and open changes.patch"
+          "[View file] button[type=button] · Switch to a5232ab and open changes.patch"
         ],
         "A docs/guide.md": [
-          "[View file] button[type=button] · Switch to a5232ab93056 and open docs/guide.md"
+          "[View file] button[type=button] · Switch to a5232ab and open docs/guide.md"
         ],
         "A gone.txt": [
-          "[View file] button[type=button] · Switch to a5232ab93056 and open gone.txt"
+          "[View file] button[type=button] · Switch to a5232ab and open gone.txt"
         ],
         "A kept.txt": [
-          "[View file] button[type=button] · Switch to a5232ab93056 and open kept.txt"
+          "[View file] button[type=button] · Switch to a5232ab and open kept.txt"
         ],
         "A latin1-�.txt": [
-          "[View file] button[type=button] · Switch to a5232ab93056 and open latin1-�.txt"
+          "[View file] button[type=button] · Switch to a5232ab and open latin1-�.txt"
         ],
         "A link": [],
         "A src/old_name.py": [
-          "[View file] button[type=button] · Switch to a5232ab93056 and open src/old_name.py"
+          "[View file] button[type=button] · Switch to a5232ab and open src/old_name.py"
         ],
         "A vendor/lib": []
       }
@@ -246,18 +246,18 @@ $ node tests/dom/diff-view-file-session.js
       ],
       "bars": {
         "M README.md": [
-          "[View on branch] link /view/g1-UkVBRE1FLm1k · Open README.md at 6ac4c8b5eb94, the commit this page shows"
+          "[View on branch] link /view/g1-UkVBRE1FLm1k · Open README.md at 6ac4c8b, the commit this page shows"
         ],
         "A added.txt": [
-          "[View on branch] link /view/g1-YWRkZWQudHh0 · Open added.txt at 6ac4c8b5eb94, the commit this page shows"
+          "[View on branch] link /view/g1-YWRkZWQudHh0 · Open added.txt at 6ac4c8b, the commit this page shows"
         ],
         "D gone.txt": [],
         "M latin1-�.txt": [
-          "[View on branch] link /view/g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at 6ac4c8b5eb94, the commit this page shows"
+          "[View on branch] link /view/g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at 6ac4c8b, the commit this page shows"
         ],
         "M link": [],
         "R100 src/old_name.py → src/new_name.py": [
-          "[View on branch] link /view/g1-c3Jj/g1-bmV3X25hbWUucHk · Open src/new_name.py at 6ac4c8b5eb94, the commit this page shows"
+          "[View on branch] link /view/g1-c3Jj/g1-bmV3X25hbWUucHk · Open src/new_name.py at 6ac4c8b, the commit this page shows"
         ],
         "M vendor/lib": []
       }
@@ -275,18 +275,18 @@ $ node tests/dom/diff-view-file-session.js
       ],
       "bars": {
         "M README.md": [
-          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open README.md"
+          "[View on branch] button[type=button] · Switch to 6ac4c8b, this pull request's head, and open README.md"
         ],
         "A added.txt": [
-          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open added.txt"
+          "[View on branch] button[type=button] · Switch to 6ac4c8b, this pull request's head, and open added.txt"
         ],
         "D gone.txt": [],
         "M latin1-�.txt": [
-          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open latin1-�.txt"
+          "[View on branch] button[type=button] · Switch to 6ac4c8b, this pull request's head, and open latin1-�.txt"
         ],
         "M link": [],
         "R100 src/old_name.py → src/new_name.py": [
-          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open src/new_name.py"
+          "[View on branch] button[type=button] · Switch to 6ac4c8b, this pull request's head, and open src/new_name.py"
         ],
         "M vendor/lib": []
       }
@@ -398,7 +398,7 @@ $ node tests/dom/diff-view-file-session.js
       ],
       "busy": [],
       "notices": {
-        "M README.md": "[role=status] The mirror is fetching 6ac4c8b5eb94; try again when the fetch ends."
+        "M README.md": "[role=status] The mirror is fetching 6ac4c8b; try again when the fetch ends."
       }
     },
     {
@@ -407,7 +407,7 @@ $ node tests/dom/diff-view-file-session.js
         "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
       ],
       "notices": {
-        "M README.md": "[role=status] Commit 6ac4c8b5eb94 is not in the mirror, and its origin does not have it."
+        "M README.md": "[role=status] Commit 6ac4c8b is not in the mirror, and its origin does not have it."
       }
     },
     {
@@ -416,7 +416,7 @@ $ node tests/dom/diff-view-file-session.js
         "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
       ],
       "notices": {
-        "M README.md": "[role=status] Commit 6ac4c8b5eb94 is not in the mirror, and fetching it failed."
+        "M README.md": "[role=status] Commit 6ac4c8b is not in the mirror, and fetching it failed."
       }
     },
     {
@@ -425,7 +425,7 @@ $ node tests/dom/diff-view-file-session.js
         "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
       ],
       "notices": {
-        "M README.md": "[role=status] Could not switch to 6ac4c8b5eb94 (unsupported_for_subject)."
+        "M README.md": "[role=status] Could not switch to 6ac4c8b (unsupported_for_subject)."
       }
     },
     {
@@ -451,18 +451,18 @@ $ node tests/dom/diff-view-file-session.js
       ],
       "bars": {
         "M README.md": [
-          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open README.md"
+          "[View on branch] button[type=button] · Switch to 6ac4c8b, this pull request's head, and open README.md"
         ],
         "A added.txt": [
-          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open added.txt"
+          "[View on branch] button[type=button] · Switch to 6ac4c8b, this pull request's head, and open added.txt"
         ],
         "D gone.txt": [],
         "M latin1-�.txt": [
-          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open latin1-�.txt"
+          "[View on branch] button[type=button] · Switch to 6ac4c8b, this pull request's head, and open latin1-�.txt"
         ],
         "M link": [],
         "R100 src/old_name.py → src/new_name.py": [
-          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open src/new_name.py"
+          "[View on branch] button[type=button] · Switch to 6ac4c8b, this pull request's head, and open src/new_name.py"
         ],
         "M vendor/lib": []
       }

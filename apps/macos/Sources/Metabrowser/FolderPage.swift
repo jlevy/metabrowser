@@ -30,7 +30,11 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     private var policy = NavigationPolicy()
     private let container: WebContainerView
     private let status = WindowStatus()
-    private let textFinder = NSTextFinder()
+    /// Find on the page: WebKit's own find, run from the window's find bar (`PageFind`).
+    private let find = PageFind()
+    private lazy var findBar = makeFindBar()
+    /// The newest find's number, so an older one's answer, arriving late, is dropped.
+    private var findGeneration = 0
     /// The navigation `load` submitted, whose commit reveals the page in place of the
     /// status view, until server state supersedes it (`PageReveal`).
     private var reveal = PageReveal<WKNavigation>()
@@ -73,8 +77,6 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         super.init(nibName: nil, bundle: nil)
 
         wire(webView)
-        textFinder.findBarContainer = container
-        textFinder.isIncrementalSearchingEnabled = true
         // A page WebKit creates for `target=_blank` shows at once.
         container.showsStatus = configuration == nil
     }
@@ -120,7 +122,6 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
             urls.forEach { app.request($0) }
             return true
         }
-        textFinder.client = webView  // WKWebView adopts NSTextFinderClient
     }
 
     // MARK: - Server state
@@ -315,8 +316,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         loads.cancelAll()
         gitHubPopover?.discard()
         gitHubPopover = nil
-        textFinder.client = nil
-        textFinder.findBarContainer = nil
+        container.isFindBarVisible = false
         webView.stopLoading()
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
@@ -463,10 +463,86 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         gitHubPopover?.reload()
     }
 
-    /// Menu items carry the `NSTextFinder.Action` in their tag.
+    /// Menu items carry the `NSTextFinder.Action` in their tag, though `PageFind`, not
+    /// `NSTextFinder`, answers them (mb-jkbp).
     @objc func performFindAction(_ sender: Any?) {
         guard let tag = (sender as? NSMenuItem)?.tag, let action = NSTextFinder.Action(rawValue: tag) else { return }
-        textFinder.performAction(action)
+        switch action {
+        case .showFindInterface:
+            showFindBar()
+        case .nextMatch, .previousMatch:
+            // With no search string yet, the shared one other apps' Find set, as in Safari.
+            if find.query.isEmpty, let shared = NSPasteboard(name: .find).string(forType: .string), !shared.isEmpty {
+                find.use(shared)
+                findBar.field.stringValue = shared
+            }
+            guard !find.query.isEmpty else { return showFindBar() }
+            runFind { find, webView in await find.step(action == .nextMatch ? .next : .previous, in: webView) }
+        case .setSearchString:
+            let webView = self.webView
+            Task { [weak self] in
+                guard let self, let text = await find.selection(in: webView) else { return }
+                find.use(text)
+                findBar.field.stringValue = text
+                shareSearchString(text)
+            }
+        case .hideFindInterface:
+            hideFindBar()
+        default:
+            return
+        }
+    }
+
+    private func makeFindBar() -> FindBar {
+        let bar = FindBar()
+        bar.onSearch = { [weak self] text in
+            self?.shareSearchString(text)
+            self?.runFind { find, webView in await find.search(text, in: webView) }
+        }
+        bar.onStep = { [weak self] step in
+            self?.runFind { find, webView in await find.step(step, in: webView) }
+        }
+        bar.onClose = { [weak self] in self?.hideFindBar() }
+        return bar
+    }
+
+    private func showFindBar() {
+        container.findBarView = findBar
+        container.isFindBarVisible = true
+        if findBar.field.stringValue.isEmpty, let shared = NSPasteboard(name: .find).string(forType: .string) {
+            findBar.field.stringValue = shared
+            find.use(shared)
+        }
+        window?.makeFirstResponder(findBar.field)
+        findBar.field.selectText(nil)
+    }
+
+    private func hideFindBar() {
+        guard container.isFindBarVisible else { return }
+        container.isFindBarVisible = false
+        findBar.show(found: nil)
+        window?.makeFirstResponder(webView)
+    }
+
+    /// The search string other apps' Find reads, as macOS shares it.
+    private func shareSearchString(_ text: String) {
+        guard !text.isEmpty else { return }
+        let pasteboard = NSPasteboard(name: .find)
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
+
+    /// Run one find against the page shown now and show its answer, unless a newer find
+    /// started meanwhile.
+    private func runFind(_ body: @escaping @MainActor (PageFind, WKWebView) async -> Bool?) {
+        findGeneration += 1
+        let generation = findGeneration
+        let webView = self.webView
+        Task { [weak self] in
+            guard let self else { return }
+            let found = await body(find, webView)
+            if generation == findGeneration { findBar.show(found: found) }
+        }
     }
 
     @objc func restartServer(_ sender: Any?) { session?.retry(from: self) }
@@ -489,7 +565,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         case #selector(performFindAction(_:)):
             guard PageMenu.isEnabled(.find, in: state), let action = NSTextFinder.Action(rawValue: item.tag)
             else { return false }
-            return textFinder.validateAction(action)
+            return action != .hideFindInterface || container.isFindBarVisible
         case #selector(openInDefaultBrowser(_:)): return currentServerURL != nil
         default: return true
         }

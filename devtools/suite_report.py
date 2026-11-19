@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Final
 
 from devtools import run_goldens, tryscript_blocks
+from metabrowser.commit_ids import short_commit
 
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
 # The name that stands for the working tree where a commit is expected.
@@ -422,15 +423,21 @@ def render_run(run: Run, *, top: int) -> str:
 
 
 def describe(ref: str, root: Path = REPO_ROOT) -> str:
-    """The commit a column was measured at, so the numbers can be traced to it."""
+    """The commit a column was measured at, so the numbers can be traced to it.
 
-    commit = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD" if ref == WORKING_TREE else ref],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    Named by its short commit ID, cut from the full one as every line names a commit
+    (docs/design-system.md, "Short Commit IDs").
+    """
+
+    commit = short_commit(
+        subprocess.run(
+            ["git", "rev-parse", "HEAD" if ref == WORKING_TREE else ref],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    )
     if ref == WORKING_TREE:
         return f"working tree on {commit}"
     return commit if commit.startswith(ref) or ref.startswith(commit) else f"{ref} ({commit})"

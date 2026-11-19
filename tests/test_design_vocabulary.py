@@ -417,7 +417,13 @@ def test_row_text_shares_one_baseline() -> None:
     # sits on the title's baseline as text does (docs/design-system.md, "View Headers"). No
     # flex baseline rule reaches either: an item holding only a pending skeleton, aligned
     # as a flex item, would sit the skeleton's bottom edge on the baseline.
+    # The header's corner (`.view-header-end`) is neither row: a strut of the title's type
+    # and the View on GitHub button, which opts in to the strut's baseline, the title's
+    # first line's (mb-tatf), as a row's text does. tests/dom/view-header-chrome.mjs
+    # measures the button's label and the title on one baseline.
     for selector, _is_items in rules:
+        if selector.startswith(".view-header-end"):
+            continue
         assert not re.search(r"\.(?:file-header|view-header)", selector), (
             f"{selector} aligns a view header's text to a baseline"
         )
@@ -1140,7 +1146,11 @@ def test_git_commit_summary_is_one_component() -> None:
     # Its face is chrome prose's, which its markup carries (test_serif_is_only_for_documents).
     assert "font-family" not in summary_body
     assert "font-size: var(--document-body-font-size)" in summary_body
-    assert "white-space: pre-wrap" in summary_body
+    # Its Markdown is set as a PR description's (placeCommitBody); the message as written,
+    # until then and where it is not rendered, and its trailers keep their newlines.
+    assert "white-space" not in summary_body
+    written = _rule(styles, ".git-commit-body-plain,\n.git-commit-trailers")
+    assert "white-space: pre-wrap" in written
     for rule in (
         change_stats,
         meta,
@@ -1178,8 +1188,8 @@ _PAGE_HEADER_LINES = (
 def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     """A commit's page and a pull request's have one header (mb-26zj, "Page Headers").
 
-    Each is a `.page-header`, its title then its lines 6 px apart, and every line under the
-    title but the labels, a row of chips, is a `.page-header-line` at `--body-font-size`, an
+    Each is a `.page-header`, its title, then its lines, the first `--page-title-gap` under
+    the title and the rest 6 px apart, and every line under the title but the labels, a row of chips, is a `.page-header-line` at `--body-font-size`, an
     age in it and the Diff summary's row included, whose header the diff plugin sets at the
     same token: the owner found the summary and the pull request's
     rows of ages and status a step smaller than the lines above them (mb-kisi). No rule sets
@@ -1193,10 +1203,19 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     assert "test_page_headers_set_every_line_under_the_title_at_the_body_size" in doc
     shell = dict(_rules_of(STATIC / "styles.css"))
     assert shell[".page-header"] == {
+        "--page-header-line-gap": "6px",
         "display": "flex",
         "flex-direction": "column",
-        "gap": "6px",
+        "gap": "var(--page-header-line-gap)",
     }
+    # The first line is `--page-title-gap` under the title, the gap a view header leaves
+    # between its title and the metadata line after it (mb-wcbc).
+    assert shell[".page-header > .page-heading"] == {
+        "margin": "0 0 calc(var(--page-title-gap) - var(--page-header-line-gap))"
+    }
+    assert shell[".view-header-title.page-heading"]["padding-inline-end"] == (
+        "var(--page-title-gap)"
+    )
     assert shell[".page-header-line"]["font-size"] == "var(--body-font-size)"
     # An age in a line takes the line's size because the age primitive sets none
     # (test_age_is_one_primitive_everywhere), so no rule restates it here.
@@ -2819,17 +2838,25 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert github[".github-pull-header a:not(:where(.view-header-end *))"]["color"] == (
         "var(--link)"
     )
-    # A GitHub action (a check's action on GitHub, a conversation commit hash) is quiet:
-    # muted at rest, the link token on hover and focus. A check's is at its row's size; a
-    # commit hash is one step below its row (below). View on GitHub is the header corner's
-    # button, a chip (mb-4wqh), and not one of them.
-    for place in (".github-pull-checks", ".github-pull-commit"):
-        action = f"{place} .github-pull-external-action"
-        assert github[action] == {"color": "var(--muted)"}, action
-        for state in (":hover", ":focus-visible"):
-            assert github[action + state]["color"] == "var(--link)", action + state
+    # A check's action on GitHub is quiet: muted at rest, the link token on hover and
+    # focus, at its row's size. View on GitHub is the header corner's button, a chip
+    # (mb-4wqh), and not one of them.
+    action = ".github-pull-checks .github-pull-external-action"
+    assert github[action] == {"color": "var(--muted)"}, action
+    for state in (":hover", ":focus-visible"):
+        assert github[action + state]["color"] == "var(--link)", action + state
     assert page.count('"github-pull-external-action"') == 1, "a check's"
+    # A conversation commit's hash links to it on GitHub and is a short commit ID, in the
+    # commit-ID gray under the pointer too, which only underlines it (docs/design-system.md,
+    # "Short Commit IDs"); tests/test_github_pull_timeline_chrome.py measures it.
     assert '"github-pull-commit-id git-commit-sha github-pull-external-action"' in page
+    assert not any(
+        "color" in declarations
+        for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
+        if ".github-pull-commit-id" in selector
+        or ".github-pull-commit .github-pull-external-action" in selector
+    )
+    assert github[".github-pull-commit-id:hover"]["text-decoration"] == "underline"
     # A check's own site is an ordinary link, so it never reads as the description after it.
     assert github[".github-pull-checks a"]["color"] == "var(--link)"
     # A conversation commit is said in a card head's type ("Conversation Timeline"): its

@@ -276,9 +276,10 @@ try {
   );
   phase("files");
 
-  // A file's view header and a folder's: the title at the page title's size, and the
-  // eyebrow's address and the metadata line at the main view's reading size, the line's
-  // values at the size of the line they are on (docs/design-system.md, "View Headers").
+  // A file's view header and a folder's: the title at the page title's size, the eyebrow's
+  // address at the list size of the navigation's path row, its twin across the divider
+  // (mb-ch82), and the metadata line at the main view's reading size, the line's values at
+  // the size of the line they are on (docs/design-system.md, "View Headers").
   await evaluate(
     "[...document.querySelectorAll('#tab-files .tree-file')].find((row) => /README/.test(row.textContent)).click()",
   );
@@ -287,7 +288,7 @@ try {
   );
   const fileHeader = "a file's header";
   await role(fileHeader, "page title", ".file-header .view-header-title");
-  await role(fileHeader, "reading text", ".file-header .folder-crumb-root");
+  await role(fileHeader, "list text", ".file-header .folder-crumb-root");
   await role(fileHeader, "reading text", ".file-header .view-header-line");
   await role(fileHeader, "reading text", ".file-header .file-header-size");
   await accompanies(fileHeader, ".file-header .file-header-size", ".file-header .view-header-line");

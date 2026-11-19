@@ -670,7 +670,9 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         ],
         # A page mounted with no record in hand holds its cold header and tab column for the
         # quiet period, and the first header with a record lifts it, also while the
-        # conversation's first paint still waits for its Markdown (exp-099).
+        # conversation's first paint still waits for its Markdown (exp-099). Its cold title is
+        # the Pulls row's, in the record's shape, when exactly one repository's row for its
+        # number is in hand, and the plain "Pull request #N" otherwise.
         "coldHold": [
             "mounted with no record in hand: header github-pull-cold, tab column github-pull-cold",
             "its record lands, the conversation waiting for its Markdown: header shown, tab column shown",
@@ -678,6 +680,10 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "on Changes, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold",
             "its record lands: header shown, tab column shown",
             "mounted with its record in hand: header shown, tab column shown",
+            'no Pulls row in hand, mounted with no record in hand: title "Pull request #7", plain',
+            'its Pulls row in hand, mounted with no record in hand: title "Count to two in the app #7", the record\'s shape',
+            "its Pulls row in hand, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold",
+            'two repositories\' rows for its number, mounted with no record in hand: title "Pull request #7", plain',
         ],
         # The header's corner, for the View on GitHub button (mb-4wqh): right after the
         # title from the cold header on, one corner for the page's life, and the page asks

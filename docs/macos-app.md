@@ -112,6 +112,16 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
 - **Always the mirror:** a link opens Metabrowser’s own copy of the repository, its
   mirror in `metab`’s cache, never a checkout of it that you have open
   ([Open Modes](project/architecture/arch-open-modes.md)).
+- **Beside your checkout:** when the mirror has no window yet but a window shows a
+  checkout of the same GitHub repository, the mirror opens as a new tab of that window
+  instead of a window of its own, whatever Settings says about new folders.
+  A checkout belongs to the repository its `origin` names on github.com, not to the
+  repository its folder is named after, and a folder inside a checkout belongs to it
+  too. If several open windows show checkouts of the repository, the tab joins the one
+  you used most recently.
+  The checkout’s own tab keeps showing your working tree.
+  A checkout whose window is minimized, or whose server has not started yet, is passed
+  over, and the mirror opens as any new folder does.
 - **Asked once before a clone:** a link to a repository the cache does not hold yet asks
   first, naming the repository: opening it clones the repository into the cache and
   reads it, and its pull requests, with your `gh` sign-in.
@@ -214,6 +224,15 @@ Reveal Server Log (each folder has its own log), and Print; View > Back, Forward
 Page, and zoom, which the app remembers; Edit > Find; and Help > Metabrowser
 Documentation, Check Setup…, and Reveal Logs Folder.
 The mark at the title bar’s trailing end opens the project on GitHub.
+
+Edit > Find (Command-F) opens a find bar above the page.
+It searches as a browser’s find does: the whole page, the navigation pane included,
+without regard to case, wrapping at either end, and it searches the page as it is now,
+after you open another file in place.
+Typing searches as you go; Return or Command-G finds the next match, Shift-Return or
+Shift-Command-G the previous one; Command-E makes the selected text the search string;
+and Escape or Done closes the bar.
+The search string is the one other apps’ Find shares.
 
 ## View on GitHub
 

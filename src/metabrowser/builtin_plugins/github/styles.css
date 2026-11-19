@@ -22,23 +22,44 @@
   padding: 0;
   color: var(--text);
 }
-/* A page header (`.page-header`, static/styles.css): the title, then its lines 6 px apart. */
+/* A page header (`.page-header`, static/styles.css): the title, then its lines, the first
+   `--page-title-gap` under the title and the rest 6 px apart. Its top pad is a view
+   header's, the corner's inset (below), so the title's first line is the corner's line.
+
+   The header's box is decided at first paint: each row is one line in every state and on
+   every tab, and the title its own one or two, so the tab bar under it never moves between
+   tabs, nor as a record's parts arrive. Heights are in line units and struts of the
+   controls they hold, not pixels measured in one engine. Measured in Chrome 152 before
+   this: the header ranged from 137.6 to 202.6 px, and the tab bar moved on 26 of 26
+   switches between PRs. A record's title held two lines too, and its held second line
+   stood between a one-line title and the author's line, 36.5 px of space where a two-line
+   title had 6 (mb-wcbc); the title cut short at two lines is a page title's height, one
+   line or two, and the author's line `--page-title-gap` under it (`.page-header`). So a
+   switch between pull requests whose titles take different lines moves the tab bar by the
+   difference, as their content differs. The title while the record is on its way is the
+   Pulls tab's row's, or holds two lines that a record seen landing keeps (below), so a
+   record lands moving nothing. */
 .github-pull-header {
-  padding: var(--content-padding-y) var(--content-padding-x);
+  padding: var(--view-header-padding-top) var(--content-padding-x) var(--content-padding-y);
 }
-/* The header's box is decided at first paint: each row is one line, or the title's two,
-   in every state and on every tab, so the tab bar under it never moves between pull
-   requests or tabs. Heights are in line units and struts of the controls they hold, not
-   pixels measured in one engine. Measured in Chrome 152 before this: the header ranged
-   from 137.6 to 202.6 px, and the tab bar moved on 26 of 26 switches between PRs. */
-.github-pull-title {
+/* A cold header seen with its title "Pull request #7", held at two lines (below) for want
+   of the Pulls tab's row to title it with, has the record's title keep the two lines for
+   the page's life (pull-page.js, `holdColdPage`), so a record read slower than the quiet
+   period lands moving nothing; a one-line title then has an empty second line on that page
+   alone. Where the Pulls tab has the row, the cold title is the row's and has the record's
+   lines, and a record that lands within the quiet period was never seen cold: both keep
+   their own lines. Measured in Chrome 152 at 560 px before the hold, 2026-11-18: a one-line
+   title's slow landing moved the tab bar up 30 px, from 240 to 210, and with no labels row
+   to keep, 56 px, to 184. */
+.github-pull-title-held > .github-pull-title {
   min-height: 2lh;
 }
 /* The header's corner, its View on GitHub button (pull-page.js; docs/design-system.md, "View
    on GitHub"), is a view header's, `.view-header-end` in static/styles.css, placed in the
    page rather than in the header: the page is as wide as the main view, so the button is at
-   the same inset from its top and right edges as a file's and a folder's, and where it will
-   be once the header is a view header as wide as the view (mb-7t5s). The header is the
+   the same insets from the title's first line and the page's right edge as a file's and a
+   folder's from theirs, on the title's baseline, and where it will be once the header is a
+   view header as wide as the view (mb-7t5s). The header is the
    reading column, which in a wide pane ends left of the button; where it does not, the
    title leaves the button its room, less the space beside the column: the page's width,
    `100cqi` of the main view, which is the query container, less the header's, the title's
@@ -94,11 +115,13 @@
   line-clamp: 2;
   overflow: hidden;
 }
-/* The title while the record is on its way, "Pull request #7", is cut short at the record's
-   two lines too. Where the title leaves the corner's button its room in a narrow pane it
-   wrapped to three: at 320 px, 90 px tall where a record's title is 60, so the tab bar moved
-   30 px as the record landed (Chrome 152, mb-4wqh). */
+/* The title while the record is on its way, "Pull request #7", holds the record's two
+   lines, the most a record's title takes, and is cut short there. Where the title leaves the
+   corner's button its room in a narrow pane it wrapped to three: at 320 px, 90 px tall where
+   a record's title is 60, so the tab bar moved 30 px as the record landed (Chrome 152,
+   mb-4wqh). */
 .github-pull-title:not(.github-pull-title-with-state) {
+  min-height: 2lh;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -306,9 +329,14 @@
    hover, and focus ring; `:where` keeps the exclusion from adding to the specificity. */
 .github-pull-header a:not(:where(.view-header-end *)),
 .github-pull-card-head a,
-.github-pull-commit-id,
 .github-pull-checks a {
   color: var(--link);
+  text-decoration: none;
+}
+/* A commit's ID links to the commit on GitHub and keeps the commit-ID gray, under the
+   pointer too: its underline says it is a link (docs/design-system.md, "Short Commit
+   IDs"). */
+.github-pull-commit-id {
   text-decoration: none;
 }
 .github-pull-header a:not(:where(.view-header-end *)):hover,
@@ -971,13 +999,10 @@
   padding: 3px 0;
   font-size: var(--body-font-size);
 }
-.github-pull-commit .github-pull-external-action,
 .github-pull-checks .github-pull-external-action {
   color: var(--muted);
 }
-.github-pull-commit .github-pull-external-action:hover,
 .github-pull-checks .github-pull-external-action:hover,
-.github-pull-commit .github-pull-external-action:focus-visible,
 .github-pull-checks .github-pull-external-action:focus-visible {
   color: var(--link);
 }

@@ -63,6 +63,11 @@ require("node:vm").runInNewContext(fs.readFileSync(gitPathFile, "utf8"), routeCo
 globalThis.window = {
   MetabrowserGitPath: routeContext.MetabrowserGitPath,
   MetabrowserNavigationRoute: routeContext.MetabrowserNavigationRoute,
+  // The SDK as the diff plugin's pin switch reads it, for the commit a refusal names: the
+  // shell's own formatter.
+  metabrowser: {
+    shortCommit: require("./changed-files-tree-fixture.js").shellPainters().shortCommit,
+  },
 };
 
 function assert(condition, message) {
@@ -144,10 +149,11 @@ function summarize(model) {
           },
     notes: model.notes,
     browse: browseCode(model),
+    // The offer's two commits as its sentence names them, each a short commit ID.
     headOffer:
       model.headOffer === null
         ? null
-        : `${model.headOffer.text} [Switch to the head] -> ${model.headOffer.ref}`,
+        : `code ${window.metabrowser.shortCommit(model.headOffer.pin)}, head ${window.metabrowser.shortCommit(model.headOffer.head)} [Switch to the head] -> ${model.headOffer.ref}`,
     comparison:
       model.comparison === null
         ? null
