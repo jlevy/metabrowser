@@ -77,7 +77,7 @@ def _recording() -> dict[str, Any]:
         "f2": _projection(None, b"- [ ] Try the tasks\n", "docs/tasks.md"),
         "f3": _projection(None, b"A long line of prose that repeats.\n" * 1500, "docs/big.md"),
         "f4": _projection(None, b"# Demo\n\nWelcome.\n", "README.md"),
-        "f6": _projection(_NOTES_OLD, _NOTES_NEW, "docs/macos-app.md"),
+        "f6": _projection(_NOTES_OLD, _NOTES_NEW, "docs/notes.md"),
         "f7": _projection(_PLAIN_OLD, _PLAIN_NEW, "docs/plain.md"),
     }
     trees = {
@@ -100,7 +100,7 @@ def _recording() -> dict[str, Any]:
             _file("f2", "docs/tasks.md", old=False),
             _file("f3", "docs/big.md", old=False),
             _file("f4", "README.md", old=False),
-            _file("f6", "docs/macos-app.md"),
+            _file("f6", "docs/notes.md"),
             _file("f7", "docs/plain.md"),
         ],
         "answers": answers,
@@ -148,6 +148,6 @@ def test_session_replays_the_recording() -> None:
         "front matter that did not change is closed above the body's change, "
         "and front matter removed is one removed row"
     ]["files"]
-    assert front["f6 docs/macos-app.md"]["rows"][0] == "[Frontmatter]"
+    assert front["f6 docs/notes.md"]["rows"][0] == "[Frontmatter]"
     assert front["f7 docs/plain.md"]["rows"][0] == "[Frontmatter, open, removed]"
     assert steps["after disposal"]["timers"] == 0

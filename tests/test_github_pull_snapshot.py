@@ -184,7 +184,7 @@ def test_references_stay_in_the_heads_tree() -> None:
     )
     assert snapshot.reference(source, "../guide.md", False) == "/view/" + _wire("guide.md")
     assert snapshot.reference(source, "notes.md#Setup Steps", False) == (
-        "/view/" + _wire("docs/macos-app.md") + "#user-content-Setup%20Steps"
+        "/view/" + _wire("docs/notes.md") + "#user-content-Setup%20Steps"
     )
     assert snapshot.reference(source, "#topic", False) == "#topic"
     assert snapshot.reference(source, "?plain=1", False) == "/view/" + _wire("docs/readme.md")

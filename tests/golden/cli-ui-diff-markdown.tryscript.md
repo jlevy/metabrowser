@@ -118,7 +118,7 @@ $ node tests/dom/diff-markdown-session.js
           "chooser": "*Rendered | Source",
           "shows": "nothing"
         },
-        "f6 docs/macos-app.md": {
+        "f6 docs/notes.md": {
           "chooser": "*Rendered | Source",
           "shows": "nothing"
         },
@@ -147,7 +147,7 @@ $ node tests/dom/diff-markdown-session.js
           "chooser": "*Rendered | Source",
           "shows": "source"
         },
-        "f6 docs/macos-app.md": {
+        "f6 docs/notes.md": {
           "chooser": "*Rendered | Source",
           "shows": "source"
         },
@@ -318,7 +318,7 @@ $ node tests/dom/diff-markdown-session.js
         "f7"
       ],
       "files": {
-        "f6 docs/macos-app.md": {
+        "f6 docs/notes.md": {
           "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [

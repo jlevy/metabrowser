@@ -551,17 +551,17 @@ def test_an_entry_keeps_where_its_open_pointed_and_the_next_open_replaces_it(
 ) -> None:
     """``target`` is not part of the key: it is the latest open's, or none."""
 
-    record("folder", "/work/a", target="/work/a/docs/macos-app.md", directory=home)
+    record("folder", "/work/a", target="/work/a/docs/notes.md", directory=home)
     record("folder", "/work/b", directory=home)
 
     listing = read(home)
     assert [(entry.root, entry.target) for entry in listing.targets] == [
         ("/work/b", None),
-        ("/work/a", "/work/a/docs/macos-app.md"),
+        ("/work/a", "/work/a/docs/notes.md"),
     ]
     stored = yaml.safe_load((home / STORE_FILE).read_text(encoding="utf-8"))["targets"]
     assert "target" not in stored[0], "an entry without a target writes none"
-    assert stored[1]["target"] == "/work/a/docs/macos-app.md"
+    assert stored[1]["target"] == "/work/a/docs/notes.md"
 
     record("folder", "/work/a", directory=home)
     assert [(entry.root, entry.target) for entry in read(home).targets] == [
@@ -577,7 +577,7 @@ def test_an_entry_keeps_where_its_open_pointed_and_the_next_open_replaces_it(
     [
         ("folder", "/work/a", "/work/other/notes.md", "not inside the root"),
         ("folder", "/work/a", "/work/ab", "not inside the root"),
-        ("folder", "/work/a", "docs/macos-app.md", "not inside the root"),
+        ("folder", "/work/a", "docs/notes.md", "not inside the root"),
         ("folder", "/work/a", "/work/a/line\nbreak", "control character"),
         ("folder", "/work/a", "/work/a/" + "x" * MAX_ROOT_BYTES, "longer than"),
         (

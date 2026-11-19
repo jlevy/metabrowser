@@ -44,7 +44,7 @@ def _record(path: str, *, size: int = 10) -> CatalogRecord:
 def test_trackable_catalog_records_are_scoped_bounded_and_uncompressed() -> None:
     assert _is_trackable(_record("runs/x/.logs/foo.jsonl"))
     assert _is_trackable(_record("runs/x/.state/status.yaml"))
-    assert not _is_trackable(_record("docs/macos-app.md"))
+    assert not _is_trackable(_record("docs/notes.md"))
     assert not _is_trackable(_record("runs/x/.logs/archive.jsonl.gz"))
     assert not _is_trackable(_record("runs/x/.logs/huge.jsonl", size=TRACKABLE_FILE_MAX_SIZE))
     assert _is_trackable(_record("live.jsonl"), root_is_scoped=True)

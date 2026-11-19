@@ -2187,11 +2187,11 @@ async function headerSummary(page) {
   // file once its diff mounts (A8 of review A on #470).
   const pressed = await mount("", { routes: true });
   await pressed.idle();
-  pressed.steps.openFile("docs/macos-app.md");
+  pressed.steps.openFile("docs/notes.md");
   assert.deepEqual(pressed.steps.opened.at(-1), {
     number: 7,
     tab: "files",
-    file: "docs/macos-app.md",
+    file: "docs/notes.md",
     replace: false,
     jumped: false,
   });
