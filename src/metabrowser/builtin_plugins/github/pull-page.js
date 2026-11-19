@@ -4581,12 +4581,18 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * Ask for the Markdown of the texts still plain: the description now, and the rest as they
-   * near the view. A core preview's are answered only from renders kept for the same text.
+   * Ask for the Markdown of the texts still plain: the description and the texts within
+   * `MARKDOWN_AHEAD` of the view now, and the rest as they near it. The observer reports only
+   * after the frame paints, so a text in view it asked for would show its source for a frame
+   * first: a record's comments when it follows a core preview, whose first paint is spent.
+   * Those are asked for here and marked pending before the frame. A hidden first paint asks
+   * for its own first screen (`settleFirstPaint`), laid out where it will show.
    *
    * @param {HTMLElement[]} elements
    */
   function askForTexts(elements) {
+    /** @type {[string, string, HTMLElement][]} */
+    const plain = [];
     for (const element of elements) {
       const part = element.getAttribute("data-part");
       const value = textOf.get(element);
@@ -4594,16 +4600,40 @@ export function mountPullPage(container, ctx, mb) {
         continue;
       }
       texts.set(part, element);
-      if (element.querySelector(":scope > .github-pull-plain") === null) {
-        continue;
+      if (element.querySelector(":scope > .github-pull-plain") !== null) {
+        plain.push([part, value, element]);
       }
-      if (part === "body" || observer === null) {
+    }
+    // Every box is read before any text is marked, so the layout is taken once.
+    const now =
+      observer === null || firstPaint?.mode === "hidden"
+        ? null
+        : plain.map(([part, , element]) => part !== "body" && nearViewNow(element));
+    plain.forEach(([part, value, element], index) => {
+      if (part === "body" || observer === null || now?.[index] === true) {
         controller.requestMarkdown(part, value);
         showPending(element, part, value);
       } else {
         observer.observe(element);
       }
+    });
+  }
+
+  /**
+   * Whether *element* is within `MARKDOWN_AHEAD` of the pane's view now, one view's height
+   * above or below it, where the observer would find it after this frame. Not laid out, it
+   * is not: the observer asks once it shows.
+   *
+   * @param {HTMLElement} element
+   */
+  function nearViewNow(element) {
+    const box = boxOf(element);
+    if (box === null || (box.width === 0 && box.height === 0)) {
+      return false;
     }
+    const top = (pane === null ? null : boxOf(pane))?.top ?? 0;
+    const height = pane?.clientHeight || window.innerHeight || 0;
+    return height > 0 && box.bottom > top - height && box.top < top + 2 * height;
   }
 
   /**

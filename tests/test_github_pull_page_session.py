@@ -900,6 +900,10 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
                 "rounds": 4,
             },
         },
+        # The record that follows a core preview asks for its comments in view as it paints,
+        # each a placeholder at that paint and never its source (review A5 on #589); before,
+        # the observer asked after the frame, which showed them as source.
+        "recordAfterCore": {"commentsInView": 4, "pendingAtPaint": True},
         # Kept cards tell their ages as of the paint, not as of when they were built (review A5).
         "ages": ["186 min", "185 min", "4 min"],
         # A stale record paints the list's state when the list saw a later update.

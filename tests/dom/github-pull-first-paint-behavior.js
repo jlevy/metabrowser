@@ -73,12 +73,23 @@ function host() {
       if (failMarkdown.has(asked)) {
         return response({}, 500);
       }
-      const answer = response({
-        record_revision: current.record_revision,
-        fetched_at: current.fetched_at,
-        html: `rendered ${current.record.pull.body}`,
-        assets: {},
-      });
+      // A core preview's description renders from the core (pull_markdown.render_part).
+      const answer = response(
+        current.record === null
+          ? {
+              record_revision: null,
+              core_revision: current.core_preview.revision,
+              fetched_at: null,
+              html: `rendered ${current.core_preview.pull.body}`,
+              assets: {},
+            }
+          : {
+              record_revision: current.record_revision,
+              fetched_at: current.fetched_at,
+              html: `rendered ${current.record.pull.body}`,
+              assets: {},
+            },
+      );
       if (holdMarkdown) {
         return new Promise((resolve) => held.push(() => resolve(answer)));
       }
@@ -918,6 +929,114 @@ async function run() {
       ...(rounds ? { rounds: trips } : { askedBeforeSecondAnswer }),
     };
     session.failMarkdown.clear();
+    screened.handle.dispose();
+    delete Element.prototype.getBoundingClientRect;
+    delete globalThis.IntersectionObserver;
+  }
+
+  // The record that follows a core preview, its comments on the first screen (review A5 on
+  // #589). The core's first paint was held for its description and is spent, so the record
+  // paints at once; its comments in view are asked for and marked pending as it paints, not
+  // when the observer reports them after the frame, so none shows its source for a frame.
+  {
+    const PANE = 700;
+    const record = envelope("9".repeat(64), "described before its comments");
+    const comment = recorded.current.body.record.issue_comments[0];
+    record.record.issue_comments = Array.from({ length: 6 }, (_, at) => ({
+      ...comment,
+      id: 200 + at,
+      timeline_id: String(200 + at),
+      body: `comment ${at} after the core`,
+    }));
+    const core = {
+      ...record,
+      state: "pending",
+      refreshing: true,
+      record: null,
+      record_revision: null,
+      fetched_at: null,
+      core_preview: {
+        source: record.source,
+        number: 7,
+        reader: record.record.reader,
+        observed_at: record.record.fetched_at,
+        revision: "c".repeat(64),
+        pull: record.record.pull,
+        comparison_state: "no_store",
+      },
+    };
+    const container = new Element("main");
+    const layout = (node) => {
+      if (node === container) {
+        return { top: 0, bottom: 6000, width: 800, height: 6000 };
+      }
+      let y = 100;
+      for (const text of container.descendants()) {
+        if (text.getAttribute("data-part") === null) {
+          continue;
+        }
+        const height = text.querySelector(":scope > .github-pull-plain") === null ? 60 : 300;
+        if (text === node) {
+          return { top: y, bottom: y + height, width: 800, height };
+        }
+        y += height + 50;
+      }
+      return { top: 0, bottom: 0, width: 0, height: 0 };
+    };
+    const observed = new Set();
+    globalThis.IntersectionObserver = class {
+      observe(element) {
+        observed.add(element);
+      }
+      unobserve(element) {
+        observed.delete(element);
+      }
+      disconnect() {
+        observed.clear();
+      }
+    };
+    Element.prototype.getBoundingClientRect = function () {
+      return layout(this);
+    };
+    const pane = { clientHeight: PANE, getBoundingClientRect: () => ({ top: 0, bottom: PANE }) };
+    session.current = core;
+    session.holdMarkdown(false);
+    const screened = session.mount(page, core, { container, pane });
+    await settle();
+    assert.ok(screened.rendered(), "the core's description renders");
+    session.current = record;
+    session.holdMarkdown(true);
+    const askedBefore = session.markdown.length;
+    await session.poll();
+    const comments = screened.texts().filter((text) => text.getAttribute("data-part") !== "body");
+    assert.equal(comments.length, 6);
+    const inView = comments.filter((text) => layout(text).top < 2 * PANE);
+    const shown = inView.map((text) => {
+      const plain = text.querySelector(":scope > .github-pull-plain");
+      return plain === null || plain.classes.has("github-pull-plain-pending");
+    });
+    assert.ok(inView.length > 0 && inView.length < comments.length, String(inView.length));
+    assert.deepEqual(
+      shown,
+      inView.map(() => true),
+      "a comment in view is a placeholder as the record paints, never its source",
+    );
+    // Asked for as the record paints, before the observer reports anything: the queue sends
+    // `MARKDOWN_CONCURRENCY` at once, and the rest follow as those answer.
+    assert.equal(
+      session.markdown.slice(askedBefore).filter((part) => part !== "body").length,
+      Math.min(inView.length, page.MARKDOWN_CONCURRENCY),
+    );
+    assert.ok(
+      comments.slice(inView.length).every((text) => observed.has(text)),
+      "the rest wait for the observer",
+    );
+    facts.recordAfterCore = { commentsInView: inView.length, pendingAtPaint: true };
+    session.holdMarkdown(false);
+    while (session.held.length > 0) {
+      session.held.shift()();
+    }
+    await settle();
     screened.handle.dispose();
     delete Element.prototype.getBoundingClientRect;
     delete globalThis.IntersectionObserver;
