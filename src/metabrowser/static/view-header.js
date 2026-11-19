@@ -108,7 +108,7 @@
       const attrs = path
         ? `data-tip-text="Open ${esc(label)}" aria-label="Open parent folder ${esc(label)}" data-nav-dir="${esc(parent)}"${ownedControlAttr()}`
         : 'data-tip-text="No parent folder" aria-label="No parent folder" disabled';
-      return `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" ${attrs}><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
+      return `<button type="button" class="icon-btn folder-up" ${attrs}><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
     }
 
     /**
@@ -136,11 +136,11 @@
      * One view header (docs/design-system.md, "View Headers"): the eyebrow, which an empty
      * one leaves out; the heading row: the icon, then the title with the metadata line right
      * after it; and the header's corner. The name is whole, never cut, so it has no tooltip:
-     * a name too long for the row wraps, and the line with it. The corner is placed in the
-     * header's upper right and follows the heading row in the reading order. On a page whose
-     * repository is on github.com it is marked `data-counterpart`, so the heading row leaves
-     * it room for the View on GitHub button the shell then asks for (`mountCounterpart`,
-     * plugin-sdk-views.js).
+     * a name too long for the row wraps, and the line with it. The corner is placed at the
+     * end of the title's first line, on its baseline, and follows the heading row in the
+     * reading order. On a page whose repository is on github.com it is marked
+     * `data-counterpart`, so the title's first line leaves it room for the View on GitHub
+     * button the shell then asks for (`mountCounterpart`, plugin-sdk-views.js).
      * @param {MetabrowserViewHeaderParts} parts
      */
     function viewHeaderHtml(parts) {

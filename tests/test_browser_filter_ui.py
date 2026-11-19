@@ -614,15 +614,20 @@ def test_plain_text_actions_use_the_shared_button_primitive() -> None:
         assert "file-header-action" not in source, (
             "the header no longer restates partial progress; the notice owns it"
         )
-    assert 'class="btn parent-nav-btn parent-nav-btn-icon-only folder-up"' in header
+    # Up alone, in a view header's eyebrow, is an icon button: the arrow at rest, and
+    # the hover surface only while hovered or focused, as the navigation's chevron
+    # (mb-igva). Parent navigation with a label stays the bordered `.btn`.
+    assert 'class="icon-btn folder-up"' in header
+    assert "parent-nav-btn-icon-only" not in header + css
     assert '<span class="parent-nav-arrow" aria-hidden="true">↑</span>' in header
     assert ".btn {" in css
     assert ".btn:focus-visible {" in css
     assert ".parent-nav-btn {" in css
-    assert ".parent-nav-btn-icon-only {" in css
-    parent_nav = css[css.index(".parent-nav-btn {") : css.index(".parent-nav-btn-icon-only {")]
+    parent_nav = css[css.index(".parent-nav-btn {") : css.index(".parent-nav-arrow {")]
     assert "height: var(--icon-btn-size);" in parent_nav
     assert "border-color: var(--viz-border-strong);" in parent_nav
+    up = css[css.index(".view-header-eyebrow > .folder-up {") :]
+    assert "--icon-btn-size: var(--view-header-up-size);" in up.split("}")[0]
     assert 'aria-label="Open parent folder ${esc(label)}"' in header
 
 

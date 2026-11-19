@@ -417,7 +417,13 @@ def test_row_text_shares_one_baseline() -> None:
     # sits on the title's baseline as text does (docs/design-system.md, "View Headers"). No
     # flex baseline rule reaches either: an item holding only a pending skeleton, aligned
     # as a flex item, would sit the skeleton's bottom edge on the baseline.
+    # The header's corner (`.view-header-end`) is neither row: a strut of the title's type
+    # and the View on GitHub button, which opts in to the strut's baseline, the title's
+    # first line's (mb-tatf), as a row's text does. tests/dom/view-header-chrome.mjs
+    # measures the button's label and the title on one baseline.
     for selector, _is_items in rules:
+        if selector.startswith(".view-header-end"):
+            continue
         assert not re.search(r"\.(?:file-header|view-header)", selector), (
             f"{selector} aligns a view header's text to a baseline"
         )
@@ -1182,8 +1188,8 @@ _PAGE_HEADER_LINES = (
 def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     """A commit's page and a pull request's have one header (mb-26zj, "Page Headers").
 
-    Each is a `.page-header`, its title then its lines 6 px apart, and every line under the
-    title but the labels, a row of chips, is a `.page-header-line` at `--body-font-size`, an
+    Each is a `.page-header`, its title, then its lines, the first `--page-title-gap` under
+    the title and the rest 6 px apart, and every line under the title but the labels, a row of chips, is a `.page-header-line` at `--body-font-size`, an
     age in it and the Diff summary's row included, whose header the diff plugin sets at the
     same token: the owner found the summary and the pull request's
     rows of ages and status a step smaller than the lines above them (mb-kisi). No rule sets
@@ -1197,10 +1203,19 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     assert "test_page_headers_set_every_line_under_the_title_at_the_body_size" in doc
     shell = dict(_rules_of(STATIC / "styles.css"))
     assert shell[".page-header"] == {
+        "--page-header-line-gap": "6px",
         "display": "flex",
         "flex-direction": "column",
-        "gap": "6px",
+        "gap": "var(--page-header-line-gap)",
     }
+    # The first line is `--page-title-gap` under the title, the gap a view header leaves
+    # between its title and the metadata line after it (mb-wcbc).
+    assert shell[".page-header > .page-heading"] == {
+        "margin": "0 0 calc(var(--page-title-gap) - var(--page-header-line-gap))"
+    }
+    assert shell[".view-header-title.page-heading"]["padding-inline-end"] == (
+        "var(--page-title-gap)"
+    )
     assert shell[".page-header-line"]["font-size"] == "var(--body-font-size)"
     # An age in a line takes the line's size because the age primitive sets none
     # (test_age_is_one_primitive_everywhere), so no rule restates it here.

@@ -262,9 +262,9 @@ it.
 | --- | --- | --- |
 | Page title | `--page-title-font-size` | The title of every [view header](#view-headers): a file’s or a folder’s name, a pull request’s title, a commit’s subject. It stands above the regular first heading of the text below by its bold weight, not by its size |
 | Document prose | `--document-body-font-size` | A rendered document and a message, one step above the app body, with KPress’s ramp under it (below) |
-| Reading text | `--body-font-size` | The main view’s lines, cards, tables, inputs, notes, and empty and error states; a view header’s eyebrow, its address and mirror note, and its metadata line, a file’s or a folder’s size, count, and age; a diff file bar; a commit’s files outside the served folder; every line under a page header’s title, the Diff summary’s header among them ([Page Headers](#page-headers)); a dialog’s prose; a [section heading](#section-headings), in caps |
+| Reading text | `--body-font-size` | The main view’s lines, cards, tables, inputs, notes, and empty and error states; a view header’s metadata line, a file’s or a folder’s size, count, and age; a diff file bar; a commit’s files outside the served folder; every line under a page header’s title, the Diff summary’s header among them ([Page Headers](#page-headers)); a dialog’s prose; a [section heading](#section-headings), in caps |
 | Tooltip | `--tooltip-font-size` | The body size; its detail lines set none and read at it ([One Tooltip, and It Is Ours](#one-tooltip-and-it-is-ours)) |
-| List text | `--nav-font-size` | The navigation column throughout: its header path, the Files, Pulls, and Commits rows, the [navigation metadata line](#navigation-metadata-line), and the freshness line at its foot; a tree’s rows wherever one is drawn, the Diff summary’s file list among them; and Quick Search’s results and Help’s commands, the lists in those dialogs |
+| List text | `--nav-font-size` | The navigation column throughout: its header path, the Files, Pulls, and Commits rows, the [navigation metadata line](#navigation-metadata-line), and the freshness line at its foot; a view header’s eyebrow, its address and mirror note, the twin of the navigation’s path row across the divider ([View Headers](#view-headers)); a tree’s rows wherever one is drawn, the Diff summary’s file list among them; and Quick Search’s results and Help’s commands, the lists in those dialogs |
 | Secondary metadata | The token of the text it accompanies | Ages, update and fetch times, counts, sizes, a row’s second line, notes, and captions |
 | A revision in a line | `--nav-font-size` | One step below the body-size sans beside it, since monospace at that size reads larger ([Git Commit Summary](#git-commit-summary)) |
 | Controls | `--ui-small-font-size` | Chips and the counts in their menus, badges, buttons, filters, menus, fold expanders, and a tree row’s leading change letter, its slot’s glyph |
@@ -364,13 +364,17 @@ header**, and each kind of page fills the same parts with what it has: a file, a
 a pull request, and a commit.
 
 ```text
-+--------------------------------------------------------------------+
-| [Up] ~/wrk/project / docs / specs  [copy]  [GitHub View on GitHub v]  |  1 eyebrow, optional; the corner
-| [icon] Title, at the page title's size  33.9 KB · 2h ago            |  2 heading row, 3 metadata
-| DOCUMENT   SOURCE                                                  |  4 tab bar
-+--------------------------------------------------------------------+  the one rule, the tab bar's
-| content                                                            |
++------------------------------------------------------------------------------+
+|<[Up] ~/wrk/project / docs / specs  [copy]                                    |  1 eyebrow, optional; its rule
++------------------------------------------------------------------------------+    the top bar's
+| [icon] Title, at the page title's size  33.9 KB · 2h ago  [View on GitHub v] |  2 heading row, 3 metadata; the corner
+| DOCUMENT   SOURCE                                                            |  4 tab bar
++------------------------------------------------------------------------------+  the tab bar's rule
+| content                                                                      |
 ```
+
+The `<` at the eyebrow’s start is the navigation’s chevron, which is the main view’s,
+not the header’s ([Hiding the Navigation Pane](#hiding-the-navigation-pane)).
 
 | Part | A file | A folder | A pull request | A commit |
 | --- | --- | --- | --- | --- |
@@ -392,8 +396,17 @@ the shell’s own: a `.view-header` block holding `.view-header-eyebrow`,
 A plugin that draws a header, as the GitHub plugin draws a pull request’s, writes those
 classes.
 
-**The eyebrow** is a quiet line above the title: context, at the body size, its served
-root dimmed and its crumbs links.
+**The eyebrow** is a quiet line above the title: context, its served root dimmed and its
+crumbs links. It is the top bar’s half over the main view, the twin of the navigation’s
+path row across the divider: that row’s height, `--pane-header-row-height`, its rule,
+`1px solid var(--border)`, at the same height, and its text at that row’s size,
+`--nav-font-size`, centered as that row centers its path, so the two rules are one line
+across the window and the two rows’ text sits on one baseline.
+Up is an icon button, the arrow alone at rest and the hover surface and its hairline
+only while hovered or focused, as the navigation’s chevron is.
+Both are targets of `--view-header-up-size`, WCAG 2.2’s minimum target size, with space
+between them (`.view-header-eyebrow > .folder-up` in `static/styles.css`); at 20 px and
+2 px apart, a press just left of Up hid the navigation pane.
 It is optional by kind.
 A file’s and a folder’s always have one, because where a file is matters: Up, which
 keeps its place disabled at the served root, and the folders above the item, but not the
@@ -402,8 +415,8 @@ A pull request’s or a commit’s has one only when it carries something the ro
 do not, such as the repository and branch it belongs to.
 Where a kind has no eyebrow, it writes it empty, and an empty eyebrow is left out: the
 heading row starts the header and nothing holds empty space for one.
-Where it has one, the eyebrow is its token’s height from first paint, so nothing under
-it moves as it fills in.
+Where it has one, the eyebrow is the row’s height from first paint, so nothing under it
+moves as it fills in.
 A file’s eyebrow ends in Copy path, revealed on hover, so the heading row’s width is the
 title’s and its metadata’s.
 
@@ -415,39 +428,61 @@ request’s is its state icon.
 A file’s or a folder’s name is whole, never cut short: a name too long for the row
 wraps, anywhere, so it has no tooltip, since none of it is hidden
 ([Tooltips Add Information](#tooltips-add-information)), and the icon stays beside its
-first line. A pull request’s title holds two lines.
+first line. A pull request’s title is cut short at two lines.
 The row holds no controls: the header’s are in its corner.
 The header has no print button ([Print](#print)).
 
-**The corner**, the header’s upper right, holds the page’s
-[View on GitHub](#view-on-github) button.
-It is at a fixed inset from the header’s top and right edges and a fixed height, level
-with the eyebrow (`--view-header-corner-inset-top`, `--view-header-corner-inset-end`,
-and `--view-header-corner-height` in `static/styles.css`), whatever the rows under it
-hold, so a title that wraps or an address that fills the eyebrow never moves it, and a
-native bar that draws the same button can match it from the same three tokens.
-The corner follows the heading row in the reading order.
+**The corner**, at the end of the title’s first line, holds the page’s
+[View on GitHub](#view-on-github) button, its label on the title’s baseline.
+Its first item is a strut, a line of the title’s type with nothing to see in it, so the
+corner’s line is the title’s first line from first paint, and the button opts in to that
+line’s baseline as a row’s text does
+([Row Text Shares a Baseline](#row-text-shares-a-baseline)), whatever the title’s size
+and the button’s measure.
+It is placed from the top of the title’s first line, the header’s top pad under the
+eyebrow’s row, and from the header’s right edge, at a fixed height
+(`--view-header-corner-inset-top`, `--view-header-corner-inset-end`, and
+`--view-header-corner-height` in `static/styles.css`), whatever the rows hold, so a
+title that wraps or an address that fills the eyebrow never moves it.
+Where on that line the button sits is the title’s, its label on the title’s first
+baseline, so a native bar that draws the same button matches it from those three tokens
+and the title’s type, `--page-title-font-size` and `--page-title-line-height`. The
+corner follows the heading row in the reading order.
 On a page whose repository is on github.com the corner is marked `data-counterpart`
-before the server has answered, and the header’s first row, the eyebrow or else the
-heading row, leaves it `--view-header-corner-room` from first paint, so the button
-arriving moves nothing; the rows under the first keep the header’s whole width.
+before the server has answered, and the title’s first line leaves it
+`--view-header-corner-room` from first paint, a float of the room’s width at that line’s
+end, so the button arriving moves nothing; the title’s lines under the first keep the
+row’s whole width. A main view too narrow to leave the title’s first line
+`--view-header-title-room` beside the corner’s room, below the width the main view’s
+container condition names in `static/styles.css`, puts the corner on the eyebrow’s row
+instead, centered on its line as Up is, and the eyebrow’s end leaves it the room, so the
+title has the row’s whole width.
+A page title breaks anywhere, so beside the room a name the row’s whole width holds
+broke mid-word: “docs” in a 260 px main view, “CONTRIBUTING.md” at 380 px, and
+“arch-views-models-routes.md” at 560 px.
+The title room is sized to hold most file and folder names at the title’s type, by the
+measurement beside the token; a longer name can still break beside the room in a main
+view a little wider than the condition’s. `tests/test_view_header_chrome.py` holds that
+width to the tokens it is made of, and draws those two names one line long at 480 and
+560 px, and the second beside the room at 720 px.
 A page with no counterpart keeps that room empty: a file that is not committed has none,
 and its corner says nothing.
 A plain folder, a checkout whose `origin` is on another host or that has none, and a
 mirror of a repository elsewhere mark no corner and hold no room.
-A pull request’s page and a commit’s place the same corner in the page, at the same
-insets from its top and right edges, and their title leaves it room only where the
-reading column reaches it.
+A pull request’s page and a commit’s place the same corner in the page, on their title’s
+first line and at the same end inset, the label on the title’s baseline, and their title
+leaves it room only where the reading column reaches it.
 
 **The metadata line** of a file or a folder follows its name in the heading row,
-`--view-header-title-gap` after the name’s last letter and on its baseline, at the body
-size, in muted ink; a pull request’s and a commit’s lines sit under their titles
-([Page Headers](#page-headers)). Each value keeps its own primitive: a size its chip, a
-count its count, an age its freshness ink ([File Age](#file-age)), the same helpers a
-navigation row draws them with.
-Badges lead and the values follow, each after a muted dot, `.summary-punctuation`, with
-the age last: it is the one value that changes while nothing on disk does, “just now”
-becoming “1m ago”, and last on its line it moves nothing when it does.
+`--page-title-gap` after the name’s last letter and on its baseline, at the body size,
+in muted ink; a pull request’s and a commit’s lines sit under their titles, the first
+the same `--page-title-gap` under the title ([Page Headers](#page-headers)), so every
+page leaves one space between its title and its metadata.
+Each value keeps its own primitive: a size its chip, a count its count, an age its
+freshness ink ([File Age](#file-age)), the same helpers a navigation row draws them
+with. Badges lead and the values follow, each after a muted dot, `.summary-punctuation`,
+with the age last: it is the one value that changes while nothing on disk does, “just
+now” becoming “1m ago”, and last on its line it moves nothing when it does.
 
 Where the room after the name’s last line does not hold the line, the line wraps whole
 to the next line, at the name’s start.
@@ -456,9 +491,9 @@ above, rather than indenting the wrapped line.
 A line wider than the row wraps between its items: an item and the dot before it are one
 box that does not wrap, so no value is cut mid-number, and none is hidden.
 
-While the line stays after the name, the heading row is the title’s line high, and a
-value arriving, a skeleton becoming a number, or an age changing width moves nothing but
-the values after it on the line.
+While the line stays after the name, the heading row is the top pad and the title’s
+line, and a value arriving, a skeleton becoming a number, or an age changing width moves
+nothing but the values after it on the line.
 Each item is one line of text at the line’s token’s height, so its baseline is its
 text’s whatever it holds, and a pending skeleton sits the line where its number will.
 At the width where the line no longer fits after the name, it wraps to the next line,
@@ -480,33 +515,48 @@ with the rest of its header (planned).
 **Ground and rules.** The header and its tab bar sit on the main view’s ground, `--bg`,
 the ground the content under them has: `--sidebar-bg` is the navigation column’s, and
 stops at the divider.
-The header has no rule of its own and none between its rows; the one rule is the tab
-bar’s, `1px solid var(--border)`, under the tabs, across the pane.
+The header’s one rule is its eyebrow’s, the top bar’s rule continued across the main
+view; there is none between the heading row and the tab bar, whose rule,
+`1px solid var(--border)`, is under the tabs, across the pane.
 A kind with no tab bar ends its header without one (planned for a commit’s page).
 Every ink on the header is one the main view already sets on `--bg`: `--text`,
 `--muted`, `--link`, the size chip’s, and the age inks, whose contrast on every age
 surface, `--bg` among them, `tests/test_file_age_palette.py` holds.
 
-The rhythm is tokens in `static/styles.css`, `--view-header-*`: the pads above the first
-row and under the last, the gap between rows, the eyebrow’s and the metadata line’s
-heights, and the gap between the title and the line after it.
+The rhythm is tokens in `static/styles.css`: the top bar’s row height,
+`--pane-header-row-height`, the eyebrow’s; `--view-header-*`, the pad above the heading
+row and the pad under the last row, the metadata line’s height, and the corner’s insets,
+height, and room; and `--page-title-gap`, between the title and the line after it.
 `tests/test_view_header_chrome.py` draws a file’s, a folder’s, and the served root’s
 header, and the header of a file whose name no pane holds on one line, in headless
-Chrome at four pane widths in both themes.
-It holds the rows to those tokens, the title and the line to their sizes and ink, the
-line to the title’s baseline and gap or to the next line’s start, the long name whole
-over several lines, the header and its tabs to one ground with the tab bar’s one rule,
-every value whole and in sight, and every box but the line’s own still while the line’s
-values change and it stays after the name.
+Chrome at four pane widths in both themes, and a commit’s page at two.
+It holds the rows to those tokens; the eyebrow’s rule to the navigation path row’s
+height and its address to the navigation name’s baseline; the chevron and Up to the
+Metabrowser menu’s gear’s line, and Up to no surface at rest and one while hovered; the
+View on GitHub label to the title’s first baseline, or in a narrow main view the button
+to the eyebrow’s line; the title and the line to their sizes and ink, the line to the
+title’s baseline and gap or to the next line’s start; the long name whole over several
+lines; the header and its tabs to one ground; every value whole and in sight; and every
+box but the line’s own still while the line’s values change and it stays after the name.
 
 ### Page Headers
 
 A commit’s page and a pull request’s page open with one kind of header, a
-`.page-header`: the title, then its lines, one gap apart.
-Every line under the title is a `.page-header-line` at `--body-font-size`, the Diff
-summary’s row, the last line, among them, whose header the diff plugin sets at the same
-token; the one row that is not is a pull request’s labels, a row of chips at a chip’s
-size. An age in a line takes the line’s size, as an age does everywhere
+`.page-header`: the title, then its lines, the first `--page-title-gap` under the title,
+the space a view header leaves between its title and the metadata line after it, and the
+rest one gap apart. The title is as tall as its own lines, one or two.
+A title that held two lines from first paint, so a one-line title left the tab bar where
+a two-line one put it, stood its empty second line between the title and its author:
+36.5 px of space to the author’s text on a pull request’s page and 34 px on a commit’s,
+where a two-line title had 6 and 4 (Chrome 152, 2026-11-18). So moving between pull
+requests, or stepping through commits, whose titles take different lines moves the tab
+bar and the content under it by a line, as their content differs.
+A pull request’s title while its record is on its way lands moving nothing
+([The Pull Request Page](#the-pull-request-page)). Every line under the title is a
+`.page-header-line` at `--body-font-size`, the Diff summary’s row, the last line, among
+them, whose header the diff plugin sets at the same token; the one row that is not is a
+pull request’s labels, a row of chips at a chip’s size.
+An age in a line takes the line’s size, as an age does everywhere
 ([Type Scale](#type-scale)). A chip in a line keeps its own size, a ref chip by the
 [chip ratio](#one-ratio), and a state badge and a label at theirs
 ([Label Colors](#label-colors)), and a revision sits its one step down
@@ -516,7 +566,7 @@ The two headers share their parts in one order, and each keeps the lines only it
 
 | Line | A commit’s page | A pull request’s page |
 | --- | --- | --- |
-| Title | The subject, `.page-heading`, two lines held | The state icon, the title, and the number, `.page-heading`, two lines held |
+| Title | The subject, `.page-heading`, its own lines | The state icon, the title, and the number, `.page-heading`, cut short at two lines |
 | Author | The [actor identity](#actor-identity) | The actor identity, its sentence, “wants to merge 2 commits”, and the stack chip’s slot at the end |
 | Where it lives | The revision, its copy button, and its refs | The branches, head → base |
 | Age | “Committed 3d ago”, muted, the age in its freshness ink | The state badge, then “Opened 3d ago · updated …”, View on GitHub, and Browse code, then Refresh’s slot at the end |
@@ -536,7 +586,8 @@ The order the lines come in is held by `tests/dom/git-panel-behavior.js` for the
 commit’s page and by `tests/test_page_header_chrome.py` for both, which draws both
 headers in headless Chrome, each with its Diff summary drawn, and reads every line but
 the labels as a page header’s line, every line and every run of text in it at the body
-size, both titles alike, and every line one gap under the one before.
+size, both titles alike, the first line `--page-title-gap` under its title, and every
+line after it one gap under the one before.
 Its measurements are in
 [Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#page-headers).
 
@@ -889,9 +940,10 @@ header says what KPress lacks.
 ## View on GitHub
 
 Every page that github.com has a page for has one **View on GitHub** button, in the same
-place: its header’s [corner](#view-headers), the upper right.
-It is the one way to a page’s github.com counterpart, so no page also links to it from
-its metadata.
+place: its header’s [corner](#view-headers), at the end of the title’s first line, its
+label on the title’s baseline, on a file’s, a folder’s, a pull request’s, and a commit’s
+page alike. It is the one way to a page’s github.com counterpart, so no page also links
+to it from its metadata.
 
 ```text
  ( [GitHub] View on GitHub | v )
@@ -1252,6 +1304,10 @@ Its heading row sets the title and the metadata line after it at two sizes, and 
 line on the title’s baseline by setting both as one run of inline text rather than by
 these rules: aligned as a flex item, an item holding only a pending skeleton would sit
 the skeleton’s bottom edge on the baseline.
+The header’s corner, `.view-header-end`, is no row of either: a strut of the title’s
+type, then the View on GitHub button, which opts in to the strut’s baseline, so its
+label is on the title’s first baseline; `tests/dom/view-header-chrome.mjs` and
+`tests/dom/github-pull-header-chrome.mjs` measure the two baselines equal in Chrome.
 The Git commit summary’s metadata line sets a monospace revision at `--nav-font-size`
 beside body-size sans text, and aligning the two faces on one baseline would grow the
 line, so it stays centered.
@@ -2176,15 +2232,24 @@ The column includes the card’s insets so its text can reach the same measure a
 rendered README. Both headers use `.page-heading`. The title begins with the Pulls state
 icon at the title’s font size.
 The text wraps under its first line while the icon stays beside the first line, to two
-lines at most: the title holds two lines from first paint, and one cut short there
-carries the whole of it in its tooltip.
-The icon and the text start at the header’s left edge, and the number, outside the
-clamped text, ends on the header’s right edge, level with the title’s last line, over
-the stack chip that ends the author’s row, whatever the title’s length.
+lines at most, and one cut short there carries the whole of it in its tooltip.
+The title is as tall as its own lines, its author’s line `--page-title-gap` under it
+([Page Headers](#page-headers)), so a pull request with a two-line title puts its tab
+bar a line lower than one with a one-line title.
+The cold page’s title is the Pulls tab’s row for the pull request where the list has
+one, icon, text, and number, so it takes the record’s lines.
+Where the list has none it is “Pull request #7”, held at two lines, the most a record’s
+title takes, and a record that lands after the cold page was seen keeps those two lines
+on that page, so it lands moving nothing; a one-line title then has an empty second line
+there alone. A record that lands within the quiet period was never seen cold, and takes
+its own lines. The icon and the text start at the header’s left edge, and the number,
+outside the clamped text, ends on the header’s right edge, level with the title’s last
+line, over the stack chip that ends the author’s row, whatever the title’s length.
 The colored badge that leads the row of ages gives the state in text and the title icon
-is decorative. The header’s box is decided at first paint, on every tab, but for two
-rows. The labels row is there only while a pull request has labels, so the tab bar under
-it moves when a pull request gains its first label or loses its last.
+is decorative. The header’s box is decided at first paint, on every tab, but for the
+title’s lines and two rows.
+The labels row is there only while a pull request has labels, so the tab bar under it
+moves when a pull request gains its first label or loses its last.
 The status line is there only while it has something to say, so the tab bar moves as a
 failure, a message, or an offer comes and goes, and for nothing else: never between
 tabs, nor as the age ticks, Refresh comes, or a rate limit’s hold begins or lifts.
@@ -3672,18 +3737,20 @@ Keep the button in the Tab order even while it is visually quiet.
 diff-file, and Git-revision consumers.
 Add each new exact-identifier copy surface to that check.
 
-### Parent Navigation Is a Bordered Button
+### Parent Navigation
 
-Moving to an enclosing folder is a labelled navigation action, even when a compact
-header has room for only its arrow.
-Both forms combine `.btn` with `.parent-nav-btn`, use the shared `.parent-nav-arrow`,
-and keep a visible resting boundary.
-The labelled form includes the destination folder; the icon-only form retains the same
-arrow size and button height with its destination in the accessible label and tooltip.
-
-Do not represent parent navigation as a bare `.icon-btn`. Icon actions such as Print
-operate on the current view and remain unboxed at rest; parent navigation changes the
-current location and uses the stronger bordered-button vocabulary.
+Moving to an enclosing folder is a navigation action, and it has two forms.
+The labelled form, the treemap’s Zoom out, names the destination folder and is a
+bordered button: `.btn` with `.parent-nav-btn`, the shared `.parent-nav-arrow`, and a
+visible resting boundary.
+Up alone, at the start of a view header’s eyebrow, is an icon button, `.icon-btn`: the
+arrow alone at rest, and the hover surface and its hairline only while hovered or
+focused, as the navigation’s chevron beside it is, at the eyebrow’s control size
+(`--view-header-up-size`), its destination in its accessible label and tooltip.
+At the served root it keeps its place, disabled and dimmed, and surfaces nothing.
+The owner asked for Up without a box but on hover, like the collapse chevron
+(2026-11-18). `tests/test_view_header_chrome.py` holds Up to no surface at rest and one
+while hovered, in both themes.
 
 ### Reveal on Hover Keeps Keyboard Reach
 
@@ -4496,23 +4563,31 @@ click, and that the name is called “Home: <folder>”.
 
 ### Hiding the Navigation Pane
 
-**A chevron on the main page’s left edge hides the navigation pane, and so does the
-Backslash key.** The page slides left over the pane to fill the window, and the chevron
-turns to point right; a second press slides the page back and shows the pane as it was.
-Shift-Backslash, which types `|` on a US keyboard, does the same, as Shift changes no
-key ([Keyboard Shortcuts](#keyboard-shortcuts)); the key is read by the character it
-types, so the key in its place on a UK or German keyboard, which types `#`, is not it.
+**A chevron at the start of the main page’s top row hides the navigation pane, and so
+does the Backslash key.** The page slides left over the pane to fill the window, and the
+chevron turns to point right; a second press slides the page back and shows the pane as
+it was. Shift-Backslash, which types `|` on a US keyboard, does the same, as Shift
+changes no key ([Keyboard Shortcuts](#keyboard-shortcuts)); the key is read by the
+character it types, so the key in its place on a UK or German keyboard, which types `#`,
+is not it.
 
 The chevron is the shared disclosure chevron in an icon button
 ([Every Icon-Only Control Is the Same Control](#every-icon-only-control-is-the-same-control)),
 muted at rest with the hover surface, pointing left at the pane it hides.
-It sits in the main frame, just right of the pane’s shadow, centered on the shortcut
-strip’s row, so it reads as the strip’s neighbour while belonging to the page; it stays
-there, and on that row, while the pane is hidden.
-It has no plate of its own, so the page’s edge and the pane’s shadow show through it;
-only the hover surface fills it.
+It fills the main frame’s gutter at the start of the top row, before a file’s or a
+folder’s Up and address, centered on that row as the navigation title’s gear is across
+the divider, so the two read as the one top bar’s ends.
+It is a target of Up’s size, with space before Up, and the divider’s resize reach stops
+under the row, so a press anywhere in it hides the pane.
+A pull request’s and a commit’s page, which have no eyebrow, have it in the same place,
+in the gutter at the page’s top.
+It stays there while the pane is hidden.
+The stylesheet places it from the row’s height token, `--pane-header-row-height`, the
+gutter’s, `--content-padding-x`, and Up’s size, `--view-header-up-size`, so no script
+measures it. It has no plate of its own, so the page’s edge and the pane’s shadow show
+through it; only the hover surface fills it.
 Holding Shift badges it with Backslash, over its inline end, as every icon button’s
-badge sits.
+badge sits, and over the Up beside it.
 
 The pane does not shrink.
 Hidden, it leaves the layout, keeps its width under the frame, and is `inert`, so no Tab
