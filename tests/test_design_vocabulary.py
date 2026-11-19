@@ -1162,12 +1162,12 @@ def test_git_commit_summary_is_one_component() -> None:
     # Its ref chips take their size from this text, by the chip ratio, and no rule here
     # sizes them: test_branch_chips_scale_with_their_text.
     assert ".git-commit-summary .git-ref" not in styles
-    # The revision is the documented exception: monospace at body size
-    # renders optically larger than the sans beside it, so the sha sits
-    # one step down the ramp. See "Git Commit Summary" in the design
-    # system.
+    # The revision is monospace, the documented exception, at the size of its line, with its
+    # face's x-height the sans's: "Short Commit IDs" in the design system, and
+    # test_the_commit_id_face_is_one_face_one_gray_and_its_lines_size.
     assert "font-family: var(--font-mono)" in summary_sha
-    assert "font-size: var(--nav-font-size)" in summary_sha
+    assert "font-size:" not in summary_sha
+    assert "font-size-adjust: var(--font-sans-ex-height)" in summary_sha
     assert "noninteractive copy glyph" in doc
 
 
@@ -1194,7 +1194,7 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     same token: the owner found the summary and the pull request's
     rows of ages and status a step smaller than the lines above them (mb-kisi). No rule sets
     another size on a line or its text; a chip keeps its own (Branch Chips, Label Colors) and
-    a revision its one step down. `tests/dom/page-header-chrome.mjs` reads the computed sizes
+    a revision the line's. `tests/dom/page-header-chrome.mjs` reads the computed sizes
     on both pages in Chrome.
     """
 
@@ -2860,8 +2860,8 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # A check's own site is an ordinary link, so it never reads as the description after it.
     assert github[".github-pull-checks a"]["color"] == "var(--link)"
     # A conversation commit is said in a card head's type ("Conversation Timeline"): its
-    # when is no quieter than a comment's, its age is the head's, and its hash takes a
-    # revision's own size, one step below the text beside it. The sizes and the line they
+    # when is no quieter than a comment's, its age is the head's, and its hash is the size
+    # of the text beside it, as a short commit ID is everywhere. The sizes and the line they
     # draw are measured in Chrome by tests/test_github_pull_timeline_chrome.py.
     commit = github[".github-pull-commit"]
     assert commit["font-size"] == github[".github-pull-card-head"]["font-size"]

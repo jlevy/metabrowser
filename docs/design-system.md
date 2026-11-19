@@ -266,7 +266,7 @@ it.
 | Tooltip | `--tooltip-font-size` | The body size; its detail lines set none and read at it ([One Tooltip, and It Is Ours](#one-tooltip-and-it-is-ours)) |
 | List text | `--nav-font-size` | The navigation column throughout: its header path, the Files, Pulls, and Commits rows, the [navigation metadata line](#navigation-metadata-line), and the freshness line at its foot; a view header’s eyebrow, its address and mirror note, the twin of the navigation’s path row across the divider ([View Headers](#view-headers)); a tree’s rows wherever one is drawn, the Diff summary’s file list among them; and Quick Search’s results and Help’s commands, the lists in those dialogs |
 | Secondary metadata | The token of the text it accompanies | Ages, update and fetch times, counts, sizes, a row’s second line, notes, and captions |
-| A revision in a line | `--nav-font-size` | One step below the body-size sans beside it, since monospace at that size reads larger ([Git Commit Summary](#git-commit-summary)) |
+| A short commit ID in a line | The token of the text it sits in | Its line’s size, its monospace face scaled to the sans’s x-height, `--font-sans-ex-height` ([Short Commit IDs](#short-commit-ids)) |
 | Controls | `--ui-small-font-size` | Chips and the counts in their menus, badges, buttons, filters, menus, fold expanders, and a tree row’s leading change letter, its slot’s glyph |
 | Keycaps and their hint strips | `--kbd-font-size` | A [key](#keyboard-keys), and a strip of hints that labels keys, at the navigation column’s foot and in Quick Search, so a key and its word read as one mark |
 | Labels | `--label-font-size` | All-caps tabs, table headers, stat labels, group headings, and dialog titles, at the controls’ size: labels differ by caps treatment, not by another size |
@@ -554,8 +554,8 @@ pull request’s labels, a row of chips at a chip’s size.
 An age in a line takes the line’s size, as an age does everywhere
 ([Type Scale](#type-scale)). A chip in a line keeps its own size, a ref chip by the
 [chip ratio](#one-ratio), and a state badge and a label at theirs
-([Label Colors](#label-colors)), and a revision sits its one step down
-([Git Commit Summary](#git-commit-summary)).
+([Label Colors](#label-colors)), and a revision takes the line’s size
+([Short Commit IDs](#short-commit-ids)).
 
 The two headers share their parts in one order, and each keeps the lines only it has:
 
@@ -1303,9 +1303,9 @@ The header’s corner, `.view-header-end`, is no row of either: a strut of the t
 type, then the View on GitHub button, which opts in to the strut’s baseline, so its
 label is on the title’s first baseline; `tests/dom/view-header-chrome.mjs` and
 `tests/dom/github-pull-header-chrome.mjs` measure the two baselines equal in Chrome.
-The Git commit summary’s metadata line sets a monospace revision at `--nav-font-size`
-beside body-size sans text, and aligning the two faces on one baseline would grow the
-line, so it stays centered.
+The Git commit summary’s metadata line sets a monospace revision beside sans text, and
+aligning the two faces on one baseline would grow the line, so it stays centered; that
+was measured before a revision took its line’s size, and has not been measured again.
 [Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#row-baselines)
 has the offsets behind these three decisions.
 
@@ -1627,13 +1627,13 @@ maximum reading width.
 The full summary’s lines and the compact subject, author, age, and change line use
 `--body-font-size`. The ref badges are chips, slightly smaller than that text, by the
 [chip ratio](#one-ratio).
-Among the row’s text the revision is the one deliberate exception: it is monospace, and
-mono at body size renders optically larger than the sans text beside it, so it uses
-`--nav-font-size` (one step down the ramp) to sit level with its row.
-The compact tooltip is bounded by width and subject line count, not made denser with
-smaller type. The optional full-summary description is chrome prose, as a PR description
-is (`.chrome-prose`), at `--document-body-font-size` and `--kpress-line-height-normal`.
-It is Markdown, set as a PR description is: the body after the subject line, rendered by
+Among the row’s text the revision is the one deliberate exception: it is monospace, at
+the row’s size, with its face scaled to the sans’s x-height so it reads at the size of
+the text beside it ([Short Commit IDs](#short-commit-ids)). The compact tooltip is
+bounded by width and subject line count, not made denser with smaller type.
+The optional full-summary description is chrome prose, as a PR description is
+(`.chrome-prose`), at `--document-body-font-size` and `--kpress-line-height-normal`. It
+is Markdown, set as a PR description is: the body after the subject line, rendered by
 `GET /api/git/commit-markdown/<rev>` through KPress and the inert allowlist, in a KPress
 article (`placeCommitBody`), so a body hard-wrapped at 72 columns reflows into
 paragraphs, `-` and `*` lines are lists, and indented and fenced code stays code.
@@ -1676,7 +1676,8 @@ the renderer, root, child, styling, and documentation contract.
 ### Short Commit IDs
 
 **A short commit ID looks the same wherever it appears, as GitHub’s do: always the same
-length, always monospace, always the same gray.**
+length, always monospace, always the same gray, and always the size of the text around
+it.**
 
 - **One length.** Every line that names a commit shows the first `SHORT_COMMIT_CHARS`
   characters of its full ID, from one formatter on each side:
@@ -1686,16 +1687,29 @@ length, always monospace, always the same gray.**
   abbreviation grows in a large repository; the full ID stays a copy or a link away
   ([Copyable Identifiers Use One Delegate](#copyable-identifiers-use-one-delegate)).
 - **One look.** A shown ID is an element of class `.git-commit-sha`, the commit-ID face:
-  `--font-mono` and `--muted`, whatever ink the line around it has, one step below the
-  sans beside it. A tooltip or a CLI message is plain text, so there it is the same
-  length in the text’s face.
+  `--font-mono` and `--muted`, whatever ink the line around it has.
+  A tooltip or a CLI message is plain text, so there it is the same length in the text’s
+  face.
+- **The size of the text around it, by a measured ratio.** The ID sets no size and
+  inherits its line’s, and its monospace face is scaled so its x-height is the sans’s:
+  `font-size-adjust` with `--font-sans-ex-height`, the x-height each font set’s sans has
+  per em, which `static/styles.css` states beside the sans with its measurement.
+  The ratio is the sans’s and not one of sizes because the monospace face is the
+  engine’s: Chrome draws Menlo and WebKit SF Mono, whose x-heights differ, so one ratio
+  of sizes would match one engine only.
+  At one nominal size the mono face read larger than the sans, and a size one step down
+  the ramp matched only the line it was chosen for: the navigation heading’s ID read
+  larger than the name beside it.
+  No context sets an ID’s size, and its line box is its glyphs’ (`line-height: normal`),
+  so in the lines measured, a ref selector row, a commit’s page, and a pull request’s
+  commit row, it does not make its line taller.
 
-It holds in the branch and tag chooser’s button and rows, the navigation heading, a
-commit’s page and hover card, a mirror’s freshness row, and a pull request’s timeline
-and offers, a linked ID among them, which hovers with an underline and stays gray.
-It holds outside the page too: a development version’s label (`commit-length` in
-`pyproject.toml`), the version line after it, and the macOS app’s About box
-(`AppIdentity.shortCommitChars`), which cuts the full ID the build records.
+It holds in the branch and tag chooser’s button and rows, the navigation heading of a
+pin with no mirror, a commit’s page and hover card, a mirror’s freshness row, and a pull
+request’s timeline and offers, a linked ID among them, which hovers with an underline
+and stays gray. It holds outside the page too: a development version’s label
+(`commit-length` in `pyproject.toml`), the version line after it, and the macOS app’s
+About box (`AppIdentity.shortCommitChars`), which cuts the full ID the build records.
 `tests/test_short_commit.py` holds the lengths equal, the app’s through
 `tests/test_macos_app_pins.py`, and fails a display that abbreviates a commit any other
 way.
@@ -2470,9 +2484,8 @@ a commit. It is said the way a card head says a comment:
   assistive technology, as the header’s author does, so every head’s name and every
   commit’s subject start at one x. Pulls rows draw no such box.
   “committed” and the age read as a head’s “commented” and age do, with no quieter ink
-  or size. The hash is the [GitHub action](#chrome) at a revision’s own
-  `--nav-font-size`, one step below the text beside it, as in the
-  [Git Commit Summary](#git-commit-summary).
+  or size. The hash is the [GitHub action](#chrome) at the size of the text beside it, as
+  a [short commit ID](#short-commit-ids) is everywhere.
 
 - **Headings:** every event’s heading reads alike: the author, a plain verb in the
   heading’s own type, and the age, “jlevy opened 4d ago”, “jlevy commented 4d ago”,
@@ -2531,7 +2544,7 @@ Its measurements in Chrome and the app’s WebKit are in
 | Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it |
 | View on GitHub | The [View on GitHub](#view-on-github) button in the header’s corner, the page’s own counterpart on github.com | One button in one place on every page that has a counterpart, so it is never a link in the metadata |
 | GitHub action: a check’s action on GitHub | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows. A check is GitHub’s by the rule that gives a link the GitHub mark, so its look and its mark agree |
-| Conversation commit hash | `.git-commit-sha` at its own `--nav-font-size`, a link to the commit on GitHub with the leading GitHub mark, in the commit-ID gray at rest, on hover, and on focus; hover underlines it | A [short commit ID](#short-commit-ids) is the same gray wherever it appears. A [revision](#git-commit-summary) sits one step below the sans beside it, and a commit row is set at `--body-font-size` ([Conversation Timeline](#conversation-timeline)) |
+| Conversation commit hash | `.git-commit-sha` at the row’s size, a link to the commit on GitHub with the leading GitHub mark, in the commit-ID gray at rest, on hover, and on focus; hover underlines it | A [short commit ID](#short-commit-ids) is the same gray and the size of the sans beside it wherever it appears, and a commit row is set at `--body-font-size` ([Conversation Timeline](#conversation-timeline)) |
 | Browse code, and a review comment’s file | [Text action](#control-families): a link, or `.github-pull-text-action` on a button where it first serves the pull request’s head | The look of the Link row in both forms, so moving the pin never looks like something else |
 | Section title | [`.section-heading`](#section-headings) |  |
 | Note about the content | [`.notice`](#notices) | `warning` when a text, list, or hunk was cut or a part could not be read; `error` when Changes cannot be drawn; no severity for the offer of newer changes, which carries its own control |
@@ -4524,8 +4537,8 @@ Home keeps what a fresh load would only fetch again, or keeps itself:
 The name reads as a link home.
 Its box is the name’s own, and it takes a folder crumb’s treatment: the hover surface
 under the name and the link-colored ring on keyboard focus.
-Its accessible name is “Home:” and the name it shows, read from its own content, so a
-mirror’s ref and commit are in it too.
+Its accessible name is “Home:” and the name it shows, read from its own content, so the
+ref and commit that head a pin with no mirror are in it too.
 It stays a link to `/view/`, so a modified or middle click and its context menu do what
 they do on any link.
 A plain click, or Enter on it, stays in the page.
@@ -5298,15 +5311,21 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
 - **A ref’s row is its name, its commit, and its age.** The name is its
   [chip](#branch-chips), the commit is its [short ID](#short-commit-ids), and the age is
   `MetabrowserFormatters.age` in the compact style, in its tier’s ink, with the commit’s
-  time as its tooltip ([Age](#age)). A tag’s age is its commit’s. The ID sits one step
-  below the text beside it, as it does in a history, and since this list is at the small
-  size, the ramp’s last step before the micro marks, it takes the ratio a chip takes to
-  its text. The ages end the rows in one column, so the IDs line up.
+  time as its tooltip ([Age](#age)). A tag’s age is its commit’s. The ID is the size of
+  the row’s text, as an ID is everywhere.
+  The ages end the rows in one column, so the IDs line up.
   A pin that names no ref puts “Commit:” and the same face on the button.
 
-- **A commit reads the same wherever a line names it.** The navigation heading, the
-  button, the rows, and a mirror’s offer of its ref’s newer commit all show it by the
-  one rule in [Short Commit IDs](#short-commit-ids).
+- **A commit reads the same wherever a line names it.** The button, the rows, and a
+  mirror’s offer of its ref’s newer commit all show it by the one rule in
+  [Short Commit IDs](#short-commit-ids).
+
+- **The button names the ref and the heading does not.** A served mirror’s navigation
+  heading is the repository’s name alone, and a checkout’s revision’s is the folder’s
+  (`_pin_label_html` in `server.py`): this button names the ref, and the heading’s
+  tooltip the full commit, so a ref and a commit beside the name only repeated them, and
+  the owner found them clutter.
+  A pin with no mirror has no selector, so its heading is its ref and its short commit.
 
 A checkout adds three things, and each uses a primitive the control already had:
 
@@ -5328,10 +5347,10 @@ A checkout adds three things, and each uses a primitive the control already had:
   the `.source-ref-selector-badge` a mirror’s default branch says “default” in.
 
 - **The button says “Working tree” in words,** with no chip, since a chip is a ref.
-  On a revision it is the ref’s chip, as on a mirror, and the navigation heading carries
-  the ref and the short commit, in the commit-ID face, beside the folder’s name, so a
-  revision’s page is told from the working tree’s in two places before the list is
-  opened.
+  On a revision it is the ref’s chip, as on a mirror, so the button is what tells a
+  revision’s page from the working tree’s before the list is opened: both are headed by
+  the folder’s name. The main heading’s note says “committed revision of” the folder, and
+  the navigation heading’s tooltip names the full commit.
 
 - **A page the server has moved on from says so at the foot of the pane,** in the
   freshness row a mirror offers its reload in, with one `.btn`, “Reload”

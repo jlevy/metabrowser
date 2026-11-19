@@ -16,8 +16,9 @@
 // - `tip()` is the line the navigation heading's tooltip gains, and the tooltip of the
 //   note and of the root's name: the sentence that says what the directory is, with the
 //   origin and the full commit.
-// - The short commit in the navigation heading gets a control that copies the full
-//   one, through the SDK's owner-stamped copy delegate.
+// - The navigation heading gets a control that copies the full commit, through the
+//   SDK's owner-stamped copy delegate. A mirror's heading and a checkout's revision's
+//   are the name alone, and the tooltip names the commit.
 //
 // tests/dom/mirror-heading-session.js runs this file on what the server served.
 
@@ -86,7 +87,7 @@
     true,
   );
 
-  /** Put the control that copies the full commit after the heading that shows it short. */
+  /** Put the control that copies the full commit after the navigation heading. */
   function mountCommitCopy() {
     const heading = document.querySelector(".header-path");
     const pin = window.METABROWSER_SOURCE_PIN?.pin;

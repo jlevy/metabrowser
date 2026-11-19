@@ -604,6 +604,14 @@ _sys.modules[__name__].__class__ = _ProcBrowserModule
 STATIC_DIR: Path = Path(__file__).parent / "static"
 # The stamp `?v=` names: each static file's own bytes (asset_stamps.StampedStaticFiles).
 _STATIC_TREE = StampedTree(STATIC_DIR, live=editable_install("metabrowser"))
+# Mermaid's chunks, which its build names `<name>-<hash>.mjs` by a hash of each one's
+# content and its entry imports by relative specifiers that drop the entry's `?v=`. The
+# name names the bytes, so a chunk the stamp holds is answered immutable at its plain
+# address. Before this, each chunk a page imported, of 105 (5,404,632 bytes), was
+# `no-cache` and asked for again on every load with a conditional request answered 304
+# (measured 2026-11-19). Its bytes change only with its name: `devtools/vendor_assets.py
+# --check` refuses vendored bytes its manifest does not pin.
+_SELF_NAMED_STATIC = ("vendor/mermaid/chunks/",)
 # The reading-width state machine is first-paint configuration and only 1 KiB
 # compressed. Embed its exact tested source once instead of spending a startup
 # request on it; keeping the file authoritative preserves the browserless
@@ -1283,35 +1291,33 @@ def _initial_path_html() -> str:
 def _pin_label_html(status: SourceStatus) -> str:
     """The navigation heading for a pinned revision.
 
-    A served mirror's is the repository's name, where a folder's name stands and with
-    the same `.path-base` emphasis, then the ref and the short commit, muted: the page
-    is called what a checkout of the repository would be, and the commit it is pinned
-    to stays in sight beside it, in the commit-ID face (`.git-commit-sha`) a commit has
-    wherever it appears. The full commit is in the heading's tooltip.
+    A pin with a name is headed by the name alone, where a folder's name stands and with
+    the same `.path-base` emphasis: a served mirror by the repository's name, as a
+    checkout of it would be called, and a revision a folder's server shows of its own
+    checkout by the folder's name. The ref selector in the Files toolbar names the ref,
+    and the heading's tooltip (`_mirror_tip`) the full commit, so the heading repeats
+    neither: the owner found them clutter beside the name (mb-qq4e).
 
-    A pin with no mirror has no origin to take a name from. Its ref stands as the name
-    with the short commit after it, or the short commit alone when no ref is known, in
-    the same face, and the full commit is its served root.
+    A pin with no mirror has no origin to take a name from, and no ref selector, so its
+    heading is the only place that names it. Its ref stands as the name with the short
+    commit after it, muted, in the commit-ID face (`.git-commit-sha`) a commit has
+    wherever it appears, or the short commit alone when no ref is known; the full commit
+    is its served root.
     """
-
-    short = html_escape(short_commit(status["pin"] or ""))
-    name = status["name"]
-    ref_name = status["ref_name"]
 
     def base(text: str) -> str:
         return f'<span class="path"><span class="path-base">{text}</span></span>'
 
-    commit = f'<span class="header-revision git-commit-sha">{short}</span>'
-    if name is None:
-        if ref_name is None:
-            return base(f'<span class="git-commit-sha">{short}</span>')
-        return base(html_escape(ref_name)) + commit
-    ref = (
-        ""
-        if ref_name is None
-        else f'<span class="header-revision header-ref">{html_escape(ref_name)}</span>'
+    name = status["name"]
+    if name is not None:
+        return base(html_escape(name))
+    short = html_escape(short_commit(status["pin"] or ""))
+    ref_name = status["ref_name"]
+    if ref_name is None:
+        return base(f'<span class="git-commit-sha">{short}</span>')
+    return (
+        base(html_escape(ref_name)) + f'<span class="header-revision git-commit-sha">{short}</span>'
     )
-    return base(html_escape(name)) + ref + commit
 
 
 def _mirror_tip(status: SourceStatus) -> str | None:
@@ -1419,8 +1425,10 @@ def _static_asset_url(rel_path: str) -> str:
 # Interface-font sets offered by the settings dropdown. The first entry is the
 # default. Each set's actual font stacks live in styles.css as a
 # `html[data-app-font="<value>"]` block (the default uses the :root base). To add
-# a set, append one entry here and one CSS block there — the dropdown options and
-# the pre-paint bootstrap both derive from this single list, so they stay in sync.
+# a set, append one entry here and one CSS block there, which sets both --font-sans and
+# the sans's x-height, --font-sans-ex-height (tests/test_short_commit.py checks each) —
+# the dropdown options and the pre-paint bootstrap both derive from this single list,
+# so they stay in sync.
 _FONT_SETS: tuple[dict[str, str], ...] = (
     {"value": "clean", "label": "Clean Fonts"},
     {"value": "system", "label": "System Fonts"},
@@ -1525,7 +1533,8 @@ def _source_ref_label_html(pin: GitRevisionSubject | None, *, checkout: bool) ->
         name = ref_short_name(pin.ref)
     if name:
         return html_escape(name)
-    # As much of the ID as the navigation heading shows: the page has the full ID alone.
+    # The short ID every line that names a commit shows (docs/design-system.md, "Short
+    # Commit IDs"); the navigation heading's tooltip has the full ID.
     return (
         f'Commit: <span class="git-commit-sha">{html_escape(short_commit(pin.commit_oid))}</span>'
     )
@@ -1584,7 +1593,7 @@ async def index(
         initial_root = html_escape(status["name"] or pin_oid, quote=True)
         mirror_attrs = _mirror_heading_attrs(status)
         # What styles a mirror's headings apart from a folder's: its root is a name,
-        # which is cut at its end, and its commit has a copy control beside it.
+        # which is cut at its end, and a control after the name copies its commit.
         mirror_class = " mirror-source" if mirror_attrs else ""
         # Core holds no provider URL grammar: the served mirror asks the installed
         # providers, and only a hosted repository's has an answer (a GitHub mirror's
@@ -2042,6 +2051,26 @@ async def index(
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # Mermaid 12.3.0's ESM entry (static/vendor/mermaid/), imported by the Markdown
+        # plugin's diagram renderer only when a mounted view holds a diagram. The entry
+        # imports the chunks of each diagram type it draws by relative specifiers, so a
+        # document fetches the 30,936-byte entry and its types' chunks, and a document
+        # with no diagram fetches nothing (docs/project/specs/active/
+        # plan-2026-08-21-mermaid-diagram-rendering.md has the measurement).
+        "mermaid": [{"module": _static_asset_url("vendor/mermaid/mermaid.esm.min.mjs")}],
+        # KPress's diagram renderer and its opt-in controls, at the stamped URLs a
+        # render's asset manifest names, so they import the one KPress runtime the
+        # document's other modules share. Fetched with the first diagram, beside Mermaid.
+        "kpress-diagrams": [
+            {"module": kpress_adapter.kpress_static_url("js/diagrams.js", prefix=kpress_prefix)}
+        ],
+        "kpress-diagram-controls": [
+            {
+                "module": kpress_adapter.kpress_static_url(
+                    "js/diagram-controls.js", prefix=kpress_prefix
+                )
+            }
+        ],
         # A file's and a folder's view header: its builders, and the folder line's live
         # refresh. renderFile draws a header only after loadViewComposition, which fetches
         # this beside the compositor and the SDK's view helpers, so the first tree never
@@ -2263,8 +2292,8 @@ async def index(
              plain activation in the page and shows the folder's home view as a fresh load
              of this address does, every tab at its first, and `0` does the same. Its
              accessible name is "Home:" and then the name it shows, read from its own
-             content, so the name a mirror's heading shows, its ref and commit with it,
-             stays in it. The header anchors the key's badge, which sits beside the name
+             content, so a pin with no mirror's ref and commit, which stand as its name,
+             stay in it. The header anchors the key's badge, which sits beside the name
              because the name clips. -->
         <a href="{VIEW_ROUTE_PREFIX}" class="header-path" id="header-home"
            aria-labelledby="header-home-label header-home"
@@ -2417,7 +2446,14 @@ async def index(
     return HTMLResponse(
         html,
         headers={
-            "Content-Security-Policy": untrusted_shell_csp(nonce, origin),
+            "Content-Security-Policy": untrusted_shell_csp(
+                nonce,
+                origin,
+                tuple(
+                    kpress_adapter.kpress_static_url(module, prefix=kpress_prefix)
+                    for module in kpress_adapter.DIAGRAM_MODULES
+                ),
+            ),
             "X-Frame-Options": "DENY",
         },
     )
@@ -5212,7 +5248,11 @@ routes = [
     Route("/raw/{path:path}", raw_file),
     Route("/kpress-static/{path:path}", kpress_static_asset),
     Mount(
-        "/static", app=StampedStaticFiles(directory=STATIC_DIR, tree=_STATIC_TREE), name="static"
+        "/static",
+        app=StampedStaticFiles(
+            directory=STATIC_DIR, tree=_STATIC_TREE, self_named=_SELF_NAMED_STATIC
+        ),
+        name="static",
     ),
     # Read-only git history, kept as its own collection in
     # ``metabrowser.git.routes``: separate wire model, separate failure

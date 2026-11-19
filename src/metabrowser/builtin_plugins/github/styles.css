@@ -717,10 +717,11 @@
    box, and the identity's gap (--actor-avatar-size, --actor-identity-gap,
    18 px and 4 px): its frame is as wide as a card's and draws
    nothing. Its box is its line, with no room of its own above or below, so its text is as
-   far from the events beside it as their boxes are, the rhythm (mb-w7rt). Its hash takes a
-   revision's own size, one step below the text beside it (`.git-commit-sha`). Measured in
-   Chrome 152 before the rhythm: a card head's room in the row put its glyphs 20 px from the
-   next commit's, and 23.5 px from a card, which stood 12 px from the next card. */
+   far from the events beside it as their boxes are, the rhythm (mb-w7rt). Its hash is the
+   size of the text beside it, as a short commit ID is everywhere (`.git-commit-sha`).
+   Measured in Chrome 152 before the rhythm: a card head's room in the row put its glyphs
+   20 px from the next commit's, and 23.5 px from a card, which stood 12 px from the next
+   card. */
 .github-pull-commit {
   display: flex;
   flex-wrap: wrap;

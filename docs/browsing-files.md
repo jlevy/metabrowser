@@ -121,6 +121,7 @@ tabs, and `V` and `S` switch to the rendered view and the source wherever both e
 | File | Views |
 | --- | --- |
 | Markdown (`.md`) | Document, rendered by KPress, and Source |
+| Mermaid diagrams (`.mmd`, `.mermaid`) | Diagram and Source |
 | JSON and YAML | Tree, a collapsible view of the parsed structure, and Source |
 | JSONL logs | Log, a timeline of events, and Raw JSON; coding-agent logs add Charts |
 | Code and text | Source, with syntax highlighting where a grammar exists |
@@ -143,6 +144,18 @@ When the window is wide enough to show the document as a card, a print button at
 card’s top right prints the document without the rest of the page, and the README on a
 folder’s Overview has the same button.
 Command-P, or Control-P outside macOS, prints whichever view is shown, at any width.
+
+A fenced `mermaid` code block is drawn as a diagram, as GitHub draws it, in the page’s
+light or dark theme.
+Hovering a diagram shows buttons to copy its source, show the source in its place, and
+open it in a dialog where the buttons, the arrow keys, `+`, `-`, `0`, the scroll wheel,
+a pinch, and dragging zoom and pan it.
+A diagram Mermaid cannot parse shows Mermaid’s message above its source.
+Mermaid loads only for a document that has a diagram.
+With active content off, each diagram is drawn as a picture, so its text cannot be
+selected, and Mermaid’s `click` links and scripts never run in either mode.
+A `.mmd` or `.mermaid` file opens as one diagram, drawn the same way, with its source a
+tab away.
 
 Links resolve the way GitHub resolves them:
 

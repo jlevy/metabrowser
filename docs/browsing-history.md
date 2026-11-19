@@ -105,7 +105,8 @@ Click it or press `W` to see any other branch or tag without checking it out.
   **Remotes** are its remote-tracking branches, such as `origin/main`, as your last
   fetch left them.
 - Choosing a branch or tag shows its last commit, read from the repository’s Git
-  objects. The button and the navigation header then name it, with its short commit.
+  objects. The button then names it, and the navigation header, still the folder’s name,
+  names its full commit when you hover over it.
   This includes the checked-out branch: choosing it shows what is committed, without
   your uncommitted changes, and **Working tree** is the way back to them.
 

@@ -181,15 +181,17 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
         # takes no more room than the narrowest.
         assert len(set(result[name]["ageColumn"])) == 1, (name, result[name]["ageColumn"])
         assert result[name]["commitColumns"] <= 1, name
-        # Every ref's commit, in the list as in the heading beside it, is one short ID: one
-        # length, the mono face, and the muted gray (docs/design-system.md, "Short Commit
-        # IDs"), which the owner asked for after seeing longer IDs in this list.
+        # Every ref's commit in the list is one short ID: one length, the mono face, and the
+        # muted gray (docs/design-system.md, "Short Commit IDs"), which the owner asked for
+        # after seeing longer IDs in this list.
         assert len(result[name]["commitIds"]["ids"]) >= len(result[name]["rows"]), name
         _one_look(name, result[name]["commitIds"])
     for name in ("workingTree", "branch", "tag", "reloaded", "back"):
         _one_look(name, result[name]["commitIds"])
-    # A revision's heading names its commit the same way.
-    assert [entry["text"] for entry in result["branch"]["commitIds"]["ids"]] == [FEATURE_SHORT]
+    # A revision's heading is the folder's name alone, as the working tree's is: the button
+    # names the ref and the heading's tooltip the full commit, so no commit ID shows on the
+    # page until the list is opened (mb-qq4e).
+    assert result["branch"]["commitIds"]["ids"] == []
 
     # A branch: a revision's page, under the untrusted profile, with no file of the disk's.
     branch = result["branch"]
@@ -197,7 +199,7 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     assert branch["pin"] == {"pin": FEATURE, "ref": "refs/heads/feature"}
     assert branch["checkout"] == {"working_tree": False}
     assert branch["button"] == "feature"
-    assert branch["heading"] == f"checkoutfeature{FEATURE_SHORT}"
+    assert branch["heading"] == "checkout"
     assert branch["tree"] == ["FEATURE.md", "README.md"]
     assert branch["capabilities"] == UNTRUSTED
     assert branch["title"] == tree["title"] == "checkout • Metabrowser"

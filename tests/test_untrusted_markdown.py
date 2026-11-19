@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
-from metabrowser import server
+from metabrowser import kpress_adapter, server
 from metabrowser.capabilities import (
     DEFAULT_CAPABILITIES,
     Capabilities,
@@ -99,17 +99,25 @@ def test_the_untrusted_shell_runs_only_this_servers_scripts(untrusted: None) -> 
     policy = first.headers["content-security-policy"]
     nonce = re.search(r"'nonce-([^']+)'", policy)
     assert nonce is not None
-    assert policy == untrusted_shell_csp(nonce.group(1), "http://testserver")
+    diagram_scripts = tuple(
+        kpress_adapter.kpress_static_url(module) for module in kpress_adapter.DIAGRAM_MODULES
+    )
+    assert policy == untrusted_shell_csp(nonce.group(1), "http://testserver", diagram_scripts)
     assert first.headers["x-frame-options"] == "DENY"
     # A fresh nonce per response, carried by every inline script of the shell.
     assert nonce.group(1) not in second.headers["content-security-policy"]
     inline = re.findall(r"<script(?![^>]*\bsrc=)([^>]*)>", first.text)
     assert inline and all(f'nonce="{nonce.group(1)}"' in attrs for attrs in inline)
-    # Code only from the application's own static paths: never /raw, never inline.
+    # Code only from the application's own static paths, and KPress's diagram modules
+    # by exact path: never /raw, never inline, never the rest of KPress's tree.
     assert (
         f"script-src 'nonce-{nonce.group(1)}' http://testserver/static/"
-        " http://testserver/plugin-static/;"
+        " http://testserver/plugin-static/ "
+        + " ".join(f"http://testserver{path}" for path in diagram_scripts)
+        + ";"
     ) in policy
+    assert all(path.startswith("/kpress-static/") for path in diagram_scripts)
+    assert "http://testserver/kpress-static/ " not in policy.split("script-src", 1)[1].split(";")[0]
     assert "'unsafe-hashes'" not in policy and "script-src 'self'" not in policy
     for directive in (
         "style-src http://testserver/static/ http://testserver/plugin-static/"

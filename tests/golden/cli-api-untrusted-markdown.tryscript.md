@@ -10,7 +10,8 @@ env:
 before: >-
   cp -R "$TRYSCRIPT_TEST_DIR/../fixtures/untrusted-markdown" hostile &&
   mkdir slow && (printf '[%.0s' $(seq 1 100); head -c 61440 /dev/zero | tr '\0' '%')
-  > slow/slow.md
+  > slow/slow.md &&
+  mkdir diagrams && printf '# Diagrams\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n```svg\n<svg viewBox="0 0 1 1"></svg>\n```\n' > diagrams/README.md
 ---
 # Golden Test: Markdown From an Untrusted Source
 
@@ -268,5 +269,38 @@ $ grep -E '^        "(id|loading)":' rich.txt
         "loading": "resource"
         "id": "fonts/planetaire-mono-text-latin-700-italic.woff2",
         "loading": "resource"
+? 0
+```
+
+## Test: a Mermaid diagram survives the allowlist as GitHub’s fallback markup
+
+KPress wraps a `mermaid` fence in a figure whose class and `data-*` the allowlist drops.
+The block keeps one attribute instead, `lang="mermaid"`, as GitHub’s own fallback spells
+it, so the page draws it, as an image (`builtin_plugins/markdown/diagrams.js`). An `svg`
+fence stays code, as GitHub shows it: Metabrowser asks KPress for `diagrams="mermaid"`
+(`kpress_adapter.render_kpress_view`).
+
+```console
+$ metab diagrams --untrusted --api '/api/kpress/render?path=README.md&view=document' > diagrams-inert.txt
+? 0
+```
+
+```console
+$ grep -E '^  "html":' diagrams-inert.txt
+  "html": "\n\n<div><div><h1 id=\"user-content-diagrams\">Diagrams</h1>\n<pre lang=\"mermaid\"><code>flowchart LR\n  A --&gt; B\n</code></pre>\n<pre><code>&lt;svg viewBox=\"0 0 1 1\"&gt;&lt;/svg&gt;\n</code></pre></div></div>",
+? 0
+```
+
+A trusted render keeps KPress’s Mermaid figure, which the page draws in the document,
+and the `svg` fence is still code.
+
+```console
+$ metab diagrams --api '/api/kpress/render?path=README.md&view=document' > diagrams-trusted.txt
+? 0
+```
+
+```console
+$ grep -oE 'data-kpress-diagram=\\"[a-z]+\\"' diagrams-trusted.txt
+data-kpress-diagram=\"mermaid\"
 ? 0
 ```

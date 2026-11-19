@@ -6,9 +6,11 @@ import os
 import subprocess
 import tarfile
 import tempfile
+import tomllib
 import zipfile
 from pathlib import Path
 from textwrap import dedent
+from urllib.parse import urlsplit, urlunsplit
 
 from devtools.public_hygiene import find_hygiene_findings
 
@@ -301,6 +303,47 @@ def _isolated_install_environment() -> dict[str, str]:
     return env
 
 
+def _locked_source_requirements() -> list[str]:
+    """Each package `[tool.uv.sources]` builds from Git, as the commit `uv.lock` records.
+
+    uv honors a source only in this checkout: the wheel's metadata keeps the bare
+    requirement, which no index may satisfy while the source names an unreleased commit.
+    The smoke installs therefore name the locked commit beside the wheel, so they test
+    the wheel against what the lock pins. publish.yml refuses a release while any source
+    is set, so a published wheel never depends on one.
+    """
+
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    sources = project.get("tool", {}).get("uv", {}).get("sources", {})
+    if not sources:
+        return []
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    requirements: list[str] = []
+    for package in lock.get("package", []):
+        if package.get("name") not in sources:
+            continue
+        git: object = package.get("source", {}).get("git")
+        if not isinstance(git, str) or not git:
+            raise RuntimeError(f"{package['name']}: only a Git source is supported here")
+        parts = urlsplit(git)
+        if not parts.fragment:
+            raise RuntimeError(f"{package['name']}: uv.lock records no commit for {git}")
+        repository = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+        requirements.append(f"{package['name']} @ git+{repository}@{parts.fragment}")
+    if len(requirements) != len(sources):
+        raise RuntimeError(f"uv.lock lacks a locked package for {sorted(sources)}")
+    return requirements
+
+
+def _with_artifact(artifact: Path) -> list[str]:
+    """The `--with` arguments that install *artifact* and any locked Git source."""
+
+    arguments = ["--with", str(artifact)]
+    for requirement in _locked_source_requirements():
+        arguments += ["--with", requirement]
+    return arguments
+
+
 def _run_installed_python_smoke(artifact: Path, script: str) -> str:
     python_command = [
         "uv",
@@ -309,8 +352,7 @@ def _run_installed_python_smoke(artifact: Path, script: str) -> str:
         "run",
         "--isolated",
         "--no-project",
-        "--with",
-        str(artifact),
+        *_with_artifact(artifact),
         "python",
         "-I",
         "-c",
@@ -349,8 +391,7 @@ def _smoke_install(wheel: Path) -> None:
             "run",
             "--isolated",
             "--no-project",
-            "--with",
-            str(wheel),
+            *_with_artifact(wheel),
             command,
         ]
         subprocess.run([*cli_command, "--help"], cwd=ROOT, env=env, check=True)
@@ -375,8 +416,7 @@ def _smoke_install(wheel: Path) -> None:
         "run",
         "--isolated",
         "--no-project",
-        "--with",
-        str(wheel),
+        *_with_artifact(wheel),
         "metab",
         "--doctor",
     ]
@@ -411,8 +451,7 @@ def _smoke_install(wheel: Path) -> None:
         "run",
         "--isolated",
         "--no-project",
-        "--with",
-        str(wheel),
+        *_with_artifact(wheel),
         "metab",
         str(ROOT / "tests" / "manual-fixtures"),
         "--check-api",

@@ -33,7 +33,9 @@ and each definition carries a comment naming its Lucide id, which the Icon colum
 repeats. Every one is inline SVG that strokes or fills `currentColor`, so the element
 around it sets its ink.
 Rendered Markdown draws its own chrome from KPress’s icon set, the same Lucide release
-([KPress icons](https://github.com/jlevy/kpress/blob/v0.3.0/docs/kpress-icons.md)).
+([KPress icons](https://github.com/jlevy/kpress/blob/v0.3.0/docs/kpress-icons.md)),
+Mermaid diagrams’ toolbar and dialog included: in an untrusted document, whose allowlist
+drops KPress’s inline sprites, KPress’s diagram controls fetch them.
 
 A glyph enters the registry only when a folder’s first paint can draw it: every page
 fetches the registry before it paints, so each glyph there is paid for by every folder
