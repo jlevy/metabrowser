@@ -1619,6 +1619,9 @@ type MetabrowserSdk = {
   /** A commit's or pull request's title as nodes for its element: a conventional-commit
    *  prefix in `span.title-prefix`, at regular weight, then the rest. */
   titleNodes(title: string): Array<Node | string>;
+  /** A commit ID as every line names one (`MetabrowserFormatters.shortCommit`), for an
+   *  element of class `git-commit-sha`, the commit-ID face. */
+  shortCommit(commit: string): string;
   /** A count summary as nodes for its element, painted as the shell paints every count
    *  summary: each number in `span.summary-number`, each mark in `span.summary-punctuation`,
    *  a separator hidden from assistive technology and its `spoken` in `span.visually-hidden`,

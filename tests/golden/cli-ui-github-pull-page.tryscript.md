@@ -260,7 +260,7 @@ $ node tests/dom/github-pull-page-session.js
       "paint": {
         "status": "current",
         "tab": "conversation",
-        "message": "Commit 85fcb2fa9e77 is not in the mirror, and its origin does not have it.",
+        "message": "Commit 85fcb2f is not in the mirror, and its origin does not have it.",
         "canRefresh": false,
         "freshness": "Fetched just now via GitHub CLI",
         "failure": null,

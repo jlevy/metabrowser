@@ -470,7 +470,9 @@
     // author's, which is the shell's `.actor-identity` below.
     let revisionGroup = '<span class="git-commit-identity">';
     revisionGroup += '<span class="git-commit-revision">';
-    revisionGroup += `<span class="git-commit-sha">${escapeHtml(commit.short_id)}</span>`;
+    // The revision as every line names a commit, cut from its full ID, not Git's
+    // abbreviation (docs/design-system.md, "Short Commit IDs"); the copy button has it whole.
+    revisionGroup += `<span class="git-commit-sha">${escapeHtml(window.MetabrowserFormatters.shortCommit(commit.id))}</span>`;
     if (compact) {
       revisionGroup +=
         '<span class="git-commit-revision-copy-preview" aria-hidden="true">' +

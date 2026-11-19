@@ -190,6 +190,7 @@ const MEASURE = `async (arrangement, width, theme) => {
       mountRefCopies: mb.mountRefCopies,
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
+      shortCommit: mb.shortCommit,
       countPartsNodes: mb.countPartsNodes,
       formatAge: () => ({ label: "2mo ago", className: "age-old" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),

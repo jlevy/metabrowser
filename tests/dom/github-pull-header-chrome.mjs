@@ -255,6 +255,7 @@ const MEASURE = `async (name, change, tab, width) => {
       mountRefCopies: mb.mountRefCopies,
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
+      shortCommit: mb.shortCommit,
       countPartsNodes: mb.countPartsNodes,
       // Ages of the lengths a record's have, one per time in the order the page asks, so no
       // two read the same and the row of ages is as long as a real one: "now" for all of them
@@ -411,6 +412,7 @@ const MEASURE = `async (name, change, tab, width) => {
         currentTitle: "",
         named: change.stackChip === 2,
         titleNodes: mb.titleNodes,
+        shortCommit: mb.shortCommit,
         onOpen() {},
       }),
     );
@@ -885,6 +887,7 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
       mountRefCopies: mb.mountRefCopies,
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
+      shortCommit: mb.shortCommit,
       countPartsNodes: mb.countPartsNodes,
       changeLine: mb.changeLine,
       changeLineNodes: mb.changeLineNodes,
@@ -1053,6 +1056,7 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
     mountRefCopies: mb.mountRefCopies,
     actorIdentity: mb.actorIdentity,
     titleNodes: mb.titleNodes,
+    shortCommit: mb.shortCommit,
     countPartsNodes: mb.countPartsNodes,
     formatAge: () => ({ label: "now", className: "age" }),
     formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
@@ -1223,6 +1227,7 @@ const CORNER = `async (width, theme, longTitle, maxChars) => {
       mountRefCopies: mb.mountRefCopies,
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
+      shortCommit: mb.shortCommit,
       countPartsNodes: mb.countPartsNodes,
       formatAge: () => ({ label: "now", className: "age" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),

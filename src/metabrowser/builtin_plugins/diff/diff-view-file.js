@@ -109,9 +109,14 @@ const VIEW_PREFIX = "/view/";
 export const VIEW_FILE_LABEL = "View file";
 export const VIEW_ON_BRANCH_LABEL = "View on branch";
 
-/** @param {string} commit */
+/**
+ * A commit as every line names one, in this module's tooltips and refusals, which are
+ * text: the SDK's `shortCommit` (docs/design-system.md, "Short Commit IDs").
+ *
+ * @param {string} commit
+ */
 function short(commit) {
-  return commit.slice(0, 12);
+  return window.metabrowser.shortCommit(commit);
 }
 
 /**

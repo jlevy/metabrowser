@@ -240,7 +240,8 @@ repo="$work/repo"
 mkdir -p "$repo/apps/macos"
 git -C "$repo" init -q
 git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -q --allow-empty -m one
-head="$(git -C "$repo" rev-parse --short=7 HEAD)"
+head="$(git -C "$repo" rev-parse HEAD)"
+head="${head:0:7}"
 clean="$(cd "$repo/apps/macos" && source_commit)"
 touch "$repo/apps/macos/changed"
 dirty="$(cd "$repo/apps/macos" && source_commit)"

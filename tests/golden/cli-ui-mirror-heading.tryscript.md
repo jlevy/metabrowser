@@ -144,8 +144,8 @@ $ node tests/dom/mirror-heading-session.js
       "writes": []
     },
     "navigationHeading": {
-      "html": "<span class=\"path\"><span class=\"path-base\">squares</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision git-commit-sha\">42382ea2303b</span>",
-      "text": "squares topic 42382ea2303b",
+      "html": "<span class=\"path\"><span class=\"path-base\">squares</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision git-commit-sha\">42382ea</span>",
+      "text": "squares topic 42382ea",
       "commitCopy": {
         "attributes": {
           "type": "button",
@@ -206,8 +206,8 @@ $ node tests/dom/mirror-heading-session.js
       "writes": []
     },
     "navigationHeading": {
-      "html": "<span class=\"path\"><span class=\"path-base\">a&lt;b&gt;&amp;�x</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision git-commit-sha\">42382ea2303b</span>",
-      "text": "a<b>&�x topic 42382ea2303b",
+      "html": "<span class=\"path\"><span class=\"path-base\">a&lt;b&gt;&amp;�x</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision git-commit-sha\">42382ea</span>",
+      "text": "a<b>&�x topic 42382ea",
       "commitCopy": {
         "attributes": {
           "type": "button",

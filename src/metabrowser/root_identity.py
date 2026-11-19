@@ -21,8 +21,8 @@ Each subject the source session can hold (:mod:`metabrowser.source`) is named th
   repository's name, as a checkout would be called (``MirrorDisplay.name``).
   ``full_name`` is the origin abbreviated by :func:`abbreviate_origin`, never the cache
   path, then what the pin is: ``@<ref>`` for a branch or tag, by the name the origin
-  knows it by, as in ``github.com/jlevy/tbd@main``, and ``@<the commit's first 12 hex
-  digits>`` for a commit with no ref.
+  knows it by, as in ``github.com/jlevy/tbd@main``, and ``@<its short commit>``
+  (:func:`~metabrowser.commit_ids.short_commit`) for a commit with no ref.
 - **A pull request's head** is a mirror pinned to ``refs/pull/<n>/head``, which a
   pull-request URL serves and a pin switch onto its head serves again. It is named as
   GitHub writes a pull request: ``short_name`` ``tbd #123`` and ``full_name``
@@ -35,7 +35,7 @@ Each subject the source session can hold (:mod:`metabrowser.source`) is named th
   since the mode is how the root was opened, and ``short_name`` is the folder's name.
   ``full_name`` is the folder's path and then what is shown, as a mirror's is its origin
   and then its pin: ``~/src/tbd@topic``, with a remote-tracking branch as ``@origin/topic``
-  and a commit with no ref as its first 12 hex digits.
+  and a commit with no ref as its short commit.
 - **A pin with no mirror** has no origin to take a name from, and is named as the
   navigation heading names it: by its ref's short name, or by its short commit when it
   has no ref. Every CLI mode serves a pin with its mirror, so only an in-process caller
@@ -70,6 +70,7 @@ from metabrowser.checkout_revisions import (
     checkout_ref_name,
     checkout_revisions,
 )
+from metabrowser.commit_ids import short_commit
 from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
     MirrorDisplay,
@@ -89,18 +90,6 @@ from metabrowser.source import (
 APP_NAME: Final = "Metabrowser"
 # U+2022 BULLET between single spaces, as in ``fdu • Metabrowser``.
 TITLE_SEPARATOR: Final = " \u2022 "
-# How much of a commit ID a line shows wherever it names a commit: a commit pin's full
-# name, the navigation heading, the ref chooser's button and rows, and a mirror's offer of
-# its ref's newer commit. One length, so one commit reads the same in each. The page's copy
-# is `SHORT_COMMIT_CHARS` in static/formatters.js (`shortCommit`), which
-# tests/test_short_commit.py holds to this one.
-SHORT_COMMIT_CHARS: Final = 12
-
-
-def short_commit(commit: str) -> str:
-    """*commit* as a line names it: its first :data:`SHORT_COMMIT_CHARS` characters."""
-
-    return commit[:SHORT_COMMIT_CHARS]
 
 
 type IdentityKind = Literal["folder", "mirror"]
@@ -317,7 +306,6 @@ __all__ = [
     "APP_NAME",
     "IDENTITY_ROUTES",
     "KIND_LABELS",
-    "SHORT_COMMIT_CHARS",
     "TITLE_SEPARATOR",
     "IdentityKind",
     "RootIdentity",
@@ -327,6 +315,5 @@ __all__ = [
     "folder_identity",
     "mirror_identity",
     "root_identity",
-    "short_commit",
     "user_home",
 ]

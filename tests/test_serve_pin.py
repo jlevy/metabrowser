@@ -39,6 +39,7 @@ from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.capabilities import get_capabilities, untrusted_shell_csp
 from metabrowser.cli.main import _app, _run_cli
+from metabrowser.commit_ids import short_commit
 from metabrowser.errors import CLIError
 from metabrowser.git.process import GitUnavailableError
 from metabrowser.git.tree_source import (
@@ -513,7 +514,7 @@ def test_the_shell_names_the_repository_and_its_pinned_revision(
     assert (
         '<span class="path"><span class="path-base">origin</span></span>'
         '<span class="header-revision header-ref">topic</span>'
-        f'<span class="header-revision git-commit-sha">{origin.second[:12]}</span></a>'
+        f'<span class="header-revision git-commit-sha">{short_commit(origin.second)}</span></a>'
     ) in shell.text
     # The tab is called by the repository's name, as a folder's is by its own: the
     # title is /api/identity's.
@@ -620,7 +621,7 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
         # A commit pinned by its ID, which is no ref's tip, is named by its short commit.
         # The page the switch loads again keeps the repository's title.
         renamed = client.get("/api/identity").json()
-        assert renamed["full_name"] == f"~/git/origin.git@{origin.first[:12]}"
+        assert renamed["full_name"] == f"~/git/origin.git@{short_commit(origin.first)}"
         assert renamed["title"] == "origin \u2022 Metabrowser"
         assert "<title>origin \u2022 Metabrowser</title>" in client.get("/view/").text
 
