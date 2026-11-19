@@ -29,7 +29,6 @@ it, may read them, and an installed plugin uses the SDK.
 | Keyboard and dialogs | `keyboard-shortcuts.js`, `shell-keymap.js`, `plugin-shortcuts.js`, `key-reveal.js`, `keyboard-help.js`, `overlay-layer.js` |
 | Quick Search | `search-controller.js`, `search-palette.js`, `file-fuzzy-match.js` |
 | Pinned revisions, mirrors, and a checkout’s revisions | `git-path.js`, `source-pin-guard.js`, `source-freshness.js`, `source-ref-selector.js`, `mirror-heading.js` |
-| Repositories on github.com | `github-page.js`, the view header’s GitHub toggle, which the server writes inline into such a page only |
 | Shared rendering | `formatters.js`, `icons.js`, `charts.js`, `file-type-taxonomy.js`, `inert-html.js`, `source-append.js`, `theme-state.js`, `document-width.js`, `request-error.js`, `contribution-registry.js` |
 
 `types.d.ts` declares the globals and the SDK. `tsconfig.json` type-checks every module
@@ -220,14 +219,15 @@ show it.
   narrowly used, or both: the bundles in `on_demand_script_bundles` in `server.py`.
 - **Inline, page-specific:** written into the shell of the pages that use it and of no
   other, for small code only those pages need before their first paint:
-  `mirror-heading.js` on a served mirror’s page and `github-page.js`, the view header’s
-  GitHub toggle, on a page with a repository on github.com (`_mirror_heading_script` and
-  `_github_page_script` in `server.py`, each read from disk once).
-  A plain folder pays nothing for either, but a page that has one pays its bytes in its
-  HTML, outside the startup-script gate’s count of requested scripts, so
-  `devtools/check_startup_scripts.py` reports how much more the application sends for a
-  github.com checkout’s shell than for a plain folder’s, beside the budget, without
-  gating it. The toggle’s marks are masks in `styles.css`, which every page loads.
+  `mirror-heading.js` on a served mirror’s page (`_mirror_heading_script` in
+  `server.py`, read from disk once).
+  A plain folder pays nothing for it, but a page that has it pays its bytes in its HTML,
+  outside the startup-script gate’s count of requested scripts.
+  A github.com checkout’s shell also carries more in its HTML than a plain folder’s, its
+  repository context and the Git tabs, so `devtools/check_startup_scripts.py` reports
+  how much more the application sends for it, beside the budget, without gating it.
+  The View on GitHub button is in the on-demand view helpers
+  (`static/plugin-sdk-views.js`), which every page that draws one has loaded by then.
 
 Data follows the same rule: a bulk payload one surface reads is on demand.
 A pull request’s page prepares the initial Changes comparison, which its header’s Diff

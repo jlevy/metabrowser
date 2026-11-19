@@ -5,9 +5,10 @@ here, through :class:`RepositoryProvider`, for: URL reducers for the root argume
 Git configuration for a remote URL (a credential helper), what to say when a source was
 not found or needs credentials (``credential_hint``), a check to run before a first
 clone, the ``repository_context`` of a mirrored source, the commit a pull-request URL
-pins, the changed file a pull-request URL's anchor names, and the pull requests a server
-keeps fresh beside the mirror; and, for ``metab --doctor``, a report on the provider's
-own tools (:func:`provider_statuses`). The list is fixed, as the built-in browser plugin
+pins, the changed file a pull-request URL's anchor names, the pull requests a server
+keeps fresh beside the mirror, and the page on the provider's own site that shows what a
+Metabrowser page shows (:func:`counterpart_host_for`); and, for ``metab --doctor``, a
+report on the provider's own tools (:func:`provider_statuses`). The list is fixed, as the built-in browser plugin
 directories are; there is no public registration surface for the alpha.
 """
 
@@ -20,7 +21,12 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
-    from metabrowser.cache.urls import FileAnchor, GitSource, ProviderUrlReducer
+    from metabrowser.cache.urls import (
+        FileAnchor,
+        GitSource,
+        ProviderUrlReducer,
+        RepositorySelection,
+    )
     from metabrowser.mirror_refresh import PullRequestSet
     from metabrowser.repository_context import RepositoryContext
 
@@ -79,12 +85,51 @@ class ProviderStatus:
     lines: tuple[str, ...]
 
 
+class CounterpartHost(Protocol):
+    """How one hosting provider names a served repository's pages on its own site.
+
+    ``GET /api/counterpart`` (``metabrowser/counterpart.py``) reads a page's link from it,
+    through :func:`counterpart_host_for`, so the route names no provider.
+    """
+
+    @property
+    def provider(self) -> str:
+        """The provider's name, which the control's ``data-view-on-<provider>`` spells."""
+        ...
+
+    @property
+    def label(self) -> str:
+        """What the link says, such as "View on GitHub"."""
+        ...
+
+    def clone_url(self, context: RepositoryContext) -> str | None:
+        """The canonical URL of *context*'s repository, or ``None`` when it is not hosted here."""
+        ...
+
+    def web_url(self, clone_url: str, selection: RepositorySelection) -> str | None:
+        """The page that shows *selection* of the repository at *clone_url*."""
+        ...
+
+    def pulls_url(self, clone_url: str) -> str | None:
+        """The page that lists the pull requests of the repository at *clone_url*."""
+        ...
+
+    def file_anchor(self, path: bytes) -> FileAnchor:
+        """The anchor of the changed file at repository path *path* on a comparison's page."""
+        ...
+
+
 class RepositoryProvider(Protocol):
     """What one hosting provider contributes to acquisition and serving."""
 
     @property
     def reducer(self) -> ProviderUrlReducer:
         """The reducer for this provider's web URL spellings."""
+        ...
+
+    @property
+    def counterpart(self) -> CounterpartHost:
+        """How this provider names a served repository's pages on its own site."""
         ...
 
     def git_config(self, remote_url: str) -> tuple[str, ...]:
@@ -162,6 +207,30 @@ def url_reducers() -> tuple[ProviderUrlReducer, ...]:
     from metabrowser.builtin_plugins.github.urls import GithubUrlReducer
 
     return (GithubUrlReducer(),)
+
+
+@cache
+def counterpart_hosts() -> tuple[CounterpartHost, ...]:
+    """Every provider's :class:`CounterpartHost`, each imported alone, as a reducer is.
+
+    ``GET /api/counterpart`` needs a URL's grammar, not the mirror machinery, so this
+    imports what :func:`url_reducers` imports. ``tests/test_cache_urls.py`` holds this
+    list to the providers'.
+    """
+
+    from metabrowser.builtin_plugins.github.urls import GithubCounterpartHost
+
+    return (GithubCounterpartHost(),)
+
+
+def counterpart_host_for(context: RepositoryContext) -> tuple[CounterpartHost, str] | None:
+    """The provider hosting *context*'s repository and the repository's URL, or ``None``."""
+
+    for host in counterpart_hosts():
+        clone_url = host.clone_url(context)
+        if clone_url is not None:
+            return host, clone_url
+    return None
 
 
 async def provider_statuses() -> tuple[ProviderStatus, ...]:
@@ -257,6 +326,7 @@ def served_pull_requests_for(published: PublishedSource) -> PullRequestSet | Non
 
 
 __all__ = [
+    "CounterpartHost",
     "ProviderStatus",
     "PullRequestFetch",
     "PullRequestFile",
@@ -264,6 +334,8 @@ __all__ = [
     "PullRequestUnavailableError",
     "RepositoryProvider",
     "check_first_clone",
+    "counterpart_host_for",
+    "counterpart_hosts",
     "installed_providers",
     "open_pull_request",
     "provider_credential_hint",
