@@ -519,6 +519,7 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 "Sources/ShellCore/Web/PagePrint.swift" = ["own: window.print, which WebKit gives the app no public way to receive"]
 "Sources/ShellCore/Web/GitHubViewRequests.swift" = ["view-on-github-link"]
 "Sources/Metabrowser/GitHubPopover.swift" = ["own: whether the popover's github.com page holds text not yet sent"]
+"Sources/ShellCore/Web/PageFind.swift" = ["own: the page's selection, which find reads and starts from, through the DOM's own Selection"]
 
 # ── What the scans pass over ────────────────────────────────────────────────────────────
 #

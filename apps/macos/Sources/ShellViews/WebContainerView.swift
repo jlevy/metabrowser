@@ -3,10 +3,8 @@ import ShellCore
 import WebKit
 
 /// A window's content: the web view, the status view that covers it until the page
-/// commits, and the slot for the find bar.
-///
-/// `WKWebView` is not inside an `NSScrollView`, so `NSTextFinder` needs this container
-/// to hold its bar (the pattern from the macOS WebView shell guideline).
+/// commits, and the slot above the page for the find bar (`FindBar`), which keeps the
+/// shape of an `NSTextFinderBarContainer`.
 public final class WebContainerView: NSView, NSTextFinderBarContainer {
     public private(set) var webView: WKWebView
     private let statusView: NSView
