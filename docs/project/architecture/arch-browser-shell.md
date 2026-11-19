@@ -22,7 +22,7 @@ it, may read them, and an installed plugin uses the SDK.
 | Area | Modules |
 | --- | --- |
 | Loading and the SDK | `asset-loader.js`, `plugin-sdk.js`, `plugin-sdk-views.js`, `perf.js` |
-| Navigation and the pane | `navigation.js` (routes and the pane’s claim lifecycle), `view-composition.js`, `view-header.js`, `view-state.js` |
+| Navigation and the pane | `navigation.js` (routes and the pane’s claim lifecycle), `view-composition.js`, `view-header.js`, `view-state.js`, `nav-collapse.js` (hiding the navigation pane) |
 | Stores | `resource-context.js`, `directory-totals-store.js`, `inventory-scope.js`, `known-file-catalog.js`, `catalog-feed.js` |
 | Tree and filters | `tree-expansion.js`, `tree-keyboard-navigation.js`, `tree-filter-model.js`, `filter-state.js`, `filter-controls.js`, `pending-tally-diagnostics.js` |
 | Main tabs | `main-tabs.js`, `git-panel.js` with `git-graph.js` and `git-history-window.js`, `pulls-nav.js`, `pull-route.js` |

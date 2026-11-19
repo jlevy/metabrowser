@@ -1,13 +1,30 @@
 import Darwin
 import Foundation
 
-/// The folder windows open when the app last saved, front window first, which the next
-/// launch recreates.
+/// The folder windows open when the app last saved, front window first, and the folders
+/// open in the background, which the next launch recreates.
 public nonisolated struct SavedSession: Codable, Equatable, Sendable {
     public var windows: [SavedWindow]
+    /// The folders no window showed, the one shown most recently first
+    /// (`OpenFolders.byRecency`), each with its one page. A launch reopens them without a
+    /// window or a server, in this order; each starts when a window first shows it.
+    public var background: [SavedTab]
 
-    public init(windows: [SavedWindow]) {
+    public init(windows: [SavedWindow], background: [SavedTab] = []) {
         self.windows = windows
+        self.background = background
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case windows, background
+    }
+
+    /// A file saved before folders could be open in the background has no `background`,
+    /// and the release that wrote it is on users' Macs: it reads as none.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        windows = try container.decode([SavedWindow].self, forKey: .windows)
+        background = try container.decodeIfPresent([SavedTab].self, forKey: .background) ?? []
     }
 
     /// The session with each tab's root admitted (`RootAdmission`): an open root takes its
@@ -15,6 +32,8 @@ public nonisolated struct SavedSession: Codable, Equatable, Sendable {
     /// deferred root keeps the identity it resolved to, and a tab whose root is gone or
     /// invalid is dropped, as is a window left with no tab. Each window's selection stays
     /// on its tab, or moves to the nearest one kept. Each distinct root is admitted once.
+    /// A background folder is admitted the same way, and dropped if a window shows it or
+    /// an earlier background folder is the same one.
     public func admitted(_ admit: (String) -> RootAdmission) -> AdmittedSession {
         var admissions: [String: RootAdmission] = [:]
         var deferred: Set<String> = []
@@ -41,11 +60,30 @@ public nonisolated struct SavedSession: Codable, Equatable, Sendable {
             guard !tabs.isEmpty else { continue }
             windows.append(SavedWindow(tabs: tabs, selected: selected, frame: window.frame))
         }
-        return AdmittedSession(session: SavedSession(windows: windows), deferred: deferred)
+        var seen = Set(windows.flatMap { $0.tabs.map(\.root) })
+        var background: [SavedTab] = []
+        for tab in self.background {
+            let admission = admissions[tab.root] ?? admit(tab.root)
+            admissions[tab.root] = admission
+            let root: String
+            switch admission {
+            case .open(let canonical):
+                root = canonical
+            case .deferred(let resolved):
+                root = resolved
+                deferred.insert(resolved)
+            case .gone, .invalid:
+                continue
+            }
+            guard seen.insert(root).inserted else { continue }
+            background.append(SavedTab(root: root, page: tab.page))
+        }
+        return AdmittedSession(session: SavedSession(windows: windows, background: background), deferred: deferred)
     }
 
     /// The session cut to `budget`: its front windows, and in each its first tabs and the
-    /// one it shows, until the budget's windows or tabs run out.
+    /// one it shows, until the budget's windows or tabs run out; then the background
+    /// folders shown most recently, each a tab, while tabs remain.
     public func limited(to budget: RestoreBudget) -> SavedSession {
         var windows: [SavedWindow] = []
         var tabsLeft = budget.tabs
@@ -64,10 +102,30 @@ public nonisolated struct SavedSession: Codable, Equatable, Sendable {
             windows.append(SavedWindow(tabs: tabs, selected: selected, frame: window.frame))
             tabsLeft = 0
         }
-        return SavedSession(windows: windows)
+        return SavedSession(windows: windows, background: Array(background.prefix(tabsLeft)))
     }
 
-    public var tabCount: Int { windows.reduce(0) { $0 + $1.tabs.count } }
+    /// Every tab of every window, and every background folder's page.
+    public var tabCount: Int { windows.reduce(background.count) { $0 + $1.tabs.count } }
+
+    /// Every root once, in the order the restore opens their folders (`OpenFolders`): each
+    /// window's tabs, front window first, then the background folders.
+    public var roots: [String] {
+        var seen = Set<String>()
+        return (windows.flatMap { $0.tabs.map(\.root) } + background.map(\.root)).filter { seen.insert($0).inserted }
+    }
+
+    /// The session as the restore builds it. One with folders in the background and no
+    /// window, which a quit after the last window closed saves, or a launch finds when
+    /// every saved window's folder is gone, would open to nothing: neither a window nor
+    /// the Open panel, since folders are open. Its first background folder, the one shown
+    /// most recently, gets a window of its own instead, placed as a new folder's is, and
+    /// is the front tab, which starts first (`RestoreQueue`).
+    public var withFrontWindow: SavedSession {
+        guard windows.isEmpty, let front = background.first else { return self }
+        return SavedSession(
+            windows: [SavedWindow(tabs: [front], selected: 0, frame: nil)], background: Array(background.dropFirst()))
+    }
 }
 
 /// A saved session after admission, and the roots in it whose servers wait for one of
@@ -140,7 +198,9 @@ public nonisolated struct SavedTab: Codable, Equatable, Sendable {
 /// selected, so a restore raises no privacy prompt for a folder nobody is looking at;
 /// the front tab is selected, so it starts even there. A selected tab starts next.
 /// A background root is checked again when its turn comes (`next(stillOpen:)`), since
-/// its folder can change while the roots before it start.
+/// its folder can change while the roots before it start. A folder open in the
+/// background (`SavedSession.background`) has no tab on screen: it waits, as a
+/// protected root does, until a window shows it.
 public nonisolated struct RestoreQueue: Equatable, Sendable {
     /// The roots to start, in order.
     public private(set) var pending: [String] = []
@@ -171,6 +231,9 @@ public nonisolated struct RestoreQueue: Equatable, Sendable {
                 pending.append(root)
                 if index == 0 { selected.insert(root) }
             }
+        }
+        for root in session.background.map(\.root) where !pending.contains(root) && !deferred.contains(root) {
+            deferred.append(root)
         }
     }
 

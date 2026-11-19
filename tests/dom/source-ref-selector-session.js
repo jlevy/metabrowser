@@ -53,8 +53,12 @@ function loadProductionModule() {
   };
   context.window.window = context.window;
   vm.createContext(context);
-  const file = path.join(staticDir, "source-ref-selector.js");
-  vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  // formatters.js names each commit as every line does, as the shell's startup scripts
+  // load it first.
+  for (const name of ["formatters.js", "source-ref-selector.js"]) {
+    const file = path.join(staticDir, name);
+    vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  }
   return context.window.MetabrowserSourceRefSelector;
 }
 
@@ -161,10 +165,19 @@ function createPage(page) {
   };
 }
 
-// What the selector would show, one line per row, so a transcript reads as the page does.
-// A checkout's selector adds what a mirror's has none of: the lists it offers, its
-// working-tree row, the checked-out branch's badge, each row's chip, and its offer to
-// reload. A mirror's paint is printed as it always was.
+// When a row's commit was made, as the model holds it. The page shows it as an age, which
+// depends on the clock, so the transcript prints the time itself.
+function committedOf(seconds) {
+  return seconds === null
+    ? "(no date)"
+    : new Date(seconds * 1000).toISOString().replace(".000Z", "Z");
+}
+
+// What the selector would show, one line per row, so a transcript reads as the page does:
+// a row's name, its commit's short ID, and when the commit was made. A checkout's selector
+// adds what a mirror's has none of: the lists it offers, its working-tree row, named by
+// the folder's path, the checked-out branch's badge, each row's chip, and its offer to
+// reload.
 function paintOf(model) {
   if (model === null) {
     return null;
@@ -182,7 +195,7 @@ function paintOf(model) {
     open: true,
     ...(checkout
       ? {
-          workingTree: `Working tree: ${model.workingTree.detail}${model.workingTree.current ? " [current]" : ""}`,
+          workingTree: `Working tree${model.workingTree.location === "" ? "" : `: ${model.workingTree.location} (kept whole: ${model.workingTree.base})`}${model.workingTree.current ? " [current]" : ""}`,
           lists: model.kinds,
         }
       : {}),
@@ -192,7 +205,7 @@ function paintOf(model) {
     switching: model.switching,
     rows: model.rows.map(
       (row) =>
-        `${row.name} ${row.commit}${row.default ? " [default]" : ""}${row.checkedOut ? " [checked out]" : ""}${row.current ? " [current]" : ""}${checkout ? ` (${row.chip} chip)` : ""}`,
+        `${row.name} ${row.commit} ${committedOf(row.committedAt)}${row.default ? " [default]" : ""}${row.checkedOut ? " [checked out]" : ""}${row.current ? " [current]" : ""}${checkout ? ` (${row.chip} chip)` : ""}`,
     ),
     note: model.note,
     error: model.error,
@@ -543,7 +556,36 @@ async function runCheckout() {
     "a mirror's pin": named({ pin, ref: "refs/remotes/origin/feature" }, undefined),
     "a plain folder": named(undefined, undefined),
   };
-  return { steps, labels, guard, hold: await runHold(recording, onReadme, options) };
+
+  // Where the Working tree row cuts a folder's path, keeping the folder's own name whole:
+  // at the name the server sends, in whatever separator the platform joined the path with,
+  // and nowhere at the home directory, whose path is `~` alone.
+  const folders = Object.fromEntries(
+    [
+      ["under the home directory", "~/src/checkout", "checkout"],
+      ["with the platform's other separator", "~\\src\\checkout", "checkout"],
+      ["the home directory itself", "~", "reader"],
+      ["outside the home directory", "/srv/checkout", "checkout"],
+    ].map(([where, location, name]) => {
+      const listing = {
+        ...recording.branches.body,
+        working_tree: { current: true, head: null, head_name: null, name, location },
+      };
+      const tree = selectorRuntime.describe({
+        ...emptyState(),
+        listing,
+        checkout: true,
+      }).workingTree;
+      return [where, `${tree.directory}[${tree.base}]`];
+    }),
+  );
+  return {
+    steps,
+    labels,
+    guard,
+    folders,
+    hold: await runHold(recording, onReadme, options),
+  };
 }
 
 // What the page's own data requests do while it switches (mb-bio7): from the moment the

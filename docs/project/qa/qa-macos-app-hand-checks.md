@@ -61,7 +61,7 @@ Set `APP` to the development build and make some folders:
 ```shell
 APP="$PWD/apps/macos/build/dev/Metabrowser.app"
 LOGS="$HOME/Library/Logs/Metabrowser"
-mkdir -p /tmp/mb-check/{a/sub,b,c,d,e,f,g} "$HOME/Documents/mb-check"
+mkdir -p /tmp/mb-check/{a/sub,b,c,d,e,f,g,.hidden} "$HOME/Documents/mb-check"
 echo '# notes' > /tmp/mb-check/a/notes.md; echo '# deep' > /tmp/mb-check/a/sub/deep.md
 log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the app log
 ```
@@ -150,6 +150,10 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
     On a branch that `origin` did not have at your last fetch, the GitHub mark’s tooltip
     says so, and the link opens the commit.
     A folder with no GitHub remote shows no toggle.
+12. **Hidden folders.** In File > Open Folder…, press Command-Shift-G and go to
+    `/tmp/mb-check`: the panel lists `.hidden` without Command-Shift-Period, and
+    choosing it opens it.
+    Command-Shift-Period hides the hidden folders, and pressed again shows them.
 
 ## GitHub Links
 
@@ -354,6 +358,146 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
     then `.md`, shows a reason that names U+3164 and `%E3%85%A4` under the field, and no
     window opens.
 
+## Switching Folders
+
+**Not yet run.** These steps were written with the folder-switching change and have not
+yet been run on a Mac.
+
+```shell
+APP="$PWD/apps/macos/build/dev/Metabrowser.app"
+mkdir -p /tmp/mb-check/{a,b,c,d}
+```
+
+Set Settings > Open folders in to Windows and close every window.
+Open `c` and close its window, then `d` and close its window, so both are recent and
+neither is open. Then open `a`, then `b`, each with `open -a "$APP" /tmp/mb-check/NAME`,
+so each has a window of its own.
+Each step starts where the one before it ends.
+
+1. **The title.** Each title reads its folder with a small chevron after it, dim at rest
+   and darker under the pointer, where a rounded fill appears behind the title and
+   chevron; both dim in a window that is not main, in light and dark mode.
+   A long name in a narrow window truncates before the chevron, never under it.
+2. **Click and drag.** A click on `a`’s title opens the chooser under it; a drag from
+   the title moves the window and opens nothing; Command-click and right-click open the
+   path menu; a double-click on the title bar outside the title still zooms.
+   Pressing and releasing just above or just below the title’s hover surface opens no
+   chooser, and a double-click there does the title bar’s action.
+   Dragging the title of a window that is not key, and of a Metabrowser window behind
+   another app’s window, moves the window; a click there instead brings the window
+   forward and opens the chooser.
+3. **The chooser.** In `a`’s window it lists Open (`a` checked, then `b` subtitled “In
+   another window”), Recent (starting with `d`, then `c`, subtitled with their paths),
+   Open Folder…, Open URL…, Switch Folder… (Shift-Command-O), and Close Background
+   Folders, disabled. Each folder shows the page’s folder glyph, and a GitHub repository
+   among the recent ones the cloud mark; File > Open Recent and the Dock icon’s menu
+   show the same marks on their rows.
+   Holding Option turns each row into “Open … in New Window”.
+   Escape closes it.
+4. **A folder another window shows.** Choosing `b` in `a`’s chooser brings `b`’s window
+   forward and changes nothing in `a`’s.
+5. **A recent folder, in place.** In `a`’s window choose `c`: the same window, at the
+   same frame and in the same Space, shows `c`, its server starts, and the log says `a`
+   stays open in the background.
+6. **Back, instantly.** Choose `a` from the chooser: its page shows at once, where you
+   left it, with no reload and no new server (`pgrep -f -- "--no-open"` counts three).
+   `c` is now in the background.
+7. **Option.** Option-choosing `c`, in the background, moves its page into a new window.
+   In `a`’s window, Option-choosing `a` opens a second window on it; Command-W closes
+   that second window, and `a` stays open in its first.
+8. **Close Background Folders.** In `c`’s window choose `d`, so `c` is in the
+   background. The chooser’s Close Background Folders is now enabled, and choosing it
+   stops `c`’s server (`pgrep -fl 'metab /private/tmp/mb-check/c'` lists nothing) and
+   removes `c` from Open.
+9. **Close Folder.** In `d`’s window, with no folder in the background, File > Close
+   Folder closes the window and stops `d`’s server.
+   In `b`’s window choose `c`, so `b` is in the background: File > Close Folder there
+   shows `b` in that window again and stops `c`’s server.
+10. **Close Folder across windows and tabs.** Set Settings > Open folders in to Tabs,
+    Option-choose `a` in `b`’s window, which adds a tab of `a` to it, and select `b`’s
+    tab again, so `a`’s tab is hidden; set the setting back to Windows, and
+    Option-choose `a` in `a`’s window for a second window on it.
+    With no folder in the background, File > Close Folder in `a`’s first window closes
+    both of `a`’s windows and its hidden tab, leaves `b`’s window with only `b`’s tab,
+    and stops `a`’s server.
+    Open `a` again and give it a second window and a hidden tab the same way, then open
+    `c` and choose `d` in its window, so `c` is in the background.
+    File > Close Folder in `a`’s first window now shows `c` in one of the windows that
+    showed `a`, closes the others and the hidden tab, and stops `a`’s server; no window
+    shows `a`. Then close every window but `b`’s, and open `a` again.
+11. **Switch Folder…, there and back.** Click `a`’s window and choose `c` from its
+    chooser, so `a` is in the background.
+    Shift-Command-O opens the panel over the window, centered a little below its title,
+    with an empty field that has the focus.
+    It lists `a` first and selected, then `b` subtitled “In another window”, then the
+    recent folders, and last `c`, checked.
+    Each row shows the page’s folder glyph, the selected row is drawn in the accent
+    color, and the check mark sits at the row’s trailing edge.
+    Return shows `a` in the window at once, as in step 6; Shift-Command-O, then Return,
+    shows `c` again.
+12. **The panel’s keys.** In `c`’s window press Shift-Command-O, then:
+    - Down twice, then Up, selects `b`, the first recent folder, then `b` again; Up on
+      the first row and Down on the last stay put.
+    - Typing `check/d` lists only `d`, selected.
+      Command-Delete clears the field, closes nothing, and lists every row again with
+      the first selected.
+    - Type `check/d` again and press Tab, then Shift-Tab: the field keeps the focus, and
+      Delete still edits it and refilters.
+      Command-Delete clears it.
+    - Command-click the selected row: it stays selected.
+      Click `b`’s row once, then press Return: the panel closes and `b`’s window comes
+      forward.
+    - Click `c`’s window, press Shift-Command-O, then Escape: the panel closes.
+      Shift-Command-O, then Control-O: no window opens; Escape closes the panel.
+      Shift-Command-O, then a click in `b`’s window: the panel closes.
+13. **A new window from the panel.** In `c`’s window press Shift-Command-O, and
+    Option-Return with `a` selected: `a`, which was in the background, moves its page
+    into a new window, as in step 7.
+14. **Closing from the panel.** In `b`’s window press Shift-Command-O. With the field
+    empty and no folder in the background, Command-Delete on the selected first row,
+    `a`, closes `a`’s window and stops its server, and the panel stays open, no longer
+    listing `a` as open.
+    Click `b`’s own row, last and checked, and press Command-Delete: `b`’s window
+    closes, and the panel with it.
+    In `c`’s window choose `d`, so `c` is in the background, and press Shift-Command-O;
+    click `d`’s own row, last and checked, and press Command-Delete: the window shows
+    `c`, `d`’s server stops, and the panel stays, listing `c` checked.
+15. **Folders closed under the panel.** In `c`’s window choose `d`, so `c` is in the
+    background, and press Shift-Command-O. With the panel open, choose File > Close
+    Folder in the menu bar: the window shows `c`, and the panel stays, listing `c`
+    checked and `d` no longer open.
+    File > Close Folder again closes the window, and the panel with it.
+16. **Sheets, full screen, and the screen’s edges.** Open `a`. With File > Print…’s
+    sheet open over its page, View > Switch Folder… and File > Close Folder are
+    disabled, and Shift-Command-O beeps and opens no panel; if a click on the title
+    still opens the chooser, choosing a recent folder in it beeps and opens that folder
+    in a window of its own, since this window cannot switch while the sheet is open.
+    Cancel the sheet, Option-choose `a` for a second window on it, and open the print
+    sheet in that window: File > Close Folder in `a`’s first window beeps and changes
+    nothing. Cancel the sheet and close the second window.
+    With the window in full screen (View > Enter Full Screen), Shift-Command-O opens the
+    panel over it, in its Space.
+    Leave full screen, make the window about 300 points tall, and drag it to the bottom
+    of the screen and partly past its right edge: Shift-Command-O opens the panel wholly
+    on the screen.
+17. **VoiceOver.** With VoiceOver on, the title reads as a pop-up button with the
+    folder’s name; VO-Space and VO-Shift-M on it each open the chooser, and VoiceOver
+    lands in it; the Actions rotor offers Show Path, which opens the path menu.
+    In the Switch Folder panel, VoiceOver reads the selected row as the panel opens and
+    each time Up, Down, or typing moves the selection: its name, its location or “In
+    another window”, and “shown in this window” for this window’s folder.
+18. **Restore.** In `a`’s window choose `b`, so `a` is in the background, then quit and
+    reopen: `a` is back in the chooser’s Open section, and its server starts only when a
+    window shows it (`pgrep -fl 'metab /private/tmp/mb-check/a'` lists nothing until
+    then).
+19. **No window.** In the window choose `c`, so `a` and `b` are both in the background,
+    and close the window, which closes `c`: no window is left.
+    A click on the Dock icon brings `b`, the folder shown last, forward in a window.
+    Close that window, which closes `b`, then quit and reopen: the saved session held
+    only `a`, in the background, and the relaunch brings it forward in a window.
+20. **A repository’s title.** Open a GitHub repository, as in
+    [GitHub Links](#github-links): a Control-click on its window’s title opens nothing.
+
 ## Print and Drops
 
 `node webkit-gate/run.mjs --checks`, from `apps/macos`, scripts these in the app’s web
@@ -367,6 +511,42 @@ Markdown file open:
 3. **A folder dragged from Finder onto the page** opens in a window of its own.
 4. **A file dragged onto the page** opens at its page, in the open folder that holds it
    or else in its own folder.
+
+## Menu Actions and Closing a Window
+
+A window shows its folder’s page (`FolderPage`), and the menus’ page actions are
+nil-targeted, so they reach the page by two routes
+([Windows](../architecture/arch-macos-app.md#windows)): the responder chain while the
+focus is in the page, and the window controller while the window itself is first
+responder.
+What each action does is unit-tested (`PageReloadTests`), but not which object
+AppKit sends it to: asking AppKit (`NSApp.target(forAction:to:from:)`) needs a key
+window, which a test process gets only by taking the focus from whoever is using the
+Mac. Nor is when AppKit releases a window’s controller, since no test target builds the
+app’s windows. With the folders and the app log from Files, Tabs, Recents, and Restore,
+after its check 1, so that `a`’s window shows `deep.md`, opened after `notes.md`:
+
+1. **Back, Forward, and Reload.** View > Back
+   (Command-[) shows `notes.md`, View > Forward (Command-]) shows `deep.md` again, and
+   View > Reload Page (Command-R) reloads it in place.
+2. **Find and zoom.** Command-F opens the find bar over the page, typing `deep`
+   highlights it, and Command-G moves to the next match.
+   Zoom In (Command-=) and Zoom Out (Command-Minus) zoom the page, and Actual Size
+   (Command-0) restores it.
+3. **The server’s items.** File > Reveal Server Log shows `a`’s log in Finder, File >
+   Open in Default Browser opens the page in the default browser, and File > Restart
+   Server (Option-Command-R) starts `a`’s server again, after which the window shows
+   `deep.md`.
+4. **The window as first responder.** Stop `a`’s server without ending it (`kill -STOP`
+   the pid `pgrep -f 'metab /private/tmp/mb-check/a'` prints), then Command-click a link
+   in the page. The new tab, whose page never loads, so its window stays first responder,
+   says “The server stopped answering” within `SupervisorPolicy.healthDeadline` and then
+   `shutdownGrace`. View > Reload Page is enabled there, and Command-R does what Retry
+   does: the server starts again, and the tab shows the clicked page.
+5. **Closing.** Close the new tab (Command-W):
+   `pgrep -fl 'metab /private/tmp/mb-check/a'` still lists `a`’s server, which the other
+   tab shows. Close that tab too, and within `SupervisorPolicy.shutdownGrace` it lists
+   none. Restore, check 5, covers what a quit saves.
 
 ## Presenting From metab
 

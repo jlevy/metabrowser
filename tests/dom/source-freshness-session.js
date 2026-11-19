@@ -55,7 +55,14 @@ function loadProductionModules() {
   };
   context.window.window = context.window;
   vm.createContext(context);
-  for (const name of ["source-freshness.js", "source-pin-guard.js", "git-history-window.js"]) {
+  // formatters.js names the offered commit as every line does, as the shell's startup
+  // scripts load it first.
+  for (const name of [
+    "formatters.js",
+    "source-freshness.js",
+    "source-pin-guard.js",
+    "git-history-window.js",
+  ]) {
     const file = path.join(staticDir, name);
     vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
   }
@@ -260,7 +267,9 @@ function paintOf(model) {
     offer:
       offer === null
         ? null
-        : `${offer.text} [${offer.button}]${offer.kind === "switch" ? ` → ${offer.ref}` : ""}`,
+        : offer.kind === "switch"
+          ? `${offer.text} ${offer.commit} [${offer.button}] → ${offer.ref}`
+          : `${offer.text} [${offer.button}]`,
     error: model.error,
   };
 }

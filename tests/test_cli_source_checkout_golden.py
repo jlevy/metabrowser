@@ -133,6 +133,15 @@ _SECTIONS: tuple[tuple[str, tuple[tuple[tuple[str, ...], int], ...]], ...] = (
         ),
     ),
     (
+        "The Commits tab is the checkout's whichever revision the Files tab shows: on "
+        "feature, the repository's HEAD is still the checked-out topic, and the history "
+        "starts there, at second, as it does on the working tree.",
+        (
+            (("checkout", "--ref", "feature", "--api", "/api/git/repo"), 0),
+            (("checkout", "--ref", "feature", "--api", "/api/git/log?limit=2"), 0),
+        ),
+    ),
+    (
         "--ref takes a tag, a remote-tracking branch, and a commit ID. A window of a revision "
         "is still called by its folder, and its full name adds what is shown. The two "
         "identities run with HOME at the sandbox, so the folder is named from ~.",

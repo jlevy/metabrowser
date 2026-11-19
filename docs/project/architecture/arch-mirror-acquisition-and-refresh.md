@@ -330,8 +330,10 @@ Each handler’s docstring in `source_routes.py` holds its contract; the route i
   request’s refresh was answered.
 - **`GET /api/source/refs`** lists the mirror’s branches or tags for the ref selector
   from one `for-each-ref`, filtered and clamped (`REFS_DEFAULT_LIMIT`, `REFS_MAX_LIMIT`,
-  `REFS_MAX_QUERY_CHARS`). A folder that is a repository’s root answers it and the pin
-  route for its own checkout;
+  `REFS_MAX_QUERY_CHARS`), each with its commit, Git’s short form of it, and that
+  commit’s committer date, from which the selector shows its age.
+  A folder that is a repository’s root answers it and the pin route for its own
+  checkout;
   [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)
   says how.
 - **`POST /api/source/pin`** resolves a branch, then a tag, then a commit ID in the
@@ -367,8 +369,8 @@ in sight:
   A pin with no mirror is headed by its ref and commit.
 - **Title:** `/api/identity` gives the tab and window title, and a `full_name` of the
   origin without its scheme and the pin, which never names the cache.
-- **Commit:** the ref and short commit follow the name, with a control that copies the
-  full commit.
+- **Commit:** the ref and short commit follow the name, the commit in the commit-ID
+  face, with a control that copies the full commit.
 - **Location:** a note after the address names the store’s bare repository, with the
   home directory as `~` when it is under it (`display_directory`). Nothing is checked
   out, so the location is not drawn as the start of the address, and its tooltip says it

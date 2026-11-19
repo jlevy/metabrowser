@@ -415,8 +415,12 @@ async function observe(subject) {
       const html = sandbox.viewHeader
         .renderFileHeader(envelope)
         .replaceAll(owner, " data-mb-owner");
-      const line = /<div class="view-header-line page-header-line">(.*)<\/div><\/div>$/.exec(html);
-      assert(line, `${name}: the header has no metadata line last`);
+      // The metadata line follows the title in the heading row, before the row's end.
+      const line =
+        /<\/h1><div class="view-header-line page-header-line">(.*?)<\/div><\/div><span class="view-header-end">/.exec(
+          html,
+        );
+      assert(line, `${name}: the header has no metadata line right after its title`);
       const items = [...line[1].matchAll(/class="(view-header-item|file-header-badge[^"]*)"/g)];
       return [
         name,

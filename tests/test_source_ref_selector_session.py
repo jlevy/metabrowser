@@ -184,6 +184,9 @@ def test_recording_is_what_a_served_checkout_answers(
         "current": True,
         "head": "refs/heads/topic",
         "head_name": "topic",
+        "name": "checkout",
+        # The checkout's path is the sandbox's, and stands in as the recording's.
+        "location": "/sandbox/checkout",
     }
     assert [row["name"] for row in branches["refs"]] == ["topic", "feature", "local-work"]
     assert branches["refs"][0]["checked_out"] and not branches["refs"][0]["current"]
@@ -220,7 +223,9 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
     recording = read_recording(CHECKOUT_RECORDING)
     assert by_name["the button names the working tree"]["paint"]["button"] == "Working tree"
     listed = by_name["the working tree is listed above the branches, and is what is served"]
-    assert listed["paint"]["workingTree"] == ("Working tree: Live local files, on topic [current]")
+    assert listed["paint"]["workingTree"] == (
+        "Working tree: /sandbox/checkout (kept whole: checkout) [current]"
+    )
     assert listed["paint"]["lists"] == ["branch", "tag", "remote"]
     assert listed["paint"]["rows"][0].startswith("topic ")
     assert "[checked out]" in listed["paint"]["rows"][0]
@@ -232,7 +237,15 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
         recording["views"]["readme_revision"]
     ]
     shown = by_name["the branch shown is current, and the working tree no longer is"]["paint"]
-    assert shown["workingTree"] == "Working tree: Live local files, on topic"
+    assert shown["workingTree"] == "Working tree: /sandbox/checkout (kept whole: checkout)"
+    # The folder's own name is kept whole at the end of its path, whichever separator
+    # joined it, and the home directory, `~`, is not cut at all.
+    assert checkout["folders"] == {
+        "under the home directory": "~/src/[checkout]",
+        "with the platform's other separator": "~\\src\\[checkout]",
+        "the home directory itself": "[~]",
+        "outside the home directory": "/srv/[checkout]",
+    }
     assert [row.split()[0] for row in shown["rows"] if "[current]" in row] == ["feature"]
     # The checked-out branch navigates as any ref does; it is not the way back.
     assert by_name["the checked-out branch opens its commit, not the working tree"][
