@@ -5,7 +5,7 @@ title: Render Mermaid diagrams in rendered Markdown, GitHub-equivalent or better
 kind: feature
 status: open
 priority: 1
-version: 16
+version: 19
 spec_path: docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md
 labels: []
 dependencies: []
@@ -21,8 +21,11 @@ child_order_hints:
   - is-01m0k4p20yey7mb3h4t9z4w94j
   - is-01m0k4p2d6xf80tn8qxhx6qavc
   - is-01m0k4p2s7ay3t761z9da84en0
+  - is-01m7rq6mmbcf51bwhyswgpmvcw
+  - is-01m7rq6nb765kp3wkacedx6qts
+  - is-01m7rq6ny83qdde9tdyz5c4ab0
 created_at: 2026-08-21T21:29:35.117Z
-updated_at: 2026-11-14T18:46:29.648Z
+updated_at: 2026-11-19T01:37:10.598Z
 ---
 Epic for Mermaid support: docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md. Research: docs/project/research/research-2026-08-21-mermaid-diagram-support.md.
 
