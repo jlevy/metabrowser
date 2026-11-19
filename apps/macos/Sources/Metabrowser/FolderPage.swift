@@ -1,0 +1,697 @@
+import AppKit
+import ShellCore
+import ShellViews
+import SwiftUI
+import WebKit
+
+/// One page onto a folder's server: its web view, and what a browser would supply around
+/// it (new windows, downloads, dialogs, find, zoom, printing). The page talks to the
+/// server directly; this class only decides which navigations stay in the page.
+///
+/// A window shows one page at a time (`BrowserWindowController`), and the page belongs to
+/// its folder's session, not to the window, which only hosts it, so a window can show
+/// another page in its place without becoming another window. `host` is the window
+/// showing the page, if one is.
+final class FolderPage: NSViewController, NSMenuItemValidation {
+    static let zoomKey = "pageZoom"
+    static let inspectorKey = "WebInspectorEnabled"
+
+    /// Replaced by a fresh view, which has no web process until it loads, when the page
+    /// gives up its web view (`discardPage`).
+    private(set) var webView: DropAwareWebView
+    private(set) weak var session: FolderSession?
+    /// The window showing the page, while one is. Its controller sets it when it hosts the
+    /// page, and clears it when the window closes or shows another page in its place
+    /// (`BrowserWindowController.show`). A page that leaves its window closes its View on
+    /// GitHub popover, which points into it.
+    weak var host: BrowserWindowController? {
+        didSet { if host !== oldValue { gitHubPopover?.close() } }
+    }
+    private var policy = NavigationPolicy()
+    private let container: WebContainerView
+    private let status = WindowStatus()
+    private let textFinder = NSTextFinder()
+    /// The navigation `load` submitted, whose commit reveals the page in place of the
+    /// status view, until server state supersedes it (`PageReveal`).
+    private var reveal = PageReveal<WKNavigation>()
+    /// The page to load next: one asked for (a file opened here, a restored tab's page),
+    /// else the one shown before the server restarted or the page gave up its web view;
+    /// and the loads waiting to load it, of which only the newest may (`PageLoads`).
+    private var loads: PageLoads
+    /// The folder's server while it is ready.
+    private var endpoint: ServerEndpoint?
+    /// Whether the page gave up its web view (`TabDiscardPolicy`). It loads again when it
+    /// is shown.
+    private(set) var isDiscarded = false
+    /// Reloads after the web content process dies, then the status view.
+    private var contentRecoveries = RecoveryBudget.webContent
+    /// View on GitHub's popover, from the button's first use until the page closes.
+    private var gitHubPopover: GitHubPopover?
+    /// The sheets the page opened, which Command-R cancels before it reloads.
+    private var pageSheets = PageSheets<NSWindow>()
+    /// The print panel, while a print the page started runs.
+    private var printSheet: NSWindow?
+
+    /// Pass `configuration` only from `createWebViewWith`, which requires the web view
+    /// it returns to be built from the configuration WebKit hands it. `page` is the page to
+    /// load once the server is ready, and a `discarded` page loads it only when shown.
+    init(
+        session: FolderSession, configuration: WKWebViewConfiguration? = nil, page address: PageAddress? = nil,
+        discarded: Bool = false
+    ) {
+        self.session = session
+        webView = Self.makeWebView(configuration ?? Self.pageConfiguration())
+        loads = PageLoads(requested: address)
+        isDiscarded = discarded
+
+        let statusView = NSHostingView(rootView: StatusView(
+            folderName: session.folderName, folderPath: session.location, status: status,
+            retry: { [weak session] in session?.retry() },
+            revealLogs: { [weak session] in session?.revealLog() },
+            showSettings: { (NSApp.delegate as? AppDelegate)?.showSettings(nil) }))
+        container = WebContainerView(webView: webView, statusView: statusView)
+        super.init(nibName: nil, bundle: nil)
+
+        wire(webView)
+        textFinder.findBarContainer = container
+        textFinder.isIncrementalSearchingEnabled = true
+        // A page WebKit creates for `target=_blank` shows at once.
+        container.showsStatus = configuration == nil
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("unused") }
+
+    override func loadView() { view = container }
+
+    /// The window showing the page, while one is.
+    private var window: NSWindow? { host?.window }
+
+    /// Safari's Develop menu can inspect the page in debug builds, or in any build after
+    /// `defaults write <bundle identifier> WebInspectorEnabled -bool true`.
+    private static var isInspectable: Bool {
+        #if DEBUG
+            true
+        #else
+            UserDefaults.standard.bool(forKey: inspectorKey)
+        #endif
+    }
+
+    private static func makeWebView(_ configuration: WKWebViewConfiguration) -> DropAwareWebView {
+        let webView = DropAwareWebView(frame: .zero, configuration: configuration)
+        webView.isInspectable = isInspectable
+        webView.allowsBackForwardNavigationGestures = true
+        webView.allowsMagnification = true
+        webView.pageZoom = PageZoom.restored(UserDefaults.standard.double(forKey: zoomKey))
+        return webView
+    }
+
+    /// A page's configuration: the folder's own, with the page's Print and View on GitHub
+    /// buttons answered by the page that asked.
+    private static func pageConfiguration() -> WKWebViewConfiguration {
+        WebConfiguration.make(pagePrints: pagePrints, gitHubViews: gitHubViews)
+    }
+
+    private func wire(_ webView: DropAwareWebView) {
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
+        webView.onFileDrop = { urls in
+            guard let app = NSApp.delegate as? AppDelegate else { return false }
+            urls.forEach { app.request($0) }
+            return true
+        }
+        textFinder.client = webView  // WKWebView adopts NSTextFinderClient
+    }
+
+    // MARK: - Server state
+
+    func showStarting() {
+        loads.cancelAll()
+        rememberPage()
+        supersedeLoad()
+        endpoint = nil
+        status.phase = .starting
+        container.showsStatus = true
+    }
+
+    func showFailure(_ failure: ServerFailure) {
+        loads.cancelAll()
+        rememberPage()
+        supersedeLoad()
+        endpoint = nil
+        status.phase = .failed(failure)
+        container.showsStatus = true
+    }
+
+    /// A restored folder in a protected location, whose server starts when this page is
+    /// shown.
+    func showWaitingForSelection() {
+        supersedeLoad()
+        status.phase = .waitingForSelection
+        container.showsStatus = true
+    }
+
+    /// A folder whose start waits for a metab the app accepts: none was found, or the one
+    /// found changed and is being checked again.
+    func showWaitingForRuntime() {
+        rememberPage()
+        supersedeLoad()
+        endpoint = nil
+        status.phase = .waitingForRuntime
+        container.showsStatus = true
+    }
+
+    /// Server state now covers the page. A load still on its way is remembered as the
+    /// page to show next and stopped, and none of its callbacks, even one WebKit has
+    /// already sent, can change the status (`PageReveal`).
+    private func supersedeLoad() {
+        guard reveal.supersede() else { return }
+        rememberPage()
+        webView.stopLoading()
+    }
+
+    /// Loads the page this page is to show, on the new origin, or the server's entry
+    /// page. A discarded page only remembers the server until it is shown.
+    func attach(_ endpoint: ServerEndpoint, authorization: WebAuthorization) {
+        let ticket = loads.begin()  // which supersedes every load still waiting
+        policy.origin = endpoint.origin
+        self.endpoint = endpoint
+        if isDiscarded { status.phase = .reloading }
+        Task {
+            await install(authorization, for: endpoint)
+            guard self.endpoint == endpoint, !isDiscarded else { return }
+            load(loads.take(for: ticket), from: endpoint)
+        }
+    }
+
+    /// For a page opened from a link: the page is loaded by WebKit or by `load`.
+    func adoptServer(_ endpoint: ServerEndpoint?) {
+        policy.origin = endpoint?.origin
+        self.endpoint = endpoint
+    }
+
+    /// Shows `address` now if the server is ready and still answers, or once it is ready.
+    func show(_ address: PageAddress) {
+        gitHubPopover?.close()
+        loads.request(address)
+        isDiscarded = false
+        if let endpoint { loadNextPageOnceAnswered(from: endpoint) }
+    }
+
+    /// Loads the entry page of the server it attaches to next, rather than the page it shows
+    /// now: a repository's server starting again on a new link announces that link's page.
+    /// A load already waiting, such as a discarded page's revived as the link brought it
+    /// forward, is superseded, since the old server can go on serving while the restart
+    /// waits at the launch gate (`ServerSupervisor.restart`).
+    func showEntryPage() {
+        gitHubPopover?.close()
+        loads.cancelAll()
+        loads.requestEntry()
+        isDiscarded = false
+    }
+
+    /// Whether the start waits for another repository's, which can be a first clone.
+    func showWaitingAtGate(_ waiting: Bool) {
+        status.waitsForAnotherStart = waiting
+    }
+
+    /// What a repository's start says it is doing, such as how far its clone has got.
+    func showStartProgress(_ progress: StartProgress?) {
+        status.progress = progress
+    }
+
+    /// The page to save for the next launch.
+    var currentPage: PageAddress? {
+        loads.saved(showing: currentServerURL.flatMap(PageAddress.init))
+    }
+
+    /// Gives up the page's web view, which ends its WebContent process, and keeps the
+    /// page to load again from the folder's server when it is shown.
+    func discardPage() {
+        guard !isDiscarded else { return }
+        loads.cancelAll()
+        rememberPage()
+        isDiscarded = true
+        reveal.supersede()  // the discarded view is stopped below
+        let discarded = webView
+        discarded.stopLoading()
+        discarded.navigationDelegate = nil
+        discarded.uiDelegate = nil
+        discarded.onFileDrop = nil
+        gitHubPopover?.discard()
+        webView = Self.makeWebView(Self.pageConfiguration())
+        wire(webView)
+        container.replaceWebView(webView)
+        if endpoint != nil { status.phase = .reloading }
+        container.showsStatus = true
+    }
+
+    /// Loads the page again after `discardPage`: now if the server is ready and still
+    /// answers, or when it is ready.
+    private func revivePage() {
+        guard isDiscarded else { return }
+        isDiscarded = false
+        if let endpoint { loadNextPageOnceAnswered(from: endpoint) }
+    }
+
+    /// Loads from a server that was ready before this page asked, once it proves it still
+    /// answers: a live pid is not a working server. One that does not answer fails, and
+    /// every page of the folder says so. Only the newest waiting load loads (`PageLoads`),
+    /// so overlapping requests end on the newest page.
+    private func loadNextPageOnceAnswered(from endpoint: ServerEndpoint) {
+        let ticket = loads.begin()
+        Task {
+            guard let session, case .healthy = await session.checkHealth(), self.endpoint == endpoint,
+                  !isDiscarded
+            else { return }
+            load(loads.take(for: ticket), from: endpoint)
+        }
+    }
+
+    /// Loads the page a ticket's turn gives, or nothing for a superseded ticket.
+    private func load(_ turn: PageLoads.Load, from endpoint: ServerEndpoint) {
+        guard case .page(let address) = turn else { return }
+        load(address.flatMap { $0.url(on: endpoint.origin) } ?? endpoint.entryURL)
+    }
+
+    func load(_ url: URL) {
+        reveal.submitted(webView.load(URLRequest(url: url)))
+    }
+
+    private func install(_ authorization: WebAuthorization, for endpoint: ServerEndpoint) async {
+        guard case .cookie(let name, let value) = authorization,
+              let host = endpoint.origin.host(percentEncoded: false),
+              let cookie = HTTPCookie(properties: [
+                  .domain: host, .path: "/", .name: name, .value: value,
+                  HTTPCookiePropertyKey("HttpOnly"): "TRUE",
+                  .sameSitePolicy: HTTPCookieStringPolicy.sameSiteStrict,
+              ])
+        else { return }
+        await webView.configuration.websiteDataStore.httpCookieStore.setCookie(cookie)
+    }
+
+    private var currentServerURL: URL? {
+        guard let url = webView.url, policy.isAppOrigin(url) else { return nil }
+        return url
+    }
+
+    private func rememberPage() {
+        if let address = currentServerURL.flatMap(PageAddress.init) { loads.remember(shown: address) }
+    }
+
+    // MARK: - Shown and closed
+
+    /// The window showing the page became key, which is how a tab is selected, or the window
+    /// began to show it (`FolderWindows.switchWindow`): a discarded page loads again, and
+    /// the folder counts it as shown.
+    func shown() {
+        revivePage()
+        session?.pageShown(self)
+    }
+
+    /// The page is gone for good: its window closed, or its folder did (Close Folder).
+    /// Nothing it started may load or call back after this.
+    func close() {
+        loads.cancelAll()
+        gitHubPopover?.discard()
+        gitHubPopover = nil
+        textFinder.client = nil
+        textFinder.findBarContainer = nil
+        webView.stopLoading()
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        session?.pageClosed(self)
+    }
+
+    // MARK: - Menu actions (nil-targeted: BrowserWindowController.supplementalTarget says how they arrive)
+
+    @objc func navigateBack(_ sender: Any?) { webView.goBack() }
+    @objc func navigateForward(_ sender: Any?) { webView.goForward() }
+
+    /// Command-R, in every state the page can be in (`PageReload`).
+    @objc func reloadPage(_ sender: Any?) {
+        cancelPageSheets()
+        switch PageReload.route(in: pageState) {
+        case .reloadPage: webView.reload()
+        case .loadPage: if let endpoint { loadPageAgain(from: endpoint) }
+        case .startServer: Task { await session?.startForReload() }
+        case .restartServer: session?.retry(from: self)
+        case .startAsSelected: session?.pageShown(self)
+        }
+    }
+
+    /// Loads the page again from the ready server, in place of a load still on its way: the
+    /// page that load was loading, else the one asked for or shown last, else the entry
+    /// page (`PageReload.loadPage`).
+    private func loadPageAgain(from endpoint: ServerEndpoint) {
+        // Before the stop: the page a load on its way was loading is `webView.url` only
+        // until the load stops (`PageRevealWebKitTests`). A page WebKit opened, before its
+        // first commit, has no load of the page's to stop, and still needs this.
+        rememberPage()
+        supersedeLoad()
+        isDiscarded = false
+        loadNextPageOnceAnswered(from: endpoint)
+    }
+
+    /// Answers the sheets the page opened as their Cancel does, one at a time, while one is
+    /// attached: an `alert`, `confirm`, or `prompt`, the open panel of a file input, or the
+    /// print panel (`PageSheets`). The app's own sheets stay, and the reload runs behind
+    /// them: the runtime-upgrade offer, a download's save panel, and a failed download's
+    /// alert. Each pass forgets the sheet it ends, so the loop ends even if AppKit detaches
+    /// it later.
+    private func cancelPageSheets() {
+        guard let window else { return }
+        for _ in 0..<pageSheets.count {
+            guard let sheet = window.attachedSheet, pageSheets.cancels(sheet) else { return }
+            pageSheets.closed(sheet)
+            if let panel = sheet as? NSOpenPanel {
+                panel.cancel(nil)  // an open panel ends its own sheet
+            } else {
+                window.endSheet(sheet, returnCode: .cancel)
+            }
+        }
+    }
+
+    /// The page as its menu items see it (`PageMenu`, `PageReload`).
+    private var pageState: FolderWindowState {
+        FolderWindowState(
+            phase: status.phase, showsPage: !container.showsStatus,
+            hasPage: webView.backForwardList.currentItem != nil, serverReady: endpoint != nil,
+            canGoBack: webView.canGoBack, canGoForward: webView.canGoForward)
+    }
+
+    @objc func actualSize(_ sender: Any?) { setZoom(1) }
+    @objc func zoomIn(_ sender: Any?) { setZoom(PageZoom.zoomedIn(webView.pageZoom)) }
+    @objc func zoomOut(_ sender: Any?) { setZoom(PageZoom.zoomedOut(webView.pageZoom)) }
+
+    private func setZoom(_ zoom: Double) {
+        webView.pageZoom = zoom
+        UserDefaults.standard.set(webView.pageZoom, forKey: Self.zoomKey)
+    }
+
+    /// File > Print, and the page's own Print button (`PagePrintRequests`).
+    ///
+    /// The operation runs modally for the window. Run synchronously with `run()` instead,
+    /// the same operation printed blank pages until it was stopped at 865 MB (the WebKit
+    /// gate's checks, macOS 26.5.2), while modally it printed the document alone.
+    @objc func printPage(_ sender: Any?) {
+        guard let window else { return }
+        let operation = webView.printOperation(with: NSPrintInfo.shared)
+        operation.view?.frame = webView.bounds
+        let before = window.attachedSheet
+        operation.runModal(
+            for: window, delegate: self, didRun: #selector(printOperationDidRun(_:success:contextInfo:)),
+            contextInfo: nil)
+        // The print panel is a sheet the page's print opened, once AppKit has attached it;
+        // one queued behind another sheet is not recorded, so Command-R leaves it.
+        if let sheet = window.attachedSheet, sheet !== before {
+            printSheet = sheet
+            pageSheets.opened(sheet)
+        }
+    }
+
+    @objc private func printOperationDidRun(
+        _ operation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?
+    ) {
+        if let printSheet { pageSheets.closed(printSheet) }
+        printSheet = nil
+    }
+
+    /// Every page's Print buttons (`PagePrintRequests`): each prints through File > Print's
+    /// path, in the page that asked, while a window shows it.
+    static let pagePrints = PagePrintRequests { webView, frame in
+        guard let page = (webView.window?.windowController as? BrowserWindowController)?.page,
+              page.webView === webView
+        else { return }
+        page.pageAskedToPrint(frame)
+    }
+
+    private func pageAskedToPrint(_ frame: WKFrameInfo) {
+        let sheetOpen = window?.attachedSheet != nil
+        guard PagePrintRequests.allows(frame, under: policy, sheetOpen: sheetOpen) else {
+            AppLog.app.info("a page's print was not answered: not from this server's own origin, or a sheet is open")
+            return
+        }
+        printPage(nil)
+    }
+
+    /// Every page's View on GitHub buttons (`GitHubViewRequests`): each opens the popover
+    /// of the page that asked, while a window shows it.
+    static let gitHubViews = GitHubViewRequests { webView, frame, request in
+        guard let page = (webView.window?.windowController as? BrowserWindowController)?.page,
+              page.webView === webView
+        else { return }
+        page.pageAskedToViewOnGitHub(request, from: frame)
+    }
+
+    /// Opens View on GitHub's popover below the page's button, on the item's page on
+    /// github.com, for a click in the main frame of the server's own page.
+    private func pageAskedToViewOnGitHub(_ request: GitHubViewRequests.Request, from frame: WKFrameInfo) {
+        guard GitHubViewRequests.allows(frame, under: policy) else {
+            AppLog.app.info("a View on GitHub click was not answered: not from this server's own page")
+            return
+        }
+        let popover = gitHubPopover ?? GitHubPopover(isInspectable: Self.isInspectable)
+        gitHubPopover = popover
+        let anchor = GitHubPopoverLayout.anchor(
+            request.link, viewportWidth: request.viewportWidth, in: webView.bounds, flipped: webView.isFlipped)
+        popover.show(request.page, at: anchor, of: webView)
+    }
+
+    /// After Metabrowser > Clear GitHub Data…: the popover's page loads again, signed out.
+    func reloadGitHubPopover() {
+        gitHubPopover?.reload()
+    }
+
+    /// Menu items carry the `NSTextFinder.Action` in their tag.
+    @objc func performFindAction(_ sender: Any?) {
+        guard let tag = (sender as? NSMenuItem)?.tag, let action = NSTextFinder.Action(rawValue: tag) else { return }
+        textFinder.performAction(action)
+    }
+
+    @objc func restartServer(_ sender: Any?) { session?.retry(from: self) }
+    @objc func revealServerLog(_ sender: Any?) { session?.revealLog() }
+
+    @objc func openInDefaultBrowser(_ sender: Any?) {
+        if let url = currentServerURL { NSWorkspace.shared.open(url) }
+    }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        let state = pageState
+        switch item.action {
+        case #selector(navigateBack(_:)): return PageMenu.isEnabled(.back, in: state)
+        case #selector(navigateForward(_:)): return PageMenu.isEnabled(.forward, in: state)
+        case #selector(reloadPage(_:)): return PageMenu.isEnabled(.reload, in: state)
+        case #selector(printPage(_:)): return PageMenu.isEnabled(.print, in: state)
+        case #selector(actualSize(_:)): return PageMenu.isEnabled(.actualSize, in: state)
+        case #selector(zoomIn(_:)): return PageMenu.isEnabled(.zoomIn, in: state)
+        case #selector(zoomOut(_:)): return PageMenu.isEnabled(.zoomOut, in: state)
+        case #selector(performFindAction(_:)):
+            guard PageMenu.isEnabled(.find, in: state), let action = NSTextFinder.Action(rawValue: item.tag)
+            else { return false }
+            return textFinder.validateAction(action)
+        case #selector(openInDefaultBrowser(_:)): return currentServerURL != nil
+        default: return true
+        }
+    }
+}
+
+// MARK: - Navigation policy, new windows, downloads, and dialogs
+
+extension FolderPage: WKNavigationDelegate, WKUIDelegate {
+    func webView(
+        _ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+        decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
+    ) {
+        let linkClick = action.navigationType == .linkActivated
+        let decision = policy.decide(
+            action.request.url, isMainFrame: action.targetFrame?.isMainFrame ?? true, isLinkClick: linkClick,
+            shouldDownload: action.shouldPerformDownload,
+            wantsNewWindow: linkClick && action.modifierFlags.contains(.command))
+        switch decision {
+        case .allow: decisionHandler(.allow)
+        case .download: decisionHandler(.download)
+        case .openExternally(let url):
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+        case .openInNewWindow(let url):
+            session?.openWindow(at: url, besides: self)
+            decisionHandler(.cancel)
+        case .cancel: decisionHandler(.cancel)
+        }
+    }
+
+    func webView(
+        _ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
+        decisionHandler: @escaping @MainActor (WKNavigationResponsePolicy) -> Void
+    ) {
+        let disposition = (response.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
+        switch ResponsePolicy.decide(canShowMIMEType: response.canShowMIMEType, contentDisposition: disposition) {
+        case .show: decisionHandler(.allow)
+        case .download: decisionHandler(.download)
+        }
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        session?.pageChanged()
+        guard reveal.reveals(onCommit: navigation) else { return }
+        container.showsStatus = false
+        window?.makeFirstResponder(webView)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
+        let cancelled = (error as NSError).code == NSURLErrorCancelled
+        guard reveal.reports(failureOf: navigation, cancelled: cancelled) else { return }
+        status.phase = .failed(ServerFailure(
+            summary: "The page did not load: \(error.localizedDescription)", recentOutput: []))
+        container.showsStatus = true
+    }
+
+    /// WebContent crashed or was killed under memory pressure; never leave a blank page.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        guard contentRecoveries.allow() else {
+            AppLog.app.error("web content process died repeatedly; showing the status view")
+            supersedeLoad()
+            status.phase = .failed(ServerFailure(
+                summary: "The page stopped responding repeatedly. Retry restarts the folder's server.",
+                recentOutput: []))
+            container.showsStatus = true
+            return
+        }
+        reveal.reloaded(webView.reload())
+    }
+
+    /// `target=_blank` and `window.open`. The returned view must be built from
+    /// `configuration`; WebKit then loads the request into it.
+    func webView(
+        _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+        for action: WKNavigationAction, windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        switch policy.decideNewWindow(action.request.url) {
+        case .openInNewWindow:
+            WebConfiguration.restrict(configuration)
+            return session?.openChildWindow(configuration: configuration, besides: self)
+        case .openExternally(let url):
+            NSWorkspace.shared.open(url)
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    func webViewDidClose(_ webView: WKWebView) {
+        window?.close()  // the page called window.close()
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        download.delegate = Self.downloads
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        download.delegate = Self.downloads
+    }
+
+    /// Every page's downloads: a save panel opened in Downloads, as a sheet on the window
+    /// that started the download. Choosing the destination is user intent, so saving raises
+    /// no Downloads-folder privacy prompt. A file the panel confirmed replacing stays until
+    /// the new one is complete (`DownloadCoordinator`). A download that a page no window
+    /// shows starts, as a folder's page in the background can by script, saves nothing:
+    /// nobody is there to choose where. A failed download's alert still reaches the user,
+    /// who chose to save it, as an alert of its own once its page has no window.
+    static let downloads = DownloadCoordinator(
+        chooseDestination: { download, suggestedFilename, answer in
+            guard let window = download.webView?.window else {
+                AppLog.app.info("not saving \(suggestedFilename, privacy: .public): a page no window shows started it")
+                return answer(nil)
+            }
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = suggestedFilename
+            panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            panel.beginSheetModal(for: window) { answer($0 == .OK ? panel.url : nil) }
+        },
+        reportFailure: { download, failure in
+            AppLog.app.error("download failed: \(failure.message, privacy: .public)")
+            let alert = NSAlert()
+            alert.messageText = "Download failed"
+            alert.informativeText = failure.message
+            if let window = download.webView?.window {
+                alert.beginSheetModal(for: window)
+            } else {
+                alert.runModal()
+            }
+        })
+
+    func webView(
+        _ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+        initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor ([URL]?) -> Void
+    ) {
+        guard let window else { return completionHandler(nil) }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseDirectories = parameters.allowsDirectories
+        pageSheets.opened(panel)
+        panel.beginSheetModal(for: window) { [weak self] result in
+            self?.pageSheets.closed(panel)
+            completionHandler(result == .OK ? panel.urls : nil)
+        }
+    }
+
+    // Without these, WebKit answers alert() with OK and confirm() and prompt() with Cancel.
+
+    func webView(
+        _ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor () -> Void
+    ) {
+        let alert = NSAlert()
+        alert.messageText = message
+        presentPageAlert(alert) { _ in completionHandler() }
+    }
+
+    // The explicit selector keeps this reachable on every SDK. Earlier Xcode 26 SDKs
+    // declare the completion handler `@Sendable` rather than main-actor, so Swift does not
+    // take this method as the protocol's witness there, and without `@objc` WebKit would
+    // find no `confirm()` handler and answer Cancel.
+    @objc(webView:runJavaScriptConfirmPanelWithMessage:initiatedByFrame:completionHandler:)
+    func webView(
+        _ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (Bool) -> Void
+    ) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        presentPageAlert(alert) { completionHandler($0 == .alertFirstButtonReturn) }
+    }
+
+    func webView(
+        _ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?,
+        initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (String?) -> Void
+    ) {
+        let alert = NSAlert()
+        alert.messageText = prompt
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(string: defaultText ?? "")
+        field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
+        alert.accessoryView = field
+        presentPageAlert(alert) { completionHandler($0 == .alertFirstButtonReturn ? field.stringValue : nil) }
+    }
+
+    /// The page's `alert`, `confirm`, or `prompt`, as a sheet the page opened (`PageSheets`).
+    /// A page no window shows, a folder's page in the background, gets WebKit's own answer
+    /// at once, OK for `alert` and Cancel for `confirm` and `prompt`, rather than an alert
+    /// modal to the whole app from a page nobody can see.
+    private func presentPageAlert(_ alert: NSAlert, completion: @escaping @MainActor (NSApplication.ModalResponse) -> Void) {
+        guard let window else {
+            AppLog.app.info(
+                "a page of \(self.session?.folderName ?? "", privacy: .public) that no window shows opened a dialog; answered as WebKit does without one")
+            return completion(.cancel)
+        }
+        let sheet = alert.window
+        pageSheets.opened(sheet)
+        alert.beginSheetModal(for: window) { [weak self] response in
+            self?.pageSheets.closed(sheet)
+            completion(response)
+        }
+    }
+}

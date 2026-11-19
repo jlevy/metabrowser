@@ -282,7 +282,7 @@ review’s fixes), and the window layers jlevy/metabrowser#384 and jlevy/metabro
 The stack merged to `main` on 2026-11-13. Steps 1 to 8 below have merged, though step
 5’s gate ran and failed and what follows is open (`mb-gvtw`, `mb-76nv`). Step 9 is under
 way: on 2026-11-14 the check ran on `main` at c098e6a8. Flow 1 from PyPI waits on a
-published 0.12.1, because the app refuses 0.12.0 by design.
+published 0.13.0, because the app refuses 0.12.0 by design.
 The checks that need the owner’s clicks are scripted locally, as `mb-hwxu`’s notes
 record, and wait for the owner.
 The stale setup-flow stand-ins it found were fixed in jlevy/metabrowser#436 (`mb-jeb5`).
@@ -575,6 +575,11 @@ left of that bead is the route below and which roots skip Phase 3’s confirmati
 - [ ] Quick folder switcher, listing recent targets with live servers from the registry
   (`mb-9lf4`). The switcher’s membership and order come from `metab`, so it needs no
   shell-only exemption.
+  The app’s native switching (a window that shows any open folder, the title as a
+  chooser, and a switcher panel) is
+  [its own plan](plan-2026-11-18-macos-folder-switching.md), which needs neither the
+  route nor the registry, and takes a shell-only exemption, `app.folder-chooser`, until
+  the registry exists.
 - [ ] An optional MCP stdio adapter over registered routes (`mb-5lgp`).
 
 ### Phase 5: Setup, Runtime, and Updates

@@ -35,6 +35,10 @@ clone, a mirror’s `repository_context`, the commit a pull-request URL pins, th
 file a Changes tab URL’s anchor names (`pull_request_file`), and the set of pull
 requests a server keeps fresh.
 `GithubProvider` in `provider.py` answers each.
+`provider_statuses` in the same module collects each provider’s section of
+`metab --doctor`, and `PullRequestUnavailableError.blocking` tells the command line that
+a pull request can open only once a tool is installed or signed in, without naming the
+tool; both come from [the GitHub status check](#the-github-status-check).
 The URL reducer in `urls.py` claims github.com and raw.githubusercontent.com; its
 docstring tabulates every URL shape it accepts and what each selects.
 GitHub’s `#diff-<hash>` anchor, on a `/pull/<n>/files` or `/pull/<n>/changes` URL, is
@@ -50,10 +54,11 @@ redirect it cleared, a deadline and an output cap (`GH_API_TIMEOUT_S`,
 `GH_API_MAX_BYTES`), and its own process group, registered with Git’s so a Ctrl-C or
 hangup kills it too.
 `gh_api` issues one REST request and returns status, headers, and body; `gh_graphql`
-runs only a read-only query document, checked by its structure; `gh_account` reads the
-active login.
-Nothing there paginates or caches, because `--paginate` and `--cache` would
-hide page caps, ETags, and rate-limit headers.
+runs only a read-only query document, checked by its structure; `gh_active_account`
+reads the active account, its token source, and its scopes, and `gh_version` the
+version.
+Nothing there paginates or caches, because `--paginate` and `--cache` would hide
+page caps, ETags, and rate-limit headers.
 `gh api` refuses every request while signed out, so every record is read by an account
 and names its reader as `gh:<login>`.
 
@@ -64,6 +69,41 @@ more than `BACKGROUND_FLOOR` of its limit left and no hold applies; a reader’s
 is never asked. The observations belong to the account the last account check named, and
 another account forgets them; since `remaining` is the account’s, several servers on one
 account stop together.
+
+### The GitHub Status Check
+
+`gh_status.py` answers what GitHub work needs from `gh`: its path and version, the
+active account, the account’s token scopes, and one state with the step that fixes it.
+Its docstring tabulates the states.
+These read it:
+
+- `metab --doctor` prints it after the plugin verdict, and `--doctor --json` carries it
+  as `github`. It never changes the exit status, since a machine without `gh` has
+  nothing wrong with its plugins.
+- `POST status` serves the same object, a `POST` because it runs `gh`; `{"fresh": true}`
+  asks `gh` again rather than reuse a recent answer or join a check already running.
+- `check_first_clone` reads it before the size check, without the version.
+  A pull-request URL stops before anything is cloned when the state is `gh_missing`,
+  `gh_too_old`, or `not_logged_in` (`SIGN_IN_STATES`), since only `gh` reads a pull
+  request; a repository URL goes on, since a public one clones anonymously.
+  The size check is skipped only for `gh_missing`, `not_logged_in`, and `network_error`,
+  where its read cannot succeed; a `gh` too old for the status check may still read the
+  size. A clone that then fails as not found takes its hint from the kept answer
+  (`credential_hint`), so a token without the `repo` scope is named.
+- `GithubProvider.pull_request` asks it when GitHub does not show a pull request, which
+  on a cached mirror no first-clone check preceded, and names a missing `repo` scope.
+
+A pull request with no usable cached record whose read fails in one of those states also
+stops the command, with `PullRequestUnavailableError.blocking`, rather than fall back to
+the default branch, since the fallback would show something other than what the URL
+asked for. A page already open shows the reason and offers **Fetch**, as for any other.
+
+The answer is kept for `GH_STATUS_TTL_S` per `gh` path and configuration, and callers in
+one event loop share a check in flight; `GH_STATUS_TIMEOUT_S` bounds a `gh` that hangs.
+A token GitHub refuses in `GH_TOKEN` or `GITHUB_TOKEN` is `not_logged_in` with a fix
+that names the variable, since `gh auth login` refuses to run while it is set.
+A token whose scopes `gh` does not report, such as a fine-grained one from `GH_TOKEN`,
+is `ok`, since only a repository’s own read can tell what it reaches.
 
 ## Files Beside a Source
 
@@ -279,6 +319,9 @@ generation, one core job per source, a `visible` batch preempting a `background`
 `pull_cores.py`’s docstring gives its outcomes, retries, and waits.
 A reader who selects a pull request with no record may ask its refresh to wait for the
 core, and the envelope then carries a `core_preview` until the full record lands.
+The page renders the preview’s description through `GET pull-markdown` as it renders the
+record’s, so the description shows rendered from its first paint, and the record that
+follows with the same text reuses that render.
 
 ## Changed Files
 
@@ -341,20 +384,27 @@ store, so its answer is immutable and a browser asks for it no more.
 as a record whose head moved does, is computed.
 In the page, what was read is kept for the document rather than for one page
 ([The Comparison Keep](#the-comparison-keep)). `GET pull-rendered-diff`
-(`pull_rendered_diff.py`) answers one changed Markdown file as `markdown-diff-v1`,
-computed in a projection worker process, for a pair the record or its snapshot file
-admits (`pull_snapshot.py`). Its images load from `GET pull-image`, which serves an
-image at the head of an admitted pair without changing the pin or the checkout; its
-links to a file of the head are that file’s `/view/` address, the same in every answer,
-which the page keeps only while its pin is the head and leaves as plain text otherwise.
+(`pull_rendered_diff.py`) answers one changed Markdown file as `markdown-diff-v1`, and
+one changed YAML or JSON file as `structured-diff-v1`, each computed in a projection
+worker process, for a pair the record or its snapshot file admits (`pull_snapshot.py`).
+Its images load from `GET pull-image`, which serves an image at the head of an admitted
+pair without changing the pin or the checkout; its links to a file of the head are that
+file’s `/view/` address, the same in every answer, which the page keeps only while its
+pin is the head and leaves as plain text otherwise.
 `pull_snapshot.py`’s docstring lists every outcome code.
-`GET pull-markdown` (`pull_markdown.py`) renders one text of the record through KPress
-in sanitized mode, then reduces it to the inert allowlist of `inert_html.py`, both in
-the server’s Markdown child under its deadline, the same child as the projections, which
-a served page’s first `GET pull` starts; a text past the deadline answers `422`
-`render_deadline`, one that arrives while the child has as many renders as it takes
-answers `503` `renderer_busy`, and the page keeps its plain text with a line saying why,
-which it keeps for that text until the text renders.
+`GET pull-markdown` (`pull_markdown.py`) renders one text of the record, or with no
+record cached the core preview’s description, through KPress in sanitized mode, then
+reduces it to the inert allowlist of `inert_html.py`, both in the server’s Markdown
+child under its deadline, the same child as the projections, which a served page’s first
+`GET pull` starts; a text past the deadline answers `422` `render_deadline`, one that
+arrives while the child has as many renders as it takes answers `503` `renderer_busy`,
+and the page shows its plain text with a line saying why, which it keeps for that text
+until the text renders.
+The page asks for the description, and for every text within `MARKDOWN_AHEAD`
+(`pull-page.js`) of the view, before the frame that first shows it, and until its render
+answers shows a placeholder in its place, never its Markdown source.
+A text farther off keeps its plain text, which find in page reaches, and is asked for as
+it nears the view, so a jump straight to it shows that text until it is asked for.
 Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
 The trust model behind that allowlist is in
 [Server and Content](arch-server-and-content.md).
@@ -626,9 +676,9 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `pull-cores-prepare` | `POST` | A batch of lightweight cores |
 | `pull-comparison` | `GET` | The record’s comparison, from the store, for Changes and the header’s Diff summary |
 | `pull-image` | `GET` | An image at the comparison’s head, for its rendered Markdown |
-| `pull-rendered-diff` | `GET` | One changed Markdown file, rendered |
+| `pull-rendered-diff` | `GET` | One changed Markdown, YAML, or JSON file, rendered |
 | `pull-timeline` | `POST` | Conversation’s order of commits, comments, and reviews |
-| `pull-markdown` | `GET` | One text of the record, rendered inert |
+| `pull-markdown` | `GET` | One text of the record, or a core preview’s description, rendered inert |
 | `pulls` | `GET` | A catalog window, or a search with `q` |
 | `pulls-refresh` | `POST` | The catalog job |
 | `pull-files` | `GET` | A pull request’s changed files |
@@ -641,6 +691,7 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `labels-refresh` | `POST` | The label-set job |
 | `pulls-prefetch` | `GET`, `POST` | The background lane’s report, or a new queue for it |
 | `cache-clear` | `POST` | Removal of the plugin’s records for the repository |
+| `status` | `POST` | [The GitHub status check](#the-github-status-check): `gh`, the account, its scopes, and one state |
 
 The plugin registers two views: `pull-request`, which the shell mounts at `/pull/<n>`,
 `/pull/<n>/files`, and `/pull/<n>/checks` (`pull-page.js`), and `pull-request-list`, the

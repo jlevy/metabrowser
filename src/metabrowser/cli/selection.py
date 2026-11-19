@@ -13,7 +13,10 @@ also brings the pull request's commits, a fork's included, into the store;
 ``--no-serve`` fetches it every time. A pull-request URL then pins the head, labelled
 ``refs/pull/<n>/head``. When the pull request cannot be opened, the URL falls back to
 what it pins without pull-request data -- the default branch, or the commit a commit URL
-names if the mirror has it -- and the ``pull_request`` line says why.
+names if the mirror has it -- and the ``pull_request`` line says why. A pull request the
+provider says only installing or signing in to its tools can open stops the command
+instead, with that step (``PullRequestUnavailableError.blocking``), since the fallback
+would show something other than what the URL asked for.
 
 A Changes tab URL that anchors one file names it by a hash the provider resolves against
 the pull request's changed files, from the cache and the store alone, after the open. A
@@ -96,10 +99,12 @@ async def open_pull_for_cli(
     fetch: PullRequestFetch,
     anchor: FileAnchor | None = None,
 ) -> PullOpen:
-    """Open pull request *number*; a failure is kept as the reason, never raised.
+    """Open pull request *number*; a failure is kept as the reason.
 
-    With *anchor*, the changed file it names is then resolved from what the open left in
-    the cache, whether or not the pull request opened.
+    A failure only installing or signing in can fix is raised as a ``CLIError`` that
+    names the step, rather than kept for a fallback. With *anchor*, the changed file it
+    names is then resolved from what the open left in the cache, whether or not the pull
+    request opened.
     """
 
     with maybe_cli_logging():
@@ -109,6 +114,8 @@ async def open_pull_for_cli(
             pin = await open_pull_request(published, number, fetch=fetch)
         except PullRequestUnavailableError as exc:
             LOG.debug("pull request %s could not be opened: %s", number, exc)
+            if exc.blocking:
+                raise CLIError(str(exc)) from exc
             unavailable = str(exc)
         file = None if anchor is None else await pull_request_file(published, number, anchor)
     return PullOpen(number=number, pin=pin, unavailable=unavailable, file=file)

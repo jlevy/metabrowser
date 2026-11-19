@@ -166,8 +166,8 @@ public nonisolated struct GitHubPopoverState: Equatable, Sendable {
     /// reload the page shown.
     public func pageToLoad(hasPage: Bool) -> URL? { hasPage ? nil : openedFor }
 
-    /// The popover's web view was let go: `keptAfterClosing` passed after it closed, the
-    /// tab gave up its pages to save memory, or the window closes.
+    /// The popover's web view was let go: `keptAfterClosing` passed after it closed, its
+    /// folder page gave up its web view to save memory, or the page closes.
     public mutating func discard() { openedFor = nil }
 
     /// Evaluated in the app's content world before a closed popover's web view is let go:

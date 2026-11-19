@@ -15,8 +15,9 @@ import WebKit
 /// The popover is transient: Escape, Command-W, or a click outside it closes it. Its web
 /// view stays for `GitHubPopoverState.keptAfterClosing`, so opening it again for the same
 /// item soon after shows it at once, as it was left, and is then let go with its WebContent
-/// process, unless the page holds text the user has not sent; the window lets it go at once
-/// when the tab gives up its pages or closes. The `NSPopover` itself is made each time the
+/// process, unless the page holds text the user has not sent; its folder page (`FolderPage`)
+/// closes it when the page leaves its window, and lets it go at once when the page gives
+/// up its web view or closes. The `NSPopover` itself is made each time the
 /// popover opens and let go when it closes, since it holds this controller, its content,
 /// and this controller holds it.
 ///
@@ -158,7 +159,7 @@ final class GitHubPopover: NSViewController, NSPopoverDelegate, NSMenuItemValida
         }
     }
 
-    /// Lets the web view go at once: the tab gave up its pages, or the window closes.
+    /// Lets the web view go at once: the page gave up its web view, or it closes.
     func discard() {
         popover?.close()
         letPopoverGo()

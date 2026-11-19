@@ -10,6 +10,7 @@ cloned https://github.com/octo/demo in 0.0 s
 --- body ---
 {"state": "closed", "target": 300}
 --- gh ---
+gh auth status
 gh api repos/octo/demo --jq .size
 gh auth status
 gh api graphql catalog state=closed cursor=start

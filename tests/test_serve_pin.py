@@ -513,7 +513,7 @@ def test_the_shell_names_the_repository_and_its_pinned_revision(
     assert (
         '<span class="path"><span class="path-base">origin</span></span>'
         '<span class="header-revision header-ref">topic</span>'
-        f'<span class="header-revision">{origin.second[:12]}</span></a>'
+        f'<span class="header-revision git-commit-sha">{origin.second[:12]}</span></a>'
     ) in shell.text
     # The tab is called by the repository's name, as a folder's is by its own: the
     # title is /api/identity's.

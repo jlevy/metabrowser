@@ -180,8 +180,10 @@
         kind: "switch",
         ref: status.ref,
         latest: status.latest,
-        // "Now at", not "newer": a force-push can move a branch back.
-        text: `${status.ref_name ?? status.ref} is now at ${status.latest.slice(0, 12)}`,
+        // "Now at", not "newer": a force-push can move a branch back. The commit follows
+        // the words in the commit-ID face, as every line names one.
+        text: `${status.ref_name ?? status.ref} is now at`,
+        commit: window.MetabrowserFormatters.shortCommit(status.latest),
         button: "Switch",
       };
     } else if (status.ref !== null && status.ref_on_origin === false && !status.refreshing) {
@@ -751,7 +753,11 @@
       parts.push(model.label);
     }
     if (model.offer !== null) {
-      parts.push(model.offer.text);
+      parts.push(
+        model.offer.kind === "switch"
+          ? `${model.offer.text} ${model.offer.commit}`
+          : model.offer.text,
+      );
     }
     if (model.error !== null) {
       parts.push(model.error);
@@ -812,6 +818,12 @@
       offer.className = "source-freshness-offer";
       const text = document.createElement("span");
       text.textContent = model.offer.text;
+      if (model.offer.kind === "switch") {
+        const commit = document.createElement("span");
+        commit.className = "git-commit-sha";
+        commit.textContent = model.offer.commit;
+        text.append(" ", commit);
+      }
       const button = document.createElement("button");
       button.type = "button";
       button.className = "btn source-freshness-accept";

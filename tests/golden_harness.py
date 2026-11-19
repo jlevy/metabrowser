@@ -74,6 +74,7 @@ from click import unstyle
 import metabrowser
 from devtools.check_parity import IN_PROCESS_COMMAND
 from metabrowser import mirror_refresh
+from metabrowser.builtin_plugins.github.gh_status import forget_github_status
 from metabrowser.cache import records
 from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.identity import cache_slug, repository_store_id, source_identity
@@ -303,8 +304,12 @@ def run_metab(args: Sequence[str]) -> Invocation:
 
     ``_run_cli`` is what the ``metab`` script calls, so a refusal is the ``Error:`` line
     and exit status a user sees rather than a test-only rendering of the exception.
+    Each ``metab`` is a process of its own, so it starts with no GitHub status kept from
+    the command before; otherwise the ``gh`` calls a golden records would depend on how
+    long that command took.
     """
 
+    forget_github_status()
     out = io.StringIO()
     err = io.StringIO()
     exit_code = 0

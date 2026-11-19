@@ -38,7 +38,7 @@ from metabrowser.builtin_plugins.github.gh import (
     GhResponse,
     gh_account,
     gh_api,
-    parse_account,
+    parse_active_account,
     parse_included_response,
     rate_limit_reset,
 )
@@ -337,12 +337,13 @@ def test_gh_api_returns_304_and_types_refusals(stand: _Stand) -> None:
 
 
 def test_account_is_the_active_login_even_in_an_error_state() -> None:
-    assert parse_account(account("octo", state="error")["stdout"].encode()) == "octo"
-    assert parse_account(b'{"hosts":{}}') is None
+    errored = parse_active_account(account("octo", state="error")["stdout"].encode())
+    assert errored is not None and errored.login == "octo"
+    assert parse_active_account(b'{"hosts":{}}') is None
     inactive = {"hosts": {"github.com": [{"active": False, "login": "other", "state": "success"}]}}
-    assert parse_account(json.dumps(inactive).encode()) is None
+    assert parse_active_account(json.dumps(inactive).encode()) is None
     with pytest.raises(GhError):
-        parse_account(b'{"hosts":{"github.com":[{"active":true,"login":"bad login"}]}}')
+        parse_active_account(b'{"hosts":{"github.com":[{"active":true,"login":"bad login"}]}}')
 
 
 @pytest.mark.parametrize(
@@ -361,7 +362,7 @@ def test_environment_token_login_resolution_failure_is_typed(
     active = {"active": True, "login": "", "state": state, "error": diagnostic}
     payload = {"hosts": {"github.com": [active]}}
     with pytest.raises(GhError) as failure:
-        parse_account(json.dumps(payload).encode())
+        parse_active_account(json.dumps(payload).encode())
     assert failure.value.state == outcome
     assert message in str(failure.value) and "private diagnostic" not in str(failure.value)
 
@@ -792,6 +793,66 @@ def test_the_markdown_route_names_a_part_before_it_reads_anything(
     nothing = PullView(number=7, host=None, pin=None, pin_ref=None, refreshing=False, kept=None)
     status, body = asyncio.run(render_part(nothing, part))
     assert (status, body["code"]) == answer
+
+
+def test_a_core_description_and_its_record_share_one_render(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A text renders by its part, its page, and itself, not by when it was read (mb-d59o).
+
+    The record that follows a core preview usually carries the same description. Keyed by
+    the core's ``observed_at`` and the record's ``fetched_at``, the two asked the Markdown
+    child for two renders of one text, so the record's could not join the core's in flight.
+    """
+
+    from types import SimpleNamespace
+
+    from metabrowser.builtin_plugins.github import pull_markdown
+
+    fixtures = Path(__file__).parent / "fixtures" / "github-pull-page-responses.json"
+    recorded = json.loads(fixtures.read_text(encoding="utf-8"))
+    record = PullRecord.model_validate(recorded["current"]["body"]["record"])
+    asked: list[Any] = []
+
+    class Child:
+        async def render_inert(self, request: Any) -> dict[str, Any]:
+            asked.append(request)
+            return {"html": "<p>rendered</p>"}
+
+    cached: list[Any] = ["not_cached", record]
+    monkeypatch.setattr(pull_markdown, "shared_worker", Child)
+    monkeypatch.setattr(pull_markdown.kpress_adapter, "document_stylesheets", dict)
+    monkeypatch.setattr(
+        pull_markdown, "cached_pull_record", lambda *_: (cached.pop(0), None, "f" * 64)
+    )
+    preview: Any = {
+        "pull": record.pull.model_dump(mode="json"),
+        "observed_at": "2026-09-17T11:59:00Z",
+        "revision": "a" * 64,
+    }
+
+    async def core() -> Any:
+        return preview
+
+    view = PullView(
+        number=7,
+        host=SimpleNamespace(pulls=SimpleNamespace(home=Path(), slug="octo/demo")),  # pyright: ignore[reportArgumentType]
+        pin=None,
+        pin_ref=None,
+        refreshing=False,
+        kept=None,
+    )
+    early = asyncio.run(render_part(view, "body", current_core=core))
+    later = asyncio.run(render_part(view, "body", current_core=core))
+    assert (early[0], early[1]["core_revision"], later[0], later[1]["record_revision"]) == (
+        200,
+        "a" * 64,
+        200,
+        "f" * 64,
+    )
+    assert record.fetched_at != preview["observed_at"]
+    assert len(asked) == 2
+    assert asked[0].flight_key == asked[1].flight_key
 
 
 def test_a_record_that_is_gone_or_replaced_stops_being_answered(

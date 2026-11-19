@@ -45,15 +45,20 @@ public nonisolated struct MetabVersion: Equatable, Sendable, CustomStringConvert
 /// A CLI install updates independently of the app, so this is the app's side of a
 /// versioned boundary: below the minimum the app starts no server and shows
 /// `upgradeCommand`. The host-protocol version replaces it once host mode exists.
+///
+/// The contract is at the minor release: `minimumRelease` is always `X.Y.0`, at most the
+/// next minor release after the latest one, and `isReleased` stays false until it is on
+/// PyPI. "Choosing a Version" in `docs/publishing.md` has the rule and its reason, and
+/// `tests/test_macos_app_pins.py` checks it.
 public nonisolated enum MetabRequirement {
     /// The first release with `GET /api/identity`, which names each window, with
     /// `--exit-on-eof`, which ends a server with the app, with `--present`, whose dry run
     /// resolves a GitHub link (`PresentDryRun`), and with `--recent`, which File > Open
-    /// Recent lists. 0.12.0, the latest published release, lacks all four; until a release
-    /// that has them is on PyPI, only builds from a source checkout meet this, and
-    /// `RuntimeDiscovery.validate` finds one built before any of the flags too old,
-    /// whatever its number: the check runs with them all (`requiredFlags`).
-    public static let minimumRelease = [0, 12, 1]
+    /// Recent lists. 0.12.0, the latest published release, lacks all four, so the next
+    /// release is a minor one. Until it is on PyPI, only builds from a source checkout meet
+    /// this, and `RuntimeDiscovery.validate` finds one built before any of the flags too
+    /// old, whatever its number: the check runs with them all (`requiredFlags`).
+    public static let minimumRelease = [0, 13, 0]
 
     /// The flags a `metab` must take that its number cannot show (`flagShortfall`), oldest
     /// first: `RuntimeDiscovery.validate` passes them all with `--version`. `--exit-on-eof`
@@ -65,7 +70,8 @@ public nonisolated enum MetabRequirement {
 
     /// Whether `minimum` is on PyPI, so that uv can install a `metab` this app runs. Until
     /// it is, the first-run screen points to the source checkout the app was built from
-    /// instead of `uv tool install`. Set it with the release that publishes `minimum`.
+    /// instead of `uv tool install`. Set it with the release that publishes `minimum`, and
+    /// back to false whenever `minimumRelease` is raised to an unpublished release.
     public static let isReleased = false
 
     /// A pre-release or development build of the minimum counts as the minimum. A source

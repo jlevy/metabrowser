@@ -12,7 +12,8 @@ type MetabrowserRenderContext = {
     /** The route that serves an image of the head a rendered Markdown file shows, which a
      *  page completes with a path. */
     image_route?: string;
-    /** The route that renders one changed Markdown file, which a page completes with its ID. */
+    /** The route that renders one changed Markdown, YAML or JSON file, which a page completes
+     *  with its ID. */
     rendered_route?: string;
     /** A pull request's Changes: its head ref when the comparison shows the pull request's
      *  head, which View on branch opens, and null when it shows another commit. */
@@ -632,6 +633,8 @@ type MetabrowserFormatterRuntime = Readonly<{
   formatBytes(value: number): string;
   formatFileCount(value: number): string;
   formatInteger(value: number): string;
+  /** A commit ID as a line names it, in the commit-ID face (`SHORT_COMMIT_CHARS`). */
+  shortCommit(commit: string): string;
   sizeClass(value: number): "" | "size-large";
   /** A commit's or pull request's title as markup, its prefix in `span.title-prefix`. */
   titleHtml(title: string): string;
@@ -1187,11 +1190,63 @@ type MetabrowserPluginData = {
   [key: string]: unknown;
 };
 
+/**
+ * A row of the structured tree (structured/tree.js `materializeRows`). Its path is
+ * positional ("$/3/0"). Internal to Metabrowser's own views: `renderInlineTree` is the
+ * stable embedding contract, and a row's fields change with the views that draw them.
+ */
+type StructuredTreeRow = {
+  path: string;
+  level: number;
+  /** "kv", "item", "open", "empty", or "more" for the children a page leaves out. */
+  kind: string;
+  key: string | null;
+  value?: unknown;
+  isArrayIndex: boolean;
+  isArray?: boolean;
+  childCount?: number;
+  expanded?: boolean;
+  /** How a rendered diff marks the row; the file view sets none. */
+  change?: "context" | "modified" | "added" | "removed";
+  /** A number's JSON text, drawn in place of its value (a diff answer's entry `text`). */
+  text?: string;
+  /** A "more" row's count of children left out. */
+  hidden?: number;
+  /** A "more" row's count of changed entries among those left out (a rendered diff). */
+  changed?: number;
+};
+
+/** Where `materializeRows` places a value and how many children an open container draws. */
+type StructuredMaterializeOptions = {
+  path?: string;
+  level?: number;
+  key?: string | null;
+  isArrayIndex?: boolean;
+  limit?: number;
+  shown?: ReadonlyMap<string, number>;
+};
+
+/** The file view's first-draw expansion (structured/tree.js `EXPANSION`). */
+type StructuredExpansion = Readonly<{
+  maxLines: number;
+  maxExpandThreshold: number;
+  indentChars: number;
+}>;
+
 type StructuredBuiltins = {
-  calculateOptimalExpansion: (...args: Array<unknown>) => unknown;
+  calculateOptimalExpansion: (
+    parsed: unknown,
+    options: { maxLines?: number; maxExpandThreshold?: number; indentChars?: number },
+  ) => Set<string>;
+  expansion: StructuredExpansion;
   formatValue: (...args: Array<unknown>) => unknown;
   generateStructuredPreview: (...args: Array<unknown>) => unknown;
-  materializeRows: (...args: Array<unknown>) => unknown;
+  materializeRows: (
+    parsed: unknown,
+    expandedPaths: ReadonlySet<string>,
+    options?: StructuredMaterializeOptions,
+  ) => StructuredTreeRow[];
+  renderRowHtml: (row: StructuredTreeRow, indentChars: number) => string;
   renderInlineTree(
     container: HTMLElement,
     data: unknown,
@@ -1651,13 +1706,15 @@ type MetabrowserSdk = {
 };
 
 type StructuredPreviewGlobal = {
-  calculateOptimalExpansion: (...args: Array<unknown>) => unknown;
+  calculateOptimalExpansion: StructuredBuiltins["calculateOptimalExpansion"];
   formatValue: (...args: Array<unknown>) => unknown;
   generateStructuredPreview: (...args: Array<unknown>) => unknown;
 };
 
 type StructuredTreeGlobal = {
-  materializeRows: (...args: Array<unknown>) => unknown;
+  expansion: StructuredExpansion;
+  materializeRows: StructuredBuiltins["materializeRows"];
+  renderRowHtml: StructuredBuiltins["renderRowHtml"];
   renderInlineTree: (
     container: HTMLElement,
     data: unknown,
@@ -3210,7 +3267,7 @@ declare global {
   type MetabrowserSourcePage = { pin: string; ref: string | null };
 
   type MetabrowserSourceOffer =
-    | { kind: "switch"; ref: string; latest: string; text: string; button: string }
+    | { kind: "switch"; ref: string; latest: string; text: string; commit: string; button: string }
     | { kind: "reload"; text: string; button: string }
     | { kind: "retry"; text: string; button: string };
 
@@ -3375,6 +3432,9 @@ declare global {
     name: string;
     ref: string;
     commit: string;
+    /** The commit's ID as Git abbreviates it, which the list shows. */
+    /** When the commit was made, in epoch seconds; null when Git gives no date. */
+    committed_at: number | null;
     default: boolean;
     /** The branch a checkout's `HEAD` is on; false on a mirror. */
     checked_out: boolean;
@@ -3391,8 +3451,15 @@ declare global {
     ref: string | null;
     /** The lists the subject has. */
     kinds: MetabrowserSourceRefKind[];
-    /** A checkout's working tree and the branch checked out; null on a mirror. */
-    working_tree: { current: boolean; head: string | null; head_name: string | null } | null;
+    /** A checkout's working tree: whether it is served, the branch checked out, and the
+     * folder's name and its path with the home directory as `~`. Null on a mirror. */
+    working_tree: {
+      current: boolean;
+      head: string | null;
+      head_name: string | null;
+      name: string;
+      location: string;
+    } | null;
     total: number;
     truncated: boolean;
     refs: MetabrowserSourceRef[];
@@ -3423,6 +3490,8 @@ declare global {
     button: string;
     /** The served pull request's number, "#7", when the page is a pull request's head. */
     pullNumber: string | null;
+    /** The served commit's ID, set in the commit-ID face, when the page is a bare commit's. */
+    commitId: string | null;
     open: boolean;
     kind: MetabrowserSourceRefKind;
     /** The lists offered: a checkout's remote-tracking branches are a third. */
@@ -3430,12 +3499,18 @@ declare global {
     query: string;
     loading: boolean;
     switching: boolean;
-    /** A checkout's working-tree row, and whether it is what the server serves; null on a mirror. */
-    workingTree: { current: boolean; detail: string } | null;
+    /** A checkout's working-tree row: whether it is what the server serves, and the
+     * folder's path, "" until the first listing says it. Null on a mirror. */
+    /** A checkout's working tree: its path, and that path cut before the folder's own
+     *  name, which the row keeps whole. */
+    workingTree: { current: boolean; location: string; directory: string; base: string } | null;
     rows: Array<{
       name: string;
       ref: string;
+      /** The commit's ID as every line names one (`MetabrowserFormatters.shortCommit`). */
       commit: string;
+      /** When the commit was made, in epoch seconds, which the row shows as an age. */
+      committedAt: number | null;
       default: boolean;
       /** The branch a checkout's `HEAD` is on, badged "checked out". */
       checkedOut: boolean;
@@ -3472,6 +3547,8 @@ declare global {
   type MetabrowserSourceRefSelectorParts = {
     releaseCopies?: () => void;
     root: HTMLElement;
+    /** The button's own box, which a ref chip's copy control is placed against. */
+    buttonHost: HTMLElement;
     toggle: HTMLButtonElement;
     label: HTMLElement;
     stale: HTMLElement;
@@ -3479,7 +3556,8 @@ declare global {
     reload: HTMLButtonElement;
     panel: HTMLElement;
     workingTree: HTMLButtonElement;
-    workingTreeDetail: HTMLElement;
+    workingTreeDirectory: HTMLElement;
+    workingTreeBase: HTMLElement;
     kinds: HTMLElement;
     tabs: Record<MetabrowserSourceRefKind, HTMLButtonElement>;
     filter: HTMLInputElement;
@@ -3990,6 +4068,8 @@ declare global {
   }>;
 
   type MetabrowserPublicSdk = MetabrowserSdk;
+  type MetabrowserStructuredBuiltins = StructuredBuiltins;
+  type MetabrowserStructuredTreeRow = StructuredTreeRow;
   type MetabrowserPublicViewDescriptor = MetabrowserViewDescriptor;
   type MetabrowserPublicViewSpec = MetabrowserViewSpec;
 

@@ -5926,7 +5926,13 @@ function renderNavFilterBar() {
   // so a key, a pick, or a tally refresh never drops it on the page (docs/design-system.md,
   // "Keys in a Menu").
   var restoreFocus = fc.keepFocus(bar);
+  // A page with the branch and tag chooser ships it leading the row, and its module owns
+  // it: it is carried over, not drawn (static/source-ref-selector.js#keepFocusAcross).
+  var chooser = document.getElementById("source-ref-selector");
   bar.innerHTML = main + drawer;
+  if (chooser) {
+    bar.firstElementChild?.prepend(chooser);
+  }
   // An open menu is sized to its rows and the window now that it has geometry, before
   // the frame paints it.
   fc.fitOpenMenus(bar);

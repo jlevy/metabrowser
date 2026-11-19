@@ -5,11 +5,14 @@ import Testing
 private let repository = URL(string: "https://github.com/jlevy/tbd")!
 
 @Suite struct SessionRootTests {
-    /// A folder keeps the key the app has always given it, so nothing about opening folders
-    /// changes; a repository's is its URL, which no path can equal.
+    /// A folder is keyed by its path as the saved session and `OpenTarget` spell it, without
+    /// a trailing slash, so a root read from either finds its session; a repository's is its
+    /// URL, which no path can equal.
     @Test func aFolderIsKeyedByItsPathAndARepositoryByItsURL() {
         let folder = URL(filePath: "/tmp/notes", directoryHint: .isDirectory)
-        #expect(SessionRoot.folder(folder).key == folder.path(percentEncoded: false))
+        #expect(SessionRoot.folder(folder).key == "/tmp/notes")
+        #expect(SessionRoot.folder(URL(filePath: "/tmp/notes/")).key == "/tmp/notes")
+        #expect(SessionRoot.folder(URL(filePath: "/", directoryHint: .isDirectory)).key == "/")
         #expect(SessionRoot.repository(repository).key == "https://github.com/jlevy/tbd")
         #expect(SessionRoot.folder(URL(filePath: "/jlevy/tbd", directoryHint: .isDirectory)).key != SessionRoot.repository(repository).key)
     }

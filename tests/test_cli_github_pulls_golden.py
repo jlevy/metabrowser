@@ -189,6 +189,14 @@ def _watch_summary(result: Invocation) -> str:
     )
 
 
+def _without_assets(result: Invocation) -> str:
+    """A Markdown answer without KPress's stylesheet manifest, which is KPress's to pin."""
+    envelope = result.payload()
+    envelope.pop("assets", None)
+    header = result.stdout[: result.stdout.index("{")]
+    return header + json.dumps(envelope, indent=2) + "\n"
+
+
 def _search_summary(result: Invocation) -> str:
     """Keep the ordered result numbers, states, and catalog flags in the transcript."""
     envelope = result.payload()
@@ -390,6 +398,32 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
     assert reopened.exit_code == 0, reopened.stderr
     assert reopened.payload()["core_preview"] == preview
     assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == []
+
+    session.say(
+        "The prepared description renders as Markdown from the core alone, without GitHub, so "
+        "a page shows a preview's description rendered while its record is fetched (mb-d59o)."
+    )
+    described = session._run(
+        CANONICAL,
+        "--api",
+        "/api/plugin/github/pull-markdown?number=7&part=body",
+        project=_without_assets,
+    )
+    assert described.exit_code == 0, described.stderr
+    rendered_core = described.payload()
+    assert (
+        rendered_core["fetched_at"],
+        rendered_core["record_revision"],
+        rendered_core["core_revision"],
+    ) == (None, None, preview["revision"])
+    assert "<strong>two</strong>" in rendered_core["html"]
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == []
+    session.say("A core holds the description alone, so any other part waits for the record.")
+    other = session._run(
+        CANONICAL, "--api", "/api/plugin/github/pull-markdown?number=7&part=review/1"
+    )
+    assert other.exit_code == 1
+    assert other.payload()["code"] == "not_cached"
     replayed = session.post(
         {
             "state": replaced["list"],

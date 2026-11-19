@@ -18,6 +18,8 @@ What the app adds is what a browser tab cannot give:
 ## Opening Folders and Files
 
 - **File > Open Folder…** (Command-O) chooses one or more folders or files.
+  It shows hidden folders and files, such as `~/.claude` with an agent’s logs;
+  Command-Shift-Period hides them in the panel.
 - **Finder’s Open With and the Dock icon** accept folders.
   A file opens through File > Open Folder…, a drop on a window, or
   `open -a Metabrowser path/to/file`.
@@ -32,6 +34,10 @@ What the app adds is what a browser tab cannot give:
 
 Each folder has one server.
 Closing a folder’s last window stops it, so reopening the folder starts a new one.
+**File > Close Folder** closes the folder the front window shows in every window that
+shows it; each of those windows shows the folder open in the background that you looked
+at last, or closes if there is none.
+While a dialog or panel is open on one of those windows, it does nothing.
 If a server stops answering or fails to start, the window says so and offers Retry,
 Reveal Logs, and Runtime Settings….
 
@@ -168,6 +174,26 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   another open folder has the same short name.
   The title’s tooltip gives the full name and whether the folder is local or a cached
   mirror; Command-click or right-click a local folder’s title for its path menu.
+- **Switching folders:** click a window’s title, marked by the small chevron after it,
+  for the folder chooser.
+  It lists the open folders, in the order you opened them, with a check mark on the
+  window’s own, then the recent folders that are not open.
+  Choosing a folder shows it in this window, and the folder the window showed stays open
+  in the background, its page kept, so switching back is instant; a folder another
+  window shows brings that window forward instead.
+  Hold Option to open the chosen folder in a new window.
+  A recent GitHub repository opens in a window of its own, as its link would.
+  **Close Background Folders** at the foot of the chooser closes every folder no window
+  shows. Dragging the title still moves the window; a double-click on it opens the
+  chooser too, where the rest of the title bar zooms the window.
+- **Switching by keyboard:** View > Switch Folder… (Shift-Command-O) opens a panel over
+  the window that lists the same folders, the one you looked at last first, so
+  Shift-Command-O then Return goes back to it.
+  Type to filter by name or path, Return to go to the selected folder (in this window,
+  or by bringing forward the window that shows it), Option-Return to open it in a new
+  window, and Escape to close the panel.
+  Command-Delete clears what you typed; with nothing typed, it closes the selected open
+  folder.
 - **Tabs or windows:** Settings > Open folders in decides where a newly opened folder
   goes: as System Settings > Desktop & Dock > “Prefer tabs when opening documents” says
   (the default), as a tab of the front window, or in a window of its own.
@@ -179,7 +205,7 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   by itself. The page’s View on GitHub button is the exception: it opens the item’s page
   on github.com in a popover ([View on GitHub](#view-on-github)).
 - **Background tabs:** the tab each window shows keeps its page, and so do the three
-  background tabs shown most recently.
+  background tabs shown most recently, a folder open in the background counting as one.
   Any other background tab gives up its page to save memory and reloads it when shown,
   at the top of the page and without its Back and Forward history.
 
@@ -247,9 +273,9 @@ requests with. A development build keeps a store of its own.
 
 ## Recent Items
 
-File > Open Recent and the Dock icon’s menu list what you opened lately, most recent
-first: the folders and GitHub repositories you opened in the app, in either build of it,
-and those `metab` served in Terminal.
+File > Open Recent, the Dock icon’s menu, and the folder chooser’s Recent section list
+what you opened lately, most recent first: the folders and GitHub repositories you
+opened in the app, in either build of it, and those `metab` served in Terminal.
 It is `metab`’s own list of [recent targets](command-line.md#recent-targets), so
 `metab --recent` shows the same entries, and a folder stays in it however many others
 you open, up to the list’s length.
@@ -281,6 +307,9 @@ loads its page. The servers start one at a time, the front tab’s first.
   no prompt for a folder nobody is looking at.
 - **A moved folder:** a saved folder that now leads somewhere else through a symbolic
   link waits for its tab, then opens where the link leads.
+- **Folders in the background** come back in the background, and each starts its server
+  when a window shows it.
+  If no window was open, the one you looked at last opens in a window of its own.
 - **The budget:** a launch rebuilds at most the front 20 windows and 50 tabs.
 - **Turning it off:** clear Settings > “Reopen the last session’s folders when
   Metabrowser opens”. The session is still saved.
@@ -303,7 +332,7 @@ Your login shell’s `PATH` comes last: the login shell runs only when the other
 miss `metab`, `git`, or `gh`, and it runs your shell’s startup files in the app’s name,
 which can take seconds.
 
-- **The version:** the app runs `metab` 0.12.1 or later, and checks each candidate by
+- **The version:** the app runs `metab` 0.13.0 or later, and checks each candidate by
   running `metab --exit-on-eof --present --recent --version`. A build from before any of
   those flags is too old whatever its number says.
 - **Trust:** the app runs a `metab` it found only if no other account can change it.
@@ -363,8 +392,8 @@ The app moves nothing itself.
   URL… with Settings set to tabs, or from Merge All Windows.
 - The View on GitHub popover cannot be resized: it takes most of the window each time it
   opens, so a larger window gives a larger popover.
-- Text typed in the View on GitHub popover and not sent is lost when its window closes,
-  or when its tab gives up its page to save memory.
+- Text typed in the View on GitHub popover and not sent is lost when its window or its
+  folder closes, or when its tab or background folder gives up its page to save memory.
 - A restarted server comes back on a new port, and local storage is per origin, so what
   a page kept there starts fresh, as with the CLI.
 - The app does not pass state-location variables (`XDG_CACHE_HOME`,

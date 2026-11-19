@@ -80,6 +80,7 @@ from metabrowser.home import (
     write_private_file_atomic,
 )
 from metabrowser.open_in import OPEN_IN_ENV, OpenInChoice, OpenInError, OpenInPreference
+from tests.test_nav_metadata_chrome import _free_port
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 COMMON_SH = REPO_ROOT / "apps/macos/scripts/common.sh"
@@ -1248,7 +1249,12 @@ def test_a_real_server_serves_the_target_detached_until_killed(
     browser.write_text(f'#!/bin/sh\nprintf \'%s\\n\' "$1" >> "{opened}"\n')
     browser.chmod(0o755)
     monkeypatch.setenv("BROWSER", str(browser))
-    monkeypatch.setattr(present, "server_command", present.SERVER_COMMAND)
+    # `metab ROOT` searches upward from the default port, which a parallel worker's
+    # server can take between this server's probe and its bind; an ephemeral port
+    # starts the search where no fixed-port server is.
+    monkeypatch.setattr(
+        present, "server_command", (*present.SERVER_COMMAND, "--port", str(_free_port()))
+    )
     monkeypatch.setattr(present, "server_log_directory", lambda: str(tmp_path))
 
     target = resolve_target(str(root), "README.md", local=False)

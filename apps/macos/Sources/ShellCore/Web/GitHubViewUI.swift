@@ -72,8 +72,8 @@ public final class GitHubViewUI: NSObject, WKUIDelegate {
         present(.alert(message)) { _ in completionHandler() }
     }
 
-    // The explicit selector keeps this reachable on every SDK, as for the folder window's
-    // page (`BrowserWindowController`): earlier Xcode 26 SDKs declare the completion handler
+    // The explicit selector keeps this reachable on every SDK, as for a folder's
+    // page (`FolderPage`): earlier Xcode 26 SDKs declare the completion handler
     // `@Sendable` rather than main-actor, so Swift does not take this method as the
     // protocol's witness there, and without `@objc` WebKit would find no `confirm()`
     // handler and answer Cancel.

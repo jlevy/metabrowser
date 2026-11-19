@@ -8,21 +8,25 @@
 // sits. So this serves a fixture checkout with `metab`, as a reader does, and in one
 // headless Chrome:
 //
-//   1. loads the working tree's page and reads its button, its bundle, and its panel:
-//      the Working tree row, the three lists, the checked-out branch's badge;
+//   1. loads the working tree's page and reads its button, which leads the Files tab's
+//      toolbar, its bundle, and its panel: the Working tree row and the folder it names,
+//      the three lists, each ref's short commit ID and age, the checked-out branch's badge;
 //   2. chooses a branch, while the working tree's page asks for its root's tallies, as its
 //      own refresh of them can, and reads the revision's page: the button and heading that
 //      name it, the committed file where the working tree's edit was, a tree with no
 //      untracked file, and the document's policy;
 //   3. reads each list there, with the served branch marked;
 //   4. switches the server back from outside the page, as another tab would, asks the page
-//      for data, and reads the offer to reload that the selector then makes;
+//      for data, and reads the offer to reload that the selector then makes, and where
+//      it sits: at the pane's foot, under the tree and the Files toolbar's band;
 //   5. reloads, which lands on the working tree through the server's translation of the
 //      revision's address, and chooses the Working tree row from a revision again;
 //   6. goes Back onto the revision's address while the working tree is served;
 //   7. browses a revision's page, a file and its history, and reads how every data
 //      request of each page was answered: none of a current page's is refused, and the
-//      page that switched sent none after it asked.
+//      page that switched sent none after it asked. Its Commits tab is the checkout's, and
+//      hides the button with the Files toolbar; when another tab switches the server
+//      there, its history still answers and the offer to reload shows on that tab.
 //
 // It times each switch from the click to the new document's first tree rows and to its
 // selector being mounted, and the working tree's page from navigation to its selector.
@@ -251,6 +255,8 @@ const PAGE = `(() => {
     checkout: window.METABROWSER_SOURCE_CHECKOUT ?? null,
     pin: window.METABROWSER_SOURCE_PIN ?? null,
     button: toggle ? toggle.textContent.trim() : null,
+    // The button leads the Files tab's toolbar, since it chooses only what that tab shows.
+    inFilesToolbar: toggle?.closest('#nav-filter-bar[data-nav-toolbar="files"]') != null,
     heading: heading ? heading.textContent.replace(/\\s+/g, " ").trim() : null,
     guard: typeof window.MetabrowserSourcePinGuard?.guardFetch === "function",
     capabilities: window.METABROWSER_SETTINGS?.CAPABILITIES ?? null,
@@ -262,6 +268,26 @@ const PAGE = `(() => {
   };
 })()`;
 
+/**
+ * Where the offer to reload sits: at the pane's foot after the indexing row, under the
+ * tree, and outside every tab's toolbar and the metadata band under it, which hide while
+ * another tab is in front, so it shows whichever tab is.
+ */
+const STALE_AT = `(() => {
+  const stale = document.querySelector(".source-ref-selector-stale");
+  const box = stale.getBoundingClientRect();
+  const tree = document.getElementById("tree-content").getBoundingClientRect();
+  const pane = document.querySelector(".tree-pane").getBoundingClientRect();
+  return {
+    after: stale.previousElementSibling?.id ?? null,
+    inToolbarOrBand: stale.closest("[data-nav-toolbar], .nav-metadata-band") !== null,
+    shown: stale.checkVisibility() && box.height > 0,
+    underTree: box.top >= tree.bottom - 0.5,
+    inPane: box.bottom <= pane.bottom + 0.5,
+    front: document.querySelector(".tab-btn.active")?.dataset.tab ?? null,
+  };
+})()`;
+
 /** The open panel: its rows, its lists, and where it sits in the navigation pane. */
 const PANEL = `(() => {
   const root = document.getElementById("source-ref-selector");
@@ -269,28 +295,80 @@ const PANEL = `(() => {
   const tree = root.querySelector(".source-ref-selector-working-tree");
   const pane = document.querySelector(".tree-pane").getBoundingClientRect();
   const box = panel.getBoundingClientRect();
-  const row = (button) => ({
-    text: button.innerText.replace(/\\s+/g, " ").trim(),
-    current: button.getAttribute("aria-current") === "true",
-    // The chip is the name's one element, and its class says which kind it is drawn as.
-    chip:
-      button
-        .querySelector(".source-ref-selector-name > span")
-        ?.className.match(/-ref-(local|remote|tag)/)?.[1] ?? null,
-  });
+  // A row's text leaves out its age, which the clock moves; the age is read on its own.
+  const row = (button) => {
+    const age = button.querySelector(".source-ref-selector-age");
+    return {
+      text: [...button.children]
+        .filter((child) => child !== age)
+        .map((child) => child.innerText)
+        .join(" ")
+        .replace(/\\s+/g, " ")
+        .trim(),
+      current: button.getAttribute("aria-current") === "true",
+      // The chip is the name's one element, and its class says which kind it is drawn as.
+      chip:
+        button
+          .querySelector(".source-ref-selector-name > span")
+          ?.className.match(/-ref-(local|remote|tag)/)?.[1] ?? null,
+      // A commit's ID is in the commit-ID face, and its age in a tier, with its date as the
+      // tooltip. Class names are matched by their ends here, as the history's rows are
+      // below, so this script never names the program (tests/test_git_hook_environment.py).
+      commitFace:
+        button.querySelector(".source-ref-selector-commit")?.matches('[class*="-commit-sha"]') ??
+        null,
+      age: age
+        ? {
+            text: age.textContent,
+            tier: /\\bage-/.test(age.className),
+            tip: age.dataset.tipText ?? "",
+          }
+        : null,
+    };
+  };
+  // The folder the Working tree row names, and whether its own name is shown whole.
+  const location = tree.querySelector(".source-ref-selector-location");
+  const base = location?.querySelector(".path-base");
+  // The ages end the rows in one column, so the IDs line up: the widest compact age,
+  // "12mo", takes no more room than the narrowest, in the list's own face and weights.
+  const list = root.querySelector(".source-ref-selector-list");
+  const ageWidth = (text, tier) => {
+    const probe = document.createElement("span");
+    probe.className = \`source-ref-selector-age \${tier}\`;
+    probe.style.position = "absolute";
+    probe.textContent = text;
+    list.append(probe);
+    const width = probe.getBoundingClientRect().width;
+    probe.remove();
+    return Math.round(width * 100) / 100;
+  };
+  const commitLefts = [...root.querySelectorAll(".source-ref-selector-list .source-ref-selector-commit")]
+    .map((commit) => Math.round(commit.getBoundingClientRect().left * 2) / 2);
   return {
     open: !panel.hidden,
     focused: document.activeElement === root.querySelector(".source-ref-selector-filter"),
     workingTree: tree.hidden ? null : row(tree),
+    location: location?.textContent ?? null,
+    folderWhole: base ? base.scrollWidth <= base.clientWidth : null,
     lists: [...root.querySelectorAll(".source-ref-selector-kinds button")].map((button) => ({
       label: button.textContent.trim(),
       chosen: button.getAttribute("aria-checked") === "true",
     })),
     rows: [...root.querySelectorAll(".source-ref-selector-list button")].map(row),
+    ageColumn: [ageWidth("12mo", "age-old"), ageWidth("60m", "age-min"), ageWidth("7d", "age-day")],
+    commitColumns: new Set(commitLefts).size,
     note: root.querySelector(".source-ref-selector-note").textContent,
     error: root.querySelector(".source-ref-selector-error").textContent,
     // The panel is inside the navigation pane, and no row is wider than it.
     inside: box.left >= pane.left - 0.5 && box.right <= pane.right + 0.5 && box.width > 0,
+    // It spans the toolbar it opens under, on a ref's page, whose chip has a copy
+    // control, as on the working tree's.
+    spansToolbar: (() => {
+      const bar = root.closest("[data-nav-toolbar]");
+      const inset = parseFloat(getComputedStyle(bar).paddingLeft);
+      const across = bar.getBoundingClientRect();
+      return Math.abs(box.left - (across.left + inset)) < 1 && Math.abs(box.right - (across.right - inset)) < 1;
+    })(),
     overflowing: [...panel.querySelectorAll("button.menu-item")]
       .filter((button) => !button.hidden && button.getBoundingClientRect().right > box.right + 0.5)
       .length,
@@ -366,9 +444,9 @@ const rowNamed = (name) =>
   `[...document.querySelectorAll(".source-ref-selector-list button")]
     .find((button) => button.querySelector(".source-ref-selector-name")?.textContent === ${JSON.stringify(name)})`;
 
-// From each document's start: every distinct height of the selector's row and every
-// distinct top of the tree's first row, frame by frame. The row is drawn by the server
-// with its button, so mounting the selector moves nothing below it. The first toggle the
+// From each document's start: every distinct height of the selector and every distinct
+// top of the tree's first row, frame by frame. The selector is drawn by the server with its
+// button, leading the Files toolbar, so mounting it moves nothing below it. The first toggle the
 // parser adds is the server's, kept to ask afterwards whether the module adopted it.
 const TOGGLE = "#source-ref-selector button.source-ref-selector-toggle";
 const LAYOUT_PROBE = `(() => {
@@ -401,7 +479,7 @@ const LAYOUT = `({
   toggles: document.querySelectorAll(${JSON.stringify(TOGGLE)}).length,
   adopted: window.__firstToggle != null
     && window.__firstToggle === document.querySelector(${JSON.stringify(TOGGLE)})
-    && window.__firstToggle.parentElement.querySelector(".source-ref-selector-panel") !== null,
+    && window.__firstToggle.closest("#source-ref-selector")?.querySelector(".source-ref-selector-panel") != null,
 })`;
 
 const result = {};
@@ -460,6 +538,7 @@ try {
   );
   await chrome.waitFor(`!document.querySelector(".source-ref-selector-stale").hidden`);
   result.stale = await chrome.evaluate(PAGE);
+  result.staleAt = await chrome.evaluate(STALE_AT);
   await capture("stale");
 
   // 5. Reload lands on the working tree, through the server's translation of the address.
@@ -511,6 +590,36 @@ try {
   );
   await chrome.waitFor(`document.querySelectorAll('[class$="graph-row"]').length > 0`);
   result.revisionBrowsing = takeDataRequests();
+  // The Commits tab does not follow the Files tab: its history is the checkout's, whose
+  // HEAD chip is on the checked-out branch, and the button went with the Files toolbar.
+  result.revisionCommits = await chrome.evaluate(`({
+    head: document.querySelector('[class*="-ref-head"]')?.textContent.trim() ?? null,
+    button: document.getElementById("source-ref-selector")?.checkVisibility() ?? null,
+  })`);
+  // Another tab switches the server while Commits is in front: the tab's history still
+  // answers, since it is the checkout's whichever revision is served, and the Files
+  // tree's is refused, and the offer to reload shows on this tab. The history request is
+  // the one the tab itself made for its list, the route's `/log` under `/api/`, asked
+  // again as the tab's next page would ask it.
+  await chrome.evaluate(`fetch("/api/source/pin", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ working_tree: true }),
+  }).then((response) => response.status)`);
+  const statuses = await chrome.evaluate(`(() => {
+    const history = performance
+      .getEntriesByType("resource")
+      .map((entry) => new URL(entry.name))
+      .find((url) => {
+        const [, api, , route] = url.pathname.split("/");
+        return api === "api" && route === "log";
+      });
+    return Promise.all([fetch("/api/tree?depth=1"), fetch(history.pathname + history.search)])
+      .then((answers) => answers.map((answer) => answer.status));
+  })()`);
+  await chrome.waitFor(`!document.querySelector(".source-ref-selector-stale").hidden`);
+  result.commitsSwitched = { statuses, at: await chrome.evaluate(STALE_AT) };
+  await capture("commits-stale");
 
   result.documents = documents;
   console.log(JSON.stringify(result));
