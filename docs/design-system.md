@@ -4714,8 +4714,13 @@ Each exception has a reason:
   read cannot say it: they do not tell an older pull request from one the filter leaves
   out, nor a catalog still being read from GitHub from one read to its end.
   While the catalog cannot say yet, the list stays and says nothing, and asks again at
-  its next poll. The list a navigation moved to reveals the row at the first read that
-  brings it, though its first read failed.
+  its next poll. One the catalog, read to its end, lacks is asked for again after a poll
+  whose list says the catalog has read more, as it has when a pull request was opened
+  since its last read, and placed then; an unchanged catalog is not asked again.
+  A catalog that starts again, for a new reader or source, has not said what the old one
+  lacked, so the list says nothing of it until the new one can.
+  The list a navigation moved to reveals the row at the first read that brings it,
+  though its first read failed.
   When the list moves while focus is on one of its rows, the revealed row takes focus,
   unless the reader has moved focus out of the list by the time it arrives.
   A filter the reader picks while a pull request is shown is theirs: the list says
@@ -4725,7 +4730,8 @@ Each exception has a reason:
   it arrives. Only one the list still cannot show is named under its band: one further
   down than the list draws, “#8 is not among the pull requests loaded.”, or one the
   catalog, read to its end, lacks, “#8 is not in this list.”
-  (`outsideText`).
+  (`outsideText`). A page the reader scrolls in keeps the note until the page that
+  brings the row.
 - **A commit outside the history read is not chased.** Commits reads history from the
   newest commit, 250 commits a page.
   A commit’s address reveals its row once the pages read hold it, so the first page’s

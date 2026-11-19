@@ -45,11 +45,12 @@
 // a tab landing's kept place, one the filter leaves out moves the list to a filter that
 // draws it, a filter the reader picks says nothing of the pull request it leaves out, and
 // only one the list still cannot show is named under the band. `beyond the rows read`, the
-// part `pulls-depth` prints, serves lists longer than the panel draws, a catalog still being read from GitHub,
-// failing reads, a number the route refuses, and slow answers that come after a newer
-// navigation, a filter the reader picks, or the panel was hidden, over the route's windows
-// and the catalog's one-row lookups; a row the list moved for takes focus only while focus
-// is where the move left it.
+// part `pulls-depth` prints, serves lists longer than the panel draws, with the pages a
+// reader scrolls in, a catalog still being read from GitHub, a pull request opened since
+// its last read, failing reads, a number the route refuses, and slow answers that come
+// after a newer navigation, a filter the reader picks, or the panel was hidden, over the
+// route's windows and the catalog's one-row lookups; a row the list moved for takes focus
+// only while focus is where the move left it.
 //
 // `invariants` are relations every step holds.
 
@@ -1087,13 +1088,18 @@ const MAX_PULL_REQUEST_NUMBER = 9_999_999_999;
  * served in windows as the route serves them: Open is #3000 to #2901 and an old #1000,
  * Closed is #2900 down to #1001, and All is both. *catalog* is what the server's catalog
  * holds: how many of All's rows, newest first, as a catalog being read from GitHub holds
- * them, the newest number it has read (`newest`, for pull requests opened since), whether
- * it is complete, which reads fail (a list's name, or `lookup` for the one-row indexed
- * reads), and which are slow (`held`, the same names): those wait for `release`, and
- * answer then even when the panel has let them go, as an answer already on its way does. A read the panel lets go before it answers is listed as `let go`. `focus`
- * is where focus is, as the view's `focusPlace` reports it, and a row the controller
- * focuses is told. Each story's steps name pull requests as a link or Back does, and "time
- * passes" runs what the panel scheduled, its next poll among them.
+ * them, the newest number it has read (`newest`, for pull requests opened since, which
+ * `publish` reads in), its `epoch`, whether it is complete, which reads fail (a list's
+ * name, or `lookup` for the one-row indexed reads), and which are slow (`held`, the same
+ * names, or `newest` for the read of the newest row alone): those wait for `release`, and
+ * answer then, from the catalog as it stands, even when the panel has let them go, as an
+ * answer already on its way does. A read the panel lets go before it answers is listed as
+ * `let go`. Each list's generation moves as pull_catalog.py's `_commit` moves it: a pull
+ * request read in newer than a list's oldest moves All's and its own state's, and older
+ * rows a crawl reads in move none. `focus` is where focus is, as the view's `focusPlace`
+ * reports it, and a row the controller focuses is told. Each story's steps name pull
+ * requests as a link or Back does, and "time passes" runs what the panel scheduled, its
+ * next poll among them.
  */
 async function pullsDepthController(catalog, filter) {
   const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
@@ -1109,6 +1115,8 @@ async function pullsDepthController(catalog, filter) {
     merged: false,
     merged_at: null,
   });
+  /** Each list's generation, as `_commit` counts them. */
+  const generations = { all: 0, open: 0, closed: 0 };
   const reads = [];
   const told = [];
   const letGo = [];
@@ -1141,8 +1149,15 @@ async function pullsDepthController(catalog, filter) {
           answered = true;
           return answerOf(name, limit, after, kind);
         };
-        if (catalog.held?.has(kind)) {
-          return new Promise((resolve) => waiting.push({ kind, answer: () => resolve(answer()) }));
+        const slow = catalog.held?.has(kind)
+          ? kind
+          : lookup && after === null && catalog.held?.has("newest")
+            ? "newest"
+            : null;
+        if (slow !== null) {
+          return new Promise((resolve) =>
+            waiting.push({ kind: slow, answer: () => resolve(answer()) }),
+          );
         }
         return Promise.resolve(answer());
       },
@@ -1193,7 +1208,7 @@ async function pullsDepthController(catalog, filter) {
       fetched: all.length,
       catalog_fetched: cached.length,
       complete: catalog.complete,
-      generation: `${template.generation.split(":")[0]}:${cached.length}`,
+      generation: `${catalog.epoch ?? template.generation.split(":")[0]}:${generations[name]}`,
       filter_totals: { all: every.length, open: 101, closed: 1900 },
       rows: rows.map(row),
       next_after: last,
@@ -1207,7 +1222,7 @@ async function pullsDepthController(catalog, filter) {
     reads.length = 0;
     told.length = 0;
     letGo.length = 0;
-    act();
+    await act();
     await settle();
     steps.push({
       step: what,
@@ -1232,7 +1247,26 @@ async function pullsDepthController(catalog, filter) {
       held.answer();
     }
   };
-  return { controller, steps, step, timePasses, release };
+  /** The catalog reads in the pull requests opened since its last read. */
+  const publish = () => {
+    for (const number of every) {
+      if (number > (catalog.newest ?? Number.POSITIVE_INFINITY)) {
+        generations.all += 1;
+        generations[state(number)] += 1;
+      }
+    }
+    catalog.newest = undefined;
+  };
+  /** The catalog starts again, as for a new reader, having read *cached* rows so far. */
+  const restart = (epoch, cached) => {
+    catalog.epoch = epoch;
+    catalog.cached = cached;
+    catalog.complete = false;
+    generations.all = 0;
+    generations.open = 0;
+    generations.closed = 0;
+  };
+  return { controller, steps, step, timePasses, release, publish, restart };
 }
 
 async function pullsDepthStory() {
@@ -1279,6 +1313,19 @@ async function pullsDepthStory() {
     "closed #1500 named under All: All's rows do not reach it, so the list goes to Closed, which reaches furthest, and says it is further down than Closed draws too",
     () => controller.setCurrent(1500),
   );
+  await step(
+    "the reader scrolls to the list's end: Closed reads a page of 100 more, and the note stays as it was",
+    () => controller.reachedEnd(),
+  );
+  await step(
+    "the reader scrolls on, nine pages more: the note stays until the page that brings #1500, which reveals it, and then goes",
+    async () => {
+      for (let page = 0; page < 9; page += 1) {
+        await controller.reachedEnd();
+        await settle();
+      }
+    },
+  );
   controller.dispose();
 
   const crawling = { cached: 200, complete: false, down: new Set() };
@@ -1306,11 +1353,76 @@ async function pullsDepthStory() {
   await newer.step(
     "the catalog reads it, and time passes: the next poll brings its row, so the note goes and the row is revealed",
     () => {
-      behind.newest = undefined;
+      newer.publish();
       newer.timePasses();
     },
   );
   newer.controller.dispose();
+
+  const elsewhere = { cached: 2001, complete: true, down: new Set(), newest: 2990 };
+  const across = await pullsDepthController(elsewhere, "closed");
+  await across.step(
+    "a link names open #2995 under Closed, opened since the catalog's last read: the catalog, read to its end, lacks it, so the list stays and says so",
+    () => across.controller.setCurrent(2995),
+  );
+  await across.step(
+    "time passes, and the catalog has read nothing new: the next poll does not ask again",
+    () => across.timePasses(),
+  );
+  await across.step(
+    "the catalog reads #2995, and time passes: Closed's next poll says the catalog has read more, so the list asks again, goes to All, and reveals it",
+    () => {
+      across.publish();
+      across.timePasses();
+    },
+  );
+  across.controller.dispose();
+
+  const racing = {
+    cached: 2001,
+    complete: true,
+    down: new Set(),
+    newest: 2990,
+    held: new Set(["newest"]),
+  };
+  const race = await pullsDepthController(racing, "closed");
+  await race.step(
+    "a link names open #2995 under Closed as the catalog reads it in: the lookup of #2995 answers before, and that of the newest row after, so the catalog as the first saw it lacks #2995, and the list says so",
+    async () => {
+      race.controller.setCurrent(2995);
+      await settle();
+      race.publish();
+      race.release("newest");
+    },
+  );
+  await race.step(
+    "time passes: Closed's next poll says the catalog has read more than the lookup of #2995 saw, so the list asks again, goes to All, and reveals it",
+    () => race.timePasses(),
+  );
+  race.controller.dispose();
+
+  const restarting = { cached: 2001, complete: true, down: new Set() };
+  const again = await pullsDepthController(restarting, "closed");
+  await again.step(
+    "a link names #4000 under Closed: the catalog, read to its end, lacks it, so the list says so",
+    () => again.controller.setCurrent(4000),
+  );
+  await again.step(
+    "the catalog starts again, as for a new reader, and has read 200 so far; time passes: what the old catalog lacked is not known of the new one yet, so the note goes and the list says nothing",
+    () => {
+      again.restart("restarted", 200);
+      again.timePasses();
+    },
+  );
+  await again.step(
+    "the catalog reads to its end, and time passes: it lacks #4000 too, so the list says so again",
+    () => {
+      restarting.cached = 2001;
+      restarting.complete = true;
+      again.timePasses();
+    },
+  );
+  again.controller.dispose();
 
   const failing = { cached: 2001, complete: true, down: new Set(["closed"]) };
   const failed = await pullsDepthController(failing, "closed");
@@ -1455,7 +1567,7 @@ async function pullsDepthStory() {
   refused.controller.dispose();
   return {
     "past what the list draws": deep.steps,
-    crawling: [...crawl.steps, ...newer.steps],
+    crawling: [...crawl.steps, ...newer.steps, ...across.steps, ...race.steps, ...again.steps],
     failing: [...failed.steps, ...moved.steps],
     "answers that come late": late.steps,
     focus: focus.steps,
