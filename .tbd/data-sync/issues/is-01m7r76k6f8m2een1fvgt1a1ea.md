@@ -5,7 +5,7 @@ title: Revise the object data model plan against main as of 2026-11-18 and the P
 kind: task
 status: in_progress
 priority: 2
-version: 6
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-14-object-data-model-and-views.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7f2vek3t6sca32adhd4gq33
 hold: null
 hold_until: null
 created_at: 2026-11-18T20:57:30.574Z
-updated_at: 2026-11-19T00:14:50.711Z
+updated_at: 2026-11-19T00:31:39.909Z
 started_at: 2026-11-18T20:57:35.381Z
 ---
 Since #453 merged, #487, #491, #484, #536, #522, #529, #506, #528, #558, #546, #540, #559, #511, #493 landed and #550/#552, #380, #534, the fdu stack are open. Fold reuse points (pull-files-summary, ChangeSums, actorIdentity, page/view header, drawn-from-disk fixture), fix Background, terms (view, recent, kind), Pulls row structure, readers list, decision options, and 33 drifted anchors. Decisions stay open for the owner.
@@ -26,3 +26,7 @@ Owner decisions, 2026-11-18 (to record in the plans): Block-accepted the recomme
 Walkthrough, 2026-11-18: the owner confirmed group 1 (Decisions 1/31, 2, 3, 4, 5, 6, 7 A, 8, 10) after the first-principles explanation. Decision 7 A is now taken. Next: group 2 (views and lists: 11, 12, 13, 14, 17, 21, 23).
 
 Walkthrough, 2026-11-18: the owner confirmed group 2 (Decisions 11, 12, 13, 14, 17, 21, 23) at their recommendations, with one refinement to 11: card stays in the named shape set, but its frame is built only with its first real use (the Recent plan moved /recent cards to R4). Next: group 3 (9, 15, 16, 20, PS-1 to PS-7).
+
+Walkthrough, 2026-11-18: the owner confirmed group 3 at the recommendations: Decisions 9 A, 15 A, 16 A (20 already taken), and the plugin authoring plan's PS-1 to PS-7, all A. Next: group 4 (22, VM-10, and the working-tree-first ordering).
+
+Walkthrough, 2026-11-18: the owner confirmed group 4: Decision 22 D (already taken), VM-10 A with the view slice first or beside the object slice, and the implementation map's Ordering 2 (groundwork capped at eight PRs, then the working tree, with V and P in parallel). Next: group 5 (18, 19, RT-1 to RT-7).
