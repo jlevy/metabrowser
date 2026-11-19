@@ -94,7 +94,7 @@ function choose(label, patch) {
     source: cursor.source,
     action: transition.action,
     request,
-    // Clear shows while any filter is set; the chevron's badge counts only the drawer's.
+    // Clear shows while any filter is set; the chevron's name counts only the drawer's.
     activeFilters: filter.activeCount(),
     drawerFilters: model.drawerFilterCount(state),
   });
@@ -158,7 +158,7 @@ check(
   transcript.steps.at(-1),
 );
 // Show ignored, in the drawer beside the filters, narrows every group too. Clear counts
-// it, so it shows, and the chevron's badge counts it, since the closed drawer hides it
+// it, so it shows, and the chevron's name counts it, since the closed drawer hides it
 // (mb-ey0d).
 check(
   "Show ignored off reloads the groups",
@@ -170,7 +170,7 @@ check(
   transcript.steps.at(-1),
 );
 check(
-  "Clear and the badge both count Show ignored",
+  "Clear and the chevron's name both count Show ignored",
   transcript.steps.at(-1).activeFilters === 3 && transcript.steps.at(-1).drawerFilters === 3,
   transcript.steps.at(-1),
 );

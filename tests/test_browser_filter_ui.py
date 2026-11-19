@@ -477,8 +477,9 @@ def test_group_by_and_the_three_filters_are_dropdowns() -> None:
 def test_group_by_rides_the_row_and_the_filters_and_show_ignored_sit_in_the_drawer() -> None:
     """Group by leads the row: it removes nothing, so it needs no drawer. The three
     filters sit behind the disclosure, and Show ignored follows them there, its tick
-    stating its own direction; the badge counts the ones set, Show ignored turned off
-    among them. Clear, on the row, shows while any of them is set (mb-sogv, mb-x1h6,
+    stating its own direction; the chevron's name counts the ones set, Show ignored
+    turned off among them, and it shows no count badge, which would push Clear and the
+    chevron off Group by's line in a checkout (mb-as1w). Clear, on the row, shows while any of them is set (mb-sogv, mb-x1h6,
     mb-ey0d)."""
 
     fn_block = _render_nav_filter_bar()
@@ -488,7 +489,8 @@ def test_group_by_rides_the_row_and_the_filters_and_show_ignored_sit_in_the_draw
     for control in ("recencyMenu", "typeMenu", "sizeMenu", "ignoredCheck", '"Show ignored"'):
         assert control not in main
     assert "recencyMenu +\n    typeMenu +\n    sizeMenu +\n    ignoredCheck +" in drawer
-    assert "badge: drawerCount," in main
+    assert "badge:" not in main
+    assert "` (${drawerCount} active)`" in main
     assert "treeFilterModel.drawerFilterCount(st)" in fn_block
 
 

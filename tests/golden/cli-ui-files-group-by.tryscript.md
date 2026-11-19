@@ -9,7 +9,7 @@ env:
 This session runs the production filter state and tree filter model from a command line.
 It pins which request each Group by and filter choice makes, how the server’s grouped
 answer becomes sections in its order, how a folder inside a section opens under that
-section’s group, which filters Clear and the chevron’s badge each count (both count Show
+section’s group, which filters Clear and the chevron’s name each count (both count Show
 ignored turned off, which sits in the drawer beside the filters), that Clear resets Show
 ignored and keeps the grouping, which band a file’s age falls in, and that a malformed
 answer is refused. It also pins the shell’s Group by decisions, held in the model: each
