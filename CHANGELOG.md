@@ -88,8 +88,8 @@ New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds
   whole. See [View Headers](docs/design-system.md#view-headers).
 
 - In the macOS app, Open Recent, the Dock menu and the title’s path menu show folders
-  with the same outline folder symbol as the mirror’s cloud, instead of Finder’s colored
-  folder.
+  with the page’s own outline folder glyph, drawn in the menu’s ink like a repository’s
+  cloud, instead of Finder’s colored folder.
 
 - In a navigation pane too narrow for the Files toolbar’s controls, the Files tree no
   longer moves down as the page loads.
