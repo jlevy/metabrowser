@@ -87,13 +87,13 @@ The bar above the tree groups and narrows it:
   **No grouping** is the default.
   While its menu is open, `N`, `A`, and `T` choose No grouping, By age, and By file
   type.
-- **Show ignored**, beside it, is on by default and shows gitignored files dimmed; turn
-  it off to hide them.
-- The chevron opens the filters:
+- The chevron opens the filters, and its badge counts the ones set:
   - **Modified within** keeps files changed within a window, from Live to the past
     month. Live means changed in the last 90 seconds.
   - **File type** keeps the categories, families, or exact extensions you choose.
   - **Minimum file size** keeps files at least that large.
+  - **Show ignored** is on by default and shows gitignored files dimmed; turn it off to
+    hide them.
 - **Clear** removes every filter and turns Show ignored back on; it keeps the grouping.
 
 A type or size filter keeps the tree’s shape, shows only matching files and the folders
