@@ -548,6 +548,14 @@ def test_a_copied_value_and_a_behavior_are_part_of_the_contract(tmp_path: Path) 
     problems = check_app_contract.change_problems(root, "main")
     assert len(problems) == 1 and "declares a different surface" in problems[0]
 
+    # So is the text a pin file must hold: it is the page's marker that the app looks for.
+    marker = 'holds = \'"data-view-on-github": "open"\''
+    assert marker in declaration
+    renamed = declaration.replace(marker, marker.replace('"open"', '"main"'))
+    _write(root, {DECLARATION: renamed})
+    problems = check_app_contract.change_problems(root, "main")
+    assert len(problems) == 1 and "declares a different surface" in problems[0]
+
 
 def test_a_change_main_made_is_not_this_branchs(tmp_path: Path) -> None:
     """In the middle of merging main in, ``HEAD`` is still the commit before the merge."""

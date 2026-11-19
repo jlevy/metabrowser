@@ -724,7 +724,9 @@ def declared_surface(text: str | None) -> object:
     and thing ``metab`` reads of the app, with the definitions it names.
 
     Two declarations with the same surface differ only in what a release need not name:
-    a note, the test that pins an entry, or which Swift file holds a reader.
+    a note, the test that pins an entry, or which Swift file holds a reader. What a pin
+    file must contain is part of it: that is the text of the page or the transcript that
+    the app depends on.
     """
 
     if text is None:
@@ -751,7 +753,7 @@ def declared_surface(text: str | None) -> object:
         ),
         tuple((line.id, line.pattern.pattern) for line in contract.lines),
         tuple(variable.name for variable in contract.variables),
-        tuple((item.kind, item.id, item.values) for item in contract.pinned),
+        tuple((item.kind, item.id, item.values, item.holds) for item in contract.pinned),
     )
 
 

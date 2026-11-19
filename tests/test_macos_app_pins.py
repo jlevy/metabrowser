@@ -47,6 +47,7 @@ from metabrowser.home import METABROWSER_CACHE_DIR_ENV
 from metabrowser.server_utils import DEFAULT_PORT_SEARCH_COUNT
 from metabrowser.settings import DEFAULT_BROWSER_PORT
 from tests.cache_home_fixture import FLASK_HTTPS, build_populated_home
+from tests.golden_harness import run_session
 
 APP = Path(__file__).resolve().parent.parent / "apps" / "macos"
 SHELL_CORE = APP / "Sources" / "ShellCore"
@@ -237,6 +238,42 @@ def test_the_app_declares_what_present_reads() -> None:
     assert info.get(OPENS_URLS_KEY) is True
     # File > Open Recent lists repositories only when the bundle declares the same key.
     assert _swift_value("Folders/RecentTargets.swift", "opensURLsKey") == f'"{OPENS_URLS_KEY}"'
+
+
+def _elements(markup: dict[str, Any]) -> list[dict[str, Any]]:
+    """An element of a session's transcript and every element under it."""
+
+    found = [markup]
+    for child in markup.get("children") or []:
+        if isinstance(child, dict):
+            found += _elements(cast("dict[str, Any]", child))
+    return found
+
+
+def test_the_link_the_apps_script_takes_is_the_one_the_page_marks() -> None:
+    """``GitHubViewRequests.marker`` selects the View on GitHub button's main link.
+
+    The app's user script takes a plain click on the element its selector matches and
+    opens the popover; the page only marks its links and knows nothing of the app. So the
+    selector is a copy of the page's hook: renamed on one side alone, the button would
+    open the default browser in the app with every test of either side green. The link
+    is also what the script and the window expect of it: a page on github.com, and a
+    link that opens a new window by itself, which is where a click the script leaves
+    alone goes (``NavigationPolicy.decideNewWindow``).
+    """
+
+    marker = _swift_value("Web/GitHubViewRequests.swift", "marker")
+    selector = re.fullmatch(r'#"(\w+)\[([\w-]+)="(\w+)"\]"#', marker)
+    assert selector, f'GitHubViewRequests.marker is not tag[attribute="value"]: {marker}'
+    tag, attribute, value = selector.groups()
+
+    markup = run_session("counterpart-session.js")["markup"]
+    marked = [element for element in _elements(markup) if element.get(attribute) == value]
+    assert len(marked) == 1, f"the page marks {len(marked)} elements {attribute}={value!r}"
+    link = marked[0]
+    assert link["tag"] == tag
+    assert link["href"].startswith("https://github.com/")
+    assert (link["target"], link["rel"]) == ("_blank", "noopener")
 
 
 def _swift_samples(name: str, enum: str) -> set[str]:
