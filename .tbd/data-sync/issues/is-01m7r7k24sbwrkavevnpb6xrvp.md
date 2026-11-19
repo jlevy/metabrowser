@@ -5,14 +5,14 @@ title: "Files view: the border under the file tally stops short of the full widt
 kind: bug
 status: in_progress
 priority: 2
-version: 5
+version: 6
 delegate: claude-code@spud10
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T21:04:19.094Z
-updated_at: 2026-11-18T22:51:16.806Z
+updated_at: 2026-11-19T00:22:41.967Z
 started_at: 2026-11-18T21:06:44.438Z
 ---
 Owner, 2026-11-18: in the files view, the border line below the file tally and above the files does not extend the full width; it stops a little short, unlike the other border lines between the sections. Make it consistent with the other section borders.
@@ -26,3 +26,6 @@ Fix 2026-11-18: PR #573 (branch claude/nav-metadata-full-width, head 23a904979, 
 
 
 Review A 2026-11-18 (4 Low): A1 fixed by one CSS rule hiding a band while its panel or the scroller leads with an alert (replaces failTree's and showFailure's JS clears); A3 fixed (band z-index 1, filter bar and toolbars 2); A4 comments fixed; A2 (rows move when a line arrives mid-scroll) recorded as accepted cost in CHANGELOG and design-system Placement: the ResizeObserver compensation measured +309 gzip bytes of app.js, against the no-added-eager-bytes brief. Dispositions posted on #573; merged main (#572, #576); head 18362f9ea. Eager now: app.js -45, pulls-nav.js +56.
+
+
+2026-11-18 later: merged main through #574, #583 and #585 (changelog fragments); the entry moved to changelog.d/mb-vgx3.md and CHANGELOG.md has no diff. Head 63898a090, CI green (run 44422464735, 22 pass, 1 skipping). Eager vs main: app.js -48 gzip bytes, pulls-nav.js +56.
