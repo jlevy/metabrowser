@@ -72,6 +72,7 @@ pytestmark = [
 ]
 
 CONTRACT: Final = app_contract.load()
+GH_STAND_IN: Final = Path(__file__).resolve().parent / "fixtures" / "github-status"
 VERSION_PLACEHOLDER: Final = "<VERSION>"
 SERVED_PLACEHOLDER: Final = "<SERVED>"
 # `metab VERSION`, then for a checkout a description in parentheses.
@@ -150,6 +151,10 @@ class _Sandbox:
         monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(self.config))
         monkeypatch.setenv("METABROWSER_PLUGINS_DIRS", "")
         monkeypatch.setenv(OPEN_IN_ENV, "browser")
+        # The doctor reports GitHub CLI's state, which changes neither its exit status
+        # nor anything the app reads; this gh answers it, so none a developer signed in
+        # is asked.
+        monkeypatch.setenv("PATH", f"{GH_STAND_IN}{os.pathsep}{os.environ.get('PATH', '')}")
         monkeypatch.setenv("TERM", "dumb")
         # Outside the sandbox, so a folder's full name is its path until a block says
         # otherwise.
