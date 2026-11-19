@@ -252,6 +252,9 @@ Phase 3 of the native app plan has host mode (`mb-qzny`), the live-server regist
 rendezvous reply and in-app confirmation (`mb-rtgh`), and the skill (`mb-ko5d`). The
 front door depends on all of the server-side work, so nothing reaches the app from an
 agent until host mode ships.
+The [host mode plan](plan-2026-11-18-host-mode.md) designs that phase for any host, and
+its open [HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands) asks
+whether finding a running server lands ahead of host mode’s credential.
 The [topology brief](../../research/research-2026-11-10-native-app-server-topology.md)
 (“Show X” End to End, Control Plane) has the reasoning, including why an agent must
 reach the app through LaunchServices and never by executing its binary.
@@ -451,7 +454,9 @@ transport.
 
 ### Phase 2: Round Trip, Live Pages, and Named Commands
 
-Builds on the native app plan’s Phase 3 beads, which keep their scope.
+Builds on the native app plan’s Phase 3 beads, which keep their scope unless the host
+mode plan’s open HM-1 splits them; its
+[Implementation Plan](plan-2026-11-18-host-mode.md#implementation-plan) orders them.
 
 - [ ] `--present` delivers through the `metabrowser://` rendezvous (`mb-rtgh`) and the
   live-server registry (`mb-5xi4`), so the app replies with the window and URL, a page

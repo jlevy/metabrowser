@@ -9,8 +9,9 @@ It maps [Object Data Model and Views](plan-2026-11-14-object-data-model-and-view
 the parent plan below, and its companions
 [View Model and View State](plan-2026-11-18-view-model-and-view-state.md) and
 [The Recent Tab](plan-2026-11-18-recent-tab-updates-and-events.md), onto stacks of pull
-requests. The owner decided the order, Ordering 2, on 2026-11-18: safe groundwork first,
-a checkout’s uncommitted changes as the first object type, then the larger surfaces.
+requests, and slots the [host mode plan](plan-2026-11-18-host-mode.md)’s steps among
+them. The owner decided the order, Ordering 2, on 2026-11-18: safe groundwork first, a
+checkout’s uncommitted changes as the first object type, then the larger surfaces.
 The decisions it rests on were taken the same day, and
 [Decisions This Map Follows](#decisions-this-map-follows) lists them.
 What can still change it is marked **(if …)** at each place.
@@ -22,13 +23,13 @@ Numbered decisions are the parent plan’s, and VM decisions the view model plan
 | Standing, as of 2026-11-18 | Decisions |
 | --- | --- |
 | Taken by the owner on 2026-11-18 | 1 and VM-8: SoftSchema contracts for objects and UI state. 2 A, 3 A, 4 A, 6 A, 7 A, 9 A, 10 A, 13 to 18 A, 21 A, and 23 A. 5: `pull-request` everywhere, with `--present`’s kind and `SelectionKind` renamed with the macOS app in one commit, `repository` and `tree` to `folder`, `blob` to `file`, and a separate field that keeps a repository’s root apart from a named tree. 8: UTC strings at second precision. 11 A: a closed set of shapes, with the `card` frame built at its first real use, which is C5. 12: the host frame, with the header through an SDK frame that mb-7t5s builds. 19 C: a main tab named Recent, designed in the Recent tab plan, with option B’s address kept as `/recent`. 20: no SDK bump for an addition, and #380’s versioning rule if #380 is accepted. 22 D: the contract half after several types exist. VM-1 A, VM-2 B, VM-3 C, VM-5 A (VM-4 is folded into it), VM-6 B, VM-7 A, VM-9 A, and VM-10 A, with the view slice first or beside the object slice. The Recent tab plan’s RT-1 to RT-7, the plugin authoring plan’s PS-1 to PS-7, and the agent interface plan’s AI-1 to AI-6. [Ordering 2](#orderings) |
-| Open | The agent interface plan’s [AI-7](plan-2026-11-18-agent-interface.md#decision-ai-7-finding-a-server-the-agent-did-not-start): whether the discovery half of the live-server registry, mb-5xi4, comes ahead of host mode |
+| Open | The host mode plan’s [HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands): whether discovery, the listing of live servers, lands ahead of host mode’s credential |
 
 - **(if #380 is accepted)** C3 is a patch bump with an `sdk-changes.toml` entry.
 - **(if mb-r5gn finds a path the `/view/` codec cannot spell)** T1.5 keeps the git
   plan’s `/status/<scope>/<entry-id>` address, as the Recent tab plan’s RT-3 allows.
-- **(if AI-7 is taken as A)** a pull request for the state file, the listing, and the
-  liveness probe joins Stack V after V5, and `--live` no longer waits for mb-qzny.
+- **(if HM-1 is taken as A)** [Stack H](#stack-h-host-mode) lands discovery beside Tiers
+  0 and 1 and Stack V, and `--live` and the later V slice no longer wait for mb-qzny.
 
 ## The Working Tree Today
 
@@ -128,8 +129,8 @@ delivery; a surface’s part of a view state is a facet.
 | V6 `test(ui): --show and the page agree, and the parity check counts facets` | Agreement test; a `devtools/check_parity.py` coverage rule over facets | Both fail on a planted mismatch | S |
 | V7 `feat(cli): every agent-facing route and contract is discoverable from metab` | The agent interface plan’s [Self-Description](plan-2026-11-18-agent-interface.md#self-description): the agent paragraph in `--help`; a contract identifier in each `/api/routes` entry that has one; `GET /api/contracts` and `GET /api/contract`, which build no validator | Goldens and parity rows for both routes; a test that every `/api/ui` route, object route, and contract is listed; serving loads no schema library | M |
 
-A later V slice, after mb-5xi4, adds `--live` and the intent `--present` sends, its
-confirmed report, and the `ui.present-confirmation` row.
+A later V slice adds `--live` and the intent `--present` sends, its confirmed report,
+and the `ui.present-confirmation` row: [Stack H](#stack-h-host-mode)’s H4 and H5.
 
 ### Stack P: The Pull Requests Page
 
@@ -173,6 +174,28 @@ any item may be declined: X1, the pull request page reads the object; X2, Pulls 
 `nav-row` views; X3, Quick Search results as references; X4, the commit row and summary;
 X5, the Files tree’s rows.
 
+### Stack H: Host Mode
+
+The [host mode plan](plan-2026-11-18-host-mode.md)’s steps H1 to H9, which its
+[Implementation Plan](plan-2026-11-18-host-mode.md#implementation-plan) defines with
+their beads. **(if HM-1 is taken as A)** They slot into Ordering 2 as below; under
+another option that plan’s order changes, and this section with it.
+
+| Step | Work, in brief | Slot |
+| --- | --- | --- |
+| H1 | The ready moment, a boot ID, and process fields on `/api/identity` | Beside Tier 0, outside its cap: additive, and no page changes |
+| H2 | The server record’s contract and the ready-line flag | After T0.7 and V2 |
+| H3 | The registry entry, its liveness tests, and the listing mode | Beside Tier 1, before V5 |
+| H4 | `--live` on `--api` | After V5 |
+| H5 | The find-or-start lock, and `--present` sends the intent | The later V slice, after V7 |
+| H6 | The sticky port, and a reload on a new boot ID | After Stack V |
+| H7 | The control socket | After H3 |
+| H8 | The token | After H7 |
+| H9 | The app’s link scheme, and the VS Code host | Last, after H8 |
+
+H3 and H8 each land behind the measurement the host mode plan’s
+[Testing Strategy](plan-2026-11-18-host-mode.md#testing-strategy) names.
+
 ## Dependencies
 
 ```text
@@ -183,6 +206,8 @@ T0.1 ─► T0.2 ─► T0.3 ────────┴─► T1.3 ─► T1.4 
 T0.8 mb-7t5s ───────────────────────────────┴─────┘
 P3 ─► C1 ─► C2 (after P6, T1.3) ─► C3 ─► R3 · C1 ─► C4, C5 ─► R4
 T0.3, P3, P5 ─► R1 · T1.5 ─► R2
+H1 ─► H2 (after T0.7, V2) ─► H3 ─► H4 (after V5) ─► H5 (after V7)
+H3 ─► H7 ─► H8 ─► H9 · V7 ─► H6
 ```
 
 Within those lines, V2 also needs T0.7, P2 needs T0.4, and P4 needs T0.6. X1 to X5
@@ -200,8 +225,8 @@ beside P4.
 | #550, #552 | Merged on 2026-11-18. The header’s builders are in an on-demand `view-header` bundle | T0.8, then T1.5 and P6 |
 | mb-7t5s | Open, not started; #506, which it waited on, merged | Is T0.8 |
 | #380 | Open draft, awaiting the owner’s decisions | C3 |
-| mb-qzny, mb-5xi4 | Open; mb-qzny blocks mb-5xi4 and mb-1zyp | `--live` and every change to `--present`, in a V slice after V7; forged publishes. The agent interface plan’s open AI-7 would bring mb-5xi4’s discovery half ahead of mb-qzny |
-| mb-1zyp, mb-54r1, mb-idri | Open, each blocked (mb-qzny; mb-1zyp; mb-5xi4, mb-1zyp, mb-56nq) | Should carry V2’s `Intent` and the intents route’s outcome, not a separate `navigate` |
+| mb-qzny, mb-5xi4 | Open; mb-qzny blocks mb-5xi4 and mb-1zyp | `--live` and every change to `--present`, as Stack H’s H4 and H5; forged publishes. The host mode plan’s [Implementation Plan](plan-2026-11-18-host-mode.md#implementation-plan) splits both under HM-1 A |
+| mb-1zyp, mb-54r1, mb-idri | Open, each blocked (mb-qzny; mb-1zyp; mb-5xi4, mb-1zyp, mb-56nq) | Should carry V2’s `Intent` and the intents route’s outcome, not a separate `navigate`. The host mode plan’s [Implementation Plan](plan-2026-11-18-host-mode.md#implementation-plan) places them in Stack H |
 | #498, #501–#503, #507, #508, #518–#520 | Open drafts (the fdu stack) | C1, C4, Recent’s changed-files source |
 | #577 | Merged; it changed the Git routes and the Commits tab | T0.5 starts from it |
 
@@ -324,6 +349,9 @@ Recent’s beads come from the Recent tab plan.
   a CHANGELOG entry.
 - **C:** the contract and declarations tables, each with its check; Plugin Authoring; a
   CHANGELOG note for the manifest blocks.
+- **H:** the host mode plan’s
+  [Testing Strategy](plan-2026-11-18-host-mode.md#testing-strategy) and parity rows;
+  that plan moves to `specs/done` on its own.
 - **R and X:** the Recent tab plan’s criteria; each X item landed or recorded as
   declined. Then the parent plan, its companions, and this map move to `specs/done`.
 

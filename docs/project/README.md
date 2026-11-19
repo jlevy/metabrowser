@@ -76,8 +76,9 @@ It links each document below and the contributor standards in `docs/`.
   main UI, replacing the standalone revision page; approved 2026-11-17
 - [Object data model and views](specs/active/plan-2026-11-14-object-data-model-and-views.md):
   one modeled object per file, folder, commit, and pull request, drawn in several view
-  shapes; the parent of the five plans below; its decisions were taken on 2026-11-18,
-  and nothing is built
+  shapes; the parent of the view model, implementation map, plugin authoring, Recent
+  tab, and agent interface plans below; its decisions were taken on 2026-11-18, and
+  nothing is built
 - [View model and view state](specs/active/plan-2026-11-18-view-model-and-view-state.md):
   a view state each viewer publishes, by reference to those objects, that an agent can
   read and ask to change with a `present` intent; decided 2026-11-18, not built
@@ -94,8 +95,11 @@ It links each document below and the contributor standards in `docs/`.
   not built
 - [Agent interface for objects and view state](specs/active/plan-2026-11-18-agent-interface.md):
   how an agent reads what the reader sees and asks a viewer to show a file or a pull
-  request, through `metab` and the agent skill; decided 2026-11-18 except one open
-  decision, on finding a server the agent did not start, and not built
+  request, through `metab` and the agent skill; decided 2026-11-18, and not built
+- [Host mode](specs/active/plan-2026-11-18-host-mode.md): how any host launches, owns,
+  and reaches a `metab` server, and how an agent finds one however it was started: the
+  host contract, the live-server listing, and the owner-only control socket; a draft
+  whose decisions are open
 - [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked

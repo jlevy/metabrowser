@@ -4,17 +4,19 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Decided except for one decision, and nothing here is built.
-The owner took Decisions AI-1 to AI-6 on 2026-11-18, and
-[Decision AI-7](#decision-ai-7-finding-a-server-the-agent-did-not-start), on finding a
-server the agent did not start, is open.
+**Status:** Decided, and nothing here is built.
+The owner took Decisions AI-1 to AI-6 on 2026-11-18, and none of this plan’s decisions
+is open. Finding a server the agent did not start, drafted here as
+[AI-7](#decision-ai-7-finding-a-server-the-agent-did-not-start), is the
+[host mode plan](plan-2026-11-18-host-mode.md)’s
+[HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands), open there.
 It is written against
 [View Model and View State](plan-2026-11-18-view-model-and-view-state.md), “the parent
 plan” below, and that plan’s own parent,
 [Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), “the
 object model plan”. The owner took the decisions of both, VM-1 to VM-10 and 1 to 23, the
 same day. Written against `main` at `a1100bca6`; [Self-Description](#self-description)
-and [Launch Modes](#launch-modes) were checked against `main` at `c2c4d9958` and say so.
+was checked against `main` at `c2c4d9958` and says so.
 
 ## Overview
 
@@ -43,14 +45,17 @@ file or a pull request.
 - An agent learns every capability here from `metab` alone
   ([Self-Description](#self-description)).
 - An agent can find and reach a server however it came to exist: one the agent started,
-  one the user started, and one the macOS app launched ([Launch Modes](#launch-modes)).
+  one the user started, and one the macOS app launched, as the host mode plan’s
+  [Three Ways a Server Exists](plan-2026-11-18-host-mode.md#three-ways-a-server-exists)
+  sets out.
 
 ## Non-Goals
 
 - New contracts. `ViewState` and `Intent` are the parent’s, and the object contracts the
   object model plan’s.
 - Telling one agent from another: host mode’s credential authenticates the user, not the
-  agent (`docs/project/specs/active/plan-2026-11-10-native-macos-app.md:410`).
+  agent (the native macOS app plan’s
+  [Phase 3](plan-2026-11-10-native-macos-app.md#phase-3-host-mode-the-registry-and-the-agent-front-door)).
 - An MCP adapter: one could be added later as an optional wrapper over the same routes
   (`mb-5lgp`), and nothing in this plan depends on it.
 
@@ -73,7 +78,7 @@ Paths below are under `src/metabrowser/` unless they start with `docs/`, `tests/
   of a local checkout, or a changed file, so the skill serves for those
   (`skills/metabrowser/SKILL.md:102`). Since #582, which merged after `a1100bca6`, it
   can deliver to a browser instead, on a detached server it starts and reports
-  ([Launch Modes](#launch-modes)).
+  ([Three Ways a Server Exists](plan-2026-11-18-host-mode.md#three-ways-a-server-exists)).
 
 ## Design
 
@@ -84,8 +89,8 @@ Paths below are under `src/metabrowser/` unless they start with `docs/`, `tests/
 | `metab ROOT --api ROUTE` | Every route, in process, with no page | Reads objects and collections. Unchanged |
 | `metab ROOT --show ADDRESS` | One selection, in process | Checks an address before it is shown |
 | `metab --api ROUTE --server URL` | A running server | Reads view states and sends intents. New, with the view slice |
-| `metab --present …` | The app, or a browser | Hands a target to a viewer. Unchanged in the view slice; once the registry lands it sends the intent itself |
-| `--live` | ROOT’s server, through the registry | Takes the place of `--server` once `mb-5xi4` lands |
+| `metab --present …` | The app, or a browser | Hands a target to a viewer. Unchanged in the view slice; from the host mode plan’s step H5 it sends the intent itself |
+| `--live` | ROOT’s server, through the listing of live servers | Takes the place of `--server`: the host mode plan’s [Discovery](plan-2026-11-18-host-mode.md#discovery), its step H4 |
 | The skill, `skills/metabrowser/SKILL.md` | — | Routes a task to these commands, and is tested against them |
 
 **The command line, taught by the skill, is the complete agent surface**
@@ -266,52 +271,23 @@ log: the parent’s publisher lets the newest state win.
 - `GET /api/identity` names a server’s subject (`root_identity.py:293`), so with
   `--server` an agent can confirm that an address serves the root it expects.
 
-**After the registry** (`mb-5xi4`), `--live` resolves ROOT to its server, so the
-sessions drop `--server`, and the front door (`mb-idri`) has `--present` send the intent
-itself.
+**After discovery,** `--live` resolves ROOT to its server, so the sessions drop
+`--server`, and `--present` sends the intent itself: the host mode plan’s
+[Discovery](plan-2026-11-18-host-mode.md#discovery), as its steps H3 to H5.
 
-**Under host mode** (`mb-qzny`), the control verbs move to an owner-only socket
-(`mb-1zyp`) with the same records, under the names the parent gives them: `viewers`
-answers `ViewState` rows, `present` carries an intent, whose own field is `present` too,
-and the page’s `navigate` event (`mb-54r1`) is the parent’s `ui.intent`. `metab` picks
-the transport, so no recipe changes, and an agent keeps reading content through `--api`
-in its own process
-(`docs/project/research/research-2026-11-10-native-app-server-topology.md:473`).
+**Under the token,** an agent reaches a gated server’s control routes, with the same
+records, over its owner-only socket, and keeps reading content through `--api` in its
+own process. `metab` picks the transport, so no recipe changes: the host mode plan’s
+[Reaching a Gated Server](plan-2026-11-18-host-mode.md#reaching-a-gated-server).
 
 ### Launch Modes
 
-A server comes to exist in three ways, and the owner asks that an agent can find and
-reach all three. Today it sees one.
-“Today” is `main` at `c2c4d9958`.
-
-|  | The agent starts it | The user starts it | The macOS app launches it |
-| --- | --- | --- | --- |
-| **How** | `metab ROOT --no-open`, or `--present --open-in browser`, which starts one detached (#582) | `metab ROOT` in a terminal | `metab ROOT --no-open --exit-on-eof` on a loopback port the app picks (`docs/project/architecture/arch-macos-app.md:58`) |
-| **Today** | Found: the agent reads the `Serving` line, or `--present`’s report of the address and process ID. Reached only by a raw HTTP client, since `--api` runs a server of its own | Not found, unless the user gives the address | Not found: the app reports no address, and `--present` gets no reply |
-| **In the view slice** | Found the same way, and reached with `--api --server URL`: the one complete loop | Reached with `--server` once the user gives the address; `/api/identity` confirms the root | Not found. An agent can show a page through `--present` and cannot read what the reader sees |
-| **After the registry** (`mb-5xi4`) | Listed; `--live` resolves ROOT | Listed; `--live` resolves ROOT | Listed, with the app as its owner; `--live` resolves ROOT |
-| **Under host mode** (`mb-qzny`, `mb-1zyp`) | The same records over the server’s owner-only socket | The same, through the socket | Through the socket alone: its loopback port needs a token only the app holds |
-
-- **Only the first column works before the registry,** and the registry waits on host
-  mode (`mb-qzny` blocks `mb-5xi4`).
-  [Decision AI-7](#decision-ai-7-finding-a-server-the-agent-did-not-start), which is
-  open, would bring its discovery half forward.
-- **The credential.** Host mode puts content routes behind a token in the
-  `Authorization` header that a client sends only to its own origin, and no client’s
-  credential is a cookie
-  (`docs/project/specs/active/plan-2026-11-10-native-macos-app.md:416-424`). An agent
-  never holds the token of a server the app launched, and a listing must never print
-  one. It reaches that server through the owner-only socket of `mb-1zyp`, where socket
-  ownership authenticates the user
-  (`docs/project/specs/active/plan-2026-11-10-native-macos-app.md:410-411`, `:426-427`),
-  for the control verbs alone: identity, `viewers`, and `present`. It reads content in
-  its own process through `--api`, as now.
-  Whether a server started outside the app carries a token at all is that plan’s to
-  settle, and the socket serves either answer.
-- **A socket is a sandbox rule too.** Codex’s and Claude Code’s sandboxes refuse a Unix
-  socket unless its path is allowed
-  (`docs/project/research/research-2026-11-10-native-app-server-topology.md:447`), so
-  the narrow rule under [Surfaces](#surfaces) still applies.
+A server comes to exist in three ways: the agent starts it, the user starts it, or a
+host such as the macOS app launches it.
+How an agent finds and reaches each is the host mode plan’s
+[Three Ways a Server Exists](plan-2026-11-18-host-mode.md#three-ways-a-server-exists).
+In the view slice an agent finds only a server it started, by the `Serving` line or
+`--present`’s report, and reaches it with `--api --server URL`.
 
 ### Output Forms
 
@@ -382,6 +358,11 @@ So the gap is three additions, each small:
   contracts join when their registry lands.
   This settles whether schemas are served, which the object model plan had left open.
 
+The host mode plan’s [Self-Description](plan-2026-11-18-host-mode.md#self-description)
+adds four gaps of its own on these routes: the listing mode, the server record’s schema,
+a mark on each `/api/routes` entry the control socket serves, and the host flags in the
+help.
+
 ### Trust
 
 The case is an agent steered by text it read, such as a pull request’s body that says to
@@ -397,6 +378,10 @@ trust in the caller.
 A repository URL implies `--untrusted` (`cli/git_pin_cli.py:114-124`), and an intent on
 the server a pull request URL opens is still applied at once where the server and the
 caller are local, and offered anywhere else.
+Local is
+[VM-5](plan-2026-11-18-view-model-and-view-state.md#decision-vm-5-consent-and-trust)’s
+test: the server binds a loopback address outside a remote session, and the request
+comes from a loopback peer that names no proxy, whichever way the server was started.
 
 This document adds:
 
@@ -440,7 +425,8 @@ Each gives the slice that needs it, the options it weighed, and the decision.
 | Standing, as of 2026-11-18 | Decisions |
 | --- | --- |
 | Taken by the owner on 2026-11-18 | **AI-1:** the command line, taught by the skill, is the complete agent surface. **AI-2** A: `--server URL` on `--api`. **AI-3** A: the intents route. **AI-4** B: the verb is `present`. **AI-5** B: a record route beside the list. **AI-6** A: a bounded wait on the read |
-| Open | **AI-7:** whether the discovery half of the live-server registry comes forward. Recommended: A |
+| Moved | **AI-7** is the host mode plan’s [HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands), open there |
+| Open | None |
 
 ### Decision AI-1: The Agent Surface
 
@@ -537,54 +523,11 @@ defines the route.
 
 ### Decision AI-7: Finding a Server the Agent Did Not Start
 
-**Needed for:** an agent that reads what the reader sees in a server the user or the
-macOS app started, which is two of the three [launch modes](#launch-modes).
-
-**Open.** The owner has not answered it.
-
-The view slice exists to answer “what is the reader looking at?”, and the reader’s page
-is most often in a server the agent did not start: the app’s, or one from a terminal.
-Finding that server waits on the live-server registry (`mb-5xi4`), which the macOS plan
-puts after host mode (`mb-qzny`). So until the end of that plan’s Phase 3 the view slice
-answers only for a server the agent started and a page the reader then opened there.
-
-The registry has two halves, and only one needs host mode.
-**Discovery** is one owner-only state file for each live server, written after bind and
-removed at exit, with its roots, URL, process ID, and version; a listing an agent reads
-through `metab`; and a liveness probe that drops an entry whose process is gone or whose
-`/api/identity` does not answer for its root.
-**Coordination** is the per-root find-or-start lock, sticky ports, and host mode’s
-credential, which stay in the macOS plan under every option.
-
-- **A. Bring discovery forward, into this design, ahead of host mode.** Every server
-  writes its entry, whoever started it; `--live` resolves ROOT through the listing; and
-  all three launch modes are found and reached from the view slice on.
-  It costs a second kind of persisted state with its own failures: stale files, reused
-  process IDs, and start races, which the probe and the removal at exit must cover and a
-  fixture runtime directory must test.
-  An entry is read by a `metab` of another version than the server that wrote it, so its
-  format is a versioned contract and not an internal envelope.
-  It also lowers what a steered agent must do to reach a window it did not open.
-  The bounds on an intent, and `control`’s default by caller, still hold.
-- **B. Keep the macOS plan’s order.** No new state here.
-  The view slice’s main use stays out of reach until host mode and the registry land.
-- **C. The app publishes its own servers,** in a file it writes or a menu item that
-  copies an address. It covers one launch mode, with a mechanism the registry later
-  replaces.
-- **D. The agent scans loopback ports and probes `/api/identity`.** No new state.
-  It is slow, a sandbox blocks it, and it depends on the port ranges the app happens to
-  walk.
-
-**Recommendation: A.** Discovery needs nothing host mode adds: a state file, a probe,
-and a listing work for the servers that exist today.
-Without it the design’s first question has no answer for the page the reader is on.
-Its cost is bounded by keeping it read-only: an entry carries no credential, a reader
-signals no server, and nothing starts or stops a server because of the listing.
-When host mode adds a token, an entry still names only the server’s socket and URL, and
-an agent reaches a server the app launched through the owner-only socket of `mb-1zyp`,
-as [Launch Modes](#launch-modes) sets out.
-If the owner chooses A, the listing is a route where one fits, so that `--api` reaches
-it, and the macOS plan’s `mb-5xi4` keeps the lock alone.
+**Moved** to the [host mode plan](plan-2026-11-18-host-mode.md) as
+[Decision HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands), which
+weighs the same options and is open there.
+Until it is taken and built, the view slice answers only for a server the agent started
+and a page the reader then opened there.
 
 ## Implementation Plan
 
@@ -609,14 +552,14 @@ it serves a caller that knows the server’s address.
 ### After the View Slice
 
 - [ ] The bounded wait, which needs nothing more.
-- [ ] `--live`, and a listing of live servers (`mb-5xi4`, which waits on `mb-qzny`). If
-  [Decision AI-7](#decision-ai-7-finding-a-server-the-agent-did-not-start) is taken as
-  A, the state file, the listing, and the probe come first, with the view slice or right
-  after it, and `mb-5xi4` keeps the find-or-start lock.
-- [ ] `--present` sends the intent and reports `confirmed: true` (`mb-idri`, which waits
-  on `mb-5xi4`, `mb-1zyp`, and `mb-56nq`); the skill’s recipe becomes that one command
-  (`mb-ko5d`).
-- [ ] The same records over the owner-only socket (`mb-1zyp`, `mb-54r1`).
+- [ ] The listing of live servers and `--live`: the host mode plan’s steps H3 and H4
+  ([Implementation Plan](plan-2026-11-18-host-mode.md#implementation-plan)), whose place
+  in the order [HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands)
+  decides.
+- [ ] `--present` sends the intent and reports `confirmed: true`, and the skill’s recipe
+  becomes that one command: the host mode plan’s step H5 (`mb-idri`, `mb-ko5d`).
+- [ ] The same records over the owner-only socket: the host mode plan’s step H7
+  (`mb-1zyp`), with step H6’s reload on a new boot ID (`mb-54r1`).
 - [ ] A recipe for each of the parent’s later slices, none of which adds a surface.
 
 ## Testing Strategy
@@ -658,8 +601,8 @@ pull-request recipes to `tests/golden/cli-skill-recipes.tryscript.md`, and
   root’s path and a cursor from the tool that asked for them.
 - **Across roots.** Each root has its own server.
   Does the front door answer for the viewer attended last on any of them, or does the
-  agent ask each server the listing of
-  [Decision AI-7](#decision-ai-7-finding-a-server-the-agent-did-not-start) names?
+  agent ask each server the host mode plan’s
+  [listing](plan-2026-11-18-host-mode.md#discovery) names?
 
 ## References
 
@@ -669,6 +612,8 @@ pull-request recipes to `tests/golden/cli-skill-recipes.tryscript.md`, and
   Decisions VM-1 to VM-10
 - [Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), for the
   objects, references, and collections a view state names
+- [Host Mode](plan-2026-11-18-host-mode.md), for finding and reaching a server however
+  it was started
 - [Native macOS App](plan-2026-11-10-native-macos-app.md#phase-3-host-mode-the-registry-and-the-agent-front-door),
   Phase 3, and
   [the app and server topology research](../../research/research-2026-11-10-native-app-server-topology.md)

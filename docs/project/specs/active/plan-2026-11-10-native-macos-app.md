@@ -260,7 +260,7 @@ The server-topology brief’s recommendations, in brief:
 - **One front door for agents,** `metab TARGET --present`, which hands off to the app
   through LaunchServices, navigates a live page, starts a server and opens a browser, or
   prints a link, and reports which.
-  Sandboxed agents run it outside their sandbox or through an optional MCP adapter.
+  Sandboxed agents run it outside their sandbox, as an excluded or approved command.
 
 ## Implementation Plan
 
@@ -343,8 +343,8 @@ The steps run in this order, which the beads record as dependencies:
    through `NSDocumentController`, behind the Dock menu and File > Open Recent, which
    replaced the app’s own list in `UserDefaults`. **Superseded on 2026-11-18 for File >
    Open Recent:** it now lists `metab`’s recent targets
-   ([Phase 4](#phase-4-recent-targets-the-switcher-and-the-mcp-adapter)), and only the
-   Dock menu is still macOS’s list.
+   ([Phase 4](#phase-4-recent-targets-and-the-switcher)), and only the Dock menu is
+   still macOS’s list.
 
 8. **Independent review** (`mb-niod`): the strong tier reviews the upgraded app (senior,
    security, and correctness), and every finding is addressed, with follow-up rounds
@@ -406,6 +406,10 @@ Outside the milestone, each for a stated reason:
 
 ### Phase 3: Host Mode, the Registry, and the Agent Front Door
 
+The [host mode plan](plan-2026-11-18-host-mode.md) designs this phase for any host, a
+browser tab and VS Code as well as the app, and orders its steps; its decisions are
+open. This section keeps the beads and the rules that plan cites as settled.
+
 A release-scoped slice of the front door, delivered through LaunchServices before host
 mode, with GitHub URLs in the app, is
 [Opening Anything from the CLI and the App](plan-2026-11-17-open-anything-from-cli-and-app.md).
@@ -436,7 +440,7 @@ confirms that root in the app.
   confirmation (`mb-rtgh`).
 - [ ] The skill uses the front door and documents sandbox settings (`mb-ko5d`).
 
-### Phase 4: Recent Targets, the Switcher, and the MCP Adapter
+### Phase 4: Recent Targets and the Switcher
 
 #### Recent Targets
 
@@ -566,7 +570,12 @@ The owner asked, on 2026-11-18:
 This replaces the “persist recent and added roots in `metab`” half of `mb-a5ru`. What is
 left of that bead is the route below and which roots skip Phase 3’s confirmation.
 
-#### The Switcher and the MCP Adapter
+#### The Switcher
+
+The host mode plan’s open
+[HM-3](plan-2026-11-18-host-mode.md#decision-hm-3-a-mode-or-a-route) asks the same
+question of the listing of live servers that the switcher reads, a `metab` mode or a
+route, and recommends a route only once host mode’s credential exists.
 
 - [ ] A route that serves recent targets to a page, for a switcher in the browser, once
   the security model says what a page may learn of the user’s other roots: a route would
@@ -580,7 +589,9 @@ left of that bead is the route below and which roots skip Phase 3’s confirmati
   [its own plan](plan-2026-11-18-macos-folder-switching.md), which needs neither the
   route nor the registry, and takes a shell-only exemption, `app.folder-chooser`, until
   the registry exists.
-- [ ] An optional MCP stdio adapter over registered routes (`mb-5lgp`).
+
+An MCP adapter over the registered routes (`mb-5lgp`) is an optional idea for later, and
+nothing depends on it.
 
 ### Phase 5: Setup, Runtime, and Updates
 
@@ -677,6 +688,7 @@ The two standard setup flows come first; see the
   [Native macOS App](../../research/research-2026-11-08-macos-app-packaging.md),
   [Server Topology, Lifecycle, and Agent Handoff](../../research/research-2026-11-10-native-app-server-topology.md),
   [Setup Flows for `metab` and the Native macOS App](../../research/research-2026-11-11-uv-and-macos-app-install.md)
+- Plans: [Host Mode](plan-2026-11-18-host-mode.md), Phase 3 for any host
 - Code: `apps/macos/README.md`, `skills/metabrowser/SKILL.md`,
   [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)
 - tbd guidelines: `macos-webview-shell-patterns`, `desktop-python-runtime-patterns`,

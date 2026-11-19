@@ -205,6 +205,10 @@ verifies both there before either ships:
   window, which stops its stream
   (`docs/project/research/research-2026-11-10-native-app-server-topology.md:260-264`).
 
+The [host mode plan](plan-2026-11-18-host-mode.md#hosts) holds the contract every host
+meets, and lists these two checks among those each host makes before it relies on the
+part they cover.
+
 ### The View State
 
 A view state is identified by `viewer` and versioned by `generation`; the contract’s own
@@ -303,7 +307,8 @@ by which the owner settles its claim.
   ([Parity for the View Model](#parity-for-the-view-model)). Reaching a running server
   is new: `--api ROUTE --server URL` issues the route to it as a client that starts no
   server, as `--present` is.
-  `--live`, which finds ROOT’s server, waits for the registry (`mb-5xi4`).
+  `--live`, which finds ROOT’s server, waits for the host mode plan’s
+  [Discovery](plan-2026-11-18-host-mode.md#discovery).
 - **`--format yaml`.** An answer that is one contract record, which `/api/ui/viewer`
   gives, prints as a SoftSchema artifact: a `softschema:` header and the record under
   its envelope key, the form `serialize_artifact` writes
@@ -321,11 +326,12 @@ by which the owner settles its claim.
   Any process that reaches the port can read it, as it can read the files; host mode’s
   credential (`mb-qzny`) closes both together.
 - **The macOS plan’s names.** That plan lists the control verbs `present` and `clients`
-  and a `navigate` event that pages follow
-  (`docs/project/specs/active/plan-2026-11-10-native-macos-app.md:426-428`). They take
-  this plan’s names and payloads.
-  `clients` answers the list of viewers, and is named `viewers`. `navigate` is an event
-  there and not a verb, and it is the `ui.intent` event below.
+  and a `navigate` event that pages follow, in its
+  [Phase 3](plan-2026-11-10-native-macos-app.md#phase-3-host-mode-the-registry-and-the-agent-front-door).
+  They take this plan’s names and payloads, as the host mode plan’s
+  [Reaching a Gated Server](plan-2026-11-18-host-mode.md#reaching-a-gated-server) maps
+  them. `clients` answers the list of viewers, and is named `viewers`. `navigate` is an
+  event there and not a verb, and it is the `ui.intent` event below.
   `present`, which pushes that event to the most recently visible page
   (`docs/project/research/research-2026-11-10-native-app-server-topology.md:507-508`),
   carries an intent to `rows[0]`, and the intent’s own field has the verb’s name,
@@ -446,8 +452,9 @@ agent ◄── outcome: a status and the view state ── server ◄── a p
   target, so the app never has to reply.
   On `main` after the `a1100bca6` these citations name, #582 gave `--present` a second
   delivery, to a browser on a detached server it starts and whose address it reports.
-  The app handoff still learns no address, so the wait for the registry stands; the
-  agent interface plan’s [Launch Modes](plan-2026-11-18-agent-interface.md#launch-modes)
+  The app handoff still learns no address, so the wait for the registry stands; the host
+  mode plan’s
+  [Three Ways a Server Exists](plan-2026-11-18-host-mode.md#three-ways-a-server-exists)
   counts the browser delivery as a server the agent started.
 
 What untrusted content cannot do:
@@ -712,7 +719,7 @@ nothing that `--present` and `open -b` do not already grant to any local process
 for whatever is not showing, such as `run` or a switch of the served revision, which
 stays off unless a flag allows it.
 Under host mode the routes sit behind its credential, and no intent admits a root, as
-that plan requires.
+that plan’s [Safety Rules](plan-2026-11-18-host-mode.md#safety-rules) require.
 
 These points state A exactly.
 
@@ -742,11 +749,18 @@ These points state A exactly.
   a local command from any other peer that sends neither.
   With a non-loopback `--host`, or a remote server reached through a forwarded port,
   local is whoever reaches the port.
-  `delivery.py` already makes the two tests that matter: whether the process serves a
-  client on this machine (`serving_locally`, `:102`, set from the bind host and the
-  session’s environment at `cli/serve.py:385-387`), and whether a request came from a
-  loopback peer that names no proxy (`loopback_peer`, `:124`). The default is `apply`
-  only where both hold, and `offer` anywhere else.
+  `delivery.py` already makes the tests that matter, and the default is `apply` only
+  where all three hold, and `offer` anywhere else.
+  Two are the server’s, made once as it starts: its bind host is loopback
+  (`loopback_host`, `:107`), and its environment names no remote session
+  (`remote_session`, `:97`). The third is the request’s: it came from a loopback peer
+  that names no proxy (`loopback_peer`, `:124`). The default does not read
+  `serving_locally()` (`:102`). `cli/serve.py:385-387` sets that flag from the same two
+  server tests and `local_client`, which `cli/main.py:1009` sets to `--exit-on-eof`, so
+  it holds only for a server the macOS app starts, and a server started with
+  `metab ROOT`, by the user or an agent, would default to `offer`. This corrects the
+  plan’s reading of the code to fit the decided intent, that the default follows whether
+  the server and its caller are local, and is not a new decision.
 - **It departs from the `mutations` precedent, on purpose.** The one write switch in
   `capabilities.py` is off by default (`DEFAULT_CAPABILITIES`, `:79`), and
   `--allow-edits` turns it on.
@@ -849,7 +863,9 @@ validation of objects, and the two parity rules.
 - **D. Polling.** A delay on every intent, or a held request, which is B.
 
 **Decided 2026-11-18: A.** Under host mode the same payloads move to its owner-only
-socket and credential with the control verbs.
+socket and credential with the control verbs; what that socket speaks is the host mode
+plan’s open
+[HM-4](plan-2026-11-18-host-mode.md#decision-hm-4-what-the-control-socket-speaks).
 
 ### Decision VM-10: The View Model’s First Slice
 
@@ -961,7 +977,7 @@ field:
 | --- | --- |
 | The bounded wait on `/api/ui/viewer`, `since` and `wait` | Nothing more; a measured cap on the wait, in `ui/` |
 | `pane.list` for `/pulls`; facets on request; an observer’s stream of states | The parent plan’s Phase 1 list host |
-| `--live`; every change to `--present`: the intent it sends after the handoff, its confirmed report, and the `ui.present-confirmation` row | The live-server registry (`mb-5xi4`) |
+| `--live`; every change to `--present`: the intent it sends after the handoff, its confirmed report, and the `ui.present-confirmation` row | The host mode plan’s steps H3 to H5 ([Implementation Plan](plan-2026-11-18-host-mode.md#implementation-plan)): the listing of live servers, `--live`, and the find-or-start lock |
 | `nav.list` for Pulls, Commits, and Files, and for Recent, which is on the list host from the start; `present` sets `nav.tab`, `params`, and `expanded` | Each panel’s move to the list host in the parent plan’s Phase 3, until which the view slice’s adapter publishes `nav.current` alone; the Recent tab plan’s R4 |
 | `pane.parts` and `mb.ui`; `pane.inner`; `present` sets `pane.view` and `pane.inner` | A page view’s declaration of its parts through `mb.ui`; a contract for the nested types `pane.inner` names |
 | `overlay`, `display`, `commands`; a `run` verb; the app’s session saved as view states | A need for each |
@@ -992,11 +1008,11 @@ Agent control ships under the `control` setting of
 ## Open Questions
 
 - **Finding a running server.** Reading from ROOT, and every change to `--present`, need
-  the live-server registry (`mb-5xi4`), which is planned and not built.
+  the listing of live servers, which is planned and not built.
   Until it lands, the view slice serves a caller that knows the server’s address,
-  through `--api --server`. The agent interface plan’s open
-  [Decision AI-7](plan-2026-11-18-agent-interface.md#decision-ai-7-finding-a-server-the-agent-did-not-start)
-  asks whether the registry’s discovery half comes forward, ahead of host mode.
+  through `--api --server`. The host mode plan’s open
+  [Decision HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands) asks
+  whether discovery lands ahead of host mode’s credential.
 
 - **What publishing costs.** One request per settled change, and one held stream on a
   pinned page that has none today.
@@ -1058,6 +1074,8 @@ Agent control ships under the `control` setting of
 - [Native macOS App](plan-2026-11-10-native-macos-app.md), whose Phase 3 plans
   `present`, `clients`, and `navigate`; this plan defines what they carry, and
   [the app and server topology research](../../research/research-2026-11-10-native-app-server-topology.md)
+- [Host Mode](plan-2026-11-18-host-mode.md): how any host launches and owns a server,
+  and how an agent finds and reaches one
 - [Design System](../../../design-system.md): Navigation Reveals the Item
 - [SoftSchema](https://github.com/jlevy/softschema): its guide and specification
 
