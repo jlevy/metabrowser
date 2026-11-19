@@ -485,19 +485,75 @@ try {
   }
   const walked = Number((await evaluate("location.pathname")).split("/")[2]);
   phase("stack walk");
-  // A neighbour the list's filter leaves out, as Open leaves out a merged one, takes the
-  // list to All, which reveals it like any other row, with nothing noted. The stand-in's
-  // #8 and #9 are closed (tests/github_pull_fixture.py), and the list opens under Open.
+  // #7's one neighbour in its stack is #8, which the stand-in has merged
+  // (tests/github_pull_fixture.py), and the list opens under Open, which leaves it out: the
+  // list moves to All, which reveals it like any other row, with nothing noted.
+  check("a stack key from #7 walks to merged #8", walked === 8, JSON.stringify({ walked }));
   await revealed(`a stack key to #${walked}`, pullRow(walked), "pulls");
-  const listFilter = await evaluate(
-    `document.querySelector("#tab-pulls .github-pulls-list")?.dataset.filter ?? null`,
-  );
+  const LIST_FILTER = `document.querySelector("#tab-pulls .github-pulls-list")?.dataset.filter ?? null`;
+  const listFilter = await evaluate(LIST_FILTER);
   check(
-    `a stack key to #${walked}: the list is under ${walked === 8 || walked === 9 ? "All" : "Open"}`,
-    listFilter === (walked === 8 || walked === 9 ? "all" : "open"),
+    `a stack key to #${walked}: the list moves to All`,
+    listFilter === "all",
     JSON.stringify({ walked, listFilter }),
   );
   await shot("control-n");
+
+  // 9b. The same walk from #7's row with focus on it, as J and K leave it. The move to All
+  // draws the list again, so the row that had focus goes; #8's row takes focus in its place,
+  // rather than focus falling to the page's body.
+  await load(`${base}/pull/7`);
+  await revealed("a pull request's address, before a walk from its row", pullRow(7), "pulls");
+  await waitFor(
+    `typeof window.metabrowser?.debug?.pullPage()?.hasStack === "function" && window.metabrowser.debug.pullPage().hasStack()`,
+    "the page knows its stack, for a walk from its row",
+  );
+  const focusSeven = `(() => { const row = document.querySelector(${JSON.stringify(pullRow(7))}); row?.focus(); return row !== null && document.activeElement === row; })()`;
+  const focusedDeadline = Date.now() + STEP_MS;
+  for (let turn = 0; !(await evaluate(walkedAway)); turn += 1) {
+    if (Date.now() > focusedDeadline) {
+      await waitFor(walkedAway, "Control-N or Control-P walks the stack from #7's focused row");
+    }
+    check(`#7's row takes focus before a walk (turn ${turn})`, await evaluate(focusSeven));
+    await press(turn % 2 === 0 ? "n" : "p", {
+      code: turn % 2 === 0 ? "KeyN" : "KeyP",
+      keyCode: turn % 2 === 0 ? 78 : 80,
+      modifiers: 2,
+    });
+    await chrome.waitFor(walkedAway, 1000).catch(() => {});
+  }
+  phase("stack walk from a focused row");
+  const eightFocused = `(() => { const row = document.querySelector(${JSON.stringify(pullRow(8))}); return row !== null && document.activeElement === row; })()`;
+  await chrome.waitFor(eightFocused, STEP_MS).catch(() => {});
+  const fromRow = await evaluate(PANE(pullRow(8)));
+  const fromRowDetail = JSON.stringify({
+    ...fromRow,
+    path: await evaluate("location.pathname"),
+    filter: await evaluate(LIST_FILTER),
+    active: await evaluate(
+      "document.activeElement?.className + ' ' + (document.activeElement?.dataset?.number ?? '')",
+    ),
+  });
+  check(
+    "a stack key from #7's focused row: the list moves to All",
+    (await evaluate(LIST_FILTER)) === "all",
+    fromRowDetail,
+  );
+  check(
+    "a stack key from #7's focused row: #8 is selected and in view",
+    fromRow.row?.selected === true && fromRow.row?.inView === true,
+    fromRowDetail,
+  );
+  check(
+    "a stack key from #7's focused row: #8's row has focus",
+    await evaluate(eightFocused),
+    fromRowDetail,
+  );
+  check(
+    "a stack key from #7's focused row: nothing is noted",
+    fromRow.notes.length === 0,
+    fromRowDetail,
+  );
 
   const STACK = `#tab-pulls .github-pulls-stack-row[data-stack="286"]`;
   const stackState = () =>
