@@ -7,8 +7,10 @@ labels in the page's fonts, and an inert render's image of that SVG paints only 
 browser, so ``tests/dom/markdown-diagrams-chrome.mjs`` checks in headless Chrome that a
 trusted document draws SVG, an untrusted one draws images that loaded, a broken diagram
 shows its error, every control's glyph is in the page, the dialog draws the diagram
-fitted and centered, a ``.mmd`` file draws as a document does, and a document with no
-diagram fetches nothing of Mermaid's. Without Chrome this
+fitted and centered, a ``.mmd`` file draws as a document does, a document with no
+diagram fetches nothing of Mermaid's, and untrusted text's diagrams drawn isolated, as a
+pull request's page draws them, load nothing their image shape or their own CSS names
+(``builtin_plugins/markdown/diagram-frame.js``). Without Chrome this
 skips (``require_chrome`` in ``tests/required_tools.py``).
 """
 

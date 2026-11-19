@@ -466,7 +466,7 @@ async function main() {
     const plain = article(
       '<p>No diagrams.</p><pre lang="python"><code>print(1)</code></pre><pre><code class="language-mermaid">graph A</code></pre>',
     );
-    const handle = placement.drawDiagrams(plain, sdk, false);
+    const handle = placement.drawDiagrams(plain, sdk, "document");
     await settle();
     transcript.noDiagram = { handle, modulesAsked: sdk.asked };
     check(
@@ -485,7 +485,7 @@ async function main() {
     const trusted = article(
       `<p>Before.</p>${figureMarkup("flowchart LR\n  A --> B")}${figureMarkup("sequenceDiagram\n  Alice->>Bob: Hi")}`,
     );
-    const handle = placement.drawDiagrams(trusted, sdk, false);
+    const handle = placement.drawDiagrams(trusted, sdk, "document");
     let readySettled = false;
     handle.ready.then(() => {
       readySettled = true;
@@ -613,7 +613,7 @@ async function main() {
         '<pre lang="python"><code>print(1)</code></pre>' +
         '<pre lang="mermaid"><code>graph TD\n  C --&gt; D</code></pre>',
     );
-    const handle = placement.drawDiagrams(inert, sdk, true);
+    const handle = placement.drawDiagrams(inert, sdk, "image");
     await handle.ready;
     const [binding] = kpress.bindings;
     transcript.inert = {
@@ -664,7 +664,7 @@ async function main() {
   // --- What `mountDiagrams` passes through, and how it names the placement.
   {
     const placementByMode = {};
-    for (const mode of ["document", "image", "svg", undefined]) {
+    for (const mode of ["document", "image", "isolated", "svg", undefined]) {
       const kpress = createKpress();
       const root = article(figureMarkup("graph A"));
       const mounted = diagrams.mountDiagrams(
@@ -701,8 +701,9 @@ async function main() {
       figures: { beforeBinding: figuresBeforeBinding, afterReady: mounted.figures.length },
     };
     check(
-      "only image is image",
+      "only image and isolated are image",
       placementByMode.image === "image" &&
+        placementByMode.isolated === "image" &&
         placementByMode.document === "document" &&
         placementByMode.svg === "document" &&
         placementByMode["(none)"] === "document",
@@ -717,6 +718,47 @@ async function main() {
       "figures fill once KPress has bound",
       figuresBeforeBinding === 0 && mounted.figures.length === 2,
       transcript.mountOptions.figures,
+    );
+    mounted.dispose();
+    root.remove();
+  }
+
+  // --- The isolated mode's Mermaid is the diagram frame's, leased, never the page's:
+  //     asking for it asks the SDK for the bundle's address rather than importing it, and
+  //     with no bundle published it rejects before any frame opens
+  //     (markdown-diagram-frame-session.js runs the frame itself).
+  {
+    const kpress = createKpress();
+    const sdk = createSdk(kpress);
+    sdk.addressesAsked = [];
+    sdk.moduleUrl = (name) => {
+      sdk.addressesAsked.push(name);
+      return null;
+    };
+    const root = article(figureMarkup("graph A"));
+    const mounted = diagrams.mountDiagrams(root, sdk, { mode: "isolated" });
+    await mounted.ready;
+    let loaderSays = "resolved";
+    try {
+      await kpress.bindings[0].options.mermaid();
+    } catch (error) {
+      loaderSays = error.message;
+    }
+    transcript.isolated = {
+      placement: kpress.bindings[0].options.placement,
+      modulesAsked: sdk.asked,
+      addressesAsked: sdk.addressesAsked,
+      loaderSays,
+      frames: document.body.children.filter((node) => node.tagName === "IFRAME").length,
+    };
+    check(
+      "the isolated loader leases the frame and imports nothing in the page",
+      transcript.isolated.placement === "image" &&
+        !sdk.asked.includes("mermaid") &&
+        sdk.addressesAsked.join() === "mermaid" &&
+        loaderSays === "The Mermaid module bundle is not published" &&
+        transcript.isolated.frames === 0,
+      transcript.isolated,
     );
     mounted.dispose();
     root.remove();
@@ -793,7 +835,7 @@ async function main() {
     const kpress = createKpress();
     const sdk = createSdk(kpress);
     const root = article(figureMarkup("graph A"));
-    const handle = placement.drawDiagrams(root, sdk, false);
+    const handle = placement.drawDiagrams(root, sdk, "document");
     handle.dispose();
     await handle.ready;
     transcript.drawDisposedAtOnce = { modulesAsked: sdk.asked, bound: kpress.bindings.length };
@@ -810,7 +852,7 @@ async function main() {
     const kpress = createKpress();
     const sdk = createSdk(kpress, { fail: "kpress-diagram-controls" });
     const root = article(figureMarkup("graph A"));
-    const handle = placement.drawDiagrams(root, sdk, false);
+    const handle = placement.drawDiagrams(root, sdk, "document");
     const ready = await handle.ready.then(() => "settled");
     handle.dispose();
     transcript.loadFailure = {

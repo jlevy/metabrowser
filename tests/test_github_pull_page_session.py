@@ -556,30 +556,36 @@ _REFRESH_BODY = (
 def _text_diagram_steps() -> list[str]:
     """What the mount session's ``textDiagrams`` story says, step by step."""
 
-    body = "body as image, 1 figure, Mermaid on demand"
-    comment = "issue_comment/3341937855 as image, 1 figure, Mermaid on demand"
+    # Each binding's Mermaid is the diagram frame's, on a folder's page as on a pinned
+    # revision's; the session publishes no Mermaid bundle, so asking only reads its address.
+    body = "body as image, 1 figure, Mermaid the diagram frame's"
+    comment = "issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's"
     gone = ", disposed"
     modules = "kpress-diagrams, kpress-diagram-controls"
+    address = "the mermaid bundle's address"
     both = "2 blocks, 2 in a figure"
     one = "1 block, 1 in a figure"
+    folder = f"{body}; {comment}"
+    first = f"{body}{gone}; {comment}{gone}"
     return [
         "a description and a comment with no Mermaid block: 0 blocks, 0 in a figure; "
         "asked nothing; bindings none",
-        # A folder's page may lack the untrusted policy, which the SDK does not say.
-        "the same with Mermaid blocks, on a folder's page: 2 blocks, 0 in a figure; "
-        "asked nothing; bindings none",
+        f"the same with Mermaid blocks, on a folder's page: {both}; asked markdown plugin, "
+        f"markdown plugin, {modules}, {modules}, {address}; bindings {folder}",
         f"a description and a comment each with a Mermaid block: {both}; asked markdown "
-        f"plugin, markdown plugin, {modules}, {modules}; bindings {body}; {comment}",
-        f"a poll of the same record: {both}; asked nothing; bindings {body}; {comment}",
-        f"Changes and back to Conversation: {both}; asked nothing; bindings {body}; {comment}",
+        f"plugin, markdown plugin, {modules}, {modules}, {address}; bindings {first}; "
+        f"{body}; {comment}",
+        f"a poll of the same record: {both}; asked nothing; bindings {first}; {body}; {comment}",
+        f"Changes and back to Conversation: {both}; asked nothing; bindings {first}; "
+        f"{body}; {comment}",
         f"the description edited, the comment not: {both}; asked markdown plugin, "
-        f"{modules}; bindings {body}{gone}; {comment}; {body}",
-        f"the description's block taken out: {one}; asked nothing; bindings {body}{gone}; "
-        f"{comment}; {body}{gone}",
+        f"{modules}, {address}; bindings {first}; {body}{gone}; {comment}; {body}",
+        f"the description's block taken out: {one}; asked nothing; bindings {first}; "
+        f"{body}{gone}; {comment}; {body}{gone}",
         f"a block whose text is replaced before the Markdown plugin arrives: {one}; asked "
-        f"markdown plugin; bindings {body}{gone}; {comment}; {body}{gone}",
-        f"the page ends: {one}; asked nothing; bindings {body}{gone}; {comment}{gone}; "
-        f"{body}{gone}",
+        f"markdown plugin; bindings {first}; {body}{gone}; {comment}; {body}{gone}",
+        f"the page ends: {one}; asked nothing; bindings {first}; {body}{gone}; "
+        f"{comment}{gone}; {body}{gone}",
     ]
 
 

@@ -136,7 +136,12 @@ KPress’s image placement therefore keeps labels to formatting tags with no att
 `<b>Title</b><br/>detail` still formats as GitHub draws it.
 Mermaid’s image shape (`A@{ img: "…" }`) loads its URL itself during layout; the
 untrusted page’s `img-src` bounds that to Metabrowser’s own origin, `data:`, and GitHub
-avatars.
+avatars. On a page with no policy a diagram’s own CSS loads too: a `themeCSS` directive
+or front matter, a `fontFamily` directive, a state diagram’s `classDef`, and a
+`block-beta` `style` each loaded its URL in KPress’s image placement in Chrome.
+A pull request’s text, which is untrusted beside a trusted checkout too, is therefore
+laid out in a frame of its own whose policy loads nothing
+(`builtin_plugins/markdown/diagram-frame.js`).
 
 The same CSP admits no `<style>` element, and Mermaid measures its labels inside a
 scratch element that holds one, so in an inert render Chrome logs that style as a

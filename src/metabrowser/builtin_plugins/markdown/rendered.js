@@ -281,7 +281,7 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       // diagram follows, each drawing over the source block that already holds its place.
       // Printing calls `window.print()` and waits on nothing, so a diagram not yet drawn
       // prints as its source.
-      diagrams = drawDiagrams(container, mb, !!inertRender);
+      diagrams = drawDiagrams(container, mb, inertRender ? "image" : "document");
     } catch (error) {
       if (disposed || mb.errors.isAbortError(error)) {
         return;

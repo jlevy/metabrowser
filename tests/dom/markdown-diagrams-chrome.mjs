@@ -21,6 +21,13 @@
 //   and Escape closes it;
 // - each copy button carries the app's tooltip and copies its own diagram's source;
 // - the `.mmd` file's Diagram view draws its diagram as the document does;
+// - untrusted text's diagrams drawn isolated (`drawDiagrams(root, {isolated: true})`, as a
+//   pull request's page draws them) load nothing that their image shape, a `themeCSS`
+//   directive or front matter, a `fontFamily` directive, a state diagram's `classDef`, or
+//   a `block-beta` `style` names, from a server that counts every request; the trusted
+//   page's control, the same sources drawn as plain images in the page, does load them; the
+//   rest are drawn as images with a size, the image shape shows its error and source, and
+//   disposing removes the frame;
 // - no page throws, and the only content security policy violations are the expected
 //   `style-src-elem` ones under `--untrusted`, from the `<style>` Mermaid measures with
 //   (`untrusted_shell_csp` in capabilities.py says why they are harmless).
@@ -28,6 +35,7 @@
 // Each step writes `phase <name> <ms since start>` to stderr. It prints
 // `markdown diagrams in Chrome: <n> checks passed`, or the failures and exits 1.
 import { spawn } from "node:child_process";
+import http from "node:http";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
 
@@ -154,6 +162,66 @@ const GLYPHS = (
   return { label: button.getAttribute("aria-label"), href, found: !!href && !!document.querySelector(href) };
 })`;
 
+// A server on another port that counts every request a diagram makes, by the `from` its
+// URL names; it answers each with a one-pixel image.
+const pixelHits = [];
+const pixels = http.createServer((request, response) => {
+  pixelHits.push(new URL(request.url ?? "/", "http://pixel").searchParams.get("from"));
+  response.writeHead(200, { "content-type": "image/svg+xml", "cache-control": "no-store" });
+  response.end('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>');
+});
+await new Promise((resolve) => pixels.listen(0, "127.0.0.1", resolve));
+const PIXEL = `http://127.0.0.1:${/** @type {import("node:net").AddressInfo} */ (pixels.address()).port}/pixel.svg`;
+// Untrusted text: each source but the last names the counting server's image in a way
+// Mermaid loads while it lays the diagram out on a page with no policy (measured in
+// builtin_plugins/markdown/diagram-frame.js). Only the image shape cannot be drawn
+// without its image.
+const HOSTILE = {
+  shape: `flowchart LR\n  A@{ img: "${PIXEL}?from=shape", label: "x", w: 60, h: 60 }\n  A --> B`,
+  themeCSS: `%%{init: {"themeCSS": ".node rect { mask-image: url(${PIXEL}?from=themeCSS) }"}}%%\nflowchart LR\n  A --> B`,
+  frontMatter: `---\nconfig:\n  themeCSS: ".node rect { mask-image: url(${PIXEL}?from=frontMatter) }"\n---\nflowchart LR\n  A --> B`,
+  fontFamily: `%%{init: {"fontFamily": "zz; mask-image: url(${PIXEL}?from=fontFamily)"}}%%\nflowchart LR\n  A --> B`,
+  classDef: `stateDiagram-v2\n  s1 --> s2\n  classDef x mask-image:url(${PIXEL}?from=classDef)\n  class s1 x`,
+  blockStyle: `block-beta\n  a b\n  style a mask-image:url(${PIXEL}?from=blockStyle)`,
+  plain: "sequenceDiagram\n  Alice->>Bob: Hello, Bob",
+};
+// In the page: set the sources as an inert text's blocks, draw them through the Markdown
+// plugin's published host, and describe each figure, the frames, and disposal.
+const DRAW_TEXT = (options) => `(async () => {
+  const mb = window.metabrowser;
+  await mb.ensureKindAssets("markdown");
+  const root = document.createElement("article");
+  root.className = "kpress kpress-inert";
+  for (const source of ${JSON.stringify(Object.values(HOSTILE))}) {
+    const pre = document.createElement("pre");
+    pre.setAttribute("lang", "mermaid");
+    const code = document.createElement("code");
+    code.textContent = source;
+    pre.append(code);
+    root.append(pre);
+  }
+  document.body.append(root);
+  const drawn = mb.builtins.markdown.drawDiagrams(root, ${JSON.stringify(options)});
+  await drawn.ready;
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const frames = () => document.querySelectorAll("iframe.metabrowser-diagram-frame").length;
+  const framesWhileDrawn = frames();
+  const figures = [...root.querySelectorAll('[data-kpress-diagram="mermaid"]')].map((figure) => {
+    const image = figure.querySelector(":scope > .kpress-diagram-rendered > img");
+    const source = figure.querySelector(":scope > .kpress-diagram-source, :scope > pre");
+    return {
+      status: figure.dataset.kpressDiagramStatus,
+      loaded: image ? image.complete && image.naturalWidth > 0 : null,
+      width: image ? Math.round(image.getBoundingClientRect().width) : 0,
+      inPage: !!figure.querySelector(":scope > .kpress-diagram-rendered > svg"),
+      sourceShown: source ? source.getBoundingClientRect().height > 0 : false,
+    };
+  });
+  drawn.dispose();
+  root.remove();
+  return { framesWhileDrawn, framesAfter: frames(), figures };
+})()`;
+
 const frames = () =>
   "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))";
 
@@ -195,6 +263,51 @@ async function checkProfile(profile) {
     );
     await collectViolations();
     phase(`${profile} plain`);
+
+    // Untrusted text's diagrams, drawn isolated, load nothing they name.
+    pixelHits.length = 0;
+    const isolated = await page.evaluate(DRAW_TEXT({ isolated: true }));
+    const isolatedHits = pixelHits.splice(0);
+    const names = Object.keys(HOSTILE);
+    const drawnFigures = isolated.figures.filter((_, index) => names[index] !== "shape");
+    check(
+      `${profile} isolated text diagrams load nothing they name`,
+      isolatedHits.length === 0,
+      isolatedHits,
+    );
+    check(
+      `${profile} isolated text diagrams are drawn as images, in a frame disposal removes`,
+      isolated.figures.length === names.length &&
+        drawnFigures.every(
+          (figure) =>
+            figure.status === "rendered" && figure.loaded && figure.width > 20 && !figure.inPage,
+        ) &&
+        isolated.framesWhileDrawn === 1 &&
+        isolated.framesAfter === 0,
+      isolated,
+    );
+    check(
+      `${profile} an image shape shows its error and source`,
+      isolated.figures[names.indexOf("shape")]?.status === "error" &&
+        isolated.figures[names.indexOf("shape")]?.sourceShown,
+      isolated.figures[names.indexOf("shape")],
+    );
+    if (trusted) {
+      // The control: the same sources drawn as plain images, laid out in a page with no
+      // policy, load what they name, so the counting server sees a load when one is made.
+      // A `block-beta` style loaded from this origin in the measurement and not from the
+      // counting server's here, so the control names the others.
+      const control = await page.evaluate(DRAW_TEXT({ inert: true }));
+      const controlHits = new Set(pixelHits.splice(0));
+      const loading = ["shape", "themeCSS", "frontMatter", "fontFamily", "classDef"];
+      check(
+        `${profile} the same sources laid out in the page load what they name`,
+        loading.every((name) => controlHits.has(name)) && control.framesWhileDrawn === 0,
+        { hits: [...controlHits], control },
+      );
+    }
+    await collectViolations();
+    phase(`${profile} isolated`);
 
     // The document: two diagrams and a broken one.
     requested.length = 0;
@@ -357,6 +470,7 @@ try {
 } finally {
   await stop();
 }
+pixels.close();
 phase("closed");
 
 if (failures.length) {
