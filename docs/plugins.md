@@ -522,7 +522,8 @@ Useful helpers include:
   weight; a title with no prefix is its text alone ([Titles](design-system.md#titles));
 - `shortCommit(commit)` for a commit’s ID as every line names one, cut from its full ID
   to the host’s one length; put it in an element of class `git-commit-sha`, which sets
-  it in the commit-ID face and gray, and keep the full ID for copying and links
+  it in the commit-ID face and gray at the size of the text around it, so give the
+  element no size of its own, and keep the full ID for copying and links
   ([Short Commit IDs](design-system.md#short-commit-ids));
 - `countPartsNodes(parts)` for a count summary, such as “3 success · 1 failure”, as the
   nodes its element holds, painted as the host paints every count summary: the parts are

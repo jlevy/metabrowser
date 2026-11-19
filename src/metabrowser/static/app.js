@@ -254,8 +254,9 @@ function pathBaseName(path) {
 /**
  * Settle the navigation heading once the tree has loaded. A folder shows the
  * served root's name from the tree payload. A pinned revision keeps the heading
- * the server rendered from its session, its ref and short commit: the tree's
- * root there is the empty GitPath, which has no name to show.
+ * the server rendered from its session, its name, or a pin with no mirror's ref
+ * and short commit: the tree's root there is the empty GitPath, which has no name
+ * to show.
  */
 function renderServedRootHeading(pathEl, root) {
   if (!pathEl || isGitRevisionSource()) {

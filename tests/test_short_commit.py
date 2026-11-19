@@ -13,7 +13,8 @@ keeps the two equal and at GitHub's seven. It also fails a display that shortens
 any other way: a fixed slice of a commit-like value, Git's own abbreviation, or the
 ``short_id`` the history routes carry for a caller that hands it back to Git. The look,
 the commit-ID face and one gray, is ``.git-commit-sha``, and only its own rule gives it a
-color. ``tests/test_checkout_ref_selector_chrome.py`` and
+color; no rule gives it a size, so it is its line's (mb-qq4e).
+``tests/test_checkout_ref_selector_chrome.py`` and
 ``tests/test_github_pull_timeline_chrome.py`` measure the look in Chrome. A development
 version's label cuts its commit to the same length (``commit-length`` in
 ``pyproject.toml``), and the macOS app's About box with its own copy, which
@@ -26,6 +27,7 @@ import re
 import tomllib
 from pathlib import Path
 
+from metabrowser import server
 from metabrowser.commit_ids import SHORT_COMMIT_CHARS, short_commit
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -246,19 +248,65 @@ def test_the_guards_tell_a_commit_from_other_values() -> None:
         assert not git(line), line
 
 
-def test_the_commit_id_face_is_one_face_and_one_gray() -> None:
+def test_the_commit_id_face_is_one_face_one_gray_and_its_lines_size() -> None:
+    """An ID is the size of the text around it: no rule sizes it, and its face is scaled.
+
+    The owner, 2026-11-19: "we sholud make sure our design system always renders monospace
+    hashes as the size of the fonts surrounding them" (mb-qq4e). The ID inherits its line's
+    size, and one rule scales its monospace face to the sans's x-height, which each font
+    set states beside its sans (`--font-sans-ex-height`, with its measurement). A rule that
+    gave an ID a size of its own in one context, as the ref selector's did, fails here.
+    ``tests/test_type_scale_chrome.py``, ``tests/test_page_header_chrome.py``, and
+    ``tests/test_github_pull_timeline_chrome.py`` read the computed sizes in Chrome.
+    """
+
     colors: list[tuple[str, str]] = []
     faces: list[tuple[str, str]] = []
+    sizes: list[tuple[str, str]] = []
+    adjustments: list[tuple[str, str]] = []
     for path in STYLESHEETS:
         for rule in CSS_RULE.finditer(CSS_COMMENT.sub("", path.read_text())):
             for selector in (part.strip() for part in rule["selectors"].split(",")):
                 if not re.search(r"\.git-commit-sha(?::[\w-]+)?$", selector):
                     continue
                 body = rule["body"]
+                where = f"{_relative(path)} {selector}"
                 if color := re.search(r"(?:^|;)\s*color\s*:\s*([^;]+)", body):
-                    colors.append((f"{_relative(path)} {selector}", color[1].strip()))
+                    colors.append((where, color[1].strip()))
                 if face := re.search(r"(?:^|;)\s*font-family\s*:\s*([^;]+)", body):
-                    faces.append((f"{_relative(path)} {selector}", face[1].strip()))
+                    faces.append((where, face[1].strip()))
+                if size := re.search(r"(?:^|;)\s*font(?:-size)?\s*:\s*([^;]+)", body):
+                    sizes.append((where, size[1].strip()))
+                if adjust := re.search(r"(?:^|;)\s*font-size-adjust\s*:\s*([^;]+)", body):
+                    adjustments.append((where, adjust[1].strip()))
     styles = "src/metabrowser/static/styles.css .git-commit-sha"
     assert colors == [(styles, "var(--muted)")]
     assert faces == [(styles, "var(--font-mono)")]
+    assert sizes == []
+    assert adjustments == [(styles, "var(--font-sans-ex-height)")]
+    # Each font set states its sans's x-height beside its sans, so the ID matches whichever
+    # sans the reader chose: the default in :root, and every other set the server offers
+    # (`_FONT_SETS`) in its own block, which repoints both, so a set added without its
+    # x-height fails here. Each sans token has its measured x-height token beside it.
+    sheet = (PACKAGE / "static" / "styles.css").read_text(encoding="utf-8")
+    root = re.search(r"^:root \{(?P<body>.*?)^\}", sheet, re.DOTALL | re.MULTILINE)
+    assert root is not None
+    font_sets = [entry["value"] for entry in server._FONT_SETS]  # pyright: ignore[reportPrivateUsage]
+    assert len(font_sets) > 1, font_sets
+    blocks = {font_sets[0]: root["body"]}
+    for value in font_sets[1:]:
+        block = re.search(
+            rf'^html\[data-app-font="{re.escape(value)}"\] \{{(?P<body>[^}}]*)\}}',
+            sheet,
+            re.MULTILINE,
+        )
+        assert block is not None, f"font set {value!r} has no block in styles.css"
+        blocks[value] = block["body"]
+    for value, body in blocks.items():
+        sans = re.search(r"^\s*--font-sans:\s*var\((--[\w-]+)\);", body, re.MULTILINE)
+        assert sans is not None, f"font set {value!r} sets no --font-sans"
+        assert f"--font-sans-ex-height: var({sans[1]}-ex-height);" in body, value
+        measured = re.search(
+            rf"^\s*{re.escape(sans[1])}-ex-height:\s*0\.\d+;", root["body"], re.MULTILINE
+        )
+        assert measured is not None, f"{sans[1]} has no x-height in :root"

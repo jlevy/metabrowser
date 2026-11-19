@@ -144,13 +144,25 @@
                 ui-serif "New York"); no web fonts are fetched.
      Clean is the default and lives in this :root base; each additional set is a
      `html[data-app-font="<value>"]` block below (see "system"). To add a set:
-     add a _FONT_SETS entry (server) and one such block here. */
+     add a _FONT_SETS entry (server) and one such block here, which repoints both
+     --font-sans and --font-sans-ex-height (tests/test_short_commit.py checks each). */
   --app-sans-clean:
     "Source Sans 3 Variable", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     sans-serif;
   --app-sans-system: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --app-serif-system: ui-serif, Georgia, "Times New Roman", serif;
   --font-sans: var(--app-sans-clean);
+  /* Each set's sans x-height per em, which a short commit ID's monospace face is scaled to
+     (.git-commit-sha), so it reads at the size of the sans around it (mb-qq4e). A set's
+     block repoints it with --font-sans. Measured 2026-11-19 in Chrome 152 at 12-14 px:
+     Source Sans 3 0.486, system-ui (SF Pro) 0.526. Not a ratio of sizes, since the mono
+     face is the engine's: one would be 0.889 (Clean) and 0.962 (System) for Chromium's
+     Menlo, x-height 0.547, but about 0.917 and 0.992 for WebKit's SF Mono, 0.530 in a
+     WKWebView on macOS 26.5 the same day. The record: "Short Commit IDs" in
+     explorations/performance-loop/design-rule-measurements.md. */
+  --app-sans-clean-ex-height: 0.486;
+  --app-sans-system-ex-height: 0.526;
+  --font-sans-ex-height: var(--app-sans-clean-ex-height);
   /* One monospace stack for all code, the shell's and the embedded document's:
      --font-mono here and KPress's --kpress-host-font-mono hook (bridged below)
      both read it, so highlighted source and Markdown code draw in one face. The
@@ -333,7 +345,8 @@
      One relative size: --git-ref-font-size, a ref chip's, is
      --git-ref-font-scale of the text it sits in, so a chip is slightly
      smaller than that text wherever it appears (docs/design-system.md,
-     "Branch Chips").
+     "Branch Chips"). A short commit ID is its line's size
+     (--font-sans-ex-height, "Short Commit IDs").
 
      Document (rendered prose) sizes — ONE token, deliberately:
        --document-body-font-size         prose (one step above chrome body)
@@ -1701,10 +1714,11 @@ body {
 .app-header > .settings-toggle {
   margin-left: auto;
 }
-/* A pinned revision's heading: the repository's name at the heading's weight,
-   then the ref and the short commit, muted, the commit in the commit-ID face
-   (.git-commit-sha). The full commit is in the heading's tooltip. A pin with no mirror has no name, and its ref stands in
-   the name's place. */
+/* A pin with no mirror's heading: it has no name and no ref selector, so its ref
+   stands in the name's place at the heading's weight, then its short commit, muted,
+   in the commit-ID face (.git-commit-sha). A served mirror's heading and a checkout's
+   revision's are the name alone (server.py, _pin_label_html): the ref selector names
+   the ref and the tooltip the commit. */
 .header-revision {
   flex: none;
   margin-left: 6px;
@@ -1712,8 +1726,8 @@ body {
   font-weight: var(--weight-normal);
 }
 /* The commit is the identity and must stay visible, so on a narrow column the
-   branch name is what gives way. Its own rule: an engine without :has() drops
-   a whole selector list, and then the heading simply truncates as before. */
+   ref is what gives way. Its own rule: an engine without :has() drops a whole
+   selector list, and then the heading simply truncates as before. */
 .header-path:has(> .header-revision) {
   display: flex;
   align-items: baseline;
@@ -1723,19 +1737,10 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* A served mirror's heading is the repository's name, the ref, then the commit.
-   The ref gives way before the name does: the ref selector in the Files toolbar
-   names it too. */
-.header-ref {
-  flex: 0 1000 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* The control that copies the full commit stands right after the short one, so
-   a mirror's heading ends at its text, as every heading does, and the menu
-   keeps the far end. It shows while the pointer is over the header, as the
-   file header's copy control does. */
+/* The control that copies the full commit stands right after the heading's name,
+   a mirror's or a checkout's revision's, so the heading ends at its text,
+   as every heading does, and the menu keeps the far end. It shows while the
+   pointer is over the header, as the file header's copy control does. */
 .header-copy {
   flex: none;
   margin-left: -4px;
@@ -2899,15 +2904,6 @@ html.theme-anim .menu {
 .source-ref-selector-commit {
   flex: 0 0 auto;
 }
-/* A commit ID sits one step below the sans beside it (`.git-commit-sha`), and this list
-   and the button are at the small size, the ramp's last step before the micro marks. So
-   here an ID takes the ratio a ref chip takes to its text, and reads at the size of the
-   ref names it sits among; at the history's size it read larger than them. A mirror's
-   offer of a newer commit, in the freshness row, names it the same way. */
-.source-ref-selector .git-commit-sha,
-.source-freshness .git-commit-sha {
-  font-size: var(--git-ref-font-size);
-}
 /* The age column is as wide as the widest compact age, "12mo". In em, not ch: a tier's
    weight widens its "0", so 4ch was 24.2px at weight 500 and 25.3px at 700, while "12mo"
    was 28.7px. Measured 2026-11-18 in Chrome at 12px: "12mo" is 2.39em in Clean Fonts
@@ -3148,6 +3144,7 @@ html.theme-anim .menu {
    boot script (server.py) and the settings control (app.js). */
 html[data-app-font="system"] {
   --font-sans: var(--app-sans-system);
+  --font-sans-ex-height: var(--app-sans-system-ex-height);
   --prose-sans-font: var(--app-sans-system);
   --kpress-host-font-sans: var(--app-sans-system);
   --kpress-host-font-body: var(--app-sans-system);
@@ -5263,7 +5260,7 @@ a.tab-btn {
    same token), so the two pages read in one type: an age in one keeps the line's size, as
    an age does everywhere. The one row that is not is a pull request's labels, a row of
    chips. A chip in a line keeps its own size (Branch Chips, Label Colors), and a revision
-   its one step down. */
+   takes the line's, as a short commit ID does everywhere (Short Commit IDs). */
 .page-header {
   --page-header-line-gap: 6px;
   display: flex;
@@ -7515,15 +7512,15 @@ pre.code-block.metabrowser-source-lines > code {
 /* A short commit ID, wherever a line names a commit (docs/design-system.md, "Short
    Commit IDs"): the one face and the one gray, whatever the line around it is in, so
    every ID reads as the same kind of thing. Its text is `shortCommit`'s, a fixed length
-   cut from the full ID. */
+   cut from the full ID. It sets no size, so it is its line's, and its face is scaled to
+   the sans's x-height (--font-sans-ex-height); no context sizes it (mb-qq4e). Its line
+   box is its glyphs': with the line's ratio, a Conversation commit row grew from 21 to
+   22 px in Chrome 152 (2026-11-19). */
 .git-commit-sha {
   color: var(--muted);
   font-family: var(--font-mono);
-  /* One step below the sans metadata beside it: SF Mono's x-height and
-     advance run visually larger than SF Pro at the same nominal size,
-     so body-size mono read as a bigger hash next to the age, refs, and
-     stat text it sits among. */
-  font-size: var(--nav-font-size);
+  font-size-adjust: var(--font-sans-ex-height);
+  line-height: normal;
 }
 
 .git-commit-revision {
