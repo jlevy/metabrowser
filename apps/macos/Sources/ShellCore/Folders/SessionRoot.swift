@@ -26,13 +26,19 @@ public nonisolated enum SessionRoot: Hashable, Sendable {
         return false
     }
 
-    /// Its session's key among the open servers (`ServerFleet`): a folder's path, as the
-    /// app has always keyed one, or a repository's URL, which starts with its scheme and
-    /// so is never a path.
+    /// Its session's one key, wherever the app looks an open folder up: among the open
+    /// servers (`ServerFleet`), the open folders (`OpenFolders`), and the restore. A
+    /// folder's is its path without a trailing slash, as `OpenTarget` and the saved session
+    /// spell a root; a repository's is its URL, which starts with its scheme and so is
+    /// never a path.
     public var key: String {
         switch self {
-        case .folder(let url): url.path(percentEncoded: false)
-        case .repository(let url): url.absoluteString
+        case .folder(let url):
+            var path = url.path(percentEncoded: false)
+            while path.count > 1, path.hasSuffix("/") { path.removeLast() }
+            return path
+        case .repository(let url):
+            return url.absoluteString
         }
     }
 

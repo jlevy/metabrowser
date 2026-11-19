@@ -50,6 +50,9 @@ It links each document below and the contributor standards in `docs/`.
   and asset loading tiers
 - [macOS app](architecture/arch-macos-app.md): server supervision, windows and tabs,
   restore, and WebKit differences
+- [App contract](architecture/arch-app-contract.md): what the macOS app reads of
+  `metab`, the one file that declares it, the golden that records it, and the checks
+  that hold both sides to it
 - [Recent targets](architecture/arch-recent-targets.md): the list of folders and
   repositories opened lately, what records an open, and the shells that read it
 
@@ -77,6 +80,9 @@ It links each document below and the contributor standards in `docs/`.
 - [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked
+- [Switching folders in the macOS app](specs/active/plan-2026-11-18-macos-folder-switching.md):
+  a window that can show any open folder, the title as a native chooser of open and
+  recent folders, a keyboard switcher, and marks shared with the page
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
   the icon and release pipeline, warm folder switching, host mode and the agent front
   door, and the app-managed runtime

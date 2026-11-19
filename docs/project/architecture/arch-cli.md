@@ -36,7 +36,7 @@ produce is refused rather than ignored.
 | Inventory walk | `--walk` | `walk_cli.py`, with `walk.py`, which calls the Python walker directly rather than the provider |
 | Change set | `--diff SPEC` | `diff_cli.py` |
 | Remote host | `--remote HOST` | `remote.py` |
-| Plugins | `--plugins`, `--plugin NAME`, `--doctor` | `plugins.py` |
+| Plugins and the setup | `--plugins`, `--plugin NAME`, `--doctor` | `plugins.py`, with `doctor.py` for the setup checks |
 | Open a target in the macOS app or a browser | `--present` | `present.py`, with `open_in.py` for the preference |
 | Recent targets | `--recent`, `--recent-add`, `--recent-forget`, `--recent-clear` | `recent_cli.py`, over [`recent_targets.py`](arch-recent-targets.md) |
 
@@ -224,7 +224,8 @@ imports the serve mode’s modules before a mode is chosen.
    and a `code`; a refusal exits with `PRESENT_REFUSED_EXIT_CODE`, and each delivery
    code with its status in `DELIVERY_EXIT_CODES` (`cli/exit_codes.py` documents the
    statuses). `doctor_open_in` gives `metab --doctor` the preference, its source, and the
-   app a lookup finds, sending nothing.
+   app a lookup finds, with the oldest `metab` that app declares it runs
+   (`MINIMUM_METAB_KEY`), sending nothing.
 
 ## Remote Tunnels
 

@@ -52,7 +52,7 @@ def test_the_shell_fits_the_budget(capsys: pytest.CaptureFixture[str]) -> None:
     # The two shells with a script more are reported beside the same budget, by name.
     assert summary[1].startswith("  a pull-request address adds pull-route.js: ")
     assert summary[2].startswith("  a pinned revision adds git-path.js: ")
-    # And a github.com checkout's shell, which carries the GitHub toggle in its HTML.
+    # And a github.com checkout's shell, which carries its repository context in its HTML.
     assert summary[3].startswith("  a github.com checkout's shell is ")
     assert all(line.endswith("not gated)") for line in summary[1:])
 
@@ -89,9 +89,8 @@ def test_a_github_checkouts_shell_is_measured_as_the_application_sends_it(
     tmp_path: Path,
 ) -> None:
     # The checkout's line reports how much more the application sends for its shell than
-    # for a plain folder's: the two pages as sent, the GitHub toggle inline among what
+    # for a plain folder's: the two pages as sent, the repository context among what
     # differs, and not only some of the scripts that differ (review B2 on #552).
-    module = server.STATIC_DIR.joinpath("github-page.js").read_text(encoding="utf-8")
     plain, checkout = tmp_path / "plain", tmp_path / "check"
     plain.mkdir()
     checkout.mkdir()
@@ -109,8 +108,8 @@ def test_a_github_checkouts_shell_is_measured_as_the_application_sends_it(
             shells[name], sent[name] = response.text, response.num_bytes_downloaded
     finally:
         server._set_root_dir(original)  # pyright: ignore[reportPrivateUsage]
-    assert f"<script>{module}</script>" in shells["checkout"]
-    assert "MetabrowserGithubPage" not in shells["plain"]
+    assert '"host": "github.com"' in shells["checkout"]
+    assert "window.METABROWSER_REPOSITORY_CONTEXT=null;" in shells["plain"]
     growth = check.shell_growth_bytes(shells["checkout"], shells["plain"])
     assert growth == sent["checkout"] - sent["plain"] > 0
 

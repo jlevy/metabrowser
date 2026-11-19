@@ -120,6 +120,7 @@ CHROME_TESTS = (
     "tests.test_github_pulls_stacks_chrome",
     "tests.test_inert_render_refusal_chrome",
     "tests.test_markdown_diagrams_chrome",
+    "tests.test_nav_collapse_chrome",
     "tests.test_nav_metadata_chrome",
     "tests.test_nav_reveal_chrome",
     "tests.test_overview_legend_hover_chrome",

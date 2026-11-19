@@ -25,6 +25,7 @@ listed here and drawn nowhere, fails the build.
 | Text | A character typed in markup, where the mark is typography | Each file that types it |
 | Letter | A file change’s one-letter status | The status tables |
 | SF Symbol | An Apple system symbol the macOS app draws, in a menu or a SwiftUI view | The Swift code that draws it |
+| App glyph | A registry glyph the macOS app draws itself, from a copy of its path data that `RootMarkTests` holds to `static/icons.js` | The Swift code that holds the copy |
 | App mark | The app’s own icon and its mark | `apps/macos/AppIcon/` and the code generated from it |
 
 Drawn glyphs are [Lucide](https://lucide.dev) v1.17.0 (ISC) unless a row says otherwise,
@@ -110,11 +111,11 @@ takes `file`.
 | `file`, Lucide `file` | Registry | A file no type family claims, the Other category, and what `fileTypeIcon` returns with no registry | `static/icons.js` | `--muted` | `--icon-glyph` |
 | `fileSymlink`, Lucide `file-symlink` | Registry | A symbolic link in the Files tree | `static/icons.js` | `--muted` | `--icon-glyph` |
 | `folder`, Lucide `folder` | Registry | A folder, beside its name in its view header | `static/icons.js` | `--muted` | `1em` of the page’s title |
-| `folder` | SF Symbol | A folder in the app’s Open Recent, Dock, and title path menus | `apps/macos/Sources/Metabrowser/RecentTargetsMenu.swift` | The menu’s, as a template image | The menu font’s point size |
-| `cloud` | SF Symbol | A mirror, a repository served from its URL, in Open Recent and the Dock menu | `apps/macos/Sources/Metabrowser/RecentTargetsMenu.swift` | The menu’s, as a template image | The menu font’s point size |
+| `folder`, Lucide `folder` | App glyph | A folder in the app’s Open Recent, Dock, and title path menus and its folder chooser | `apps/macos/Sources/ShellCore/Folders/RootMark.swift` | The menu’s, as a template image | `RootMark.menuSize` |
+| `cloud`, Lucide `cloud` | App glyph | A repository served from its URL, a mirror, in the same menus | `apps/macos/Sources/ShellCore/Folders/RootMark.swift` | The menu’s, as a template image | `RootMark.menuSize` |
 
-The app’s folder and cloud are outlines drawn as one set, rather than Finder’s colored
-folder beside a line-drawn cloud.
+The app’s folder and cloud are the page’s own outlines, drawn as one set, rather than
+Finder’s colored folder beside a line-drawn cloud.
 In the browser a folder’s glyph is drawn only in its view header; a folder’s row leads
 with its chevron, and a repository and a mirror have no glyph.
 
@@ -128,8 +129,7 @@ with its chevron, and a repository and a mirror have no glyph.
 | `gitPullRequestClosed`, Lucide `git-pull-request-closed` | Plugin | A closed pull request | `builtin_plugins/github/pull-state.js` | `--github-pull-closed` | `--icon-glyph` in a row; `1em` of the page’s title |
 | `pull`, Lucide `git-pull-request` | View bundle | A link to a pull request whose state the page does not know | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `issue`, Lucide `circle-dot` | View bundle | A link to a GitHub issue | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
-| `github`, Octicons `mark-github-16` | View bundle | GitHub: View on GitHub, and a link to any other GitHub page | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
-| `.view-header-toggle-mark`, Octicons `mark-github-16` | CSS mask | View on GitHub: the link segment of a view header’s GitHub toggle, the same drawing as `github` | `static/styles.css` | The link’s, `--text` | `--icon-glyph` |
+| `github`, Octicons `mark-github-16` | View bundle | GitHub: the View on GitHub button’s mark, and a link to any other GitHub page | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `layers`, Lucide `layers` | Registry | A stack of pull requests: a stack’s row, the page’s stack button, and another stack a member is in | `static/icons.js` | `--muted` on a row, the button’s text ink on the stack button | `--icon-glyph`; the text’s `1em` in a member’s place |
 | `PERSON_GLYPH`, Lucide `circle-user-round` | View bundle | A person with no avatar, in an actor identity’s box | `static/plugin-sdk-views.js` | `--muted` | `--actor-avatar-size`, the avatar it stands in for |
 
@@ -165,11 +165,23 @@ heading with Apple’s warning triangle.
 | --- | --- | --- | --- | --- | --- |
 | `exclamationmark.triangle.fill` | SF Symbol | The server could not serve the folder: the heading of the app’s failure screen | `apps/macos/Sources/Metabrowser/StatusView.swift` | Its own colors, as a multicolor symbol | The heading’s `.title3` font |
 
+Help > Check Setup… leads each row with a mark for its state.
+The state’s word beside the row’s title carries the meaning without the color.
+
+| Icon | Source | Meaning | Defined in | Ink | Size |
+| --- | --- | --- | --- | --- | --- |
+| `checkmark.circle.fill` | SF Symbol | A setup check that is ok, in Help > Check Setup… | `apps/macos/Sources/Metabrowser/CheckSetupWindow.swift` | SwiftUI’s `.green` | The row’s body font |
+| `exclamationmark.triangle.fill` | SF Symbol | A setup check’s warning: some work needs its fix | `apps/macos/Sources/Metabrowser/CheckSetupWindow.swift` | SwiftUI’s `.orange` | The row’s body font |
+| `xmark.octagon.fill` | SF Symbol | A setup check’s problem: `metab` cannot serve a folder until it is fixed | `apps/macos/Sources/Metabrowser/CheckSetupWindow.swift` | SwiftUI’s `.red` | The row’s body font |
+| `questionmark.circle` | SF Symbol | A state this app does not know, shown as `metab` names it | `apps/macos/Sources/Metabrowser/CheckSetupWindow.swift` | SwiftUI’s `.secondary` | The row’s body font |
+
 ## UI Chrome and Actions
 
 | Icon | Source | Meaning | Defined in | Ink | Size |
 | --- | --- | --- | --- | --- | --- |
 | `toggle`, Lucide `chevron-right` | Registry | Show or hide what a row holds: tree folders and containers, the tally tree, diff file bars, the Diff summary, Pulls rows, agent log events, fold expanders, the filter drawer, and a chip menu’s caret | `static/icons.js` | `--muted` | `--toggle-chevron-size`, centered in the `--tree-icon-slot` |
+| `chevron.down` | SF Symbol | A window’s title opens its folder chooser: after the title | `apps/macos/Sources/Metabrowser/TitleAccessory.swift` | Tertiary label color at rest, secondary under the pointer, quaternary in a window that is not main | Seven tenths of the title font’s point size, semibold |
+| `checkmark` | SF Symbol | The folder this window shows, in the Switch Folder panel’s list | `apps/macos/Sources/Metabrowser/SwitchFolderWindow.swift` | Secondary label color, or the selection’s ink on the selected row | The row’s default symbol size |
 | `.section-disclosure-trigger::after`, Lucide `chevron-right` | CSS mask | Show or hide a section, after its heading, and a rendered document’s `summary` | `static/styles.css` | `--section-disclosure-chevron-color` | `--section-disclosure-chevron-size`, in `em` of the heading |
 | `copy`, Lucide `copy` | Registry | Copy an identifier or a block’s content to the clipboard; also the Archives category’s shape | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph`; smaller in a branch chip (`.git-ref-copy`) |
 | `code`, Lucide `code` | Plugin | Show a diagram’s source in place of its drawing, in the diagram’s toolbar | `builtin_plugins/markdown/diagrams.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
@@ -221,7 +233,6 @@ caller never types an arrow or a modifier itself
 | --- | --- | --- | --- | --- | --- |
 | `metabrowser-icon` | App mark | The macOS app’s icon: the MB mark on its squircle | `apps/macos/AppIcon/metabrowser-icon.json` | Its own fills, citrine and amethyst | The `.icns` sizes `scripts/build-icon.sh` writes |
 | `metabrowser-icon-dev` | App mark | A development build’s icon, with a gold rim | `apps/macos/AppIcon/metabrowser-icon-dev.json` | Its own fills | The `.icns` sizes `scripts/build-icon.sh` writes |
-| `.view-header-toggle-metabrowser > .view-header-toggle-mark`, `AppIconMark` | CSS mask | The Metabrowser view the page is in: the pressed segment of a view header’s GitHub toggle, the app’s mark framed to its ink | `static/styles.css` | `--muted` | `--icon-glyph` tall, `--icon-box` wide |
 | `AppIconMark` | App mark | The mark alone, in the app’s title bar | `apps/macos/Sources/ShellCore/App/AppIconMarkGeometry.swift` | `AppIconMark.titleBarFills`, for the title bar’s appearance | The title bar’s height |
 | `metabrowser-icon.png` | App mark | The README’s icon, the release icon at one size | `images/metabrowser-icon.png` | Its own fills | Its pixels |
 
@@ -256,8 +267,7 @@ Each of these breaks a rule above, and is listed so that nobody copies it.
   `exclamationmark.triangle.fill` renders in Apple’s multicolor yellow, where every
   other symbol takes its menu’s template ink and every other glyph `currentColor`.
 - **The browser’s tab shows no icon of the app’s own.** The page names no favicon, so
-  the browser asks for `/favicon.ico` and draws its default, though a view header’s
-  GitHub toggle draws the app’s mark.
+  the browser asks for `/favicon.ico` and draws its default.
 
 ## The Check
 

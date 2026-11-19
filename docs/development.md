@@ -83,9 +83,9 @@ The quality, test, audit, and build targets install both locked environments fir
 Make keeps the stages ordered under parallel jobs.
 `make lint` applies the ordinary auto-fixes and then runs the repository’s own checks
 (public hygiene, file-type colors, tooltips, supply chain, CI workflow coverage,
-artifact contracts, parity, goldens, and changelog fragments); `make lint-check` runs
-the same checks without changing files, plus the startup-script budget and a Flowmark
-check.
+artifact contracts, parity, the macOS app’s contract, goldens, and changelog fragments);
+`make lint-check` runs the same checks without changing files, plus the startup-script
+budget and a Flowmark check.
 
 ### The Verify Gate
 
@@ -383,9 +383,11 @@ plugin manifest, and the built-in plugin interfaces are therefore internal contr
 **The macOS app is internal too.** For example, it runs the installed `metab` with the
 flags in `CLIServeLaunch` and `MetabRequirement.requiredFlags`, asks it what a GitHub
 link opens (`PresentDryRun`) and whether its cache holds a repository
-(`RepositoryCache`), and reads `GET /api/identity`. Metabrowser keeps no compatibility
-with an older app: change a flag or the route and the app in the same commit, and raise
-`MetabRequirement.minimumRelease` when the app needs the newer `metab`
+(`RepositoryCache`), and reads `GET /api/identity`;
+[the app’s contract](project/architecture/arch-app-contract.md) is the whole list.
+Metabrowser keeps no compatibility with an older app: change a flag or the route and the
+app in the same commit, and raise `MetabRequirement.minimumRelease` when the app needs
+the newer `metab`
 ([the version floor](project/architecture/arch-macos-app.md#the-version-floor)). The
 release that carries such a change follows
 [Choosing a Version](publishing.md#choosing-a-version).

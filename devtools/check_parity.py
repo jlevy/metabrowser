@@ -58,9 +58,11 @@ _INDIRECT_MODES: dict[str, tuple[str, ...]] = {
 # command runs the mode: the model is then reached through `metab` and pinned by a golden
 # as a route is, though `--api` cannot issue it. AGENTS.md prefers a route, so a mode
 # enters this table only where a route would be dishonest: `--present` reads ROOT in a
-# client process that must start no server.
+# client process that must start no server, and `--doctor` checks the setup a server
+# needs, which the app runs when no server can start.
 _MODEL_MODES: dict[str, str] = {
     "--present": "cli/present.py",
+    "--doctor": "cli/doctor.py",
 }
 
 

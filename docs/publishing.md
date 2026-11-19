@@ -195,8 +195,12 @@ release, as the owner set on 2026-11-18; this section is where that rule is writ
 
 - **A change the app depends on is a new minor or major release, never a patch.** That
   is any change to what the app reads from `metab`: a flag, route, JSON field, output
-  line, or exit status (see the app contract, a follow-up).
-  The app’s minimum, `MetabRequirement.minimumRelease` in
+  line, or exit status.
+  [The app’s contract](project/architecture/arch-app-contract.md) declares all of it,
+  and its checks make a branch name such a change in the changelog and fail a patch
+  release that holds one
+  ([Versioning](project/architecture/arch-app-contract.md#versioning)). The app’s
+  minimum, `MetabRequirement.minimumRelease` in
   `apps/macos/Sources/ShellCore/Setup/MetabVersion.swift`, names that release as
   `X.Y.0`.
 - **A bug fix that keeps what the app reads may be a patch.**

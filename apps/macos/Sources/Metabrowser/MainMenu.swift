@@ -16,6 +16,7 @@ enum MainMenu {
             item("About \(appName)", #selector(AppDelegate.showAbout(_:))),
             .separator(),
             item("Settings…", #selector(AppDelegate.showSettings(_:)), ","),
+            item("Clear GitHub Data…", #selector(AppDelegate.clearGitHubData(_:))),
             .separator(),
             item("Hide \(appName)", #selector(NSApplication.hide(_:)), "h"),
             item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
@@ -36,12 +37,13 @@ enum MainMenu {
             recentHolder,
             .separator(),
             item("Close Window", #selector(NSWindow.performClose(_:)), "w"),
+            item("Close Folder", #selector(BrowserWindowController.closeFolder(_:))),
             .separator(),
-            item("Restart Server", #selector(BrowserWindowController.restartServer(_:)), "r", [.command, .option]),
-            item("Open in Default Browser", #selector(BrowserWindowController.openInDefaultBrowser(_:))),
-            item("Reveal Server Log", #selector(BrowserWindowController.revealServerLog(_:))),
+            item("Restart Server", #selector(FolderPage.restartServer(_:)), "r", [.command, .option]),
+            item("Open in Default Browser", #selector(FolderPage.openInDefaultBrowser(_:))),
+            item("Reveal Server Log", #selector(FolderPage.revealServerLog(_:))),
             .separator(),
-            item("Print…", #selector(BrowserWindowController.printPage(_:)), "p"),
+            item("Print…", #selector(FolderPage.printPage(_:)), "p"),
         ])
 
         let find = NSMenu(title: "Find")
@@ -51,7 +53,7 @@ enum MainMenu {
             ("Find Previous", .previousMatch, "g", [.command, .shift]),
             ("Use Selection for Find", .setSearchString, "e", .command),
         ] {
-            let findItem = item(title, #selector(BrowserWindowController.performFindAction(_:)), key, modifiers)
+            let findItem = item(title, #selector(FolderPage.performFindAction(_:)), key, modifiers)
             findItem.tag = action.rawValue
             find.addItem(findItem)
         }
@@ -70,13 +72,15 @@ enum MainMenu {
         ])
 
         main.addSubmenu("View", [
-            item("Back", #selector(BrowserWindowController.navigateBack(_:)), "["),
-            item("Forward", #selector(BrowserWindowController.navigateForward(_:)), "]"),
-            item("Reload Page", #selector(BrowserWindowController.reloadPage(_:)), "r"),
+            item("Switch Folder…", #selector(BrowserWindowController.switchFolder(_:)), "o", [.command, .shift]),
             .separator(),
-            item("Actual Size", #selector(BrowserWindowController.actualSize(_:)), "0"),
-            item("Zoom In", #selector(BrowserWindowController.zoomIn(_:)), "="),
-            item("Zoom Out", #selector(BrowserWindowController.zoomOut(_:)), "-"),
+            item("Back", #selector(FolderPage.navigateBack(_:)), "["),
+            item("Forward", #selector(FolderPage.navigateForward(_:)), "]"),
+            item("Reload Page", #selector(FolderPage.reloadPage(_:)), "r"),
+            .separator(),
+            item("Actual Size", #selector(FolderPage.actualSize(_:)), "0"),
+            item("Zoom In", #selector(FolderPage.zoomIn(_:)), "="),
+            item("Zoom Out", #selector(FolderPage.zoomOut(_:)), "-"),
             .separator(),
             item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
         ])
@@ -89,12 +93,17 @@ enum MainMenu {
         ])
         NSApp.helpMenu = main.addSubmenu("Help", [
             item("Metabrowser Documentation", #selector(AppDelegate.openDocumentation(_:))),
+            .separator(),
+            item("Check Setup…", #selector(AppDelegate.showCheckSetup(_:))),
             item("Reveal Logs Folder", #selector(AppDelegate.revealLogsFolder(_:))),
         ])
         return main
     }
 
-    private static func item(
+    /// A menu item, with its key equivalent's modifiers: the one place the app sets a
+    /// modifier mask, which the folder chooser's items use too, so
+    /// `tests/test_modified_keys.py` reads every one.
+    static func item(
         _ title: String, _ action: Selector, _ key: String = "",
         _ modifiers: NSEvent.ModifierFlags = .command
     ) -> NSMenuItem {

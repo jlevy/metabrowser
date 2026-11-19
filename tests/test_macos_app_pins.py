@@ -4,10 +4,12 @@ The app copies a few of ``metab``'s constants into Swift, where nothing imports 
 the bounds on acquiring a source, which a repository's start must outlast; the port walk,
 which keeps the two launch gates' ranges apart; the hosts of the GitHub reducer; and the
 page size of the cache's sources route. Its ``Info.plist`` also declares the key
-``--present`` reads before it sends anything. It also reads two kinds of ``metab``'s
-output: the clone report a repository's start writes to stderr, which its status view
-shows, and the state an ``Error:`` line names, which says when GitHub is why a start
-failed; its tests parse samples of each, which are held here to what ``metab`` writes.
+``--present`` reads before it sends anything, and the oldest ``metab`` it runs, which
+``--doctor`` reads; each install's upgrade step is the doctor's. It also reads two kinds
+of ``metab``'s output: the clone report a repository's start writes to stderr, which its
+status view shows, and the state an ``Error:`` line names, which says when GitHub is why
+a start failed; its tests parse samples of each, which are held here to what ``metab``
+writes.
 These checks run in CI's Python jobs, which run on every change, so a change on either
 side fails here, where the macOS workflow's path filter would not have run the app's own
 tests (review A5 on #539).
@@ -22,10 +24,11 @@ import plistlib
 import re
 import tomllib
 from pathlib import Path
-from typing import Any, cast, get_args
+from typing import Any, Final, cast, get_args
 
 import pytest
 
+from devtools import app_contract
 from metabrowser.builtin_plugins.github import gh as github_gh
 from metabrowser.builtin_plugins.github import provider as github_provider
 from metabrowser.builtin_plugins.github import urls as github_urls
@@ -39,13 +42,27 @@ from metabrowser.cache.projection import MAX_PAGE_LIMIT, sources_response
 from metabrowser.cache.records import canonical_now
 from metabrowser.cli import clone_report
 from metabrowser.cli.clone_report import LOG_INTERVAL_S, CloneReport, saying_while_waiting
-from metabrowser.cli.present import OPENS_URLS_KEY, Presentable, resolve_target
+from metabrowser.cli.doctor import (
+    CHECKOUT_PROJECT,
+    CHECKOUT_VENV,
+    METAB_UPGRADE_COMMANDS,
+    PIPX_METADATA,
+    STORAGE_OVERRIDES,
+    UV_RECEIPT,
+)
+from metabrowser.cli.present import (
+    MINIMUM_METAB_KEY,
+    OPENS_URLS_KEY,
+    Presentable,
+    resolve_target,
+)
 from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
 from metabrowser.git.progress import GitProgress
 from metabrowser.home import METABROWSER_CACHE_DIR_ENV
 from metabrowser.server_utils import DEFAULT_PORT_SEARCH_COUNT
 from metabrowser.settings import DEFAULT_BROWSER_PORT
 from tests.cache_home_fixture import FLASK_HTTPS, build_populated_home
+from tests.golden_harness import run_session
 
 APP = Path(__file__).resolve().parent.parent / "apps" / "macos"
 SHELL_CORE = APP / "Sources" / "ShellCore"
@@ -198,9 +215,14 @@ def test_the_cache_answer_the_app_reads_is_metabs(
     into the repository, which is what the app compares ``display_url`` with.
     """
 
+    # The keys and the value are the ones the app's contract declares for this route
+    # (apps/macos/metab-contract.toml), which is the one list of them.
+    declared = app_contract.load().surface("cache-sources")
+    assert declared is not None, "the app's contract no longer declares cache-sources"
+    read = {segment.removesuffix("[]") for path in declared.json for segment in path.split(".")}
+    read |= {value for values in declared.values.values() for value in values}
     swift = (SHELL_CORE / "Folders" / "RepositoryCache.swift").read_text(encoding="utf-8")
-    read = ("sources", "identity", "display_url", "publication", "published", "problems")
-    for literal in (*read, "next_after"):
+    for literal in sorted(read):
         assert f'"{literal}"' in swift, f"RepositoryCache.swift no longer reads {literal!r}"
 
     home = tmp_path / "home"
@@ -231,6 +253,128 @@ def test_the_app_declares_what_present_reads() -> None:
     assert info.get(OPENS_URLS_KEY) is True
     # File > Open Recent lists repositories only when the bundle declares the same key.
     assert _swift_value("Folders/RecentTargets.swift", "opensURLsKey") == f'"{OPENS_URLS_KEY}"'
+
+
+def test_the_app_declares_its_minimum_metab_for_the_doctor() -> None:
+    """``metab --doctor`` reads the oldest ``metab`` the app it finds runs from that app's
+    ``Info.plist`` (``MINIMUM_METAB_KEY``), so Terminal can say whether its ``metab`` is
+    new enough; the value is the app's own ``MetabRequirement.minimumRelease``.
+    """
+
+    info = plistlib.loads((APP / "Resources" / "Info.plist").read_bytes())
+    assert info.get(MINIMUM_METAB_KEY) == ".".join(str(part) for part in _minimum_metab())
+
+
+def test_the_apps_servers_get_no_storage_variable() -> None:
+    """``ChildEnvironment.passedThrough`` passes none of ``STORAGE_OVERRIDES``.
+
+    The doctor's configuration and cache checks warn that a storage variable set in a
+    terminal names a directory the app's servers never read, because the app gives its
+    children none of them; a name added to the allowlist would make that warning false.
+    The allowlist's one entry that is not a literal names the recent-targets variable.
+    """
+
+    source = (SHELL_CORE / "Runtime" / "ChildEnvironment.swift").read_text(encoding="utf-8")
+    body = re.search(
+        r"static let passedThrough: Set<String> = \[\n(.*?)\n    \]\n", source, re.DOTALL
+    )
+    assert body is not None, "ChildEnvironment.passedThrough not found"
+    entries = [
+        entry.strip()
+        for line in body.group(1).splitlines()
+        if not line.strip().startswith("//")
+        for entry in line.split(",")
+        if entry.strip()
+    ]
+    names = {entry.strip('"') for entry in entries if entry.startswith('"')}
+    assert {entry for entry in entries if not entry.startswith('"')} == {
+        "RecentTargets.recordVariable"
+    }
+    assert "HOME" in names, f"ChildEnvironment.passedThrough read as {sorted(names)}"
+    assert not names & STORAGE_OVERRIDES
+
+
+# The MetabInstall case for each of the doctor's install methods.
+_SWIFT_INSTALL_CASES: Final = {
+    "uv_tool": ".uvTool",
+    "pipx": ".pipx",
+    "checkout": ".checkout",
+    "environment": ".other",
+}
+
+
+def test_the_apps_upgrade_steps_are_the_doctors() -> None:
+    """The app names the step that upgrades a ``metab`` too old to run (``MetabInstall``),
+    and ``metab --doctor`` names the same step for one older than the app it finds
+    (``METAB_UPGRADE_COMMANDS``): each install gets the same command on both sides, read
+    from the same files.
+    """
+
+    source = (SHELL_CORE / "Setup" / "MetabVersion.swift").read_text(encoding="utf-8")
+    body = re.search(
+        r"public func upgradeCommand\(minimum: String\) -> String \{\n(.*?)\n    \}\n",
+        source,
+        re.DOTALL,
+    )
+    assert body is not None, "MetabInstall.upgradeCommand(minimum:) not found"
+    commands: dict[str, str] = {}
+    for line in body.group(1).splitlines():
+        case = re.fullmatch(r'\s*case ([^:]+): "(.*)"', line)
+        if case is not None:
+            for name in case.group(1).split(","):
+                commands[name.strip()] = case.group(2)
+    assert set(commands) == set(_SWIFT_INSTALL_CASES.values())
+    for method, template in METAB_UPGRADE_COMMANDS.items():
+        swift = template.replace("{minimum}", "\\(minimum)")
+        assert commands[_SWIFT_INSTALL_CASES[method]] == swift, (
+            f"MetabInstall {_SWIFT_INSTALL_CASES[method]} is not the doctor's step for {method}"
+        )
+    for declaration, value in (
+        ("uvReceipt", UV_RECEIPT),
+        ("pipxMetadata", PIPX_METADATA),
+        ("checkoutVenv", CHECKOUT_VENV),
+    ):
+        assert _swift_value("Setup/MetabVersion.swift", declaration) == f'"{value}"'
+    project = _swift_value("Setup/MetabVersion.swift", "checkoutProject")
+    assert CHECKOUT_PROJECT.pattern.count(project) == 1, (
+        f"MetabInstall.checkoutProject {project} is not the project CHECKOUT_PROJECT names"
+    )
+
+
+def _elements(markup: dict[str, Any]) -> list[dict[str, Any]]:
+    """An element of a session's transcript and every element under it."""
+
+    found = [markup]
+    for child in markup.get("children") or []:
+        if isinstance(child, dict):
+            found += _elements(cast("dict[str, Any]", child))
+    return found
+
+
+def test_the_link_the_apps_script_takes_is_the_one_the_page_marks() -> None:
+    """``GitHubViewRequests.marker`` selects the View on GitHub button's main link.
+
+    The app's user script takes a plain click on the element its selector matches and
+    opens the popover; the page only marks its links and knows nothing of the app. So the
+    selector is a copy of the page's hook: renamed on one side alone, the button would
+    open the default browser in the app with every test of either side green. The link
+    is also what the script and the window expect of it: a page on github.com, and a
+    link that opens a new window by itself, which is where a click the script leaves
+    alone goes (``NavigationPolicy.decideNewWindow``).
+    """
+
+    marker = _swift_value("Web/GitHubViewRequests.swift", "marker")
+    selector = re.fullmatch(r'#"(\w+)\[([\w-]+)="(\w+)"\]"#', marker)
+    assert selector, f'GitHubViewRequests.marker is not tag[attribute="value"]: {marker}'
+    tag, attribute, value = selector.groups()
+
+    markup = run_session("counterpart-session.js")["markup"]
+    marked = [element for element in _elements(markup) if element.get(attribute) == value]
+    assert len(marked) == 1, f"the page marks {len(marked)} elements {attribute}={value!r}"
+    link = marked[0]
+    assert link["tag"] == tag
+    assert link["href"].startswith("https://github.com/")
+    assert (link["target"], link["rel"]) == ("_blank", "noopener")
 
 
 def _swift_samples(name: str, enum: str) -> set[str]:

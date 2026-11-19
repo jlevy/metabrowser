@@ -12,8 +12,6 @@ import SwiftUI
     var isChoosing = false
     /// A search found nothing, and the first-run steps are being worked out.
     var isPreparingGuide = false
-    var isRunningDoctor = false
-    var doctorOutput: String?
     var notice: String?
     /// The first-run steps, once a search found no usable `metab`.
     var guide: SetupGuide?
@@ -22,7 +20,7 @@ import SwiftUI
 struct RuntimeActions {
     var findAgain: () -> Void
     var choose: () -> Void
-    var runDoctor: () -> Void
+    var checkSetup: () -> Void
     var revealLogs: () -> Void
 }
 
@@ -48,25 +46,9 @@ struct RuntimeView: View {
             HStack {
                 Button("Find Again", action: actions.findAgain).disabled(model.isSearching)
                 Button("Choose metab…", action: actions.choose)
-                Button("Run Doctor", action: actions.runDoctor)
-                    .disabled(model.setup == nil || model.isRunningDoctor)
+                Button("Check Setup…", action: actions.checkSetup)
                 Spacer()
                 Button("Reveal Logs", action: actions.revealLogs)
-            }
-            if model.isRunningDoctor {
-                ProgressView().controlSize(.small)
-            }
-            if let output = model.doctorOutput {
-                ScrollView {
-                    Text(output)
-                        .font(.system(size: 11, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .padding(8)
-                }
-                .frame(minHeight: 80, maxHeight: 220)
-                .background(Color(nsColor: .textBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             if !model.tried.isEmpty {
                 DisclosureGroup("Places looked") {

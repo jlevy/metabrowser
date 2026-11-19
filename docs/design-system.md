@@ -358,36 +358,37 @@ Prefer truncation with an accessible full-value tooltip or allow a panel to scro
 ### View Headers
 
 Every page the main view shows opens with one block above its content, a **view
-header**, and each kind of page fills the same rows with what it has: a file, a folder,
+header**, and each kind of page fills the same parts with what it has: a file, a folder,
 a pull request, and a commit.
 
 ```text
 +--------------------------------------------------------------------+
-| [Up] ~/wrk/project / docs / specs                    mirror in ... |  1 eyebrow, optional
-| [icon] Title, at the page title's size  [copy]            [toggle] |  2 heading row
-| 33.9 KB · 2h ago                                                   |  3 metadata line(s)
+| [Up] ~/wrk/project / docs / specs  [copy]  [GitHub View on GitHub v]  |  1 eyebrow, optional; the corner
+| [icon] Title, at the page title's size  33.9 KB · 2h ago            |  2 heading row, 3 metadata
 | DOCUMENT   SOURCE                                                  |  4 tab bar
 +--------------------------------------------------------------------+  the one rule, the tab bar's
 | content                                                            |
 ```
 
-| Row | A file | A folder | A pull request | A commit |
+| Part | A file | A folder | A pull request | A commit |
 | --- | --- | --- | --- | --- |
 | 1. Eyebrow | Up, the address of the folder that holds it, and Copy path | Up, and the address of its parent; at the served root, the directory that holds the root | Only where it says something the rows under it do not (planned) | The same (planned) |
-| 2. Heading row | The navigation row’s icon for its type, its name, and the GitHub toggle | The folder icon, its name, and the GitHub toggle | Its state icon, its title, and its number | The commit icon, its subject (planned) |
-| 3. Metadata | Its badges, size, and age | Its size, file count, and age | Its author line, branches, and ages ([Page Headers](#page-headers)) | Its author, revision, and age ([Page Headers](#page-headers)) |
+| 2. Heading row | The navigation row’s icon for its type, and its name and the metadata after it | The folder icon, and its name and the metadata after it | Its state icon, its title, and its number | The commit icon, its subject (planned) |
+| 3. Metadata | Its badges, size, and age, after its name | Its size, file count, and age, after its name | Its author line, branches, and ages, lines under the title ([Page Headers](#page-headers)) | Its author, revision, and age, lines under the title ([Page Headers](#page-headers)) |
 | 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Conversation, Changes, and Checks | None |
+| The corner | [View on GitHub](#view-on-github) | The same | The same | The same |
 
-Files and folders draw these rows today (`viewHeaderHtml` in `static/view-header.js`, an
-on-demand bundle the shell fetches beside the view compositor).
+Files and folders draw these parts today (`viewHeaderHtml` in `static/view-header.js`,
+an on-demand bundle the shell fetches beside the view compositor).
 A pull request’s page and a commit’s draw their title and lines as
 [Page Headers](#page-headers) says, and move onto the same rows, icon, and ground next
 (planned). What another kind shares is the class structure, not that builder, which is
 the shell’s own: a `.view-header` block holding `.view-header-eyebrow`,
-`.view-header-heading` (with `.view-header-icon`, `.view-header-title`, and
-`.view-header-end`), and `.view-header-line`, whose rules are the rhythm and the ground
-below. A plugin that draws a header, as the GitHub plugin draws a pull request’s, writes
-those classes.
+`.view-header-heading`, which holds `.view-header-icon` and `.view-header-title-group`
+(the title, `.view-header-title`, and its metadata line, `.view-header-line`), and
+`.view-header-end`, the corner, whose rules are the rhythm and the ground below.
+A plugin that draws a header, as the GitHub plugin draws a pull request’s, writes those
+classes.
 
 **The eyebrow** is a quiet line above the title: context, at the body size, its served
 root dimmed and its crumbs links.
@@ -402,64 +403,69 @@ heading row starts the header and nothing holds empty space for one.
 Where it has one, the eyebrow is its token’s height from first paint, so nothing under
 it moves as it fills in.
 A file’s eyebrow ends in Copy path, revealed on hover, so the heading row’s width is the
-title’s.
+title’s and its metadata’s.
 
 **The heading row** is the kind’s icon, then the title at `--page-title-font-size`,
-bold, then the row’s controls at its far end.
+bold, then a file’s or a folder’s metadata line.
 The icon is the one the rest of the app draws for the item, at the title’s size: a
 file’s is its navigation row’s icon for its type, through the same function, and a pull
 request’s is its state icon.
-A file’s or a folder’s name is one line, cut short at its end with the whole name as its
-tooltip ([Tooltips Add Information](#tooltips-add-information)); a pull request’s title
-holds two lines. The far end holds the row’s controls: the GitHub toggle.
+A file’s or a folder’s name is whole, never cut short: a name too long for the row
+wraps, anywhere, so it has no tooltip, since none of it is hidden
+([Tooltips Add Information](#tooltips-add-information)), and the icon stays beside its
+first line. A pull request’s title holds two lines.
+The row holds no controls: the header’s are in its corner.
 The header has no print button ([Print](#print)).
 
-**The GitHub toggle** ends the heading row on a page whose repository is on github.com:
-a joined pair, as a segmented control is, of the Metabrowser mark, the app icon’s
-partial M and B in gray on the pressed segment’s fill, and the GitHub mark, a link to
-the same item’s page on github.com, a folder’s tree or a file’s blob.
-The link’s ref is the branch the page is on, when `origin` has it as of the checkout’s
-last fetch (`branch_on_origin` in the repository context, which a mirror’s branch always
-has); otherwise the page’s commit, and the tooltip says that origin had no such branch
-at the last fetch, writing the commit short so the item’s path still shows.
-Hovering the GitHub mark tints it with the accent fill, which never reads as the pressed
-segment. In a view header narrower than the container query on `.view-header` in
-`static/styles.css` names, the Metabrowser segment, which only says where the page
-already is, is left out and the GitHub mark kept, so the title keeps the row.
-Every page opens in the Metabrowser view, and a page opened next opens in it too.
-github.com refuses to be shown in a frame, so a browser cannot show the GitHub view in
-the page: its mark opens the page in a new tab, as View on GitHub does, and the macOS
-app hands it to the default browser.
-Each mark has its name for a screen reader and its tooltip, and the GitHub mark is a
-link in the tab order.
-The toggle appears exactly where the Pulls tab does: on a checkout whose `origin` is on
-github.com and on a mirror of a repository there, from the repository context the server
-writes into the page (`static/github-page.js`, which the server writes inline into those
-pages only). A plain folder, a checkout whose `origin` is on another host or that has
-none, and a mirror of a repository elsewhere have no toggle and no slot held for one:
-nothing in the row is placed by it.
-The folder-or-mirror indicator is a separate mark, not a third segment of the toggle;
-where it goes is not decided yet.
+**The corner**, the header’s upper right, holds the page’s
+[View on GitHub](#view-on-github) button.
+It is at a fixed inset from the header’s top and right edges and a fixed height, level
+with the eyebrow (`--view-header-corner-inset-top`, `--view-header-corner-inset-end`,
+and `--view-header-corner-height` in `static/styles.css`), whatever the rows under it
+hold, so a title that wraps or an address that fills the eyebrow never moves it, and a
+native bar that draws the same button can match it from the same three tokens.
+The corner follows the heading row in the reading order.
+On a page whose repository is on github.com the corner is marked `data-counterpart`
+before the server has answered, and the header’s first row, the eyebrow or else the
+heading row, leaves it `--view-header-corner-room` from first paint, so the button
+arriving moves nothing; the rows under the first keep the header’s whole width.
+A page with no counterpart keeps that room empty: a file that is not committed has none,
+and its corner says nothing.
+A plain folder, a checkout whose `origin` is on another host or that has none, and a
+mirror of a repository elsewhere mark no corner and hold no room.
+A pull request’s page and a commit’s place the same corner in the page, at the same
+insets from its top and right edges, and their title leaves it room only where the
+reading column reaches it.
 
-**The metadata lines** sit under the title, at the body size, in muted ink, and each
-value keeps its own primitive: a size its chip, a count its count, an age its freshness
-ink ([File Age](#file-age)), the same helpers a navigation row draws them with.
-On a file’s or a folder’s line, badges lead and the values follow, each after a muted
-dot, `.summary-punctuation`, with the age last: it is the one value that changes while
-nothing on disk does, “just now” becoming “1m ago”, and last on its line it moves
-nothing when it does.
-The line is one line at its token’s height whatever fills it, so a value arriving, a
-skeleton becoming a number, or an age changing width moves nothing above or below it.
-On the line itself, a value that changes width moves the values after it sideways, as
-“999 B” becoming “1.0 MB” moves the count and the age: only the age, which changes while
-nothing on disk does, is last so that its own change moves nothing.
+**The metadata line** of a file or a folder follows its name in the heading row,
+`--view-header-title-gap` after the name’s last letter and on its baseline, at the body
+size, in muted ink; a pull request’s and a commit’s lines sit under their titles
+([Page Headers](#page-headers)). Each value keeps its own primitive: a size its chip, a
+count its count, an age its freshness ink ([File Age](#file-age)), the same helpers a
+navigation row draws them with.
+Badges lead and the values follow, each after a muted dot, `.summary-punctuation`, with
+the age last: it is the one value that changes while nothing on disk does, “just now”
+becoming “1m ago”, and last on its line it moves nothing when it does.
+
+Where the room after the name’s last line does not hold the line, the line wraps whole
+to the next line, at the name’s start.
+The gap is the title’s end padding, so it stays behind, unseen, at the end of the line
+above, rather than indenting the wrapped line.
+A line wider than the row wraps between its items: an item and the dot before it are one
+box that does not wrap, so no value is cut mid-number, and none is hidden.
+
+While the line stays after the name, the heading row is the title’s line high, and a
+value arriving, a skeleton becoming a number, or an age changing width moves nothing but
+the values after it on the line.
+Each item is one line of text at the line’s token’s height, so its baseline is its
+text’s whatever it holds, and a pending skeleton sits the line where its number will.
+At the width where the line no longer fits after the name, it wraps to the next line,
+and what is under the header moves down by the line’s height.
+That takes a name that nearly fills its row, which is rare, and wrapping keeps every
+value in sight where a row of fixed height would cut one.
 A folder’s line follows the inventory as it changes (`startFolderHeaderSubscription` in
 `static/app.js`); a file’s line describes the content the view loaded, its size and age
 when it was read, and a reload refreshes it (planned: following the file’s own change).
-In a pane too narrow for the line, its items leave it from the end, each with its dot,
-whole: an item and the dot before it are one box that does not wrap, and a wrapped item
-falls to a second line the line’s height clips away.
-No value is cut mid-number.
 
 **The tab bar** is the one tab style, `.tab-bar` and `.tab-btn`, its labels on the
 content’s inset, where a folder’s Overview labels start
@@ -480,12 +486,16 @@ Every ink on the header is one the main view already sets on `--bg`: `--text`,
 surface, `--bg` among them, `tests/test_file_age_palette.py` holds.
 
 The rhythm is tokens in `static/styles.css`, `--view-header-*`: the pads above the first
-row and under the last, the gap between rows, and the eyebrow’s and the metadata line’s
-heights. `tests/test_view_header_chrome.py` draws a file’s, a folder’s, and the served
-root’s header in headless Chrome at four pane widths in both themes and holds the rows
-to those tokens, the title and the line to their sizes, the header and its tabs to one
-ground with the tab bar’s one rule, every value whole or gone, and every box but the
-line’s own still while the line’s values change.
+row and under the last, the gap between rows, the eyebrow’s and the metadata line’s
+heights, and the gap between the title and the line after it.
+`tests/test_view_header_chrome.py` draws a file’s, a folder’s, and the served root’s
+header, and the header of a file whose name no pane holds on one line, in headless
+Chrome at four pane widths in both themes.
+It holds the rows to those tokens, the title and the line to their sizes and ink, the
+line to the title’s baseline and gap or to the next line’s start, the long name whole
+over several lines, the header and its tabs to one ground with the tab bar’s one rule,
+every value whole and in sight, and every box but the line’s own still while the line’s
+values change and it stays after the name.
 
 ### Page Headers
 
@@ -874,6 +884,108 @@ host turns on.
 Until then `builtin_plugins/markdown/print-indicator.js` draws it, and its
 header says what KPress lacks.
 
+## View on GitHub
+
+Every page that github.com has a page for has one **View on GitHub** button, in the same
+place: its header’s [corner](#view-headers), the upper right.
+It is the one way to a page’s github.com counterpart, so no page also links to it from
+its metadata.
+
+```text
+ ( [GitHub] View on GitHub | v )
+                          +-----------------+
+                          | Copy Link       |
+                          | Open in Browser |
+                          +-----------------+
+```
+
+It is a split button, a [joined chip group](#control-families) of two parts:
+
+- **The link**, the provider’s mark and its label, in the text ink.
+  It is a real link to the counterpart, so a new tab, a copied address, and a screen
+  reader all get the address; in a browser it opens the page in a new tab, and its
+  tooltip is the address.
+- **The chevron**, a chip menu’s trigger with the shell’s caret, muted until the pointer
+  is on it or its menu is open, whose menu holds **Copy Link** and **Open in Browser**.
+  Copy Link puts the address on the clipboard and says “Link copied”, or “Copy failed”,
+  for a moment in a status line under the button, where the menu was, which a screen
+  reader announces as a polite live region; Open in Browser is a link to the same
+  address in a new tab.
+
+Both parts take a chip’s hover fill and focus ring, from tokens in both themes.
+The menu is the shell’s `.menu` of `.menu-item` rows, opened under the button with its
+right edge on the button’s. It is a menu button’s menu: a click or Enter on the chevron
+opens it with focus on its first item, ArrowDown or ArrowUp on the chevron opens it at
+its first or last item, and the arrow keys, Home, and End move among the items.
+Escape, a second click on the chevron, or choosing an item closes it and gives focus
+back to the chevron; Tab or a press outside the button closes it and leaves focus where
+the key or the press puts it, and so does focus that moves to another element, such as a
+framed preview, which sends the page no press.
+A key held with Command, Control, or Option is the browser’s and the app’s, as on every
+page, but Option-Tab, with which Safari moves focus, closes the menu as Tab does.
+The button is not numbered for the header’s number keys: it is the page’s, not a control
+in a row.
+
+The provider supplies the label, the mark, and the address, so the same component draws
+another host’s counterpart; GitHub is the one provider today.
+The button is `counterpartButton` in `static/plugin-sdk-views.js`, the on-demand view
+helpers, and `mountCounterpart` asks the server for a page’s counterpart and puts the
+button in a corner, once per address; both are on `window.metabrowser` for a plugin, as
+the pull request page uses them.
+The button comes with its header when it can: the shell asks for a file’s or a folder’s
+counterpart as the page starts loading (`prefetchCounterpart`), and a page drawn again
+shows its last answer at once and replaces it only when the server’s new one differs.
+Another place that shows a page can hold the same button by giving it a corner.
+
+**The macOS app** shows a counterpart in a native popover of its own rather than leaving
+the app. The web page does nothing for it; the app reads three hooks in the button’s
+markup, which are a contract between the two: the root carries `data-view-on-github`,
+the link is `<a data-view-on-github="open" href="…" target="_blank" rel="noopener">`,
+and Open in Browser is
+`<a data-view-on-github="external" href="…" target="_blank" rel="noopener">`. The app
+takes a trusted primary click on the link for its popover; Open in Browser, a modified
+click, and Copy Link do what they do in a browser.
+
+### Where It Appears
+
+A page has a View on GitHub control when github.com has a page for the same thing.
+`GET /api/counterpart?page=<page>` (`src/metabrowser/counterpart.py`) is the one source
+of where it goes: it answers the URL, or `null` and the reason there is none, and no
+page builds a github.com URL itself.
+`PAGES` in that module is this table, and `tests/test_counterpart.py` holds the two
+together.
+
+Each counterpart is `https://github.com/<owner>/<repository>/` followed by the shape
+below. `<sha>` is the commit the page shows its content from: a pin’s, or, for the
+working tree, the newest commit origin has in `HEAD`’s history.
+That is `HEAD`’s own commit once it is pushed, and before then its merge base with the
+upstream branch, or else with origin’s default branch.
+So neither unpushed commits nor a file’s local edits take a page’s button away: it links
+to the version origin has.
+Only a path no commit origin has holds goes without one.
+`<hash>` is GitHub’s anchor for a changed file, the SHA-256 of its path.
+Every page also has none when the served folder has no repository on github.com
+(`no_repository`), and an address that is none of these pages has none (`not_a_page`).
+
+| Page | Counterpart | Other reasons it has none |
+| --- | --- | --- |
+| `/view/<path>` | `blob/<sha>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
+| `/view/<path>/` | `tree/<sha>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
+| `/view/` | `tree/<sha>/<served prefix>`, or `tree/<sha>` at the repository root | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
+| `/pull/<n>`, `/pull/<n>/files`, `/pull/<n>/checks` | `pull/<n>`, `pull/<n>/files`, `pull/<n>/checks` | None |
+| `/pull/<n>/files/<path>` | `pull/<n>/files#diff-<hash>` | None |
+| `/commit/<sha>` | `commit/<sha>` | `not_on_origin` |
+| `/commit/<sha>/<path>` | `commit/<sha>#diff-<hash>` | `not_on_origin` |
+| `/pulls` | `pulls` | None |
+
+`CounterpartReason`, beside `PAGES`, says what each reason means.
+A file and a folder are told apart by the commit’s tree, not by the trailing slash.
+There is no page of a branch’s commits to map: the Commits tab is a pane, not an
+address. The pull requests’ list, `/pulls`, has a counterpart but no header to hold the
+button yet. Every other page in the table draws it: a file’s, a folder’s, and the served
+root’s view header, each of a pull request’s tabs and the changed file Changes is at,
+and a commit’s page.
+
 ## Control Families
 
 Every button belongs to one role-specific primitive:
@@ -1133,10 +1245,11 @@ text inside it, so it is set at the path’s own size and line height: text of o
 and one line height centers onto one baseline.
 
 Two rows are deliberately not in the table.
-A [view header](#view-headers)’s rows each set their text at one size, the eyebrow’s
-address and mirror note and the metadata line’s values at the body size and the heading
-row’s title alone at the page title’s, so each centers its text and its boxes and needs
-no baseline: text of one size centers onto one baseline.
+A [view header](#view-headers)’s eyebrow sets its text at one size and centers it.
+Its heading row sets the title and the metadata line after it at two sizes, and puts the
+line on the title’s baseline by setting both as one run of inline text rather than by
+these rules: aligned as a flex item, an item holding only a pending skeleton would sit
+the skeleton’s bottom edge on the baseline.
 The Git commit summary’s metadata line sets a monospace revision at `--nav-font-size`
 beside body-size sans text, and aligning the two faces on one baseline would grow the
 line, so it stays centered.
@@ -2317,7 +2430,8 @@ Its measurements in Chrome and the app’s WebKit are in
 | Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
 | File of a review comment | Sans, bold, at the card head’s size | A path is chrome, and in the main view it reads at the body size, as a diff file bar’s does ([Type Scale](#type-scale)) |
 | Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it |
-| GitHub action: View on GitHub, a check’s action on GitHub, a conversation commit hash | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows, and the same in each of the three. A check is GitHub’s by the rule that gives a link the GitHub mark, so its look and its mark agree |
+| View on GitHub | The [View on GitHub](#view-on-github) button in the header’s corner, the page’s own counterpart on github.com | One button in one place on every page that has a counterpart, so it is never a link in the metadata |
+| GitHub action: a check’s action on GitHub, a conversation commit hash | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows, and the same in both. A check is GitHub’s by the rule that gives a link the GitHub mark, so its look and its mark agree |
 | Conversation commit hash | `.git-commit-sha` at its own `--nav-font-size` | A [revision](#git-commit-summary) sits one step below the sans beside it, and a commit row is set at `--body-font-size` ([Conversation Timeline](#conversation-timeline)) |
 | Browse code, and a review comment’s file | [Text action](#control-families): a link, or `.github-pull-text-action` on a button where it first serves the pull request’s head | The look of the Link row in both forms, so moving the pin never looks like something else |
 | Section title | [`.section-heading`](#section-headings) |  |
@@ -4337,6 +4451,41 @@ tab, the Pulls list with its Tab stop moved and a row’s changed files open, a 
 Source view, Commits, and the root at Treemap.
 It also checks that the pane never blanks on the way, that the tooltip survives the
 click, and that the name is called “Home: <folder>”.
+
+### Hiding the Navigation Pane
+
+**A chevron on the main page’s left edge hides the navigation pane, and so does the
+Backslash key.** The page slides left over the pane to fill the window, and the chevron
+turns to point right; a second press slides the page back and shows the pane as it was.
+Shift-Backslash, which types `|` on a US keyboard, does the same, as Shift changes no
+key ([Keyboard Shortcuts](#keyboard-shortcuts)); the key is read by the character it
+types, so the key in its place on a UK or German keyboard, which types `#`, is not it.
+
+The chevron is the shared disclosure chevron in an icon button
+([Every Icon-Only Control Is the Same Control](#every-icon-only-control-is-the-same-control)),
+muted at rest with the hover surface, pointing left at the pane it hides.
+It sits in the main frame, just right of the pane’s shadow, centered on the shortcut
+strip’s row, so it reads as the strip’s neighbour while belonging to the page; it stays
+there, and on that row, while the pane is hidden.
+It has the page’s ground as a plate, since the page’s content can run under it.
+
+The pane does not shrink.
+Hidden, it leaves the layout, keeps its width under the frame, and is `inert`, so no Tab
+stop or key reaches a control in it: `0`, the main tabs’ letters, and the filters’
+numbers do nothing until it is shown, and focus in it moves to the main page.
+Backslash stays live on the chevron, and closes a filter menu the pane held open as it
+hides it. The frame keeps its full width for the whole slide and reflows once, at the
+start of a hide or the end of a show, so a long document is laid out once per toggle;
+the slide is a transform on the frame, which already carries one for KPress’s floating
+UI. It takes `--motion-reveal`’s time and easing, and a press during a slide turns it
+back from where the frame is, for the share of the time that distance is.
+Under reduced motion the page moves at once.
+The state belongs to the page and is not kept across a reload.
+
+`static/nav-collapse.js` owns it, and `static/shell-keymap.js` binds the key.
+`tests/dom/key-reveal-session.js`, pinned by `cli-ui-nav-collapse.tryscript.md`, runs
+both on the production code; `tests/test_nav_collapse_chrome.py` measures the chevron’s
+place and the slide in headless Chrome with real keys.
 
 ### Navigation Reveals the Item
 

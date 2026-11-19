@@ -58,6 +58,7 @@ from metabrowser.settings import GIT_SUBPROCESS_MAX_BYTES, GIT_SUBPROCESS_TIMEOU
 
 if TYPE_CHECKING:
     from metabrowser.git.progress import GitProgress
+    from metabrowser.tool_install import Remedy
 
 log = logging.getLogger(__name__)
 
@@ -1742,6 +1743,41 @@ def required_acquisition_version_label() -> str:
     return f"{major}.{minor}.{patch} or a patched release at least {newest} on a newer track"
 
 
+# Where to get a Git that meets the floors, for a Git that no package manager this module
+# recognizes installed.
+GIT_DOWNLOAD_PAGE: Final = "https://git-scm.com/downloads"
+
+
+def git_upgrade_remedy(executable: str | None) -> Remedy:
+    """The step that brings the Git at *executable* up to the floors, or installs one.
+
+    Homebrew and MacPorts upgrade their own. Apple's Git, ``/usr/bin/git`` from the
+    Command Line Tools or Xcode, changes only with them and can trail Git's security
+    releases (Xcode 26.6 had 2.50.1, Apple Git-155, on 2026-11-18), so the step installs
+    Homebrew's, which a login shell with Homebrew's ``bin`` first on ``PATH`` finds first.
+    """
+
+    from metabrowser.tool_install import Remedy, install_method
+
+    if executable is None:
+        return Remedy("Install Git.", url=GIT_DOWNLOAD_PAGE)
+    method = install_method(executable)
+    if method == "homebrew":
+        return Remedy("Upgrade Homebrew's Git.", command="brew upgrade git")
+    if method == "macports":
+        return Remedy("Upgrade MacPorts' Git.", command="sudo port upgrade git")
+    if method == "apple":
+        return Remedy(
+            "Apple's Git changes only with the Command Line Tools or Xcode: install Git with "
+            "Homebrew, and keep Homebrew's bin before /usr/bin on PATH.",
+            command="brew install git",
+        )
+    return Remedy(
+        "Update Git with the package manager that installed it, or from Git's downloads.",
+        url=GIT_DOWNLOAD_PAGE,
+    )
+
+
 @cache
 def detect_git_version() -> tuple[tuple[int, int, int] | None, str]:
     """Return ``(parsed, first line)`` from the installed ``git version``."""
@@ -1799,6 +1835,7 @@ __all__ = [
     "READ_POLICY",
     "SPAWN_WAIT_S",
     "STORE_READ_POLICY",
+    "GIT_DOWNLOAD_PAGE",
     "UnsupportedGitVersionError",
     "acquisition_allowed",
     "acquisition_gate_as_fixture",
@@ -1809,6 +1846,7 @@ __all__ = [
     "failure_detail",
     "git_environment",
     "git_executable",
+    "git_upgrade_remedy",
     "forget_process_group",
     "kill_live_process_groups",
     "kill_when_spawned",

@@ -49,6 +49,7 @@ from metabrowser.cli.present import (
     DELIVERY_EXIT_CODES,
     DEV_BUNDLE_ID,
     INFO_PLIST_MAX_BYTES,
+    MINIMUM_METAB_KEY,
     OPENS_URLS_KEY,
     RELEASE_BUNDLE_ID,
     SERVER_LOG_PREFIX,
@@ -80,6 +81,7 @@ from metabrowser.home import (
     write_private_file_atomic,
 )
 from metabrowser.open_in import OPEN_IN_ENV, OpenInChoice, OpenInError, OpenInPreference
+from tests.test_nav_metadata_chrome import _free_port
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 COMMON_SH = REPO_ROOT / "apps/macos/scripts/common.sh"
@@ -1248,7 +1250,12 @@ def test_a_real_server_serves_the_target_detached_until_killed(
     browser.write_text(f'#!/bin/sh\nprintf \'%s\\n\' "$1" >> "{opened}"\n')
     browser.chmod(0o755)
     monkeypatch.setenv("BROWSER", str(browser))
-    monkeypatch.setattr(present, "server_command", present.SERVER_COMMAND)
+    # `metab ROOT` searches upward from the default port, which a parallel worker's
+    # server can take between this server's probe and its bind; an ephemeral port
+    # starts the search where no fixed-port server is.
+    monkeypatch.setattr(
+        present, "server_command", (*present.SERVER_COMMAND, "--port", str(_free_port()))
+    )
     monkeypatch.setattr(present, "server_log_directory", lambda: str(tmp_path))
 
     target = resolve_target(str(root), "README.md", local=False)
@@ -1314,12 +1321,41 @@ def test_doctor_reports_the_app_auto_finds(monkeypatch: pytest.MonkeyPatch, home
             "bundle_path": str(bundle),
             "code": "app_found",
             "reason": "the app takes a target",
+            "minimum_metab": None,
         },
     }
     assert report.line == (
         f"metab --doctor: open_in auto (default); the app: {bundle} ({DEV_BUNDLE_ID})"
     )
     assert report.problems == ()
+    assert (report.app_path, report.app_minimum_metab) == (str(bundle), None)
+
+
+@pytest.mark.parametrize(
+    ("declared", "minimum"),
+    [
+        ("0.13.0", "0.13.0"),
+        # Only a nonempty string names a release: anything else is no minimum.
+        ("", None),
+        (13, None),
+        (["0.13.0"], None),
+    ],
+)
+def test_doctor_reads_the_minimum_metab_the_app_found_declares(
+    monkeypatch: pytest.MonkeyPatch, home: Path, declared: object, minimum: str | None
+) -> None:
+    """The `metab` check of `--doctor` compares this `metab` with it (`cli/doctor.py`)."""
+
+    bundle = _installed(home, {**_CURRENT_INFO, MINIMUM_METAB_KEY: declared})
+    _lookup_from(monkeypatch, {DEV_BUNDLE_ID: bundle})
+    monkeypatch.delenv(BUNDLE_ID_ENV, raising=False)
+
+    report = doctor_open_in()
+
+    app = report.section["app"]
+    assert isinstance(app, dict)
+    assert app["minimum_metab"] == minimum
+    assert (report.app_path, report.app_minimum_metab) == (str(bundle), minimum)
 
 
 @pytest.mark.parametrize(

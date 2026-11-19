@@ -142,14 +142,17 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
     once access is granted.
     Repeat with the repository in `~/Desktop` and in `~/Downloads`. How macOS treats a
     served root above the folder chosen in the open panel is untested.
-11. **The GitHub toggle.** Open a checkout of a repository on github.com whose branch is
-    pushed, such as this repository, and open `README.md`. The view header ends in two
-    marks, the gray Metabrowser mark pressed and the GitHub mark.
-    Click the GitHub mark: the default browser opens `README.md` on github.com at the
-    branch, and the app’s window still shows Metabrowser’s view.
-    On a branch that `origin` did not have at your last fetch, the GitHub mark’s tooltip
-    says so, and the link opens the commit.
-    A folder with no GitHub remote shows no toggle.
+11. **View on GitHub.** Open a checkout of a repository on github.com whose commit is
+    pushed, such as this repository, and open `README.md`. The header’s upper right
+    holds the GitHub mark, “View on GitHub”, and a chevron.
+    Click View on GitHub: a popover below the button shows `README.md` on github.com at
+    the commit, and the window behind it still shows Metabrowser’s view
+    ([View on GitHub](#view-on-github) checks the popover).
+    Open the chevron’s menu: Copy Link puts the same address on the clipboard; Open in
+    Browser opens it in the default browser, and no popover opens.
+    The same button is in the same place on a folder, a pull request’s page, and a
+    commit’s page. A file you have edited and not committed shows none, and a folder with
+    no GitHub remote shows none and leaves no gap for one.
 12. **Hidden folders.** In File > Open Folder…, press Command-Shift-G and go to
     `/tmp/mb-check`: the panel lists `.hidden` without Command-Shift-Period, and
     choosing it opens it.
@@ -358,6 +361,218 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
     then `.md`, shows a reason that names U+3164 and `%E3%85%A4` under the field, and no
     window opens.
 
+## View on GitHub
+
+With the development build open on a checkout of this repository at a pushed commit,
+`README.md` shown, and `APP_ID` and `REPO` set as in [GitHub Links](#github-links).
+Start signed out: choose Metabrowser > Clear GitHub Data… and Clear.
+
+1. **The popover.** Scroll `README.md` a little, then click View on GitHub.
+   A popover opens below the button, pointing at it, over most of the window, with a
+   one-line header: Back, Forward, `github.com/jlevy/metabrowser/blob/COMMIT/README.md`
+   in gray, with `COMMIT` the checkout’s commit, Copy Link, and Open in Browser.
+   Behind it, the page has not moved.
+   Escape closes it; open it again and Command-W closes it, not the window; open it
+   again and a click on the page outside it closes it.
+   Make the window larger and open it again: the popover is larger.
+2. **It keeps its place for a while.** In the popover, follow a link to `docs/` on
+   github.com, close the popover, and open it again at once: it is still at `docs/`, and
+   Back returns to `README.md`. Close it, wait longer than
+   `GitHubPopoverState.keptAfterClosing`, and open it: it loads `README.md` again, with
+   Back dimmed. Open `CHANGELOG.md` in the page and click View on GitHub: the popover
+   shows `CHANGELOG.md`. Turn Wi-Fi off, open `CHANGELOG.md`’s parent folder in the
+   page, and click View on GitHub: the header says the page did not load.
+   Turn Wi-Fi on, close the popover, and open it again: the folder loads; do it again
+   offline and press Command-R once back online: it loads too.
+   On a pull request, type a comment without sending it, close the popover, wait longer
+   than `keptAfterClosing`, and open it: the comment is still there.
+3. **The header and the menus.** With the popover open, Command-[ and Command-] go back
+   and forward in it, Command-R reloads it, and Command-+ zooms it; Command-0 returns it
+   to actual size. The page behind keeps its own zoom, and a new tab opens at the page’s
+   remembered zoom, not the popover’s. File > Print and Edit > Find are dimmed.
+   The header’s Copy Link puts the shown github.com address on the clipboard; Open in
+   Browser opens it in the default browser and closes the popover.
+4. **Links, downloads, and drops.** In the popover, a link in the README to another site
+   opens in the default browser, and the popover stays where it was.
+   Command-click on a github.com link opens it in the default browser.
+   A file’s Raw button shows the raw file in the popover, on raw.githubusercontent.com.
+   Download ZIP, from the repository’s Code menu, opens the default browser, which
+   downloads it. Signed in, drag a screenshot from Finder onto a pull request’s comment
+   box in the popover: GitHub attaches it, and Metabrowser opens no folder.
+   Click “Paste, drop, or click to add files” under the same box: a file panel opens
+   over the popover, which stays open, and the file chosen is attached.
+   Edit one of your own comments, change it, and click Cancel: GitHub asks whether to
+   discard the change, over the popover, and Cancel there keeps the edit.
+5. **Only the button.** With the popover open,
+   `open -b "$APP_ID" "$REPO/blob/main/README.md"` brings the window forward at that
+   page, and the popover closes.
+   A github.com link in a Markdown page, which is not the button, opens in the default
+   browser.
+6. **Sign in once.** In the popover, sign in to github.com with a password and the
+   two-factor code. Open a second folder of a repository on github.com as a tab, and a
+   third in a window of its own (Settings > Open folders in), and click View on GitHub
+   in each: both are signed in.
+   Quit Metabrowser, open it again, open `README.md`, and click View on GitHub: still
+   signed in. The default browser’s own sign-in did not change.
+   Note whether a passkey or a security key is offered and works, and what an
+   organization’s single sign-on does; neither is checked yet.
+7. **Switching and closing folders.** With Settings > Open folders in set to Windows,
+   open a second checkout of a repository on github.com, so two such folders are open,
+   and show the first in a window.
+   With the popover open, press Shift-Command-O and choose the second folder: the window
+   shows it, and no popover is left over it.
+   Click View on GitHub there, go to a pull request in the popover, and type a comment
+   without sending it. Switch the window to the first folder and back to the second
+   within `GitHubPopoverState.keptAfterClosing`, and click View on GitHub: the comment
+   is still there. With the popover open, choose File > Close Folder: the folder closes,
+   and the popover with it.
+8. **Clear GitHub Data.** Metabrowser > Clear GitHub Data… asks first, with Cancel the
+   default: Return keeps the sign-in.
+   Clear signs you out: an open popover reloads, signed out, and so does every other
+   folder’s popover the next time it opens, in a window or in the background.
+   Metabrowser’s own settings, such as its theme, are unchanged, and so is
+   `gh auth status`.
+
+## Switching Folders
+
+**Not yet run.** These steps were written with the folder-switching change and have not
+yet been run on a Mac.
+
+```shell
+APP="$PWD/apps/macos/build/dev/Metabrowser.app"
+mkdir -p /tmp/mb-check/{a,b,c,d}
+```
+
+Set Settings > Open folders in to Windows and close every window.
+Open `c` and close its window, then `d` and close its window, so both are recent and
+neither is open. Then open `a`, then `b`, each with `open -a "$APP" /tmp/mb-check/NAME`,
+so each has a window of its own.
+Each step starts where the one before it ends.
+
+1. **The title.** Each title reads its folder with a small chevron after it, dim at rest
+   and darker under the pointer, where a rounded fill appears behind the title and
+   chevron; both dim in a window that is not main, in light and dark mode.
+   A long name in a narrow window truncates before the chevron, never under it.
+2. **Click and drag.** A click on `a`’s title opens the chooser under it; a drag from
+   the title moves the window and opens nothing; Command-click and right-click open the
+   path menu; a double-click on the title bar outside the title still zooms.
+   Pressing and releasing just above or just below the title’s hover surface opens no
+   chooser, and a double-click there does the title bar’s action.
+   Dragging the title of a window that is not key, and of a Metabrowser window behind
+   another app’s window, moves the window; a click there instead brings the window
+   forward and opens the chooser.
+3. **The chooser.** In `a`’s window it lists Open (`a` checked, then `b` subtitled “In
+   another window”), Recent (starting with `d`, then `c`, subtitled with their paths),
+   Open Folder…, Open URL…, Switch Folder… (Shift-Command-O), and Close Background
+   Folders, disabled. Each folder shows the page’s folder glyph, and a GitHub repository
+   among the recent ones the cloud mark; File > Open Recent and the Dock icon’s menu
+   show the same marks on their rows.
+   Holding Option turns each row into “Open … in New Window”.
+   Escape closes it.
+4. **A folder another window shows.** Choosing `b` in `a`’s chooser brings `b`’s window
+   forward and changes nothing in `a`’s.
+5. **A recent folder, in place.** In `a`’s window choose `c`: the same window, at the
+   same frame and in the same Space, shows `c`, its server starts, and the log says `a`
+   stays open in the background.
+6. **Back, instantly.** Choose `a` from the chooser: its page shows at once, where you
+   left it, with no reload and no new server (`pgrep -f -- "--no-open"` counts three).
+   `c` is now in the background.
+7. **Option.** Option-choosing `c`, in the background, moves its page into a new window.
+   In `a`’s window, Option-choosing `a` opens a second window on it; Command-W closes
+   that second window, and `a` stays open in its first.
+8. **Close Background Folders.** In `c`’s window choose `d`, so `c` is in the
+   background. The chooser’s Close Background Folders is now enabled, and choosing it
+   stops `c`’s server (`pgrep -fl 'metab /private/tmp/mb-check/c'` lists nothing) and
+   removes `c` from Open.
+9. **Close Folder.** In `d`’s window, with no folder in the background, File > Close
+   Folder closes the window and stops `d`’s server.
+   In `b`’s window choose `c`, so `b` is in the background: File > Close Folder there
+   shows `b` in that window again and stops `c`’s server.
+10. **Close Folder across windows and tabs.** Set Settings > Open folders in to Tabs,
+    Option-choose `a` in `b`’s window, which adds a tab of `a` to it, and select `b`’s
+    tab again, so `a`’s tab is hidden; set the setting back to Windows, and
+    Option-choose `a` in `a`’s window for a second window on it.
+    With no folder in the background, File > Close Folder in `a`’s first window closes
+    both of `a`’s windows and its hidden tab, leaves `b`’s window with only `b`’s tab,
+    and stops `a`’s server.
+    Open `a` again and give it a second window and a hidden tab the same way, then open
+    `c` and choose `d` in its window, so `c` is in the background.
+    File > Close Folder in `a`’s first window now shows `c` in one of the windows that
+    showed `a`, closes the others and the hidden tab, and stops `a`’s server; no window
+    shows `a`. Then close every window but `b`’s, and open `a` again.
+11. **Switch Folder…, there and back.** Click `a`’s window and choose `c` from its
+    chooser, so `a` is in the background.
+    Shift-Command-O opens the panel over the window, centered a little below its title,
+    with an empty field that has the focus.
+    It lists `a` first and selected, then `b` subtitled “In another window”, then the
+    recent folders, and last `c`, checked.
+    Each row shows the page’s folder glyph, the selected row is drawn in the accent
+    color, and the check mark sits at the row’s trailing edge.
+    Return shows `a` in the window at once, as in step 6; Shift-Command-O, then Return,
+    shows `c` again.
+12. **The panel’s keys.** In `c`’s window press Shift-Command-O, then:
+    - Down twice, then Up, selects `b`, the first recent folder, then `b` again; Up on
+      the first row and Down on the last stay put.
+    - Typing `check/d` lists only `d`, selected.
+      Command-Delete clears the field, closes nothing, and lists every row again with
+      the first selected.
+    - Type `check/d` again and press Tab, then Shift-Tab: the field keeps the focus, and
+      Delete still edits it and refilters.
+      Command-Delete clears it.
+    - Command-click the selected row: it stays selected.
+      Click `b`’s row once, then press Return: the panel closes and `b`’s window comes
+      forward.
+    - Click `c`’s window, press Shift-Command-O, then Escape: the panel closes.
+      Shift-Command-O, then Control-O: no window opens; Escape closes the panel.
+      Shift-Command-O, then a click in `b`’s window: the panel closes.
+13. **A new window from the panel.** In `c`’s window press Shift-Command-O, and
+    Option-Return with `a` selected: `a`, which was in the background, moves its page
+    into a new window, as in step 7.
+14. **Closing from the panel.** In `b`’s window press Shift-Command-O. With the field
+    empty and no folder in the background, Command-Delete on the selected first row,
+    `a`, closes `a`’s window and stops its server, and the panel stays open, no longer
+    listing `a` as open.
+    Click `b`’s own row, last and checked, and press Command-Delete: `b`’s window
+    closes, and the panel with it.
+    In `c`’s window choose `d`, so `c` is in the background, and press Shift-Command-O;
+    click `d`’s own row, last and checked, and press Command-Delete: the window shows
+    `c`, `d`’s server stops, and the panel stays, listing `c` checked.
+15. **Folders closed under the panel.** In `c`’s window choose `d`, so `c` is in the
+    background, and press Shift-Command-O. With the panel open, choose File > Close
+    Folder in the menu bar: the window shows `c`, and the panel stays, listing `c`
+    checked and `d` no longer open.
+    File > Close Folder again closes the window, and the panel with it.
+16. **Sheets, full screen, and the screen’s edges.** Open `a`. With File > Print…’s
+    sheet open over its page, View > Switch Folder… and File > Close Folder are
+    disabled, and Shift-Command-O beeps and opens no panel; if a click on the title
+    still opens the chooser, choosing a recent folder in it beeps and opens that folder
+    in a window of its own, since this window cannot switch while the sheet is open.
+    Cancel the sheet, Option-choose `a` for a second window on it, and open the print
+    sheet in that window: File > Close Folder in `a`’s first window beeps and changes
+    nothing. Cancel the sheet and close the second window.
+    With the window in full screen (View > Enter Full Screen), Shift-Command-O opens the
+    panel over it, in its Space.
+    Leave full screen, make the window about 300 points tall, and drag it to the bottom
+    of the screen and partly past its right edge: Shift-Command-O opens the panel wholly
+    on the screen.
+17. **VoiceOver.** With VoiceOver on, the title reads as a pop-up button with the
+    folder’s name; VO-Space and VO-Shift-M on it each open the chooser, and VoiceOver
+    lands in it; the Actions rotor offers Show Path, which opens the path menu.
+    In the Switch Folder panel, VoiceOver reads the selected row as the panel opens and
+    each time Up, Down, or typing moves the selection: its name, its location or “In
+    another window”, and “shown in this window” for this window’s folder.
+18. **Restore.** In `a`’s window choose `b`, so `a` is in the background, then quit and
+    reopen: `a` is back in the chooser’s Open section, and its server starts only when a
+    window shows it (`pgrep -fl 'metab /private/tmp/mb-check/a'` lists nothing until
+    then).
+19. **No window.** In the window choose `c`, so `a` and `b` are both in the background,
+    and close the window, which closes `c`: no window is left.
+    A click on the Dock icon brings `b`, the folder shown last, forward in a window.
+    Close that window, which closes `b`, then quit and reopen: the saved session held
+    only `a`, in the background, and the relaunch brings it forward in a window.
+20. **A repository’s title.** Open a GitHub repository, as in
+    [GitHub Links](#github-links): a Control-click on its window’s title opens nothing.
+
 ## Print and Drops
 
 `node webkit-gate/run.mjs --checks`, from `apps/macos`, scripts these in the app’s web
@@ -371,6 +586,42 @@ Markdown file open:
 3. **A folder dragged from Finder onto the page** opens in a window of its own.
 4. **A file dragged onto the page** opens at its page, in the open folder that holds it
    or else in its own folder.
+
+## Menu Actions and Closing a Window
+
+A window shows its folder’s page (`FolderPage`), and the menus’ page actions are
+nil-targeted, so they reach the page by two routes
+([Windows](../architecture/arch-macos-app.md#windows)): the responder chain while the
+focus is in the page, and the window controller while the window itself is first
+responder.
+What each action does is unit-tested (`PageReloadTests`), but not which object
+AppKit sends it to: asking AppKit (`NSApp.target(forAction:to:from:)`) needs a key
+window, which a test process gets only by taking the focus from whoever is using the
+Mac. Nor is when AppKit releases a window’s controller, since no test target builds the
+app’s windows. With the folders and the app log from Files, Tabs, Recents, and Restore,
+after its check 1, so that `a`’s window shows `deep.md`, opened after `notes.md`:
+
+1. **Back, Forward, and Reload.** View > Back
+   (Command-[) shows `notes.md`, View > Forward (Command-]) shows `deep.md` again, and
+   View > Reload Page (Command-R) reloads it in place.
+2. **Find and zoom.** Command-F opens the find bar over the page, typing `deep`
+   highlights it, and Command-G moves to the next match.
+   Zoom In (Command-=) and Zoom Out (Command-Minus) zoom the page, and Actual Size
+   (Command-0) restores it.
+3. **The server’s items.** File > Reveal Server Log shows `a`’s log in Finder, File >
+   Open in Default Browser opens the page in the default browser, and File > Restart
+   Server (Option-Command-R) starts `a`’s server again, after which the window shows
+   `deep.md`.
+4. **The window as first responder.** Stop `a`’s server without ending it (`kill -STOP`
+   the pid `pgrep -f 'metab /private/tmp/mb-check/a'` prints), then Command-click a link
+   in the page. The new tab, whose page never loads, so its window stays first responder,
+   says “The server stopped answering” within `SupervisorPolicy.healthDeadline` and then
+   `shutdownGrace`. View > Reload Page is enabled there, and Command-R does what Retry
+   does: the server starts again, and the tab shows the clicked page.
+5. **Closing.** Close the new tab (Command-W):
+   `pgrep -fl 'metab /private/tmp/mb-check/a'` still lists `a`’s server, which the other
+   tab shows. Close that tab too, and within `SupervisorPolicy.shutdownGrace` it lists
+   none. Restore, check 5, covers what a quit saves.
 
 ## Presenting From metab
 
@@ -449,6 +700,54 @@ present() {
     `metab "$folder" --present --open-in browser --format json`; nothing opens and no
     server starts (`pgrep -f metabrowser.cli.main` finds none).
     Remove the line after.
+
+## Help > Check Setup…
+
+How the app reads `metab --doctor --json` is unit tested (`DoctorReportTests`, which
+reads the doctor’s transcript, and `LiveMetabTests` against a real `metab`); these check
+the window. Choose the checkout’s `.venv/bin/metab` in Settings first.
+
+```shell
+real="$PWD/.venv/bin/metab"
+stand_in="$HOME/.metab-check-setup"
+mkdir -p "$stand_in"
+```
+
+1. **A clean report.** Help > Check Setup…. Within seconds the window names the
+   development build, the oldest `metab` it runs, and the checkout’s `metab`, then rows
+   for Plugins, Opening from a terminal, metab, Git, Configuration, Cache, and GitHub
+   CLI, each marked ok.
+   The metab row’s app detail names this development build and the `metab` it runs, even
+   with a release app installed too.
+   Copy Report, then `pbpaste` prints the same rows as text under the two header lines.
+   Settings > Check Setup… brings the same window forward.
+
+2. **A problem with its row.** Choose a stand-in that points the cache somewhere `metab`
+   refuses:
+
+   ```shell
+   printf '#!/bin/sh\nMETABROWSER_CACHE_DIR=relative exec "%s" "$@"\n' "$real" > "$stand_in/metab"
+   chmod 755 "$stand_in/metab"
+   ```
+
+   then Settings > Choose metab… and `$stand_in/metab`. Check Again: the heading says
+   `metab` found problems, Cache is marked as a problem with the override’s message, and
+   Plugins stays ok.
+
+3. **No report.** Replace the stand-in with one whose doctor fails:
+
+   ```shell
+   printf '#!/bin/sh\ncase "$*" in\n*--doctor*) echo boom; exit 3;;\nesac\nexec "%s" "$@"\n' "$real" > "$stand_in/metab"
+   ```
+
+   and Check Again. The window says `metab --doctor --json` printed no answer (exit
+   status 3) and shows `boom`; Copy Report includes both.
+
+4. **No metab, then one.** In Settings, forget the chosen `metab` so none is selected,
+   and Check Again: the window says none is selected, and Check Again stays enabled.
+   Choose `$real` in Settings, then Check Again in the open window: it shows the clean
+   report without reopening it from the Help menu.
+   Then `rm -r "$stand_in"`.
 
 ## Setup Flows
 

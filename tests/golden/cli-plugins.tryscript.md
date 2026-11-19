@@ -20,6 +20,8 @@ stable; the absolute checkout prefix of each plugin’s `static_root` is elided 
 preference, and the app it finds; this file sets `METABROWSER_OPEN_IN=browser`, which
 looks for no app, so the report is the same on every machine.
 `tests/golden/cli-present-browser.txt` shows what it finds with a stand-in app.
+The setup checks that end the report depend on the host, so they are elided here
+(`...`); `cli-doctor.tryscript.md` pins them with a stand-in Git.
 
 ## Test: --plugins lists every discovered plugin
 
@@ -439,9 +441,10 @@ $ metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
 metab --doctor: 11 plugin(s) OK
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
-  gh: [FAKE_GH] (version 2.98.0)
+  gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
   scopes: gist, read:org, repo, workflow
+...
 ? 0
 ```
 
@@ -471,8 +474,10 @@ $ metab --doctor --json 2>/dev/null
     "state": "ok",
     "message": "GitHub CLI is signed in to github.com as octo-reader.",
     "fix": null,
+    "remedy": null,
     "gh_path": "[FAKE_GH]",
     "gh_version": "2.98.0",
+    "gh_minimum": "2.81.0",
     "account": "octo-reader",
     "token_source": "keyring",
     "scopes": [
@@ -481,7 +486,8 @@ $ metab --doctor --json 2>/dev/null
       "repo",
       "workflow"
     ]
-  }
+  },
+...
 }
 ? 0
 ```

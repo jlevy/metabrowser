@@ -17,6 +17,9 @@ on:
       # metab's half of handing the app a target, whose LaunchServices lookup runs here.
       - "src/metabrowser/cli/present.py"
       - "tests/test_present.py"
+      # What metab answers the app, which the app's own readers are held to
+      # (AppContractTests): a change to it is a change the app must still read.
+      - "tests/golden/app-contract.txt"
   pull_request:
     paths:
       - "apps/macos/**"
@@ -25,6 +28,9 @@ on:
       # metab's half of handing the app a target, whose LaunchServices lookup runs here.
       - "src/metabrowser/cli/present.py"
       - "tests/test_present.py"
+      # What metab answers the app, which the app's own readers are held to
+      # (AppContractTests): a change to it is a change the app must still read.
+      - "tests/golden/app-contract.txt"
 
 permissions:
   contents: read

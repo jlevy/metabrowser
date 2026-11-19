@@ -165,8 +165,8 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // As BrowserWindowController.pagePrints: the page's window.print() reaches
-        // pageAskedToPrint, which answers it as the app does.
+        // As FolderPage.pagePrints: the page's window.print() reaches pageAskedToPrint,
+        // which answers it as the app does.
         let pagePrints = PagePrintRequests { [weak self] _, frame in self?.pageAskedToPrint(frame) }
         self.pagePrints = pagePrints
         let configuration = WebConfiguration.make(pagePrints: pagePrints)
@@ -364,9 +364,9 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         exit(0)
     }
 
-    /// The app's answer to the page's Print button (`BrowserWindowController`'s
-    /// `pageAskedToPrint`): the same policy, then File > Print's path. Only the print check
-    /// prints; another mode records the request alone.
+    /// The app's answer to the page's Print button (`FolderPage.pageAskedToPrint`): the
+    /// same policy, then File > Print's path. Only the print check prints; another mode
+    /// records the request alone.
     func pageAskedToPrint(_ frame: WKFrameInfo) {
         let sheetOpen = window?.attachedSheet != nil
         let allowed = PagePrintRequests.allows(frame, under: policy, sheetOpen: sheetOpen)

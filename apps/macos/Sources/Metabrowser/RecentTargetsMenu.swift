@@ -1,6 +1,5 @@
 import AppKit
 import ShellCore
-import UniformTypeIdentifiers
 
 /// File > Open Recent and the Dock icon's menu, both drawn from `metab`'s recent targets
 /// (`RecentTargets`).
@@ -30,10 +29,6 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
         }
     }
 
-    /// The symbols' size as a menu item's text size, so each keeps its own proportions;
-    /// forcing a square image box would squash the folder, which is wider than it is tall.
-    static let symbolConfiguration = NSImage.SymbolConfiguration(
-        pointSize: NSFont.menuFont(ofSize: 0).pointSize, weight: .regular)
     private let setup: () -> RuntimeSetup?
     private let open: (URL) -> Void
     private let opensURLs = RecentTargets.opensURLs(infoDictionary: Bundle.main.infoDictionary ?? [:])
@@ -171,7 +166,10 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
                 item.target = self
                 item.representedObject = Carried(entry)
                 item.toolTip = entry.toolTip
-                item.image = Self.icon(for: entry.target.mode)
+                // The shared mark, the page's own glyph (`RootMark`), never read from the
+                // entry's path: a look at a listed folder can raise a privacy prompt nobody
+                // asked for.
+                item.image = RootMark(entry.target.mode).image
                 menu.addItem(item)
             case .empty:
                 let none = NSMenuItem(title: "No Recent Items", action: nil, keyEquivalent: "")
@@ -187,34 +185,28 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
         }
     }
 
-    /// A folder for a folder and a cloud for a mirror: SF Symbols outlines, drawn as
-    /// templates in the menu's own ink so the two read as one set, rather than Finder's
-    /// colored folder beside a line-drawn cloud. Neither is read from the entry's own path:
-    /// a look at a listed folder can raise a privacy prompt nobody asked for.
-    private static func icon(for mode: RecentTarget.Mode) -> NSImage? {
-        switch mode {
-        case .folder: folderSymbol
-        case .mirror:
-            NSImage(systemSymbolName: "cloud", accessibilityDescription: "Mirror")?
-                .withSymbolConfiguration(symbolConfiguration)
-        }
-    }
-
-    /// The folder outline at the menu's size, shared with the title's path menu.
-    static var folderSymbol: NSImage? {
-        NSImage(systemSymbolName: "folder", accessibilityDescription: "Folder")?
-            .withSymbolConfiguration(symbolConfiguration)
-    }
-
     @objc private func openRecent(_ sender: NSMenuItem) {
         guard let entry = (sender.representedObject as? Carried)?.entry else { return }
-        // Looked at only now that the user chose it. A folder that is gone gets the app's
-        // usual message from `open`, and leaves the list.
-        let gone = entry.target.mode == .folder && !FileChecks.isDirectory(entry.target.root)
         // From the Dock's menu the app may be in the background.
         NSApp.activate()
-        open(entry.url)
-        if gone { change(RecentTargets.forgetArguments(entry.target.root)) }
+        openListed(entry.url, with: open)
+    }
+
+    /// The list's last answer, which the folder chooser lists; a newer one is asked for,
+    /// for the next time.
+    func listed() -> [RecentTargets.Item] {
+        refresh()
+        return items
+    }
+
+    /// Opens `url`, an entry of the list, with `opening`. The folder is looked at only now
+    /// that the user chose it: one that is gone gets the app's usual message from
+    /// `opening`, and leaves the list.
+    func openListed(_ url: URL, with opening: (URL) -> Void) {
+        let folder = url.isFileURL ? FolderSession.path(of: url) : nil
+        let gone = folder.map { !FileChecks.isDirectory($0) } ?? false
+        opening(url)
+        if gone, let folder { change(RecentTargets.forgetArguments(folder)) }
     }
 
     @objc private func clearRecent(_ sender: Any?) {

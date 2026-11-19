@@ -412,8 +412,11 @@ def test_row_text_shares_one_baseline() -> None:
                 assert applying, f"{label}: text slot .{name} does not opt in to the baseline"
             elif child.role == "box":
                 assert not applying, f"{label}: box .{name} is baseline-aligned by {applying}"
-    # A view header's rows each set their text at one size, so they center it and need no
-    # baseline (docs/design-system.md, "View Headers"): no baseline rule reaches them.
+    # A view header's eyebrow sets its text at one size and centers it, and its heading row
+    # sets the title and the metadata line after it as one run of inline text, so the line
+    # sits on the title's baseline as text does (docs/design-system.md, "View Headers"). No
+    # flex baseline rule reaches either: an item holding only a pending skeleton, aligned
+    # as a flex item, would sit the skeleton's bottom edge on the baseline.
     for selector, _is_items in rules:
         assert not re.search(r"\.(?:file-header|view-header)", selector), (
             f"{selector} aligns a view header's text to a baseline"
@@ -1549,6 +1552,7 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".source-ref-selector-panel"): "a chip's menu",
     ("styles.css", ".chip"): "a chip",
     ("styles.css", ".chip-menu-count"): "a chip menu's count",
+    ("styles.css", ".counterpart-status"): "a split button's result, where its menu was",
     ("styles.css", ".filter-check"): "a filter",
     ("styles.css", ".chip-clear"): "a chip's control",
     ("styles.css", ".file-header-badge"): "a badge",
@@ -1915,12 +1919,15 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
         '" tree-container disclosure-toggle collapsed"',
         "'<div class=\"tree-item tree-folder disclosure-toggle collapsed'",
         'className: "filter-drawer-toggle disclosure-toggle"',
+        '"icon-btn nav-collapse-toggle disclosure-toggle"',
     ),
     "charts.js": ("'<div class=\"tally-node disclosure-toggle'",),
     "filter-controls.js": ('class="chip chip-menu-trigger disclosure-toggle"',),
     "source-ref-selector.js": (
         '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
     ),
+    # The View on GitHub button's chevron, which opens its menu.
+    "plugin-sdk-views.js": ('"chip chip-menu-trigger counterpart-more disclosure-toggle"',),
     "agent_log/index.js": ('class="log-event-header disclosure-toggle"',),
     "structured/tree.js": ('" srow-container disclosure-toggle"',),
     "markdown/inert-toc.js": ('"kpress-toc-toggle disclosure-toggle"',),
@@ -1960,7 +1967,8 @@ _NOT_TOGGLES: dict[str, str] = {
     "overlay-layer.js": "a dialog's trigger, an icon or labelled button, is not a disclosure",
     "search-palette.js": "the search field is a combobox, and its text stays editable",
     "shell-keymap.js": "reads which filter dropdown is open, for its rows' letters",
-    "server.py": "the settings gear is an icon-only menu button with no chevron",
+    "nav-collapse.js": "reflects aria-expanded on the chevron server.py writes and app.js draws",
+    "server.py": "the gear has no chevron; the navigation chevron is .disclosure-toggle",
 }
 # Each chevron and `summary` a source builds, in source order, with the builder whose
 # element it goes into. Whitespace in a glyph is collapsed to one space.
@@ -1970,6 +1978,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ("${ICONS.toggle}", '" tree-container disclosure-toggle collapsed"'),
         ("icon: ICONS.toggle", 'className: "filter-drawer-toggle disclosure-toggle"'),
         ("ICONS.toggle +", "'<div class=\"tree-item tree-folder disclosure-toggle collapsed'"),
+        ("${ICONS.toggle}", '"icon-btn nav-collapse-toggle disclosure-toggle"'),
     ),
     "charts.js": (("ICONS.toggle +", "'<div class=\"tally-node disclosure-toggle'"),),
     "filter-controls.js": (("${menuChevron}", 'class="chip chip-menu-trigger disclosure-toggle"'),),
@@ -1977,6 +1986,12 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         (
             "MetabrowserIcons?.toggle ??",
             '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
+        ),
+    ),
+    "plugin-sdk-views.js": (
+        (
+            "MetabrowserIcons?.toggle ??",
+            '"chip chip-menu-trigger counterpart-more disclosure-toggle"',
         ),
     ),
     "agent_log/index.js": (("mb.icons.toggle +", 'class="log-event-header disclosure-toggle"'),),
@@ -2799,17 +2814,21 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert (title_icon["width"], title_icon["height"]) == ("1em", "1lh")
     title_glyph = github[".github-pull-title > .github-pull-state-icon svg"]
     assert (title_glyph["width"], title_glyph["height"]) == ("1em", "1em")
-    # Links take the link token rather than the browser's blue.
-    assert github[".github-pull-header a"]["color"] == "var(--link)"
-    # A GitHub action (View on GitHub, a check's action on GitHub, a conversation commit
-    # hash) is quiet: muted at rest, the link token on hover and focus. The header's and a
-    # check's are at their row's size; a commit hash is one step below its row (below).
-    for place in (".github-pull-header", ".github-pull-checks", ".github-pull-commit"):
+    # Links take the link token rather than the browser's blue, all but the corner's View on
+    # GitHub button, which is a chip and takes a chip's ink (mb-4wqh).
+    assert github[".github-pull-header a:not(:where(.view-header-end *))"]["color"] == (
+        "var(--link)"
+    )
+    # A GitHub action (a check's action on GitHub, a conversation commit hash) is quiet:
+    # muted at rest, the link token on hover and focus. A check's is at its row's size; a
+    # commit hash is one step below its row (below). View on GitHub is the header corner's
+    # button, a chip (mb-4wqh), and not one of them.
+    for place in (".github-pull-checks", ".github-pull-commit"):
         action = f"{place} .github-pull-external-action"
         assert github[action] == {"color": "var(--muted)"}, action
         for state in (":hover", ":focus-visible"):
             assert github[action + state]["color"] == "var(--link)", action + state
-    assert page.count('"github-pull-external-action"') == 2, "the header's and a check's"
+    assert page.count('"github-pull-external-action"') == 1, "a check's"
     assert '"github-pull-commit-id git-commit-sha github-pull-external-action"' in page
     # A check's own site is an ordinary link, so it never reads as the description after it.
     assert github[".github-pull-checks a"]["color"] == "var(--link)"

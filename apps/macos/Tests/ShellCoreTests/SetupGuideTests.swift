@@ -9,11 +9,11 @@ import Testing
 
     private func guide(
         tried: [CandidateOutcome] = [], uv: String? = nil, loginPath: [String]? = nil, homebrew: Bool = false,
-        released: Bool = true, refused: [UvRefusal] = []
+        released: Bool = true, refused: [UvRefusal] = [], install: MetabInstall = .uvTool
     ) -> SetupGuide {
         SetupGuide(
             tried: tried, uv: uv, binDirectory: bin, home: "/Volumes/Home", loginPath: loginPath, hasHomebrew: homebrew,
-            minimumIsReleased: released, refusedUv: refused)
+            minimumIsReleased: released, refusedUv: refused, install: { _ in install })
     }
 
     @Test func withoutUvItShowsBothInstallsInOrder() {
@@ -40,12 +40,35 @@ import Testing
     @Test func anOlderMetabIsUpgradedToTheFloor() {
         let old = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .tooOld(version: "0.12.0"))
         let steps = guide(tried: [old], uv: bin + "/uv", loginPath: [bin]).steps
-        #expect(steps == [.upgradeMetab(path: bin + "/metab", version: "0.12.0", inNewTerminal: false)])
+        #expect(steps == [.upgradeMetab(path: bin + "/metab", version: "0.12.0", install: .uvTool, inNewTerminal: false)])
         #expect(steps[0].command == "uv tool install --upgrade 'metabrowser>=0.13.0'")
         #expect(steps[0].title(home: "/Volumes/Home")
             == "Upgrade metab: ~/.local/bin/metab is metab 0.12.0, and Metabrowser needs 0.13.0 or later.")
         #expect(guide(tried: [old], uv: bin + "/uv").heading == "Metabrowser needs metab 0.13.0 or later")
         #expect(guide(uv: bin + "/uv").heading == "Metabrowser needs the metab command-line tool")
+    }
+
+    /// The upgrade uses the tool that installed the `metab` found, so it replaces that one
+    /// rather than adding a second install the app may not run (mb-bxli).
+    @Test func anOlderMetabIsUpgradedByTheToolThatInstalledIt() {
+        let old = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .tooOld(version: "0.12.0"))
+        let pipx = guide(tried: [old], uv: bin + "/uv", install: .pipx).steps
+        #expect(pipx[0].command == "pipx install --force 'metabrowser>=0.13.0'")
+        // pipx needs no uv, so no new Terminal window either.
+        #expect(pipx[0].note == nil)
+        // Nor does it install uv first.
+        #expect(guide(tried: [old], install: .pipx).steps.map(\.command) == [pipx[0].command])
+        let root = "/Volumes/Home/src/metabrowser"
+        let checkout = guide(tried: [old], uv: bin + "/uv", loginPath: [bin], install: .checkout(root: root)).steps
+        #expect(checkout[0].command == "git pull && make install")
+        #expect(checkout[0].note == "At the root of the checkout \(root):")
+        // `make install` runs uv.
+        let newTerminal = guide(tried: [old], uv: bin + "/uv", install: .checkout(root: root)).steps
+        #expect(newTerminal[0].note == "In a new Terminal window, so that it finds uv, at the root of the checkout \(root):")
+        #expect(guide(tried: [old], install: .checkout(root: root)).steps.first == .installUv(homebrew: false))
+        let other = guide(tried: [old], uv: bin + "/uv", install: .other).steps
+        #expect(other[0].command == "uv tool install --upgrade 'metabrowser>=0.13.0'")
+        #expect(other[0].note == "In a new Terminal window, so that it finds uv:")
     }
 
     /// mb-sugi: a development build of the minimum from before `--exit-on-eof`,
@@ -55,7 +78,7 @@ import Testing
         let version = "0.13.0.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"
         let old = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .tooOld(version: version))
         let upgrade = guide(tried: [old], uv: bin + "/uv", loginPath: [bin]).steps
-        #expect(upgrade == [.upgradeMetab(path: bin + "/metab", version: version, inNewTerminal: false)])
+        #expect(upgrade == [.upgradeMetab(path: bin + "/metab", version: version, install: .uvTool, inNewTerminal: false)])
         #expect(upgrade[0].command == "uv tool install --upgrade 'metabrowser>=0.13.0'")
         #expect(upgrade[0].title(home: "/Volumes/Home")
             == "Upgrade metab: ~/.local/bin/metab is metab 0.13.0.dev38+5f0c2a1, built before --recent,"

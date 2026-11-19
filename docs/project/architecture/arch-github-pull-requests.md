@@ -75,7 +75,9 @@ account stop together.
 `gh_status.py` answers what GitHub work needs from `gh`: its path and version, the
 active account, the account’s token scopes, and one state with the step that fixes it.
 Its docstring tabulates the states.
-These read it:
+The step is `fix`, a command, page, or sentence for the text output, and `remedy`, the
+same step in the doctor checks’ `{text, command, url}` shape, which names a command only
+for one that runs as written, so a reader never parses `fix`. These read it:
 
 - `metab --doctor` prints it after the plugin verdict, and `--doctor --json` carries it
   as `github`. It never changes the exit status, since a machine without `gh` has

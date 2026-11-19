@@ -38,6 +38,7 @@ from metabrowser.builtin_plugins.github.pulls import PullDataError, open_pull_re
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
 from metabrowser.builtin_plugins.github.urls import (
     CANONICAL_HOST,
+    GithubCounterpartHost,
     GithubUrlReducer,
     parse_repository_url,
 )
@@ -49,7 +50,12 @@ from metabrowser.repository_context import RepositoryContext
 
 if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
-    from metabrowser.cache.providers import PullRequestFetch, PullRequestFile, PullRequestPin
+    from metabrowser.cache.providers import (
+        CounterpartHost,
+        PullRequestFetch,
+        PullRequestFile,
+        PullRequestPin,
+    )
     from metabrowser.cache.urls import FileAnchor, GitSource, ProviderUrlReducer
     from metabrowser.mirror_refresh import PullRequestSet
 
@@ -131,7 +137,7 @@ def _is_github_remote(url: str) -> bool:
     return url.startswith(_GITHUB_HTTPS)
 
 
-def _first_clone_limit_kb() -> int:
+def first_clone_limit_kb() -> int:
     """The environment's whole number of kilobytes above zero, or else the default."""
 
     raw = os.environ.get(MAX_FIRST_CLONE_ENV, "").strip()
@@ -208,10 +214,15 @@ class GithubProvider:
 
     def __init__(self) -> None:
         self._reducer = GithubUrlReducer()
+        self._counterpart = GithubCounterpartHost()
 
     @property
     def reducer(self) -> ProviderUrlReducer:
         return self._reducer
+
+    @property
+    def counterpart(self) -> CounterpartHost:
+        return self._counterpart
 
     def git_config(self, remote_url: str) -> tuple[str, ...]:
         if not _is_github_remote(remote_url):
@@ -275,7 +286,7 @@ class GithubProvider:
             log.debug("skipped the size check for %s: unexpected answer", source.normalized)
             return
         size_kb = int(text)
-        limit_kb = _first_clone_limit_kb()
+        limit_kb = first_clone_limit_kb()
         if size_kb > limit_kb:
             raise RepositoryTooLargeError(
                 source.normalized,
@@ -341,4 +352,5 @@ __all__ = [
     "GithubProvider",
     "GithubSignInRequiredError",
     "credential_helper_args",
+    "first_clone_limit_kb",
 ]
