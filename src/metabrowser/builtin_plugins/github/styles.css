@@ -762,6 +762,43 @@
   white-space: pre-wrap;
   overflow-wrap: break-word;
 }
+/* A text whose Markdown is on its way (pull-page.js, `showPending`): its source keeps its
+   box out of sight, and past the shell's quiet period the box shows the loading blocks'
+   gray rows and pulse (`.recent-loading`, static/styles.css), so a text's first sight is its
+   render and never its Markdown source (mb-d59o). The source shows only once the render
+   will not come, with the notice that says why. */
+.github-pull-plain-pending {
+  position: relative;
+  visibility: hidden;
+}
+.github-pull-plain-pending::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 4px,
+    var(--tally-skeleton-bg) 4px,
+    var(--tally-skeleton-bg) calc(var(--ui-row-height) - 4px),
+    transparent calc(var(--ui-row-height) - 4px),
+    transparent var(--ui-row-height)
+  );
+  background-size: 70% 100%;
+  background-repeat: repeat-y;
+  animation:
+    mb-delayed-loading-reveal 0s linear var(--loading-state-delay) forwards,
+    tally-pending-pulse 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The rows keep their shape and contrast and stop pulsing, as the shell's skeletons do
+     (static/styles.css); the reveal stays, or the placeholder would never show. */
+  .github-pull-plain-pending::after {
+    animation: mb-delayed-loading-reveal 0s linear var(--loading-state-delay) forwards;
+    opacity: 0.7;
+  }
+}
 /* A text's type, spacing, tables, and code are KPress's, as in a Markdown file. The card's
    padding is the space around a text, so the first and last block have none of their own. */
 .github-pull-text .kpress-prose > :first-child {
@@ -1073,14 +1110,15 @@
 }
 /* The window bounds mounted PR rows; their full intrinsic height includes expanded
    file trees, so remounting a retained expansion preserves the scroll geometry. */
-/* A pull request's row is three lines and two targets (mb-lkkt, mb-d0a3). The row's link is
-   the first two: the state icon, in the tree's icon slot on the row's inset, and the title,
-   from the text column after it to the row's end, cut there; then the number's line, a stack
-   member's place, the number, and the author, "1/4 · #N · jlevy", in the title's column, with
-   the age at the row's end. A row in no stack is flush on the list's inset; only a stack's
-   members are indented, under their stack's row (mb-3vil). The third line is its change line
-   (`.github-pulls-change`, below), which holds the chevron in the same slot, under the state
-   icon, and the line's values in the text column, so the three lines' text starts at one x
+/* A pull request's row is three lines, one item, and two targets (mb-lkkt, mb-d0a3, mb-1z7j).
+   The row's link is the first two: the state icon, in the tree's icon slot on the row's
+   inset, and the title, from the text column after it to the row's end, cut there; then the
+   number's line, a stack member's place, the number, and the author, "1/4 · #N · jlevy", in
+   the title's column, with the age at the row's end. A row in no stack is flush on the list's
+   inset; only a stack's members are indented, under their stack's row (mb-3vil). The third
+   line is its change line (`.github-pulls-change`, below), which carries the chevron in the
+   same slot, under the state icon, and the line's values in the text column, so the three
+   lines' text starts at one x
    (`--tree-icon-slot`, docs/design-system.md, "Container Rows"). A stack's row keeps two
    slots, its chevron's and its Layers icon's (`.github-pulls-stack-row`). The row centers
    its boxes; the title is alone on the first line, and on the second the number's line and
@@ -1107,19 +1145,36 @@
   cursor: pointer;
   -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
-  /* The sticky filters do not cover a row brought into view. */
+}
+/* What a walk or a reveal brings into view is the whole item (pulls-panel.js, `itemElement`):
+   a pull request's three lines, or a stack's row. The sticky filters do not cover it. */
+.github-pulls-entry,
+.github-pulls-stack-row {
   scroll-margin-block-start: calc(var(--chip-height) + 12px);
 }
-.github-pulls-row:hover {
+/* One item, one ground (mb-1z7j): a pull request's three lines, its link and its change line,
+   are `.github-pulls-entry`, which hovers, takes the focus ring of the link inside it, and
+   carries the current mark as one block, as a Files row does (`.tree-item`): the hover's
+   `--hover-bg`, the -2px ring, and the current row's `--highlight-bg` with its bar down both
+   boxes' 2px edge. Its files, after it in the list item, are rows of their own. A stack's row
+   is one line and one item, and is its own ground. */
+.github-pulls-stack-row:hover,
+.github-pulls-entry:hover {
   background: var(--hover-bg);
 }
-.github-pulls-row:focus-visible {
+.github-pulls-stack-row:focus-visible,
+.github-pulls-entry:has(> .github-pulls-row:focus-visible) {
   outline: 2px solid var(--link);
   outline-offset: -2px;
   background: var(--hover-bg);
 }
-.github-pulls-row.selected {
+.github-pulls-entry > .github-pulls-row:focus-visible {
+  outline: none;
+}
+.github-pulls-entry:has(> .github-pulls-row.selected) {
   background: var(--highlight-bg);
+}
+.github-pulls-row.selected {
   border-left-color: var(--highlight-bar);
 }
 .github-pulls-row > :is(.github-pulls-meta, .github-pulls-title, .github-pulls-age) {
@@ -1255,12 +1310,13 @@
    chevron in the slot, and the title, the number's line, and the values in the text column,
    the chevron just before the values it discloses (mb-3vil). Under the title's start, the
    chevron put the values a slot and gap further in than the title's and the number's line's
-   text. It is the row's one child in the tree and a target of its own, the one that opens
-   and closes the changed files under it, as a folder's row does, so it hovers and takes the
-   focus ring on its own; the current row's mark carries onto it, so the pull request open
-   reads as one block. Its box is there from the row's first paint, whatever it holds, the
-   line, the shell's pending placeholder, or nothing, so nothing moves when the line
-   arrives. */
+   text. It is the line that carries the toggle, as a folder's line does, and the item's inner
+   target: a press anywhere on it opens and closes the changed files under the item, where a
+   press on the link's two lines opens the pull request (docs/design-system.md, "A Click on the
+   Toggle's Line Toggles"). It is no stop of its own: the item's hover, ring, and current mark
+   are its too (`.github-pulls-entry`, above). Its box is there from the row's first paint,
+   whatever it holds, the line, the shell's pending placeholder, or nothing, so nothing moves
+   when the line arrives. */
 .github-pulls-change {
   --github-pulls-change-line: calc(var(--ui-row-height) - 4px);
   display: grid;
@@ -1275,22 +1331,27 @@
   cursor: pointer;
   -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
-  scroll-margin-block-start: calc(var(--chip-height) + 12px);
 }
-.github-pulls-change:hover {
-  background: var(--hover-bg);
-}
-.github-pulls-change:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
-  background: var(--hover-bg);
-}
-.github-pulls-row.selected + .github-pulls-change-group > .github-pulls-change {
-  background: var(--highlight-bg);
+/* The current item's bar runs down its change line too. */
+.github-pulls-row.selected + .github-pulls-change {
   border-left-color: var(--highlight-bar);
+}
+/* The inner target's own hover, inside the item's: under the pointer, the line's chevron, the
+   toggle it carries, stands on a plate one step past the item's hover ground and takes the
+   text's ink, as an icon button does on a plain ground (`.icon-btn:hover`). The plate is the
+   chevron's slot alone, so the line's status inks keep the ground their contrast is held on
+   (`--hover-bg`, `--highlight-bg`): `--border` under them leaves the modified ink at 4.34:1
+   in the light theme. */
+.github-pulls-change:hover > .github-pulls-toggle {
+  background: var(--border);
+}
+.github-pulls-change:hover > .github-pulls-toggle > .toggle-chevron {
+  color: var(--text);
 }
 .github-pulls-change > .github-pulls-toggle {
   grid-column: 1;
+  /* The slot's square, which the inner hover's plate fills (above). */
+  height: var(--tree-icon-slot);
 }
 /* The line is one line at every pane width, as a stack's heading's is: where it has no room,
    its statuses and their dot give way first, whole, never cut short with an ellipsis, and its

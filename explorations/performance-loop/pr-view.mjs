@@ -40,8 +40,9 @@
 //          complete           the last of title and description_final, and of summary with
 //                             --expect-summary (a cache with a Git store: see --prepare-store)
 //   pulls  rows[n]            row #n's `a.github-pulls-row` on screen
-//          lines[n]           `li.github-pulls-item[data-number] > .github-pulls-change-group
-//                             > .github-pulls-change` with aria-label "Changed files: ..."
+//          lines[n]           `li.github-pulls-item[data-number] > .github-pulls-entry
+//                             > .github-pulls-change` (mb-1z7j; a build before it, in
+//                             `.github-pulls-change-group`) with aria-label "Changed files: ..."
 //          pending[n]         a `.tally-pending` in that change line, visibility visible
 //
 // Every 250 ms the recorder also asks GET /api/plugin/github/pulls-prefetch (a build from
@@ -321,7 +322,8 @@ const SAMPLER = `(() => {
       if (!(n in S.rows)) { continue; }
       shown++;
       const li = a.closest("li.github-pulls-item");
-      const c = li && li.matches("[data-number]") ? li.querySelector(":scope > .github-pulls-change-group > .github-pulls-change") : null;
+      // A pair's older build may hold the line in its own group, before mb-1z7j's item zone.
+      const c = li && li.matches("[data-number]") ? li.querySelector(":scope > .github-pulls-entry > .github-pulls-change, :scope > .github-pulls-change-group > .github-pulls-change") : null;
       if (li && li.querySelector(":scope > .github-pulls-change-group")) { S.changeGroup = true; }
       if (!c) { continue; }
       if (!(n in S.lines) && (c.getAttribute("aria-label") || "").startsWith("Changed files:") && onScreen(c)) { S.lines[n] = Math.round(t); }

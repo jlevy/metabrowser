@@ -207,6 +207,15 @@ def test_a_mirror_of_github_draws_the_tab_and_puts_it_in_front_at_its_addresses(
                 # slot holds the Pulls toolbar in its filters' place, never empty.
                 assert 'id="tab-files" data-tab-content="files" style="display: none"' in html
                 assert _toolbars(html) == {"files": False, "git": False, "pulls": True}, route
+                # Directly under the Pulls toolbar, and outside the scroller, the empty band
+                # the list's count and connection lines fill (pulls-panel.js), which shows
+                # only while that toolbar does.
+                assert re.search(
+                    r'id="nav-toolbar-pulls"[^>]*>.*?</div>\s*'
+                    r'<div class="nav-metadata-band" id="nav-metadata-pulls"></div>',
+                    html,
+                ), route
+                assert html.index('id="nav-metadata-pulls"') < html.index('id="tree-content"')
                 sidebar = html.split('id="tab-pulls"', 1)[1].split('id="preview-pane"', 1)[0]
                 assert sidebar.count('class="spinner spinner-sm"') == 1
                 assert sidebar.count("Fetching pull requests…") == 1

@@ -130,8 +130,8 @@ export function rowLineInput(change, breakdown) {
 }
 
 /**
- * The change line's item's accessible name: what it is, and the line in words once it is
- * shown, as a stack's row says its line after its label (`stackGroupHint`).
+ * The change line's accessible name, which describes its row: what it is, and the line in
+ * words once it is shown, as a stack's row says its line after its label (`stackGroupHint`).
  *
  * @param {string | null} words The line's `label`, or null while there is none.
  */

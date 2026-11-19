@@ -1008,26 +1008,28 @@ function twoTreesPage() {
   const filesTab = make("div", { id: "tab-files", "data-tab-content": "files" }, [
     make("div", { role: "tree", "aria-label": "Files" }, files),
   ]);
-  // The Pulls tab's list, as the panel paints it: a tree of anchors in items of no role.
+  // The Pulls tab's list, as the panel paints it: a tree of anchors in items of no role. A
+  // pull request's row is the tree's item, whose changed files are its children, as a
+  // folder's are (mb-1z7j).
   const pullRow = (number) =>
     make("a", {
       class: "github-pulls-row",
       href: `/pull/${number}`,
       role: "treeitem",
       "aria-level": "1",
+      "aria-expanded": "false",
       tabindex: number === 3900 ? "0" : "-1",
       "data-number": String(number),
     });
   const pulls = [3900, 3899, 3898].map(pullRow);
-  // Each row's third line, its change line: the row's one child item, which owns its changed
-  // files and alone toggles them (mb-h0ml).
+  // Each row's third line, its change line, under it in the item's one zone: the line that
+  // carries the toggle, the pointer's alone. It is no stop of the tree's and hidden from
+  // assistive technology, so Space on the row is the keyboard's way to its files, and the
+  // row's `aria-expanded` is their one state; the line only turns its chevron.
   const changeLines = [3900, 3899, 3898].map((number) =>
     make("div", {
       class: "github-pulls-change disclosure-toggle collapsed",
-      role: "treeitem",
-      "aria-level": "2",
-      "aria-expanded": "false",
-      tabindex: "-1",
+      "aria-hidden": "true",
       "data-number": String(number),
       "data-tree-id": `#${number}'s change line`,
     }),
@@ -1040,7 +1042,7 @@ function twoTreesPage() {
       make(
         "li",
         { role: "none" },
-        [row, make("div", { role: "group" }, [changeLines[index]])].concat(
+        [make("div", { class: "github-pulls-entry" }, [row, changeLines[index]])].concat(
           index === 0 ? [copyRef] : [],
         ),
       ),
@@ -1178,11 +1180,14 @@ function twoTreesPage() {
               return true;
             },
             toggleFiles(number) {
-              const row = changeLines.find((item) => Number(item.dataset.number) === number);
-              assert.ok(row, "Space identifies the actual focused change line");
+              const row = pulls.find((item) => Number(item.dataset.number) === number);
+              assert.ok(row, "Space identifies the actual focused pull request");
+              const line = changeLines.find((item) => Number(item.dataset.number) === number);
               const expanded = row.getAttribute("aria-expanded") !== "true";
               row.setAttribute("aria-expanded", String(expanded));
-              log.push(expanded ? "expanded changed files" : "collapsed changed files");
+              line.classList.toggle("expanded", expanded);
+              line.classList.toggle("collapsed", !expanded);
+              log.push(`${expanded ? "expanded" : "collapsed"} #${number}'s changed files`);
               return true;
             },
             moveFile(delta) {
@@ -1344,35 +1349,51 @@ async function twoTreesStory() {
   story["a Pulls row takes focus: each tree keeps its own Tab stop"] = page.tabStops();
   const beforeSpace = page.shell.address;
   const [firstPull, nextPull] = page.pulls;
-  const [firstChange, nextChange] = page.changeLines;
-  // On a pull request's own row, Space toggles nothing (mb-h0ml), and is consumed, so it does
-  // not scroll the list a page from under the focused row.
-  story["Space on a pull request's row toggles nothing"] = page.press(" ");
-  assert.equal(story["Space on a pull request's row toggles nothing"].handled, true);
-  assert.deepEqual(story["Space on a pull request's row toggles nothing"].did, []);
-  assert.equal(story["Space on a pull request's row toggles nothing"].address, beforeSpace);
-  assert.equal(firstChange.getAttribute("aria-expanded"), "false", "the row's files stay closed");
-  // Its change line, the row's child, takes Space.
-  firstChange.focus();
-  // A catalog refresh can move the roving tab stop without stealing DOM focus.
+  // A pull request's three lines are one item and one stop (mb-1z7j): Space on its row opens
+  // and closes its changed files in place, as Space on a folder's row does, and is
+  // consumed, so it does not scroll the list a page from under the focused row.
+  // A catalog refresh can move the roving tab stop without stealing DOM focus: Space is the
+  // focused row's.
   firstPull.setAttribute("tabindex", "-1");
   nextPull.setAttribute("tabindex", "0");
-  story["Space on its change line expands changed files in place"] = page.press(" ");
-  assert.equal(firstChange.getAttribute("aria-expanded"), "true", "Space expands its files");
+  story["Space on a pull request's row expands its changed files in place"] = page.press(" ");
+  assert.equal(firstPull.getAttribute("aria-expanded"), "true", "Space expands its files");
   story["holding Space leaves the tree open"] = page.press(" ", { repeat: true });
-  assert.equal(firstChange.getAttribute("aria-expanded"), "true", "a held Space does not toggle");
+  assert.equal(firstPull.getAttribute("aria-expanded"), "true", "a held Space does not toggle");
   story["Space again collapses changed files in place"] = page.press(" ");
-  assert.equal(firstChange.getAttribute("aria-expanded"), "false", "Space collapses its files");
+  assert.equal(firstPull.getAttribute("aria-expanded"), "false", "Space collapses its files");
   for (const action of [
-    story["Space on its change line expands changed files in place"],
+    story["Space on a pull request's row expands its changed files in place"],
     story["holding Space leaves the tree open"],
     story["Space again collapses changed files in place"],
   ]) {
     assert.equal(action.handled, true, "Space cannot scroll the page");
     assert.equal(action.address, beforeSpace, "Space keeps the current page");
-    assert.equal(action["focus on"], page.named(firstChange), "Space keeps focus on the line");
+    assert.equal(action["focus on"], page.named(firstPull), "Space keeps focus on the row");
   }
-  assert.equal(nextChange.getAttribute("aria-expanded"), "false", "Space ignores the tab stop");
+  assert.equal(nextPull.getAttribute("aria-expanded"), "false", "Space ignores the tab stop");
+  // The change line is no stop: no key reaches it, so focus never lands on it. Hidden from
+  // assistive technology, it is not one of the tree's children either.
+  assert.ok(
+    page.changeLines.every((line) => line.getAttribute("tabindex") === null),
+    "the line that carries the toggle is no stop of the tree's",
+  );
+  assert.ok(
+    page.changeLines.every((line) => line.getAttribute("aria-hidden") === "true"),
+    "the line that carries the toggle is hidden from assistive technology",
+  );
+  assert.ok(
+    page.changeLines.every((line) => line.getAttribute("aria-expanded") === null),
+    "the row, not its change line, says whether its files are open",
+  );
+  assert.ok(
+    page.changeLines.every(
+      (line, index) =>
+        line.classList.contains("expanded") ===
+        (page.pulls[index].getAttribute("aria-expanded") === "true"),
+    ),
+    "each change line's chevron turns with its row's state",
+  );
   // Grouped by stack, Space on a stack's row opens and closes the stack, by its number, and
   // a held Space does nothing more.
   page.showStack(true);

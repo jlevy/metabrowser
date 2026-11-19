@@ -840,11 +840,11 @@ def test_the_first_tree_row_clears_the_tally_rule() -> None:
     tally's border while every band above kept 6px."""
 
     css = _read("styles.css")
-    start = css.index(".nav-metadata + .tree-root > .tree-item:first-child,")
+    start = css.index(".tree-content > * > .tree-root:first-child > .tree-item:first-child {")
     block = css[start : css.index("}", start)]
-    # Both leading cases: the metadata band, whichever of its lines is last, and
-    # rows alone under a recency window.
-    assert ".tree-content > * > .tree-root:first-child > .tree-item:first-child" in block
+    # The metadata band stands over the scroller, so the tree's first row leads it under
+    # every source, the tree's and a recency window's, and nothing in the panel precedes it.
+    assert ".nav-metadata + .tree-root" not in css
     # Margin, so the hover fill and selected border stay row-height.
     assert "margin-top" in block
     assert "padding-top" not in block
@@ -904,7 +904,7 @@ def test_the_recency_tally_is_recomputed_not_cached() -> None:
     start = js.index("function renderRecentFromBase()")
     block = js[start : start + 1900]
     assert "var entries = view.entries;" in block
-    assert "_renderFilteredTally(results, state, entries.length);" in block
+    assert "_renderFilteredTally(state, entries.length);" in block
 
 
 def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
@@ -912,7 +912,7 @@ def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
     time, not only when a response was capped."""
 
     js = _read("app.js")
-    start = js.index("function _renderFilteredTally(panel, state, count)")
+    start = js.index("function _renderFilteredTally(state, count)")
     block = js[start : start + 1800]
     assert "filterHasConstraints(state)" in block
     # One model says the remark for the tree and for Recent, in parts, and the shell paints
@@ -957,7 +957,7 @@ def test_the_filtered_tally_counts_a_subtree_not_rendered_rows() -> None:
     paint = js[
         js.index("function paintRecentView(") : js.index("function clearRecentExpiryRecheck()")
     ]
-    assert "_renderFilteredTally(results, state, entries.length);" in paint
+    assert "_renderFilteredTally(state, entries.length);" in paint
     assert "querySelectorAll" not in recent
     leaf_start = js.index("function _applyTreeSourceFilters(panel, state)")
     assert (
@@ -1096,13 +1096,15 @@ def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
     # of an 1800-character window and failed a behavior that had not changed.
     block = js[start : js.index("\nfunction ", start + 1)]
     assert "filterOpenMenu === null" in block
-    # Both caches move together, or the tally reverts to first-paint
-    # figures under a recency filter.
+    # The tally is painted in place in the Files metadata band, outside the panel, so no
+    # cached copy of it can revert to first-paint figures under a recency filter: no source
+    # paints the panel with a tally of its own.
     assert "paintTreeSummary(" in block
     paint = js[js.index("function paintTreeSummary(html)") :]
     paint = paint[: paint.index("\n}\n")]
-    assert "_lastTreeSummaryHtml = html;" in paint
-    assert "_lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(" in paint
+    assert "row.outerHTML = html;" in paint
+    assert "filesMetadataBand()" in paint
+    assert "_lastTreeSummaryHtml" not in js
 
 
 def _provider_tree_source() -> str:
@@ -1556,5 +1558,11 @@ def test_scroll_shadow_rides_the_filter_bar() -> None:
     fn_block = js[fn_start : fn_start + 900]
     assert 'document.getElementById("nav-filter-bar")' in fn_block
     css = _read("styles.css")
-    # Each main tab's toolbar in the slot takes the same shadow as the filter bar.
-    assert ".nav-filter-bar.scrolled,\n.nav-toolbar.scrolled {" in css
+    # Each main tab's toolbar in the slot takes the same shadow as the filter bar, and hands
+    # it to the metadata band under it, which is then the chrome over the content.
+    assert (
+        ".nav-filter-bar.scrolled,\n.nav-toolbar.scrolled,\n"
+        ".scrolled + .nav-metadata-band:not(:empty) {"
+    ) in css
+    handed = css[css.index(".scrolled:has(+ .nav-metadata-band:not(:empty)) {") :]
+    assert "box-shadow: none;" in handed[: handed.index("}")]

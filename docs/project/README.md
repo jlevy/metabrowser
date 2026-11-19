@@ -68,6 +68,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [The app’s command-line dependencies and a complete doctor](specs/active/plan-2026-11-18-cli-dependencies-and-doctor.md):
+  where each tool’s minimum version lives, the app’s versioning contract with `metab`, a
+  doctor that checks everything a setup needs, and Check Setup… in the macOS app
 - [View on branch](specs/active/plan-2026-11-17-view-on-branch.md): one control on a
   pull request’s Changes that opens a changed file at the pull request’s head in the
   main UI, replacing the standalone revision page; approved 2026-11-17

@@ -279,6 +279,9 @@ generation, one core job per source, a `visible` batch preempting a `background`
 `pull_cores.py`’s docstring gives its outcomes, retries, and waits.
 A reader who selects a pull request with no record may ask its refresh to wait for the
 core, and the envelope then carries a `core_preview` until the full record lands.
+The page renders the preview’s description through `GET pull-markdown` as it renders the
+record’s, so the description shows rendered from its first paint, and the record that
+follows with the same text reuses that render.
 
 ## Changed Files
 
@@ -341,20 +344,27 @@ store, so its answer is immutable and a browser asks for it no more.
 as a record whose head moved does, is computed.
 In the page, what was read is kept for the document rather than for one page
 ([The Comparison Keep](#the-comparison-keep)). `GET pull-rendered-diff`
-(`pull_rendered_diff.py`) answers one changed Markdown file as `markdown-diff-v1`,
-computed in a projection worker process, for a pair the record or its snapshot file
-admits (`pull_snapshot.py`). Its images load from `GET pull-image`, which serves an
-image at the head of an admitted pair without changing the pin or the checkout; its
-links to a file of the head are that file’s `/view/` address, the same in every answer,
-which the page keeps only while its pin is the head and leaves as plain text otherwise.
+(`pull_rendered_diff.py`) answers one changed Markdown file as `markdown-diff-v1`, and
+one changed YAML or JSON file as `structured-diff-v1`, each computed in a projection
+worker process, for a pair the record or its snapshot file admits (`pull_snapshot.py`).
+Its images load from `GET pull-image`, which serves an image at the head of an admitted
+pair without changing the pin or the checkout; its links to a file of the head are that
+file’s `/view/` address, the same in every answer, which the page keeps only while its
+pin is the head and leaves as plain text otherwise.
 `pull_snapshot.py`’s docstring lists every outcome code.
-`GET pull-markdown` (`pull_markdown.py`) renders one text of the record through KPress
-in sanitized mode, then reduces it to the inert allowlist of `inert_html.py`, both in
-the server’s Markdown child under its deadline, the same child as the projections, which
-a served page’s first `GET pull` starts; a text past the deadline answers `422`
-`render_deadline`, one that arrives while the child has as many renders as it takes
-answers `503` `renderer_busy`, and the page keeps its plain text with a line saying why,
-which it keeps for that text until the text renders.
+`GET pull-markdown` (`pull_markdown.py`) renders one text of the record, or with no
+record cached the core preview’s description, through KPress in sanitized mode, then
+reduces it to the inert allowlist of `inert_html.py`, both in the server’s Markdown
+child under its deadline, the same child as the projections, which a served page’s first
+`GET pull` starts; a text past the deadline answers `422` `render_deadline`, one that
+arrives while the child has as many renders as it takes answers `503` `renderer_busy`,
+and the page shows its plain text with a line saying why, which it keeps for that text
+until the text renders.
+The page asks for the description, and for every text within `MARKDOWN_AHEAD`
+(`pull-page.js`) of the view, before the frame that first shows it, and until its render
+answers shows a placeholder in its place, never its Markdown source.
+A text farther off keeps its plain text, which find in page reaches, and is asked for as
+it nears the view, so a jump straight to it shows that text until it is asked for.
 Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
 The trust model behind that allowlist is in
 [Server and Content](arch-server-and-content.md).
@@ -626,9 +636,9 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `pull-cores-prepare` | `POST` | A batch of lightweight cores |
 | `pull-comparison` | `GET` | The record’s comparison, from the store, for Changes and the header’s Diff summary |
 | `pull-image` | `GET` | An image at the comparison’s head, for its rendered Markdown |
-| `pull-rendered-diff` | `GET` | One changed Markdown file, rendered |
+| `pull-rendered-diff` | `GET` | One changed Markdown, YAML, or JSON file, rendered |
 | `pull-timeline` | `POST` | Conversation’s order of commits, comments, and reviews |
-| `pull-markdown` | `GET` | One text of the record, rendered inert |
+| `pull-markdown` | `GET` | One text of the record, or a core preview’s description, rendered inert |
 | `pulls` | `GET` | A catalog window, or a search with `q` |
 | `pulls-refresh` | `POST` | The catalog job |
 | `pull-files` | `GET` | A pull request’s changed files |

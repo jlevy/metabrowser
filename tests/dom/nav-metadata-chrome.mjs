@@ -149,6 +149,42 @@ const BAND = `(() => {
   };
 })()`;
 
+// In the page: each rule between the navigation's sections that is on screen (the tab
+// bar's, the toolbar's in front, and a band's under its last line) as far as it paints,
+// its ends against the pane's own edges inside its border. The tree's scroller reserves
+// its scrollbar's gutter (`scrollbar-gutter: stable`) and clips what it holds at its
+// padding box, so a line inside it painted its rule 11 px short of the pane's right edge
+// in a 300 px pane, wherever the tree was scrolled and whether or not it overflowed.
+const RULES = `(() => {
+  const pane = document.querySelector(".tree-pane");
+  const box = pane.getBoundingClientRect();
+  const style = getComputedStyle(pane);
+  const left = box.left + parseFloat(style.borderLeftWidth);
+  const right = box.right - parseFloat(style.borderRightWidth);
+  const scroller = document.getElementById("tree-content");
+  const clip = scroller.getBoundingClientRect().left + scroller.clientLeft + scroller.clientWidth;
+  const ruled = (el) =>
+    el.getClientRects().length > 0 && parseFloat(getComputedStyle(el).borderBottomWidth) > 0;
+  return {
+    overflows: scroller.scrollHeight > scroller.clientHeight,
+    rules: [...pane.querySelectorAll(".nav-tab-bar, [data-nav-toolbar], .nav-metadata")]
+      .filter(ruled)
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        const held = scroller.contains(el);
+        return {
+          cls: el.className,
+          held,
+          left: r.left - left,
+          right: right - (held ? Math.min(r.right, clip) : r.right),
+        };
+      }),
+  };
+})()`;
+// The pane's heights each tab's rules are read at: the window's, where the stand-in's tree
+// fits, and one short enough that every tab's content overflows its scroller.
+const SHORT_PANE_PX = 220;
+
 const chrome = await launchChrome(process.env.CHROME_BIN, {
   profiles: process.env.CHROME_PROFILES,
   width: 1280,
@@ -157,6 +193,9 @@ const chrome = await launchChrome(process.env.CHROME_BIN, {
 // Each state's band at the default pane width, and at the wide one.
 const bands = {};
 const wide = {};
+// Each state's rules, at the narrowest, default, and wide panes, at the window's height and
+// a short one.
+const rules = [];
 let narrowCount = null;
 try {
   phase("chrome");
@@ -184,21 +223,55 @@ try {
     check(`${name}: has a metadata line`, bands[name] !== null && wide[name] !== null);
     phase(name);
   };
+  const measureRules = async (name) => {
+    for (const height of [null, SHORT_PANE_PX]) {
+      await evaluate(
+        `document.querySelector(".tree-pane").style.height = ${JSON.stringify(height ? `${height}px` : "")}`,
+      );
+      for (const width of [NARROWEST + 1, null, WIDE_PX]) {
+        await paneWidth(width);
+        rules.push({
+          name,
+          width: width ?? "default",
+          height: height ?? "window",
+          ...(await evaluate(RULES)),
+        });
+      }
+    }
+    await evaluate(`document.querySelector(".tree-pane").style.height = ""`);
+    await paneWidth(null);
+    phase(`${name} rules`);
+  };
   const connection = `document.querySelector(".github-pulls-connection")?.textContent ?? ""`;
   const scenario = (failure) => {
     const answers = JSON.parse(fs.readFileSync(SCENARIO, "utf8"));
     answers.api_failure = failure;
     fs.writeFileSync(SCENARIO, JSON.stringify(answers));
   };
+  // A panel that could not load: its band gives way to the alert, as the lines went with the
+  // panel when they were its first rows, and shows again once the alert is gone (styles.css,
+  // after `.nav-metadata-band`). `fail` puts the alert where the shell's failure does, and
+  // returns how to take it away; each state reads whether the band is shown.
+  const givesWay = (band, fail) =>
+    evaluate(`(() => {
+      const band = document.getElementById(${JSON.stringify(band)});
+      const shown = () => band.childElementCount > 0 && getComputedStyle(band).display !== "none";
+      const before = shown();
+      const restore = (${fail})();
+      const failed = shown();
+      restore();
+      return [before, failed, shown()];
+    })()`);
   const afterSummary = (html) =>
     evaluate(
-      `[...document.querySelectorAll("#tab-files .nav-metadata")].at(-1).insertAdjacentHTML("afterend", ${JSON.stringify(html)})`,
+      `[...document.querySelectorAll("#nav-metadata-files .nav-metadata")].at(-1).insertAdjacentHTML("afterend", ${JSON.stringify(html)})`,
     );
 
   await chrome.send("Page.enable");
   await chrome.send("Page.navigate", { url: `${base}/view/` });
   await waitFor(`document.querySelector(".tree-summary .tree-summary-tracked") !== null`);
   await measure("files");
+  await measureRules("files");
   // The line as the inline first paint draws it, before its counts arrive, and as it
   // reads while the index is still being counted: the same words in the same type.
   await evaluate(
@@ -211,9 +284,10 @@ try {
   await measure("files counting");
   // A filter's remarks: muted lines of the same band.
   await evaluate(
-    `_renderFilteredTally(document.getElementById("tab-files"), {recency: "all", types: "md", size: "all", showIgnored: true}, 2)`,
+    `_renderFilteredTally({recency: "all", types: "md", size: "all", showIgnored: true}, 2)`,
   );
   await measure("files filtered");
+  await measureRules("files filtered");
   await afterSummary(
     `<div class="${SELECTION_NOTE}" role="status">docs is outside this filter.</div>`,
   );
@@ -224,10 +298,53 @@ try {
   await evaluate(
     `document.querySelectorAll(".tree-summary-filtered, .recent-stale-note").forEach((n) => n.remove())`,
   );
+  // Grouped or recency, the panel's alert (failGroupedTree's own); the tree's, the scroller's.
+  const filesFailed = await givesWay(
+    "nav-metadata-files",
+    `() => {
+      const panel = document.getElementById("tab-files");
+      const kept = [...panel.childNodes];
+      failGroupedTree("nav-metadata-chrome");
+      return () => panel.replaceChildren(...kept);
+    }`,
+  );
+  check(
+    "files: the band gives way to the panel's alert",
+    `${filesFailed}` === "true,false,true",
+    filesFailed,
+  );
+  const treeFailed = await givesWay(
+    "nav-metadata-files",
+    `() => {
+      const alert = document.createElement("div");
+      alert.setAttribute("role", "alert");
+      document.getElementById("tree-content").prepend(alert);
+      return () => alert.remove();
+    }`,
+  );
+  check(
+    "files: the band gives way to the scroller's alert",
+    `${treeFailed}` === "true,false,true",
+    treeFailed,
+  );
+  // The band's shadow is over what the scroller holds, positioned rows too, and the toolbars,
+  // whose menus open over it, are over the band.
+  const stacking = await evaluate(`["nav-metadata-files", "nav-filter-bar", "nav-toolbar-git"].map(
+    (id) => getComputedStyle(document.getElementById(id)).zIndex,
+  )`);
+  check(
+    "the band stacks over the scroller and under the toolbars",
+    `${stacking}` === "1,2,2",
+    stacking,
+  );
 
   await click('.nav-tab-bar [data-tab="git"]');
+  // The click opens Commits once Git discovery registers it, and the server ships its slot
+  // with a count span, so wait for the slot to be the one in front.
+  await waitFor(`document.getElementById("nav-toolbar-git")?.hidden === false`);
   await waitFor(`document.querySelector(".git-history-summary-count") !== null`);
   await measure("commits");
+  await measureRules("commits");
   // The Commits tally and the tab bar wrap in a pane too narrow for them: every width from
   // the narrowest, in both font sets, the tally as the stand-in has it and as a large, old
   // repository's reads. Each is held to the wrap rule; the tally's lines are its own line
@@ -336,11 +453,29 @@ try {
   await click('.nav-tab-bar [data-tab="pulls"]');
   await waitFor(`(${connection}).includes("Fetching pull requests")`);
   await measure("pulls loading");
+  await measureRules("pulls loading");
   fs.rmSync(HOLD);
   await waitFor(
     `document.querySelector(".github-pulls-item") !== null && (${connection}).startsWith("Updated")`,
   );
   await measure("pulls updated");
+  await measureRules("pulls updated");
+  // As pulls-nav.js's showFailure puts it, first in the tab's panel.
+  const pullsFailed = await givesWay(
+    "nav-metadata-pulls",
+    `() => {
+      const alert = document.createElement("p");
+      alert.className = "github-pulls-empty";
+      alert.setAttribute("role", "alert");
+      document.getElementById("tab-pulls").prepend(alert);
+      return () => alert.remove();
+    }`,
+  );
+  check(
+    "pulls: the band gives way to the panel's alert",
+    `${pullsFailed}` === "true,false,true",
+    pullsFailed,
+  );
   // In a pane narrower than the count, the count is cut short on its one line.
   await paneWidth(NARROW_PX);
   narrowCount = await evaluate(`(() => {
@@ -495,6 +630,46 @@ check(
   "pulls: in a narrow pane the count is cut short on its one line",
   narrowCount?.lines === 1 && narrowCount?.cut === true,
   JSON.stringify(narrowCount),
+);
+
+// Every rule between the navigation's sections runs the pane's full width, as the tab bar's
+// does, on every tab, at every pane width and height, whether the content under it
+// overflows its scroller or not: no metadata line is inside the scroller, so none is cut
+// short at its scrollbar's gutter (mb-vgx3).
+for (const measured of rules) {
+  const at = `${measured.name} (${measured.width} wide, ${measured.height} tall)`;
+  check(`${at}: a tab bar and toolbar rule`, measured.rules.length >= 2, JSON.stringify(measured));
+  check(
+    `${at}: a metadata line's rule`,
+    measured.rules.some((rule) => rule.cls.split(" ").includes("nav-metadata")) ||
+      measured.name === "commits",
+    JSON.stringify(measured.rules),
+  );
+  for (const rule of measured.rules) {
+    const what = `${at}: "${rule.cls}"`;
+    check(`${what} is not in the tree's scroller`, rule.held === false);
+    check(`${what} starts at the pane's left edge`, near(rule.left, 0), `${rule.left}`);
+    check(`${what} ends at the pane's right edge`, near(rule.right, 0), `${rule.right} short`);
+  }
+}
+for (const tab of ["files", "pulls"]) {
+  const seen = rules.filter((measured) => measured.name.startsWith(tab));
+  check(
+    `${tab}: rules read over content that overflows`,
+    seen.some((m) => m.overflows),
+  );
+  check(
+    `${tab}: rules read over content that fits`,
+    seen.some((m) => !m.overflows),
+  );
+}
+process.stderr.write(
+  `rules ${JSON.stringify(
+    rules.map((m) => ({
+      at: `${m.name} ${m.width}x${m.height}${m.overflows ? " overflowing" : ""}`,
+      short: m.rules.map((rule) => `${rule.cls.split(" ")[0]} ${rule.right.toFixed(2)}`),
+    })),
+  )}\n`,
 );
 
 if (failures.length > 0) {

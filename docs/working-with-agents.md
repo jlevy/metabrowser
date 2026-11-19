@@ -30,9 +30,13 @@ a separate front end that the skill hands pages with `--present`.
 ## Ask an Agent to Show You a Page
 
 Ask in your own words: “open the plan in Metabrowser,” “show me what the last commit
-changed,” or “open pull request 123.” On a Mac with the [macOS app](macos-app.md)
-installed, the agent hands a folder, a file, or a GitHub URL to the app; otherwise, and
-for an address the app cannot be handed, it serves the page and gives you its address.
+changed,” or “open pull request 123.” The agent presents a folder, a file, or a GitHub
+URL: on a Mac with the [macOS app](macos-app.md) installed it opens in the app, and
+otherwise in your browser, on a server `metab` starts for it.
+Your `open_in` setting chooses the app only or the browser only
+([the command-line guide](command-line.md#choosing-the-app-or-a-browser) has it).
+For an address presenting cannot name, the agent serves the page and gives you its
+address.
 
 ### In the App
 
@@ -42,15 +46,26 @@ metab --present https://github.com/owner/repo/pull/123 --format json
 ```
 
 `--present` hands the target to the app, which opens it in a window, and prints a report
-([the command-line guide](command-line.md#handing-a-target-to-the-app---present) has its
-fields and codes). The agent tells you what it handed over, and that the app was asked
-rather than that a window shows it, since the app does not reply yet.
-When no app takes the target, as on another machine or without the app installed, the
-agent serves it instead, as below.
+([the command-line guide](command-line.md#presenting-a-target---present) has its fields
+and codes). The agent tells you what it handed over, and that the app was asked rather
+than that a window shows it, since the app does not reply yet.
+When no app takes the target, as on another machine or without the app installed,
+`--present` starts a server for it that opens the page in your browser, and the report
+gives its address and process ID; the agent stops it with `kill` when you are done.
+With `--open-in app` or your `open_in: app`, nothing opens then, and the agent serves
+the page instead, as below.
 
 ### In a Browser
 
-The agent starts a server without opening a browser and gives you the address:
+When you ask for a browser, the agent presents with `--open-in browser`, which never
+looks for the app:
+
+```shell
+metab --present . --path docs/plan.md --open-in browser --format json
+```
+
+For any other address, or where presenting would start a browser you cannot see, the
+agent starts a server without opening a browser and gives you the address:
 
 ```shell
 metab . --no-open
@@ -95,21 +110,41 @@ server runs until the agent stops it or you ask it to.
 The command then reports `lookup_failed` or `open_failed`, with the status the
 [exit-status table](command-line.md#exit-status) gives a target LaunchServices did not
 take, and the skill has the agent rerun the command outside the sandbox when you allow
-that, or serve the page instead.
+that, with `--open-in app` added, or serve the page instead.
+Without `--open-in app`, a rerun under the default `auto` looks the app up again, and
+when no app takes the target it starts a `metab` server outside the sandbox; with it,
+the rerun hands the app the target or sends nothing.
+The skill never reruns a delivery to a browser outside the sandbox: it serves that page
+inside the sandbox instead.
 A rule can let the one command prefix, `metab --present`, run outside the sandbox every
 time. The skill writes `--present` first and runs the command alone, with no redirect or
 pipe, so that such a rule matches it and nothing else.
 
-> **A rule runs `metab` with your full access.** Add one only for a `metab` installed
-> outside every folder the agent can write, its code included, such as one that
-> `uv tool install` made: the command in `~/.local/bin`, its code under
-> `~/.local/share/uv/tools`. Never name a source checkout the agent works in.
-> A checkout’s `.venv/bin/metab` is an editable install that runs the checkout’s own
+> **A rule runs `metab` with your full access, and lets the agent start a server outside
+> the sandbox.** The rule matches `metab --present` whatever follows, so besides handing
+> the app a target, a matched command can start a `metab` server for any path the agent
+> names: under `--open-in browser`, or under the default `auto` when no app takes the
+> target. That server runs outside the sandbox, serves the path on a loopback address the
+> report gives the agent, and keeps running after the session ends, until it is stopped.
+> No `open_in` setting prevents it, since `--open-in` overrides them.
+> **Set `present_browser: false`** in `config.yml`
+> ([Turning Browser Delivery Off](command-line.md#turning-browser-delivery-off)) with
+> any rule: `--present` then hands the app a target or nothing, and no option of the
+> command undoes it. It holds while the agent cannot also write `config.yml` or choose
+> the configuration directory for that command: `METABROWSER_CONFIG_DIR`,
+> `XDG_CONFIG_HOME`, and `HOME` choose it, and a directory without `config.yml` allows a
+> browser.
+> 
+> Add a rule only for a `metab` installed outside every folder the agent can write, its
+> code included, such as one that `uv tool install` made: the command in `~/.local/bin`,
+> its code under `~/.local/share/uv/tools`. Never name a source checkout the agent works
+> in. A checkout’s `.venv/bin/metab` is an editable install that runs the checkout’s own
 > `src/`, so an agent that can write the checkout can change that code inside the
 > sandbox and then run it outside, with no prompt under an allow rule.
 > To use a source build, point the rule, and the app’s Settings > Choose metab…, at a
 > separate checkout the agent never works in; the app’s servers run that `metab` too.
-> Otherwise add no rule, and approve each run when the agent asks.
+> Otherwise add no rule, and approve each run when the agent asks: the skill adds
+> `--open-in app` to each, so a run you approve hands the app a target or sends nothing.
 
 - **Claude Code:** the sandbox is off by default.
   When it is on, it blocks the Apple Events and Launch Services requests `open` makes,
