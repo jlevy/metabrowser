@@ -360,6 +360,15 @@
      strut in its corner (`.view-header-end`) take too, so the corner's baseline is the
      title's first line's. */
   --page-title-line-height: 1.25;
+  /* The space between a page's title and its metadata, one on every page (mb-wcbc): beside
+     the title on a view header's row, before its metadata line (`.view-header-title`), and
+     under it on a page header, before a pull request's author line and a commit's
+     (`.page-header`). Half the title's size: wider than the 8 px between a line's items and
+     the 6 px between a page header's lines, so the metadata reads as its own phrase after
+     the title rather than as more of it. Under a one-line title the space was 36.5 px to
+     the author's text, the title's held second line, and under a two-line one 4 px
+     (measured 2026-11-18 in Chrome 152). */
+  --page-title-gap: 12px;
   /* A ref chip is slightly smaller than the text around it: one ratio, not
      one size. Measured in Chrome, the text a chip sits in is 12px (a Pulls
      row, the ref selector) to 14px (a pull request's header, a commit's
@@ -711,24 +720,23 @@
      Headers"), so their rules are one line across the window and their text one
      baseline. A fixed height rather than its content's, so the rules sit where they sit
      whatever the text's font set measures; the rows are border-box, so this is the whole
-     row. 34 px centers the path's 18.5 px line with 7.25 px above and below it, the inset
-     the tabs under it give their labels (7 px above, measured 2026-11-18 in Chrome); 41
-     px left 10.75 px, which read as loose beside the tabs. */
+     row. 34 px puts the path's text 7.25 px under the row's top, the inset the tabs
+     under it give their labels (7 px; measured 2026-11-18 in Chrome, the path's box 24.5
+     px centered in the row's 33 and its 19.5 px line 3 px into that box); 41 px put it
+     10.75 px under, which read as loose beside the tabs. */
   --pane-header-row-height: 34px;
   /* A view header's rhythm (docs/design-system.md, "View Headers"): the pad above the
      heading row, under the eyebrow's rule or, with no eyebrow, the page's top, and the
      pad under the last row; the metadata line's height, which it holds whatever fills
-     it, so nothing under it moves as a value arrives; and the gap between the title and
-     the metadata line after it. The top pad is the content's, the pad a pull request's
-     page and a commit's have above their titles, so a title sits as far under what is
-     above it on every page. 22 px is the body size's line (21 px) with room for a
-     badge's box, 22 px. The title gap is half the title's size, wider than the line's
-     own 8 px between items, so the line reads as its own phrase after the name rather
-     than as more of it. The Up control's box is 20 px, inside the eyebrow's row. */
+     it, so nothing under it moves as a value arrives. The gap between the title and the
+     metadata line after it is every page's, `--page-title-gap`. The top pad is the
+     content's, the pad a pull request's page and a commit's have above their titles, so a
+     title sits as far under what is above it on every page. 22 px is the body size's line
+     (21 px) with room for a badge's box, 22 px. The Up control's box is 20 px, inside the
+     eyebrow's row. */
   --view-header-padding-top: var(--content-padding-y);
   --view-header-padding-bottom: 8px;
   --view-header-line-height: 22px;
-  --view-header-title-gap: 12px;
   --view-header-up-size: 20px;
   /* The header's corner, which holds a page's View on GitHub button (docs/design-system.md,
      "View on GitHub"): at the end of the title's first line, from the top of that line
@@ -1974,8 +1982,13 @@ summary {
    itself is the .icon-btn primitive above; only the trigger's placement and
    the menu's anchored positioning live here. The menu surface comes from the
    .menu primitive, and the segments from the .menu-chooser primitive below. */
+/* A flex box as tall as its gear, so the path row centers the gear itself on the row's
+   line, the line the main page's chevron is centered on across the divider
+   (`.nav-collapse-toggle`). As a block it was a 25 px line box with the gear at its top,
+   and the gear's center 0.5 px above the row's (Chrome 152, 2026-11-18). */
 .settings-toggle {
   position: relative;
+  display: flex;
   flex: 0 0 auto;
 }
 /* Anchored placement under the trigger; the .menu primitive supplies the
@@ -3036,20 +3049,28 @@ html.theme-anim .menu {
 .container[data-nav-collapsed] > .resize-handle {
   display: none;
 }
-/* The chevron: an icon button on the main page's left edge, beside the pane's shadow,
-   on the shortcut strip's row. The module centers it on the strip; `bottom` holds it
-   near there until the first measurement. It sits 1px in from the edge and has no
-   plate, so the edge and the pane's shadow show through it: only the hover surface
-   fills it. The shared chevron points right; turned, it points left, at the pane it
-   hides, and it turns back when the pane is hidden. */
+/* The chevron: an icon button at the start of the main page's top row, the band the
+   navigation's path row makes across the window (`--pane-header-row-height`), centered
+   in the gutter before the content's edge and on the row's line, above its 1 px rule: the
+   line the navigation's name and Metabrowser menu and the eyebrow's Up and address are
+   centered on, so it sits across from the menu's gear (mb-tl7p). A page with no eyebrow,
+   a pull request's or a commit's, has it at the same place. It is in the frame, so it
+   stays when the pane is hidden and slides with the page. Its box is the eyebrow's Up
+   control's, so the two icon buttons in the row are one size, the gutter's 2 px either
+   side of it; it has no plate, so the page's edge and the pane's shadow show through it,
+   and only the hover surface fills it. The shared chevron points right; turned, it points
+   left, at the pane it hides, and it turns back when the pane is hidden. On the shortcut
+   strip's row at the page's foot, it was a script's measurement to keep there. */
 .nav-collapse-toggle {
+  --icon-btn-size: var(--view-header-up-size);
   position: absolute;
-  left: 1px;
-  bottom: 5px;
+  inset-block-start: calc((var(--pane-header-row-height) - 1px - var(--icon-btn-size)) / 2);
+  inset-inline-start: calc((var(--content-padding-x) - var(--icon-btn-size)) / 2);
   z-index: var(--z-resize-handle);
 }
 /* Its Shift badge is in the frame, over the button's inline end like every `beside`
-   badge, and needs the button's level to paint over it rather than under it. */
+   badge, and needs the button's level to paint over it rather than under it, and over
+   the eyebrow's Up control beside it. */
 .nav-collapse-toggle ~ .kbd-badge {
   z-index: var(--z-resize-handle);
 }
@@ -4575,7 +4596,7 @@ a.tab-btn {
   width: 1em;
   height: 1em;
 }
-/* The name, then the metadata line on its baseline, --view-header-title-gap after it
+/* The name, then the metadata line on its baseline, --page-title-gap after it
    (docs/design-system.md, "View Headers"): one run of inline text, the title inline and
    the line one box after it, so neither is cut. A name too long for the row wraps
    anywhere (`.page-heading`) and the line follows its last line; a row with no room for
@@ -4590,7 +4611,7 @@ a.tab-btn {
 }
 .view-header-title.page-heading {
   display: inline;
-  padding-inline-end: var(--view-header-title-gap);
+  padding-inline-end: var(--page-title-gap);
 }
 /* The header's corner (docs/design-system.md, "View on GitHub"): at the end of the
    title's first line, the line's top and the header's right edge its insets, whatever
@@ -4634,6 +4655,33 @@ a.tab-btn {
   float: inline-end;
   inline-size: var(--view-header-corner-room);
   block-size: calc(var(--page-title-font-size) * var(--page-title-line-height));
+}
+/* A main view too narrow to leave the title's first line as much room as the corner's
+   puts the corner on the eyebrow's row, centered on its line as the row's controls are,
+   and gives the eyebrow's end its room, so the title has the heading row's whole width.
+   Beside the corner's room, a first line of 20 px broke a four-letter name after its
+   first letter, since a page title breaks anywhere (`.page-heading`), and a float does
+   not move a word that can break below it (Chrome 152, a 260 px main view, 2026-11-18).
+   The width is where the title group, the main view less its side pads, the icon, and
+   the icon's 8 px gap, is two rooms wide: 2 * 24 + 24 + 8 + 2 * 150 px.
+   tests/test_view_header_chrome.py holds it to those tokens. A container condition takes
+   no var(). */
+@container kpress-doc (width < 380px) {
+  .view-header:has(> .view-header-eyebrow:not(:empty)) > .view-header-end {
+    inset-block-start: calc(
+      (var(--pane-header-row-height) - 1px - var(--view-header-corner-height)) /
+      2
+    );
+  }
+  .view-header:has(> .view-header-eyebrow:not(:empty)) > .view-header-end::before {
+    display: none;
+  }
+  .view-header:has(> .view-header-eyebrow:not(:empty)) .view-header-title-group::before {
+    display: none;
+  }
+  .view-header:has(> .view-header-end[data-counterpart]) > .view-header-eyebrow {
+    padding-inline-end: calc(var(--content-padding-x) + var(--view-header-corner-room));
+  }
 }
 /* The metadata line: badges, then the item's values after muted dots, at the body size,
    on the title's baseline. A line wider than its row wraps between items, each item whole
@@ -5167,26 +5215,26 @@ a.tab-btn {
   line-height: var(--page-title-line-height);
   overflow-wrap: anywhere;
 }
-/* A commit's subject holds two lines from first paint, so the diff under a one-line
-   subject starts where it starts under a two-line one (it moved 30 px between commits).
-   The pull request's title does the same, and clamps there (github/styles.css). */
-.git-commit-subject.page-heading {
-  min-height: 2lh;
-}
 /* A page's header, a commit's summary and a pull request's (docs/design-system.md, "Page
-   Headers"): its title, then its lines, each 6 px under the one before. Every line under
-   the title is a `.page-header-line` at the body size, the Diff summary's row included (its
-   header's own size is the diff plugin's, the same token), so the two pages read in one
-   type: an age in one keeps the line's size, as an age does everywhere. The one row that
-   is not is a pull request's labels, a row of chips. A chip in a line keeps its own size
-   (Branch Chips, Label Colors), and a revision its one step down. */
+   Headers"): its title, then its lines, the first `--page-title-gap` under the title, as a
+   view header's metadata line is after its title, and each after it 6 px under the one
+   before. The title is as tall as its lines: a commit's subject held two lines, so the
+   diff under a one-line subject started where it starts under a two-line one, and the
+   held line stood between the subject and its author, 34 px of space where a two-line
+   subject had 4 (mb-wcbc). Every line under the title is a `.page-header-line` at the body
+   size, the Diff summary's row included (its header's own size is the diff plugin's, the
+   same token), so the two pages read in one type: an age in one keeps the line's size, as
+   an age does everywhere. The one row that is not is a pull request's labels, a row of
+   chips. A chip in a line keeps its own size (Branch Chips, Label Colors), and a revision
+   its one step down. */
 .page-header {
+  --page-header-line-gap: 6px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--page-header-line-gap);
 }
 .page-header > .page-heading {
-  margin: 0;
+  margin: 0 0 calc(var(--page-title-gap) - var(--page-header-line-gap));
 }
 .page-header-line {
   min-height: 1lh;

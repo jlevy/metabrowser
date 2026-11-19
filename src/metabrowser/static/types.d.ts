@@ -1047,7 +1047,6 @@ type MetabrowserNavCollapseController = Readonly<{
 
 type MetabrowserNavCollapseRuntime = Readonly<{
   create(options: {
-    anchor?: HTMLElement | null;
     button: HTMLButtonElement;
     container: HTMLElement;
     document?: Document;

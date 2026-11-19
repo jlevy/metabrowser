@@ -285,15 +285,26 @@ def _github_css() -> str:
 
 
 def test_a_title_holds_two_lines_and_never_more() -> None:
-    """A pull request's title was 1 to 3 lines, 30 px each, under the tab bar's feet."""
+    """A pull request's title was 1 to 3 lines, 30 px each, under the tab bar's feet.
+
+    It is cut short at two lines. Only the title while the record is on its way holds two,
+    the most a record's title takes, so a record lands moving the tab bar up a line, if at
+    all, never down. A record's title is its own one or two lines, and the author's line is
+    `--page-title-gap` under it: a held second line stood between a one-line title and its
+    author, 36.5 px of space where a two-line title had 6 (mb-wcbc). The commit view's
+    subject is the same heading, and holds no line either.
+    """
 
     css = _github_css()
-    assert "min-height: 2lh;" in _rule(css, ".github-pull-title")
+    assert not re.search(r"(?m)^\.github-pull-title\s*\{", css)
+    assert "min-height" not in _rule(css, ".github-pull-title-with-state")
     clamp = _rule(css, ".github-pull-title-text")
     assert "-webkit-line-clamp: 2;" in clamp and "line-clamp: 2;" in clamp
     assert "overflow: hidden;" in clamp
-    # The commit view's subject is the same heading, and holds the same two lines.
-    assert "min-height: 2lh;" in _rule(_css(), ".git-commit-subject.page-heading")
+    cold = _rule(css, ".github-pull-title:not(.github-pull-title-with-state)")
+    assert "min-height: 2lh;" in cold
+    assert "-webkit-line-clamp: 2;" in cold and "line-clamp: 2;" in cold
+    assert not re.search(r"(?m)^\.git-commit-subject\.page-heading\s*\{", _css())
 
 
 def test_the_state_row_is_one_line_held_by_a_strut() -> None:

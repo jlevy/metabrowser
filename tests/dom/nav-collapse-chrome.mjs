@@ -11,8 +11,10 @@
 // is hidden, are browserless (`cli-ui-nav-collapse.tryscript.md`). What only a browser can
 // tell is held here (docs/design-system.md, "Hiding the Navigation Pane"):
 //
-// - the chevron sits on the main page's left edge, right of the pane's border, centered on
-//   the shortcut strip's row, pointing left at the pane, with no plate of its own;
+// - the chevron sits at the start of the main page's top row, in the gutter before the
+//   eyebrow's Up, centered on the line the Metabrowser menu's gear is centered on across
+//   the divider (mb-tl7p), pointing left at the pane, with no plate of its own, and stays
+//   there with the pane hidden;
 // - holding Shift shows its `\` badge, painted over the button rather than under it;
 // - a real `\`, sent through the DevTools input domain, slides the frame from the pane's
 //   edge to the window's in every frame without moving back, at its full width throughout,
@@ -49,11 +51,13 @@ const check = (label, ok, detail = "") => {
   }
 };
 
-// In the page: where the pane, the frame, the strip, and the chevron are, and their states.
+// In the page: where the pane, the frame, the chevron, the gear, and Up are, and their
+// states.
 const READ = `(() => {
   const pane = document.getElementById("tree-pane");
   const frame = document.querySelector(".preview-frame");
-  const strip = document.getElementById("nav-shortcut-hints");
+  const gear = document.getElementById("settings-btn");
+  const up = document.querySelector("#preview-pane .view-header-eyebrow > .folder-up");
   const button = document.getElementById("nav-collapse-toggle");
   const box = (element) => {
     const rect = element.getBoundingClientRect();
@@ -66,7 +70,8 @@ const READ = `(() => {
     pane: paneBox,
     frame: box(frame),
     frameLayoutWidth: frame.offsetWidth,
-    strip: box(strip),
+    gear: box(gear),
+    up: up ? box(up) : null,
     button: box(button),
     window: document.documentElement.clientWidth,
     collapsed: document.querySelector(".container").hasAttribute("data-nav-collapsed"),
@@ -155,19 +160,27 @@ async function sampled(action) {
 
 const read = () => browser.evaluate(READ);
 
-/** The checks every resting state shares: the chevron on the strip's row, beside the pane. */
+/**
+ * The checks every resting state shares: the chevron on the main page's top row, on the
+ * line the gear is centered on across the divider, and in the gutter before Up. The pane
+ * keeps its layout while hidden, so its gear is where it was, under the page. Layout places
+ * both on whole or half pixels from one row height, so their centers agree exactly.
+ */
 function checkChevron(where, at) {
-  const stripCenter = at.strip.top + at.strip.height / 2;
+  const gearCenter = at.gear.top + at.gear.height / 2;
   const buttonCenter = at.button.top + at.button.height / 2;
   check(
-    `${where}: the chevron is centered on the shortcut strip's row`,
-    Math.abs(stripCenter - buttonCenter) <= 1,
-    JSON.stringify({ stripCenter, buttonCenter }),
+    `${where}: the chevron is centered on the gear's line`,
+    buttonCenter === gearCenter,
+    JSON.stringify({ gearCenter, buttonCenter }),
   );
   check(
-    `${where}: the chevron sits just inside the main page's left edge`,
-    at.button.left >= at.frame.left - TOLERANCE_PX && at.button.left <= at.frame.left + 4,
-    JSON.stringify({ button: at.button.left, frame: at.frame.left }),
+    `${where}: the chevron sits in the main page's gutter, before the eyebrow's Up`,
+    at.up !== null &&
+      at.button.left >= at.frame.left - TOLERANCE_PX &&
+      at.button.right <= at.up.left + TOLERANCE_PX &&
+      at.up.top + at.up.height / 2 === buttonCenter,
+    JSON.stringify({ button: at.button, frame: at.frame.left, up: at.up }),
   );
   check(
     `${where}: the chevron has no plate at rest`,
