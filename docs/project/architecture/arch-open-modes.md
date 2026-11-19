@@ -164,7 +164,7 @@ for that check, and not a second account.
 | Root | The folder | The repository’s working-tree root | The repository’s address |
 | Views | The working tree | The working tree, and revisions | Revisions |
 | Commits, diffs, and the ref chooser | No | Yes | Yes |
-| Pulls and the GitHub toggle | No, with one case [not decided](#not-decided) | When `origin` is on github.com | When the origin is on github.com |
+| Pulls and View on GitHub | No, with one case [not decided](#not-decided) | When `origin` is on github.com | When the origin is on github.com |
 | Refresh from the origin | None | Never into the checkout | A background fetch into the store |
 | `kind` in `GET /api/identity` | `folder` | `folder` | `mirror` |
 
@@ -239,8 +239,8 @@ are deferred.
 keeps showing its working tree
 ([Beside a Checkout](arch-github-pull-requests.md#beside-a-checkout)).
 
-Pulls and the GitHub toggle stay when a repository folder shows a revision: the
-repository comes from the root, and the branch or commit from the view.
+Pulls and View on GitHub stay when a repository folder shows a revision: the repository
+comes from the root, and the commit from the view.
 
 **View on branch** and **Browse code** go to the pull request’s head as a revision view,
 as they do on a mirror.
@@ -461,7 +461,7 @@ opened by URL, a GitHub link sent to the app or a URL entered in Open URL… amo
 - **Open Recent** lists the recent targets `metab` keeps, repositories opened by URL
   among them, and reopens each in the mode it records.
 
-## The Indicator and the GitHub Toggle
+## The Indicator and View on GitHub
 
 **Not built.** These are two controls, and neither stands in for the other.
 
@@ -471,7 +471,7 @@ opened by URL, a GitHub link sent to the app or a URL entered in Open URL… amo
   window title.
 - **A mirror:** the GitHub mark with a small cloud over it.
   If that pair does not read at the size it is drawn, the cloud alone.
-  The GitHub mark alone would repeat the toggle’s glyph.
+  The GitHub mark alone would repeat View on GitHub’s glyph.
 - **A mirror of a repository that is not on github.com:** the cloud alone, since it has
   no mark to show.
 - **A folder:** a folder icon.
@@ -491,9 +491,10 @@ A third glyph, such as a folder with a branch badge, would carry the legibility 
 cloud over the GitHub mark has, and the heading would need Git’s answer before its first
 paint, where one icon for each `kind` needs none.
 
-**The GitHub toggle** is a separate control and appears only for a repository on
-github.com, in a repository folder and in a mirror.
-It stays on a revision view, and its link names the ref or commit being viewed.
+**View on GitHub** is a separate control, the button in a page header’s upper right
+([View on GitHub](../../design-system.md#view-on-github)), and appears only for a
+repository on github.com, in a repository folder and in a mirror.
+It stays on a revision view, and its link names the commit being viewed.
 
 ## Decisions
 
@@ -509,14 +510,15 @@ the design that carries it out.
 | Walk-up is guarded: not for an ignored path, not up to the home folder, not when bound beyond loopback, and `--exact-root` opts out | 2026-11-18 | [The Guards](#the-guards) |
 | Only serving, `--present`, and the app resolve; the data modes keep the exact path | 2026-11-18 | [Which Commands Resolve](#which-commands-resolve) |
 | Mirror mode never has working-copy changes; a repository folder views every other branch as a mirror would and also has the true working tree | 2026-11-18 | [The Three Modes](#the-three-modes), [Views](#views) |
-| Repository folder mode is for any Git repository; Pulls and the GitHub toggle are for github.com only | 2026-11-18 | [The Three Modes](#the-three-modes) |
+| Repository folder mode is for any Git repository; Pulls and View on GitHub are for github.com only | 2026-11-18 | [The Three Modes](#the-three-modes) |
 | One view for each server for now; links that select a branch are deferred under `mb-itzy` | 2026-11-18 | [Views](#views) |
 | A revision renders inert | 2026-11-09, confirmed 2026-11-18 | [Views](#views) |
-| Pulls and the GitHub toggle stay on a revision view, and the toggle links to the ref or commit viewed | 2026-11-18 | [Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder) |
+| Pulls and View on GitHub stay on a revision view, and it links to the commit viewed | 2026-11-18 | [Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder) |
 | View on branch and Browse code go to the pull request’s head as a revision view; the working-tree copy is a separate, labelled action | 2026-11-18 | [Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder) |
 | Open URL… opens the mirror, always, offers a known checkout, and never silently shows another revision | 2026-11-18 | [The File Menu](#the-file-menu) |
-| The indicator sits with the root’s name; the cloud alone is the fallback; folder mode uses a folder icon | 2026-11-18 | [The Indicator and the GitHub Toggle](#the-indicator-and-the-github-toggle) |
-| The GitHub toggle is a separate control, for github.com repositories only | 2026-11-18 | [The Indicator and the GitHub Toggle](#the-indicator-and-the-github-toggle) |
+| The indicator sits with the root’s name; the cloud alone is the fallback; folder mode uses a folder icon | 2026-11-18 | [The Indicator and View on GitHub](#the-indicator-and-view-on-github) |
+| The GitHub control is separate from the indicator, for github.com repositories only | 2026-11-18 | [The Indicator and View on GitHub](#the-indicator-and-view-on-github) |
+| One View on GitHub button in the upper right of every page github.com has a page for, which the app opens in a native popover and whose menu copies the link or opens it in the browser, in place of the Metabrowser and GitHub toggle and the pull request’s View on GitHub link | 2026-11-18 | [View on GitHub](../../design-system.md#view-on-github) |
 | A file joins the most specific open folder that contains it, never one above its repository’s root | 2026-11-18 | [What Keys on the Root](#what-keys-on-the-root) |
 | Recent targets: keyed as `SessionRoot` is, kept in the configuration directory, reached through `metab` only; a restore is not an open | 2026-11-18 | [What Keys on the Root](#what-keys-on-the-root) |
 
@@ -532,7 +534,7 @@ writing it, and made every view of a branch, tag, or commit an immutable revisio
 Each of these waits for the owner.
 
 - **Whether a plain folder and a repository folder look different.** The recommendation
-  [above](#the-indicator-and-the-github-toggle) is one folder icon for both.
+  [above](#the-indicator-and-view-on-github) is one folder icon for both.
 - **Pulls on a folder served exactly, below a repository’s root.** Such a folder has
   Pulls today when its repository’s `origin` is on github.com.
   The model’s plain folder has every Git feature off.
@@ -562,10 +564,10 @@ A pull request that builds a part updates its row.
 | `metab TARGET --present`, whose dry run answers a resolution | Partly built: `--present` and its dry run, on the path named; answering a resolution waits on the resolver | [#540](https://github.com/jlevy/metabrowser/pull/540), `mb-d9tu`; `mb-2wfk` |
 | GitHub links opened in the app, and `SessionRoot` | Built | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0` |
 | A repository folder’s revision views, its chooser, and their command line, with the two revision requirements above | Built | [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout); [#559](https://github.com/jlevy/metabrowser/pull/559), `mb-8ob8` |
-| Pulls and the toggle on a folder’s revision; View on branch and Browse code to the head as a revision | Not built | Follows `mb-8ob8` |
+| Pulls on a folder’s revision; View on branch and Browse code to the head as a revision | Not built | Follows `mb-8ob8` |
 | Recent targets kept by `metab`, behind File > Open Recent | Built; a mirror’s `target` waits for `ProviderUrlReducer.web_url` (`mb-8bds`), and the resolved root for the resolver | [Recent Targets](arch-recent-targets.md), `mb-40k4` |
 | File > Open URL… | Built, without the offer of a known checkout, which waits for a way to tell that an open folder is a checkout of the URL’s repository | [#560](https://github.com/jlevy/metabrowser/pull/560), `mb-m4mg`; the offer is `mb-bkk2` |
-| The GitHub toggle | Not built | [#552](https://github.com/jlevy/metabrowser/pull/552), `mb-zp7y` |
+| View on GitHub on files, folders, pull requests, and commits | Built; the app’s native popover is its own | `mb-4wqh` |
 | The mode indicator | Not built | `mb-wup3` |
 | One mode vocabulary across `IdentityKind`, the recent-targets store, and the app, held by a test; the shared resolution fixture | Not built | `mb-ajxe` |
 | The two [known gaps in the read-only rule](arch-git.md#known-gaps-in-the-read-only-rule) on a served checkout | Open | `mb-z849` |

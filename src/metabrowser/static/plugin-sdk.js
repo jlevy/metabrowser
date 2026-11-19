@@ -88,6 +88,8 @@
 //     actorIdentity(name, opts?)          — a person: an avatar's box, then the bold name,
 //                                          the person glyph in the box without an avatar
 //     actorIdentityHtml(name, opts?)      — its markup, the box holding the glyph
+//     mountCounterpart(corner, page)      — a page's View on GitHub button in a corner
+//     counterpartButton(counterpart)      — the button, from the server's answer
 //     filterControls                      — shared filter markup and interaction
 //                                          helpers, installed before plugins load
 //     class="disclosure-toggle"           — on any control that shows or hides
@@ -108,7 +110,8 @@
 //
 // The helpers that build a view's markup -- renderSourceView, wrapWithCopy,
 // partialNoticeHtml, refChip/refChipHtml/mergeRefs/mountRefCopies,
-// actorIdentity/actorIdentityHtml, ageBucket/ageLabelHtml,
+// actorIdentity/actorIdentityHtml, counterpartButton/mountCounterpart,
+// ageBucket/ageLabelHtml,
 // renderTextTruncationWarning, renderTextLoadMoreFooter, langForPath
 // and langForExtension -- and the syntax service, highlightSyntax and
 // isLargeTextPreview, are defined in plugin-sdk-views.js, which is not a startup

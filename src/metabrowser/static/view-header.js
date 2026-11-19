@@ -133,18 +133,23 @@
 
     /**
      * One view header (docs/design-system.md, "View Headers"): the eyebrow, which an empty
-     * one leaves out, the heading row (icon, title, the row's end), and the metadata line.
+     * one leaves out, the heading row (icon and title), the header's corner, and the
+     * metadata line. The corner is placed in the header's upper right and follows the
+     * heading row in the reading order. On a page whose repository is on github.com it is
+     * marked `data-counterpart`, so the first row leaves it room for the View on GitHub
+     * button the shell then asks for (`mountCounterpart`, plugin-sdk-views.js).
      * @param {MetabrowserViewHeaderParts} parts
      */
     function viewHeaderHtml(parts) {
+      const counterpart = window.METABROWSER_REPOSITORY_CONTEXT ? " data-counterpart" : "";
       return (
         `<div class="file-header view-header${parts.className ? ` ${parts.className}` : ""}" data-path="${esc(parts.path)}" data-kbd-badge-anchor>` +
         `<div class="view-header-eyebrow">${parts.eyebrow}</div>` +
         '<div class="view-header-heading">' +
         `<span class="view-header-icon file-identity-icon${parts.iconClass ? ` ${parts.iconClass}` : ""}"${parts.iconStyle ? ` style="${esc(parts.iconStyle)}"` : ""} aria-hidden="true">${parts.iconHtml}</span>` +
         `<h1 class="view-header-title page-heading" data-tip-text="${esc(parts.title)}">${esc(parts.title)}</h1>` +
-        `<span class="view-header-end">${parts.end}</span>` +
         "</div>" +
+        `<span class="view-header-end"${counterpart}></span>` +
         `<div class="view-header-line page-header-line">${parts.line}</div>` +
         "</div>"
       );
@@ -171,7 +176,6 @@
         eyebrow: viewHeaderEyebrowHtml(path),
         iconHtml: window.MetabrowserIcons?.folder || "",
         title: viewHeaderName(path),
-        end: "",
         line: `<span class="folder-header-summary">${dir ? folderHeaderSummaryHtml(dir) : ""}</span>`,
       });
     }
@@ -199,7 +203,6 @@
         iconClass: icon.cls,
         iconStyle: icon.style,
         title: name,
-        end: "",
         line:
           renderBadges(data) +
           viewHeaderItemsHtml([

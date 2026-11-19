@@ -2,7 +2,9 @@
 
 ``tests/golden/cli-api-counterpart.tryscript.md`` answers every page and every reason
 over a checkout and a mirror; this module holds the design system's table to
-:data:`~metabrowser.counterpart.PAGES`, and checks what needs no repository.
+:data:`~metabrowser.counterpart.PAGES`, checks what needs no repository, and holds the
+View on GitHub button's browserless session (``tests/dom/counterpart-session.js``,
+``tests/golden/cli-ui-counterpart.tryscript.md``) to its menu button's contract.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from metabrowser.cache.urls import (
     classify_root_argument,
 )
 from metabrowser.counterpart import MAX_PAGE_CHARS, PAGES, REASONS, CounterpartReason
+from tests.golden_harness import run_session
 
 DESIGN_SYSTEM = Path(__file__).resolve().parents[1] / "docs" / "design-system.md"
 CANONICAL = "https://github.com/octo/demo"
@@ -189,3 +192,51 @@ def test_a_pull_request_commit_keeps_no_anchor() -> None:
 def test_the_list_of_pull_requests_is_beside_the_repository() -> None:
     assert pulls_url(repository_url("octo", "demo")) == f"{CANONICAL}/pulls"
     assert pulls_url("https://example.com/octo/demo") is None
+
+
+def test_the_button_is_one_menu_button_and_the_corner_follows_the_page() -> None:
+    """``tests/dom/counterpart-session.js`` over the production SDK: the app's hooks, the
+    menu's keyboard and pointer, Copy Link, and what a corner asks the server and keeps."""
+
+    told = run_session("counterpart-session.js")
+    markup = told["markup"]
+    group, menu = markup["children"]
+    link, chevron = group["children"]
+    assert markup["data-view-on-github"] == ""
+    assert (link["tag"], link["data-view-on-github"], link["target"], link["rel"]) == (
+        "a",
+        "open",
+        "_blank",
+        "noopener",
+    )
+    assert (chevron["aria-haspopup"], chevron["aria-expanded"]) == ("menu", "false")
+    copy, external = menu["children"]
+    assert (menu["role"], menu.get("hidden")) == ("menu", True)
+    assert (copy["role"], external["role"]) == ("menuitem", "menuitem")
+    assert (external["data-view-on-github"], external["target"], external["rel"]) == (
+        "external",
+        "_blank",
+        "noopener",
+    )
+    assert external["href"] == link["href"]
+    # The menu holds a listener on the document only while it is open.
+    for step in told["menu"]:
+        assert step["outsideListeners"] == (1 if step["menu"] == "open" else 0), step
+    # Escape is the menu's: it closes it and goes no further.
+    escapes = [step for step in told["menu"] if step["step"] == "Escape"]
+    assert escapes and all(step["prevented"] and step["stopped"] for step in escapes)
+    tips = [(step.get("tip"), step.get("tipAfter")) for step in told["copy"][:3]]
+    assert tips == [
+        ("Link copied", "Copy Link or Open in Browser"),
+        ("Copy failed", "Copy Link or Open in Browser"),
+        ("Copy failed", "Copy Link or Open in Browser"),
+    ]
+    mount = {step["step"]: step for step in told["mount"]}
+    assert mount["the same page again"]["asked"] == []
+    assert mount["a page with none"]["corner"] == "empty"
+    assert mount["the first answer lands late"]["corner"].endswith("/pull/7/files")
+    assert mount["an answer whose address is a script"]["corner"] == "empty"
+    assert mount["another provider's answer"]["hook"] == "data-view-on-gitlab"
+    assert mount["a page with a space and a hash"]["asked"] == [
+        "/api/counterpart?page=%2Fview%2Fa%20b%23c.md"
+    ]

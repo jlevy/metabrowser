@@ -1921,6 +1921,8 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     "source-ref-selector.js": (
         '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
     ),
+    # The View on GitHub button's chevron, which opens its menu.
+    "plugin-sdk-views.js": ('"chip chip-menu-trigger counterpart-more disclosure-toggle"',),
     "agent_log/index.js": ('class="log-event-header disclosure-toggle"',),
     "structured/tree.js": ('" srow-container disclosure-toggle"',),
     "markdown/inert-toc.js": ('"kpress-toc-toggle disclosure-toggle"',),
@@ -1974,6 +1976,12 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         (
             "MetabrowserIcons?.toggle ??",
             '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
+        ),
+    ),
+    "plugin-sdk-views.js": (
+        (
+            "MetabrowserIcons?.toggle ??",
+            '"chip chip-menu-trigger counterpart-more disclosure-toggle"',
         ),
     ),
     "agent_log/index.js": (("mb.icons.toggle +", 'class="log-event-header disclosure-toggle"'),),

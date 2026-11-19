@@ -1845,6 +1845,232 @@
     return anchor;
   }
 
+  /** Each counterpart provider's mark, drawn before its label. */
+  /** @type {Record<string, string>} */
+  const counterpartMarks = { github: destinationGlyphs.github };
+  /** How long a copied link's confirmation stays on the menu's trigger, as a code copy's does. */
+  const COUNTERPART_COPIED_MS = 1500;
+
+  /**
+   * A page's external counterpart as a split button (docs/design-system.md, "View on
+   * GitHub"): a link to the counterpart, its provider's mark and label, joined to a
+   * chevron that opens a menu of Copy Link and Open in Browser. *counterpart* is what
+   * `GET /api/counterpart` answers, so the provider supplies the label and the URL, and
+   * another provider draws the same control.
+   *
+   * The markup is the macOS app's contract (mb-4wqh): the root carries
+   * `data-view-on-<provider>`, the link `data-view-on-<provider>="open"`, and the menu's
+   * Open in Browser `data-view-on-<provider>="external"`. In a browser the link opens the
+   * page in a new tab; the app shows a plain click on it in a popover of its own. Nothing
+   * here knows of the app.
+   *
+   * The menu is a menu button's: the chevron opens it with focus on its first item, the
+   * arrow keys, Home, and End move among the items, and Escape, a second click on the
+   * chevron, or an item closes it and gives focus back to the chevron, where a focused item
+   * the menu hid would leave it nowhere (WebKit does not focus a clicked button). Tab or a
+   * press outside closes it and leaves focus to the key or the press. A chord held with
+   * Command, Control, or Option is left to the browser, but for Option-Tab, which closes
+   * it as Tab does. Its one listener outside the button, for that press, is held only
+   * while the menu is open.
+   *
+   * @param {MetabrowserCounterpart} counterpart
+   * @returns {HTMLElement}
+   */
+  function counterpartButton(counterpart) {
+    const doc = global.document;
+    const hook = `data-view-on-${counterpart.provider}`;
+    const root = doc.createElement("span");
+    root.className = "counterpart";
+    root.setAttribute(hook, "");
+    const group = doc.createElement("span");
+    group.className = "chip-group counterpart-group";
+    group.dataset.layout = "joined";
+    const open = doc.createElement("a");
+    open.className = "chip counterpart-open";
+    open.setAttribute(hook, "open");
+    open.setAttribute("href", counterpart.url);
+    open.setAttribute("target", "_blank");
+    open.setAttribute("rel", "noopener");
+    open.dataset.tipText = counterpart.url.replace(/^https:\/\//, "");
+    const mark = doc.createElement("span");
+    mark.className = "counterpart-mark";
+    mark.setAttribute("aria-hidden", "true");
+    mark.innerHTML = counterpartMarks[counterpart.provider] ?? "";
+    const label = doc.createElement("span");
+    label.className = "counterpart-label";
+    label.textContent = counterpart.label;
+    open.append(mark, label);
+    const more = doc.createElement("button");
+    more.type = "button";
+    more.className = "chip chip-menu-trigger counterpart-more disclosure-toggle";
+    more.setAttribute("aria-haspopup", "menu");
+    more.setAttribute("aria-expanded", "false");
+    more.setAttribute("aria-label", `${counterpart.label}: Copy Link or Open in Browser`);
+    const restingTip = "Copy Link or Open in Browser";
+    more.dataset.tipText = restingTip;
+    const caret = doc.createElement("span");
+    caret.className = "chip-menu-caret";
+    caret.setAttribute("aria-hidden", "true");
+    caret.innerHTML = global.MetabrowserIcons?.toggle ?? "";
+    more.append(caret);
+    group.append(open, more);
+    const menu = doc.createElement("div");
+    menu.className = "menu counterpart-menu";
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("aria-label", counterpart.label);
+    menu.hidden = true;
+    /** @param {HTMLElement} item @param {string} text */
+    const menuItem = (item, text) => {
+      item.className = "menu-item";
+      item.setAttribute("role", "menuitem");
+      item.setAttribute("tabindex", "-1");
+      const words = doc.createElement("span");
+      words.className = "menu-item-label";
+      words.textContent = text;
+      item.append(words);
+      return item;
+    };
+    const copy = menuItem(doc.createElement("button"), "Copy Link");
+    copy.setAttribute("type", "button");
+    copy.dataset.counterpartAction = "copy";
+    const external = menuItem(doc.createElement("a"), "Open in Browser");
+    external.setAttribute(hook, "external");
+    external.setAttribute("href", counterpart.url);
+    external.setAttribute("target", "_blank");
+    external.setAttribute("rel", "noopener");
+    menu.append(copy, external);
+    root.append(group, menu);
+
+    const items = [copy, external];
+    /** @type {((event: Event) => void) | null} */
+    let outside = null;
+    /** @param {boolean} refocus whether focus goes back to the chevron */
+    function close(refocus) {
+      if (!menu.hidden) {
+        menu.hidden = true;
+        more.setAttribute("aria-expanded", "false");
+      }
+      if (outside !== null) {
+        doc.removeEventListener("pointerdown", outside, true);
+        outside = null;
+      }
+      if (refocus) {
+        more.focus();
+      }
+    }
+    /** @param {number} at the item to focus, from the end when negative */
+    function show(at) {
+      if (menu.hidden) {
+        menu.hidden = false;
+        more.setAttribute("aria-expanded", "true");
+        outside = (event) => {
+          const target = /** @type {Node | null} */ (event.target);
+          if (!root.isConnected || target === null || !root.contains(target)) {
+            close(false);
+          }
+        };
+        doc.addEventListener("pointerdown", outside, true);
+      }
+      items[((at % items.length) + items.length) % items.length].focus();
+    }
+    more.addEventListener("click", () => (menu.hidden ? show(0) : close(true)));
+    // A chord is the browser's and the app's, Command-Up among them (mb-i1wy).
+    more.addEventListener("keydown", (event) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        show(event.key === "ArrowDown" ? 0 : -1);
+      }
+    });
+    menu.addEventListener("keydown", (event) => {
+      // Tab leaves the menu, and so does Option-Tab, with which Safari moves focus: either
+      // closes it and cancels nothing. Any other chord is the browser's and the app's.
+      if (event.key === "Tab") {
+        close(false);
+        return;
+      }
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+      const at = items.indexOf(/** @type {HTMLElement} */ (doc.activeElement));
+      const moves = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: -1 };
+      if (event.key in moves) {
+        event.preventDefault();
+        show(moves[/** @type {keyof typeof moves} */ (event.key)]);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        close(true);
+      }
+    });
+    copy.addEventListener("click", () => {
+      close(true);
+      /** @param {string} tip */
+      const confirm = (tip) => {
+        more.dataset.tipText = tip;
+        global.setTimeout(() => {
+          more.dataset.tipText = restingTip;
+        }, COUNTERPART_COPIED_MS);
+      };
+      const clipboard = global.navigator?.clipboard;
+      if (!clipboard || typeof clipboard.writeText !== "function") {
+        confirm("Copy failed");
+        return;
+      }
+      clipboard.writeText(counterpart.url).then(
+        () => confirm("Link copied"),
+        () => confirm("Copy failed"),
+      );
+    });
+    external.addEventListener("click", () => close(true));
+    return root;
+  }
+
+  /** The page each corner last asked for, so a repaint of the same page asks once. */
+  /** @type {WeakMap<Element, string>} */
+  const counterpartAsked = new WeakMap();
+
+  /**
+   * Ask the server for *page*'s counterpart (`GET /api/counterpart`, the one place a
+   * github.com URL is made) and put its button in *corner*, a header's
+   * `.view-header-end`. *page* is the page's address as `location.pathname` spells it.
+   * A page with none, or an answer that does not arrive, leaves the corner empty. Asked
+   * again for the page a corner already asked for, it asks nothing; a corner asked for
+   * another page before an answer lands drops that answer.
+   *
+   * @param {Element} corner
+   * @param {string} page
+   * @returns {Promise<HTMLElement | null>}
+   */
+  async function mountCounterpart(corner, page) {
+    if (counterpartAsked.get(corner) === page) {
+      return /** @type {HTMLElement | null} */ (corner.querySelector(".counterpart"));
+    }
+    counterpartAsked.set(corner, page);
+    /** @type {{counterpart?: MetabrowserCounterpart | null} | null} */
+    let answer = null;
+    try {
+      const response = await global.fetch(`/api/counterpart?page=${encodeURIComponent(page)}`);
+      answer = response.ok ? await response.json() : null;
+    } catch {
+      // A server that went away draws no button; the next page asks again.
+      answer = null;
+    }
+    if (counterpartAsked.get(corner) !== page) {
+      return null;
+    }
+    const counterpart = answer?.counterpart ?? null;
+    if (counterpart === null || !/^https:\/\//.test(counterpart.url)) {
+      corner.replaceChildren();
+      return null;
+    }
+    const button = counterpartButton(counterpart);
+    corner.replaceChildren(button);
+    return button;
+  }
+
   /**
    * The tree of a change set's files, which the Pulls tab and a diff's Diff summary both
    * draw: static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. Loaded
@@ -1866,8 +2092,10 @@
   Object.assign(mb, {
     actorIdentity,
     actorIdentityHtml,
+    counterpartButton,
     decorateExternalLink,
     loadChangedFilesTree,
+    mountCounterpart,
     refChipHtml,
     refChip,
     mergeRefs,

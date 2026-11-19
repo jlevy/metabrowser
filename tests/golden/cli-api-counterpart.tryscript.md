@@ -33,7 +33,7 @@ before: >-
   printf 'build/\n*.log\n' > .gitignore &&
   git add -A &&
   git commit -q -m 'first commit' &&
-  git update-ref refs/remotes/origin/main HEAD &&
+  git update-ref refs/remotes/origin/trunk HEAD &&
   git checkout -q -b local-work &&
   printf 'Committed here, pushed nowhere.\n' > LOCAL.md &&
   git add LOCAL.md &&
@@ -77,7 +77,7 @@ The fixture builds, with identity and dates fixed so each commit ID below is the
 every machine:
 
 - `checkout`, a repository whose `origin` is `https://github.com/octo/demo.git`. Its
-  `main` (`6df6ba6…`) is what `refs/remotes/origin/main` names, as a fetch would have
+  `main` (`6df6ba6…`) is what `refs/remotes/origin/trunk` names, as a fetch would have
   left it, and `local-work` has a commit no remote holds.
   Its working tree differs from `main`: `README.md` is edited, `docs/staged.md` is
   staged and not committed, `notes.txt` and `scratch/` are untracked, and `debug.log`

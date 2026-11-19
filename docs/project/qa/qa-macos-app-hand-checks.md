@@ -142,14 +142,16 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
     once access is granted.
     Repeat with the repository in `~/Desktop` and in `~/Downloads`. How macOS treats a
     served root above the folder chosen in the open panel is untested.
-11. **The GitHub toggle.** Open a checkout of a repository on github.com whose branch is
-    pushed, such as this repository, and open `README.md`. The view header ends in two
-    marks, the gray Metabrowser mark pressed and the GitHub mark.
-    Click the GitHub mark: the default browser opens `README.md` on github.com at the
-    branch, and the app’s window still shows Metabrowser’s view.
-    On a branch that `origin` did not have at your last fetch, the GitHub mark’s tooltip
-    says so, and the link opens the commit.
-    A folder with no GitHub remote shows no toggle.
+11. **View on GitHub.** Open a checkout of a repository on github.com whose commit is
+    pushed, such as this repository, and open `README.md`. The header’s upper right
+    holds the GitHub mark, “View on GitHub”, and a chevron.
+    Click View on GitHub: `README.md` opens on github.com at the commit, and the app’s
+    window still shows Metabrowser’s view.
+    Open the chevron’s menu: Copy Link puts the same address on the clipboard, and Open
+    in Browser opens it in the default browser.
+    The same button is in the same place on a folder, a pull request’s page, and a
+    commit’s page. A file you have edited and not committed shows none, and a folder with
+    no GitHub remote shows none and leaves no gap for one.
 
 ## GitHub Links
 

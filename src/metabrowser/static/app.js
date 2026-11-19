@@ -7240,6 +7240,13 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           },
           filePerfMeta(data, { html_chars: html.length }),
         );
+        // The View on GitHub button in the header's corner, which view-header.js marks on
+        // a page whose repository is on github.com; the server says whether this page has
+        // a counterpart (plugin-sdk-views.js, mountCounterpart).
+        const counterpartCorner = stage.querySelector(".view-header-end[data-counterpart]");
+        if (counterpartCorner) {
+          void window.metabrowser?.mountCounterpart?.(counterpartCorner, location.pathname);
+        }
         if (initialActiveView) {
           setActivePreviewView(initialActiveView.id, stage);
         } else {
