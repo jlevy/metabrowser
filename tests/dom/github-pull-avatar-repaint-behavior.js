@@ -125,7 +125,6 @@ const PARTS = {
   branches: "merge-refs",
   "copy buttons": "git-ref-copy",
   "opened row": "github-pull-quiet",
-  "GitHub link": "github-pull-external-action",
   labels: "github-pull-label",
   Refresh: "github-pull-refresh",
 };

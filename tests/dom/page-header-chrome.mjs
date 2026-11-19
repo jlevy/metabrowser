@@ -223,7 +223,12 @@ const MEASURE = `async (which, width) => {
   };
   const headerBox = header.getBoundingClientRect();
   const contentLeft = headerBox.left + parseFloat(getComputedStyle(header).paddingLeft);
-  const lines = [...header.children].filter((child) => getComputedStyle(child).display !== "none");
+  // The header's corner, which holds the View on GitHub button, is placed out of the flow in
+  // the page's upper right, so it is no line (docs/design-system.md, "View on GitHub").
+  const lines = [...header.children].filter(
+    (child) =>
+      getComputedStyle(child).display !== "none" && !child.classList.contains("view-header-end"),
+  );
   const title = lines[0];
   // Each line's top is read from the title's, since the commit's header is padded by its
   // view and the pull request's by itself.

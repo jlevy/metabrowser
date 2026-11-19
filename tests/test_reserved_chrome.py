@@ -350,7 +350,7 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     assert "text-overflow" not in ages
     assert "text-overflow: ellipsis;" in _rule(css, ".github-pull-quiet > .github-pull-ages")
     assert "flex: none;" in _rule(css, ".github-pull-quiet > .github-pull-ages-links")
-    # Refresh ends it, after View on GitHub and Browse code (A1 of review A on #506).
+    # Refresh ends it, after Browse code (A1 of review A on #506).
     assert "placeChildren(openedRow, [stateBadge, opened.row, refresh]);" in page
     assert "margin-inline-start: auto;" in _rule(css, ".github-pull-opened > .github-pull-refresh")
     assert 'h("div", { class: "github-pull-branches page-header-line" })' in page

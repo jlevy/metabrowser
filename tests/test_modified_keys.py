@@ -144,6 +144,17 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             via=("handleGutterKey",),
             unmounted="the gutter's own guard, which this PR did not change",
         ),
+        Listener(
+            "the View on GitHub chevron's ArrowDown and ArrowUp, which open its menu",
+            _GUARD,
+            checks=("tests/dom/counterpart-session.js",),
+        ),
+        Listener(
+            "the View on GitHub menu's arrows, Home, End, and Escape, and Tab and Option-Tab "
+            "closing it, which cancel nothing",
+            _GUARD,
+            checks=("tests/dom/counterpart-session.js",),
+        ),
     ),
     "static/plugin-sdk.js": (Listener("the idle-work input clock", None),),
     "static/perf.js": (

@@ -88,6 +88,7 @@ from metabrowser.charts import clear_charts_cache
 from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.content_sniff import ContentClass, sniff_artifact
+from metabrowser.counterpart import COUNTERPART_ROUTES
 from metabrowser.diff.markdown_projection_worker import (
     InertRender,
     InertRenderRefused,
@@ -1359,22 +1360,6 @@ def _mirror_heading_attrs(status: SourceStatus) -> str:
 
 
 @functools.cache
-def _github_page_script() -> str:
-    """`static/github-page.js`, as the shell of a page with a GitHub repository carries it.
-
-    Only a page whose repository context the server found, a checkout whose ``origin`` is
-    on github.com or a mirror the GitHub provider owns, has a GitHub page to toggle to, so
-    the toggle's code is written into that page and is no startup script of a folder's
-    (docs/design-system.md, "View Headers").
-    """
-
-    script = STATIC_DIR.joinpath("github-page.js").read_text(encoding="utf-8")
-    if "</script" in script.lower():
-        raise RuntimeError("github-page.js cannot be safely embedded in the index shell")
-    return script
-
-
-@functools.cache
 def _mirror_heading_script() -> str:
     """`static/mirror-heading.js`, as a served mirror's shell carries it inline.
 
@@ -1648,6 +1633,7 @@ async def index(
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
     tree_expansion_url = _static_asset_url("tree-expansion.js")
+    nav_collapse_url = _static_asset_url("nav-collapse.js")
     tree_filter_model_url = _static_asset_url("tree-filter-model.js")
     pending_tally_diagnostics_url = _static_asset_url("pending-tally-diagnostics.js")
     known_file_catalog_url = _static_asset_url("known-file-catalog.js")
@@ -1974,8 +1960,6 @@ async def index(
         )
         if mirror_attrs:
             repository_context_block += f"<script>{_mirror_heading_script()}</script>"
-    if repository_context is not None:
-        repository_context_block += f"<script>{_github_page_script()}</script>"
     if checkout is not None:
         # A checkout's page says so, and whether it shows the working tree: the ref
         # selector reads it for what it offers, and the pin guard, which the selector's
@@ -2038,6 +2022,9 @@ async def index(
             {"src": overlay_layer_url},
             {"src": keyboard_help_url},
             {"src": key_reveal_url},
+            # Hiding the navigation pane: app.js draws its chevron at first paint, and a
+            # click before this bundle arrives loads it and then hides the pane.
+            {"src": nav_collapse_url},
             {"src": shell_keymap_url},
             {"src": plugin_shortcuts_url},
             {"src": tree_keyboard_navigation_url},
@@ -2373,6 +2360,13 @@ async def index(
       <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
         {preview_loading}
       </div>
+      <!-- Hides and shows the navigation pane, as the backslash key does: on the main
+           page's left edge, beside the pane's shadow, on the shortcut strip's row. It
+           is in the frame, not the pane, so it stays when the pane is hidden and slides
+           with the page. app.js draws its chevron; static/nav-collapse.js runs it. -->
+      <button class="icon-btn nav-collapse-toggle disclosure-toggle" id="nav-collapse-toggle" type="button"
+              aria-controls="tree-pane" aria-expanded="true"
+              aria-label="Hide navigation"></button>
     </div>
   </main>
   <!-- Core shell scripts are local and first-paint critical. Optional
@@ -5228,6 +5222,8 @@ routes = [
     *SOURCE_ROUTES,
     # What the served subject is called, as the shell's title and a native window say.
     *IDENTITY_ROUTES,
+    # A page's github.com counterpart, which every View on GitHub control links to.
+    *COUNTERPART_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS, asset_trees=_PLUGIN_ASSET_TREES),
 ]
 

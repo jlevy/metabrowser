@@ -11,6 +11,7 @@ It claims only ``github.com`` (with or without ``www.``) and
 | ``…/tree/<ref-and-path>`` | tree |
 | ``…/blob/<ref-and-path>[#L10][#L10-L20][#L10C5-L20C8]`` (``?plain=1`` kept) | blob |
 | ``…/commit/<oid>``, ``…/pull/<n>/commits/<oid>`` | commit |
+| ``…/commit/<oid>#diff-<hash>`` | commit, at one file |
 | ``…/pull/<n>[/commits]`` | pull request |
 | ``…/pull/<n>/files`` or ``/changes``, ``…/pull/<n>/checks`` | pull request, on that tab |
 | ``…/pull/<n>/files#diff-<hash>[R12][-R15]``, or ``/changes#…`` | pull request, at one file |
@@ -22,15 +23,20 @@ reason and a message that names the shape and offers the repository URL. Exactly
 trailing ``.git`` is removed from the repository name. The generic
 grammar never sees a claimed URL, so this module repeats its control-character,
 non-ASCII, backslash, and credentials checks before anything else. Query parameters
-other than ``plain=1``, and fragments other than a blob's line anchor and a Changes
-tab's file anchor, are dropped, and no refusal repeats the argument.
+other than ``plain=1``, and fragments other than a blob's line anchor and a file anchor
+on a Changes tab or a commit's page, are dropped, and no refusal repeats the argument.
 
 GitHub's anchor for one file of a pull request's Changes tab is ``diff-`` and the
-SHA-256 of the file's path, in hexadecimal, optionally followed by a line in that file's
-diff, ``R`` for the head's side and ``L`` for the base's, or a range of two. Which file
-the hash names is in the pull request's list of changed files, which no URL carries, so
-the selection keeps the anchor (:class:`~metabrowser.cache.urls.FileAnchor`) and the
-provider resolves it once the pull request is open (``pull_file_anchor.py``).
+SHA-256 of the file's path, in hexadecimal (:func:`file_anchor`), optionally followed by
+a line in that file's diff, ``R`` for the head's side and ``L`` for the base's, or a
+range of two. Which file the hash names is in the pull request's list of changed files,
+which no URL carries, so the selection keeps the anchor
+(:class:`~metabrowser.cache.urls.FileAnchor`) and the provider resolves it once the pull
+request is open (``pull_file_anchor.py``). A commit's page anchors each changed file the
+same way, and its selection keeps the anchor in the same field; nothing resolves it yet,
+so such a URL opens the commit. A commit inside a pull request
+(``…/pull/<n>/commits/<oid>``) keeps none, since the provider would read it as a file of
+the pull request's own Changes tab.
 
 GitHub's Changes page moved from ``/pull/<n>/files`` to ``/pull/<n>/changes`` (its
 changelog of 2025-12-11; the default for every account since 2026-01-22), and it
@@ -65,11 +71,12 @@ percent-encoded.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import string
 import unicodedata
 from dataclasses import dataclass, replace
-from typing import Final
+from typing import TYPE_CHECKING, Final
 from urllib.parse import quote_from_bytes
 
 from metabrowser.cache.urls import (
@@ -81,7 +88,16 @@ from metabrowser.cache.urls import (
 )
 from metabrowser.invisible_chars import hidden_at
 
+if TYPE_CHECKING:
+    from metabrowser.repository_context import RepositoryContext
+
 CANONICAL_HOST: Final = "github.com"
+# What a link to a Metabrowser page's github.com counterpart names as its provider, and
+# what it says. ``GET /api/counterpart`` (``metabrowser/counterpart.py``) answers both
+# beside the URL, through :class:`GithubCounterpartHost`, so every page's control and
+# ``metab --api`` name the link alike.
+COUNTERPART_PROVIDER: Final = "github"
+COUNTERPART_LABEL: Final = "View on GitHub"
 _WEB_HOSTS: Final = frozenset({"github.com", "www.github.com"})
 _RAW_HOST: Final = "raw.githubusercontent.com"
 
@@ -196,6 +212,32 @@ def repository_url(owner: str, repository: str) -> str:
     """The canonical clone and identity URL: lowercase, no ``.git``."""
 
     return f"https://{CANONICAL_HOST}/{owner.lower()}/{repository.lower()}"
+
+
+def pulls_url(clone_url: str) -> str | None:
+    """The github.com list of *clone_url*'s pull requests, or ``None`` when it is not GitHub's.
+
+    No :class:`~metabrowser.cache.urls.RepositorySelection` names the list, so this is
+    not :meth:`GithubUrlReducer.web_url`: ``metab`` opens a repository, a file, a
+    commit, or one pull request, and :meth:`GithubUrlReducer.reduce` refuses a ``pulls``
+    page by name. A selection kind for it would make ``metab …/pulls`` open the list,
+    which is a feature of its own.
+    """
+
+    if parse_repository_url(clone_url) is None:
+        return None
+    return f"{clone_url}/pulls"
+
+
+def file_anchor(path: bytes) -> FileAnchor:
+    """GitHub's anchor for the file at *path* among a comparison's changed files.
+
+    The SHA-256 of the path's bytes in hexadecimal, which a pull request's Changes tab and
+    a commit's page both prefix with ``diff-``. *path* is the file's path in the
+    repository, which for a name in UTF-8 is its UTF-8 bytes.
+    """
+
+    return FileAnchor(digest=hashlib.sha256(path).hexdigest())
 
 
 class _Refuse(Exception):
@@ -471,7 +513,9 @@ def _repository_selection(
     if page == "commit":
         if len(args) != 1:
             raise _unsupported(None, repo_url)
-        return RepositorySelection(kind="commit", commit=_commit_id(args[0], repo_url))
+        return RepositorySelection(
+            kind="commit", commit=_commit_id(args[0], repo_url), pull_file=_file_anchor(fragment)
+        )
     if page == "pull":
         return _pull_selection(args, fragment, repo_url)
     raise _unsupported(page, repo_url)
@@ -623,13 +667,45 @@ class GithubUrlReducer:
             case "commit":
                 if selection.pull_request is not None:
                     return f"{clone_url}/pull/{selection.pull_request}/commits/{selection.commit}"
-                return f"{clone_url}/commit/{selection.commit}"
+                return f"{clone_url}/commit/{selection.commit}" + _anchored(selection.pull_file)
             case "pull_request":
                 tab = f"/{selection.pull_tab}" if selection.pull_tab else ""
                 url = f"{clone_url}/pull/{selection.pull_request}{tab}"
-                if selection.pull_file is not None:
-                    url += f"#diff-{selection.pull_file.digest}{selection.pull_file.line}"
-                return url
+                return url + _anchored(selection.pull_file)
+
+
+class GithubCounterpartHost:
+    """The installed :class:`~metabrowser.cache.providers.CounterpartHost` for GitHub."""
+
+    @property
+    def provider(self) -> str:
+        return COUNTERPART_PROVIDER
+
+    @property
+    def label(self) -> str:
+        return COUNTERPART_LABEL
+
+    def clone_url(self, context: RepositoryContext) -> str | None:
+        if context["host"] != CANONICAL_HOST:
+            return None
+        url = repository_url(context["owner"], context["name"])
+        # An owner or a name the github.com grammar does not admit has no page there.
+        return url if parse_repository_url(url) is not None else None
+
+    def web_url(self, clone_url: str, selection: RepositorySelection) -> str | None:
+        return GithubUrlReducer().web_url(clone_url, selection)
+
+    def pulls_url(self, clone_url: str) -> str | None:
+        return pulls_url(clone_url)
+
+    def file_anchor(self, path: bytes) -> FileAnchor:
+        return file_anchor(path)
+
+
+def _anchored(anchor: FileAnchor | None) -> str:
+    """A file anchor's fragment, ``#diff-<hash>`` and its line, or nothing."""
+
+    return "" if anchor is None else f"#diff-{anchor.digest}{anchor.line}"
 
 
 def _encoded_path(segments: tuple[bytes, ...]) -> str:
@@ -652,8 +728,13 @@ def parse_repository_url(url: str) -> tuple[str, str] | None:
 
 __all__ = [
     "CANONICAL_HOST",
+    "COUNTERPART_LABEL",
+    "COUNTERPART_PROVIDER",
     "RESERVED_OWNERS",
+    "GithubCounterpartHost",
     "GithubUrlReducer",
+    "file_anchor",
     "parse_repository_url",
+    "pulls_url",
     "repository_url",
 ]

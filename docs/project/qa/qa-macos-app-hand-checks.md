@@ -148,9 +148,11 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
     Click View on GitHub: a popover below the button shows `README.md` on github.com at
     the commit, and the window behind it still shows Metabrowser’s view
     ([View on GitHub](#view-on-github) checks the popover).
-    Choose Open in Browser from the chevron’s menu: the default browser opens the same
-    page, and no popover opens.
-    A folder with no GitHub remote shows no button.
+    Open the chevron’s menu: Copy Link puts the same address on the clipboard; Open in
+    Browser opens it in the default browser, and no popover opens.
+    The same button is in the same place on a folder, a pull request’s page, and a
+    commit’s page. A file you have edited and not committed shows none, and a folder with
+    no GitHub remote shows none and leaves no gap for one.
 12. **Hidden folders.** In File > Open Folder…, press Command-Shift-G and go to
     `/tmp/mb-check`: the panel lists `.hidden` without Command-Shift-Period, and
     choosing it opens it.

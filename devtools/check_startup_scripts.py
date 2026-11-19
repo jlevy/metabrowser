@@ -48,12 +48,11 @@ it serves no GitHub repository) and a pinned revision's page (``git-path.js``, w
 server names in ``PIN_STARTUP_SCRIPTS``; ``tests/test_serve_pin.py`` holds a real pin's
 shell to that list). The session runs on the pull-request shell too, so a
 script-initiated request there fails the check as well. A checkout whose ``origin`` is on
-github.com carries the view header's GitHub toggle (``static/github-page.js``) inline, in
-its HTML rather than as a script it requests, so the gate's count never sees it. The
-summary reports how much more the application sends for that checkout's shell than for
-a plain folder's beside the budget too: the toggle, the repository context, the Git tabs,
-and the larger bundle manifest they need, all of which a browser receives before it can
-paint.
+github.com carries more in its HTML than a plain folder's, rather than as scripts it
+requests, so the gate's count never sees it. The summary reports how much more the
+application sends for that checkout's shell than for a plain folder's beside the budget
+too: the repository context, the Git tabs, and the larger bundle manifest they need, all
+of which a browser receives before it can paint.
 
 **The limits** are read from the budget file. There is no second copy here to drift.
 
@@ -437,13 +436,13 @@ def main() -> int:
             f"{sum(script.transfer_bytes for script in others):,} bytes "
             f"({beside_budget(others, limits)}; not gated)"
         )
-    # A github.com checkout's shell carries the GitHub toggle inline, in its HTML.
+    # A github.com checkout's shell carries more in its HTML than a plain folder's.
     github_html = render_shells(FOLDER_ADDRESS, github=True)[0]
     growth = shell_growth_bytes(github_html, folder_html)
     spare = limits.transfer_bytes - total - growth
     print(
-        f"  a github.com checkout's shell is {growth:,} bytes larger as sent, "
-        f"github-page.js inline among them: {total + growth:,} bytes "
+        f"  a github.com checkout's shell is {growth:,} bytes larger as sent: "
+        f"{total + growth:,} bytes "
         f"({f'{spare:,} bytes under' if spare >= 0 else f'{-spare:,} bytes over'}; not gated)"
     )
     if not found:
