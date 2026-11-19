@@ -703,6 +703,13 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/status",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/structured/parsed",
       "methods": [
         "GET",
@@ -874,7 +881,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 67
+  "count": 68
 }
 ? 0
 ```

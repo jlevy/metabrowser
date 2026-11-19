@@ -38,7 +38,7 @@ from metabrowser.builtin_plugins.github.gh import (
     GhResponse,
     gh_account,
     gh_api,
-    parse_account,
+    parse_active_account,
     parse_included_response,
     rate_limit_reset,
 )
@@ -337,12 +337,13 @@ def test_gh_api_returns_304_and_types_refusals(stand: _Stand) -> None:
 
 
 def test_account_is_the_active_login_even_in_an_error_state() -> None:
-    assert parse_account(account("octo", state="error")["stdout"].encode()) == "octo"
-    assert parse_account(b'{"hosts":{}}') is None
+    errored = parse_active_account(account("octo", state="error")["stdout"].encode())
+    assert errored is not None and errored.login == "octo"
+    assert parse_active_account(b'{"hosts":{}}') is None
     inactive = {"hosts": {"github.com": [{"active": False, "login": "other", "state": "success"}]}}
-    assert parse_account(json.dumps(inactive).encode()) is None
+    assert parse_active_account(json.dumps(inactive).encode()) is None
     with pytest.raises(GhError):
-        parse_account(b'{"hosts":{"github.com":[{"active":true,"login":"bad login"}]}}')
+        parse_active_account(b'{"hosts":{"github.com":[{"active":true,"login":"bad login"}]}}')
 
 
 @pytest.mark.parametrize(
@@ -361,7 +362,7 @@ def test_environment_token_login_resolution_failure_is_typed(
     active = {"active": True, "login": "", "state": state, "error": diagnostic}
     payload = {"hosts": {"github.com": [active]}}
     with pytest.raises(GhError) as failure:
-        parse_account(json.dumps(payload).encode())
+        parse_active_account(json.dumps(payload).encode())
     assert failure.value.state == outcome
     assert message in str(failure.value) and "private diagnostic" not in str(failure.value)
 

@@ -13,7 +13,8 @@ the selected path. Every mode also hands the server the store as a mirror, so
 
 A pull-request URL pins the pull request's head, read from its cached record or, when
 there is none, fetched once first; it falls back to the default branch, or a commit
-URL's commit, when the pull request cannot be opened. Every mode hands the server what
+URL's commit, when the pull request cannot be opened, and stops instead when only
+installing or signing in to the provider's tools can open it. Every mode hands the server what
 keeps the repository's pull requests, for any GitHub mirror: ``/api/plugin/github/pull``
 reads any of them, and the mirror's refresh keeps the one the URL named fresh.
 

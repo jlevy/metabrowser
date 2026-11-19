@@ -319,17 +319,21 @@ repository. The cache-related failures below name this command.
 
 ## When Something Does Not Open
 
-A clone that fails stops the command with an `Error:` line and exit status 1. A pull
-request that cannot be read does not: `metab` serves the default branch, exits 0 in the
-one-shot modes, and says why on its `pull_request` line.
+A clone that fails stops the command with an `Error:` line and exit status 1. So does a
+pull request not yet cached while `gh` is missing, too old, or not signed in, with the
+step that fixes it, without cloning anything.
+Any other pull request that cannot be read does not stop it: `metab` serves the default
+branch, exits 0 in the one-shot modes, and says why on its `pull_request` line.
 The page says why too, and offers **Fetch** to try again once the cause is fixed.
+`metab --doctor` shows what `gh` reports: its path and version, the account, and the
+account’s scopes.
 
 | Name | What it means | What to do |
 | --- | --- | --- |
 | `gh_missing` | `gh` is not on `PATH` | Install `gh` |
 | `gh_too_old` | This `gh` cannot report its active account | Upgrade `gh` |
 | `not_logged_in` | `gh` is not signed in to github.com | Run `gh auth login --hostname github.com` |
-| `not_found_or_private` | It does not exist, or the account cannot read it; GitHub does not say which | Check the URL, and that `gh auth status` names an account with access |
+| `not_found_or_private` | It does not exist, or the account cannot read it; GitHub does not say which | Check the URL, and that `metab --doctor` names an account with access and the `repo` scope |
 | `rate_limited` | GitHub’s rate limit, with its reset time when GitHub gives one | Wait; the page tries again after the reset |
 | `network_error`, `network_unreachable`, `connection_interrupted`, `timed_out` | GitHub could not be reached, by `gh` or by Git | Restore the network, then **Refresh** |
 | `too_large` | The first clone is over the size limit | See [large repositories](#large-repositories) |

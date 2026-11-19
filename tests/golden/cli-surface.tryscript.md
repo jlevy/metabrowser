@@ -172,8 +172,9 @@ $ metab --help
 │ --plugins                     List every discovered plugin.                  │
 │ --plugin               NAME   Print the full resolved manifest for one       │
 │                               plugin.                                        │
-│ --doctor                      Validate every discovered plugin; exit         │
-│                               non-zero on any problem.                       │
+│ --doctor                      Validate every discovered plugin, exiting      │
+│                               non-zero on any problem, and report GitHub     │
+│                               CLI's path, version, account, and scopes.      │
 │ --present                     Hand ROOT, a folder, a file, or a GitHub URL,  │
 │                               to the Metabrowser macOS app through           │
 │                               LaunchServices and report what was sent.       │

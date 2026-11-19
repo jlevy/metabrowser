@@ -73,6 +73,7 @@ registered, any other status, and a golden that never runs the route.
 | `/api/plugin/github/pull-files-summary` | covered | `--api` | `cli-github-pull-files-summary.txt` |
 | `/api/plugin/github/pulls-prefetch` | covered | `--api` | `cli-github-pulls-prefetch.txt` |
 | `/api/plugin/github/cache-clear` | covered | `--api --data` | `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |
+| `/api/plugin/github/status` | covered | `--api --data` | `cli-github-status.tryscript.md` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
@@ -161,6 +162,7 @@ interaction session and fails when a named function did not execute.
 | `source.checkout-overlay` | data | `/api/source/status` | `owned-route` | `metab --cache-dir home --config-dir config https://github.com/octo/demo/pull/1 --api /api/source/status` | `cli-checkout-overlay.tryscript.md` |
 | `cache.store-borrowing` | data | `/api/cache/stores` | `owned-route` | `metab --cache-dir home --config-dir config root --api /api/cache/stores` | `cli-checkout-overlay.tryscript.md` |
 | `github.pull-base-uncertain` | data | `/api/plugin/github/pull` | `owned-route` | `metab --cache-dir home-shallow --config-dir config https://github.com/octo/demo/pull/1 --api '/api/plugin/github/pull?number=1'` | `cli-checkout-overlay.tryscript.md` |
+| `github.sign-in-status` | data | `/api/plugin/github/status` | `owned-route` | `metab statusroot --api /api/plugin/github/status --data empty.json` | `cli-github-status.tryscript.md` |
 | `github.pull-file-anchor` | data | `/api/plugin/github/pull-files` | `owned-route` | `metab 'https://github.com/octo/demo/pull/7/files#diff-eae8d22bc4fc6d599e92d3cc7266ae3adb0e1ffa3c89a8d9cbbb33eec9462386L1-R1' --api '/api/plugin/github/pull-files?number=7'` | `cli-github-pull-file-anchor.txt` |
 | `github.pull-page-paint-decisions` | interaction | `builtin_plugins/github/pull-page.js#conversationAction`, `builtin_plugins/github/pull-page.js#conversationKey`, `builtin_plugins/github/pull-page.js#filesAction`, `builtin_plugins/github/pull-page.js#filesUnavailableText` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-second-session.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-page-place` | interaction | `builtin_plugins/github/pull-page.js#createScrollKeeper`, `builtin_plugins/github/pull-page.js#placeAt`, `builtin_plugins/github/pull-page.js#scrollTopOf`, `builtin_plugins/github/pull-page.js#keyMovesPane` | `local-only` | `node tests/dom/github-pull-page-second-session.js` | `cli-ui-github-pull-page.tryscript.md` |

@@ -35,6 +35,10 @@ clone, a mirror’s `repository_context`, the commit a pull-request URL pins, th
 file a Changes tab URL’s anchor names (`pull_request_file`), and the set of pull
 requests a server keeps fresh.
 `GithubProvider` in `provider.py` answers each.
+`provider_statuses` in the same module collects each provider’s section of
+`metab --doctor`, and `PullRequestUnavailableError.blocking` tells the command line that
+a pull request can open only once a tool is installed or signed in, without naming the
+tool; both come from [the GitHub status check](#the-github-status-check).
 The URL reducer in `urls.py` claims github.com and raw.githubusercontent.com; its
 docstring tabulates every URL shape it accepts and what each selects.
 GitHub’s `#diff-<hash>` anchor, on a `/pull/<n>/files` or `/pull/<n>/changes` URL, is
@@ -50,10 +54,11 @@ redirect it cleared, a deadline and an output cap (`GH_API_TIMEOUT_S`,
 `GH_API_MAX_BYTES`), and its own process group, registered with Git’s so a Ctrl-C or
 hangup kills it too.
 `gh_api` issues one REST request and returns status, headers, and body; `gh_graphql`
-runs only a read-only query document, checked by its structure; `gh_account` reads the
-active login.
-Nothing there paginates or caches, because `--paginate` and `--cache` would
-hide page caps, ETags, and rate-limit headers.
+runs only a read-only query document, checked by its structure; `gh_active_account`
+reads the active account, its token source, and its scopes, and `gh_version` the
+version.
+Nothing there paginates or caches, because `--paginate` and `--cache` would hide
+page caps, ETags, and rate-limit headers.
 `gh api` refuses every request while signed out, so every record is read by an account
 and names its reader as `gh:<login>`.
 
@@ -64,6 +69,41 @@ more than `BACKGROUND_FLOOR` of its limit left and no hold applies; a reader’s
 is never asked. The observations belong to the account the last account check named, and
 another account forgets them; since `remaining` is the account’s, several servers on one
 account stop together.
+
+### The GitHub Status Check
+
+`gh_status.py` answers what GitHub work needs from `gh`: its path and version, the
+active account, the account’s token scopes, and one state with the step that fixes it.
+Its docstring tabulates the states.
+These read it:
+
+- `metab --doctor` prints it after the plugin verdict, and `--doctor --json` carries it
+  as `github`. It never changes the exit status, since a machine without `gh` has
+  nothing wrong with its plugins.
+- `POST status` serves the same object, a `POST` because it runs `gh`; `{"fresh": true}`
+  asks `gh` again rather than reuse a recent answer or join a check already running.
+- `check_first_clone` reads it before the size check, without the version.
+  A pull-request URL stops before anything is cloned when the state is `gh_missing`,
+  `gh_too_old`, or `not_logged_in` (`SIGN_IN_STATES`), since only `gh` reads a pull
+  request; a repository URL goes on, since a public one clones anonymously.
+  The size check is skipped only for `gh_missing`, `not_logged_in`, and `network_error`,
+  where its read cannot succeed; a `gh` too old for the status check may still read the
+  size. A clone that then fails as not found takes its hint from the kept answer
+  (`credential_hint`), so a token without the `repo` scope is named.
+- `GithubProvider.pull_request` asks it when GitHub does not show a pull request, which
+  on a cached mirror no first-clone check preceded, and names a missing `repo` scope.
+
+A pull request with no usable cached record whose read fails in one of those states also
+stops the command, with `PullRequestUnavailableError.blocking`, rather than fall back to
+the default branch, since the fallback would show something other than what the URL
+asked for. A page already open shows the reason and offers **Fetch**, as for any other.
+
+The answer is kept for `GH_STATUS_TTL_S` per `gh` path and configuration, and callers in
+one event loop share a check in flight; `GH_STATUS_TIMEOUT_S` bounds a `gh` that hangs.
+A token GitHub refuses in `GH_TOKEN` or `GITHUB_TOKEN` is `not_logged_in` with a fix
+that names the variable, since `gh auth login` refuses to run while it is set.
+A token whose scopes `gh` does not report, such as a fine-grained one from `GH_TOKEN`,
+is `ok`, since only a repository’s own read can tell what it reaches.
 
 ## Files Beside a Source
 
@@ -651,6 +691,7 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `labels-refresh` | `POST` | The label-set job |
 | `pulls-prefetch` | `GET`, `POST` | The background lane’s report, or a new queue for it |
 | `cache-clear` | `POST` | Removal of the plugin’s records for the repository |
+| `status` | `POST` | [The GitHub status check](#the-github-status-check): `gh`, the account, its scopes, and one state |
 
 The plugin registers two views: `pull-request`, which the shell mounts at `/pull/<n>`,
 `/pull/<n>/files`, and `/pull/<n>/checks` (`pull-page.js`), and `pull-request-list`, the

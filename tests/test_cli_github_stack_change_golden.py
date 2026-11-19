@@ -27,6 +27,7 @@ from tests.github_pull_fixture import (
     CANONICAL,
     DEFAULT_BRANCH,
     FETCHED_AT,
+    FIRST_CLONE_GH_CALLS,
     Origin,
     in_a_stable_order,
     install_fake_gh,
@@ -83,9 +84,9 @@ def test_golden_stack_change(
         shown = [arg.removeprefix(f"{tmp_path}/") for arg in args]
         calls = in_a_stable_order(logged_gh_calls(tmp_path))
         if gh_free:
-            assert [call for call in calls if "--jq .size" not in call] == [], (
-                "a stack change asked GitHub"
-            )
+            # A first command clones the mirror, which checks gh and asks GitHub the
+            # repository's size.
+            assert calls in ([], FIRST_CLONE_GH_CALLS), "a stack change asked GitHub"
         blocks.append(result.block(" ".join(quoted(arg) for arg in shown), gh=calls))
         return result
 

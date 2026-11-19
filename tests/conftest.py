@@ -219,6 +219,22 @@ def _no_real_gh(  # pyright: ignore[reportUnusedFunction]
         yield
 
 
+@pytest.fixture(autouse=True)
+def _fresh_github_status() -> Generator[None]:  # pyright: ignore[reportUnusedFunction]
+    """Start each test with no kept GitHub status answer.
+
+    The status check keeps an answer for a few seconds per gh and configuration
+    (``gh_status.GH_STATUS_TTL_S``), and tests swap what one fake gh answers between
+    commands, which that key cannot see.
+    """
+
+    from metabrowser.builtin_plugins.github.gh_status import forget_github_status
+
+    forget_github_status()
+    yield
+    forget_github_status()
+
+
 @pytest.hookimpl(wrapper=True)
 def pytest_runtestloop(session: pytest.Session) -> Generator[None, object, object]:
     """Warm Chrome up once before a run with a test that drives it, so the runner's cold
