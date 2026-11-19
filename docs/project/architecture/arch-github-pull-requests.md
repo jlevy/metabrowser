@@ -359,9 +359,13 @@ child under its deadline, the same child as the projections, which a served page
 arrives while the child has as many renders as it takes answers `503` `renderer_busy`,
 and the page shows its plain text with a line saying why, which it keeps for that text
 until the text renders.
-Until a text’s render answers, the page shows a placeholder in its place and never its
-Markdown source. Only KPress’s stylesheet manifest reaches the page, so no text chooses
-what loads. The trust model behind that allowlist is in
+The page asks for the description, and for every text within `MARKDOWN_AHEAD`
+(`pull-page.js`) of the view, before the frame that first shows it, and until its render
+answers shows a placeholder in its place, never its Markdown source.
+A text farther off keeps its plain text, which find in page reaches, and is asked for as
+it nears the view, so a jump straight to it shows that text until it is asked for.
+Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
+The trust model behind that allowlist is in
 [Server and Content](arch-server-and-content.md).
 
 ## Conversation Timeline
