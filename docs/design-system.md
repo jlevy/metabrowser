@@ -4559,7 +4559,7 @@ click, and that the name is called “Home: <folder>”.
 ### The Main Page’s Focus Ring
 
 **With the main page focused from the keyboard, a 2 px `--link` ring frames it, over
-anything the page draws.** The ring is on the frame (`.preview-frame::after` in
+anything the page itself draws.** The ring is on the frame (`.preview-frame::after` in
 `static/styles.css`), not on the scrolling pane: the pane’s own inset outline painted
 under a positioned box with a ground of its own, so a pull request’s tab bar covered its
 top edge. It takes no press, sits under KPress’s floating UI, and does not print.

@@ -2003,8 +2003,9 @@ summary {
    the menu's anchored positioning live here. The menu surface comes from the
    .menu primitive, and the segments from the .menu-chooser primitive below. */
 /* A flex box as tall as its gear, so the path row centers the gear itself on the row's
-   line, the line the main page's Up is centered on across the divider. As a block it was a 25 px line box with the gear at its top,
-   and the gear's center 0.5 px above the row's (Chrome 152, 2026-11-18). */
+   line, the line the main page's Up is centered on across the divider. As a block it was
+   a 25 px line box with the gear at its top, and the gear's center 0.5 px above the
+   row's (Chrome 152, 2026-11-18). */
 .settings-toggle {
   position: relative;
   display: flex;
@@ -3077,9 +3078,8 @@ html.theme-anim .menu {
    moves when a row under it shows, the scan's progress or a mirror's freshness, so
    app.js (`alignNavCollapseButton`) measures it from the first paint and gives the button
    `--nav-shortcut-row-top` and `--nav-shortcut-row-height`; until it does, the row is the
-   strip's height at the
-   pane's foot. It is in the frame, so it stays when the pane is hidden and slides with the
-   page. Its box is the eyebrow's Up control's, so the page's icon buttons are one size,
+   strip's height at the pane's foot. It is in the frame, so it stays when the pane is
+   hidden and slides with the page. Its box is the eyebrow's Up control's, so the page's icon buttons are one size,
    and fills the gutter, the divider's resize reach kept off the row
    (`.resize-handle::after`); it has no plate, so the page's edge and the pane's shadow
    show through it, and only the hover surface fills it. The shared chevron points right;
