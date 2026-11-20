@@ -509,7 +509,7 @@ export function presentCell(cell, field) {
     };
   }
   if (cell === undefined) {
-    return { ...view, kind: "absent", tip: "No value: this row is shorter than the header" };
+    return { ...view, kind: "absent", tip: ABSENT_TEXT };
   }
   if (cell === null) {
     return { ...view, kind: "null", text: "null", literal: true };
@@ -597,6 +597,30 @@ export function presentCell(cell, field) {
   }
   const text = JSON.stringify(cell);
   return { ...view, kind: "json", literal: true, text, tip: text };
+}
+
+/**
+ * What an absent cell says: the row has no value at all for the field, as a delimited
+ * row shorter than its header has none, or a record that lacks the key.
+ */
+export const ABSENT_TEXT = "No value: this row does not have this field";
+
+/**
+ * The JSON value a cell carries whole, which a record draws as a tree: a `{json}` cell's,
+ * also inside a `{value, stored}` one, or null when the cell carries none, as a nested
+ * value past the record's bound, which arrives as its JSON text cut.
+ *
+ * @param {unknown} cell
+ * @returns {{value: unknown} | null}
+ */
+export function jsonValue(cell) {
+  if (!isEnvelope(cell)) {
+    return null;
+  }
+  if ("stored" in cell && "value" in cell) {
+    return jsonValue(cell.value);
+  }
+  return "json" in cell ? { value: cell.json } : null;
 }
 
 /** @param {TableField} field @param {string} value @returns {TableFilter} */

@@ -1,8 +1,9 @@
 // Structured (JSON/YAML) built-in plugin.
 //
 // Owns kind "structured" (declared in manifest.toml for the three
-// extensions .json / .yaml / .yml at priority 0). Two views:
+// extensions .json / .yaml / .yml at priority 0). Three views:
 //   ("structured", "tree")   — virtualized YAML-styled tree (default)
+//   ("structured", "table")  — a list of mappings as a table (record-table.js)
 //   ("structured", "source") — raw text via mb.renderSourceView
 //
 // Exports the renderer + helpers from this module so other plugins
@@ -11,6 +12,8 @@
 // `requires = ["structured"]` reads them with
 // `await mb.plugins.load("structured")` (docs/plugins.md,
 // "Declared Dependencies").
+import { recordTableView } from "./record-table.js";
+
 const mb = window.metabrowser;
 if (!mb) {
   throw new Error("metabrowser structured plugin: window.metabrowser missing — SDK not loaded");
@@ -128,6 +131,7 @@ mb.registerView("structured", "tree", {
   render: renderTree,
   dispose: disposeTree,
 });
+mb.registerView("structured", "table", recordTableView(renderInlineTree));
 mb.registerView("structured", "source", {
   render: renderSourceFallback,
 });

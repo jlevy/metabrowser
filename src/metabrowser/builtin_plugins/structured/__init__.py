@@ -50,7 +50,7 @@ from metabrowser.plugin_api import (
     resolve_content,
 )
 
-_STRUCTURED_EXTS = (".json", ".yaml", ".yml")
+STRUCTURED_EXTS = (".json", ".yaml", ".yml")
 
 
 def _envelope(
@@ -95,15 +95,12 @@ async def parsed_handler(request: Request) -> JSONResponse:
         if ref is None:
             return JSONResponse({"error": "Not found", "path": raw_path}, status_code=404)
         ext = ref.logical_ext
-        if ext not in _STRUCTURED_EXTS:
+        if ext not in STRUCTURED_EXTS:
             return JSONResponse(
                 {"error": "Unsupported extension", "path": raw_path, "ext": ext},
                 status_code=400,
             )
-        payload = lookup_structured_payload(ref.identity, ext, ref.fingerprint)
-        if payload is None:
-            payload = await _parse(ref, ext)
-            remember_structured_payload(ref.identity, ext, ref.fingerprint, payload)
+        payload = await load_structured_payload(ref)
     except ContentReadError as exc:
         return JSONResponse(
             {"error": str(exc), "code": exc.code, "path": raw_path},
@@ -116,6 +113,21 @@ async def parsed_handler(request: Request) -> JSONResponse:
         size=ref.stored_size,
         payload=payload,
     )
+
+
+async def load_structured_payload(ref: ContentRef) -> StructuredPayload:
+    """The parse of *ref*'s content, from the cache when its fingerprint has not changed.
+
+    The Tree view's route and the record-list table source (records.py) both read a
+    file through this, so a file opened in one is not parsed again for the other.
+    """
+
+    ext = ref.logical_ext
+    payload = lookup_structured_payload(ref.identity, ext, ref.fingerprint)
+    if payload is None:
+        payload = await _parse(ref, ext)
+        remember_structured_payload(ref.identity, ext, ref.fingerprint, payload)
+    return payload
 
 
 async def _parse(ref: ContentRef, ext: str) -> StructuredPayload:

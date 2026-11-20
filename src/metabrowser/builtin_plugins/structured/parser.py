@@ -52,6 +52,9 @@ class StructuredPayload:
     max_depth: int
     parse_error: str | None
     truncated: bool
+    # The bytes the parse read, which the record-list table source counts what a parse
+    # holds by (records.py); 0 when nothing was parsed.
+    source_bytes: int = 0
 
 
 def _count_nodes_and_depth(value: Any, depth: int = 0) -> tuple[int, int]:
@@ -212,7 +215,7 @@ def truncated_payload() -> StructuredPayload:
     )
 
 
-def _payload_from_parsed(parsed: Any, *, label: str) -> StructuredPayload:
+def _payload_from_parsed(parsed: Any, *, label: str, source_bytes: int) -> StructuredPayload:
     try:
         pretty_yaml = _serialize_to_yaml(parsed)
     except Exception as exc:
@@ -230,6 +233,7 @@ def _payload_from_parsed(parsed: Any, *, label: str) -> StructuredPayload:
         max_depth=max_depth,
         parse_error=None,
         truncated=False,
+        source_bytes=source_bytes,
     )
 
 
@@ -260,4 +264,4 @@ def parse_structured_bytes(data: bytes, ext: str) -> StructuredPayload:
         parsed = _parse_text(decode_text(data), ext)
     except Exception as exc:
         return error_payload(exc)
-    return _payload_from_parsed(parsed, label="bytes")
+    return _payload_from_parsed(parsed, label="bytes", source_bytes=len(data))
