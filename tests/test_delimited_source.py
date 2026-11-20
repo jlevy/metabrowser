@@ -25,6 +25,7 @@ from starlette.testclient import TestClient
 
 from metabrowser import server, table_source
 from metabrowser.builtin_plugins.delimited import source as delimited
+from metabrowser.builtin_plugins.table import memory
 from metabrowser.cli.plugins import _table_source_problems  # pyright: ignore[reportPrivateUsage]
 from metabrowser.git.tree_source import GitPath
 from metabrowser.plugin_loader.discovery import LoadedPlugin
@@ -328,7 +329,7 @@ def _spend_every_budget(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def numbers(client: TestClient, tmp_path: Path) -> str:
-    rows = 3 * delimited._BUDGET_CHECK_ROWS
+    rows = 3 * memory.BUDGET_CHECK_ROWS
     (tmp_path / "a.csv").write_text("n\n" + "".join(f"{n}\n" for n in range(rows)))
     _rows(client, "a.csv")  # parse first, outside any spent budget
     return "a.csv"
@@ -345,13 +346,13 @@ def test_an_exhausted_budget_returns_what_it_found_in_the_querys_order(
     order: str,
     first: list[str],
 ) -> None:
-    assert delimited._BUDGET_CHECK_ROWS == 4096
+    assert memory.BUDGET_CHECK_ROWS == 4096
     _spend_every_budget(monkeypatch)
     body = _rows(client, numbers, order=order, **{"f.n": "ge:0"}, limit="3")
     assert (body["complete"], body["reason"], body["sort_refused"]) == (False, "budget", None)
-    assert body["examined"] == delimited._BUDGET_CHECK_ROWS
+    assert body["examined"] == memory.BUDGET_CHECK_ROWS
     assert _keys(body) == first
-    assert (body["count"], body["count_complete"]) == (delimited._BUDGET_CHECK_ROWS, False)
+    assert (body["count"], body["count_complete"]) == (memory.BUDGET_CHECK_ROWS, False)
     # The cursor continues among the rows found, in the same order.
     after = _rows(
         client, numbers, order=order, **{"f.n": "ge:0"}, limit="3", after=body["next_after"]
@@ -368,12 +369,12 @@ def test_a_sort_the_budget_cannot_finish_is_refused_by_name(
     scanned = _rows(client, numbers, sort="n", order="desc", **{"f.n": "ge:0"}, limit="3")
     assert (scanned["rows"], scanned["complete"], scanned["next_after"]) == ([], False, None)
     assert (scanned["reason"], scanned["sort_refused"]) == ("sort_budget", "n")
-    assert (scanned["examined"], scanned["count_complete"]) == (delimited._BUDGET_CHECK_ROWS, False)
+    assert (scanned["examined"], scanned["count_complete"]) == (memory.BUDGET_CHECK_ROWS, False)
     # No scan, but the sort's index is not built and the budget is spent before it.
     unbuilt = _rows(client, numbers, sort="n", limit="3")
     assert (unbuilt["rows"], unbuilt["reason"], unbuilt["sort_refused"]) == ([], "sort_budget", "n")
     assert (unbuilt["count"], unbuilt["count_complete"], unbuilt["examined"]) == (
-        3 * delimited._BUDGET_CHECK_ROWS,
+        3 * memory.BUDGET_CHECK_ROWS,
         True,
         None,
     )
@@ -651,7 +652,7 @@ def test_held_bytes_follow_the_files_shape_and_its_sort_indexes() -> None:
     )
     assert accented.parsed_bytes == 2 * 96 + 2 * 56 + 4 * len("t\né\n".encode())
     before = narrow.held_bytes
-    index = narrow.sort_index(0, Budget.start())
+    index = memory.sort_index(narrow, 0, Budget.start())
     assert index is not None
     assert narrow.held_bytes == before + len(index) * index.itemsize
 
@@ -717,7 +718,7 @@ def test_concurrent_first_requests_parse_a_file_once(
 
 
 def test_a_failed_parse_lets_the_next_request_parse_again() -> None:
-    cache = delimited._ParseCache()
+    cache: memory.MemoryCache[Any] = memory.MemoryCache(max_entries=lambda: 8, max_bytes=lambda: 1)
     calls: list[int] = []
 
     def fail() -> Any:
@@ -736,14 +737,14 @@ def test_the_source_refuses_a_field_it_does_not_have() -> None:
     parsed = delimited.parse_delimited(b"n\n1\n", has_more=False, delimiter=",", generation="g")
     for query in (TableQuery(sort="gone"), TableQuery(filters=(Filter("gone", "eq", "1"),))):
         with pytest.raises(TableQueryError, match="no field named 'gone'"):
-            delimited._page(parsed, query, Budget.start())
+            memory.page(parsed, query, Budget.start())
 
 
 def test_a_page_with_no_tests_lists_no_row_indexes() -> None:
     parsed = delimited.parse_delimited(
         b"n\n1\n2\n3\n", has_more=False, delimiter=",", generation="g"
     )
-    scan = delimited._scan(parsed, [], Budget.start(), descending=True)
+    scan = memory.scan(parsed, [], Budget.start(), descending=True)
     assert scan.matches == range(2, -1, -1)
 
 

@@ -35,11 +35,12 @@ from metabrowser.builtin_plugins.delimited.source import (
     _cells,  # pyright: ignore[reportPrivateUsage]
     _column_names,  # pyright: ignore[reportPrivateUsage]
     _infer_type,  # pyright: ignore[reportPrivateUsage]
-    _page,  # pyright: ignore[reportPrivateUsage]
     _Parsed,  # pyright: ignore[reportPrivateUsage]
     _plan,  # pyright: ignore[reportPrivateUsage]
     parse_delimited,
 )
+from metabrowser.builtin_plugins.table.memory import page as memory_page
+from metabrowser.builtin_plugins.table.memory import sort_index
 from metabrowser.table_source import (
     TABLE_CELL_PREVIEW_CHARS,
     TABLE_PAGE_CELLS_MAX,
@@ -148,14 +149,14 @@ def _shape(label: str, data: bytes, sort_column: int, scan: Filter, q: str) -> N
         f"  held {held / 1e6:.0f} MB measured, {parsed.parsed_bytes / 1e6:.0f} MB estimated, "
         f"{held / len(data):.1f} bytes per byte of file"
     )
-    index, sort_seconds = _timed(lambda: parsed.sort_index(sort_column, Budget.start(60)))
+    index, sort_seconds = _timed(lambda: sort_index(parsed, sort_column, Budget.start(60)))
     size = len(index) * index.itemsize if index is not None else 0
     print(f"  first sort index {sort_seconds:.2f} s, {size / 1e6:.0f} MB")
     name = parsed.columns[sort_column].name
     query = TableQuery(sort=name, order="desc", filters=(scan,))
-    page, page_seconds = _timed(lambda: _page(parsed, query, Budget.start(60)))
+    page, page_seconds = _timed(lambda: memory_page(parsed, query, Budget.start(60)))
     print(f"  filtered and sorted page {page_seconds:.2f} s, {page.count} matches")
-    page, search_seconds = _timed(lambda: _page(parsed, TableQuery(q=q), Budget.start(60)))
+    page, search_seconds = _timed(lambda: memory_page(parsed, TableQuery(q=q), Budget.start(60)))
     print(f"  search {search_seconds:.2f} s, {page.count} matches")
 
 
@@ -163,7 +164,7 @@ def _page_json(parsed: _Parsed, query: TableQuery) -> tuple[int, int, float]:
     """(rows, bytes of JSON, seconds) for one page encoded as the route answers it."""
 
     def encode() -> tuple[int, int]:
-        page = _page(parsed, query, Budget.start(60))
+        page = memory_page(parsed, query, Budget.start(60))
         return len(page.rows), len(json.dumps(page_wire("a.csv", "", page)))
 
     (rows, size), seconds = _timed(encode)
