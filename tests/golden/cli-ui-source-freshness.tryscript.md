@@ -848,7 +848,7 @@ $ node tests/dom/source-freshness-session.js
       },
       {
         "url": "/api/event-logs",
-        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
+        "pin": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
       },
       {
         "url": "/api/tree?depth=1",
