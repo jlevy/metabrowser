@@ -232,6 +232,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_cli_live_acquire_golden.py \
 	tests/test_cache_acquire.py \
 	tests/test_cache_publish.py \
+	tests/test_cache_store_rename.py \
 	tests/test_cli_acquire.py \
 	tests/test_cli_cache_acquire_golden.py \
 	tests/test_cli_git_pin_golden.py \

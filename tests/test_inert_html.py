@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
@@ -33,6 +34,14 @@ PR_PAGE = "https://github.com/octo/demo/pull/7"
 HOSTILE_README = (
     HOSTILE_COMMENT + "\n![diagram](docs/diagram.png) ![tracker](https://example.com/t.gif)"
     ' <img src="//example.com/p.gif"> <img src="data:image/png;base64,AAAA">\n\n'
+    # Badges: images in links, which keep their destinations, and images that are not in
+    # one, from the web over https, and over http, which the page does not load.
+    "[![Follow @ojoshe on X](https://img.shields.io/badge/follow-%40ojoshe-black)]"
+    "(https://x.com/ojoshe)"
+    " [![CI](https://github.com/octo/demo/actions/workflows/ci.yml/badge.svg)]"
+    "(https://github.com/octo/demo/actions/workflows/ci.yml)"
+    " ![standalone](https://img.shields.io/badge/standalone-blue)"
+    " ![insecure](http://example.com/insecure.png)\n\n"
     "[Guide](docs/guide.md) [Top](#readme) [Up](../x.md)"
     ' <a href="java\tscript:alert(1)">tab</a> <a href="\\\\example.com/x">slashes</a>\n\n'
     # References to the application rather than the tree, and a bare web scheme.
@@ -54,12 +63,22 @@ const context = { window: {}, URL };
 vm.runInNewContext(fs.readFileSync(inertPath, "utf8"), context, { filename: inertPath });
 const inert = context.window.MetabrowserInertHtml;
 const input = JSON.parse(fs.readFileSync(0, "utf8"));
+// The settings the shell injects, which the sanitizer reads each time it runs.
+if (input.settings) {
+  context.window.METABROWSER_SETTINGS = input.settings;
+}
 if (input.lists) {
   process.stdout.write(JSON.stringify({
     tags: inert.ALLOWED_TAGS, dropped: inert.DROPPED_WITH_CONTENT,
     attributes: inert.ALLOWED_ATTRIBUTES, prefix: inert.ANCHOR_PREFIX,
     align: inert.ALIGN_VALUES, dimensions: inert.DIMENSIONS,
+    fallback: inert.IMAGE_FALLBACK_CLASS, referrer: inert.IMAGE_REFERRER_POLICY,
   }));
+  process.exit(0);
+}
+if (input.remoteImages) {
+  process.stdout.write(JSON.stringify(
+    input.remoteImages.map(([src, base]) => inert.remoteImage(src, base))));
   process.exit(0);
 }
 if (input.slugs) {
@@ -148,6 +167,8 @@ def test_the_browser_and_the_server_share_one_allowlist() -> None:
         inert_html.ALLOWED_ATTRIBUTES
     )
     assert lists["prefix"] == inert_html.ANCHOR_PREFIX
+    assert lists["fallback"] == inert_html.IMAGE_FALLBACK_CLASS
+    assert lists["referrer"] == inert_html.IMAGE_REFERRER_POLICY
     assert {tag: tuple(values) for tag, values in lists["align"].items()} == (
         inert_html.ALIGN_VALUES
     )
@@ -230,17 +251,20 @@ def test_neither_side_keeps_a_link_that_is_not_http(base: str | None, written: A
     assert _node({"tree": html_tree(document), "base": base}) == expected
 
 
-def test_a_document_keeps_its_own_references_and_turns_outside_images_into_links() -> None:
+def test_a_document_keeps_its_own_references_and_images_and_those_from_the_web() -> None:
     inert = harden(_kpress(HOSTILE_README))
     assert '<img loading="lazy" src="docs/diagram.png" alt="diagram">' in inert
     assert '<a href="docs/guide.md">Guide</a>' in inert
     assert '<a href="#user-content-readme">Top</a>' in inert
     assert '<a href="../x.md">Up</a>' in inert
-    # An outside image is a link to it, in a new tab; one with no http(s) address is text.
-    assert (
-        '<a href="https://example.com/t.gif" target="_blank" rel="noopener noreferrer">tracker</a>'
-    ) in inert
-    assert '<a href="https://example.com/p.gif" target="_blank"' in inert
+    # An image from the web is kept over https, with no referrer sent, however it is
+    # written (`//host` is https here too); one with no http(s) address is not an image.
+    for kept in (
+        '<img loading="lazy" referrerpolicy="no-referrer" src="https://example.com/t.gif"'
+        ' alt="tracker">',
+        '<img loading="lazy" referrerpolicy="no-referrer" src="https://example.com/p.gif">',
+    ):
+        assert kept in inert, kept
     assert "data:image" not in inert and "javascript" not in inert
     assert "<a>tab</a>" in inert
     assert (
@@ -265,7 +289,7 @@ def test_a_document_never_names_the_application_or_a_bare_scheme_ambiguously() -
     ):
         assert f"<a>{text}</a>" in inert, text
     for text in ("raw image", "dotimg", "dot2eimg"):
-        assert f"<span>{text}</span>" in inert, text
+        assert f'<span class="mb-image-fallback">{text}</span>' in inert, text
     assert '<a href="https://evil.test/no-slashes" target="_blank"' in inert
     assert '<a href="https://one.test/x" target="_blank"' in inert
     # In a pull request's comment, a bare https: shares the page's scheme and is relative.
@@ -323,35 +347,284 @@ def test_the_allowlist_check_refuses_any_other_loading_value() -> None:
     assert allowlist_violations('<img loading="lazy" src="docs/a.png">', images=True) == []
 
 
+_FALLBACK = '<span class="mb-image-fallback"'
+_NEW_TAB = ' target="_blank" rel="noopener noreferrer"'
+_FROM_THE_WEB = (
+    '<img loading="lazy" referrerpolicy="no-referrer" src="https://example.com/a.png" alt="a">'
+)
+
+
 @pytest.mark.parametrize(
     ("base", "written", "expected"),
     [
-        # A pull-request comment never keeps an image, wherever it points.
+        # A pull-request comment keeps no image of its own, which has no tree to name one in:
+        # a path is a link to where it would be, whatever `loading` it asks for.
         (
             PR_PAGE,
             '<img src="docs/a.png" alt="a" loading="lazy">',
-            '<a href="https://github.com/octo/demo/pull/docs/a.png" target="_blank"'
-            ' rel="noopener noreferrer">a</a>',
+            f'<a href="https://github.com/octo/demo/pull/docs/a.png"{_NEW_TAB}>'
+            f'{_FALLBACK} data-tip-text="https://github.com/octo/demo/pull/docs/a.png">a</span></a>',
         ),
-        (
-            PR_PAGE,
-            '<img src="https://example.com/a.png" alt="a" loading="eager">',
-            '<a href="https://example.com/a.png" target="_blank" rel="noopener noreferrer">a</a>',
-        ),
-        # Nor does a document keep one from outside the served tree.
+        # An image the comment writes in full, over https, is kept, as a document's is; the
+        # `loading` it asks for is not read.
+        (PR_PAGE, '<img src="https://example.com/a.png" alt="a" loading="eager">', _FROM_THE_WEB),
+        (None, '<img src="https://example.com/a.png" alt="a" loading="lazy">', _FROM_THE_WEB),
+        # Over http it is not loaded: a link to it.
         (
             None,
-            '<img src="https://example.com/a.png" alt="a" loading="lazy">',
-            '<a href="https://example.com/a.png" target="_blank" rel="noopener noreferrer">a</a>',
+            '<img src="http://example.com/a.png" alt="a" loading="lazy">',
+            f'<a href="http://example.com/a.png"{_NEW_TAB}>'
+            f'{_FALLBACK} data-tip-text="http://example.com/a.png">a</span></a>',
         ),
-        (None, '<img src="/raw?path=a.png" alt="a" loading="lazy">', "<span>a</span>"),
+        # A reference to the application is not an image, nor a link: the alt text alone.
+        (None, '<img src="/raw?path=a.png" alt="a" loading="lazy">', f"{_FALLBACK}>a</span>"),
     ],
 )
-def test_an_image_that_is_not_kept_gains_nothing_from_loading(
+def test_an_image_gains_nothing_from_loading_and_one_not_loaded_is_a_fallback(
     base: str | None, written: str, expected: str
 ) -> None:
     assert harden(written, base) == expected
     assert _node({"tree": html_tree(written), "base": base}) == expected
+
+
+REMOTE_IMAGES = [
+    # Over https, written in any spelling a browser reads as one.
+    ("https://example.com/a.png", None, "https://example.com/a.png"),
+    (" HTTPS://example.com/a.png\t", None, "https://example.com/a.png"),
+    ("//example.com/a.png", None, "https://example.com/a.png"),
+    ("\\\\example.com/a.png", None, "https://example.com/a.png"),
+    ("https:example.com/a.png", None, "https://example.com/a.png"),
+    ("https://example.com/a.png", PR_PAGE, "https://example.com/a.png"),
+    ("//example.com/a.png", PR_PAGE, "https://example.com/a.png"),
+    # Not over https, and not written in full, or carrying a credential: not loaded.
+    ("http://example.com/a.png", None, None),
+    ("data:image/png;base64,AAAA", None, None),
+    ("javascript:alert(1)", None, None),
+    ("ftp://example.com/a.png", None, None),
+    ("https://user:secret@example.com/a.png", None, None),
+    ("https://user@example.com/a.png", None, None),
+    # No host of its own, or one a browser's URL parser refuses: an address that resolves
+    # against the page, or none, and no image of the web.
+    ("//", None, None),
+    ("//", PR_PAGE, None),
+    ("\\\\", PR_PAGE, None),
+    ("https:///", None, None),
+    ("https://:443/a.png", None, None),
+    ("//?a.png", None, None),
+    ("https://x.com:99999/a.png", None, None),
+    ("https://[::1/a.png", None, None),
+    ("https://[zz]/a.png", None, None),
+    ("https://evil.test127.0.0.1/a.png", None, None),
+    ("https://1.2.3.4.5/a.png", None, None),
+    ("https://256.1.1.1/a.png", None, None),
+    ("https://x.com%2f@evil/a.png", None, None),
+    ("https://x .com/a.png", None, None),
+    # Written outside ASCII, which a document can hide another host in (IDNA drops some
+    # characters and maps others).
+    ("https://m\u00fcnchen.de/a.png", None, None),
+    ("//\u200b..", None, None),
+    # And what is a host: an IPv4 address in any form a browser reads, and an IPv6 one.
+    ("https://127.0.0.1/a.png", None, "https://127.0.0.1/a.png"),
+    ("https://[::1]/a.png", None, "https://[::1]/a.png"),
+    ("https://x.com:8443/a.png", None, "https://x.com:8443/a.png"),
+    ("docs/a.png", None, None),
+    ("/raw?path=a.png", None, None),
+    ("docs/a.png", PR_PAGE, None),
+    ("/a.png", PR_PAGE, None),
+    ("https:docs/a.png", "https://github.com/octo/demo/pull/7", None),
+    ("", None, None),
+    (None, None, None),
+]
+
+
+@pytest.mark.parametrize(("src", "base", "expected"), REMOTE_IMAGES)
+def test_only_an_address_written_in_full_over_https_is_loaded(
+    src: str | None, base: str | None, expected: str | None
+) -> None:
+    """Both sides read what an image from the web is the same way."""
+
+    assert inert_html.remote_image(src, base) == expected
+    assert json.loads(_node({"remoteImages": [[src, base]]})) == [expected]
+
+
+REMOTE_IMAGE_CORPUS = json.loads(
+    (REPO_ROOT / "tests" / "fixtures" / "inert-html-remote-image-corpus.json").read_text(
+        encoding="utf-8"
+    )
+)
+
+
+def test_both_sides_agree_which_addresses_are_images_of_the_web_on_a_corpus() -> None:
+    """The server's choice and the page's are one, on addresses written to tell them apart.
+
+    ``tests/fixtures/inert-html-remote-image-corpus.json`` is every degenerate shape of an
+    address written in full (no host, an empty port, a credential, IPv6 and IPv4 forms, a
+    host outside ASCII, backslashes, tabs, a bare scheme), each with no base and with a
+    pull request's, beside what a seeded fuzz of such fragments (seed 644) made of them: the
+    first sixty it accepted, and sixty it refused. Each side reads the address
+    its own way, Python's split and the browser's URL parser, so agreeing on which are
+    images is the check; what they write for one differs only as a URL parser writes it
+    (a trailing slash, lower case, an IPv4 address in dots).
+    """
+
+    py = [inert_html.remote_image(src, base) for src, base in REMOTE_IMAGE_CORPUS]
+    js = json.loads(_node({"remoteImages": REMOTE_IMAGE_CORPUS}))
+    disagree = [
+        (case, one, other)
+        for case, one, other in zip(REMOTE_IMAGE_CORPUS, py, js, strict=True)
+        if (one is None) != (other is None)
+    ]
+    assert disagree == []
+    kept = [one for one in py if one is not None]
+    assert 100 < len(kept) < len(py) - 100, "the corpus has both kinds"
+    assert all(one.startswith("https://") for one in kept)
+    # A pull request's page is no host an address with none resolves to.
+    assert not any(
+        one is not None and one.startswith("https://github.com/octo/demo/pull")
+        for (_src, base), one in zip(REMOTE_IMAGE_CORPUS, py, strict=True)
+        if base is not None
+    )
+
+
+def _parsed(html: str) -> list[tuple[str, tuple[str, ...]]]:
+    """Each element of *html* with the elements it is inside, innermost last."""
+
+    found: list[tuple[str, tuple[str, ...]]] = []
+    stack: list[str] = []
+
+    class _Read(HTMLParser):
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            found.append((tag, tuple(stack)))
+            if tag not in {"img", "br"}:
+                stack.append(tag)
+
+        def handle_endtag(self, tag: str) -> None:
+            if tag in stack:
+                del stack[stack.index(tag) :]
+
+    reader = _Read()
+    reader.feed(html)
+    reader.close()
+    return found
+
+
+BADGES = (
+    '<p><a href="https://x.com/ojoshe"><img src="https://img.shields.io/badge/f-x-black"'
+    ' alt="Follow @ojoshe on X"></a> <a href="https://github.com/o/r/actions/ci.yml">'
+    '<img src="https://github.com/o/r/actions/ci.yml/badge.svg" alt="CI"></a>'
+    ' <a href="https://example.com/dest"><img src="http://example.com/insecure.png" alt="Old">'
+    '</a> <img src="https://img.shields.io/badge/s-blue" alt="Standalone">'
+    ' <img src="http://example.com/plain.png" alt="Plain http"></p>'
+)
+
+
+@pytest.mark.parametrize("base", [None, PR_PAGE, COMMIT_MESSAGE_LINK_BASE])
+def test_a_badge_keeps_its_link_and_no_link_holds_another_or_nothing(base: str | None) -> None:
+    """A linked image is never an empty link followed by a link to the image.
+
+    The first bug: ``<a href=destination><a href=image>alt</a></a>`` is not valid
+    HTML, so a browser reads it as ``<a href=destination></a><a href=image>alt</a>``, an
+    empty link and a visible one that goes to the image, not where the author sent it.
+    """
+
+    server = harden(BADGES, base)
+    browser = _node({"tree": html_tree(BADGES), "base": base})
+    assert _tokens(browser) == _tokens(server)
+    assert allowlist_violations(server) == []
+    elements = _parsed(server)
+    # No link is inside another, and none is empty: each holds an image or a fallback.
+    assert not any(tag == "a" and "a" in inside for tag, inside in elements)
+    assert server.count("</a>") == server.count("<a ")
+    assert re.search(r"<a[^>]*></a>", server) is None, server
+    # The author's destinations are kept, each link holds one image, and the images
+    # over http are the link's own content, with the address they stand for.
+    for destination in (
+        "https://x.com/ojoshe",
+        "https://github.com/o/r/actions/ci.yml",
+        "https://example.com/dest",
+    ):
+        assert f'<a href="{destination}"' in server, destination
+    assert 'src="https://img.shields.io/badge/f-x-black" alt="Follow @ojoshe on X"></a>' in server
+    assert (
+        '<a href="https://example.com/dest" target="_blank" rel="noopener noreferrer">'
+        '<span class="mb-image-fallback" data-tip-text="http://example.com/insecure.png">Old</span>'
+        "</a>"
+    ) in server
+    # An image in no link that is not loaded links to the image, in the same chip.
+    assert (
+        '<a href="http://example.com/plain.png" target="_blank" rel="noopener noreferrer">'
+        '<span class="mb-image-fallback" data-tip-text="http://example.com/plain.png">Plain http'
+        "</span></a>"
+    ) in server
+    # And one that is loaded stays an image, with no referrer sent.
+    assert (
+        '<img loading="lazy" referrerpolicy="no-referrer" '
+        'src="https://img.shields.io/badge/s-blue" alt="Standalone">'
+    ) in server
+
+
+@pytest.mark.parametrize("base", [None, PR_PAGE])
+def test_the_reader_who_blocks_remote_images_sees_their_alt_text_in_the_same_links(
+    base: str | None,
+) -> None:
+    """The setting is the page's: the server's answer is the same, the page rebuilds it.
+
+    ``BLOCK_REMOTE_IMAGES`` is what ``/view/`` carries when the reader's cookie says so, and
+    ``static/inert-html.js`` makes every image from the web the fallback, a linked one
+    inside its own link and an unlinked one inside a link to the image. Images inside the
+    served tree are not from the web and still load.
+    """
+
+    server = harden(BADGES + '<p><img src="docs/a.png" alt="local"></p>', base)
+    blocked = _node(
+        {
+            "tree": html_tree(server),
+            "base": base,
+            "settings": {"BLOCK_REMOTE_IMAGES": True},
+        }
+    )
+    # No image from the web is left; a document's own image is, a comment's is a link.
+    assert "referrerpolicy" not in blocked
+    assert ('<img loading="lazy" src="docs/a.png" alt="local">' in blocked) is (base is None)
+    assert not any(tag == "a" and "a" in inside for tag, inside in _parsed(blocked))
+    assert (
+        '<a href="https://x.com/ojoshe" target="_blank" rel="noopener noreferrer">'
+        '<span class="mb-image-fallback"'
+        ' data-tip-text="https://img.shields.io/badge/f-x-black">Follow @ojoshe on X</span></a>'
+    ) in blocked
+    assert (
+        '<a href="https://img.shields.io/badge/s-blue" target="_blank" rel="noopener noreferrer">'
+        '<span class="mb-image-fallback"'
+        ' data-tip-text="https://img.shields.io/badge/s-blue">Standalone</span></a>'
+    ) in blocked
+    assert allowlist_violations(blocked, images=True) == []
+    # The same input with the setting off, or absent, is what the server wrote.
+    for settings in ({"BLOCK_REMOTE_IMAGES": False}, {}, {"BLOCK_REMOTE_IMAGES": "true"}):
+        open_ = _node({"tree": html_tree(server), "base": base, "settings": settings})
+        assert _tokens(open_) == _tokens(server)
+
+
+def test_a_document_keeps_the_fallbacks_shape_and_nothing_else_on_a_span() -> None:
+    """The hardener's own span hardens to itself; no other attribute of a span survives."""
+
+    chip = '<span class="mb-image-fallback" data-tip-text="https://example.com/a.png">a</span>'
+    written = (
+        f"{chip}"
+        '<span class="mb-image-fallback" data-tip-text="javascript:alert(1)" style="x:y"'
+        ' onclick="alert(1)" id="i" data-x="1" title="t">b</span>'
+        '<span class="modal-overlay mb-image-fallback" data-tip-text="https://example.com/c">c</span>'
+        '<span class="x" data-tip-text="https://example.com/d" style="position:fixed">d</span>'
+    )
+    expected = f'{chip}<span class="mb-image-fallback">b</span><span>c</span><span>d</span>'
+    assert harden(written) == expected
+    assert _node({"tree": html_tree(written), "base": None}) == expected
+    assert harden(expected) == expected
+    assert allowlist_violations(expected) == []
+    # The allowlist check refuses what the hardener would drop.
+    assert allowlist_violations('<span class="c" data-tip-text="x">y</span>') == [
+        "span[class=c]",
+        "span[data-tip-text=x]",
+    ]
 
 
 # The opening of Metabrowser's own README, which github.com draws as a 192-pixel logo
@@ -497,6 +770,15 @@ def test_the_session_plays_what_kpress_renders_of_the_hostile_readme() -> None:
     assert allowlist_violations(transcript["comment"]) == []
     for mode in ("document", "comment"):
         assert allowlist_violations(transcript["links"][mode]) == []
+    # With the reader's setting on, no image of the web is left, and what is left is allowed.
+    assert allowlist_violations(transcript["blocked"]["document"], images=True) == []
+    assert allowlist_violations(transcript["blocked"]["comment"]) == []
+    for mode in ("document", "comment"):
+        assert "referrerpolicy" not in transcript["blocked"][mode]
+    assert allowlist_violations(transcript["fallbacks"]) == []
+    assert allowlist_violations(transcript["badges"]["document"], images=True) == []
+    for mode in ("comment", "blocked"):
+        assert allowlist_violations(transcript["badges"][mode], images=True) == []
     assert transcript["inertRender"] == {"inert": True, "trusted": False}
 
 
@@ -557,9 +839,11 @@ def test_headings_get_github_anchors_and_links_reach_them() -> None:
         "user-content-ⓐ-x-ⅻ-café-",
         "user-content-العربية-مَرحبا",
     ]
-    # Text the page shows counts, as an outside image's link text does; hidden text not.
+    # Text the page shows counts; hidden text not, and neither does an image the page
+    # draws, from the web or the tree, as on github.com (an image the page does not load
+    # is its alt text, which would).
     assert ids[19:22] == [
-        "user-content-logo-project",
+        "user-content--project",
         "user-content--local",
         "user-content-inside-shown",
     ]
