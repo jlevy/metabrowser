@@ -45,6 +45,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import sysconfig
 import tempfile
 import threading
 import time
@@ -181,6 +182,16 @@ class _Worker:
     def __init__(self, subject: str, modules: WorkerModules) -> None:
         self.subject = subject
         self.modules = modules
+        worker_env: dict[str, str] | None = None
+        if (
+            sys.platform == "linux"
+            and sys.maxsize > 2**32
+            and sysconfig.get_config_var("Py_GIL_DISABLED")
+        ):
+            # On 64-bit free-threaded CPython, mimalloc can reserve a 1 GiB arena
+            # before the worker applies its address-space limit. Smaller arenas leave
+            # room in that limit for the watchdog thread and SQLite allocations.
+            worker_env = dict(os.environ, MIMALLOC_ARENA_RESERVE="64MiB")
         self.process = subprocess.Popen(
             [
                 sys.executable,
@@ -195,6 +206,7 @@ class _Worker:
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             cwd="/",
+            env=worker_env,
             close_fds=True,
         )
         self._buffer = bytearray()
