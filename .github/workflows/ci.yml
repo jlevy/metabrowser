@@ -191,18 +191,26 @@ jobs:
         run: make test-parallel SHARD=${{ matrix.shard }}/2
 
   goldens:
-    # The goldens, then the serial tier, on every interpreter. The serial tier rides
-    # here so that it has the machine to itself and adds no job.
-    name: goldens and serial (${{ matrix.python-version }})
+    # The goldens, then the serial tier, in two parts on every interpreter. The serial
+    # tier rides here so that it has the machine to itself and adds no job, and it is
+    # dealt into the same two parts (by test), so each part runs its half of the goldens
+    # and then its half of the serial tier, which keeps the serial tests alone on the
+    # machine and keeps the parts the same length.
+    name: goldens and serial (${{ matrix.python-version }}, ${{ matrix.shard }}/2)
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13", "3.14", "3.14t"]
+        shard: [1, 2]
     runs-on: ubuntu-latest
-    # 2.6 to 4.1 minutes over the twelve jobs of runs 44037230262, 44038762653, and
-    # 44041984874, the longest on 3.14t, whose goldens once took 143 seconds where the
-    # others took 85 to 96.
-    timeout-minutes: 6
+    # Estimated, to be replaced by the measured 90th percentile of this PR's runs: one
+    # job ran both the goldens and the serial tier in 5.0 to 5.8 minutes at the 90th
+    # percentile (make ci-report, 2026-11-20), the 3.14t one of run 44788801411 cancelled
+    # at the old 6 minutes with the goldens 250 seconds and the serial tier 82. A part
+    # holds about half of each, so 0.5 minutes of setup, 133 seconds of goldens (the
+    # larger part's 53 percent of 958 file seconds, at that job's 3.8 files at a time),
+    # and 41 of serial tests is 3.4 minutes, which five minutes covers 1.5 times over.
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -228,13 +236,13 @@ jobs:
         run: uv python install
 
       - name: Run the goldens
-        run: make test-goldens
+        run: make test-goldens SHARD=${{ matrix.shard }}/2
 
       # After the goldens, so the serial tier has the machine to itself; it runs when a
       # golden failed too, so the job reports both.
       - name: Run the serial tier
         if: ${{ !cancelled() }}
-        run: make test-serial
+        run: make test-serial SHARD=${{ matrix.shard }}/2
 
   chrome:
     # The Chrome tier in four parts: on PR_CHROME_PYTHON for a pull request while main
