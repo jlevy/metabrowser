@@ -210,6 +210,11 @@ same store, resolved in the mirror alone.
 Given the `/view/` address the page shows, it answers `view_href`, where that page goes
 on the new pin. How a selection is resolved, and what happens when the mirror lacks it,
 is in [mirror acquisition and refresh](arch-mirror-acquisition-and-refresh.md).
+`POST /api/source/link` switches it the same way for a link into the served repository,
+which the macOS app sends for every such link
+([GitHub Links](arch-macos-app.md#github-links)): a branch, folder, file, or the
+repository itself is served at the revision the link names before the window goes to its
+address, and a pull request or a commit, each a page of its own, switches nothing.
 
 A switch, or a restarted server serving another commit, can leave a tab showing the old
 pin. Reading the new pin’s files into a page labeled with the old one would mix two
