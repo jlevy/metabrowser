@@ -174,8 +174,6 @@ status: 200
   "tally_cache_max_files": 500000
 }
 --- stderr ---
-cloning <ORIGIN> into <HOME>
-cloned <ORIGIN> in 0.0 s
 # metab file://<ORIGIN> --api '/api/tree?group=type:docs&depth=2'
 exit: 0
 --- stdout ---
