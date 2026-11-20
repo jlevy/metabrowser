@@ -458,6 +458,13 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/events/watch",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/file",
       "methods": [
         "GET",
@@ -1060,7 +1067,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 90
+  "count": 91
 }
 ? 0
 ```
