@@ -76,7 +76,7 @@ status: 200
       "series": [
         {
           "label": "system",
-          "color": "var(--agent-log-kind-muted-text)",
+          "color": "var(--agent-kind-control-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -86,7 +86,7 @@ status: 200
         },
         {
           "label": "text",
-          "color": "var(--agent-log-kind-neutral-text)",
+          "color": "var(--agent-kind-text-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -96,7 +96,7 @@ status: 200
         },
         {
           "label": "thinking",
-          "color": "var(--agent-log-kind-thinking-text)",
+          "color": "var(--agent-kind-thinking-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -106,7 +106,7 @@ status: 200
         },
         {
           "label": "tool_call",
-          "color": "var(--agent-log-kind-tool-text)",
+          "color": "var(--agent-kind-tool-call-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -116,7 +116,7 @@ status: 200
         },
         {
           "label": "tool_result",
-          "color": "var(--agent-log-kind-tool-result-fill)",
+          "color": "var(--agent-kind-tool-result-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -170,7 +170,7 @@ status: 200
       "series": [
         {
           "label": "init",
-          "color": "var(--agent-log-kind-init-text)",
+          "color": "var(--agent-kind-context-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -184,7 +184,7 @@ status: 200
         },
         {
           "label": "system",
-          "color": "var(--agent-log-kind-muted-text)",
+          "color": "var(--agent-kind-control-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -198,7 +198,7 @@ status: 200
         },
         {
           "label": "text",
-          "color": "var(--agent-log-kind-neutral-text)",
+          "color": "var(--agent-kind-text-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -212,7 +212,7 @@ status: 200
         },
         {
           "label": "thinking",
-          "color": "var(--agent-log-kind-thinking-text)",
+          "color": "var(--agent-kind-thinking-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -226,7 +226,7 @@ status: 200
         },
         {
           "label": "tool_call",
-          "color": "var(--agent-log-kind-tool-text)",
+          "color": "var(--agent-kind-tool-call-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -240,7 +240,7 @@ status: 200
         },
         {
           "label": "tool_result",
-          "color": "var(--agent-log-kind-tool-result-fill)",
+          "color": "var(--agent-kind-tool-result-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -254,7 +254,7 @@ status: 200
         },
         {
           "label": "usage",
-          "color": "var(--agent-log-kind-muted-text)",
+          "color": "var(--agent-kind-unknown-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -268,7 +268,7 @@ status: 200
         },
         {
           "label": "result",
-          "color": "var(--agent-log-kind-result-text)",
+          "color": "var(--agent-kind-metering-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",

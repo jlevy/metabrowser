@@ -45,8 +45,35 @@
     };
   }
 
+  // A parsed log's kinds are the adapters' (`tool_call`, `init`, ...). Each is shown in the
+  // color of the event kind (kinds.py KINDS) it is, so one kind is one color in a badge, a
+  // filter, and a chart. charts.py draws the same table; tests/test_agent_kind_palette.py
+  // pins the two together.
+  const EVENT_KINDS = [
+    "prompt",
+    "text",
+    "thinking",
+    "tool-call",
+    "tool-result",
+    "metering",
+    "control",
+    "context",
+    "error",
+    "unknown",
+  ];
+  const EVENT_KIND_OF_ADAPTER_KIND = {
+    tool_call: "tool-call",
+    tool_result: "tool-result",
+    text: "text",
+    thinking: "thinking",
+    result: "metering",
+    init: "context",
+    system: "control",
+  };
+
   function kindClassToken(kind) {
-    return String(kind || "unknown").replace(/[^a-z0-9_-]/gi, "-");
+    const name = String(kind || "unknown");
+    return EVENT_KIND_OF_ADAPTER_KIND[name] || (EVENT_KINDS.includes(name) ? name : "unknown");
   }
 
   function kindLabel(kind) {

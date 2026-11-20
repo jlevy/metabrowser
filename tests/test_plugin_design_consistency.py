@@ -216,13 +216,13 @@ HUE_TOLERANCE = 20
 NEUTRAL_CHROMA = 0.04
 # Each chart kind's badge: the Log's ink variable for it, per agents/styles.css.
 BADGE_INK = {
-    "tool_call": "--agent-log-kind-tool-text",
-    "tool_result": "--agent-log-kind-tool-text",
-    "text": "--agent-log-kind-neutral-text",
-    "thinking": "--agent-log-kind-thinking-text",
-    "result": "--agent-log-kind-result-text",
-    "init": "--agent-log-kind-init-text",
-    "system": "--agent-log-kind-muted-text",
+    "tool_call": "--agent-kind-tool-call-text",
+    "tool_result": "--agent-kind-tool-result-text",
+    "text": "--agent-kind-text-text",
+    "thinking": "--agent-kind-thinking-text",
+    "result": "--agent-kind-metering-text",
+    "init": "--agent-kind-context-text",
+    "system": "--agent-kind-control-text",
 }
 
 
