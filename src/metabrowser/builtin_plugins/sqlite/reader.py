@@ -93,8 +93,8 @@ REFS_PER_PAGE: Final = 1000
 # dearer preview to values whose whole read would cost more still.
 PAGE_INLINE_BYTES: Final = 4096
 
-# The name a keyless object's row position takes in the statements below; a column of
-# that name is read under its own quoted name all the same.
+# The name a keyless object's row position takes in the statements below, with `_`
+# appended until no column of the object has it (`position_name`).
 POSITION: Final = "__metabrowser_position"
 
 _TOOBIG: Final = 18  # SQLITE_TOOBIG
@@ -408,7 +408,7 @@ def catalog(
         keyed = (
             item["type"] == "table"
             and name.casefold() not in denied
-            and bool(_key(item, _columns(connection, name))[0])
+            and bool(_key(connection, item, _columns(connection, name))[0])
         )
         item["keyed"] = keyed
     return {"application_id": application_id, "encoding": encoding, "objects": objects}
@@ -424,6 +424,8 @@ def _text(value: Any) -> str | None:
 
 
 def _find(objects: list[dict[str, Any]], name: str) -> dict[str, Any] | None:
+    """The object a foreign key names, as SQLite finds it: by its exact name, else
+    ignoring case. An address names its object exactly (:func:`describe`)."""
     exact = next((item for item in objects if item["name"] == name), None)
     if exact is not None:
         return exact
@@ -528,19 +530,30 @@ def _indexes(connection: sqlite3.Connection, name: str) -> list[dict[str, Any]]:
     return out
 
 
-def _key(item: dict[str, Any], columns: list[dict[str, Any]]) -> tuple[list[str], str | None]:
+def _key(
+    connection: sqlite3.Connection, item: dict[str, Any], columns: list[dict[str, Any]]
+) -> tuple[list[str], str | None]:
     """An object's key columns and, for a rowid table whose rowid is not a column, the
     alias that names it: the rowid, the integer primary key that is its alias, or a
     `WITHOUT ROWID` table's primary key. A view's or a virtual table's rows have none,
     and nor does a table whose every rowid alias a column shadows and that has no
-    integer primary key."""
+    integer primary key.
+
+    An `INTEGER PRIMARY KEY` is the rowid's alias unless it was declared
+    `INTEGER PRIMARY KEY DESC` in its column, SQLite's documented exception, which is an
+    ordinary column that may hold nulls and has an index of its own: so a primary key
+    with an index (`origin = 'pk'`) is no alias, and the table is keyed by its rowid."""
     if item["type"] != "table":
         return [], None
     if item["without_rowid"]:
         return _primary_key(columns), None
     keyed = [column for column in columns if column["pk"]]
     if len(keyed) == 1 and keyed[0]["declared"].upper() == "INTEGER":
-        return [keyed[0]["name"]], None
+        indexed = connection.execute(
+            "SELECT 1 FROM pragma_index_list(?) WHERE origin = 'pk'", (str(item["name"]),)
+        ).fetchone()
+        if indexed is None:
+            return [keyed[0]["name"]], None
     alias = rowid_alias([column["name"] for column in columns])
     return ([alias], alias) if alias is not None else ([], None)
 
@@ -558,7 +571,8 @@ def describe(
     alone, unread; a view that reads one is found so when its rows are counted."""
     connection.text_factory = bytes
     objects = _objects(connection)
-    item = _find(objects, name)
+    # One name, one address: a case variant of a table's segment names nothing.
+    item = next((item for item in objects if item["name"] == name), None)
     if item is None:
         return None
     application_id = int(_pragma(connection, "application_id"))
@@ -578,7 +592,7 @@ def describe(
             if not (item["type"] == "virtual" and _refused(exc)):
                 raise
             unread = "module"
-    key, alias = _key(item, columns) if not unread else ([], None)
+    key, alias = _key(connection, item, columns) if not unread else ([], None)
     tabled = item["type"] == "table" and not unread
     outgoing = _foreign_keys(connection, exact, objects, denied) if tabled else []
     incoming: list[dict[str, Any]] = []
@@ -774,25 +788,68 @@ def _predicates(spec: dict[str, Any]) -> tuple[list[str], list[Any], list[str]]:
     if ref is not None:
         options: list[str] = []
         for option in ref:
-            fields = [str(name) for name in option["fields"]]
-            marks, values = _binds(option["values"])
-            guards = " AND ".join(_guard(column) for column in fields)
-            options.append(f"({guards} AND {_row_value(fields)} = ({', '.join(marks)}))")
+            match, values = _references(
+                str(option["table"]),
+                [str(name) for name in option["to"]],
+                [str(name) for name in option["fields"]],
+                option["values"],
+            )
+            options.append(match)
             params.extend(values)
         clauses.append("(" + " OR ".join(options) + ")" if options else "0")
     return clauses, params, skips
 
 
+def position_name(columns: Iterable[str]) -> str:
+    """The name of a keyless object's row position: :data:`POSITION`, with `_` appended
+    until it is none of *columns*, compared as SQLite compares names."""
+    taken = {column.casefold() for column in columns}
+    name = POSITION
+    while name.casefold() in taken:
+        name += "_"
+    return name
+
+
+def _position(spec: dict[str, Any]) -> str:
+    return str(spec.get("position_name") or POSITION)
+
+
+# The alias of the object a statement reads rows of, so a correlated subquery can name
+# its columns past a table of the same name inside it.
+ROW: Final = quote("__metabrowser_row")
+# The alias of a referenced table inside such a subquery.
+_TARGET: Final = quote("__metabrowser_target")
+
+
+def _references(
+    target: str, to: Sequence[str], fields: Sequence[str], values: Sequence[Wire]
+) -> tuple[str, list[Any]]:
+    """Whether the row's *fields* name the *target* row whose *to* columns hold *values*,
+    decided as a page's references resolve: by the target's columns, on the left, so
+    their affinity and collation decide a match as they would for the foreign key."""
+    marks, bound = _binds(values)
+    joins = " AND ".join(
+        f"{_TARGET}.{quote(column)} = {ROW}.{quote(field)}"
+        for column, field in zip(to, fields, strict=True)
+    )
+    named = ", ".join(f"{_TARGET}.{quote(column)}" for column in to)
+    sql = (
+        f"EXISTS (SELECT 1 FROM {quote(target)} AS {_TARGET} WHERE {joins} "
+        f"AND ({named}) = ({', '.join(marks)}))"
+    )
+    return sql, bound
+
+
 def _relation(spec: dict[str, Any], positioned: bool) -> str:
     table = quote(str(spec["table"]))
     if positioned:
-        return f"(SELECT row_number() OVER () AS {quote(POSITION)}, * FROM {table})"
-    return table
+        return f"(SELECT row_number() OVER () AS {quote(_position(spec))}, * FROM {table}) AS {ROW}"
+    return f"{table} AS {ROW}"
 
 
 def _key_columns(spec: dict[str, Any], positioned: bool) -> list[str]:
     key = [str(name) for name in spec["key"]]
-    return key if key else ([POSITION] if positioned else [])
+    return key if key else ([_position(spec)] if positioned else [])
 
 
 def _regions(spec: dict[str, Any]) -> list[str]:
@@ -1094,7 +1151,7 @@ def _count(
     examine are counted among the same rows."""
     connection.text_factory = bytes
     where, params, skips = _predicates(spec)
-    table = quote(str(spec["table"]))
+    table = f"{quote(str(spec['table']))} AS {ROW}"
     cap = int(spec.get("cap") or COUNT_CAP)
     if not where:
         rows, stopped = _fetch(
@@ -1167,7 +1224,7 @@ def _backrefs(
     deadline: float,
 ) -> list[dict[str, Any]]:
     """For each foreign key that points at this table, how many of its table's rows name
-    this record, capped as a page's count is."""
+    this record, capped as a page's count is, matched as a page's references are."""
     out: list[dict[str, Any]] = []
     for incoming in spec.get("referenced_by") or []:
         to = [str(name) for name in incoming["to"]]
@@ -1176,12 +1233,12 @@ def _backrefs(
             out.append({"count": 0, "complete": True})
             continue
         fields = [str(name) for name in incoming["fields"]]
-        marks, params = _binds(values)
+        match, params = _references(str(spec["table"]), to, fields, values)
         _budget(connection, deadline)
         rows, stopped = _fetch(
             connection,
-            f"SELECT count(*) FROM (SELECT 1 FROM {quote(str(incoming['table']))} "
-            f"WHERE {_row_value(fields)} = ({', '.join(marks)}) LIMIT ?)",
+            f"SELECT count(*) FROM (SELECT 1 FROM {quote(str(incoming['table']))} AS {ROW} "
+            f"WHERE {match} LIMIT ?)",
             [*params, COUNT_CAP + 1],
         )
         if stopped or not rows:

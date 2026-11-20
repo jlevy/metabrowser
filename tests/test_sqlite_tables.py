@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import os
 import re
 import sqlite3
 import time
@@ -27,7 +28,7 @@ from metabrowser.source import reset_source_session
 from metabrowser.table_source import decode_key
 from tests.git_pin_harness import fast_import_store, pinned_client
 from tests.required_tools import needs_git
-from tests.sqlite_fixture import build
+from tests.sqlite_fixture import FIXED_MTIME, build
 
 FIXTURES = Path(__file__).parent / "fixtures" / "sqlite-tables"
 
@@ -107,6 +108,11 @@ def _direct(root: Path, sql: str) -> list[Any]:
 def test_every_name_has_exactly_one_segment(name: str, segment: str) -> None:
     assert table_segment(name) == segment
     assert segment_name(segment) == name
+
+
+def test_a_case_variant_of_a_segment_names_nothing(client: TestClient) -> None:
+    assert _get(client, "rows", path="app.db/users")["_status"] == 200
+    assert _get(client, "rows", path="app.db/USERS")["code"] == "table_not_found"
 
 
 def test_a_segment_no_name_encodes_to_names_nothing() -> None:
@@ -367,6 +373,13 @@ def test_references_resolve_by_the_target_columns_collation(client: TestClient) 
     assert tags[0]["ref"]["table"] == "tags" and tags[0]["ref"]["label"] == "ADMIN"
     assert decode_key(tags[0]["ref"]["key"]) == [1, "admin"]
     assert tags[2]["ref"] == {"table": "tags", "key": None, "label": "gamma", "missing": True}
+    # The record's back-references and `ref=` match as the page resolves: by the target's
+    # NOCASE collation, so `ADMIN` names `admin`.
+    admin = tags[0]["ref"]["key"]
+    record = _get(client, "record", path="app.db/tags", key=admin)
+    assert [(item["table"], item["count"]) for item in record["referenced_by"]] == [("grants", 1)]
+    named = _get(client, "rows", path="app.db/grants", ref=f"tags:{admin}")
+    assert [row["cells"]["tag"]["ref"]["label"] for row in named["rows"]] == ["ADMIN"]
     orders = _get(client, "rows", path="app.db/orders")["rows"]
     dangling = orders[3]["cells"]["user_id"]
     assert dangling == {"ref": {"table": "users", "key": None, "label": 99, "missing": True}}
@@ -627,3 +640,75 @@ def test_every_admitted_function_is_one_the_adapter_calls() -> None:
     for name in sorted(sqlite_access.ADAPTER_FUNCTIONS - {"min"}):
         pattern = r"\bLIKE\b" if name == "like" else rf"\b{name}\s*\("
         assert re.search(pattern, sql, re.IGNORECASE), name
+
+
+def test_json_that_is_not_strict_json_is_shown_as_text(tmp_path: Path) -> None:
+    """`NaN`, `Infinity`, and a value nested past the parser are text, on a page and in a
+    record, and never fail the answer."""
+    deep = "[" * 20_000 + "]" * 20_000
+    database = build(
+        tmp_path / "j.db",
+        "CREATE TABLE j (id INTEGER PRIMARY KEY, doc JSON);"
+        "INSERT INTO j VALUES (1, 'NaN'), (2, '[Infinity]'), (3, '{\"a\": 1}'), (4, '-Infinity');",
+    )
+    connection = sqlite3.connect(database)
+    connection.execute("INSERT INTO j VALUES (5, ?)", (deep,))
+    connection.commit()
+    connection.close()
+    os.utime(database, (FIXED_MTIME, FIXED_MTIME))
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as test_client:
+        page = _get(test_client, "rows", path="j.db/j")
+        assert page["_status"] == 200, page
+        docs = [row["cells"]["doc"] for row in page["rows"]]
+        assert docs[:4] == [
+            "NaN",
+            "[Infinity]",
+            {"json": {"a": 1}, "preview": '{"a": 1}'},
+            "-Infinity",
+        ]
+        for key in ("k.WzFd", "k.WzJd", "k.WzVd"):
+            record = _get(test_client, "record", path="j.db/j", key=key)
+            assert record["_status"] == 200, record
+        record = _get(test_client, "record", path="j.db/j", key="k.WzVd")
+        assert record["cells"]["doc"] == deep
+
+
+def test_integer_primary_key_desc_is_no_rowid_alias(tmp_path: Path) -> None:
+    """SQLite's documented exception: `INTEGER PRIMARY KEY DESC` is an ordinary column
+    that may hold nulls, so the table is keyed by its rowid."""
+    build(
+        tmp_path / "d.db",
+        "CREATE TABLE t (k INTEGER PRIMARY KEY DESC, v TEXT);"
+        "INSERT INTO t VALUES (NULL, 'n1'), (NULL, 'n2'), (3, 'c'), (1, 'a');"
+        "CREATE TABLE alias (k INTEGER, v TEXT, PRIMARY KEY (k DESC));"
+        "INSERT INTO alias VALUES (7, 'x');",
+    )
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as test_client:
+        page = _get(test_client, "rows", path="d.db/t", order="desc")
+        assert page["_status"] == 200, page
+        assert [decode_key(row["key"]) for row in page["rows"]] == [[4], [3], [2], [1]]
+        assert [row["cells"]["k"] for row in page["rows"]] == [1, 3, None, None]
+        assert _fields(test_client, "d.db/t")["rowid"]["key"] is True
+        aliased = _get(test_client, "rows", path="d.db/alias")
+        assert [decode_key(row["key"]) for row in aliased["rows"]] == [[7]]
+
+
+@pytest.mark.parametrize("params", [{"order": "desc"}, {"q": "a"}])
+def test_a_column_named_like_the_position_shows_its_value(
+    tmp_path: Path, params: dict[str, str]
+) -> None:
+    build(
+        tmp_path / "p.db",
+        "CREATE VIEW v AS SELECT 10 AS __metabrowser_position, 'a' AS t "
+        "UNION ALL SELECT 20, 'a' UNION ALL SELECT 30, 'a';",
+    )
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as test_client:
+        page = _get(test_client, "rows", path="p.db/v", **params)
+        values = [row["cells"]["__metabrowser_position"] for row in page["rows"]]
+        assert sorted(values) == [10, 20, 30], page

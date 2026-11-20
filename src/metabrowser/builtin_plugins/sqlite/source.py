@@ -523,6 +523,9 @@ class SqliteSource:
             "table": description["name"],
             "key": description["key"],
             "rowid": _rowid(description),
+            "position_name": reader.position_name(
+                str(column["name"]) for column in description["columns"]
+            ),
             "columns": list(names),
             "encoding": self._encoding(deadline),
             "refs": refs,
@@ -562,7 +565,14 @@ class SqliteSource:
                 for value in values
             ):
                 continue
-            options.append({"fields": list(ref.fields), "values": values})
+            options.append(
+                {
+                    "table": target["name"],
+                    "to": list(ref.to),
+                    "fields": list(ref.fields),
+                    "values": values,
+                }
+            )
         return options
 
     def _read_record(
@@ -968,6 +978,31 @@ def _cell(
     return cell
 
 
+_NOT_JSON: Final = object()
+
+
+def _refuse_constant(name: str) -> Any:
+    raise ValueError(f"{name} is not JSON")
+
+
+def _json(text: str) -> Any:
+    """*text* parsed as strict JSON, or :data:`_NOT_JSON`: `NaN` and `Infinity`, which
+    Python's parser admits and no response may carry, are not JSON, and nor is a value
+    nested past the parser's recursion."""
+    try:
+        return json.loads(text, parse_constant=_refuse_constant)
+    except (ValueError, RecursionError):
+        return _NOT_JSON
+
+
+def _fits(text: str, *, max_chars: int | None, max_bytes: int | None) -> bool:
+    """Whether *text* is shown whole under the cell's bound, the only case its JSON is
+    parsed: a page's characters or a record's bytes."""
+    if max_chars is not None and len(text) > max_chars:
+        return False
+    return max_bytes is None or len(text.encode("utf-8", "surrogatepass")) <= max_bytes
+
+
 def _plain(
     stored: str,
     size: int,
@@ -984,11 +1019,10 @@ def _plain(
         return wire  # a finite real, or already `{real: ...}`
     if stored == "text":
         if isinstance(wire, str):
-            if kind == "json" and (max_chars is None or len(wire) <= max_chars):
-                try:
-                    return {"json": json.loads(wire), "preview": wire}
-                except ValueError:
-                    pass  # Not JSON after all: shown as the text it is.
+            if kind == "json" and _fits(wire, max_chars=max_chars, max_bytes=max_bytes):
+                parsed = _json(wire)
+                if parsed is not _NOT_JSON:
+                    return {"json": parsed, "preview": wire}
             return text_cell(wire, max_chars=max_chars, max_bytes=max_bytes)
         if isinstance(wire, dict):
             envelope = cast(dict[str, Any], wire)
