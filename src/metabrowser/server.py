@@ -1780,6 +1780,8 @@ async def index(
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
     # A pin's freshness row, filled by static/source-freshness.js. A folder has none.
+    # It sits above the keyboard shortcut strip, so the strip stays the pane's last row
+    # (owner, 2026-11-20).
     source_freshness_row = (
         '\n      <div class="source-freshness" id="source-freshness" hidden></div>'
         if git_pin
@@ -2467,7 +2469,7 @@ async def index(
           <div class="loading mb-delayed-loading"><div class="spinner"></div><span
             class="sr-only">Loading files…</span></div>
         </div>{git_container}{pulls_container}
-      </div>
+      </div>{source_freshness_row}
       <!-- role="group" carries the accessible name: ARIA forbids naming a
            generic element, so a bare div would drop the label and announce
            the hints and their controls with no grouping context. Not a live
@@ -2478,7 +2480,7 @@ async def index(
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
         <span class="index-progress-spinner" aria-hidden="true"></span>
         <span class="index-progress-text">Scanning…</span>
-      </div>{source_freshness_row}
+      </div>
     </div>
     <div class="resize-handle" id="tree-resize"></div>
     <!-- Every route that serves this shell selects something: /view/ names a

@@ -26,6 +26,7 @@ serves and how a pinned revision projects its tree, and the
 | `git/history.py` | History sessions, cursors, and graph checkpoints |
 | `git/ref_state.py`, `git/route_memo.py` | Naming the refs’ state, and answers kept under it |
 | `git/shallow.py` | What a shallow boundary leaves certain |
+| `git/change_size.py` | A change’s size as Git pushes it and as a patch, measured once and kept |
 | `git/wire.py` | The JSON shapes the routes emit, and their validators |
 | `static/git-graph.js` | Lane assignment and row SVG, ported from VS Code |
 | `static/git-history-window.js` | The browser’s page cache and virtual window |
@@ -221,6 +222,7 @@ The read-only routes, registered as `GIT_ROUTES` in `git/routes.py`:
 | `/api/git/log` | One page of a history session |
 | `/api/git/commit/{revision}` | One commit’s message, files, and counts |
 | `/api/git/commit-markdown/{revision}` | One commit’s body rendered as Markdown, with its trailers as written |
+| `/api/git/commit-size/{revision}` | One commit’s size as Git pushes it and as a patch |
 
 `tests/test_git_arch_doc.py` compares this table to `GIT_ROUTES`. The routes also appear
 in the [views, models, and routes map](arch-views-models-routes.md).
@@ -398,6 +400,38 @@ no diff surface of its own.
 The page keeps those comparisons, as [the diff pipeline](arch-diff-pipeline.md#caches)
 describes.
 
+## Change Sizes
+
+A change’s size is two numbers, both measured by `git/change_size.py`: the thin pack
+`git push` sends for it, every object the head reaches that the base does not,
+compressed and stored as deltas against each other and against the base’s objects
+(`pushed_bytes`), and its patch, `git diff --binary`, uncompressed (`diff_bytes`), with
+the commits the change holds.
+A commit’s change is against its first parent, as its detail is; a pull request’s is its
+head against the merge base its Files changed compares.
+Neither the sum of the new objects’ sizes nor their size on disk answers the question:
+the first counts every touched file and directory whole, and the second depends on how
+the repository’s packs happen to be laid out; the module docstring has the measurements.
+
+Every option that could move either number is pinned on the command line, the reader’s
+and the repository’s configuration included, and `--no-reuse-object` keeps the store’s
+own packs out of the pack, so a size is a function of the two commit IDs and of the zlib
+Git is built with. A measured size is therefore never measured again: it is kept in
+memory, and for a [repository store](arch-repository-cache.md#layout) in its
+`change-sizes/` bank, which a fresh server reads.
+A served folder keeps sizes in memory only, since browsing a folder never touches the
+cache. `pack-objects` is a store read only with `--stdout`, which `git/process.py`
+enforces.
+
+What cannot be known is answered `unknown` with a reason, never as a number that is
+wrong: `parent_unavailable` at a shallow boundary, `history_unavailable` for a walk that
+crosses one, `objects_unavailable` for an object the repository lacks, and `too_costly`
+past the request deadline, which is kept for the process so it is paid once.
+`/api/git/commit-size/{revision}` is a route of its own, apart from the commit route the
+hover card asks for on every row, because a first measurement takes a pack’s time.
+The pull request’s size is `GET github/pull-size`
+([GitHub Pull Requests](arch-github-pull-requests.md)).
+
 ## Wire Models
 
 `git/wire.py` uses `TypedDict` with `NotRequired`, plus validators and `_*_REQUIRED`
@@ -410,6 +444,9 @@ closed vocabulary.
 For a new Git model, default to the `diff/format.py` idiom.
 Use `TypedDict` only where a producer streams many rows and the construction cost is
 measured, and then say so in the module and keep the gate set in one place.
+`GitChangeSize` is a `TypedDict` because it is a field of `TypedDict` answers, the Pulls
+rows’ summary among them, and its validator, `validate_git_change_size`, is its one
+gate.
 
 ## Providers
 

@@ -46,6 +46,12 @@ route = "pull-rendered-diff"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_rendered_diff_handler"
 methods = ["GET"]
 
+# The size an admitted comparison pushes, and its patch's, for the page's size line.
+[[data_hook]]
+route = "pull-size"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_size_handler"
+methods = ["GET"]
+
 # A selected PR's bounded Conversation projection, held separately from discussion.
 [[data_hook]]
 route = "pull-timeline"

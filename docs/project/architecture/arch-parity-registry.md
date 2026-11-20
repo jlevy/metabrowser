@@ -52,6 +52,7 @@ registered, any other status, and a golden that never runs the route.
 | `/api/git/log` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/commit` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/commit-markdown` | covered | `--api` | `cli-api-git-commit-markdown.tryscript.md` |
+| `/api/git/commit-size` | covered | `--api` | `cli-api-git-commit-size.tryscript.md` |
 | `/api/kpress/render` | covered | `--api`, `--api --data` | `cli-api-shell.tryscript.md`, `cli-api-untrusted-markdown.tryscript.md`, `cli-api-render-diagnostics.tryscript.md`, `cli-api-frontmatter-bounds.tryscript.md` |
 | `/api/kpress/export` | covered | `--api --data` | `cli-api-shell.tryscript.md` |
 | `/api/plugin/agent-log/charts` | covered | `--api` | `cli-api-agent-logs.tryscript.md`, `cli-api-plugins.tryscript.md` |
@@ -69,6 +70,7 @@ registered, any other status, and a golden that never runs the route.
 | `/api/plugin/github/pull-timeline` | covered | `--api --data` | `cli-github-pull-timeline.txt` |
 | `/api/plugin/github/pull-image` | covered | `--api` | `cli-github-pull-image.txt` |
 | `/api/plugin/github/pull-rendered-diff` | covered | `--api` | `cli-github-pull-rendered.txt` |
+| `/api/plugin/github/pull-size` | covered | `--api` | `cli-github-pull-size.txt` |
 | `/api/plugin/github/pull-comparison` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-checkout.txt` |
 | `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-backfill.txt` |
 | `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt`, `cli-github-pulls-backfill.txt` |
