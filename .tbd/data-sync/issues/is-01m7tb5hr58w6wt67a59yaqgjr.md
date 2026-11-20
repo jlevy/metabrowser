@@ -5,14 +5,15 @@ title: Review, land, and test end to end the Mermaid diagram PRs (jlevy/kpress#8
 kind: task
 status: open
 priority: 1
-version: 8
+version: 9
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
+parent_id: is-01m7wysdnvzch4gb5zvqwvn04e
 hold: null
 hold_until: null
 created_at: 2026-11-19T16:45:19.492Z
-updated_at: 2026-11-20T17:04:38.750Z
+updated_at: 2026-11-20T17:12:30.397Z
 started_at: 2026-11-19T16:47:12.227Z
 ---
 Owner, 2026-11-19, verbatim: "can you review and make sure all the mermaid diagram PRs are reviewed and merged as well and let me test end to end" and "let's use the jlevy/markform repo as an example for testing as it has a mermaid document on the readme". #597 depends on kpress#80 (builds KPress from claude/diagrams-mermaid-mode via [tool.uv.sources]; publish.yml refuses a release while a source is set). Plan tracked under mb-qz51.

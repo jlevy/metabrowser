@@ -5,7 +5,8 @@ title: "Agent operations Phase 2: basic views"
 kind: epic
 status: closed
 priority: 1
-version: 10
+version: 11
+spec_path: docs/project/specs/active/plan-2026-11-19-agent-operations-views.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/639
@@ -25,6 +26,7 @@ refs:
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wysc4mfcdyek4vgsexz8y9
 child_order_hints:
   - is-01m7vr4448r7931hqrsp5b41ax
   - is-01m7vr44k9m78ppvrwyg9bedcn
@@ -32,7 +34,7 @@ child_order_hints:
   - is-01m7vr45rqhdjbqk3bnhwajc6b
   - is-01m7vr46rebr2dvrg54t7sfqsj
 created_at: 2026-11-20T05:50:54.106Z
-updated_at: 2026-11-20T17:03:52.163Z
+updated_at: 2026-11-20T17:12:21.155Z
 closed_at: 2026-11-20T16:33:13.134Z
 close_reason: "Phase 2 merged: the stack #639-#655 landed as ab64b5c"
 resolution: null
