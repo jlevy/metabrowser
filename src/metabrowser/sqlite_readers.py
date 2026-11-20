@@ -107,7 +107,7 @@ class _Worker:
 
     def __init__(self, subject: str) -> None:
         self.subject = subject
-        self.process = subprocess.Popen(  # noqa: S603 - our own interpreter and module
+        self.process = subprocess.Popen(
             [
                 sys.executable,
                 "-I",
@@ -309,10 +309,10 @@ class ReaderPool:
         self._release(worker)
         if response.get("ok") is True:
             return response.get("result")
-        state = response.get("state")
-        if state not in sqlite_access.ERROR_STATES:
-            state = "reader_stopped"
-        raise SqliteAccessError(state, str(response.get("error") or "The read failed."))
+        raise SqliteAccessError(
+            sqlite_access.error_state(response.get("state")),
+            str(response.get("error") or "The read failed."),
+        )
 
     def _acquire(self, deadline: float, subject: str) -> _Worker:
         retired: list[_Worker] = []
@@ -396,18 +396,18 @@ class ReaderPool:
             os.close(fd)
 
 
-_POOL: ReaderPool | None = None
-_POOL_LOCK = threading.Lock()
+_pool: ReaderPool | None = None
+_pool_lock = threading.Lock()
 
 
 def reader_pool() -> ReaderPool:
     """The process's reader pool, started on first use and closed at exit."""
-    global _POOL
-    with _POOL_LOCK:
-        if _POOL is None:
-            _POOL = ReaderPool()
-            atexit.register(_POOL.close)
-        return _POOL
+    global _pool
+    with _pool_lock:
+        if _pool is None:
+            _pool = ReaderPool()
+            atexit.register(_pool.close)
+        return _pool
 
 
 def request_deadline() -> float:

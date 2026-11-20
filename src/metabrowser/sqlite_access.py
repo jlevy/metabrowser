@@ -34,6 +34,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import stat
 import sys
 import threading
 import time
@@ -71,7 +72,16 @@ type ErrorState = Literal[
     "refused",
     "reader_stopped",
 ]
-ERROR_STATES: Final = frozenset(get_args(ErrorState.__value__))
+ERROR_STATES: Final[frozenset[str]] = frozenset(get_args(ErrorState.__value__))
+
+
+def error_state(value: object) -> ErrorState:
+    """*value* as an error state; anything else a reader answered is ``reader_stopped``."""
+    for state in get_args(ErrorState.__value__):
+        if value == state:
+            return state
+    return "reader_stopped"
+
 
 # ── Library versions ───────────────────────────────────────────
 
@@ -343,6 +353,8 @@ def observe(path: Path) -> Observation:
     """
     try:
         info = os.stat(path)
+        if not stat.S_ISREG(info.st_mode):
+            raise SqliteAccessError("unreadable", "This is not a regular file.")
         header = _read_head(path, HEADER_BYTES)
     except FileNotFoundError as exc:
         raise SqliteAccessError("unreadable", "This file is no longer available.") from exc
@@ -627,19 +639,21 @@ _DAMAGED_CODES: Final = frozenset({sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB
 
 
 def _classify(exc: sqlite3.Error) -> SqliteAccessError:
-    """The state an SQLite error on a read that was not in doubt is shown as."""
+    """The state an SQLite error on a read that was not in doubt is shown as.
+
+    Only SQLite's own codes for a damaged file are damage; an authorizer's denial is
+    reported at prepare time as a plain error naming it.
+    """
     code = getattr(exc, "sqlite_errorcode", 0) & 0xFF
     if code in _DAMAGED_CODES:
         return SqliteAccessError("damaged", f"This database is damaged: {exc}")
-    if code in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+    if code in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED, sqlite3.SQLITE_NOMEM):
         return SqliteAccessError("busy", f"The database is busy: {exc}")
     if code == sqlite3.SQLITE_INTERRUPT:
         return SqliteAccessError("busy", "The read ran past its deadline or its work budget.")
-    if code == sqlite3.SQLITE_AUTH:
+    if code == sqlite3.SQLITE_AUTH or "not authorized" in str(exc):
         return SqliteAccessError("refused", f"The read was refused: {exc}")
-    if code in (sqlite3.SQLITE_CANTOPEN, sqlite3.SQLITE_PERM, sqlite3.SQLITE_READONLY):
-        return SqliteAccessError("unreadable", f"This database cannot be opened: {exc}")
-    return SqliteAccessError("damaged", f"This database could not be read: {exc}")
+    return SqliteAccessError("unreadable", f"This database could not be read: {exc}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -893,22 +907,35 @@ def _limit_address_space(limit: int) -> None:
         return
 
 
+def _info_op(args: dict[str, Any], deadline: float) -> dict[str, Any]:
+    return info(
+        Path(args["path"]),
+        deadline=deadline,
+        scratch=Path(args["scratch"]),
+        immutable_content=bool(args.get("immutable_content")),
+    )
+
+
+type Op = Callable[[dict[str, Any], float], Any]
+
+# What a reader process answers, by request name: each takes the request's arguments
+# (JSON) and its deadline (a ``time.monotonic()`` instant in the worker) and returns a
+# JSON value, or raises :class:`SqliteAccessError`. The parent asks through
+# ``ReaderPool.call(op, args, ...)``.
+OPS: Final[dict[str, Op]] = {
+    "ping": lambda _args, _deadline: None,
+    "info": _info_op,
+}
+
+
 def _handle(request: dict[str, Any]) -> dict[str, Any]:
-    op = request.get("op")
+    op = OPS.get(str(request.get("op")))
     args = request.get("args") or {}
     deadline = time.monotonic() + float(request.get("seconds", 0))
+    if op is None:
+        return {"ok": False, "state": "refused", "error": f"unknown request {request.get('op')!r}"}
     try:
-        if op == "ping":
-            return {"ok": True, "result": None}
-        if op == "info":
-            result = info(
-                Path(args["path"]),
-                deadline=deadline,
-                scratch=Path(args["scratch"]),
-                immutable_content=bool(args.get("immutable_content")),
-            )
-            return {"ok": True, "result": result}
-        return {"ok": False, "state": "refused", "error": f"unknown request {op!r}"}
+        return {"ok": True, "result": op(args, deadline)}
     except SqliteAccessError as exc:
         return {"ok": False, "state": exc.state, "error": str(exc)}
     except MemoryError:
