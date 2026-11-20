@@ -3,6 +3,7 @@ base:
   description_hash: sha256v7:60569ab52d1ad171d518154f30979cb2e29eabc443fdbdd1f3f06f845ae91799
   labels:
     - linear
+    - Improvement
   priority: 1
   slot: done
   status: closed
@@ -13,7 +14,7 @@ external_key: OS-366
 external_url: https://linear.app/finterm-ai/issue/OS-366/cli-parity-every-model-reachable-from-metab-every-one-pinned-by-a
 refinement_slot: done
 refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
-remote_updated_at: 2026-11-20T19:18:40.200Z
+remote_updated_at: 2026-11-20T19:20:29.559Z
 state: linked
-synced_at: 2026-11-20T19:18:40.355Z
+synced_at: 2026-11-20T19:21:06.102Z
 type: lk

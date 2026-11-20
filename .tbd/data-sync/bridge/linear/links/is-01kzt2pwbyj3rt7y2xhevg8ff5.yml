@@ -3,6 +3,7 @@ base:
   description_hash: sha256v7:5298f87910024099bc3cafe8782a8aa849eb52b294d3a825010bb8ab1ce8a6d8
   labels:
     - linear
+    - Feature
   priority: 2
   slot: done
   status: closed
@@ -13,7 +14,7 @@ external_key: OS-320
 external_url: https://linear.app/finterm-ai/issue/OS-320/spec-bounded-binary-byte-preview
 refinement_slot: done
 refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
-remote_updated_at: 2026-11-20T19:18:37.251Z
+remote_updated_at: 2026-11-20T19:20:29.387Z
 state: linked
-synced_at: 2026-11-20T19:18:37.330Z
+synced_at: 2026-11-20T19:21:05.195Z
 type: lk

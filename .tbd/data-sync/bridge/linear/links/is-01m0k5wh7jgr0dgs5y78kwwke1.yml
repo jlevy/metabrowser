@@ -1,6 +1,6 @@
 base:
   assignee: null
-  description_hash: sha256v7:59973664565525e6e41d9face514dd587aa38d11df27500a9367df26fc2a5da9
+  description_hash: sha256v7:ef59ffa61fed6ba5e3611db354bf803ecc69460c0990c0ec1e28f4fbb4398893
   labels:
     - linear
     - Improvement
@@ -14,7 +14,7 @@ external_key: OS-601
 external_url: https://linear.app/finterm-ai/issue/OS-601/end-to-end-load-time-assets-time-to-first-row-server-and-cli
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-20T19:18:41.037Z
+remote_updated_at: 2026-11-20T19:20:29.614Z
 state: linked
-synced_at: 2026-11-20T19:18:41.193Z
+synced_at: 2026-11-20T19:21:06.301Z
 type: lk

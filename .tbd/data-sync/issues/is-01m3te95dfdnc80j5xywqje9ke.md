@@ -5,7 +5,7 @@ title: "v0.12 test-suite review: maximum coverage, minimum test complexity"
 kind: epic
 status: open
 priority: 2
-version: 35
+version: 36
 spec_path: docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - linear
@@ -38,7 +38,8 @@ child_order_hints:
   - is-01m3vxs7p2jb26ezpn8fez74e0
   - is-01m7vpe4zwhef2vz5br01ykr3a
 created_at: 2026-10-01T00:36:56.339Z
-updated_at: 2026-11-20T19:16:35.091Z
+updated_at: 2026-11-20T19:21:08.308Z
+duplicate_of: null
 extensions:
   linear:
     id: 9522c55a-9e04-474a-a3f6-a8899cfc25bc
@@ -55,7 +56,7 @@ Over `origin/main`, the stack tip (a896d8fe, `origin/codex/v012-p4-fixes`) adds 
 Measured on 2026-09-30 (lines: `git grep -c ''` on each ref; run time: CI `test (3.13)` job logs, run 35634453594 for main and 36077428696 for the tip):
 
 | Measure | main | tip |
-|---|---|---|
+| -- | -- | -- |
 | `tests/test_*.py` files / lines | 203 / 49,436 | 287 / 83,818 |
 | test helper modules, lines | 323 | 1,839 |
 | `tests/dom` JS files / lines | 84 / 33,638 | 94 / 37,949 |
@@ -79,10 +80,10 @@ Tests grew 1.7x; pytest time grew 4.2x and tryscript time 3.7x. The `test` job r
 
 ## Accept rule (applies to every child)
 
-- Every removed or merged test names, in the PR description, the independent evidence that still covers its contract (test, golden block or session, by path and line).
-- Coverage of public contracts does not drop: `devtools/check_parity.py` stays green, and no route, kind, CLI mode, persisted state or failure class loses its last evidence.
-- `make verify` is green.
-- Test lines (Python, DOM JS, goldens, fixtures) and run time (pytest and tryscript, from the CI `test (3.13)` job) are reported before and after in each PR and totalled here when the epic closes.
+* Every removed or merged test names, in the PR description, the independent evidence that still covers its contract (test, golden block or session, by path and line).
+* Coverage of public contracts does not drop: `devtools/check_parity.py` stays green, and no route, kind, CLI mode, persisted state or failure class loses its last evidence.
+* `make verify` is green.
+* Test lines (Python, DOM JS, goldens, fixtures) and run time (pytest and tryscript, from the CI `test (3.13)` job) are reported before and after in each PR and totalled here when the epic closes.
 
 ## Notes
 

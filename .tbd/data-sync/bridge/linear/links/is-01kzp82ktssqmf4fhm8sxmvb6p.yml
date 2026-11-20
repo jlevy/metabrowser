@@ -5,6 +5,7 @@ base:
     - ui
     - filters
     - linear
+    - Feature
   priority: 1
   slot: done
   status: closed
@@ -15,7 +16,7 @@ external_key: OS-312
 external_url: https://linear.app/finterm-ai/issue/OS-312/nav-filter-controls-and-fine-grained-filtering
 refinement_slot: done
 refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
-remote_updated_at: 2026-11-20T19:18:36.332Z
+remote_updated_at: 2026-11-20T19:20:29.307Z
 state: linked
-synced_at: 2026-11-20T19:18:36.502Z
+synced_at: 2026-11-20T19:21:04.408Z
 type: lk

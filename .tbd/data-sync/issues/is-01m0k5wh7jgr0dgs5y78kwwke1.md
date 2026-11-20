@@ -5,7 +5,7 @@ title: "End-to-end load time: assets, time to first row, server and CLI"
 kind: epic
 status: open
 priority: 0
-version: 85
+version: 86
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels:
   - linear
@@ -92,7 +92,8 @@ child_order_hints:
   - is-01m7pkgzth175ysqyfpp41brk9
   - is-01m7cmptva96jf076a85g0kabx
 created_at: 2026-08-21T22:08:27.377Z
-updated_at: 2026-11-20T19:16:24.041Z
+updated_at: 2026-11-20T19:21:06.295Z
+duplicate_of: null
 extensions:
   linear:
     id: c5f1e322-b8de-4351-8877-3b910724f569
@@ -104,7 +105,7 @@ Browser cold load: 100k files -> FCP 92 ms, first tree row 4,525 ms, 2,550 rows,
 
 Waterfall at 100k: /api/tree returns 387,778 B in 38 ms at t+319 ms; /api/events blocks 3,669 ms; /api/catalog returns 4,580,060 B at t+4,733 ms; first row paints at t+4,936 ms. The tree data is in the browser at 319 ms and the client gates on scan completion anyway.
 
-Backend: start-to-serving 771 ms at 9k, 944 ms at 100k, 2,748 ms at 1M (so startup scales with the tree). Walk ~50 us/file. Warm /api/tree 77 ms at 9k, 866 ms at 100k, 4,990 ms and 3.68 MB at 1M. INVENTORY_MAX_FILES = 500_000 truncates silently.
+Backend: start-to-serving 771 ms at 9k, 944 ms at 100k, 2,748 ms at 1M (so startup scales with the tree). Walk \~50 us/file. Warm /api/tree 77 ms at 9k, 866 ms at 100k, 4,990 ms and 3.68 MB at 1M. INVENTORY_MAX_FILES = 500_000 truncates silently.
 
 Assets: 432,092 B of vendored JS on every page; blocking the Chart.js stack moves load from 853 ms to 479 ms.
 

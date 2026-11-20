@@ -3,6 +3,7 @@ base:
   description_hash: sha256v7:b8320f48a62516ae5c43d4da2be0aea4c533df90c5578ae6b111dd5c947da83f
   labels:
     - linear
+    - Feature
   priority: 1
   slot: done
   status: closed
@@ -13,7 +14,7 @@ external_key: OS-301
 external_url: https://linear.app/finterm-ai/issue/OS-301/git-graph-nav-panel-and-git-api
 refinement_slot: done
 refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
-remote_updated_at: 2026-11-20T19:18:35.939Z
+remote_updated_at: 2026-11-20T19:20:29.254Z
 state: linked
-synced_at: 2026-11-20T19:18:36.037Z
+synced_at: 2026-11-20T19:21:02.761Z
 type: lk

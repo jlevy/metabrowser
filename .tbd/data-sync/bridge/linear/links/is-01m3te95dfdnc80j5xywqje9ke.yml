@@ -1,6 +1,6 @@
 base:
   assignee: null
-  description_hash: sha256v7:1b9059dc26c0937d81a592b5fab80a1119496da9509d04fbc65e89d65d345acc
+  description_hash: sha256v7:bf7066a0f6badd11078378e19e00f6c94a79939817a923b6d1eb332e1db41284
   labels:
     - linear
     - Improvement
@@ -14,7 +14,7 @@ external_key: OS-609
 external_url: https://linear.app/finterm-ai/issue/OS-609/v012-test-suite-review-maximum-coverage-minimum-test-complexity
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-20T19:18:52.792Z
+remote_updated_at: 2026-11-20T19:20:30.229Z
 state: linked
-synced_at: 2026-11-20T19:18:53.137Z
+synced_at: 2026-11-20T19:21:08.314Z
 type: lk

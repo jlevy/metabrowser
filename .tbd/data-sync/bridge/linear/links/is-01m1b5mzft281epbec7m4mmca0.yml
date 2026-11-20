@@ -1,6 +1,6 @@
 base:
   assignee: null
-  description_hash: sha256v7:3e6f7fcbeb15590f52f4b3984cf15a50a23efcd70cb990c77a528ff797fb447b
+  description_hash: sha256v7:820351dd63a438c15c6f5e7c1e85749fee304c40a049f7fc7ebad1dc682f8f7e
   labels:
     - linear
     - Improvement
@@ -14,7 +14,7 @@ external_key: OS-604
 external_url: https://linear.app/finterm-ai/issue/OS-604/api-envelope-contract-a-generated-schema-the-cli-can-show
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-20T19:18:46.273Z
+remote_updated_at: 2026-11-20T19:20:29.877Z
 state: linked
-synced_at: 2026-11-20T19:18:46.671Z
+synced_at: 2026-11-20T19:21:06.815Z
 type: lk

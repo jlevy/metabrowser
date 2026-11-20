@@ -3,6 +3,7 @@ base:
   description_hash: sha256v7:7dedeca4f7a8b3d4c57efac6e076fb9adc11221f7b41a495165950cf4d23e88c
   labels:
     - linear
+    - Feature
   priority: 1
   slot: done
   status: closed
@@ -13,7 +14,7 @@ external_key: OS-291
 external_url: https://linear.app/finterm-ai/issue/OS-291/unified-filtering-across-navigation-and-folder-views
 refinement_slot: done
 refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
-remote_updated_at: 2026-11-20T19:18:35.524Z
+remote_updated_at: 2026-11-20T19:20:29.199Z
 state: linked
-synced_at: 2026-11-20T19:18:35.661Z
+synced_at: 2026-11-20T19:21:02.598Z
 type: lk
