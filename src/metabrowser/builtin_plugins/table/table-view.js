@@ -733,7 +733,7 @@ export function mountTable(container, ctx, host = {}) {
         arrivedAt >= 0 ? arrivedAt * rowHeight : anchorAt >= 0 ? anchorAt * rowHeight + offset : 0;
       // The keyboard stays on its row; a menu, and what is typed in it or in Search, stay
       // as they are, since only the rows are drawn again while the columns hold.
-      const hadFocus = isWithin(doc.activeElement, tbody);
+      const hadFocus = Boolean(doc.activeElement && tbody.contains(doc.activeElement));
       const target = atTop && arrivedAt < 0 ? 0 : place;
       // A window draws from the scroll position, so it is set before and again after,
       // once the rows drawn give the box its new height.

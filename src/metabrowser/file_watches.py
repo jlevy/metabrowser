@@ -240,9 +240,7 @@ class FileWatches:
         watched = {path for held in self._connections.values() for path in held.watched}
         if not watched:
             return
-        if everything or any(
-            _touches(dirty, path) for dirty in dirty_paths for path in watched
-        ):
+        if everything or any(_touches(dirty, path) for dirty in dirty_paths for path in watched):
             self._wake.set()
 
     async def poll(self) -> int:
