@@ -72,12 +72,12 @@ $ metab --plugins-dir ok --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
 metab --doctor: 13 plugin(s) OK
 plugin requirements:
-  agent-log: requires structured
+  agents: requires structured
   diff: requires structured
-  event-log: requires agent-log
+  event-log: requires agents
   folder: requires markdown
   github: requires markdown
-  unknown-jsonl: requires agent-log
+  unknown-jsonl: requires agents
   uses-md: requires markdown
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
@@ -114,12 +114,12 @@ metab --doctor: 4 problem(s):
   • plugin 'needs-absent' is refused: it requires 'absent', which was not discovered
   • plugin 'on-loop' is refused: it requires 'loop-a', which was refused
 plugin requirements:
-  agent-log: requires structured
+  agents: requires structured
   diff: requires structured
-  event-log: requires agent-log
+  event-log: requires agents
   folder: requires markdown
   github: requires markdown
-  unknown-jsonl: requires agent-log
+  unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
 ...
 ? 1
@@ -136,12 +136,12 @@ $ metab --plugins-dir override --doctor 2>&1 >/dev/null
 metab --doctor: 1 problem(s):
   • plugin 'markdown' is refused: it requires 'absent', which was not discovered; the plugin it overrides (builtin) is kept
 plugin requirements:
-  agent-log: requires structured
+  agents: requires structured
   diff: requires structured
-  event-log: requires agent-log
+  event-log: requires agents
   folder: requires markdown
   github: requires markdown
-  unknown-jsonl: requires agent-log
+  unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
 ...
 ? 1

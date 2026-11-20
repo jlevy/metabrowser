@@ -61,12 +61,12 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --do
 metab --doctor: open_in browser (environment); --present looks for no app
 metab --doctor: 12 plugin(s) OK
 plugin requirements:
-  agent-log: requires structured
+  agents: requires structured
   diff: requires structured
-  event-log: requires agent-log
+  event-log: requires agents
   folder: requires markdown
   github: requires markdown
-  unknown-jsonl: requires agent-log
+  unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -291,12 +291,12 @@ metab --doctor: 2 problem(s):
   • config: the configuration directory does not exist, and metab cannot create it: / is not writable by this user
   • cache: the cache directory does not exist, and metab cannot create it: / is not writable by this user
 plugin requirements:
-  agent-log: requires structured
+  agents: requires structured
   diff: requires structured
-  event-log: requires agent-log
+  event-log: requires agents
   folder: requires markdown
   github: requires markdown
-  unknown-jsonl: requires agent-log
+  unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -411,12 +411,12 @@ $ METABROWSER_CONFIG_DIR=$PWD/shared METABROWSER_CACHE_DIR=$PWD/cache metab --do
 metab --doctor: 1 problem(s):
   • config: The Metabrowser storage directory is accessible to other users (mode 0755). Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own.
 plugin requirements:
-  agent-log: requires structured
+  agents: requires structured
   diff: requires structured
-  event-log: requires agent-log
+  event-log: requires agents
   folder: requires markdown
   github: requires markdown
-  unknown-jsonl: requires agent-log
+  unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)

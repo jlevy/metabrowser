@@ -71,12 +71,12 @@ $ metab --doctor --plugins-dir pair >/dev/null
 metab --doctor: 1 problem(s):
   • plugin 'beta': view 'more' of kind 'myk' declares key 'm', but view 'main' (plugin 'alpha') already holds it; the view is served without a key
 plugin requirements:
-  agent-log: requires structured
+  agents: requires structured
   diff: requires structured
-  event-log: requires agent-log
+  event-log: requires agents
   folder: requires markdown
   github: requires markdown
-  unknown-jsonl: requires agent-log
+  unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -279,12 +279,12 @@ $ metab --doctor --plugins-dir override >/dev/null
 metab --doctor: 1 problem(s):
   • plugin 'markdown': view 'source' of kind 'markdown' declares key 's', but view 'rendered' (plugin 'steal') already holds it; the view is served without a key
 plugin requirements:
-  agent-log: requires structured
+  agents: requires structured
   diff: requires structured
-  event-log: requires agent-log
+  event-log: requires agents
   folder: requires markdown
   github: requires markdown
-  unknown-jsonl: requires agent-log
+  unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
