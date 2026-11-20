@@ -177,10 +177,11 @@ READ_OPCODE_BUDGET: Final = 10_000_000
 # (the authorizer names the view), since `trusted_schema=OFF` already refuses there
 # every function not marked innocuous (the exploration's Encoding record).
 # The table reads (`builtin_plugins/sqlite/reader.py`) also sum a page's count and what it
-# skipped (`sum`), cut a value (`substr`), search (`like`), and number a keyless object's
-# rows in its own order (`row_number`).
+# skipped (`sum`), search (`like`), and number a keyless object's rows in its own order
+# (`row_number`). (The SQLite-tables layer's line: its merge with the SQLite-access layer
+# takes this set.)
 ADAPTER_FUNCTIONS: Final = frozenset(
-    {"count", "typeof", "octet_length", "max", "min", "sum", "substr", "like", "row_number"}
+    {"count", "typeof", "octet_length", "max", "min", "sum", "like", "row_number"}
 )
 # Pragmas that describe the schema and take an argument, the object they describe, as a
 # statement (`PRAGMA table_xinfo(t)`) or a table-valued function

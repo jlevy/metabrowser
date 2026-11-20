@@ -105,6 +105,22 @@ _RECORD_BLOB_BYTES: Final = TABLE_RECORD_VALUE_BYTES // 2
 
 _BUSY_STATES: Final = frozenset({"busy", "writer_busy", "changing", "reader_stopped"})
 
+# Why a described object is not read, as its refusal says it (`reader.describe`).
+_GUEST: Final = (
+    "which is listed but not read here: a virtual table's module code would run on this "
+    "file's content, which is not trusted"
+)
+_UNREAD: Final = {
+    "virtual": f"is a virtual table, {_GUEST}",
+    "shadow": f"may be a virtual table's shadow table, {_GUEST}",
+    "reads_virtual": f"reads a virtual table, {_GUEST}",
+    "module": (
+        "is a virtual table whose module prepares write statements when it opens, as "
+        "SQLite's R-tree module does, and this reader allows read statements only; an "
+        "R-tree is an index over tables that are read"
+    ),
+}
+
 
 class SourceBusyError(TableSourceError):
     """The database could not be read now: its owner is writing, it changed during every
@@ -247,8 +263,7 @@ class SqliteSource:
         description = cast(dict[str, Any], found)
         if not description["readable"]:
             raise SourceUnreadableError(
-                f"{description['name']!r} is a virtual table, which is listed but not read "
-                "here: its module's code would run on this file's content",
+                f"{description['name']!r} {_UNREAD[str(description['unread'])]}.",
                 table=table,
             )
         return description
@@ -488,8 +503,13 @@ class SqliteSource:
         for fk in description["foreign_keys"]:
             if not set(fk["from"]) <= wanted:
                 continue
-            target = self._cached("describe", str(fk["table"]), deadline)
-            if target is None or not target["key"]:
+            try:
+                target = self._cached("describe", str(fk["table"]), deadline)
+            except SourceUnreadableError:
+                # A target that cannot be described leaves its values plain, as a join
+                # that fails does; it never fails the page that refers to it.
+                continue
+            if target is None or not target["readable"] or not target["key"]:
                 continue
             refs.append(
                 {

@@ -8,8 +8,11 @@ held to SQLite's own order in both directions, across types and collations.
 
 from __future__ import annotations
 
+import ast
 import asyncio
+import re
 import sqlite3
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -17,7 +20,7 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
-from metabrowser import server, table_source
+from metabrowser import capabilities, server, sqlite_access, table_source
 from metabrowser.builtin_plugins.sqlite import reader, source
 from metabrowser.builtin_plugins.sqlite.database import segment_name, table_segment
 from metabrowser.source import reset_source_session
@@ -473,3 +476,154 @@ def test_tokens_past_the_bound_are_positions(
     stale = _get(client, "rows", path="app.db/users", limit=2, after="@2.stale")
     assert page["next_after"].startswith("@2.")
     assert (stale["reason"], stale["rows"]) == ("cursor_expired", [])
+
+
+# ── Virtual tables ─────────────────────────────────────────────
+
+# FTS3, FTS4, FTS5, and R-tree, with views and references over them. Where virtual
+# tables are not read, none of these may run a module's query code, whatever reaches it.
+_VIRTUAL = """
+CREATE VIRTUAL TABLE docs USING fts5(title, body);
+INSERT INTO docs VALUES ('a', 'hello world'), ('b', 'other');
+CREATE VIRTUAL TABLE d3 USING fts3(body);
+INSERT INTO d3 VALUES ('three');
+CREATE VIRTUAL TABLE d4 USING fts4(body);
+INSERT INTO d4 VALUES ('four');
+CREATE VIRTUAL TABLE spatial USING rtree(id, min_x, max_x);
+INSERT INTO spatial VALUES (1, 0, 1), (2, 5, 6);
+CREATE TABLE plain (id INTEGER PRIMARY KEY, name TEXT);
+INSERT INTO plain VALUES (1, 'kept');
+CREATE VIEW over_docs AS SELECT rowid AS r, title, body FROM docs;
+CREATE VIEW joins_docs AS SELECT plain.name FROM plain LEFT JOIN docs ON 0;
+CREATE TABLE located (id INTEGER PRIMARY KEY, place REFERENCES spatial(id));
+INSERT INTO located VALUES (1, 2);
+"""
+
+# Each object, and whether it is read where virtual tables are not.
+_GUEST_READS = {
+    "docs": False,
+    "d3": False,
+    "d4": False,
+    "spatial": False,
+    "spatial_node": False,
+    "docs_config": False,
+    "over_docs": False,
+    "joins_docs": False,
+    "plain": True,
+    "located": True,
+}
+
+
+def test_virtual_tables_and_their_views_are_read_on_a_trusted_folder(tmp_path: Path) -> None:
+    build(tmp_path / "vt.db", _VIRTUAL)
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as trusted:
+        for name in _GUEST_READS:
+            if name == "spatial":
+                continue
+            page = _get(trusted, "rows", path=f"vt.db/{name}")
+            assert page["_status"] == 200, (name, page)
+        assert _get(trusted, "rows", path="vt.db/d3")["rows"][0]["cells"]["body"] == "three"
+        assert _get(trusted, "rows", path="vt.db/over_docs")["rows"][0]["cells"]["title"] == "a"
+        # R-tree prepares writes to its shadow tables when it connects, which the
+        # reads-only authorizer refuses everywhere; it is listed, and refused by name.
+        spatial = _get(trusted, "rows", path="vt.db/spatial")
+        assert "prepares write statements when it opens" in spatial["error"], spatial
+        # A reference to a target that cannot be read is left plain, never a failed page.
+        located = _get(trusted, "rows", path="vt.db/located")
+        assert located["rows"][0]["cells"]["place"] == 2
+
+
+def _assert_guest_refusals(pages: dict[str, dict[str, Any]]) -> None:
+    for name, read in _GUEST_READS.items():
+        page = pages[name]
+        if read:
+            assert page["_status"] == 200, (name, page)
+        else:
+            assert page["_status"] != 200, (name, page)
+            assert "not read here" in page["error"], (name, page)
+            assert "not authorized" not in page["error"], (name, page)
+    assert pages["located"]["rows"][0]["cells"]["place"] == 2
+
+
+def test_virtual_tables_and_their_views_are_refused_untrusted(tmp_path: Path) -> None:
+    build(tmp_path / "vt.db", _VIRTUAL)
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    capabilities.set_capabilities(capabilities.UNTRUSTED_CAPABILITIES)
+    with TestClient(server.app) as untrusted:
+        pages = {name: _get(untrusted, "rows", path=f"vt.db/{name}") for name in _GUEST_READS}
+        schema = {name: _get(untrusted, "schema", path=f"vt.db/{name}") for name in _GUEST_READS}
+        listed = _get(untrusted, "tables", path="vt.db")
+        ddl = untrusted.get("/api/plugin/sqlite/schema", params={"path": "vt.db"})
+    _assert_guest_refusals(pages)
+    for name, read in _GUEST_READS.items():
+        assert (schema[name]["_status"] == 200) is read, (name, schema[name])
+    assert listed["_status"] == 200
+    assert {item["label"] for item in listed["tables"]} >= set(_GUEST_READS)
+    assert ddl.status_code == 200
+
+
+def test_the_guest_refusal_holds_inside_the_reader(tmp_path: Path) -> None:
+    """The authorizer, not the adapter's own check, refuses: a statement over a view of
+    a virtual table, or naming one, fails at prepare."""
+    database = build(tmp_path / "vt.db", _VIRTUAL)
+
+    def attempt(sql: str) -> str:
+        def fn(connection: sqlite3.Connection) -> Any:
+            reader.deny_reads(connection, reader._guest_denied(connection))  # pyright: ignore[reportPrivateUsage]
+            return connection.execute(sql).fetchall()
+
+        try:
+            sqlite_access.read(database, fn, deadline=time.monotonic() + 5, scratch=tmp_path)
+        except sqlite_access.SqliteAccessError as exc:
+            return exc.state
+        return "read"
+
+    assert attempt("SELECT count(*) FROM over_docs") == "refused"
+    assert attempt("SELECT name FROM joins_docs") == "refused"
+    assert attempt("SELECT * FROM docs WHERE docs MATCH 'hello'") == "refused"
+    assert attempt("SELECT * FROM pragma_table_xinfo('spatial')") == "refused"
+    assert attempt("SELECT count(*) FROM spatial_node") == "refused"
+    assert attempt("SELECT count(*) FROM plain") == "read"
+
+
+@needs_git
+def test_virtual_tables_and_their_views_are_refused_on_a_pin(tmp_path: Path) -> None:
+    built = build(tmp_path / "vt.db", _VIRTUAL)
+    store, commit = fast_import_store(tmp_path, {b"vt.db": built.read_bytes()})
+
+    async def run() -> dict[str, dict[str, Any]]:
+        async with pinned_client(store, commit) as (pinned, _subject):
+            listed = (
+                await pinned.get("/api/plugin/table/tables", params={"path": "g1-dnQuZGI"})
+            ).json()
+            paths = {item["label"]: item["path"] for item in listed["tables"]}
+            pages: dict[str, dict[str, Any]] = {}
+            for name in _GUEST_READS:
+                response = await pinned.get("/api/plugin/table/rows", params={"path": paths[name]})
+                pages[name] = {**response.json(), "_status": response.status_code}
+            return pages
+
+    _assert_guest_refusals(asyncio.run(run()))
+
+
+def test_every_admitted_function_is_one_the_adapter_calls() -> None:
+    """The authorizer's function allowlist is exactly what the reader's own SQL calls:
+    each name appears called in a string the worker modules hold (`like` as the
+    operator that calls it)."""
+    texts: list[str] = []
+    for module in (reader, sqlite_access):
+        tree = ast.parse(Path(str(module.__file__)).read_text(encoding="utf-8"))
+        texts += [
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        ]
+    sql = "\n".join(texts)
+    # `min` came with the access layer's own set, which no statement here calls; that
+    # layer decides it.
+    for name in sorted(sqlite_access.ADAPTER_FUNCTIONS - {"min"}):
+        pattern = r"\bLIKE\b" if name == "like" else rf"\b{name}\s*\("
+        assert re.search(pattern, sql, re.IGNORECASE), name

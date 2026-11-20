@@ -50,8 +50,9 @@ from __future__ import annotations
 import codecs
 import json
 import math
+import re
 import sqlite3
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any, Final
 
@@ -97,6 +98,7 @@ PAGE_INLINE_BYTES: Final = 4096
 POSITION: Final = "__metabrowser_position"
 
 _TOOBIG: Final = 18  # SQLITE_TOOBIG
+_AUTH: Final = 23  # SQLITE_AUTH
 _INTERRUPT: Final = sqlite3.SQLITE_INTERRUPT
 _ROWID_ALIASES: Final = ("rowid", "_rowid_", "oid")
 _FSQLITE_ID: Final = 0x4653514C
@@ -181,6 +183,14 @@ def _decode(raw: bytes, encoding: str) -> tuple[str, bool]:
         return lenient.decode(raw, final=False), True
 
 
+def _refused(exc: sqlite3.Error) -> bool:
+    """Whether the authorizer refused *exc*'s statement: ``SQLITE_AUTH``, or a function
+    it refused, which SQLite reports as an error naming it ("not authorized to use
+    function"), as ``sqlite_access`` classifies a refusal."""
+    code = getattr(exc, "sqlite_errorcode", 0) & 0xFF
+    return code == _AUTH or "not authorized" in str(exc)
+
+
 def _stopped(exc: sqlite3.Error) -> bool:
     return (getattr(exc, "sqlite_errorcode", 0) & 0xFF) == _INTERRUPT
 
@@ -213,6 +223,74 @@ def _fetch(
             return rows, True
         raise
     return rows, False
+
+
+# ── Virtual tables on a guest read ─────────────────────────────
+#
+# Where virtual tables are not read (a Git pin, the untrusted profile), every request
+# refuses, at prepare time, any read of a virtual table or of a table that may be one of
+# its shadow tables, in its own statements and inside any view, and any schema pragma
+# that describes one. The names come from `sqlite_schema` in the request's own
+# transaction, which connects no module, so the refusal is in place before anything
+# could. A view over a virtual table is then refused when it is read, so the module's
+# query code (`xBestIndex`, `xFilter`, `xNext` over its shadow tables) never runs.
+#
+# What remains: SQLite computes a view's column names with no authorizer (measured on
+# SQLite 3.53), so listing the objects (`pragma_table_list`) or describing or reading a
+# view that names a virtual table still connects that table: its module's `xConnect`
+# runs and reads its configuration (FTS5's `<table>_config`; R-tree the size of its
+# root node). Only `sqlite3_drop_modules` would stop that, and Python's `sqlite3` does
+# not expose it. Shadow tables are refused too, so that a statement naming a virtual
+# table directly, which connects it with the authorizer in place, fails at the connect.
+
+_VIRTUAL_DDL: Final = re.compile(rb"\s*CREATE\s+VIRTUAL\s+TABLE\b", re.IGNORECASE)
+
+
+def _guest_denied(connection: sqlite3.Connection) -> frozenset[str]:
+    """The virtual tables, and every table that may be one of their shadow tables, by
+    SQLite's own rule: a shadow table's name is its virtual table's name, `_`, and a
+    suffix the module names (`sqlite3ShadowTableName`). An ordinary table whose name
+    has that shape is refused with them, since telling it apart takes the module."""
+    virtual: set[str] = set()
+    tables: list[str] = []
+    for name, sql in connection.execute(
+        "SELECT name, sql FROM sqlite_schema WHERE type = 'table'"
+    ).fetchall():
+        text = _text(name) or ""
+        ddl = sql if isinstance(sql, bytes) else str(sql or "").encode("utf-8", "replace")
+        if _VIRTUAL_DDL.match(ddl):
+            virtual.add(text.casefold())
+        else:
+            tables.append(text)
+    shadows = {
+        name.casefold()
+        for name in tables
+        if "_" in name and name.rsplit("_", 1)[0].casefold() in virtual
+    }
+    return frozenset(virtual | shadows)
+
+
+def deny_reads(connection: sqlite3.Connection, names: Iterable[str]) -> None:
+    """Stand-in for ``sqlite_access.deny_reads`` (the SQLite-access layer's commit
+    9ccf3f3a8), with its name, signature, and rules; delete it for that one when the
+    layers merge. Refuse every read of a table named in *names* (casefolded), in any
+    statement or view, and any schema pragma describing one, at prepare time."""
+    denied = frozenset(name.casefold() for name in names)
+
+    def authorizer(
+        action: int, arg1: str | None, arg2: str | None, db: str | None, inside: str | None
+    ) -> int:
+        if action == sqlite3.SQLITE_READ and (arg1 or "").casefold() in denied:
+            return sqlite3.SQLITE_DENY
+        if (
+            action == sqlite3.SQLITE_PRAGMA
+            and (arg1 or "").lower() in sqlite_access.ADAPTER_SCHEMA_PRAGMAS
+            and (arg2 or "").casefold() in denied
+        ):
+            return sqlite3.SQLITE_DENY
+        return sqlite_access._authorizer(action, arg1, arg2, db, inside)  # pyright: ignore[reportPrivateUsage]
+
+    connection.set_authorizer(authorizer)
 
 
 # ── The catalog ────────────────────────────────────────────────
@@ -282,7 +360,10 @@ def rowid_alias(columns: Sequence[str]) -> str | None:
 
 
 def _estimates(
-    connection: sqlite3.Connection, objects: list[dict[str, Any]], deadline: float
+    connection: sqlite3.Connection,
+    objects: list[dict[str, Any]],
+    deadline: float,
+    denied: frozenset[str],
 ) -> dict[str, int]:
     """A cheap row estimate per table: `sqlite_stat1`'s row count where `ANALYZE` left
     one, else the largest rowid of a rowid table, a seek to its last row."""
@@ -300,6 +381,8 @@ def _estimates(
         name = str(item["name"])
         if name.lower() in out or item["type"] != "table" or item["without_rowid"]:
             continue
+        if name.casefold() in denied:
+            continue
         alias = rowid_alias(_column_names(connection, name))
         if alias is None:
             continue
@@ -310,17 +393,22 @@ def _estimates(
     return out
 
 
-def catalog(connection: sqlite3.Connection, deadline: float) -> dict[str, Any]:
+def catalog(
+    connection: sqlite3.Connection, deadline: float, denied: frozenset[str] = frozenset()
+) -> dict[str, Any]:
     connection.text_factory = bytes
     application_id = int(_pragma(connection, "application_id"))
     encoding = str(_pragma(connection, "encoding"))
     objects = _objects(connection)
-    estimates = _estimates(connection, objects, deadline)
+    estimates = _estimates(connection, objects, deadline, denied)
     for item in objects:
         item["group"] = _group(item, application_id)
         item["estimate"] = estimates.get(str(item["name"]).lower())
-        keyed = item["type"] == "table" and bool(
-            _key(item, _columns(connection, str(item["name"])))[0]
+        name = str(item["name"])
+        keyed = (
+            item["type"] == "table"
+            and name.casefold() not in denied
+            and bool(_key(item, _columns(connection, name))[0])
         )
         item["keyed"] = keyed
     return {"application_id": application_id, "encoding": encoding, "objects": objects}
@@ -348,12 +436,18 @@ def _primary_key(columns: list[dict[str, Any]]) -> list[str]:
 
 
 def _foreign_keys(
-    connection: sqlite3.Connection, name: str, objects: list[dict[str, Any]]
+    connection: sqlite3.Connection,
+    name: str,
+    objects: list[dict[str, Any]],
+    denied: frozenset[str] = frozenset(),
 ) -> list[dict[str, Any]]:
     """A table's declared foreign keys, one per constraint, with its target named as the
     catalog names it and an omitted target column list read as the target's primary
     key. A key whose target does not exist, or has no primary key to stand for an
-    omitted list, is left out: SQLite refuses it too, when it is enforced."""
+    omitted list, is left out: SQLite refuses it too, when it is enforced. So is one
+    whose omitted list would be read from a target this read may not describe."""
+    if name.casefold() in denied:
+        return []
     grouped: dict[int, dict[str, Any]] = {}
     for fk_id, _seq, target, source, to in connection.execute(
         'SELECT id, seq, "table", "from", "to" FROM pragma_foreign_key_list(?) ORDER BY id, seq',
@@ -371,6 +465,8 @@ def _foreign_keys(
             continue
         to = entry["to"]
         if any(item is None for item in to):
+            if str(found["name"]).casefold() in denied:
+                continue
             columns = _columns(connection, str(found["name"]))
             key = _primary_key(columns)
             if not key and not found["without_rowid"]:
@@ -454,9 +550,12 @@ def describe(
     name: str,
     deadline: float,
     *,
-    virtual_ok: bool,
+    denied: frozenset[str] = frozenset(),
     sort_rows: int = SORT_UNINDEXED_MAX_ROWS,
 ) -> dict[str, Any] | None:
+    """One object's description. Where *denied* names it (a virtual table, or a table
+    that may be one's shadow table, on a guest read) it is described from the catalog
+    alone, unread; a view that reads one is found so when its rows are counted."""
     connection.text_factory = bytes
     objects = _objects(connection)
     item = _find(objects, name)
@@ -464,18 +563,32 @@ def describe(
         return None
     application_id = int(_pragma(connection, "application_id"))
     exact = str(item["name"])
-    columns = _columns(connection, exact)
-    key, alias = _key(item, columns)
-    readable = item["type"] != "virtual" or virtual_ok
-    outgoing = _foreign_keys(connection, exact, objects) if item["type"] == "table" else []
+    # Why the object is not read here: `virtual` (it is a virtual table), `shadow` (it
+    # may be a virtual table's shadow table), `reads_virtual` (a view that reads one),
+    # `module` (a virtual table whose module does more than read to open it: R-tree
+    # prepares writes to its shadow tables when it connects, which a reader refuses).
+    unread: str | None = None
+    if exact.casefold() in denied:
+        unread = "virtual" if item["type"] == "virtual" else "shadow"
+    columns: list[dict[str, Any]] = []
+    if not unread:
+        try:
+            columns = _columns(connection, exact)
+        except sqlite3.DatabaseError as exc:
+            if not (item["type"] == "virtual" and _refused(exc)):
+                raise
+            unread = "module"
+    key, alias = _key(item, columns) if not unread else ([], None)
+    tabled = item["type"] == "table" and not unread
+    outgoing = _foreign_keys(connection, exact, objects, denied) if tabled else []
     incoming: list[dict[str, Any]] = []
     for other in objects:
         if other["type"] != "table":
             continue
-        for fk in _foreign_keys(connection, str(other["name"]), objects):
+        for fk in _foreign_keys(connection, str(other["name"]), objects, denied):
             if fk["table"] == exact:
                 incoming.append({"table": other["name"], "from": fk["from"], "to": fk["to"]})
-    indexes = _indexes(connection, exact) if item["type"] == "table" else []
+    indexes = _indexes(connection, exact) if tabled else []
     triggers = [
         {"name": _text(trigger), "sql": _text(sql)}
         for trigger, sql in connection.execute(
@@ -485,14 +598,21 @@ def describe(
         )
     ]
     rows_upto: int | None = None
-    if readable:
+    if not unread:
         _budget(connection, deadline)
-        rows, stopped = _fetch(
-            connection,
-            f"SELECT count(*) FROM (SELECT 1 FROM {quote(exact)} LIMIT ?)",
-            (sort_rows + 1,),
-        )
+        try:
+            rows, stopped = _fetch(
+                connection,
+                f"SELECT count(*) FROM (SELECT 1 FROM {quote(exact)} LIMIT ?)",
+                (sort_rows + 1,),
+            )
+        except sqlite3.DatabaseError as exc:
+            # The only reads refused inside a readable object are the denied ones.
+            if not (denied and _refused(exc)):
+                raise
+            unread, rows, stopped = "reads_virtual", [], True
         rows_upto = None if stopped or not rows else int(rows[0][0])
+    readable = unread is None
     return {
         "name": exact,
         "type": item["type"],
@@ -501,6 +621,7 @@ def describe(
         "strict": item["strict"],
         "sql": item["sql"],
         "readable": readable,
+        "unread": unread,
         "columns": columns,
         "key": key,
         "rowid_alias": alias,
@@ -512,7 +633,9 @@ def describe(
     }
 
 
-def ddl(connection: sqlite3.Connection, name: str | None) -> dict[str, Any]:
+def ddl(
+    connection: sqlite3.Connection, name: str | None, denied: frozenset[str] = frozenset()
+) -> dict[str, Any]:
     """Every object's DDL, or one table's and its indexes' and triggers', with every
     table's foreign keys."""
     connection.text_factory = bytes
@@ -530,7 +653,7 @@ def ddl(connection: sqlite3.Connection, name: str | None) -> dict[str, Any]:
     keys: dict[str, list[dict[str, Any]]] = {}
     for item in objects:
         if item["type"] == "table" and (name is None or item["name"] == name):
-            found = _foreign_keys(connection, str(item["name"]), objects)
+            found = _foreign_keys(connection, str(item["name"]), objects, denied)
             if found:
                 keys[str(item["name"])] = found
     return {"objects": entries, "foreign_keys": keys}
@@ -1075,13 +1198,27 @@ def _backrefs(
 def _read[T](
     args: dict[str, Any],
     deadline: float,
-    fn: Callable[[sqlite3.Connection], T],
+    fn: Callable[[sqlite3.Connection, frozenset[str]], T],
     *,
     attempts: int | None = None,
 ) -> tuple[T, sqlite_access.Access]:
+    """Run *fn* in one read, with the names this read refuses: none where virtual tables
+    are read (``virtual_ok``, sent with every request and false when absent), and
+    otherwise the virtual tables and their possible shadow tables, refused before *fn*
+    runs its first statement."""
+    virtual_ok = bool(args.get("virtual_ok"))
+
+    def guarded(connection: sqlite3.Connection) -> T:
+        denied: frozenset[str] = frozenset()
+        if not virtual_ok:
+            denied = _guest_denied(connection)
+            if denied:
+                deny_reads(connection, denied)
+        return fn(connection, denied)
+
     return sqlite_access.read(
         Path(str(args["path"])),
-        fn,
+        guarded,
         deadline=deadline,
         scratch=Path(str(args["scratch"])),
         immutable_content=bool(args.get("immutable_content")),
@@ -1099,7 +1236,9 @@ def _access(access: sqlite_access.Access) -> dict[str, Any]:
 
 
 def _catalog_op(args: dict[str, Any], deadline: float) -> dict[str, Any]:
-    value, access = _read(args, deadline, lambda connection: catalog(connection, deadline))
+    value, access = _read(
+        args, deadline, lambda connection, denied: catalog(connection, deadline, denied)
+    )
     return {**value, "access": _access(access)}
 
 
@@ -1107,11 +1246,11 @@ def _describe_op(args: dict[str, Any], deadline: float) -> dict[str, Any] | None
     value, _unused = _read(
         args,
         deadline,
-        lambda connection: describe(
+        lambda connection, denied: describe(
             connection,
             str(args["table"]),
             deadline,
-            virtual_ok=bool(args.get("virtual_ok")),
+            denied=denied,
             sort_rows=int(args.get("sort_rows") or SORT_UNINDEXED_MAX_ROWS),
         ),
     )
@@ -1121,19 +1260,26 @@ def _describe_op(args: dict[str, Any], deadline: float) -> dict[str, Any] | None
 def _ddl_op(args: dict[str, Any], deadline: float) -> dict[str, Any]:
     table = args.get("table")
     value, _unused = _read(
-        args, deadline, lambda connection: ddl(connection, str(table) if table else None)
+        args,
+        deadline,
+        lambda connection, denied: ddl(connection, str(table) if table else None, denied),
     )
     return value
 
 
 def _rows_op(args: dict[str, Any], deadline: float) -> dict[str, Any]:
     spec = dict(args["spec"])
-    page, _unused = _read(args, deadline, lambda connection: _page(connection, spec, deadline))
+    page, _unused = _read(
+        args, deadline, lambda connection, _denied: _page(connection, spec, deadline)
+    )
     if page.get("toobig") or not spec.get("count"):
         return {**page, "count": None}
     try:
         counted, _unused = _read(
-            args, deadline, lambda connection: _count(connection, spec, deadline), attempts=1
+            args,
+            deadline,
+            lambda connection, _denied: _count(connection, spec, deadline),
+            attempts=1,
         )
     except sqlite_access.SqliteAccessError:
         counted = None
@@ -1143,14 +1289,16 @@ def _rows_op(args: dict[str, Any], deadline: float) -> dict[str, Any]:
 def _positions_op(args: dict[str, Any], deadline: float) -> list[int | None]:
     spec = dict(args["spec"])
     value, _unused = _read(
-        args, deadline, lambda connection: _positions(connection, spec, deadline)
+        args, deadline, lambda connection, _denied: _positions(connection, spec, deadline)
     )
     return value
 
 
 def _record_op(args: dict[str, Any], deadline: float) -> dict[str, Any] | None:
     spec = dict(args["spec"])
-    value, _unused = _read(args, deadline, lambda connection: _record(connection, spec, deadline))
+    value, _unused = _read(
+        args, deadline, lambda connection, _denied: _record(connection, spec, deadline)
+    )
     return value
 
 
