@@ -35,8 +35,10 @@ from metabrowser.builtin_plugins.fsqlite.store import (
     snapshot_name,
     store_generation,
 )
+from metabrowser.builtin_plugins.sqlite.database import Database
 from metabrowser.plugin_loader.classify import collect_folder_markers
 from metabrowser.plugin_loader.static_assets import build_plugin_routes
+from metabrowser.source import reset_source_session
 from metabrowser.table_source import TableInfo
 
 STORE_ID = "550e8400-e29b-41d4-a716-446655440000"
@@ -420,18 +422,181 @@ def test_info_names_the_state_of_a_store_it_cannot_show(
     assert ("snapshot" in body) is has_snapshot
 
 
-def test_children_has_its_shape_and_says_why_a_store_has_none(
+def test_children_are_the_snapshot_tables_with_the_reserved_ones_muted(
     client: TestClient, tmp_path: Path
 ) -> None:
     root = _store(tmp_path / "s")
     status, body = _get(client, "children", "s/fsqlite.json")
     assert status == 200
-    assert body == {"children": [], "version": 1, "snapshot": snapshot_name(1)}
+    assert body == {
+        "children": [
+            {"name": "applied_tx", "path": "s/fsqlite.json/applied_tx", "muted": True},
+            {"name": "fsqlite_meta", "path": "s/fsqlite.json/fsqlite_meta", "muted": True},
+            {"name": "notes", "path": "s/fsqlite.json/notes"},
+        ],
+        "version": 1,
+        "snapshot": snapshot_name(1),
+    }
     (root / "current").write_text("")
     status, body = _get(client, "children", "s/fsqlite.json")
     assert status == 200
     assert body["children"] == []
     assert body["error"]["state"] == "corrupt"
+
+
+def test_a_snapshot_without_fsqlite_application_id_still_groups_its_reserved_tables(
+    client: TestClient, tmp_path: Path
+) -> None:
+    root = _store(tmp_path / "s")
+    (root / "snapshots" / snapshot_name(1)).unlink()
+    _snapshot(root / "snapshots" / snapshot_name(1), application_id=0)
+    status, body = _get(client, "children", "s/fsqlite.json")
+    assert status == 200, body
+    assert [row.get("muted", False) for row in body["children"]] == [True, True, False]
+
+
+def test_schema_answers_for_the_snapshot_or_one_table(client: TestClient, tmp_path: Path) -> None:
+    root = _store(tmp_path / "s")
+    status, body = _get(client, "schema", "s/fsqlite.json")
+    assert status == 200, body
+    assert body["type"] == "fsqlite_schema"
+    assert body["table"] is None
+    assert body["generation"].startswith("1-")
+    assert {entry["table"] for entry in body["objects"]} == {"applied_tx", "fsqlite_meta", "notes"}
+    status, body = _get(client, "schema", "s/fsqlite.json/notes")
+    assert status == 200, body
+    assert body["table"] == "notes"
+    assert [entry["segment"] for entry in body["objects"] if entry["type"] == "table"] == ["notes"]
+    status, body = _get(client, "schema", "s/fsqlite.json/absent")
+    assert (status, body["code"]) == (404, "table_not_found")
+    (root / "fsqlite.json").write_text(MARKER.replace("f1.0", "f9.0"))
+    status, body = _get(client, "schema", "s/fsqlite.json")
+    assert status == 200
+    assert body["error"]["state"] == "unsupported"
+    assert "objects" not in body
+
+
+def test_info_answers_at_a_table_address_for_its_store(client: TestClient, tmp_path: Path) -> None:
+    _store(tmp_path / "s")
+    status, body = _get(client, "info", "s/fsqlite.json/notes")
+    assert status == 200, body
+    assert body["store"]["version"] == 1
+    # Children are asked of the store itself, never of one of its tables.
+    status, _body = _get(client, "children", "s/fsqlite.json/notes")
+    assert status == 404
+
+
+# ── The table source ─────────────────────────────────────────
+
+
+@pytest.fixture
+def app_client(tmp_path: Path) -> Iterator[TestClient]:
+    """The whole application, whose table routes serve the store's [[table_source]]."""
+    reset_source_session()
+    server._set_root_dir(tmp_path)
+    with TestClient(server.app) as test_client:
+        yield test_client
+
+
+def _table(client: TestClient, route: str, **params: str) -> tuple[int, dict[str, Any]]:
+    response = client.get(f"/api/plugin/table/{route}", params=params)
+    return response.status_code, response.json()
+
+
+def test_the_table_routes_read_the_snapshot_current_names_and_touch_nothing(
+    app_client: TestClient, tmp_path: Path
+) -> None:
+    root = _store(tmp_path / "s", current="2", versions=(1, 2))
+    connection = sqlite3.connect(root / "snapshots" / snapshot_name(2), isolation_level=None)
+    try:
+        connection.executescript("INSERT INTO notes VALUES (1, 'first'), (2, 'second');")
+    finally:
+        connection.close()
+    generation = store_generation(root / "fsqlite.json", root / "current", 2)
+    before = _listing(root)
+
+    status, body = _table(app_client, "tables", path="s/fsqlite.json")
+    assert status == 200, body
+    assert body["generation"] == generation
+    assert [(item["id"], item["group"], item["path"]) for item in body["tables"]] == [
+        ("applied_tx", "internal", "s/fsqlite.json/applied_tx"),
+        ("fsqlite_meta", "internal", "s/fsqlite.json/fsqlite_meta"),
+        ("notes", "tables", "s/fsqlite.json/notes"),
+    ]
+    status, body = _table(app_client, "rows", path="s/fsqlite.json/notes")
+    assert status == 200, body
+    assert body["generation"] == generation
+    assert [row["cells"]["title"] for row in body["rows"]] == ["first", "second"]
+    status, body = _table(app_client, "schema", path="s/fsqlite.json/notes")
+    assert status == 200, body
+    assert [field["name"] for field in body["fields"]] == ["id", "title"]
+    status, body = _table(app_client, "rows", path="s/fsqlite.json/absent")
+    assert (status, body["code"]) == (404, "table_not_found")
+    assert _listing(root) == before
+
+
+@pytest.mark.parametrize(("change", "state"), [("marker", "unsupported"), ("pointer", "corrupt")])
+def test_the_table_routes_refuse_a_store_they_cannot_read(
+    app_client: TestClient, tmp_path: Path, change: str, state: str
+) -> None:
+    root = _store(tmp_path / "s")
+    if change == "marker":
+        (root / "fsqlite.json").write_text(MARKER.replace("f1.0", "f9.0"))
+    else:
+        (root / "current").write_text("one")
+    status, body = _table(app_client, "tables", path="s/fsqlite.json")
+    assert (status, body["code"], body["state"]) == (422, "source_unreadable", state)
+
+
+@pytest.mark.parametrize(
+    ("route", "path"),
+    [
+        ("fsqlite/children", "s/fsqlite.json"),
+        ("fsqlite/schema", "s/fsqlite.json/notes"),
+        ("table/tables", "s/fsqlite.json"),
+        ("table/rows", "s/fsqlite.json/notes"),
+    ],
+)
+def test_every_snapshot_read_retries_once_when_the_reader_finds_it_gone(
+    app_client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    path: str,
+) -> None:
+    root = _store(tmp_path / "s", current="1", versions=(1, 2))
+    real = source.snapshot_database
+    opened: list[int] = []
+
+    def collect_then_open(
+        files: source.StoreFiles, snapshot: Snapshot, *, subject: str
+    ) -> Database:
+        opened.append(snapshot.version)
+        if snapshot.version == 1:
+            # A publish moved the pointer and garbage collection took version 1 after
+            # the server read the pointer, before a reader opened the file.
+            (root / "current").write_text("2")
+            (root / "snapshots" / snapshot_name(1)).unlink()
+        return real(files, snapshot, subject=subject)
+
+    monkeypatch.setattr(source, "snapshot_database", collect_then_open)
+    response = app_client.get(f"/api/plugin/{route}", params={"path": path})
+    assert response.status_code == 200, response.json()
+    assert opened == [1, 2]
+    assert "error" not in response.json()
+
+
+def test_a_snapshot_opened_as_a_database_groups_the_reserved_tables_too(
+    app_client: TestClient, tmp_path: Path
+) -> None:
+    _store(tmp_path / "s")
+    status, body = _table(app_client, "tables", path=f"s/snapshots/{snapshot_name(1)}")
+    assert status == 200, body
+    assert {item["id"]: item["group"] for item in body["tables"]} == {
+        "applied_tx": "internal",
+        "fsqlite_meta": "internal",
+        "notes": "tables",
+    }
 
 
 def test_a_path_that_is_not_a_marker_is_not_found(client: TestClient, tmp_path: Path) -> None:

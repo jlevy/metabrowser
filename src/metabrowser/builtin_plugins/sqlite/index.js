@@ -32,7 +32,8 @@ mb.registerView("sqlite", "info", {
 });
 
 // What a plugin that requires this one gets from `mb.plugins.load("sqlite")`: the Info
-// view's model and its drawing, which the fsqlite plugin's store Info view reuses for
-// the snapshot a store's `current` names.
+// view's model and its drawing, and the Table and Schema views, which the fsqlite
+// plugin's store views reuse for the snapshot a store's `current` names.
 export { infoModel } from "./info-model.js";
 export { drawInfo } from "./info-view.js";
+export { mountSchema, mountTableView } from "./tables-view.js";

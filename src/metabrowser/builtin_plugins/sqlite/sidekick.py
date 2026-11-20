@@ -27,6 +27,7 @@ committed write-ahead-log database is shown without its log.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterable
 from typing import Any
 
 from starlette.concurrency import run_in_threadpool
@@ -43,7 +44,9 @@ from metabrowser.builtin_plugins.sqlite.database import (
     subject_key,
     table_segment,
 )
+from metabrowser.builtin_plugins.sqlite.source import catalog_tables
 from metabrowser.content_errors import ContentReadError
+from metabrowser.plugin_api import TableInfo
 from metabrowser.source import (
     ContentRef,
     get_source_session,
@@ -148,21 +151,29 @@ async def schema_handler(request: Request) -> JSONResponse:
         return JSONResponse(payload)
     if name is not None and not answer["objects"]:
         return _error(path, "table_not_found", f"no table {inner!r} in this database", 404)
-    payload["objects"] = [
-        {**entry, "segment": table_segment(entry["table"]) if entry["table"] else None}
-        for entry in answer["objects"]
-    ]
-    payload["foreign_keys"] = [
-        {
-            "table": table,
-            "fields": item["from"],
-            "references": item["table"],
-            "to": item["to"],
-        }
-        for table, items in answer["foreign_keys"].items()
-        for item in items
-    ]
+    payload |= schema_objects(answer)
     return JSONResponse(payload)
+
+
+def schema_objects(answer: dict[str, Any]) -> dict[str, Any]:
+    """The Schema view's ``objects`` and ``foreign_keys`` from a reader's ``sqlite_ddl``
+    answer, each object with its table's segment."""
+    return {
+        "objects": [
+            {**entry, "segment": table_segment(entry["table"]) if entry["table"] else None}
+            for entry in answer["objects"]
+        ],
+        "foreign_keys": [
+            {
+                "table": table,
+                "fields": item["from"],
+                "references": item["table"],
+                "to": item["to"],
+            }
+            for table, items in answer["foreign_keys"].items()
+            for item in items
+        ],
+    }
 
 
 _BADGES = {"views": "V", "virtual": "VT"}
@@ -190,16 +201,19 @@ async def children_handler(request: Request) -> JSONResponse:
             # nothing under it.
             return JSONResponse({"children": []})
         return JSONResponse({"children": [], "error": {"state": exc.state, "message": str(exc)}})
+    return JSONResponse({"children": child_rows(ref.identity, catalog_tables(catalog))})
+
+
+def child_rows(container: str, tables: Iterable[TableInfo]) -> list[dict[str, Any]]:
+    """The tree's rows for *tables*, each at ``<container>/<segment>``: a view or a
+    virtual table badged, an internal table muted."""
     children: list[dict[str, Any]] = []
-    for item in catalog["objects"]:
-        entry: dict[str, Any] = {
-            "name": item["name"],
-            "path": f"{ref.identity}/{table_segment(str(item['name']))}",
-        }
-        badge = _BADGES.get(item["group"])
+    for table in tables:
+        entry: dict[str, Any] = {"name": table.label, "path": f"{container}/{table.id}"}
+        badge = _BADGES.get(table.group)
         if badge is not None:
             entry["badge"] = badge
-        if item["group"] == "internal":
+        if table.group == "internal":
             entry["muted"] = True
         children.append(entry)
-    return JSONResponse({"children": children})
+    return children

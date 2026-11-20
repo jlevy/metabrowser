@@ -199,18 +199,21 @@ export function drawSchema(root, model) {
 }
 
 /**
- * Mount the Schema view of the database or table at `ctx.path`.
+ * Mount the Schema view of the database or table at `ctx.path`, from *plugin*'s `schema`
+ * route: this plugin's, or the fsqlite plugin's for a store's snapshot, which answers in
+ * the same shape.
  *
  * @param {HTMLElement} container
  * @param {TablesContext} ctx
  * @param {TablesSdk} sdk
+ * @param {string} [plugin]
  * @returns {Mounted}
  */
-export function mountSchema(container, ctx, sdk) {
+export function mountSchema(container, ctx, sdk, plugin = "sqlite") {
   return mountFetched(
     container,
     "sqlite-schema",
-    (signal) => sdk.fetchPluginData("sqlite", "schema", { path: ctx.path ?? "" }, { signal }),
+    (signal) => sdk.fetchPluginData(plugin, "schema", { path: ctx.path ?? "" }, { signal }),
     (root, payload) =>
       drawSchema(
         root,
