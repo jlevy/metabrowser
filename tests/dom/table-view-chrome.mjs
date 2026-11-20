@@ -16,7 +16,9 @@
 // not the page, scrolls; that columns the reader chose keep their first column in place
 // as they scroll sideways, and default columns too many for the pane hide from the right
 // with a note; and that null is drawn in the muted ink, a number right-aligned in tabular
-// numerals, and a date in the monospaced face. Which rows, columns, and cells exist, what
+// numerals, and a date in the monospaced face; and that the structured kind's Table tab
+// draws a JSON list of records with each nested value of a record as the structured
+// plugin's own tree, and says a JSON mapping is not one. Which rows, columns, and cells exist, what
 // a key does, and what the address holds run browserlessly in
 // tests/dom/table-view-session.js.
 import { spawn } from "node:child_process";
@@ -223,8 +225,9 @@ async function main() {
       overflows: __t().scroll.scrollWidth > __t().scroll.clientWidth + 1,
     })`);
     await shot("4-fit");
-    const all = Array.from({ length: 24 }, (_, i) => `column_name_${i + 1}`).join(",");
-    await open(`wide.csv?cols=${all}`, 2);
+    // `cols` names one field a parameter, repeated (docs/plugins.md, "Table Sources").
+    const all = Array.from({ length: 24 }, (_, i) => `cols=column_name_${i + 1}`).join("&");
+    await open(`wide.csv?${all}`, 2);
     measured.pinned = await chrome.evaluate(`(async () => {
       const scroll = __t().scroll;
       const first = __t().q("tbody tr:not(.table-spacer) > :first-child");
@@ -243,6 +246,45 @@ async function main() {
     })()`);
     await shot("5-pinned");
     phase("fit");
+
+    // The structured kind's Table tab, which is not its default: a JSON list of records,
+    // a record whose nested values are the structured plugin's own tree, and a mapping,
+    // which the tab says is not a list of records.
+    const tableTab = async (address) => {
+      await chrome.send("Page.navigate", { url: `${base}/view/${address}` });
+      await chrome.waitFor(
+        `(() => { const pane = document.querySelector("#preview-pane"); const tab = pane?.querySelector('.tab-btn[data-tab="table"]'); if (pane?.dataset.renderedPath !== ${JSON.stringify(address)} || !tab) { return false; } tab.click(); return true; })()`,
+      );
+      await chrome.evaluate(VIEW);
+    };
+    await tableTab("records.json");
+    await chrome.waitFor(
+      `(() => { try { ${VIEW}; return __t().qa("tbody tr:not(.table-spacer)").length >= 2; } catch { return false; } })()`,
+    );
+    await chrome.evaluate(VIEW);
+    measured.records = await chrome.evaluate(`({
+      tab: document.querySelector('#preview-pane .tab-btn.active')?.dataset.tab ?? null,
+      headers: __t().qa("thead th").map((th) => th.textContent.replace("▾", "").trim()),
+      rows: __t().qa("tbody tr:not(.table-spacer)").length,
+    })`);
+    await chrome.evaluate(`__t().q(".table-position").click()`);
+    await chrome.waitFor(
+      `(() => { try { ${VIEW}; return __t().qa(".table-record-json .structured-tree").length >= 2; } catch { return false; } })()`,
+    );
+    measured.records.trees = await chrome.evaluate(
+      `__t().qa(".table-record-json .structured-tree").map((tree) => tree.textContent.replace(/\\s+/g, " ").trim())`,
+    );
+    await shot("6-record");
+    await tableTab("mapping.json");
+    await chrome.waitFor(
+      `(() => { try { ${VIEW}; return Boolean(__t().q(".table-notice")); } catch { return false; } })()`,
+    );
+    measured.mapping = await chrome.evaluate(`({
+      notice: __t().q(".table-notice").textContent,
+      toolbar: !__t().q(".table-toolbar").hidden,
+      links: __t().qa(".table-reset").length,
+    })`);
+    phase("records");
     measured.exceptions = problems;
   } finally {
     if (chrome) {

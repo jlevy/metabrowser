@@ -12,9 +12,12 @@ that `metab --api` reads (`cli-api-table.tryscript.md`); this session pins what 
 does with the answers.
 It loads the plugin’s production modules, `table-model.js` and `table-view.js`, and
 drives `mountTable` through a scripted page whose answers are the server’s, recorded in
-`tests/fixtures/table-view-responses.json` and
-`tests/fixtures/table-view-long-responses.json` by `tests/test_table_view_session.py`
-over the files in `tests/fixtures/table-view/`.
+`tests/fixtures/table-view-responses.json`,
+`tests/fixtures/table-view-long-responses.json`,
+`tests/fixtures/table-view-bounds-responses.json`, and
+`tests/fixtures/table-view-records-responses.json` by `tests/test_table_view_session.py`
+over the files in `tests/fixtures/table-view/` and the small files that recorder writes,
+each with the bound it shows lowered to meet it.
 
 The address holds the view’s state: a header’s press sorts ascending, then descending,
 then back to the file’s order; a boolean value’s press adds a filter, which a chip
@@ -32,12 +35,35 @@ two spacers, reads the next page as the window nears the last row held, selects 
 that copy as tab-separated values, and draws every row held to print.
 A key held with Command, Control, or Option is the browser’s.
 
+The answers a bound shapes are drawn as what they are.
+A page of wide rows carries fewer rows than the view asked for, and the view reads on
+from each `next_after` rather than counting on its own page size; `cols` names one field
+a parameter, so a name with a comma is one column.
+A search the time budget stopped shows the matches among the rows it read, says so, and
+its cursor continues among them; a sort the budget refused has no rows, and the view
+names the field and offers the file’s order instead of saying the table is empty.
+A file read in part says whether its rows or a row’s cells were cut.
+A cursor names the sort and order it was made for, so a new sort is a new question read
+from its first page.
+
+The structured kind’s Table view draws a JSON list of mappings through the same view.
+A nested value is its JSON text in the grid, and in the record it is drawn by the
+renderer the source’s view hands the table, the structured plugin’s inline tree, which a
+stand-in takes the place of here; going back to the table releases each tree.
+A field whose values are of several types sorts numbers before text, and a document that
+is not a list of records says so in place of the table, with no toolbar and no way back
+to a table it does not have.
+
 ```console
 $ node tests/dom/table-view-session.js
 {
   "the model: an address round trip, cells a delimited file cannot hold, and column fit": {
-    "address in": "sort=score&order=desc&f.active=eq%3Atrue&q=x&plain=1&record=%404",
-    "address out": "sort=score&order=desc&q=x&f.active=eq%3Atrue&record=%404&plain=1",
+    "address in": "sort=score&order=desc&f.active=eq%3Atrue&q=x&cols=name&cols=a%2C+b&plain=1&record=%404",
+    "address out": "sort=score&order=desc&q=x&f.active=eq%3Atrue&cols=name&cols=a%2C+b&record=%404&plain=1",
+    "a column whose name holds a comma": [
+      "name",
+      "a, b"
+    ],
     "reference": {
       "kind": "ref",
       "text": "Ada",
@@ -352,7 +378,7 @@ $ node tests/dom/table-view-session.js
         "joined (date): 2021-03-04",
         "active (boolean): false",
         "note (text): ",
-        "extra (text): No value: this row is shorter than the header."
+        "extra (text): No value: this row does not have this field."
       ]
     },
     "focus": {
@@ -449,9 +475,9 @@ $ node tests/dom/table-view-session.js
   },
   "Hide column: the reader's columns, in the address": {
     "requests": [
-      "rows?cols=name%2Cage%2Cscore%2Cactive%2Cnote%2Cextra&limit=200&path=people.csv"
+      "rows?cols=name&cols=age&cols=score&cols=active&cols=note&cols=extra&limit=200&path=people.csv"
     ],
-    "address": "cols=name%2Cage%2Cscore%2Cactive%2Cnote%2Cextra",
+    "address": "cols=name&cols=age&cols=score&cols=active&cols=note&cols=extra",
     "status": "5 rows",
     "chips": [],
     "notes": [],
@@ -606,8 +632,8 @@ $ node tests/dom/table-view-session.js
         "score (real): 0.5",
         "joined (date): 2022-07-08",
         "active (boolean): false",
-        "note (text): No value: this row is shorter than the header.",
-        "extra (text): No value: this row is shorter than the header."
+        "note (text): No value: this row does not have this field.",
+        "extra (text): No value: this row does not have this field."
       ]
     },
     "focus": {
@@ -667,7 +693,7 @@ $ node tests/dom/table-view-session.js
   },
   "scrolled to row 150: the window there, and the next page read ahead": {
     "requests": [
-      "rows?after=c.WzIwMF0&limit=1000&path=long.csv"
+      "rows?after=c.W251bGwsImFzYyIsMjAwXQ&limit=1000&path=long.csv"
     ],
     "address": "",
     "status": "600 rows",
@@ -767,6 +793,333 @@ $ node tests/dom/table-view-session.js
     },
     "record": null,
     "focus": null
+  },
+  "pages shorter than asked: read on from each cursor, the table drawn whole": {
+    "requests": [
+      "schema?path=paged.csv",
+      "rows?limit=200&path=paged.csv",
+      "rows?after=c.W251bGwsImFzYyIsM10&limit=1000&path=paged.csv",
+      "rows?after=c.W251bGwsImFzYyIsNl0&limit=1000&path=paged.csv"
+    ],
+    "address": "",
+    "status": "8 rows",
+    "chips": [],
+    "notes": [],
+    "empty": null,
+    "table": {
+      "role": "table",
+      "rowcount": null,
+      "lines": 1,
+      "header": [
+        "#",
+        "name",
+        "city, state",
+        "n"
+      ],
+      "drawn": 8,
+      "first": "0",
+      "spacers": [],
+      "rows": [
+        "1 | Ada | Austin, TX | 1 [num]",
+        "2 | Bob | Boise, ID | 2 [num]",
+        "3 | Cy | Chicago, IL | 3 [num]",
+        "4 | Dee | Denver, CO | 4 [num]",
+        "5 | Eve | Eugene, OR | 5 [num]",
+        "6 | Flo | Flint, MI | 6 [num]",
+        "7 | Gus | Gary, IN | 7 [num]",
+        "8 | Hal | Helena, MT | 8 [num]"
+      ]
+    },
+    "record": null,
+    "focus": null
+  },
+  "a column hidden: the others, one field a parameter, a comma in a name kept": {
+    "requests": [
+      "rows?cols=name&cols=city%2C+state&limit=200&path=paged.csv",
+      "rows?after=c.W251bGwsImFzYyIsNF0&cols=name&cols=city%2C+state&limit=1000&path=paged.csv"
+    ],
+    "address": "cols=name&cols=city%2C+state",
+    "status": "8 rows",
+    "chips": [],
+    "notes": [],
+    "empty": null,
+    "table": {
+      "role": "table",
+      "rowcount": null,
+      "lines": 1,
+      "header": [
+        "#",
+        "name",
+        "city, state"
+      ],
+      "drawn": 8,
+      "first": "0",
+      "spacers": [],
+      "rows": [
+        "1 | Ada | Austin, TX"
+      ]
+    },
+    "record": null,
+    "focus": null
+  },
+  "a search the time budget stopped: the matches it found, said as such": {
+    "requests": [
+      "schema?path=numbers.csv",
+      "rows?limit=200&path=numbers.csv&q=match"
+    ],
+    "address": "q=match",
+    "status": "At least 256 rows match",
+    "chips": [],
+    "notes": [
+      "The table stopped looking after 4,096 rows, at the time a request may take; these are the matches among them."
+    ],
+    "empty": null,
+    "table": {
+      "role": "grid",
+      "rowcount": "-1",
+      "lines": 1,
+      "header": [
+        "#",
+        "n",
+        "tag"
+      ],
+      "drawn": 24,
+      "first": "2",
+      "spacers": [
+        "height: 0px",
+        "height: 5808px"
+      ],
+      "rows": [
+        "1 | 0 [num] | match",
+        "17 | 16 [num] | match"
+      ]
+    },
+    "record": null,
+    "focus": null
+  },
+  "scrolled: the next page continues among the rows it read, and ends": {
+    "requests": [
+      "rows?after=c.W251bGwsImFzYyIsMzE4NV0&limit=1000&path=numbers.csv&q=match"
+    ],
+    "status": "At least 256 rows match",
+    "notes": [
+      "The table stopped looking after 4,096 rows, at the time a request may take; these are the matches among them."
+    ],
+    "rowcount": "-1"
+  },
+  "a sort the time budget refused: said by its field, the file's order offered": {
+    "requests": [
+      "schema?path=numbers.csv",
+      "rows?limit=200&order=asc&path=numbers.csv&sort=n"
+    ],
+    "address": "sort=n",
+    "status": "12,288 rows",
+    "chips": [],
+    "notes": [
+      "This table is too large to sort by “n” in the time a request may take. Show the file’s order"
+    ],
+    "empty": null,
+    "table": "hidden",
+    "record": null,
+    "focus": null
+  },
+  "the file's order, chosen: the rows again": {
+    "requests": [
+      "rows?limit=200&path=numbers.csv"
+    ],
+    "address": "",
+    "status": "12,288 rows",
+    "chips": [],
+    "notes": [],
+    "empty": null,
+    "table": {
+      "role": "grid",
+      "rowcount": "12289",
+      "lines": 1,
+      "header": [
+        "#",
+        "n",
+        "tag"
+      ],
+      "drawn": 33,
+      "first": "2",
+      "spacers": [
+        "height: 0px",
+        "height: 5511px"
+      ],
+      "rows": [
+        "1 | 0 [num] | match",
+        "2 | 1 [num] | miss"
+      ]
+    },
+    "record": null,
+    "focus": null
+  },
+  "a file whose rows have more cells than the table reads": {
+    "requests": [
+      "schema?path=cut.csv",
+      "rows?limit=200&path=cut.csv"
+    ],
+    "address": "",
+    "status": "2 rows",
+    "chips": [],
+    "notes": [
+      "Some rows of this file have more cells than the table reads; the cells past them are not shown."
+    ],
+    "empty": null,
+    "table": {
+      "role": "table",
+      "rowcount": null,
+      "lines": 1,
+      "header": [
+        "#",
+        "a",
+        "b"
+      ],
+      "drawn": 2,
+      "first": "0",
+      "spacers": [],
+      "rows": [
+        "1 | 1 [num] | 2 [num]"
+      ]
+    },
+    "record": null,
+    "focus": null
+  },
+  "a file with more rows than the table reads": {
+    "requests": [
+      "schema?path=tall.csv",
+      "rows?limit=200&path=tall.csv"
+    ],
+    "address": "",
+    "status": "At least 3 rows",
+    "chips": [],
+    "notes": [
+      "This file is larger than the table reads: rows, counts, sorts, and filters cover its leading part only."
+    ],
+    "empty": null,
+    "table": {
+      "role": "grid",
+      "rowcount": "-1",
+      "lines": 1,
+      "header": [
+        "#",
+        "n"
+      ],
+      "drawn": 3,
+      "first": "2",
+      "spacers": [
+        "height: 0px",
+        "height: 0px"
+      ],
+      "rows": [
+        "1 | 1 [num]"
+      ]
+    },
+    "record": null,
+    "focus": null
+  },
+  "a JSON list of mappings: a table of its records": {
+    "requests": [
+      "schema?path=records.json",
+      "rows?limit=200&path=records.json"
+    ],
+    "address": "",
+    "status": "3 rows",
+    "chips": [],
+    "notes": [],
+    "empty": null,
+    "table": {
+      "role": "table",
+      "rowcount": null,
+      "lines": 1,
+      "header": [
+        "#",
+        "name",
+        "age",
+        "tags",
+        "meta",
+        "active"
+      ],
+      "drawn": 3,
+      "first": "0",
+      "spacers": [],
+      "rows": [
+        "1 | Ada | 36 | [\"math\",\"engines\"] [mono] | {\"born\":1815,\"notes\":{\"first\":true}} [mono] | — [absent]",
+        "2 | Bob | unknown | [] [mono] | — [mono] [absent] | true",
+        "3 | Cy | 41.5 | — [mono] [absent] | null [mono] [null] | — [absent]"
+      ]
+    },
+    "record": null,
+    "focus": null
+  },
+  "a record: each nested value drawn as a tree, an absent field said": {
+    "requests": [
+      "record?generation=G&key=%401&path=records.json"
+    ],
+    "record": {
+      "back": "← Back to the table",
+      "title": "Row 1",
+      "notes": [
+        "This row is named by its position in the file."
+      ],
+      "fields": [
+        "name (text): Ada",
+        "age (unknown): 36",
+        "tags (json): tree [\"math\",\"engines\"]",
+        "meta (json): tree {\"born\":1815,\"notes\":{\"first\":true}}",
+        "active (boolean): No value: this row does not have this field."
+      ]
+    },
+    "trees": 2
+  },
+  "Back to the table: the trees released": {
+    "requests": [],
+    "released": 2
+  },
+  "a field of values of several types, sorted: numbers, then text": {
+    "requests": [
+      "rows?limit=200&order=asc&path=records.json&sort=age"
+    ],
+    "address": "sort=age",
+    "status": "3 rows",
+    "chips": [],
+    "notes": [],
+    "empty": null,
+    "table": {
+      "role": "table",
+      "rowcount": null,
+      "lines": 1,
+      "header": [
+        "#",
+        "name",
+        "age ↑ (ascending)",
+        "tags",
+        "meta",
+        "active"
+      ],
+      "drawn": 3,
+      "first": "0",
+      "spacers": [],
+      "rows": [
+        "1 | Ada | 36 | [\"math\",\"engines\"] [mono] | {\"born\":1815,\"notes\":{\"first\":true}} [mono] | — [absent]",
+        "3 | Cy | 41.5 | — [mono] [absent] | null [mono] [null] | — [absent]",
+        "2 | Bob | unknown | [] [mono] | — [mono] [absent] | true"
+      ]
+    },
+    "record": null,
+    "focus": null
+  },
+  "a JSON mapping: not a list of records, said in place of the table": {
+    "requests": [
+      "schema?path=config.json"
+    ],
+    "toolbar": "hidden",
+    "notes": [
+      "This document is not a list of records: its top level is a mapping, not a list."
+    ],
+    "table": "hidden",
+    "links": 0
   },
   "requests asked of the server": {
     "unrecorded": []

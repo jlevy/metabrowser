@@ -29,6 +29,7 @@
 // reachable; Enter on the row opens its record, and on a cell follows its link.
 
 import {
+  ABSENT_TEXT,
   columnWidths,
   countText,
   EMPTY_STATE,
@@ -38,6 +39,7 @@ import {
   fitColumns,
   formatCount,
   isFiltered,
+  jsonValue,
   keyStep,
   literalField,
   pageNotes,
@@ -48,6 +50,7 @@ import {
   rowsParams,
   rowsTsv,
   sameRows,
+  sortRefused,
   stateQuery,
   wantsMore,
   windowRange,
@@ -91,6 +94,10 @@ export const FIRST_PAGE_ROWS = 200;
 // Rows each later request asks for: as many as the route gives at once
 // (TABLE_PAGE_ROWS_MAX), so a table of WHOLE_TABLE_MAX_ROWS is read in two requests and a
 // long scroll asks seldom.
+//
+// Both are what the view asks, not what it gets: a page of wide rows carries fewer
+// (TABLE_PAGE_CELLS_MAX), and its `limit` says how many. The view counts the rows that
+// came and reads on from `next_after` until the table, or the window's need, is met.
 export const NEXT_PAGE_ROWS = 1000;
 
 // A row's height before the first drawn row is measured, by its line count, so the
@@ -153,12 +160,22 @@ const CELL_PAD_PX = 20;
  *   state(): TableState,
  * }} TableHandle
  */
+/**
+ * What a source's view hands the table: the address of the table, and how to draw a
+ * JSON value in a record, which the table plugin, needing no other plugin, cannot. The
+ * structured plugin passes its inline tree; without it a JSON value is its text.
+ *
+ * @typedef {{
+ *   path: string,
+ *   renderJson?: (container: HTMLElement, value: unknown) => ({dispose?: () => void} | void),
+ * }} TableContext
+ */
 
 /**
  * Mount the table at *ctx.path*, the address of one table, into *container*.
  *
  * @param {HTMLElement} container
- * @param {{path: string}} ctx
+ * @param {TableContext} ctx
  * @param {TableHost} [host]
  * @returns {TableHandle}
  */
@@ -182,6 +199,8 @@ export function mountTable(container, ctx, host = {}) {
   let rows = [];
   /** @type {TablePage | null} */
   let page = null;
+  /** The question `page` answers, whose rows its `next_after` continues. @type {TableState} */
+  let answered = state;
   /** @type {string[]} */
   let columns = [];
   /** @type {Record<string, number>} */
@@ -216,6 +235,8 @@ export function mountTable(container, ctx, host = {}) {
   const hrefs = new Map();
   /** @type {string | null} */
   let recordTemplate = null;
+  /** What the open record's JSON values drew, released when the record goes. @type {Array<{dispose?: () => void}>} */
+  let recordMounts = [];
 
   // ── Markup ───────────────────────────────────────────────────
   const root = el("div", { class: "table-view" });
@@ -352,7 +373,7 @@ export function mountTable(container, ctx, host = {}) {
 
   /**
    * @param {string} route
-   * @param {Record<string, string>} params
+   * @param {Record<string, string | string[]>} params
    * @param {AbortSignal} signal
    */
   function ask(route, params, signal) {
@@ -417,6 +438,7 @@ export function mountTable(container, ctx, host = {}) {
       }
       rows = held;
       page = { ...first, next_after: last.next_after };
+      answered = question;
       windowed = !whole || Boolean(last.next_after);
       drawTable();
     } catch (error) {
@@ -430,20 +452,25 @@ export function mountTable(container, ctx, host = {}) {
     }
   }
 
-  /** Read the next page of a windowed table, once the window nears the last row held. */
+  /**
+   * Read the next page of a windowed table, once the window nears the last row held. The
+   * cursor continues only the question it was made for, so while a new question's first
+   * page is on its way, the rows held for the last one read no further.
+   */
   async function readMore() {
-    if (readingMore || moreFailed || !page?.next_after || !windowed) {
+    if (readingMore || moreFailed || !page?.next_after || !windowed || !sameRows(answered, state)) {
       return;
     }
     readingMore = true;
     const seq = loadSeq;
     const signal = loading?.signal ?? abort.signal;
+    let read = false;
     try {
       const next = /** @type {TablePage} */ (
         /** @type {unknown} */ (
           await ask(
             "rows",
-            rowsParams(state, { after: page.next_after, limit: NEXT_PAGE_ROWS }),
+            rowsParams(answered, { after: page.next_after, limit: NEXT_PAGE_ROWS }),
             signal,
           )
         )
@@ -452,9 +479,14 @@ export function mountTable(container, ctx, host = {}) {
         return;
       }
       rows.push(...next.rows);
-      page = { ...page, next_after: next.next_after, complete: next.complete, reason: next.reason };
-      drawNotes();
-      drawWindow(true);
+      page = {
+        ...page,
+        next_after: next.next_after,
+        complete: next.complete,
+        reason: next.reason,
+        examined: next.examined,
+      };
+      read = true;
     } catch (error) {
       if (seq === loadSeq && !disposed && !isAbort(error)) {
         // Said once; the next question, or a reload, asks again.
@@ -463,6 +495,12 @@ export function mountTable(container, ctx, host = {}) {
       }
     } finally {
       readingMore = false;
+    }
+    if (read) {
+      // Drawn once the read is over, so a page shorter than the window's need, as a page
+      // of wide rows is, reads the next at once.
+      drawNotes();
+      drawWindow(true);
     }
   }
 
@@ -500,6 +538,9 @@ export function mountTable(container, ctx, host = {}) {
       return;
     }
     table.hidden = false;
+    if (recordPane.hidden) {
+      toolbar.hidden = false;
+    }
     table.classList.toggle("table-lines-2", rowLines === 2);
     if (windowed) {
       table.setAttribute("role", "grid");
@@ -903,6 +944,21 @@ export function mountTable(container, ctx, host = {}) {
   }
 
   function drawEmpty() {
+    const refused = page ? sortRefused(page) : null;
+    if (refused !== null) {
+      // A sort that could not be done in time answers no rows; the table has them.
+      const name = fieldsByName.get(refused)?.title || refused;
+      notice(
+        "warning",
+        `This table is too large to sort by “${name}” in the time a request may take.`,
+        el(
+          "a",
+          { href: href(withSort(state, refused, null)), class: "table-unsort" },
+          "Show the file’s order",
+        ),
+      );
+      return;
+    }
     const filtered = isFiltered(state);
     const message = el(
       "p",
@@ -969,6 +1025,13 @@ export function mountTable(container, ctx, host = {}) {
     table.hidden = true;
     status.textContent = "";
     notes.replaceChildren();
+    if (errorCode(error) === "source_unreadable") {
+      // The file is there but holds no table, as a JSON document that is not a list of
+      // records: the source's own words say why, and no query of the view can change it.
+      toolbar.hidden = true;
+      notice("warning", errorText(error));
+      return;
+    }
     notice(
       "error",
       `The table could not be read. ${errorText(error)}`,
@@ -1240,7 +1303,7 @@ export function mountTable(container, ctx, host = {}) {
 
   /**
    * Follow one of the view's own links: a filter, a chip's removal, a reference, a row's
-   * number, or a reset.
+   * number, a refused sort's way back, or a reset.
    *
    * @param {HTMLAnchorElement} link
    */
@@ -1261,6 +1324,8 @@ export function mountTable(container, ctx, host = {}) {
       go(withoutFilter(state));
     } else if (link.classList.contains("table-reset")) {
       go(EMPTY_STATE);
+    } else if (link.classList.contains("table-unsort")) {
+      go(withSort(state, state.sort ?? "", null));
     } else if (link.classList.contains("table-position")) {
       const tr = ancestor(link, (node) => node.localName === "tr");
       const index = Number(tr?.dataset.index ?? 0);
@@ -1575,6 +1640,7 @@ export function mountTable(container, ctx, host = {}) {
       if (seq !== recordSeq || disposed || isAbort(error)) {
         return;
       }
+      releaseRecord();
       recordPane.replaceChildren(
         backLink(),
         noticeBox("error", `This record could not be read. ${errorText(error)}`),
@@ -1596,8 +1662,18 @@ export function mountTable(container, ctx, host = {}) {
    * }} RecordAnswer
    */
 
+  /** Dispose of what the open record's JSON values drew. */
+  function releaseRecord() {
+    const mounts = recordMounts;
+    recordMounts = [];
+    for (const mount of mounts) {
+      mount.dispose?.();
+    }
+  }
+
   /** @param {RecordAnswer} record */
   function drawRecord(record) {
+    releaseRecord();
     const position = rowPosition(record.key);
     const heading = el(
       "h2",
@@ -1660,10 +1736,14 @@ export function mountTable(container, ctx, host = {}) {
             view.text,
           ),
         );
+      } else if (view.kind === "json" && ctx.renderJson && jsonValue(cell)) {
+        value.classList.add("table-record-json");
+        const mount = ctx.renderJson(value, jsonValue(cell)?.value);
+        if (mount) {
+          recordMounts.push(mount);
+        }
       } else {
-        value.append(
-          view.kind === "absent" ? "No value: this row is shorter than the header." : view.text,
-        );
+        value.append(view.kind === "absent" ? `${ABSENT_TEXT}.` : view.text);
       }
       dd.append(value);
       if (view.cut !== null && view.kind === "text") {
@@ -1745,6 +1825,7 @@ export function mountTable(container, ctx, host = {}) {
 
   function showGrid() {
     recordSeq += 1;
+    releaseRecord();
     // The keyboard was in the record: it goes back to the row the record was opened from.
     const refocus = recordPane.contains(doc.activeElement);
     recordPane.hidden = true;
@@ -1992,6 +2073,7 @@ export function mountTable(container, ctx, host = {}) {
       win.removeEventListener("popstate", onPopState);
       win.removeEventListener("beforeprint", onBeforePrint);
       win.removeEventListener("afterprint", onAfterPrint);
+      releaseRecord();
       rowElements.clear();
     },
   };
@@ -2074,6 +2156,16 @@ function plainClick(event) {
 /** @param {unknown} error */
 function isAbort(error) {
   return /** @type {{name?: string}} */ (error)?.name === "AbortError";
+}
+
+/**
+ * A refusal's code, from the route's `table_error` body, or "".
+ *
+ * @param {unknown} error
+ */
+function errorCode(error) {
+  const payload = /** @type {{payload?: {code?: unknown}}} */ (error)?.payload;
+  return typeof payload?.code === "string" ? payload.code : "";
 }
 
 /**

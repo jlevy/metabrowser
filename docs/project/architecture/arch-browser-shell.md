@@ -28,7 +28,7 @@ it, may read them, and an installed plugin uses the SDK.
 | Main tabs | `main-tabs.js`, `git-panel.js` with `git-graph.js` and `git-history-window.js`, `pulls-nav.js`, `pull-route.js` |
 | Keyboard and dialogs | `keyboard-shortcuts.js`, `shell-keymap.js`, `plugin-shortcuts.js`, `key-reveal.js`, `keyboard-help.js`, `overlay-layer.js` |
 | Quick Search | `search-controller.js`, `search-palette.js`, `file-fuzzy-match.js` |
-| Pinned revisions, mirrors, and a checkout’s revisions | `git-path.js`, `source-pin-guard.js`, `source-freshness.js`, `source-ref-selector.js`, `mirror-heading.js` |
+| Pinned revisions, mirrors, and a checkout’s revisions | `git-path.js`, `revision-ages.js`, `source-pin-guard.js`, `source-freshness.js`, `source-ref-selector.js`, `mirror-heading.js` |
 | Shared rendering | `formatters.js`, `icons.js`, `charts.js`, `file-type-taxonomy.js`, `inert-html.js`, `source-append.js`, `theme-state.js`, `document-width.js`, `request-error.js`, `contribution-registry.js` |
 
 `types.d.ts` declares the globals and the SDK. `tsconfig.json` type-checks every module
@@ -214,7 +214,8 @@ show it.
 - **Eager:** a blocking `<script>` in the shell, for code without which the first render
   is wrong. The shell template in `server.py` lists them, and the list stays small.
   `PIN_STARTUP_SCRIPTS` and `PULL_PAGE_STARTUP_SCRIPTS` add one script each to a pinned
-  revision’s shell and a pull-request address’s shell.
+  revision’s shell and a pull-request address’s shell, which the startup check reports
+  beside the budget without gating.
 - **Prefetched:** fetched after first paint, when the page is idle and before anything
   asks, for code that is small relative to how likely it is to be wanted and visibly
   late otherwise. Mustache, then Highlight.js, start through `whenIdle` with
@@ -315,6 +316,7 @@ them; the note beside the budget says why.
 | Line gutter, SDK view helpers, and the syntax service | On demand, beside the view compositor and before any plugin code | `sdk-views` | [exp-037](../../../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | A file’s and a folder’s view header | On demand, beside the view compositor and the SDK view helpers | `view-header` | The comment beside the bundle in `server.py` |
 | Pull-request routes and page host | Eager at a `/pull/` address; on demand otherwise | `PULL_PAGE_STARTUP_SCRIPTS`, `pull-route` | exp-037 |
+| The watch on a revision’s file ages, and the clause it adds to a filtered count | On demand, the first time a response says the ages are not all in (`dating`, `partial`, `failed`); not offered to a page whose Git cannot read them | `revision-ages` in `on_demand_script_bundles`, when the pin’s Git can date files | The comment beside the bundle in `server.py`: it was a startup script of every pin’s shell, 4,940 bytes (1,896 gzipped) |
 | GitPath wire codec | Eager on a pin’s shell, the only page whose addresses spell it | `PIN_STARTUP_SCRIPTS` | exp-037 |
 | The pin guard | Inline on a pin’s shell, before any script can fetch. On demand on the working-tree page of a checkout, with the ref selector that can make its server serve a revision, so a folder’s first paint carries none of it | `_SOURCE_PIN_GUARD_SCRIPT`; `source-ref-selector` in `on_demand_script_bundles` | The comment beside the bundle |
 | Chart.js and its plugins | On demand, at the first chart | `chart` | The comment beside it |
@@ -323,8 +325,8 @@ them; the note beside the budget says why.
 | The Diff summary’s tree | On demand, at the summary’s first opening, asked for on the header’s hover or focus | `renderDiffSummary` in `builtin_plugins/diff/diff-view.js` | The comment at the head of `builtin_plugins/diff/diff-summary.js` |
 | Inert Markdown render with its table of contents, and the step that places a render | On demand: the first at the first inert render, the second at the first Markdown render | `builtin_plugins/markdown/place-rendered.js` | exp-037 and the comment at its head |
 | A refused Markdown render’s source and notice | On demand, at a Markdown view’s first refused render | `builtin_plugins/markdown/rendered.js` | The comment beside the import |
-| A pull request’s rendered layer for Markdown, YAML, and JSON | On demand, beside a comparison that names a rendered route; the structured plugin’s tree, through `ensureKindAssets("structured")`, with the first screen’s prefetch and when the first YAML or JSON file is added | `markdownLayer` and `prefetchMarkdown` in `builtin_plugins/diff/index.js`, `ensureStructured` in `builtin_plugins/diff/diff-markdown.js` | The comments beside `markdownLayer` and `ensureStructured` |
-| The table view: the table plugin’s module and stylesheet | On demand, at the first file of a kind with a Table view; the delimited plugin starts the load as its own module is evaluated, ahead of the view’s render, since its kind always opens in the Table view | `loadTable` in `builtin_plugins/delimited/index.js`, through `mb.plugins.load("table")` | 17.6 KB, 9.0 KB, and 2.6 KB compressed for the view, its model, and its stylesheet (2026-11-20), more than a page that shows no table should carry; the comment at the head of `builtin_plugins/delimited/index.js` |
+| A pull request’s rendered layer for Markdown, YAML, and JSON | On demand, beside a comparison that names a rendered route; the structured plugin’s tree, through `plugins.load("structured")`, with the first screen’s prefetch and when the first YAML or JSON file is added | `markdownLayer` and `prefetchMarkdown` in `builtin_plugins/diff/index.js`, `ensureStructured` in `builtin_plugins/diff/diff-markdown.js` | The comments beside `markdownLayer` and `ensureStructured` |
+| The table view: the table plugin’s module and stylesheet | On demand, at the first file of a kind with a Table view; the delimited plugin starts the load as its own module is evaluated, ahead of the view’s render, since its kind always opens in the Table view | `loadTable` in `builtin_plugins/delimited/index.js`, through `mb.plugins.load("table")` | 18.1 KB, 9.4 KB, and 2.5 KB compressed (gzip -9) for the view, its model, and its stylesheet (2026-11-20), more than a page that shows no table should carry; the comment at the head of `builtin_plugins/delimited/index.js` |
 
 Measured on 2026-10-01 as compressed bytes saved, these would move next if the budget
 tightens:

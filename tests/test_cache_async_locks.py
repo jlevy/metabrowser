@@ -45,7 +45,7 @@ from tests.test_cache_acquire import _allow_installed_git, _file_source, _origin
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="cache locks are BSD flock locks")
 
-STORE_A = "a" * 64
+STORE_A = "github-com--acme--alpha--aaaaaaaaaaaaaaaa"
 SLUG_A = "github-com--acme--alpha--0123456789ab"
 CHILD_TIMEOUT = 30.0
 HOLD_AT_MOST = 10.0

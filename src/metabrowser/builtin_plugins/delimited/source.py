@@ -6,40 +6,47 @@ The file parses with the standard library's ``csv`` under these rules:
 - Bytes are UTF-8, with a leading byte-order mark dropped. Invalid bytes are replaced
   and the cell holding them is marked ``invalid_utf8``.
 - The first row is the header. An empty name becomes ``column_<n>``, counting columns
-  from 1, and a repeated name gains ``_<n>`` for its nth use.
+  from 1, and a repeated name gains ``_<n>`` for its nth use (the next number whose
+  name is free).
 - A blank line is not a row. A short row's missing cells are absent, which the wire
   shows apart from empty; a long row's extra cells go to one trailing ``extra`` field,
   a list.
 - Types are inferred from the first ``DELIMITED_TYPE_SAMPLE_ROWS`` rows' nonempty
   values; a later value that contradicts its column's type is a ``{value, stored}``
   cell. An empty value is null in a column of any type but text, where it is the empty
-  string.
+  string. A date or datetime sorts as its text, which for a datetime is not its instant
+  when values mix separators or offsets; its field says so in ``sort_note``.
 - Rows have no key; a row is named by its 1-based position in the file, so a name
   survives any change of sort or filter. A sort breaks ties by that position, and a
   cursor names a sort value and a position, so a page under a new generation continues
   from the same place in the order; a row inserted above another in the file moves it.
 - The generation is the file's identity, size, and modification time.
 
-A file is parsed whole, up to ``DELIMITED_PARSE_MAX_BYTES``, and held in a cache keyed
-by its generation and bounded in bytes and entries; a sort index is built on demand and
-kept with it. A larger file shows its leading rows, and its count, sort, and filter say
-they cover only those rows (``complete: false``, ``truncated: true``).
+A file is parsed whole, up to ``DELIMITED_PARSE_MAX_BYTES``, ``DELIMITED_MAX_ROWS``
+rows, and ``DELIMITED_MAX_CELLS`` cells, and held in a cache keyed by its generation and
+bounded in the bytes its shape is measured to hold and in entries; a sort index is built
+on demand, counted in those bytes, and kept with it. One parse of a file runs at a time,
+and a request that arrives during it waits for it. A larger file shows its leading rows,
+and its count, sort, and filter say they cover only those rows (``complete: false``,
+``truncated: true``). A row's cells past ``DELIMITED_MAX_COLUMNS``, the header's among
+them, are not read, and the file says so the same way.
 """
 
 from __future__ import annotations
 
 import csv
 import io
-import operator
 import re
 import threading
-from bisect import bisect_left, bisect_right
-from collections import OrderedDict
-from collections.abc import Callable, Iterator, Sequence
+from array import array
+from collections.abc import Callable, Generator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
+from metabrowser.builtin_plugins.table import memory
+from metabrowser.builtin_plugins.table.memory import MemoryCache, SortKey, index_bytes
 from metabrowser.plugin_api import (
     TABLE_CARD_MAX_FIELDS,
     TABLE_CELL_PREVIEW_CHARS,
@@ -47,8 +54,6 @@ from metabrowser.plugin_api import (
     Budget,
     Cell,
     FieldType,
-    Filter,
-    RecordNotFoundError,
     SourceUnreadableError,
     TableCard,
     TableField,
@@ -57,48 +62,80 @@ from metabrowser.plugin_api import (
     TableNotFoundError,
     TablePage,
     TableQuery,
-    TableQueryError,
     TableRecord,
-    TableRow,
     TableSchema,
     coerce_filter_value,
     content_generation,
-    decode_cursor,
-    encode_cursor,
     integer_cell,
-    page_columns,
-    parse_position_key,
-    parse_positional_cursor,
-    position_key,
-    positional_cursor,
     real_cell,
     stored_cell,
     text_cell,
 )
 
-# The most bytes of a file parsed; past it the file shows its leading rows. A parse is
-# not interruptible, so this bounds the first request's latency and the cache's memory.
+# ── Bounds ─────────────────────────────────────────────────────
+#
+# A parse is not interruptible, so these bound the first request's latency and the
+# cache's memory. What a parse costs follows the file's rows and cells, not its bytes, so
+# each has its own bound; past any of them the file shows its leading rows and says so.
 # Measured with `devtools/bench_table_source.py`, as the bounds in
-# `metabrowser.table_source` are: 16 MiB of a 12-column CSV (about 150,000 rows) parsed
-# in 0.30 to 0.46 s and held 118 MB of Python objects, 7.0 bytes per byte of file; a
-# first sort index then took 0.26 to 0.53 s. At 32 MiB the parse took 1.2 s and a sort
-# 0.7 s, so a first sorted page approached two seconds.
+# `metabrowser.table_source` are (a shared 4-processor Linux container, Python 3.12,
+# 2026-11-20); rerun it for the current numbers.
+#
+# With no row or cell bound, a 16 MiB file was far dearer narrow than wide. Twelve
+# columns (151,000 rows) parsed in 0.31 s and held 118 MB, 7 bytes per byte of file; one
+# column of integer IDs (2.1 million rows) parsed in 1.44 s, held 302 MB, and took 1.65 s
+# for its first sort index and 1.59 s for each filtered and sorted page after it; one
+# column of one character (8.4 million rows) parsed in 4.8 s, held 805 MB, and took
+# 6.7 s to sort. Under the bounds below, every shape the bench builds parsed in at most
+# 0.29 s and took at most 0.51 s for a first sort index and 0.35 s for a filtered and
+# sorted page, so a first filtered and sorted page cost about one second, half of
+# `TABLE_REQUEST_DEADLINE_SECONDS`, and held at most 129 MB (six columns of two-digit
+# integers, cut at the cell bound after 333,000 rows).
+
+# The most bytes of a file parsed: 16 MiB of the 12-column shape, about 150,000 rows.
 DELIMITED_PARSE_MAX_BYTES = 16 * 1024 * 1024
 
-# Rows whose values decide each column's type. Inference checks every sampled value
-# against at most five patterns, so it costs little at this size; a later value that
-# contradicts the type is shown as stored, not hidden.
+# The most rows of a file parsed, the header's excepted. At this bound one column of
+# integer IDs parsed in 0.25 s and held 72 MB, its first sort index took 0.43 s, and a
+# filtered and sorted page 0.35 s; one column of one character parsed in 0.18 s.
+DELIMITED_MAX_ROWS = 500_000
+
+# The most cells of a file parsed, the header's among them: above the 1.8 million the
+# 12-column shape holds at the byte cap, so that file is read whole. Six columns of
+# two-digit integers reached it after 333,000 rows, parsed in 0.29 s, and held 129 MB.
+DELIMITED_MAX_CELLS = 2_000_000
+
+# The most cells of one row read, the header's among them; a cell past it is not read.
+# A row's cells are what a schema, a record, and the type sample scale with: at this
+# width the schema encoded in 3 ms as 0.42 MB of JSON, and the sample of 1,000 rows of
+# datetimes, the dearest values to infer, took 0.37 s of a 0.62 s parse. A page carries
+# fewer wide rows (`TABLE_PAGE_CELLS_MAX`): 11 at this width, 0.36 MB in 10 ms.
+DELIMITED_MAX_COLUMNS = 1024
+
+# Rows whose values decide each column's type. A later value that contradicts the type
+# is shown as stored, not hidden. Inference tries at most five patterns a value, and
+# stops a pattern at the first value that fails it; its dearest case is measured at
+# `DELIMITED_MAX_COLUMNS` above.
 DELIMITED_TYPE_SAMPLE_ROWS = 1000
 
-# The parse cache's bounds: entries, and the bytes the parsed files are estimated to
-# hold, at the measured 7 bytes per byte of file, so two files at the parse cap fit.
+# The parse cache's bounds: entries, and the bytes the parsed files and their sort
+# indexes are estimated to hold (`_Parsed.held_bytes`). Two files of the 12-column shape
+# at the byte cap fit (133 MB estimated each), as does one file at the row and cell
+# bounds whose text is not ASCII, the dearest estimate the bounds admit (about 230 MB).
 DELIMITED_CACHE_MAX_ENTRIES = 8
 DELIMITED_CACHE_MAX_BYTES = 256 * 1024 * 1024
-_HELD_BYTES_PER_FILE_BYTE = 7
 
-# How often a scan checks its budget, in rows: often enough to stop within a few
-# milliseconds, rarely enough to cost nothing measurable.
-_BUDGET_CHECK_ROWS = 4096
+# What a parse holds, measured with `tracemalloc` over the bench's shapes, from one
+# column of one character to 1,024 columns of datetimes: each row's list, each cell's string and
+# its slot in the row, and the text itself, one byte a character when the text is ASCII
+# and at most four otherwise. A cell marked invalid UTF-8 costs its entry in the set
+# that marks it and its wider replaced string: 200,000 rows of two such cells held
+# 60 MB more than the same rows valid, 149 bytes a cell. These are upper fits: the bench
+# prints each shape's measured and estimated bytes, and no estimate is below what was
+# measured.
+_HELD_BYTES_PER_ROW = 96
+_HELD_BYTES_PER_CELL = 56
+_HELD_BYTES_PER_INVALID_CELL = 160
 
 _DELIMITERS = {".csv": ",", ".tsv": "\t"}
 _BOM = b"\xef\xbb\xbf"
@@ -106,9 +143,24 @@ _EXTRA = "extra"
 # Decoding with `surrogateescape` turns each invalid byte into one of these.
 _ESCAPED_BYTE = re.compile("[\udc80-\udcff]")
 
-# A cell longer than the `csv` module's default field limit (131,072 characters) is a
-# parse error there; one parse is bounded by the cap above, so the limit can be that.
-csv.field_size_limit(max(csv.field_size_limit(), DELIMITED_PARSE_MAX_BYTES))
+# One parse at a time, process-wide, which bounds the transient memory of first opens to
+# one file's. A cell longer than the `csv` module's default field limit (131,072
+# characters) is a parse error there, and a parse is bounded by the byte cap above, so a
+# parse raises the limit to that cap and restores it after. The limit is global to the
+# `csv` module: this lock serializes the parses that change it, and another thread's
+# `csv` reader that runs during a parse sees the raised limit.
+_PARSE_LOCK = threading.Lock()
+
+
+@contextmanager
+def _parsing() -> Generator[None]:
+    with _PARSE_LOCK:
+        previous = csv.field_size_limit(max(csv.field_size_limit(), DELIMITED_PARSE_MAX_BYTES))
+        try:
+            yield
+        finally:
+            csv.field_size_limit(previous)
+
 
 _INTEGER = re.compile(r"[+-]?(?:0|[1-9][0-9]*)\Z")
 _REAL = re.compile(r"[+-]?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\Z")
@@ -172,10 +224,10 @@ def _infer_type(values: Sequence[str]) -> FieldType:
     return "text"
 
 
-# A sort key: (0,) for null or absent, (1, value) for a value of the column's type, and
-# (2, text) for text, including a value that contradicts its column's type: SQLite's
-# order of storage classes, so every source sorts mixed columns alike.
-SortKey = tuple[Any, ...]
+_DATETIME_SORT_NOTE = (
+    "sorted as text: a value's date and time as written, not its instant, so values "
+    "that mix separators or offsets sort by their spelling"
+)
 
 
 def _typed(column_type: FieldType, value: str) -> int | float | bool | str | None:
@@ -213,17 +265,37 @@ class _Column:
 
 @dataclass
 class _Parsed:
-    """One generation of one file, parsed."""
+    """One generation of one file, parsed.
+
+    `rows_cut` says rows past a parse bound were not read, so a count, sort, or filter
+    covers only those read; `cells_cut` says a row's cells past `DELIMITED_MAX_COLUMNS`
+    were not read. `width` is the most cells any row holds. `parsed_bytes` is what the
+    rows hold before any sort index (:attr:`held_bytes` adds those)."""
 
     generation: str
     columns: tuple[_Column, ...]
     rows: list[list[str]]
-    has_extra: bool
-    truncated: bool
-    held_bytes: int
+    width: int
+    rows_cut: bool
+    cells_cut: bool
+    parsed_bytes: int
     invalid: frozenset[tuple[int, int]]
-    sort_indexes: dict[str, list[int]] = field(default_factory=dict[str, list[int]])
+    sort_indexes: dict[str, array[int]] = field(default_factory=dict[str, array[int]])
     lock: threading.Lock = field(default_factory=threading.Lock)
+    _schema: TableSchema | None = None
+    _positions: dict[str, int] | None = None
+
+    @property
+    def truncated(self) -> bool:
+        return self.rows_cut or self.cells_cut
+
+    @property
+    def has_extra(self) -> bool:
+        return self.width > len(self.columns)
+
+    @property
+    def held_bytes(self) -> int:
+        return self.parsed_bytes + index_bytes(self)
 
     def value(self, index: int, column: int) -> str | None:
         row = self.rows[index]
@@ -233,28 +305,69 @@ class _Parsed:
         row = self.rows[index]
         return row[len(self.columns) :] if len(row) > len(self.columns) else None
 
-    def sort_index(self, column: int) -> list[int]:
-        """Row indexes in ascending order of one column, ties by position."""
+    def schema(self) -> TableSchema:
+        if self._schema is None:
+            self._schema = _schema(self)
+        return self._schema
 
-        name = self.columns[column].name
-        with self.lock:
-            found = self.sort_indexes.get(name)
-            if found is None:
-                key = self.columns[column].sort_key
-                keys = [key(self.value(index, column)) for index in range(len(self.rows))]
-                found = sorted(range(len(self.rows)), key=lambda index: (keys[index], index))
-                self.sort_indexes[name] = found
-            return found
+    # ── The memory table (metabrowser.builtin_plugins.table.memory) ──
+
+    @property
+    def row_count(self) -> int:
+        return len(self.rows)
+
+    def sort_key(self, index: int, column: int) -> SortKey:
+        return self.columns[column].sort_key(self.value(index, column))
+
+    def text(self, index: int, column: int) -> str | None:
+        return self.value(index, column)
+
+    def operand_key(self, column: int, raw: str) -> SortKey:
+        found = self.columns[column]
+        if found.type == "text":
+            return (2, raw)
+        return (1, coerce_filter_value(TableField(name=found.name, type=found.type), raw))
+
+    def cursor_key(self, column: int, rank: int, value: Any) -> SortKey | None:
+        found = self.columns[column]
+        if rank == 1 and found.type != "text":
+            return (1, _cursor_value(found, value))
+        if rank == 2 and type(value) is str:
+            return (2, value)
+        return None
+
+    def cells_per_row(self, names: Sequence[str]) -> int:
+        return _cells_per_row(self, _plan(self, names))
+
+    def cells(
+        self,
+        index: int,
+        names: Sequence[str],
+        *,
+        max_chars: int | None = None,
+        max_bytes: int | None = None,
+    ) -> dict[str, Cell]:
+        return _cells(self, index, _plan(self, names), max_chars=max_chars, max_bytes=max_bytes)
 
 
 def _column_names(header: Sequence[str]) -> list[str]:
+    """Each header cell's column name, in time linear in the header: a repeated name
+    takes the next free `_<n>`, remembering per name where its search stopped."""
+
     names: list[str] = []
+    taken: set[str] = set()
+    next_use: dict[str, int] = {}
     for number, raw in enumerate(header, start=1):
         base = raw or f"column_{number}"
-        name, uses = base, 1
-        while name in names:
-            uses += 1
+        name = base
+        if name in taken:
+            uses = next_use.get(base, 2)
             name = f"{base}_{uses}"
+            while name in taken:
+                uses += 1
+                name = f"{base}_{uses}"
+            next_use[base] = uses + 1
+        taken.add(name)
         names.append(name)
     return names
 
@@ -272,10 +385,47 @@ def _clean(rows: list[list[str]]) -> frozenset[tuple[int, int]]:
     return frozenset(invalid)
 
 
+def _read_records(
+    text: str, *, delimiter: str, has_more: bool
+) -> tuple[list[list[str]], bool, bool, int]:
+    """(records, rows_cut, cells_cut, cells): the file's nonblank records, the header's
+    first, up to the row and cell bounds, each cut at the column bound."""
+
+    reader = csv.reader(io.StringIO(text, newline=""), delimiter=delimiter, quotechar='"')
+    records: list[list[str]] = []
+    cells = 0
+    cells_cut = False
+    stopped = False
+    try:
+        for record in reader:
+            if not record:
+                continue
+            if len(record) > DELIMITED_MAX_COLUMNS:
+                del record[DELIMITED_MAX_COLUMNS:]
+                cells_cut = True
+            if len(records) > DELIMITED_MAX_ROWS or cells + len(record) > DELIMITED_MAX_CELLS:
+                stopped = True
+                break
+            records.append(record)
+            cells += len(record)
+    except csv.Error as exc:
+        if not has_more:
+            raise SourceUnreadableError(f"not readable as delimited text: {exc}") from exc
+    if has_more and not stopped and records:
+        # The read stopped at the byte cap, so the last record may be cut.
+        cells -= len(records.pop())
+    return records, has_more or stopped, cells_cut, cells
+
+
 def parse_delimited(data: bytes, *, has_more: bool, delimiter: str, generation: str) -> _Parsed:
     """Parse one bounded read of a delimited file. ``has_more`` says the read stopped at
-    the parse cap, so the last record may be cut and is dropped."""
+    the byte cap, so the last record may be cut and is dropped."""
 
+    with _parsing():
+        return _parse(data, has_more=has_more, delimiter=delimiter, generation=generation)
+
+
+def _parse(data: bytes, *, has_more: bool, delimiter: str, generation: str) -> _Parsed:
     if data.startswith(_BOM):
         data = data[len(_BOM) :]
     try:
@@ -284,15 +434,11 @@ def parse_delimited(data: bytes, *, has_more: bool, delimiter: str, generation: 
     except UnicodeDecodeError:
         text = data.decode("utf-8", errors="surrogateescape")
         dirty = True
-    reader = csv.reader(io.StringIO(text, newline=""), delimiter=delimiter, quotechar='"')
-    records: list[list[str]] = []
-    try:
-        records.extend(record for record in reader if record)
-    except csv.Error as exc:
-        if not has_more:
-            raise SourceUnreadableError(f"not readable as delimited text: {exc}") from exc
-    if has_more and records:
-        records.pop()
+    records, rows_cut, cells_cut, cells = _read_records(
+        text, delimiter=delimiter, has_more=has_more
+    )
+    ascii_text = text.isascii()
+    del text
     invalid = _clean(records) if dirty else frozenset[tuple[int, int]]()
     header = records[0] if records else []
     rows = records[1:]
@@ -305,54 +451,30 @@ def parse_delimited(data: bytes, *, has_more: bool, delimiter: str, generation: 
         )
         for index, name in enumerate(names)
     )
-    has_extra = any(len(row) > len(columns) for row in rows)
+    width = max((len(row) for row in rows), default=0)
+    parsed_bytes = (
+        len(records) * _HELD_BYTES_PER_ROW
+        + cells * _HELD_BYTES_PER_CELL
+        + len(invalid) * _HELD_BYTES_PER_INVALID_CELL
+        + len(data) * (1 if ascii_text else 4)
+    )
     return _Parsed(
         generation=generation,
         columns=columns,
         rows=rows,
-        has_extra=has_extra,
-        truncated=has_more,
-        held_bytes=len(data) * _HELD_BYTES_PER_FILE_BYTE,
+        width=max(width, len(columns)),
+        rows_cut=rows_cut,
+        cells_cut=cells_cut,
+        parsed_bytes=parsed_bytes,
         invalid=invalid,
     )
 
 
-class _ParseCache:
-    """Parsed files by identity, each at the generation it was parsed under."""
+CacheKey = tuple[str, str]
 
-    def __init__(self) -> None:
-        self._held: OrderedDict[tuple[str, str], _Parsed] = OrderedDict()
-        self._lock = threading.Lock()
-
-    def get(self, key: tuple[str, str], generation: str) -> _Parsed | None:
-        with self._lock:
-            found = self._held.get(key)
-            if found is None or found.generation != generation:
-                return None
-            self._held.move_to_end(key)
-            return found
-
-    def put(self, key: tuple[str, str], parsed: _Parsed) -> None:
-        with self._lock:
-            self._held[key] = parsed
-            self._held.move_to_end(key)
-            while len(self._held) > 1 and (
-                len(self._held) > DELIMITED_CACHE_MAX_ENTRIES
-                or sum(entry.held_bytes for entry in self._held.values())
-                > DELIMITED_CACHE_MAX_BYTES
-            ):
-                self._held.popitem(last=False)
-
-    def clear(self) -> None:
-        with self._lock:
-            self._held.clear()
-
-
-PARSE_CACHE = _ParseCache()
-
-
-def _name_of(index: int) -> str:
-    return position_key(index + 1)
+PARSE_CACHE: MemoryCache[_Parsed] = MemoryCache(
+    max_entries=lambda: DELIMITED_CACHE_MAX_ENTRIES, max_bytes=lambda: DELIMITED_CACHE_MAX_BYTES
+)
 
 
 class DelimitedSource:
@@ -370,16 +492,17 @@ class DelimitedSource:
 
     def _parsed(self) -> _Parsed:
         generation = self.generation()
-        key = (self._handle.ref.identity, self._delimiter)
-        found = PARSE_CACHE.get(key, generation)
-        if found is not None:
-            return found
-        window = self._handle.read_window(max_bytes=DELIMITED_PARSE_MAX_BYTES)
-        parsed = parse_delimited(
-            window.data, has_more=window.has_more, delimiter=self._delimiter, generation=generation
-        )
-        PARSE_CACHE.put(key, parsed)
-        return parsed
+
+        def parse() -> _Parsed:
+            window = self._handle.read_window(max_bytes=DELIMITED_PARSE_MAX_BYTES)
+            return parse_delimited(
+                window.data,
+                has_more=window.has_more,
+                delimiter=self._delimiter,
+                generation=generation,
+            )
+
+        return PARSE_CACHE.load((self._handle.ref.identity, self._delimiter), generation, parse)
 
     @staticmethod
     def _require_table(table: str) -> None:
@@ -393,19 +516,25 @@ class DelimitedSource:
 
     def schema(self, table: str) -> TableSchema:
         self._require_table(table)
-        return _schema(self._parsed())
+        return self._parsed().schema()
 
     def rows(self, table: str, query: TableQuery, budget: Budget) -> TablePage:
         self._require_table(table)
-        return _page(self._parsed(), query, budget)
+        parsed = self._parsed()
+        indexes = len(parsed.sort_indexes)
+        page = memory.page(parsed, query, budget)
+        if len(parsed.sort_indexes) != indexes:
+            PARSE_CACHE.trim()
+        return page
 
     def record(self, table: str, key: str, budget: Budget) -> TableRecord:
         self._require_table(table)
         parsed = self._parsed()
-        index = _row_index(parsed, key)
+        index = memory.row_index(parsed, key)
+        names = parsed.schema().default_columns
         return TableRecord(
             key=key,
-            cells=_cells(parsed, index, _all_columns(parsed), max_bytes=TABLE_RECORD_VALUE_BYTES),
+            cells=_cells(parsed, index, _plan(parsed, names), max_bytes=TABLE_RECORD_VALUE_BYTES),
             generation=parsed.generation,
             positional=True,
         )
@@ -413,11 +542,9 @@ class DelimitedSource:
     def card(self, table: str, key: str, budget: Budget) -> TableCard:
         self._require_table(table)
         parsed = self._parsed()
-        index = _row_index(parsed, key)
-        names = _all_columns(parsed)
-        cells = _cells(
-            parsed, index, names[: TABLE_CARD_MAX_FIELDS + 1], max_chars=TABLE_CELL_PREVIEW_CHARS
-        )
+        index = memory.row_index(parsed, key)
+        names = parsed.schema().default_columns[: TABLE_CARD_MAX_FIELDS + 1]
+        cells = _cells(parsed, index, _plan(parsed, names), max_chars=TABLE_CELL_PREVIEW_CHARS)
         label = cells.pop(names[0], None) if names else None
         return TableCard(key=key, label=label, cells=cells, generation=parsed.generation)
 
@@ -448,6 +575,7 @@ def _schema(parsed: _Parsed) -> TableSchema:
             name=column.name,
             type=column.type,
             sortable=True,
+            sort_note=_DATETIME_SORT_NOTE if column.type == "datetime" else None,
             filterable=True,
             numeric=column.type in ("integer", "real"),
         )
@@ -468,13 +596,6 @@ def _schema(parsed: _Parsed) -> TableSchema:
         key=(),
         default_columns=_all_columns(parsed),
     )
-
-
-def _row_index(parsed: _Parsed, key: str) -> int:
-    position = parse_position_key(key)
-    if position is None or position > len(parsed.rows):
-        raise RecordNotFoundError(f"{key!r} names no row of this file", key=key)
-    return position - 1
 
 
 def _cell(
@@ -509,18 +630,35 @@ def _cell(
     return True, typed
 
 
+# The cells a page, record, or card carries: each name with its column number, or None
+# for the `extra` list.
+CellPlan = Sequence[tuple[str, int | None]]
+
+
+def _plan(parsed: _Parsed, names: Sequence[str]) -> CellPlan:
+    if parsed._positions is None:  # pyright: ignore[reportPrivateUsage]
+        parsed._positions = {column.name: number for number, column in enumerate(parsed.columns)}  # pyright: ignore[reportPrivateUsage]
+    positions = parsed._positions  # pyright: ignore[reportPrivateUsage]
+    return [(name, positions.get(name)) for name in names]
+
+
+def _cells_per_row(parsed: _Parsed, plan: CellPlan) -> int:
+    """The most cells one row carries under *plan*, the `extra` list's counted each."""
+
+    extra = parsed.width - len(parsed.columns)
+    return sum(1 if number is not None else extra for _name, number in plan)
+
+
 def _cells(
     parsed: _Parsed,
     index: int,
-    names: Sequence[str],
+    plan: CellPlan,
     *,
     max_chars: int | None = None,
     max_bytes: int | None = None,
 ) -> dict[str, Cell]:
-    positions = {column.name: number for number, column in enumerate(parsed.columns)}
     cells: dict[str, Cell] = {}
-    for name in names:
-        number = positions.get(name)
+    for name, number in plan:
         if number is None:
             extra = parsed.extra(index)
             if extra is not None:
@@ -541,241 +679,19 @@ def _cells(
     return cells
 
 
-# ── Queries ────────────────────────────────────────────────────
+def _cursor_value(column: _Column, value: Any) -> Any:
+    """A rank-1 cursor value checked against the sort column's type, as its sort key
+    holds it."""
 
-RowTest = Callable[[int], bool]
-_COMPARISONS: dict[str, Callable[[SortKey, SortKey], bool]] = {
-    "eq": operator.eq,
-    "ne": operator.ne,
-    "lt": operator.lt,
-    "le": operator.le,
-    "gt": operator.gt,
-    "ge": operator.ge,
-}
-
-
-def _filter_test(parsed: _Parsed, item: Filter) -> RowTest:
-    number = next(i for i, column in enumerate(parsed.columns) if column.name == item.field)
-    column = parsed.columns[number]
-
-    def raw(index: int) -> str | None:
-        return parsed.value(index, number)
-
-    if item.op == "null":
-        return lambda index: column.sort_key(raw(index)) == (0,)
-    if item.op == "notnull":
-        return lambda index: column.sort_key(raw(index)) != (0,)
-    value = item.value or ""
-    if item.op == "contains":
-        needle = value.casefold()
-        return lambda index: needle in (raw(index) or "").casefold()
-    target = TableField(name=column.name, type=column.type)
-    coerced = coerce_filter_value(target, value)
-    wanted: SortKey = (2, coerced) if column.type == "text" else (1, coerced)
-    compare = _COMPARISONS[item.op]
-
-    def test(index: int) -> bool:
-        key = column.sort_key(raw(index))
-        # A null is unknown to every comparison, as in SQL.
-        return key != (0,) and compare(key, wanted)
-
-    return test
-
-
-def _search_test(parsed: _Parsed, q: str) -> tuple[RowTest, tuple[str, ...]]:
-    needle = q.casefold()
-    columns = [number for number, column in enumerate(parsed.columns) if column.type == "text"]
-
-    def test(index: int) -> bool:
-        row = parsed.rows[index]
-        return any(number < len(row) and needle in row[number].casefold() for number in columns)
-
-    return test, tuple(parsed.columns[number].name for number in columns)
-
-
-@dataclass(frozen=True, slots=True)
-class _Scan:
-    matches: list[int]
-    complete: bool
-    examined: int
-
-
-def _scan(parsed: _Parsed, tests: Sequence[RowTest], budget: Budget) -> _Scan:
-    if not tests:
-        return _Scan(
-            matches=list(range(len(parsed.rows))), complete=True, examined=len(parsed.rows)
-        )
-    matches: list[int] = []
-    for index in range(len(parsed.rows)):
-        if index % _BUDGET_CHECK_ROWS == 0 and index and budget.expired():
-            return _Scan(matches=matches, complete=False, examined=index)
-        if all(test(index) for test in tests):
-            matches.append(index)
-    return _Scan(matches=matches, complete=True, examined=len(parsed.rows))
-
-
-def _sort_cursor(key: SortKey, index: int) -> list[Any]:
-    rank, *rest = key
-    value = rest[0] if rest else None
-    if isinstance(value, float):
-        value = real_cell(value)
-    return [rank, value, index + 1]
-
-
-def _cursor_point(values: list[Any], sorted_by: _Column | None) -> tuple[SortKey, int]:
-    """The (sort key, row index) a `c.` cursor names."""
-
-    try:
-        if sorted_by is None:
-            (position,) = values
-            return (), int(position) - 1
-        rank, value, position = values
-        if isinstance(value, dict):
-            value = float(str(value["real"]))  # pyright: ignore[reportUnknownArgumentType]
-        key: SortKey = (0,) if rank == 0 else (int(rank), value)
-        return key, int(position) - 1
-    except (TypeError, ValueError, KeyError) as exc:
-        raise TableQueryError("after is not a cursor for this sort", param="after") from exc
-
-
-def _ordered(
-    parsed: _Parsed, query: TableQuery, matches: list[int]
-) -> tuple[list[int], _Column | None]:
-    """The matching rows in the query's order, and the column it sorts by."""
-
-    if query.sort is None:
-        ordered = matches
-        sorted_by = None
-    else:
-        number = next(i for i, column in enumerate(parsed.columns) if column.name == query.sort)
-        sorted_by = parsed.columns[number]
-        index = parsed.sort_index(number)
-        if len(matches) == len(parsed.rows):
-            ordered = index
-        else:
-            wanted = bytearray(len(parsed.rows))
-            for match in matches:
-                wanted[match] = 1
-            ordered = [row for row in index if wanted[row]]
-    if query.order == "desc":
-        ordered = ordered[::-1]
-    return ordered, sorted_by
-
-
-def _start(
-    parsed: _Parsed, query: TableQuery, ordered: list[int], sorted_by: _Column | None
-) -> int | None:
-    """Where in `ordered` the page starts, or None when a positional cursor expired."""
-
-    if query.after is None:
-        return 0
-    positional = parse_positional_cursor(query.after)
-    if positional is not None:
-        served, generation = positional
-        return served if generation == parsed.generation else None
-    key, row = _cursor_point(decode_cursor(query.after), sorted_by)
-    if sorted_by is None:
-        point: Callable[[int], tuple[Any, ...]] = lambda index: (index,)
-        target: tuple[Any, ...] = (row,)
-    else:
-        number = parsed.columns.index(sorted_by)
-        point = lambda index: (sorted_by.sort_key(parsed.value(index, number)), index)
-        target = (key, row)
-    if query.order == "asc":
-        return bisect_right(ordered, target, key=point)
-    # Descending: `ordered` falls, so search its rising mirror.
-    rising = _Reversed(ordered)
-    return len(ordered) - bisect_left(rising, target, key=point)
-
-
-class _Reversed(Sequence[int]):
-    """A list read back to front without copying it."""
-
-    def __init__(self, items: list[int]) -> None:
-        self._items = items
-
-    def __len__(self) -> int:
-        return len(self._items)
-
-    def __getitem__(self, index: int) -> int:  # type: ignore[override]
-        return self._items[len(self._items) - 1 - index]
-
-    def __iter__(self) -> Iterator[int]:
-        return reversed(self._items)
-
-
-def _next_after(
-    parsed: _Parsed, ordered: list[int], end: int, sorted_by: _Column | None
-) -> str | None:
-    if end >= len(ordered):
-        return None
-    last = ordered[end - 1]
-    if sorted_by is None:
-        token = encode_cursor([last + 1])
-    else:
-        number = parsed.columns.index(sorted_by)
-        token = encode_cursor(_sort_cursor(sorted_by.sort_key(parsed.value(last, number)), last))
-    return token if token is not None else positional_cursor(end, parsed.generation)
-
-
-def _page(parsed: _Parsed, query: TableQuery, budget: Budget) -> TablePage:
-    tests: list[RowTest] = [_filter_test(parsed, item) for item in query.filters]
-    searched: tuple[str, ...] | None = None
-    if query.q is not None:
-        search, searched = _search_test(parsed, query.q)
-        tests.append(search)
-    columns = page_columns(query, _schema(parsed))
-    scan = _scan(parsed, tests, budget)
-    if not scan.complete:
-        # A partial scan cannot be sorted honestly; the rows it found come back in key
-        # order, and the envelope says how far it got.
-        rows = tuple(_row(parsed, index, columns) for index in scan.matches[: query.limit])
-        return TablePage(
-            rows=rows,
-            columns=columns,
-            next_after=None,
-            complete=False,
-            truncated=parsed.truncated,
-            generation=parsed.generation,
-            count=len(scan.matches),
-            count_complete=False,
-            examined=scan.examined,
-            searched=searched,
-            reason="budget",
-        )
-    ordered, sorted_by = _ordered(parsed, query, scan.matches)
-    start = _start(parsed, query, ordered, sorted_by)
-    if start is None:
-        return TablePage(
-            rows=(),
-            columns=columns,
-            next_after=None,
-            complete=False,
-            truncated=parsed.truncated,
-            generation=parsed.generation,
-            count=len(ordered),
-            count_complete=not parsed.truncated,
-            searched=searched,
-            reason="cursor_expired",
-        )
-    end = min(start + query.limit, len(ordered))
-    rows = tuple(_row(parsed, index, columns) for index in ordered[start:end])
-    return TablePage(
-        rows=rows,
-        columns=columns,
-        next_after=_next_after(parsed, ordered, end, sorted_by),
-        complete=not parsed.truncated,
-        truncated=parsed.truncated,
-        generation=parsed.generation,
-        count=len(ordered),
-        count_complete=not parsed.truncated,
-        searched=searched,
-        reason="source_truncated" if parsed.truncated else None,
-    )
-
-
-def _row(parsed: _Parsed, index: int, columns: Sequence[str]) -> TableRow:
-    return TableRow(
-        key=_name_of(index),
-        cells=_cells(parsed, index, columns, max_chars=TABLE_CELL_PREVIEW_CHARS),
-    )
+    kind = column.type
+    if kind == "integer" and type(value) is int:
+        return value
+    if kind == "real":
+        number = memory.cursor_number(value)
+        if number is not None:
+            return float(number)
+    if kind == "boolean" and type(value) is bool:
+        return value
+    if kind in ("date", "datetime") and type(value) is str:
+        return value
+    raise memory.bad_cursor(f"its value is not of {column.name!r}'s type, {kind}")

@@ -106,10 +106,12 @@ for (const relative of [
   const source = fs.readFileSync(filename, "utf8");
   vm.runInContext(source, sandbox, { filename });
 }
-// The plugin is an ES module, which this realm evaluates; it reaches the page only
-// through `window`, which is the sandbox's.
+// The plugin's index.js and its renderers are ES modules, which this realm evaluates; they
+// reach the page only through `window`, which is the sandbox's. The renderers register
+// their views over index.js's stubs.
 globalThis.window = sandbox;
-require(path.join(repoRoot, "src/metabrowser/builtin_plugins/agent_log/index.js"));
+require(path.join(repoRoot, "src/metabrowser/builtin_plugins/agents/index.js"));
+require(path.join(repoRoot, "src/metabrowser/builtin_plugins/agents/agent-log.js"));
 
 const logView = sandbox.metabrowser.getRegisteredView("agent-log", "log");
 const chartsView = sandbox.metabrowser.getRegisteredView("agent-log", "charts");

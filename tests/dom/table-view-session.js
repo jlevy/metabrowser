@@ -10,10 +10,14 @@
 // stand-ins: the SDK's `fetchPluginData`, `navigation`, and `tooltip`; a window whose
 // timers and animation frames the session runs; a history Back walks; and a DOM of just
 // enough nodes to read the view back (pulls-test-dom.js). The answers are the server's,
-// recorded in tests/fixtures/table-view-responses.json and
-// tests/fixtures/table-view-long-responses.json by tests/test_table_view_session.py, which
-// fails when they drift; a request the recordings do not hold fails the session. A
-// generation, which names a file's identity and time, is recorded as `G`.
+// recorded in tests/fixtures/table-view-responses.json,
+// tests/fixtures/table-view-long-responses.json,
+// tests/fixtures/table-view-bounds-responses.json, and
+// tests/fixtures/table-view-records-responses.json by tests/test_table_view_session.py,
+// which fails when they drift; a request the recordings do not hold fails the session. A
+// generation, which names a file's identity and time, is recorded as `G`. The bounds
+// recording's answers are the server's with a bound lowered for one small file, as that
+// recorder says.
 //
 // Each step prints what the page shows after it, and the requests it made. Exits 1 on a
 // failed invariant.
@@ -27,7 +31,12 @@ const { FakeElement } = require("./pulls-test-dom.js");
 const repoRoot = path.resolve(__dirname, "../..");
 const plugin = path.join(repoRoot, "src/metabrowser/builtin_plugins/table");
 const answers = {};
-for (const name of ["table-view-responses.json", "table-view-long-responses.json"]) {
+for (const name of [
+  "table-view-responses.json",
+  "table-view-long-responses.json",
+  "table-view-bounds-responses.json",
+  "table-view-records-responses.json",
+]) {
   Object.assign(
     answers,
     JSON.parse(fs.readFileSync(path.join(repoRoot, "tests/fixtures", name), "utf8")).answers,
@@ -208,9 +217,16 @@ const unrecorded = [];
 let hold = null;
 const tooltips = [];
 
+/** A request as the recordings key it: its parameters by name, a list's values in order. */
 function keyOf(route, params) {
   const sorted = Object.entries(params).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return `${route}?${new URLSearchParams(sorted)}`;
+  const query = new URLSearchParams();
+  for (const [name, value] of sorted) {
+    for (const item of Array.isArray(value) ? value : [value]) {
+      query.append(name, String(item));
+    }
+  }
+  return `${route}?${query}`;
 }
 
 const sdk = {
@@ -396,7 +412,7 @@ function step(name, value) {
 let model;
 let mountTable;
 
-function mount(file, query = "") {
+function mount(file, query = "", context = {}) {
   entries.splice(0);
   position = -1;
   void sdk.navigation.open({ path: file, query });
@@ -404,7 +420,7 @@ function mount(file, query = "") {
   documentStandIn.body.append(container);
   const handle = mountTable(
     container,
-    { path: file },
+    { path: file, ...context },
     {
       sdk,
       window: pageWindow,
@@ -728,9 +744,15 @@ async function windowedTable() {
 
 function modelInvariants() {
   const state = model.parseState(
-    "sort=score&order=desc&f.active=eq%3Atrue&q=x&plain=1&record=%404",
+    "sort=score&order=desc&f.active=eq%3Atrue&q=x&cols=name&cols=a%2C+b&plain=1&record=%404",
   );
   const roundTrip = model.stateQuery(state);
+  assert.deepEqual(state.cols, ["name", "a, b"]);
+  assert.deepEqual(model.rowsParams(state, { limit: 5 }).cols, ["name", "a, b"]);
+  // A cursor names its sort, so a new sort or order is a new question, read from its start.
+  const resorted = model.withSort(state, "score", "asc");
+  assert.equal(model.sameRows(state, resorted), false);
+  assert.equal(model.rowsParams(resorted, { limit: 5 }).after, undefined);
   const reference = model.presentCell(
     { ref: { table: "users", key: "k.WzFd", label: "Ada" } },
     undefined,
@@ -761,8 +783,10 @@ function modelInvariants() {
   assert.deepEqual(fit.hidden, ["c"]);
   assert.equal(chosen.pinned, true);
   step("the model: an address round trip, cells a delimited file cannot hold, and column fit", {
-    "address in": "sort=score&order=desc&f.active=eq%3Atrue&q=x&plain=1&record=%404",
+    "address in":
+      "sort=score&order=desc&f.active=eq%3Atrue&q=x&cols=name&cols=a%2C+b&plain=1&record=%404",
     "address out": roundTrip,
+    "a column whose name holds a comma": state.cols,
     reference: { kind: reference.kind, text: reference.text, ref: reference.ref },
     "stored type": { text: stored.text, stored: stored.stored, tip: stored.tip },
     "default columns in 210 px": fit,
@@ -777,6 +801,153 @@ function modelInvariants() {
   });
 }
 
+async function bounds() {
+  // A page bounded in cells carries fewer rows than asked; its `limit` says how many, and
+  // the view reads on from `next_after` until it holds the table.
+  const paged = mount("paged.csv");
+  await ready(paged);
+  const whole = shown(paged, { rows: 8 });
+  assert.equal(whole.table.drawn, 8);
+  assert.equal(whole.table.role, "table");
+  step("pages shorter than asked: read on from each cursor, the table drawn whole", {
+    requests: takeRequests(),
+    ...whole,
+  });
+  click(headerButton(paged, "n", "table-head-menu"));
+  click(
+    find(
+      find(paged.container, hasClass("table-menu")),
+      (node) => node.classes.has("menu-item") && node.textContent === "Hide column",
+    ),
+  );
+  await settle();
+  step("a column hidden: the others, one field a parameter, a comma in a name kept", {
+    requests: takeRequests(),
+    ...shown(paged, { rows: 1 }),
+  });
+  paged.handle.dispose();
+  paged.container.remove();
+
+  // A search the time budget stopped: the matches among the rows it read, in order, and
+  // its cursor continues among them.
+  const searched = mount("numbers.csv", "q=match");
+  searched.scroller.clientHeight = 363;
+  await ready(searched);
+  step("a search the time budget stopped: the matches it found, said as such", {
+    requests: takeRequests(),
+    ...shown(searched, { rows: 2 }),
+  });
+  searched.scroller.scrollTop = 150 * 33;
+  dispatch(searched.scroller, "scroll");
+  tick(16);
+  await settle();
+  tick(16);
+  const more = shown(searched, { rows: 0 });
+  step("scrolled: the next page continues among the rows it read, and ends", {
+    requests: takeRequests(),
+    status: more.status,
+    notes: more.notes,
+    rowcount: more.table.rowcount,
+  });
+  searched.handle.dispose();
+  searched.container.remove();
+
+  // A sort the budget could not finish answers no rows: the view says so, not "no rows",
+  // and offers the file's order back.
+  const sorted = mount("numbers.csv", "sort=n");
+  await ready(sorted);
+  const refused = shown(sorted);
+  assert.equal(refused.empty, null);
+  step("a sort the time budget refused: said by its field, the file's order offered", {
+    requests: takeRequests(),
+    ...refused,
+  });
+  click(find(sorted.container, hasClass("table-unsort")));
+  await settle();
+  step("the file's order, chosen: the rows again", {
+    requests: takeRequests(),
+    ...shown(sorted, { rows: 2 }),
+  });
+  sorted.handle.dispose();
+  sorted.container.remove();
+
+  for (const [file, what] of [
+    ["cut.csv", "a file whose rows have more cells than the table reads"],
+    ["tall.csv", "a file with more rows than the table reads"],
+  ]) {
+    const view = mount(file);
+    await ready(view);
+    step(what, { requests: takeRequests(), ...shown(view, { rows: 1 }) });
+    view.handle.dispose();
+    view.container.remove();
+  }
+}
+
+// The structured kind's Table view: a JSON list of mappings, whose record draws each nested
+// value with the renderer its view hands the table (record-table.js passes the
+// structured plugin's inline tree; this stand-in writes the value it was given), and a
+// JSON mapping, which is not a list of records.
+async function recordLists() {
+  const drawnTrees = [];
+  let released = 0;
+  const renderJson = (host, value) => {
+    const tree = new Element("div");
+    tree.textContent = `tree ${JSON.stringify(value)}`;
+    host.append(tree);
+    drawnTrees.push(value);
+    return {
+      dispose() {
+        released += 1;
+      },
+    };
+  };
+  const view = mount("records.json", "", { renderJson });
+  await ready(view);
+  step("a JSON list of mappings: a table of its records", {
+    requests: takeRequests(),
+    ...shown(view),
+  });
+  const ada = rowsOf(view)[0];
+  ada.focus();
+  key(ada, "Enter");
+  await settle();
+  const opened = shown(view, { rows: 0 });
+  step("a record: each nested value drawn as a tree, an absent field said", {
+    requests: takeRequests(),
+    record: opened.record,
+    trees: drawnTrees.length,
+  });
+  assert.equal(drawnTrees.length, 2, "one tree for each nested value of the record");
+  key(documentStandIn.activeElement, "Escape");
+  await settle();
+  step("Back to the table: the trees released", {
+    requests: takeRequests(),
+    released,
+  });
+  assert.equal(released, drawnTrees.length, "every tree a record drew is released with it");
+  click(headerButton(view, "age"));
+  await settle();
+  step("a field of values of several types, sorted: numbers, then text", {
+    requests: takeRequests(),
+    ...shown(view),
+  });
+  view.handle.dispose();
+  view.container.remove();
+
+  const mapping = mount("config.json", "", { renderJson });
+  await ready(mapping);
+  const said = shown(mapping);
+  step("a JSON mapping: not a list of records, said in place of the table", {
+    requests: takeRequests(),
+    toolbar: find(mapping.container, hasClass("table-toolbar")).hidden ? "hidden" : "shown",
+    notes: said.notes,
+    table: said.table,
+    links: findAll(mapping.container, hasClass("table-reset")).length,
+  });
+  mapping.handle.dispose();
+  mapping.container.remove();
+}
+
 async function main() {
   model = await import(pathToFileURL(path.join(plugin, "table-model.js")).href);
   ({ mountTable } = await import(pathToFileURL(path.join(plugin, "table-view.js")).href));
@@ -784,6 +955,8 @@ async function main() {
   await wholeTable();
   await refusals();
   await windowedTable();
+  await bounds();
+  await recordLists();
   step("requests asked of the server", { unrecorded });
   assert.deepEqual(unrecorded, [], "every request the page made is recorded");
   process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);

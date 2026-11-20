@@ -53,6 +53,14 @@ the trust boundary it enforces.
   hook for a plugin discovered from `--plugins-dir`, and logs that it ignored them.
   Python runs only from a built-in or an installed distribution, which already belongs
   to the environment.
+- **Register modules:** a manifest’s optional `[plugin] register` names a Python module
+  that discovery imports once, as it loads a built-in or entry-point plugin, so the
+  plugin can register extensions such as log adapters.
+  An import failure becomes an error string like any other load error and the plugin is
+  skipped. For an operator-directory plugin the field is ignored with a logged warning,
+  as data hooks are, and `metab --doctor` reports it.
+  Discovery runs at server start and in the plugin-inspection modes, not on `--version`
+  or `--present --dry-run`, so those do not import a register module.
 
 ## Declared Dependencies
 
@@ -121,7 +129,9 @@ gives the reasons.
 
 `api_file` in `server.py` decides a file’s kind in this order:
 
-1. A directory is `folder`.
+1. A directory is `folder`. A folder view that declares `offer` is served only where its
+   predicate accepts the folder, off the event loop, and an offered default becomes the
+   folder’s only default (`_offered_folder_views` in `server.py`).
 2. A path that does not exist is offered to the containers below.
 3. A `.jsonl` file is parsed, and its sniffed adapter joins the classifier’s input.
 4. An extension in `BROWSER_IMAGE_EXTS` is `image`.
@@ -130,20 +140,24 @@ gives the reasons.
    `FILE_KIND_DETECTORS` in `file_kinds.py`, then defaults to `text`.
 6. Anything else is checked against every `magic` rule, whatever its name, from the
    sniff prefix step 5 already read, on the bytes on disk; the first match is its kind.
-7. Anything left is `binary`.
+7. Anything left is asked of the `binary = true` rules, which match by path alone
+   (`_binary_kind`), and is `binary` when none claims it.
 
-`[[kind]]` rules therefore see text and JSONL files only, except a `magic` rule, which
-sees only files that would otherwise be `binary`: `match.magic = {offset, hex}` names
-bytes at an offset within `MAGIC_MAX_END` (`plugin_loader/manifest.py`, the sniff
-prefix), and `classify_magic` in `plugin_loader/classify.py` checks it by priority, then
-discovery order. A magic rule takes only `ext` or `exts` beside it, which decide the
-tree’s container chevron and nothing else, so a `.db` file that is not SQLite stays
-binary and a database named `History` is SQLite.
+Ordinary `[[kind]]` rules therefore see text and JSONL files only; a `magic` rule and a
+`binary` rule see only files found to be binary.
+`match.magic = {offset, hex}` names bytes at an offset within `MAGIC_MAX_END`
+(`plugin_loader/manifest.py`, the sniff prefix), and `classify_magic` in
+`plugin_loader/classify.py` checks it by priority, then discovery order. A magic rule
+takes only `ext` or `exts` beside it, which decide the tree’s container chevron and
+nothing else, so a `.db` file that is not SQLite stays binary and a database named
+`History` is SQLite.
 A compressed file is checked on its compressed bytes, so `x.sqlite.gz` stays binary.
 Every classification site applies it: `api_file`, the container walk
 (`_classify_content_kind`), the table routes’ kind on a served folder and on a pin, and
 a Git blob (`plugin_magic_kind` in `git/content_routes.py`), which a stored blob’s own
 bytes decide.
+A plugin claims any other binary format with a `binary` rule, or adds a view to the
+`binary` kind.
 
 `build_classifier` sorts every loaded rule by descending `priority`, then discovery
 index, and returns the first match.
@@ -238,21 +252,52 @@ cell and token helpers, and bounds, but not the registry or the routes’ wire f
 | --- | --- |
 | `/api/plugin/table/tables?path=` | The source’s tables, each with its group, whether its rows have a key, an estimate where the source has one, and its address |
 | `/api/plugin/table/schema?path=` | Field descriptors, key fields, default columns, and references in both directions |
-| `/api/plugin/table/rows?path=&…` | One page in the collection envelope, for `sort`, `order`, `q`, `f.<field>=<op>:<value>`, `ref`, `cols`, `after`, and `limit` |
+| `/api/plugin/table/rows?path=&…` | One page in the collection envelope, for `sort`, `order`, `q`, `f.<field>=<op>:<value>`, `ref=<table>:<key>` (split at its last colon), `cols` (one field per parameter, repeated), `after`, and `limit` |
 | `/api/plugin/table/record?path=&key=` | One record, each value previewed past the record bound, and whether the generation the key was read under has moved |
 | `/api/plugin/table/card?path=&key=` | A hover card: a label and a few fields |
 
-`tests/test_table_source.py` checks the protocol, and `tests/test_delimited_source.py`
-the delimited source through these routes; `tests/golden/cli-api-table.tryscript.md`
-pins each route’s answers and refusals.
+A page’s rows come in the order its query asked for.
+Its `reason` says why it is not complete (`PageReason` in `table_source.py`): a scan
+that ran out of the request’s budget answers what it found, a sort that could not be
+done in the budget answers no rows and names the field in `sort_refused`, and a source
+that read only part of its content or a cursor from another generation says so.
+`limit` is the rows the page allowed, fewer than asked for when its rows are wide.
+
+Two built-in sources answer through them:
+
+- **`delimited`** (`builtin_plugins/delimited/source.py`): a `.csv` or `.tsv` file as
+  one table.
+- **The structured plugin’s record lists** (`builtin_plugins/structured/records.py`): a
+  JSON or YAML file whose top level is a list of mappings as one table, its fields the
+  keys typed from their values (plan Decision 12). It reads the structured plugin’s own
+  parse (`load_structured_payload`), the one the Tree view made when there is one, and
+  without the Tree view’s YAML re-serialization when there is not; any other document is
+  refused with `source_unreadable`, saying why.
+
+Both hold a whole file’s rows in memory and answer through the table plugin’s memory
+engine (`builtin_plugins/table/memory.py`): the scan, filters, search, sort indexes,
+cursors, and single-flight parse cache, behind a `MemoryTable` protocol each source
+implements with its rows, sort keys, and cells.
+The engine is the built-in sources’ own, not SDK surface.
+
+`tests/test_table_source.py` checks the protocol, `tests/test_delimited_source.py` the
+delimited source through these routes, on a served folder and on a Git pin, with the
+registry and the doctor’s checks, and `tests/test_record_list_source.py` the record
+lists the same way; `tests/golden/cli-api-table.tryscript.md` and
+`tests/golden/cli-api-table-records.tryscript.md` pin each route’s answers and refusals.
 A file that is its own single table, such as a CSV file, is addressed by its own path;
 tables inside one file, such as a database’s, are planned as container children in
 [Tabular Data Browsing and Live SQLite](../specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md).
 
-**The view.** The table plugin’s `index.js` exports `mountTable(container, {path})`, the
-table view, which a source plugin registers as its kind’s Table view through
-`mb.plugins.load("table")`, as `builtin_plugins/delimited/index.js` does; the plugin has
-no kind, so it registers no view of its own.
+**The view.** The table plugin’s `index.js` exports
+`mountTable(container, {path, renderJson})`, the table view, which a source plugin
+registers as its kind’s Table view through `mb.plugins.load("table")`, as
+`builtin_plugins/delimited/index.js` does; the plugin has no kind, so it registers no
+view of its own. `renderJson`, the context’s other member, draws a JSON value in a
+record: the table plugin requires no other plugin, and the structured plugin requires
+it, so the structured kind’s Table view (`builtin_plugins/structured/record-table.js`)
+hands the table its inline tree rather than the table loading the structured plugin,
+which would be a cycle discovery refuses.
 `table-model.js` holds what the view decides, pure functions of the address, the schema,
 and the rows held, and `table-view.js` draws it
 ([Data Tables](../../design-system.md#data-tables)). `tests/dom/table-view-session.js`
@@ -411,8 +456,8 @@ Each is optional except the kind and one view.
    An extension or basename is cheapest; a content predicate is for a format that shares
    an extension, at a priority above the built-in rule it narrows.
    The format must reach step 5 of [Classification](#classification), or, for a binary
-   format with a magic number, step 6 through a `magic` rule; any other binary format
-   needs a view on `binary` instead.
+   format with a magic number, step 6 through a `magic` rule; any other binary format is
+   claimed by path with `binary = true`.
    Check the result with `metab . --plugins-dir <dir> --show <file>`, which prints the
    kind and its views.
 2. **Draw it.** Add a `[[view]]` and its `mb.registerView` call.
@@ -427,8 +472,9 @@ Each is optional except the kind and one view.
    `table` plugin’s routes serve it ([Table Sources](#table-sources)).
 4. **Parse a JSONL stream,** when the format is one.
    `register_log_adapter` adds a detector and parser for the JSONL view, and a rule with
-   `match = { ext = ".jsonl", adapter = "<name>" }` claims those files, as the
-   `agent-log` built-in does for its three adapters.
+   `match = { ext = ".jsonl", adapter = "<name>" }` claims those files, as the `agents`
+   built-in does for the Claude Code, Codex, Pi, and Gemini adapters, which register
+   from its manifest’s `register` module.
 5. **Make it a container,** when its parts are worth navigating, with
    `container = { children = "<route>" }`.
 6. **Give it a type family,** so the Files filter, Overview’s type breakdown, the

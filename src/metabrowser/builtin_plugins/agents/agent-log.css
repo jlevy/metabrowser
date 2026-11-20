@@ -1,0 +1,333 @@
+:root {
+  /* Summary and event headers share the host's secondary surface in both themes. */
+  --agent-log-surface: var(--sidebar-bg);
+  /* One color per event kind and per tool family, used wherever that kind appears: Log badges
+     (-bg, -text), chart series, tally bars, and timeline segments (-fill). The agent and the
+     origin are labels, never color. tests/test_agent_kind_palette.py pins the contrast of each
+     -text on its -bg, the hue each token keeps across themes, and the distance between fills. */
+  --agent-kind-prompt-bg: oklch(95.50% 0.045 255);
+  --agent-kind-prompt-text: oklch(42.00% 0.145 255);
+  --agent-kind-prompt-fill: oklch(60.00% 0.17 255);
+  --agent-kind-text-bg: oklch(95.50% 0.015 264);
+  --agent-kind-text-text: oklch(42.00% 0.015 264);
+  --agent-kind-text-fill: oklch(50.00% 0.015 264);
+  --agent-kind-thinking-bg: oklch(95.50% 0.045 300);
+  --agent-kind-thinking-text: oklch(42.00% 0.145 300);
+  --agent-kind-thinking-fill: oklch(58.00% 0.17 300);
+  --agent-kind-tool-call-bg: oklch(95.50% 0.045 88);
+  --agent-kind-tool-call-text: oklch(42.00% 0.128 88);
+  --agent-kind-tool-call-fill: oklch(72.00% 0.15 88);
+  --agent-kind-tool-result-bg: oklch(95.50% 0.027 92);
+  --agent-kind-tool-result-text: oklch(42.00% 0.076 92);
+  --agent-kind-tool-result-fill: oklch(88.00% 0.09 92);
+  --agent-kind-metering-bg: oklch(95.50% 0.033 200);
+  --agent-kind-metering-text: oklch(42.00% 0.093 200);
+  --agent-kind-metering-fill: oklch(62.00% 0.11 200);
+  --agent-kind-control-bg: oklch(95.50% 0.045 340);
+  --agent-kind-control-text: oklch(42.00% 0.145 340);
+  --agent-kind-control-fill: oklch(60.00% 0.17 340);
+  --agent-kind-context-bg: oklch(95.50% 0.015 264);
+  --agent-kind-context-text: oklch(42.00% 0.015 264);
+  --agent-kind-context-fill: oklch(68.00% 0.015 264);
+  --agent-kind-error-bg: oklch(95.50% 0.045 25);
+  --agent-kind-error-text: oklch(42.00% 0.15 25);
+  --agent-kind-error-fill: oklch(56.00% 0.2 25);
+  --agent-kind-unknown-bg: oklch(95.50% 0.015 264);
+  --agent-kind-unknown-text: oklch(42.00% 0.01 264);
+  --agent-kind-unknown-fill: oklch(84.00% 0.01 264);
+
+  --agent-tool-shell-bg: oklch(95.50% 0.045 50);
+  --agent-tool-shell-text: oklch(42.00% 0.145 50);
+  --agent-tool-shell-fill: oklch(64.00% 0.17 50);
+  --agent-tool-read-bg: oklch(95.50% 0.045 155);
+  --agent-tool-read-text: oklch(42.00% 0.128 155);
+  --agent-tool-read-fill: oklch(62.00% 0.15 155);
+  --agent-tool-edit-bg: oklch(95.50% 0.045 125);
+  --agent-tool-edit-text: oklch(42.00% 0.145 125);
+  --agent-tool-edit-fill: oklch(74.00% 0.17 125);
+  --agent-tool-search-bg: oklch(95.50% 0.03 225);
+  --agent-tool-search-text: oklch(42.00% 0.085 225);
+  --agent-tool-search-fill: oklch(74.00% 0.1 225);
+  --agent-tool-web-bg: oklch(95.50% 0.045 240);
+  --agent-tool-web-text: oklch(42.00% 0.128 240);
+  --agent-tool-web-fill: oklch(48.00% 0.15 240);
+  --agent-tool-mcp-bg: oklch(95.50% 0.045 315);
+  --agent-tool-mcp-text: oklch(42.00% 0.145 315);
+  --agent-tool-mcp-fill: oklch(46.00% 0.17 315);
+  --agent-tool-subagent-bg: oklch(95.50% 0.042 358);
+  --agent-tool-subagent-text: oklch(42.00% 0.119 358);
+  --agent-tool-subagent-fill: oklch(72.00% 0.14 358);
+  --agent-tool-other-bg: oklch(95.50% 0.015 264);
+  --agent-tool-other-text: oklch(42.00% 0.01 264);
+  --agent-tool-other-fill: oklch(38.00% 0.01 264);
+}
+
+[data-theme="dark"] {
+  --agent-kind-prompt-bg: oklch(30.00% 0.05 255);
+  --agent-kind-prompt-text: oklch(84.00% 0.11 255);
+  --agent-kind-prompt-fill: oklch(70.00% 0.162 255);
+  --agent-kind-text-bg: oklch(30.00% 0.01 264);
+  --agent-kind-text-text: oklch(84.00% 0.015 264);
+  --agent-kind-text-fill: oklch(60.00% 0.015 264);
+  --agent-kind-thinking-bg: oklch(30.00% 0.05 300);
+  --agent-kind-thinking-text: oklch(84.00% 0.11 300);
+  --agent-kind-thinking-fill: oklch(68.00% 0.162 300);
+  --agent-kind-tool-call-bg: oklch(30.00% 0.045 88);
+  --agent-kind-tool-call-text: oklch(84.00% 0.098 88);
+  --agent-kind-tool-call-fill: oklch(82.00% 0.142 88);
+  --agent-kind-tool-result-bg: oklch(30.00% 0.027 92);
+  --agent-kind-tool-result-text: oklch(84.00% 0.058 92);
+  --agent-kind-tool-result-fill: oklch(90.00% 0.085 92);
+  --agent-kind-metering-bg: oklch(30.00% 0.033 200);
+  --agent-kind-metering-text: oklch(84.00% 0.072 200);
+  --agent-kind-metering-fill: oklch(72.00% 0.104 200);
+  --agent-kind-control-bg: oklch(30.00% 0.05 340);
+  --agent-kind-control-text: oklch(84.00% 0.11 340);
+  --agent-kind-control-fill: oklch(70.00% 0.162 340);
+  --agent-kind-context-bg: oklch(30.00% 0.01 264);
+  --agent-kind-context-text: oklch(84.00% 0.015 264);
+  --agent-kind-context-fill: oklch(78.00% 0.015 264);
+  --agent-kind-error-bg: oklch(30.00% 0.05 25);
+  --agent-kind-error-text: oklch(84.00% 0.11 25);
+  --agent-kind-error-fill: oklch(66.00% 0.19 25);
+  --agent-kind-unknown-bg: oklch(30.00% 0.01 264);
+  --agent-kind-unknown-text: oklch(84.00% 0.01 264);
+  --agent-kind-unknown-fill: oklch(90.00% 0.01 264);
+
+  --agent-tool-shell-bg: oklch(30.00% 0.05 50);
+  --agent-tool-shell-text: oklch(84.00% 0.11 50);
+  --agent-tool-shell-fill: oklch(74.00% 0.162 50);
+  --agent-tool-read-bg: oklch(30.00% 0.045 155);
+  --agent-tool-read-text: oklch(84.00% 0.098 155);
+  --agent-tool-read-fill: oklch(72.00% 0.142 155);
+  --agent-tool-edit-bg: oklch(30.00% 0.05 125);
+  --agent-tool-edit-text: oklch(84.00% 0.11 125);
+  --agent-tool-edit-fill: oklch(84.00% 0.162 125);
+  --agent-tool-search-bg: oklch(30.00% 0.03 225);
+  --agent-tool-search-text: oklch(84.00% 0.065 225);
+  --agent-tool-search-fill: oklch(84.00% 0.095 225);
+  --agent-tool-web-bg: oklch(30.00% 0.045 240);
+  --agent-tool-web-text: oklch(84.00% 0.098 240);
+  --agent-tool-web-fill: oklch(58.00% 0.142 240);
+  --agent-tool-mcp-bg: oklch(30.00% 0.05 315);
+  --agent-tool-mcp-text: oklch(84.00% 0.11 315);
+  --agent-tool-mcp-fill: oklch(56.00% 0.162 315);
+  --agent-tool-subagent-bg: oklch(30.00% 0.042 358);
+  --agent-tool-subagent-text: oklch(84.00% 0.091 358);
+  --agent-tool-subagent-fill: oklch(82.00% 0.133 358);
+  --agent-tool-other-bg: oklch(30.00% 0.01 264);
+  --agent-tool-other-text: oklch(84.00% 0.01 264);
+  --agent-tool-other-fill: oklch(48.00% 0.01 264);
+}
+
+.log-summary {
+  display: flex;
+  gap: 16px;
+  padding: 12px var(--content-padding-x);
+  background: var(--agent-log-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-document);
+  margin-bottom: var(--content-padding-y);
+  flex-wrap: wrap;
+}
+
+.log-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.log-stat-label {
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  text-transform: var(--label-text-transform);
+  letter-spacing: var(--label-letter-spacing);
+  color: var(--muted);
+}
+
+.log-stat-value {
+  font-size: var(--body-font-size);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.agent-log-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 8px 0 12px;
+}
+
+.log-event {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  margin-bottom: 4px;
+  overflow: hidden;
+}
+
+.log-event-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: var(--mono-block-font-size);
+  font-family: var(--font-mono);
+  background: var(--agent-log-surface);
+  transition: background var(--transition-fast);
+}
+
+.log-event-header:hover {
+  background: var(--hover-bg);
+}
+
+/* Inside its box: `.log-event` clips what overflows its rounded corners. */
+.log-event-header:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* The badge is the shared .file-header-badge (size, weight, padding, cap trim); only the hue
+   is the kind's. An event whose own flag says it failed wears the error kind's. */
+.log-event-kind {
+  background: var(--agent-kind-unknown-bg);
+  color: var(--agent-kind-unknown-text);
+}
+
+.kind-prompt {
+  background: var(--agent-kind-prompt-bg);
+  color: var(--agent-kind-prompt-text);
+}
+
+.kind-text {
+  background: var(--agent-kind-text-bg);
+  color: var(--agent-kind-text-text);
+}
+
+.kind-thinking {
+  background: var(--agent-kind-thinking-bg);
+  color: var(--agent-kind-thinking-text);
+}
+
+.kind-tool-call {
+  background: var(--agent-kind-tool-call-bg);
+  color: var(--agent-kind-tool-call-text);
+}
+
+.kind-tool-result {
+  background: var(--agent-kind-tool-result-bg);
+  color: var(--agent-kind-tool-result-text);
+}
+
+.kind-metering {
+  background: var(--agent-kind-metering-bg);
+  color: var(--agent-kind-metering-text);
+}
+
+.kind-control {
+  background: var(--agent-kind-control-bg);
+  color: var(--agent-kind-control-text);
+}
+
+.kind-context {
+  background: var(--agent-kind-context-bg);
+  color: var(--agent-kind-context-text);
+}
+
+.kind-error,
+.log-event-kind.error {
+  background: var(--agent-kind-error-bg);
+  color: var(--agent-kind-error-text);
+}
+
+.kind-unknown {
+  background: var(--agent-kind-unknown-bg);
+  color: var(--agent-kind-unknown-text);
+}
+
+.tool-shell {
+  background: var(--agent-tool-shell-bg);
+  color: var(--agent-tool-shell-text);
+}
+
+.tool-read {
+  background: var(--agent-tool-read-bg);
+  color: var(--agent-tool-read-text);
+}
+
+.tool-edit {
+  background: var(--agent-tool-edit-bg);
+  color: var(--agent-tool-edit-text);
+}
+
+.tool-search {
+  background: var(--agent-tool-search-bg);
+  color: var(--agent-tool-search-text);
+}
+
+.tool-web {
+  background: var(--agent-tool-web-bg);
+  color: var(--agent-tool-web-text);
+}
+
+.tool-mcp {
+  background: var(--agent-tool-mcp-bg);
+  color: var(--agent-tool-mcp-text);
+}
+
+.tool-subagent {
+  background: var(--agent-tool-subagent-bg);
+  color: var(--agent-tool-subagent-text);
+}
+
+.tool-other {
+  background: var(--agent-tool-other-bg);
+  color: var(--agent-tool-other-text);
+}
+
+.log-event-summary {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--mono-block-font-size);
+  min-width: 0;
+}
+
+.summary-label {
+  font-weight: var(--weight-bold);
+}
+
+.summary-key {
+  color: var(--muted);
+}
+
+.summary-value {
+  color: var(--text);
+}
+
+.summary-omitted {
+  color: var(--muted);
+  font-size: var(--mono-block-font-size);
+  flex-shrink: 0;
+}
+
+.log-event-raw {
+  display: none;
+  max-height: 400px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+
+.log-event-raw pre {
+  margin: 0;
+}
+
+.log-event-raw code {
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+  line-height: 1.5;
+}
+
+.log-event.expanded .log-event-raw {
+  display: block;
+}

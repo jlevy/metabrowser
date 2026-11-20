@@ -1,7 +1,7 @@
 // Browserless check: a live tail's batch of agent-log events (app.js appendLiveEvents).
 //
-// The rows are drawn with the agent-log plugin's exported renderLogEvent once
-// `plugins.load("agent-log")` settles, and the `appendLiveEvents` measure covers that
+// The rows are drawn with the agent-log renderers' exported renderLogEvent once the agents
+// plugin's `loadLogRenderers` settles, and the `appendLiveEvents` measure covers that
 // render, not only the bookkeeping before it. A load that fails is said once on the
 // console, however many batches arrive. `appendLiveEvents` is lifted verbatim from
 // app.js, which cannot load without a document. Prints a JSON record; exits 1 on a
@@ -37,6 +37,7 @@ function lift(pattern, what) {
       this.html += html;
     },
   };
+  // The renderers' load, which each step holds open, settles, or fails.
   let load;
   const sandbox = {
     Array,
@@ -58,8 +59,8 @@ function lift(pattern, what) {
       metabrowser: {
         plugins: {
           load(name) {
-            assert(name === "agent-log", `plugins.load asked for ${name}`);
-            return load;
+            assert(name === "agents", `plugins.load asked for ${name}`);
+            return Promise.resolve({ loadLogRenderers: () => load });
           },
         },
       },

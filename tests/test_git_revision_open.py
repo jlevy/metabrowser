@@ -199,5 +199,5 @@ def test_open_refuses_abbreviated_missing_and_absent_stores(
     with pytest.raises(GitObjectUnavailableError):
         open_oid(store_key, tree)
     with pytest.raises(GitUnavailableError):
-        open_oid("b" * 64, second)
+        open_oid("github-com--octo--absent--" + "b" * 16, second)
     assert held_locks() == ()

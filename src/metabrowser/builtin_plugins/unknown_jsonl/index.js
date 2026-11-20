@@ -1,5 +1,6 @@
-// Generic JSONL draws with the agent-log plugin's renderers: the provider its manifest
-// requires, whose exports it loads on demand ("Declared Dependencies" in docs/plugins.md).
+// Generic JSONL draws with the agents plugin's agent-log renderers: the provider its
+// manifest requires, whose exports load them on demand ("Declared Dependencies" in
+// docs/plugins.md).
 (() => {
   const mb = window.metabrowser;
   if (!mb) {
@@ -18,7 +19,7 @@
       async render(container, ctx) {
         const mount = {};
         mounts.set(container, mount);
-        const provider = await mb.plugins.load("agent-log");
+        const provider = await (await mb.plugins.load("agents")).loadLogRenderers();
         agentLog = provider;
         if (mounts.get(container) !== mount) {
           return;

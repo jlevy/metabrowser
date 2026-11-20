@@ -39,6 +39,9 @@ BUTTON_PRIMITIVES = frozenset(
 BUTTON_CLASS_ALLOWLIST = {
     # "A text action ... on <a> and <button> alike": each context names its own class.
     "github-pull-text-action": "the pull page's text action, a link-like action in a line of chrome",
+    # A sortable column header's label: a text action in a line of chrome, with `aria-sort` on
+    # its cell, since a bordered button in a header would read as a different thing.
+    "agents-sort": "the session table's sortable column headers",
     # The file bar is itself the .disclosure-toggle row; this button is its labelled hit area.
     "diff-file-toggle": "the label of a diff file bar, which carries .disclosure-toggle",
     # A table's header: its label sorts, and its ▾ opens the column's menu, in the header's
@@ -212,21 +215,21 @@ def test_an_error_notice_is_an_alert() -> None:
 
 # -- Agent-log kind hues -------------------------------------------------------------------
 
-AGENT_LOG_CSS = PLUGINS_DIR / "agent_log" / "styles.css"
+AGENT_LOG_CSS = PLUGINS_DIR / "agents" / "agent-log.css"
 CHARTS_PY = REPO_ROOT / "src" / "metabrowser" / "charts.py"
 # How far apart two hues of one kind may sit, in degrees: the chart's tool result is a
 # lighter step of the badge's amber, not the same value.
 HUE_TOLERANCE = 20
 NEUTRAL_CHROMA = 0.04
-# Each chart kind's badge: the Log's ink variable for it, per agent_log/styles.css.
+# Each chart kind's badge: the Log's ink variable for it, per agents/agent-log.css.
 BADGE_INK = {
-    "tool_call": "--agent-log-kind-tool-text",
-    "tool_result": "--agent-log-kind-tool-text",
-    "text": "--agent-log-kind-neutral-text",
-    "thinking": "--agent-log-kind-thinking-text",
-    "result": "--agent-log-kind-result-text",
-    "init": "--agent-log-kind-init-text",
-    "system": "--agent-log-kind-muted-text",
+    "tool_call": "--agent-kind-tool-call-text",
+    "tool_result": "--agent-kind-tool-result-text",
+    "text": "--agent-kind-text-text",
+    "thinking": "--agent-kind-thinking-text",
+    "result": "--agent-kind-metering-text",
+    "init": "--agent-kind-context-text",
+    "system": "--agent-kind-control-text",
 }
 
 
@@ -243,7 +246,7 @@ def _oklch(block: str, name: str) -> tuple[float, float]:
     """(chroma, hue) of an oklch() custom property."""
     pattern = rf"{re.escape(name)}:\s*oklch\(([\d.]+)%\s+([\d.]+)\s+([\d.]+)\)"
     match = re.search(pattern, block)
-    assert match, f"{name} is not an oklch() value in agent_log/styles.css"
+    assert match, f"{name} is not an oklch() value in agents/agent-log.css"
     return float(match.group(2)), float(match.group(3))
 
 
@@ -275,7 +278,7 @@ def test_agent_log_kind_has_one_hue_in_the_log_and_its_chart() -> None:
 
 
 def test_agent_log_badges_use_the_shared_badge_primitive() -> None:
-    source = (PLUGINS_DIR / "agent_log" / "index.js").read_text()
+    source = (PLUGINS_DIR / "agents" / "agent-log.js").read_text()
     assert 'class="file-header-badge log-event-kind' in source
     css = AGENT_LOG_CSS.read_text()
     rule = re.search(r"\.log-event-kind\s*\{(.*?)\}", css, re.DOTALL)

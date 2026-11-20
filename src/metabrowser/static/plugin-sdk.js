@@ -565,8 +565,12 @@
     );
     if (params && typeof params === "object") {
       for (const [k, v] of Object.entries(params)) {
-        if (v !== undefined && v !== null) {
-          url.searchParams.set(k, String(v));
+        // An array repeats its parameter, one value each (`cols=a&cols=b`), so a value
+        // may hold any character, a comma among them.
+        for (const item of Array.isArray(v) ? v : [v]) {
+          if (item !== undefined && item !== null) {
+            url.searchParams.append(k, String(item));
+          }
         }
       }
     }

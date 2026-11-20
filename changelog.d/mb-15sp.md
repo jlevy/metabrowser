@@ -4,8 +4,10 @@
   `await metabrowser.plugins.load("markdown")`, which loads the provider on demand
   ([Declared Dependencies](docs/plugins.md#declared-dependencies)).
   `metabrowser.builtins` and the render-time-only rule for reading it are gone: the
-  Markdown plugin’s `mountRendered`, `renderSource`, and `drawDiagrams`, and the
-  structured plugin’s `renderInlineTree` and tree helpers, are their modules’ exports.
+  Markdown plugin’s `mountRendered`, `renderSource`, and `drawDiagrams`, the structured
+  plugin’s `renderInlineTree` and tree helpers, and the GitHub plugin’s `pullStateIcon`
+  are their modules’ exports, and the agents plugin’s agent-log renderers are what its
+  exported `loadLogRenderers` answers.
   Update a plugin’s reads and set its `sdk_version` to `0.8`.
 
 - Discovery refuses a plugin that requires one that was not discovered or was refused,

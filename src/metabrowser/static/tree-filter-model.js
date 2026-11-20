@@ -26,6 +26,7 @@
    * @property {number} [size]
    * @property {number} [mtime]
    * @property {boolean} [gitignored]
+   * @property {string[]} [dir_names]
    */
 
   /**
@@ -1753,7 +1754,11 @@
       for (let index = 0; index < parts.length - 1; index += 1) {
         const part = parts[index];
         if (!node.subdirs.has(part)) {
-          node.subdirs.set(part, { name: part, subdirs: new Map(), leaves: [] });
+          node.subdirs.set(part, {
+            name: file.dir_names?.[index] ?? part,
+            subdirs: new Map(),
+            leaves: [],
+          });
         }
         node = node.subdirs.get(part);
       }

@@ -178,18 +178,84 @@ pipe, so that such a rule matches it and nothing else.
 Both rules match the command as the agent types it, so a `metab` the agent runs by its
 path, as it runs a separate checkout’s, needs that path in place of `metab`.
 
+## Browsing Agent History
+
+Serve a Claude Code or Codex home and Metabrowser reads every session in it, without
+changing anything. A home is `~/.claude` or `~/.codex`, and serving a folder that holds
+either, such as `~`, reaches both:
+
+```shell
+metab ~/.claude
+metab ~/.codex
+metab ~
+```
+
+A folder that is, or holds, a home opens on its **Agents** page, with **Sessions**
+beside it. Any other folder keeps its Overview.
+
+- **Agents:** one page for each home and the two together.
+  It shows how many sessions there are, how many are running now, and the size on disk;
+  a strip of the sessions running now, each with its project and model and how long ago
+  it last wrote; the sessions started per day; a histogram of session sizes; and the
+  most recent sessions.
+  Reading a large history takes minutes the first time, so the page shows a progress
+  line while it summarizes sessions, asks again until it is done, and then stops.
+  It names the cache folder trouble when summaries cannot be kept between runs.
+  While the page is in front, the live strip asks again every few seconds
+  (`LIVE_POLL_MS` in `poller.js`), and nothing is asked once you leave it or hide the
+  tab.
+- **Sessions:** the list, with the agent, title, origin, project, model, start,
+  duration, turns, size, and status of each.
+  Filter by agent, origin, status, project, model, and when the session started, and
+  sort by any column. The list shows one page at a time (`PAGE_SIZE` in
+  `session-list-state.js`). Automatic reviews, which are most Codex threads, are hidden
+  until you choose their origin.
+- **A session:** choose a title and its file opens on **Session**: a header with the
+  agent, status, origin, project, models, times, size, and its parent and children (a
+  subagent’s file links to its parent, and the parent’s lists them), above its events.
+  Every event carries one of ten kinds, which keep the same color wherever they appear:
+  prompt, text, thinking, tool call, tool result, metering, control, context, error, and
+  unknown. A tool call also names its tool, in the color of its family: shell, read,
+  edit, search, web, MCP, subagent, or other.
+  Events a resumed session copied from the one it continues are marked as replayed.
+- **Compressed Codex rollouts:** the rollouts Codex has compressed with zstd open too.
+  Metabrowser reads no zstd, so the page reads the thread’s events from Codex’s own
+  history store, and the file has **Session** and **Log** views.
+
+The agent and the origin are shown as words, never as colors, so a page that mixes
+Claude Code and Codex reads like a page of one.
+A session file that is in no home, such as an exported transcript, opens on the same
+Session tab with the Log it always had.
+
+Each of these is a route, so an agent reads the same data without a browser:
+
+```shell
+metab ~ --api '/api/plugin/agents/catalog' --format json
+metab ~ --api '/api/plugin/agents/sessions?agent=claude&sort=size&limit=10' --format json
+metab ~ --api '/api/plugin/agents/session?path=.claude/projects/PROJECT/ID.jsonl' --format json
+metab ~ --api '/api/plugin/agents/records?path=.claude/projects/PROJECT/ID.jsonl&kind=error' --format json
+metab ~ --api '/api/plugin/agents/live' --format json
+```
+
+Add `sync=1` to wait until every session is summarized, which the page does not.
+[The catalog](project/architecture/arch-views-models-routes.md#agent-catalog) says what
+each route takes and returns.
+Everything is read from the machine’s own files and stays there.
+
 ## Reading Agent Logs
 
 Coding-agent session logs are JSONL files, and Metabrowser opens them as timelines.
 
 - **Recognized agents:** the session logs of Claude Code, Codex, Gemini CLI, and Pi open
-  with three views: **Log**, a timeline of messages, tool calls, and results with filter
-  chips; **Charts**, the session’s events by kind over time; and **Raw JSON**. The
-  header names the agent and the run’s state.
+  with four views: **Session**, described above, which shows the Log for a log that is
+  in no Claude Code or Codex home; **Log**, a timeline of messages, tool calls, and
+  results with filter chips; **Charts**, the session’s events by kind over time; and
+  **Raw JSON**. The header names the agent and the run’s state.
   - **Claude Code:** both the session transcripts under `~/.claude/projects` and the
     JSON stream a non-interactive run writes.
   - **Codex:** both the rollout files under `~/.codex/sessions` and the JSON stream of
-    `codex exec`. Rollouts Codex has compressed with zstd do not open yet.
+    `codex exec`. Rollouts Codex has compressed with zstd open on their own Session and
+    Log views, from Codex’s history store.
 - **Other JSONL:** any other `.jsonl` file opens with Log and Raw JSON.
 - **While the agent runs:** a log under a `.logs` or `.state` folder that is being
   written tails in the Log view as events arrive
@@ -202,7 +268,7 @@ The same parse is available without a browser:
 ```shell
 metab ./runs --show .logs/session.jsonl
 metab ./runs --api '/api/file?path=.logs/session.jsonl' --format json
-metab ./runs --api '/api/plugin/agent-log/charts?path=.logs/session.jsonl' --format json
+metab ./runs --api '/api/plugin/agents/charts?path=.logs/session.jsonl' --format json
 ```
 
 The `/api/file` envelope carries the events and a summary: the agent, event, tool-call,

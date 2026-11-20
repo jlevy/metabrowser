@@ -562,7 +562,47 @@ status: 200
       "kind": "api"
     },
     {
-      "path": "/api/plugin/agent-log/charts",
+      "path": "/api/plugin/agents/catalog",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/agents/charts",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/agents/live",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/agents/records",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/agents/session",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/agents/sessions",
       "methods": [
         "GET",
         "HEAD"
@@ -1028,7 +1068,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 86
+  "count": 91
 }
 ? 0
 ```

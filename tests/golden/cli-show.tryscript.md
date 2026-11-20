@@ -86,7 +86,7 @@ $ metab showroot --show data.json
 show: data.json
 route: /view/data.json
 kind: structured
-views: tree (default, key V), source (key S)
+views: tree (default, key V), table (key A), source (key S)
 model: text envelope; size=33 content_bytes=33 content_truncated=False
 ? 0
 ```
@@ -125,7 +125,7 @@ $ metab showroot --show session.jsonl
 show: session.jsonl
 route: /view/session.jsonl
 kind: agent-log
-views: log (default, key V), charts (key C), raw (key S)
+views: session (default, key E), log (key V), charts (key C), raw (key S)
 model: jsonl envelope; size=66
 ? 0
 ```

@@ -657,7 +657,7 @@ own `children` hook.
 
 Views: Table (`v`, the default) and Source (`s`).
 
-**Record lists** are a Table view (`r`) of the structured plugin’s `structured` kind,
+**Record lists** are a Table view (`A`) of the structured plugin’s `structured` kind,
 beside Tree and Source, reading the `parsed` hook’s result under its existing bound
 ([Decision 12](#decision-12-where-a-record-list-gets-its-table)). The Table tab draws a
 top-level list of mappings and, for any other document, says it is not a list of
@@ -983,6 +983,27 @@ As built, where this plan left a choice open:
   moves it, and a cursor continues from the sort position it names.
 - `requires = ["table"]` is declared because the table plugin’s routes serve the source;
   a manifest with a `[[table_source]]` that does not require `table` is refused.
+- The envelope also carries `reason` (why a page is not complete: `budget`,
+  `sort_budget`, `source_truncated`, or `cursor_expired`), `examined` (the rows a scan
+  reached before its budget ran out), `searched` (the fields a search read),
+  `sort_refused`, and `limit` (the rows the page allowed).
+- A filter or search that runs out of budget answers the rows it found in the query’s
+  own order, and its cursor continues among them; a sort the budget cannot finish,
+  whether in the scan before it or in building its index, answers no rows with the
+  reason `sort_budget` and the field in `sort_refused`, as above.
+- `cols` names one field per parameter and repeats (`cols=a&cols=b`), since a delimited
+  header may hold a comma; `ref` splits at its last colon.
+- A page carries at most `TABLE_PAGE_CELLS_MAX` cells, so a page of wide rows has fewer
+  rows than its `limit` asked for.
+  A delimited file is bounded in rows, cells, and columns as well as bytes, since its
+  costs follow those.
+- A `c.` cursor names the sort field and order it was made for, and a cursor for another
+  is refused.
+- Of the cell envelopes above, this phase builds the integer, real, text (with `length`
+  and `invalid_utf8`), and `{value, stored}` ones.
+  `{blob, length, hex}`, `{length, preview: false}`, `{error}`, and `{ref}` arrive with
+  SQLite tables (Phase 5), and `{json, preview}` with the first source that types a
+  field `json` (Phase 5 or 7); a table view meets only the built ones until then.
 
 ### Phase 3: The Table View
 
@@ -1004,9 +1025,26 @@ As built, where this plan left a choice open:
   `WHOLE_TABLE_MAX_ROWS`, measured in Chrome (`tests/dom/table-view-measure.mjs`); a
   windowed grid reads the next page as the window nears the last row held, so its scroll
   height grows with what it has read rather than standing for the count.
-- **One filter per field in the view.** `fetchPluginData` sends one value per parameter,
-  so the header menu and the value links keep one filter per field, and a new one
-  replaces it; the route takes more, and a range waits for a reader who needs it.
+- **One filter per field in the view.** The header menu and the value links keep one
+  filter per field, and a new one replaces it; the route takes more, and a range waits
+  for a reader who needs it.
+- **Repeated parameters.** `fetchPluginData` sends an array value as its parameter
+  repeated, one value each, so `cols` names one field a parameter in the request and in
+  the address alike, and a field whose name holds a comma is one column.
+- **Pages the server bounds.** The view asks for `FIRST_PAGE_ROWS` and then
+  `NEXT_PAGE_ROWS`, and counts the rows that came: a page of wide rows carries fewer
+  (its `limit` says how many), so a table small enough to draw whole is read until its
+  `next_after` ends, and a window reads its next page as soon as the last is drawn.
+  A cursor continues only the question it was made for; while a new question’s first
+  page is on its way, the rows held for the last read no further.
+- **What a budget did.** A sort refused with `sort_budget` is a notice naming the field,
+  with a link to the file’s order, not an empty table; a search stopped with `budget`
+  shows the matches among the rows it read and says how many it read, and scrolling
+  reads on among them.
+  A page that says `truncated` with an exact count was cut in a row’s cells, and one
+  with a lower bound in its rows, and the notice says which.
+  `tests/test_table_view_session.py` records these answers with each bound lowered for
+  one small file, since a file that meets the real bound is too large to record.
 - **The open record** is `record=<key>` on the table’s address, which the view reads and
   the rows route ignores; a record opens in place of the grid, and Back, or its own Back
   link, returns the grid with the keyboard on the row.
@@ -1099,8 +1137,50 @@ As built, where this plan left a choice open:
 
 ### Phase 7: Record Lists
 
-- [ ] The Table view of the `structured` kind as Decision 12 settles it, with its
+- [x] The Table view of the `structured` kind as Decision 12 settles it, with its
   generation, goldens, and parity
+
+As built, where this plan left a choice open:
+
+- **The key is `A`.** The design said `r`, which is not a letter of “Table”, and the
+  design system gives a view a letter of its label; `t` is Quick Search’s, so the tab
+  takes `a`, the next.
+- **A list of records** is a top-level list whose every item is a mapping; one item of
+  another kind refuses the file, whatever the row bounds read, and the refusal names the
+  item. An empty list is an empty table.
+  A YAML stream of mappings, which the structured parse reads as a list, is one too.
+- **Fields** are the keys in the order each first appears.
+  A key that is not text is named by its JSON text, an empty one `field_<n>`, and a
+  repeated name gains `_<n>`, as a delimited header’s does.
+  A field’s type is the one its sampled values share (an integer counting as a real,
+  text that is all dates or datetimes being that, a nested value `json`); values that
+  disagree make it `unknown`, each value shown as its own type, sorted by storage class
+  (nulls, numbers and booleans, text, nested values) and filtered with a number as a
+  number. A later value that contradicts a known type is a `{value, stored}` cell.
+  A `json` field is not sortable.
+- **`{json}`** carries the nested value itself, and no `preview`, which the view writes
+  from it; past the bound the cell is read under it is the value’s JSON text, cut, a
+  `{text, length}` envelope in a `json` field.
+  A value JSON has no form for, such as a YAML date or binary value, is its text.
+- **The record’s tree.** The table plugin cannot load the structured plugin, which
+  requires it, so the structured kind’s view hands `mountTable` a `renderJson` that
+  draws the inline tree, and the view disposes of each tree with its record.
+- **The shared parse.** The source reads `load_structured_payload`, the Tree view’s
+  route’s cache, resolving the path again after sampling the generation, so a parse
+  looked up by fingerprint is never older than the generation it is labelled with.
+  A parse made for the table leaves out the Tree view’s YAML re-serialization, which is
+  most of a large file’s cost (26 s for 8 MiB of JSON records, where the parse took 0.14
+  s), and is not remembered for Tree; the table’s own cache holds what it built.
+- **The engine.** The delimited source’s scan, filters, search, sort indexes, cursors,
+  and cache moved to `builtin_plugins/table/memory.py`, which both sources answer
+  through, so the record lists share its paging and budget behavior rather than a copy.
+- **A refusal in the view.** A `source_unreadable` answer is the source’s words in place
+  of the table, with the toolbar hidden and no way back to a whole table, which is how
+  the Table tab says a document is not a list of records.
+- **What stays open.** A link that carries the table’s query opens the file in Tree, its
+  kind’s default, and the Table tab reads the query when it is shown; a
+  view-availability hook (Decision 12’s B) would let a record list open in its table.
+  SoftSchema typing stays an open question below.
 
 ### Phase 8: fsqlite Stores
 

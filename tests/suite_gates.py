@@ -38,6 +38,7 @@ from pathlib import Path
 import pytest
 
 from tests.admitted_git import take_floor_request
+from tests.file_ages_git import FILE_AGES_GIT_SKIP
 from tests.required_tools import take_chrome_request
 from tests.suite_tiers import CHROME_FIXTURE, CHROME_MARKER, SERIAL_MARKER
 
@@ -51,6 +52,9 @@ STRICT_SKIPS_ALL = "all"
 LIVE_DATA_SKIPS = ("has no branch with a slash today", "has no open pull request today")
 # The admitted-Git tier's skip, where the installed Git is below the floor.
 ADMITTED_GIT_SKIP = "needs a Git the acquisition floor admits"
+# The same tier's skip for file ages, where the installed Git is below the one that reads them
+# (tests/file_ages_git.py).
+FILE_AGES_SKIPS = (ADMITTED_GIT_SKIP, FILE_AGES_GIT_SKIP)
 
 
 def refused_skip(markers: Collection[str], reason: str, environ: Mapping[str, str]) -> str | None:
@@ -73,7 +77,9 @@ def refused_skip(markers: Collection[str], reason: str, environ: Mapping[str, st
                 f"only for what github.com holds today: {reason}"
             )
         return None
-    if environ.get(STRICT_SKIPS_ENV) == "1" and ADMITTED_GIT_SKIP not in reason:
+    if environ.get(STRICT_SKIPS_ENV) == "1" and not any(
+        known in reason for known in FILE_AGES_SKIPS
+    ):
         return (
             f"{STRICT_SKIPS_ENV}=1, and this skip belongs to no tier that "
             f"docs/e2e-testing.md names: {reason}"
