@@ -3,9 +3,13 @@ type: is
 id: is-01m7kaq8nw86eh3g3rkfr327ht
 title: "Chrome sessions can outlive their result: tests/dom/chrome-session.mjs close() waits 5 s after SIGTERM, but the piped stderr and exit listener keep Node alive until Chrome exits, so a slow exit overruns a test's run budget"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 6
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/670
+    at: 2026-11-20T22:48:00.261Z
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,8 +17,12 @@ parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 hold: null
 hold_until: null
 created_at: 2026-11-16T23:22:50.427Z
-updated_at: 2026-11-20T22:47:56.324Z
+updated_at: 2026-11-20T22:48:00.603Z
 started_at: 2026-11-20T22:47:56.322Z
+closed_at: 2026-11-20T22:48:00.602Z
+close_reason: "Fixed in #670 (f95ddf500): close escalates to SIGKILL and destroys the inherited stderr pipe. A regression test exercises stubborn Chrome and a surviving helper holding stderr."
+resolution: null
+duplicate_of: null
 ---
 Seen by the mb-nvo0 fix (#488): in 3 of 30 prose-faces runs Chrome exited 1.2 to 7.5 s after '96 checks passed' and the test hit its 30 s budget. Shared helper used by 23 test files. Candidate fixes: SIGKILL after the bound, or chrome.stderr.destroy() plus chrome.unref(). Prove with a loaded-machine loop.
 
