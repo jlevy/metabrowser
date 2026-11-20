@@ -1,0 +1,127 @@
+{
+  "answers": {
+    "table/tables notes/fsqlite.json": {
+      "status": 200,
+      "body": {
+        "type": "table_list",
+        "path": "notes/fsqlite.json",
+        "generation": "G",
+        "tables": [
+          {
+            "id": "applied_tx",
+            "label": "applied_tx",
+            "group": "internal",
+            "keyed": true,
+            "estimate": null,
+            "path": "notes/fsqlite.json/applied_tx"
+          },
+          {
+            "id": "fsqlite_meta",
+            "label": "fsqlite_meta",
+            "group": "internal",
+            "keyed": true,
+            "estimate": null,
+            "path": "notes/fsqlite.json/fsqlite_meta"
+          },
+          {
+            "id": "notes",
+            "label": "notes",
+            "group": "tables",
+            "keyed": true,
+            "estimate": 2,
+            "path": "notes/fsqlite.json/notes"
+          }
+        ]
+      }
+    },
+    "table/tables torn/fsqlite.json": {
+      "status": 422,
+      "body": {
+        "type": "table_error",
+        "path": "torn/fsqlite.json",
+        "code": "source_unreadable",
+        "error": "The current pointer does not name a version: “one”.",
+        "state": "corrupt"
+      }
+    },
+    "fsqlite/schema notes/fsqlite.json": {
+      "status": 200,
+      "body": {
+        "type": "fsqlite_schema",
+        "path": "notes/fsqlite.json",
+        "generation": "G",
+        "objects": [
+          {
+            "type": "table",
+            "name": "applied_tx",
+            "table": "applied_tx",
+            "sql": "CREATE TABLE applied_tx (tx_id TEXT PRIMARY KEY NOT NULL, applied_at TEXT NOT NULL)",
+            "segment": "applied_tx"
+          },
+          {
+            "type": "index",
+            "name": "sqlite_autoindex_applied_tx_1",
+            "table": "applied_tx",
+            "sql": null,
+            "segment": "applied_tx"
+          },
+          {
+            "type": "table",
+            "name": "fsqlite_meta",
+            "table": "fsqlite_meta",
+            "sql": "CREATE TABLE fsqlite_meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)",
+            "segment": "fsqlite_meta"
+          },
+          {
+            "type": "index",
+            "name": "sqlite_autoindex_fsqlite_meta_1",
+            "table": "fsqlite_meta",
+            "sql": null,
+            "segment": "fsqlite_meta"
+          },
+          {
+            "type": "table",
+            "name": "notes",
+            "table": "notes",
+            "sql": "CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL)",
+            "segment": "notes"
+          }
+        ],
+        "foreign_keys": [],
+        "table": null
+      }
+    },
+    "fsqlite/schema notes/fsqlite.json/notes": {
+      "status": 200,
+      "body": {
+        "type": "fsqlite_schema",
+        "path": "notes/fsqlite.json/notes",
+        "generation": "G",
+        "objects": [
+          {
+            "type": "table",
+            "name": "notes",
+            "table": "notes",
+            "sql": "CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL)",
+            "segment": "notes"
+          }
+        ],
+        "foreign_keys": [],
+        "table": "notes"
+      }
+    },
+    "fsqlite/schema torn/fsqlite.json": {
+      "status": 200,
+      "body": {
+        "type": "fsqlite_schema",
+        "path": "torn/fsqlite.json",
+        "generation": null,
+        "error": {
+          "state": "corrupt",
+          "message": "The current pointer does not name a version: “one”."
+        },
+        "table": null
+      }
+    }
+  }
+}

@@ -64,7 +64,7 @@ $ metab storeroot --show notes/fsqlite.json
 show: notes/fsqlite.json
 route: /view/notes/fsqlite.json
 kind: sqlite-store
-views: info (default)
+views: table (default, key V), schema (key S), info (key I)
 model: text envelope; size=125 content_bytes=125 content_truncated=False
 ? 0
 ```
@@ -192,21 +192,249 @@ status: 200
 ? 0
 ```
 
-## Test: the children hook answers in its shape
+## Test: the store’s tables are its snapshot’s
 
-The store is a container whose children are its snapshot’s tables.
-The SQLite source that lists them joins this hook later in the stack, so it answers none
-yet, with the snapshot it read.
+The store is a container whose children are the tables of the snapshot `current` names,
+each at `<marker>/<segment>` as a database’s are, with the snapshot it read.
+`applied_tx` and `fsqlite_meta`, the format’s own, are muted as internal.
 
 ```console
 $ metab storeroot --api '/api/plugin/fsqlite/children?path=notes/fsqlite.json'
 api: /api/plugin/fsqlite/children?path=notes/fsqlite.json
 status: 200
 {
-  "children": [],
+  "children": [
+    {
+      "name": "applied_tx",
+      "path": "notes/fsqlite.json/applied_tx",
+      "muted": true
+    },
+    {
+      "name": "fsqlite_meta",
+      "path": "notes/fsqlite.json/fsqlite_meta",
+      "muted": true
+    },
+    {
+      "name": "notes",
+      "path": "notes/fsqlite.json/notes"
+    }
+  ],
   "version": 2,
   "snapshot": "000000000002.fsqlite.sqlite"
 }
+? 0
+```
+
+The table routes read the store through the SQLite source over that snapshot, under the
+store’s generation: its tables by group, then one table’s schema and rows.
+
+```console
+$ metab storeroot --api '/api/plugin/table/tables?path=notes/fsqlite.json'
+api: /api/plugin/table/tables?path=notes/fsqlite.json
+status: 200
+{
+  "type": "table_list",
+  "path": "notes/fsqlite.json",
+  "generation": "2-[..]",
+  "tables": [
+    {
+      "id": "applied_tx",
+      "label": "applied_tx",
+      "group": "internal",
+      "keyed": true,
+      "estimate": 1,
+      "path": "notes/fsqlite.json/applied_tx"
+    },
+    {
+      "id": "fsqlite_meta",
+      "label": "fsqlite_meta",
+      "group": "internal",
+      "keyed": true,
+      "estimate": 4,
+      "path": "notes/fsqlite.json/fsqlite_meta"
+    },
+    {
+      "id": "notes",
+      "label": "notes",
+      "group": "tables",
+      "keyed": true,
+      "estimate": 2,
+      "path": "notes/fsqlite.json/notes"
+    }
+  ]
+}
+? 0
+```
+
+```console
+$ metab storeroot --show notes/fsqlite.json/notes
+show: notes/fsqlite.json/notes
+route: /view/notes/fsqlite.json/notes
+kind: sqlite-store
+views: table (default, key V), schema (key S), info (key I)
+model: text envelope; size=0 content_bytes=0 content_truncated=False container=notes/fsqlite.json inner=notes
+? 0
+```
+
+```console
+$ metab storeroot --api '/api/plugin/table/rows?path=notes/fsqlite.json/notes'
+api: /api/plugin/table/rows?path=notes/fsqlite.json/notes
+status: 200
+{
+  "type": "table_rows",
+  "path": "notes/fsqlite.json/notes",
+  "table": "notes",
+  "generation": "2-[..]",
+  "columns": [
+    "id",
+    "title"
+  ],
+  "rows": [
+    {
+      "key": "k.WzFd",
+      "cells": {
+        "id": 1,
+        "title": "first"
+      }
+    },
+    {
+      "key": "k.WzJd",
+      "cells": {
+        "id": 2,
+        "title": "second"
+      }
+    }
+  ],
+  "next_after": null,
+  "complete": true,
+  "truncated": false,
+  "reason": null,
+  "count": 2,
+  "count_complete": true,
+  "estimate": 2,
+  "skipped": 0,
+  "examined": null,
+  "searched": null,
+  "sort_refused": null,
+  "limit": 100
+}
+? 0
+```
+
+```console
+$ metab storeroot --api '/api/plugin/table/schema?path=notes/fsqlite.json/notes' > notes-schema.json
+? 0
+```
+
+```console
+$ grep -E '"(name|type|key)"' notes-schema.json
+  "type": "table_schema",
+  "key": [
+      "name": "id",
+      "type": "integer",
+      "key": true,
+      "name": "title",
+      "type": "text",
+      "key": false,
+? 0
+```
+
+An internal table is listed and read like any other.
+
+```console
+$ metab storeroot --api '/api/plugin/table/rows?path=notes/fsqlite.json/applied_tx'
+api: /api/plugin/table/rows?path=notes/fsqlite.json/applied_tx
+status: 200
+{
+  "type": "table_rows",
+  "path": "notes/fsqlite.json/applied_tx",
+  "table": "applied_tx",
+  "generation": "2-[..]",
+  "columns": [
+    "tx_id",
+    "applied_at"
+  ],
+  "rows": [
+    {
+      "key": "k.WzFd",
+      "cells": {
+        "tx_id": "000000000001-000000000001-fixture-0123456789",
+        "applied_at": "2026-11-20T00:00:00Z"
+      }
+    }
+  ],
+  "next_after": null,
+  "complete": true,
+  "truncated": false,
+  "reason": null,
+  "count": 1,
+  "count_complete": true,
+  "estimate": 1,
+  "skipped": 0,
+  "examined": null,
+  "searched": null,
+  "sort_refused": null,
+  "limit": 100
+}
+? 0
+```
+
+The Schema view’s route answers as the SQLite plugin’s does for a database, for the
+whole snapshot or for the one table its address names.
+
+```console
+$ metab storeroot --api '/api/plugin/fsqlite/schema?path=notes/fsqlite.json/notes'
+api: /api/plugin/fsqlite/schema?path=notes/fsqlite.json/notes
+status: 200
+{
+  "type": "fsqlite_schema",
+  "path": "notes/fsqlite.json/notes",
+  "generation": "2-[..]",
+  "objects": [
+    {
+      "type": "table",
+      "name": "notes",
+      "table": "notes",
+      "sql": "CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL)",
+      "segment": "notes"
+    }
+  ],
+  "foreign_keys": [],
+  "table": "notes"
+}
+? 0
+```
+
+```console
+$ metab storeroot --api '/api/plugin/fsqlite/schema?path=notes/fsqlite.json/absent'
+api: /api/plugin/fsqlite/schema?path=notes/fsqlite.json/absent
+status: 404
+{
+  "type": "fsqlite_error",
+  "path": "notes/fsqlite.json/absent",
+  "code": "table_not_found",
+  "error": "no table 'absent' in this store"
+}
+Error: /api/plugin/fsqlite/schema?path=notes/fsqlite.json/absent returned HTTP 404
+? 1
+```
+
+A snapshot opened by itself is a database, and its `application_id` groups the reserved
+tables as internal there too.
+
+```console
+$ metab storeroot --api '/api/plugin/table/tables?path=notes/snapshots/000000000002.fsqlite.sqlite' > snapshot-tables.json
+? 0
+```
+
+```console
+$ grep -E '"(id|group)"' snapshot-tables.json
+      "id": "applied_tx",
+      "group": "internal",
+      "id": "fsqlite_meta",
+      "group": "internal",
+      "id": "notes",
+      "group": "tables",
 ? 0
 ```
 
@@ -312,6 +540,38 @@ status: 200
 ? 0
 ```
 
+The table routes refuse a store they cannot read, naming the same state.
+
+```console
+$ metab storeroot --api '/api/plugin/table/tables?path=newer/fsqlite.json'
+api: /api/plugin/table/tables?path=newer/fsqlite.json
+status: 422
+{
+  "type": "table_error",
+  "path": "newer/fsqlite.json",
+  "code": "source_unreadable",
+  "error": "This store's format f2.0 is newer than this reader knows.",
+  "state": "unsupported"
+}
+Error: /api/plugin/table/tables?path=newer/fsqlite.json returned HTTP 422
+? 1
+```
+
+```console
+$ metab storeroot --api '/api/plugin/table/rows?path=collected/fsqlite.json/notes'
+api: /api/plugin/table/rows?path=collected/fsqlite.json/notes
+status: 422
+{
+  "type": "table_error",
+  "path": "collected/fsqlite.json/notes",
+  "code": "source_unreadable",
+  "error": "The current pointer names version 5, whose snapshot 000000000005.fsqlite.sqlite is missing.",
+  "state": "corrupt"
+}
+Error: /api/plugin/table/rows?path=collected/fsqlite.json/notes returned HTTP 422
+? 1
+```
+
 A path that is not a store’s marker is not found.
 
 ```console
@@ -330,8 +590,9 @@ Error: /api/plugin/fsqlite/info?path=notes/current returned HTTP 404
 
 ## Test: reading a store changes nothing in it
 
-No lease, no lock, and no file beside a snapshot: every entry and every byte is as the
-`before:` script left it.
+No lease, no lock, and no file beside a snapshot: after every read above, the Info,
+Schema, and children hooks and the table routes alike, every entry and every byte is as
+the `before:` script left it.
 
 ```console
 $ find storeroot | LC_ALL=C sort | diff listing-before.txt - && find storeroot -type f -exec cksum {} + | LC_ALL=C sort | diff sums-before.txt - && echo unchanged

@@ -342,7 +342,7 @@ plugin requirements:
   diff: requires structured
   event-log: requires agents
   folder: requires markdown
-  fsqlite: requires sqlite
+  fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
   unknown-jsonl: requires agents
@@ -363,7 +363,7 @@ plugin requirements:
   diff: requires structured
   event-log: requires agents
   folder: requires markdown
-  fsqlite: requires sqlite
+  fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
   unknown-jsonl: requires agents
@@ -416,7 +416,7 @@ plugin requirements:
   diff: requires structured
   event-log: requires agents
   folder: requires markdown
-  fsqlite: requires sqlite
+  fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
   unknown-jsonl: requires agents
