@@ -1,13 +1,13 @@
 """The freshness session runs production browser code on what a served mirror answers.
 
 ``tests/dom/source-freshness-session.js`` drives ``static/source-freshness.js`` -- the
-polling, the stale label, the newer-revision offer, pin switching, and opening a commit
+polling, the stale label, following a branch, pin switching, and opening a commit
 the mirror lacks -- and the history panel's ``classifyPageFailure`` through a scripted
 conversation, and ``tests/golden/cli-ui-source-freshness.tryscript.md`` pins its
 transcript. So that the conversation is the real server's and not envelopes a test wrote
 by hand, its responses come from ``tests/fixtures/source-freshness-responses.json``:
 what the in-process application answered while a mirror went stale, refreshed, gained a
-newer commit, switched its pin, lost its origin, invalidated an open all-branch history
+newer commit that the server followed, switched its pin, lost its origin, invalidated an open all-branch history
 cursor, and was asked for commits it did not have.
 The first test here replays that story against a real store and fails when the
 recording no longer matches.
@@ -245,9 +245,29 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             started = client.post("/api/source/refresh", json={}, headers=JSON_BODY)
             assert started.status_code == 202
             recorded["refresh_started"] = started.json()
+            # The refresh moved the served branch, and the server followed it.
             recorded["refreshed"] = _settle(client)
+            # A page still drawn for the commit before asks for the branch at its address,
+            # which changes nothing now and says where the page is on the new commit.
+            followed = client.post(
+                "/api/source/pin",
+                json={"ref": recorded["refreshed"]["ref"], "view": "/view/"},
+                headers=JSON_BODY,
+            )
+            assert followed.status_code == 200
+            recorded["followed"] = followed.json()
+            # One on a file the new commit lacks lands at the root.
+            gone = "/view/g1-R09ORS5tZA"  # GONE.md, which no commit here has
+            elsewhere = client.post(
+                "/api/source/pin",
+                json={"ref": recorded["refreshed"]["ref"], "view": gone},
+                headers=JSON_BODY,
+            )
+            assert elsewhere.status_code == 200
+            recorded["followed_elsewhere"] = {"view": gone, "answer": elsewhere.json()}
             history = client.get("/api/git/log", params={"limit": "1", "scope": "all"}).json()
-            _git(origin, "branch", "side", recorded["refreshed"]["pin"])
+            # A branch at the commit before, which the next refresh brings.
+            _git(origin, "branch", "side", recorded["stale"]["pin"])
             assert client.post("/api/source/refresh", json={}, headers=JSON_BODY).status_code == 202
             _settle(client)
             stale_cursor = client.get(
@@ -255,9 +275,9 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             )
             assert stale_cursor.status_code == 409
             recorded["history_stale"] = {"status": 409, "body": stale_cursor.json()}
-            switched = client.post(
-                "/api/source/pin", json={"ref": recorded["refreshed"]["ref"]}, headers=JSON_BODY
-            )
+            # Another tab switches to another branch, at another commit: a page still on
+            # the first is refused and offered a reload.
+            switched = client.post("/api/source/pin", json={"ref": "side"}, headers=JSON_BODY)
             assert switched.status_code == 200
             recorded["switched"] = switched.json()
             recorded["after_switch"] = client.get("/api/source/status").json()
@@ -458,8 +478,18 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["stale"]["stale"] is True and recorded["stale"]["refreshing"] is False
     assert recorded["refresh_started"]["status"]["refreshing"] is True
     refreshed = recorded["refreshed"]
-    assert refreshed["latest"] != refreshed["pin"], "the refresh must bring a newer commit"
-    assert recorded["after_switch"]["generation"] == refreshed["generation"] + 1
+    stale = recorded["stale"]
+    assert refreshed["pin"] != stale["pin"], "the refresh must bring a newer commit"
+    # The server followed the branch: the new tip is served, under the same ref.
+    assert (refreshed["ref"], refreshed["follows"]) == (stale["ref"], True)
+    assert refreshed["latest"] == refreshed["pin"]
+    assert refreshed["generation"] == stale["generation"] + 1
+    assert recorded["followed"]["changed"] is False
+    assert recorded["followed"]["view_href"] == "/view/"
+    assert recorded["followed_elsewhere"]["answer"]["view_href"] == "/view/"
+    after_switch = recorded["after_switch"]
+    assert (after_switch["ref"], after_switch["pin"]) != (refreshed["ref"], refreshed["pin"])
+    assert after_switch["pin"] == stale["pin"]
     assert recorded["history_stale"]["body"]["code"] == "history_stale"
     assert recorded["failed"]["last_outcome"]["outcome"] == "origin_unavailable"
     assert recorded["unreachable"]["stale"] is True
@@ -494,9 +524,9 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["commit_found"]["status"] == 200
     assert recorded["commit_found"]["commit"] == recorded["commit_missing"]["oid"]
     # Outside the window a page's own request fetches, and here the fetch cannot run.
-    stale = recorded["commit_stale_started"]
-    assert (stale["status"], stale["body"]["refresh"]) == (202, "started")
-    assert stale["body"]["status"]["stale"] is True
+    stale_commit = recorded["commit_stale_started"]
+    assert (stale_commit["status"], stale_commit["body"]["refresh"]) == (202, "started")
+    assert stale_commit["body"]["status"]["stale"] is True
     assert recorded["commit_stale_unfetched"]["last_outcome"]["outcome"] == "origin_unavailable"
     shown = recorded["origin_not_shown"]
     assert (shown["stale"], shown["last_outcome"]["outcome"]) == (False, "not_found_or_private")
@@ -532,10 +562,23 @@ def test_the_session_runs_on_the_recording() -> None:
         "GET /api/source/status",
         "POST /api/source/refresh {}",
     ]
-    offer = by_name["the refresh brought a newer commit"]["paint"]["offer"]
-    assert offer.endswith("[Switch] → refs/remotes/origin/topic")
-    assert by_name["accept the offer"]["reloads"] == 1
-    assert by_name["a refused switch says why and does not reload"]["reloads"] == 0
+    # The refresh moved the branch; the page goes with it, with nothing offered.
+    followed = by_name["the refresh moved the branch; the page follows it"]
+    assert followed["requests"][-1] == (
+        'POST /api/source/pin {"ref":"refs/remotes/origin/topic","view":"/view/"}'
+    )
+    assert (followed["reloads"], followed["paint"]["offer"]) == (1, None)
+    assert followed["paint"]["label"] == "Updating to topic…"
+    elsewhere = by_name["a page on a file the new commit lacks goes to the root"]
+    assert (elsewhere["navigated"], elsewhere["reloads"]) == (["/view/"], 0)
+    refused_follow = by_name["a refused follow says why and offers a reload"]
+    assert refused_follow["reloads"] == 0
+    assert refused_follow["paint"]["error"].startswith("Could not follow topic")
+    assert refused_follow["paint"]["offer"].endswith("[Reload]")
+    again = by_name["a refused follow is not asked again on the next poll"]
+    assert not any(request.startswith("POST") for request in again["requests"])
+    assert again["paint"]["error"] == refused_follow["paint"]["error"]
+    assert by_name["the reload a refused follow offers"]["reloads"] == 1
     polls = by_name["a stale page whose refresh fails asks once"]["requests"]
     assert len(polls) == 2 and all(request.startswith("GET ") for request in polls)
     history = {row["failure"]: row["means"] for row in transcript["history"]}
