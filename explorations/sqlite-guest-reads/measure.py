@@ -24,6 +24,7 @@ import threading
 import time
 from collections.abc import Callable, Generator
 from pathlib import Path
+from typing import cast
 
 HERE = Path(__file__).resolve().parent
 RESULTS = HERE / "results"
@@ -978,10 +979,34 @@ def main() -> None:
             result = SUITE_FUNCTIONS[name](scratch)
         record: Result = {"suite": name, "environment": _environment(), "results": result}
         record["seconds"] = math.ceil(time.monotonic() - started)
-        (out / f"{name}.json").write_text(
-            json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
+        (out / f"{name}.json").write_text(_biome_json(record) + "\n", encoding="utf-8")
         print(f"{name}: {record['seconds']} s")
+
+
+JSON_LINE_WIDTH = 100  # The repository's Biome `lineWidth`, so the results pass `biome check`.
+
+
+def _biome_json(value: object, indent: int = 0, column: int = 0) -> str:
+    """Serialize *value* as Biome formats JSON: keys sorted, objects expanded, and a list of
+    scalars on one line when it fits within :data:`JSON_LINE_WIDTH`."""
+
+    pad = " " * (indent + 2)
+    if isinstance(value, dict) and value:
+        items = sorted(cast(dict[str, object], value).items())
+        lines = [
+            f"{pad}{json.dumps(key)}: {_biome_json(item, indent + 2, len(pad) + len(json.dumps(key)) + 2)}"
+            for key, item in items
+        ]
+        return "{\n" + ",\n".join(lines) + "\n" + " " * indent + "}"
+    if isinstance(value, list) and value:
+        elements = cast(list[object], value)
+        if all(not isinstance(element, (dict, list)) for element in elements):
+            inline = "[" + ", ".join(json.dumps(element) for element in elements) + "]"
+            if column + len(inline) + 1 <= JSON_LINE_WIDTH:
+                return inline
+        lines = [pad + _biome_json(element, indent + 2, len(pad)) for element in elements]
+        return "[\n" + ",\n".join(lines) + "\n" + " " * indent + "]"
+    return json.dumps(value)
 
 
 SUITE_FUNCTIONS: dict[str, Callable[[Path], Result]] = {

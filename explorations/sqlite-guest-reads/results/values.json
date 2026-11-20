@@ -9,9 +9,7 @@
   "results": {
     "baseline": {
       "peak_rss_mb": 18,
-      "value": [
-        1
-      ]
+      "value": [1]
     },
     "blobopen_100_bytes_text": {
       "peak_rss_mb": 18,
@@ -19,41 +17,27 @@
     },
     "length_blob": {
       "peak_rss_mb": 18,
-      "value": [
-        209715200
-      ]
+      "value": [209715200]
     },
     "length_text": {
       "peak_rss_mb": 219,
-      "value": [
-        209715200
-      ]
+      "value": [209715200]
     },
     "octet_length_text": {
       "peak_rss_mb": 18,
-      "value": [
-        209715200
-      ]
+      "value": [209715200]
     },
     "substr_and_length_blob": {
       "peak_rss_mb": 221,
-      "value": [
-        16,
-        209715200
-      ]
+      "value": [16, 209715200]
     },
     "substr_and_length_text": {
       "peak_rss_mb": 219,
-      "value": [
-        100,
-        209715200
-      ]
+      "value": [100, 209715200]
     },
     "typeof_text": {
       "peak_rss_mb": 18,
-      "value": [
-        4
-      ]
+      "value": [4]
     },
     "value_mb": 200
   },

@@ -55,14 +55,7 @@
     "untrusted_schema": {
       "python_exposes_defensive": true,
       "trusted_schema_default": 1,
-      "virtual_table_modules": [
-        "DBSTAT_VTAB",
-        "FTS3",
-        "FTS4",
-        "FTS5",
-        "GEOPOLY",
-        "RTREE"
-      ],
+      "virtual_table_modules": ["DBSTAT_VTAB", "FTS3", "FTS4", "FTS5", "GEOPOLY", "RTREE"],
       "with_trusted_schema_off": {
         "SELECT * FROM f": "1 rows",
         "SELECT * FROM f_config": "1 rows",

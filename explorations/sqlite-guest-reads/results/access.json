@@ -126,9 +126,7 @@
       }
     },
     "symlink_in_another_folder": {
-      "beside_link": [
-        "app.db"
-      ],
+      "beside_link": ["app.db"],
       "immutable": {
         "rows": 100
       },
@@ -138,10 +136,7 @@
     },
     "wal_commit_leaves_main_file": {
       "main_file_unchanged": true,
-      "wal_bytes": [
-        4152,
-        8272
-      ]
+      "wal_bytes": [4152, 8272]
     },
     "wal_idle_read_only_folder": {
       "immutable": {
