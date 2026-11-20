@@ -175,7 +175,7 @@ class HomeCatalog:
         self._lock = threading.Lock()
         self._cond = threading.Condition(self._lock)
         self._fast_ready = threading.Event()
-        self._entries: dict[str, CatalogEntry] = {}
+        self._by_id: dict[str, CatalogEntry] = {}
         self._fast_drift = DriftSummary()
         self._thread: threading.Thread | None = None
         self._cancelled = False
@@ -204,7 +204,7 @@ class HomeCatalog:
         """The catalog as it is now; never waits for a pass."""
 
         with self._lock:
-            entries = list(self._entries.values())
+            entries = list(self._by_id.values())
             drifts = [e.drift for e in entries if e.summarized]
             return Snapshot(
                 home=self.home,
@@ -378,7 +378,7 @@ class HomeCatalog:
         """Replace the session list with the fast pass's, keeping summaries whose key held."""
 
         with self._cond:
-            previous = self._entries
+            previous = self._by_id
             fresh: dict[str, CatalogEntry] = {}
             for session, key in keyed:
                 old = previous.get(session.session_id)
@@ -387,7 +387,7 @@ class HomeCatalog:
                     fresh[session.session_id] = replace(old, failed=False)
                 else:
                     fresh[session.session_id] = CatalogEntry(session, key)
-            self._entries = fresh
+            self._by_id = fresh
             self._fast_drift = drift
             self._fast_at = stamp
             self._summarized = sum(1 for e in fresh.values() if e.summarized)
@@ -402,7 +402,7 @@ class HomeCatalog:
         with self._lock:
             todo = [
                 (sid, e.key, e.summary)
-                for sid, e in self._entries.items()
+                for sid, e in self._by_id.items()
                 if not e.summarized and not e.failed
             ]
         store = self._store
@@ -439,7 +439,7 @@ class HomeCatalog:
             self._summary_at = stamp
         if store is not None:
             with self._lock:
-                keep = [e.key for e in self._entries.values()]
+                keep = [e.key for e in self._by_id.values()]
             store.prune(keep)
 
     def _record(
@@ -451,16 +451,14 @@ class HomeCatalog:
         from_cache: bool,
     ) -> None:
         with self._lock:
-            entry = self._entries.get(session_id)
+            entry = self._by_id.get(session_id)
             if entry is None or entry.key != key:
                 return
             if summary is None:
-                self._entries[session_id] = replace(entry, failed=True)
+                self._by_id[session_id] = replace(entry, failed=True)
                 self._failed += 1
                 return
-            self._entries[session_id] = replace(
-                entry, summary=summary, drift=drift, summarized=True
-            )
+            self._by_id[session_id] = replace(entry, summary=summary, drift=drift, summarized=True)
             self._summarized += 1
             if from_cache:
                 self._from_cache += 1
