@@ -113,7 +113,8 @@
     td: Object.freeze(["width", "height"]),
     th: Object.freeze(["width", "height"]),
   });
-  // A number, with an optional fraction, then `%` or the `px` a README often writes.
+  // A number, with an optional fraction, then `%` or the `px` a README often writes; five
+  // digits, for the reason inert_html.py gives beside its _DIMENSION.
   const DIMENSION = /^[0-9]{1,5}(?:\.[0-9]{1,3})?(?:%|px)?$/i;
   // The attributes each tag may keep; every value is checked by allowedAttributes,
   // except a heading's id, which is always sanitizeNodes' own anchor, and an image's

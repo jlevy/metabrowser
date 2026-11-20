@@ -275,16 +275,17 @@ switcher shows, centered above a centered title.
   `align="center"` tags and empty `diagnostics` and `sanitizer_diagnostics`, so the page
   has no Diagnostics disclosure.
   With active content off, on a served mirror or a folder served with `--untrusted`,
-  Metabrowser’s inert Markdown keeps only in-tree images and keeps `align` only on table
-  cells, so it shows the icon left-aligned and without its `width`, still with no
-  diagnostics. Since mb-5xq7 (2026-11-19) the inert allowlist keeps the `align` and
-  `width` github.com keeps, so there too the icon is centered at 192 pixels.
-  One more cost is accepted for the centered block on GitHub: the rendered-Markdown diff
-  refuses raw HTML, so a README change has no rendered diff (measured the same day, a
-  one-word README change projects as `unsupported`, and the same change under a Markdown
-  title as `ready`). The inert profile’s `align` and the projection are tracked as
-  mb-4cwy. PyPI, which publishes the README as the package description, shows the alt
-  text instead, as it does for today’s screenshot (see Decisions).
+  Metabrowser’s inert Markdown keeps only in-tree images, still with no diagnostics.
+  Until mb-5xq7 (2026-11-19) it kept `align` only on table cells and dropped `width`, so
+  it showed the icon left-aligned at its file’s size; since then the inert allowlist
+  keeps the `align` and `width` github.com keeps, so there too the icon is centered at
+  192 pixels. One more cost is accepted for the centered block on GitHub: the
+  rendered-Markdown diff refuses raw HTML, so a README change has no rendered diff
+  (measured the same day, a one-word README change projects as `unsupported`, and the
+  same change under a Markdown title as `ready`). The projection is tracked as mb-4cwy,
+  which also tracked the inert profile’s `align` until mb-5xq7 fixed it.
+  PyPI, which publishes the README as the package description, shows the alt text
+  instead, as it does for today’s screenshot (see Decisions).
 
 **Outline:**
 

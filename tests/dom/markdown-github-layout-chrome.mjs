@@ -15,9 +15,16 @@
 //   title (the allowlist of an untrusted render dropped both attributes, which drew it at
 //   512 pixels against the left edge);
 // - an image sized by its `height` alone, its `width` alone, or both, takes those sizes,
-//   as github.com sets no rule over them (KPress's `height: auto` overrode a `height`);
+//   as github.com sets no rule over them (KPress's `height: auto` overrode a `height`),
+//   and, as on github.com, no margin: a `height="20"` badge sits on its line of text
+//   (KPress's `margin-block: 1rem` lifted it wholly above);
+// - a wiki embed, which the markdown plugin gives both a `width` and a `height`, keeps
+//   its file's proportions and KPress's margin, as before those rules;
 // - an image floated by `align="right"` or `align="left"` is that wide, against its edge,
-//   with github.com's 20 pixels of room outside its width;
+//   with github.com's 20 pixels of room outside its width, and the images after the left
+//   one start at their block's left edge (a margin below it pushed them aside);
+// - an image floated at the document's end lies inside the prose box (it was drawn past
+//   the card's foot);
 // - a table cell takes its own `align`, or its row's, over KPress's own alignment, and a
 //   cell with neither keeps KPress's;
 // - a `<div align="right">` sets its text against its right edge.
@@ -103,19 +110,46 @@ const VIEW = `(() => {
   return pane.querySelector(':scope > [data-active-view="true"]');
 })()`;
 const PROSE = `${VIEW}?.querySelector(".kpress-prose")`;
-// Drawn: all seven of the document's images loaded.
-const DRAWN = `(() => {
+// Drawn: all eight of the document's images loaded, and, once it is added, the ninth.
+const drawn = (count) => `(() => {
   const images = [...(${PROSE}?.querySelectorAll("img") ?? [])];
-  return images.length === 7 && images.every((image) => image.complete && image.naturalWidth > 0);
+  return images.length === ${count} && images.every((image) => image.complete && image.naturalWidth > 0);
+})()`;
+
+// A wiki embed as the markdown plugin makes it from `![[icon.png|100x50]]`: an image with
+// both sizes, marked by `data-metabrowser-link-syntax` (wiki-enhancer.js's
+// createMediaElement; tests/dom/markdown-wiki-enhancer-behavior.js pins that shape). It is
+// added here, before the first section, as the plugin would place it, because what is
+// checked is the stylesheet's treatment of that shape, not the link's resolution.
+const ADD_WIKI_EMBED = `(() => {
+  const prose = ${PROSE};
+  const block = document.createElement("p");
+  const image = document.createElement("img");
+  image.setAttribute("src", prose.querySelector("img").getAttribute("src"));
+  image.setAttribute("alt", "Wiki embed");
+  image.setAttribute("width", "100");
+  image.setAttribute("height", "50");
+  image.setAttribute("data-metabrowser-link-syntax", "wiki-embed");
+  block.append(image);
+  prose.querySelector("h2").before(block);
+  return true;
 })()`;
 
 // What the checks read: each image by its alt text, each table cell by its text, the
-// title, and the right-aligned block, as boxes and the styles that place them.
+// title, the right-aligned block, the badge's line of text, and the prose box, as boxes
+// and the styles that place them.
 const MEASURE = `(() => {
   const prose = ${PROSE};
   const box = (element) => {
     const rect = element.getBoundingClientRect();
-    return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
+    return {
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+    };
   };
   // Where a child is laid out: inside the padding and border.
   const contentBox = (element) => {
@@ -137,10 +171,15 @@ const MEASURE = `(() => {
       ...box(image),
       block: contentBox(image.parentElement),
       float: style.float,
+      marginTop: style.marginTop,
+      marginBottom: style.marginBottom,
       paddingLeft: style.paddingLeft,
       paddingRight: style.paddingRight,
     };
   }
+  // The badge's line: the glyphs of the words before it, from their ascent to descent.
+  const badgeLine = document.createRange();
+  badgeLine.selectNodeContents(prose.querySelector('img[alt="Badge"]').parentElement.firstChild);
   const cells = {};
   for (const cell of prose.querySelectorAll("td, th")) {
     cells[cell.textContent.trim()] = getComputedStyle(cell).textAlign;
@@ -152,6 +191,9 @@ const MEASURE = `(() => {
     cells,
     title: { ...box(title), text: textBox(title), align: getComputedStyle(title).textAlign },
     right: right ? { ...box(right), text: textBox(right) } : null,
+    badgeLine: box(badgeLine),
+    prose: box(prose),
+    rem: getComputedStyle(document.documentElement).fontSize,
   };
 })()`;
 
@@ -161,10 +203,12 @@ const frames = () =>
 /** @param {string} profile @param {Awaited<ReturnType<typeof launchChrome>>} page */
 async function checkProfile(profile, page) {
   await page.send("Page.navigate", { url: `${base}/view/README.md` });
-  await page.waitFor(DRAWN, 30000);
+  await page.waitFor(drawn(8), 30000);
+  await page.evaluate(ADD_WIKI_EMBED);
+  await page.waitFor(drawn(9), 30000);
   await page.evaluate("document.fonts.ready.then(() => true)");
   await page.evaluate(frames());
-  const { images, cells, title, right } = await page.evaluate(MEASURE);
+  const { images, cells, title, right, badgeLine, prose, rem } = await page.evaluate(MEASURE);
   const at = (name) => images[name] ?? {};
 
   const icon = at("Centered icon");
@@ -190,6 +234,16 @@ async function checkProfile(profile, page) {
     near(badge.height, 20) && near(badge.width, 20),
     badge,
   );
+  // On the baseline, the badge's foot is in the lower half of the words' glyphs; a rem of
+  // margin below it put its foot at their top.
+  check(
+    `${profile} the badge sits on its line of text, with no margin`,
+    badge.marginTop === "0px" &&
+      badge.marginBottom === "0px" &&
+      badge.bottom >= badgeLine.top + badgeLine.height / 2 &&
+      badge.bottom <= badgeLine.bottom,
+    { badge, badgeLine },
+  );
   const byHeight = at("By height");
   check(
     `${profile} another image sized by height alone`,
@@ -207,6 +261,16 @@ async function checkProfile(profile, page) {
     `${profile} an image sized by both`,
     near(byBoth.width, 80) && near(byBoth.height, 40),
     byBoth,
+  );
+  // The image file is square, so its proportions within a width of 100 are 100 by 100.
+  const wiki = at("Wiki embed");
+  check(
+    `${profile} a wiki embed keeps its file's proportions and KPress's margin`,
+    near(wiki.width, 100) &&
+      near(wiki.height, 100) &&
+      wiki.marginTop === rem &&
+      wiki.marginBottom === rem,
+    { wiki, rem },
   );
 
   const floatedRight = at("Right icon");
@@ -228,6 +292,17 @@ async function checkProfile(profile, page) {
       near(floatedLeft.height, 96) &&
       near(floatedLeft.left, floatedLeft.block?.left),
     floatedLeft,
+  );
+  check(
+    `${profile} the images after the left float start at their block's left edge`,
+    near(byWidth.left, byWidth.block?.left) && byWidth.top >= floatedLeft.bottom,
+    { byWidth, floatedLeft },
+  );
+  const last = at("Last icon");
+  check(
+    `${profile} an image floated at the document's end lies inside the prose box`,
+    last.float === "right" && last.bottom <= prose.bottom && last.top >= prose.top,
+    { last, prose },
   );
 
   // A cell's own align, then its row's, then KPress's: a header centered, a cell at start.

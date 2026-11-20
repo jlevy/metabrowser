@@ -34,6 +34,12 @@ right, between the image and the text.
 
 <div align="right">A block aligned right.</div>
 
+## A Float That Ends the Document
+
+<img src="icon.png" alt="Last icon" align="right" width="160">
+
+A short last paragraph, beside an image that ends below it.
+
 <!-- A test fixture: the layouts a README writes with the HTML attributes github.com keeps,
 rendered by tests/test_markdown_github_layout_chrome.py and compared with github.com's
 rendering of this file.

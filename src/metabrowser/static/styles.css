@@ -5428,9 +5428,30 @@ a.tab-btn {
    in Chrome 152 and in the macOS app's WebKit (both measured 2026-11-19; `revert` goes
    past the hint to the browser's default, and typed `attr()` is not in WebKit); it
    relies on neither stylesheet using cascade layers. An image with only a `width`
-   keeps `height: auto`, its proportions, as on github.com. */
-.kpress-prose img[height] {
+   keeps `height: auto`, its proportions, as on github.com, and so does a wiki embed,
+   `![[image.png|640x480]]`: the markdown plugin gives it both attributes, and it keeps
+   its file's proportions within that width, as it did before these rules. */
+.kpress-prose img[height]:not([data-metabrowser-link-syntax="wiki-embed"]) {
   height: revert-layer;
+}
+
+/* github.com gives an image no margin. KPress gives every image `margin-block: 1rem`,
+   which lifted a `height="20"` badge wholly above its line of text and kept a floated
+   image's foot a rem lower, so the images after it were pushed aside. An image laid
+   out by these attributes takes github.com's none; a Markdown image, which has none of
+   them, and a wiki embed keep KPress's room. */
+.kpress-prose img:is([align], [width], [height]):not([data-metabrowser-link-syntax="wiki-embed"]) {
+  margin-block: 0;
+}
+
+/* A floated image can end below the document's last line, and then it was drawn past
+   the foot of the card. github.com clears every Markdown body with this `::after`; only
+   prose with an image floated by `align` gets it here, so no other document's last
+   margin moves. */
+.kpress-prose:has(img:is([align="left" i], [align="right" i]))::after {
+  clear: both;
+  content: "";
+  display: table;
 }
 
 /* An image floated by `align` keeps github.com's room from the text beside it, outside

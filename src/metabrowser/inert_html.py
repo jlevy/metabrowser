@@ -17,17 +17,20 @@ only what is listed here and drops the rest.
   ``ol[start]`` as digits, ``td``/``th`` ``colspan`` and ``rowspan`` as small numbers,
   ``details[open]``, and the layout attributes github.com keeps (:data:`ALIGN_VALUES`,
   :data:`DIMENSIONS`): ``align`` as a keyword on a block, a heading, an image, or a table
-  part, and ``width`` and ``height`` as a number of pixels or a percentage on an image
-  or a table cell. A kept link opens in a new tab with no opener or referrer when it
-  leaves the page.
+  part, ``width`` and ``height`` as a number of pixels or a percentage on an image or a
+  table cell, and ``width`` on a table. A kept link opens in a new tab with no opener or
+  referrer when it leaves the page.
 - Layout: github.com's sanitizer (html-pipeline's ``SanitizationFilter``) keeps
   ``align``, ``width``, and ``height`` on every element, and a README lays itself out
   with them: ``<p align="center"><img width="192">`` is a small centered logo there. Each
   is a keyword or a number, with no address, script, or style in it, so the allowlist
   keeps those that KPress's sanitized mode keeps too, and the page shows a document from
-  an untrusted source laid out as a trusted one is. KPress's sanitized mode drops others
-  that github.com keeps before this sees them: ``valign``, ``hspace``, ``vspace``,
-  ``clear``, ``nowrap``, and ``open`` on ``details``, which this would keep.
+  an untrusted source laid out as a trusted one is. A table's ``align`` and ``width``
+  are kept with the rest, so the two renders write the same HTML, but they change
+  nothing on the page today: KPress's stylesheet sets every table at least as wide as
+  its column. KPress's sanitized mode drops others that github.com keeps before this
+  sees them: ``valign``, ``hspace``, ``vspace``, ``clear``, ``nowrap``, and ``open`` on
+  ``details``, which this would keep.
 - Links and images depend on *link_base*. With one -- a pull request's github.com page
   -- every reference is made absolute against it and kept only for ``http`` and
   ``https``, and every image becomes a link to it. Without one -- a document inside the
@@ -266,7 +269,10 @@ _DIGITS: Final = re.compile(r"^[0-9]{1,6}$")
 _SPAN: Final = re.compile(r"^[1-9][0-9]?$")
 # A size as a browser reads one from an attribute: a number, with an optional fraction,
 # then `%` for a share of the container, or the `px` a README often writes, which a
-# browser reads as the number before it.
+# browser reads as the number before it. Five digits reach 99999 pixels, past any screen
+# or image a README sizes (an 8K display is 7680 wide), and bound how long a value a
+# document can write; a longer one is dropped. Whatever a width says, the page caps an
+# image at its container (`max-width: 100%`). static/inert-html.js has the same pattern.
 _DIMENSION: Final = re.compile(r"[0-9]{1,5}(?:\.[0-9]{1,3})?(?:%|px)?", re.IGNORECASE)
 # What a browser strips from a URL before reading it: ASCII tab and newline anywhere,
 # and C0 controls and spaces at either end. Read the same way here, so "java\tscript:"

@@ -188,6 +188,8 @@ HTML a README writes for its layout on GitHub lays it out here as github.com doe
 `height` on an image or a table cell, such as a logo in `<p align="center">` drawn at
 `width="192"`, an image floated by `align="right"`, or a badge sized by its `height`.
 This holds with active content off too.
+An `<img>` given both a `width` and a `height` draws at that size, as on github.com,
+while a wiki embed sized as `![[image.png|640x480]]` keeps the image’s proportions.
 
 With active content off (`--untrusted` or `--no-active-content`, and always for a
 repository URL), a document renders without its styles and scripts, and with a time
