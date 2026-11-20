@@ -51,13 +51,24 @@ build:
 webkit_suites := DownloadTests WebConfigurationTests PagePrintTests PagePrintAuthorizationTests PageRevealWebKitTests \
 	GitHubViewWebKitTests PageFindWebKitTests
 #
+# The WebKit suites run with --no-parallel. Every suite runs on the main actor, and a
+# test's WKWebView(frame:configuration:) blocks the main thread inside WebKit: a new
+# configuration creates a WebProcessPool, whose setup makes a synchronous call to notifyd
+# (notify_get_state), seconds long when the machine is loaded. In parallel, the other
+# tests' constructions block the main thread while a test waits for a click's window or
+# its delegate callback, so `eventually`'s wall-clock 10 s passes without that test's own
+# events running (the page saw its Command-click's mousedown 20 s late). Measured on a
+# 10-core machine with 12 busy loops: parallel failed theUsersClickOnTheButtonReachesTheAppAlone
+# in about one full-suite run in four, and the test took 3 to 40 s; serial passed 18 of 18,
+# in 0.3 to 1.2 s. The whole serial run takes about 7 s.
+#
 # The WebKit gate's driver ships in no product, so nothing else would notice a change to
 # the app's views or configuration that broke its build; the gate itself needs Chrome and
 # a logged-in session, so only its build and its Node tests, which need neither, run here.
 test:
 	$(SWIFT) build --product WebKitDriver
 	$(SWIFT) test --skip ExitObservationStressTests $(webkit_suites:%=--skip %)
-	$(SWIFT) test $(webkit_suites:%=--filter %)
+	$(SWIFT) test --no-parallel $(webkit_suites:%=--filter %)
 	$(SWIFT) test --filter ExitObservationStressTests
 	scripts/test-scripts.sh
 	node --test 'webkit-gate/*.test.mjs'
