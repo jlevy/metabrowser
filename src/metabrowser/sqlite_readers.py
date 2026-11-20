@@ -55,7 +55,8 @@ from metabrowser import sqlite_access
 from metabrowser.sqlite_access import SqliteAccessError
 
 # Workers alive at once. Each request is short (a page round trip measured 154 µs warm
-# in the exploration's Process record) and one table view asks one request at a time, so
+# in the exploration's Process record, an Info round trip 1.3 ms here, and a worker's
+# start to its first answer 45 to 51 ms, by `devtools/bench_sqlite_access.py`) and one table view asks one request at a time, so
 # two serve a page and a hover card together while bounding the memory of crafted
 # files to two processes.
 READER_POOL_SIZE: Final = 2
@@ -70,11 +71,13 @@ READER_KILL_GRACE_SECONDS: Final = 1.0
 # (`TABLE_REQUEST_DEADLINE_SECONDS`).
 SQLITE_REQUEST_DEADLINE_SECONDS: Final = 2.0
 # The address space a worker may map, where the platform enforces `RLIMIT_AS` (Linux;
-# macOS does not). A worker's interpreter maps about 40 MiB idle and an Info read adds
-# little (`devtools/bench_sqlite_access.py`); a preview through `blobopen` stays near its
-# baseline even for a 200 MiB value (the exploration's Values record). One GiB leaves the
-# private copy cap, SQLite's caches, and Python's heap ample room and stops a crafted
-# file that would take the machine's memory.
+# macOS does not). After 50 Info reads a worker had mapped 112 MiB, peaking at 176 MiB
+# with its watchdog thread's stack, and held 18 MiB resident
+# (`uv run python -m devtools.bench_sqlite_access`, 2026-11-20, 4 CPUs at a load of 4);
+# a preview through `blobopen` stays near its baseline even for a 200 MiB value (the
+# exploration's Values record). One GiB leaves a page's values, SQLite's cache, and
+# Python's heap several times that, and stops a crafted file that would take the
+# machine's memory.
 READER_ADDRESS_SPACE_BYTES: Final = 1024 * 1024 * 1024
 # The largest Git blob read as a database: written once to a private file, then read
 # with `immutable=1`. The same bound as a private copy (`COPY_MAX_BYTES`), whose cost
