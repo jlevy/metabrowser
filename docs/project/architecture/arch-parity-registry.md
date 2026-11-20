@@ -81,6 +81,11 @@ registered, any other status, and a golden that never runs the route.
 | `/api/plugin/github/cache-clear` | covered | `--api --data` | `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |
 | `/api/plugin/github/status` | covered | `--api --data` | `cli-github-status.tryscript.md` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
+| `/api/plugin/table/tables` | covered | `--api` | `cli-api-table.tryscript.md` |
+| `/api/plugin/table/schema` | covered | `--api` | `cli-api-table.tryscript.md` |
+| `/api/plugin/table/rows` | covered | `--api` | `cli-api-table.tryscript.md` |
+| `/api/plugin/table/record` | covered | `--api` | `cli-api-table.tryscript.md` |
+| `/api/plugin/table/card` | covered | `--api` | `cli-api-table.tryscript.md` |
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
 | `/pull` | covered | `--show /pull/<n>[/files[/<path>] or /checks]` | `cli-github-pull.tryscript.md`, `cli-github-pull-files.tryscript.md` |
@@ -107,6 +112,9 @@ interaction session and fails when a named function did not execute.
 | --- | --- | --- | --- | --- | --- |
 | `navigation.recent-filter-membership` | data | `/api/recent` | `owned-route` | `metab navroot --api '/api/recent?window=all&types=.md&min_size=7&include_ignored=0'` | `cli-api-nav.tryscript.md` |
 | `navigation.group-by-membership` | data | `/api/tree` | `owned-route` | `metab groupsroot --api '/api/tree?group_by=type&depth=1'` | `cli-api-tree-groups.tryscript.md` |
+| `table.delimited-schema` | data | `/api/plugin/table/schema` | `owned-route` | `metab tableroot --api '/api/plugin/table/schema?path=cities.tsv'` | `cli-api-table.tryscript.md` |
+| `table.rows-page-cells` | data | `/api/plugin/table/rows` | `owned-route` | `metab tableroot --api '/api/plugin/table/rows?path=people.csv&cols=name,score,note,extra&limit=4'` | `cli-api-table.tryscript.md` |
+| `table.record-by-position` | data | `/api/plugin/table/record` | `owned-route` | `metab tableroot --api '/api/plugin/table/record?path=people.csv&key=@4&generation=stale'` | `cli-api-table.tryscript.md` |
 | `navigation.group-by-sections` | interaction | `static/tree-filter-model.js#groupSections`, `static/tree-filter-model.js#groupsUrl`, `static/tree-filter-model.js#groupTreeUrl`, `static/tree-filter-model.js#recentFilterTransition`, `static/tree-filter-model.js#sectionRowBudget`, `static/tree-filter-model.js#likelySectionKey`, `static/tree-filter-model.js#revealSectionOrder`, `static/tree-filter-model.js#graftOpenedFolders`, `static/tree-filter-model.js#createGroupsPrefetch`, `static/tree-filter-model.js#groupPrefetchUrl`, `static/tree-filter-model.js#createGroupedLoads`, `static/tree-filter-model.js#groupedLoadDecision`, `static/tree-filter-model.js#regroupingStatusText` | `/api/tree` | `node tests/dom/files-group-by-session.js` | `cli-ui-files-group-by.tryscript.md` |
 | `navigation.recent-tree` | interaction | `static/filter-state.js#rowMatches`, `static/tree-filter-model.js#renderRecentView`, `static/tree-expansion.js#chooseDefaultExpandedPaths` | `/api/recent` | `node tests/dom/recent-filter-session.js` | `cli-ui-navigation.tryscript.md` |
 | `navigation.recent-continuity` | interaction | `static/tree-filter-model.js#createRecentContinuity` | `/api/recent`, `transport-exempt:/api/events` | `node tests/dom/recent-filter-session.js` | `cli-ui-navigation.tryscript.md` |
