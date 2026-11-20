@@ -98,6 +98,7 @@ async function story(panel, page, script) {
       now: () => now,
       isVisible: () => true,
       formatTime: (iso) => iso,
+      formatCount: (count) => count.toLocaleString("en-US"),
       render() {},
       markCurrent() {},
       markAnchor() {},

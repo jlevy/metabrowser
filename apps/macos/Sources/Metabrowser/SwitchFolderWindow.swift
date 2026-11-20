@@ -255,8 +255,9 @@ private final class FolderRowSelection: NSTableRowView {
 }
 
 /// One row of the Switch Folder panel: the root's mark, its title, and its subtitle, as
-/// the chooser's menu item shows them, with a check mark at the trailing edge for this
-/// window's folder. VoiceOver reads the row as one cell, by its label.
+/// the chooser's menu item shows them, the mark on the title's line and the subtitle under
+/// the title, with a check mark at the trailing edge for this window's folder. VoiceOver
+/// reads the row as one cell, by its label.
 private final class FolderRowView: NSTableCellView {
     private let mark = NSImageView()
     private let title = NSTextField(labelWithString: "")
@@ -278,17 +279,23 @@ private final class FolderRowView: NSTableCellView {
         text.orientation = .vertical
         text.alignment = .leading
         text.spacing = 0
-        let line = NSStackView(views: [mark, text, check])
+        let line = NSStackView(views: [text, check])
         line.orientation = .horizontal
         line.distribution = .fill
         line.spacing = Self.spacing
         line.alignment = .centerY
-        line.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(line)
+        // The mark stands before the text and check mark, not among them, so it centers on
+        // the title's line where they center on the row.
+        for view in [mark, line] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(view)
+        }
         NSLayoutConstraint.activate([
             mark.widthAnchor.constraint(equalToConstant: RootMark.menuSize.width),
             mark.heightAnchor.constraint(equalToConstant: RootMark.menuSize.height),
-            line.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.inset),
+            mark.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.inset),
+            mark.centerYAnchor.constraint(equalTo: title.centerYAnchor),
+            line.leadingAnchor.constraint(equalTo: mark.trailingAnchor, constant: Self.spacing),
             line.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.inset),
             line.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])

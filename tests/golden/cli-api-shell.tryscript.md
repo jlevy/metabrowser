@@ -126,6 +126,7 @@ status: 200
   "borrows": null,
   "shallow": false,
   "refreshable": false,
+  "follows": false,
   "latest": null,
   "ref_on_origin": null,
   "last_fetch_at": null,
@@ -430,6 +431,13 @@ status: 200
       "methods": [
         "GET",
         "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/event-log/client",
+      "methods": [
+        "POST"
       ],
       "kind": "api"
     },
@@ -917,7 +925,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 72
+  "count": 73
 }
 ? 0
 ```

@@ -305,6 +305,7 @@ them; the note beside the budget says why.
 | --- | --- | --- | --- |
 | Core shell modules | Eager | The shell template’s script tags in `server.py` | The note beside the startup gates in `performance-budgets.toml` |
 | Search, Help, keyboard, Git, and Pulls tools | On demand, once the first tree is usable; Pulls only in a shell that drew the tab | `shell-tools` in `on_demand_script_bundles` | The same note |
+| The event log’s reporter and its Details | On demand, with the shell’s tools once the first tree is usable, or at a page’s first wait or Details before then; requests answered before it loaded are read from Resource Timing | `event-reports`, and the last script of `shell-tools`, in `on_demand_script_bundles` | The comment beside the bundle in `server.py` |
 | The plugin shortcut queue | Eager, since a plugin can attach a key before the registry exists | `queueShortcut` in `plugin-sdk.js` | The comment beside it |
 | Line gutter, SDK view helpers, and the syntax service | On demand, beside the view compositor and before any plugin code | `sdk-views` | [exp-037](../../../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | A file’s and a folder’s view header | On demand, beside the view compositor and the SDK view helpers | `view-header` | The comment beside the bundle in `server.py` |

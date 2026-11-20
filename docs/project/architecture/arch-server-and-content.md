@@ -230,6 +230,13 @@ The Markdown view then shows the document’s source under one line saying why
 
 The allowlist keeps paragraphs, headings, emphasis, code, quotes, lists, tables,
 details, and links and images inside the served tree.
+It keeps the layout attributes github.com keeps and KPress keeps too, each value a
+keyword or a number (`ALIGN_VALUES` and `DIMENSIONS` in `inert_html.py`): `align` on a
+block, a heading, an image, or a table part, and `width` and `height` on an image or a
+table cell, so a README such as Metabrowser’s own, a `width="192"` logo in a
+`<p align="center">`, is laid out as on github.com.
+The shell’s stylesheet gives those attributes back where KPress’s rules outrank them, in
+every render (`static/styles.css`, “GitHub’s layout attributes in rendered Markdown”).
 It drops every class, `id`, `name`, `data-*`, style, and event attribute, and all SVG,
 MathML, media, stylesheets, frames, forms, and scripts.
 An outside image becomes a link to it.
@@ -256,8 +263,14 @@ The one KPress script source is the set of modules that draw Mermaid diagrams as
 The browsed tree’s files under `/raw` are never script sources.
 Images admit this origin, `data:` images the stylesheet draws, and the exact avatar host
 for application-owned author portraits, whose URLs provider and browser code validate.
-The page frames nothing, since the untrusted profile removes the HTML preview, its only
-frame; nothing may frame it; and plugins, `<base>`, and form submission are off.
+The page frames no URL, since the untrusted profile removes the HTML preview, its only
+framed address; its one frame is the diagram frame
+(`builtin_plugins/markdown/diagram-frame.js`), an `about:srcdoc` document that
+`frame-src` does not govern, sandboxed to scripts and its own origin, which keeps this
+policy and adds its own, admitting less, and under which a pull request’s text’s Mermaid
+diagrams are laid out on any page.
+This policy’s `style-src` admits the frame’s one stylesheet, from `/plugin-static/`.
+Nothing may frame the page; and plugins, `<base>`, and form submission are off.
 Inline `style` attributes stay allowed because the application writes them for layout;
 untrusted Markdown carries none.
 `tests/test_untrusted_markdown.py` pins the policy and fails when the application writes

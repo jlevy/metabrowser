@@ -1132,6 +1132,67 @@ A file that falls back permanently to Source has no format chooser.
 toggle’s ARIA outside this family, and
 `test_exclusive_choices_share_one_answer_to_each_state` holds the table above.
 
+### Focus Ring
+
+Every control’s keyboard focus is one ring, from four tokens in `static/styles.css`:
+`--focus-ring-width`, `--focus-ring-color`, `--focus-ring-offset`, and
+`--focus-ring-offset-outset`. A `:focus-visible` rule sets
+`outline: var(--focus-ring-width) solid var(--focus-ring-color)` and
+`outline-offset: var(--focus-ring-offset)`, which draws the ring inside the control’s
+box, so no ancestor’s `overflow: hidden` clips it.
+The outset offset is for a bare inline text link or a check, whose box is its text and
+has no room for a ring; `_FOCUS_RING_OUTSET` in `tests/test_design_vocabulary.py` names
+the controls that take it.
+`test_every_focus_ring_is_the_one_ring` fails a stylesheet, a plugin’s included, that
+writes a literal ring.
+
+### Text Fields
+
+A typed or chosen value that is not a button carries `.field`: its border, recessed
+`--bg` fill, ink, padding, hover border, and focus ring are stated once in
+`static/styles.css`, and a use site sets only its layout, such as its width, text
+alignment, or block padding.
+The source ref selector’s filter, the font-set picker, and the line-length number carry
+it in markup. `test_text_fields_carry_the_field_primitive` fails a field that restates
+what `.field` owns.
+
+### Badges
+
+A status or file-type badge takes its fill and ink from a `--badge-<tone>-bg` and
+`--badge-<tone>-text` pair, themed for both themes and held to 4.5:1 by
+`test_status_and_badge_inks_read_in_both_themes`; a failure and a front-matter error are
+one tone, `--badge-failed-*`. `.source-ref-selector-badge` is not a status badge but an
+outlined tag in the row’s muted ink: it shares `.file-header-badge`’s radius and no-wrap
+rule and not its filled, bold, taller box, since every ref row is placed at one row’s
+height.
+
+### Status Text Inks
+
+A status color set as text takes a themed ink, `--status-success-text`,
+`--status-warning-text`, or `--status-error-text`, defined in both themes against `--bg`
+and `--hover-bg`, each at 4.5:1 or better
+(`test_status_and_badge_inks_read_in_both_themes`). The unsuffixed `--status-*` tokens
+are fills for dots, bars, tints, and borders and do not read as text in both themes;
+`test_no_stylesheet_sets_text_in_a_status_fill` rejects one set as `color`.
+`--diff-add-row-bg` and `--diff-del-row-bg` are the tints behind an added or removed
+line.
+
+A tally tree colors a leaf’s count by its label: `success` in the success ink, `failed`,
+`error`, `critical`, and `kill` in the error ink (`critical` also bold), and `high` and
+`elevated` in the warning ink.
+Severities that share an ink are told apart by their label, not by color (`TALLY_COLORS`
+in `static/charts.js`).
+
+### Empty and Failed Loads in the Navigation Column
+
+An empty list, `.recent-empty` or `.git-panel-empty`, is one look in every tab: the
+column’s inset, left-aligned, muted.
+A load that failed is not empty: it adds `.nav-error`, in the error text ink, as the
+lazy-folder, history, and ref-selector failures are.
+Amber (`--status-warning-text`) is for a degraded or partial result only.
+A failure says what could not be done in a sentence with a period; the HTTP status is
+for the console or a tooltip, never the visible text.
+
 ## Rows and Disclosures
 
 A row is one activation target at one height, and a disclosure says what it holds and
@@ -1903,15 +1964,15 @@ share these rules wherever they appear.
 ### Inline Change Stats
 
 The `+N` / `−N` pair that rides beside a filename wherever a surface reports change
-size: `.diff-stat-add` in `--status-success`, `.diff-stat-del` in `--status-error`,
-always in that order, using the true minus sign, at the local small-text size, and
-always `--weight-bold`: the pair is data, and it must read at a glance.
-The git commit view’s `.git-stat-add`/`.git-stat-del` follow the same color and weight
-rule but use the commit summary’s standard body size.
+size: `.diff-stat-add` in `--status-success-text`, `.diff-stat-del` in
+`--status-error-text`, always in that order, using the true minus sign, at the local
+small-text size, and always `--weight-bold`: the pair is data, and it must read at a
+glance. The git commit view’s `.git-stat-add`/`.git-stat-del` follow the same color and
+weight rule but use the commit summary’s standard body size.
 The same pair is the [Diff summary](#diff-summary)’s vocabulary, so a change set, its
 folders, and its files read identically.
-Kind letters reuse the same mapping (added is `--status-success`, deleted is
-`--status-error`), and no diff surface introduces a local green or red.
+Kind letters reuse the same mapping (added is `--status-success-text`, deleted is
+`--status-error-text`), and no diff surface introduces a local green or red.
 
 ### Brief Change Line
 
@@ -2278,14 +2339,14 @@ The freshness note is muted, after a muted dot, at the sentence’s size, steppi
 its ink: one time, the record’s own fetch, “jlevy wants to merge 1 commit · Fetched just
 now via GitHub CLI”, never a second time for a check that found nothing changed, since
 that makes what is shown no newer.
-A rate limit’s hold is said in its place, “GitHub rate limit · next check at 2:05 PM”,
-in the failure’s ink: it begins and lifts by itself and asks nothing of the reader, so
-it adds no line.
-It names a time of day, in the reader’s short form, when the limit lifts
-today, and a short date and time otherwise, “12/31/26, 4:00 PM”. Unlike an age, it never
-leaves the line: where it cannot be whole it is cut short with its whole text as a
-tooltip, down to a floor that keeps “GitHub rate limit” whole, and below that the
-sentence gives way, so the page always says why nothing refreshes.
+A rate limit’s hold is said in its place, “GitHub rate limit reached.
+Next attempt after 2:05 PM.”, in the failure’s ink: it begins and lifts by itself and
+asks nothing of the reader, so it adds no line.
+It names a time of day, in the reader’s short form, when the limit lifts today, and a
+short date and time otherwise, “12/31/26, 4:00 PM”. Unlike an age, it never leaves the
+line: where it cannot be whole it is cut short with its whole text as a tooltip, down to
+a floor that keeps “GitHub rate limit” whole, and below that the sentence gives way, so
+the page always says why nothing refreshes.
 Before a record is shown the note is the page’s word on it, “Fetching the pull
 request…”, so the record landing changes no line; a failure to fetch it takes that word
 to the status line beside it.
@@ -2374,7 +2435,9 @@ its age line breathes ([Refreshing Content](#refreshing-content)). Its freshness
 names GitHub CLI and the plain fetch age, with no prefix while a refresh runs and no
 suffix while the record is stale, since a stale page is refreshing.
 It names a problem only when no refresh can run: `Offline`,
-`GitHub rate limit · next check at` a time, or the last failure with Refresh.
+`GitHub rate limit reached. Next attempt after` a time, or the last failure with
+Refresh. The wording is `rateLimitText` in `builtin_plugins/github/copy.js`, which every
+GitHub surface uses.
 The Checks tab uses the same heading and status badges for check runs and status
 contexts. A check row is its status badge, its plain name, its action, and its
 description. The action says where it opens: **View action on GitHub** for a GitHub
@@ -5319,7 +5382,7 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   A pin that names no ref puts “Commit:” and the same face on the button.
 
 - **A commit reads the same wherever a line names it.** The button, the rows, and a
-  mirror’s offer of its ref’s newer commit all show it by the one rule in
+  mirror’s line about the commit its branch moved to all show it by the one rule in
   [Short Commit IDs](#short-commit-ids).
 
 - **The button names the ref and the heading does not.** A served mirror’s navigation
@@ -5381,11 +5444,12 @@ A checkout adds three things, and each uses a primitive the control already had:
   will have, and the module adopts that button and never swaps it, so focus put on it
   early stays ([Regions Keep Their Boxes](#regions-keep-their-boxes)). The toolbar is
   drawn again whenever a filter or a tally changes, and it carries the selector over
-  rather than drawing it, so an open list keeps what was typed and the control that had
-  focus keeps it. `tests/test_checkout_ref_selector_chrome.py` records the selector’s
-  height and the first tree row’s place in every frame of the working tree’s page and of
-  a revision’s, and each has one value; `tests/test_files_totals_stable_chrome.py` holds
-  the same for every box of the Files navigation on a folder that holds a `.git`.
+  rather than drawing it, so an open list keeps what was typed and where it was scrolled
+  to, and the control that had focus keeps it.
+  `tests/test_checkout_ref_selector_chrome.py` records the selector’s height and the
+  first tree row’s place in every frame of the working tree’s page and of a revision’s,
+  and each has one value; `tests/test_files_totals_stable_chrome.py` holds the same for
+  every box of the Files navigation on a folder that holds a `.git`.
 
 What each state shows is pinned by
 `tests/golden/cli-ui-source-ref-selector.tryscript.md`, and

@@ -473,7 +473,7 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
               },
             })
           : mb.kpressInitToc?.(aside, kpressTocConfig(aside)) || null;
-      diagrams = drawDiagrams(aside, mb, !!inertRender);
+      diagrams = drawDiagrams(aside, mb, inertRender ? "image" : "document");
     } catch (error) {
       if (disposed || options.signal?.aborted) {
         return;
@@ -596,6 +596,9 @@ function renderTransclusionError(aside, label, code) {
   aside.innerHTML = "";
   aside.setAttribute("aria-busy", "false");
   aside.setAttribute("role", "alert");
+  // A failure is a notice, the shell's one box for it, rather than the embedded card.
+  aside.setAttribute("class", "notice metabrowser-transclusion-notice");
+  aside.setAttribute("data-severity", "error");
   aside.setAttribute("data-metabrowser-transclusion-status", "error");
   aside.setAttribute("data-metabrowser-transclusion-error", code);
   aside.setAttribute("title", explanation);

@@ -597,7 +597,10 @@ const rollupError = (status) =>
     await view.settle();
     const shown = view.read();
     noSkeleton(shown, "a capped index");
-    assert(shown.distribution.includes("Summary is partial"), `capped: ${shown.distribution}`);
+    assert(
+      shown.distribution.includes("Only the first 3 files were scanned"),
+      `capped: ${shown.distribution}`,
+    );
     transcript["a capped index says its summary is partial"] = shown;
     view.panel.dispose();
   }

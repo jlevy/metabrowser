@@ -129,7 +129,7 @@
 
     const kindHtml = isUnknownKind(kind)
       ? ""
-      : `<span class="log-event-kind ${kindClass}">${mb.escapeHtml(label)}</span>`;
+      : `<span class="file-header-badge log-event-kind ${kindClass}">${mb.escapeHtml(label)}</span>`;
     const isFiltering =
       state.activeKindFilters && state.activeKindFilters.size < state.totalKindFilters;
     const visible = !isFiltering
@@ -252,7 +252,7 @@
 
     const options = kinds.map((kind) => ({
       value: kind,
-      label: `${kindLabel(kind)} (${counts[kind].toLocaleString()})`,
+      label: `${kindLabel(kind)} (${mb.formatInteger(counts[kind])})`,
     }));
     return (
       '<div class="agent-log-filter-bar">' +
@@ -320,13 +320,16 @@
     if (s.cost_usd != null) {
       summary += logStat("Cost", `$${s.cost_usd.toFixed(2)}`);
     }
-    summary += logStat("Tool calls", s.tool_calls);
-    summary += logStat("Events", s.total_events);
+    summary += logStat("Tool calls", mb.formatInteger(s.tool_calls));
+    summary += logStat("Events", mb.formatInteger(s.total_events));
     if (s.errors > 0) {
-      summary += logStat("Errors", s.errors);
+      summary += logStat("Errors", mb.formatInteger(s.errors));
     }
     if (s.lines_skipped) {
-      summary += logStat("Lines skipped", `${s.lines_skipped} of ${s.lines_total} (oversized)`);
+      summary += logStat(
+        "Lines skipped",
+        `${mb.formatInteger(s.lines_skipped)} of ${mb.formatInteger(s.lines_total)} (oversized)`,
+      );
     }
     summary += "</div>";
     const filterBar = renderFilterBar(data.events || [], state);

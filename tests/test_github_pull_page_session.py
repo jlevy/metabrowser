@@ -556,30 +556,36 @@ _REFRESH_BODY = (
 def _text_diagram_steps() -> list[str]:
     """What the mount session's ``textDiagrams`` story says, step by step."""
 
-    body = "body as image, 1 figure, Mermaid on demand"
-    comment = "issue_comment/3341937855 as image, 1 figure, Mermaid on demand"
+    # Each binding's Mermaid is the diagram frame's, on a folder's page as on a pinned
+    # revision's; the session publishes no Mermaid bundle, so asking only reads its address.
+    body = "body as image, 1 figure, Mermaid the diagram frame's"
+    comment = "issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's"
     gone = ", disposed"
     modules = "kpress-diagrams, kpress-diagram-controls"
+    address = "the mermaid bundle's address"
     both = "2 blocks, 2 in a figure"
     one = "1 block, 1 in a figure"
+    folder = f"{body}; {comment}"
+    first = f"{body}{gone}; {comment}{gone}"
     return [
         "a description and a comment with no Mermaid block: 0 blocks, 0 in a figure; "
         "asked nothing; bindings none",
-        # A folder's page may lack the untrusted policy, which the SDK does not say.
-        "the same with Mermaid blocks, on a folder's page: 2 blocks, 0 in a figure; "
-        "asked nothing; bindings none",
+        f"the same with Mermaid blocks, on a folder's page: {both}; asked markdown plugin, "
+        f"markdown plugin, {modules}, {modules}, {address}; bindings {folder}",
         f"a description and a comment each with a Mermaid block: {both}; asked markdown "
-        f"plugin, markdown plugin, {modules}, {modules}; bindings {body}; {comment}",
-        f"a poll of the same record: {both}; asked nothing; bindings {body}; {comment}",
-        f"Changes and back to Conversation: {both}; asked nothing; bindings {body}; {comment}",
+        f"plugin, markdown plugin, {modules}, {modules}, {address}; bindings {first}; "
+        f"{body}; {comment}",
+        f"a poll of the same record: {both}; asked nothing; bindings {first}; {body}; {comment}",
+        f"Changes and back to Conversation: {both}; asked nothing; bindings {first}; "
+        f"{body}; {comment}",
         f"the description edited, the comment not: {both}; asked markdown plugin, "
-        f"{modules}; bindings {body}{gone}; {comment}; {body}",
-        f"the description's block taken out: {one}; asked nothing; bindings {body}{gone}; "
-        f"{comment}; {body}{gone}",
+        f"{modules}, {address}; bindings {first}; {body}{gone}; {comment}; {body}",
+        f"the description's block taken out: {one}; asked nothing; bindings {first}; "
+        f"{body}{gone}; {comment}; {body}{gone}",
         f"a block whose text is replaced before the Markdown plugin arrives: {one}; asked "
-        f"markdown plugin; bindings {body}{gone}; {comment}; {body}{gone}",
-        f"the page ends: {one}; asked nothing; bindings {body}{gone}; {comment}{gone}; "
-        f"{body}{gone}",
+        f"markdown plugin; bindings {first}; {body}{gone}; {comment}; {body}{gone}",
+        f"the page ends: {one}; asked nothing; bindings {first}; {body}{gone}; "
+        f"{comment}{gone}; {body}{gone}",
     ]
 
 
@@ -825,7 +831,39 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "the diff plugin's assets not loading: The switch request failed.; asked nothing",
             "the switch module not loading: The switch request failed.; asked nothing",
         ],
+        # The Diff summary's wait, which the event log hears of only if it runs late: at the
+        # late threshold the placeholder says how long it has waited and offers Details, whose
+        # panel reads this page's records; leaving ends the wait never_completed, a summary
+        # that arrives ends it ok and closes the panel, and a failed refresh's Details read the
+        # failures around when it ended (mb-9zp5).
+        "eventLogDetails": _event_log_details_steps(),
     }
+
+
+def _event_log_details_steps() -> list[str]:
+    wait = 'githubPull:diffSummary {"number":7} timed from its start'
+    late = 'the late line "The summary of changes has not arrived after 10 s. Details"'
+    asked = 'Details asked for {"client":"k3v9q2zx"}, abortable true'
+    return [
+        f"mounted, the comparison not yet read: the pending placeholder; {wait} running",
+        f"still waiting at the late threshold: {late}; {wait} running",
+        asked,
+        "Details opened: expanded true; the panel says "
+        '"Still running: checkout._pull_job for 61.0 s"',
+        "Details closed: expanded false; panel in the header false",
+        asked,
+        f"the page left: panel in the header false; expanded false; {wait} ended never_completed",
+        f"another page, late: {late}; {wait} running",
+        asked,
+        f"its comparison read, its Details open: the summary; {wait} ended ok",
+        "the late line's Details: expanded false; panel in the header false",
+        f"a page whose comparison is read at once: the summary; {wait} ended ok",
+        'a failed refresh, ended 2026-09-17T12:30:00Z: "The last refresh failed: GitHub could '
+        'not be reached because the connection to api.github.com timed outDetails"',
+        'Details asked for {"client":"k3v9q2zx","since":"2026-09-17T11:30:00Z",'
+        '"until":"2026-09-17T12:31:00Z"}, abortable true',
+        'no reporter: "The event log is not available here."',
+    ]
 
 
 def test_idle_comparison_is_route_owned_and_promotes_on_changes() -> None:

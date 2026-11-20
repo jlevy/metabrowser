@@ -1,0 +1,12 @@
+/* The diagram frame's one stylesheet (diagram-frame.js): the app page's reset
+   (static/styles.css, `*`), so Mermaid measures each label in the frame with the box it
+   has in the page. Mermaid wraps a label in a paragraph, and its own `<style>` zeroes the
+   paragraph's margins; but the untrusted page policy, which the frame inherits, refuses
+   that `<style>`, so without this file each label measured 56px tall in the frame against
+   24px in the page (headless Chrome and WebKit, Mermaid 12.3.0). A stylesheet file is one
+   both policies admit. */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}

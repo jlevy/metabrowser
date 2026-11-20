@@ -165,7 +165,7 @@ for that check, and not a second account.
 | Views | The working tree | The working tree, and revisions | Revisions |
 | Commits, diffs, and the ref chooser | No | Yes | Yes |
 | Pulls and View on GitHub | No, with one case [not decided](#not-decided) | When `origin` is on github.com | When the origin is on github.com |
-| Refresh from the origin | None | Never into the checkout | A background fetch into the store |
+| Refresh from the origin | None | Never into the checkout | A background fetch into the store, which a served branch follows |
 | `kind` in `GET /api/identity` | `folder` | `folder` | `mirror` |
 
 - **Repository folder mode needs only Git.** Any repository gets its root opened,
@@ -176,6 +176,11 @@ for that check, and not a second account.
   checkout’s window is open.
 - **A mirror has no working tree.** Its store is bare, so there is nothing checked out
   that could hold a change, and every view of it is a revision.
+- **A mirror is browsed as github.com is,** as of the data last fetched: a branch or tag
+  shown follows its ref when a fetch moves it
+  ([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)), and
+  a repository folder is the same layer of revisions with the live working tree beside
+  it.
 - **A repository folder is a mirror and more.** It views every branch and tag the way a
   mirror does, as a revision, the checked-out branch included, and it also has the true
   working tree, where the folder-only features live.

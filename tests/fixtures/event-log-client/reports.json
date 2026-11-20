@@ -1,0 +1,45 @@
+{
+  "page": "k3v9q2zx",
+  "path": "/pull/7",
+  "reports": [
+    {
+      "type": "fetch",
+      "event": "end",
+      "name": "GET /api/plugin/github/pull-files-summary",
+      "client": "k3v9q2zx-2",
+      "dur_ms": 2500,
+      "outcome": "ok",
+      "attrs": {"status": 200, "threshold_ms": 2000, "server_ms": 2301.2}
+    },
+    {
+      "type": "wait",
+      "event": "open",
+      "name": "githubPull:diffSummary",
+      "client": "k3v9q2zx",
+      "dur_ms": 10000,
+      "attrs": {"threshold_ms": 10000, "detail": {"number": 7}}
+    },
+    {
+      "type": "wait",
+      "event": "end",
+      "name": "githubPull:diffSummary",
+      "client": "k3v9q2zx",
+      "dur_ms": 61234.5,
+      "outcome": "never_completed",
+      "attrs": {"threshold_ms": 10000, "detail": {"number": 7}}
+    },
+    {
+      "type": "render",
+      "event": "end",
+      "name": "blocked",
+      "client": "k3v9q2zx",
+      "dur_ms": 812.4,
+      "outcome": "ok",
+      "attrs": {
+        "threshold_ms": 500,
+        "detail": {"at_ms": 4322, "function": "paintSummaryWait", "source": "/static/plugins/github/pull-page.js"}
+      }
+    }
+  ],
+  "dropped": 0
+}

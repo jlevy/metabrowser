@@ -44,6 +44,18 @@
     return v || ref;
   }
 
+  // A Chart.js font from the type scale: its size is a token's pixels, so a chart's text
+  // moves with every other surface's, and its face is the chrome's. A token the page does
+  // not define leaves the size to Chart.js rather than guessing one.
+  function chartFont(sizeToken) {
+    var px = parseFloat(cssVar(sizeToken));
+    var font = { family: cssVar("--font-sans") };
+    if (Number.isFinite(px)) {
+      font.size = px;
+    }
+    return font;
+  }
+
   // Apply alpha (0..1) to an oklch()/hsl()/hex color. Works with the
   // resolved output of cssVar() or a concrete color already in the spec.
   function colorWithAlpha(color, alpha) {
@@ -152,8 +164,8 @@
     failed: "tally-color-failed",
     error: "tally-color-error",
     critical: "tally-color-critical",
-    high: "tally-color-high",
-    elevated: "tally-color-elevated",
+    high: "tally-color-warning",
+    elevated: "tally-color-warning",
     kill: "tally-color-kill",
   };
 
@@ -321,22 +333,35 @@
           legend: {
             display: datasets.length > 1,
             position: "top",
-            labels: { boxWidth: 10, font: { size: 10 } },
+            labels: {
+              boxWidth: 10,
+              font: chartFont("--micro-font-size"),
+              color: cssVar("--muted"),
+            },
           },
-          tooltip: { enabled: true, bodyFont: { size: 11 } },
+          tooltip: { enabled: true, bodyFont: chartFont("--ui-small-font-size") },
         },
         scales: {
           x: {
             type: spec.x_type === "time" ? "time" : "linear",
             time: { tooltipFormat: "MMM d, HH:mm:ss" },
-            ticks: { font: { size: 10 }, maxTicksLimit: 8 },
+            ticks: {
+              font: chartFont("--micro-font-size"),
+              color: cssVar("--muted"),
+              maxTicksLimit: 8,
+            },
             grid: { display: false },
           },
           y: {
             min: spec.y_min,
             max: spec.y_max,
-            title: { display: !!spec.y_label, text: spec.y_label || "", font: { size: 10 } },
-            ticks: { font: { size: 10 } },
+            title: {
+              display: !!spec.y_label,
+              text: spec.y_label || "",
+              font: chartFont("--micro-font-size"),
+              color: cssVar("--muted"),
+            },
+            ticks: { font: chartFont("--micro-font-size"), color: cssVar("--muted") },
             grid: { color: cssVar("--chart-grid") },
           },
         },
@@ -365,7 +390,7 @@
             display: true,
             content: th.label,
             position: "end",
-            font: { size: 9 },
+            font: chartFont("--micro-font-size"),
             backgroundColor: colorWithAlpha(th.color, 0.13),
             color: th.color,
           },
@@ -400,7 +425,7 @@
             content: ann.label,
             position: "start",
             rotation: -90,
-            font: { size: 9 },
+            font: chartFont("--micro-font-size"),
             backgroundColor: colorWithAlpha(color, 0.13),
             color: cssVar("--chart-label-text"),
           },

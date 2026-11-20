@@ -197,14 +197,16 @@ const DIAGRAM_PROBE = '[data-kpress-diagram="mermaid"], pre[lang="mermaid"]';
  *
  * The host (diagrams.js), KPress's diagram modules, and Mermaid itself are imported only
  * for a render that has a diagram, so a document without one fetches none of them. An
- * inert render's diagrams are drawn as images. Returns null when there is nothing to draw.
+ * inert render's diagrams are drawn as images, and untrusted text's on a page that may have
+ * no policy are drawn as images laid out in a frame of their own (diagrams.js,
+ * `mountDiagrams`, has the modes). Returns null when there is nothing to draw.
  *
  * @param {ParentNode} root
  * @param {MetabrowserPublicSdk} mb
- * @param {boolean} inert
+ * @param {"document" | "image" | "isolated"} mode
  * @returns {{dispose(): void, ready: Promise<void>} | null}
  */
-export function drawDiagrams(root, mb, inert) {
+export function drawDiagrams(root, mb, mode) {
   if (!root.querySelector(DIAGRAM_PROBE)) {
     return null;
   }
@@ -216,7 +218,7 @@ export function drawDiagrams(root, mb, inert) {
       if (disposed) {
         return undefined;
       }
-      const mounted = diagrams.mountDiagrams(root, mb, { mode: inert ? "image" : "document" });
+      const mounted = diagrams.mountDiagrams(root, mb, { mode });
       handle = mounted;
       return mounted.ready;
     })

@@ -668,6 +668,16 @@
   /* Square-ish corner for tag-like chips (branch refs): visibly not a
      pill, still not a hard corner. */
   --radius-tag: 3px;
+  /* Keyboard focus, one ring for every control (docs/design-system.md, "Focus Ring"): a
+     `:focus-visible` rule sets `outline: var(--focus-ring-width) solid var(--focus-ring-color)`
+     and an offset from here, and tests/test_design_vocabulary.py rejects one that restates
+     them. The ring sits 2px inside the control's box, so no ancestor's overflow clips it and
+     it reads the same on a filled and a bare control. The outset offset is only for an
+     inline text link or a bare check, whose box is its text and has no room to hold a ring. */
+  --focus-ring-width: 2px;
+  --focus-ring-color: var(--link);
+  --focus-ring-offset: -2px;
+  --focus-ring-offset-outset: 2px;
   /* Transient loading chrome stays quiet through work that finishes within
      about three frames, which covers a cached subtree expansion and most
      local requests. The placeholder still reserves its layout while hidden,
@@ -1235,6 +1245,38 @@
   --status-info: oklch(62.8% 0.167 259.5);
   --status-info-bg: oklch(93.46% 0.0305 255.11);
   --status-info-text: oklch(50% 0.163 265.7);
+  /* Text inks. The fills above are for dots, bars, tints, and borders; they do not read as
+     text on --bg in both themes, so every status color set as `color:` on text takes one
+     of these, themed and held to 4.5:1 on --bg by tests/test_design_vocabulary.py. */
+  --status-success-text: oklch(51% 0.15 149.18);
+  --status-warning-text: oklch(54% 0.17 50);
+  --status-error-text: oklch(55% 0.2 27.2);
+  /* The tint behind an added or removed line, in a diff or beside one. */
+  --diff-add-row-bg: color-mix(in srgb, var(--status-success) 9%, transparent);
+  --diff-del-row-bg: color-mix(in srgb, var(--status-error) 9%, transparent);
+
+  /* Badge tones — a badge's fill and the ink it sets on it (`.badge-*`). Each pair is held
+     to 4.5:1 in both themes by tests/test_design_vocabulary.py. A failure and a front-matter
+     error are one tone, --badge-failed-*. Where a status already names the pair, the badge
+     takes it. */
+  --badge-completed-bg: var(--status-success-soft-bg);
+  --badge-completed-text: var(--status-success-soft-text);
+  --badge-failed-bg: oklch(91% 0.036 12.1);
+  --badge-failed-text: oklch(37.3% 0.12 19.9);
+  --badge-running-bg: oklch(96.4% 0.052 93.1);
+  --badge-running-text: oklch(50% 0.1071 88.17);
+  --badge-pending-bg: oklch(94.5% 0.005 247.9);
+  --badge-pending-text: oklch(42.4% 0.015 248.2);
+  --badge-claude-bg: var(--status-info-bg);
+  --badge-claude-text: oklch(48.3% 0.145 257);
+  --badge-gemini-bg: oklch(96.2% 0.057 95.6);
+  --badge-gemini-text: oklch(50% 0.1136 92.83);
+  --badge-pi-bg: oklch(93.7% 0.031 294.2);
+  --badge-pi-text: oklch(43% 0.209 292.4);
+  --badge-adapter-bg: oklch(93.13% 0.0327 272.26);
+  --badge-adapter-text: oklch(44% 0.146 267.3);
+  --badge-compressed-bg: oklch(93.9% 0 89.9);
+  --badge-compressed-text: oklch(46.5% 0 89.9);
 
   /* Secondary muted tone (slate) for metadata/labels on charts & stats.
      Distinct from --muted which is the warmer bootstrap grey. */
@@ -1578,6 +1620,29 @@
   --git-ref-local: oklch(0.74 0.1 205);
   --git-ref-tag: oklch(0.76 0.14 71.1);
   --git-ref-bg: oklch(26% 0.008 240);
+
+  --status-success-soft-bg: oklch(32% 0.06 152.6);
+  --status-success-soft-text: oklch(84% 0.13 147.4);
+  --status-info-bg: oklch(32% 0.07 255.11);
+  --status-info-text: oklch(78% 0.13 265.7);
+  --status-success-text: oklch(72% 0.16 149.18);
+  --status-warning-text: oklch(78% 0.15 50);
+  --status-error-text: oklch(72% 0.18 27.2);
+  --badge-failed-bg: oklch(31% 0.07 12.1);
+  --badge-failed-text: oklch(85% 0.11 19.9);
+  --badge-running-bg: oklch(33% 0.07 93.1);
+  --badge-running-text: oklch(86% 0.12 88.17);
+  --badge-pending-bg: oklch(32% 0.01 247.9);
+  --badge-pending-text: oklch(84% 0.015 248.2);
+  --badge-claude-text: oklch(84% 0.1 257);
+  --badge-gemini-bg: oklch(33% 0.07 95.6);
+  --badge-gemini-text: oklch(86% 0.12 92.83);
+  --badge-pi-bg: oklch(32% 0.09 294.2);
+  --badge-pi-text: oklch(85% 0.1 292.4);
+  --badge-adapter-bg: oklch(32% 0.08 272.26);
+  --badge-adapter-text: oklch(85% 0.1 267.3);
+  --badge-compressed-bg: oklch(32% 0 89.9);
+  --badge-compressed-text: oklch(84% 0 89.9);
 }
 
 /* Which of the two colors on the element is live. Both are written once, when
@@ -1664,7 +1729,7 @@ body {
   gap: 8px;
   font-size: var(--ui-small-font-size);
   font-weight: var(--weight-bold);
-  letter-spacing: 0.1em;
+  letter-spacing: var(--label-letter-spacing);
   text-transform: uppercase;
   flex-shrink: 0;
   position: relative;
@@ -1708,8 +1773,8 @@ body {
   white-space: nowrap;
 }
 .header-path:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 .app-header > .settings-toggle {
   margin-left: auto;
@@ -1750,7 +1815,7 @@ body {
   pointer-events: auto;
 }
 .header-copy.copied {
-  color: var(--status-success);
+  color: var(--status-success-text);
   opacity: 1;
   pointer-events: auto;
 }
@@ -1772,8 +1837,8 @@ body {
   color: var(--link);
 }
 .btn:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* Parent navigation with a label, the treemap's Zoom out, is a bordered `.btn`
    (docs/design-system.md, "Parent Navigation"). Up alone, in a view header's
@@ -1908,8 +1973,8 @@ summary {
   background: var(--hover-bg);
 }
 .fold-expander:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* ── Icon buttons — shared icon-only control primitive ───────────
    Every icon-only control in the chrome reads the same: a
@@ -1985,8 +2050,8 @@ summary {
 /* The hover surface alone is not a focus indicator — keyboard focus
    also takes the app's standard ring. */
 .icon-btn:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* A reveal button that takes keyboard focus must actually appear. */
 .icon-btn-reveal:focus-visible {
@@ -2174,7 +2239,7 @@ summary {
   align-items: center;
   gap: 4px;
   text-decoration: none;
-  border-radius: 3px;
+  border-radius: var(--radius-chrome);
 }
 .menu-title-link:hover,
 .menu-title-link:focus-visible {
@@ -2182,8 +2247,8 @@ summary {
   color: var(--text);
 }
 .menu-title-link:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* The arrow occupies its space whether or not it is showing, so revealing it
@@ -2288,8 +2353,8 @@ summary {
 /* The chip's ring. A focused segment's fill cannot be the signal: the checked rule above
    would hide it, and the checked segment is where keyboard focus lands. */
 .menu-seg:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* The sanctioned exception to --icon-glyph: here the glyph is the whole
    label of the segment (sun / moon / monitor), not a mark beside text,
@@ -2298,27 +2363,34 @@ summary {
   width: 16px;
   height: 16px;
 }
+/* The text field primitive (docs/design-system.md, "Text Fields"): the border, the
+   recessed fill, the ink, the padding, the hover, and the focus ring of every typed or
+   chosen value that is not a button. A use site carries `.field` in its markup and sets
+   only its layout. */
+.field {
+  padding: 4px 6px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+}
+.field:hover {
+  border-color: var(--muted);
+}
+.field:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
 /* Small dropdown chooser inside the menu (the font-set picker). A native
    <select> so sets can be added from the registry/markup alone; styled to sit
    quietly on the menu surface as a recessed field. */
 .menu-select {
   width: 100%;
-  padding: 4px 8px;
+  padding-inline: 8px;
   font-family: var(--font-sans);
   font-size: var(--ui-small-font-size);
   font-weight: var(--weight-medium);
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
   cursor: pointer;
-}
-.menu-select:hover {
-  border-color: var(--muted);
-}
-.menu-select:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
 }
 
 /* A labelled numeric row. The label is the click target (it wraps the input),
@@ -2349,22 +2421,10 @@ summary {
 }
 .menu-number {
   width: 4.5em;
-  padding: 4px 6px;
   font-family: var(--font-sans);
   font-size: var(--ui-small-font-size);
   font-weight: var(--weight-medium);
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
   text-align: right;
-}
-.menu-number:hover {
-  border-color: var(--muted);
-}
-.menu-number:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
 }
 
 /* Theme crossfade. Scoped to the large structural surfaces (and the
@@ -2725,8 +2785,8 @@ html.theme-anim .menu {
   color: var(--link);
 }
 .nav-shortcut-action:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset-outset);
   border-radius: var(--radius-chrome);
 }
 /* ── Keyboard keys — the revealed strip ──────────────────────────
@@ -2798,7 +2858,7 @@ html.theme-anim .menu {
   flex: 0 0 auto;
   border: 2px solid var(--spinner-track);
   border-top-color: var(--spinner-accent);
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   animation: spin 0.8s linear infinite;
 }
 .index-progress-text {
@@ -2862,29 +2922,18 @@ html.theme-anim .menu {
 }
 .source-ref-selector-filter {
   width: 100%;
-  padding: 3px 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
-  background: var(--bg);
-  color: var(--text);
+  padding-block: 3px;
   font: inherit;
-}
-.source-ref-selector-filter:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
 }
 /* The list holds every ref and draws only the rows near its view
    (static/source-ref-selector.js, `drawWindow`): the sizer is as tall as every row, and
-   each drawn row is placed over it by its index. It sets its own scroll position, and
-   adds and removes rows on every scroll, so the browser's scroll anchoring, which moves
-   a scroll position to keep a row in place when the rows around it change, is off. */
+   each drawn row is placed over it by its index. */
 .source-ref-selector-list {
   position: relative;
   max-height: min(50vh, 320px);
   margin: 0;
   padding: 0;
   overflow-y: auto;
-  overflow-anchor: none;
   list-style: none;
 }
 .source-ref-selector-item {
@@ -2905,7 +2954,10 @@ html.theme-anim .menu {
 /* The badge's border reaches into the row's padding rather than making its row taller:
    every row is placed at one row's height (`drawWindow` in source-ref-selector.js), and
    the badged row, measured first, was 2px taller than the rest, which left a gap under
-   every row. */
+   every row. It is an outlined tag in the row's muted ink, not a status badge: it
+   shares .file-header-badge's radius, size and nowrap, but not its filled, bold,
+   two-pad box, whose block size would be that taller row (docs/design-system.md,
+   "Badges"). */
 .source-ref-selector-badge {
   flex: 0 0 auto;
   margin-block: -1px;
@@ -2938,7 +2990,7 @@ html.theme-anim .menu {
   color: var(--muted);
 }
 .source-ref-selector-error {
-  color: var(--status-warning-strong);
+  color: var(--status-error-text);
 }
 /* A checkout's working tree: a row like a ref's, above the lists and ruled off from
    them, since it is the one choice that is not a ref. The folder's path stands where a
@@ -3012,8 +3064,8 @@ html.theme-anim .menu {
   color: var(--link);
 }
 .source-freshness-label:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset-outset);
   border-radius: var(--radius-chrome);
 }
 .source-freshness-label:disabled {
@@ -3021,7 +3073,7 @@ html.theme-anim .menu {
   cursor: default;
 }
 .source-freshness[data-tone="warning"] .source-freshness-label {
-  color: var(--status-warning-strong);
+  color: var(--status-warning-text);
 }
 .source-freshness-offer {
   display: inline-flex;
@@ -3030,7 +3082,7 @@ html.theme-anim .menu {
   color: var(--text);
 }
 .source-freshness-error {
-  color: var(--status-warning-strong);
+  color: var(--status-error-text);
 }
 .source-freshness-pull {
   color: var(--link);
@@ -3351,8 +3403,8 @@ html[data-prose-font="sans"] .kpress-prose h2,
   background: var(--hover-bg);
 }
 .tree-item:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
   background: var(--hover-bg);
 }
 /* Current item — same tinted background + accent left bar as the embedded
@@ -3705,8 +3757,8 @@ a.tab-btn {
   color: var(--text);
 }
 .tab-btn:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 .tab-btn.active {
   color: var(--text);
@@ -3801,8 +3853,8 @@ a.tab-btn {
   background: var(--hover-bg);
 }
 .chip:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* Joined groups are segmented controls: one shared border and one
    row. A set that cannot fit that contract opts into the wrapping
@@ -4010,8 +4062,8 @@ a.tab-btn {
   color: var(--text);
 }
 .filter-check:has(input:focus-visible) {
-  outline: 2px solid var(--link);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset-outset);
   border-radius: var(--radius-chrome);
 }
 .chip-badge {
@@ -4042,8 +4094,8 @@ a.tab-btn {
   text-decoration: underline;
 }
 .chip-clear:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* ── Navigation filter bar ───────────────────────────────────────
@@ -4444,10 +4496,13 @@ a.tab-btn {
   display: none;
 }
 
+/* A navigation column's empty state — no files match, no commits, nothing to list — one
+   look in every tab: the column's inset, left, muted. A load that failed is not empty: it
+   adds .nav-error. */
+.git-panel-empty,
 .recent-empty {
-  padding: 24px 12px;
+  padding: 16px 12px;
   color: var(--muted);
-  text-align: center;
 }
 /* The lines under the tally — what the filter narrowed the tree to
    (`.tree-summary-filtered`), that the selected folder is outside the filter
@@ -4902,14 +4957,14 @@ a.tab-btn {
   color: var(--link);
   padding: 0 2px;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--radius-chrome);
 }
 .folder-crumb:hover {
   background: var(--hover-bg);
 }
 .folder-crumb:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* The served root, absolute, ahead of the first slash. Dimmed because it
    is identical on every page of the app: context for the live part of the
@@ -5044,7 +5099,7 @@ a.tab-btn {
   pointer-events: auto;
 }
 .file-header-copy.copied {
-  color: var(--status-success);
+  color: var(--status-success-text);
   opacity: 1;
   pointer-events: auto;
 }
@@ -5103,44 +5158,44 @@ a.tab-btn {
   visibility: hidden;
 }
 .badge-completed {
-  background: oklch(92.2% 0.037 152.6);
-  color: oklch(40.1% 0.103 147.4);
+  background: var(--badge-completed-bg);
+  color: var(--badge-completed-text);
 }
 .badge-failed {
-  background: oklch(91% 0.036 12.1);
-  color: oklch(37.3% 0.12 19.9);
+  background: var(--badge-failed-bg);
+  color: var(--badge-failed-text);
 }
 .badge-running {
-  background: oklch(96.4% 0.052 93.1);
-  color: oklch(53.05% 0.1071 88.17);
+  background: var(--badge-running-bg);
+  color: var(--badge-running-text);
 }
 .badge-pending {
-  background: oklch(94.5% 0.005 247.9);
-  color: oklch(42.4% 0.015 248.2);
+  background: var(--badge-pending-bg);
+  color: var(--badge-pending-text);
 }
 .badge-claude {
-  background: oklch(93.46% 0.0305 255.11);
-  color: oklch(48.3% 0.145 257);
+  background: var(--badge-claude-bg);
+  color: var(--badge-claude-text);
 }
 .badge-gemini {
-  background: oklch(96.2% 0.057 95.6);
-  color: oklch(57.4% 0.1136 92.83);
+  background: var(--badge-gemini-bg);
+  color: var(--badge-gemini-text);
 }
 .badge-pi {
-  background: oklch(93.7% 0.031 294.2);
-  color: oklch(43% 0.209 292.4);
+  background: var(--badge-pi-bg);
+  color: var(--badge-pi-text);
 }
 .badge-adapter {
-  background: oklch(93.13% 0.0327 272.26);
-  color: oklch(44% 0.146 267.3);
+  background: var(--badge-adapter-bg);
+  color: var(--badge-adapter-text);
 }
 .badge-compressed {
-  background: oklch(93.9% 0 89.9);
-  color: oklch(46.5% 0 89.9);
+  background: var(--badge-compressed-bg);
+  color: var(--badge-compressed-text);
 }
 .badge-frontmatter-error {
-  background: oklch(91% 0.036 12.1);
-  color: oklch(37.3% 0.12 19.9);
+  background: var(--badge-failed-bg);
+  color: var(--badge-failed-text);
   cursor: help;
 }
 
@@ -5163,7 +5218,7 @@ a.tab-btn {
   pointer-events: auto;
 }
 .content-copy-btn.copied {
-  color: var(--status-success);
+  color: var(--status-success-text);
   opacity: 1;
   pointer-events: auto;
 }
@@ -5408,6 +5463,104 @@ a.tab-btn {
 }
 .metabrowser-kpress-host .kpress details > summary:hover {
   color: var(--text);
+}
+
+/* ── GitHub's layout attributes in rendered Markdown ─────────────
+   A README lays itself out with the HTML attributes github.com keeps: `align` on a
+   block, a heading, an image, or a table part, and `width` and `height` on an image
+   or a table cell (html-pipeline's SanitizationFilter; inert_html.py lists what an
+   untrusted document keeps). The browser applies each as a presentational hint, which
+   every author rule outranks, so where KPress's stylesheets set the same property the
+   attribute is lost. These rules give it back, as github.com's stylesheet leaves it,
+   in every place Markdown is set as `.kpress-prose`: a document, trusted or inert, a
+   pull request's text, and a Markdown diff. A block's or a heading's `align` and an
+   image's `width` need nothing here: no rule of KPress's sets them. */
+
+/* KPress gives every image `height: auto`, which keeps the file's proportions and so
+   overrides a `height` attribute: a badge written `height="20"` drew at its file's
+   height. github.com sets no height, so the attribute wins there. `revert-layer` here
+   rolls back every unlayered author rule, KPress's included, to the attribute's hint,
+   in Chrome 152 and in the macOS app's WebKit (both measured 2026-11-19; `revert` goes
+   past the hint to the browser's default, and typed `attr()` is not in WebKit); it
+   relies on neither stylesheet using cascade layers. An image with only a `width`
+   keeps `height: auto`, its proportions, as on github.com, and so does a wiki embed,
+   `![[image.png|640x480]]`: the markdown plugin gives it both attributes, and it keeps
+   its file's proportions within that width, as it did before these rules. */
+.kpress-prose img[height]:not([data-metabrowser-link-syntax="wiki-embed"]) {
+  height: revert-layer;
+}
+
+/* github.com gives an image no margin. KPress gives every image `margin-block: 1rem`,
+   which lifted a `height="20"` badge wholly above its line of text and kept a floated
+   image's foot a rem lower, so the images after it were pushed aside. An image laid
+   out by these attributes takes github.com's none; a Markdown image, which has none of
+   them, and a wiki embed keep KPress's room. */
+.kpress-prose img:is([align], [width], [height]):not([data-metabrowser-link-syntax="wiki-embed"]) {
+  margin-block: 0;
+}
+
+/* A floated image can end below the document's last line, and then it was drawn past
+   the foot of the card. github.com clears every Markdown body with this `::after`; only
+   prose with an image floated by `align` gets it here, so no other document's last
+   margin moves. */
+.kpress-prose:has(img:is([align="left" i], [align="right" i]))::after {
+  clear: both;
+  content: "";
+  display: table;
+}
+
+/* An image floated by `align` keeps github.com's room from the text beside it, outside
+   its width, as github.com's `content-box` images have it: in KPress's `border-box` the
+   room came out of the image, and a `width="120"` image drew 100 pixels wide. */
+.kpress-prose img:is([align="left" i], [align="right" i]) {
+  box-sizing: content-box;
+}
+
+.kpress-prose img[align="left" i] {
+  padding-right: 20px;
+}
+
+.kpress-prose img[align="right" i] {
+  padding-left: 20px;
+}
+
+/* KPress sets every table cell's text alignment (start, a header centred, a number at
+   the end), which outranks the `align` of the cell, its row, or its row group. A
+   cell's own `align` wins over its row's, and a row's over its group's. */
+.kpress-prose
+:is(td, th):is(
+  [align="left" i],
+  tr[align="left" i] > :not([align]),
+  :is(thead, tbody, tfoot)[align="left" i] > tr:not([align]) > :not([align])
+) {
+  text-align: left;
+}
+
+.kpress-prose
+  :is(td, th):is(
+    [align="center" i],
+    tr[align="center" i] > :not([align]),
+    :is(thead, tbody, tfoot)[align="center" i] > tr:not([align]) > :not([align])
+  ) {
+  text-align: center;
+}
+
+.kpress-prose
+  :is(td, th):is(
+    [align="right" i],
+    tr[align="right" i] > :not([align]),
+    :is(thead, tbody, tfoot)[align="right" i] > tr:not([align]) > :not([align])
+  ) {
+  text-align: right;
+}
+
+.kpress-prose
+  :is(td, th):is(
+    [align="justify" i],
+    tr[align="justify" i] > :not([align]),
+    :is(thead, tbody, tfoot)[align="justify" i] > tr:not([align]) > :not([align])
+  ) {
+  text-align: justify;
 }
 
 /* ── Embedded KPress documents ─────────────────────────────────────
@@ -5686,8 +5839,8 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--text);
 }
 .source-line-numbers:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* The scroll target sits on the anchor's first line, or on the line a key moved to. */
 .source-line-anchor-target {
@@ -6088,8 +6241,8 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--link);
 }
 .help-project a:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset-outset);
   border-radius: var(--radius-chrome);
 }
 .help-section-heading,
@@ -6176,8 +6329,8 @@ pre.code-block.metabrowser-source-lines > code {
   font-size: var(--body-font-size);
 }
 .search-palette-input:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* The input above supplies this list's top rule, so the list carries only its
    bottom one. Owning both put two hairlines back to back whenever the list was
@@ -6190,7 +6343,10 @@ pre.code-block.metabrowser-source-lines > code {
 }
 .search-palette-option {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  /* The icon column is its box and 2px of air; an option under a pull request's heading
+     lines its text up with the others' (36px = the 10px inset, the column, the 8px gap). */
+  --search-palette-icon-column: calc(var(--icon-box) + 2px);
+  grid-template-columns: var(--search-palette-icon-column) minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   min-height: 38px;
@@ -6202,7 +6358,7 @@ pre.code-block.metabrowser-source-lines > code {
 }
 .search-palette-option-pull {
   grid-template-columns: minmax(0, 1fr);
-  padding-inline-start: 36px;
+  padding-inline-start: calc(10px + var(--search-palette-icon-column) + 8px);
 }
 .search-palette-option:hover,
 .search-palette-option.active,
@@ -6466,7 +6622,7 @@ pre.code-block.metabrowser-source-lines > code {
   font-style: italic;
 }
 .tree-lazy-error {
-  color: var(--status-error);
+  color: var(--status-error-text);
   font-style: normal;
 }
 
@@ -6567,8 +6723,8 @@ pre.code-block.metabrowser-source-lines > code {
   background: var(--hover-bg);
 }
 .changed-file-row:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
   background: var(--hover-bg);
 }
 .changed-file-row.selected {
@@ -6597,11 +6753,11 @@ pre.code-block.metabrowser-source-lines > code {
   font-variant-numeric: var(--tabular-numerals);
 }
 .changed-file-stats > .diff-stat-add {
-  color: var(--status-success);
+  color: var(--status-success-text);
   font-weight: var(--weight-bold);
 }
 .changed-file-stats > .diff-stat-del {
-  color: var(--status-error);
+  color: var(--status-error-text);
   font-weight: var(--weight-bold);
 }
 .changed-file-row > :is(.tree-container-badge, .changed-file-name, .changed-file-stats) {
@@ -6701,7 +6857,7 @@ pre.code-block.metabrowser-source-lines > code {
    alignment through tabular numerals rather than a monospaced face. */
 .tally-tree {
   font-size: var(--nav-font-size);
-  line-height: 1.8;
+  line-height: var(--ui-row-height);
   padding: 8px 12px;
   font-family: var(--font-sans);
 }
@@ -6718,8 +6874,8 @@ pre.code-block.metabrowser-source-lines > code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: var(--tree-icon-slot);
+  height: var(--tree-icon-slot);
   vertical-align: middle;
 }
 .tally-label {
@@ -6757,24 +6913,57 @@ pre.code-block.metabrowser-source-lines > code {
 
 /* Tally color hints */
 .tally-color-success {
-  color: var(--status-success);
+  color: var(--status-success-text);
 }
 .tally-color-failed,
 .tally-color-error {
-  color: var(--status-error);
+  color: var(--status-error-text);
 }
 .tally-color-critical {
-  color: var(--status-error);
+  color: var(--status-error-text);
   font-weight: var(--weight-bold);
 }
-.tally-color-high {
-  color: var(--status-warning-strong);
-}
-.tally-color-elevated {
-  color: var(--status-warning);
+.tally-color-warning {
+  color: var(--status-warning-text);
 }
 .tally-color-kill {
-  color: var(--status-error);
+  color: var(--status-error-text);
+}
+
+/* The event log's Details for a failure or a late wait (static/event-reports.js, mb-9zp5):
+   short muted lines under a quiet rule, and links to the records as JSON. They read at the
+   size of the line they open from, stepping back by ink ("Type Scale" in
+   docs/design-system.md). */
+.event-log-details {
+  padding-block: 6px;
+  padding-inline-start: 10px;
+  border-inline-start: 2px solid var(--border);
+  color: var(--muted);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.event-log-details p,
+.event-log-details ul {
+  margin: 0;
+}
+.event-log-details ul {
+  padding-inline-start: 1.2em;
+}
+.event-log-details-part + .event-log-details-part,
+.event-log-details-links {
+  margin-block-start: 6px;
+}
+.event-log-details-heading {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+.event-log-details a {
+  color: var(--link);
+}
+/* A bare inline link: its box is its text, so the ring stands outside it. */
+.event-log-details a:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset-outset);
 }
 
 /* ── Tally skeleton cells ───────────────────────────────────── */
@@ -7101,10 +7290,6 @@ pre.code-block.metabrowser-source-lines > code {
   margin: 0 12px;
 }
 
-.git-history-retry {
-  min-height: var(--button-height-compact);
-}
-
 .git-graph-row {
   display: flex;
   align-items: center;
@@ -7127,8 +7312,8 @@ pre.code-block.metabrowser-source-lines > code {
 }
 
 .git-graph-row:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Width is set per panel from the widest row loaded, so the subject
@@ -7234,13 +7419,9 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--muted);
 }
 
-.git-graph-more-failed {
-  color: var(--status-error-strong);
-}
-
-.git-panel-empty {
-  padding: 16px 12px;
-  color: var(--muted);
+.git-graph-more-failed,
+.nav-error {
+  color: var(--status-error-text);
 }
 
 /* Rides the .btn primitive; only the spacing is local. */
@@ -7353,12 +7534,12 @@ pre.code-block.metabrowser-source-lines > code {
 }
 
 .change-line-stats > .diff-stat-add {
-  color: var(--status-success);
+  color: var(--status-success-text);
   font-weight: var(--weight-bold);
 }
 
 .change-line-stats > .diff-stat-del {
-  color: var(--status-error);
+  color: var(--status-error-text);
   font-weight: var(--weight-bold);
 }
 
@@ -7649,8 +7830,8 @@ pre.code-block.metabrowser-source-lines > code {
 
 .git-commit-summary-compact .git-commit-revision-copy-preview {
   display: inline-flex;
-  width: 14px;
-  height: 14px;
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
   color: var(--muted);
 }
 
@@ -7779,8 +7960,8 @@ pre.code-block.metabrowser-source-lines > code {
    family's focus ring. .git-commit-file is a bare native button and needs
    its own. */
 .git-commit-file:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Files outside the served root, and deleted files, are listed but not
@@ -7821,12 +8002,12 @@ pre.code-block.metabrowser-source-lines > code {
 }
 
 .git-stat-add {
-  color: var(--status-success);
+  color: var(--status-success-text);
   font-weight: var(--weight-bold);
 }
 
 .git-stat-del {
-  color: var(--status-error-strong);
+  color: var(--status-error-text);
   font-weight: var(--weight-bold);
 }
 
@@ -7901,13 +8082,15 @@ pre.code-block.metabrowser-source-lines > code {
   right: 2px;
   top: 50%;
   transform: translateY(-50%);
-  width: 16px;
-  height: 16px;
+  width: var(--icon-box);
+  height: var(--icon-box);
   min-width: 0;
   padding: 1px;
   opacity: 0;
   color: inherit;
 }
+/* A step under --icon-glyph on purpose: the button is a chip's corner, with 1px of padding
+   in an --icon-box that must not widen the chip, so a full glyph would touch its edges. */
 .git-ref-copy > svg {
   width: 12px;
   height: 12px;
@@ -7917,7 +8100,8 @@ pre.code-block.metabrowser-source-lines > code {
   opacity: 1;
 }
 .git-ref-copy:focus-visible {
-  outline: 1px solid var(--link);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 .git-ref-copy-host {
   position: relative;

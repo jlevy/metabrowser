@@ -30,17 +30,19 @@
 // class, id, data, style, or event attribute survives, nor any SVG, media, stylesheet,
 // frame, or form; an image becomes a link to it; a link is made absolute against the
 // pull request's github.com page, kept only for http(s), and opened in a new tab with
-// rel="noopener noreferrer"; and no KPress script is loaded for a text, but on a pinned
-// revision's page, for one with a Mermaid block (a `pre` keeps `lang="mermaid"`), KPress's
-// diagram modules, which draw each block as an image (`drawTextDiagrams`). KPress's
-// stylesheets are, the route's one fixed list, and the page sets the rebuilt nodes in a
-// KPress article of its own making, so a text reads as the same Markdown in a file does.
+// rel="noopener noreferrer"; and no KPress script is loaded for a text, but for one with a
+// Mermaid block (a `pre` keeps `lang="mermaid"`), KPress's diagram modules, which draw each
+// block as an image laid out in a frame whose policy loads nothing (`drawTextDiagrams`).
+// KPress's stylesheets are, the route's one fixed list, and the page sets the rebuilt nodes
+// in a KPress article of its own making, so a text reads as the same Markdown in a file
+// does.
 
 import {
   comparisonKey,
   createComparisonPrefetch,
   diffComparisonLoader,
 } from "./comparison-prefetch.js";
+import { OUTCOME_FALLBACK, rateLimitText, refreshRefusedText, unavailableText } from "./copy.js";
 import {
   createStackIndex,
   memberRoute,
@@ -384,6 +386,7 @@ const TRUNCATED = Object.freeze({
  *   canFetchComparison: boolean,
  *   freshness: string | null,
  *   failure: string | null,
+ *   failureAt?: string | null,
  *   failureHelp?: "install" | "update",
  *   failureHold?: true,
  *   pull: null | {
@@ -1070,7 +1073,7 @@ function notes(record, forChecks) {
     );
   }
   if (!forChecks && truncated.text === true) {
-    said.push("Some text was cut to keep this pull request's data within its size limit.");
+    said.push("Some text was cut to keep this pull request’s data within its size limit.");
   }
   for (const [part, why] of Object.entries(record.unavailable ?? {})) {
     if (checkPart(part) !== forChecks || (part === "comparison" && why === "no_store")) {
@@ -1095,21 +1098,21 @@ function notes(record, forChecks) {
  */
 export function filesUnavailableText(why) {
   if (why === "base_uncertain") {
-    return "Changes are not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
+    return "Changes are not shown: this checkout’s history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
   }
   if (why === "no_store") {
     return "Changes could not be fetched.";
   }
   if (why === "comparison_timeout") {
-    return "Changes are unavailable: checking this pull request's history took too long. Refresh to try again.";
+    return "Changes are unavailable: checking this pull request’s history took too long. Refresh to try again.";
   }
   if (why === "comparison_too_large") {
-    return "Changes are unavailable: checking this pull request's history exceeded the comparison limit.";
+    return "Changes are unavailable: checking this pull request’s history exceeded the comparison limit.";
   }
   if (why === "commits_unavailable") {
-    return "Changes are unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.";
+    return "Changes are unavailable: a commit of this pull request’s history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.";
   }
-  return "Changes are unavailable: the pull request's base could not be compared with its head.";
+  return "Changes are unavailable: the pull request’s base could not be compared with its head.";
 }
 
 /** What Changes says for a record without a store before anything has failed. */
@@ -1345,11 +1348,13 @@ export function describePull(envelope, page) {
     // Held, not failed: the time named is the one the page next asks at. It begins and
     // lifts by itself and asks nothing of the reader, so it keeps the row to one line.
     model.failureHold = true;
-    model.failure = Number.isFinite(heldUntil)
-      ? `GitHub rate limit · next check at ${(page.formatHold ?? holdLiftText)(heldUntil, page.nowMs)}`
-      : "GitHub rate limit · next check within a minute";
+    model.failure = rateLimitText(
+      Number.isFinite(heldUntil) ? (page.formatHold ?? holdLiftText)(heldUntil, page.nowMs) : null,
+    );
   } else if (last !== null && last.outcome !== "succeeded" && !envelope.refreshing) {
-    model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? last.outcome.replaceAll("_", " ")}`;
+    model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? OUTCOME_FALLBACK}`;
+    // When it ended, which the failure's Details reads the event log around (mb-9zp5).
+    model.failureAt = last.at ?? null;
     if (["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome)) {
       model.failure += `${model.failure.endsWith(".") ? "" : "."} You can still browse local files and any cached pull requests.`;
       if (last.outcome === "gh_missing") {
@@ -1490,7 +1495,7 @@ export function describePull(envelope, page) {
   if (envelope.pin === null && head !== "" && page.checkoutHead === head) {
     // A checkout has no pin, so no Browse code: its working tree is not the pull request's
     // code. When its HEAD is this pull request's head, that much is so, and the page says it.
-    model.checkoutAtHead = "This checkout's HEAD is this pull request's head.";
+    model.checkoutAtHead = "This checkout’s HEAD is this pull request’s head.";
   }
   model.filesUnavailable = filesUnavailableText(record.unavailable?.comparison ?? null);
   if (record.unavailable?.comparison === "no_store" && page.tab === "files") {
@@ -2447,7 +2452,7 @@ export function createPullController(deps, options) {
       error = null;
       errorFromComparison = false;
     } else {
-      error = `The pull request is unavailable (HTTP ${response.status}).`;
+      error = unavailableText("The pull request");
       errorFromComparison = false;
     }
   }
@@ -2634,7 +2639,7 @@ export function createPullController(deps, options) {
         }
       } else if (ask.retry) {
         const said = body !== null && typeof body.error === "string" ? body.error : null;
-        error = `The refresh was refused (${said ?? `HTTP ${response.status}`}).`;
+        error = refreshRefusedText("The refresh", said);
         errorFromComparison = ask.comparison === true;
         if (ask.comparison) {
           comparisonRefusal = error;
@@ -3826,7 +3831,7 @@ export function createStackMenu(initial, number, deps) {
         const position = h("strong", { class: "github-pull-stack-member-position" });
         const identity = h("span", { class: "github-pull-stack-member-number" });
         link.append(
-          h("span", { class: "github-pull-stack-current", "aria-hidden": "true" }, [
+          h("span", { class: "chip-menu-check", "aria-hidden": "true" }, [
             target === number ? "✓" : "",
           ]),
           h("span", { class: "github-pull-stack-member-copy" }, [
@@ -4243,6 +4248,27 @@ export function mountPullPage(container, ctx, mb) {
     },
     [h("span", { class: "tally-pending", "aria-hidden": "true" })],
   );
+  // A wait for the summary still running at the event log's late threshold says so in the
+  // placeholder's place, with Details (mb-9zp5): a placeholder that only pulsed left the
+  // reader no way to tell slow from stuck, nor anyone a record of it. A line tall, as the
+  // placeholder is, so it moves nothing.
+  const summaryLateText = h("span", { class: "github-pull-summary-late-text" });
+  const summaryLate = h("span", { class: "github-pull-summary-late", role: "status" }, [
+    summaryLateText,
+  ]);
+  let summaryLateShown = false;
+  // The Details a failure or a late wait offers: the event log's records for it, read when
+  // the reader asks (static/event-reports.js, showDetails), as the header's last row while
+  // open. One panel, for the control that opened it last.
+  const detailsId = `github-pull-details-${number}`;
+  const detailsPanel = h("div", {
+    class: "event-log-details github-pull-details",
+    id: detailsId,
+    role: "region",
+    "aria-label": "Event log details",
+  });
+  /** @type {{button: HTMLElement, reading: AbortController} | null} */
+  let detailsOpen = null;
   header.append(stateRow);
   // The status line: what the page has to say beyond the note, a failure and its remedy, a
   // message, and the offers, one of the header's metadata lines, under the row of ages and as
@@ -4738,13 +4764,15 @@ export function mountPullPage(container, ctx, mb) {
    * them in a description or comment. A text is untrusted, so each is an image, which runs
    * no script and loads nothing. A text with no block asks for nothing.
    *
-   * Only on a page under the untrusted Content-Security-Policy, which a pinned revision's
-   * page always is (`capabilities_for` in capabilities.py, `index` in server.py). Mermaid
-   * lays a diagram out in the page before it becomes an image, and there its image shape
-   * loads its URL and a label's markup is live while it is measured (KPress's
-   * `js/diagrams.js`); that policy's `img-src` and script rules are what bound it. A folder's
-   * page has the policy only when served untrusted, which the SDK does not say, so there a
-   * block stays its source, as the text's other Markdown keeps every other load away.
+   * On every page, a folder's served trusted among them, with no Content-Security-Policy.
+   * Mermaid lays a diagram out in a document before it becomes an image, and there the
+   * diagram's own CSS is live: its image shape, a `themeCSS` directive, and a state
+   * diagram's `classDef` each load their URL. So each text's diagrams are laid out in the
+   * Markdown plugin's diagram frame (`isolated: true`), whose own policy admits nothing but
+   * its scripts, inline style, and `data:` images, under either profile
+   * (markdown/diagram-frame.js has the measurement), as the text's other Markdown keeps
+   * every other load away. A block whose image the frame refuses shows its error and
+   * source.
    *
    * The Markdown plugin owns the host for KPress's diagrams (markdown/diagrams.js) and
    * publishes it as `mb.builtins.markdown.drawDiagrams`, read at render time once its kind's
@@ -4758,7 +4786,7 @@ export function mountPullPage(container, ctx, mb) {
    */
   function drawTextDiagrams(element, article) {
     disposeTextDiagrams(element);
-    if (article.querySelector(TEXT_DIAGRAM) === null || mb.sourceKind() !== "git_revision") {
+    if (article.querySelector(TEXT_DIAGRAM) === null) {
       return;
     }
     let disposed = false;
@@ -4775,7 +4803,7 @@ export function mountPullPage(container, ctx, mb) {
       .ensureKindAssets("markdown")
       .then(() => {
         if (!disposed && !listening.signal.aborted) {
-          drawn = mb.builtins.markdown?.drawDiagrams?.(article, { inert: true }) ?? null;
+          drawn = mb.builtins.markdown?.drawDiagrams?.(article, { isolated: true }) ?? null;
         }
       })
       .catch((error) => {
@@ -5625,9 +5653,9 @@ export function mountPullPage(container, ctx, mb) {
         );
         button.addEventListener("click", switchNow);
         const sentence = [
-          "This page's code is ",
+          "This page’s code is ",
           commitId(pin),
-          ", not the pull request's head ",
+          ", not the pull request’s head ",
           commitId(head),
           ".",
         ];
@@ -5676,6 +5704,11 @@ export function mountPullPage(container, ctx, mb) {
               tipWhenCut(h("span", { class: "github-pull-failure" }, [failure])),
             ),
           ]),
+      // What the event log holds of the failure: its cause, the address, and the timings
+      // (mb-9zp5). Not for a rate limit's hold, which is not a failure.
+      ...(failure === null || model.failureHold === true
+        ? []
+        : [headerPart("failure details", failure, () => detailsToggle("failure", failureQuery))]),
       ...(failureHelp === undefined
         ? []
         : [
@@ -5696,7 +5729,14 @@ export function mountPullPage(container, ctx, mb) {
       children.push(summaryRow);
     }
     paintSummaryWait(model);
+    if (detailsOpen !== null) {
+      children.push(detailsPanel);
+    }
     placeChildren(header, children);
+    // A control that is gone, as a failure's when a refresh succeeds, closes its panel.
+    if (detailsOpen !== null && !detailsOpen.button.isConnected) {
+      closeDetails();
+    }
     followCounterpart();
     if (model.pull === null && model.status === "unavailable") {
       tabColumn.remove();
@@ -5764,13 +5804,7 @@ export function mountPullPage(container, ctx, mb) {
         ? h("span", {}, ["committed ", age(event.committed_at)])
         : null,
       mb.decorateExternalLink(
-        outside(
-          mb,
-          href,
-          "",
-          [mb.shortCommit(event.oid)],
-          "github-pull-commit-id git-commit-sha github-pull-external-action",
-        ),
+        outside(mb, href, "", [mb.shortCommit(event.oid)], "github-pull-commit-id git-commit-sha"),
         { icon: "github", position: "before" },
       ),
     ]);
@@ -6086,7 +6120,7 @@ export function mountPullPage(container, ctx, mb) {
           h("span", { class: "heading-tally-dot", "aria-hidden": "true" }, ["·"]),
           " ",
           h("span", { class: "heading-tally-figure" }, [
-            model.reviewComments.length.toLocaleString(),
+            mb.formatInteger(model.reviewComments.length),
           ]),
         ]),
       ]),
@@ -6412,6 +6446,197 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
+   * A wait the event log hears of only when it is late (static/event-reports.js, `wait`).
+   * The reporter is an on-demand bundle, which may arrive after the wait began, so it is
+   * told when the wait began; a wait over before it arrives was not late.
+   *
+   * @param {string} name
+   * @param {{onLate?: (ms: number) => void}} [options]
+   */
+  function reportedWait(name, options = {}) {
+    const startedAt = performance.now();
+    /** @type {MetabrowserEventWait | null} */
+    let handle = null;
+    let ended = false;
+    loadEventReports().then(
+      () => {
+        if (!ended && !listening.signal.aborted) {
+          handle =
+            mb.eventReports?.wait(name, { ...options, startedAt, detail: { number } }) ?? null;
+        }
+      },
+      () => {},
+    );
+    return {
+      /** @param {MetabrowserEventOutcome} [outcome] */
+      end(outcome = "ok") {
+        if (!ended) {
+          ended = true;
+          handle?.end(outcome);
+        }
+      },
+    };
+  }
+
+  /** The `event-reports` bundle, which the shell asks for after the first usable tree. */
+  const loadEventReports = () =>
+    typeof mb.ensureAsset === "function"
+      ? Promise.resolve(mb.ensureAsset("event-reports"))
+      : Promise.resolve();
+
+  /** @type {{end: (outcome?: MetabrowserEventOutcome) => void} | null} */
+  let summaryWait = null;
+  /** @type {{end: (outcome?: MetabrowserEventOutcome) => void} | null} */
+  let refreshWait = null;
+
+  /**
+   * The Diff summary's row holds its placeholder, or the line that says it is late: the
+   * reader is waiting, and the event log hears of it if the wait runs late. It ends when
+   * the row holds anything else: the summary (`ok`), nothing after a read that drew none
+   * (`failed`), or the brief line or nothing because nothing is coming (`cancelled`).
+   */
+  function noteSummaryWait() {
+    const held = summaryRow.firstChild;
+    const waiting = held === summaryPending || held === summaryLate;
+    if (waiting && summaryWait === null && !listening.signal.aborted) {
+      summaryWait = reportedWait("githubPull:diffSummary", {
+        onLate: (ms) => {
+          summaryLateShown = true;
+          summaryLateText.textContent = `The summary of changes has not arrived after ${Math.round(ms / 1000)} s.`;
+          if (summaryLate.childNodes.length === 1) {
+            summaryLate.append(
+              " ",
+              detailsToggle("summary details", () => ({ client: mb.eventReports?.page })),
+            );
+          }
+          if (summaryRow.firstChild === summaryPending) {
+            summaryRow.replaceChildren(summaryLate);
+          }
+        },
+      });
+    } else if (!waiting && summaryWait !== null) {
+      summaryWait.end(
+        summaryShown.handle !== null ? "ok" : summaryFailed !== "" ? "failed" : "cancelled",
+      );
+      summaryWait = null;
+      summaryLateShown = false;
+      if (detailsOpen !== null && !detailsOpen.button.isConnected) {
+        closeDetails();
+      }
+    }
+  }
+
+  /**
+   * A refresh of what is shown runs: the event log hears of it if it runs late, and how it
+   * ended.
+   *
+   * @param {PullModel} model
+   */
+  function noteRefreshWait(model) {
+    if (model.refreshing && refreshWait === null && !listening.signal.aborted) {
+      refreshWait = reportedWait("githubPull:refresh");
+    } else if (!model.refreshing && refreshWait !== null) {
+      refreshWait.end(model.failure !== null && model.failureHold !== true ? "failed" : "ok");
+      refreshWait = null;
+    }
+  }
+
+  /** @param {number} ms */
+  const utcSecond = (ms) => `${new Date(ms).toISOString().slice(0, 19)}Z`;
+
+  /**
+   * The records behind the failure shown: the failures in the window before the refresh
+   * ended, to a minute after it, for the records written as it ended (its job's end, and the
+   * probe that explains it), and this page's own.
+   *
+   * @returns {MetabrowserEventDetailsQuery}
+   */
+  function failureQuery() {
+    const at = Date.parse(shown?.failureAt ?? "");
+    const reports = mb.eventReports;
+    const windowMs = (reports?.failureWindowS ?? 3600) * 1000;
+    return {
+      client: reports?.page,
+      ...(Number.isFinite(at)
+        ? { since: utcSecond(at - windowMs), until: utcSecond(at + 60_000) }
+        : {}),
+    };
+  }
+
+  /**
+   * A text action that opens the Details panel on *query*'s records, and closes it.
+   *
+   * @param {string} name
+   * @param {() => MetabrowserEventDetailsQuery} query
+   */
+  function detailsToggle(name, query) {
+    const button = h(
+      "button",
+      {
+        type: "button",
+        class: "github-pull-text-action github-pull-details-toggle",
+        "aria-expanded": "false",
+        "aria-controls": detailsId,
+        "data-details": name,
+      },
+      ["Details"],
+    );
+    button.addEventListener("click", () => {
+      const opening = detailsOpen?.button !== button;
+      closeDetails();
+      if (opening) {
+        openDetails(button, query);
+      }
+    });
+    return button;
+  }
+
+  function closeDetails() {
+    if (detailsOpen === null) {
+      return;
+    }
+    detailsOpen.reading.abort();
+    detailsOpen.button.setAttribute("aria-expanded", "false");
+    detailsOpen = null;
+    detailsPanel.remove();
+  }
+
+  /**
+   * @param {HTMLElement} button
+   * @param {() => MetabrowserEventDetailsQuery} query
+   */
+  function openDetails(button, query) {
+    const reading = new AbortController();
+    detailsOpen = { button, reading };
+    button.setAttribute("aria-expanded", "true");
+    detailsPanel.replaceChildren(
+      h("p", { class: "event-log-details-note" }, ["Reading the event log…"]),
+    );
+    header.append(detailsPanel);
+    loadEventReports()
+      .then(() => {
+        if (reading.signal.aborted) {
+          return;
+        }
+        const reports = mb.eventReports;
+        if (reports === undefined) {
+          detailsPanel.replaceChildren(
+            h("p", { class: "event-log-details-note" }, ["The event log is not available here."]),
+          );
+          return;
+        }
+        return reports.showDetails(detailsPanel, query(), { signal: reading.signal });
+      })
+      .catch(() => {
+        if (!reading.signal.aborted) {
+          detailsPanel.replaceChildren(
+            h("p", { class: "event-log-details-note" }, ["The event log could not be read."]),
+          );
+        }
+      });
+  }
+
+  /**
    * The Diff summary's row while no summary is drawn in it (mb-onr2). It waits on the read in
    * flight: on Changes the mounted diff's, which the summary is drawn from, and on every other
    * tab the record's comparison, which the prefetch reads; before the page has a comparison,
@@ -6426,6 +6651,7 @@ export function mountPullPage(container, ctx, mb) {
    */
   function paintSummaryWait(model) {
     if (summaryShown.handle !== null || listening.signal.aborted) {
+      noteSummaryWait();
       return;
     }
     const awaited = model === null ? null : model.tab === "files" ? diffFor : model.comparison;
@@ -6436,15 +6662,17 @@ export function mountPullPage(container, ctx, mb) {
     // The cached list's line for the head the page knows takes the placeholder's place, and
     // stays when the wait ends with no summary; another head's is never shown.
     const brief = briefFor(model);
-    const holds = brief ?? (waits ? summaryPending : null);
+    const holds = brief ?? (waits ? (summaryLateShown ? summaryLate : summaryPending) : null);
     if (holds !== null) {
       if (summaryRow.firstChild !== holds || summaryRow.childNodes.length !== 1) {
         summaryRow.replaceChildren(holds);
       }
     } else {
       summaryPending.remove();
+      summaryLate.remove();
       briefShown.node?.remove();
     }
+    noteSummaryWait();
   }
 
   /**
@@ -6491,6 +6719,7 @@ export function mountPullPage(container, ctx, mb) {
     summaryShown.handle?.dispose();
     summaryShown = { key: "", claim: summaryShown.claim + 1, handle: null };
     summaryRow.replaceChildren();
+    noteSummaryWait();
   }
 
   /**
@@ -6538,6 +6767,7 @@ export function mountPullPage(container, ctx, mb) {
         summaryShown = { key, claim, handle };
         // In place of the placeholder or an older summary, in one step.
         summaryRow.replaceChildren(...stage.childNodes);
+        noteSummaryWait();
       },
       () => {
         if (!listening.signal.aborted && summaryShown.claim === claim) {
@@ -6849,6 +7079,7 @@ export function mountPullPage(container, ctx, mb) {
   function paint(model) {
     container.dataset.corePreview = String(model.corePreview);
     shown = model;
+    noteRefreshWait(model);
     if (model.tab !== "files") {
       wantedFile = null;
     }
@@ -7537,6 +7768,12 @@ export function mountPullPage(container, ctx, mb) {
     markdownAsked.controller?.abort();
     summaryShown.handle?.dispose();
     summaryShown = { key: "", claim: summaryShown.claim + 1, handle: null };
+    // A wait the reader left before it ended never completed for them (reported if late).
+    summaryWait?.end("never_completed");
+    summaryWait = null;
+    refreshWait?.end("never_completed");
+    refreshWait = null;
+    closeDetails();
     stacks.dispose();
     for (const menu of stackMenus.values()) {
       menu.dispose();
