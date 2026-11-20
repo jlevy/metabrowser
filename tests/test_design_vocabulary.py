@@ -4049,8 +4049,22 @@ def _shipped_css_text() -> dict[Path, str]:
 # A custom property a stylesheet reads that no shipped stylesheet or script sets: the host
 # page or an embedded document supplies these, so they are not ours to define. A prefix
 # names a family the host owns.
-_EXTERNAL_PROPERTY_PREFIXES = ("--kpress-", "--mb-")
-_EXTERNAL_PROPERTIES: frozenset[str] = frozenset()
+_EXTERNAL_PROPERTIES: frozenset[str] = frozenset(
+    {
+        # Written per element by a script through a named constant, so no literal
+        # `setProperty("--name")` call is there to find (folder/category-palette.js's
+        # LIGHT_PROPERTY and DARK_PROPERTY; app.js's FILE_COLOR_*_PROPERTY).
+        "--mb-distribution-color-light",
+        "--mb-distribution-color-dark",
+        "--mb-file-color-light",
+        "--mb-file-color-dark",
+        # The embedded kpress document's own properties, which its stylesheet defines.
+        "--kpress-font-prose",
+        "--kpress-line-height-normal",
+        "--kpress-toc-toggle-clearance",
+        "--kpress-column-inset",
+    }
+)
 _VAR_WITHOUT_FALLBACK = re.compile(r"var\(\s*(--[\w-]+)\s*\)")
 _PROPERTY_DECLARATION = re.compile(r"(--[a-zA-Z][\w-]*)\s*:")
 _SET_PROPERTY = re.compile(r"setProperty\(\s*[\"'`](--[\w-]+)")
@@ -4061,7 +4075,9 @@ def _defined_custom_properties() -> set[str]:
     for css in _shipped_css_text().values():
         defined.update(_PROPERTY_DECLARATION.findall(re.sub(r"/\*.*?\*/", "", css, flags=re.S)))
     for source in _browser_sources():
-        text = source.read_text(encoding="utf-8")
+        # A name in a comment is prose, not a definition.
+        text = re.sub(r"/\*.*?\*/", "", source.read_text(encoding="utf-8"), flags=re.S)
+        text = re.sub(r"^\s*//.*$", "", text, flags=re.M)
         defined.update(_SET_PROPERTY.findall(text))
         # An inline `style="--x: …"` or a style object key written by a script.
         defined.update(_PROPERTY_DECLARATION.findall(text))
@@ -4074,6 +4090,10 @@ def test_every_custom_property_a_stylesheet_reads_is_defined() -> None:
     A read of a name nothing defines falls through to the property's initial value, which
     is how `min-height: var(--button-height-compact)` sat in the shell doing nothing. A
     read with a fallback is an optional hook and is not checked.
+
+    Limit: "defined" is a name set anywhere in a shipped stylesheet, or in a script outside
+    a comment, at any selector; it does not check that the definition is in scope of the
+    reader (a token set only under one component's selector but read elsewhere passes).
     """
 
     defined = _defined_custom_properties()
@@ -4081,11 +4101,7 @@ def test_every_custom_property_a_stylesheet_reads_is_defined() -> None:
     for sheet, css in _shipped_css_text().items():
         stripped = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
         for name in _VAR_WITHOUT_FALLBACK.findall(stripped):
-            if (
-                name in defined
-                or name in _EXTERNAL_PROPERTIES
-                or name.startswith(_EXTERNAL_PROPERTY_PREFIXES)
-            ):
+            if name in defined or name in _EXTERNAL_PROPERTIES:
                 continue
             undefined.setdefault(name, set()).add(_sheet_name(sheet))
     assert not undefined, f"custom properties read but never defined: {undefined}"
@@ -4167,15 +4183,17 @@ _AA_TEXT = 4.5
 
 
 def test_status_and_badge_inks_read_in_both_themes() -> None:
-    """A status color set as text is held to 4.5:1 on the page, a badge's on its own fill."""
+    """A status ink is held to 4.5:1 on the page and the hover ground; a badge's on its own fill."""
 
     for theme, tokens in _theme_tokens().items():
-        ground = _resolved(tokens, "--bg")
-        for token in _STATUS_TEXT_TOKENS:
-            ink = _resolved(tokens, token)
-            assert _contrast(ink, ground) >= _AA_TEXT, (
-                f"{token} in the {theme} theme reads at {_contrast(ink, ground):.2f}:1 on --bg"
-            )
+        for ground_token in ("--bg", "--hover-bg"):
+            ground = _resolved(tokens, ground_token)
+            for token in _STATUS_TEXT_TOKENS:
+                ink = _resolved(tokens, token)
+                assert _contrast(ink, ground) >= _AA_TEXT, (
+                    f"{token} in the {theme} theme reads at {_contrast(ink, ground):.2f}:1 "
+                    f"on {ground_token}"
+                )
         for tone in _BADGE_TONES:
             fill = _resolved(tokens, f"--badge-{tone}-bg")
             ink = _resolved(tokens, f"--badge-{tone}-text")

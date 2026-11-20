@@ -41,7 +41,7 @@
 // chip group and icons.
 
 import { createComparisonWarmer, diffComparisonLoader } from "./comparison-prefetch.js";
-import { outcomeFallback, rateLimitText, refreshRefusedText, unavailableText } from "./copy.js";
+import { OUTCOME_FALLBACK, rateLimitText, refreshRefusedText, unavailableText } from "./copy.js";
 import { createRowExpansion } from "./pull-files-tree.js";
 import { mountFileTree } from "./pull-files-view.js";
 import {
@@ -367,7 +367,7 @@ export function refreshFailure(envelope, formatTime, { includeWhileRefreshing = 
       text: rateLimitText(last.reset_at === null ? null : formatTime(last.reset_at)),
     };
   }
-  const said = FAILURES[last.outcome] ?? last.message ?? outcomeFallback(null);
+  const said = FAILURES[last.outcome] ?? last.message ?? OUTCOME_FALLBACK;
   const sentence = `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
   const help =
     last.outcome === "gh_missing"

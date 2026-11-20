@@ -1169,11 +1169,19 @@ height.
 ### Status Text Inks
 
 A status color set as text takes a themed ink, `--status-success-text`,
-`--status-warning-text`, or `--status-error-text`, defined in both themes against
-`--bg`. The unsuffixed `--status-*` tokens are fills for dots, bars, tints, and borders
-and do not read as text in both themes; `test_no_stylesheet_sets_text_in_a_status_fill`
-rejects one set as `color`. `--diff-add-row-bg` and `--diff-del-row-bg` are the tints
-behind an added or removed line.
+`--status-warning-text`, or `--status-error-text`, defined in both themes against `--bg`
+and `--hover-bg`, each at 4.5:1 or better
+(`test_status_and_badge_inks_read_in_both_themes`). The unsuffixed `--status-*` tokens
+are fills for dots, bars, tints, and borders and do not read as text in both themes;
+`test_no_stylesheet_sets_text_in_a_status_fill` rejects one set as `color`.
+`--diff-add-row-bg` and `--diff-del-row-bg` are the tints behind an added or removed
+line.
+
+A tally tree colors a leaf’s count by its label: `success` in the success ink, `failed`,
+`error`, `critical`, and `kill` in the error ink (`critical` also bold), and `high` and
+`elevated` in the warning ink.
+Severities that share an ink are told apart by their label, not by color (`TALLY_COLORS`
+in `static/charts.js`).
 
 ### Empty and Failed Loads in the Navigation Column
 

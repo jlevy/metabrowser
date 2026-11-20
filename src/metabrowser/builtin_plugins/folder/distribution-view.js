@@ -187,7 +187,7 @@ export function updateDistributionView(handle, model) {
     resetBody(handle, "failed");
     const failure = element(handle.body, "file-type-summary-status");
     setStatusNotice(failure, "error");
-    failure.setAttribute("role", "status");
+    failure.setAttribute("role", "alert");
     failure.textContent = "Could not scan this folder; no file summary is available.";
     return;
   }

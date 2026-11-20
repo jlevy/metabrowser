@@ -1248,8 +1248,8 @@
   /* Text inks. The fills above are for dots, bars, tints, and borders; they do not read as
      text on --bg in both themes, so every status color set as `color:` on text takes one
      of these, themed and held to 4.5:1 on --bg by tests/test_design_vocabulary.py. */
-  --status-success-text: oklch(52% 0.15 149.18);
-  --status-warning-text: oklch(55% 0.17 50);
+  --status-success-text: oklch(51% 0.15 149.18);
+  --status-warning-text: oklch(54% 0.17 50);
   --status-error-text: oklch(55% 0.2 27.2);
   /* The tint behind an added or removed line, in a diff or beside one. */
   --diff-add-row-bg: color-mix(in srgb, var(--status-success) 9%, transparent);
@@ -6828,8 +6828,7 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--status-error-text);
   font-weight: var(--weight-bold);
 }
-.tally-color-high,
-.tally-color-elevated {
+.tally-color-warning {
   color: var(--status-warning-text);
 }
 .tally-color-kill {

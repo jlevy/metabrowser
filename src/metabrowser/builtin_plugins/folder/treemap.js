@@ -498,7 +498,9 @@ export function registerTreemap(mb, palette, rollupControls) {
       const node = envelope ? envelope.node : null;
       status.textContent = statusHtml(envelope);
       status.hidden = status.textContent === "";
-      status.dataset.severity = envelope?.index_status === "failed" ? "error" : "warning";
+      const failed = envelope?.index_status === "failed";
+      status.dataset.severity = failed ? "error" : "warning";
+      status.setAttribute("role", failed ? "alert" : "status");
       const terminal = isCompleteSnapshot(envelope);
       if (!terminal || !node || rect.width < 10 || rect.height < 10) {
         // The index has finished without this folder, stopped at its cap before

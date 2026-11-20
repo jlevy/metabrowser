@@ -207,9 +207,11 @@
     return html;
   }
 
-  // The registry's chevron, the one every disclosure in the product wears.
+  // The registry's chevron (the SDK's `mb.icons.toggle`), the one every disclosure in
+  // the product wears. A module driven without the shell shows a plain glyph instead,
+  // so a row never loses its disclosure affordance.
   function disclosureIcon() {
-    return global.MetabrowserIcons?.toggle || "";
+    return global.metabrowser?.icons.toggle || "▸";
   }
 
   function renderRowHtml(row, indentChars) {

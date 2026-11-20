@@ -114,7 +114,14 @@ def test_every_plugin_button_carries_a_control_family_class() -> None:
 # Intl.NumberFormat and toLocaleString where the SDK has formatInteger and formatFileCount.
 NUMBER_FORMAT_ALLOWLIST = {
     "folder/file-type-summary-model.js": "percentages with a fraction digit; the SDK has no formatter",
-    "diff/diff-view.js": "the fallback for a module driven without the shell's formatters",
+}
+
+# One line elsewhere that may format a number itself, by pattern: the fallback for a module
+# driven without the shell's formatters.
+NUMBER_FORMAT_LINE_ALLOWLIST = {
+    "diff/diff-view.js": re.compile(
+        r"const fallback = new Intl\.NumberFormat\(undefined, \{ maximumFractionDigits: 0 \}\);"
+    ),
 }
 
 
@@ -125,6 +132,9 @@ def test_plugins_format_numbers_with_the_sdk() -> None:
         if relative in NUMBER_FORMAT_ALLOWLIST:
             continue
         for number, line in enumerate(path.read_text().splitlines(), start=1):
+            allowed = NUMBER_FORMAT_LINE_ALLOWLIST.get(relative)
+            if allowed and allowed.search(line):
+                continue
             if re.search(r"toLocaleString\(|Intl\.NumberFormat\(", line):
                 offenders.append(f"{relative}:{number}: {line.strip()}")
     assert not offenders, (
@@ -134,6 +144,9 @@ def test_plugins_format_numbers_with_the_sdk() -> None:
     for relative in NUMBER_FORMAT_ALLOWLIST:
         source = (PLUGINS_DIR / relative).read_text()
         assert "Intl.NumberFormat(" in source, f"{relative} no longer needs its allowlist entry"
+    for relative, pattern in NUMBER_FORMAT_LINE_ALLOWLIST.items():
+        source = (PLUGINS_DIR / relative).read_text()
+        assert pattern.search(source), f"{relative} no longer needs its line allowlist entry"
 
 
 # -- Alerts --------------------------------------------------------------------------------
@@ -141,7 +154,16 @@ def test_plugins_format_numbers_with_the_sdk() -> None:
 ALERT_ROLE = re.compile(
     r"""role=["']alert["']|["']role["']\s*,\s*["']alert["']|role:\s*["']alert["']"""
 )
-NOTICE_CLASS = re.compile(r"""["'\x60\s]notice[\s"'\x60]""")
+# A class assignment, as markup, `className =`, or `setAttribute("class", ...)`, whose value has
+# the `notice` word, or `setStatusNotice(el, ...)`, which sets it: a variable or a comment
+# named `notice` does not count.
+NOTICE_CLASS = re.compile(
+    r"""setStatusNotice\(|(?:class(?:Name)?\s*=\s*|setAttribute\(\s*["']class["']\s*,\s*)\\?["'\x60][^"'\x60]*"""
+    r"""(?<![\w-])notice(?![\w-])"""
+)
+ERROR_SEVERITY = re.compile(
+    r"""setStatusNotice\([^,()]+,\s*["']error["']|data-severity=\\?["']error["']|["']data-severity["']\s*,\s*["']error["']"""
+)
 
 # A file whose alert is not a notice box, and why. None today.
 ALERT_ALLOWLIST: dict[str, str] = {}
@@ -166,6 +188,22 @@ def test_role_alert_sits_on_a_notice() -> None:
     assert not offenders, 'role="alert" belongs on a .notice with a severity:\n  ' + "\n  ".join(
         offenders
     )
+
+
+def test_an_error_notice_is_an_alert() -> None:
+    """Screen readers interrupt for an error severity; `status` is for the warning case."""
+    offenders: list[str] = []
+    seen = 0
+    for path in PLUGIN_JS:
+        source = path.read_text()
+        for match in ERROR_SEVERITY.finditer(source):
+            seen += 1
+            window = source[max(0, match.start() - 400) : match.end() + 300]
+            if not ALERT_ROLE.search(window):
+                line = source.count("\n", 0, match.start()) + 1
+                offenders.append(f"{path.relative_to(PLUGINS_DIR)}:{line}")
+    assert seen >= 4, "the scan found too few error notices; its pattern no longer matches"
+    assert not offenders, 'data-severity="error" needs role="alert":\n  ' + "\n  ".join(offenders)
 
 
 # -- Agent-log kind hues -------------------------------------------------------------------

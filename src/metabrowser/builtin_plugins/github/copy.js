@@ -19,15 +19,11 @@ export function rateLimitText(when) {
 }
 
 /**
- * What a refresh that ended with an outcome none of a surface's own table words says, from
- * the job's own message when it left one, as a clause the surface makes a sentence of. Never the outcome's internal code.
- *
- * @param {string | null} message
- * @returns {string}
+ * The clause that finishes "The last refresh failed: ..." when a refresh ended with an
+ * outcome the surface's own table has no words for and the job left no message. It reads
+ * as a clause the surface makes a sentence of, and is never the outcome's internal code.
  */
-export function outcomeFallback(message) {
-  return message ?? "it did not complete";
-}
+export const OUTCOME_FALLBACK = "it did not complete";
 
 /**
  * A read the server did not answer with what was asked for: said as what could not be done.

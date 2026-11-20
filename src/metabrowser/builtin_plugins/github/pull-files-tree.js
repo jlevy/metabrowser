@@ -24,7 +24,7 @@
 // shared model. Which folders start expanded is a file count the panel measures in a real
 // browser and passes in.
 
-import { outcomeFallback, rateLimitText, refreshRefusedText, unavailableText } from "./copy.js";
+import { OUTCOME_FALLBACK, rateLimitText, refreshRefusedText, unavailableText } from "./copy.js";
 
 /**
  * One row of the route's answer, as the shared tree takes it.
@@ -323,7 +323,7 @@ export function fileListFailure(envelope, formatTime, formatCount) {
   const setup = ["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome);
   const said = setup
     ? (last.message ?? FILE_FAILURES[last.outcome])
-    : (FILE_FAILURES[last.outcome] ?? last.message ?? outcomeFallback(null));
+    : (FILE_FAILURES[last.outcome] ?? last.message ?? OUTCOME_FALLBACK);
   const sentence = `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
   const help =
     last.outcome === "gh_missing"

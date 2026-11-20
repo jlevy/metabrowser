@@ -6754,7 +6754,9 @@ async function selectFile(path, preferredViewId) {
               () => resp.text().catch(bodyFailure),
               responsePerfMeta(resp, path),
             );
-            console.error("file request failed", resp.status, path);
+            if (resp.status !== 404) {
+              console.error("file request failed", resp.status);
+            }
             throw Object.assign(new Error(responseErrorDetail(text)), {
               notFound: resp.status === 404,
               summary: responseErrorSummary(text, "Could not open this file."),

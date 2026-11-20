@@ -41,7 +41,7 @@ import {
   createComparisonPrefetch,
   diffComparisonLoader,
 } from "./comparison-prefetch.js";
-import { outcomeFallback, rateLimitText, refreshRefusedText, unavailableText } from "./copy.js";
+import { OUTCOME_FALLBACK, rateLimitText, refreshRefusedText, unavailableText } from "./copy.js";
 import {
   createStackIndex,
   memberRoute,
@@ -1350,7 +1350,7 @@ export function describePull(envelope, page) {
       Number.isFinite(heldUntil) ? (page.formatHold ?? holdLiftText)(heldUntil, page.nowMs) : null,
     );
   } else if (last !== null && last.outcome !== "succeeded" && !envelope.refreshing) {
-    model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? outcomeFallback(null)}`;
+    model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? OUTCOME_FALLBACK}`;
     if (["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome)) {
       model.failure += `${model.failure.endsWith(".") ? "" : "."} You can still browse local files and any cached pull requests.`;
       if (last.outcome === "gh_missing") {

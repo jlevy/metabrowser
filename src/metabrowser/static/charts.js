@@ -164,8 +164,8 @@
     failed: "tally-color-failed",
     error: "tally-color-error",
     critical: "tally-color-critical",
-    high: "tally-color-high",
-    elevated: "tally-color-elevated",
+    high: "tally-color-warning",
+    elevated: "tally-color-warning",
     kill: "tally-color-kill",
   };
 
