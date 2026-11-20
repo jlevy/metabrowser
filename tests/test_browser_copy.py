@@ -25,8 +25,8 @@ def test_shell_messages_explain_state_and_recovery() -> None:
     assert "Could not load more content.</strong> Select Load more to try again." in app
     assert "No files were modified in the past" in app
     assert "No preview is available for this binary file" in app
-    assert "function responseErrorDetail(body, status)" in app
-    assert "new Error(responseErrorDetail(text, resp.status))" in app
+    assert "function responseErrorDetail(body)" in app
+    assert "new Error(responseErrorDetail(text))" in app
     assert "Could not display this view. Refresh the page to try again." in composition
     assert "function previewErrorHtml(summary, detail)" in app
     assert 'class="preview-error-title"' in app

@@ -207,7 +207,9 @@ def test_gutter_and_highlight_use_the_code_line_box() -> None:
     assert "var(--highlight-bg)" in highlight
     # One gutter runs beside every code block, and a key's scroll target is its line.
     assert "grid-row: 1 / span var(--mb-source-parts, 1);" in gutter
-    assert "outline: 2px solid var(--link);" in _rule(css, ".source-line-numbers:focus-visible")
+    assert "outline: var(--focus-ring-width) solid var(--focus-ring-color);" in _rule(
+        css, ".source-line-numbers:focus-visible"
+    )
     target = _rule(css, ".source-line-anchor-target")
     assert f"top: calc((var(--mb-line-focus, var(--mb-line-first)) - 1) * {pitch});" in target
     assert "height: var(--mb-line-pitch, 1lh);" in target

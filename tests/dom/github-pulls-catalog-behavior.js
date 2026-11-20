@@ -116,6 +116,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
       isVisible: () => state.visible,
       isOnline: () => state.online,
       formatTime: (at) => at,
+      formatCount: (count) => count.toLocaleString("en-US"),
       render: (next, _identity, arrivals) => {
         model = next;
         if (arrivals.length > 0) {
@@ -387,7 +388,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   await refused;
   assert.equal(refusedTail.controller.snapshot().rows, 500);
   assert.equal(refusedTail.model().progress, null);
-  assert.match(refusedTail.model().connection.text, /HTTP 503/u);
+  assert.match(refusedTail.model().connection.text, /could not be loaded/u);
   refusedTail.requests.length = 0;
   await refusedTail.controller.reachedEnd();
   assert.equal(refusedTail.requests.length, 0);

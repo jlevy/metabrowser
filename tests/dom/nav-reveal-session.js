@@ -978,6 +978,7 @@ async function recordedPullsController(deps, options) {
       now: () => Date.parse("2026-09-17T12:00:30Z"),
       isVisible: () => true,
       formatTime: (iso) => iso,
+      formatCount: (count) => count.toLocaleString("en-US"),
       render() {},
       markCurrent() {},
       markAnchor() {},
@@ -1170,6 +1171,7 @@ async function pullsDepthController(catalog, filter) {
       now: () => Date.parse("2026-09-17T12:00:30Z"),
       isVisible: () => true,
       formatTime: (iso) => iso,
+      formatCount: (count) => count.toLocaleString("en-US"),
       render() {},
       markCurrent() {},
       markAnchor(_previous, number, focus) {

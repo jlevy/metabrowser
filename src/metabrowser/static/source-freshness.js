@@ -241,7 +241,7 @@
       return {
         state: "fetch_failed",
         title: "Commit not fetched",
-        detail: `${MISSING_COMMIT_DETAIL.fetch_failed} ${error ?? "The server did not answer"}.`,
+        detail: `${MISSING_COMMIT_DETAIL.fetch_failed} ${error ?? "The server did not answer."}`,
         retry: true,
       };
     }
@@ -258,7 +258,7 @@
       return {
         state: "fetch_failed",
         title: `Commit not fetched · fetched ${age}`,
-        detail: `${MISSING_COMMIT_DETAIL.fetch_failed} ${error}.`,
+        detail: `${MISSING_COMMIT_DETAIL.fetch_failed} ${error}`,
         retry: true,
       };
     }
@@ -521,10 +521,10 @@
         } else if (response.status === 304) {
           error = null;
         } else {
-          error = `Status unavailable (HTTP ${response.status})`;
+          error = "The source's status could not be read.";
         }
       } catch {
-        error = "The server did not answer";
+        error = "The server did not answer.";
       } finally {
         polling = false;
       }
@@ -595,14 +595,11 @@
           };
         } else if (!options.own) {
           const said = answer !== null && typeof answer.error === "string" ? answer.error : null;
-          error =
-            said === null
-              ? `Refresh refused (HTTP ${response.status})`
-              : `Refresh refused: ${said}`;
+          error = said === null ? "The refresh could not be started." : `Refresh refused: ${said}.`;
         }
       } catch {
         if (!options.own) {
-          error = "The refresh request failed";
+          error = "The refresh request failed.";
         }
       }
       if (!disposed) {
@@ -688,11 +685,9 @@
           deps.reload();
           return;
         }
-        const body = /** @type {{code?: unknown} | null} */ (response.body);
-        const code = body !== null && typeof body.code === "string" ? body.code : "";
-        error = `Could not switch (${code || `HTTP ${response.status}`})`;
+        error = "Could not switch to that commit.";
       } catch {
-        error = "The switch request failed";
+        error = "The switch request failed.";
       } finally {
         switching = false;
       }
@@ -760,7 +755,7 @@
       );
     }
     if (model.error !== null) {
-      parts.push(model.error);
+      parts.push(model.error.replace(/\.$/, ""));
     }
     return parts.join(". ");
   }

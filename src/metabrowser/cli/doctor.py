@@ -120,7 +120,8 @@ LOW_FREE_SPACE_BYTES: Final[int] = int(MAX_FIRST_CLONE_KB * 1024 * _PACK_PER_REP
 # is the release build when both are installed (DEFAULT_BUNDLE_IDS). The open_in check
 # keeps a terminal's lookup, since it says where `--present` in a terminal opens a target.
 DOCTOR_APP_ENV: Final = "METABROWSER_DOCTOR_APP"
-# What the app's servers get of the storage variables: none (ChildEnvironment's allowlist,
+# What the app's servers get of the configuration and cache variables: none (the state
+# directory's, which hold only the event log, are passed; ChildEnvironment's allowlist,
 # apps/macos/Sources/ShellCore/Runtime/ChildEnvironment.swift, which
 # tests/test_macos_app_pins.py holds to this set).
 STORAGE_OVERRIDES: Final = frozenset(
@@ -393,7 +394,7 @@ def _servers_directory(
 ) -> str | None:
     """The directory the app's servers use instead of *directory*, when they differ.
 
-    The app gives its servers none of the storage variables, so an override set where
+    The app gives its servers none of these storage variables, so an override set where
     this ``metab`` runs, with an app to compare, names a directory they never read.
     """
 
