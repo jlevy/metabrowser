@@ -1,0 +1,1120 @@
+created_at: 2026-11-20T19:18:32.702Z
+ops:
+  - bead_id: is-01kxnx985gd2k5epmcswersqdk
+    external_id: 4bf23327-faca-40ed-b28b-0b3870993e50
+    kind: update_issue
+    patch:
+      labels:
+        - roadmap
+        - linear
+        - Feature
+  - bead_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
+    external_id: 0390e452-459b-479d-8bc2-d469e35c1dd5
+    kind: update_issue
+    patch:
+      labels:
+        - diff
+        - linear
+        - Feature
+  - bead_id: is-01kxz2z9v1bbfcfmqstffkhvxp
+    external_id: 4dd009a3-2c8f-4b0e-9db5-5c488fa328dc
+    kind: update_issue
+    patch:
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01kxz2z9v1bbfcfmqstffkhvxp
+    block: |-
+      ⟦tbd⟧
+      `mb-u5sm` · epic · closed · P1
+      Spec: [plan-2026-08-12-directory-file-type-summary.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md)
+      Children: 63 (0 ready)
+      Bead: `tbd show mb-u5sm`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 4dd009a3-2c8f-4b0e-9db5-5c488fa328dc
+    kind: splice_description
+  - bead_id: is-01ky070wk6z56ghjc9wyhf0sye
+    external_id: 2966f32d-9498-4efd-95bb-ee77e5c5d062
+    kind: update_issue
+    patch:
+      labels:
+        - linear
+  - bead_id: is-01kzctqt5s7te6w75jm5pvg6g7
+    external_id: 4d050c3e-9bbe-48bb-9342-75daa56bd295
+    kind: update_issue
+    patch:
+      labels:
+        - linear
+  - bead_id: is-01kzp82ktssqmf4fhm8sxmvb6p
+    external_id: acf60561-e724-4f66-85e2-3a8e6de21eec
+    kind: update_issue
+    patch:
+      labels:
+        - ui
+        - filters
+        - linear
+  - bead_id: is-01kzs5m38dz1egphfwf30c8h7n
+    external_id: 06ad4ed9-e57c-43ff-a0bd-72bc542de8f5
+    kind: update_issue
+    patch:
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01kzt2pwbyj3rt7y2xhevg8ff5
+    external_id: 10816d20-0b05-4e76-a7c3-7603b74e43b5
+    kind: update_issue
+    patch:
+      labels:
+        - linear
+  - bead_id: is-01m03tqjzm7j6qkxjeath5qe0d
+    external_id: da29ec9a-dfad-45c8-96a5-c5866a6ac816
+    kind: update_issue
+    patch:
+      labels:
+        - linear
+        - Improvement
+  - bead_id: is-01m03tqjzm7j6qkxjeath5qe0d
+    block: |-
+      ⟦tbd⟧
+      `mb-ge1b` · epic · open · P2
+      Children: 29 (10 ready)
+      Bead: `tbd show mb-ge1b`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: da29ec9a-dfad-45c8-96a5-c5866a6ac816
+    kind: splice_description
+  - bead_id: is-01m0gfpa3nt74hvrnqbyqhn0ya
+    external_id: 0a6ffe43-9914-47d3-a43e-d11ff31a7de1
+    kind: update_issue
+    patch:
+      description: |-
+        Metabrowser delivers two kinds of inventory state, and only one is done well.
+
+        Entries (fs.change over SSE) are computed once, fanned out to every subscriber,
+        and applied incrementally by client stores (fileStore, directoryTotalsStore,
+        knownFileCatalog).
+
+        Aggregates (/api/rollup, /api/tree) are pull-based: recomputed and re-serialized
+        per request per client, with no coalescing, no ETag, and a client that replaces
+        the whole envelope on every refresh.
+
+        Measured on a settled 100k-file index, identical concurrent requests for
+        /api/rollup?path=&depth=3:
+
+          1 concurrent :  30ms
+          2            :  57ms
+          4            : 107ms
+          8            : 236ms
+
+        Linear in client count. Eight tabs on one folder means eight full aggregations
+        and eight serializations of a byte-identical answer.
+
+        Goal: bring the aggregate layer up to the model the entry layer already uses --
+        computed once server-side, delivered without redundant recomputation, and
+        refined incrementally on the client.
+
+        Scope note: SSE currently filters live events to the root-depth-2 scope, which
+        is why aggregates are pulled at all. Pushing them means either widening that
+        scope or pushing per-directory aggregate deltas rather than entries.
+      labels:
+        - linear
+        - Improvement
+  - bead_id: is-01m0gfpa3nt74hvrnqbyqhn0ya
+    block: |-
+      ⟦tbd⟧
+      `mb-48vd` · epic · open · P3
+      Children: 12 (1 ready)
+      Bead: `tbd show mb-48vd`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 0a6ffe43-9914-47d3-a43e-d11ff31a7de1
+    kind: splice_description
+  - bead_id: is-01m0hhjf2e1w8tp30ay4tj8183
+    external_id: e89638bb-383b-4fef-882b-93118c6efc17
+    kind: update_issue
+    patch:
+      labels:
+        - linear
+  - bead_id: is-01m0jsvvcqw7knvxbaq4sn6ddj
+    external_id: 21c3ee1a-cf78-4125-9ff3-6e9a4ff80b80
+    kind: update_issue
+    patch:
+      labels:
+        - linear
+  - bead_id: is-01m0k5wh7jgr0dgs5y78kwwke1
+    external_id: c5f1e322-b8de-4351-8877-3b910724f569
+    kind: update_issue
+    patch:
+      description: >-
+        Front-to-back performance pass. Measured on this machine, synthetic corpora,
+        Chromium 141.
+
+
+        Browser cold load: 100k files -> FCP 92 ms, first tree row 4,525 ms, 2,550 rows,
+        28,711 DOM nodes. 1M files (walker truncates at 500,000) -> FCP 176 ms, first
+        tree row 22,328 ms, 25,122 rows, 276,789 DOM nodes.
+
+
+        Waterfall at 100k: /api/tree returns 387,778 B in 38 ms at t+319 ms; /api/events
+        blocks 3,669 ms; /api/catalog returns 4,580,060 B at t+4,733 ms; first row
+        paints at t+4,936 ms. The tree data is in the browser at 319 ms and the client
+        gates on scan completion anyway.
+
+
+        Backend: start-to-serving 771 ms at 9k, 944 ms at 100k, 2,748 ms at 1M (so
+        startup scales with the tree). Walk ~50 us/file. Warm /api/tree 77 ms at 9k, 866
+        ms at 100k, 4,990 ms and 3.68 MB at 1M. INVENTORY_MAX_FILES = 500_000 truncates
+        silently.
+
+
+        Assets: 432,092 B of vendored JS on every page; blocking the Chart.js stack
+        moves load from 853 ms to 479 ms.
+      labels:
+        - linear
+        - Improvement
+  - bead_id: is-01m0k5wh7jgr0dgs5y78kwwke1
+    block: |-
+      ⟦tbd⟧
+      `mb-ww58` · epic · open · P0
+      Spec: [plan-2026-08-21-load-time-performance.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-08-21-load-time-performance.md)
+      Children: 78 (35 ready)
+      Bead: `tbd show mb-ww58`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: c5f1e322-b8de-4351-8877-3b910724f569
+    kind: splice_description
+  - bead_id: is-01m0r7eg6f4a4xee33ryv8sjfs
+    external_id: e8ad825b-dd2e-48f1-9eda-b392dc667ebf
+    kind: update_issue
+    patch:
+      description: "Parent for the pluggable inventory engine
+        (docs/project/specs/active/plan-2026-08-23-pluggable-inventory-engine.md;
+        implementation plan in
+        plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md). Phase 1, the
+        Python reference provider behind the sealed provider contract, shipped in
+        v0.10.0 through #74, #99, and #101 (mb-lsgg, closed). Phase 2, the fdu provider
+        and its adoption gates, is mb-hej8."
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m0r7eg6f4a4xee33ryv8sjfs
+    block: |-
+      ⟦tbd⟧
+      `mb-8127` · feature · in_progress · P1
+      Spec: [plan-2026-08-23-pluggable-inventory-engine.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-08-23-pluggable-inventory-engine.md)
+      Children: 17 (10 ready)
+      Bead: `tbd show mb-8127`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: e8ad825b-dd2e-48f1-9eda-b392dc667ebf
+    kind: splice_description
+  - bead_id: is-01m10z5hmf2m2tndf00k0jznx8
+    external_id: 683e9f19-6168-40a4-966e-feca8893b8ed
+    kind: update_issue
+    patch:
+      description: Add a read-only Git status surface and one-file working-tree diffs through
+        File Diff Format, following the linked phased plan.
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m10z5hmf2m2tndf00k0jznx8
+    block: |-
+      ⟦tbd⟧
+      `mb-097x` · epic · open · P1
+      Spec: [plan-2026-08-26-git-status-and-working-tree-diffs.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
+      Children: 5 (2 ready)
+      Bead: `tbd show mb-097x`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 683e9f19-6168-40a4-966e-feca8893b8ed
+    kind: splice_description
+  - bead_id: is-01m1b5mzft281epbec7m4mmca0
+    external_id: deb20028-0e7e-4533-a9ac-d3390d1da4e3
+    kind: update_issue
+    patch:
+      description: "The /api/ envelopes are declared as TypedDicts in wire_models.py and
+        git/wire.py, with validate_* functions for the tree, rollup, and Git families,
+        and in cache/wire.py, source_routes.py, root_identity.py, and the GitHub
+        plugin's route modules. That contract is invisible outside Python and
+        unreachable from the CLI built to make every model inspectable, and the map
+        document describes each envelope in prose that nothing checks. Generate JSON
+        Schema from the TypedDicts, validate the goldens against it, and serve it. The
+        gating decision is closed (mb-d7ne): /api/ stays an internal contract, described
+        but not published. Plan:
+        docs/project/specs/active/plan-2026-08-30-api-schema-and-contract.md."
+      labels:
+        - linear
+        - Improvement
+  - bead_id: is-01m1b5mzft281epbec7m4mmca0
+    block: |-
+      ⟦tbd⟧
+      `mb-xzb1` · epic · open · P2
+      Spec: [plan-2026-08-30-api-schema-and-contract.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-08-30-api-schema-and-contract.md)
+      Children: 7 (3 ready)
+      Bead: `tbd show mb-xzb1`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: deb20028-0e7e-4533-a9ac-d3390d1da4e3
+    kind: splice_description
+  - bead_id: is-01m26hjjvhpcf49p2x1c3390kk
+    external_id: b5547486-4b75-4916-b8ea-90d52974dfb2
+    kind: update_issue
+    patch:
+      description: "Migrate the existing UI from broad DOM/source checks to the parity
+        principle introduced by the release-hardening work: every observable data
+        decision is reachable through metab and golden-pinned; every browser-owned
+        interaction state machine executes exact production code in a deterministic CLI
+        golden; only paint/platform behavior has a narrow documented exemption with
+        focused browser evidence. The initial release mechanism is an enforced seed, not
+        a claim that all legacy UI has already migrated. Group rows by user-observable
+        contracts rather than helper files, and keep runtime paths, persisted state,
+        errors, cancellation, disposal, and stale-response behavior explicit."
+      labels:
+        - linear
+        - Improvement
+  - bead_id: is-01m26hjjvhpcf49p2x1c3390kk
+    block: |-
+      ⟦tbd⟧
+      `mb-n9xg` · epic · open · P2
+      Spec: [plan-2026-09-10-functional-ui-cli-parity.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md)
+      Children: 11 (11 ready)
+      Bead: `tbd show mb-n9xg`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: b5547486-4b75-4916-b8ea-90d52974dfb2
+    kind: splice_description
+  - bead_id: is-01m2eb9qv8c4rf52j15pcm2j86
+    external_id: 353d0532-56c6-4498-b4db-7536f2e14510
+    kind: update_issue
+    patch:
+      description: >-
+        Simplifications proposed by the release senior reviews. Each would remove a
+        class of bugs found in release review, but each is a refactor that needs its own
+        measured change and should not ride on a release:
+
+
+        Catalog and feed (shell lane):
+
+        1. Use the provider's code-point order as the catalog's public order (plain
+        comparison, codePointAt only when surrogates meet at the first difference).
+        Removes run detection, the sort phase, the direct-adoption guard, the Unicode
+        ordering session and its parity row; roughly 250 lines.
+
+        2. One mutation engine in known-file-catalog.js: mutate the Map, then one sliced
+        linear merge/compaction per stage shared by direct and staged paths. The
+        removal-range and unbounded-splice bugs were exactly where the two engines
+        diverged; roughly 300 lines. Also charge O(n) merges for non-appendable staged
+        point runs, which still count k.
+
+        3. One sequence-numbered change journal with a committed cursor in
+        catalog-feed.js instead of pendingChanges, concurrentMutations, and
+        liveMutations.
+
+        4. A small FilePreviewCache object owning the file cache, ETags, and
+        revalidation markers, driven directly by its session, instead of callback
+        helpers that test boolean logic over stubs while app.js wiring goes untested.
+
+
+        Markdown (Markdown lane):
+
+        5. Parse wiki syntax inside KPress's markdown-it pipeline (inline rule, heading
+        ids from tokens) instead of the hand-written CommonMark approximation: removes
+        the literal mask, line cursor, output budget, the three Worker files, and the
+        transformed-source POST; roughly 1,300 lines. KPress is first-party.
+
+        6. Drop the provider-long identity machinery (stepped membership, per-code-unit
+        charging, reverse-segment trie, suffix state machines): cap catalog path length
+        at core admission and resolve suffixes with endsWith over basename buckets;
+        wiki-resolver.js from about 1,500 lines to about 350.
+
+        7. Remove duplicated helpers: isPossiblePublishedRoute/isPublishedRoute, two
+        rawResourceHref variants, media-extension tables, and source-path preparation in
+        links.js vs wiki-resolver.js.
+      labels:
+        - simplification
+        - linear
+        - Improvement
+  - bead_id: is-01m2eb9qv8c4rf52j15pcm2j86
+    block: |-
+      ⟦tbd⟧
+      `mb-u3pb` · epic · open · P3
+      Children: 1 (1 ready)
+      Bead: `tbd show mb-u3pb`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 353d0532-56c6-4498-b4db-7536f2e14510
+    kind: splice_description
+  - bead_id: is-01m2gb3gpn7vcsw0as4xa243tg
+    external_id: 0ec06507-cca1-4389-a123-11079aee3f0d
+    kind: update_issue
+    patch:
+      description: Sweep the full pytest suite and tryscript goldens under heavy machine load
+        (load average 7-50 from an unrelated workload, or CPU burners on a quiet host).
+        Classify each failure as a load or timing flake, a real bug, or an order
+        dependence, and fix flakes by asserting the product guarantee with deterministic
+        coordination rather than wall-clock thresholds. The starting flake,
+        tests/test_serve_open_race.py (mb-0mu9), is fixed. CI flakes found since are
+        tracked as children of this bead.
+      labels:
+        - testing
+        - linear
+        - Bug
+  - bead_id: is-01m2gb3gpn7vcsw0as4xa243tg
+    block: |-
+      ⟦tbd⟧
+      `mb-1qsn` · epic · in_progress · P2
+      Children: 34 (14 ready)
+      Bead: `tbd show mb-1qsn`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 0ec06507-cca1-4389-a123-11079aee3f0d
+    kind: splice_description
+  - bead_id: is-01m2hs64m7nfagfxyf7b0hxrhr
+    external_id: 4f128317-9c92-41b8-9ef6-d4fb131f66c6
+    kind: update_issue
+    patch:
+      description: "v0.10.0 shipped a known regression on flat mega-trees (exp-035; the
+        known-limitations entry in CHANGELOG.md's 0.10.0 section), and
+        docs/project/specs/active/plan-2026-09-15-flat-tree-delivery-cost.md is the plan
+        for paying it down. No 0.10.1 patch was released: tier 1's catalog content hash
+        (mb-wpqq part 2) landed in #129 and shipped in 0.11.0, and the flat-stress
+        budget check (mb-ma3x) is closed. Open: the walker emit batch, still 256 in
+        settings.py (mb-nuhb); the 300k re-measurement the plan owes 0.11.0's evidence;
+        and the structural tier-2 work, not building a per-entry contract object for
+        entries the store already admitted (mb-kicj). The acceptance rows are mb-qvw4
+        (attached walk), mb-qtgj (catalog read) and mb-zc3p (Long Tasks). Done when the
+        flat-shape walk under an attached browser is at parity with v0.9.1 or better
+        over five back-to-back pairs on a quiet host, and the flat-stress ratchet is
+        lowered to match."
+      labels:
+        - performance
+        - linear
+        - Improvement
+  - bead_id: is-01m2hs64m7nfagfxyf7b0hxrhr
+    block: |-
+      ⟦tbd⟧
+      `mb-odrb` · epic · open · P1
+      Spec: [plan-2026-09-15-flat-tree-delivery-cost.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-09-15-flat-tree-delivery-cost.md)
+      Children: 8 (7 ready)
+      Bead: `tbd show mb-odrb`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 4f128317-9c92-41b8-9ef6-d4fb131f66c6
+    kind: splice_description
+  - bead_id: is-01m3te95dfdnc80j5xywqje9ke
+    external_id: 9522c55a-9e04-474a-a3f6-a8899cfc25bc
+    kind: update_issue
+    patch:
+      description: >-
+        ## Goal
+
+
+        Give the v0.12 stack the maximum coverage of public contracts for the minimum
+        test complexity. Remove or restructure tests that are vacuous, spurious or
+        redundant, and prefer concise golden tests wherever they carry the same
+        evidence. The user's request: "make sure that it has the maximum coverage but
+        the minimum complexity of the tests. We should have any tests that are vacuous
+        or spurious removed or restructured so that we use cleaner, more concise golden
+        testing wherever possible."
+
+
+        ## Why now
+
+
+        Over `origin/main`, the stack tip (a896d8fe, `origin/codex/v012-p4-fixes`) adds
+        about 61k lines of tests against about 45k lines of product source, of which
+        about 13.5k is the retired Hosted Review layer (mb-whmn).
+
+
+        Measured on 2026-09-30 (lines: `git grep -c ''` on each ref; run time: CI `test
+        (3.13)` job logs, run 35634453594 for main and 36077428696 for the tip):
+
+
+        | Measure | main | tip |
+
+        |---|---|---|
+
+        | `tests/test_*.py` files / lines | 203 / 49,436 | 287 / 83,818 |
+
+        | test helper modules, lines | 323 | 1,839 |
+
+        | `tests/dom` JS files / lines | 84 / 33,638 | 94 / 37,949 |
+
+        | `tests/golden` files / lines | 24 / 6,058 | 54 / 17,373 |
+
+        | `tests/fixtures` files / lines | 30 / 958 | 59 / 10,236 |
+
+        | `def test_` functions | 1,899 | 2,899 |
+
+        | pytest items collected in CI | 2,186 | 3,787 |
+
+        | skipped in CI | 0 | 27 |
+
+        | pytest wall time in CI | 64.0 s | 269.9 s |
+
+        | tryscript blocks / wall time in CI | 131 / 37.7 s | 278 / 138.8 s |
+
+
+        Tests grew 1.7x; pytest time grew 4.2x and tryscript time 3.7x. The `test` job
+        runs on four Python versions, and 24 of the slowest files run again in two
+        `admitted-git` jobs.
+
+
+        ## Method
+
+
+        1. Apply `tbd guidelines general-testing-rules`, `golden-testing-guidelines`,
+        `general-tdd-guidelines`, `ci-and-gates-rules`, and the repo's own rules in
+        `docs/e2e-testing.md` and `docs/development.md` ("CLI and Functional UI
+        Parity").
+
+        2. Work area by area through the child beads. Each child names its scope, the
+        surveyed findings with file:line, the rule each breaks, the restructuring, and
+        what must stay.
+
+        3. For every test, state the contract, boundary, failure mode or failure
+        location it adds that the rest of the suite does not. If that cannot be written,
+        merge or remove it.
+
+        4. Prefer, in order: delete a vacuous test; collapse repeated examples into a
+        table or one compact golden; move CLI-observable behavior from Python into a
+        tryscript golden; move browser interaction from source-text assertions into a
+        browserless session; keep a focused Python test only where it gives an
+        invariant, speed or failure location the public interface cannot.
+
+        5. Line coverage is a discovery tool only. The suite has no coverage tooling
+        today (`uv.lock` has neither `coverage` nor `pytest-cov`); the baseline child
+        bead decides whether to add it.
+
+
+        ## Accept rule (applies to every child)
+
+
+        - Every removed or merged test names, in the PR description, the independent
+        evidence that still covers its contract (test, golden block or session, by path
+        and line).
+
+        - Coverage of public contracts does not drop: `devtools/check_parity.py` stays
+        green, and no route, kind, CLI mode, persisted state or failure class loses its
+        last evidence.
+
+        - `make verify` is green.
+
+        - Test lines (Python, DOM JS, goldens, fixtures) and run time (pytest and
+        tryscript, from the CI `test (3.13)` job) are reported before and after in each
+        PR and totalled here when the epic closes.
+      labels:
+        - linear
+        - Improvement
+  - bead_id: is-01m3te95dfdnc80j5xywqje9ke
+    block: |-
+      ⟦tbd⟧
+      `mb-06up` · epic · open · P2
+      Spec: [plan-2026-09-23-v012-thin-mirror.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md)
+      Children: 24 (10 ready)
+      Bead: `tbd show mb-06up`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 9522c55a-9e04-474a-a3f6-a8899cfc25bc
+    kind: splice_description
+  - bead_id: is-01m402dbhn3zsc1h896f3xnrsq
+    external_id: d35b48d1-3e75-4302-928f-acd928f51c87
+    kind: update_issue
+    patch:
+      description: "0.12.0 was tagged at main 87b8ec81 and published on GitHub and PyPI on
+        2026-11-09 (mb-4bd2, closed). This epic holds what the v0.12 stabilization left
+        open after the release: the deferred full QA runbook (mb-m20f), the post-release
+        dependency refresh (mb-1jq3), and small defects that the reviews and browser
+        checks of stack 278 (PRs #272-#277) and PR #279 found on main. Fixes ship in
+        0.12.x or later. A green merge or CI run alone does not establish QA acceptance:
+        keep explicit pass/fail/untested results, and the human-only checks in mb-etqi."
+      labels:
+        - linear
+        - Bug
+  - bead_id: is-01m402dbhn3zsc1h896f3xnrsq
+    block: |-
+      ⟦tbd⟧
+      `mb-425f` · epic · open · P1
+      Children: 50 (20 ready)
+      Bead: `tbd show mb-425f`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: d35b48d1-3e75-4302-928f-acd928f51c87
+    kind: splice_description
+  - bead_id: is-01m6f3n89kn7ztmfhrzswxnsgz
+    external_id: 8ab234b3-0c78-4c45-931a-d9a9944c1c15
+    kind: update_issue
+    patch:
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m748xpx7bjg68tfaf3q4nxmj
+    external_id: 92793121-e71d-4d48-964f-9c3f40100392
+    kind: update_issue
+    patch:
+      description: "Plan: docs/project/specs/active/plan-2026-11-10-native-macos-app.md.
+        Research: research-2026-11-08-macos-app-packaging.md,
+        research-2026-11-10-native-app-server-topology.md, and
+        research-2026-11-11-uv-and-macos-app-install.md. The app is apps/macos on main:
+        the spike (jlevy/metabrowser#341) and the v1 stack (#359, #361, #362, #363,
+        #377) merged on 2026-11-13, with title-bar follow-ups in #384, #388, #391, #398,
+        and #403. Core metab changes and native app changes land on main through their
+        own pull requests."
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m748xpx7bjg68tfaf3q4nxmj
+    block: |-
+      ⟦tbd⟧
+      `mb-1apq` · epic · in_progress · P1
+      Spec: [plan-2026-11-10-native-macos-app.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-10-native-macos-app.md)
+      Children: 121 (25 ready)
+      Bead: `tbd show mb-1apq`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 92793121-e71d-4d48-964f-9c3f40100392
+    kind: splice_description
+  - bead_id: is-01m774q0ep0jq6vhb790rart0v
+    external_id: 57ee4dd2-2bff-4f11-b020-ab1f399ec740
+    kind: update_issue
+    patch:
+      description: Implement the ranked improvements in
+        docs/project/research/research-2026-11-11-ui-apparent-performance.md. Every item
+        is a measured performance-loop round (hypothesis in the load-time plan, exp
+        record, verdict) and closes on its verdict. Ends with a campaign summary
+        covering every item, in Chrome and WKWebView.
+      labels:
+        - linear
+        - Improvement
+  - bead_id: is-01m774q0ep0jq6vhb790rart0v
+    block: |-
+      ⟦tbd⟧
+      `mb-mpo0` · epic · open · P1
+      Spec: [plan-2026-11-11-ui-apparent-performance.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md)
+      Children: 84 (37 ready)
+      Bead: `tbd show mb-mpo0`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 57ee4dd2-2bff-4f11-b020-ab1f399ec740
+    kind: splice_description
+  - bead_id: is-01m78ftefp9ks9100ebsm7sm29
+    external_id: 2c899caa-16c3-454c-acd8-d66b8a42baf7
+    kind: update_issue
+    patch:
+      description: "A system-installed Metabrowser (the metab uv tool and the macOS app) uses
+        new plugins without being reinstalled, and picks up a repository's checked-in
+        and library-shipped plugins after one consent per clone. Plugin Python runs in
+        workers on its own environment's interpreter, with a runtime the host injects as
+        metabrowser; one registry with scoped sources lives in a state home; one plugin
+        API version under a caret gate; the app's settings run metab-plugins. Design,
+        Key Decisions awaiting the owner, and phases:
+        docs/project/specs/active/plan-2026-11-12-plugin-sources.md; evidence:
+        docs/project/research/research-2026-11-12-plugin-sources.md."
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m78ftefp9ks9100ebsm7sm29
+    block: |-
+      ⟦tbd⟧
+      `mb-xbw3` · epic · open · P1
+      Children: 16 (3 ready)
+      Bead: `tbd show mb-xbw3`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 2c899caa-16c3-454c-acd8-d66b8a42baf7
+    kind: splice_description
+  - bead_id: is-01m7dm3az28qmj39y5hmdq2k0v
+    external_id: 12ed8b8f-de99-4858-bb52-10c2b86a0579
+    kind: update_issue
+    patch:
+      labels:
+        - linear
+        - Improvement
+  - bead_id: is-01m7ey9fq9v53mp3c974mg2d89
+    external_id: 3bb54022-1406-4f22-a768-5cbc30bfae86
+    kind: update_issue
+    patch:
+      description: Defects the documentation agents found while checking docs against the code
+        at 0d4cd06c. Each child is independent; the docs describe current behavior.
+      labels:
+        - linear
+        - Bug
+  - bead_id: is-01m7ey9fq9v53mp3c974mg2d89
+    block: |-
+      ⟦tbd⟧
+      `mb-tlt1` · epic · open · P2
+      Spec: [plan-2026-11-14-documentation-from-first-principles.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md)
+      Children: 10 (8 ready)
+      Bead: `tbd show mb-tlt1`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 3bb54022-1406-4f22-a768-5cbc30bfae86
+    kind: splice_description
+  - bead_id: is-01m7f2vek3t6sca32adhd4gq33
+    external_id: 57820908-dc29-41e5-bba7-21e54f4df749
+    kind: update_issue
+    patch:
+      description: "Design (not yet implementation) of one object data model with multiple
+        views, a view state agents can read and change, and the Recent tab. Six plan
+        specs, all decisions taken 2026-11-18 (PR #570): the object data model and views
+        (docs/project/specs/active/plan-2026-11-14-object-data-model-and-views.md,
+        Decisions 1 to 23), the view model and view state (VM-1 to VM-10), the Recent
+        tab (RT-1 to RT-7), the agent interface (AI-1 to AI-6; the CLI is the complete
+        agent surface), plugin authoring (PS-1 to PS-7), and the implementation map
+        (Ordering 2: groundwork, then working-tree changes, with the view slice and the
+        /pulls stack in parallel). Implementation lands on separate stacks after #570
+        merges."
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m7f2vek3t6sca32adhd4gq33
+    block: |-
+      ⟦tbd⟧
+      `mb-g5d8` · epic · in_progress · P2
+      Spec: [plan-2026-11-14-object-data-model-and-views.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-14-object-data-model-and-views.md)
+      Children: 17 (0 ready)
+      Bead: `tbd show mb-g5d8`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 57820908-dc29-41e5-bba7-21e54f4df749
+    kind: splice_description
+  - bead_id: is-01m7hgpc9550w78kmwqsvv64xh
+    external_id: a18aa3cd-0329-4c1c-bca3-17921fe6703e
+    kind: update_issue
+    patch:
+      labels:
+        - linear
+        - Improvement
+  - bead_id: is-01m7nnxhaqce1g2ewec3wbaf7e
+    external_id: 5499d118-7011-4615-b052-982dc46ae0f6
+    kind: update_issue
+    patch:
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m7nnxhaqce1g2ewec3wbaf7e
+    block: |-
+      ⟦tbd⟧
+      `mb-jl8o` · epic · open · P1
+      Spec: [plan-2026-11-17-open-anything-from-cli-and-app.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md)
+      Children: 33 (19 ready)
+      Bead: `tbd show mb-jl8o`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 5499d118-7011-4615-b052-982dc46ae0f6
+    kind: splice_description
+  - bead_id: is-01m7r5cmz107gb7jxq0y6pp7fe
+    external_id: a5bc7383-f482-43be-b175-4c736bc3650d
+    kind: update_issue
+    patch:
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m7tv7gz4yk6tygqfexgtw0s2
+    external_id: da4dab2f-0682-4c31-8c9a-29da1bda661e
+    kind: update_issue
+    patch:
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m7tv7gz4yk6tygqfexgtw0s2
+    block: |-
+      ⟦tbd⟧
+      `mb-lra6` · epic · in_progress · P2
+      Spec: [plan-2026-11-19-tabular-data-and-live-sqlite.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md)
+      Children: 14 (3 ready)
+      Bead: `tbd show mb-lra6`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: da4dab2f-0682-4c31-8c9a-29da1bda661e
+    kind: splice_description
+  - bead_id: is-01m7v8bs62dz0nqmqb9rnhgsdb
+    external_id: 77827478-a935-4840-ae95-ebfb068a7f1d
+    kind: update_issue
+    patch:
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m7wyjyxgdmtdze2vt8eb7ter
+    external_id: 1a9c016a-4690-4473-b101-b89dbdb3b2dd
+    kind: update_issue
+    patch:
+      hold: null
+      labels:
+        - linear
+        - Improvement
+      resolution: null
+      slot: in_progress
+      status: in_progress
+  - bead_id: is-01m7wyjyxgdmtdze2vt8eb7ter
+    block: |-
+      ⟦tbd⟧
+      `mb-nj8y` · feature · in_progress · P2
+      Children: 0 (0 ready)
+      Bead: `tbd show mb-nj8y`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 1a9c016a-4690-4473-b101-b89dbdb3b2dd
+    kind: splice_description
+  - bead_id: is-01m7wyrvxk2xx44pqtqmy5cq5g
+    external_id: 74de802a-b5dd-4672-8169-c0ba864abbc5
+    kind: update_issue
+    patch:
+      description: >-
+        What a reader has open is one of three kinds: a cloud mirror of a GitHub
+        repository, a local folder inside a Git checkout (folder mode), or a plain
+        folder with no Git. The model is settled in
+        docs/project/architecture/arch-open-modes.md (#558), and the macOS app's title
+        bar, Open Recent and Dock menus already carry the shared marks (#564, #575).
+
+
+        What remains: the kind icon and tooltip beside the root name at the top of the
+        nav, and a Source kind section with a check in the design system's icon catalog
+        (mb-4s2y, in progress); the shared local-open resolver (mb-2wfk) with its
+        vocabulary test and shared fixture (mb-ajxe); and the owner's request that every
+        view say plainly which mode it is in (mb-wup3), whose indicator mb-4s2y
+        overlaps. How a branch behaves in each kind is the epic mb-2uut.
+      labels:
+        - linear
+        - Improvement
+  - bead_id: is-01m7wyrvxk2xx44pqtqmy5cq5g
+    block: |-
+      ⟦tbd⟧
+      `mb-ueud` · epic · in_progress · P1
+      Children: 4 (3 ready)
+      Bead: `tbd show mb-ueud`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 74de802a-b5dd-4672-8169-c0ba864abbc5
+    kind: splice_description
+  - bead_id: is-01m7wys3bp2ndx4v4m26exf0hz
+    external_id: 1e4ba3ec-be2e-4e6a-87f7-f71f8406875c
+    kind: update_issue
+    patch:
+      description: >-
+        The Files tab groups, filters and dates what it lists: Group by (By age, By file
+        type), Modified within, Recent, and each entry's age. On a folder the ages come
+        from the inventory; on a Git revision they come from each file's last commit
+        (git last-modified), which landed in #643 and #652.
+
+
+        What remains: a submodule entry is in no age group (mb-e3mn); directories in
+        Recent results (mb-f42e); a folder header's age label that changes width moves
+        its neighbours (mb-v4u6); filter-menu counts and a hidden file's note while
+        tallies are unknown (mb-v2ls, mb-nutq); row positions and queued passes in the
+        tree (mb-jdk0, mb-l2xc); the Group by session's failure mode and first-click
+        case (mb-2fgr, mb-4d7s); one filter count (mb-zo3t); and the file-tree spacing
+        (mb-8xcu, deferred). A cacheable recency filter belongs to mb-48vd.
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m7wys3bp2ndx4v4m26exf0hz
+    block: |-
+      ⟦tbd⟧
+      `mb-o2ax` · epic · open · P2
+      Children: 15 (9 ready)
+      Bead: `tbd show mb-o2ax`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 1e4ba3ec-be2e-4e6a-87f7-f71f8406875c
+    kind: splice_description
+  - bead_id: is-01m7wys615s2mfvbc93c9g2pac
+    external_id: e6f489b4-f2f3-4437-9129-fb08702ab54a
+    kind: update_issue
+    patch:
+      description: >-
+        The Files toolbar's chooser switches a view between branches, tags, commits and
+        pull request heads, in a mirror or beside a checkout's working tree. Landed: the
+        chooser in the toolbar (#577), a local checkout's branch and tag chooser (#559),
+        every ref newest first (#614), scroll kept across refills (#625), and a branch
+        that heads a pull request shown with it (#651).
+
+
+        What remains is the follow-ups from those reviews: switching state after a
+        bfcache restore (mb-0c3a), telling a repository's own pull requests from a
+        fork's (mb-n3hm), redrawing the toolbar around the chooser (mb-k1sx),
+        refused-request windows on other pin switches (mb-ayxi), the Commits landing's
+        HEAD check (mb-8oy4), and the working-tree and branch-snapshot Files workflow
+        (mb-itzy, deferred). Following a branch when the repository moves is the epic
+        mb-2uut.
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m7wys615s2mfvbc93c9g2pac
+    block: |-
+      ⟦tbd⟧
+      `mb-1tvg` · epic · open · P2
+      Children: 10 (5 ready)
+      Bead: `tbd show mb-1tvg`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: e6f489b4-f2f3-4437-9129-fb08702ab54a
+    kind: splice_description
+  - bead_id: is-01m7wys8y3epj61gncgjakhsd0
+    external_id: 4ac6525a-dabe-49c8-aad1-d542e247da5a
+    kind: update_issue
+    patch:
+      description: >-
+        The Pulls tab, the pull request page (Conversation, Changes, the Diff summary,
+        stacks) and the commit page, for mirrors and local checkouts. The feature set
+        shipped through the 0.12 line and the 2026-11 UI rounds (#444-#481, #506, #529,
+        #584, #611, #615, #627).
+
+
+        This epic collects what is left from their reviews and audits: keys and stacks
+        (mb-xb2y, mb-1nbg, and mb-mbnl, awaiting the owner), Conversation order and
+        rhythm (mb-yp9p, mb-vv4k), the Diff summary builders and hover card (mb-5b58,
+        mb-fhn5, mb-49ml), Pulls rows and toolbar (mb-gdqm, mb-5xfg, mb-ewjr, mb-grl0,
+        mb-jb7w, mb-d7oy, mb-gben), commit-page layout (mb-7r8v, mb-f3mw, mb-rlfm,
+        mb-tu44), the author's avatar (mb-s3g8, mb-rlp4), and documentation screenshots
+        (mb-k0p3). Nested here: the Pulls tab spec epic (mb-8rpp) and the diff-summary
+        load-time epic (mb-h36r).
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m7wys8y3epj61gncgjakhsd0
+    block: |-
+      ⟦tbd⟧
+      `mb-3u8i` · epic · open · P2
+      Children: 35 (23 ready)
+      Bead: `tbd show mb-3u8i`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 4ac6525a-dabe-49c8-aad1-d542e247da5a
+    kind: splice_description
+  - bead_id: is-01m7wysap12x9d1xp4zz3m4sds
+    external_id: 24bfdddd-9196-48e4-b996-08dc29d126cb
+    kind: update_issue
+    patch:
+      description: >-
+        Metabrowser keeps a structured JSON event log of requests, background jobs and
+        subprocesses (#618), names the cause of every failed GitHub call (#620), reports
+        slow requests, freezes and late waits from the page (#629), and browses its own
+        log in Metabrowser (#633, #634). Plan:
+        docs/project/specs/active/plan-2026-11-19-structured-event-log.md.
+
+
+        What remains: the reporter's late paths and the requests in flight before it
+        installs (mb-fqy1, mb-nhf2), the Timeline's name, client and cause chips
+        (mb-7uqr), measuring open-to-first-row for the log views and skipping the
+        generic JSONL envelope for hook-backed kinds (mb-9n0x), and the event-loop lag
+        sampler (mb-x3x1).
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m7wysap12x9d1xp4zz3m4sds
+    block: |-
+      ⟦tbd⟧
+      `mb-i2i1` · epic · open · P2
+      Spec: [plan-2026-11-19-structured-event-log.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-19-structured-event-log.md)
+      Children: 6 (4 ready)
+      Bead: `tbd show mb-i2i1`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 24bfdddd-9196-48e4-b996-08dc29d126cb
+    kind: splice_description
+  - bead_id: is-01m7wysc4mfcdyek4vgsexz8y9
+    external_id: 99cce315-e87d-462e-9e07-3cb1b8e5f249
+    kind: update_issue
+    patch:
+      description: >-
+        Operational visibility into ~/.claude and ~/.codex as the built-in agents
+        plugin. Plan:
+        docs/project/specs/active/plan-2026-11-19-agent-operations-views.md. Phase 1
+        (recognize current Claude Code transcripts and Codex rollouts, #636) and Phase 2
+        (SDK additions, the provider layer, the plugin, the catalog and routes, the
+        home, session list and Session view; #639, #640, #648, #654, #655) are merged.
+
+
+        What remains: Phases 3 to 6 (timeline and live events, usage and tokens, events,
+        tools and latency, agent-specific depth and trust) have no beads yet; agent-log
+        chart hues per record kind (mb-lkja); and agent-log detection that still lists
+        agent names beside the registry (mb-0mq1).
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m7wysc4mfcdyek4vgsexz8y9
+    block: |-
+      ⟦tbd⟧
+      `mb-elct` · epic · in_progress · P2
+      Spec: [plan-2026-11-19-agent-operations-views.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-19-agent-operations-views.md)
+      Children: 5 (2 ready)
+      Bead: `tbd show mb-elct`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 99cce315-e87d-462e-9e07-3cb1b8e5f249
+    kind: splice_description
+  - bead_id: is-01m7wysdnvzch4gb5zvqwvn04e
+    external_id: c23452d1-8d76-491e-86d9-3278c87bdb31
+    kind: update_issue
+    patch:
+      description: >-
+        Rendered Markdown (KPress), wiki links and transclusion, front matter, the
+        structured YAML and JSON views, and Mermaid diagrams, in the trusted and the
+        inert (untrusted) profiles. Landed: Mermaid in Markdown (#597) and in pull
+        request text (#616), GitHub's layout attributes (#626), bounded front matter
+        parsed off the event loop (#542), untrusted Markdown rendered in an inert child
+        under a deadline (#527), and the remote-image policy (#644).
+
+
+        What remains: Mermaid waits on the owner testing and merging kpress#80, then the
+        repin (mb-tbq9, mb-d515); inert documents' diagram layout (mb-htyq); YAML alias
+        bounds in the structured viewer (mb-7th1) and its other defects (mb-hs06,
+        mb-59mp); Markdown bounds, robustness and wiki follow-ups (mb-k8os, mb-k0s0,
+        mb-fvs1, mb-286z, mb-cz9v, mb-m4u9); TOC and transclusion polish (mb-hpoq,
+        mb-jt6l, mb-9q0a, mb-2nqa, mb-4el3); KPress follow-ups (mb-no22, mb-jue2,
+        mb-gc3c, mb-4cwy); and the front matter follow-ups from #542 (mb-2y6a, mb-ah1x,
+        mb-s8bo, mb-993s). Nested: the inert-render hardening from #527 and the Markdown
+        navigation evaluation (mb-fbm2).
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m7wysdnvzch4gb5zvqwvn04e
+    block: |-
+      ⟦tbd⟧
+      `mb-3s19` · epic · open · P2
+      Children: 33 (24 ready)
+      Bead: `tbd show mb-3s19`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: c23452d1-8d76-491e-86d9-3278c87bdb31
+    kind: splice_description
+  - bead_id: is-01m7wysf407hkpj5n35r533gzc
+    external_id: 011c03c5-06d7-4b08-aaf2-fe9aa920e54d
+    kind: update_issue
+    patch:
+      description: >-
+        docs/design-system.md and the checks that hold the code to it: the icon catalog
+        (#580), one view header for files and folders (#550, #592, #608), controls,
+        badges and messages that follow one system (#622), and one type scale.
+
+
+        What remains: icon-catalog gaps (mb-5t9t, mb-slm3, mb-12ky, mb-d06k, mb-59j2);
+        contrast (mb-i3df, mb-8irr, mb-7prx); vocabulary enforcement on every surface
+        (mb-2ozh); the file-type palette (mb-s2on); casing (mb-q5ud) and the type-scale
+        test (mb-oajg); keyboard access for the structured and Charts tree rows
+        (mb-jjcn); the view header's next steps (mb-7t5s, mb-5wb0, mb-adzo); and the
+        2026-11-14 round's consistency pass (mb-r5jr).
+      labels:
+        - linear
+        - Improvement
+  - bead_id: is-01m7wysf407hkpj5n35r533gzc
+    block: |-
+      ⟦tbd⟧
+      `mb-moo3` · epic · open · P2
+      Children: 33 (17 ready)
+      Bead: `tbd show mb-moo3`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 011c03c5-06d7-4b08-aaf2-fe9aa920e54d
+    kind: splice_description
+  - bead_id: is-01m7wysgm9rg3fdch55nst1wrn
+    external_id: 1ece55fe-0ac1-49d4-bf60-5ea298d7306c
+    kind: update_issue
+    patch:
+      description: >-
+        The owner asked on 2026-11-16 for a pull request's gate in 3 to 5 minutes at the
+        same coverage. The assessment and plan merged in #496
+        (docs/project/specs/active/plan-2026-11-16-fast-ci.md); Phase 1 (#499, four
+        processors) and Phase 2 (#504, parallel jobs with one ci-ok verdict) are merged,
+        and the first measured pull requests took 4.7 to 5.5 minutes.
+
+
+        What remains: finish Phase 1's 10-run acceptance (mb-g0xx), verify Phase 2 after
+        the merge (mb-ohsk), the owner's branch ruleset requiring ci-ok (mb-m4ct), and
+        Phase 3 (path classes mb-pvyg, the serial tier's fixed waits mb-37dw, the Chrome
+        start retry and per-test allowances mb-sicb and mb-bl54). Flaky tests are
+        tracked under mb-1qsn.
+      labels:
+        - linear
+        - Improvement
+  - bead_id: is-01m7wysgm9rg3fdch55nst1wrn
+    block: |-
+      ⟦tbd⟧
+      `mb-3mqe` · epic · in_progress · P2
+      Spec: [plan-2026-11-16-fast-ci.md](https://github.com/jlevy/metabrowser/blob/main/docs/project/specs/active/plan-2026-11-16-fast-ci.md)
+      Children: 11 (7 ready)
+      Bead: `tbd show mb-3mqe`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 1ece55fe-0ac1-49d4-bf60-5ea298d7306c
+    kind: splice_description
+  - bead_id: is-01m7x1jaewjm2pnxm8dnmnqdtq
+    external_id: 1910be4b-70e6-4d39-ad72-341b9d3c22ce
+    kind: update_issue
+    patch:
+      description: "Owner decisions 2026-11-20 on attic/cache-layout-research/report.txt:
+        repos/ (rename from repository-stores/) and source slugs respelled with single
+        dashes and base36 digests in one f03 step (mb-dwq7); recents move to the state
+        directory and the deletion guarantee is 'whenever no metab is running'
+        (mb-pml0); later, removal and pruning on the open-repo plan's store lease."
+      labels:
+        - linear
+        - Improvement
+  - bead_id: is-01m7x1jaewjm2pnxm8dnmnqdtq
+    block: |-
+      ⟦tbd⟧
+      `mb-i070` · epic · in_progress · P1
+      Children: 4 (1 ready)
+      Bead: `tbd show mb-i070`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 1910be4b-70e6-4d39-ad72-341b9d3c22ce
+    kind: splice_description
+  - bead_id: is-01m7x3g8rdhbeh7f0j0j7nz4sq
+    external_id: 9a57f679-f6d9-4559-a70c-540295dbc707
+    kind: update_issue
+    patch:
+      description: "Owner 2026-11-20: review #599 fully, bring it current with main, make it
+        ready to merge, but do not merge. Review A:
+        attic/landing/reviews/pr599-senior-r1.txt (3 Medium, 6 Low). The PR's changelog
+        fragment names a nonexistent mb-0bub; rename to this bead."
+      labels:
+        - linear
+        - Feature
+  - bead_id: is-01m7x3g8rdhbeh7f0j0j7nz4sq
+    block: |-
+      ⟦tbd⟧
+      `mb-yakh` · feature · in_progress · P2
+      Children: 0 (0 ready)
+      Bead: `tbd show mb-yakh`
+
+      Mirrored by tbd. Edits inside this block are overwritten.
+      ⟦/tbd⟧
+    external_id: 9a57f679-f6d9-4559-a70c-540295dbc707
+    kind: splice_description
+provider: linear
+run_id: 01m7x6atfv2n91ghbqappbx9vr
+type: in
