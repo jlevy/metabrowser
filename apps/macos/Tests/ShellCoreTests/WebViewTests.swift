@@ -158,43 +158,60 @@ import Testing
 }
 
 @Suite struct WebPaneStateTests {
-    private let readme = URL(string: "https://github.com/octo/demo/blob/main/README.md")!
-    private let guide = URL(string: "https://github.com/octo/demo/blob/main/docs/guide.md")!
+    private static let example = WebSite(name: "Example", domains: ["example.org"], pageHosts: ["example.org"])
+    private let readme = WebSite.Page(site: .gitHub, url: URL(string: "https://github.com/octo/demo/blob/main/README.md")!)
+    private let guide = WebSite.Page(site: .gitHub, url: URL(string: "https://github.com/octo/demo/blob/main/docs/guide.md")!)
+    private let elsewhere = WebSite.Page(site: example, url: URL(string: "https://example.org/guide")!)
+
+    private func keeps(_ load: URL?) -> WebPaneState.Opening { .init(replacesWebView: false, load: load) }
 
     @Test func theFirstOpeningLoadsTheItemsPage() {
         var state = WebPaneState()
-        #expect(state.openedFor == nil)
-        #expect(state.open(readme, hasPage: false) == readme)
-        #expect(state.openedFor == readme)
+        #expect(state.openedFor == nil && state.site == nil)
+        #expect(state.open(readme, hasPage: false) == keeps(readme.url))
+        #expect(state.openedFor == readme.url)
+        #expect(state.site == .gitHub)
     }
 
     /// Opened again for the same item, it shows as it was left, with no load.
     @Test func theSameItemShowsItAsItWasLeft() {
         var state = WebPaneState()
         _ = state.open(readme, hasPage: false)
-        #expect(state.open(readme, hasPage: true) == nil)
+        #expect(state.open(readme, hasPage: true) == keeps(nil))
     }
 
     /// A first load that failed, offline say, left no page: opening it again loads it.
     @Test func aPageThatNeverLoadedLoadsWhenOpenedAgain() {
         var state = WebPaneState()
         _ = state.open(readme, hasPage: false)
-        #expect(state.open(readme, hasPage: false) == readme)
+        #expect(state.open(readme, hasPage: false) == keeps(readme.url))
     }
 
+    /// Another page on the same site loads in the same web view, keeping its history.
     @Test func anotherItemLoadsItsPage() {
         var state = WebPaneState()
         _ = state.open(readme, hasPage: false)
-        #expect(state.open(guide, hasPage: true) == guide)
-        #expect(state.open(readme, hasPage: true) == readme)
+        #expect(state.open(guide, hasPage: true) == keeps(guide.url))
+        #expect(state.open(readme, hasPage: true) == keeps(readme.url))
+    }
+
+    /// A page on another site starts a new web view under that site's policy, so Back never
+    /// returns to pages the new policy cancels; and back again does the same.
+    @Test func anotherSitesPageReplacesTheWebView() {
+        var state = WebPaneState()
+        _ = state.open(readme, hasPage: false)
+        #expect(state.open(elsewhere, hasPage: true) == .init(replacesWebView: true, load: elsewhere.url))
+        #expect(state.site == Self.example)
+        #expect(state.open(readme, hasPage: true) == .init(replacesWebView: true, load: readme.url))
+        #expect(state.site == .gitHub)
     }
 
     @Test func afterItsWebViewIsLetGoItLoadsAgain() {
         var state = WebPaneState()
         _ = state.open(readme, hasPage: false)
         state.discard()
-        #expect(state.openedFor == nil)
-        #expect(state.open(readme, hasPage: false) == readme)
+        #expect(state.openedFor == nil && state.site == nil)
+        #expect(state.open(readme, hasPage: false) == keeps(readme.url))
     }
 
     /// Reload Page reloads a page that loaded, and loads one that never did, since WebKit's
@@ -203,8 +220,74 @@ import Testing
         var state = WebPaneState()
         #expect(state.pageToLoad(hasPage: false) == nil)
         _ = state.open(readme, hasPage: false)
-        #expect(state.pageToLoad(hasPage: false) == readme)
+        #expect(state.pageToLoad(hasPage: false) == readme.url)
         #expect(state.pageToLoad(hasPage: true) == nil)
+    }
+
+    /// Clearing another site's data leaves the pane alone, so text the user has not sent
+    /// stays; clearing any of its own domains, or all, reloads it.
+    @Test func clearingReloadsOnlyAPaneOfAClearedSite() {
+        var state = WebPaneState()
+        #expect(!state.reloads(after: .all))
+        _ = state.open(readme, hasPage: true)
+        #expect(state.reloads(after: .all))
+        #expect(state.reloads(after: .sites(["githubassets.com"])))
+        #expect(state.reloads(after: .sites(["github.com", "example.org"])))
+        #expect(!state.reloads(after: .sites(["example.org"])))
+        #expect(!state.reloads(after: .cancelled))
+    }
+}
+
+@Suite struct WebSiteKnownTests {
+    /// A known site's page hosts are its own: a marked link the page sends to a pane must
+    /// load under that pane's policy, or the pane would open blank.
+    @Test func everyPageHostStaysInItsSitesView() throws {
+        for site in WebSite.known {
+            for host in site.pageHosts {
+                let page = try #require(URL(string: "https://\(host)/"))
+                #expect(WebViewPolicy(site: site).staysInView(page), "\(site.name): \(host)")
+                #expect(WebSite.page(page.absoluteString)?.site == site, "\(site.name): \(host)")
+            }
+        }
+    }
+
+    /// No two known sites share a domain, or one's lies under another's: `WebSite.page`
+    /// takes the first site that matches, and each site's sign-in is its own to clear.
+    @Test func noTwoSitesShareADomain() {
+        let sites = WebSite.known
+        for (i, first) in sites.enumerated() {
+            for second in sites[(i + 1)...] {
+                for a in first.domains {
+                    for b in second.domains {
+                        let overlap = a == b || a.hasSuffix("." + b) || b.hasSuffix("." + a)
+                        #expect(!overlap, "\(first.name) \(a), \(second.name) \(b)")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Suite struct WebDataClearingTests {
+    @Test func thePopUpListsAllWebsitesThenTheSites() {
+        #expect(WebDataClearing.menu([]) == ["All Websites"])
+        #expect(WebDataClearing.menu(["example.org", "github.com"]) == ["All Websites", nil, "example.org", "github.com"])
+    }
+
+    /// The pop-up's index maps to what is cleared; the separator, an index past the end,
+    /// no selection, and Cancel all clear nothing.
+    @Test func theChosenItemIsWhatIsCleared() {
+        let sites = ["example.org", "github.com"]
+        #expect(WebDataClearing(confirmed: true, selected: 0, sites: sites) == .all)
+        #expect(WebDataClearing(confirmed: true, selected: 0, sites: []) == .all)
+        #expect(WebDataClearing(confirmed: true, selected: 2, sites: sites) == .sites(["example.org"]))
+        #expect(WebDataClearing(confirmed: true, selected: 3, sites: sites) == .sites(["github.com"]))
+        for selected in [-1, 1, 4] {
+            #expect(WebDataClearing(confirmed: true, selected: selected, sites: sites) == .cancelled, "\(selected)")
+        }
+        for selected in 0..<4 {
+            #expect(WebDataClearing(confirmed: false, selected: selected, sites: sites) == .cancelled, "\(selected)")
+        }
     }
 }
 

@@ -76,21 +76,25 @@ public enum WebDataStore {
     /// The one store, made once and kept, so every pane's web view holds the same instance.
     public static let shared = WKWebsiteDataStore(forIdentifier: identifier)
 
-    /// The sites that have stored something, by the name WebKit gives each record, its
-    /// registrable domain, such as `github.com`, sorted.
-    public static func sites() async -> [String] {
-        let records = await shared.dataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes())
+    /// The sites that have stored something in `store`, by the name WebKit gives each
+    /// record, its registrable domain, such as `github.com`, sorted.
+    public static func sites(in store: WKWebsiteDataStore = shared) async -> [String] {
+        let records = await store.dataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes())
         return Set(records.map(\.displayName)).sorted()
     }
 
-    /// Removes what the sites in `sites` stored, by `sites()`'s names, or, given nil,
+    /// Removes what `clearing` names from `store`: the sites' data by `sites()`'s names, or
     /// everything, which signs you out of each.
-    public static func clear(_ sites: Set<String>? = nil) async {
+    public static func clear(_ clearing: WebDataClearing, in store: WKWebsiteDataStore = shared) async {
         let types = WKWebsiteDataStore.allWebsiteDataTypes()
-        guard let sites else {
-            return await shared.removeData(ofTypes: types, modifiedSince: .distantPast)
+        switch clearing {
+        case .cancelled:
+            return
+        case .all:
+            await store.removeData(ofTypes: types, modifiedSince: .distantPast)
+        case .sites(let sites):
+            let records = await store.dataRecords(ofTypes: types).filter { sites.contains($0.displayName) }
+            await store.removeData(ofTypes: types, for: records)
         }
-        let records = await shared.dataRecords(ofTypes: types).filter { sites.contains($0.displayName) }
-        await shared.removeData(ofTypes: types, for: records)
     }
 }

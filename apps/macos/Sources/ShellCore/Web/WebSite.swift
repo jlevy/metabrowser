@@ -162,14 +162,17 @@ public nonisolated struct WebViewPolicy: Equatable, Sendable {
     private static func isWeb(_ scheme: String) -> Bool { scheme == "https" || scheme == "http" }
 }
 
-/// What a web pane was opened for, which decides whether opening it again loads a page.
+/// What a web pane was opened for, which decides whether opening it again loads a page, and
+/// whose policy its web view follows.
 ///
 /// Each folder page has a pane of its own, in a popover (`FolderPage`, `WebPopover`), which
 /// keeps its web view for `keptAfterClosing` after the popover closes, so opening the same
 /// link again within that time shows the pane at once, as it was left, wherever the user
 /// went on the site since, with its Back and Forward history; opening it for another page
-/// loads that page in it, and so does opening it for a page that never loaded. While the
-/// page holds text the user has not sent (`unsentTextProbe`), the web view stays.
+/// loads that page in it, and so does opening it for a page that never loaded. A page on
+/// another site than the last starts a new web view, so Back never leaves the site whose
+/// policy the pane follows. While the page holds text the user has not sent
+/// (`unsentTextProbe`), the web view stays.
 public nonisolated struct WebPaneState: Equatable, Sendable {
     /// How long a closed popover's pane keeps its web view, and with it a WebContent process of its
     /// own, which `TabDiscardPolicy` does not count. A web view holding text the user has not
@@ -193,19 +196,43 @@ public nonisolated struct WebPaneState: Equatable, Sendable {
     ///   Letting the view go bounds what the app holds, not when the memory returns.
     public static let keptAfterClosing = Duration.seconds(60)
 
+    /// The site of the page the pane was last opened on, whose policy (`WebViewPolicy`) its
+    /// web view follows: nil before its first use, and after its web view is let go.
+    public private(set) var site: WebSite?
+
     /// The page the pane last loaded for a marked link: nil before its first use, and after
     /// its web view is let go.
     public private(set) var openedFor: URL?
 
     public init() {}
 
-    /// A marked link to `page` was clicked; `hasPage` says whether the
-    /// web view has a committed page. Returns the page to load, or nil to show the pane as
-    /// it was left. A page that never loaded, such as one asked for offline, loads again.
-    public mutating func open(_ page: URL, hasPage: Bool) -> URL? {
-        guard page != openedFor || !hasPage else { return nil }
-        openedFor = page
-        return page
+    /// What opening the pane does to its web view.
+    public struct Opening: Equatable, Sendable {
+        /// Whether the web view is let go first, since the page is on another site than the
+        /// last: its history would hold pages the new site's policy cancels.
+        public let replacesWebView: Bool
+        /// The page to load, or nil to show the pane as it was left.
+        public let load: URL?
+    }
+
+    /// A marked link to `page` was clicked; `hasPage` says whether the web view has a
+    /// committed page. A page that never loaded, such as one asked for offline, loads again.
+    public mutating func open(_ page: WebSite.Page, hasPage: Bool) -> Opening {
+        let replaces = site.map { $0 != page.site } ?? false
+        site = page.site
+        guard replaces || page.url != openedFor || !hasPage else {
+            return Opening(replacesWebView: false, load: nil)
+        }
+        openedFor = page.url
+        return Opening(replacesWebView: replaces, load: page.url)
+    }
+
+    /// After Metabrowser > Clear Website Data…: whether the pane reloads, as it does when
+    /// what was cleared includes its site's. Reloading for another site's data would only
+    /// lose text the user has not sent.
+    public func reloads(after clearing: WebDataClearing) -> Bool {
+        guard let site else { return false }
+        return clearing.includes(site)
     }
 
     /// For Reload Page, and after Clear Website Data…: the page to load in place of a reload,
@@ -215,7 +242,10 @@ public nonisolated struct WebPaneState: Equatable, Sendable {
 
     /// The pane's web view was let go: `keptAfterClosing` passed after its popover closed,
     /// its folder page gave up its web view to save memory, or the page closes.
-    public mutating func discard() { openedFor = nil }
+    public mutating func discard() {
+        site = nil
+        openedFor = nil
+    }
 
     /// Evaluated in the app's content world before a closed pane's web view is let go:
     /// whether a text area, or a text, URL, or email field, holds text other than what the
@@ -230,6 +260,44 @@ public nonisolated struct WebPaneState: Equatable, Sendable {
                 ["text", "url", "email"].includes(field.type) && typed(field));
         })()
         """
+}
+
+/// What Metabrowser > Clear Website Data… asked to clear from the web panes' store
+/// (`WebDataStore`), from the alert's pop-up (`menu`).
+public nonisolated enum WebDataClearing: Equatable, Sendable {
+    /// The user cancelled.
+    case cancelled
+    /// Every site's data.
+    case all
+    /// These sites' data, by the names `WebDataStore.sites` gives.
+    case sites(Set<String>)
+
+    /// The pop-up's items for the sites that stored something: All Websites first, the
+    /// default, then a separator (nil) and the sites, if there are any.
+    public static func menu(_ sites: [String]) -> [String?] {
+        ["All Websites"] + (sites.isEmpty ? [] : [nil] + sites)
+    }
+
+    /// The alert's answer: `confirmed` if the user clicked Clear, and the index of the
+    /// pop-up item `menu(sites)` chose. An index that names no item clears nothing.
+    public init(confirmed: Bool, selected: Int, sites: [String]) {
+        let menu = Self.menu(sites)
+        guard confirmed, menu.indices.contains(selected), let title = menu[selected] else {
+            self = .cancelled
+            return
+        }
+        self = selected == 0 ? .all : .sites([title])
+    }
+
+    /// Whether `site`'s data is among what is cleared. WebKit names a record by its
+    /// registrable domain, as `WebSite.domains` names a site's.
+    public func includes(_ site: WebSite) -> Bool {
+        switch self {
+        case .cancelled: false
+        case .all: true
+        case .sites(let sites): !sites.isDisjoint(with: site.domains)
+        }
+    }
 }
 
 /// Where a web pane's popover opens and how large it is.

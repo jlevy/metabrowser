@@ -41,8 +41,6 @@ final class WebPane: NSViewController, NSMenuItemValidation {
     private let isInspectable: Bool
     private(set) var webView: WKWebView?
     weak var host: (any WebPaneHost)?
-    /// The site of the page the pane was last opened on, whose policy it follows.
-    private(set) var site: WebSite?
     /// Between the host's showing the pane and its hiding it.
     private var isShown = false
     private lazy var ui = WebViewUI(
@@ -138,17 +136,17 @@ final class WebPane: NSViewController, NSMenuItemValidation {
 
     // MARK: - Showing
 
-    var policy: WebViewPolicy? { site.map(WebViewPolicy.init(site:)) }
+    /// The policy of the site the pane was last opened on (`WebPaneState.site`).
+    var policy: WebViewPolicy? { state.site.map(WebViewPolicy.init(site:)) }
 
     /// Opens the pane on `page`, or as it was left when it was last opened on it. A page on
-    /// another site than the last starts a new web view, so Back never leaves the policy's
-    /// site.
+    /// another site than the last starts a new web view (`WebPaneState.open`).
     func open(_ page: WebSite.Page) {
         loadViewIfNeeded()
-        if site != page.site { dropWebView() }
-        site = page.site
+        let opening = state.open(page, hasPage: hasPage)
+        if opening.replacesWebView { dropWebView() }
         let webView = webView ?? makeWebView()
-        if let load = state.open(page.url, hasPage: hasPage) { webView.load(URLRequest(url: load)) }
+        if let load = opening.load { webView.load(URLRequest(url: load)) }
     }
 
     /// Gives the web view the keyboard, once the host shows the pane.
@@ -165,8 +163,14 @@ final class WebPane: NSViewController, NSMenuItemValidation {
         }
     }
 
+    /// After Metabrowser > Clear Website Data…: reloads, signed out, if what was cleared
+    /// includes the pane's site's data (`WebPaneState.reloads(after:)`).
+    func reload(after clearing: WebDataClearing) {
+        if state.reloads(after: clearing) { reload() }
+    }
+
     /// Lets the web view go at once: the page gave up its web view, or it closes.
-    func discard() { dropWebView() }
+    func discard() { letWebViewGo() }
 
     /// The host is about to show the pane.
     func hostWillShow() {
@@ -200,6 +204,13 @@ final class WebPane: NSViewController, NSMenuItemValidation {
         return webView
     }
 
+    /// Lets the web view go, and with it what the pane was opened for.
+    private func letWebViewGo() {
+        state.discard()
+        dropWebView()
+    }
+
+    /// Lets the web view go, keeping `state`, as opening it on another site does.
     private func dropWebView() {
         release?.cancel()
         release = nil
@@ -210,7 +221,6 @@ final class WebPane: NSViewController, NSMenuItemValidation {
         webView.uiDelegate = nil
         webView.removeFromSuperview()
         self.webView = nil
-        state.discard()
         showLocation()
         showHistory()
     }
@@ -226,7 +236,7 @@ final class WebPane: NSViewController, NSMenuItemValidation {
             let unsent = try? await webView.evaluateJavaScript(
                 WebPaneState.unsentTextProbe, in: nil, contentWorld: .defaultClient)
             guard !Task.isCancelled, !isShown else { return }
-            if unsent as? Bool == true { releaseLater() } else { dropWebView() }
+            if unsent as? Bool == true { releaseLater() } else { letWebViewGo() }
         }
     }
 
@@ -270,7 +280,7 @@ final class WebPane: NSViewController, NSMenuItemValidation {
     /// The page the pane shows, for Copy Link and Open in Browser: the web view's, while it
     /// is one of its site's, or else the one it was opened on.
     private var shownPage: URL? {
-        if let url = webView?.url, site?.staysInView(url) == true { return url }
+        if let url = webView?.url, state.site?.staysInView(url) == true { return url }
         return state.openedFor
     }
 

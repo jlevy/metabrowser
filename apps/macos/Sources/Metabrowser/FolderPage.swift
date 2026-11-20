@@ -447,9 +447,10 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         popover.show(request.page, at: anchor, of: webView)
     }
 
-    /// After Metabrowser > Clear Website Data…: the popover's page loads again, signed out.
-    func reloadWebPopover() {
-        webPopover?.reload()
+    /// After Metabrowser > Clear Website Data…: the popover's page loads again, signed out,
+    /// if what was cleared includes its site's data.
+    func reloadWebPopover(after clearing: WebDataClearing) {
+        webPopover?.reload(after: clearing)
     }
 
     /// Menu items carry the `NSTextFinder.Action` in their tag, though `PageFind`, not

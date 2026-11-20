@@ -702,10 +702,10 @@ pane (bead `mb-4wqh`, which replaced the in-window GitHub view first built for
   It holds nothing of what shows it: its host (`WebPaneHost`) closes it and holds itself
   open while the pane shows a panel, so a window could host it as well as a popover.
   It follows the policy of the site of the page it was last opened on, and opening it on
-  another site’s page starts a new web view, so Back never leaves that site.
-  Its controller is in its host’s responder chain, ahead of the window behind it, so
-  Back, Forward, Reload Page, zoom, Open in Default Browser, and Command-W act on the
-  pane, and Print and Find are off rather than acting on the hidden page.
+  another site’s page starts a new web view (`WebPaneState.open`), so Back never leaves
+  that site. Its controller is in its host’s responder chain, ahead of the window behind
+  it, so Back, Forward, Reload Page, zoom, Open in Default Browser, and Command-W act on
+  the pane, and Print and Find are off rather than acting on the hidden page.
 - **The popover.** `WebPopover` hosts the pane in a transient `NSPopover`, which Escape,
   Command-W, or a click outside closes.
   Each folder page (`FolderPage`) has its own, made at a marked link’s first use, which
@@ -748,7 +748,9 @@ pane (bead `mb-4wqh`, which replaced the in-window GitHub view first built for
   Metabrowser > Clear Website Data… lists every site that stored something
   (`WebDataStore.sites`, by WebKit’s record names, as `github.com`) under All Websites,
   and removes what the chosen site, or every site, stored (`WebDataStore.clear`) after a
-  confirmation whose default is Cancel, then reloads any popover’s page.
+  confirmation whose default is Cancel (`WebDataClearing`), then reloads each popover
+  whose site’s data it cleared (`WebPaneState.reloads(after:)`), so clearing another
+  site’s data never loses text the user has not sent.
 - **Lifetime.** A closed popover’s pane keeps its web view for
   `WebPaneState.keptAfterClosing`, so opening it again on the same page shows it as it
   was left, and then lets it go, unless the page holds text the user has not sent

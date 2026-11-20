@@ -296,7 +296,7 @@ with. A development build keeps a store of its own.
 - **Signing out:** sign out on github.com in the popover, or choose Metabrowser > Clear
   Website Data…, pick `github.com` or All Websites, and Clear.
   That removes everything the sites you picked stored in the app, signs you out of them
-  in every window, and reloads any popover’s page.
+  in every window, and reloads each popover showing one of them.
   It leaves your `gh` sign-in, your browser, and Metabrowser’s settings as they were.
 - **Ways to sign in:** a password, with GitHub’s two-factor code, signs in within the
   popover. A sign-in that goes through another site, such as an organization’s single

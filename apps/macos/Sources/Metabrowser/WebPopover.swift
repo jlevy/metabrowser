@@ -39,8 +39,8 @@ final class WebPopover: NSObject, NSPopoverDelegate, WebPaneHost {
 
     func close() { popover?.close() }
 
-    /// Reload Page, and after Metabrowser > Clear Website Data… (`WebPane.reload`).
-    func reload() { pane.reload() }
+    /// After Metabrowser > Clear Website Data… (`WebPane.reload(after:)`).
+    func reload(after clearing: WebDataClearing) { pane.reload(after: clearing) }
 
     /// Lets the pane's web view go at once: the page gave up its web view, or it closes.
     func discard() {

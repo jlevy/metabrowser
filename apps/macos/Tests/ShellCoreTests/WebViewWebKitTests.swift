@@ -142,25 +142,35 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
         #expect(await !first.httpCookieStore.allCookies().contains { $0.name == name })
     }
 
-    /// Clear Website Data… for one site removes what that site stored and nothing else's.
-    @Test func clearingOneSiteLeavesTheOthers() async throws {
-        let name = "mb-730z-test-\(UUID().uuidString)"
-        let store = WebDataStore.shared.httpCookieStore
-        var cookies: [HTTPCookie] = []
-        for domain in ["kept-site-test.invalid", "cleared-site-test.invalid"] {
-            let cookie = try #require(HTTPCookie(properties: [
-                .domain: domain, .path: "/", .name: name, .value: "signed-in",
-                .expires: Date().addingTimeInterval(3600),
-            ]))
-            await store.setCookie(cookie)
-            cookies.append(cookie)
-        }
-        let sites = await WebDataStore.sites()
-        #expect(sites.contains("kept-site-test.invalid") && sites.contains("cleared-site-test.invalid"), "\(sites)")
-        await WebDataStore.clear(["cleared-site-test.invalid"])
-        let left = await store.allCookies().filter { $0.name == name }.map(\.domain)
+    /// Clear Website Data… for one site removes what that site stored and nothing else's, and
+    /// for all of them removes everything. It runs on a throwaway store of its own, so
+    /// clearing all never touches the shared store other tests use at the same time.
+    @Test func clearingOneSiteLeavesTheOthersAndAllLeavesNothing() async throws {
+        let identifier = UUID()
+        let left = try await clearing(identifier)
         #expect(left == ["kept-site-test.invalid"])
-        for cookie in cookies { await store.deleteCookie(cookie) }
+        try await WKWebsiteDataStore.remove(forIdentifier: identifier)
+    }
+
+    /// The store, with cookies for two sites, cleared of one and then of all: the domains
+    /// left after the first.
+    private func clearing(_ identifier: UUID) async throws -> [String] {
+        let store = WKWebsiteDataStore(forIdentifier: identifier)
+        let cookies = store.httpCookieStore
+        for domain in ["kept-site-test.invalid", "cleared-site-test.invalid"] {
+            await cookies.setCookie(try #require(HTTPCookie(properties: [
+                .domain: domain, .path: "/", .name: "mb-730z-test", .value: "signed-in",
+                .expires: Date().addingTimeInterval(3600),
+            ])))
+        }
+        let sites = await WebDataStore.sites(in: store)
+        #expect(sites == ["cleared-site-test.invalid", "kept-site-test.invalid"])
+        await WebDataStore.clear(.sites(["cleared-site-test.invalid"]), in: store)
+        let left = await cookies.allCookies().map(\.domain)
+        await WebDataStore.clear(.all, in: store)
+        #expect(await cookies.allCookies().isEmpty)
+        #expect(await WebDataStore.sites(in: store).isEmpty)
+        return left
     }
 
     // MARK: - The button
