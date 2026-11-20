@@ -1683,6 +1683,17 @@ body {
   overflow: hidden;
 }
 
+/* The base anchor: a link no rule colors is the design's link color, not the user agent's
+   blue, or its purple once visited. `:where` makes it zero specificity, so any context's own
+   color, hover, or ring wins without a selector fight, and `:any-link` covers a visited link
+   the same. It sets the color and nothing else: the contexts that leave the user agent's
+   underline at rest (Markdown, Help, an event's details) keep it, and every ring is the
+   context's, so a link that is not styled as a control draws no ring of its own
+   (docs/design-system.md, "Links Have a Base Color"). */
+:where(a:any-link) {
+  color: var(--link);
+}
+
 /* Global scrollbars — every scroll container in the app inherits
    the same minimal style. Containers that sit on a non-default
    surface override --scrollbar-bg locally (e.g. .tree-content sets
@@ -6105,9 +6116,6 @@ pre.code-block.metabrowser-source-lines > code {
   padding: 0.3em 1em;
   color: var(--muted);
 }
-.md-body:not(.metabrowser-kpress-host) a {
-  color: var(--link);
-}
 .md-body:not(.metabrowser-kpress-host) hr {
   border: none;
   border-top: 1px solid var(--border);
@@ -6371,11 +6379,8 @@ pre.code-block.metabrowser-source-lines > code {
 .help-description p + p {
   margin-top: 6px;
 }
-/* The shell sets no global anchor color, so an unclassed link falls through to
-   the user agent's default blue instead of the accent every other link uses. */
-.help-project a {
-  color: var(--link);
-}
+/* A bare inline link in Help: the base anchor colors it, and its box is its text, so the ring
+   stands outside it. */
 .help-project a:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset-outset);
@@ -7098,9 +7103,6 @@ pre.code-block.metabrowser-source-lines > code {
 .event-log-details-heading {
   color: var(--text);
   font-weight: var(--weight-medium);
-}
-.event-log-details a {
-  color: var(--link);
 }
 /* A bare inline link: its box is its text, so the ring stands outside it. */
 .event-log-details a:focus-visible {

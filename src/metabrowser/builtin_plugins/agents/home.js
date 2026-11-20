@@ -25,23 +25,22 @@ import {
   PROGRESS_POLL_MS,
   progressRun,
 } from "./poller.js";
-import { sessionTableHtml } from "./session-rows.js";
+import { sessionRowsHtml } from "./session-rows.js";
 import {
   agentLabel,
+  countHtml,
   ensureViewStyles,
   folderParam,
+  joinGroups,
   openSessionLink,
   refusal,
+  separatorHtml,
   sessionFile,
-  sessionLinkHtml,
   titleOf,
 } from "./support.js";
 
 /** The most recent sessions the home lists before the full list. */
 export const RECENT_ROWS = 8;
-
-/** The columns of the home's table of recent sessions. */
-const RECENT_COLUMNS = Object.freeze(["agent", "title", "project", "activity", "status"]);
 
 /** @typedef {import("./session-rows.js").SessionRow} SessionRow */
 
@@ -137,33 +136,39 @@ export function mountHome(container, ctx, mb) {
     const answer = catalog;
     const esc = (/** @type {string} */ value) => mb.escapeHtml(value);
     const totals = answer.totals;
+    // The served folder's own home has the path "", which names nothing to show.
     const homes = answer.homes
-      .map(
-        (home) =>
-          `<li class="agents-home-item"><span class="agents-agent">${esc(agentLabel(home.agent))}</span> ` +
-          `<span class="agents-home-path">${esc(home.path || ".")}</span> ` +
-          `<span class="agents-muted">${esc(mb.formatInteger(home.sessions))} sessions, ${esc(mb.formatSize(home.size_bytes))}</span>` +
-          (home.discover_limit_reached
-            ? ' <span class="agents-muted">(the newest threads only)</span>'
-            : "") +
-          "</li>",
-      )
+      .map((home) => {
+        const where = home.path && home.path !== "." ? esc(home.path) : "";
+        const counts = countHtml(mb, [
+          { number: mb.formatInteger(home.sessions) },
+          " sessions",
+          { punctuation: "," },
+          " ",
+          { number: mb.formatSize(home.size_bytes) },
+        ]);
+        return `<li class="agents-home-item">${joinGroups(mb, [
+          `<span class="agents-agent">${esc(agentLabel(home.agent))}</span>`,
+          where ? `<span class="agents-home-path">${where}</span>` : "",
+          `<span class="agents-muted">${counts}${home.discover_limit_reached ? " (the newest threads only)" : ""}</span>`,
+        ])}</li>`;
+      })
       .join("");
     slot("head", "agents-head").innerHTML =
-      `<h2 class="agents-title">Agents</h2><ul class="agents-homes">${homes}</ul>`;
+      `<h2 class="agents-title page-heading">Agents</h2><ul class="agents-homes">${homes}</ul>`;
 
     const stat = (/** @type {string} */ label, /** @type {string} */ value) =>
       '<div class="agents-stat">' +
       `<span class="agents-stat-label">${esc(label)}</span>` +
-      `<span class="agents-stat-value">${esc(value)}</span></div>`;
+      `<span class="agents-stat-value">${value}</span></div>`;
     const byAgent = Object.entries(totals.by_agent)
-      .map(([agent, count]) => `${agentLabel(agent)} ${mb.formatInteger(count)}`)
-      .join(" · ");
+      .map(([agent, count]) => `${esc(agentLabel(agent))} ${esc(mb.formatInteger(count))}`)
+      .join(separatorHtml(mb));
     slot("totals", "agents-totals").innerHTML =
       '<div class="agents-stats">' +
-      stat("Sessions", mb.formatInteger(totals.sessions)) +
-      stat("Running now", mb.formatInteger(totals.running)) +
-      stat("Size on disk", mb.formatSize(totals.size_bytes)) +
+      stat("Sessions", esc(mb.formatInteger(totals.sessions))) +
+      stat("Running now", esc(mb.formatInteger(totals.running))) +
+      stat("Size on disk", esc(mb.formatSize(totals.size_bytes))) +
       (byAgent ? stat("By agent", byAgent) : "") +
       "</div>";
 
@@ -178,7 +183,7 @@ export function mountHome(container, ctx, mb) {
       )
       .join("");
     slot("activity", "agents-activity").innerHTML =
-      '<h3 class="agents-heading">Sessions per day</h3>' +
+      '<h3 class="section-heading agents-heading">Sessions per day</h3>' +
       (activity.total === 0
         ? '<p class="agents-empty">No sessions started in the last 90 days.</p>'
         : `<ol class="agents-bars" aria-label="Sessions started per day, oldest first">${bars}</ol>` +
@@ -186,7 +191,7 @@ export function mountHome(container, ctx, mb) {
 
     const sizes = sizeBars(answer.size_histogram.buckets, mb.formatSize);
     slot("sizes", "agents-sizes").innerHTML =
-      '<h3 class="agents-heading">Session sizes</h3>' +
+      '<h3 class="section-heading agents-heading">Session sizes</h3>' +
       (sizes.bars.length === 0
         ? '<p class="agents-empty">No sessions yet.</p>'
         : '<ol class="agents-histogram" aria-label="Sessions by size on disk">' +
@@ -231,40 +236,51 @@ export function mountHome(container, ctx, mb) {
 
   function paintRecent() {
     const element = slot("recent", "agents-recent");
-    const table = sessionTableHtml(mb, recent, {
-      columns: RECENT_COLUMNS,
-      now: catalog?.now ?? liveNow,
-      sorting: null,
-      caption: "Most recent sessions",
-      empty: "No sessions yet.",
-    });
+    const now = catalog?.now ?? liveNow;
+    const rows =
+      recent.length === 0
+        ? '<p class="agents-empty">No sessions yet.</p>'
+        : sessionRowsHtml(
+            mb,
+            recent.map((row) => ({
+              agent: row.agent,
+              session_id: row.session_id,
+              title: titleOf(row),
+              path: sessionFile(row),
+              age: ageText(row.last_activity, now),
+              project: row.project,
+              models: row.models,
+              status: row.status,
+            })),
+            { label: "Most recent sessions" },
+          );
     element.innerHTML =
-      '<div class="agents-heading-row"><h3 class="agents-heading">Recent sessions</h3>' +
-      '<button type="button" class="btn" data-agents-all-sessions>All sessions</button></div>' +
-      table;
+      '<div class="agents-heading-row"><h3 class="section-heading agents-heading">Recent sessions</h3>' +
+      `<button type="button" class="btn" data-agents-all-sessions>All sessions</button></div>${rows}`;
   }
 
   function paintLive() {
     const element = slot("live", "agents-live");
-    const esc = (/** @type {string} */ value) => mb.escapeHtml(value);
     element.setAttribute("aria-label", "Running now");
-    const rows = live
-      .map((row) => {
-        const title = row.name || titleOf(row);
-        return (
-          '<li class="agents-live-row">' +
-          `<span class="agents-agent">${esc(agentLabel(row.agent))}</span> ` +
-          sessionLinkHtml(mb, title, sessionFile(row)) +
-          ` <span class="agents-muted">${esc(row.project ?? "")}${row.models.length ? ` · ${esc(row.models.join(", "))}` : ""}</span>` +
-          ` <span class="agents-live-age">${esc(ageText(row.updated_at, liveNow))}</span></li>`
-        );
-      })
-      .join("");
+    const rows = sessionRowsHtml(
+      mb,
+      live.map((row) => ({
+        agent: row.agent,
+        session_id: row.session_id,
+        title: row.name || titleOf(row),
+        path: sessionFile(row),
+        age: ageText(row.updated_at, liveNow),
+        project: row.project,
+        models: row.models,
+        status: null,
+      })),
+      { label: "Running now" },
+    );
     element.innerHTML =
-      '<h3 class="agents-heading">Running now</h3>' +
+      '<h3 class="section-heading agents-heading">Running now</h3>' +
       (live.length === 0
         ? `<p class="agents-empty">${liveKnown ? "No session is running." : "Checking…"}</p>`
-        : `<ul class="agents-live-list">${rows}</ul>`);
+        : rows);
     reorder();
   }
 

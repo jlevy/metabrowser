@@ -86,7 +86,7 @@ export function mountSessionList(container, ctx, mb) {
     '<div class="notice" data-severity="error" role="alert" hidden></div>' +
     '<div class="agents-list-summary" role="status"></div>' +
     '<div class="agents-loading mb-delayed-loading" aria-hidden="true"></div>' +
-    '<div class="agents-table-wrap" hidden></div>' +
+    '<div class="agents-table-wrap" role="region" aria-label="Sessions" tabindex="0" hidden></div>' +
     '<nav class="agents-pager" aria-label="Pages" hidden></nav>';
   container.append(root);
   const filtersEl = /** @type {HTMLElement} */ (root.querySelector(".agents-filters"));
