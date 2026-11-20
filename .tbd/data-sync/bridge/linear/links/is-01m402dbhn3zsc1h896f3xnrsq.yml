@@ -1,0 +1,21 @@
+base:
+  assignee: null
+  description_hash: sha256v7:6538f7c379ca1ded28aa406d5b850bf2fc2e59c8437436190a2d0a8c8bcc1f51
+  labels:
+    - linear
+    - Bug
+  priority: 1
+  slot: todo
+  status: open
+  title: "v0.12 follow-ups: deferred QA, dependency refresh, and defects found in
+    stabilization"
+bead_id: is-01m402dbhn3zsc1h896f3xnrsq
+external_id: d35b48d1-3e75-4302-928f-acd928f51c87
+external_key: OS-610
+external_url: https://linear.app/finterm-ai/issue/OS-610/v012-follow-ups-deferred-qa-dependency-refresh-and-defects-found-in
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T19:18:54.174Z
+state: linked
+synced_at: 2026-11-20T19:18:54.369Z
+type: lk

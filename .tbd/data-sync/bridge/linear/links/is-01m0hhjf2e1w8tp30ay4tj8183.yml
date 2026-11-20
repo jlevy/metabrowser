@@ -1,7 +1,8 @@
 base:
   assignee: null
   description_hash: sha256v7:b6c03060022d0341bbdfb1cdb0851ed13bbff6a054a529c7a5863e373167ecfc
-  labels: []
+  labels:
+    - linear
   priority: 1
   slot: done
   status: closed
@@ -11,9 +12,9 @@ bead_id: is-01m0hhjf2e1w8tp30ay4tj8183
 external_id: e89638bb-383b-4fef-882b-93118c6efc17
 external_key: OS-365
 external_url: https://linear.app/finterm-ai/issue/OS-365/nav-panel-filtering-correct-rollups-no-empty-folders-stable-expansion
-refinement_slot: todo
-refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-20T18:29:14.397Z
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T19:18:39.649Z
 state: linked
-synced_at: 2026-11-20T18:29:14.593Z
+synced_at: 2026-11-20T19:18:39.792Z
 type: lk

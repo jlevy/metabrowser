@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:4ecbda0fb64164b299b5d338d7c2a513604a47989cc4a92550758f76fcc74fcf
+  labels:
+    - linear
+    - Feature
+  priority: 1
+  slot: in_progress
+  status: in_progress
+  title: "Native macOS app: thin AppKit shell over metab"
+bead_id: is-01m748xpx7bjg68tfaf3q4nxmj
+external_id: 92793121-e71d-4d48-964f-9c3f40100392
+external_key: OS-611
+external_url: https://linear.app/finterm-ai/issue/OS-611/native-macos-app-thin-appkit-shell-over-metab
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
+remote_updated_at: 2026-11-20T19:18:55.831Z
+state: linked
+synced_at: 2026-11-20T19:18:55.974Z
+type: lk

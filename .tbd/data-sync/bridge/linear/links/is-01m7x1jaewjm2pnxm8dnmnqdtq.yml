@@ -1,0 +1,21 @@
+base:
+  assignee: null
+  description_hash: sha256v7:48c2577994fbc9a0b8e3aa11b175bc5d75bdd697a367fc24876ea18f36dfee39
+  labels:
+    - linear
+    - Improvement
+  priority: 1
+  slot: in_progress
+  status: in_progress
+  title: "Cache layout and contract: repos/ and sources/ with short readable names, one
+    vocabulary, a stated deletion guarantee, sizes and pruning"
+bead_id: is-01m7x1jaewjm2pnxm8dnmnqdtq
+external_id: 1910be4b-70e6-4d39-ad72-341b9d3c22ce
+external_key: OS-625
+external_url: https://linear.app/finterm-ai/issue/OS-625/cache-layout-and-contract-repos-and-sources-with-short-readable-names
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
+remote_updated_at: 2026-11-20T19:19:13.625Z
+state: linked
+synced_at: 2026-11-20T19:19:13.742Z
+type: lk

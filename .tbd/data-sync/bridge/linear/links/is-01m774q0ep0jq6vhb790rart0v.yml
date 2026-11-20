@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:b98d9e157b7a9c0a0c959e235b664d1ed78a9189b7d4e229faf8ed2e509e684c
+  labels:
+    - linear
+    - Improvement
+  priority: 1
+  slot: todo
+  status: open
+  title: "Epic: instant transitions and stable layout for the native app"
+bead_id: is-01m774q0ep0jq6vhb790rart0v
+external_id: 57ee4dd2-2bff-4f11-b020-ab1f399ec740
+external_key: OS-612
+external_url: https://linear.app/finterm-ai/issue/OS-612/epic-instant-transitions-and-stable-layout-for-the-native-app
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T19:18:57.233Z
+state: linked
+synced_at: 2026-11-20T19:18:57.411Z
+type: lk

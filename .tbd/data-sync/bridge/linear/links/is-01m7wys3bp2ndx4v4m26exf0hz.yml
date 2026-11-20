@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:445c84d52352dd78a800b4077d35f04d56f90135ee999abf7d967b066a319445
+  labels:
+    - linear
+    - Feature
+  priority: 2
+  slot: todo
+  status: open
+  title: File ages, recency, and Files-tab grouping
+bead_id: is-01m7wys3bp2ndx4v4m26exf0hz
+external_id: 1e4ba3ec-be2e-4e6a-87f7-f71f8406875c
+external_key: OS-617
+external_url: https://linear.app/finterm-ai/issue/OS-617/file-ages-recency-and-files-tab-grouping
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T19:19:06.409Z
+state: linked
+synced_at: 2026-11-20T19:19:06.499Z
+type: lk

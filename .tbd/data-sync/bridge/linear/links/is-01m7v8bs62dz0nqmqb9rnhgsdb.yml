@@ -1,8 +1,9 @@
 base:
   assignee: null
-  description_hash: sha256v7:d20ae1d1a1982018babc7e1cff53e3dd67533d49b0ff77cb0ad2a3996a92d277
+  description_hash: sha256v7:cb90379bca56e827011ea541fb060c8a10403a35f7e14f53198d977e7191ce89
   labels:
     - linear
+    - Feature
   priority: 1
   slot: in_progress
   status: in_progress
@@ -14,7 +15,7 @@ external_key: OS-581
 external_url: https://linear.app/finterm-ai/issue/OS-581/branches-follow-the-repository-a-view-of-a-branch-tracks-it-in-mirror
 refinement_slot: in_progress
 refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
-remote_updated_at: 2026-11-20T18:31:09.740Z
+remote_updated_at: 2026-11-20T19:19:03.746Z
 state: linked
-synced_at: 2026-11-20T18:31:10.223Z
+synced_at: 2026-11-20T19:19:03.846Z
 type: lk

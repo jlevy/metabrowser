@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:7745912e7daf814f03bd45cdf467502920b5359921d550e79dbbef20f016f793
+  labels:
+    - linear
+    - Improvement
+  priority: 2
+  slot: todo
+  status: open
+  title: Complete functional UI parity inventory and golden migration
+bead_id: is-01m26hjjvhpcf49p2x1c3390kk
+external_id: b5547486-4b75-4916-b8ea-90d52974dfb2
+external_key: OS-605
+external_url: https://linear.app/finterm-ai/issue/OS-605/complete-functional-ui-parity-inventory-and-golden-migration
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T19:18:48.412Z
+state: linked
+synced_at: 2026-11-20T19:18:48.602Z
+type: lk

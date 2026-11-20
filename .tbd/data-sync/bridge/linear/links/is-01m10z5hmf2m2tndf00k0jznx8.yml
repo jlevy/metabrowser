@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:6f65db2013f061f140f0d96911dc11cd518a39972bd9a96e566feef2bee598a2
+  labels:
+    - linear
+    - Feature
+  priority: 1
+  slot: todo
+  status: open
+  title: Git status and dirty working-tree browsing
+bead_id: is-01m10z5hmf2m2tndf00k0jznx8
+external_id: 683e9f19-6168-40a4-966e-feca8893b8ed
+external_key: OS-603
+external_url: https://linear.app/finterm-ai/issue/OS-603/git-status-and-dirty-working-tree-browsing
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T19:18:44.583Z
+state: linked
+synced_at: 2026-11-20T19:18:44.690Z
+type: lk

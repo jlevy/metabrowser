@@ -3,17 +3,18 @@ base:
   description_hash: sha256v7:c6c5707141a2f0696a78332bbf9ff20c4e072b0a724c540c95ef466831c8d8d3
   labels:
     - linear
+    - Feature
   priority: 2
-  slot: todo
-  status: open
+  slot: in_progress
+  status: in_progress
   title: Tabular data browsing and live SQLite
 bead_id: is-01m7tv7gz4yk6tygqfexgtw0s2
 external_id: da4dab2f-0682-4c31-8c9a-29da1bda661e
 external_key: OS-572
 external_url: https://linear.app/finterm-ai/issue/OS-572/tabular-data-browsing-and-live-sqlite
-refinement_slot: todo
-refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-20T18:30:54.360Z
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
+remote_updated_at: 2026-11-20T19:19:03.361Z
 state: linked
-synced_at: 2026-11-20T18:30:55.340Z
+synced_at: 2026-11-20T19:19:03.436Z
 type: lk

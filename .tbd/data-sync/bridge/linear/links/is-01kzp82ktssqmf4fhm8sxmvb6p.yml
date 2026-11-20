@@ -4,6 +4,7 @@ base:
   labels:
     - ui
     - filters
+    - linear
   priority: 1
   slot: done
   status: closed
@@ -12,9 +13,9 @@ bead_id: is-01kzp82ktssqmf4fhm8sxmvb6p
 external_id: acf60561-e724-4f66-85e2-3a8e6de21eec
 external_key: OS-312
 external_url: https://linear.app/finterm-ai/issue/OS-312/nav-filter-controls-and-fine-grained-filtering
-refinement_slot: todo
-refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-20T18:28:48.535Z
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T19:18:36.332Z
 state: linked
-synced_at: 2026-11-20T18:28:48.683Z
+synced_at: 2026-11-20T19:18:36.502Z
 type: lk

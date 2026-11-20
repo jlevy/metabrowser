@@ -1,0 +1,21 @@
+base:
+  assignee: null
+  description_hash: sha256v7:8dc49016e9713da8fc7216a0555d00c5473e754d1338cee66cb459b7d817f1bf
+  labels:
+    - simplification
+    - linear
+    - Improvement
+  priority: 3
+  slot: todo
+  status: open
+  title: Simplify catalog, feed, file preview, and Markdown engines per release review
+bead_id: is-01m2eb9qv8c4rf52j15pcm2j86
+external_id: 353d0532-56c6-4498-b4db-7536f2e14510
+external_key: OS-606
+external_url: https://linear.app/finterm-ai/issue/OS-606/simplify-catalog-feed-file-preview-and-markdown-engines-per-release
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T19:18:49.497Z
+state: linked
+synced_at: 2026-11-20T19:18:49.690Z
+type: lk

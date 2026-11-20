@@ -3,6 +3,7 @@ base:
   description_hash: sha256v7:34b6ad1c2323b0e4c95af74b12bce029f55ac44d14979c6eeaf41486e33c00e6
   labels:
     - linear
+    - Improvement
   priority: 1
   slot: todo
   status: open
@@ -14,7 +15,7 @@ external_key: OS-483
 external_url: https://linear.app/finterm-ai/issue/OS-483/release-013-prepare-the-pypi-package-and-macos-app-release-owner-asked
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-20T18:29:19.758Z
+remote_updated_at: 2026-11-20T19:19:00.737Z
 state: linked
-synced_at: 2026-11-20T18:29:19.892Z
+synced_at: 2026-11-20T19:19:00.909Z
 type: lk

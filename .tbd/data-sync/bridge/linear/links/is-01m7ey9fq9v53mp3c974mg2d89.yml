@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:a949fd12359278bbde9e3ea6d29b00a42b40be618ed049c12679c70e04531fcc
+  labels:
+    - linear
+    - Bug
+  priority: 2
+  slot: todo
+  status: open
+  title: Code defects found during the documentation rewrite
+bead_id: is-01m7ey9fq9v53mp3c974mg2d89
+external_id: 3bb54022-1406-4f22-a768-5cbc30bfae86
+external_key: OS-614
+external_url: https://linear.app/finterm-ai/issue/OS-614/code-defects-found-during-the-documentation-rewrite
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T19:18:59.514Z
+state: linked
+synced_at: 2026-11-20T19:18:59.564Z
+type: lk

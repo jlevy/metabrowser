@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:3df7ecb8f62fcac58dfa4a4443c4f59c5247a35f8e1683c3d5e397559f28afff
+  labels:
+    - linear
+    - Feature
+  priority: 2
+  slot: todo
+  status: open
+  title: Event log and observability
+bead_id: is-01m7wysap12x9d1xp4zz3m4sds
+external_id: 24bfdddd-9196-48e4-b996-08dc29d126cb
+external_key: OS-620
+external_url: https://linear.app/finterm-ai/issue/OS-620/event-log-and-observability
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T19:19:09.254Z
+state: linked
+synced_at: 2026-11-20T19:19:09.361Z
+type: lk

@@ -3,6 +3,7 @@ base:
   description_hash: sha256v7:b1a493fd2001cba60bcd8b1ee594f97eeef66e618f96ebec627edb4e8f96a73b
   labels:
     - linear
+    - Feature
   priority: 2
   slot: backlog
   status: open
@@ -13,7 +14,7 @@ external_key: OS-536
 external_url: https://linear.app/finterm-ai/issue/OS-536/spec-switch-folders-in-a-macos-app-window
 refinement_slot: backlog
 refinement_state_id: 30434c7c-0bd1-48d7-9b9e-1d658e48c852
-remote_updated_at: 2026-11-20T18:30:18.646Z
+remote_updated_at: 2026-11-20T19:19:02.395Z
 state: linked
-synced_at: 2026-11-20T18:30:18.827Z
+synced_at: 2026-11-20T19:19:02.480Z
 type: lk

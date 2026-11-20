@@ -1,0 +1,21 @@
+base:
+  assignee: null
+  description_hash: sha256v7:0ebe13d812c5518c61b70aa1c0086dcca1084ee8a64647b0bf5cb6a2d36c6cdd
+  labels:
+    - linear
+    - Improvement
+  priority: 1
+  slot: in_progress
+  status: in_progress
+  title: "Source and checkout kinds: one mode and one icon for a cloud mirror, a Git
+    checkout, and a plain folder"
+bead_id: is-01m7wyrvxk2xx44pqtqmy5cq5g
+external_id: 74de802a-b5dd-4672-8169-c0ba864abbc5
+external_key: OS-616
+external_url: https://linear.app/finterm-ai/issue/OS-616/source-and-checkout-kinds-one-mode-and-one-icon-for-a-cloud-mirror-a
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
+remote_updated_at: 2026-11-20T19:19:05.533Z
+state: linked
+synced_at: 2026-11-20T19:19:05.619Z
+type: lk

@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:2c2f770b9282cd090ed3cc8a597d50f4199c1b9bce2b01d275316dc48d690555
+  labels:
+    - linear
+    - Feature
+  priority: 1
+  slot: todo
+  status: open
+  title: Plugin sources and out-of-process plugin environments
+bead_id: is-01m78ftefp9ks9100ebsm7sm29
+external_id: 2c899caa-16c3-454c-acd8-d66b8a42baf7
+external_key: OS-613
+external_url: https://linear.app/finterm-ai/issue/OS-613/plugin-sources-and-out-of-process-plugin-environments
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T19:18:58.246Z
+state: linked
+synced_at: 2026-11-20T19:18:58.437Z
+type: lk

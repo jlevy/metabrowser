@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:06c168a88685bc9fe64e2ada9eab7517ae77fa04b614345e18db4a1adb304d2f
+  labels:
+    - linear
+    - Feature
+  priority: 2
+  slot: in_progress
+  status: in_progress
+  title: Agent operations views for Claude Code and Codex
+bead_id: is-01m7wysc4mfcdyek4vgsexz8y9
+external_id: 99cce315-e87d-462e-9e07-3cb1b8e5f249
+external_key: OS-621
+external_url: https://linear.app/finterm-ai/issue/OS-621/agent-operations-views-for-claude-code-and-codex
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
+remote_updated_at: 2026-11-20T19:19:10.137Z
+state: linked
+synced_at: 2026-11-20T19:19:10.205Z
+type: lk

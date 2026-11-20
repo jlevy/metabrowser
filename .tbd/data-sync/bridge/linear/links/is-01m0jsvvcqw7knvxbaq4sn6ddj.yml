@@ -1,7 +1,8 @@
 base:
   assignee: null
   description_hash: sha256v7:60569ab52d1ad171d518154f30979cb2e29eabc443fdbdd1f3f06f845ae91799
-  labels: []
+  labels:
+    - linear
   priority: 1
   slot: done
   status: closed
@@ -10,9 +11,9 @@ bead_id: is-01m0jsvvcqw7knvxbaq4sn6ddj
 external_id: 21c3ee1a-cf78-4125-9ff3-6e9a4ff80b80
 external_key: OS-366
 external_url: https://linear.app/finterm-ai/issue/OS-366/cli-parity-every-model-reachable-from-metab-every-one-pinned-by-a
-refinement_slot: todo
-refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-20T18:29:15.392Z
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T19:18:40.200Z
 state: linked
-synced_at: 2026-11-20T18:29:15.525Z
+synced_at: 2026-11-20T19:18:40.355Z
 type: lk

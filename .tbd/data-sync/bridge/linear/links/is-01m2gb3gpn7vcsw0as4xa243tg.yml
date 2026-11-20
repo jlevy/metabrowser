@@ -1,0 +1,21 @@
+base:
+  assignee: null
+  description_hash: sha256v7:925db8e00e15a504a4f39d48ced3fec2310c77c303c3d41c600fe80c8710d1a3
+  labels:
+    - testing
+    - linear
+    - Bug
+  priority: 2
+  slot: in_progress
+  status: in_progress
+  title: Stabilize the test suite under machine load
+bead_id: is-01m2gb3gpn7vcsw0as4xa243tg
+external_id: 0ec06507-cca1-4389-a123-11079aee3f0d
+external_key: OS-607
+external_url: https://linear.app/finterm-ai/issue/OS-607/stabilize-the-test-suite-under-machine-load
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
+remote_updated_at: 2026-11-20T19:18:50.423Z
+state: linked
+synced_at: 2026-11-20T19:18:50.873Z
+type: lk

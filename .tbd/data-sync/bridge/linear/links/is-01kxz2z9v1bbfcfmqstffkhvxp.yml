@@ -1,7 +1,9 @@
 base:
   assignee: null
   description_hash: sha256v7:44df3ff16f89b5ce1d920bdef643c88603082c53d744fc5cdf4fd1073fe54683
-  labels: []
+  labels:
+    - linear
+    - Feature
   priority: 1
   slot: done
   status: closed
@@ -10,9 +12,9 @@ bead_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 external_id: 4dd009a3-2c8f-4b0e-9db5-5c488fa328dc
 external_key: OS-290
 external_url: https://linear.app/finterm-ai/issue/OS-290/folder-views-and-treemap-overview
-refinement_slot: todo
-refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-20T18:28:27.627Z
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T19:18:34.965Z
 state: linked
-synced_at: 2026-11-20T18:28:27.757Z
+synced_at: 2026-11-20T19:18:35.231Z
 type: lk

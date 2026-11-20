@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:bdb59290b3f3cedbe1c55be879cb21ab0e2a40681c9f029d71e640424fd40fbe
+  labels:
+    - linear
+    - Feature
+  priority: 2
+  slot: todo
+  status: open
+  title: Branch chooser and ref selection
+bead_id: is-01m7wys615s2mfvbc93c9g2pac
+external_id: e6f489b4-f2f3-4437-9129-fb08702ab54a
+external_key: OS-618
+external_url: https://linear.app/finterm-ai/issue/OS-618/branch-chooser-and-ref-selection
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T19:19:07.441Z
+state: linked
+synced_at: 2026-11-20T19:19:07.569Z
+type: lk

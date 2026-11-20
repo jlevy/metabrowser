@@ -1,0 +1,21 @@
+base:
+  assignee: null
+  description_hash: sha256v7:ee6a6d8e0a3943c7d7d098001cb0c757360bcec242513a5a90afc382aa5dc553
+  labels:
+    - linear
+    - Feature
+  priority: 2
+  slot: in_progress
+  status: in_progress
+  title: "Guided PR walkthroughs (PR #599, outside contributor): bring current with main,
+    fold review A, make ready to merge"
+bead_id: is-01m7x3g8rdhbeh7f0j0j7nz4sq
+external_id: 9a57f679-f6d9-4559-a70c-540295dbc707
+external_key: OS-626
+external_url: https://linear.app/finterm-ai/issue/OS-626/guided-pr-walkthroughs-pr-599-outside-contributor-bring-current-with
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
+remote_updated_at: 2026-11-20T19:19:14.478Z
+state: linked
+synced_at: 2026-11-20T19:19:14.695Z
+type: lk

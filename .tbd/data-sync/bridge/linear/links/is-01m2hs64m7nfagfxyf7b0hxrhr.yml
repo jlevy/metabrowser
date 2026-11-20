@@ -1,0 +1,21 @@
+base:
+  assignee: null
+  description_hash: sha256v7:bb22a7141c700bb9815bc926775b3196fea19ca5f97d23672fe1f842028651ac
+  labels:
+    - performance
+    - linear
+    - Improvement
+  priority: 1
+  slot: todo
+  status: open
+  title: "[epic] Pay down the flat-tree delivery cost carried since v0.10.0"
+bead_id: is-01m2hs64m7nfagfxyf7b0hxrhr
+external_id: 4f128317-9c92-41b8-9ef6-d4fb131f66c6
+external_key: OS-608
+external_url: https://linear.app/finterm-ai/issue/OS-608/epic-pay-down-the-flat-tree-delivery-cost-carried-since-v0100
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T19:18:51.949Z
+state: linked
+synced_at: 2026-11-20T19:18:52.077Z
+type: lk

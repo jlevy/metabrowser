@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:95cef477cbc5ccebf23f581ecc39380a6954a8942ce76bbdca0945b8c1c5b75c
+  labels:
+    - linear
+    - Feature
+  priority: 2
+  slot: in_progress
+  status: in_progress
+  title: "Object data model and views: plan and decisions"
+bead_id: is-01m7f2vek3t6sca32adhd4gq33
+external_id: 57820908-dc29-41e5-bba7-21e54f4df749
+external_key: OS-615
+external_url: https://linear.app/finterm-ai/issue/OS-615/object-data-model-and-views-plan-and-decisions
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
+remote_updated_at: 2026-11-20T19:19:00.253Z
+state: linked
+synced_at: 2026-11-20T19:19:00.446Z
+type: lk

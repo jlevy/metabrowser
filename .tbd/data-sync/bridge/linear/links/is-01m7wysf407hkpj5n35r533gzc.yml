@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:cbe817694d60249ef2c58c5dba3c397d9c15a04eb2d5bb1fa49e4816feadc903
+  labels:
+    - linear
+    - Improvement
+  priority: 2
+  slot: todo
+  status: open
+  title: "Design system: icon catalog, shared view header, and visual consistency"
+bead_id: is-01m7wysf407hkpj5n35r533gzc
+external_id: 011c03c5-06d7-4b08-aaf2-fe9aa920e54d
+external_key: OS-623
+external_url: https://linear.app/finterm-ai/issue/OS-623/design-system-icon-catalog-shared-view-header-and-visual-consistency
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T19:19:11.918Z
+state: linked
+synced_at: 2026-11-20T19:19:11.961Z
+type: lk

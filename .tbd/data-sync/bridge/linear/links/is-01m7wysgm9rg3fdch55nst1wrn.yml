@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:ba5e89f874eacfb1c9128a93a7c5ddc61b71798a97bc8780bfd25c1b9860d833
+  labels:
+    - linear
+    - Improvement
+  priority: 2
+  slot: in_progress
+  status: in_progress
+  title: "CI speed: finish the Fast CI plan and verify its phases"
+bead_id: is-01m7wysgm9rg3fdch55nst1wrn
+external_id: 1ece55fe-0ac1-49d4-bf60-5ea298d7306c
+external_key: OS-624
+external_url: https://linear.app/finterm-ai/issue/OS-624/ci-speed-finish-the-fast-ci-plan-and-verify-its-phases
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
+remote_updated_at: 2026-11-20T19:19:12.756Z
+state: linked
+synced_at: 2026-11-20T19:19:12.905Z
+type: lk

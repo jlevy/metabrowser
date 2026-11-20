@@ -3,6 +3,8 @@ base:
   description_hash: sha256v7:dbafd3bba6d2027a86132e22f7c93ec3876cad1e37ee8822557911d40a442725
   labels:
     - diff
+    - linear
+    - Feature
   priority: 2
   slot: todo
   status: open
@@ -10,10 +12,10 @@ base:
 bead_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 external_id: 0390e452-459b-479d-8bc2-d469e35c1dd5
 external_key: OS-281
-external_url: https://linear.app/finterm-ai/issue/OS-281/git-diff-view-staged-delivery-of-the-changes-surface-and-comparison
+external_url: https://linear.app/finterm-ai/issue/OS-281/general-diff-rendering-source-agnostic-comparison-model-renderer-and
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-20T18:28:13.855Z
+remote_updated_at: 2026-11-20T19:18:34.049Z
 state: linked
-synced_at: 2026-11-20T18:28:14.090Z
+synced_at: 2026-11-20T19:18:34.170Z
 type: lk

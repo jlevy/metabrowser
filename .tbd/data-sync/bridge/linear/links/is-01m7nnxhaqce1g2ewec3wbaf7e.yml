@@ -3,6 +3,7 @@ base:
   description_hash: sha256v7:e03ea1ea9487e7d3640e1c5aa88d4c50df394e403b666b107981ec72ae8f3659
   labels:
     - linear
+    - Feature
   priority: 1
   slot: todo
   status: open
@@ -13,7 +14,7 @@ external_key: OS-514
 external_url: https://linear.app/finterm-ai/issue/OS-514/open-anything-from-the-cli-the-skill-and-the-macos-app-owner-asked
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-20T18:29:50.186Z
+remote_updated_at: 2026-11-20T19:19:02.020Z
 state: linked
-synced_at: 2026-11-20T18:29:50.323Z
+synced_at: 2026-11-20T19:19:02.093Z
 type: lk

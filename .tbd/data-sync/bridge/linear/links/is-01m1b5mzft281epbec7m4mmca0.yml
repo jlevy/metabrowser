@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:3e6f7fcbeb15590f52f4b3984cf15a50a23efcd70cb990c77a528ff797fb447b
+  labels:
+    - linear
+    - Improvement
+  priority: 2
+  slot: todo
+  status: open
+  title: "API envelope contract: a generated schema the CLI can show"
+bead_id: is-01m1b5mzft281epbec7m4mmca0
+external_id: deb20028-0e7e-4533-a9ac-d3390d1da4e3
+external_key: OS-604
+external_url: https://linear.app/finterm-ai/issue/OS-604/api-envelope-contract-a-generated-schema-the-cli-can-show
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T19:18:46.273Z
+state: linked
+synced_at: 2026-11-20T19:18:46.671Z
+type: lk

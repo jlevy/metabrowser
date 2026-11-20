@@ -3,6 +3,7 @@ base:
   description_hash: sha256v7:33e0905093c9f04fc844acc1d83922da9facaad9d9c4220828527303e0495616
   labels:
     - linear
+    - Improvement
   priority: 2
   slot: done
   status: closed
@@ -13,7 +14,7 @@ external_key: OS-482
 external_url: https://linear.app/finterm-ai/issue/OS-482/small-ui-fixes-2026-11-14-round
 refinement_slot: done
 refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
-remote_updated_at: 2026-11-20T18:29:18.969Z
+remote_updated_at: 2026-11-20T19:18:58.718Z
 state: linked
-synced_at: 2026-11-20T18:29:19.137Z
+synced_at: 2026-11-20T19:18:58.817Z
 type: lk

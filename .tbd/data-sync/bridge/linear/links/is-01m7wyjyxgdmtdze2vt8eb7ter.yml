@@ -3,9 +3,10 @@ base:
   description_hash: sha256v7:bb2a99368fc0c8a1bcc917bb94401024d016b8b1f43813561cbdc4487578679f
   labels:
     - linear
+    - Improvement
   priority: 2
-  slot: todo
-  status: open
+  slot: in_progress
+  status: in_progress
   title: Map merged pull requests and stacks to Linear issues through a linear label
 bead_id: is-01m7wyjyxgdmtdze2vt8eb7ter
 external_id: 1a9c016a-4690-4473-b101-b89dbdb3b2dd
@@ -13,7 +14,7 @@ external_key: OS-478
 external_url: https://linear.app/finterm-ai/issue/OS-478/map-merged-pull-requests-and-stacks-to-linear-issues-through-a-linear
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-20T18:31:35.544Z
+remote_updated_at: 2026-11-20T19:19:04.750Z
 state: linked
-synced_at: 2026-11-20T18:31:35.803Z
+synced_at: 2026-11-20T19:19:04.842Z
 type: lk
