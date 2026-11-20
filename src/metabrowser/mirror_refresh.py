@@ -685,8 +685,9 @@ class RefreshCoordinator:
             return "joined"
         if self._closed:
             raise RuntimeError("the refresh coordinator is closed")
-        # The job's span in the event log, started here so its parent is the request
-        # that asked for it, and its start is on record even if it never ends.
+        # The job's span in the event log, wrapped here so its parent is the request
+        # that asked for it; its start is on record from its first step, even if it
+        # never ends.
         job = asyncio.create_task(
             event_log.job(
                 self._run(work, network=network),

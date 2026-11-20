@@ -761,17 +761,25 @@ class PullRefreshStamp(_Model):
         return value
 
 
+def note_refresh_outcome(stamp: PullRefreshStamp) -> None:
+    """Make a failure *stamp* records the failure of the job that keeps it, in the event
+    log (:mod:`metabrowser.event_log`), whether or not the stamp is written: a cache that
+    refuses it, or a hold kept in its place, does not make the refresh succeed."""
+
+    if stamp.outcome != "succeeded":
+        event_log.current().note_failure(stamp.outcome, stamp.message)
+
+
 def write_refresh_stamp(home: Path, slug: str, relative: str, stamp: PullRefreshStamp) -> None:
     """Publish *stamp* atomically at *relative*, under the source's ``pulls`` directory.
 
-    Blocking; run it off the event loop. A failure it records is the failure of the job
-    that writes it, in the event log (:mod:`metabrowser.event_log`).
+    Blocking; run it off the event loop. A failure it records is noted first
+    (:func:`note_refresh_outcome`), so a write that fails leaves it noted.
     """
 
+    note_refresh_outcome(stamp)
     ensure_pulls_directory(home, slug)
     write_private_file_atomic(home, relative, stamp.model_dump_json().encode("utf-8"))
-    if stamp.outcome != "succeeded":
-        event_log.current().note_failure(stamp.outcome, stamp.message)
 
 
 def read_refresh_stamp(home: Path, relative: str) -> PullRefreshStamp | None:
@@ -821,6 +829,7 @@ def write_pull_refresh(
     such as an unreadable record, checks nothing. A different record there now refuses
     the stamp, and the answer is ``False``.
     """
+    note_refresh_outcome(stamp)
     _require_published_source(home, slug)
     observed = expected if isinstance(expected, PullRecord) or expected == "not_cached" else None
     with source_alias_lock(home, slug):
@@ -882,6 +891,7 @@ __all__ = [
     "fit_record",
     "label_color",
     "label_description",
+    "note_refresh_outcome",
     "read_pull_record",
     "read_pull_refresh",
     "read_refresh_stamp",

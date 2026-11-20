@@ -37,6 +37,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     Timestamp,
     Url,
     ensure_pulls_directory,
+    note_refresh_outcome,
     read_refresh_stamp,
     write_refresh_stamp,
 )
@@ -176,6 +177,7 @@ def write_list_refresh(
     memory: neither a stamp nor its lock may be written into a refused cache.
     """
 
+    note_refresh_outcome(stamp)
     relative = source_pull_list_refresh(slug, name)
     if persist:
         try:
@@ -463,6 +465,7 @@ def write_files_refresh(
     an existing network rate-limit deadline.
     """
 
+    note_refresh_outcome(stamp)
     relative = source_pull_files_refresh(slug, number)
     if not persist:
         held = read_files_refresh(home, slug, number)

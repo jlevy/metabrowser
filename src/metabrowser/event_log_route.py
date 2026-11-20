@@ -53,6 +53,9 @@ DEFAULT_LIMIT: Final = 100
 # The most records one answer carries: about 270 KB at the measured 268 bytes a record.
 MAX_LIMIT: Final = 1000
 _MAX_NAME_FILTER: Final = 200
+# A whole number as the query string gives it: ASCII digits only (``str.isdigit`` also
+# takes ``²``, which ``int`` refuses), and few enough that ``int`` never refuses the length.
+_WHOLE_NUMBER: Final = re.compile(r"[0-9]{1,18}")
 _SORTS: Final = ("time", "duration")
 
 
@@ -186,7 +189,7 @@ def parse_query(params: dict[str, str]) -> Query:
 def _integer(raw: str | None, field: str, *, low: int, high: int) -> int | None:
     if raw is None or raw == "":
         return None
-    if not raw.isdigit():
+    if _WHOLE_NUMBER.fullmatch(raw) is None:
         raise QueryError(f"{field} must be a whole number")
     value = int(raw)
     if not low <= value <= high:
@@ -230,11 +233,15 @@ def read_log(query: Query, *, state: Path, directory: Path) -> tuple[int, dict[s
         ],
         "query": query.describe(),
     }
-    chosen = query.file or writing_name or (files[0].name if files else None)
+    listed = {f.name for f in files}
+    # The segment this process writes, unless it is gone from the directory, as when
+    # a person deleted it; the process starts a fresh one within a watch interval.
+    current = writing_name if writing_name in listed else None
+    chosen = query.file or current or (files[0].name if files else None)
     answer["file"] = chosen
     if chosen is None:
         answer.update(scanned=0, matched=0, events=[])
-    elif all(f.name != chosen for f in files):
+    elif chosen not in listed:
         return 404, {"error": f"no segment named {chosen}", "code": "event_log_file_missing"}
     else:
         try:

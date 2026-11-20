@@ -14,6 +14,7 @@ import json
 import os
 import stat
 import sys
+import time
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any
@@ -29,10 +30,13 @@ from starlette.testclient import TestClient
 from metabrowser import event_log, home
 from metabrowser.builtin_plugins.diff.comparison_cache import ComparisonCache
 from metabrowser.builtin_plugins.github import gh as gh_module
+from metabrowser.builtin_plugins.github import pull_list
+from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
 from metabrowser.event_log_route import QueryError, parse_query, read_log
 from metabrowser.git.process import GitCommandError, run_git
 from metabrowser.mirror_refresh import RefreshCoordinator
-from metabrowser.server import _SlowRequestLogMiddleware
+from metabrowser.server import _end_request_span, _SlowRequestLogMiddleware
+from metabrowser.server_timing import Record
 from tests.required_tools import require_git
 
 
@@ -128,7 +132,8 @@ def test_a_job_writes_its_start_names_its_parent_and_fails_by_what_it_noted(
         await task
 
     asyncio.run(scenario())
-    start, request, end = _records(sink)
+    # The start is written when the job first runs, here after its request has ended.
+    request, start, end = _records(sink)
     assert (start["event"], start["name"]) == ("start", "pulls.refresh")
     assert start["parent"] == request["span"] == end["parent"]
     assert end["outcome"] == "failed"
@@ -336,6 +341,23 @@ def test_redaction_drops_tokens_credentials_and_escape_codes() -> None:
     assert len(event_log.redact("x" * 5000)) == event_log.MAX_TEXT_CHARS
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "access_token=s3cr3tvalue",
+        "client_secret=s3cr3tvalue",
+        "GITHUB_TOKEN=s3cr3tvalue",
+        "x_api_key: s3cr3tvalue",
+        "x-api-key: s3cr3tvalue",
+        "password=s3cr3tvalue",
+    ],
+)
+def test_redaction_drops_the_values_of_compound_secret_names(text: str) -> None:
+    cleaned = event_log.redact(f"curl failed with {text} set")
+    assert "s3cr3tvalue" not in cleaned
+    assert cleaned.endswith("[redacted] set")
+
+
 def test_gh_command_lines_keep_names_and_drop_values() -> None:
     args = [
         "api",
@@ -388,6 +410,206 @@ def test_an_oversized_record_keeps_its_core_fields(sink: event_log.EventLog) -> 
     assert record["name"] == "huge"
     assert record["outcome"] == "ok"
     assert set(record["attrs"]) == {"dropped_bytes"}
+
+
+def test_an_oversized_name_is_cut_so_the_line_stays_within_its_bound(
+    sink: event_log.EventLog,
+) -> None:
+    with event_log.span("request", "GET /" + "n" * (12 * 1024)):
+        pass
+    assert sink.path is not None
+    (line,) = sink.path.read_bytes().splitlines()
+    assert len(line) + 1 <= event_log.MAX_LINE_BYTES
+    record = json.loads(line)
+    assert record["name"].startswith("GET /nnn")
+    assert set(record["attrs"]) == {"dropped_bytes"}
+
+
+# ── failures of the log itself ────────────────────────────────
+
+
+def test_text_that_cannot_be_encoded_is_escaped_and_never_fails_the_work(
+    sink: event_log.EventLog,
+) -> None:
+    """Git output decoded with surrogateescape holds lone surrogates, which UTF-8 refuses."""
+
+    odd = b"na\xefve".decode("utf-8", errors="surrogateescape")
+    with (
+        pytest.raises(RuntimeError, match="broken"),
+        event_log.span("job", f"read {odd}", attrs={"path": odd}),
+    ):
+        raise RuntimeError(f"broken {odd}")
+    (record,) = _records(sink)
+    assert record["outcome"] == "failed"
+    assert record["name"] == f"read {odd}"
+    assert record["attrs"]["path"] == odd
+    assert record["attrs"]["error"] == f"RuntimeError: broken {odd}"
+
+
+def test_a_record_that_cannot_be_encoded_is_dropped_without_raising(
+    sink: event_log.EventLog,
+) -> None:
+    cycle: list[object] = []
+    cycle.append(cycle)
+    event_log.mark("lifecycle", "cycle", value=cycle)
+    event_log.mark("lifecycle", "after")
+    assert [r["name"] for r in _records(sink)] == ["after"]
+
+
+def test_a_failed_or_short_write_pauses_the_log_and_a_fresh_segment_resumes_it(
+    sink: event_log.EventLog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    event_log.mark("lifecycle", "before")
+    first = sink.path
+    assert first is not None
+    target = sink._fd
+    real_write = os.write
+
+    def short(fd: int, data: bytes) -> int:
+        return real_write(fd, data[:5]) if fd == target else real_write(fd, data)
+
+    monkeypatch.setattr(event_log.os, "write", short)
+    event_log.mark("lifecycle", "torn")
+    monkeypatch.setattr(event_log.os, "write", real_write)
+    # Paused: the route names no file, and records wait for the backoff.
+    assert sink.path is None
+    event_log.mark("lifecycle", "during backoff")
+    assert sink.path is None
+    sink._retry_at = 0.0  # the backoff has passed
+    event_log.mark("lifecycle", "after")
+    assert sink.path is not None and sink.path != first
+    assert [r["name"] for r in _records(sink)] == ["after"]
+    # A write that raises pauses it the same way.
+    assert sink._fd is not None
+    os.close(sink._fd)
+    event_log.mark("lifecycle", "into a closed descriptor")
+    assert sink.path is None
+    assert sink._retry_s == 2 * event_log.RETRY_FIRST_S
+
+
+def test_one_servers_prune_keeps_another_live_servers_segment(tmp_path: Path) -> None:
+    """An idle server's segment has the oldest time; a busy one's prune must keep it."""
+
+    state, directory = _state(tmp_path)
+    idle = event_log.EventLog(directory, state, clock=lambda: 1_700_000_000.0)
+    idle.write(idle.record("mark", "lifecycle", "server.start"))
+    assert idle.path is not None
+    long_ago = time.time() - 3600
+    os.utime(idle.path, (long_ago, long_ago))
+    # A segment of a server that has stopped, older still: no process has this pid.
+    stopped = directory / "events-20231114T000000Z-p99999999-000.jsonl"
+    stopped.write_bytes(b"{}\n" * 4000)
+    os.utime(stopped, (long_ago - 60, long_ago - 60))
+    busy = event_log.EventLog(
+        directory,
+        state,
+        max_file_bytes=4096,
+        max_total_bytes=12_000,
+        clock=lambda: 1_700_000_100.0,
+    )
+    with event_log.installed(busy):
+        for index in range(200):
+            with event_log.span("request", f"GET /{index}"):
+                pass
+    busy.close()
+    names = {f.name for f in event_log.list_files(directory)}
+    assert idle.path.name in names
+    assert stopped.name not in names
+    with event_log.installed(idle):
+        status, answer = read_log(parse_query({}), state=state, directory=directory)
+    assert status == 200
+    assert answer["writing"] == answer["file"] == idle.path.name
+    assert [e["name"] for e in answer["events"]] == ["server.start"]
+    idle.close()
+
+
+def test_a_segment_deleted_while_open_is_replaced_and_the_route_reads_the_newest(
+    sink: event_log.EventLog,
+) -> None:
+    other = event_log.EventLog(sink.directory, sink.directory.parent, clock=lambda: 1.0e9)
+    other.write(other.record("mark", "lifecycle", "other.start"))
+    assert other.path is not None
+    first = sink.path
+    assert first is not None
+    first.unlink()
+    status, answer = read_log(
+        parse_query({}), state=sink.directory.parent, directory=sink.directory
+    )
+    assert status == 200
+    assert answer["writing"] == first.name
+    assert answer["file"] == other.path.name
+    sink.check_file()
+    assert sink.path is not None and sink.path != first and sink.path.exists()
+    event_log.mark("lifecycle", "after")
+    assert [r["name"] for r in _records(sink)] == ["after"]
+    other.close()
+
+
+def test_a_job_cancelled_before_its_first_step_leaves_no_span_open(
+    sink: event_log.EventLog,
+) -> None:
+    async def scenario() -> None:
+        async def refresh() -> None:
+            return None
+
+        work = refresh()
+        task = asyncio.create_task(event_log.job(work, "refresh"))
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        work.close()
+
+    asyncio.run(scenario())
+    assert event_log.open_spans() == []
+    assert _named(sink, "refresh") == []
+
+
+def test_closing_a_log_ends_its_spans_in_it_when_it_is_not_the_processs(
+    tmp_path: Path,
+) -> None:
+    state, directory = _state(tmp_path)
+    log = event_log.EventLog(directory, state)
+    with event_log.installed(log):
+        event_log.begin("job", "refresh", announce=True)
+    log.close()
+    assert [(r["event"], r.get("outcome")) for r in _named(log, "refresh")] == [
+        ("start", None),
+        ("end", "abandoned"),
+    ]
+
+
+def test_a_refresh_failure_is_the_jobs_even_when_its_stamp_is_not_written(
+    sink: event_log.EventLog, tmp_path: Path
+) -> None:
+    stamp = PullRefreshStamp(
+        outcome="network_error", message="gh did not answer within 15 s", at="2026-11-19T21:00:00Z"
+    )
+    with event_log.span("job", "files"):
+        pull_list.write_files_refresh(
+            tmp_path / "home", "github-com--octo--demo--46386669dc01", 7, stamp, persist=False
+        )
+    (record,) = _named(sink, "files")
+    assert record["outcome"] == "failed"
+    assert record["attrs"]["failure"] == "network_error"
+
+
+@pytest.mark.parametrize("status", [None, 200])
+def test_a_cancelled_request_is_cancelled_before_or_after_its_answer_began(
+    sink: event_log.EventLog, status: int | None
+) -> None:
+    span = event_log.begin("request", "GET /slow")
+    _end_request_span(
+        span,
+        status=status,
+        body_bytes=0,
+        start_ms=None,
+        query="",
+        record=Record(),
+        failure=asyncio.CancelledError(),
+    )
+    (record,) = _named(sink, "GET /slow")
+    assert record["outcome"] == "cancelled"
+    assert "error" not in record["attrs"]
 
 
 def test_open_log_is_owner_only_and_off_when_the_environment_says_so(tmp_path: Path) -> None:
@@ -447,6 +669,9 @@ def test_the_query_refuses_what_it_cannot_apply() -> None:
         ({"file": "../x"}, "file must name"),
         ({"sort": "name"}, "sort must be"),
         ({"bogus": "1"}, "unknown parameter bogus"),
+        # str.isdigit takes a superscript two, which int() refuses.
+        ({"limit": "\u00b2"}, "limit must be a whole number"),
+        ({"span": "9" * 5000}, "span must be a whole number"),
     ]:
         with pytest.raises(QueryError, match=message):
             parse_query(params)

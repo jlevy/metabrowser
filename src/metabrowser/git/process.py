@@ -1368,17 +1368,13 @@ async def run_git(
             raise
 
 
-# The most words of a Git command line the event log keeps.
-_LOGGED_ARGS_MAX: Final = 24
-
-
 def _loggable(args: Sequence[str], policy: GitProcessPolicy | None) -> dict[str, object]:
     """A Git command line as the event log records it: from the command on, redacted."""
 
     index = _command_index(args)
     words = [event_log.redact(arg, limit=200) for arg in args[(index or 0) :]]
-    if len(words) > _LOGGED_ARGS_MAX:
-        words = [*words[:_LOGGED_ARGS_MAX], "…"]
+    if len(words) > event_log.MAX_LOGGED_ARGS:
+        words = [*words[: event_log.MAX_LOGGED_ARGS], "…"]
     attrs: dict[str, object] = {"args": words}
     if policy is not None:
         attrs["timeout_s"] = policy.timeout_s
