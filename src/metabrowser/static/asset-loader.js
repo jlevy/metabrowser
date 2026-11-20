@@ -218,19 +218,6 @@
   }
 
   /**
-   * The named module bundle's URL as published, or "" for a name that is not one.
-   * @param {string} name
-   * @returns {string}
-   */
-  function moduleSource(name) {
-    const entries = /** @type {unknown} */ (bundles()[name]);
-    const entry = Array.isArray(entries) && entries.length === 1 ? entries[0] : null;
-    return entry && typeof entry === "object" && typeof entry.module === "string"
-      ? entry.module
-      : "";
-  }
-
-  /**
    * The namespace of the named module bundle, imported once.
    * @param {string} name
    * @returns {Promise<unknown>}
@@ -240,7 +227,10 @@
     if (known) {
       return known;
     }
-    const url = moduleSource(name);
+    const entries = /** @type {unknown} */ (bundles()[name]);
+    const entry = Array.isArray(entries) && entries.length === 1 ? entries[0] : null;
+    const url =
+      entry && typeof entry === "object" && typeof entry.module === "string" ? entry.module : "";
     if (!url) {
       return Promise.reject(new Error(`Unknown module bundle: ${name}`));
     }
@@ -262,6 +252,5 @@
     ensureAsset: ensureAsset,
     assetLoaded: assetLoaded,
     ensureModule: ensureModule,
-    moduleSource: moduleSource,
   };
 })(window);

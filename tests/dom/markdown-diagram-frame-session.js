@@ -11,7 +11,8 @@
 //   the frame's stylesheet and inline style, `data:` images, and nothing else;
 // - the frame: sandboxed to scripts and its origin, hidden, out of the tab order, its
 //   document the policy, then the stylesheet, then the entry;
-// - the SDK's `moduleUrl`, read through asset-loader.js's `moduleSource`;
+// - the SDK's `moduleUrl`, which reads each shape of bundle as asset-loader.js's
+//   `ensureModule` does: an address for exactly the names `ensureModule` would import;
 // - leases: the first lease's `mermaid()` opens the one frame, every other lease shares
 //   it and its one Mermaid import, and the last release removes it;
 // - the frame's Mermaid: `initialize` gets the frame's own copy of the configuration, and
@@ -236,9 +237,9 @@ globalThis.diagramFrameSessionMermaid = {
   },
 };
 
-// The production SDK (plugin-sdk.js with plugin-sdk-views.js) and asset loader, whose
-// `moduleUrl` reads the bundles the server publishes: one with the fixture as its
-// `mermaid` bundle, and one with none.
+// The production SDK (plugin-sdk.js with plugin-sdk-views.js), whose `moduleUrl` reads the
+// bundles the server publishes: one with the fixture as its `mermaid` bundle, and one with
+// none; and the asset loader beside it (`__assets`), to hold `moduleUrl` to its reading.
 const assetLoader = path.join(repoRoot, "src/metabrowser/static/asset-loader.js");
 const sdkSandbox = (bundles) => {
   const sandbox = createSdkSandbox({
@@ -246,7 +247,9 @@ const sdkSandbox = (bundles) => {
     location: { href: "http://127.0.0.1:8000/pull/7", origin: "http://127.0.0.1:8000" },
   });
   vm.runInContext(fs.readFileSync(assetLoader, "utf8"), sandbox, { filename: assetLoader });
-  return sandbox.metabrowser;
+  return Object.assign(Object.create(sandbox.metabrowser), {
+    __assets: sandbox.MetabrowserAssets,
+  });
 };
 const published = sdkSandbox({ mermaid: [{ module: fixtureUrl }] });
 const unpublished = sdkSandbox({});
@@ -321,6 +324,38 @@ async function main() {
     });
     transcript.moduleUrl = Object.fromEntries(
       ["mermaid", "chart", "absent"].map((name) => [name, page.moduleUrl(name)]),
+    );
+    // Every shape of bundle: `moduleUrl` has an address for exactly the names the real
+    // `ensureModule` would import rather than refuse as unknown. The two parse the same
+    // published bundles apart because asset-loader.js is a startup script.
+    const shapes = {
+      module: [{ module: "/static/m.mjs" }],
+      script: [{ src: "/static/s.js" }],
+      twoEntries: [{ module: "/static/a.mjs" }, { module: "/static/b.mjs" }],
+      notAString: [{ module: 7 }],
+      emptyModule: [{ module: "" }],
+      nullEntry: [null],
+      notAList: { module: "/static/m.mjs" },
+    };
+    const both = sdkSandbox(shapes);
+    const loader = both.__assets;
+    transcript.moduleUrlAgreesWithEnsureModule = {};
+    for (const name of [...Object.keys(shapes), "absent"]) {
+      const imported = await loader.ensureModule(name).then(
+        () => true,
+        (error) => !String(error?.message).startsWith("Unknown module bundle"),
+      );
+      transcript.moduleUrlAgreesWithEnsureModule[name] = {
+        moduleUrl: both.moduleUrl(name),
+        ensureModuleImports: imported,
+      };
+    }
+    check(
+      "moduleUrl has an address for exactly the bundles ensureModule imports",
+      Object.values(transcript.moduleUrlAgreesWithEnsureModule).every(
+        (shape) => (shape.moduleUrl !== null) === shape.ensureModuleImports,
+      ),
+      transcript.moduleUrlAgreesWithEnsureModule,
     );
     check(
       "a module bundle's address is absolute, and anything else has none",

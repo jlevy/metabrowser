@@ -16,10 +16,10 @@ diagram out at the page’s size and that a frame taken out mid-draw holds nothi
 
 This golden pins what Metabrowser decides around it.
 The browserless session runs the frame module, the frame’s real entry
-(`diagram-frame-entry.js`), and the SDK’s `moduleUrl` (`plugin-sdk-views.js`, reading
-the bundle through `asset-loader.js`) as production code, with a small DOM of its own in
-which a frame loads a turn after it is put in the page, and a Mermaid of its own that
-records what the frame asks of it.
+(`diagram-frame-entry.js`), the SDK’s `moduleUrl` (`plugin-sdk-views.js`), and the asset
+loader’s `ensureModule` (`asset-loader.js`) as production code, with a small DOM of its
+own in which a frame loads a turn after it is put in the page, and a Mermaid of its own
+that records what the frame asks of it.
 The transcript pins these behaviors:
 
 - The frame’s policy admits its entry and the Mermaid bundle’s directory as scripts, its
@@ -27,6 +27,8 @@ The transcript pins these behaviors:
 - The entry installs one frozen loader.
 - The SDK’s `moduleUrl` gives a module bundle’s address, absolute against the page, and
   `null` for a script bundle or an unknown name.
+  It reads each shape of bundle as `ensureModule` does: it gives an address for exactly
+  the names `ensureModule` would import.
 - A lease opens nothing until Mermaid is first asked for; then one frame, sandboxed to
   scripts and its origin, hidden from the accessibility tree and out of the tab order,
   whose document is the policy, then its stylesheet, then its one script.
@@ -67,6 +69,40 @@ $ node tests/dom/markdown-diagram-frame-session.js
     "mermaid": "http://127.0.0.1:8000/static/0a1b/vendor/mermaid/mermaid.esm.min.mjs",
     "chart": null,
     "absent": null
+  },
+  "moduleUrlAgreesWithEnsureModule": {
+    "module": {
+      "moduleUrl": "http://127.0.0.1:8000/static/m.mjs",
+      "ensureModuleImports": true
+    },
+    "script": {
+      "moduleUrl": null,
+      "ensureModuleImports": false
+    },
+    "twoEntries": {
+      "moduleUrl": null,
+      "ensureModuleImports": false
+    },
+    "notAString": {
+      "moduleUrl": null,
+      "ensureModuleImports": false
+    },
+    "emptyModule": {
+      "moduleUrl": null,
+      "ensureModuleImports": false
+    },
+    "nullEntry": {
+      "moduleUrl": null,
+      "ensureModuleImports": false
+    },
+    "notAList": {
+      "moduleUrl": null,
+      "ensureModuleImports": false
+    },
+    "absent": {
+      "moduleUrl": null,
+      "ensureModuleImports": false
+    }
   },
   "leases": {
     "framesBeforeAsking": 0,
