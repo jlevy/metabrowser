@@ -5,8 +5,15 @@ title: "Event log Phase 2: browse Metabrowser's own event log in Metabrowser"
 kind: feature
 status: closed
 priority: 2
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-11-19-structured-event-log.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/633
+    at: 2026-11-20T17:04:41.368Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/634
+    at: 2026-11-20T17:04:41.409Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -18,7 +25,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-19T22:17:11.751Z
-updated_at: 2026-11-20T17:00:12.408Z
+updated_at: 2026-11-20T17:04:41.409Z
 started_at: 2026-11-20T02:55:08.942Z
 closed_at: 2026-11-20T07:25:02.836Z
 close_reason: "Merged in PRs 633 and 634. Follow-ups: mb-9n0x, mb-7uqr."

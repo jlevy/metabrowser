@@ -5,7 +5,14 @@ title: "View header: move the size, file count and age (e.g. '379.2 MB · 18,344
 kind: task
 status: closed
 priority: 2
-version: 11
+version: 12
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/550
+    at: 2026-11-20T17:04:31.472Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/552
+    at: 2026-11-20T17:04:31.475Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -18,7 +25,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-18T03:13:59.554Z
-updated_at: 2026-11-20T17:00:12.599Z
+updated_at: 2026-11-20T17:04:31.475Z
 started_at: 2026-11-18T03:15:32.079Z
 closed_at: 2026-11-18T22:04:05.426Z
 close_reason: Landed in jlevy/metabrowser#550 (f105941bc)

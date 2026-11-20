@@ -1,14 +1,14 @@
 ---
 type: is
 id: is-01m7wweb3xhf6783751gszs00g
-title: test_github_ref_pulls asserts non-blocking by a 0.25 s wall clock and exceeded it (cause under investigation)
+title: test_github_ref_pulls timed the publisher's fsyncs against the busy timeout instead of proving the scan holds no transaction
 kind: bug
 status: open
 priority: 3
-version: 2
+version: 3
 labels: []
 dependencies: []
 created_at: 2026-11-20T16:25:42.268Z
-updated_at: 2026-11-20T16:40:21.717Z
+updated_at: 2026-11-20T17:04:16.628Z
 ---
 PR 655 run 44771960710 job 136411653812 (admitted-git 2.43.7): assert time.monotonic() - began < 0.25 failed at 0.35 s. A wall-clock bound this tight fails on a loaded runner; unrelated to the change under test. Rerun once; consider a bound that does not depend on runner load.

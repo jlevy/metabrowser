@@ -5,11 +5,15 @@ title: "Markdown transclusion loading state: a delayed skeleton, not a visible s
 kind: task
 status: open
 priority: 3
-version: 2
+version: 3
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/622
+    at: 2026-11-20T17:04:23.776Z
 labels:
   - linear
 dependencies: []
 created_at: 2026-11-19T21:54:48.037Z
-updated_at: 2026-11-20T17:00:12.742Z
+updated_at: 2026-11-20T17:04:23.802Z
 ---
 Deferred from the 2026-11-19 design-system consistency audit (mb-yiti); see that bead's PR for the finding.

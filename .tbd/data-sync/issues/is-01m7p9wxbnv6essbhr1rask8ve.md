@@ -5,7 +5,11 @@ title: "Print: drop the top bar's print icon; show a print control only on rende
 kind: task
 status: closed
 priority: 2
-version: 5
+version: 6
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/549
+    at: 2026-11-20T17:04:52.518Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -14,7 +18,7 @@ parent_id: is-01m7ksbn803jhw15qjc6beg7qf
 hold: null
 hold_until: null
 created_at: 2026-11-18T03:06:10.164Z
-updated_at: 2026-11-20T17:00:12.058Z
+updated_at: 2026-11-20T17:04:52.520Z
 started_at: 2026-11-18T03:13:08.743Z
 closed_at: 2026-11-18T03:47:29.941Z
 close_reason: "Implemented in PR #549 (head 7ae2a8d7e); KPress follow-up mb-jue2."

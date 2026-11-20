@@ -5,7 +5,11 @@ title: Repository store paths use a 64-hex sha256 directory name; make them shor
 kind: task
 status: closed
 priority: 2
-version: 5
+version: 6
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/647
+    at: 2026-11-20T17:04:49.120Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T05:55:04.031Z
-updated_at: 2026-11-20T17:00:13.077Z
+updated_at: 2026-11-20T17:04:49.126Z
 started_at: 2026-11-20T05:55:54.198Z
 closed_at: 2026-11-20T08:41:32.356Z
 close_reason: "Merged in PR 647: store keys <readable>--<16 hex>, collision-checked; f01->f02 rename-in-place migration."
