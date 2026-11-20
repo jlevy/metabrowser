@@ -132,8 +132,9 @@ status: 200
   "short_name": "origin",
   "full_name": "[CWD]/origin.git@topic",
   "kind": "mirror",
-  "kind_label": "Cached mirror",
+  "kind_label": "Cloud mirror",
   "title": "origin • Metabrowser",
+  "kind_tip": "Cloud mirror",
   "repository": null
 }
 ? 0
@@ -149,8 +150,9 @@ status: 200
   "short_name": "origin",
   "full_name": "~/origin.git@topic",
   "kind": "mirror",
-  "kind_label": "Cached mirror",
+  "kind_label": "Cloud mirror",
   "title": "origin • Metabrowser",
+  "kind_tip": "Cloud mirror",
   "repository": null
 }
 ? 0

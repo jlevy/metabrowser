@@ -169,6 +169,21 @@
     }
 
     /**
+     * The glyph a folder's header leads with: for the root, the kind mark the navigation's
+     * heading already holds (the server wrote it, `.header-root-kind`), so the root is drawn
+     * as the kind of root it is wherever its name is, and for any other folder the ordinary
+     * folder's. A page with no such mark draws the ordinary folder.
+     * @param {string} path served-root-relative path; "" is the root itself
+     */
+    function folderGlyphHtml(path) {
+      const ordinary = window.MetabrowserIcons?.folder || "";
+      if (path !== "" || typeof document === "undefined") {
+        return ordinary;
+      }
+      return document.querySelector("#header-root-kind > svg")?.outerHTML ?? ordinary;
+    }
+
+    /**
      * A folder's view header: eyebrow, folder icon and name, and its aggregate line.
      * @param {Parameters<MetabrowserViewHeaderBuilders["renderFolderHeader"]>[0]} data the folder's envelope
      */
@@ -179,7 +194,7 @@
         className: "folder-header",
         path: path,
         eyebrow: viewHeaderEyebrowHtml(path),
-        iconHtml: window.MetabrowserIcons?.folder || "",
+        iconHtml: folderGlyphHtml(path),
         title: viewHeaderName(path),
         line: `<span class="folder-header-summary">${dir ? folderHeaderSummaryHtml(dir) : ""}</span>`,
       });

@@ -15,16 +15,21 @@ File > Print’s path.
 
 This browserless session runs the production `builtin_plugins/markdown/index.js`,
 `builtin_plugins/markdown/rendered.js`, `builtin_plugins/markdown/print-indicator.js`,
-`builtin_plugins/folder/readme-panel.js`, and the trusted and inert placement modules on
-a small DOM of its own.
+`builtin_plugins/markdown/print-ready.js`, `builtin_plugins/folder/readme-panel.js`, and
+the trusted and inert placement modules on a small DOM of its own.
 It shows the button in the document’s own card and not a nested transclusion’s, last in
 it, named and labelled, owner-marked as the very element `ownDelegate` marked, with no
 `id`; that a click prints once and a document’s own copy of its markup prints nothing;
-that an inert render has the same button, and a failed render and a host that does not
-ask have none; and that disposing removes it with its listener, so a view mounted again
-has one. Where the button lands, that nothing moves when it arrives, and the table of
-contents toggle beside it are layout, which `tests/test_document_print_chrome.py`
-measures in headless Chrome.
+that a click first makes the document ready to print (`print-ready.js`): an image not
+yet loaded is made eager and waited for, a second click meanwhile prints nothing more,
+and the heading before the image is given its size; that a print in the dark theme
+resolves the page light, with the crossfade off, and restores it after, while a rendered
+document holds one pair of print listeners for the page; that an inert render has the
+same button, and a failed render and a host that does not ask have none; and that
+disposing removes it with its listener, so a view mounted again has one.
+Where the button lands, that nothing moves when it arrives, and the table of contents
+toggle beside it are layout, which `tests/test_document_print_chrome.py` measures in
+headless Chrome.
 
 ```console
 $ node tests/dom/markdown-print-indicator-session.js
@@ -35,7 +40,17 @@ $ node tests/dom/markdown-print-indicator-session.js
   },
   "click": {
     "documentCopy": 0,
+    "waiting": {
+      "busy": "true",
+      "loading": "eager",
+      "prints": 0
+    },
     "pageButton": 1,
+    "busyAfter": null,
+    "headingImage": {
+      "ratio": "0.625",
+      "width": "1600px"
+    },
     "documentListeners": 0
   },
   "disposed": {
@@ -74,7 +89,25 @@ $ node tests/dom/markdown-print-indicator-session.js
     "lastInCard": true
   },
   "replaced": 1,
+  "theme": {
+    "printingDark": {
+      "anim": false,
+      "kpress": "light",
+      "theme": "light"
+    },
+    "afterDark": {
+      "anim": true,
+      "kpress": "dark",
+      "theme": "dark"
+    },
+    "printingLight": {
+      "anim": true,
+      "kpress": "light",
+      "theme": "light"
+    },
+    "printListeners": 2,
+    "printListenersAfterAll": 0
+  },
   "failures": []
 }
-? 0
 ```

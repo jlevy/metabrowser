@@ -22,6 +22,13 @@
 // - a click prints once (the page's `beforeprint`), and the pointer shows its tooltip;
 // - Command-P and Control-P reach the page and nothing in it takes them from the browser;
 // - in print, the button is hidden and the document is what prints;
+// - KPress's print model, on a printed document opened in the dark theme: a click makes
+//   it ready before it prints (print-ready.js), its screenshot below the fold loaded,
+//   KPress's print sans loaded, and the heading above the screenshot given its size;
+//   and in print media, with the page's `beforeprint`, the page resolves light, the
+//   document is one block column outside any size container, its centred logo stays
+//   centred, its text, links, and code are KPress's print ink on white, a heading reserves
+//   room below it, and after the print the dark theme is back;
 // - in the phone band, where KPress draws no card, there is no button.
 //
 // Each step writes `phase <name> <ms since start>` to stderr. It prints
@@ -380,6 +387,132 @@ async function checkPrintKeys(page, label) {
   );
 }
 
+/** The lightness of a computed color, 0 to 1: oklch's own, or sRGB's relative luminance. */
+const LIGHTNESS = `((color) => {
+  const oklch = /^oklch\\(([\\d.]+)(%?)/.exec(color);
+  if (oklch) {
+    return Number(oklch[1]) / (oklch[2] ? 100 : 1);
+  }
+  const rgb = /rgba?\\(([\\d.]+),? ([\\d.]+),? ([\\d.]+)/.exec(color);
+  if (rgb) {
+    const [r, g, b] = rgb.slice(1, 4).map((part) => Number(part) / 255);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+  return Number.NaN;
+})`;
+
+/**
+ * KPress's print model on printed.md, in the dark theme: what a click makes ready before
+ * it prints, and what print media draws.
+ */
+async function checkPrintModel(page, label) {
+  // The page follows the system's theme, emulated dark before it loads.
+  await page.send("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-color-scheme", value: "dark" }],
+  });
+  await open(page, "/view/printed.md", false);
+  const before = await page.evaluate(`(() => {
+    const shot = ${CARD}.querySelector("img[alt='Screenshot']");
+    return { theme: document.documentElement.dataset.theme, loaded: shot.complete && shot.naturalWidth > 0 };
+  })()`);
+  check(
+    `${label}: the printed document opens dark, its screenshot not yet loaded`,
+    before.theme === "dark" && !before.loaded,
+    before,
+  );
+  await page.evaluate(`(() => {
+    window.__printCalls = 0;
+    window.print = () => { window.__printCalls += 1; };
+    ${CARD}.querySelector(":scope > .metabrowser-print-indicator").click();
+    return true;
+  })()`);
+  await page.waitFor("window.__printCalls >= 1", 5000);
+  const ready = await page.evaluate(`(() => {
+    const card = ${CARD};
+    const shot = card.querySelector("img[alt='Screenshot']");
+    const heading = shot.closest(".kpress-long-text > *").previousElementSibling;
+    return {
+      prints: window.__printCalls,
+      shot: shot.complete && shot.naturalWidth > 0,
+      faces: [...document.fonts].filter((face) => face.family.replace(/"/g, "") === "KPress Print Sans" && face.status === "loaded").length,
+      width: heading.style.getPropertyValue("--print-next-image-width"),
+      ratio: heading.style.getPropertyValue("--print-next-image-ratio"),
+    };
+  })()`);
+  check(
+    `${label}: a click prints once the screenshot, the print sans, and the heading are ready`,
+    ready.prints === 1 &&
+      ready.shot &&
+      ready.faces > 0 &&
+      ready.width === "160px" &&
+      ready.ratio === "0.625",
+    ready,
+  );
+  await page.send("Emulation.setEmulatedMedia", {
+    media: "print",
+    features: [{ name: "prefers-color-scheme", value: "dark" }],
+  });
+  const printed = await page.evaluate(`(() => {
+    dispatchEvent(new Event("beforeprint"));
+    const lightness = ${LIGHTNESS};
+    const card = ${CARD};
+    const style = (element, pseudo) => getComputedStyle(element, pseudo);
+    const heading = card.querySelector("img[alt='Screenshot']").closest(".kpress-long-text > *").previousElementSibling;
+    const logo = card.querySelector("[align='center']");
+    const code = card.querySelector("pre");
+    const read = {
+      theme: document.documentElement.dataset.theme,
+      kpress: document.documentElement.getAttribute("data-kpress-resolved-theme"),
+      anim: document.documentElement.classList.contains("theme-anim"),
+      layout: style(card.parentElement).display,
+      pane: style(document.querySelector(".preview-pane")).containerType,
+      logo: style(logo).textAlign,
+      ground: lightness(style(card).backgroundColor),
+      text: lightness(style(card.querySelector("p:not([align])")).color),
+      link: style(card.querySelector("p:not([align]) a[href]")).color,
+      code: lightness(style(code).color),
+      reserve: Number.parseFloat(style(heading, "::after").paddingBottom),
+    };
+    dispatchEvent(new Event("afterprint"));
+    read.after = document.documentElement.dataset.theme;
+    return read;
+  })()`);
+  await page.send("Emulation.setEmulatedMedia", { media: "", features: [] });
+  check(
+    `${label}: in print the dark page resolves light, and the dark theme is back after`,
+    printed.theme === "light" &&
+      printed.kpress === "light" &&
+      !printed.anim &&
+      printed.after === "dark",
+    printed,
+  );
+  check(
+    `${label}: in print the document is one block column outside any size container`,
+    printed.layout === "block" && printed.pane === "normal",
+    printed,
+  );
+  check(
+    `${label}: in print the centred logo stays centred`,
+    printed.logo === "-webkit-center" || printed.logo === "center",
+    printed,
+  );
+  check(
+    `${label}: in print the text, links, and code are KPress's print ink on white`,
+    printed.ground > 0.95 &&
+      printed.text < 0.3 &&
+      printed.link === "oklch(0 0 0)" &&
+      printed.code < 0.5,
+    printed,
+  );
+  // The screenshot is 160 px wide at a ratio of 0.625, so its heading reserves 100 px
+  // beside the lines below it.
+  check(
+    `${label}: in print the heading above the screenshot reserves room for it`,
+    printed.reserve >= 100,
+    printed,
+  );
+}
+
 /** In print, the document prints and the button and the shell's chrome do not. */
 async function checkPrintMedia(page, label) {
   await page.send("Emulation.setEmulatedMedia", { media: "print" });
@@ -435,6 +568,7 @@ async function checkProfile(profile) {
     await checkPrintMedia(page, `${profile} README`);
     await open(page, "/view/", true);
     await checkPrintMedia(page, `${profile} Overview`);
+    await checkPrintModel(page, `${profile} printed`);
   } finally {
     await page.close();
   }
