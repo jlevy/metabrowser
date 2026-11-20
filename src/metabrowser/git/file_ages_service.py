@@ -5,20 +5,21 @@ A page of a Git revision never waits for its files' ages. The tree route asks th
 for the revision's answer (:meth:`FileAgesService.request`), which returns at once with what
 it has: the answer, or that the read is running, or why there is none. A first request
 starts the read as a background job, and a later request finds the answer. A command that
-prints the ages waits on ``/api/index/progress`` (``wait_for_index``); a page shows them on
-its next load, since nothing on it asks again yet.
+prints the ages waits on ``/api/index/progress`` (``wait_for_index``); a page polls it
+(``static/revision-ages.js``) while the read runs and draws again when it ends.
 
 **Per commit.** An answer belongs to a commit ID, which names a tree for good, so it is
 never stale: returning to a branch shown a moment ago is a lookup. A different branch or
 tag is read for its own tip, and when the tip descends from a commit that is answered, only
 the commits since it are read, when no merge lies between
-(:func:`metabrowser.git.file_ages.nearest_ancestor`). The answers are in memory, in one table for the process, bounded by ``GIT_AGES_CACHE_REVISIONS``.
+(:func:`metabrowser.git.file_ages.nearest_ancestor`). The answers are in memory, in one table
+for the process, bounded by ``GIT_AGES_CACHE_REVISIONS``.
 A restart reads again; the cost of that is ``GIT_AGES_TIMEOUT_S``'s measurement.
 
 **Failure.** A read that fails, with the Git too old or the command failing or anything
 else, is recorded for ``GIT_AGES_RETRY_AFTER_S`` so a poll is answered from the record and
-does not start Git again; an answer cut by the read's budget is served and read again after
-``GIT_AGES_CUT_RETRY_AFTER_S``, and is never the base of a derived read. Every step of a read
+does not start Git again; an answer cut by the read's budget is served, read again after
+``GIT_AGES_CUT_RETRY_AFTER_S`` while it is still served, and never the base of a derived read. Every step of a read
 is inside one ``file_ages.read`` job span, which says why a read failed, with Git's stderr;
 none of it goes to a response.
 """
@@ -48,6 +49,7 @@ from metabrowser.git.shallow import read_boundary
 from metabrowser.settings import (
     GIT_AGES_CACHE_REVISIONS,
     GIT_AGES_CUT_RETRY_AFTER_S,
+    GIT_AGES_MAX_CONCURRENT_READS,
     GIT_AGES_RETRY_AFTER_S,
     GIT_AGES_TIMEOUT_S,
 )
@@ -107,12 +109,14 @@ class FileAgesService:
         limits: AgeLimits | None = None,
         retry_after_s: float = GIT_AGES_RETRY_AFTER_S,
         cut_retry_after_s: float = GIT_AGES_CUT_RETRY_AFTER_S,
+        max_reads: int = GIT_AGES_MAX_CONCURRENT_READS,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._capacity = capacity
         self._limits = limits if limits is not None else AgeLimits(timeout_s=GIT_AGES_TIMEOUT_S)
         self._retry_after_s = retry_after_s
         self._cut_retry_after_s = cut_retry_after_s
+        self._gate = asyncio.Semaphore(max_reads)
         self._clock = clock
         self._answers: OrderedDict[_Key, RevisionAges] = OrderedDict()
         self._cut_at: dict[_Key, float] = {}
@@ -123,14 +127,21 @@ class FileAgesService:
     def _key(target: RepositoryStoreTarget, commit: str) -> _Key:
         return (target.git_dir, commit)
 
+    def peek(self, target: RepositoryStoreTarget, commit: str) -> RevisionAges | None:
+        """The kept answer for *commit*, starting nothing: a file read uses it and asks no one
+        to date a history for a single file."""
+
+        return self._answers.get(self._key(target, commit))
+
     def request(self, target: RepositoryStoreTarget, commit: str, names: NamesSource) -> AgesStatus:
         """The answer for *commit*, or the state of getting it. Never waits on Git.
 
         The first request for a commit starts its read as a task on the running loop;
         *names* gives the sorted files of its tree, ``None`` when the index is truncated.
-        An answer cut by the read's budget is served as it is, and read again by the first
-        request after ``GIT_AGES_CUT_RETRY_AFTER_S``, as a failed read is after
-        ``GIT_AGES_RETRY_AFTER_S``.
+        An answer cut by the read's budget is served as it is, and the first request after
+        ``GIT_AGES_CUT_RETRY_AFTER_S`` starts a read to replace it, which keeps serving it
+        until the new answer lands and keeps it if that read fails (the failure is asked
+        again after ``GIT_AGES_RETRY_AFTER_S``, as any is).
         """
 
         availability = file_ages_availability()
@@ -139,20 +150,32 @@ class FileAgesService:
         key = self._key(target, commit)
         answer = self._answers.get(key)
         if answer is not None:
+            # A cut answer is read again once its window has passed, and served as it is
+            # until the new one replaces it: a read that fails keeps it, and a history too
+            # large to finish does not blank its ages for the length of every read.
             cut_at = self._cut_at.get(key)
-            if cut_at is None or self._clock() - cut_at < self._cut_retry_after_s:
-                self._answers.move_to_end(key)
-                return AgesStatus("ready" if answer.complete else "partial", ages=answer)
-            self._forget(key)
+            if (
+                cut_at is not None
+                and self._clock() - cut_at >= self._cut_retry_after_s
+                and key not in self._jobs
+                and not self._failed_recently(key)
+            ):
+                self._start(key, target, commit, names)
+            self._answers.move_to_end(key)
+            return AgesStatus("ready" if answer.complete else "partial", ages=answer)
         if key in self._jobs:
             return AgesStatus("dating")
         failure = self._failures.get(key)
         if failure is not None:
-            if self._clock() - failure[0] < self._retry_after_s:
+            if self._failed_recently(key):
                 return AgesStatus("failed", reason=failure[1])
             del self._failures[key]
         self._start(key, target, commit, names)
         return AgesStatus("dating")
+
+    def _failed_recently(self, key: _Key) -> bool:
+        failure = self._failures.get(key)
+        return failure is not None and self._clock() - failure[0] < self._retry_after_s
 
     def _forget(self, key: _Key) -> None:
         self._answers.pop(key, None)
@@ -175,6 +198,15 @@ class FileAgesService:
         task.add_done_callback(finished)
 
     async def _read(
+        self, key: _Key, target: RepositoryStoreTarget, commit: str, names_source: NamesSource
+    ) -> None:
+        """Wait for a free slot, then read. A read that waits is still `dating` to a page, and
+        a cancelled one leaves the queue."""
+
+        async with self._gate:
+            await self._read_one(key, target, commit, names_source)
+
+    async def _read_one(
         self, key: _Key, target: RepositoryStoreTarget, commit: str, names_source: NamesSource
     ) -> None:
         """One read, every step of it inside one ``file_ages.read`` job span, so a failure at
@@ -222,8 +254,11 @@ class FileAgesService:
             else:
                 self._answers[key] = ages
                 self._answers.move_to_end(key)
+                self._failures.pop(key, None)
                 if ages.stop == "budget":
                     self._cut_at[key] = self._clock()
+                else:
+                    self._cut_at.pop(key, None)
                 while len(self._answers) > self._capacity:
                     self._forget(next(iter(self._answers)))
                 span.end(

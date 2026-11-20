@@ -123,7 +123,8 @@ $ node tests/dom/source-kind-session.js
     "sourceKind": "git_revision",
     "shell": [
       "window.METABROWSER_SOURCE_KIND=\"git_revision\";",
-      "window.METABROWSER_REPOSITORY_CONTEXT=null;"
+      "window.METABROWSER_REPOSITORY_CONTEXT=null;",
+      "window.METABROWSER_FILE_AGES=false;"
     ],
     "rows": [
       {
@@ -201,6 +202,95 @@ $ node tests/dom/source-kind-session.js
         "size"
       ],
       "groupByOptions": [
+        "type"
+      ]
+    }
+  },
+  {
+    "sourceKind": "git_revision",
+    "shell": [
+      "window.METABROWSER_SOURCE_KIND=\"git_revision\";",
+      "window.METABROWSER_REPOSITORY_CONTEXT=null;",
+      "window.METABROWSER_FILE_AGES=true;"
+    ],
+    "rows": [
+      {
+        "path": "g1-ZG9jcw",
+        "name": "docs",
+        "row": "docs",
+        "location": "docs"
+      },
+      {
+        "path": "g1-ZG9jcw/g1-Z3VpZGUubWQ",
+        "name": "guide.md",
+        "row": "guide.md",
+        "location": "docs/guide.md"
+      },
+      {
+        "path": "g1-ZzEtZGF0YQ",
+        "name": "g1-data",
+        "row": "g1-data",
+        "location": "g1-data"
+      },
+      {
+        "path": "g1-ZzEtZGF0YQ/g1-bm90ZS50eHQ",
+        "name": "note.txt",
+        "row": "note.txt",
+        "location": "g1-data/note.txt"
+      },
+      {
+        "path": "g1-NTAlLW9mZi5tZA",
+        "name": "50%-off.md",
+        "row": "50%-off.md",
+        "location": "50%-off.md"
+      },
+      {
+        "path": "g1-UkVBRE1FLm1k",
+        "name": "README.md",
+        "row": "README.md",
+        "location": "README.md"
+      },
+      {
+        "path": "g1-Z3VpZGUtbGluay5tZA",
+        "name": "guide-link.md",
+        "row": "guide-link.md",
+        "location": "guide-link.md"
+      }
+    ],
+    "heading": {
+      "served": "<span class=\"path\"><span class=\"path-base\">topic</span></span><span class=\"header-revision git-commit-sha\">232207c</span>",
+      "afterTreeLoad": "<span class=\"path\"><span class=\"path-base\">topic</span></span><span class=\"header-revision git-commit-sha\">232207c</span>"
+    },
+    "tally": {
+      "heading": {
+        "files": 5,
+        "size": 52
+      },
+      "server": {
+        "files": 5,
+        "size": 52
+      }
+    },
+    "gates": {
+      "filesPanelUsesRecentSource": true,
+      "indexProgress": {
+        "refreshes": 0,
+        "intervals": []
+      },
+      "inventoryEvents": {
+        "eventSourcesOpened": 0,
+        "catalogFeedStarts": 1,
+        "catalogFeedCanStart": true
+      },
+      "navFilterControls": [
+        "group",
+        "drawer",
+        "recency",
+        "types",
+        "size"
+      ],
+      "groupByOptions": [
+        "age",
         "type"
       ]
     }

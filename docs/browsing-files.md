@@ -109,10 +109,19 @@ first and says how many matched.
 A Git revision has no modification times, so a file’s age is the time of the last commit
 that changed it, as a hosting site’s file list shows, and a folder’s the newest of its
 files’. They come from `git last-modified`, which needs Git 2.53 or newer, and are read
-in the background, so the page opens at once without them and shows them on its next
-load, once the read has finished; the page does not redraw by itself yet.
-With an older Git a revision shows no ages, and `metab --doctor` says what to upgrade.
-Modified within and By age are not offered on a revision yet.
+in the background after the page opens, so a file shows its age a moment after it shows
+its name; with an older Git a revision shows no ages, and `metab --doctor` says what to
+upgrade. With file ages, Modified within and By age work on a revision as on a folder: a
+file is in a window or a band by its last commit, and a file whose last commit is not
+known (a shallow clone, or a read that has not finished) is in a last group, Undated,
+which says what it is older than when that is known; the page draws again when the ages
+arrive, the open file’s age included.
+Until then the Modified within counts read “…”, and the Undated group is named for it.
+The line that counts the files a filter keeps says that the ages are being read, why
+they could not be read when a read failed, and how many files could not be dated when
+some could not, and the Undated group says so too.
+A folder in a group or a window is dated by the newest of the files that put it there,
+and a submodule has no age, so it is in no group.
 
 The same filters are available from the command line:
 `metab ROOT --walk --type .md --age 7d`.

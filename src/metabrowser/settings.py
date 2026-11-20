@@ -432,6 +432,34 @@ GIT_AGES_RETRY_AFTER_S = 30.0
 # 45 s of Git, so this is five minutes and not 30 s: a judgment, not a measurement.
 GIT_AGES_CUT_RETRY_AFTER_S = 300.0
 
+# Reads that may run at once, across every revision the process shows; the next waits, and
+# its page sees the state dating. A read is a Git process whose memory follows the history:
+# `git last-modified -r -z HEAD` peaked at 254 MB resident on the 35,824-file, 11,899-commit
+# history above and at 87 MB on this repository's 2,394 files (`/usr/bin/time -l`, Git 2.56.1,
+# 2026-11-20). Time did not limit it: on a 10-core machine at load average 5, one read of the
+# large history took 1.9 s, and 2, 4 and 8 at once took 1.6, 1.6 and 1.7 to 1.8 s each. So the
+# bound is memory: two keep the worst case near half a gigabyte.
+#
+# A served pin has one revision, and leaving it cancels its read (`GitRevisionSubject.aclose`),
+# so no served flow holds two reads at once: the bound is a defence for a caller that asks for
+# several revisions' ages, and only the service's own tests reach it.
+GIT_AGES_MAX_CONCURRENT_READS = 2
+
+# Client polling of a read in progress, in milliseconds: one job with one end, so quicker than
+# the inventory's index progress poll. A poll of an answer that is already there costs the
+# server 0.3 ms in process on this repository's 2,424 files (median of 60, 2026-11-20), and
+# 3 to 7 ms over HTTP on a 40,000-file history (review A of #652), so 500 ms is a few
+# thousandths of one core for the seconds a read takes.
+GIT_AGES_POLL_MS = 500
+
+# How long a page keeps asking for a read before it gives up, in milliseconds: four reads'
+# budgets. One job can take two of them, a read derived from an ancestor and the cold read
+# it falls back to, and three store reads of up to `GIT_SUBPROCESS_TIMEOUT_S` more (the
+# names, the ancestor probes, the commit times): 135 s at the defaults. A job that waits for
+# a slot behind others takes longer than that, and a page that has stopped asking shows what
+# it has until it is reloaded.
+GIT_AGES_WATCH_GIVE_UP_MS = int(GIT_AGES_TIMEOUT_S * 4 * 1000)
+
 
 # ── Remote images ────────────────────────────────────────────
 
@@ -490,6 +518,8 @@ def client_settings_dict(
         "GIT_HISTORY_WINDOW_OVERSCAN_ROWS": GIT_HISTORY_WINDOW_OVERSCAN_ROWS,
         "GIT_HISTORY_PAGE_CACHE_PAGES": GIT_HISTORY_PAGE_CACHE_PAGES,
         "GIT_HISTORY_SEGMENT_REBASE_PX": GIT_HISTORY_SEGMENT_REBASE_PX,
+        "GIT_AGES_POLL_MS": GIT_AGES_POLL_MS,
+        "GIT_AGES_WATCH_GIVE_UP_MS": GIT_AGES_WATCH_GIVE_UP_MS,
         "GIT_HOVER_DEBOUNCE_MS": GIT_HOVER_DEBOUNCE_MS,
         "GIT_DETAIL_CACHE_SIZE": GIT_DETAIL_CACHE_SIZE,
         "GIT_COMPARISON_CACHE_BYTES": GIT_COMPARISON_CACHE_BYTES,
@@ -532,6 +562,9 @@ __all__ = [
     "GIT_COMPARISON_CACHE_BYTES",
     "GIT_AGES_CACHE_REVISIONS",
     "GIT_AGES_CUT_RETRY_AFTER_S",
+    "GIT_AGES_MAX_CONCURRENT_READS",
+    "GIT_AGES_POLL_MS",
+    "GIT_AGES_WATCH_GIVE_UP_MS",
     "GIT_AGES_RETRY_AFTER_S",
     "GIT_AGES_TIMEOUT_S",
     "GIT_DETAIL_CACHE_SIZE",

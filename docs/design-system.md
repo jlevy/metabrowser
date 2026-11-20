@@ -4117,13 +4117,27 @@ it resets them all, Show ignored back on, and keeps the grouping.
   By age splits by modification time and By file type by the registry’s display groups.
   Each row reads as the closed trigger does when it is chosen, so the menu and the
   trigger never name one value two ways.
-  A Git revision has no modification times of its own; its files are dated by their last
+  A Git revision has no modification times of its own: its files are dated by their last
   commit when the Git can read that
-  ([file ages](project/architecture/arch-git.md#file-ages)), and it offers no By age
-  yet.
+  ([file ages](project/architecture/arch-git.md#file-ages)), and a revision whose Git
+  cannot offers neither By age nor Modified within.
+  Where it can, the groups and the window read the times of the files that are dated;
+  the rest are not in either.
+  The page opens at once and draws them again when the ages land.
+  Until then the Modified within counts read “…”, a Recent list says it is reading, and
+  the line that counts the files a filter keeps says so, as one more item of that line,
+  which moves nothing; it says too why a read failed, and how many files could not be
+  dated when some could not (a shallow clone, or a read that ran out of time), and the
+  Undated group is named for each state.
 - **Groups.** Age groups are disjoint bands cut from Modified within’s windows: Live,
   then Past hour, Past day, Past week, and Past month, each holding only what the
   windows before it do not, then Older.
+  A Git revision adds a last group, Undated, for the files whose last commit its answer
+  does not know yet, or at all: a shallow clone, a read cut by its budget, or a read
+  still running. Its name says the time they are older than when the answer has one, as
+  Undated, older than 2020-03-01, and the group is gone once every file is dated.
+  A folder row in a group or a window is dated by the newest of the files that put it
+  there, as its count is, and a submodule has no age and is in no age group.
   File type groups are Documentation, Code, Data, Archives, Media, and Other, which
   takes every file the registry does not recognize.
   A group the filters leave empty is not shown.

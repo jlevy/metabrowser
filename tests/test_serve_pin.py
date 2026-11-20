@@ -536,6 +536,40 @@ def test_the_shell_names_the_repository_and_its_pinned_revision(
     assert client.get(f"/commit/{origin.first}").status_code == 200
 
 
+def _bundles(shell: str) -> dict[str, list[dict[str, str]]]:
+    match = re.search(r"window\.METABROWSER_ASSET_BUNDLES=(\{.*?\});</script>", shell)
+    assert match is not None
+    return json.loads(match.group(1))
+
+
+def test_a_pins_shell_leaves_out_the_ages_script_where_the_git_cannot_read_ages(
+    served: tuple[TestClient, _Origin],
+) -> None:
+    """On the Git every test starts on (2.50.1, which has no `git last-modified`) the page
+    knows it has no ages and is offered nothing to read them with."""
+
+    client, _origin = served
+    shell = client.get("/view/").text
+    assert "window.METABROWSER_FILE_AGES=false" in shell
+    assert "revision-ages" not in _bundles(shell)
+    assert "/static/revision-ages.js" not in shell
+
+
+def test_a_pins_shell_offers_the_ages_script_on_demand_where_the_git_can_read_ages(
+    file_ages_git: tuple[int, int, int], served: tuple[TestClient, _Origin]
+) -> None:
+    """The watch and the Files band's note are an on-demand bundle, not a startup script: no
+    request is made for them before a response says the ages are not all in."""
+
+    client, _origin = served
+    shell = client.get("/view/").text
+    assert "window.METABROWSER_FILE_AGES=true" in shell
+    entry = _bundles(shell)["revision-ages"]
+    assert [item["provides"] for item in entry] == ["MetabrowserRevisionAges"]
+    assert entry[0]["src"].startswith("/static/revision-ages.js")
+    assert f'<script src="{entry[0]["src"]}"' not in shell
+
+
 _PIN = "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
 
 

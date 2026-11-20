@@ -55,7 +55,7 @@ import time
 from array import array
 from bisect import bisect_left
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final, Literal
 
 from metabrowser.git.process import (
@@ -197,6 +197,7 @@ class RevisionAges:
     seconds: float
     from_commit: str | None = None
     """The ancestor whose answer this one was derived from, when it was."""
+    _sorted: array[int] | None = field(default=None, init=False, repr=False, compare=False)
 
     @property
     def dated(self) -> int:
@@ -205,6 +206,20 @@ class RevisionAges:
     @property
     def complete(self) -> bool:
         return self.stop == "complete"
+
+    def sorted_times(self) -> array[int]:
+        """The dated times in ascending order, which the Modified within counts bisect. Built on
+        first use and kept with the answer, so a replaced answer is counted afresh and an
+        evicted one frees it."""
+
+        if self._sorted is None:
+            object.__setattr__(
+                self,
+                "_sorted",
+                array("q", sorted(value for value in self.times if value != UNDATED)),
+            )
+        assert self._sorted is not None
+        return self._sorted
 
     def time_of(self, name: bytes) -> int | None:
         """*name*'s time, or ``None`` when it is not a name here or is undated."""
@@ -231,15 +246,6 @@ class RevisionAges:
             return None
         newest = max(self.times[start:stop])
         return None if newest == UNDATED else newest
-
-    def mapping(self) -> dict[bytes, int]:
-        """Every dated name's time, for a caller that looks many up."""
-
-        return {
-            name: value
-            for name, value in zip(self.names, self.times, strict=True)
-            if value != UNDATED
-        }
 
 
 @dataclass(slots=True)
@@ -367,6 +373,24 @@ async def _commit_times(location: GitLocation, commits: Sequence[str]) -> dict[s
     return times
 
 
+def _carried(base: RevisionAges, names: Sequence[bytes]) -> array[int]:
+    """*base*'s time for each of *names*, the sorted files of a later commit, or :data:`UNDATED`
+    where it has none: one walk down both sorted lists, no table of the base kept."""
+
+    carried = array("q", [UNDATED]) * len(names)
+    have = base.names
+    total = len(have)
+    seen = 0
+    for at, name in enumerate(names):
+        while seen < total and have[seen] < name:
+            seen += 1
+        if seen == total:
+            break
+        if have[seen] == name:
+            carried[at] = base.times[seen]
+    return carried
+
+
 async def date_revision(
     *,
     target: RepositoryStoreTarget,
@@ -418,7 +442,7 @@ async def date_revision(
         )
     commits = sorted({oid.lstrip(b"^").decode("ascii") for oid in read.found.values()})
     times = await _commit_times(location, [commit, *commits])
-    base_map = used_base.mapping() if used_base is not None else {}
+    base_times = _carried(used_base, names) if used_base is not None else None
     values = array("q", [UNDATED]) * len(names)
     boundary_time = 0
     bounds: list[int] = []
@@ -427,8 +451,8 @@ async def date_revision(
         if oid_b is None:
             continue
         if oid_b.startswith(b"^"):
-            carried = base_map.get(name)
-            if carried is not None:
+            carried = base_times[at] if base_times is not None else UNDATED
+            if carried != UNDATED:
                 values[at] = carried
             elif used_base is not None and used_base.older_than is not None:
                 bounds.append(used_base.older_than)

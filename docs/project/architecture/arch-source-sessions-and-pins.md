@@ -87,13 +87,16 @@ separate, explicit operation.
 `ignore`, `watcher`, `activity`, and `mutation`. A folder has all of them
 (`FILESYSTEM_CAPABILITIES`, where `mutation` is a source fact, not the content-trust
 setting that keeps writes off).
-A pin has navigation and an index, and nothing else (`GIT_REVISION_CAPABILITIES`).
+A pin has navigation and an index, and nothing else (`GIT_REVISION_CAPABILITIES`). Where
+the Git can date its files, it also has `recency`
+(`GIT_REVISION_CAPABILITIES_WITH_AGES`, [file ages](arch-git.md#file-ages)).
 
 A route that needs an absent capability answers 409 `unsupported_for_subject` with the
 capability’s name, or its view is absent; it never answers a fake zero, an empty event
 stream, or a placeholder timestamp.
-So on a pin `/api/recent`, `/api/activity`, `/api/stream`, recency filters, and editing
-are unavailable, while size and kind rollups answer from the blob index.
+So on a pin `/api/activity`, `/api/stream`, and editing are unavailable, and so are
+`/api/recent` and the recency filters where the Git cannot date its files, while size
+and kind rollups answer from the blob index.
 
 ## The Plugin Content Boundary
 
@@ -162,8 +165,7 @@ The rules they follow:
   Gitlinks are unsized files.
   There is no ignore state, so `include_ignored=0` is a no-op.
   A node has an `mtime` only from [file ages](arch-git.md#file-ages), the last commit
-  that changed it, when the Git can read them and the background read has finished; the
-  page hides Modified within.
+  that changed it, when the Git can read them and the background read has finished.
 - **The whole-tree index** is complete at once: `/api/catalog`, `/api/rollup`, the type
   rows and `summary` on `/api/tree`, and `/api/index/progress`, `/api/index/meta`, and
   `/api/capabilities` answer from the recursive blob index with no watcher.
@@ -173,8 +175,12 @@ The rules they follow:
   group’s tree from the same blob index, and `group=type:<id>` lists one group’s tree.
   A group’s `size` is null when its blob sizes are incomplete, and its `files` too when
   the index is truncated.
-  `group_by=age` and `group=age:…` answer `unsupported_for_subject` (409), as `recency`
-  does, and the page offers no Age.
+  `group_by=age`, `group=age:…`, and the recency filter read the times of
+  [file ages](arch-git.md#file-ages), cut at one instant per request, and a file with no
+  time is in the `undated` group alone and in no window.
+  Where the Git cannot date a revision, `recency` is false
+  (`GitRevisionSubject.capabilities`) and they answer `unsupported_for_subject` (409),
+  as `/api/recent` does, and the page offers neither.
 - **A tree** answered by `/api/file` is folder chrome with recursive tallies.
   A direct-child README mounts Overview, and a complete size tally mounts the treemap.
 - **A blob** answered by `/api/file` chooses its kind from its name’s last extension, as
