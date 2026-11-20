@@ -802,6 +802,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/sqlite/info",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/structured/parsed",
       "methods": [
         "GET",
@@ -1020,7 +1028,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 85
+  "count": 86
 }
 ? 0
 ```

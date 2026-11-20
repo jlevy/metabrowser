@@ -39,6 +39,7 @@ github         builtin  -                 markdown    2      pull,pull-refresh,p
 html           builtin  html              -           2      -
 image          builtin  -                 -           1      -
 markdown       builtin  markdown,mermaid  -           4      -
+sqlite         builtin  sqlite            -           1      info
 structured     builtin  structured        -           2      parsed
 table          builtin  -                 -           0      tables,schema,rows,record,card
 text           builtin  -                 -           1      -
@@ -274,6 +275,25 @@ $ metab --plugins --json
       ],
       "view_count": 4,
       "data_hooks": [],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "sqlite",
+      "display_name": "SQLite",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/sqlite",
+      "kinds": [
+        "sqlite"
+      ],
+      "requires": [],
+      "views": [
+        "info"
+      ],
+      "view_count": 1,
+      "data_hooks": [
+        "info"
+      ],
       "disabled_data_hooks": []
     },
     {
@@ -540,7 +560,7 @@ recorded on its own: the answer is on stdout, and stderr is empty.
 ```console
 $ metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 14 plugin(s) OK
+metab --doctor: 15 plugin(s) OK
 plugin requirements:
   agent-log: requires structured
   delimited: requires table
@@ -570,7 +590,7 @@ $ metab --doctor >/dev/null
 $ metab --doctor --json 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 14,
+  "plugin_count": 15,
   "problems": [],
   "open_in": {
     "value": "browser",
