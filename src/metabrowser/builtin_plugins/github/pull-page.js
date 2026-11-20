@@ -41,6 +41,7 @@ import {
   createComparisonPrefetch,
   diffComparisonLoader,
 } from "./comparison-prefetch.js";
+import { OUTCOME_FALLBACK, rateLimitText, refreshRefusedText, unavailableText } from "./copy.js";
 import {
   createStackIndex,
   memberRoute,
@@ -1071,7 +1072,7 @@ function notes(record, forChecks) {
     );
   }
   if (!forChecks && truncated.text === true) {
-    said.push("Some text was cut to keep this pull request's data within its size limit.");
+    said.push("Some text was cut to keep this pull request’s data within its size limit.");
   }
   for (const [part, why] of Object.entries(record.unavailable ?? {})) {
     if (checkPart(part) !== forChecks || (part === "comparison" && why === "no_store")) {
@@ -1096,21 +1097,21 @@ function notes(record, forChecks) {
  */
 export function filesUnavailableText(why) {
   if (why === "base_uncertain") {
-    return "Changes are not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
+    return "Changes are not shown: this checkout’s history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
   }
   if (why === "no_store") {
     return "Changes could not be fetched.";
   }
   if (why === "comparison_timeout") {
-    return "Changes are unavailable: checking this pull request's history took too long. Refresh to try again.";
+    return "Changes are unavailable: checking this pull request’s history took too long. Refresh to try again.";
   }
   if (why === "comparison_too_large") {
-    return "Changes are unavailable: checking this pull request's history exceeded the comparison limit.";
+    return "Changes are unavailable: checking this pull request’s history exceeded the comparison limit.";
   }
   if (why === "commits_unavailable") {
-    return "Changes are unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.";
+    return "Changes are unavailable: a commit of this pull request’s history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.";
   }
-  return "Changes are unavailable: the pull request's base could not be compared with its head.";
+  return "Changes are unavailable: the pull request’s base could not be compared with its head.";
 }
 
 /** What Changes says for a record without a store before anything has failed. */
@@ -1346,11 +1347,11 @@ export function describePull(envelope, page) {
     // Held, not failed: the time named is the one the page next asks at. It begins and
     // lifts by itself and asks nothing of the reader, so it keeps the row to one line.
     model.failureHold = true;
-    model.failure = Number.isFinite(heldUntil)
-      ? `GitHub rate limit · next check at ${(page.formatHold ?? holdLiftText)(heldUntil, page.nowMs)}`
-      : "GitHub rate limit · next check within a minute";
+    model.failure = rateLimitText(
+      Number.isFinite(heldUntil) ? (page.formatHold ?? holdLiftText)(heldUntil, page.nowMs) : null,
+    );
   } else if (last !== null && last.outcome !== "succeeded" && !envelope.refreshing) {
-    model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? last.outcome.replaceAll("_", " ")}`;
+    model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? OUTCOME_FALLBACK}`;
     // When it ended, which the failure's Details reads the event log around (mb-9zp5).
     model.failureAt = last.at ?? null;
     if (["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome)) {
@@ -1493,7 +1494,7 @@ export function describePull(envelope, page) {
   if (envelope.pin === null && head !== "" && page.checkoutHead === head) {
     // A checkout has no pin, so no Browse code: its working tree is not the pull request's
     // code. When its HEAD is this pull request's head, that much is so, and the page says it.
-    model.checkoutAtHead = "This checkout's HEAD is this pull request's head.";
+    model.checkoutAtHead = "This checkout’s HEAD is this pull request’s head.";
   }
   model.filesUnavailable = filesUnavailableText(record.unavailable?.comparison ?? null);
   if (record.unavailable?.comparison === "no_store" && page.tab === "files") {
@@ -2450,7 +2451,7 @@ export function createPullController(deps, options) {
       error = null;
       errorFromComparison = false;
     } else {
-      error = `The pull request is unavailable (HTTP ${response.status}).`;
+      error = unavailableText("The pull request");
       errorFromComparison = false;
     }
   }
@@ -2637,7 +2638,7 @@ export function createPullController(deps, options) {
         }
       } else if (ask.retry) {
         const said = body !== null && typeof body.error === "string" ? body.error : null;
-        error = `The refresh was refused (${said ?? `HTTP ${response.status}`}).`;
+        error = refreshRefusedText("The refresh", said);
         errorFromComparison = ask.comparison === true;
         if (ask.comparison) {
           comparisonRefusal = error;
@@ -3829,7 +3830,7 @@ export function createStackMenu(initial, number, deps) {
         const position = h("strong", { class: "github-pull-stack-member-position" });
         const identity = h("span", { class: "github-pull-stack-member-number" });
         link.append(
-          h("span", { class: "github-pull-stack-current", "aria-hidden": "true" }, [
+          h("span", { class: "chip-menu-check", "aria-hidden": "true" }, [
             target === number ? "✓" : "",
           ]),
           h("span", { class: "github-pull-stack-member-copy" }, [
@@ -5649,9 +5650,9 @@ export function mountPullPage(container, ctx, mb) {
         );
         button.addEventListener("click", switchNow);
         const sentence = [
-          "This page's code is ",
+          "This page’s code is ",
           commitId(pin),
-          ", not the pull request's head ",
+          ", not the pull request’s head ",
           commitId(head),
           ".",
         ];
@@ -5800,13 +5801,7 @@ export function mountPullPage(container, ctx, mb) {
         ? h("span", {}, ["committed ", age(event.committed_at)])
         : null,
       mb.decorateExternalLink(
-        outside(
-          mb,
-          href,
-          "",
-          [mb.shortCommit(event.oid)],
-          "github-pull-commit-id git-commit-sha github-pull-external-action",
-        ),
+        outside(mb, href, "", [mb.shortCommit(event.oid)], "github-pull-commit-id git-commit-sha"),
         { icon: "github", position: "before" },
       ),
     ]);
@@ -6122,7 +6117,7 @@ export function mountPullPage(container, ctx, mb) {
           h("span", { class: "heading-tally-dot", "aria-hidden": "true" }, ["·"]),
           " ",
           h("span", { class: "heading-tally-figure" }, [
-            model.reviewComments.length.toLocaleString(),
+            mb.formatInteger(model.reviewComments.length),
           ]),
         ]),
       ]),

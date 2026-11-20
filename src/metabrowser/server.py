@@ -2426,10 +2426,10 @@ async def index(
               <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="sans" data-tip-text="Sans-serif reading font" aria-label="Sans-serif reading font"></button>
             </div>
             <div class="menu-separator"></div>
-            <select class="menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>
+            <select class="field menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>
             <div class="menu-separator"></div>
             <label class="menu-row" for="doc-max-chars-input">Max text width
-              <input class="menu-number" id="doc-max-chars-input" type="number"
+              <input class="field menu-number" id="doc-max-chars-input" type="number"
                      min="40" max="160" step="1" inputmode="numeric"
                      data-tip-text="Characters per line in rendered documents"></label>
             <div class="menu-separator"></div>

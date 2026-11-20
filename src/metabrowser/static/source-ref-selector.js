@@ -992,7 +992,7 @@
     }
     const filter = document.createElement("input");
     filter.type = "search";
-    filter.className = "source-ref-selector-filter";
+    filter.className = "field source-ref-selector-filter";
     filter.autocomplete = "off";
     filter.spellcheck = false;
     const list = document.createElement("ul");
