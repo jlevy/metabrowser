@@ -99,6 +99,7 @@ SLACK_S = 0.5
 # tests/test_suite_tiers.py, whose Chrome tests are probes of the harness with their own
 # bounds.
 CHROME_TESTS = (
+    "tests.test_agents_views_chrome",
     "tests.test_changed_file_rows_chrome",
     "tests.test_checkout_ref_selector_chrome",
     "tests.test_chrome_starts",
