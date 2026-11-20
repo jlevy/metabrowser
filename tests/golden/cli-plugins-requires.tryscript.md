@@ -139,6 +139,7 @@ metab --doctor: 1 problem(s):
   • plugin 'markdown' is refused: it requires 'absent', which was not discovered; the plugin it overrides (builtin) is kept
 plugin requirements:
   agent-log: requires structured
+  delimited: requires table
   diff: requires structured
   event-log: requires agent-log
   folder: requires markdown
