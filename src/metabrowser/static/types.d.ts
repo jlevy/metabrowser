@@ -1774,6 +1774,7 @@ type MetabrowserSdk = {
     viewId?: string,
     options?: Record<string, unknown>,
   ): Promise<KpressRenderPayload>;
+  /** GET a data hook; an array value repeats its parameter, one value each. */
   fetchPluginData(
     plugin: string,
     endpoint: string,

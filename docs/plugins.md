@@ -822,6 +822,8 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
 
 - `fetchPluginData(plugin, route, params, options?)` calls a declared data hook with
   `GET`; pass `{ signal }` so a disposed view aborts its request.
+  A parameter whose value is an array is repeated, one value each, as the table rows
+  route takes `cols`; a `null` or `undefined` value is left out.
   A non-ok response rejects with an `Error` carrying `status` and the parsed `payload`.
   Call a `POST` hook with `fetch`.
 - `fetchJsonl(path, options)` requests a normalized JSONL envelope.

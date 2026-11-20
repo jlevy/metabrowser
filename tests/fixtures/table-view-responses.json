@@ -236,7 +236,9 @@
         "estimate": null,
         "skipped": 0,
         "examined": null,
-        "searched": null
+        "searched": null,
+        "sort_refused": null,
+        "limit": 200
       }
     },
     "rows?limit=200&order=asc&path=people.csv&sort=score": {
@@ -326,7 +328,9 @@
         "estimate": null,
         "skipped": 0,
         "examined": null,
-        "searched": null
+        "searched": null,
+        "sort_refused": null,
+        "limit": 200
       }
     },
     "rows?limit=200&order=desc&path=people.csv&sort=score": {
@@ -416,7 +420,9 @@
         "estimate": null,
         "skipped": 0,
         "examined": null,
-        "searched": null
+        "searched": null,
+        "sort_refused": null,
+        "limit": 200
       }
     },
     "rows?f.active=eq%3Atrue&limit=200&path=people.csv": {
@@ -485,7 +491,9 @@
         "estimate": null,
         "skipped": 0,
         "examined": null,
-        "searched": null
+        "searched": null,
+        "sort_refused": null,
+        "limit": 200
       }
     },
     "rows?limit=200&path=people.csv&q=COMMA": {
@@ -532,7 +540,9 @@
           "name",
           "age",
           "note"
-        ]
+        ],
+        "sort_refused": null,
+        "limit": 200
       }
     },
     "record?generation=G&key=%402&path=people.csv": {
@@ -593,10 +603,12 @@
         "estimate": null,
         "skipped": 0,
         "examined": null,
-        "searched": null
+        "searched": null,
+        "sort_refused": null,
+        "limit": 200
       }
     },
-    "rows?cols=name%2Cage%2Cscore%2Cactive%2Cnote%2Cextra&limit=200&path=people.csv": {
+    "rows?cols=name&cols=age&cols=score&cols=active&cols=note&cols=extra&limit=200&path=people.csv": {
       "status": 200,
       "body": {
         "type": "table_rows",
@@ -677,7 +689,9 @@
         "estimate": null,
         "skipped": 0,
         "examined": null,
-        "searched": null
+        "searched": null,
+        "sort_refused": null,
+        "limit": 200
       }
     },
     "rows?f.score=gt%3Ahigh&limit=200&path=people.csv": {
@@ -716,7 +730,9 @@
         "estimate": null,
         "skipped": 0,
         "examined": null,
-        "searched": null
+        "searched": null,
+        "sort_refused": null,
+        "limit": 200
       }
     },
     "record?key=%404&path=people.csv": {
