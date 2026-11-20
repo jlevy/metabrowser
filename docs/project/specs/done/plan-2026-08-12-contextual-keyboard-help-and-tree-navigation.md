@@ -737,7 +737,7 @@ It does not implement key matching or walk the visible tree for each key.
   Each row’s `aria-labelledby` targets the visible name or pagination-action element,
   while group and label IDs use the same safe deterministic encoder.
 - Extend `renderTreeNodes(nodes, isRoot, options)` with `options.level`,
-  `options.positionOffset`, and `options.setSize`; emit ID-bearing `role="group"`
+  `options.rowPositionfset`, and `options.setSize`; emit ID-bearing `role="group"`
   containers owned through each folder’s `aria-owns`, and emit pagination as a treeitem
   with a generated identity, level, position, and set size.
   Preserve the position offset in `pendingTreePages` so newly mounted batches continue

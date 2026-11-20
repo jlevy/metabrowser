@@ -894,7 +894,7 @@ export function keyStep(focus, event, bounds) {
  *
  * @param {string} key
  */
-export function positionOf(key) {
+export function rowPosition(key) {
   const match = /^@(\d+)$/.exec(key);
   return match ? Number(match[1]) : null;
 }

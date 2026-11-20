@@ -41,9 +41,9 @@ import {
   literalField,
   pageNotes,
   parseState,
-  positionOf,
   presentCell,
   reconcileState,
+  rowPosition,
   rowsParams,
   rowsTsv,
   sameRows,
@@ -591,7 +591,7 @@ export function mountTable(container, ctx, host = {}) {
 
   /** Whether rows are named by position, so the row's own column shows its number. */
   function positional() {
-    return rows.length > 0 && positionOf(rows[0].key) !== null;
+    return rows.length > 0 && rowPosition(rows[0].key) !== null;
   }
 
   function drawHeader() {
@@ -791,7 +791,7 @@ export function mountTable(container, ctx, host = {}) {
     ) {
       tr.setAttribute("aria-selected", "true");
     }
-    const position = positionOf(row.key);
+    const position = rowPosition(row.key);
     if (position !== null) {
       const link = el(
         "a",
@@ -1508,7 +1508,7 @@ export function mountTable(container, ctx, host = {}) {
     recordPane.setAttribute("aria-busy", "true");
     /** @type {Record<string, string>} */
     const params = { key };
-    if (page?.generation && positionOf(key) !== null) {
+    if (page?.generation && rowPosition(key) !== null) {
       params.generation = page.generation;
     }
     try {
@@ -1553,7 +1553,7 @@ export function mountTable(container, ctx, host = {}) {
 
   /** @param {RecordAnswer} record */
   function drawRecord(record) {
-    const position = positionOf(record.key);
+    const position = rowPosition(record.key);
     const heading = el(
       "h2",
       { class: "table-record-title" },
