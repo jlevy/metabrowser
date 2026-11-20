@@ -5048,7 +5048,8 @@ a.tab-btn {
    the row is narrower than that the text wraps to the second line, which is
    clipped away. Wider, the text fills the row and ends in an ellipsis rather
    than starting with one, because the start is what says where the mirror is
-   and the end is a store's hexadecimal key.
+   and the end is a store's key, which names its repository and ends in a digest
+   prefix.
 
    Measured with the long name metabrowser-v012-landing-docs on 12 heading
    widths from 250px to 1350px in the in-app browser, and again on 12 from

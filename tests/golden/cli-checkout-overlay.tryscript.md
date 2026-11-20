@@ -47,7 +47,7 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[APP_HOME]/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[APP_HOME]/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
   "borrows": "[CWD]/checkout",
   "shallow": false,
   "refreshable": true,
@@ -123,9 +123,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "stores": [
     {
+      "key": "github-com--octo--demo--65157fba6c20ff90",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "published",
       "mode": "overlay",
@@ -183,9 +184,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "stores": [
     {
+      "key": "github-com--octo--demo--65157fba6c20ff90",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "published",
       "mode": "overlay",
@@ -242,7 +244,7 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[CWD]/home-moved/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[CWD]/home-moved/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
   "borrows": "[CWD]/moved",
   "shallow": false,
   "refreshable": true,
@@ -279,7 +281,7 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[CWD]/home-moved/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[CWD]/home-moved/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
   "borrows": "[CWD]/moved",
   "shallow": false,
   "refreshable": true,
@@ -537,7 +539,7 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[CWD]/home-shallow/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[CWD]/home-shallow/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
   "borrows": "[CWD]/shallow",
   "shallow": true,
   "refreshable": true,
@@ -573,9 +575,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "stores": [
     {
+      "key": "github-com--octo--demo--65157fba6c20ff90",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "damaged",
       "mode": "overlay",

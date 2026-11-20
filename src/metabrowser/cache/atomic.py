@@ -165,13 +165,15 @@ def publish_entry(
     parent = ensure_private_directory(home, target_parent)
     os.lstat(home / staged_relative)
     atomic = rename_without_replacing(home / staged_relative, home / target_relative)
-    _sync(parent)
+    sync_directory(parent)
     if staged_parent != target_parent:
-        _sync(home / staged_parent)
+        sync_directory(home / staged_parent)
     return atomic
 
 
-def _sync(directory: Path) -> None:
+def sync_directory(directory: Path) -> None:
+    """Flush *directory*'s entries to disk, so a rename into or out of it survives a crash."""
+
     fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
     try:
         os.fsync(fd)
@@ -188,5 +190,6 @@ __all__ = [
     "read_bytes_bounded",
     "read_record",
     "serialize_record",
+    "sync_directory",
     "write_record_atomic",
 ]
