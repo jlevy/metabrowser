@@ -630,6 +630,33 @@ def test_open_log_is_owner_only_and_off_when_the_environment_says_so(tmp_path: P
     assert not event_log.enabled()
 
 
+def test_a_server_serving_the_folder_the_log_lives_in_opens_none(tmp_path: Path) -> None:
+    """Browsing the log in Metabrowser must not write to the files it shows: each request
+    would be recorded in the segment on screen, which the page then asks again for."""
+
+    state = tmp_path / "state"
+    environ = {"METABROWSER_STATE_DIR": str(state), "METABROWSER_EVENT_LOG": "1"}
+    for served in (state, state / "events", tmp_path):
+        assert (
+            event_log.open_log(
+                served=str(served), version="0", served_directory=served, environ=environ
+            )
+            is None
+        ), served
+        assert not event_log.enabled()
+    assert not (state / "events").exists(), "nothing was created for a log that was not opened"
+    # A folder that does not hold the log still records, and so does a server serving no folder.
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    opened = event_log.open_log(
+        served=str(elsewhere), version="0", served_directory=elsewhere, environ=environ
+    )
+    try:
+        assert opened is not None
+    finally:
+        event_log.close_log()
+
+
 def test_a_stop_from_the_signal_handler_abandons_what_was_running(
     sink: event_log.EventLog,
 ) -> None:

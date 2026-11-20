@@ -1027,12 +1027,17 @@ def open_log(
     *,
     served: str,
     version: str,
+    served_directory: Path | None = None,
     environ: Mapping[str, str] | None = None,
     **options: Any,
 ) -> EventLog | None:
     """Open this process's log and start its watcher, or say why not and return None.
 
-    A log that cannot be opened is a warning: the server serves without one.
+    A log that cannot be opened is a warning: the server serves without one. A server
+    that serves the folder the log lives in (*served_directory*, which is how a person
+    browses the log in Metabrowser) opens none, as it would record each request for the
+    files it shows into one of them, which changes them, which the page shows, which
+    asks again.
     """
 
     global _sink
@@ -1044,6 +1049,11 @@ def open_log(
         return None
     try:
         state, directory = log_directory(environ)
+        if served_directory is not None and directory.resolve().is_relative_to(
+            served_directory.resolve()
+        ):
+            log.info("serving without an event log: the folder served holds it")
+            return None
         home_module.ensure_storage_root(state)
         home_module.ensure_private_directory(state, EVENTS_DIRECTORY)
         sink = EventLog(directory, state, **options)

@@ -97,6 +97,59 @@ took longer than `OPEN_AFTER_MS` is a `loop` record, so a blocked loop is on rec
 The log holds request paths and folder names but never a token: command lines drop field
 and header values, and process text is redacted.
 
+### Browsing the Log
+
+Metabrowser draws its own log.
+A file named `events-*.jsonl`, wherever it is served, is an event log, and the
+`event-log` plugin (`builtin_plugins/event_log/`) opens it with four views beside Raw
+JSON:
+
+- **Timeline** (`V`) nests each span under the span that started it: a request, the job
+  it started, the `git` and `gh` processes the job ran, in time order, each with a bar
+  on the log’s time axis.
+  A row opens to its detail and, if it started work, to what it started.
+  Marks, such as a server starting, and what a page reported sit among the requests.
+- **Latency** (`L`) lists the slowest spans, longest first, each with the spans above
+  it, over the distribution of every span’s time.
+  Work that never ended counts for the time it had run when the log did.
+- **By kind** (`B`) counts each kind of record and each name within it, how they ended,
+  and their median, 95th-percentile, longest, and total times.
+- **Errors** (`E`) groups the failures by cause, as `/api/event-log/failures` does, over
+  the whole file; lists apart what the page reported, since a page says what it saw and
+  not why; and lists the work that had no `end` record when the log did, which is how a
+  refresh that never ended shows.
+
+Timeline, Latency, and By kind take chips for the kind and the outcome, and a least
+time, the filters `/api/event-log` takes.
+A timeline with a filter shows each span that matches and the spans above it, so a slow
+`git` process is shown inside the request that waited for it.
+
+Each view is a route that `metab` reads, so what the page shows is what a terminal
+shows:
+
+```shell
+metab DIR --api '/api/plugin/event-log/timeline?path=events-20261119T210201Z-p4242-000.jsonl&kind=job'
+metab DIR --api '/api/plugin/event-log/slowest?path=events-20261119T210201Z-p4242-000.jsonl&limit=10'
+metab DIR --api '/api/plugin/event-log/kinds?path=events-20261119T210201Z-p4242-000.jsonl'
+metab DIR --api '/api/plugin/event-log/errors?path=events-20261119T210201Z-p4242-000.jsonl'
+```
+
+A timeline answers a page of the roots, or the children of `parent=<key>`, with `offset`
+and `limit`; each row’s key is `<pid>:<span>`. A segment is read whole up to
+`MAX_VIEW_BYTES` in `event_log_views.py`, the size the writer rolls at, and a larger
+file is for Raw JSON. Every file the log writes, a copy attached to a bug report, and a
+segment committed to a pinned revision answer the same.
+
+To open the log, serve the directory it is in, which `/api/event-log` names:
+
+```shell
+metab "$(metab . --api /api/event-log --format json | jq -r .directory)"
+```
+
+A server that serves the folder the log lives in writes no log of its own, because it
+would record each request for the files on screen into one of them, which changes it,
+and the page would ask again.
+
 ### What the Page Reports
 
 Only the page knows what it waited for, so it reports that too

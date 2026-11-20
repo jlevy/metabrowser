@@ -1,0 +1,390 @@
+/* The event log's views. Colors are the shell's tokens, so each theme gives its own; only
+   what an outcome means is named here. */
+:root {
+  --event-log-ok: var(--status-success-text);
+  --event-log-failed: var(--status-error-text);
+  --event-log-unfinished: var(--status-warning-text);
+  --event-log-quiet: var(--muted);
+  --event-log-bar: var(--status-info);
+  --event-log-bar-failed: var(--status-error);
+  --event-log-bar-unfinished: var(--status-warning);
+  --event-log-bar-quiet: var(--muted);
+  --event-log-indent: 20px;
+  --event-log-bar-height: 8px;
+}
+
+.event-log-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.event-log-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 12px var(--content-padding-x);
+  background: var(--sidebar-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-document);
+}
+
+.event-log-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.event-log-stat-label {
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  text-transform: var(--label-text-transform);
+  letter-spacing: var(--label-letter-spacing);
+  color: var(--muted);
+}
+
+.event-log-stat-value {
+  font-size: var(--body-font-size);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.event-log-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 8px 0 12px;
+}
+
+.event-log-body {
+  display: flex;
+  flex-direction: column;
+  /* The rows lay out by the width of the pane, which a navigation pane beside it takes
+     from the window's, so a container query and not a media query decides it. */
+  container-type: inline-size;
+}
+
+/* A notice sits in the body's column, in line with the rows it speaks of. */
+.event-log-notice {
+  margin: 4px 0 4px calc(var(--event-log-depth, 0) * var(--event-log-indent));
+  padding: 8px 12px;
+}
+
+.event-log-body > .section-heading {
+  margin: 16px 0 8px;
+}
+
+/* ── A row ───────────────────────────────────────────────────── */
+
+.event-log-row {
+  margin-left: calc(var(--event-log-depth, 0) * var(--event-log-indent));
+  border-bottom: 1px solid var(--border);
+}
+
+.event-log-row-head {
+  display: grid;
+  grid-template-columns:
+    16px minmax(5.5rem, max-content) minmax(8rem, 1fr) minmax(6rem, 22%)
+    5.5rem 5.5rem 8rem;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--ui-row-height);
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.event-log-row-head:hover {
+  background: var(--hover-bg);
+}
+
+.event-log-row-head:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.event-log-chevron {
+  display: inline-flex;
+}
+
+.event-log-row-head[aria-expanded="true"] .event-log-chevron {
+  transform: rotate(90deg);
+}
+
+.event-log-kind {
+  background: var(--hover-bg);
+  color: var(--muted);
+}
+
+.event-log-name {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Rows shown only for the spans below them, under a filter, are quieter. */
+.event-log-row[data-context] .event-log-name {
+  color: var(--muted);
+}
+
+.event-log-bar {
+  position: relative;
+  display: block;
+  height: var(--event-log-bar-height);
+  background: var(--hover-bg);
+}
+
+.event-log-bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--event-log-bar-left, 0%);
+  width: var(--event-log-bar-width, 0%);
+  background: var(--event-log-bar);
+}
+
+.event-log-row[data-tone="failed"] .event-log-bar-fill {
+  background: var(--event-log-bar-failed);
+}
+
+.event-log-row[data-tone="unfinished"] .event-log-bar-fill {
+  background: var(--event-log-bar-unfinished);
+}
+
+.event-log-row[data-tone="quiet"] .event-log-bar-fill {
+  background: var(--event-log-bar-quiet);
+}
+
+.event-log-row[data-type="mark"] .event-log-bar {
+  visibility: hidden;
+}
+
+.event-log-when,
+.event-log-dur {
+  color: var(--muted);
+  font-variant-numeric: var(--tabular-numerals);
+  text-align: end;
+  white-space: nowrap;
+}
+
+.event-log-dur {
+  color: var(--text);
+}
+
+.event-log-outcome {
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+}
+
+.event-log-row[data-tone="ok"] .event-log-outcome {
+  color: var(--event-log-ok);
+}
+
+.event-log-row[data-tone="failed"] .event-log-outcome {
+  color: var(--event-log-failed);
+}
+
+.event-log-row[data-tone="unfinished"] .event-log-outcome {
+  color: var(--event-log-unfinished);
+}
+
+.event-log-row[data-tone="quiet"] .event-log-outcome,
+.event-log-row[data-tone="none"] .event-log-outcome {
+  color: var(--event-log-quiet);
+}
+
+.event-log-path {
+  padding: 0 4px 4px 28px;
+  color: var(--muted);
+}
+
+.event-log-detail {
+  padding: 4px 4px 12px 28px;
+}
+
+.event-log-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 0 0 8px;
+}
+
+.event-log-facts dt {
+  color: var(--muted);
+}
+
+.event-log-facts dd {
+  margin: 0;
+}
+
+.event-log-fact-value {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.event-log-attrs {
+  margin: 0;
+  padding: 8px 12px;
+  overflow-x: auto;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+}
+
+.event-log-more {
+  align-self: flex-start;
+  margin: 8px 0 8px calc(var(--event-log-depth, 0) * var(--event-log-indent));
+}
+
+/* ── Distribution ───────────────────────────────────────────── */
+
+.event-log-histogram {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.event-log-hist-column {
+  display: grid;
+  grid-template-rows: auto 64px auto;
+  align-items: end;
+  justify-items: center;
+  gap: 4px;
+}
+
+.event-log-hist-column[data-empty="true"] {
+  color: var(--muted);
+}
+
+.event-log-hist-bar {
+  display: block;
+  width: 100%;
+  height: var(--event-log-hist-share, 0%);
+  min-height: 1px;
+  background: var(--event-log-bar);
+}
+
+.event-log-hist-count {
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.event-log-hist-label {
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ── By kind ────────────────────────────────────────────────── */
+
+.event-log-kind-section {
+  margin-bottom: 8px;
+}
+
+.event-log-kind-line,
+.event-log-cause-line,
+.event-log-more-names {
+  margin: 4px 0;
+  color: var(--muted);
+}
+
+.event-log-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.event-log-cell {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+th.event-log-cell {
+  color: var(--muted);
+  font-weight: var(--label-font-weight);
+}
+
+.event-log-cell-start {
+  text-align: start;
+  font-family: var(--font-mono);
+}
+
+.event-log-cell-end {
+  text-align: end;
+  white-space: nowrap;
+}
+
+/* ── Errors ─────────────────────────────────────────────────── */
+
+.event-log-cause {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+}
+
+.event-log-cause-name {
+  margin: 0 0 4px;
+  color: var(--event-log-failed);
+  font-size: var(--body-font-size);
+  font-weight: var(--weight-bold);
+}
+
+.event-log-cause-message {
+  margin: 4px 0;
+}
+
+.event-log-examples {
+  margin: 4px 0 0;
+  padding-left: 20px;
+}
+
+/* A narrow pane keeps what a row says and drops its bar and its offset, and sets the
+   kind and the ending on a second line under the name and its time. */
+@container (max-width: 560px) {
+  .event-log-row-head {
+    grid-template-columns: 16px minmax(0, 1fr) max-content;
+    grid-template-areas:
+      "chevron name took"
+      ". kind outcome";
+    row-gap: 2px;
+  }
+
+  .event-log-chevron {
+    grid-area: chevron;
+  }
+
+  .event-log-name {
+    grid-area: name;
+  }
+
+  .event-log-dur {
+    grid-area: took;
+  }
+
+  .event-log-kind {
+    grid-area: kind;
+    justify-self: start;
+  }
+
+  .event-log-outcome {
+    grid-area: outcome;
+    text-align: end;
+  }
+
+  .event-log-bar,
+  .event-log-when {
+    display: none;
+  }
+}

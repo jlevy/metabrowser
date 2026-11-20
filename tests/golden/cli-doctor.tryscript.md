@@ -55,7 +55,7 @@ of low free space only on a full volume; `tests/test_doctor.py` covers that warn
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 11 plugin(s) OK
+metab --doctor: 12 plugin(s) OK
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -88,7 +88,7 @@ This is the report the app’s Check Setup… reads.
 $ metab --doctor --json
 {
   "ok": true,
-  "plugin_count": 11,
+  "plugin_count": 12,
   "problems": [],
   "open_in": {
     "value": "browser",
@@ -119,11 +119,11 @@ $ metab --doctor --json
       "id": "plugins",
       "title": "Plugins",
       "state": "ok",
-      "summary": "11 plugins and the packaged cache record contracts check out",
+      "summary": "12 plugins and the packaged cache record contracts check out",
       "details": [
         {
           "name": "plugins",
-          "value": "11"
+          "value": "12"
         }
       ],
       "remedy": null
@@ -380,7 +380,7 @@ cache: ok: the cache directory is private and writable
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doctor --json 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 11,
+  "plugin_count": 12,
   "problems": [
     "cache: METABROWSER_CACHE_DIR must be a nonempty absolute path without '..' components."
   ],
@@ -413,11 +413,11 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doct
       "id": "plugins",
       "title": "Plugins",
       "state": "ok",
-      "summary": "11 plugins and the packaged cache record contracts check out",
+      "summary": "12 plugins and the packaged cache record contracts check out",
       "details": [
         {
           "name": "plugins",
-          "value": "11"
+          "value": "12"
         }
       ],
       "remedy": null
