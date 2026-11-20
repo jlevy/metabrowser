@@ -66,17 +66,18 @@ import {
 
 // ── Bounds and timings ────────────────────────────────────────
 //
-// Measured with tests/dom/table-view-measure.mjs in headless Chrome 152 on a shared
-// 4-processor Linux container (2026-11-20), over a 12-column table of short text, numbers,
-// dates, and booleans, in a 1,280 x 800 window; rerun it for the current numbers.
+// Measured with tests/dom/table-view-measure.mjs in headless Chrome on a shared
+// 4-processor Linux container at a load average of 3 to 5 (2026-11-20), over generated
+// tables of 12 columns of short text, numbers, dates, and booleans, one line a row, in a
+// 1,280 x 800 window; rerun it for the current numbers.
 
 // The most rows a table may hold and still be read and drawn whole, keeping the browser's
-// own find, select all, copy, and print. Drawing a whole table is linear in its rows: 500
-// rows took 52 to 61 ms from the answer to the first paint, 1,000 rows 98 to 117 ms,
-// 2,000 rows 190 to 236 ms, and 4,000 rows 385 to 462 ms, against 22 to 30 ms for the
-// window at any size. A thousand rows keeps a whole table's first paint near a tenth of
-// a second, under the 0.2 s past which a click stops feeling immediate.
-export const WHOLE_TABLE_MAX_ROWS = 1000;
+// own find, select all, copy, and print. Drawing a whole table is linear in its rows, and
+// layout is most of it: from the last answer to laid out, over two runs of three, 500 rows
+// took 103 to 178 ms, 1,000 rows 216 to 299 ms, and 2,000 rows 421 to 681 ms, where the
+// first window of a windowed table of 50,000 rows took 8 to 32 ms. Five hundred rows keeps a whole table
+// under the 0.2 s past which a click stops feeling immediate.
+export const WHOLE_TABLE_MAX_ROWS = 500;
 
 // Rows the first request asks for: a screen of them several times over, so a windowed
 // table scrolls a while before its next request, in one answer the server encodes in a
@@ -84,21 +85,21 @@ export const WHOLE_TABLE_MAX_ROWS = 1000;
 export const FIRST_PAGE_ROWS = 200;
 
 // Rows each later request asks for: as many as the route gives at once
-// (TABLE_PAGE_ROWS_MAX), so reading a whole table of WHOLE_TABLE_MAX_ROWS takes one more
-// request and a long scroll asks seldom.
+// (TABLE_PAGE_ROWS_MAX), so a table of WHOLE_TABLE_MAX_ROWS is read in two requests and a
+// long scroll asks seldom.
 export const NEXT_PAGE_ROWS = 1000;
 
-// A row's height before the first row is measured, by its line count, so the window's
-// first draw places its spacers near where they end up. One line of the 14 px body text
-// with the cell's padding measured 29 px and two lines 47 px; the view measures its first
-// drawn row and uses that.
-export const ROW_HEIGHT_ESTIMATE_PX = Object.freeze({ 1: 29, 2: 47 });
+// A row's height before the first drawn row is measured, by its line count, so the
+// window's first draw places its spacers near where they end up: one line of the 14 px
+// body text with the cell's padding measured 31.2 px, and two lines 48.2 px. The view
+// measures its first drawn row and uses that.
+export const ROW_HEIGHT_ESTIMATE_PX = Object.freeze({ 1: 31, 2: 48 });
 
-// Rows the window draws past each edge of the view, so a scroll by the wheel or a key
-// shows rows already drawn. A window of the view's rows and 12 past each edge redrew in
-// 2 to 4 ms per step at 12 columns; a wheel step moves about three rows and a Page Down a
-// view's height, so twelve rows keeps a fast wheel from showing a blank band at 60 Hz,
-// where six showed one.
+// Rows the window draws past each edge of the view, so a scroll the compositor moves
+// ahead of the page's own redraw shows rows already drawn: twelve rows is about a third
+// of a view in the default window, more than a wheel step moves. Redrawing a window of the
+// view's rows and twelve past each edge, 41 rows of 12 columns, took 1.5 to 8.1 ms a step
+// while scrolling.
 export const ROWS_OVERSCAN = 12;
 
 // How near the last row held, in rows, the window comes before the next page is read.
@@ -114,6 +115,10 @@ export const CARD_DELAY_MS = 300;
 
 /** The history state key under which the view keeps its scroll and focused row. */
 const PLACE_KEY = "metabrowserTablePlace";
+/** Links made and kept for reuse, a few dozen, the filter values of a drawing's columns. */
+const HREFS_KEPT = 64;
+/** A key no source mints, which a row's record link holds until its key replaces it. */
+const RECORD_SLOT = "__record__";
 
 /**
  * What the view needs from its host: the SDK, and the platform services it uses, so the
@@ -199,6 +204,10 @@ export function mountTable(container, ctx, host = {}) {
   const rowElements = new Map();
   /** @type {Map<string, Promise<unknown>>} */
   const cards = new Map();
+  /** @type {Map<string, string>} */
+  const hrefs = new Map();
+  /** @type {string | null} */
+  let recordTemplate = null;
 
   // ── Markup ───────────────────────────────────────────────────
   const root = el("div", { class: "table-view" });
@@ -273,7 +282,27 @@ export function mountTable(container, ctx, host = {}) {
   /** @param {TableState} next */
   function href(next) {
     const query = stateQuery(next);
-    return sdk.navigation.href(query ? { path, query } : { path });
+    let made = hrefs.get(query);
+    if (made === undefined) {
+      made = sdk.navigation.href(query ? { path, query } : { path });
+      if (hrefs.size >= HREFS_KEPT) {
+        hrefs.clear();
+      }
+      hrefs.set(query, made);
+    }
+    return made;
+  }
+
+  /**
+   * A row's record link: the table's address with the row's key as `record`. Each row's
+   * differs from the next only in its key, so one address is made per drawing and each
+   * row's key put in its place, rather than one per row.
+   *
+   * @param {string} key
+   */
+  function recordHref(key) {
+    recordTemplate ??= href(withRecord(state, RECORD_SLOT));
+    return recordTemplate.replace(RECORD_SLOT, new URLSearchParams({ k: key }).toString().slice(2));
   }
 
   function onPopState() {
@@ -296,6 +325,7 @@ export function mountTable(container, ctx, host = {}) {
   function apply(next) {
     const previous = state;
     state = next;
+    recordTemplate = null;
     if (doc.activeElement !== search) {
       search.value = state.q;
     }
@@ -330,6 +360,7 @@ export function mountTable(container, ctx, host = {}) {
     const reconciled = reconcileState(state, fields);
     if (reconciled.dropped.length) {
       state = reconciled.state;
+      recordTemplate = null;
       notice(
         "warning",
         `This table has no ${reconciled.dropped.map((name) => `“${name}”`).join(", ")} now, so the view no longer uses it.`,
@@ -452,7 +483,7 @@ export function mountTable(container, ctx, host = {}) {
       return;
     }
     table.hidden = false;
-    table.style.setProperty("--table-row-lines", String(rowLines));
+    table.classList.toggle("table-lines-2", rowLines === 2);
     if (windowed) {
       table.setAttribute("role", "grid");
       table.setAttribute(
@@ -720,7 +751,7 @@ export function mountTable(container, ctx, host = {}) {
     if (position !== null) {
       const link = el(
         "a",
-        { class: "table-position", href: href(withRecord(state, row.key)), tabindex: "-1" },
+        { class: "table-position", href: recordHref(row.key), tabindex: "-1" },
         String(position),
       );
       tr.append(el("th", { scope: "row", class: "table-position-cell" }, link));

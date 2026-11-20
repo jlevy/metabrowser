@@ -127,21 +127,31 @@
 .table-view .data-grid[hidden] {
   display: none;
 }
-/* Every row is one height, the lines the table's longest cells need (one or two,
-   --table-row-lines, which the view sets), so the window can place any row by its
-   index. A longer value clamps, with its whole text in the shared tooltip. */
+/* Every row is one height, the lines the table's longest cells need (one or two:
+   table-lines-1 or table-lines-2, which the view sets), so the window can place any row
+   by its index. A longer value is cut with an ellipsis, its whole text in the shared
+   tooltip. A one-line cell is a plain block cut on one line: the line clamp two lines
+   need cost about a third more layout over a thousand rows of twelve columns in Chrome
+   152 (tests/dom/table-view-measure.mjs). */
 .table-cell {
-  display: -webkit-box;
-  height: calc(var(--table-row-lines, 1) * var(--table-line-height));
-  overflow: hidden;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: var(--table-row-lines, 1);
-  line-height: var(--table-line-height);
-}
-.data-grid .data-num .table-cell {
   display: block;
+  height: var(--table-line-height);
+  overflow: hidden;
+  line-height: var(--table-line-height);
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.table-lines-2 .table-cell {
+  display: -webkit-box;
+  height: calc(2 * var(--table-line-height));
+  overflow-wrap: anywhere;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.table-lines-2 .data-num .table-cell {
+  display: block;
+  white-space: nowrap;
 }
 .data-grid .table-cell.data-literal {
   line-height: var(--table-line-height);
@@ -234,6 +244,7 @@
 .table-position-cell {
   width: 1%;
   text-align: right;
+  line-height: var(--table-line-height);
 }
 .data-grid th.table-position-cell {
   font-weight: var(--weight-normal);
