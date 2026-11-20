@@ -197,6 +197,13 @@ def discover_plugins(
     an already-loaded name replaces it, in its place in the order, and the
     replacement is logged.
 
+    A replacement that cannot be used does not take the name away. One whose manifest is
+    invalid never replaces anything, and one whose ``requires`` cannot be met
+    (:func:`resolve_requirements`) is refused and the plugin it would have replaced is
+    kept and resolved again, with the refusal reported. Otherwise a typo in an operator's
+    manifest would remove a built-in and refuse every plugin that requires it, which can
+    leave the directory kind with no plugin: far more than the operator asked for.
+
     **Auto-discovery from the served root or the user's home is not a
     source**: served data must not be able to opt itself into running JS
     in the Metabrowser page. The trusted sources are built-in,
@@ -211,26 +218,40 @@ def discover_plugins(
         candidates.extend(_discover_local_plugins(list(extra_dirs)))
 
     result = DiscoveryResult()
-    seen: dict[str, LoadedPlugin] = {}
+    # Every valid candidate for each name, in discovery order; the last is the one in use.
+    seen: dict[str, list[LoadedPlugin]] = {}
 
     for cand in candidates:
         if isinstance(cand, str):
             result.errors.append(cand)
             LOG.warning("metabrowser plugin discovery error: %s", cand)
             continue
-        prior = seen.get(cand.name)
-        if prior is not None:
+        overridden = seen.setdefault(cand.name, [])
+        if overridden:
             LOG.info(
                 "metabrowser plugin '%s' overridden: %s -> %s",
                 cand.name,
-                prior.source,
+                overridden[-1].source,
                 cand.source,
             )
-        seen[cand.name] = cand
+        overridden.append(cand)
 
     # The server logs each refusal and the CLI modes print it, as for any discovery error.
-    result.plugins, refused = resolve_requirements(list(seen.values()))
-    result.errors.extend(refused)
+    while True:
+        in_use = [stack[-1] for stack in seen.values()]
+        reasons = _requirement_refusals(in_use)
+        restored = [name for name in reasons if len(seen[name]) > 1]
+        if not restored:
+            break
+        # Resolve again with each refused replacement's predecessor back in its place,
+        # since what the replacement's refusal carried to its dependents no longer holds.
+        for name in restored:
+            seen[name].pop()
+            result.errors.append(
+                f"{reasons[name]}; the plugin it overrides ({seen[name][-1].source}) is kept"
+            )
+    result.plugins = [plugin for plugin in in_use if plugin.name not in reasons]
+    result.errors.extend(reasons.values())
     return result
 
 
@@ -245,6 +266,17 @@ def resolve_requirements(plugins: list[LoadedPlugin]) -> tuple[list[LoadedPlugin
     untouched: it is the discovery index that breaks kind priority ties, and a dependent
     loads a provider when it asks for one (``metabrowser.plugins.load`` in
     ``static/plugin-sdk.js``).
+
+    Refusals are listed causes first: a plugin's line comes after the line of the
+    provider whose refusal it carries, so ``metab --doctor`` reads top down.
+    """
+    reasons = _requirement_refusals(plugins)
+    return [plugin for plugin in plugins if plugin.name not in reasons], list(reasons.values())
+
+
+def _requirement_refusals(plugins: list[LoadedPlugin]) -> dict[str, str]:
+    """Each refused plugin's name and the reason, in the order the reasons were found:
+    cycles, then each refusal after the one it follows from (:func:`resolve_requirements`).
     """
     by_name = {plugin.name: plugin for plugin in plugins}
     reasons: dict[str, str] = {}
@@ -273,8 +305,7 @@ def resolve_requirements(plugins: list[LoadedPlugin]) -> tuple[list[LoadedPlugin
                 )
                 changed = True
                 break
-    kept = [plugin for plugin in plugins if plugin.name not in reasons]
-    return kept, [reasons[plugin.name] for plugin in plugins if plugin.name in reasons]
+    return reasons
 
 
 def _requirement_cycle(name: str, by_name: Mapping[str, LoadedPlugin]) -> list[str] | None:

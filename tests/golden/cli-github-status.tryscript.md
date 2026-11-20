@@ -339,8 +339,10 @@ metab --doctor: 12 plugin(s) OK
 plugin requirements:
   agent-log: requires structured
   diff: requires structured
+  event-log: requires agent-log
   folder: requires markdown
   github: requires markdown
+  unknown-jsonl: requires agent-log
 github: not_logged_in: GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   fix: gh auth login --hostname github.com
@@ -355,8 +357,10 @@ metab --doctor: 12 plugin(s) OK
 plugin requirements:
   agent-log: requires structured
   diff: requires structured
+  event-log: requires agent-log
   folder: requires markdown
   github: requires markdown
+  unknown-jsonl: requires agent-log
 github: gh_too_old: GitHub CLI 2.20.2 cannot report the signed-in account, so Metabrowser opens no pull request it has not cached; that needs gh 2.81.0 or later. To update it: https://cli.github.com/.
   gh: [FAKE_GH] (version 2.20.2; needs 2.81.0 or later)
   fix: https://cli.github.com/
@@ -403,8 +407,10 @@ metab --doctor: 12 plugin(s) OK
 plugin requirements:
   agent-log: requires structured
   diff: requires structured
+  event-log: requires agent-log
   folder: requires markdown
   github: requires markdown
+  unknown-jsonl: requires agent-log
 github: gh_missing: Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.
   gh: not found on PATH
   fix: https://cli.github.com/

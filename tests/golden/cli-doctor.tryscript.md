@@ -63,8 +63,10 @@ metab --doctor: 12 plugin(s) OK
 plugin requirements:
   agent-log: requires structured
   diff: requires structured
+  event-log: requires agent-log
   folder: requires markdown
   github: requires markdown
+  unknown-jsonl: requires agent-log
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -286,8 +288,10 @@ metab --doctor: 2 problem(s):
 plugin requirements:
   agent-log: requires structured
   diff: requires structured
+  event-log: requires agent-log
   folder: requires markdown
   github: requires markdown
+  unknown-jsonl: requires agent-log
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -383,8 +387,10 @@ metab --doctor: 1 problem(s):
 plugin requirements:
   agent-log: requires structured
   diff: requires structured
+  event-log: requires agent-log
   folder: requires markdown
   github: requires markdown
+  unknown-jsonl: requires agent-log
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)

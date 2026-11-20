@@ -13,13 +13,14 @@ patterns:
   SANDBOX: '[^\s"]+/tryscript-[A-Za-z0-9]+'
   FAKE_GH: '[^\s"]+/fixtures/github-status/gh'
 before: >-
-  mkdir -p ok/uses-md gaps/needs-absent gaps/loop-a gaps/loop-b gaps/on-loop &&
+  mkdir -p ok/uses-md gaps/needs-absent gaps/loop-a gaps/loop-b gaps/on-loop override/markdown &&
   printf '[plugin]\nname = "uses-md"\nsdk_version = "0.8"\nrequires = ["markdown"]\n' > ok/uses-md/manifest.toml &&
   printf '[plugin]\nname = "needs-absent"\nsdk_version = "0.8"\nrequires = ["absent"]\n' > gaps/needs-absent/manifest.toml &&
   printf '[plugin]\nname = "loop-a"\nsdk_version = "0.8"\nrequires = ["loop-b"]\n' > gaps/loop-a/manifest.toml &&
   printf '[plugin]\nname = "loop-b"\nsdk_version = "0.8"\nrequires = ["markdown", "loop-a"]\n' > gaps/loop-b/manifest.toml &&
   printf '[plugin]\nname = "on-loop"\nsdk_version = "0.8"\nrequires = ["loop-a"]\n' > gaps/on-loop/manifest.toml &&
-  for dir in ok/uses-md gaps/needs-absent gaps/loop-a gaps/loop-b gaps/on-loop; do printf '// No code: this plugin exists for its manifest.\n' > "$dir/index.js"; done
+  printf '[plugin]\nname = "markdown"\nsdk_version = "0.8"\nrequires = ["absent"]\n' > override/markdown/manifest.toml &&
+  for dir in ok/uses-md gaps/needs-absent gaps/loop-a gaps/loop-b gaps/on-loop override/markdown; do printf '// No code: this plugin exists for its manifest.\n' > "$dir/index.js"; done
 ---
 # Golden tests: declared plugin dependencies
 
@@ -36,6 +37,8 @@ The `before:` block writes operator plugins, loaded with `--plugins-dir`:
 - `gaps/needs-absent` requires a plugin nobody provides.
 - `gaps/loop-a` and `gaps/loop-b` require each other, and `loop-b` also requires
   `markdown`; `gaps/on-loop` requires `loop-a`, so it is refused with the cycle.
+- `override/markdown` replaces the built-in `markdown` by name and requires a plugin
+  nobody provides.
 
 ## Test: a plugin whose provider is loaded is kept, and its requirement listed
 
@@ -67,12 +70,14 @@ assets in static_root:
 ```console
 $ metab --plugins-dir ok --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 12 plugin(s) OK
+metab --doctor: 13 plugin(s) OK
 plugin requirements:
   agent-log: requires structured
   diff: requires structured
+  event-log: requires agent-log
   folder: requires markdown
   github: requires markdown
+  unknown-jsonl: requires agent-log
   uses-md: requires markdown
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
@@ -111,8 +116,32 @@ metab --doctor: 4 problem(s):
 plugin requirements:
   agent-log: requires structured
   diff: requires structured
+  event-log: requires agent-log
   folder: requires markdown
   github: requires markdown
+  unknown-jsonl: requires agent-log
+github: ok: GitHub CLI is signed in to github.com as octo-reader.
+...
+? 1
+```
+
+## Test: a refused override keeps the built-in it would replace
+
+A replacement whose requirements cannot be met is refused like one whose manifest is
+invalid: the built-in `markdown` stays, so `folder` and `github`, which require it, load
+too.
+
+```console
+$ metab --plugins-dir override --doctor 2>&1 >/dev/null
+metab --doctor: 1 problem(s):
+  • plugin 'markdown' is refused: it requires 'absent', which was not discovered; the plugin it overrides (builtin) is kept
+plugin requirements:
+  agent-log: requires structured
+  diff: requires structured
+  event-log: requires agent-log
+  folder: requires markdown
+  github: requires markdown
+  unknown-jsonl: requires agent-log
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
 ...
 ? 1

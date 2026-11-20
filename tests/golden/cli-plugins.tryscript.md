@@ -32,7 +32,7 @@ NAME           SOURCE   KINDS             REQUIRES    VIEWS  HOOKS
 agent-log      builtin  agent-log         structured  3      charts
 binary         builtin  -                 -           1      chunk
 diff           builtin  diff              structured  1      document,children,comparison
-event-log      builtin  event-log         -           5      timeline,slowest,kinds,errors
+event-log      builtin  event-log         agent-log   5      timeline,slowest,kinds,errors
 folder         builtin  -                 markdown    2      -
 github         builtin  -                 markdown    2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-size,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
 html           builtin  html              -           2      -
@@ -40,7 +40,7 @@ image          builtin  -                 -           1      -
 markdown       builtin  markdown,mermaid  -           4      -
 structured     builtin  structured        -           2      parsed
 text           builtin  -                 -           1      -
-unknown-jsonl  builtin  -                 -           2      -
+unknown-jsonl  builtin  -                 agent-log   2      -
 ? 0
 ```
 
@@ -122,7 +122,9 @@ $ metab --plugins --json
       "kinds": [
         "event-log"
       ],
-      "requires": [],
+      "requires": [
+        "agent-log"
+      ],
       "views": [
         "timeline",
         "latency",
@@ -294,7 +296,9 @@ $ metab --plugins --json
       "source": "builtin",
       "static_root": "[BUILTIN]/unknown_jsonl",
       "kinds": [],
-      "requires": [],
+      "requires": [
+        "agent-log"
+      ],
       "views": [
         "log",
         "raw"
@@ -498,8 +502,10 @@ metab --doctor: 12 plugin(s) OK
 plugin requirements:
   agent-log: requires structured
   diff: requires structured
+  event-log: requires agent-log
   folder: requires markdown
   github: requires markdown
+  unknown-jsonl: requires agent-log
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)

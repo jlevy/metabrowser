@@ -473,15 +473,33 @@ stylesheets, extra scripts, and `index.js` have run.
 It loads the provider on demand, the first time anything asks for it or selects one of
 its kinds, and once: every caller shares that load, so ask for it where you need it,
 usually in `render` or a handler, and the cost lands only on pages that use it.
-It rejects for a name that is not loaded, and when the provider’s module failed.
+It rejects for a name that is not loaded, and when the provider’s stylesheets, scripts,
+or module failed; that failure is the answer to every later call until the page is
+reloaded, so a view shows its own error rather than asking again.
+The namespace is what `import()` answers, so a provider must not export a function named
+`then`: the promise would treat the namespace as a thenable and call it.
 
 Discovery refuses a plugin whose `requires` names a plugin that was not discovered or
 was itself refused, and every plugin on a cycle of requirements, since two modules that
 each wait for the other’s exports never finish.
-`metab --doctor` lists each refusal as a problem and reports the graph it kept, and
-`metab --plugins` and `--plugin NAME` show each plugin’s `requires`. Declare every
-provider you load and load every provider you declare:
-`tests/test_plugin_requirements.py` holds the built-in plugins to that.
+An operator plugin that replaces another by name and is refused for its requirements
+does not take the name away: like a replacement whose manifest is invalid, it is
+reported and the plugin it would have replaced is kept, so a typo in one manifest cannot
+refuse the built-ins that require the plugin it shadows.
+`metab --doctor` lists each refusal as a problem, causes before the refusals that follow
+from them, and reports the graph it kept, and `metab --plugins` and `--plugin NAME` show
+each plugin’s `requires`.
+
+Declare every provider you load and load every provider you declare.
+`tests/test_plugin_requirements.py` holds the built-in plugins to that; nothing checks
+it for another plugin, because `mb.plugins.load` cannot tell which plugin called it, so
+an undeclared load works until the provider is missing and then fails at render instead
+of at discovery. `ensureKindAssets(kind)` and `getRegisteredView(kind, view)` reach a
+different thing: a kind’s view, from whichever plugin serves that kind, as the
+pull-request page draws the `diff` kind.
+That needs no declaration, and discovery and the doctor do not see it.
+To use one named plugin’s renderers, load its exports, as the generic JSONL and
+event-log views use agent-log’s `renderLog` and `renderRaw`.
 
 ### Rendering and Formatting
 

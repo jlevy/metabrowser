@@ -97,13 +97,14 @@ def test_a_missing_provider_refuses_its_dependents_directly_or_not() -> None:
 
 
 def test_a_refusal_reaches_a_dependent_discovered_before_its_provider() -> None:
+    """The refusals are listed causes first, whatever the discovery order."""
     plugins = [_plugin("c", "b"), _plugin("b", "a"), _plugin("a", "absent")]
     kept, refused = resolve_requirements(plugins)
     assert kept == []
     assert refused == [
-        "plugin 'c' is refused: it requires 'b', which was refused",
-        "plugin 'b' is refused: it requires 'a', which was refused",
         "plugin 'a' is refused: it requires 'absent', which was not discovered",
+        "plugin 'b' is refused: it requires 'a', which was refused",
+        "plugin 'c' is refused: it requires 'b', which was refused",
     ]
 
 
@@ -139,15 +140,38 @@ def test_discovery_refuses_an_operator_plugin_whose_requirement_is_missing(
     ]
 
 
-def test_an_override_without_a_providers_exports_refuses_its_dependents(tmp_path: Path) -> None:
+def test_a_refused_override_keeps_the_plugin_it_would_replace(tmp_path: Path) -> None:
     """An operator plugin that replaces a provider by name and requires something
-    missing takes the provider away, so the built-ins that require it are refused."""
+    missing is refused like an invalid one: the built-in it shadowed stays, and so do the
+    built-ins that require it."""
+    builtin = {plugin.name: plugin for plugin in discover_plugins().plugins}
     _write_plugin(tmp_path, "markdown", '["absent"]')
     result = discover_plugins(extra_dirs=[tmp_path])
     assert result.errors == [
-        "plugin 'folder' is refused: it requires 'markdown', which was refused",
-        "plugin 'github' is refused: it requires 'markdown', which was refused",
-        "plugin 'markdown' is refused: it requires 'absent', which was not discovered",
+        "plugin 'markdown' is refused: it requires 'absent', which was not discovered; "
+        "the plugin it overrides (builtin) is kept"
+    ]
+    assert [plugin.name for plugin in result.plugins] == list(builtin)
+    assert {plugin.name: plugin.source for plugin in result.plugins}["markdown"] == "builtin"
+
+
+def test_a_refused_override_on_a_cycle_restores_the_plugin_it_would_replace(
+    tmp_path: Path,
+) -> None:
+    """Restoring a provider resolves again, so a dependent the override's refusal reached
+    loads, and a refusal that still holds is reported once."""
+    _write_plugin(tmp_path, "markdown", '["loop"]')
+    _write_plugin(tmp_path, "loop", '["markdown"]')
+    _write_plugin(tmp_path, "needs-loop", '["loop"]')
+    result = discover_plugins(extra_dirs=[tmp_path])
+    names = {plugin.name: plugin.source for plugin in result.plugins}
+    assert names["markdown"] == "builtin"
+    assert "folder" in names
+    assert "loop" in names
+    assert "needs-loop" in names
+    assert result.errors == [
+        "plugin 'markdown' is refused: its requirements form a cycle, "
+        "markdown -> loop -> markdown; the plugin it overrides (builtin) is kept"
     ]
 
 
@@ -179,7 +203,7 @@ def test_every_builtin_loads_exactly_the_providers_it_declares() -> None:
         "agent_log": {"structured"},
         "binary": set(),
         "diff": {"structured"},
-        "event_log": set(),
+        "event_log": {"agent-log"},
         "folder": {"markdown"},
         "github": {"markdown"},
         "html": set(),
@@ -187,7 +211,7 @@ def test_every_builtin_loads_exactly_the_providers_it_declares() -> None:
         "markdown": set(),
         "structured": set(),
         "text": set(),
-        "unknown_jsonl": set(),
+        "unknown_jsonl": {"agent-log"},
     }
 
 

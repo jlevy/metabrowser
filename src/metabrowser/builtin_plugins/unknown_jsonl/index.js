@@ -1,4 +1,5 @@
-// Generic JSONL uses the agent-log renderers, loaded on demand through the SDK.
+// Generic JSONL draws with the agent-log plugin's renderers: the provider its manifest
+// requires, whose exports it loads on demand ("Declared Dependencies" in docs/plugins.md).
 (() => {
   const mb = window.metabrowser;
   if (!mb) {
@@ -8,30 +9,32 @@
 
   /** @type {WeakMap<HTMLElement, object>} */
   const mounts = new WeakMap();
+  /** @type {{disposeLog: (container?: HTMLElement) => void} | null} */
+  let agentLog = null;
 
-  /** @param {"log" | "raw"} viewId @returns {Parameters<typeof mb.registerView>[2]} */
-  function sharedView(viewId) {
+  /** @param {"renderLog" | "renderRaw"} renderer @returns {Parameters<typeof mb.registerView>[2]} */
+  function sharedView(renderer) {
     return {
       async render(container, ctx) {
         const mount = {};
         mounts.set(container, mount);
-        await mb.ensureKindAssets("agent-log");
+        const provider = await mb.plugins.load("agent-log");
+        agentLog = provider;
         if (mounts.get(container) !== mount) {
           return;
         }
-        const view = mb.getRegisteredView("agent-log", viewId);
-        if (!view) {
-          throw new Error(`The JSONL ${viewId} renderer is unavailable.`);
-        }
-        return view.render(container, ctx);
+        return provider[renderer](container, ctx);
       },
       dispose(container) {
         mounts.delete(container);
-        mb.getRegisteredView("agent-log", viewId)?.dispose?.(container);
+        // Raw JSON holds nothing to release; the log view's filters and listeners do.
+        if (renderer === "renderLog") {
+          agentLog?.disposeLog(container);
+        }
       },
     };
   }
 
-  mb.registerView("unknown-jsonl", "log", sharedView("log"));
-  mb.registerView("unknown-jsonl", "raw", sharedView("raw"));
+  mb.registerView("unknown-jsonl", "log", sharedView("renderLog"));
+  mb.registerView("unknown-jsonl", "raw", sharedView("renderRaw"));
 })();

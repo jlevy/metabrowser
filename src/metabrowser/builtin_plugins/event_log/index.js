@@ -6,8 +6,9 @@
 //   ("event-log", "latency")  — the slowest spans, and how all of them were distributed in time.
 //   ("event-log", "kinds")    — each kind and name: how many, how they ended, how long they took.
 //   ("event-log", "errors")   — failures by cause, the page's reports apart, unfinished work.
-// The fifth, Raw JSON, is the JSONL renderer's, loaded on demand through the SDK as the
-// generic JSONL view loads it.
+// The fifth, Raw JSON, is the agent-log plugin's JSONL renderer: the provider the manifest
+// requires, whose exports are loaded on demand as the generic JSONL view loads them
+// ("Declared Dependencies" in docs/plugins.md).
 
 import { disposeEventLogView, mountEventLogView } from "./event-log-views.js";
 
@@ -29,22 +30,18 @@ for (const view of VIEWS) {
 /** @type {WeakMap<HTMLElement, object>} */
 const rawMounts = new WeakMap();
 
+// Raw JSON holds nothing to release, so its dispose only forgets a mount still loading.
 mb.registerView("event-log", "raw", {
   async render(container, ctx) {
     const mount = {};
     rawMounts.set(container, mount);
-    await mb.ensureKindAssets("agent-log");
+    const agentLog = await mb.plugins.load("agent-log");
     if (rawMounts.get(container) !== mount) {
       return;
     }
-    const view = mb.getRegisteredView("agent-log", "raw");
-    if (!view) {
-      throw new Error("The JSONL raw renderer is unavailable.");
-    }
-    return view.render(container, ctx);
+    return agentLog.renderRaw(container, ctx);
   },
   dispose(container) {
     rawMounts.delete(container);
-    mb.getRegisteredView("agent-log", "raw")?.dispose?.(container);
   },
 });
