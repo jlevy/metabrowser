@@ -432,6 +432,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "pull_requests": null,
   "refs": [
     {
       "name": "topic",
@@ -472,6 +473,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "pull_requests": null,
   "refs": [
     {
       "name": "v1",
@@ -505,6 +507,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "pull_requests": null,
   "refs": [
     {
       "name": "feature",

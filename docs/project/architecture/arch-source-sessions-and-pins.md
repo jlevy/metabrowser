@@ -218,6 +218,20 @@ which the macOS app sends for every such link
 repository itself is served at the revision the link names before the window goes to its
 address, and a pull request or a commit, each a page of its own, switches nothing.
 
+`GET /api/source/refs` lists what a switch chooses among, and a branch that is the head
+of a pull request lists it on its row: `pulls`, open first and then newest first, from
+what the repository’s provider has cached (`ref_pulls_for` in `cache/providers.py`), and
+a filter that matches a pull request’s number or title lists its branch too.
+The route never fetches and never waits for the provider’s service.
+Its envelope says, in `pull_requests`, whether the provider’s cache holds the pull
+requests yet and whether a job is filling it, so the page asks again while one is; the
+answer is kept under the cache’s revision as well as the refs’ state, so a page that
+asks on every keystroke runs no Git and reads no row.
+A tag list, and a subject no provider has pull requests for, say `null`. Only a branch
+of the repository itself has a pull request: a fork’s branch of the same name is another
+branch, and a pull request’s `refs/pull/<n>/head` is not a row, being its branch’s pull
+request.
+
 A switch, or a restarted server serving another commit, can leave a tab showing the old
 pin. Reading the new pin’s files into a page labeled with the old one would mix two
 revisions, so every data request from a pin’s page names its commit:
@@ -452,9 +466,9 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   one of its own at the foot of the pane, where every tab shows it: the Pulls tab’s
   requests and a comparison’s are refused as the Files tab’s are, and the selector is in
   the Files toolbar, which the other tabs hide.
-- **Not yet.** A revision of a checkout has no Pulls tab; a branch that moves while it
-  is shown is not followed; and a revision is read in place, never through a store that
-  borrows the checkout’s objects.
+- **Not yet.** A revision of a checkout has no Pulls tab, and its branch list shows no
+  pull requests; a branch that moves while it is shown is not followed; and a revision
+  is read in place, never through a store that borrows the checkout’s objects.
 
 ## How a Mirror’s Page Names Itself
 
