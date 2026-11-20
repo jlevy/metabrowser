@@ -3,14 +3,18 @@ type: is
 id: is-01m7wbe5rqnhsgj5d2d46razrk
 title: "test_golden_pin_age_groups failed once on CI (Python 3.12): all 7 files in older, as if the patched clock was not in effect"
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 8
+version: 9
 labels: []
 dependencies: []
 parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 created_at: 2026-11-20T11:28:30.998Z
-updated_at: 2026-11-20T17:34:40.329Z
+updated_at: 2026-11-20T17:55:33.466Z
+closed_at: 2026-11-20T17:55:33.458Z
+close_reason: "Fixed in #664: a test re-imported content_routes and left two module objects; forget_module helper plus a conftest guard"
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes
