@@ -5,11 +5,12 @@ title: "Parity registry: a tier for persisted state that only metab and a golden
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
+spec_path: docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md
 labels: []
 dependencies: []
-parent_id: is-01m7ksbn803jhw15qjc6beg7qf
+parent_id: is-01m26hjjvhpcf49p2x1c3390kk
 created_at: 2026-11-18T07:17:56.049Z
-updated_at: 2026-11-18T07:17:56.049Z
+updated_at: 2026-11-20T17:28:53.675Z
 ---
 Review A19 on #546 (mb-40k4). app.open-recent-menu is paint-exempt with cli/recent_cli.py as its owner because devtools/check_parity.py accepts only paths under src/metabrowser, so the row cannot name the Swift that draws the menu, and its paint check verifies only the tests/ paths. #540 makes the same workaround for app.present-delivery. Add a tier for persisted state with a metab mode and a golden, which check_parity.py holds to that golden, and move both rows to it. Deferred from #546: it changes what check_parity.py accepts, which is wider than that pull request.

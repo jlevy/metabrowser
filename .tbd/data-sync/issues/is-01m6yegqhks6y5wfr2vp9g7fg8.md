@@ -5,14 +5,15 @@ title: "Review PR #338 research corrections and standing-policy readiness"
 kind: task
 status: open
 priority: 2
-version: 9
+version: 10
 delegate: codex-beads_reconcile_review
 labels: []
 dependencies: []
+parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
 hold: null
 hold_until: null
 created_at: 2026-11-08T20:45:07.506Z
-updated_at: 2026-11-14T18:46:59.701Z
+updated_at: 2026-11-20T17:28:38.261Z
 started_at: 2026-11-08T20:46:05.791Z
 ---
 Review and qualify https://github.com/jlevy/metabrowser/pull/338 independently from release QA/runtime work. Pinned head 48fec15957eedea77dfdd51f76d91972d1cca775 on main e1cfca1a66277aa86887f031f9b28b250d4a4928 changes five research/index/agent-policy/cache files, no product code.

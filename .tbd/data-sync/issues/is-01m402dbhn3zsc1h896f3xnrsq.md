@@ -5,7 +5,7 @@ title: "v0.12 follow-ups: deferred QA, dependency refresh, and defects found in 
 kind: epic
 status: open
 priority: 1
-version: 51
+version: 53
 labels: []
 dependencies: []
 child_order_hints:
@@ -57,8 +57,10 @@ child_order_hints:
   - is-01m3zcr4trbfndm6fp8jr10q8d
   - is-01m3wjge2pn6nf3cvcvpbbdx2z
   - is-01m6f3nm5xr0xc912vqyky74hz
+  - is-01m7h41x803666xbrm57enw9ac
+  - is-01m7jfghpp62m3n15t0dqv8kmj
 created_at: 2026-10-03T05:04:57.396Z
-updated_at: 2026-11-20T17:16:00.423Z
+updated_at: 2026-11-20T17:29:07.892Z
 ---
 0.12.0 was tagged at main 87b8ec81 and published on GitHub and PyPI on 2026-11-09 (mb-4bd2, closed). This epic holds what the v0.12 stabilization left open after the release: the deferred full QA runbook (mb-m20f), the post-release dependency refresh (mb-1jq3), and small defects that the reviews and browser checks of stack 278 (PRs #272-#277) and PR #279 found on main. Fixes ship in 0.12.x or later. A green merge or CI run alone does not establish QA acceptance: keep explicit pass/fail/untested results, and the human-only checks in mb-etqi.
 
