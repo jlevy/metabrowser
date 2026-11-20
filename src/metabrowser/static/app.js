@@ -2150,7 +2150,7 @@ function reconcileTreeContainer(container, nextNodes, work) {
       "beforeend",
       deferredTreePageHtml(tail, {
         level: treeLevelForContainer(container),
-        rowPositionfset: TREE_PAGE_SIZE,
+        positionOffset: TREE_PAGE_SIZE,
         setSize: nextNodes.length,
       }),
     );
@@ -2435,7 +2435,7 @@ function deferredTreePageHtml(nodes, options) {
     path: "",
     pageId: pageId,
     level: options.level,
-    position: options.rowPositionfset + 1,
+    position: options.positionOffset + 1,
     setSize: options.setSize,
     labelId: pageLabelId,
   });
@@ -2491,7 +2491,7 @@ function renderTreeNodes(nodes, isRoot, options) {
   }
   var defaultExpandedPaths = options.defaultExpandedPaths || new Set();
   var level = options.level || 1;
-  var rowPositionfset = options.rowPositionfset || 0;
+  var positionOffset = options.positionOffset || 0;
   var setSize = options.setSize || nodes.length;
   // Array-of-strings + join() is O(n); naive `+=` against a growing
   // string was hot on big trees because every concat copied the whole
@@ -2504,7 +2504,7 @@ function renderTreeNodes(nodes, isRoot, options) {
   var hidden = nodes.length - visibleCount;
   for (var ni = 0; ni < visibleCount; ni++) {
     var node = nodes[ni];
-    var position = rowPositionfset + ni + 1;
+    var position = positionOffset + ni + 1;
     var mutedCls = "";
     if (node.gitignored) {
       mutedCls += " tree-item-gitignored";
@@ -2556,7 +2556,7 @@ function renderTreeNodes(nodes, isRoot, options) {
             renderTreeNodes(node.children, false, {
               ...options,
               level: level + 1,
-              rowPositionfset: 0,
+              positionOffset: 0,
               setSize: node.children.length,
             }),
           );
@@ -2686,7 +2686,7 @@ function renderTreeNodes(nodes, isRoot, options) {
       deferredTreePageHtml(nodes.slice(visibleCount), {
         ...options,
         level: level,
-        rowPositionfset: rowPositionfset + visibleCount,
+        positionOffset: positionOffset + visibleCount,
         setSize: setSize,
       }),
     );
@@ -2954,7 +2954,7 @@ async function loadSubtree(path, childrenEl, options) {
           renderTreeNodes(cachedTree, false, {
             ...options,
             level: treeLevelForContainer(childrenEl),
-            rowPositionfset: 0,
+            positionOffset: 0,
             setSize: cachedTree.length,
           }),
         );
@@ -2992,7 +2992,7 @@ async function loadSubtree(path, childrenEl, options) {
               renderTreeNodes(tree, false, {
                 ...options,
                 level: treeLevelForContainer(childrenEl),
-                rowPositionfset: 0,
+                positionOffset: 0,
                 setSize: tree.length,
               }),
             )
@@ -9669,7 +9669,7 @@ function mountTreePageHolding(scope, path) {
  */
 function mountTreePageAt(sentinel, page, start) {
   var nodes = page.nodes;
-  var offset = Number(page.options.rowPositionfset) || 0;
+  var offset = Number(page.options.positionOffset) || 0;
   treeKeyboard?.prepareForMutation();
   page.nodes = nodes.slice(0, start);
   var temporary = document.createElement("div");
@@ -9678,11 +9678,11 @@ function mountTreePageAt(sentinel, page, start) {
     () =>
       renderTreeNodes(nodes.slice(start, start + TREE_PAGE_SIZE), false, {
         ...page.options,
-        rowPositionfset: offset + start,
+        positionOffset: offset + start,
       }) +
       deferredTreePageHtml(nodes.slice(start + TREE_PAGE_SIZE), {
         ...page.options,
-        rowPositionfset: offset + start + TREE_PAGE_SIZE,
+        positionOffset: offset + start + TREE_PAGE_SIZE,
       }),
   );
   _labelDeferredTreePage(sentinel, page);

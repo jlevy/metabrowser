@@ -530,7 +530,7 @@ async function filesStory() {
     // The renderer, paging as production's renderTreeNodes does: a folder's first
     // TREE_PAGE_SIZE rows, then a "more" row that holds back the rest.
     renderTreeNodes(nodes, _isRoot, options) {
-      const offset = options.rowPositionfset || 0;
+      const offset = options.positionOffset || 0;
       return (
         nodes
           .slice(0, TREE_PAGE_SIZE)
@@ -538,7 +538,7 @@ async function filesStory() {
           .join("") +
         context.deferredTreePageHtml(nodes.slice(TREE_PAGE_SIZE), {
           ...options,
-          rowPositionfset: offset + TREE_PAGE_SIZE,
+          positionOffset: offset + TREE_PAGE_SIZE,
         })
       );
     },
