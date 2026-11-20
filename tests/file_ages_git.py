@@ -23,6 +23,7 @@ import pytest
 from metabrowser.git import file_ages
 from metabrowser.git.file_ages import FILE_AGES_GIT_MINIMUM, file_ages_availability
 from metabrowser.git.file_ages_service import reset_file_ages_service
+from metabrowser.git.process import detect_git_version
 from tests.admitted_git import REQUIRE_ADMITTED_GIT_ENV, required_admitted_git
 from tests.required_tools import require_git
 
@@ -55,7 +56,7 @@ def require_file_ages_git() -> tuple[int, int, int]:
     availability = file_ages_availability()
     expected = required_admitted_git()
     if availability.available:
-        version, _line = file_ages.detect_git_version()
+        version, _line = detect_git_version()
         assert version is not None
         return version
     if expected is not None:
@@ -83,14 +84,19 @@ def file_ages_git() -> Generator[tuple[int, int, int]]:
 
 
 @pytest.fixture(autouse=True)
-def fixed_file_ages_git(
-    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
-) -> Generator[None]:
+def fixed_file_ages_git(request: pytest.FixtureRequest) -> Generator[None]:
     """Every test starts with no kept file ages and, unless it asks for the real Git, with
-    the Git of ``PRETEND_GIT_LINE``."""
+    the Git of ``PRETEND_GIT_LINE``.
+
+    It patches with a ``MonkeyPatch`` of its own and not the test's ``monkeypatch``: the
+    fixture would otherwise be made before every module's autouse fixtures and undone after
+    them, and a test's own patch of something such a fixture clears at teardown would still
+    be in place when it does.
+    """
 
     reset_file_ages_service()
-    if "file_ages_git" not in request.fixturenames:
-        pretend_old_git(monkeypatch)
-    yield
+    with pytest.MonkeyPatch.context() as patch:
+        if "file_ages_git" not in request.fixturenames:
+            pretend_old_git(patch)
+        yield
     reset_file_ages_service()

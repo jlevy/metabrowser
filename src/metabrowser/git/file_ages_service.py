@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Literal
 
+from metabrowser.commit_ids import short_commit
 from metabrowser.git.file_ages import (
     AgeLimits,
     FileAgesError,
@@ -156,7 +157,8 @@ class FileAgesService:
         self, key: _Key, target: RepositoryStoreTarget, commit: str, names: NamesSource
     ) -> None:
         task = asyncio.create_task(
-            self._read(key, target, commit, names), name=f"metabrowser-file-ages-{commit[:12]}"
+            self._read(key, target, commit, names),
+            name=f"metabrowser-file-ages-{short_commit(commit)}",
         )
         self._jobs[key] = task
         task.add_done_callback(lambda _done: self._jobs.pop(key, None))
