@@ -15,7 +15,12 @@ every opcode:
 - the references of a page of 1,000 rows resolved in one statement by the referenced
   table's key, against ``REFS_PER_PAGE``;
 - a page of 1,000 rows of 12 texts read whole at ``PAGE_INLINE_BYTES``, and the same page
-  previewed through ``blobopen`` when every text is far longer.
+  previewed through ``blobopen`` when every text is far longer;
+- a filtered scan's window statement per row, with one, five, and eleven terms, against
+  ``SCAN_WINDOW_OPCODES``, and a search for the last of 1,000,000 rows walked window by
+  window;
+- the catalog and one description of a database of 300 tables, one with 20 foreign keys,
+  which the description cache (``DESCRIPTION_CACHE_ENTRIES``) holds a generation.
 
 Run it with ``uv run python -m devtools.bench_sqlite_tables``. It writes only to a
 temporary folder it removes.
@@ -168,6 +173,9 @@ def main() -> None:
             f"1,000 rows of 12 texts of {reader.PAGE_INLINE_BYTES:,} bytes, read whole",
             _measure(inline, lambda c: reader._page(c, whole, deadline)),  # pyright: ignore[reportPrivateUsage]
         )
+        _walk_search(big)
+        _window_costs(root)
+        _schema_costs(root)
         long = root / "long.db"
         names = _texts(long, 1000, 128 * 1024)
         previewed = _page_spec(names, limit=1000)
@@ -175,6 +183,72 @@ def main() -> None:
             "1,000 rows of 12 texts of 128 KiB, previewed through blobopen",
             _measure(long, lambda c: reader._page(c, previewed, deadline)),  # pyright: ignore[reportPrivateUsage]
         )
+
+
+def _window_costs(root: Path) -> None:
+    """The statement that reads a window's matches, per row, by the terms it tests: run
+    directly, since a page's own budget replaces the progress handler that counts."""
+    path = root / "window.db"
+    _shape(path, 300_000)
+    rows = 100_000
+    text = ["a", "b", "c", "h", "i"]
+    for fields in (["a"], text, [*text, "j", "d", "e", "f", "g", "k"]):
+        spec = _page_spec(["id"], search={"fields": fields, "needle": "zzzz"})
+        where, params, _skips = reader._predicates(spec)  # pyright: ignore[reportPrivateUsage]
+        sql = (
+            f"SELECT id FROM t WHERE id > ? AND id <= ? AND {' AND '.join(where)} "
+            "ORDER BY id LIMIT 100"
+        )
+        millis, steps = _measure(
+            path, lambda c, q=sql, a=params: c.execute(q, [0, rows, *a]).fetchall()
+        )
+        print(
+            f"{f'a {rows:,}-row window, {len(fields)} search terms':<62} {millis:9.1f} ms "
+            f"{steps / rows:>9.1f} opcodes a row"
+        )
+
+
+def _walk_search(path: Path) -> None:
+    """A search for the last row of *path*'s 1,000,000, walked window by window as the
+    table view continues it."""
+    spec = _page_spec(["id"], search={"fields": ["c"], "needle": "c1000000"}, limit=100)
+    spec["window"] = reader.scan_window(1)
+    connection = _connect(path)
+    started = time.perf_counter()
+    pages = 0
+    while True:
+        pages += 1
+        page = reader._page(connection, spec, time.monotonic() + 3600)  # pyright: ignore[reportPrivateUsage]
+        if page["rows"] or page["boundary"] is None:
+            break
+        boundary = page["boundary"]
+        spec["after"] = {"region": "k", "value": None, "key": boundary["key"]}
+    connection.close()
+    millis = (time.perf_counter() - started) * 1000
+    print(
+        f"{'a search for the last of 1,000,000 rows, window by window':<62} {millis:9.1f} ms "
+        f"{pages:>6} pages of {spec['window']:,} rows"
+    )
+
+
+def _schema_costs(root: Path) -> None:
+    path = root / "tables.db"
+    connection = sqlite3.connect(path)
+    for index in range(300):
+        connection.execute(f"CREATE TABLE t{index} (id INTEGER PRIMARY KEY, v TEXT)")
+    references = ", ".join(f"r{index} REFERENCES t{index}(id)" for index in range(20))
+    connection.execute(f"CREATE TABLE hub (id INTEGER PRIMARY KEY, {references})")
+    connection.commit()
+    connection.close()
+    deadline = time.monotonic() + 3600
+    _report(
+        "the catalog of 300 tables, with every table's key and foreign keys",
+        _measure(path, lambda c: reader.catalog(c, deadline)),
+    )
+    _report(
+        "one description, of the table with 20 foreign keys",
+        _measure(path, lambda c: reader.describe(c, "hub", deadline)),
+    )
 
 
 if __name__ == "__main__":

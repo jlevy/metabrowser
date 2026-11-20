@@ -54,6 +54,7 @@ from metabrowser.plugin_api import (
     TABLE_CARD_MAX_FIELDS,
     TABLE_CELL_PREVIEW_CHARS,
     TABLE_RECORD_VALUE_BYTES,
+    TABLE_TOKEN_MAX_CHARS,
     BackrefCount,
     Budget,
     Cell,
@@ -262,15 +263,45 @@ class SqliteSource:
             raise TableNotFoundError(f"no table {table!r} in this database", table=table)
         description = cast(dict[str, Any], found)
         if not description["readable"]:
-            raise SourceUnreadableError(
-                f"{description['name']!r} {_UNREAD[str(description['unread'])]}.",
-                table=table,
-            )
-        return description
+            unread = str(description["unread"])
+            words = _UNREAD.get(unread)
+            if words is None:
+                collations = sorted(set(cast(dict[str, str], description["uncollated"]).values()))
+                words = (
+                    f"is keyed by the collation {', '.join(map(repr, collations))}, which the "
+                    "application that wrote this database defines and this reader does not "
+                    "have, so SQLite reads none of its rows"
+                )
+            raise SourceUnreadableError(f"{description['name']!r} {words}.", table=table)
+        return {**description, "referenced_by": self._incoming(description, deadline)}
 
-    def _estimate(self, name: str, deadline: float) -> int | None:
+    def _incoming(self, description: dict[str, Any], deadline: float) -> list[dict[str, Any]]:
+        """The foreign keys of other tables that name this one, from the catalog."""
+        if description["type"] != "table":
+            return []
+        return [
+            {"table": item["name"], "from": fk["from"], "to": fk["to"]}
+            for item in self._catalog(deadline)["objects"]
+            for fk in item["foreign_keys"]
+            if fk["table"] == description["name"]
+        ]
+
+    def _keys(self, deadline: float) -> dict[str, list[str]]:
+        """Each table's key, from the catalog."""
+        return {
+            str(item["name"]): list(item["key"])
+            for item in self._catalog(deadline)["objects"]
+            if item["key"]
+        }
+
+    def _estimate(self, description: dict[str, Any], deadline: float) -> int | None:
+        """The object's rows: the exact count `describe` read where it read them all,
+        else the catalog's estimate."""
+        upto = description["rows_upto"]
+        if upto is not None and upto <= reader.SORT_UNINDEXED_MAX_ROWS:
+            return int(upto)
         for item in self._catalog(deadline)["objects"]:
-            if item["name"] == name:
+            if item["name"] == description["name"]:
                 return cast(int | None, item["estimate"])
         return None
 
@@ -302,6 +333,7 @@ class SqliteSource:
         deadline = budget.deadline
         description = self._describe(table, deadline)
         schema = _schema(description, table)
+        _check_keyless(description, query)
         generation = self.generation()
         columns = page_columns(query, schema)
         limit = page_row_limit(query.limit, max(1, len(columns)))
@@ -314,8 +346,13 @@ class SqliteSource:
                 "limit": limit,
                 "inline": PAGE_INLINE_BYTES,
                 "preview": {"text": _PAGE_TEXT_BYTES, "blob": _PAGE_BLOB_BYTES},
-                "count": True,
+                # The count is the query's, so its first page reads it and the rest,
+                # which continue that page, do not.
+                "count": query.after is None,
                 "cap": COUNT_CAP,
+                # A key or sort value longer than a token is never named by its value.
+                "key_bytes": TABLE_TOKEN_MAX_CHARS,
+                "rowid_alias": description["rowid_alias"],
             }
         )
         searched: tuple[str, ...] | None = None
@@ -334,6 +371,9 @@ class SqliteSource:
             spec["ref"] = self._ref_filter(
                 description, schema, query.ref.table, query.ref.key, deadline
             )
+        filtered = bool(spec["filters"] or query.q is not None or query.ref is not None)
+        spec["window"] = reader.scan_window(_terms(spec))
+        spec["answer_bytes"] = reader.ANSWER_BYTES
         served = 0
         if query.after is not None:
             positional = parse_positional_cursor(query.after)
@@ -366,7 +406,8 @@ class SqliteSource:
             )
         found = cast(list[dict[str, Any]], answer["rows"])
         counted = cast(dict[str, Any] | None, answer.get("count"))
-        estimate = self._estimate(str(description["name"]), deadline)
+        # The object's estimate is of its rows, so a filtered page never sends it.
+        estimate = None if filtered else self._estimate(description, deadline)
         count = counted["count"] if counted is not None else None
         count_complete = bool(counted and counted["complete"])
         skipped = int(counted["skipped"]) if counted is not None else 0
@@ -402,7 +443,12 @@ class SqliteSource:
             for index, row in enumerate(found)
         )
         next_after: str | None = None
-        if found and (answer["more"] or stopped):
+        boundary = cast(dict[str, Any] | None, answer.get("boundary"))
+        if boundary is not None:
+            # The scan's window ended before the page filled: it continues past the
+            # window's last row, whether or not any row matched.
+            next_after = _next_cursor(query, boundary, served + len(found), generation)
+        elif found and (answer["more"] or stopped):
             next_after = _next_cursor(query, found[-1], served + len(found), generation)
         return TablePage(
             rows=rows,
@@ -415,6 +461,7 @@ class SqliteSource:
             count_complete=count_complete,
             estimate=estimate,
             skipped=skipped,
+            examined=cast(int | None, answer.get("examined")),
             searched=searched,
             reason="budget" if stopped else None,
             limit=limit,
@@ -500,25 +547,17 @@ class SqliteSource:
         rowid that previews a long value, and the references to resolve."""
         refs: list[dict[str, Any]] = []
         wanted = set(names)
+        keys = self._keys(deadline) if description["foreign_keys"] else {}
         for fk in description["foreign_keys"]:
             if not set(fk["from"]) <= wanted:
                 continue
-            try:
-                target = self._cached("describe", str(fk["table"]), deadline)
-            except SourceUnreadableError:
-                # A target that cannot be described leaves its values plain, as a join
-                # that fails does; it never fails the page that refers to it.
+            # A target with no key the catalog could read (a virtual table, an R-tree, one
+            # not read here) leaves its values plain, as a join that fails does; it never
+            # fails the page that refers to it.
+            key = keys.get(str(fk["table"]))
+            if not key:
                 continue
-            if target is None or not target["readable"] or not target["key"]:
-                continue
-            refs.append(
-                {
-                    "fields": fk["from"],
-                    "table": target["name"],
-                    "to": fk["to"],
-                    "key": target["key"],
-                }
-            )
+            refs.append({"fields": fk["from"], "table": fk["table"], "to": fk["to"], "key": key})
         return {
             "table": description["name"],
             "key": description["key"],
@@ -625,16 +664,24 @@ class SqliteSource:
         rows: list[dict[str, Any]],
         deadline: float,
     ) -> list[str]:
-        """Each row's name: its key token, or its position where it has no key or its key
-        is too long for a token."""
+        """Each row's name: its key token, or its position in key order where it has no
+        key or its key is too long for a token. A key too long to read whole was counted
+        by the reader with the page; one read whole whose token is too long is counted by
+        its values here."""
         if not description["key"]:
             return [position_key(int(row["key"][0])) for row in rows]
         names: list[str | None] = []
         missing: list[int] = []
         for index, row in enumerate(rows):
-            token = encode_key(row["key"]) if None not in row["key"] else None
+            token = encode_key(row["key"]) if row["key_whole"] else None
+            if token is None and row.get("position") is not None:
+                token = position_key(int(row["position"]))
             names.append(token)
             if token is None:
+                if not row["key_whole"]:
+                    raise SourceUnreadableError(
+                        "A row's key is too large to name it by", table=description["name"]
+                    )
                 missing.append(index)
         if missing:
             positions = cast(
@@ -674,6 +721,13 @@ def _rowid(description: dict[str, Any]) -> str | None:
     if description["type"] != "table" or description["without_rowid"] or not description["key"]:
         return None
     return str(description["key"][0])
+
+
+# Why an object with no key and many rows is read only in its own order.
+_KEYLESS_NOTE: Final = (
+    f"rows with no key are numbered in their own order by reading every row first, and "
+    f"this object holds more than {reader.SORT_UNINDEXED_MAX_ROWS:,}"
+)
 
 
 def _sortable(description: dict[str, Any]) -> tuple[set[str], str | None]:
@@ -730,6 +784,7 @@ def _schema(description: dict[str, Any], table: str) -> TableSchema:
             )
         )
     defaults: list[str] = []
+    uncollated = cast(dict[str, str], description.get("uncollated") or {})
     for column in columns:
         name = str(column["name"])
         declared = str(column["declared"])
@@ -737,6 +792,15 @@ def _schema(description: dict[str, Any], table: str) -> TableSchema:
         hidden = column["hidden"] == 1
         if not hidden:
             defaults.append(name)
+        collation = uncollated.get(name)
+        field_note = note
+        if collation is not None:
+            # The application that wrote the database defined it; ordering or comparing
+            # the field would fail its statement.
+            field_note = (
+                f"this field compares by the collation {collation!r}, which the "
+                "application that wrote this database defines and this reader does not have"
+            )
         fields.append(
             TableField(
                 name=name,
@@ -747,9 +811,9 @@ def _schema(description: dict[str, Any], table: str) -> TableSchema:
                 hidden=hidden,
                 generated=column["hidden"] in (2, 3),
                 ref=refs_by_field.get(name),
-                sortable=name in sortable,
-                sort_note=None if name in sortable else note,
-                filterable=kind != "blob",
+                sortable=name in sortable and collation is None,
+                sort_note=None if name in sortable and collation is None else field_note,
+                filterable=kind != "blob" and collation is None,
                 numeric=kind in ("integer", "real"),
             )
         )
@@ -855,10 +919,62 @@ def _is_value(item: Any) -> bool:
 
 
 def _next_cursor(query: TableQuery, last: dict[str, Any], served: int, generation: str) -> str:
-    token = encode_cursor(
-        [query.sort, query.order, last.get("region", "k"), last.get("sort"), last["key"], served]
-    )
+    """A cursor past *last*: by its sort value and key when both were read whole and fit
+    a token, else the positional one, by the rows served."""
+    token = None
+    if last.get("whole", True):
+        token = encode_cursor(
+            [
+                query.sort,
+                query.order,
+                last.get("region", "k"),
+                last.get("sort"),
+                last["key"],
+                served,
+            ]
+        )
     return token if token is not None else positional_cursor(served, generation)
+
+
+def _terms(spec: dict[str, Any]) -> int:
+    """The values a filtered scan's conditions test in each row."""
+    search = spec.get("search") or {}
+    return (
+        len(spec.get("filters") or [])
+        + len(search.get("fields") or [])
+        + sum(len(option["fields"]) for option in spec.get("ref") or [])
+    )
+
+
+def _check_keyless(description: dict[str, Any], query: TableQuery) -> None:
+    """Refuse what an object with no key cannot do past the rows its numbering affords:
+    its rows are numbered in its own order by a statement that reads every row before
+    the first it returns, so a sort, a filter, a search, or descending order is read only
+    where the object holds at most `SORT_UNINDEXED_MAX_ROWS` rows, as an unindexed sort
+    is; its own order, ascending, reads at any size."""
+    if description["key"]:
+        return
+    upto = description["rows_upto"]
+    if upto is not None and upto <= reader.SORT_UNINDEXED_MAX_ROWS:
+        return
+    asked = [
+        ("sort", query.sort is not None),
+        ("order", query.order == "desc"),
+        ("q", query.q is not None),
+        ("filter", bool(query.filters) or query.ref is not None),
+    ]
+    for param, used in asked:
+        if used:
+            raise TableQueryError(
+                f"{_KEYLESS_NOTE}, so it cannot be "
+                + {
+                    "sort": "sorted",
+                    "order": "read in descending order",
+                    "q": "searched",
+                    "filter": "filtered",
+                }[param],
+                param=param,
+            )
 
 
 def _empty(

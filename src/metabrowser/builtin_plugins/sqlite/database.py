@@ -39,11 +39,17 @@ register_worker_module(READER_MODULE, Path(__file__).with_name("reader.py"))
 
 # What one server process keeps of databases' catalogs and descriptions, keyed by the
 # database, its generation, and whether it reads virtual tables, so the schema a page is
-# checked against, and its references' targets, cost no request after the first. A description is one object's
+# checked against costs no request after the first. A description is one object's
 # columns, keys, foreign keys, and indexes: the nine-column `users` table of the test
 # fixtures (tests/fixtures/sqlite-tables/app.sql) is 1.5 KB of JSON and a table of 200
 # columns 21 KB, so a full cache of the widest tables a reader is likely to meet holds a
-# few megabytes. The bound is in entries; a catalog is one entry, a list of names.
+# few megabytes. The bound is in entries; a catalog is one entry, a list of names with
+# each table's key and foreign keys, so a page resolves its references and a record
+# counts its back-references from it without describing another object. Every commit
+# changes the generation, so this is a cost per live refresh: on a database of 300
+# tables, one with 20 foreign keys, a first page took 175 ms when it described each
+# target (21 requests, as #676's review measured it), and now reads one catalog (9 ms)
+# and one description (under 1 ms) (`devtools.bench_sqlite_tables`).
 DESCRIPTION_CACHE_ENTRIES: Final = 256
 
 _SAFE_SEGMENT: Final = re.compile(r"[A-Za-z0-9_.-]+")

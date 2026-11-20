@@ -712,3 +712,159 @@ def test_a_column_named_like_the_position_shows_its_value(
         page = _get(test_client, "rows", path="p.db/v", **params)
         values = [row["cells"]["__metabrowser_position"] for row in page["rows"]]
         assert sorted(values) == [10, 20, 30], page
+
+
+# ── Scans past the budget ──────────────────────────────────────
+
+
+@pytest.fixture
+def wide(tmp_path: Path) -> Iterator[TestClient]:
+    """A keyed table of 3,000 rows whose last row alone matches `row2999`, a view of
+    it, and a table keyed by long text."""
+    database = build(
+        tmp_path / "w.db",
+        "CREATE TABLE t (i INTEGER PRIMARY KEY, t TEXT, n INTEGER);"
+        "CREATE INDEX t_n ON t (n);"
+        "WITH RECURSIVE s(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM s LIMIT 3000) "
+        "INSERT INTO t SELECT x, 'row' || x, CASE WHEN x % 7 = 0 THEN NULL ELSE x % 50 END "
+        "FROM s;"
+        "CREATE VIEW v AS SELECT * FROM t;"
+        "CREATE TABLE long (k TEXT PRIMARY KEY, v) WITHOUT ROWID;"
+        "WITH RECURSIVE s(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM s LIMIT 30) "
+        "INSERT INTO long SELECT printf('%04d', x) || replace(hex(zeroblob(1500)), '0', 'k'), "
+        "x FROM s;",
+    )
+    del database
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as test_client:
+        yield test_client
+
+
+def test_a_search_past_its_window_continues_to_the_last_row(
+    wide: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A scan reads a window of rows a request; when it ends with the page not full, the
+    page says how many rows it read and its cursor continues past them, matches or not."""
+    monkeypatch.setattr(
+        reader, "SCAN_WINDOW_OPCODES", 100 * (reader.SCAN_ROW_OPCODES + reader.SCAN_TERM_OPCODES)
+    )
+    first = _get(wide, "rows", path="w.db/t", q="row2999")
+    assert first["_status"] == 200, first
+    assert (first["rows"], first["complete"], first["reason"]) == ([], False, "budget")
+    assert first["examined"] == 100 and first["next_after"] is not None
+    assert first["estimate"] is None
+    rows = _walk(wide, "w.db/t", q="row2999")
+    assert [row["cells"]["t"] for row in rows] == ["row2999"]
+
+
+@pytest.mark.parametrize("order", ["asc", "desc"])
+@pytest.mark.parametrize("sort", [None, "n"])
+def test_a_windowed_filter_walks_one_order_by(
+    wide: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, order: str, sort: str | None
+) -> None:
+    monkeypatch.setattr(
+        reader, "SCAN_WINDOW_OPCODES", 97 * (reader.SCAN_ROW_OPCODES + reader.SCAN_TERM_OPCODES)
+    )
+    params: dict[str, Any] = {"order": order, "limit": 40, "f.t": "contains:9"}
+    if sort is not None:
+        params["sort"] = sort
+    rows = _walk(wide, "w.db/t", **params)
+    direction = " DESC" if order == "desc" else ""
+    terms = f"n{direction}, i{direction}" if sort else f"i{direction}"
+    connection = sqlite3.connect(tmp_path / "w.db")
+    expected = [
+        i for (i,) in connection.execute(f"SELECT i FROM t WHERE t LIKE '%9%' ORDER BY {terms}")
+    ]
+    connection.close()
+    assert [decode_key(row["key"])[0] for row in rows] == expected
+
+
+def test_a_large_keyless_object_reads_only_in_its_own_order(
+    wide: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(reader, "SORT_UNINDEXED_MAX_ROWS", 100)
+    assert _get(wide, "rows", path="w.db/v", limit=5)["_status"] == 200
+    for params, param in (
+        ({"order": "desc"}, "order"),
+        ({"q": "row"}, "q"),
+        ({"f.n": "eq:3"}, "filter"),
+    ):
+        page = _get(wide, "rows", path="w.db/v", **params)
+        assert (page["_status"], page["param"]) == (400, param), page
+        assert "numbered in their own order" in page["error"]
+
+
+def test_keys_longer_than_a_token_are_named_by_the_reader(wide: TestClient) -> None:
+    """A key longer than a token can carry is never sent whole: the reader counts its
+    position, and the page continues by position."""
+    rows = _walk(wide, "w.db/long", limit=7)
+    assert [row["key"] for row in rows] == [f"@{n}" for n in range(1, 31)]
+    assert [row["cells"]["v"] for row in rows] == list(range(1, 31))
+
+
+def test_a_page_past_the_answer_bound_is_cut_and_continues(
+    wide: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(reader, "ANSWER_BYTES", 8000)
+    page = _get(wide, "rows", path="w.db/t", limit=100)
+    assert 1 <= len(page["rows"]) < 100 and page["next_after"] is not None
+    rows = _walk(wide, "w.db/t", limit=100, **{"f.i": "le:300"})
+    assert [decode_key(row["key"])[0] for row in rows] == list(range(1, 301))
+
+
+def test_estimates_are_bounded_by_what_the_file_holds(tmp_path: Path) -> None:
+    """The largest rowid of sparse keys, and `sqlite_stat1` text that is no count, are
+    no estimate; an object `describe` counted whole is estimated by that count."""
+    database = build(
+        tmp_path / "e.db",
+        "CREATE TABLE sparse (id INTEGER PRIMARY KEY, v);"
+        "INSERT INTO sparse VALUES (5, 'y'), (1700000000000, 'x');"
+        "CREATE TABLE analyzed (id INTEGER PRIMARY KEY, v);"
+        "CREATE INDEX analyzed_v ON analyzed (v);"
+        "INSERT INTO analyzed VALUES (1, 1);"
+        "ANALYZE;",
+    )
+    connection = sqlite3.connect(database)
+    connection.execute("UPDATE sqlite_stat1 SET stat = ? WHERE tbl = 'analyzed'", ("9" * 5000,))
+    connection.execute("UPDATE sqlite_stat1 SET stat = '² 1' WHERE tbl = 'sparse'")
+    connection.commit()
+    connection.close()
+    os.utime(database, (FIXED_MTIME, FIXED_MTIME))
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as test_client:
+        listed = _get(test_client, "tables", path="e.db")
+        assert listed["_status"] == 200, listed
+        estimates = {item["label"]: item["estimate"] for item in listed["tables"]}
+        # A stat that is no count leaves the table to its largest rowid.
+        assert estimates["sparse"] is None and estimates["analyzed"] == 1
+        assert _get(test_client, "rows", path="e.db/sparse")["estimate"] == 2
+
+
+def test_a_collation_this_reader_lacks_is_named(tmp_path: Path) -> None:
+    """A collation the writing application defined: its fields do not sort or filter,
+    and a table keyed by one, which SQLite cannot read, is refused by its name."""
+    database = tmp_path / "c.db"
+    connection = sqlite3.connect(database)
+    connection.create_collation("mycoll", lambda a, b: (a > b) - (a < b))
+    connection.executescript(
+        "CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT COLLATE mycoll, w TEXT);"
+        "INSERT INTO t VALUES (1, 'b', 'x'), (2, 'a', 'y');"
+        "CREATE TABLE k (x TEXT COLLATE mycoll PRIMARY KEY, y) WITHOUT ROWID;"
+        "INSERT INTO k VALUES ('a', 1), ('b', 2);"
+    )
+    connection.commit()
+    connection.close()
+    os.utime(database, (FIXED_MTIME, FIXED_MTIME))
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as test_client:
+        fields = _fields(test_client, "c.db/t")
+        assert (fields["v"]["sortable"], fields["v"]["filterable"]) == (False, False)
+        assert "'mycoll'" in fields["v"]["sort_note"]
+        assert fields["w"]["sortable"] is True
+        sorted_page = _get(test_client, "rows", path="c.db/t", sort="v")
+        assert sorted_page["_status"] == 400 and "no such collation" not in str(sorted_page)
+        page = _get(test_client, "rows", path="c.db/k")
+        assert "keyed by the collation 'mycoll'" in page["error"], page

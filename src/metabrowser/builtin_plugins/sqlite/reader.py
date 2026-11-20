@@ -57,6 +57,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from metabrowser import sqlite_access
+from metabrowser.sqlite_access import VALUE_MAX_BYTES
 
 # ── Bounds ─────────────────────────────────────────────────────
 #
@@ -76,7 +77,10 @@ SORT_UNINDEXED_MAX_ROWS: Final = 100_000
 
 # The most rows a count reads: a count up to this is exact, and past it the page says
 # "at least" this many (Decision 6). A capped count at this cap ran 7.0 million opcodes
-# in 54 ms, within the budget a count has of its own, as it is read apart from the page.
+# in 34 to 54 ms, within the budget a count has of its own, as it is read apart from the
+# page. A query's first page reads it and the pages that continue it do not: read on
+# every page, it was all of a page turn's 31 to 38 ms on a 3,000,000-row table, whose
+# page statement takes under a millisecond.
 COUNT_CAP: Final = 1_000_000
 
 # Distinct referenced rows one page resolves, across its references: a page's most rows
@@ -92,6 +96,33 @@ REFS_PER_PAGE: Final = 1000
 # whatever their size, 627 ms, 52 µs a value. Reading whole up to this size keeps the
 # dearer preview to values whose whole read would cost more still.
 PAGE_INLINE_BYTES: Final = 4096
+
+# Rows one request's filtered or searched scan reads, as opcodes: a scan reads a window
+# of the rows after its cursor in the query's order, the rows it finds among them come
+# back, and its cursor continues from the window's last row whether or not any matched
+# (`examined` says how many rows it read). The window is this many opcodes over the
+# measured cost of one row, so a scan ends by its own measure, not part-way at the
+# budget. Measured with `devtools.bench_sqlite_tables` (300,000 rows of the 12-column
+# shape): the statement that reads a window's matches ran 12 opcodes a row with one
+# search term, 48 with five, and 74 with eleven, of which the non-text fields stop at
+# their type; about `SCAN_ROW_OPCODES` plus `SCAN_TERM_OPCODES` for each term. Finding
+# the window's last row by `OFFSET` ran 2 opcodes a row, and counting a short region's
+# rows 7. Four million opcodes is 40% of the budget, leaving the rest to those, the
+# previews, and the references: 100,000 rows with eleven terms took 45 ms, and a search
+# for the last of 1,000,000 rows took 4 windows and 122 ms in all.
+SCAN_WINDOW_OPCODES: Final = 4_000_000
+SCAN_ROW_OPCODES: Final = 3
+SCAN_TERM_OPCODES: Final = 9
+
+# The JSON one page's answer may take, as `json.dumps` with `ensure_ascii` measures it: a
+# page past it is cut to fewer rows and continues from its last row. It is half of the
+# 32 MiB the SQLite-access layer caps a worker's answer at (`ANSWER_MAX_BYTES`), whose
+# measure it shares, so a page is never refused by that cap. A page's cells are bounded
+# in number (`TABLE_PAGE_CELLS_MAX`, 12,000) and each in characters, but a character of
+# text escapes to as many as twelve (a surrogate pair's two `\uXXXX`), so 12,000 cells
+# of a 400-character preview reach 58 MB: the bound is in bytes because nothing else
+# keeps a crafted page under the cap.
+ANSWER_BYTES: Final = 16 * 1024 * 1024
 
 # The name a keyless object's row position takes in the statements below, with `_`
 # appended until no column of the object has it (`position_name`).
@@ -359,6 +390,15 @@ def rowid_alias(columns: Sequence[str]) -> str | None:
     return next((alias for alias in _ROWID_ALIASES if alias not in taken), None)
 
 
+# The fewest bytes a table row takes in a leaf page: its cell (a payload size, a rowid,
+# and a record header naming one column, a byte each, and that column's value, at least
+# a byte) and the cell's two-byte pointer. No file holds more rows than its pages hold
+# cells this small, so an estimate past that is not one (`_estimates`).
+_ROW_MIN_BYTES: Final = 6
+# Decimal digits of a 64-bit row count; `sqlite_stat1` text longer than this is no count.
+_COUNT_DIGITS: Final = 19
+
+
 def _estimates(
     connection: sqlite3.Connection,
     objects: list[dict[str, Any]],
@@ -366,15 +406,23 @@ def _estimates(
     denied: frozenset[str],
 ) -> dict[str, int]:
     """A cheap row estimate per table: `sqlite_stat1`'s row count where `ANALYZE` left
-    one, else the largest rowid of a rowid table, a seek to its last row."""
+    one, else the largest rowid of a rowid table, a seek to its last row. Either is
+    dropped past the most rows the file's pages can hold: the largest rowid of a table
+    keyed by timestamps or random integers, or after many deletes, says nothing of its
+    rows, and `sqlite_stat1` is the file's own word."""
     out: dict[str, int] = {}
+    most = int(_pragma(connection, "page_count")) * int(_pragma(connection, "page_size"))
+    most //= _ROW_MIN_BYTES
     names = {str(item["name"]).lower() for item in objects}
     if "sqlite_stat1" in names:
-        rows, _ = _fetch(connection, "SELECT tbl, stat FROM sqlite_stat1", ())
+        # A row for each index or table `ANALYZE` measured: no more than the schema's
+        # entries, which bounds what a crafted table makes this read.
+        entries = connection.execute("SELECT count(*) FROM sqlite_schema").fetchone()[0]
+        rows, _ = _fetch(connection, "SELECT tbl, stat FROM sqlite_stat1", (), int(entries))
         for table, stat in rows:
             text = stat.decode("ascii", "replace") if isinstance(stat, bytes) else str(stat)
             first = text.split(" ", 1)[0]
-            if first.isdigit():
+            if first.isascii() and first.isdigit() and len(first) <= _COUNT_DIGITS:
                 key = table.decode("utf-8", "replace") if isinstance(table, bytes) else str(table)
                 out[key.lower()] = max(out.get(key.lower(), 0), int(first))
     for item in objects:
@@ -390,7 +438,7 @@ def _estimates(
         rows, stopped = _fetch(connection, f"SELECT max({alias}) FROM {quote(name)}", ())
         if not stopped and rows and isinstance(rows[0][0], int):
             out[name.lower()] = rows[0][0]
-    return out
+    return {name: count for name, count in out.items() if 0 <= count <= most}
 
 
 def catalog(
@@ -405,12 +453,17 @@ def catalog(
         item["group"] = _group(item, application_id)
         item["estimate"] = estimates.get(str(item["name"]).lower())
         name = str(item["name"])
-        keyed = (
-            item["type"] == "table"
-            and name.casefold() not in denied
-            and bool(_key(connection, item, _columns(connection, name))[0])
-        )
-        item["keyed"] = keyed
+        # Each table's key and foreign keys, read once a generation: what a page's
+        # references resolve by and the record's back-references count, so neither
+        # describes another object.
+        key: list[str] = []
+        foreign: list[dict[str, Any]] = []
+        if item["type"] == "table" and name.casefold() not in denied:
+            key = _key(connection, item, _columns(connection, name))[0]
+            foreign = _foreign_keys(connection, name, objects, denied)
+        item["keyed"] = bool(key)
+        item["key"] = key
+        item["foreign_keys"] = foreign
     return {"application_id": application_id, "encoding": encoding, "objects": objects}
 
 
@@ -447,7 +500,8 @@ def _foreign_keys(
     catalog names it and an omitted target column list read as the target's primary
     key. A key whose target does not exist, or has no primary key to stand for an
     omitted list, is left out: SQLite refuses it too, when it is enforced. So is one
-    whose omitted list would be read from a target this read may not describe."""
+    whose omitted list would be read from a virtual table or a target this read may not
+    describe."""
     if name.casefold() in denied:
         return []
     grouped: dict[int, dict[str, Any]] = {}
@@ -467,7 +521,9 @@ def _foreign_keys(
             continue
         to = entry["to"]
         if any(item is None for item in to):
-            if str(found["name"]).casefold() in denied:
+            # A virtual table's columns are read by connecting its module, and it has no
+            # primary key to stand for the list anyway.
+            if found["type"] != "table" or str(found["name"]).casefold() in denied:
                 continue
             columns = _columns(connection, str(found["name"]))
             key = _primary_key(columns)
@@ -580,7 +636,8 @@ def describe(
     # Why the object is not read here: `virtual` (it is a virtual table), `shadow` (it
     # may be a virtual table's shadow table), `reads_virtual` (a view that reads one),
     # `module` (a virtual table whose module does more than read to open it: R-tree
-    # prepares writes to its shadow tables when it connects, which a reader refuses).
+    # prepares writes to its shadow tables when it connects, which a reader refuses),
+    # `collation` (a table keyed by a collation the reader does not have).
     unread: str | None = None
     if exact.casefold() in denied:
         unread = "virtual" if item["type"] == "virtual" else "shadow"
@@ -595,13 +652,6 @@ def describe(
     key, alias = _key(connection, item, columns) if not unread else ([], None)
     tabled = item["type"] == "table" and not unread
     outgoing = _foreign_keys(connection, exact, objects, denied) if tabled else []
-    incoming: list[dict[str, Any]] = []
-    for other in objects:
-        if other["type"] != "table":
-            continue
-        for fk in _foreign_keys(connection, str(other["name"]), objects, denied):
-            if fk["table"] == exact:
-                incoming.append({"table": other["name"], "from": fk["from"], "to": fk["to"]})
     indexes = _indexes(connection, exact) if tabled else []
     triggers = [
         {"name": _text(trigger), "sql": _text(sql)}
@@ -612,6 +662,14 @@ def describe(
         )
     ]
     rows_upto: int | None = None
+    uncollated_key: dict[str, str] = {}
+    if not unread and item["without_rowid"]:
+        missing = _key_collations(connection, exact)
+        if missing:
+            # A `WITHOUT ROWID` table is stored in its key's order, so SQLite plans no
+            # read of it at all without the key's collation ("no query solution").
+            unread = "collation"
+            uncollated_key = missing
     if not unread:
         _budget(connection, deadline)
         try:
@@ -626,6 +684,11 @@ def describe(
                 raise
             unread, rows, stopped = "reads_virtual", [], True
         rows_upto = None if stopped or not rows else int(rows[0][0])
+    uncollated: dict[str, str] = {}
+    if unread is None:
+        uncollated = _uncollated(connection, exact, columns)
+    elif unread == "collation":
+        uncollated = uncollated_key
     readable = unread is None
     return {
         "name": exact,
@@ -640,11 +703,66 @@ def describe(
         "key": key,
         "rowid_alias": alias,
         "foreign_keys": outgoing,
-        "referenced_by": incoming,
         "indexes": indexes,
         "triggers": triggers,
         "rows_upto": rows_upto,
+        "uncollated": uncollated,
     }
+
+
+_NO_COLLATION: Final = re.compile(r"no such collation sequence: (.*)")
+
+
+def _has_collation(connection: sqlite3.Connection, collation: str) -> bool:
+    try:
+        connection.execute(f"SELECT 'a' < 'b' COLLATE {quote(collation)}").fetchall()
+    except sqlite3.OperationalError as exc:
+        if _NO_COLLATION.match(str(exc)) is None:
+            raise
+        return False
+    return True
+
+
+def _key_collations(connection: sqlite3.Connection, name: str) -> dict[str, str]:
+    """A `WITHOUT ROWID` table's key columns whose collation this reader lacks, from its
+    primary key's index, which names each column's collation without reading the table."""
+    out: dict[str, str] = {}
+    for (index,) in connection.execute(
+        "SELECT name FROM pragma_index_list(?) WHERE origin = 'pk'", (name,)
+    ).fetchall():
+        for column, collation in connection.execute(
+            "SELECT name, coll FROM pragma_index_xinfo(?) WHERE key = 1", (_text(index),)
+        ).fetchall():
+            text = _text(collation) or "BINARY"
+            if column is not None and not _has_collation(connection, text):
+                out[_text(column) or ""] = text
+    return out
+
+
+def _uncollated(
+    connection: sqlite3.Connection, name: str, columns: list[dict[str, Any]]
+) -> dict[str, str]:
+    """The columns whose collation this reader does not have, by the collation's name:
+    one the application that wrote the database defined. Ordering or comparing such a
+    column fails its statement, so each column is tried in a statement that reads no
+    row, where any of the schema names a collation at all."""
+    named = connection.execute(
+        "SELECT 1 FROM sqlite_schema WHERE sql LIKE '%collate%' LIMIT 1"
+    ).fetchone()
+    if named is None:
+        return {}
+    out: dict[str, str] = {}
+    for column in columns:
+        try:
+            connection.execute(
+                f"SELECT 1 FROM {quote(name)} WHERE 0 ORDER BY {quote(str(column['name']))}"
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            missing = _NO_COLLATION.match(str(exc))
+            if missing is None:
+                raise
+            out[str(column["name"])] = missing.group(1)
+    return out
 
 
 def ddl(
@@ -858,21 +976,17 @@ def _regions(spec: dict[str, Any]) -> list[str]:
     return ["n", "v"] if spec["order"] == "asc" else ["v", "n"]
 
 
-def _region_sql(
-    spec: dict[str, Any],
-    region: str,
-    after: dict[str, Any] | None,
-    select: str,
-    where: list[str],
-    params: list[Any],
-    positioned: bool,
-) -> tuple[str, list[Any]]:
+def _scope(
+    spec: dict[str, Any], region: str, after: dict[str, Any] | None, positioned: bool
+) -> tuple[list[str], list[Any], str]:
+    """One region of the query's order past the cursor: its conditions, their
+    parameters, and its `ORDER BY` terms."""
     key = _key_columns(spec, positioned)
     desc = spec["order"] == "desc"
     direction = " DESC" if desc else ""
     compare = "<" if desc else ">"
-    clauses = list(where)
-    values = list(params)
+    clauses: list[str] = []
+    values: list[Any] = []
     sort = str(spec.get("sort") or "")
     if region == "n":
         clauses.append(f"{quote(sort)} IS NULL")
@@ -888,25 +1002,169 @@ def _region_sql(
         marks, bound = _binds(points)
         clauses.append(f"{_row_value(names)} {compare} ({', '.join(marks)})")
         values.extend(bound)
+    return clauses, values, ", ".join(order)
+
+
+def _region_sql(
+    spec: dict[str, Any],
+    region: str,
+    after: dict[str, Any] | None,
+    select: str,
+    where: list[str],
+    params: list[Any],
+    positioned: bool,
+) -> tuple[str, list[Any]]:
+    """One region's rows that match, in order, from one statement: the read of an object
+    with no filter, or one whose rows are numbered anyway."""
+    clauses, values, order = _scope(spec, region, after, positioned)
+    clauses = [*where, *clauses]
     sql = f"SELECT {select} FROM {_relation(spec, positioned)}"
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
-    sql += " ORDER BY " + ", ".join(order) + " LIMIT ?"
-    return sql, values
+    return sql + f" ORDER BY {order} LIMIT ?", [*params, *values]
+
+
+def scan_window(terms: int) -> int:
+    """The rows one request's filtered scan reads when its conditions test *terms*
+    values a row (:data:`SCAN_WINDOW_OPCODES`)."""
+    return max(1, SCAN_WINDOW_OPCODES // (SCAN_ROW_OPCODES + SCAN_TERM_OPCODES * max(1, terms)))
+
+
+def _window_scan(
+    connection: sqlite3.Connection,
+    spec: dict[str, Any],
+    regions: list[str],
+    after: dict[str, Any] | None,
+    select: str,
+    columns: list[str],
+    deadline: float,
+) -> dict[str, Any]:
+    """A filtered or searched page of a keyed object: the matches among a window of at
+    most `window` rows past the cursor, in the query's order. The window's last row is
+    found first, by its place in the order (`OFFSET`, which reads no value), and the
+    matches are read up to it; when the page is not full by then, the answer names that
+    row (`boundary`), which the next page continues from, and the rows read
+    (`examined`). A window the budget stops with nothing found is read again an eighth
+    as long, so a scan always moves on."""
+    where, params, _skips = _predicates(spec)
+    limit = int(spec["limit"])
+    window = int(spec.get("window") or scan_window(len(params)))
+    table = f"{quote(str(spec['table']))} AS {ROW}"
+    key = _key_columns(spec, False)
+    desc = spec["order"] == "desc"
+    while True:
+        found: list[dict[str, Any]] = []
+        remaining = window
+        examined = 0
+        boundary: dict[str, Any] | None = None
+        stopped = False
+        cursor = after
+        for region in regions:
+            want = limit - len(found)
+            if want <= 0 or remaining <= 0:
+                break
+            clauses, values, order = _scope(spec, region, cursor, False)
+            cursor = None
+            scope = " WHERE " + " AND ".join(clauses) if clauses else ""
+            _budget(connection, deadline)
+            last, stopped = _fetch(
+                connection,
+                f"SELECT {', '.join(_key_select(spec, False))} FROM {table}{scope} "
+                f"ORDER BY {order} LIMIT 1 OFFSET ?",
+                [*values, remaining - 1],
+            )
+            if stopped:
+                break
+            end, _at = _split_key(last[0], spec, False) if last else (None, 0)
+            bounded = list(clauses)
+            bound_values = list(values)
+            if end is not None and end["whole"]:
+                names = ([str(spec["sort"])] if region == "v" else []) + key
+                points = ([end["sort"]] if region == "v" else []) + list(end["key"])
+                marks, bound = _binds(points)
+                bounded.append(f"{_row_value(names)} {'>=' if desc else '<='} ({', '.join(marks)})")
+                bound_values += bound
+            _budget(connection, deadline)
+            rows, stopped = _fetch(
+                connection,
+                f"SELECT {select} FROM {table} WHERE {' AND '.join([*bounded, *where])} "
+                f"ORDER BY {order} LIMIT ?",
+                [*bound_values, *params, want],
+            )
+            found += [_split(row, spec, False, columns) for row in rows]
+            if stopped or len(rows) >= want:
+                break
+            if end is not None and end["whole"]:
+                examined += remaining
+                boundary = end
+                break
+            if end is not None:
+                # The window's last row is too long to name, so the region was read to
+                # its end unbounded, within the budget: on to the next.
+                continue
+            # The region ended inside the window: count what it held, and go on.
+            _budget(connection, deadline)
+            counted, stopped = _fetch(
+                connection,
+                f"SELECT count(*) FROM (SELECT 1 FROM {table}{scope} LIMIT ?)",
+                [*values, remaining],
+            )
+            if stopped or not counted:
+                break
+            examined += int(counted[0][0])
+            remaining -= int(counted[0][0])
+        if found or not stopped or window <= 1:
+            return {
+                "rows": found,
+                "stopped": stopped or boundary is not None,
+                "examined": examined if boundary is not None else None,
+                "boundary": boundary,
+            }
+        window //= 8
+
+
+def _named(column: str, limit: int) -> str:
+    """A key or sort value, read whole only up to *limit* bytes, what a token carries."""
+    return f"CASE WHEN octet_length({quote(column)}) <= {int(limit)} THEN {quote(column)} END"
+
+
+# The alias of the table inside the count that finds a long key's position.
+_BEFORE: Final = quote("__metabrowser_before")
+
+
+def _key_select(spec: dict[str, Any], positioned: bool) -> list[str]:
+    """The key's values with their types, the sort value's, and, for a table keyed by
+    values that may be too long for a token (a `WITHOUT ROWID` table), the row's
+    position in key order when one of them is: the rows before it, counted by the key's
+    own order, plus one."""
+    key = _key_columns(spec, positioned)
+    limit = int(spec.get("key_bytes") or VALUE_MAX_BYTES)
+    parts: list[str] = []
+    for name in key:
+        parts += [f"typeof({quote(name)})", _named(name, limit)]
+    sort = spec.get("sort")
+    if sort is not None:
+        parts += [f"typeof({quote(sort)})", _named(str(sort), limit)]
+    if _counts_positions(spec, positioned):
+        longer = " OR ".join(f"octet_length({ROW}.{quote(name)}) > {limit}" for name in key)
+        before = ", ".join(f"{_BEFORE}.{quote(name)}" for name in key)
+        here = ", ".join(f"{ROW}.{quote(name)}" for name in key)
+        parts.append(
+            f"CASE WHEN {longer} THEN (SELECT count(*) FROM {quote(str(spec['table']))} "
+            f"AS {_BEFORE} WHERE ({before}) < ({here})) + 1 END"
+        )
+    return parts
+
+
+def _counts_positions(spec: dict[str, Any], positioned: bool) -> bool:
+    return bool(spec["key"]) and spec.get("rowid") is None and not positioned
 
 
 def _select(spec: dict[str, Any], positioned: bool, inline: int) -> tuple[str, list[str]]:
-    """The select list: the key's values with their types, the sort value's, then each
-    read column's type, size, and value."""
-    key = _key_columns(spec, positioned)
-    parts: list[str] = []
-    for name in key:
-        q = quote(name)
-        parts += [f"typeof({q})", f"CASE WHEN {_guard(name)} THEN {q} END"]
-    sort = spec.get("sort")
-    if sort is not None:
-        q = quote(sort)
-        parts += [f"typeof({q})", f"CASE WHEN {_guard(sort)} THEN {q} END"]
+    """The select list: the key's values with their types, the sort value's (each read
+    whole only up to `key_bytes`), a long key's position, then each read column's type,
+    size, and value."""
+    parts = _key_select(spec, positioned)
     if spec.get("rowid") is not None:
         parts.append(quote(spec["rowid"]))
     columns = [str(name) for name in spec["columns"]]
@@ -921,22 +1179,7 @@ def _split(
     positioned: bool,
     columns: list[str],
 ) -> dict[str, Any]:
-    key = _key_columns(spec, positioned)
-    at = 0
-    key_values: list[Wire] = []
-    for _ in key:
-        kind = row[at].decode() if isinstance(row[at], bytes) else str(row[at])
-        key_values.append(_wire(kind, row[at + 1]))
-        at += 2
-    sort_value: Wire = None
-    # The region of the order the row is in: the sort field's nulls, its values, or the
-    # key's order when nothing is sorted.
-    region = "k"
-    if spec.get("sort") is not None:
-        kind = row[at].decode() if isinstance(row[at], bytes) else str(row[at])
-        sort_value = _wire(kind, row[at + 1])
-        region = "n" if kind == "null" else "v"
-        at += 2
+    split, at = _split_key(row, spec, positioned)
     rowid: Any = None
     if spec.get("rowid") is not None:
         rowid = row[at]
@@ -945,13 +1188,46 @@ def _split(
     for column in columns:
         cells[column] = _cell(row, at)
         at += 3
-    return {
+    return {**split, "rowid": rowid, "cells": cells}
+
+
+def _split_key(row: Row, spec: dict[str, Any], positioned: bool) -> tuple[dict[str, Any], int]:
+    """What :func:`_key_select` read: the key, the sort value, the region of the order
+    the row is in (the sort field's nulls, its values, or key order when nothing is
+    sorted), whether the key was read whole (`key_whole`; a row is named by its key
+    only then) and its sort value too (`whole`; a cursor names a row by them only then),
+    and a long key's position; and where the rest begins."""
+    key = _key_columns(spec, positioned)
+    at = 0
+    whole = True
+    key_values: list[Wire] = []
+    for _ in key:
+        kind = row[at].decode() if isinstance(row[at], bytes) else str(row[at])
+        key_values.append(_wire(kind, row[at + 1]))
+        whole = whole and (kind == "null" or row[at + 1] is not None)
+        at += 2
+    key_whole = whole
+    sort_value: Wire = None
+    region = "k"
+    if spec.get("sort") is not None:
+        kind = row[at].decode() if isinstance(row[at], bytes) else str(row[at])
+        sort_value = _wire(kind, row[at + 1])
+        whole = whole and (kind == "null" or row[at + 1] is not None)
+        region = "n" if kind == "null" else "v"
+        at += 2
+    position: int | None = None
+    if _counts_positions(spec, positioned):
+        position = int(row[at]) if row[at] is not None else None
+        at += 1
+    split = {
         "key": key_values,
         "sort": sort_value,
         "region": region,
-        "rowid": rowid,
-        "cells": cells,
+        "whole": whole,
+        "key_whole": key_whole,
+        "position": position,
     }
+    return split, at
 
 
 def _preview_cells(
@@ -980,6 +1256,8 @@ def _page(connection: sqlite3.Connection, spec: dict[str, Any], deadline: float)
     found: list[dict[str, Any]] = []
     stopped = False
     toobig = False
+    examined: int | None = None
+    boundary: dict[str, Any] | None = None
     try:
         if after is not None and "offset" in after:
             # A cursor past the token bound: the rows already served, in one statement in
@@ -999,6 +1277,13 @@ def _page(connection: sqlite3.Connection, spec: dict[str, Any], deadline: float)
             found = [_split(row, spec, False, columns) for row in rows]
             for index, row in enumerate(found):
                 row["key"] = [start + index + 1]
+        elif where and not positioned:
+            regions = _regions(spec)
+            if after is not None and after["region"] in regions:
+                regions = regions[regions.index(after["region"]) :]
+            scanned = _window_scan(connection, spec, regions, after, select, columns, deadline)
+            found, stopped = scanned["rows"], scanned["stopped"]
+            examined, boundary = scanned["examined"], scanned["boundary"]
         else:
             regions = _regions(spec)
             if after is not None and after["region"] in regions:
@@ -1025,8 +1310,28 @@ def _page(connection: sqlite3.Connection, spec: dict[str, Any], deadline: float)
         connection, str(spec["table"]), spec.get("rowid") is not None, str(spec["encoding"])
     )
     _preview_cells(found, previewer, inline, spec["preview"])
-    refs = _resolve(connection, spec, found, deadline)
-    return {"rows": found, "stopped": stopped, "more": len(found) >= limit, "refs": refs}
+    more = len(found) >= limit
+    while True:
+        refs = _resolve(connection, spec, found, deadline)
+        bound = int(spec.get("answer_bytes") or ANSWER_BYTES)
+        if len(found) <= 1 or _json_size(found) + _json_size(refs) <= bound:
+            break
+        # Too large to answer: half the rows, which the next page continues after.
+        found = found[: len(found) // 2]
+        more, stopped, boundary, examined = True, False, None, None
+    return {
+        "rows": found,
+        "stopped": stopped,
+        "more": more,
+        "refs": refs,
+        "examined": examined,
+        "boundary": boundary,
+    }
+
+
+def _json_size(value: Any) -> int:
+    """Bytes of *value* as the answer's JSON line measures it."""
+    return len(json.dumps(value, ensure_ascii=True))
 
 
 def _offset_sql(
