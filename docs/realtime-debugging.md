@@ -94,6 +94,59 @@ took longer than `OPEN_AFTER_MS` is a `loop` record, so a blocked loop is on rec
 The log holds request paths and folder names but never a token: command lines drop field
 and header values, and process text is redacted.
 
+## GitHub Failures
+
+A failed `gh` or `git` call to GitHub carries a `cause` in the vocabulary
+`metabrowser/network_cause.py` defines for both tools (`CAUSES`): a name that did not
+resolve (`dns_failed`), a connection refused or timed out (`connect_refused`,
+`connect_timeout`), a TLS or proxy failure, an answer that stalled or never came
+(`stalled`, `no_answer`), or GitHub’s own refusal (`auth_refused`, `forbidden`,
+`not_found`, `rate_limited`, `server_error`). The refresh message on a page leads with
+it, as in “GitHub could not be reached because the connection to api.github.com at
+20.172.24.160 timed out”.
+GitHub’s own error text, and `gh`’s and Git’s, are never shown; the event log keeps
+them, redacted.
+
+A `gh` that gives up with no answer says nothing about why, so Metabrowser then probes
+the network itself (`network_cause.probe`): it resolves `api.github.com` and connects to
+each address DNS gave, through the proxy `gh` would use when `HTTPS_PROXY` is set and
+`NO_PROXY` does not exempt GitHub.
+The probe sends no request and no credential, finishes within `PROBE_TIMEOUT_S`, runs at
+most once per `PROBE_INTERVAL_S`, never replaces the failure it explains, and is a
+`probe` record in the log.
+Its finding says which it was: GitHub unreachable from this network, with the addresses
+that failed, or GitHub reachable from a fresh lookup (“gh did not answer within N s; a
+fresh lookup of api.github.com gave 140.82.114.5, which accepted a connection in M ms;
+DNS answers vary, so gh may have used another address”), with any address that failed in
+that lookup or in the last hour.
+A reachable probe is not proof that `gh`’s connection could open: DNS can answer the
+same name with a different address each time.
+
+On macOS, when no address of GitHub’s connects and no proxy is in the way, the probe
+opens one TCP connection to `captive.apple.com` port 80 (`CONTROL_TARGET`), the host
+macOS itself checks for a working network, and sends nothing on it.
+That tells “other sites are reachable” (GitHub, or the route to it, is the problem) from
+“other sites are not reachable either” (the network is down).
+It never runs on other platforms or through a proxy, and it shares the probe’s one
+deadline (`CONTROL_TIMEOUT_S` of it).
+`METABROWSER_NETWORK_PROBE_CONTROL=0` turns it off and `HOST:PORT` names another host,
+which then runs on any platform; `METABROWSER_NETWORK_PROBE=0` turns the whole probe
+off.
+
+To see what has been failing, and how often:
+
+```shell
+metab . --api '/api/event-log/failures'
+metab . --api '/api/event-log/failures?since=2026-11-19T21:00:00Z&kind=subprocess'
+metab . --api '/api/event-log?cause=connect_timeout&event=end'
+```
+
+The summary groups the failures since `since` (an hour ago by default) by cause, with
+how many, which work, the addresses that failed, the latest message, a `details` link to
+each example’s records, and the latest probe that failed.
+When the addresses vary between failures, DNS is answering a GitHub name with addresses
+the network reaches only some of the time.
+
 ## Debug Endpoints
 
 ```shell

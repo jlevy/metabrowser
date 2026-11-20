@@ -39,7 +39,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final, Literal
 
-from metabrowser import event_log
+from metabrowser import event_log, network_cause
 from metabrowser.builtin_plugins.github import gh_budget
 from metabrowser.git.process import (
     forget_process_group,
@@ -99,22 +99,13 @@ type GhFailureState = Literal[
 
 # gh's own text, captured 2026-09-23 from gh 2.98.0: a logged-out ``gh api`` exits 4
 # with "To get started with GitHub CLI, please run:  gh auth login", an offline one with
-# "error connecting to api.github.com", and a gh without ``auth status --json`` answers
-# "unknown flag: --json". Only ever matched, never shown.
-_NETWORK_TEXT: Final[tuple[str, ...]] = (
-    "error connecting to",
-    "dial tcp",
-    "no such host",
-    "connection refused",
-    "connection reset",
-    "i/o timeout",
-    "tls handshake timeout",
-    "network is unreachable",
-    "timeout awaiting response headers",
-    "context deadline exceeded",
-)
-_LOGIN_TEXT: Final = ("gh auth login", "not logged in", "bad credentials", "http 401:")
-_SERVER_ERROR_TEXT = re.compile(r"\bhttp (5[0-9]{2}):")
+# "error connecting to api.github.com" (which gh prints only for a name that did not
+# resolve), and a gh without ``auth status --json`` answers
+# "unknown flag: --json". Only ever matched, never shown: the cause it names
+# (metabrowser.network_cause.classify, shared with Git's errors) is what a message says.
+# A gh that gives up, or cannot connect, is followed by a probe of the network
+# (network_cause.probe), which names the address and the step that failed.
+_AUTH_STATE_PROBLEM = re.compile(rb'"state"\s*:\s*"(?:timeout|error)"')
 SIGN_IN_COMMAND: Final = f"gh auth login --hostname {GH_HOSTNAME}"
 _SIGN_IN_MESSAGE: Final = (
     f"GitHub CLI is not signed in to {GH_HOSTNAME}. Run {SIGN_IN_COMMAND}, then retry."
@@ -125,11 +116,19 @@ class GhError(Exception):
     """``gh`` could not answer; ``state`` says why. The message never carries its output."""
 
     def __init__(
-        self, message: str, *, state: GhFailureState = "gh_failed", reset_at: str | None = None
+        self,
+        message: str,
+        *,
+        state: GhFailureState = "gh_failed",
+        reset_at: str | None = None,
+        cause: network_cause.NetworkCause | None = None,
     ) -> None:
         super().__init__(message)
         self.state: GhFailureState = state
         self.reset_at: str | None = reset_at
+        # What actually happened, in the vocabulary gh and Git share
+        # (metabrowser.network_cause); ``state`` is what to do about it.
+        self.cause: network_cause.NetworkCause | None = cause
 
 
 class GhUnavailableError(GhError):
@@ -173,10 +172,20 @@ def replace_token_step(variable: str) -> str:
 
 
 class GhServerError(GhError):
-    """GitHub responded with a server error, so the host connection worked."""
+    """GitHub responded with a server error, so the host connection worked.
+
+    The message names the status and not GitHub's own text, which, like every upstream
+    message, is never shown; the event log keeps it, redacted (``server_message`` on the
+    span that asked).
+    """
 
     def __init__(self, status: int) -> None:
-        super().__init__(f"GitHub answered HTTP {status}", state="network_error")
+        self.status = status
+        super().__init__(
+            network_cause.reason("server_error", status=status),
+            state="network_error",
+            cause="server_error",
+        )
 
 
 class GhCursorError(GhError):
@@ -287,17 +296,128 @@ async def _run(
     if exe is None:
         raise GhUnavailableError
     # Every gh process is a span in the event log (metabrowser.event_log): its command
-    # without field values or headers, its deadline, and how it ended.
-    with event_log.span(
-        "subprocess",
-        f"gh {next((arg for arg in args if not arg.startswith('-')), '')}".rstrip(),
-        attrs={"args": loggable_args(args), "timeout_s": timeout_s},
-    ) as span:
-        completed = await _run_in(exe, args, timeout_s=timeout_s, max_bytes=max_bytes, cwd=cwd)
-        span.set(exit=completed.returncode, stdout_bytes=len(completed.stdout))
-        if completed.returncode != 0:
-            span.note_failure("exit", event_log.stderr_tail(completed.stderr))
-        return completed
+    # without field values or headers, its deadline, how it ended, and the cause its
+    # error text names.
+    unreachable = False
+    try:
+        with event_log.span(
+            "subprocess",
+            f"gh {next((arg for arg in args if not arg.startswith('-')), '')}".rstrip(),
+            attrs={
+                "args": loggable_args(args),
+                "timeout_s": timeout_s,
+                "host": network_cause.GITHUB_API_HOST,
+            },
+        ) as span:
+            completed = await _run_in(exe, args, timeout_s=timeout_s, max_bytes=max_bytes, cwd=cwd)
+            span.set(exit=completed.returncode, stdout_bytes=len(completed.stdout))
+            if completed.returncode != 0:
+                diagnostic = completed.stderr.decode("utf-8", errors="replace")
+                cause = network_cause.classify(diagnostic)
+                if cause is not None:
+                    span.set(cause=cause)
+                    unreachable = cause in network_cause.TRANSPORT_CAUSES
+                address = network_cause.failed_address(diagnostic)
+                if address is not None:
+                    span.set(address=address)
+                span.note_failure("exit", event_log.stderr_tail(completed.stderr))
+    except GhError as exc:
+        if exc.cause not in {"no_answer", "stalled"}:
+            raise
+        raise await _explained_silence(exc, timeout_s=timeout_s) from None
+    if unreachable:
+        # gh could not connect: the probe names the address and the step that failed,
+        # for the message the caller builds from this run (_unreachable).
+        await network_cause.probe()
+    return completed
+
+
+async def _explained_silence(silence: GhError, *, timeout_s: float) -> GhError:
+    """*silence*, a gh that gave up with no answer, with what a probe found.
+
+    When the network could not reach GitHub either, that is the message: "GitHub could
+    not be reached because the connection to api.github.com at 20.172.24.160 timed out
+    after 2 s; gh gave up after 15 s". When it could, the message says only what this
+    lookup found, since DNS answers vary and gh may have dialed another address: "gh did
+    not answer within 15 s; a fresh lookup of api.github.com gave 140.82.112.6, which
+    accepted a connection in 38 ms; DNS answers vary, so gh may have used another
+    address", with the addresses that failed lately.
+    """
+
+    found = await network_cause.probe()
+    if found is None:
+        failure = silence
+    elif found.reachable:
+        lately = event_log.recent_failed_addresses(
+            causes=network_cause.TRANSPORT_CAUSES, host=network_cause.is_github_host
+        )
+        failure = GhError(
+            f"{silence}; {found.headline(failed_lately=lately)}",
+            state="network_error",
+            cause=silence.cause,
+        )
+    else:
+        failure = GhError(
+            f"{found.headline()}; gh gave up after {timeout_s:g} s",
+            state="network_error",
+            cause=found.cause,
+        )
+    return _noted(_counted(failure))
+
+
+def _counted(failure: GhError) -> GhError:
+    """*failure* with how many gh and git calls failed to reach GitHub in the last hour,
+    when this is not the first: a pattern, not a blip. Only calls to GitHub's hosts
+    count: a fetch from another origin that failed says nothing about GitHub."""
+
+    count = event_log.recent_failures(
+        causes=network_cause.TRANSPORT_CAUSES, host=network_cause.is_github_host
+    )
+    if count < 2:
+        return failure
+    renamed = GhError(
+        f"{failure} ({count} calls could not reach GitHub in the last hour)",
+        state=failure.state,
+        reset_at=failure.reset_at,
+        cause=failure.cause,
+    )
+    return renamed
+
+
+def _noted(failure: GhError) -> GhError:
+    """*failure*, with its cause on the span that asked for it: the job or request."""
+
+    if failure.cause is not None:
+        event_log.current().set(cause=failure.cause)
+    return failure
+
+
+# The causes whose gh text says little: the probe's finding, when it failed, says more.
+_VAGUE_CAUSES: Final[frozenset[network_cause.NetworkCause]] = frozenset(
+    {"connect_failed", "no_answer", "stalled"}
+)
+
+
+def _unreachable(cause: network_cause.NetworkCause, diagnostic: str = "") -> GhError:
+    """A gh that could not reach GitHub, in the words of the latest probe if it failed
+    and gh's own text says no more than it, or the same.
+
+    Otherwise gh's own error names the cause and, for a connection, the address: gh
+    2.98.0 prints ``dial tcp 172.182.252.137:443: i/o timeout``. A probe from up to
+    :data:`~metabrowser.network_cause.PROBE_INTERVAL_S` ago does not override a cause gh
+    reported now, such as a TLS failure.
+    """
+
+    found = network_cause.recent_probe()
+    if (
+        found is not None
+        and not found.reachable
+        and (cause in _VAGUE_CAUSES or found.cause == cause)
+    ):
+        return _noted(_counted(GhError(found.headline(), state="network_error", cause=found.cause)))
+    address = network_cause.failed_address(diagnostic) if diagnostic else None
+    message = network_cause.reason(cause, address=address)
+    return _noted(_counted(GhError(message, state="network_error", cause=cause)))
 
 
 # Options whose value is data rather than the command: a GraphQL query or field, a header,
@@ -389,13 +509,20 @@ async def _finish(
         # Where it stalled, as far as its output says: before a byte of an answer, or
         # partway through one.
         received = sum(len(chunk) for chunk in printed)
+        cause: network_cause.NetworkCause = "no_answer" if received == 0 else "stalled"
         event_log.current().end(
             "timeout",
             stdout_bytes=received,
             stderr_tail=event_log.stderr_tail(b"".join(complained)),
             stalled="before any answer" if received == 0 else "partway through its answer",
+            cause=cause,
         )
-        raise GhError(f"gh did not answer within {timeout_s:g} s", state="network_error") from None
+        message = (
+            f"gh did not answer within {timeout_s:g} s"
+            if received == 0
+            else f"gh stopped partway through GitHub's answer and gave up after {timeout_s:g} s"
+        )
+        raise GhError(message, state="network_error", cause=cause) from None
     except asyncio.CancelledError:
         stdout_task.cancel()
         stderr_task.cancel()
@@ -433,15 +560,20 @@ async def run_gh(
 
 
 def _diagnosed_failure(diagnostic: str) -> GhError | None:
-    """Classify recognizable diagnostics without returning gh's text."""
+    """Classify recognizable diagnostics without returning gh's text.
 
-    text = diagnostic.lower()
-    if match := _SERVER_ERROR_TEXT.search(text):
-        return GhServerError(int(match[1]))
-    if any(needle in text for needle in _NETWORK_TEXT):
-        return GhError("gh could not reach api.github.com", state="network_error")
-    if any(needle in text for needle in _LOGIN_TEXT):
-        return GhError(_SIGN_IN_MESSAGE, state="not_logged_in")
+    The cause comes from the classifier gh and Git share (:mod:`metabrowser.network_cause`).
+    Only a server error, a failure to reach GitHub, and a refused sign-in are typed here;
+    the others keep the generic failure their callers expect.
+    """
+
+    cause = network_cause.classify(diagnostic)
+    if cause == "server_error":
+        return _noted(GhServerError(network_cause.http_status(diagnostic) or 500))
+    if cause in network_cause.TRANSPORT_CAUSES:
+        return _unreachable(cause, diagnostic)
+    if cause in {"auth_refused", "not_signed_in"}:
+        return _noted(GhError(_SIGN_IN_MESSAGE, state="not_logged_in", cause=cause))
     return None
 
 
@@ -449,7 +581,7 @@ def _failure_without_response(completed: _Completed) -> GhError:
     """The typed state of a ``gh`` run that printed no HTTP response."""
 
     if completed.returncode == _GH_EXIT_AUTH:
-        return GhError(_SIGN_IN_MESSAGE, state="not_logged_in")
+        return _noted(GhError(_SIGN_IN_MESSAGE, state="not_logged_in", cause="not_signed_in"))
     diagnostic = completed.stderr.decode("utf-8", errors="replace")
     return _diagnosed_failure(diagnostic) or GhError(
         f"gh exited {completed.returncode} without an HTTP response"
@@ -520,7 +652,7 @@ def _mentions_rate_limit(body: bytes) -> bool:
     except ValueError:
         return False
     message = payload.get("message") if isinstance(payload, dict) else None
-    return isinstance(message, str) and "rate limit" in message.lower()
+    return isinstance(message, str) and network_cause.mentions_rate_limit(message)
 
 
 def _refusal(response: GhResponse, *, now: datetime) -> GhError | None:
@@ -528,26 +660,59 @@ def _refusal(response: GhResponse, *, now: datetime) -> GhError | None:
 
     if 200 <= response.status < 300 or response.status == 304:
         return None
+    # The cause goes on the span that asked (the job or request), so the event log says
+    # which status GitHub answered with.
+    event_log.current().set(http_status=response.status)
     reset = rate_limit_reset(response, now=now)
     if reset is not None:
         when = "; try again in a few minutes" if reset == "unknown" else f" until {reset}"
-        return GhError(
-            f"GitHub's API rate limit is exhausted{when}",
-            state="rate_limited",
-            reset_at=None if reset == "unknown" else reset,
+        return _noted(
+            GhError(
+                f"GitHub's API rate limit is exhausted{when}",
+                state="rate_limited",
+                reset_at=None if reset == "unknown" else reset,
+                cause="rate_limited",
+            )
         )
     if response.status == 401:
-        return GhError(
-            "gh's github.com credentials were refused; run gh auth login", state="not_logged_in"
+        return _noted(
+            GhError(
+                "gh's github.com credentials were refused; run gh auth login",
+                state="not_logged_in",
+                cause="auth_refused",
+            )
         )
     if response.status in {403, 404, 410}:
-        return GhError(
-            "GitHub has no such pull request, or it is private and the gh account cannot read it",
-            state="not_found_or_private",
+        return _noted(
+            GhError(
+                "GitHub has no such pull request, or it is private and the gh account cannot "
+                "read it",
+                state="not_found_or_private",
+                cause="forbidden" if response.status == 403 else "not_found",
+            )
         )
     if response.status >= 500:
-        return GhServerError(response.status)
+        detail = _server_message(response.body)
+        if detail:
+            event_log.current().set(server_message=event_log.redact(detail, limit=200))
+        return _noted(GhServerError(response.status))
     return GhError(f"GitHub answered HTTP {response.status}")
+
+
+def _server_message(body: bytes) -> str | None:
+    """GitHub's own ``message`` in an error answer's JSON body, if it has one.
+
+    GitHub's 5xx answers are often an HTML page rather than JSON; that has no message.
+    It goes to the event log only, redacted: like every upstream message, it is not
+    shown.
+    """
+
+    try:
+        payload = json.loads(body[:_STDERR_MAX_BYTES])
+    except ValueError:
+        return None
+    message = payload.get("message") if isinstance(payload, dict) else None
+    return message.strip() or None if isinstance(message, str) else None
 
 
 async def gh_api(path: str, *, etag: str | None = None, now: datetime | None = None) -> GhResponse:
@@ -786,7 +951,7 @@ def _token_problem(entry: Mapping[str, object]) -> GhError | None:
     if state in {None, "success"}:
         return None
     if state == "timeout":
-        return GhError("gh could not reach api.github.com", state="network_error")
+        return _unreachable("no_answer")
     diagnostic = entry.get("error")
     if isinstance(diagnostic, str) and (failure := _diagnosed_failure(diagnostic)):
         return failure
@@ -828,7 +993,7 @@ def parse_active_account(stdout: bytes) -> GhAccount | None:
         if login == "":
             state = entry.get("state")
             if state == "timeout":
-                raise GhError("gh could not reach api.github.com", state="network_error")
+                raise _unreachable("no_answer")
             diagnostic = entry.get("error")
             if (
                 state == "error"
@@ -858,6 +1023,15 @@ async def gh_active_account(*, timeout_s: float = GH_TIMEOUT_S) -> GhAccount:
         max_bytes=_ACCOUNT_MAX_BYTES,
     )
     if completed.stdout.strip().startswith(b"{"):
+        # gh checks the token with GitHub, and reports a check that timed out, or could
+        # not connect, in its JSON rather than its exit: probe first, so the account's
+        # problem names the step that failed (_unreachable).
+        if _AUTH_STATE_PROBLEM.search(completed.stdout) and (
+            b'"timeout"' in completed.stdout
+            or network_cause.classify(completed.stdout.decode("utf-8", errors="replace"))
+            in network_cause.TRANSPORT_CAUSES
+        ):
+            await network_cause.probe()
         account = parse_active_account(completed.stdout)
         if account is None:
             raise GhError(_SIGN_IN_MESSAGE, state="not_logged_in")

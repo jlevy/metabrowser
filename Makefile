@@ -114,12 +114,13 @@ lint-check:
 #
 # A golden that serves writes no event log into the state directory of whoever runs it
 # (METABROWSER_EVENT_LOG=0, as tests/conftest.py sets for pytest); one that reads the log
-# names its own directory.
+# names its own directory. Nor does a stand-in gh that fails make it probe the network
+# (METABROWSER_NETWORK_PROBE=0, as tests/conftest.py also sets).
 #
-# `env` sets all three, so the same words work as a shell command and as the command
+# `env` sets them all, so the same words work as a shell command and as the command
 # devtools/run_goldens.py runs once for each golden.
 TRYSCRIPT := env PATH="$(CURDIR)/tests/no-real-gh:$$PATH" METABROWSER_SLOW_SERVER_MS=60000 \
-	METABROWSER_EVENT_LOG=0 npx --no-install tryscript
+	METABROWSER_EVENT_LOG=0 METABROWSER_NETWORK_PROBE=0 npx --no-install tryscript
 GOLDENS := tests/golden/*.tryscript.md
 # How many golden files devtools/run_goldens.py runs at a time: one per processor of a CI
 # runner, which has four. tryscript runs a file's commands one after another, each in a

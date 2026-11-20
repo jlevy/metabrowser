@@ -822,7 +822,7 @@ $ node tests/dom/github-pull-page-session.js
         "message": "This pull request has not been fetched yet.",
         "canRefresh": true,
         "freshness": null,
-        "failure": "The last refresh failed: gh could not reach api.github.com",
+        "failure": "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed out",
         "browse": null,
         "headOffer": null
       },
@@ -858,7 +858,7 @@ $ node tests/dom/github-pull-page-session.js
         "message": "The refresh was refused (too many pull requests are being fetched; try again when one has finished).",
         "canRefresh": true,
         "freshness": null,
-        "failure": "The last refresh failed: gh could not reach api.github.com",
+        "failure": "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed out",
         "browse": null,
         "headOffer": null
       },
@@ -1075,7 +1075,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "message": null,
         "canRefresh": true,
         "freshness": "Fetched 24 min ago via GitHub CLI",
-        "failure": "The last refresh failed: gh could not reach api.github.com",
+        "failure": "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed out",
         "browse": "switches to refs/pull/8/head",
         "headOffer": null
       },
@@ -1113,7 +1113,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "canRefresh": false,
         "freshness": "Fetched 25 min ago via GitHub CLI",
         "revalidating": true,
-        "failure": "The last refresh failed: gh could not reach api.github.com",
+        "failure": "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed out",
         "browse": "switches to refs/pull/8/head",
         "headOffer": null
       },
@@ -1132,7 +1132,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "message": null,
         "canRefresh": true,
         "freshness": "Fetched 25 min ago via GitHub CLI",
-        "failure": "The last refresh failed: gh could not reach api.github.com",
+        "failure": "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed out",
         "browse": "switches to refs/pull/8/head",
         "headOffer": null
       },

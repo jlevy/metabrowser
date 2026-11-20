@@ -51,7 +51,7 @@ from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
 
-from metabrowser import event_log, server_timing
+from metabrowser import event_log, network_cause, server_timing
 from metabrowser.content_errors import ContentReadError
 from metabrowser.git.children import child_pids, executable, prepare_child_listing
 from metabrowser.settings import GIT_SUBPROCESS_MAX_BYTES, GIT_SUBPROCESS_TIMEOUT_S
@@ -1351,10 +1351,23 @@ async def run_git(
             span.end("timeout", error=event_log.describe_error(exc))
             raise
         except GitCommandError as exc:
+            # The cause Git's error names, in the vocabulary gh shares
+            # (metabrowser.network_cause): a fetch that could not reach its origin says how.
+            # An HTTP refusal counts only when Git says it came from the origin, so a local
+            # command's "not found" is not taken for GitHub's.
+            cause = network_cause.classify(exc.stderr_summary)
+            remote = "unable to access" in exc.stderr_summary or "remote:" in exc.stderr_summary
+            if cause not in network_cause.TRANSPORT_CAUSES and not remote:
+                cause = None
+            # The host it failed to reach, so a count of GitHub's failures counts only
+            # those (network_cause.is_github_host); only the host, never the URL.
+            host = network_cause.named_host(exc.stderr_summary) if cause is not None else None
             span.end(
                 "failed",
                 exit=exc.returncode,
                 stderr_tail=event_log.redact(exc.stderr_summary),
+                **({"cause": cause} if cause is not None else {}),
+                **({"host": host} if host is not None else {}),
             )
             raise
 

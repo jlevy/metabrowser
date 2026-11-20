@@ -32,6 +32,9 @@ os.environ["METABROWSER_RECORD_RECENT"] = "0"
 # state directory of whoever runs the suite; and a read of the log, as `/api/event-log`
 # does, reads an empty directory of the suite's own. A test of the log opens one itself.
 os.environ["METABROWSER_EVENT_LOG"] = "0"
+# Nor does a gh that fails make a test probe the network (metabrowser.network_cause): a
+# test of the probe names a local target itself.
+os.environ["METABROWSER_NETWORK_PROBE"] = "0"
 os.environ["METABROWSER_STATE_DIR"] = os.path.join(
     tempfile.gettempdir(), f"metabrowser-test-state-{os.getpid()}"
 )
