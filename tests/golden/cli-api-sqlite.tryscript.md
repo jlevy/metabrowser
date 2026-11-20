@@ -332,7 +332,12 @@ forty with forty suffixes, and one whose type is a blob.
 They are counted as `other`.
 
 ```console
-$ metab sqlroot --api '/api/plugin/sqlite/info?path=crafted.db' | sed -n '/"objects"/,/}/p'
+$ metab sqlroot --api '/api/plugin/sqlite/info?path=crafted.db' > crafted.txt
+? 0
+```
+
+```console
+$ sed -n '/"objects"/,/}/p' crafted.txt
     "objects": {
       "other": 41,
       "table": 1

@@ -351,7 +351,8 @@ this standard. Paths are under `src/metabrowser/`.
 | `VALUE_MAX_BYTES`, `READ_OPCODE_BUDGET` | `sqlite_access.py` | The longest value one SQLite statement may produce, and the virtual-machine steps one read may run, beside a wall-clock deadline its watchdog interrupts at |
 | `COPY_MAX_BYTES` | `sqlite_access.py` | A database and its log copied privately for one read, when its log has no index or the file has a second name; past it the main file is read alone and says so |
 | `READER_POOL_SIZE`, `READER_QUEUE_MAX`, `SQLITE_REQUEST_DEADLINE_SECONDS`, `READER_KILL_GRACE_SECONDS`, `READER_ADDRESS_SPACE_BYTES` | `sqlite_readers.py` | SQLite reader processes alive and requests waiting for one, a request’s deadline and the grace before its reader is killed, and a reader’s address space |
-| `BLOB_MAX_BYTES` | `sqlite_readers.py` | A database on a Git pin, written once to a private file to be read |
+| `BLOB_MAX_BYTES`, `BLOBS_MAX_BYTES` | `sqlite_readers.py` | A database on a Git pin, written once to a private file to be read, and the written blobs one process keeps, the least recently used removed past it |
+| `ANSWER_MAX_BYTES`, `HEAP_LIMIT_BYTES` | `sqlite_access.py` | The longest answer a SQLite reader process returns, past which it answers `too_large`, and the heap SQLite may allocate in one, which bounds it where the address-space limit is not enforced |
 | `SUMMARY_ROWS_OVERSCAN` | `builtin_plugins/diff/diff-summary.js` | Diff summary rows mounted on either side of the window’s view of its tree, which has no scroll of its own and no length bound beyond `MAX_MANIFEST_FILES` |
 
 ## References
