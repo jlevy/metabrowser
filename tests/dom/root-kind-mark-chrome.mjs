@@ -29,7 +29,13 @@ import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
 
 const [pagesJson, glyphsJson, shots] = process.argv.slice(2);
-if (!pagesJson || !glyphsJson || !shots || !process.env.CHROME_BIN || !process.env.CHROME_PROFILES) {
+if (
+  !pagesJson ||
+  !glyphsJson ||
+  !shots ||
+  !process.env.CHROME_BIN ||
+  !process.env.CHROME_PROFILES
+) {
   throw new Error(
     "usage: CHROME_BIN CHROME_PROFILES root-kind-mark-chrome.mjs <pages JSON> <glyphs JSON> <dir>",
   );
