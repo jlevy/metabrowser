@@ -3,7 +3,7 @@
     "machine": "x86_64",
     "python": "3.13.18",
     "sqlite": "3.53.1",
-    "system": "Linux 6.18.44-fc-v653",
+    "system": "Linux 6.18.44-fc-v726",
     "uid_is_superuser": false
   },
   "results": {
@@ -25,9 +25,17 @@
       "handler_calls": 0,
       "returned": 1500000
     },
-    "interrupt_stops_repeated_count_star": {
-      "counts_before_interrupt": 70,
-      "error": "interrupted"
+    "interrupt_stops_one_count_star": {
+      "error": "interrupted",
+      "interrupt_after_ms": 10.0,
+      "rows": 20000000,
+      "stopped_after_ms": 10.3,
+      "uninterrupted_ms": 42.94
+    },
+    "median_ms_of_5": {
+      "capped_count": 25.43,
+      "count_star": 3.09,
+      "max_rowid": 0.0
     },
     "page_opcodes_over_200000_rows": {
       "contains_filter_page": 800023,
@@ -39,6 +47,6 @@
       "unindexed_sort_page": 1404609
     }
   },
-  "seconds": 2,
+  "seconds": 9,
   "suite": "budget"
 }

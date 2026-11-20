@@ -3,87 +3,249 @@
     "machine": "x86_64",
     "python": "3.13.18",
     "sqlite": "3.53.1",
-    "system": "Linux 6.18.44-fc-v653",
+    "system": "Linux 6.18.44-fc-v726",
     "uid_is_superuser": false
   },
   "results": {
     "back_to_back": {
-      "count": {
-        "busy": 197,
-        "commits": 4680,
-        "viewer_reads": 11,
-        "viewer_reads_failed_or_rejected": 2
+      "locked_capped_count": {
+        "busy": 63,
+        "commits": 4482,
+        "viewer_reads": {
+          "locked": 1,
+          "locked_failed_SQLITE_BUSY": 14
+        }
       },
-      "key_ordered_page": {
-        "busy": 9,
-        "commits": 4584,
-        "viewer_reads": 11,
-        "viewer_reads_failed_or_rejected": 3
+      "locked_count_star": {
+        "busy": 31,
+        "commits": 4733,
+        "viewer_reads": {
+          "locked": 3,
+          "locked_failed_SQLITE_BUSY": 12
+        }
+      },
+      "locked_key_ordered_page": {
+        "busy": 2,
+        "commits": 4719,
+        "viewer_reads": {
+          "locked": 1,
+          "locked_failed_SQLITE_BUSY": 14
+        }
+      },
+      "locked_unindexed_sort_page": {
+        "busy": 0,
+        "commits": 4608,
+        "viewer_reads": {
+          "locked_failed_SQLITE_BUSY": 15
+        }
       },
       "none": {
         "busy": 0,
+        "commits": 4606,
+        "viewer_reads": {}
+      },
+      "plan_policy_key_ordered_page_and_capped_count": {
+        "busy": 1,
+        "commits": 4656,
+        "viewer_reads": {
+          "locked_failed_SQLITE_BUSY": 7,
+          "validated": 2
+        }
+      },
+      "plan_policy_unindexed_sort_page_and_capped_count": {
+        "busy": 0,
+        "commits": 4751,
+        "viewer_reads": {
+          "locked_failed_SQLITE_BUSY": 8,
+          "validated": 1
+        }
+      },
+      "review_a_policy_page_and_capped_count": {
+        "busy": 0,
+        "commits": 4144,
+        "viewer_reads": {
+          "locked_failed_SQLITE_BUSY": 15
+        }
+      },
+      "validated_key_ordered_page": {
+        "busy": 0,
         "commits": 4573,
-        "viewer_reads": 0,
-        "viewer_reads_failed_or_rejected": 0
+        "viewer_reads": {
+          "journal_present": 5,
+          "validated": 4,
+          "validation_failed": 6
+        }
       },
-      "unindexed_sort_page": {
-        "busy": 1371,
-        "commits": 4015,
-        "viewer_reads": 12,
-        "viewer_reads_failed_or_rejected": 2
-      },
-      "validated_immutable_key_ordered_page": {
+      "validated_unindexed_sort_page": {
         "busy": 0,
-        "commits": 4640,
-        "viewer_reads": 16,
-        "viewer_reads_failed_or_rejected": 14
-      },
-      "validated_immutable_unindexed_sort": {
-        "busy": 0,
-        "commits": 4416,
-        "viewer_reads": 16,
-        "viewer_reads_failed_or_rejected": 16
+        "commits": 4081,
+        "viewer_reads": {
+          "journal_present": 3,
+          "validated": 1,
+          "validation_failed": 11
+        }
       }
     },
     "every_50_ms": {
-      "count": {
+      "locked_capped_count": {
         "busy": 1,
-        "commits": 75,
-        "viewer_reads": 16,
-        "viewer_reads_failed_or_rejected": 0
-      },
-      "key_ordered_page": {
-        "busy": 0,
         "commits": 76,
-        "viewer_reads": 16,
-        "viewer_reads_failed_or_rejected": 0
+        "viewer_reads": {
+          "locked": 14,
+          "locked_failed_SQLITE_BUSY": 1
+        }
+      },
+      "locked_count_star": {
+        "busy": 1,
+        "commits": 76,
+        "viewer_reads": {
+          "locked": 14,
+          "locked_failed_SQLITE_BUSY": 1
+        }
+      },
+      "locked_key_ordered_page": {
+        "busy": 0,
+        "commits": 77,
+        "viewer_reads": {
+          "locked": 13,
+          "locked_failed_SQLITE_BUSY": 2
+        }
+      },
+      "locked_unindexed_sort_page": {
+        "busy": 5,
+        "commits": 72,
+        "viewer_reads": {
+          "locked": 13,
+          "locked_failed_SQLITE_BUSY": 2
+        }
       },
       "none": {
         "busy": 0,
-        "commits": 76,
-        "viewer_reads": 0,
-        "viewer_reads_failed_or_rejected": 0
+        "commits": 78,
+        "viewer_reads": {}
       },
-      "unindexed_sort_page": {
-        "busy": 2,
-        "commits": 74,
-        "viewer_reads": 15,
-        "viewer_reads_failed_or_rejected": 0
-      },
-      "validated_immutable_key_ordered_page": {
+      "plan_policy_key_ordered_page_and_capped_count": {
         "busy": 0,
-        "commits": 76,
-        "viewer_reads": 16,
-        "viewer_reads_failed_or_rejected": 2
+        "commits": 77,
+        "viewer_reads": {
+          "validated": 15
+        }
       },
-      "validated_immutable_unindexed_sort": {
+      "plan_policy_unindexed_sort_page_and_capped_count": {
         "busy": 0,
-        "commits": 76,
-        "viewer_reads": 16,
-        "viewer_reads_failed_or_rejected": 14
+        "commits": 77,
+        "viewer_reads": {
+          "validated": 14
+        }
+      },
+      "review_a_policy_page_and_capped_count": {
+        "busy": 0,
+        "commits": 78,
+        "viewer_reads": {
+          "validated": 15
+        }
+      },
+      "validated_key_ordered_page": {
+        "busy": 0,
+        "commits": 78,
+        "viewer_reads": {
+          "validated": 15
+        }
+      },
+      "validated_unindexed_sort_page": {
+        "busy": 0,
+        "commits": 77,
+        "viewer_reads": {
+          "validated": 9,
+          "validation_failed": 5
+        }
       }
-    }
+    },
+    "every_5_ms": {
+      "locked_capped_count": {
+        "busy": 13,
+        "commits": 600,
+        "viewer_reads": {
+          "locked": 10,
+          "locked_failed_SQLITE_BUSY": 5
+        }
+      },
+      "locked_count_star": {
+        "busy": 6,
+        "commits": 616,
+        "viewer_reads": {
+          "locked": 14,
+          "locked_failed_SQLITE_BUSY": 1
+        }
+      },
+      "locked_key_ordered_page": {
+        "busy": 0,
+        "commits": 599,
+        "viewer_reads": {
+          "locked": 9,
+          "locked_failed_SQLITE_BUSY": 6
+        }
+      },
+      "locked_unindexed_sort_page": {
+        "busy": 32,
+        "commits": 581,
+        "viewer_reads": {
+          "locked": 13,
+          "locked_failed_SQLITE_BUSY": 2
+        }
+      },
+      "none": {
+        "busy": 0,
+        "commits": 624,
+        "viewer_reads": {}
+      },
+      "plan_policy_key_ordered_page_and_capped_count": {
+        "busy": 0,
+        "commits": 613,
+        "viewer_reads": {
+          "locked_failed_SQLITE_BUSY": 1,
+          "locked_key_page_only": 7,
+          "validated": 1
+        }
+      },
+      "plan_policy_unindexed_sort_page_and_capped_count": {
+        "busy": 0,
+        "commits": 612,
+        "viewer_reads": {
+          "locked_failed_SQLITE_BUSY": 1,
+          "locked_key_page_only": 7,
+          "validated": 1
+        }
+      },
+      "review_a_policy_page_and_capped_count": {
+        "busy": 13,
+        "commits": 610,
+        "viewer_reads": {
+          "locked": 11,
+          "locked_failed_SQLITE_BUSY": 3
+        }
+      },
+      "validated_key_ordered_page": {
+        "busy": 0,
+        "commits": 614,
+        "viewer_reads": {
+          "journal_present": 1,
+          "validated": 12,
+          "validation_failed": 2
+        }
+      },
+      "validated_unindexed_sort_page": {
+        "busy": 0,
+        "commits": 619,
+        "viewer_reads": {
+          "journal_present": 1,
+          "validation_failed": 13
+        }
+      }
+    },
+    "policy_deadline_s": 0.25,
+    "viewer_interval_s": [0.15, 0.35]
   },
-  "seconds": 50,
+  "seconds": 129,
   "suite": "contention"
 }

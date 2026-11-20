@@ -3,44 +3,48 @@
     "machine": "x86_64",
     "python": "3.13.18",
     "sqlite": "3.53.1",
-    "system": "Linux 6.18.44-fc-v653",
+    "system": "Linux 6.18.44-fc-v726",
     "uid_is_superuser": false
   },
   "results": {
     "baseline": {
-      "peak_rss_mb": 18,
+      "peak_rss_mb": 20,
       "value": [1]
     },
     "blobopen_100_bytes_text": {
-      "peak_rss_mb": 18,
+      "peak_rss_mb": 20,
       "value": 100
     },
     "length_blob": {
-      "peak_rss_mb": 18,
+      "peak_rss_mb": 20,
+      "value": [209715200]
+    },
+    "length_of_text_cast_to_blob": {
+      "peak_rss_mb": 221,
       "value": [209715200]
     },
     "length_text": {
-      "peak_rss_mb": 219,
+      "peak_rss_mb": 221,
       "value": [209715200]
     },
     "octet_length_text": {
-      "peak_rss_mb": 18,
+      "peak_rss_mb": 20,
       "value": [209715200]
     },
     "substr_and_length_blob": {
-      "peak_rss_mb": 221,
+      "peak_rss_mb": 223,
       "value": [16, 209715200]
     },
     "substr_and_length_text": {
-      "peak_rss_mb": 219,
+      "peak_rss_mb": 221,
       "value": [100, 209715200]
     },
     "typeof_text": {
-      "peak_rss_mb": 18,
+      "peak_rss_mb": 20,
       "value": [4]
     },
     "value_mb": 200
   },
-  "seconds": 3,
+  "seconds": 4,
   "suite": "values"
 }
