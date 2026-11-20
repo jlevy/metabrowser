@@ -777,10 +777,11 @@
     const rows = parts.rows;
     const count = rows.shown.length;
     parts.sizer.style.height = `${count * rows.rowHeight}px`;
+    rows.drawnAt = parts.list.scrollTop || 0;
     const { start, end, also } = rowWindow(
       count,
       rows.rowHeight,
-      parts.list.scrollTop || 0,
+      rows.drawnAt,
       parts.list.clientHeight || 0,
       rows.roving,
     );
@@ -892,6 +893,18 @@
       list.scrollTop = top;
     } else if (top + rows.rowHeight > list.scrollTop + list.clientHeight) {
       list.scrollTop = top + rows.rowHeight - list.clientHeight;
+    }
+  }
+
+  /**
+   * Scroll an open list back to where its rows were drawn for, when something other than
+   * a scroll has moved it: a refill of the toolbar (`keepAcrossRefills`). Browser only.
+   *
+   * @param {MetabrowserSourceRefSelectorParts} parts
+   */
+  function keepScroll(parts) {
+    if (!parts.panel.hidden && parts.list.scrollTop !== parts.rows.drawnAt) {
+      parts.list.scrollTop = parts.rows.drawnAt;
     }
   }
 
@@ -1082,6 +1095,7 @@
         drawn: new Map(),
         roving: 0,
         rowHeight: 0,
+        drawnAt: 0,
         listing: "",
         revealed: false,
         switching: false,
@@ -1091,13 +1105,17 @@
   }
 
   /**
-   * Keep focus in the selector across the Files toolbar's refills. Browser only.
+   * Keep focus in the selector, and its list where it was scrolled to, across the Files
+   * toolbar's refills. Browser only.
    *
    * The selector leads the toolbar's row, which app.js draws again whenever a filter or a
    * tally changes, while the index warms up too (renderNavFilterBar). It carries this
    * element over rather than drawing it, so the list stays open with what was typed, but
-   * the element is out of the page for that moment, and an element taken out loses focus.
-   * So the control that had it gets it back, unless the reader has since put focus
+   * the element is out of the page for that moment, and an element taken out loses focus
+   * and its scroll position, with no scroll event to say so: a list that End had scrolled
+   * to its foot came back at its top, where no rows were drawn, with the focused row out
+   * of view (mb-y1k0). So *restore* puts the list back where its rows were drawn for, and
+   * the control that had focus gets it back, unless the reader has since put focus
    * somewhere else: elsewhere by a key, or anywhere by a press outside the selector.
    * Focus events do not fire in a page that is not focused, a background window's or a
    * headless test's, so a refill that finds nothing recorded asks *fallback*: an open
@@ -1106,10 +1124,11 @@
    *
    * @param {HTMLElement} element
    * @param {() => HTMLElement | null} fallback
+   * @param {() => void} restore
    * @param {AbortSignal} signal
    * @returns {() => void} What stops it.
    */
-  function keepFocusAcross(element, fallback, signal) {
+  function keepAcrossRefills(element, fallback, restore, signal) {
     const bar = element.closest("[data-nav-toolbar]");
     if (bar === null) {
       return () => {};
@@ -1135,8 +1154,9 @@
       );
     }
     // The refill replaces the bar's children and puts this element back before the
-    // observer is told, so focus is back before the frame paints.
+    // observer is told, so the list and focus are back before the frame paints.
     const refills = new MutationObserver(() => {
+      restore();
       const active = document.activeElement;
       if (active === null || active === document.body) {
         (focused?.isConnected && element.contains(focused) ? focused : fallback())?.focus({
@@ -1260,9 +1280,10 @@
       },
       { signal },
     );
-    const stopKeepingFocus = keepFocusAcross(
+    const stopKeeping = keepAcrossRefills(
       element,
       () => (parts.panel.hidden ? null : parts.filter),
+      () => keepScroll(parts),
       signal,
     );
     parts.filter.addEventListener("input", () => mounted.setQuery(parts.filter.value), {
@@ -1382,7 +1403,7 @@
       },
       dispose() {
         listening.abort();
-        stopKeepingFocus();
+        stopKeeping();
         unbindKinds();
         mounted.dispose();
         parts.releaseCopies?.();
