@@ -19,7 +19,9 @@ body is 17.9 KB and the summary 67 bytes. A repository with tens of thousands of
 makes a refs body of a few megabytes, which is kept unless it is over
 :data:`MAX_ENTRY_BYTES`. The selector's listing of 1,301 branches is 291 KB and of
 10,001 is 2.2 MB, so one past about 9,000 branches is served and not kept (measured
-2026-11-19); each filter typed into the selector is one small entry more.
+2026-11-19), and about 5,200 where each is the head of a pull request, whose row is 403
+bytes against 245 (measured 2026-11-20); each filter typed into the selector is one small
+entry more.
 """
 
 from __future__ import annotations

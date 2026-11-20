@@ -106,8 +106,22 @@ A chain of folders that each hold one folder shows as one row, and a folder whos
 were all written at about the same time starts collapsed.
 The view holds at most 5,000 files; when more match, it leaves out gitignored files
 first and says how many matched.
-A pinned Git revision has no modification times, so it offers no Modified within and no
-By age grouping.
+A Git revision has no modification times, so a file’s age is the time of the last commit
+that changed it, as a hosting site’s file list shows, and a folder’s the newest of its
+files’. They come from `git last-modified`, which needs Git 2.53 or newer, and are read
+in the background after the page opens, so a file shows its age a moment after it shows
+its name; with an older Git a revision shows no ages, and `metab --doctor` says what to
+upgrade. With file ages, Modified within and By age work on a revision as on a folder: a
+file is in a window or a band by its last commit, and a file whose last commit is not
+known (a shallow clone, or a read that has not finished) is in a last group, Undated,
+which says what it is older than when that is known; the page draws again when the ages
+arrive, the open file’s age included.
+Until then the Modified within counts read “…”, and the Undated group is named for it.
+The line that counts the files a filter keeps says that the ages are being read, why
+they could not be read when a read failed, and how many files could not be dated when
+some could not, and the Undated group says so too.
+A folder in a group or a window is dated by the newest of the files that put it there,
+and a submodule has no age, so it is in no group.
 
 The same filters are available from the command line:
 `metab ROOT --walk --type .md --age 7d`.
@@ -199,6 +213,19 @@ instead, under one line saying so.
 Reloading it shows the source again at once for a while, since the server remembers it.
 The same line says when the renderer is busy with other documents or could not start;
 reloading the page then tries again.
+
+With active content off, a document shows its images from the web over `https`, as on
+github.com, such as a README’s badges, and the browser fetches them with no referrer
+sent. A badge that links somewhere keeps its link.
+An image the page does not load, one over `http`, is its alt text in a small chip with
+an image mark, in the link it was in or in a link to the image, and hovering the chip
+shows the address. Those requests tell the image’s host that you opened the page, so the
+Metabrowser menu has **Block remote images**, off unless you tick it: every such image
+is then its chip, and the page’s policy refuses an image from another site, so the
+browser sends no request for one.
+It applies to what is untrusted, a repository opened from its URL, a pull request’s
+text, a commit’s, a Markdown diff, and a folder served with `--untrusted`; your own
+folder’s Markdown is not changed.
 
 ### Data, Logs, and Code
 

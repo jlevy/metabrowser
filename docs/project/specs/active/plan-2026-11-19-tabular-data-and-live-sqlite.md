@@ -983,6 +983,27 @@ As built, where this plan left a choice open:
   moves it, and a cursor continues from the sort position it names.
 - `requires = ["table"]` is declared because the table plugin’s routes serve the source;
   a manifest with a `[[table_source]]` that does not require `table` is refused.
+- The envelope also carries `reason` (why a page is not complete: `budget`,
+  `sort_budget`, `source_truncated`, or `cursor_expired`), `examined` (the rows a scan
+  reached before its budget ran out), `searched` (the fields a search read),
+  `sort_refused`, and `limit` (the rows the page allowed).
+- A filter or search that runs out of budget answers the rows it found in the query’s
+  own order, and its cursor continues among them; a sort the budget cannot finish,
+  whether in the scan before it or in building its index, answers no rows with the
+  reason `sort_budget` and the field in `sort_refused`, as above.
+- `cols` names one field per parameter and repeats (`cols=a&cols=b`), since a delimited
+  header may hold a comma; `ref` splits at its last colon.
+- A page carries at most `TABLE_PAGE_CELLS_MAX` cells, so a page of wide rows has fewer
+  rows than its `limit` asked for.
+  A delimited file is bounded in rows, cells, and columns as well as bytes, since its
+  costs follow those.
+- A `c.` cursor names the sort field and order it was made for, and a cursor for another
+  is refused.
+- Of the cell envelopes above, this phase builds the integer, real, text (with `length`
+  and `invalid_utf8`), and `{value, stored}` ones.
+  `{blob, length, hex}`, `{length, preview: false}`, `{error}`, and `{ref}` arrive with
+  SQLite tables (Phase 5), and `{json, preview}` with the first source that types a
+  field `json` (Phase 5 or 7); a table view meets only the built ones until then.
 
 ### Phase 3: The Table View
 

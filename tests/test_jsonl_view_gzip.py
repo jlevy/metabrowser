@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from metabrowser import jsonl_view, server
-from metabrowser.builtin_plugins.agent_log.sidekick import charts_handler
+from metabrowser.builtin_plugins.agents.sidekick import charts_handler
 from metabrowser.charts import _cache_key, extract_agent_charts
 from metabrowser.gz_io import ArtifactPath
 from metabrowser.jsonl_view import _LARGE_FILE_BYTES, _parse_jsonl_file, parse_jsonl_bytes

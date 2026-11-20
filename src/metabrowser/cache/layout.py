@@ -1,4 +1,4 @@
-"""The ``f01`` home format: its record, history, migrations, and future-format refusal.
+"""The ``f02`` home format: its record, history, migrations, and future-format refusal.
 
 ``layout.yml`` names the directory semantics of the whole application home. This
 module owns the current format, the ordered history of formats a release has written,
@@ -51,6 +51,7 @@ from metabrowser.cache.records import (
     ApplicationConfig,
     CacheLayout,
 )
+from metabrowser.cache.store_rename import rename_legacy_stores
 from metabrowser.home import (
     SharedEntryPolicy,
     application_cache,
@@ -61,16 +62,18 @@ from metabrowser.home import (
     write_private_file_atomic,
 )
 
-LAYOUT_FORMAT: Final = "f01"
+LAYOUT_FORMAT: Final = "f02"
 CONFIG_FORMAT: Final = "f01"
 CONFIG_FORMAT_HISTORY: Final[tuple[str, ...]] = (CONFIG_FORMAT,)
 # Every format a released Metabrowser has written, oldest first, ending with the current
 # one. Adding a format appends it here and adds the migration from its predecessor.
-FORMAT_HISTORY: Final[tuple[str, ...]] = ("f01",)
+# ``f02`` names each repository store by a readable key where ``f01`` spelled the whole
+# digest of its identity (``store_rename``).
+FORMAT_HISTORY: Final[tuple[str, ...]] = ("f01", "f02")
 
 type Migration = Callable[[Path], None]
 # The migration from each historical format to the next one in FORMAT_HISTORY.
-MIGRATIONS: Final[Mapping[str, Migration]] = {}
+MIGRATIONS: Final[Mapping[str, Migration]] = {"f01": rename_legacy_stores}
 
 _CONFIG_METADATA: Final = {
     "contract": CONFIG_CONTRACT_ID,

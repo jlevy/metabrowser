@@ -205,11 +205,11 @@ def test_every_builtin_loads_exactly_the_providers_it_declares() -> None:
         declared[name] = set(manifest.plugin.requires)
     assert used == declared
     assert declared == {
-        "agent_log": {"structured"},
+        "agents": {"structured"},
         "binary": set(),
         "delimited": {"table"},
         "diff": {"structured"},
-        "event_log": {"agent-log"},
+        "event_log": {"agents"},
         "folder": {"markdown"},
         "github": {"markdown"},
         "html": set(),
@@ -218,7 +218,7 @@ def test_every_builtin_loads_exactly_the_providers_it_declares() -> None:
         "structured": set(),
         "table": set(),
         "text": set(),
-        "unknown_jsonl": {"agent-log"},
+        "unknown_jsonl": {"agents"},
     }
 
 
@@ -237,7 +237,7 @@ def test_no_browser_code_reads_the_retired_builtins_namespace() -> None:
 
 
 def test_every_builtin_provider_exports_from_its_module() -> None:
-    for provider in ("agent_log", "markdown", "structured"):
+    for provider in ("agents", "github", "markdown", "structured"):
         source = (BUILTIN / provider / "index.js").read_text(encoding="utf-8")
         assert re.search(r"^export ", source, re.MULTILINE), provider
 

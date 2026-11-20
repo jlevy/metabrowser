@@ -163,11 +163,13 @@ for (const relative of [
   const filename = path.join(sourceRoot, relative);
   vm.runInContext(fs.readFileSync(filename, "utf8"), sandbox, { filename });
 }
-// The agent-log plugin is an ES module, which this realm evaluates; it reaches the page
-// only through `window`, which is the sandbox's. Its exports are what
-// `mb.plugins.load("agent-log")` answers the shell's live tail.
+// The agents plugin's index.js and its agent-log renderers are ES modules, which this realm
+// evaluates; they reach the page only through `window`, which is the sandbox's. The
+// renderers register their views over index.js's stubs, and their exports are what the
+// plugin's `loadLogRenderers` answers the shell's live tail.
 globalThis.window = sandbox;
-const agentLog = require(path.join(sourceRoot, "builtin_plugins/agent_log/index.js"));
+require(path.join(sourceRoot, "builtin_plugins/agents/index.js"));
+const agentLog = require(path.join(sourceRoot, "builtin_plugins/agents/agent-log.js"));
 {
   const filename = path.join(sourceRoot, "builtin_plugins/unknown_jsonl/index.js");
   vm.runInContext(fs.readFileSync(filename, "utf8"), sandbox, { filename });
@@ -178,7 +180,8 @@ vm.runInContext(toggleEvent[0], sandbox, { filename: "app.js (lifted)" });
 
 const mb = sandbox.metabrowser;
 mb.ensureKindAssets = async () => {};
-// The declared providers: agent-log's exports, which generic JSONL draws with, and the
+// The declared providers: the agents plugin, whose agent-log renderers generic JSONL draws
+// with (its `loadLogRenderers` answers them, without the stylesheet a page loads), and the
 // structured plugin, whose tree an opened payload is. The session records each tree it
 // is asked to draw rather than drawing it, and answers the structured load as
 // `structuredLoad` says, so a step can hold the load open or fail it.
@@ -192,8 +195,8 @@ let structuredLoad = () => Promise.resolve(structured);
 let structuredLoads = 0;
 mb.plugins = {
   load(name) {
-    if (name === "agent-log") {
-      return Promise.resolve(agentLog);
+    if (name === "agents") {
+      return Promise.resolve({ loadLogRenderers: () => Promise.resolve(agentLog) });
     }
     assert(name === "structured", `plugins.load asked for ${name}`);
     structuredLoads += 1;
@@ -327,7 +330,7 @@ function dispatch(pane, type, target, keys = {}) {
     transcript[kind] = steps;
   }
 
-  // An opened payload (agent_log/index.js mountLogEventRaw): an object is the structured
+  // An opened payload (agents/agent-log.js mountLogEventRaw): an object is the structured
   // tree, drawn once the load settles; a failed load leaves the flat JSON block and no
   // empty wrapper; a string is the flat block at once; and closing and reopening a row
   // while the load is in flight draws it once.

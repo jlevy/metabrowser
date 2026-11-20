@@ -31,7 +31,7 @@ STATIC_ROOT = Path(server.__file__).resolve().parent / "static"
 
 async def _index_html(root: Path) -> str:
     async with inventory_harness(root) as harness:
-        request = SimpleNamespace(app=harness.app)
+        request = SimpleNamespace(app=harness.app, cookies={})
         return bytes((await server.index(cast(Any, request))).body).decode("utf-8")
 
 
@@ -136,7 +136,7 @@ def test_collapsed_inline_descendants_stay_cached_out_of_the_dom() -> None:
 
 async def _landing_html(root: Path, view_path: str) -> str:
     async with inventory_harness(root) as harness:
-        request = SimpleNamespace(app=harness.app)
+        request = SimpleNamespace(app=harness.app, cookies={})
         response = await server.index(cast(Any, request), view_path=view_path)
         return bytes(response.body).decode("utf-8")
 
@@ -409,7 +409,7 @@ def _ignoring_tree(root: Path) -> None:
 
 async def _shell_and_summary(root: Path) -> tuple[dict[str, object] | None, dict[str, Any]]:
     async with inventory_harness(root) as harness:
-        request = SimpleNamespace(app=harness.app)
+        request = SimpleNamespace(app=harness.app, cookies={})
         html = bytes((await server.index(cast(Any, request))).body).decode("utf-8")
         tree = await server.api_tree(
             cast(Any, SimpleNamespace(app=harness.app, query_params=_Query({"depth": "0"})))

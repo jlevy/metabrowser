@@ -287,8 +287,9 @@ jobs:
     # Ubuntu's own package is below the floor, and the image has shipped a newer one
     # the floor admits (2.55.0 on 2026-10-01).
     #
-    # This job builds the lowest admitted release and the newest patched one from
-    # checksum-verified kernel.org source, puts that Git first on PATH for this job
+    # This job builds the lowest admitted release, the newest patched one, and the release
+    # that tests file ages on a Git revision (git last-modified, which the first two lack;
+    # tests/file_ages_git.py) from checksum-verified kernel.org source, puts that Git first on PATH for this job
     # only, and runs the acquisition, store-read, and full-clone acceptance tests
     # with nothing patched. METABROWSER_REQUIRE_ADMITTED_GIT turns their below-floor
     # skip into a failure and fails when a different Git answers, so the job cannot
@@ -297,9 +298,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # ACQUISITION_MINIMUM and ACQUISITION_NEWEST_PATCHED. Checksums are pinned in
+        # ACQUISITION_MINIMUM, ACQUISITION_NEWEST_PATCHED, and a release at or above
+        # FILE_AGES_GIT_MINIMUM (metabrowser/git/file_ages.py). Checksums are pinned in
         # devtools/build_admitted_git.sh; check_supply_chain.py requires both floors here.
-        git: ["2.43.7", "2.50.1"]
+        git: ["2.43.7", "2.50.1", "2.56.1"]
     runs-on: ubuntu-latest
     # 2.7 to 4.1 minutes under xdist over the six jobs of run 44026747033's first three
     # attempts and 2.7 to 3.9 over runs 44037230262 and 44038762653, with the build

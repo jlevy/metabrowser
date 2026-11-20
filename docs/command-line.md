@@ -535,9 +535,14 @@ sentence, the details it read, and the step that fixes it:
   oldest that app runs, and an older one is a warning whose step upgrades it with the
   tool that installed it.
   Run from the app’s Check Setup…, it compares with that app instead.
-- **`git`:** the `git` on `PATH`, against the floor for cloning and fetching and the one
-  for showing a branch or tag of a partial clone.
-  Below either is a warning: browsing a folder needs no Git.
+- **`git`:** the `git` on `PATH`: where it is, its version, and each thing that version
+  does. It is checked against the floor for cloning and fetching, the one for showing a
+  branch or tag of a partial clone, and the one for file ages on a Git revision
+  (`git last-modified`, Git 2.53), and a `file ages` line says whether they are
+  available. Below any is a warning that names what is missing, with the step that
+  upgrades Git: browsing a folder needs no Git, and a Git revision without file ages
+  shows no times. Run from the app’s Check Setup…, it reports the Git the app’s servers
+  use.
 - **`config`:** the configuration directory: its override is valid, it is private or can
   be created, and its `config.yml` is one this release reads.
 - **`cache`:** the cache directory: its override is valid, it is private and writable or
@@ -962,8 +967,13 @@ Metabrowser keeps the keys and comments you add, and refuses keys that look like
 credentials. If the file cannot be parsed, Metabrowser names it and exits without
 replacing it: move it aside and start again.
 A newer format asks you to upgrade Metabrowser.
-Deleting the cache directory, with no server running, removes every mirror and record;
-the next run clones again.
+A cache an older release wrote is migrated the first time a repository in it is opened:
+each mirror’s directory is renamed to a readable name, and nothing is cloned again.
+That first open writes to the cache, so it needs a cache you can write once; a read-only
+copy is not migrated.
+Stop running `metab` servers first: one of an older release cannot read its mirrors once
+they are renamed. Deleting the cache directory, with no server running, removes every
+mirror and record; the next run clones again.
 [The repository cache](project/architecture/arch-repository-cache.md) describes the
 layout, and the repair for each refusal that concerns it.
 

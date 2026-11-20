@@ -298,7 +298,13 @@ export function sanitizeBlock(html, inert, template, scratch, isTarget) {
       const marker = `mb-markdown-target-${targets.size}`;
       targets.set(marker, value);
       element.setAttribute(attribute, marker);
-    } else if (image || (!value.startsWith(`#${inert.ANCHOR_PREFIX}`) && !outsideLink(value))) {
+    } else if (
+      // An image from the web keeps its address: the sanitizer loads it or replaces it
+      // as the reader has set. Any other image, and a link that goes nowhere, loses its.
+      image
+        ? inert.remoteImage(value, null) === null
+        : !value.startsWith(`#${inert.ANCHOR_PREFIX}`) && !outsideLink(value)
+    ) {
       element.removeAttribute(attribute);
     }
   }

@@ -1510,5 +1510,5 @@ def test_cli_plugins_list_works() -> None:
     result = runner.invoke(_app, ["--plugins"])
     assert result.exit_code == 0
     # Built-in plugins should always be discovered.
-    assert "agent-log" in result.output
+    assert "agents" in result.output
     assert "markdown" in result.output

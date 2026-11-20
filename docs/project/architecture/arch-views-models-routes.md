@@ -50,7 +50,7 @@ route-backed selections of `cli/show_cli.py` register them.
 
 | Kind | Matches | Views (default first) and keys | Model |
 | --- | --- | --- | --- |
-| `folder` | Directories | Overview `O`, Treemap `M` | Folder envelope and [File Rollup Format](file-rollup-format/file-rollup-format.md) |
+| `folder` | Directories | Agents `A`, the default, and Sessions `S` on a folder that is or holds an agent home; Overview `O` and Treemap `M` on every folder | Folder envelope and [File Rollup Format](file-rollup-format/file-rollup-format.md); Agents and Sessions read the `agents` catalog routes |
 | `markdown` | `.md` | Document `V`, Source `S` | File envelope; KPress render |
 | `mermaid` | `.mmd`, `.mermaid` | Diagram `V`, Source `S` | The file’s text as one `mermaid` fence through `/api/kpress/render`, drawn as a document’s diagrams are |
 | `html` | `.html`, `.htm` | Preview `V`, Source `S` | File envelope; sandboxed raw document |
@@ -58,7 +58,8 @@ route-backed selections of `cli/show_cli.py` register them.
 | `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Source `S` | File envelope and the `structured/parsed` hook |
 | `delimited` | `.csv`, `.tsv` | Table `V`, Source `S` | File envelope; one table through the `table/*` hooks, which the table plugin’s view draws ([Table Sources](arch-plugin-system.md#table-sources)) |
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
-| `agent-log` | `.jsonl` sniffed as an agent log | Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agent-log/charts` hook |
+| `agent-log` | `.jsonl` sniffed as an agent log | Session `E`, Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agents/charts` hook; Session reads `agents/session` and `agents/records` |
+| `agent-thread` | A compressed Codex rollout, `sessions/**/rollout-*.jsonl.zst`, claimed by its path | Session `E`, Log `V` | `agents/session` and `agents/records`, by the file’s path; the thread’s history store stands in for the unreadable rollout |
 | `unknown-jsonl` | Other `.jsonl` | Log `V`, Raw JSON `S` | File envelope |
 | `event-log` | A `.jsonl` file named `events-*.jsonl`, in a served folder (`path_glob`; a Git blob of that name is generic JSONL) | Timeline `V`, Latency `L`, By kind `B`, Errors `E`, Raw JSON `S` | File envelope and the `event-log/timeline`, `event-log/slowest`, `event-log/kinds`, and `event-log/errors` hooks over one segment of [the event log](../../realtime-debugging.md#event-log) |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
@@ -208,6 +209,8 @@ counts is missing here; the asset routes are not counted.
 | `/_debug/tasks`, `/_debug/inventory` | Task and inventory diagnostics, served only with `METABROWSER_DEBUG=1` | [Server and Content](arch-server-and-content.md) |
 | `/api/tree`, `/api/rollup`, `/api/catalog`, `/api/recent` | Navigation pages, folder rollups, the file universe for Quick Search, and newest-first leaves | [Inventory Provider](arch-inventory-provider.md) |
 | `/api/index/progress`, `/api/index/meta`, `/api/capabilities` | Index progress and metadata, and what the active source supports | [Inventory Provider](arch-inventory-provider.md) |
+| `/api/tree`, `/api/index/progress`, `/api/capabilities` on a pinned revision | A node’s `mtime` and the `ages` state of getting it, and `file_ages` in what the source supports | [File Ages](arch-git.md#file-ages) |
+| `/api/tree` with `recency` or `group_by=age`, `/api/recent`, and `/api/file` on a pinned revision | Modified within, By age with its Undated group, the newest files of a window, and a file’s `mtime` from the answer that is there, from the same times | [File Ages](arch-git.md#file-ages) |
 | `/api/events` | The server-sent inventory snapshot and changes | [Live Delivery](arch-live-delivery.md) |
 | `/api/stream`, `/api/activity` | The live tail of a JSONL file, and the files being written now | [Live Delivery](arch-live-delivery.md) |
 | `/api/diagnostics/pending-tallies` | `POST`: a client’s pending-tally warning, matched with server state | [Live Delivery](arch-live-delivery.md) |
@@ -215,7 +218,7 @@ counts is missing here; the asset routes are not counted.
 | `/api/event-log/failures` | The failures in the event log since a moment, an hour ago by default, grouped by cause, with the addresses that failed, the latest message, links to their records, and the latest failed connectivity probe; a page’s own reports of failure listed apart, under `page_reports` (`event_log_route.py`) | [Real-Time Debugging](../../realtime-debugging.md#github-failures) |
 | `/api/event-log/client` | `POST`: what a page saw, its slow and pending requests, frozen frames, and waits still running at the late threshold, checked, bounded, redacted, and written as `browser` records under the page’s client ID (`event_log_reports.py`, sent by `static/event-reports.js`) | [Real-Time Debugging](../../realtime-debugging.md#what-the-page-reports) |
 | `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>`, `/api/git/commit-markdown/<rev>`, `/api/git/commit-size/<rev>` | Read-only history for the Commits tab: a repository folder’s own, and a mirror’s default branch’s, whichever revision the Files tab shows; a commit’s size as Git pushes it and as a patch (`git/change_size.py`) | [Git](arch-git.md), [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout) |
-| `/api/source/status`, `/api/source/refs`, `/api/source/pin` | What the server serves; the served root’s branches and tags, a mirror’s or a repository folder’s, with a checkout’s remote-tracking branches, each with its commit’s full ID and committer date, and a checkout’s working tree by its folder; and switching its view: a mirror’s pin, or a checkout between a revision and its working tree. `metab PATH --ref NAME` starts a checkout on a revision, so every route that answers a pin answers a checkout’s revision from a terminal | [Source Sessions and Pins](arch-source-sessions-and-pins.md), [Open Modes](arch-open-modes.md) |
+| `/api/source/status`, `/api/source/refs`, `/api/source/pin` | What the server serves; the served root’s branches and tags, a mirror’s or a repository folder’s, with a checkout’s remote-tracking branches, each with its commit’s full ID and committer date, and a checkout’s working tree by its folder, and the pull requests each branch is the head of, as its provider has cached them, which the filter finds a branch by too; and switching its view: a mirror’s pin, or a checkout between a revision and its working tree. `metab PATH --ref NAME` starts a checkout on a revision, so every route that answers a pin answers a checkout’s revision from a terminal | [Source Sessions and Pins](arch-source-sessions-and-pins.md), [Open Modes](arch-open-modes.md) |
 | `/api/identity` | What the served subject is called, for a window’s title, and the GitHub repository it belongs to (`root_identity.py`) | [Source Sessions and Pins](arch-source-sessions-and-pins.md) |
 | `/api/counterpart` | The github.com page that shows what a page shows, for its View on GitHub control, or why there is none (`counterpart.py`) | [Design System: View on GitHub](../../design-system.md#view-on-github) |
 | `/api/source/refresh` | `POST`: start or join a background refresh of the served mirror | [Mirror Acquisition and Refresh](arch-mirror-acquisition-and-refresh.md) |
@@ -225,10 +228,12 @@ counts is missing here; the asset routes are not counted.
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, and
 `diff/comparison` ([Diff Pipeline](arch-diff-pipeline.md)); `binary/chunk`,
-`structured/parsed`, and `agent-log/charts` ([Plugin System](arch-plugin-system.md));
+`structured/parsed`, and `agents/charts` ([Plugin System](arch-plugin-system.md));
 `event-log/timeline`, `event-log/slowest`, `event-log/kinds`, and `event-log/errors`
-([Real-Time Debugging](../../realtime-debugging.md#browsing-the-log)); `table/tables`,
-`table/schema`, `table/rows`, `table/record`, and `table/card`
+([Real-Time Debugging](../../realtime-debugging.md#browsing-the-log)); `agents/catalog`,
+`agents/sessions`, `agents/session`, `agents/records`, and `agents/live`, the catalog of
+Claude Code and Codex sessions under a served folder ([Agent Catalog](#agent-catalog));
+`table/tables`, `table/schema`, `table/rows`, `table/record`, and `table/card`
 ([Table Sources](arch-plugin-system.md#table-sources)); and `github/pull`,
 `github/pull-refresh`, `github/pull-cores-prepare`, `github/pull-comparison`,
 `github/pull-image`, `github/pull-rendered-diff`, `github/pull-size`,
@@ -237,6 +242,66 @@ Plugin hooks currently registered: `diff/document`, `diff/children`, and
 `github/pull-files-summary`, `github/stacks`, `github/stacks-refresh`,
 `github/stack-change`, `github/labels`, `github/labels-refresh`, `github/cache-clear`,
 and `github/status` ([GitHub Pull Requests](arch-github-pull-requests.md)).
+
+## Agent Catalog
+
+The `agents` plugin keeps a catalog of the Claude Code and Codex sessions under a served
+folder and answers five data hooks from it.
+The
+[operational views plan](../specs/active/plan-2026-11-19-agent-operations-views.md#engines-and-the-catalog)
+gives the design. `builtin_plugins/agents/homes.py` decides which folders hold a home
+(`homes_in`, and `holds_homes` for a view’s `offer`), `catalog.py` keeps the sessions
+current on a worker thread, `store.py` caches each summary, and `routes.py` serves them.
+
+| Route | Parameters | Returns |
+| --- | --- | --- |
+| `catalog` | `folder` | Homes, totals, size-histogram buckets, sessions per day, progress, freshness, cache state, drift, and engines |
+| `sessions` | `folder`; filters `agent`, `origin`, `status`, `project`, `model`, `since`, `until`; `sort`, `order`, `limit`, `offset` | Matching rows, `total`, `next_offset`, and facets over the whole folder |
+| `session` | `agent` and `id`, or `path`, the session’s source file | One row, its parent, its children, and its drift |
+| `records` | the session as above; `kind`, `tool`, `locator`, `limit`, `cursor` | One page of the session’s normalized events, with `next_cursor`, which is null at the end and where the scan bound stopped (`truncated`) |
+| `live` | `folder` | Sessions a pid file, an active turn, or a recent update vouches for |
+
+Paths in `folder` and `path` are served-root-relative and resolve through `plugin_api`;
+every path in a response is relative to the served root, and a project shows the user’s
+home directory as `~`. A refusal is `{"error", "code", "param"}` with status 400 or 404,
+or 503 `catalog_incomplete` (with `progress`) for a session that the first pass of a
+home has not listed yet, which a page asks for again.
+
+A request answers from what the worker has summarized so far and reports `progress` and
+`freshness`; it starts a pass when the last is old, and never waits for a full one.
+`sync=1` waits until the catalog is fully summarized, which is how `metab --api`, tests,
+and goldens get a complete answer.
+One such request waits at a time, for one deadline shared by its homes
+(`SYNC_TIMEOUT_SECONDS`); another answers at once with the progress so far.
+`now` (Unix seconds) replaces the clock of the response and its liveness checks, never
+the catalog’s own pass times.
+Each summary is cached in `plugin_cache_directory("agents")`, keyed by the session’s
+source files, sizes, modification times, and measure-family versions (`session_key`), so
+a change re-reads only that session.
+When no private cache directory can be made, `cache.state` is `unavailable` and the
+routes answer from memory.
+The limits and the measurements that set them are beside their constants, in
+`catalog.py`, `routes.py`, `store.py`, `readers.py`, and `codex.py`.
+
+### Agent Views
+
+The plugin’s surfaces are views of kinds that already exist, so each is reached by
+`metab --show` and reads only the routes above (no plugin can register an address space
+of its own).
+
+| View | Kind | Offered | Reads |
+| --- | --- | --- | --- |
+| Agents (`agents`), the default | `folder` | Where `holds_homes` accepts the folder: a Claude Code or Codex home, or a folder holding `.claude` or `.codex` | `catalog`, `sessions` for the recent rows, `live` |
+| Sessions (`agent-sessions`) | `folder` | The same | `sessions`, one page at a time, with its filters, sort, and page |
+| Session (`session`), the default | `agent-log`, `agent-thread` | Every file of the kind | `session` and `records` by the file’s `path`; a file in no agent home falls back to the Log |
+| Log (`log`) | `agent-thread` | Every file of the kind | `records` by `path` |
+
+The views’ code and stylesheet (`agents-views.css`) are on demand: `index.js` registers
+a stub for each and imports the module the first time its view is shown, because the
+plugin’s own assets load for every folder page.
+What the browser owns is in `session-list-state.js` (filters, sort, and paging),
+`poller.js` (when a page asks again), and `home-model.js` (what the home derives), each
+pinned browserlessly by `tests/dom/agents-views-session.js`.
 
 ## Adding Something
 

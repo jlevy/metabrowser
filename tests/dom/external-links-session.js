@@ -17,6 +17,10 @@ class Element {
   get childNodes() {
     return this.children;
   }
+  get classList() {
+    const names = this.className.split(/\s+/);
+    return { contains: (name) => names.includes(name) };
+  }
   get firstChild() {
     return this.children[0] ?? null;
   }
@@ -112,7 +116,7 @@ for (const [href, expected] of [
   link.setAttribute("target", "_blank");
   link.setAttribute("rel", "noopener noreferrer");
   link.setAttribute("aria-label", "Authored name");
-  const text = { text: "Authored text" };
+  const text = document.createTextNode("Authored text");
   const image = document.createElement("img");
   link.append(text, image);
   assert.equal(decorate(link), link);
@@ -177,8 +181,81 @@ assert.deepEqual(link.children, [authored]);
 link.setAttribute("href", "https://github.com/octo/demo/issues/8");
 decorate(link);
 assert.equal(link.children[1].getAttribute("data-external-kind"), "issue");
+// A link whose whole content is images -- a badge, or the fallback for an image the page
+// does not load -- takes no mark, which github.com draws none on and which wrapped under
+// the badges; one with any text of its own, or a mark already on it that its content
+// now excludes, behaves as before.
+const imageOnly = [];
+const fallbackSpan = () => {
+  const chip = document.createElement("span");
+  chip.className = "mb-image-fallback";
+  chip.append(document.createTextNode("alt text"));
+  return chip;
+};
+for (const [name, nodes, expected] of [
+  ["an image", () => [document.createElement("img")], null],
+  [
+    "an image between spaces",
+    () => [
+      document.createTextNode(" "),
+      document.createElement("img"),
+      document.createTextNode("\n"),
+    ],
+    null,
+  ],
+  ["two images", () => [document.createElement("img"), document.createElement("img")], null],
+  ["the fallback", () => [fallbackSpan()], null],
+  ["an image and the fallback", () => [document.createElement("img"), fallbackSpan()], null],
+  [
+    "an image and a word",
+    () => [document.createElement("img"), document.createTextNode("CI")],
+    "github",
+  ],
+  ["a word", () => [document.createTextNode("CI")], "github"],
+  ["a span that is not the fallback", () => [document.createElement("span")], "github"],
+  [
+    "an image inside a span",
+    () => {
+      const wrapper = document.createElement("span");
+      wrapper.append(document.createElement("img"));
+      return [wrapper];
+    },
+    "github",
+  ],
+  ["nothing", () => [], "github"],
+]) {
+  const link = document.createElement("a");
+  link.setAttribute("href", "https://github.com/octo/demo/actions/workflows/ci.yml");
+  const content = nodes();
+  link.append(...content);
+  decorate(link);
+  decorate(link);
+  const mark = link.children.find((node) => node.getAttribute?.("data-external-kind") != null);
+  assert.equal(mark?.getAttribute("data-external-kind") ?? null, expected, name);
+  assert.deepEqual(
+    link.children.filter((node) => node !== mark),
+    content,
+    `${name}: its content is its own`,
+  );
+  imageOnly.push({ content: name, icon: expected });
+}
+// A link that held text and was marked, and now holds only an image, loses the mark.
+const reused = document.createElement("a");
+reused.setAttribute("href", "https://github.com/octo/demo");
+const word = document.createTextNode("octo/demo");
+reused.append(word);
+decorate(reused);
+assert.equal(reused.children.length, 2);
+const badge = document.createElement("img");
+reused.replaceChildren(badge);
+reused.append(document.createElement("span"));
+reused.replaceChildren(badge);
+decorate(reused);
+assert.deepEqual(reused.children, [badge]);
+
 const summary = {
   destinations: report,
+  imageOnlyLinks: imageOnly,
   preserved: ["href", "target", "rel", "accessible name", "authored nodes"],
   updates: [
     "idempotent node",

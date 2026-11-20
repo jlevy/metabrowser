@@ -1796,6 +1796,38 @@
   };
   /** @type {WeakMap<HTMLElement, {node: HTMLElement, kind: string, supplied: Element | undefined}>} */
   const linkMarks = new WeakMap();
+  /** The class of the span an image the page does not load becomes (inert_html.py). */
+  const IMAGE_FALLBACK_CLASS = "mb-image-fallback";
+
+  /**
+   * Whether *anchor*'s whole content is images: a badge, or the fallback an image the page
+   * does not load becomes, with no text of its own to put a mark after. github.com draws no
+   * mark on one, and here it landed on a line of its own under the badges. The *mark* the
+   * decorator put in it is not content.
+   *
+   * @param {HTMLElement} anchor
+   * @param {HTMLElement | undefined} mark
+   */
+  function holdsImagesOnly(anchor, mark) {
+    let images = 0;
+    for (const child of Array.from(anchor.childNodes)) {
+      if (child === mark) {
+        continue;
+      }
+      if (child.nodeType === 3) {
+        if ((child.nodeValue ?? "").trim() !== "") {
+          return false;
+        }
+      } else if (child.nodeType === 1) {
+        const element = /** @type {Element} */ (child);
+        if (element.tagName !== "IMG" && !element.classList.contains(IMAGE_FALLBACK_CLASS)) {
+          return false;
+        }
+        images += 1;
+      }
+    }
+    return images > 0;
+  }
 
   /** Decorate a final external destination without changing authored content or navigation.
    * Only the calling view may supply a state icon; document attributes are never read.
@@ -1809,7 +1841,7 @@
       anchor.tagName === "A" ? githubDestination(anchor.getAttribute("href")) : null;
     const kind = destination === null ? null : options.icon === "github" ? "github" : destination;
     let mark = linkMarks.get(anchor);
-    if (kind === null) {
+    if (kind === null || holdsImagesOnly(anchor, mark?.node)) {
       mark?.node.remove();
       linkMarks.delete(anchor);
       return anchor;
@@ -1858,11 +1890,12 @@
    * `GET /api/counterpart` answers, so the provider supplies the label and the URL, and
    * another provider draws the same control.
    *
-   * The markup is the macOS app's contract (mb-4wqh): the root carries
-   * `data-view-on-<provider>`, the link `data-view-on-<provider>="open"`, and the menu's
-   * Open in Browser `data-view-on-<provider>="external"`. In a browser the link opens the
-   * page in a new tab; the app shows a plain click on it in a popover of its own. Nothing
-   * here knows of the app.
+   * The root carries `data-view-on-<provider>`, which names the button. The links carry
+   * the macOS app's contract, which names no site (mb-730z): the link
+   * `data-web-view="open"`, and the menu's Open in Browser `data-web-view="external"`. In
+   * a browser the link opens the page in a new tab; the app shows a plain click on it in a
+   * web pane of its own, in a popover, when the page is on a site it knows. Nothing here
+   * knows of the app.
    *
    * The menu is a menu button's: the chevron opens it with focus on its first item, the
    * arrow keys, Home, and End move among the items, and Escape, a second click on the
@@ -1892,7 +1925,7 @@
     group.dataset.layout = "joined";
     const open = doc.createElement("a");
     open.className = "chip counterpart-open";
-    open.setAttribute(hook, "open");
+    open.setAttribute("data-web-view", "open");
     open.setAttribute("href", counterpart.url);
     open.setAttribute("target", "_blank");
     open.setAttribute("rel", "noopener");
@@ -1939,7 +1972,7 @@
     copy.setAttribute("type", "button");
     copy.dataset.counterpartAction = "copy";
     const external = menuItem(doc.createElement("a"), "Open in Browser");
-    external.setAttribute(hook, "external");
+    external.setAttribute("data-web-view", "external");
     external.setAttribute("href", counterpart.url);
     external.setAttribute("target", "_blank");
     external.setAttribute("rel", "noopener");

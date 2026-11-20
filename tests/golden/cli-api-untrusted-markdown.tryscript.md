@@ -33,11 +33,16 @@ stylesheets and the files they use stay in its assets.
 
 The render is marked `inert`, and its HTML is the document reduced to the allowlist:
 plain text markup, links (`href`, and `target` and `rel` on one that leaves the page),
-the repository image (`src`, `alt`), and each heading’s `user-content-` anchor (`id`),
-which the hardener makes from the heading’s text.
-The envelope goes to a file, and its `html` is then shown whole, so each attribute is
-pinned with its value: a `javascript:` link, an outside image, or a `data:` URL that
-survived would be in this line.
+the repository image and an image from the web over `https` (`src`, `alt`, and
+`referrerpolicy="no-referrer"` on the one from the web), and each heading’s
+`user-content-` anchor (`id`), which the hardener makes from the heading’s text.
+An image that is not loaded, one over `http` or one with no address, is its alt text in
+a `mb-image-fallback` span (`class`, and `data-tip-text`, the address it stands for),
+inside the link it was in, so a badge keeps its destination, or inside a link to the
+image.
+The envelope goes to a file, and its `html` is then shown whole, so each attribute
+is pinned with its value: a `javascript:` link, an `http` image that loaded, or a
+`data:` URL that survived would be in this line.
 
 ```console
 $ metab hostile --untrusted --api '/api/kpress/render?path=README.md&view=document' > inert.txt
@@ -47,7 +52,7 @@ $ metab hostile --untrusted --api '/api/kpress/render?path=README.md&view=docume
 ```console
 $ grep -E '^  "(type|html|profile|printable|toc|inert)":' inert.txt
   "type": "kpress-rendered-document",
-  "html": "\n<div><div><h1 id=\"user-content-hostile-readme\">Hostile readme</h1>\n<p>Rebased on <code>topic</code>; see <a href=\"docs/new.md\">the docs</a>.</p>\n\n<a href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span>image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p>\n\n<p><img loading=\"lazy\" src=\"docs/diagram.png\" alt=\"diagram\"> <a href=\"https://example.com/t.gif\" target=\"_blank\" rel=\"noopener noreferrer\">tracker</a> <a href=\"https://example.com/p.gif\" target=\"_blank\" rel=\"noopener noreferrer\">image</a> <span>image</span></p>\n<p><a href=\"docs/guide.md\">Guide</a> <a href=\"#user-content-readme\">Top</a> <a href=\"../x.md\">Up</a> <a>tab</a> <a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">slashes</a></p>\n<p><a>api</a> <a>dots</a> <a>escaped</a> <a>debug</a> <a>query</a> <a>raw</a> <span>raw image</span> <a href=\"https://evil.test/no-slashes\" target=\"_blank\" rel=\"noopener noreferrer\">bare</a> <a href=\"https://one.test/x\" target=\"_blank\" rel=\"noopener noreferrer\">one slash</a></p>\n<p><a>dotdot</a> <a>dot2e</a> <a>slash</a> <a>back</a> <span>dotimg</span> <span>dot2eimg</span></p>\n<h2 id=\"user-content-section\">Section</h2>\n<p>text</p></div></div>",
+  "html": "\n<div><div><h1 id=\"user-content-hostile-readme\">Hostile readme</h1>\n<p>Rebased on <code>topic</code>; see <a href=\"docs/new.md\">the docs</a>.</p>\n\n<img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/badge.png\" alt=\"build badge\"> <span class=\"mb-image-fallback\">image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p>\n\n<p><img loading=\"lazy\" src=\"docs/diagram.png\" alt=\"diagram\"> <img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/t.gif\" alt=\"tracker\"> <img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/p.gif\"> <span class=\"mb-image-fallback\">image</span></p>\n<p><a href=\"https://x.com/ojoshe\" target=\"_blank\" rel=\"noopener noreferrer\"><img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://img.shields.io/badge/follow-%40ojoshe-black\" alt=\"Follow @ojoshe on X\"></a> <img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://img.shields.io/badge/standalone-blue\" alt=\"standalone\"></p>\n<p><a href=\"docs/guide.md\">Guide</a> <a href=\"#user-content-readme\">Top</a> <a href=\"../x.md\">Up</a> <a>tab</a> <a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">slashes</a></p>\n<p><a>api</a> <a>dots</a> <a>escaped</a> <a>debug</a> <a>query</a> <a>raw</a> <span class=\"mb-image-fallback\">raw image</span> <a href=\"https://evil.test/no-slashes\" target=\"_blank\" rel=\"noopener noreferrer\">bare</a> <a href=\"https://one.test/x\" target=\"_blank\" rel=\"noopener noreferrer\">one slash</a></p>\n<p><a>dotdot</a> <a>dot2e</a> <a>slash</a> <a>back</a> <span class=\"mb-image-fallback\">dotimg</span> <span class=\"mb-image-fallback\">dot2eimg</span></p>\n<h2 id=\"user-content-section\">Section</h2>\n<p>text</p></div></div>",
   "profile": "document",
   "printable": true,
   "toc": false,
@@ -58,7 +63,8 @@ $ grep -E '^  "(type|html|profile|printable|toc|inert)":' inert.txt
 The render also names the version of the one repository image it embeds, by the `/raw`
 identity the page resolves it to, and the page puts it in that image’s address, so a
 replaced image is a new address.
-The outside images, links here, get none.
+The images from the web get none: they are fetched from where they are, and an address
+that is not the tree’s has no version of ours.
 
 ```console
 $ grep -A2 '^  "raw_versions":' inert.txt

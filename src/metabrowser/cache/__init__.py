@@ -1,6 +1,6 @@
 """The versioned repository cache under the Metabrowser application home.
 
-The package owns the ``f01`` layout: its records and SoftSchema contracts, atomic record
+The package owns the ``f02`` layout: its records and SoftSchema contracts, atomic record
 publication, the fixed lock hierarchy, the application-home probe, the startup sweep of
 staging, the CLI root-argument grammar in :mod:`metabrowser.cache.urls`,
 and the read-only ``/api/cache/`` projections of that state. Owner-only storage

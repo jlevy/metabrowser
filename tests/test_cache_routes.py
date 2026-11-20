@@ -26,7 +26,14 @@ from starlette.testclient import TestClient
 from metabrowser import home as home_module
 from metabrowser.cache import projection
 from metabrowser.cache.listing import ListingLimitError, list_private_directory
-from metabrowser.cache.paths import SOURCES, STAGING, source_directory, source_record
+from metabrowser.cache.paths import (
+    SOURCES,
+    STAGING,
+    source_directory,
+    source_record,
+    store_directory,
+    store_record,
+)
 from metabrowser.home import (
     METABROWSER_CACHE_DIR_ENV,
     PrivateStorageError,
@@ -41,8 +48,8 @@ from tests.cache_home_fixture import (
     CLICK,
     FLASK_HTTPS,
     FLASK_SSH,
-    FLASK_STORE_KEY,
-    ORPHAN_STORE_KEY,
+    FLASK_STORE,
+    ORPHAN_STORE,
     RECORD_SECRET,
     UNRECOGNIZED_ENTRY,
     build_damaged_home,
@@ -268,16 +275,85 @@ def test_pages_follow_the_sorted_keys_and_clamp_their_limit(
     assert clamped_high["limit"] == projection.MAX_PAGE_LIMIT
     assert unparsable["limit"] == projection.DEFAULT_PAGE_LIMIT
     assert len(stores["stores"]) == 1
-    assert stores["next_after"] == stores["stores"][0]["id"]
+    assert stores["next_after"] == stores["stores"][0]["key"]
     after_store = _json(client, f"/api/cache/stores?after={stores['next_after']}")
     assert [row["id"] for row in after_store["stores"]] == [
-        f"sha256:{max(FLASK_STORE_KEY, ORPHAN_STORE_KEY)}"
+        max((FLASK_STORE, ORPHAN_STORE), key=lambda store: store.key).id
     ]
+
+
+def test_a_store_is_listed_by_the_key_that_names_its_directory(
+    client: TestClient, populated: Path
+) -> None:
+    """The row's key is the directory below ``repository-stores``, and its id the record's."""
+
+    rows = {row["key"]: row for row in _json(client, "/api/cache/stores")["stores"]}
+
+    assert set(rows) == {FLASK_STORE.key, ORPHAN_STORE.key}
+    assert rows[FLASK_STORE.key]["id"] == FLASK_STORE.id
+    assert sorted(rows[FLASK_STORE.key]["referenced_by"], key=lambda row: row["slug"]) == sorted(
+        [
+            {"slug": FLASK_HTTPS.slug, "generation": 1},
+            {"slug": FLASK_SSH.slug, "generation": 2},
+        ],
+        key=lambda row: row["slug"],
+    )
+    assert FLASK_STORE.key.startswith("github-com--pallets--flask--")
+    for key in rows:
+        assert (populated / store_directory(key)).is_dir()
+    detail = _json(client, f"/api/cache/source/{FLASK_HTTPS.slug}")["source"]
+    assert detail["publication"] == "published"
+    assert detail["store"]["key"] == FLASK_STORE.key and detail["store"]["id"] == FLASK_STORE.id
+
+
+def test_a_store_whose_record_cannot_be_read_has_a_key_and_no_identity(
+    client: TestClient, populated: Path
+) -> None:
+    (populated / store_record(FLASK_STORE.key, "store.yml")).write_text("store: nonsense\n")
+    os.chmod(populated / store_record(FLASK_STORE.key, "store.yml"), 0o600)
+
+    rows = {row["key"]: row for row in _json(client, "/api/cache/stores")["stores"]}
+    damaged = rows[FLASK_STORE.key]
+
+    assert damaged["id"] is None and damaged["publication"] == "damaged"
+    assert [problem["code"] for problem in damaged["problems"]] == ["invalid"]
+    # No identity to match, so the aliases whose store digests begin with the key's prefix
+    # are its references: the one store an alias names is not reported unreferenced.
+    assert {reference["slug"] for reference in damaged["referenced_by"]} == {
+        FLASK_HTTPS.slug,
+        FLASK_SSH.slug,
+    }
+    assert rows[ORPHAN_STORE.key]["id"] == ORPHAN_STORE.id
+    detail = _json(client, f"/api/cache/source/{FLASK_HTTPS.slug}")["source"]
+    assert detail["publication"] == "published"
+    assert detail["store"]["key"] == FLASK_STORE.key and detail["store"]["id"] is None
+
+
+def test_a_directory_that_records_another_identity_is_that_stores_and_not_the_aliased_ones(
+    client: TestClient, populated: Path
+) -> None:
+    """Two stores can in principle share a prefix; the record decides which one a key is."""
+
+    record = (populated / store_record(FLASK_STORE.key, "store.yml")).read_text()
+    stranger = "sha256:" + FLASK_STORE.id.removeprefix("sha256:")[:16] + "f" * 48
+    (populated / store_record(FLASK_STORE.key, "store.yml")).write_text(
+        record.replace(FLASK_STORE.id, stranger)
+    )
+
+    row = next(
+        row for row in _json(client, "/api/cache/stores")["stores"] if row["key"] == FLASK_STORE.key
+    )
+    detail = _json(client, f"/api/cache/source/{FLASK_HTTPS.slug}")["source"]
+
+    assert row["id"] == stranger and row["publication"] == "published"
+    assert row["referenced_by"] == []
+    # The alias names a store whose directory records another, so no store is its own.
+    assert detail["store"] is None
 
 
 @pytest.mark.parametrize(
     "route",
-    ["/api/cache/sources?after=Not_A_Slug", "/api/cache/stores?after=sha256:xyz"],
+    ["/api/cache/sources?after=Not_A_Slug", "/api/cache/stores?after=Not_A_Key"],
 )
 def test_a_malformed_page_key_is_a_bad_request(
     client: TestClient, populated: Path, route: str
@@ -360,7 +436,7 @@ def test_whatever_could_hide_a_reference_makes_an_unreferenced_store_unknown(
     not read it as unreferenced. The flask store keeps the alias that still reads.
     """
 
-    orphan, flask = f"sha256:{ORPHAN_STORE_KEY}", f"sha256:{FLASK_STORE_KEY}"
+    orphan, flask = ORPHAN_STORE.id, FLASK_STORE.id
     stores = {row["id"]: row for row in _json(client, "/api/cache/stores")["stores"]}
     assert stores[orphan]["reference_state"] == "unreferenced"
 

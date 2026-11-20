@@ -14,8 +14,13 @@ from urllib.parse import urljoin
 
 import pytest
 
+import metabrowser.builtin_plugins.agents.adapters  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from tests import chrome_starts, suite_gates, suite_tiers, suite_timing, suite_workers
+from tests.file_ages_git import (  # noqa: F401
+    file_ages_git,  # pyright: ignore[reportUnusedImport]
+    fixed_file_ages_git,  # pyright: ignore[reportUnusedImport]
+)
 from tests.github_pull_fixture import Origin, build_origin, copy_origin
 from tests.process_group import owned_profile
 from tests.required_tools import require_git, require_node
