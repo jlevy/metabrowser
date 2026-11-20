@@ -398,6 +398,7 @@ def serve_until_interrupted(
     # raises, and waits for another writer for at most `recent_targets.LOCK_WAIT_S`.
     # Imported here, as the server is: owner-only storage is serve mode's alone.
     from metabrowser import recent_targets
+    from metabrowser.repository_context import is_checkout_root
 
     if recent_targets.recording_enabled():
         # Asked first, so a server told not to record does not resolve its root either.
@@ -406,6 +407,7 @@ def serve_until_interrupted(
                 mode,
                 recent_targets.recorded_path(Path(served)),
                 target=None if place is None else recent_targets.recorded_path(place),
+                git=is_checkout_root(Path(served)),
             )
         else:
             recent_targets.record_quietly(mode, served)

@@ -44,7 +44,8 @@ exit: 0
     {
       "mode": "folder",
       "root": "<ROOT>/served",
-      "opened_at": "<opaque>"
+      "opened_at": "<opaque>",
+      "git": false
     }
   ],
   "problem": null
@@ -65,20 +66,34 @@ exit: 0
 --- stderr ---
 --- contract ---
 recent-add/repository
+# metab <ROOT>/checkout --recent-add
+exit: 0
+--- stdout ---
+--- stderr ---
+--- contract ---
+recent-add/checkout
 # metab --recent --json
 exit: 0
 --- stdout ---
 {
   "targets": [
     {
+      "mode": "folder",
+      "root": "<ROOT>/checkout",
+      "opened_at": "<opaque>",
+      "git": true
+    },
+    {
       "mode": "mirror",
       "root": "https://github.com/octo/demo",
-      "opened_at": "<opaque>"
+      "opened_at": "<opaque>",
+      "git": false
     },
     {
       "mode": "folder",
       "root": "<ROOT>/served",
-      "opened_at": "<opaque>"
+      "opened_at": "<opaque>",
+      "git": false
     }
   ],
   "problem": null
@@ -152,8 +167,8 @@ status: 200
 {
   "short_name": "checkout",
   "full_name": "<SERVED>",
-  "kind": "folder",
-  "kind_label": "Local folder",
+  "kind": "git",
+  "kind_label": "Local Git checkout",
   "title": "checkout • Metabrowser",
   "repository": "https://github.com/octo/demo"
 }
@@ -195,7 +210,7 @@ status: 200
   "short_name": "origin",
   "full_name": "<ROOT>/origin.git@main",
   "kind": "mirror",
-  "kind_label": "Cached mirror",
+  "kind_label": "Cloud mirror",
   "title": "origin • Metabrowser",
   "repository": null
 }

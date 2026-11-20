@@ -39,7 +39,7 @@ private let repository = URL(string: "https://github.com/jlevy/tbd")!
     @Test func aRepositoryIsNamedByItsRepositoryUntilItsServerAnswers() {
         let identity = SessionRoot.repository(repository).identity()
         #expect(identity == FolderIdentity(
-            shortName: "tbd", fullName: "github.com/jlevy/tbd", kind: .mirror, kindLabel: "Cached mirror",
+            shortName: "tbd", fullName: "github.com/jlevy/tbd", kind: .mirror, kindLabel: "Cloud mirror",
             title: "tbd • Metabrowser", repository: repository))
         // A mirror's title opens no path menu.
         #expect(!WindowTitle(identity).hasPathMenu)

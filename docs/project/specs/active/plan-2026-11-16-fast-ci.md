@@ -170,12 +170,12 @@ For a pull request to `main`:
 | `lint` | 1 | `make lint-check audit` | 1.5 (measured) |
 | `distribution` | 1 | `make build` | 0.7 (measured) |
 | `unit` | 8 | `make test-parallel SHARD=I/2` on 3.12, 3.13, 3.14, and 3.14t | 1.9 to 4.7 (measured; proposed as 4 unsharded jobs at 3.1 to 5.0, est.) |
-| `goldens` | 4 | `make test-goldens`, then `make test-serial`, on the same four | 2.5 to 3.2 (est.) |
+| `goldens` | 8 | `make test-goldens SHARD=I/2`, then `make test-serial SHARD=I/2`, on the same four | 3.4 (est.; one job per interpreter took 5.0 to 5.8 at the 90th percentile once the goldens grew to 119 files) |
 | `chrome` | 4 | `make test-chrome SHARD=I/4` on 3.13 | 1.9 to 2.4 (est.) |
 | `admitted-git` | 2 | `make test-admitted-git` on Git 2.43.7 and 2.50.1 | 2.5 to 3.0 (est.) |
 | `ci-ok` | 1 | fails unless every job above succeeded | 0.1 (est.) |
 
-That is 22 jobs, against 9 today.
+That is 26 jobs, against 9 today.
 The proposal had 18, with `unit` unsharded at an estimated wall clock of 4 to 5 minutes;
 Phase 1’s measurement split it in two, by the rule in [Time Limits](#time-limits), and
 [Phase 2 Measurements](#phase-2-measurements) has the times.

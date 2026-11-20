@@ -414,6 +414,7 @@ assets in static_root:
   - package.json
   - place-rendered.js
   - print-indicator.js
+  - print-ready.js
   - project-adapters.js
   - reconciliation-coordinator.js
   - render-refusal.js
@@ -529,6 +530,7 @@ $ metab --plugin markdown --json
       "package.json",
       "place-rendered.js",
       "print-indicator.js",
+      "print-ready.js",
       "project-adapters.js",
       "reconciliation-coordinator.js",
       "render-refusal.js",

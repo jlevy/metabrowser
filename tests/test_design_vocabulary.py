@@ -4218,6 +4218,8 @@ _FOCUS_RING_OUTSET = frozenset(
         ".filter-check:has(input:focus-visible)",
         ".help-project a:focus-visible",
         ".event-log-details a:focus-visible",
+        # A session's link in the agents views: a bare inline link, as the two above are.
+        "a.agents-session-link:focus-visible",
     }
 )
 
@@ -4251,6 +4253,32 @@ def test_the_outset_focus_ring_is_only_for_the_documented_controls() -> None:
     root = _theme_tokens()["light"]
     assert root["--focus-ring-offset"].startswith("-")
     assert root["--focus-ring-offset-outset"][0].isdigit()
+
+
+def test_a_link_no_rule_colors_is_the_link_color() -> None:
+    """The shell sets the base anchor, so a new view's bare link is never the user agent's.
+
+    The base is zero-specificity (`:where`), so every context's own color, hover, and ring
+    still win; it covers a visited link too (`:any-link`); and it sets the color alone, so
+    the contexts that keep the user agent's underline at rest are unchanged. The Chrome
+    half, that a bare `<a href>` in a plugin view computes to `--link` and not the user
+    agent's blue or visited purple, is in `tests/dom/agents-views-chrome.mjs`.
+    """
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert dict(_declarations(_rule(styles, ":where(a:any-link)"))) == {"color": "var(--link)"}
+    # The rules the base made redundant stay gone: a context that colors every anchor in it
+    # with the link color is patching the user agent's fallback one context at a time.
+    for selector in (
+        ".help-project a",
+        ".event-log-details a",
+        ".md-body:not(.metabrowser-kpress-host) a",
+    ):
+        for sheet in _stylesheets():
+            for rule, declarations in _rules_of(sheet):
+                assert not (rule == selector and "color" in declarations), (
+                    f"{selector} recolors a link the base already colors"
+                )
 
 
 _STATUS_TEXT_TOKENS = (
