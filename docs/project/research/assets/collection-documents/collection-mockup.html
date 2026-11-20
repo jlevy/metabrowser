@@ -1,0 +1,1229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Collection Documents Mockup</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root {
+  color-scheme: light;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --body-font-size: 14px;
+  --nav-font-size: 13px;
+  --ui-small-font-size: 12px;
+  --micro-font-size: 11px;
+  --page-title-font-size: 24px;
+  --document-body-font-size: 15px;
+  --icon-glyph: 14px;
+  --content-padding-x: 24px;
+  --content-padding-y: 16px;
+  --pane-header-row-height: 34px;
+  --radius-chrome: 0;
+  --radius-tag: 3px;
+  --focus-ring-width: 2px;
+  --transition-fast: 150ms ease;
+
+  /* Surfaces and text (values from static/styles.css, light theme) */
+  --bg: oklch(100% 0 89.9);
+  --text: oklch(21.6% 0 89.9);
+  --border: oklch(92.34% 0 0);
+  --border-strong: oklch(84% 0.008 248);
+  --sidebar-bg: oklch(98.44% 0.0015 247.84);
+  --hover-bg: oklch(95.4% 0 89.9);
+  --link: oklch(54.14% 0.1337 246.71);
+  --muted: oklch(56.1% 0.016 244.4);
+  --code-bg: oklch(97.6% 0.004 247.9);
+  --highlight-bg: color-mix(in srgb, var(--link) 10%, transparent);
+  --tab-active-color: oklch(57.51% 0.2293 260.21);
+  --focus-ring-color: var(--link);
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.04);
+  --shadow-md: 0 2px 6px oklch(0% 0 0 / 0.12);
+  --shadow-lg: 0 4px 12px oklch(0% 0 0 / 0.12);
+
+  /* Kinds */
+  --ft-md: oklch(55.1% 0.1 263.3);
+  --ft-html: oklch(57% 0.085 170.8);
+  --ft-url: var(--muted);
+  --pr-merged: oklch(52% 0.19 300);
+
+  /* States */
+  --check-fill: oklch(62.3% 0.1688 149.18);
+  --check-ink: oklch(100% 0 89.9);
+  --status-info: oklch(62.8% 0.167 259.5);
+  --age-live: oklch(60% 0.19 45);
+  --age-hr: oklch(56% 0.16 104);
+  --age-day: oklch(56% 0.14 107.1);
+  --badge-doing-bg: oklch(96.4% 0.052 93.1);
+  --badge-doing-text: oklch(50% 0.1071 88.17);
+  --badge-todo-bg: oklch(94.5% 0.005 247.9);
+  --badge-todo-text: oklch(42.4% 0.015 248.2);
+  --badge-done-bg: oklch(92.2% 0.037 152.6);
+  --badge-done-text: oklch(40.1% 0.103 147.4);
+  --badge-example-bg: oklch(93.46% 0.0305 255.11);
+  --badge-example-text: oklch(50% 0.163 265.7);
+  --diff-changed-bg: oklch(94.5% 0.05 152);
+  --diff-changed-bar: oklch(62.3% 0.1688 149.18);
+
+  /* Source highlighting */
+  --syntax-key: oklch(46.53% 0.1006 248.34);
+  --syntax-title: oklch(47.03% 0.1915 297.54);
+  --syntax-string: oklch(51% 0.116 151);
+  --syntax-punct: var(--muted);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: oklch(20.6% 0.014 270.6);
+    --text: oklch(93.7% 0.007 247.9);
+    --border: oklch(35.9% 0.021 264.3);
+    --border-strong: oklch(46% 0.025 264.3);
+    --sidebar-bg: oklch(25.8% 0.019 266.8);
+    --hover-bg: oklch(32.72% 0.0235 266.85);
+    --link: oklch(75% 0.1241 246.71);
+    --muted: oklch(74.1% 0.019 256.7);
+    --code-bg: oklch(25% 0.017 264.2);
+    --tab-active-color: oklch(70% 0.17 260.21);
+    --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.3);
+    --shadow-md: 0 2px 8px oklch(0% 0 0 / 0.35);
+    --shadow-lg: 0 8px 24px oklch(0% 0 0 / 0.4);
+    --ft-md: oklch(72% 0.1 263.3);
+    --ft-html: oklch(74% 0.085 170.8);
+    --pr-merged: oklch(74% 0.14 300);
+    --check-fill: oklch(64.4% 0.175 146.9);
+    --check-ink: oklch(20.6% 0.014 270.6);
+    --status-info: oklch(70% 0.14 259.5);
+    --age-live: oklch(78% 0.109 55);
+    --age-hr: oklch(86% 0.121 104);
+    --age-day: oklch(80.6% 0.088 107.1);
+    --badge-doing-bg: oklch(33% 0.07 93.1);
+    --badge-doing-text: oklch(86% 0.12 88.17);
+    --badge-todo-bg: oklch(32% 0.01 247.9);
+    --badge-todo-text: oklch(84% 0.015 248.2);
+    --badge-done-bg: oklch(32% 0.06 152.6);
+    --badge-done-text: oklch(84% 0.13 147.4);
+    --badge-example-bg: oklch(32% 0.07 255.11);
+    --badge-example-text: oklch(78% 0.13 265.7);
+    --diff-changed-bg: oklch(31% 0.06 152.6);
+    --diff-changed-bar: oklch(64.4% 0.175 146.9);
+    --syntax-key: oklch(77.22% 0.0993 248.34);
+    --syntax-title: oklch(75.8% 0.123 297.54);
+    --syntax-string: oklch(81.7% 0.1216 151);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: oklch(20.6% 0.014 270.6);
+  --text: oklch(93.7% 0.007 247.9);
+  --border: oklch(35.9% 0.021 264.3);
+  --border-strong: oklch(46% 0.025 264.3);
+  --sidebar-bg: oklch(25.8% 0.019 266.8);
+  --hover-bg: oklch(32.72% 0.0235 266.85);
+  --link: oklch(75% 0.1241 246.71);
+  --muted: oklch(74.1% 0.019 256.7);
+  --code-bg: oklch(25% 0.017 264.2);
+  --tab-active-color: oklch(70% 0.17 260.21);
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.3);
+  --shadow-md: 0 2px 8px oklch(0% 0 0 / 0.35);
+  --shadow-lg: 0 8px 24px oklch(0% 0 0 / 0.4);
+  --ft-md: oklch(72% 0.1 263.3);
+  --ft-html: oklch(74% 0.085 170.8);
+  --pr-merged: oklch(74% 0.14 300);
+  --check-fill: oklch(64.4% 0.175 146.9);
+  --check-ink: oklch(20.6% 0.014 270.6);
+  --status-info: oklch(70% 0.14 259.5);
+  --age-live: oklch(78% 0.109 55);
+  --age-hr: oklch(86% 0.121 104);
+  --age-day: oklch(80.6% 0.088 107.1);
+  --badge-doing-bg: oklch(33% 0.07 93.1);
+  --badge-doing-text: oklch(86% 0.12 88.17);
+  --badge-todo-bg: oklch(32% 0.01 247.9);
+  --badge-todo-text: oklch(84% 0.015 248.2);
+  --badge-done-bg: oklch(32% 0.06 152.6);
+  --badge-done-text: oklch(84% 0.13 147.4);
+  --badge-example-bg: oklch(32% 0.07 255.11);
+  --badge-example-text: oklch(78% 0.13 265.7);
+  --diff-changed-bg: oklch(31% 0.06 152.6);
+  --diff-changed-bar: oklch(64.4% 0.175 146.9);
+  --syntax-key: oklch(77.22% 0.0993 248.34);
+  --syntax-title: oklch(75.8% 0.123 297.54);
+  --syntax-string: oklch(81.7% 0.1216 151);
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+  line-height: 1.45;
+}
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+button { font: inherit; color: inherit; }
+a { color: var(--link); }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.icon {
+  width: var(--icon-glyph); height: var(--icon-glyph); flex: none;
+  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.ink-md { color: var(--ft-md); }
+.ink-html { color: var(--ft-html); }
+.ink-url { color: var(--ft-url); }
+.ink-pr { color: var(--pr-merged); }
+
+/* ── Outer gutter and app frame ─────────────────────────────── */
+.page {
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px;
+}
+.app {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  min-height: calc(100vh - 32px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Navigation column ──────────────────────────────────────── */
+.nav {
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  font-size: var(--nav-font-size);
+  min-width: 0;
+}
+.nav-path {
+  height: var(--pane-header-row-height);
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nav-path b { color: var(--text); font-weight: 600; }
+.tab-bar {
+  display: flex; flex-wrap: wrap; align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+}
+.tab-btn {
+  padding: 7px 12px 4px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  font-size: var(--ui-small-font-size);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  -webkit-user-select: none; user-select: none;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn:focus-visible { outline-offset: -2px; }
+.tab-btn[aria-selected="true"] { color: var(--text); border-bottom-color: var(--tab-active-color); }
+.tab-key {
+  display: inline-block; margin-left: 5px; padding: 0 3px;
+  font-size: var(--micro-font-size); letter-spacing: 0; font-weight: 600;
+  border: 1px solid var(--border); border-radius: var(--radius-tag);
+  color: var(--muted); text-transform: none;
+}
+.nav .tab-bar { padding-left: 4px; }
+.tree { list-style: none; margin: 0; padding: 4px 0 12px; }
+.tree-row {
+  display: flex; align-items: center; gap: 6px;
+  height: 26px; padding: 0 10px 0 calc(10px + var(--depth, 0) * 14px);
+  color: var(--text); text-decoration: none;
+  white-space: nowrap;
+}
+.tree-row:hover { background: var(--hover-bg); }
+.tree-row[aria-current="page"] { background: var(--highlight-bg); }
+.tree-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tree-row .age { font-variant-numeric: tabular-nums; color: var(--age-day); }
+.tree-row .age.hr { color: var(--age-hr); font-weight: 600; }
+.tree-row .chev { color: var(--muted); }
+.tree-row.dim .name { color: var(--muted); }
+
+/* ── Main pane and view header ──────────────────────────────── */
+.main { min-width: 0; display: flex; flex-direction: column; }
+.eyebrow {
+  height: var(--pane-header-row-height);
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 var(--content-padding-x) 0 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--nav-font-size);
+  color: var(--muted);
+  white-space: nowrap; overflow: hidden;
+  background: var(--sidebar-bg);
+}
+.eyebrow .crumbs { overflow: hidden; text-overflow: ellipsis; }
+.eyebrow .crumbs a { color: var(--muted); text-decoration: none; }
+.eyebrow .crumbs a:hover { color: var(--text); text-decoration: underline; }
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0;
+  border: 1px solid transparent; background: transparent; color: var(--muted);
+  cursor: pointer; flex: none;
+}
+.icon-btn:hover { background: var(--hover-bg); border-color: var(--border); color: var(--text); }
+.nav-toggle { display: none; }
+.view-header {
+  padding: 14px var(--content-padding-x) 10px;
+  background: var(--sidebar-bg);
+}
+.heading-row { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.heading-row .title-icon { width: 22px; height: 22px; margin-top: 4px; color: var(--ft-md); }
+.title-group { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; row-gap: 4px; }
+.view-title { margin: 0; font-size: var(--page-title-font-size); line-height: 1.25; font-weight: 700; }
+.meta-line { color: var(--muted); display: flex; flex-wrap: wrap; column-gap: 8px; row-gap: 2px; }
+.meta-line b { color: var(--text); font-variant-numeric: tabular-nums; }
+.meta-line .age { color: var(--age-hr); font-weight: 600; }
+.sep::before { content: "·"; color: var(--muted); }
+.example-badge {
+  font-size: var(--ui-small-font-size); font-weight: 700;
+  padding: 2px 6px; border-radius: var(--radius-tag);
+  background: var(--badge-example-bg); color: var(--badge-example-text);
+  white-space: nowrap; margin-top: 6px;
+}
+.view-tabs {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  padding: 0 var(--content-padding-x) 0 calc(var(--content-padding-x) - 12px);
+}
+.view-tabs .tab-bar { border-bottom: none; }
+.tools { display: flex; align-items: center; gap: 8px; padding: 4px 0; flex-wrap: wrap; }
+.field {
+  display: flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--muted);
+  padding: 0 8px; height: 26px; width: 180px; max-width: 100%;
+}
+.field:hover { border-color: var(--border-strong); }
+.field:focus-within { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: -1px; }
+.field input {
+  border: none; outline: none; background: transparent; color: var(--text);
+  font: inherit; font-size: var(--ui-small-font-size); width: 100%; min-width: 0;
+}
+.toggle {
+  height: 26px; padding: 0 8px; border: 1px solid var(--border); background: var(--bg);
+  font-size: var(--ui-small-font-size); color: var(--muted); cursor: pointer; white-space: nowrap;
+}
+.toggle:hover { border-color: var(--border-strong); color: var(--text); }
+.toggle[aria-pressed="true"] { background: var(--highlight-bg); color: var(--text); border-color: var(--link); }
+
+.content { padding: var(--content-padding-y) var(--content-padding-x) 40px; min-width: 0; }
+.notice {
+  padding: 8px 12px; border: 1px solid var(--status-info); background: var(--bg);
+  color: var(--text); margin: 0 0 16px; font-size: var(--ui-small-font-size);
+}
+.notice b { font-weight: 700; }
+.view[hidden] { display: none; }
+
+/* ── Prose and groups (reading layouts) ─────────────────────── */
+.prose { font-size: var(--document-body-font-size); line-height: 1.55; max-width: 72ch; margin: 0 0 12px; }
+.group { margin: 0 0 26px; }
+.group-heading {
+  display: flex; align-items: baseline; gap: 8px;
+  margin: 0 0 10px; font-size: 17px; font-weight: 700;
+}
+.group-count { font-size: var(--ui-small-font-size); font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+.empty-note { color: var(--muted); padding: 24px 0; }
+
+/* ── Cards ──────────────────────────────────────────────────── */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: 12px;
+  list-style: none; margin: 0; padding: 0;
+}
+.card {
+  position: relative;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 12px 12px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+  transition: box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+.card:hover { box-shadow: var(--shadow-md); border-color: var(--border-strong); }
+.card:has(.item-link:focus-visible) { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: -1px; }
+.card .item-link:focus-visible { outline: none; }
+.card-head { display: flex; align-items: flex-start; gap: 8px; }
+.card-head .icon { margin-top: 3px; }
+.card-title { margin: 0; flex: 1; min-width: 0; font-size: var(--body-font-size); font-weight: 700; line-height: 1.35; }
+.item-link { color: var(--text); text-decoration: none; }
+.card .item-link::after { content: ""; position: absolute; inset: 0; }
+.item-link:hover { text-decoration: underline; text-decoration-color: var(--border-strong); }
+.card-meta, .row-meta {
+  display: flex; flex-wrap: wrap; align-items: center; column-gap: 6px; row-gap: 2px;
+  color: var(--muted); font-size: var(--ui-small-font-size);
+  font-variant-numeric: tabular-nums;
+}
+.card-summary {
+  margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.card-note {
+  margin: 0; display: flex; gap: 6px; align-items: flex-start;
+  font-size: 13px; color: var(--text);
+}
+.card-note .icon { width: 12px; height: 12px; margin-top: 3px; color: var(--muted); }
+.card-foot {
+  margin-top: auto; padding-top: 6px; border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--micro-font-size); color: var(--muted);
+}
+.card-foot .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ext { width: 11px; height: 11px; }
+.updated { color: var(--age-live); font-weight: 700; }
+.badge {
+  display: inline-block; padding: 0 6px; border-radius: var(--radius-tag);
+  font-size: var(--micro-font-size); font-weight: 700; line-height: 17px; white-space: nowrap;
+}
+.badge.doing { background: var(--badge-doing-bg); color: var(--badge-doing-text); }
+.badge.todo { background: var(--badge-todo-bg); color: var(--badge-todo-text); }
+.badge.done { background: var(--badge-done-bg); color: var(--badge-done-text); }
+.card.is-done .card-title .item-link, .row.is-done .item-link { color: var(--muted); }
+.card.is-done .card-summary { -webkit-line-clamp: 2; }
+
+.card.featured { grid-column: 1 / -1; padding: 14px 16px 12px; }
+.card.featured .card-title { font-size: 16px; }
+.card.featured .card-summary { -webkit-line-clamp: 4; font-size: 14px; max-width: 80ch; }
+.card.featured .card-note { font-size: 14px; }
+.contents {
+  position: relative; z-index: 1;
+  display: flex; flex-wrap: wrap; gap: 2px 0; align-items: baseline;
+  font-size: var(--ui-small-font-size); margin: 0;
+}
+.contents .label { color: var(--muted); margin-right: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; font-size: var(--micro-font-size); }
+.contents a { text-decoration: none; }
+.contents a:hover { text-decoration: underline; }
+.contents a + a::before { content: "·"; color: var(--muted); padding: 0 6px; display: inline-block; }
+
+/* Checkbox (shared by cards, rows) */
+.check { position: relative; z-index: 1; display: inline-flex; flex: none; cursor: pointer; padding: 2px; margin: -2px; }
+.check input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.check-box {
+  width: 16px; height: 16px; border: 1.5px solid var(--border-strong); background: var(--bg);
+  display: inline-flex; align-items: center; justify-content: center; color: transparent;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.check-box .icon { width: 12px; height: 12px; stroke-width: 3; }
+.check:hover .check-box { border-color: var(--muted); }
+.check input:checked + .check-box { background: var(--check-fill); border-color: var(--check-fill); color: var(--check-ink); }
+.check input:focus-visible + .check-box { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: 2px; }
+.check-spacer { width: 16px; flex: none; }
+
+/* ── List (reading list) ────────────────────────────────────── */
+.rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+.row {
+  display: grid;
+  grid-template-columns: 16px 14px minmax(0, 1fr) auto;
+  align-items: start; column-gap: 10px;
+  padding: 8px 8px; border-bottom: 1px solid var(--border);
+}
+.row:hover { background: var(--hover-bg); }
+.row:has(.item-link:focus-visible) { background: var(--highlight-bg); }
+.row .icon { margin-top: 3px; }
+.row .check { margin-top: 0; }
+.row-main { min-width: 0; }
+.row-title { font-weight: 600; }
+.row-note { color: var(--muted); }
+.row-note::before { content: " — "; }
+.row-meta { justify-content: flex-end; padding-top: 1px; white-space: nowrap; }
+
+/* ── Board ──────────────────────────────────────────────────── */
+.board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.lane { background: var(--sidebar-bg); border: 1px solid var(--border); min-width: 0; }
+.lane-head {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--ui-small-font-size); font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+}
+.lane-head .group-count { letter-spacing: 0; }
+.lane-list { list-style: none; margin: 0; padding: 8px; display: flex; flex-direction: column; gap: 8px; min-height: 64px; }
+.lane.drop-target { background: var(--highlight-bg); border-color: var(--link); }
+.bcard {
+  background: var(--bg); border: 1px solid var(--border); box-shadow: var(--shadow-sm);
+  padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; cursor: grab;
+  transition: box-shadow var(--transition-fast);
+}
+.bcard:hover { box-shadow: var(--shadow-md); }
+.bcard:focus-visible { outline-offset: -1px; }
+.bcard.lifted { box-shadow: var(--shadow-lg); border-color: var(--link); }
+.bcard.dragging { opacity: 0.5; }
+.bcard-title { display: flex; gap: 8px; align-items: flex-start; font-weight: 600; font-size: 13px; line-height: 1.35; }
+.bcard-title .icon { margin-top: 2px; }
+.bcard .card-note { font-size: var(--ui-small-font-size); color: var(--muted); }
+.bcard .card-note span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.board-help { color: var(--muted); font-size: var(--ui-small-font-size); margin: 0 0 12px; }
+
+/* ── Source ─────────────────────────────────────────────────── */
+.source-bar {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px;
+  padding: 6px 10px; border: 1px solid var(--border); border-bottom: none;
+  background: var(--sidebar-bg); font-size: var(--ui-small-font-size); color: var(--muted);
+}
+.source-bar .changed-note { color: var(--badge-done-text); font-weight: 600; }
+.source {
+  margin: 0; border: 1px solid var(--border); background: var(--code-bg);
+  overflow-x: auto; font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
+  padding: 8px 0; counter-reset: ln;
+}
+.source code { display: block; min-width: max-content; }
+.line { display: block; padding: 0 14px 0 0; white-space: pre; border-left: 3px solid transparent; }
+.line::before {
+  counter-increment: ln; content: counter(ln);
+  display: inline-block; width: 3.2em; padding-right: 1em; text-align: right;
+  color: var(--muted); opacity: 0.7; -webkit-user-select: none; user-select: none;
+}
+.line.changed { background: var(--diff-changed-bg); border-left-color: var(--diff-changed-bar); }
+.s-key { color: var(--syntax-key); }
+.s-title { color: var(--syntax-title); font-weight: 700; }
+.s-url { color: var(--syntax-string); }
+.s-punct { color: var(--syntax-punct); }
+
+/* ── Opened item (reading context) ──────────────────────────── */
+.reader-context {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  padding: 6px 10px; border: 1px solid var(--border); background: var(--sidebar-bg);
+  font-size: var(--ui-small-font-size); color: var(--muted); margin-bottom: 16px;
+}
+.reader-context .spacer { flex: 1; }
+.reader-context b { color: var(--text); }
+.btn {
+  height: 24px; padding: 0 8px; border: 1px solid var(--border); background: var(--bg);
+  font-size: var(--ui-small-font-size); cursor: pointer; color: var(--text); white-space: nowrap;
+}
+.btn:hover { border-color: var(--border-strong); background: var(--hover-bg); }
+.btn:disabled { color: var(--muted); cursor: default; background: var(--bg); }
+kbd {
+  font-family: var(--font-sans); font-size: var(--micro-font-size);
+  border: 1px solid var(--border); border-bottom-width: 2px; padding: 0 4px; border-radius: var(--radius-tag);
+  background: var(--bg); color: var(--muted);
+}
+.reader h2 { margin: 0 0 6px; font-size: 22px; }
+.reader .placeholder {
+  margin-top: 16px; padding: 24px; border: 1px dashed var(--border-strong); color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+/* ── Narrow screens ─────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .board { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  :root { --content-padding-x: 14px; --page-title-font-size: 21px; }
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .nav { display: none; border-right: none; border-bottom: 1px solid var(--border); }
+  .app.nav-open .nav { display: block; }
+  .nav-toggle { display: inline-flex; }
+  .field { width: 150px; }
+  .row { grid-template-columns: 16px 14px minmax(0, 1fr); }
+  .row-meta { grid-column: 3; justify-content: flex-start; padding-top: 2px; }
+  .row-note { display: block; }
+  .row-note::before { content: ""; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M10 9H8"></path><path d="M16 13H8"></path><path d="M16 17H8"></path></symbol>
+    <symbol id="i-file-code" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="m10 13-2 2 2 2"></path><path d="m14 17 2-2-2-2"></path></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></symbol>
+    <symbol id="i-merge" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M6 21V9a9 9 0 0 0 9 9"></path></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"></rect><rect width="7" height="7" x="14" y="3" rx="1"></rect><rect width="7" height="7" x="14" y="14" rx="1"></rect><rect width="7" height="7" x="3" y="14" rx="1"></rect></symbol>
+    <symbol id="i-ext" viewBox="0 0 24 24"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h16"></path></symbol>
+  </defs>
+</svg>
+
+<div class="page">
+  <div class="app" id="app">
+    <nav class="nav" id="nav" aria-label="Files">
+      <div class="nav-path"><b>handbook</b> <span>main</span></div>
+      <div class="tab-bar" role="tablist" aria-label="Navigation">
+        <button class="tab-btn" type="button" role="tab" aria-selected="true">Files</button>
+        <button class="tab-btn" type="button" role="tab" aria-selected="false" tabindex="-1">Pulls</button>
+        <button class="tab-btn" type="button" role="tab" aria-selected="false" tabindex="-1">Commits</button>
+      </div>
+      <ul class="tree" id="tree"></ul>
+    </nav>
+
+    <main class="main">
+      <div class="eyebrow">
+        <button class="icon-btn nav-toggle" type="button" id="navToggle" aria-expanded="false" aria-controls="nav" aria-label="Show files"><svg class="icon"><use href="#i-menu"></use></svg></button>
+        <button class="icon-btn" type="button" aria-label="Up to parent folder"><svg class="icon"><use href="#i-up"></use></svg></button>
+        <span class="crumbs"><a href="#cards">handbook</a> / <a href="#cards">docs</a> / <a href="#cards">project</a> / <a href="#cards">research</a></span>
+      </div>
+      <header class="view-header">
+        <div class="heading-row">
+          <svg class="icon title-icon" aria-hidden="true"><use href="#i-grid"></use></svg>
+          <div class="title-group">
+            <h1 class="view-title">Docs Site Research</h1>
+            <div class="meta-line" id="metaLine"></div>
+          </div>
+          <span class="example-badge">Example data</span>
+        </div>
+      </header>
+      <div class="view-tabs">
+        <div class="tab-bar" role="tablist" aria-label="Collection views" id="viewTabs">
+          <button class="tab-btn" type="button" role="tab" id="tab-cards" data-view="cards" aria-controls="view-cards">Cards<span class="tab-key" aria-hidden="true">V</span></button>
+          <button class="tab-btn" type="button" role="tab" id="tab-list" data-view="list" aria-controls="view-list">List<span class="tab-key" aria-hidden="true">L</span></button>
+          <button class="tab-btn" type="button" role="tab" id="tab-board" data-view="board" aria-controls="view-board">Board<span class="tab-key" aria-hidden="true">B</span></button>
+          <button class="tab-btn" type="button" role="tab" id="tab-source" data-view="source" aria-controls="view-source">Source<span class="tab-key" aria-hidden="true">S</span></button>
+        </div>
+        <div class="tools" id="tools">
+          <label class="field"><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg><input id="filter" type="search" placeholder="Filter" aria-label="Filter items by title, note, or host"></label>
+          <button class="toggle" type="button" id="hideDone" aria-pressed="false">Hide read</button>
+        </div>
+      </div>
+
+      <div class="content">
+        <p class="notice"><b>Example data.</b> Everything on this page is invented to show the layout: the file names, summaries, reading times, notes, read states, the HTML report, and the pull request.</p>
+
+        <section class="view" id="view-cards" role="tabpanel" aria-labelledby="tab-cards"></section>
+        <section class="view" id="view-list" role="tabpanel" aria-labelledby="tab-list" hidden></section>
+        <section class="view" id="view-board" role="tabpanel" aria-labelledby="tab-board" hidden></section>
+        <section class="view" id="view-source" role="tabpanel" aria-labelledby="tab-source" hidden></section>
+        <section class="view reader" id="view-reader" aria-label="Opened item" hidden></section>
+      </div>
+    </main>
+  </div>
+</div>
+<div class="sr-only" aria-live="polite" id="live"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var FILE = "docs-site-research.md";
+  var INTRO = [
+    "Seven briefs from the 2026-11-19 research pass on where the handbook's docs site should live,",
+    "plus the vendor docs they lean on.",
+    "Start with the main brief; each of the others goes deep on one question."
+  ];
+  var GROUPS = [
+    { name: "Start here" },
+    { name: "Platforms and generators" },
+    { name: "Running the site" },
+    { name: "Outside reading", prose: "Vendor documentation the briefs cite most often." },
+    { name: "Provenance" }
+  ];
+
+  // Example data. All of it is invented to show the layout.
+  var ITEMS = [
+    { id: "main", group: "Start here", kind: "md", featured: true, tracked: true, state: "done", noteBlock: true,
+      href: "research-2026-11-19-docs-site-options.md", label: "Docs site options",
+      note: "The synthesis. Read it first; every other brief is cited from it.",
+      words: 6840,
+      summary: "Surveys how the handbook could be published today: which hosted platforms fit, which static generators the team could run itself, what search and versioning each allows, and a staged path from a preview site to the public one.",
+      sections: ["Summary", "Landscape", "Platforms", "Generators", "Search", "Recommendation"] },
+    { id: "hosted", group: "Platforms and generators", kind: "md", tracked: true, state: "doing",
+      href: "research-2026-11-19-hosted-docs-platforms.md", label: "Hosted docs platforms",
+      note: "Pricing and export sections decide it", words: 4210,
+      summary: "Compares four hosted platforms on authoring flow, custom domains, access control, export formats, and how well each takes Markdown written by an agent." },
+    { id: "generators", group: "Platforms and generators", kind: "md", tracked: true, state: "todo",
+      href: "research-2026-11-19-static-site-generators.md", label: "Static site generators",
+      note: "the Starlight section is newest", words: 3950,
+      summary: "Starlight, Docusaurus, MkDocs, and Hugo: build times, theming, plugin ecosystems, and what each asks of the repository." },
+    { id: "matrix", group: "Platforms and generators", kind: "html", tracked: true, state: "todo",
+      href: "generator-comparison.html", label: "Generator comparison matrix",
+      note: "generated table behind the generator brief", size: "38 KB", date: "2026-11-20",
+      summary: "Twelve generators by build time, search, versioning, and theming." },
+    { id: "search", group: "Running the site", kind: "md", tracked: true, state: "todo",
+      href: "research-2026-11-19-docs-search-engines.md", label: "Search for docs sites",
+      words: 3480,
+      summary: "Client-side indexes, hosted search, and self-run engines: index size, typo tolerance, and what a reader gets offline." },
+    { id: "versioning", group: "Running the site", kind: "md", tracked: true, state: "done", updated: true,
+      href: "research-2026-11-19-docs-versioning-approaches.md", label: "Versioning approaches",
+      note: "read before picking a generator", words: 2760,
+      summary: "Branch per release, folder per version, and single-version docs with a changelog, and what each costs to maintain." },
+    { id: "preview", group: "Running the site", kind: "md", tracked: true, state: "todo",
+      href: "research-2026-11-19-docs-preview-tooling.md", label: "Preview tooling",
+      words: 3120,
+      summary: "Pull request previews, link checking, and the local server an author needs to see a change before it merges." },
+    { id: "wiki", group: "Running the site", kind: "md", tracked: true, state: "todo",
+      href: "research-2026-11-19-wiki-alternative.md", label: "The wiki alternative",
+      note: "the no-build option", words: 2540,
+      summary: "Keep the handbook in a wiki instead: faster to edit, weaker review, and harder to version with the code." },
+    { id: "starlight", group: "Outside reading", kind: "url", tracked: true, state: "todo",
+      href: "https://starlight.astro.build/", label: "Starlight documentation", host: "starlight.astro.build", path: "/",
+      note: "start with the getting-started guide" },
+    { id: "docusaurus", group: "Outside reading", kind: "url", tracked: true, state: "done",
+      href: "https://docusaurus.io/docs", label: "Docusaurus documentation", host: "docusaurus.io", path: "/docs",
+      note: "versioning and search pages" },
+    { id: "mkdocs", group: "Outside reading", kind: "url", tracked: true, state: "todo",
+      href: "https://squidfunk.github.io/mkdocs-material/", label: "Material for MkDocs",
+      host: "squidfunk.github.io", path: "/mkdocs-material/" },
+    { id: "pr", group: "Provenance", kind: "pr", tracked: false,
+      href: "https://github.com/example/handbook/pull/42", label: "Research pull request",
+      prTitle: "Add docs site research briefs", prNumber: 42, prMeta: "research-agent · merged 1d ago",
+      summary: "Seven briefs and one generated report under docs/project/research/." }
+  ];
+
+  var CHECK_VERB = "read";
+  var STATES = [
+    { key: "todo", label: "Todo" },
+    { key: "doing", label: "Doing" },
+    { key: "done", label: "Done" }
+  ];
+
+  var ui = { view: "cards", filter: "", hideDone: false, openId: null, lastView: "cards", changed: [] };
+  var lastSource = null;
+
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function icon(id, cls) {
+    return '<svg class="icon ' + (cls || "") + '" aria-hidden="true"><use href="#' + id + '"></use></svg>';
+  }
+  function kindIcon(it) {
+    if (it.kind === "html") return icon("i-file-code", "ink-html");
+    if (it.kind === "url") return icon("i-globe", "ink-url");
+    if (it.kind === "pr") return icon("i-merge", "ink-pr");
+    return icon("i-file", "ink-md");
+  }
+  function minutes(it) { return it.words ? Math.max(1, Math.round(it.words / 230)) + " min" : ""; }
+  function byId(id) { for (var i = 0; i < ITEMS.length; i++) if (ITEMS[i].id === id) return ITEMS[i]; return null; }
+  function tracked() { return ITEMS.filter(function (it) { return it.tracked; }); }
+  function matches(it) {
+    if (ui.hideDone && it.state === "done") return false;
+    if (!ui.filter) return true;
+    var hay = [it.label, it.note, it.host, it.summary, it.href, it.prTitle].join(" ").toLowerCase();
+    return hay.indexOf(ui.filter.toLowerCase()) !== -1;
+  }
+  function title(it) { return it.kind === "pr" ? it.prTitle : it.label; }
+
+  // ── Source: the file exactly as the author writes it ──────────
+  function itemLines(it) {
+    var box = it.tracked ? (it.state === "done" ? "[x] " : "[ ] ") : "";
+    var link = "[" + it.label + "](" + it.href + ")";
+    if (it.featured) link = "**" + link + "**";
+    var line = "- " + box + link;
+    if (it.note && !it.noteBlock) line += ": " + it.note;
+    var out = [line];
+    if (it.tracked && it.state === "doing") out.push("  - status: doing");
+    if (it.note && it.noteBlock) { out.push(""); out.push("  " + it.note); }
+    return out;
+  }
+  function sourceLines() {
+    var L = ["---", "title: Docs Site Research", "collection: cards", "checkbox: read", "---", "",
+      "# Docs Site Research", ""].concat(INTRO);
+    GROUPS.forEach(function (g) {
+      L.push("", "## " + g.name, "");
+      if (g.prose) L.push(g.prose, "");
+      ITEMS.filter(function (it) { return it.group === g.name; }).forEach(function (it) {
+        L = L.concat(itemLines(it));
+      });
+    });
+    return L;
+  }
+  function highlight(line, inFront) {
+    var h = esc(line);
+    if (line === "---") return '<span class="s-punct">---</span>';
+    if (inFront) return h.replace(/^([a-z_]+):/, '<span class="s-key">$1</span>:');
+    if (/^#{1,6} /.test(line)) return '<span class="s-title">' + h + "</span>";
+    h = h.replace(/^(\s*)- (\[[ x]\] )?/, function (m, sp, box) {
+      return sp + '<span class="s-punct">- ' + (box || "") + "</span>";
+    });
+    h = h.replace(/^(\s*<span class="s-punct">- <\/span>)(status):/, '$1<span class="s-key">$2</span>:');
+    h = h.replace(/\*\*/g, '<span class="s-punct">**</span>');
+    h = h.replace(/\]\(([^)]+)\)/g, '](<span class="s-url">$1</span>)');
+    return h;
+  }
+
+  // ── Header metadata ───────────────────────────────────────────
+  function renderMeta() {
+    var t = tracked();
+    var done = t.filter(function (it) { return it.state === "done"; }).length;
+    document.getElementById("metaLine").innerHTML =
+      "<span>Collection</span><span class=\"sep\"></span>" +
+      "<span><b>" + ITEMS.length + "</b> items</span><span class=\"sep\"></span>" +
+      "<span><b>" + done + "</b> of <b>" + t.length + "</b> " + CHECK_VERB + "</span><span class=\"sep\"></span>" +
+      "<span>briefs as of 2026-11-19</span><span class=\"sep\"></span>" +
+      "<span class=\"age\" title=\"Example: modified 2 hours ago\">2h ago</span>";
+  }
+
+  // ── Shared pieces ─────────────────────────────────────────────
+  function checkbox(it) {
+    if (!it.tracked) return '<span class="check-spacer"></span>';
+    var verb = CHECK_VERB.charAt(0).toUpperCase() + CHECK_VERB.slice(1);
+    return '<label class="check"><input type="checkbox" tabindex="-1" data-check="' + it.id + '"' +
+      (it.state === "done" ? " checked" : "") + ' aria-label="' + verb + ": " + esc(title(it)) + '">' +
+      '<span class="check-box">' + icon("i-check") + "</span></label>";
+  }
+  function linkAttrs(it) {
+    return ' class="item-link" data-rove="' + it.id + '" tabindex="-1" href="' + esc(it.href) + '"';
+  }
+  function metaBits(it) {
+    var bits = [];
+    if (it.kind === "md") bits.push(minutes(it));
+    if (it.kind === "html") bits.push("HTML", it.size, it.date);
+    if (it.kind === "url") bits.push(esc(it.host) + " " + icon("i-ext", "ext"));
+    if (it.kind === "pr") bits.push("#" + it.prNumber, it.prMeta, '<span style="color:var(--status-success-text,inherit)"></span>');
+    if (it.state === "doing") bits.push('<span class="badge doing">Doing</span>');
+    if (it.updated) bits.push('<span class="updated">Updated since read</span>');
+    return bits.filter(Boolean);
+  }
+  function joinMeta(bits) {
+    return bits.map(function (b) { return "<span>" + b + "</span>"; }).join('<span class="sep"></span>');
+  }
+  function groupsWithItems() {
+    return GROUPS.map(function (g) {
+      return { group: g, items: ITEMS.filter(function (it) { return it.group === g.name && matches(it); }) };
+    });
+  }
+  function prose() {
+    return '<p class="prose">' + esc(INTRO.join(" ")) + "</p>";
+  }
+
+  // ── Cards ─────────────────────────────────────────────────────
+  function card(it) {
+    var cls = "card" + (it.featured ? " featured" : "") + (it.state === "done" ? " is-done" : "");
+    var h = '<li class="' + cls + '" data-id="' + it.id + '">';
+    h += '<div class="card-head">' + kindIcon(it) + '<h3 class="card-title"><a' + linkAttrs(it) + ">" + esc(title(it)) + "</a></h3>" + checkbox(it) + "</div>";
+    var meta = metaBits(it);
+    if (meta.length) h += '<div class="card-meta">' + joinMeta(meta) + "</div>";
+    if (it.summary) h += '<p class="card-summary">' + esc(it.summary) + "</p>";
+    if (it.featured && it.sections) {
+      h += '<p class="contents"><span class="label">Contents</span>' + it.sections.map(function (s) {
+        return '<a href="#cards" data-section="' + it.id + '" tabindex="-1">' + esc(s) + "</a>";
+      }).join("") + "</p>";
+    }
+    if (it.note) h += '<p class="card-note">' + icon("i-note") + "<span>" + esc(cap(it.note)) + "</span></p>";
+    var path = it.kind === "url" ? it.host + it.path : it.kind === "pr" ? "example/handbook" : it.href;
+    h += '<div class="card-foot"><span class="path">' + esc(path) + "</span></div>";
+    return h + "</li>";
+  }
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function renderCards() {
+    var any = false;
+    var h = prose();
+    groupsWithItems().forEach(function (gi) {
+      if (!gi.items.length) return;
+      any = true;
+      h += '<section class="group"><h2 class="group-heading">' + esc(gi.group.name) +
+        '<span class="group-count">' + gi.items.length + "</span></h2>";
+      if (gi.group.prose) h += '<p class="prose">' + esc(gi.group.prose) + "</p>";
+      h += '<ul class="card-grid">' + gi.items.map(card).join("") + "</ul></section>";
+    });
+    if (!any) h += '<p class="empty-note">No items match the filter.</p>';
+    document.getElementById("view-cards").innerHTML = h;
+  }
+
+  // ── List (reading list) ───────────────────────────────────────
+  function row(it) {
+    var meta = [];
+    if (it.kind === "md") meta.push(minutes(it));
+    if (it.kind === "html") meta.push("HTML · " + it.size);
+    if (it.kind === "url") meta.push(esc(it.host) + " " + icon("i-ext", "ext"));
+    if (it.kind === "pr") meta.push("#" + it.prNumber + " · merged");
+    if (it.state === "doing") meta.unshift('<span class="badge doing">Doing</span>');
+    if (it.updated) meta.unshift('<span class="updated">Updated</span>');
+    return '<li class="row' + (it.state === "done" ? " is-done" : "") + '" data-id="' + it.id + '">' +
+      checkbox(it) + kindIcon(it) +
+      '<div class="row-main"><a' + linkAttrs(it).replace('class="item-link"', 'class="item-link row-title"') + ">" + esc(title(it)) + "</a>" +
+      (it.note ? '<span class="row-note">' + esc(it.note) + "</span>" : "") + "</div>" +
+      '<span class="row-meta">' + meta.join(" ") + "</span></li>";
+  }
+  function renderList() {
+    var any = false;
+    var h = prose();
+    groupsWithItems().forEach(function (gi) {
+      if (!gi.items.length) return;
+      any = true;
+      var done = gi.items.filter(function (it) { return it.state === "done"; }).length;
+      var t = gi.items.filter(function (it) { return it.tracked; }).length;
+      h += '<section class="group"><h2 class="group-heading">' + esc(gi.group.name) +
+        '<span class="group-count">' + (t ? done + " of " + t + " " + CHECK_VERB : gi.items.length) + "</span></h2>";
+      h += '<ul class="rows">' + gi.items.map(row).join("") + "</ul></section>";
+    });
+    if (!any) h += '<p class="empty-note">No items match the filter.</p>';
+    document.getElementById("view-list").innerHTML = h;
+  }
+
+  // ── Board ─────────────────────────────────────────────────────
+  function bcard(it) {
+    var meta = [];
+    meta.push(esc(it.group));
+    if (it.kind === "md") meta.push(minutes(it));
+    if (it.kind === "url") meta.push(esc(it.host));
+    if (it.kind === "html") meta.push("HTML");
+    return '<li class="bcard" draggable="true" tabindex="-1" data-rove="' + it.id + '" data-id="' + it.id + '" aria-roledescription="draggable card" aria-label="' + esc(title(it)) + '">' +
+      '<div class="bcard-title">' + kindIcon(it) + "<span>" + esc(title(it)) + "</span></div>" +
+      '<div class="card-meta">' + joinMeta(meta) + (it.updated ? '<span class="sep"></span><span class="updated">Updated</span>' : "") + "</div>" +
+      (it.note ? '<p class="card-note">' + icon("i-note") + "<span>" + esc(cap(it.note)) + "</span></p>" : "") +
+      "</li>";
+  }
+  function renderBoard() {
+    var h = '<p class="board-help">Lanes group by state: an empty box is Todo, <code>status: doing</code> is Doing, a checked box is Done. Drag a card, or focus it and press <kbd>Space</kbd>, then <kbd>←</kbd> <kbd>→</kbd>, then <kbd>Space</kbd>. Watch the Source tab change by one line.</p>';
+    h += '<div class="board">';
+    STATES.forEach(function (s) {
+      var items = tracked().filter(function (it) { return it.state === s.key && matches(it); });
+      h += '<section class="lane" data-lane="' + s.key + '" aria-label="' + s.label + '"><div class="lane-head"><span class="badge ' + s.key + '">' + s.label + '</span><span class="group-count">' + items.length + "</span></div>" +
+        '<ul class="lane-list">' + items.map(bcard).join("") + "</ul></section>";
+    });
+    h += "</div>";
+    document.getElementById("view-board").innerHTML = h;
+  }
+
+  // ── Source ────────────────────────────────────────────────────
+  function renderSource() {
+    var lines = sourceLines();
+    var changed = {};
+    if (lastSource) {
+      var before = {};
+      lastSource.forEach(function (l) { before[l] = (before[l] || 0) + 1; });
+      lines.forEach(function (l, i) {
+        if (before[l]) before[l]--; else changed[i] = true;
+      });
+    }
+    var nChanged = Object.keys(changed).filter(function (i) { return lines[i] !== ""; }).length;
+    var inFront = false, fences = 0;
+    var body = lines.map(function (l, i) {
+      if (l === "---" && fences < 2) { fences++; inFront = fences === 1; }
+      var front = inFront && l !== "---";
+      return '<span class="line' + (changed[i] && l !== "" ? " changed" : "") + '">' + highlight(l, front) + "</span>";
+    }).join("");
+    var note = nChanged ? '<span class="changed-note" id="changedNote">Edited from the UI: ' + nChanged + " line" + (nChanged > 1 ? "s" : "") + " changed</span>" : "<span>As the author wrote it</span>";
+    document.getElementById("view-source").innerHTML =
+      '<div class="source-bar"><span>docs/project/research/' + FILE + " · " + lines.length + " lines · Markdown</span>" + note + "</div>" +
+      '<pre class="source" tabindex="0" aria-label="Source of ' + FILE + '"><code>' + body + "</code></pre>";
+  }
+
+  // ── Opened item, with the collection as reading context ───────
+  function renderReader() {
+    var it = byId(ui.openId);
+    if (!it) return;
+    var idx = ITEMS.indexOf(it);
+    var h = '<div class="reader-context">' +
+      '<button class="btn" type="button" data-act="back">← Docs Site Research</button>' +
+      "<span><b>" + (idx + 1) + "</b> of <b>" + ITEMS.length + "</b></span>" +
+      '<span class="spacer"></span>' +
+      '<button class="btn" type="button" data-act="prev"' + (idx === 0 ? " disabled" : "") + '>Previous <kbd>⌃P</kbd></button>' +
+      '<button class="btn" type="button" data-act="next"' + (idx === ITEMS.length - 1 ? " disabled" : "") + '>Next <kbd>⌃N</kbd></button>' +
+      "</div>";
+    h += '<div class="card-head" style="gap:10px">' + kindIcon(it) + '<h2 tabindex="-1" id="readerTitle">' + esc(title(it)) + "</h2></div>";
+    var meta = metaBits(it);
+    if (meta.length) h += '<div class="card-meta">' + joinMeta(meta) + "</div>";
+    if (it.summary) h += '<p class="prose" style="margin-top:12px">' + esc(it.summary) + "</p>";
+    if (it.kind === "url") {
+      h += '<div class="placeholder">This item opens outside Metabrowser: <b>' + esc(it.host) + "</b>. In the macOS app it opens in the web pane; elsewhere, in the system browser. Next and Previous still walk the collection.</div>";
+    } else if (it.kind === "pr") {
+      h += '<div class="placeholder">A pull request item opens the pull request page (Conversation, Changes, Checks).</div>';
+    } else {
+      h += '<div class="placeholder">The rendered document would fill the pane here, under its own Document and Source tabs. The line above stays, so <kbd>⌃N</kbd> goes straight to the next item in the order the author chose.</div>';
+    }
+    document.getElementById("view-reader").innerHTML = h;
+  }
+
+  function renderAll() {
+    renderMeta();
+    renderCards();
+    renderList();
+    renderBoard();
+    renderSource();
+    if (ui.openId) renderReader();
+  }
+
+  // ── State changes (the UI's only writes: boxes and status) ────
+  function setState(id, state, quiet) {
+    var it = byId(id);
+    if (!it || !it.tracked || it.state === state) return;
+    lastSource = sourceLines();
+    it.state = state;
+    if (state !== "done") it.updated = false;
+    var active = document.activeElement && document.activeElement.getAttribute("data-rove");
+    renderAll();
+    if (active) focusItem(active, false);
+    if (!quiet) announce(title(it) + ": " + (state === "done" ? CHECK_VERB : state) + ". One line changed in " + FILE + ".");
+  }
+  function announce(msg) {
+    var live = document.getElementById("live");
+    live.textContent = "";
+    setTimeout(function () { live.textContent = msg; }, 30);
+  }
+
+  // ── Views, tabs, hash ─────────────────────────────────────────
+  var VIEWS = ["cards", "list", "board", "source"];
+  function showView(v, fromHash) {
+    if (VIEWS.indexOf(v) === -1) v = "cards";
+    ui.view = v; ui.openId = null;
+    VIEWS.forEach(function (name) {
+      document.getElementById("view-" + name).hidden = name !== v;
+      var tab = document.getElementById("tab-" + name);
+      tab.setAttribute("aria-selected", name === v ? "true" : "false");
+      tab.tabIndex = name === v ? 0 : -1;
+    });
+    document.getElementById("view-reader").hidden = true;
+    document.getElementById("tools").style.visibility = v === "source" ? "hidden" : "visible";
+    if (!fromHash && location.hash !== "#" + v) {
+      try { history.replaceState(null, "", "#" + v); } catch (e) { /* sandboxed frames may refuse */ }
+    }
+    setRovingAnchor();
+  }
+  function openItem(id) {
+    var it = byId(id);
+    if (!it) return;
+    if (!ui.openId) ui.lastView = ui.view;
+    ui.openId = id;
+    VIEWS.forEach(function (name) { document.getElementById("view-" + name).hidden = true; });
+    document.getElementById("view-reader").hidden = false;
+    renderReader();
+    var t = document.getElementById("readerTitle");
+    if (t) t.focus();
+  }
+  function closeItem() {
+    var id = ui.openId;
+    showView(ui.lastView);
+    if (id) focusItem(id, true);
+  }
+  function step(delta) {
+    var idx = ITEMS.indexOf(byId(ui.openId)) + delta;
+    if (idx >= 0 && idx < ITEMS.length) openItem(ITEMS[idx].id);
+  }
+
+  // ── Roving focus: one Tab stop per collection ─────────────────
+  function rovers(viewEl) { return Array.prototype.slice.call(viewEl.querySelectorAll("[data-rove]")); }
+  function currentViewEl() { return document.getElementById("view-" + ui.view); }
+  function setRovingAnchor(id) {
+    VIEWS.forEach(function (name) {
+      var els = rovers(document.getElementById("view-" + name));
+      if (!els.length) return;
+      var anchor = els.filter(function (e) { return e.getAttribute("data-rove") === id; })[0] || els[0];
+      els.forEach(function (e) { e.tabIndex = e === anchor ? 0 : -1; });
+    });
+  }
+  function focusItem(id, scroll) {
+    setRovingAnchor(id);
+    var el = currentViewEl().querySelector('[data-rove="' + id + '"]');
+    if (el) el.focus({ preventScroll: !scroll });
+  }
+  function nearestVertical(els, from, dir) {
+    var r = from.getBoundingClientRect();
+    var cx = r.left + r.width / 2, best = null, bestScore = Infinity;
+    els.forEach(function (e) {
+      if (e === from) return;
+      var q = e.getBoundingClientRect();
+      var dy = dir > 0 ? q.top - r.bottom : r.top - q.bottom;
+      if (dy < -2) return;
+      var score = dy * 4 + Math.abs(q.left + q.width / 2 - cx);
+      if (score < bestScore) { bestScore = score; best = e; }
+    });
+    return best;
+  }
+
+  var lifted = null; // board keyboard move: {id, from}
+
+  document.addEventListener("keydown", function (ev) {
+    var t = ev.target;
+    var inField = t && (t.tagName === "INPUT" && t.type !== "checkbox" || t.tagName === "TEXTAREA");
+    if (ev.altKey || ev.metaKey) return;
+
+    if (ui.openId && ev.ctrlKey && (ev.key === "n" || ev.key === "p")) {
+      ev.preventDefault(); step(ev.key === "n" ? 1 : -1); return;
+    }
+    if (ev.ctrlKey) return;
+    if (ui.openId && ev.key === "Escape") { ev.preventDefault(); closeItem(); return; }
+    if (inField) return;
+
+    var rove = t && t.getAttribute && t.getAttribute("data-rove");
+    if (rove && ui.view === "board" && !ui.openId) {
+      if (ev.key === " ") {
+        ev.preventDefault();
+        if (lifted) { announce("Dropped in " + byId(lifted.id).state + "."); lifted = null; t.classList.remove("lifted"); }
+        else { lifted = { id: rove, from: byId(rove).state }; t.classList.add("lifted"); announce("Picked up " + title(byId(rove)) + ". Left and Right change lane, Space drops, Escape cancels."); }
+        return;
+      }
+      if (lifted && (ev.key === "ArrowLeft" || ev.key === "ArrowRight")) {
+        ev.preventDefault();
+        var order = ["todo", "doing", "done"];
+        var i = order.indexOf(byId(lifted.id).state) + (ev.key === "ArrowRight" ? 1 : -1);
+        if (i >= 0 && i < order.length) {
+          setState(lifted.id, order[i], true);
+          var el = currentViewEl().querySelector('[data-rove="' + lifted.id + '"]');
+          if (el) { el.classList.add("lifted"); el.focus(); }
+          announce("Moved to " + order[i] + ".");
+        }
+        return;
+      }
+      if (lifted && ev.key === "Escape") {
+        ev.preventDefault();
+        var id0 = lifted.id, from = lifted.from; lifted = null;
+        setState(id0, from, true); focusItem(id0, true); announce("Move cancelled.");
+        return;
+      }
+    }
+
+    if (rove && !ui.openId) {
+      var els = rovers(currentViewEl());
+      var idx = els.indexOf(t), next = null;
+      var grid = ui.view === "cards" || ui.view === "board";
+      if (ev.key === "j" || ev.key === "J" || (!grid && ev.key === "ArrowDown") || (grid && ev.key === "ArrowRight")) next = els[idx + 1];
+      else if (ev.key === "k" || ev.key === "K" || (!grid && ev.key === "ArrowUp") || (grid && ev.key === "ArrowLeft")) next = els[idx - 1];
+      else if (grid && ev.key === "ArrowDown") next = nearestVertical(els, t, 1);
+      else if (grid && ev.key === "ArrowUp") next = nearestVertical(els, t, -1);
+      else if (ev.key === "Home") next = els[0];
+      else if (ev.key === "End") next = els[els.length - 1];
+      else if (ev.key === " " && ui.view !== "board") {
+        ev.preventDefault();
+        var it = byId(rove);
+        if (it && it.tracked) setState(rove, it.state === "done" ? "todo" : "done");
+        return;
+      } else if (ev.key === "Enter" && ui.view === "board") { ev.preventDefault(); openItem(rove); return; }
+      if (next) { ev.preventDefault(); focusItem(next.getAttribute("data-rove"), true); }
+      return;
+    }
+
+    if (!ui.openId) {
+      var map = { v: "cards", l: "list", b: "board", s: "source" };
+      var k = ev.key.toLowerCase();
+      if (map[k] && !ev.shiftKey) { ev.preventDefault(); showView(map[k]); var tab = document.getElementById("tab-" + map[k]); if (tab) tab.focus(); }
+    }
+  });
+
+  // Tabs: click and arrow keys inside the tab bar
+  var tabBar = document.getElementById("viewTabs");
+  tabBar.addEventListener("click", function (ev) {
+    var b = ev.target.closest("[data-view]");
+    if (b) showView(b.getAttribute("data-view"));
+  });
+  tabBar.addEventListener("keydown", function (ev) {
+    if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+    ev.preventDefault(); ev.stopPropagation();
+    var i = VIEWS.indexOf(ui.view) + (ev.key === "ArrowRight" ? 1 : -1);
+    i = (i + VIEWS.length) % VIEWS.length;
+    showView(VIEWS[i]);
+    document.getElementById("tab-" + VIEWS[i]).focus();
+  });
+
+  // Clicks: open items, toggle boxes, reader controls, section links
+  document.addEventListener("click", function (ev) {
+    var a = ev.target.closest(".item-link");
+    if (a) {
+      if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.button === 1) { ev.preventDefault(); announce("Would open in a new tab."); return; }
+      ev.preventDefault(); openItem(a.getAttribute("data-rove")); return;
+    }
+    var sec = ev.target.closest("[data-section]");
+    if (sec) { ev.preventDefault(); openItem(sec.getAttribute("data-section")); return; }
+    var act = ev.target.closest("[data-act]");
+    if (act) {
+      var what = act.getAttribute("data-act");
+      if (what === "back") closeItem(); else step(what === "next" ? 1 : -1);
+      return;
+    }
+    var bc = ev.target.closest(".bcard");
+    if (bc && !ev.defaultPrevented) { openItem(bc.getAttribute("data-id")); }
+  });
+  document.addEventListener("change", function (ev) {
+    var id = ev.target.getAttribute && ev.target.getAttribute("data-check");
+    if (id) setState(id, ev.target.checked ? "done" : "todo");
+  });
+
+  // Board drag and drop
+  var dragId = null;
+  document.addEventListener("dragstart", function (ev) {
+    var c = ev.target.closest && ev.target.closest(".bcard");
+    if (!c) return;
+    dragId = c.getAttribute("data-id");
+    c.classList.add("dragging");
+    try { ev.dataTransfer.setData("text/plain", dragId); ev.dataTransfer.effectAllowed = "move"; } catch (e) { /* ignore */ }
+  });
+  document.addEventListener("dragend", function () {
+    dragId = null;
+    Array.prototype.forEach.call(document.querySelectorAll(".dragging, .drop-target"), function (e) { e.classList.remove("dragging", "drop-target"); });
+  });
+  document.addEventListener("dragover", function (ev) {
+    var lane = ev.target.closest && ev.target.closest(".lane");
+    if (!lane || !dragId) return;
+    ev.preventDefault();
+    Array.prototype.forEach.call(document.querySelectorAll(".drop-target"), function (e) { if (e !== lane) e.classList.remove("drop-target"); });
+    lane.classList.add("drop-target");
+  });
+  document.addEventListener("drop", function (ev) {
+    var lane = ev.target.closest && ev.target.closest(".lane");
+    if (!lane || !dragId) return;
+    ev.preventDefault();
+    var id = dragId; dragId = null;
+    setState(id, lane.getAttribute("data-lane"));
+  });
+
+  // Filter and hide-read
+  document.getElementById("filter").addEventListener("input", function (ev) {
+    ui.filter = ev.target.value.trim();
+    renderCards(); renderList(); renderBoard(); setRovingAnchor();
+  });
+  document.getElementById("hideDone").addEventListener("click", function (ev) {
+    ui.hideDone = !ui.hideDone;
+    ev.currentTarget.setAttribute("aria-pressed", ui.hideDone ? "true" : "false");
+    renderCards(); renderList(); renderBoard(); setRovingAnchor();
+  });
+
+  // Navigation column toggle (narrow screens)
+  document.getElementById("navToggle").addEventListener("click", function (ev) {
+    var app = document.getElementById("app");
+    var open = !app.classList.contains("nav-open");
+    app.classList.toggle("nav-open", open);
+    ev.currentTarget.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+
+  // File tree (example listing of the folder)
+  var tree = [
+    { name: "research", folder: true, depth: 0 },
+    { name: FILE, icon: "i-grid", ink: "ink-md", age: "2h", hr: true, current: true, depth: 1 },
+    { name: "generator-comparison.html", icon: "i-file-code", ink: "ink-html", age: "1d", depth: 1 },
+    { name: "research-2026-11-12-handbook-outline.md", icon: "i-file", ink: "ink-md", age: "1w", depth: 1, dim: true },
+    { name: "research-2026-11-19-docs-preview-tooling.md", icon: "i-file", ink: "ink-md", age: "1d", depth: 1 },
+    { name: "research-2026-11-19-docs-search-engines.md", icon: "i-file", ink: "ink-md", age: "1d", depth: 1 },
+    { name: "research-2026-11-19-docs-site-options.md", icon: "i-file", ink: "ink-md", age: "1d", depth: 1 },
+    { name: "research-2026-11-19-docs-versioning-approaches.md", icon: "i-file", ink: "ink-md", age: "3h", hr: true, depth: 1 },
+    { name: "research-2026-11-19-hosted-docs-platforms.md", icon: "i-file", ink: "ink-md", age: "1d", depth: 1 },
+    { name: "research-2026-11-19-static-site-generators.md", icon: "i-file", ink: "ink-md", age: "1d", depth: 1 },
+    { name: "research-2026-11-19-wiki-alternative.md", icon: "i-file", ink: "ink-md", age: "1d", depth: 1 }
+  ];
+  document.getElementById("tree").innerHTML = tree.map(function (r) {
+    var lead = r.folder ? icon("i-chev", "chev") : icon(r.icon, r.ink);
+    return '<li><a class="tree-row' + (r.dim ? " dim" : "") + '" href="#cards" style="--depth:' + r.depth + '"' +
+      (r.current ? ' aria-current="page"' : "") + ' title="' + esc(r.name) + '">' + lead +
+      '<span class="name">' + esc(r.name) + (r.folder ? "/" : "") + "</span>" +
+      (r.age ? '<span class="age' + (r.hr ? " hr" : "") + '">' + r.age + "</span>" : "") + "</a></li>";
+  }).join("");
+
+  window.addEventListener("hashchange", function () { showView(location.hash.slice(1), true); });
+
+  renderAll();
+  showView((location.hash || "#cards").slice(1), true);
+})();
+</script>
+
+</body>
+</html>

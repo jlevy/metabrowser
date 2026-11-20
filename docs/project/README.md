@@ -213,6 +213,17 @@ It links each document below and the contributor standards in `docs/`.
 A research record stays here while it informs open work, and moves to
 [`research/archive/`](research/archive/) once its questions are answered.
 
+- [Collection documents for dashboards, reading lists, and boards](research/research-2026-11-20-collection-documents.md):
+  a brainstorm on a Markdown and YAML format whose link lists render as cards, tables,
+  and boards through plugins: every design choice, its options, and their trade-offs,
+  with no decision taken
+- [Prior art for plain-text collections and dashboards](research/research-2026-11-20-collection-formats-prior-art.md):
+  the syntax and data models of Notion, Obsidian Bases and Kanban, Quarto, directive
+  syntaxes, bookmark formats, and Kanban as text, and the patterns that recur
+- [Design memo for collection documents](research/research-2026-11-20-collection-documents-design.md):
+  authoring ergonomics, card anatomy, layouts, interaction, and a mockup
+- [Collection documents: reading list](research/research-2026-11-20-collection-documents-reading-list.md):
+  the collection-documents records as a collection document in one candidate syntax
 - [Operational visibility into Claude Code and Codex](research/research-2026-11-19-agent-home-visibility.md):
   every file format under `~/.claude` and `~/.codex`, what Metabrowser shows of them
   today, and a proposed agents plugin built on the public plugin contract
@@ -261,6 +272,9 @@ A research record stays here while it informs open work, and moves to
 
 ## Reviews
 
+- [Technical review of the collection documents brainstorm](reviews/review-2026-11-20-collection-documents-technical.md):
+  where the brainstorm’s first draft failed against the object model plans and the code,
+  and the smallest first step the reviewer would take
 - [Bead and spec audit, 2026-11-14](reviews/review-2026-11-14-bead-and-spec-audit.md):
   every bead closed, updated, or held in the audit after 0.12.0, with its evidence
 - [Changes to existing behavior in the v0.12 stack](reviews/review-2026-10-01-v012-changes-to-existing-behavior.md):
