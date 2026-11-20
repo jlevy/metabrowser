@@ -62,9 +62,9 @@ File Overview counts what the folder holds:
 
 - **Files, Ignored, and Total:** the folder’s files, the files Git ignores, and both
   together, each drawn as a bar split by file-type family.
-- **The type summary:** a legend of the largest families, such as Code, Documentation,
-  Data, Archives, and Media; **Details** opens the full table, where each family lists
-  its extensions.
+- **The type summary:** a legend of the largest file-type families, such as Python,
+  Markdown, and JSON, up to nine, each at least 1% of what is shown, then **Other** for
+  the rest; **Details** opens the full table, where each family lists its extensions.
 - **Files or Bytes** switches every figure between counts and sizes, and **Show
   ignored** adds the ignored files to the type summary.
 
@@ -106,8 +106,22 @@ A chain of folders that each hold one folder shows as one row, and a folder whos
 were all written at about the same time starts collapsed.
 The view holds at most 5,000 files; when more match, it leaves out gitignored files
 first and says how many matched.
-A pinned Git revision has no modification times, so it offers no Modified within and no
-By age grouping.
+A Git revision has no modification times, so a file’s age is the time of the last commit
+that changed it, as a hosting site’s file list shows, and a folder’s the newest of its
+files’. They come from `git last-modified`, which needs Git 2.53 or newer, and are read
+in the background after the page opens, so a file shows its age a moment after it shows
+its name; with an older Git a revision shows no ages, and `metab --doctor` says what to
+upgrade. With file ages, Modified within and By age work on a revision as on a folder: a
+file is in a window or a band by its last commit, and a file whose last commit is not
+known (a shallow clone, or a read that has not finished) is in a last group, Undated,
+which says what it is older than when that is known; the page draws again when the ages
+arrive, the open file’s age included.
+Until then the Modified within counts read “…”, and the Undated group is named for it.
+The line that counts the files a filter keeps says that the ages are being read, why
+they could not be read when a read failed, and how many files could not be dated when
+some could not, and the Undated group says so too.
+A folder in a group or a window is dated by the newest of the files that put it there,
+and a submodule has no age, so it is in no group.
 
 The same filters are available from the command line:
 `metab ROOT --walk --type .md --age 7d`.
@@ -121,8 +135,10 @@ tabs, and `V` and `S` switch to the rendered view and the source wherever both e
 | File | Views |
 | --- | --- |
 | Markdown (`.md`) | Document, rendered by KPress, and Source |
+| Mermaid diagrams (`.mmd`, `.mermaid`) | Diagram and Source |
 | JSON and YAML | Tree, a collapsible view of the parsed structure, and Source |
 | JSONL logs | Log, a timeline of events, and Raw JSON; coding-agent logs add Charts |
+| Event logs (`events-*.jsonl`) | Timeline, Latency, By kind, Errors, and Raw JSON: Metabrowser’s own log of what it served and how long each took |
 | Code and text | Source, with syntax highlighting where a grammar exists |
 | Images | Image |
 | HTML | Preview, in a sandboxed frame, and Source |
@@ -143,6 +159,18 @@ When the window is wide enough to show the document as a card, a print button at
 card’s top right prints the document without the rest of the page, and the README on a
 folder’s Overview has the same button.
 Command-P, or Control-P outside macOS, prints whichever view is shown, at any width.
+
+A fenced `mermaid` code block is drawn as a diagram, as GitHub draws it, in the page’s
+light or dark theme.
+Hovering a diagram shows buttons to copy its source, show the source in its place, and
+open it in a dialog where the buttons, the arrow keys, `+`, `-`, `0`, the scroll wheel,
+a pinch, and dragging zoom and pan it.
+A diagram Mermaid cannot parse shows Mermaid’s message above its source.
+Mermaid loads only for a document that has a diagram.
+With active content off, each diagram is drawn as a picture, so its text cannot be
+selected, and Mermaid’s `click` links and scripts never run in either mode.
+A `.mmd` or `.mermaid` file opens as one diagram, drawn the same way, with its source a
+tab away.
 
 Links resolve the way GitHub resolves them:
 
@@ -170,6 +198,14 @@ Obsidian wiki links work too:
   the embed says why it stopped.
 - `![[image.png]]` and other media embed the file.
 
+HTML a README writes for its layout on GitHub lays it out here as github.com does:
+`align` on a paragraph, `div`, heading, image, or table cell or row, and `width` and
+`height` on an image or a table cell, such as a logo in `<p align="center">` drawn at
+`width="192"`, an image floated by `align="right"`, or a badge sized by its `height`.
+This holds with active content off too.
+An `<img>` given both a `width` and a `height` draws at that size, as on github.com,
+while a wiki embed sized as `![[image.png|640x480]]` keeps the image’s proportions.
+
 With active content off (`--untrusted` or `--no-active-content`, and always for a
 repository URL), a document renders without its styles and scripts, and with a time
 limit: a document that takes longer than a few seconds to render shows its source
@@ -178,15 +214,32 @@ Reloading it shows the source again at once for a while, since the server rememb
 The same line says when the renderer is busy with other documents or could not start;
 reloading the page then tries again.
 
+With active content off, a document shows its images from the web over `https`, as on
+github.com, such as a README’s badges, and the browser fetches them with no referrer
+sent. A badge that links somewhere keeps its link.
+An image the page does not load, one over `http`, is its alt text in a small chip with
+an image mark, in the link it was in or in a link to the image, and hovering the chip
+shows the address. Those requests tell the image’s host that you opened the page, so the
+Metabrowser menu has **Block remote images**, off unless you tick it: every such image
+is then its chip, and the page’s policy refuses an image from another site, so the
+browser sends no request for one.
+It applies to what is untrusted, a repository opened from its URL, a pull request’s
+text, a commit’s, a Markdown diff, and a folder served with `--untrusted`; your own
+folder’s Markdown is not changed.
+
 ### Data, Logs, and Code
 
 - **JSON and YAML:** Tree shows the parsed document with collapsible levels and draws
   only the rows in view.
 - **JSONL:** Log lists one row per event, with filter chips by kind of event, such as
   text, tool calls, and tool results, and each row expands to its raw JSON. For the
-  session logs of Claude Code, Gemini CLI, and Pi, Metabrowser shows the agent in the
-  header and adds **Charts**.
+  session logs of Claude Code, Codex, Gemini CLI, and Pi, Metabrowser shows the agent in
+  the header and adds **Charts**.
   [Working with agents](working-with-agents.md#reading-agent-logs) has more.
+- **Event logs:** a file named `events-*.jsonl`, which a served `metab` writes about
+  itself, opens as spans nested under what started them, the slowest spans, each kind’s
+  timings, and failures by cause.
+  [Browsing the log](realtime-debugging.md#browsing-the-log) has more.
 - **Code and text:** Source highlights common programming, markup, and configuration
   languages by file extension, and shows plain text for the rest, `.log` files among
   them.

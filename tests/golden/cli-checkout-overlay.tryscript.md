@@ -47,10 +47,11 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[APP_HOME]/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[APP_HOME]/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
   "borrows": "[CWD]/checkout",
   "shallow": false,
   "refreshable": true,
+  "follows": false,
   "latest": "806ef37f15fef9c34a47873090c6169008db8cd2",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -79,7 +80,6 @@ status: 200
 {
   "kind": "branch",
   "query": "",
-  "limit": 100,
   "pin": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
   "ref": "refs/remotes/origin/trunk",
   "kinds": [
@@ -87,8 +87,11 @@ status: 200
     "tag"
   ],
   "working_tree": null,
-  "total": 1,
-  "truncated": false,
+  "pull_requests": {
+    "state": "absent",
+    "complete": false,
+    "refreshing": false
+  },
   "refs": [
     {
       "name": "trunk",
@@ -125,9 +128,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "stores": [
     {
+      "key": "github-com--octo--demo--65157fba6c20ff90",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "published",
       "mode": "overlay",
@@ -185,9 +189,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "stores": [
     {
+      "key": "github-com--octo--demo--65157fba6c20ff90",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "published",
       "mode": "overlay",
@@ -244,10 +249,11 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[CWD]/home-moved/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[CWD]/home-moved/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
   "borrows": "[CWD]/moved",
   "shallow": false,
   "refreshable": true,
+  "follows": false,
   "latest": "806ef37f15fef9c34a47873090c6169008db8cd2",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -280,10 +286,11 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[CWD]/home-moved/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[CWD]/home-moved/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
   "borrows": "[CWD]/moved",
   "shallow": false,
   "refreshable": true,
+  "follows": false,
   "latest": "806ef37f15fef9c34a47873090c6169008db8cd2",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -340,6 +347,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -536,10 +544,11 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[CWD]/home-shallow/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[CWD]/home-shallow/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
   "borrows": "[CWD]/shallow",
   "shallow": true,
   "refreshable": true,
+  "follows": false,
   "latest": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -571,9 +580,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "stores": [
     {
+      "key": "github-com--octo--demo--65157fba6c20ff90",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "damaged",
       "mode": "overlay",

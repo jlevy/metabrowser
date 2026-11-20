@@ -25,23 +25,6 @@ import Testing
         #expect(next.take() == b)
     }
 
-    /// A repository's server starting again on a new link announces the link's page, so the
-    /// window loads the entry page, not the page the old server showed (review A1 on #539).
-    @Test func anEntryRequestOutlastsTheRestartThatRemembersTheOldPage() {
-        var next = NextPage(requested: a)
-        next.requestEntry()
-        next.remember(shown: b)  // the restart remembers the old server's page
-        #expect(next.saved(showing: b) == nil)
-        #expect(next.take() == nil)
-        // Taken once: the next restart returns to whatever the window showed.
-        next.remember(shown: b)
-        #expect(next.take() == b)
-        // A page asked for later wins over the entry page.
-        next.requestEntry()
-        next.request(a)
-        #expect(next.take() == a)
-    }
-
     @Test func withoutARequestTheShownPageComesBack() {
         var next = NextPage()
         next.remember(shown: a)

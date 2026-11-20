@@ -6,7 +6,8 @@ Git configuration for a remote URL (a credential helper), what to say when a sou
 not found or needs credentials (``credential_hint``), a check to run before a first
 clone, the ``repository_context`` of a mirrored source, the commit a pull-request URL
 pins, the changed file a pull-request URL's anchor names, the pull requests a server
-keeps fresh beside the mirror, and the page on the provider's own site that shows what a
+keeps fresh beside the mirror, the pull requests a branch is the head of, as the cache
+holds them (:func:`ref_pulls_for`), and the page on the provider's own site that shows what a
 Metabrowser page shows (:func:`counterpart_host_for`); and, for ``metab --doctor``, a
 report on the provider's own tools (:func:`provider_statuses`). The list is fixed, as the built-in browser plugin
 directories are; there is no public registration surface for the alpha.
@@ -17,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypedDict
 
 if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
@@ -83,6 +84,61 @@ class ProviderStatus:
     name: str
     report: Mapping[str, object]
     lines: tuple[str, ...]
+
+
+type RefPullState = Literal["open", "draft", "merged", "closed"]
+"""A pull request as a list shows it: merged and draft before open and closed."""
+
+
+class RefPull(TypedDict):
+    """One pull request a branch is the head of, as a row of the ref chooser shows it."""
+
+    number: int
+    title: str
+    state: RefPullState
+
+
+class RefPulls(Protocol):
+    """The pull requests of the served repository, by the branch each is the head of.
+
+    Read from the provider's cache alone, never the network: what the cache lacks is
+    absent, and ``refreshing`` says a job is filling it. Only a pull request whose head is
+    a branch of the served repository itself is listed under that branch: a fork's branch
+    of the same name is another branch. ``token`` names everything the answers below read,
+    so an answer keyed on it is kept until the cache changes.
+    """
+
+    @property
+    def token(self) -> str:
+        """Names this content: equal tokens answer alike."""
+        ...
+
+    @property
+    def ready(self) -> bool:
+        """Whether the cache holds a catalog of the repository's pull requests at all."""
+        ...
+
+    @property
+    def complete(self) -> bool:
+        """Whether the catalog holds every one of them, so a branch with none has none."""
+        ...
+
+    @property
+    def refreshing(self) -> bool:
+        """Whether a job is filling the catalog now, so its answers may change."""
+        ...
+
+    def pulls(self, head: str, needle: str = "") -> tuple[RefPull, ...]:
+        """The pull requests whose head is branch *head*, open first and then newest first.
+
+        With a filter *needle*, those it matches (:meth:`matching`) come first.
+        """
+        ...
+
+    def matching(self, needle: str) -> frozenset[str]:
+        """The branches with a pull request that *needle* matches: ``#`` and a number's
+        start, or every word of its title, ignoring case."""
+        ...
 
 
 class CounterpartHost(Protocol):
@@ -178,6 +234,15 @@ class RepositoryProvider(Protocol):
         """What a server keeps fresh for the pull requests of *published*, any of them.
 
         Return ``None`` for a source this provider does not own. It reads nothing.
+        """
+        ...
+
+    async def ref_pulls(self, app: Any) -> RefPulls | None:
+        """The served repository's pull requests by their head branch, from the cache alone.
+
+        *app* is the server. Return ``None`` for a server this provider does not serve;
+        a cache with nothing in it is an answer, not ``None``. It never fetches, and
+        reads off the event loop.
         """
         ...
 
@@ -325,6 +390,16 @@ def served_pull_requests_for(published: PublishedSource) -> PullRequestSet | Non
     return None
 
 
+async def ref_pulls_for(app: Any) -> RefPulls | None:
+    """The pull requests of what *app* serves, by head branch, from the provider that owns it."""
+
+    for provider in installed_providers():
+        found = await provider.ref_pulls(app)
+        if found is not None:
+            return found
+    return None
+
+
 __all__ = [
     "CounterpartHost",
     "ProviderStatus",
@@ -332,6 +407,9 @@ __all__ = [
     "PullRequestFile",
     "PullRequestPin",
     "PullRequestUnavailableError",
+    "RefPull",
+    "RefPullState",
+    "RefPulls",
     "RepositoryProvider",
     "check_first_clone",
     "counterpart_host_for",
@@ -342,6 +420,7 @@ __all__ = [
     "provider_git_config",
     "provider_statuses",
     "pull_request_file",
+    "ref_pulls_for",
     "served_pull_requests_for",
     "repository_context_for",
     "url_reducers",

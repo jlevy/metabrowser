@@ -18,9 +18,17 @@
 // simultaneous callers share the one in-flight load rather than racing to
 // append duplicate <script> tags. Successful entries are retained separately,
 // so retrying after a later entry fails never evaluates them twice.
+//
+// A bundle can instead be one ES module, `{module: url}`: a library whose build
+// imports its own parts by relative specifiers, so the browser fetches only the
+// parts a caller reaches (Mermaid's entry imports one chunk set per diagram
+// type). ensureModule(name) imports it once and resolves to its namespace;
+// simultaneous callers share the import, and a failed import is retried by the
+// next caller rather than remembered.
 
 ((global) => {
   /** @typedef {{src: string, requires?: string, provides?: string}} AssetEntry */
+  /** @typedef {{module: string}} ModuleEntry */
 
   /** @type {Set<string>} */
   const loaded = new Set();
@@ -191,13 +199,58 @@
     return pending;
   }
 
-  /** @param {string} name @returns {boolean} */
+  /**
+   * Each module bundle's import, in flight or settled successfully.
+   * @type {Map<string, Promise<unknown>>}
+   */
+  const modules = new Map();
+  /** Module bundles whose import succeeded. @type {Set<string>} */
+  const importedModules = new Set();
+
+  /**
+   * Whether the named bundle is ready: its scripts ran, or its module was imported. A
+   * load or import still in flight, or one that failed, is not.
+   * @param {string} name
+   * @returns {boolean}
+   */
   function assetLoaded(name) {
-    return loaded.has(name);
+    return loaded.has(name) || importedModules.has(name);
+  }
+
+  /**
+   * The namespace of the named module bundle, imported once.
+   * @param {string} name
+   * @returns {Promise<unknown>}
+   */
+  function ensureModule(name) {
+    const known = modules.get(name);
+    if (known) {
+      return known;
+    }
+    const entries = /** @type {unknown} */ (bundles()[name]);
+    const entry = Array.isArray(entries) && entries.length === 1 ? entries[0] : null;
+    const url =
+      entry && typeof entry === "object" && typeof entry.module === "string" ? entry.module : "";
+    if (!url) {
+      return Promise.reject(new Error(`Unknown module bundle: ${name}`));
+    }
+    const pending = import(url).then(
+      (namespace) => {
+        importedModules.add(name);
+        return namespace;
+      },
+      (error) => {
+        modules.delete(name);
+        throw error;
+      },
+    );
+    modules.set(name, pending);
+    return pending;
   }
 
   global.MetabrowserAssets = {
     ensureAsset: ensureAsset,
     assetLoaded: assetLoaded,
+    ensureModule: ensureModule,
   };
 })(window);

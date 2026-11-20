@@ -266,7 +266,7 @@ it.
 | Tooltip | `--tooltip-font-size` | The body size; its detail lines set none and read at it ([One Tooltip, and It Is Ours](#one-tooltip-and-it-is-ours)) |
 | List text | `--nav-font-size` | The navigation column throughout: its header path, the Files, Pulls, and Commits rows, the [navigation metadata line](#navigation-metadata-line), and the freshness line at its foot; a view header’s eyebrow, its address and mirror note, the twin of the navigation’s path row across the divider ([View Headers](#view-headers)); a tree’s rows wherever one is drawn, the Diff summary’s file list among them; and Quick Search’s results and Help’s commands, the lists in those dialogs |
 | Secondary metadata | The token of the text it accompanies | Ages, update and fetch times, counts, sizes, a row’s second line, notes, and captions |
-| A revision in a line | `--nav-font-size` | One step below the body-size sans beside it, since monospace at that size reads larger ([Git Commit Summary](#git-commit-summary)) |
+| A short commit ID in a line | The token of the text it sits in | Its line’s size, its monospace face scaled to the sans’s x-height, `--font-sans-ex-height` ([Short Commit IDs](#short-commit-ids)) |
 | Controls | `--ui-small-font-size` | Chips and the counts in their menus, badges, buttons, filters, menus, fold expanders, and a tree row’s leading change letter, its slot’s glyph |
 | Keycaps and their hint strips | `--kbd-font-size` | A [key](#keyboard-keys), and a strip of hints that labels keys, at the navigation column’s foot and in Quick Search, so a key and its word read as one mark |
 | Labels | `--label-font-size` | All-caps tabs, table headers, stat labels, group headings, and dialog titles, at the controls’ size: labels differ by caps treatment, not by another size |
@@ -365,16 +365,13 @@ a pull request, and a commit.
 
 ```text
 +------------------------------------------------------------------------------+
-|<[Up] ~/wrk/project / docs / specs  [copy]                                    |  1 eyebrow, optional; its rule
+| [Up] ~/wrk/project / docs / specs  [copy]                                    |  1 eyebrow, optional; its rule
 +------------------------------------------------------------------------------+    the top bar's
 | [icon] Title, at the page title's size  33.9 KB · 2h ago  [View on GitHub v] |  2 heading row, 3 metadata; the corner
 | DOCUMENT   SOURCE                                                            |  4 tab bar
 +------------------------------------------------------------------------------+  the tab bar's rule
 | content                                                                      |
 ```
-
-The `<` at the eyebrow’s start is the navigation’s chevron, which is the main view’s,
-not the header’s ([Hiding the Navigation Pane](#hiding-the-navigation-pane)).
 
 | Part | A file | A folder | A pull request | A commit |
 | --- | --- | --- | --- | --- |
@@ -404,10 +401,8 @@ path row across the divider: that row’s height, `--pane-header-row-height`, it
 across the window and the two rows’ text sits on one baseline.
 Up is an icon button, the arrow alone at rest and the hover surface and its hairline
 only while hovered or focused, as the navigation’s chevron is.
-Both are targets of `--view-header-up-size`, WCAG 2.2’s minimum target size, with space
-between them (`.view-header-eyebrow > .folder-up` in `static/styles.css`); at 20 px and
-2 px apart, a press just left of Up hid the navigation pane.
-It is optional by kind.
+It is a target of `--view-header-up-size`, WCAG 2.2’s minimum target size
+(`.view-header-eyebrow > .folder-up` in `static/styles.css`). It is optional by kind.
 A file’s and a folder’s always have one, because where a file is matters: Up, which
 keeps its place disabled at the served root, and the folders above the item, but not the
 item, which is the title under it.
@@ -559,8 +554,8 @@ pull request’s labels, a row of chips at a chip’s size.
 An age in a line takes the line’s size, as an age does everywhere
 ([Type Scale](#type-scale)). A chip in a line keeps its own size, a ref chip by the
 [chip ratio](#one-ratio), and a state badge and a label at theirs
-([Label Colors](#label-colors)), and a revision sits its one step down
-([Git Commit Summary](#git-commit-summary)).
+([Label Colors](#label-colors)), and a revision takes the line’s size
+([Short Commit IDs](#short-commit-ids)).
 
 The two headers share their parts in one order, and each keeps the lines only it has:
 
@@ -571,6 +566,7 @@ The two headers share their parts in one order, and each keeps the lines only it
 | Where it lives | The revision, its copy button, and its refs | The branches, head → base |
 | Age | “Committed 3d ago”, muted, the age in its freshness ink | The state badge, then “Opened 3d ago · updated …”, View on GitHub, and Browse code, then Refresh’s slot at the end |
 | Its own | None | The labels, a row of chips; the freshness note ending the author’s row; the status line, while it has something to say |
+| Size line | “4 files changed · 56.9 KB compressed (193.9 KB raw diff)”, the [change size line](#change-size-line) | “2 commits · 36 files changed · 1.8 MB compressed (6.2 MB raw diff)” |
 | Diff summary | The last line, drawn by the commit’s diff | The last line, drawn from the comparison |
 | Under the header | The description, a card | The tab bar |
 
@@ -704,7 +700,7 @@ keeps it.
 | The Pulls count, “448 PRs on owner/repo” | `.github-pulls-total` in the GitHub plugin’s `pulls-panel.js` |
 | A pull request’s Checks summary, “3 success · 1 failure” | `paintChecks` in the GitHub plugin’s `pull-page.js`, through `metabrowser.countPartsNodes`, its dots `.summary-punctuation` in a line muted already, each saying a comma in its place |
 | A commit’s files outside the served folder, “2 files outside this folder” | `renderCommitDetail` in `static/git-panel.js`, in one span of its line |
-| A commit’s hover card, “32 files changed · 4 A, 28 M · +1,921 −160” | `renderCommitChangeStats` in `static/git-panel.js`, through `changeSummary`, `countPartsHtml`, and `changeLineHtml`, in the Diff summary’s words and paint ([Git Commit Summary](#git-commit-summary)) |
+| A commit’s hover card, “32 files changed · 56.9 KB compressed (193.9 KB raw diff)” over “4 A, 28 M · +1,921 −160” | `renderCommitChangeStats` in `static/git-panel.js`, through `changeSizeLineHtml`, `changeSummary`, and `changeLineHtml`, in the size line’s and the Diff summary’s words and paint ([Git Commit Summary](#git-commit-summary)) |
 
 The rule does not reach a number that is not a count summary’s:
 
@@ -846,6 +842,46 @@ inset; see [Folder Overview Is a Panel Stack](#folder-overview-is-a-panel-stack)
 It keeps the table of contents the same file has opened on its own: in the wide band the
 rail sits to the right of the card’s edge, and below it the overlay’s toggle keeps its
 trailing gutter; see [Embedded Document Navigation](#embedded-document-navigation).
+
+### Boxed Prose
+
+A bordered box that holds prose gives that prose one inline padding, on each side:
+`--boxed-prose-padding-inline`, declared once on `:root` in `static/styles.css` beside
+`--content-padding-x`, with the measurement that set it.
+It is the room between the box’s edge and the text, so a heading that opens a text is
+never nearer the border than a paragraph is.
+It replaced the pane inset, `--pane-header-padding-x`, which is the navigation column’s
+alignment inset and not a reading measure: with it, an h2 in a pull request’s
+description sat a few pixels inside the border and read as touching it (owner,
+2026-11-20). No box that holds prose writes its own literal.
+
+| Box | How it takes the token |
+| --- | --- |
+| A pull request’s description, a comment, a review, and a review comment | `.github-pull-text`’s padding is `--github-pull-text-inset`, which the page sets to the token |
+| The head of those cards, a commit’s row in the Conversation, and a review comment’s hunk lines | The same `--github-pull-text-inset`, so a head’s avatar and the text under it start at one x, and the timeline’s line down the avatars’ centers moves with them ([Conversation Timeline](#conversation-timeline)) |
+| A commit’s message on its page | `.git-commit-body`’s inline padding, a message set as a pull request’s description is |
+
+Four kinds of box keep their own padding, each for a reason:
+
+- **A rendered document’s card**, a Markdown file’s or the Folder Overview’s README.
+  KPress draws the card’s border only where its pane is wide enough for the card, and
+  pads the text there by its band’s inset, wider than the token; below that the card is
+  full-bleed and draws no border, so there is no edge for a heading to crowd
+  ([Rendered Markdown Layout](#rendered-markdown-layout)).
+- **A rendered Markdown diff’s blocks.** They pad `--content-padding-x` inside the diff
+  file’s frame, a wider inset than the token, and their left edge is the change gutter,
+  not a reading box’s.
+- **A notice**, which holds the application’s own sentence and a control rather than a
+  document’s prose, and sets its own padding ([Notices](#notices)).
+- **A toolbar, a header row, or a tree row** that carries `--pane-header-padding-x`:
+  they align with the navigation column, which is what that inset is for.
+
+The pull request page and a commit’s page hold the only prose in a bordered box, and no
+hover card or callout holds Markdown, so a new box that does takes the token, and a new
+kind of box is added to the table.
+`test_boxed_prose_takes_one_inline_padding` holds the declaration and each box’s use of
+it, and `tests/test_github_pull_text_chrome.py` measures the padding the boxes lay out,
+in a wide and a narrow pane, with nothing padded twice and no overflow.
 
 ### Embedded Document Themes
 
@@ -1098,6 +1134,33 @@ markup; document sanitization keeps its allowlist.
 Rendered Markdown retains its existing enhancement budget; links beyond the admitted
 prefix keep their authored form.
 
+A link whose whole content is images, a badge, or the chip an image the page does not
+load becomes ([Images the Page Does Not Load](#images-the-page-does-not-load)), takes no
+mark: github.com draws none on one, and the mark wrapped onto a line of its own under a
+row of badges. A link with words of its own is marked as before.
+`decorateExternalLink` decides this from the link’s content (`holdsImagesOnly`), so
+every caller, a trusted render and an untrusted one alike, gets it.
+
+### Images the Page Does Not Load
+
+A document from an untrusted source shows its images from the web over `https`, as
+github.com does, with no referrer sent, unless the reader ticks **Block remote images**
+in the Metabrowser menu.
+Any image the page does not load, one over `http`, one with no address of its own, and
+every image from the web with that box ticked, is its alt text in a small chip:
+`.mb-image-fallback`, one line of `--ui-small-font-size` in a `--viz-border` box with
+`--radius-tag` corners, an image mark before the text
+([Icon Catalog](design-system-icons.md#ui-chrome-and-actions)), and the address the
+image would have loaded in its tooltip (`data-tip-text`, as every tooltip is).
+The chip is the content of the link the image was in, so a badge keeps its destination,
+and an image that was in no link is in a link to the image, in the same chip.
+It is a badge’s height, so a row of chips lies on one line as a row of badges does, and
+it never wraps its text: one wider than its line is cut with an ellipsis, and the
+tooltip has the rest.
+`inert_html.py` and `static/inert-html.js` write it, and nothing in a document can give
+an element the class.
+`tests/test_markdown_badges_chrome.py` measures the row in Chrome.
+
 ### Choosing Among Values
 
 A control that offers two or more values, or one value on or off, is one of these.
@@ -1112,6 +1175,7 @@ state looks like.
 | One of a long list, named by its trigger | `.chip-menu-trigger` over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns, the source ref selector of a mirror and of a checkout |
 | A boolean whose polarity has to be legible | `.filter-check` | A real checkbox | Show ignored |
 | A boolean with no room for a word | `.icon-btn[aria-pressed]` | A button with an accessible action name | The filter drawer |
+| A boolean in the Metabrowser menu | `.menu-row` holding a real checkbox, `.menu-check` | A real checkbox, its label the row’s | Block remote images |
 
 The chip group and the menu segment are two forms of one exclusive choice, because a
 word and a glyph need different boxes.
@@ -1136,6 +1200,67 @@ A file that falls back permanently to Source has no format chooser.
 `test_a_toggle_cannot_fork_the_family` fails when a stylesheet or a source states a
 toggle’s ARIA outside this family, and
 `test_exclusive_choices_share_one_answer_to_each_state` holds the table above.
+
+### Focus Ring
+
+Every control’s keyboard focus is one ring, from four tokens in `static/styles.css`:
+`--focus-ring-width`, `--focus-ring-color`, `--focus-ring-offset`, and
+`--focus-ring-offset-outset`. A `:focus-visible` rule sets
+`outline: var(--focus-ring-width) solid var(--focus-ring-color)` and
+`outline-offset: var(--focus-ring-offset)`, which draws the ring inside the control’s
+box, so no ancestor’s `overflow: hidden` clips it.
+The outset offset is for a bare inline text link or a check, whose box is its text and
+has no room for a ring; `_FOCUS_RING_OUTSET` in `tests/test_design_vocabulary.py` names
+the controls that take it.
+`test_every_focus_ring_is_the_one_ring` fails a stylesheet, a plugin’s included, that
+writes a literal ring.
+
+### Text Fields
+
+A typed or chosen value that is not a button carries `.field`: its border, recessed
+`--bg` fill, ink, padding, hover border, and focus ring are stated once in
+`static/styles.css`, and a use site sets only its layout, such as its width, text
+alignment, or block padding.
+The source ref selector’s filter, the font-set picker, and the line-length number carry
+it in markup. `test_text_fields_carry_the_field_primitive` fails a field that restates
+what `.field` owns.
+
+### Badges
+
+A status or file-type badge takes its fill and ink from a `--badge-<tone>-bg` and
+`--badge-<tone>-text` pair, themed for both themes and held to 4.5:1 by
+`test_status_and_badge_inks_read_in_both_themes`; a failure and a front-matter error are
+one tone, `--badge-failed-*`. `.source-ref-selector-badge` is not a status badge but an
+outlined tag in the row’s muted ink: it shares `.file-header-badge`’s radius and no-wrap
+rule and not its filled, bold, taller box, since every ref row is placed at one row’s
+height.
+
+### Status Text Inks
+
+A status color set as text takes a themed ink, `--status-success-text`,
+`--status-warning-text`, or `--status-error-text`, defined in both themes against `--bg`
+and `--hover-bg`, each at 4.5:1 or better
+(`test_status_and_badge_inks_read_in_both_themes`). The unsuffixed `--status-*` tokens
+are fills for dots, bars, tints, and borders and do not read as text in both themes;
+`test_no_stylesheet_sets_text_in_a_status_fill` rejects one set as `color`.
+`--diff-add-row-bg` and `--diff-del-row-bg` are the tints behind an added or removed
+line.
+
+A tally tree colors a leaf’s count by its label: `success` in the success ink, `failed`,
+`error`, `critical`, and `kill` in the error ink (`critical` also bold), and `high` and
+`elevated` in the warning ink.
+Severities that share an ink are told apart by their label, not by color (`TALLY_COLORS`
+in `static/charts.js`).
+
+### Empty and Failed Loads in the Navigation Column
+
+An empty list, `.recent-empty` or `.git-panel-empty`, is one look in every tab: the
+column’s inset, left-aligned, muted.
+A load that failed is not empty: it adds `.nav-error`, in the error text ink, as the
+lazy-folder, history, and ref-selector failures are.
+Amber (`--status-warning-text`) is for a degraded or partial result only.
+A failure says what could not be done in a sentence with a period; the HTTP status is
+for the console or a tooltip, never the visible text.
 
 ## Rows and Disclosures
 
@@ -1308,9 +1433,9 @@ The header’s corner, `.view-header-end`, is no row of either: a strut of the t
 type, then the View on GitHub button, which opts in to the strut’s baseline, so its
 label is on the title’s first baseline; `tests/dom/view-header-chrome.mjs` and
 `tests/dom/github-pull-header-chrome.mjs` measure the two baselines equal in Chrome.
-The Git commit summary’s metadata line sets a monospace revision at `--nav-font-size`
-beside body-size sans text, and aligning the two faces on one baseline would grow the
-line, so it stays centered.
+The Git commit summary’s metadata line sets a monospace revision beside sans text, and
+aligning the two faces on one baseline would grow the line, so it stays centered; that
+was measured before a revision took its line’s size, and has not been measured again.
 [Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#row-baselines)
 has the offsets behind these three decisions.
 
@@ -1575,9 +1700,10 @@ subject at the body size; its anatomy has one order:
    branches;
 4. the age, `.git-commit-ages`: “Committed 3d ago”, muted, the age in its freshness ink
    with the exact time in its tooltip, where a pull request has its row of ages;
-5. the commit’s changes: in the full summary its [Diff summary](#diff-summary), in
-   `.git-commit-diff-summary`, where the commit’s diff draws it, and in the compact one
-   `.git-commit-change-stats`; and
+5. the commit’s changes: its [size line](#change-size-line), `.git-commit-size` in the
+   full summary and `.git-commit-size-line` in the compact one, then in the full summary
+   its [Diff summary](#diff-summary), in `.git-commit-diff-summary`, where the commit’s
+   diff draws it, and in the compact one `.git-commit-change-stats`; and
 6. the commit description, when present.
 
 The compact summary keeps one line of metadata, `.git-commit-meta`: the identity group,
@@ -1594,9 +1720,11 @@ diff is bounded.
 The diff draws it in the summary’s place before the page is shown, so it
 is there at first paint, and it is there for a commit of one file too.
 Until the diff draws it, and where the diff is not drawn, as when the diff plugin is
-absent or the comparison fails, the place says the commit’s totals in one line, worded
-and painted as a diff’s line is where its tree did not load, “35 files changed · +1,234
-−3,423”; a failed comparison says so in the diff’s place.
+absent or the comparison fails, the place says the commit’s line totals in one line,
+painted as a diff’s line is where its tree did not load, “+1,234 −3,423”, its file count
+on the [size line](#change-size-line) above; a failed comparison says so in the diff’s
+place. The size line says the file count at first paint and the commit’s size once
+`GET /api/git/commit-size/<rev>` answers it, which the page asks beside its body.
 A detail with no count of files leaves the place empty, and it takes no room.
 The commit hands the diff its own totals, which the server counts over the whole commit
 before it caps the list of files, and for a list cut short at the comparison’s bound
@@ -1608,12 +1736,15 @@ is under it and above the description; and with no diff the totals line is one r
 the age line. `tests/test_git_commit_summary_chrome.py` holds it, and its measurements
 are in
 [Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#git-commit-summary).
-The compact summary, in a tooltip, has no diff: its `.git-commit-change-stats` child
-sits below the identity metadata and says the commit’s changes in the Diff summary’s
-words and paint, through the same parts and painters (`changeSummary`, `countPartsHtml`,
-and the [brief change line](#brief-change-line) after its file count): “**32** files
-changed · **4 A**, **28 M** · +1,921 −160”, in the summary’s order, painted by the
+The compact summary, in a tooltip, has no diff: below the identity metadata, its
+`.git-commit-size-line` says the [size line](#change-size-line), “**32** files changed ·
+**56.9 KB** compressed (**193.9 KB** raw diff)”, and its `.git-commit-change-stats`
+child says the commit’s changes in the Diff summary’s words and paint, through the same
+parts and painters (`changeSummary` and the [brief change line](#brief-change-line)):
+“**4 A**, **28 M** · +1,921 −160”, in the summary’s order, painted by the
 [count summary](#count-summaries-bold-their-numbers)’s rule.
+The hover asks for the size beside the detail and shows the card once, with the size if
+it is in by then; a later hover has it kept.
 Its families are Git’s, exact file-status families with Git’s letters: `A` contains
 added and copied files, `D` deleted files, and `M` modified, renamed, and type-changed
 files, so a rename that the commit page’s Diff summary counts as `R` is an `M` here.
@@ -1632,13 +1763,13 @@ maximum reading width.
 The full summary’s lines and the compact subject, author, age, and change line use
 `--body-font-size`. The ref badges are chips, slightly smaller than that text, by the
 [chip ratio](#one-ratio).
-Among the row’s text the revision is the one deliberate exception: it is monospace, and
-mono at body size renders optically larger than the sans text beside it, so it uses
-`--nav-font-size` (one step down the ramp) to sit level with its row.
-The compact tooltip is bounded by width and subject line count, not made denser with
-smaller type. The optional full-summary description is chrome prose, as a PR description
-is (`.chrome-prose`), at `--document-body-font-size` and `--kpress-line-height-normal`.
-It is Markdown, set as a PR description is: the body after the subject line, rendered by
+Among the row’s text the revision is the one deliberate exception: it is monospace, at
+the row’s size, with its face scaled to the sans’s x-height so it reads at the size of
+the text beside it ([Short Commit IDs](#short-commit-ids)). The compact tooltip is
+bounded by width and subject line count, not made denser with smaller type.
+The optional full-summary description is chrome prose, as a PR description is
+(`.chrome-prose`), at `--document-body-font-size` and `--kpress-line-height-normal`. It
+is Markdown, set as a PR description is: the body after the subject line, rendered by
 `GET /api/git/commit-markdown/<rev>` through KPress and the inert allowlist, in a KPress
 article (`placeCommitBody`), so a body hard-wrapped at 72 columns reflows into
 paragraphs, `-` and `*` lines are lists, and indented and fenced code stays code.
@@ -1681,7 +1812,8 @@ the renderer, root, child, styling, and documentation contract.
 ### Short Commit IDs
 
 **A short commit ID looks the same wherever it appears, as GitHub’s do: always the same
-length, always monospace, always the same gray.**
+length, always monospace, always the same gray, and always the size of the text around
+it.**
 
 - **One length.** Every line that names a commit shows the first `SHORT_COMMIT_CHARS`
   characters of its full ID, from one formatter on each side:
@@ -1691,16 +1823,29 @@ length, always monospace, always the same gray.**
   abbreviation grows in a large repository; the full ID stays a copy or a link away
   ([Copyable Identifiers Use One Delegate](#copyable-identifiers-use-one-delegate)).
 - **One look.** A shown ID is an element of class `.git-commit-sha`, the commit-ID face:
-  `--font-mono` and `--muted`, whatever ink the line around it has, one step below the
-  sans beside it. A tooltip or a CLI message is plain text, so there it is the same
-  length in the text’s face.
+  `--font-mono` and `--muted`, whatever ink the line around it has.
+  A tooltip or a CLI message is plain text, so there it is the same length in the text’s
+  face.
+- **The size of the text around it, by a measured ratio.** The ID sets no size and
+  inherits its line’s, and its monospace face is scaled so its x-height is the sans’s:
+  `font-size-adjust` with `--font-sans-ex-height`, the x-height each font set’s sans has
+  per em, which `static/styles.css` states beside the sans with its measurement.
+  The ratio is the sans’s and not one of sizes because the monospace face is the
+  engine’s: Chrome draws Menlo and WebKit SF Mono, whose x-heights differ, so one ratio
+  of sizes would match one engine only.
+  At one nominal size the mono face read larger than the sans, and a size one step down
+  the ramp matched only the line it was chosen for: the navigation heading’s ID read
+  larger than the name beside it.
+  No context sets an ID’s size, and its line box is its glyphs’ (`line-height: normal`),
+  so in the lines measured, a ref selector row, a commit’s page, and a pull request’s
+  commit row, it does not make its line taller.
 
-It holds in the branch and tag chooser’s button and rows, the navigation heading, a
-commit’s page and hover card, a mirror’s freshness row, and a pull request’s timeline
-and offers, a linked ID among them, which hovers with an underline and stays gray.
-It holds outside the page too: a development version’s label (`commit-length` in
-`pyproject.toml`), the version line after it, and the macOS app’s About box
-(`AppIdentity.shortCommitChars`), which cuts the full ID the build records.
+It holds in the branch and tag chooser’s button and rows, the navigation heading of a
+pin with no mirror, a commit’s page and hover card, a mirror’s freshness row, and a pull
+request’s timeline and offers, a linked ID among them, which hovers with an underline
+and stays gray. It holds outside the page too: a development version’s label
+(`commit-length` in `pyproject.toml`), the version line after it, and the macOS app’s
+About box (`AppIdentity.shortCommitChars`), which cuts the full ID the build records.
 `tests/test_short_commit.py` holds the lengths equal, the app’s through
 `tests/test_macos_app_pins.py`, and fails a display that abbreviates a commit any other
 way.
@@ -1894,15 +2039,15 @@ share these rules wherever they appear.
 ### Inline Change Stats
 
 The `+N` / `−N` pair that rides beside a filename wherever a surface reports change
-size: `.diff-stat-add` in `--status-success`, `.diff-stat-del` in `--status-error`,
-always in that order, using the true minus sign, at the local small-text size, and
-always `--weight-bold`: the pair is data, and it must read at a glance.
-The git commit view’s `.git-stat-add`/`.git-stat-del` follow the same color and weight
-rule but use the commit summary’s standard body size.
+size: `.diff-stat-add` in `--status-success-text`, `.diff-stat-del` in
+`--status-error-text`, always in that order, using the true minus sign, at the local
+small-text size, and always `--weight-bold`: the pair is data, and it must read at a
+glance. The git commit view’s `.git-stat-add`/`.git-stat-del` follow the same color and
+weight rule but use the commit summary’s standard body size.
 The same pair is the [Diff summary](#diff-summary)’s vocabulary, so a change set, its
 folders, and its files read identically.
-Kind letters reuse the same mapping (added is `--status-success`, deleted is
-`--status-error`), and no diff surface introduces a local green or red.
+Kind letters reuse the same mapping (added is `--status-success-text`, deleted is
+`--status-error-text`), and no diff surface introduces a local green or red.
 
 ### Brief Change Line
 
@@ -1922,7 +2067,8 @@ summary’s. A change set of no statuses is its totals alone, “+0 −0”, and
 not know is “?”. Its `label` says it in words for a screen reader, “10 added, 5 deleted,
 4 modified; 1,234 lines added, 567 deleted”, and on a line whose name does not, its
 hidden dot says a comma in its place (`spoken`). The [Diff summary](#diff-summary)’s
-header is its file count, “35 files changed · ”, then this component; a commit’s
+header is this component, after its file count, “35 files changed · ”, only where no
+[size line](#change-size-line) above it says the count; a commit’s
 [hover card](#git-commit-summary), a commit page’s totals line, a pull request’s row in
 the Pulls tab ([The Pulls Tab](#the-pulls-tab)), and a stack’s heading there
 ([Stack Groups](#stack-groups-in-the-pulls-tab)) draw it too.
@@ -1930,6 +2076,48 @@ It sets no size or ink of its own, so it takes its line’s.
 `tests/dom/count-parts-session.js` pins its markup (`cli-ui-count-parts.tryscript.md`),
 and `test_count_summaries_mute_their_punctuation_and_ink_their_status_counts` its rule
 and that no plugin writes its classes itself.
+
+### Change Size Line
+
+**A change set’s size, “**77** commits · **83** files changed · **2.3 MB** compressed
+(**14.0 MB** raw diff)”, is one component, the change size line, on its own line above
+the [Diff summary](#diff-summary).** The Diff summary under it then says only what kinds
+of change and how many lines, its [brief change line](#brief-change-line), so every
+change set says its statuses one way and its scale on the line above.
+It has one builder and one painter, `changeSizeLine` and `changeSizeLineNodes` or
+`changeSizeLineHtml`, view helpers of the SDK (`static/plugin-sdk-views.js`) rather than
+a startup script, since only these pages and the hover card draw it; each paints through
+the shell’s one painter of a count summary.
+A plugin reaches them as `metabrowser.changeSizeLine` and
+`metabrowser.changeSizeLineNodes`.
+
+- **What it says.** How many commits, where the change set has more than one to speak
+  of: a pull request always, and a merge commit the commits it brings in; how many files
+  changed; and, once known, the size Git pushes for it, “compressed”, then its patch’s
+  size, “raw diff”, in parentheses
+  ([Change Sizes](project/architecture/arch-git.md#change-sizes)). A count not known is
+  “?”; a size not known, or not yet answered, is left out, and the line says its counts
+  until it comes.
+- **How it is painted.** A [count summary](#count-summaries-bold-their-numbers): each
+  number bold in the line’s own ink, a size’s unit with its number, “2.3 MB”, and the
+  words and parentheses at the line’s weight, never a status’s color; each dot muted,
+  kept with the group before it by a no-break space so no line starts with one, and said
+  as a comma to a screen reader.
+- **Its tooltip.** The size says what each size is, “2.3 MB compressed: what Git pushes
+  for this change…”, which its words cannot
+  ([Tooltips Add Information](#tooltips-add-information)).
+- **Where it is.** A page header’s line above its Diff summary, on a commit’s page
+  (`.git-commit-size`) and a pull request’s (`.github-pull-size`), and a commit’s hover
+  card’s line above its change line ([Git Commit Summary](#git-commit-summary)). On a
+  pull request’s page its row is as tall as the summary’s and holds the shell’s pending
+  placeholder while the summary waits, so neither row moves the tabs, and it is one
+  line, cut short at the row’s end in a narrow pane.
+  A Pulls row, which has room for no second line, ends its change line with the size
+  alone, “· 1.8 MB”, the patch’s size in its tooltip ([The Pulls Tab](#the-pulls-tab)).
+
+`tests/dom/git-panel-behavior.js` pins its words on a commit’s page and hover card,
+`tests/test_git_commit_summary_chrome.py` its ink and weight in both themes, and
+`tests/test_github_pull_header_chrome.py` its row on a pull request’s page.
 
 ### Diff Summary
 
@@ -1957,9 +2145,10 @@ One placeholder carries the wait from the first paint through the core and its r
 the read, with one quiet period and one pulse, so the row is never empty while the
 comparison is on its way.
 Where the pull request’s changed-files list is cached, the list a Pulls row’s change
-line sums, the place holds that list’s line instead of the placeholder: “36 files
-changed · 2 A, 3 D, 31 M · +2,076 −224”, the summary’s header’s words with its chevron’s
-slot empty, in the same place, so the summary that replaces it moves no word.
+line sums, the place holds that list’s line instead of the placeholder: “2 A, 3 D, 31 M
+· +2,076 −224”, the summary’s header’s words with its chevron’s slot empty, in the same
+place, so the summary that replaces it moves no word, and the size line above says its
+file count, “36 files changed”.
 It is drawn only once the page knows the head, and only for a list of that head and its
 base, the record’s comparison’s base commit or the pull request’s base branch, so a
 pushed or retargeted pull request never shows an earlier list’s counts; the placeholder
@@ -1994,9 +2183,12 @@ tree’s icon slot, `--tree-icon-slot`: “35 files changed · 2 A, 3 D, 30 M ·
 −3,423”, “1 file changed · 1 R · +5 −2” for one renamed file.
 It is its file count, “35 files changed”, and a muted dot, then the
 [brief change line](#brief-change-line), the one component for the statuses and the line
-totals, “2 A, 3 D, 30 M · +1,234 −3,423”; each dot is one item with the group before it,
-so a header that wraps breaks after a dot and no line starts with one, and one gap
-spaces it on both sides, on a toggle and on a line alike.
+totals, “2 A, 3 D, 30 M · +1,234 −3,423”; in a page’s header, on a commit’s page and a
+pull request’s, it is the brief change line alone, “› 2 A, 3 D, 30 M · +1,234 −3,423”,
+and the file count is on the [size line](#change-size-line) above it, whose accessible
+name and tooltip leave the count out too (`countsFiles` in `diff-view.js`); each dot is
+one item with the group before it, so a header that wraps breaks after a dot and no line
+starts with one, and one gap spaces it on both sides, on a toggle and on a line alike.
 The statuses are only those some file has, in one order (added, deleted, modified,
 renamed, then copied, type changed, unmerged, and any other), each a status count, its
 count and the letter its rows carry, with a muted comma between each two; numbers use
@@ -2269,14 +2461,14 @@ The freshness note is muted, after a muted dot, at the sentence’s size, steppi
 its ink: one time, the record’s own fetch, “jlevy wants to merge 1 commit · Fetched just
 now via GitHub CLI”, never a second time for a check that found nothing changed, since
 that makes what is shown no newer.
-A rate limit’s hold is said in its place, “GitHub rate limit · next check at 2:05 PM”,
-in the failure’s ink: it begins and lifts by itself and asks nothing of the reader, so
-it adds no line.
-It names a time of day, in the reader’s short form, when the limit lifts
-today, and a short date and time otherwise, “12/31/26, 4:00 PM”. Unlike an age, it never
-leaves the line: where it cannot be whole it is cut short with its whole text as a
-tooltip, down to a floor that keeps “GitHub rate limit” whole, and below that the
-sentence gives way, so the page always says why nothing refreshes.
+A rate limit’s hold is said in its place, “GitHub rate limit reached.
+Next attempt after 2:05 PM.”, in the failure’s ink: it begins and lifts by itself and
+asks nothing of the reader, so it adds no line.
+It names a time of day, in the reader’s short form, when the limit lifts today, and a
+short date and time otherwise, “12/31/26, 4:00 PM”. Unlike an age, it never leaves the
+line: where it cannot be whole it is cut short with its whole text as a tooltip, down to
+a floor that keeps “GitHub rate limit” whole, and below that the sentence gives way, so
+the page always says why nothing refreshes.
 Before a record is shown the note is the page’s word on it, “Fetching the pull
 request…”, so the record landing changes no line; a failure to fetch it takes that word
 to the status line beside it.
@@ -2365,7 +2557,9 @@ its age line breathes ([Refreshing Content](#refreshing-content)). Its freshness
 names GitHub CLI and the plain fetch age, with no prefix while a refresh runs and no
 suffix while the record is stale, since a stale page is refreshing.
 It names a problem only when no refresh can run: `Offline`,
-`GitHub rate limit · next check at` a time, or the last failure with Refresh.
+`GitHub rate limit reached. Next attempt after` a time, or the last failure with
+Refresh. The wording is `rateLimitText` in `builtin_plugins/github/copy.js`, which every
+GitHub surface uses.
 The Checks tab uses the same heading and status badges for check runs and status
 contexts. A check row is its status badge, its plain name, its action, and its
 description. The action says where it opens: **View action on GitHub** for a GitHub
@@ -2431,11 +2625,11 @@ The top of a text is where a message departs from a document.
 A document’s card has KPress’s top padding, and only an opening h1 gives up its margin
 to it (`static/styles.css`); any other first block’s top margin adds to that padding.
 A message card is denser, like a comment body on GitHub, which trims the first and last
-margins.
-The text’s padding is `--content-padding-y` above and below, and the card head’s
-inset at the sides. Since the trim leaves a heading that opens a text only that padding
-above it, the padding is at least any heading’s space below, so an opening heading is
-never nearer the card head than its own paragraph.
+margins. The text’s padding is `--content-padding-y` above and below, and at the sides
+the card head’s inset, which is `--boxed-prose-padding-inline`
+([Boxed Prose](#boxed-prose)). Since the trim leaves a heading that opens a text only
+that padding above it, the padding is at least any heading’s space below, so an opening
+heading is never nearer the card head than its own paragraph.
 `test_a_heading_is_nearer_its_section_than_what_precedes_it` holds the rule, and
 `tests/test_github_pull_text_chrome.py` measures it in Chrome against a document’s
 frame.
@@ -2475,9 +2669,8 @@ a commit. It is said the way a card head says a comment:
   assistive technology, as the header’s author does, so every head’s name and every
   commit’s subject start at one x. Pulls rows draw no such box.
   “committed” and the age read as a head’s “commented” and age do, with no quieter ink
-  or size. The hash is the [GitHub action](#chrome) at a revision’s own
-  `--nav-font-size`, one step below the text beside it, as in the
-  [Git Commit Summary](#git-commit-summary).
+  or size. The hash is the [GitHub action](#chrome) at the size of the text beside it, as
+  a [short commit ID](#short-commit-ids) is everywhere.
 
 - **Headings:** every event’s heading reads alike: the author, a plain verb in the
   heading’s own type, and the age, “jlevy opened 4d ago”, “jlevy commented 4d ago”,
@@ -2536,7 +2729,7 @@ Its measurements in Chrome and the app’s WebKit are in
 | Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it |
 | View on GitHub | The [View on GitHub](#view-on-github) button in the header’s corner, the page’s own counterpart on github.com | One button in one place on every page that has a counterpart, so it is never a link in the metadata |
 | GitHub action: a check’s action on GitHub | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows. A check is GitHub’s by the rule that gives a link the GitHub mark, so its look and its mark agree |
-| Conversation commit hash | `.git-commit-sha` at its own `--nav-font-size`, a link to the commit on GitHub with the leading GitHub mark, in the commit-ID gray at rest, on hover, and on focus; hover underlines it | A [short commit ID](#short-commit-ids) is the same gray wherever it appears. A [revision](#git-commit-summary) sits one step below the sans beside it, and a commit row is set at `--body-font-size` ([Conversation Timeline](#conversation-timeline)) |
+| Conversation commit hash | `.git-commit-sha` at the row’s size, a link to the commit on GitHub with the leading GitHub mark, in the commit-ID gray at rest, on hover, and on focus; hover underlines it | A [short commit ID](#short-commit-ids) is the same gray and the size of the sans beside it wherever it appears, and a commit row is set at `--body-font-size` ([Conversation Timeline](#conversation-timeline)) |
 | Browse code, and a review comment’s file | [Text action](#control-families): a link, or `.github-pull-text-action` on a button where it first serves the pull request’s head | The look of the Link row in both forms, so moving the pin never looks like something else |
 | Section title | [`.section-heading`](#section-headings) |  |
 | Note about the content | [`.notice`](#notices) | `warning` when a text, list, or hunk was cut or a part could not be read; `error` when Changes cannot be drawn; no severity for the offer of newer changes, which carries its own control |
@@ -2677,6 +2870,10 @@ for the rows it draws, in one request when the browser is idle, from the cache a
 (`GET pull-files-summary`): it asks GitHub for nothing, and the lists are the ones the
 tab already reads behind the reader, the changed files of the rows in view, and those of
 trees the reader opens.
+Where the list was made from the store, its line ends with what the pull request pushes,
+“· **1.8 MB**”, a bold number in the line’s ink, its tooltip saying it and the patch’s
+size ([Change Size Line](#change-size-line)); the refresh that lists the files measures
+it, so it arrives with the counts, and a list GitHub gave has none.
 A row’s line is read again only when something says its list changed: the list of pull
 requests names a new head commit for it, the prefetch lane reports it listed the row’s
 files, or the row’s tree reads a list of another refresh
@@ -2813,7 +3010,9 @@ one color seen against two backgrounds: the hue is GitHub’s and the same in bo
 The shapes differ. In the list, the icon’s accessible name gives the state.
 On the page, the same glyph sits beside the title and the text badge below names the
 state. Everything goes through `pullStateIcon` and `displayState` in
-`builtin_plugins/github/pull-state.js`, so a row and its page cannot disagree.
+`builtin_plugins/github/pull-state.js`, so a row and its page cannot disagree: the ref
+selector’s rows, in the shell, draw the same icon through the plugin’s
+`mb.builtins.github.pullStateIcon` ([The Ref Selector](#the-ref-selector)).
 `test_pull_state_colors_keep_their_hue_and_read_on_both_grounds` holds the hue and a
 4.5:1 contrast on both grounds, because a badge sets its word in that color.
 
@@ -2831,6 +3030,7 @@ that shows a number takes it:
 | A stack menu’s member | `.github-pull-stack-member-number` |
 | A Quick Search result | `.search-palette-pull-number` |
 | The ref selector, on a pull request’s head | `.source-ref-selector-pull-number`, after “Pull request:” |
+| The ref selector, on a branch’s row | `.source-ref-selector-pull-number`, after the state icon |
 
 The GitHub plugin’s three are one rule.
 A number in prose, a commit subject, or a tooltip is text, and keeps its line’s weight.
@@ -2878,6 +3078,7 @@ tooltip that gives the whole of a title cut short all work on all of it.
 | A stack menu’s member | `.github-pull-stack-member-title` | Bold |
 | A Conversation commit | `.github-pull-commit-subject` | Bold |
 | A Quick Search pull request | `.search-palette-label` | Bold; a match in the prefix is marked bold, as a match in a path is |
+| A branch’s pull request in the ref selector | `.source-ref-selector-pull-title` | Bold |
 | A Commits tab row | `.git-graph-subject` | Bold, as every title is; the row keeps its 22 px, and a long subject is cut short a little sooner |
 | A commit’s page | `.git-commit-subject.page-heading` | Bold |
 | A commit’s tooltip | `.git-commit-summary-compact .git-commit-subject` | Bold |
@@ -3745,7 +3946,7 @@ bordered button: `.btn` with `.parent-nav-btn`, the shared `.parent-nav-arrow`, 
 visible resting boundary.
 Up alone, at the start of a view header’s eyebrow, is an icon button, `.icon-btn`: the
 arrow alone at rest, and the hover surface and its hairline only while hovered or
-focused, as the navigation’s chevron beside it is, at the eyebrow’s control size
+focused, as the navigation’s chevron is, at the eyebrow’s control size
 (`--view-header-up-size`), its destination in its accessible label and tooltip.
 At the served root it keeps its place, disabled and dimmed, and surfaces nothing.
 The owner asked for Up without a box but on hover, like the collapse chevron
@@ -3916,10 +4117,27 @@ it resets them all, Show ignored back on, and keeps the grouping.
   By age splits by modification time and By file type by the registry’s display groups.
   Each row reads as the closed trigger does when it is chosen, so the menu and the
   trigger never name one value two ways.
-  A Git revision has no modification times, so it offers no By age.
+  A Git revision has no modification times of its own: its files are dated by their last
+  commit when the Git can read that
+  ([file ages](project/architecture/arch-git.md#file-ages)), and a revision whose Git
+  cannot offers neither By age nor Modified within.
+  Where it can, the groups and the window read the times of the files that are dated;
+  the rest are not in either.
+  The page opens at once and draws them again when the ages land.
+  Until then the Modified within counts read “…”, a Recent list says it is reading, and
+  the line that counts the files a filter keeps says so, as one more item of that line,
+  which moves nothing; it says too why a read failed, and how many files could not be
+  dated when some could not (a shallow clone, or a read that ran out of time), and the
+  Undated group is named for each state.
 - **Groups.** Age groups are disjoint bands cut from Modified within’s windows: Live,
   then Past hour, Past day, Past week, and Past month, each holding only what the
   windows before it do not, then Older.
+  A Git revision adds a last group, Undated, for the files whose last commit its answer
+  does not know yet, or at all: a shallow clone, a read cut by its budget, or a read
+  still running. Its name says the time they are older than when the answer has one, as
+  Undated, older than 2020-03-01, and the group is gone once every file is dated.
+  A folder row in a group or a window is dated by the newest of the files that put it
+  there, as its count is, and a submodule has no age and is in no age group.
   File type groups are Documentation, Code, Data, Archives, Media, and Other, which
   takes every file the registry does not recognize.
   A group the filters leave empty is not shown.
@@ -4226,11 +4444,23 @@ a folder shows first: in the manner of GitHub’s Languages box, a legend of the
 families under the population bars, each a dot in its color as tall as the tracks above
 it, its bold name, and its muted share, with one neutral **Other** for the rest.
 Which families it names is data, decided on the route by `file_type_legend.py`, whose
-docstring has the rule.
+docstring has the rule: the largest families, at most `LEGEND_TYPE_LIMIT`, that are at
+least `LEGEND_MINIMUM_SHARE_PERCENT` of the population, the share below which the table
+folds a row into “N more”, so a family at exactly that share is named and shown.
+Counting Other, the legend is ten entries at most.
+Nine families and Other are never taken for one another by color: every family has a
+color of its own, `MINIMUM_HOUSE_DELTA_E` or more from every other in both themes
+(`devtools/check_file_type_colors.py`), Other’s neutral is several times that from every
+family (`OTHER_CLEARANCE_FLOORS`, in
+`test_other_is_clear_of_every_family_in_both_themes`), and the name beside each dot says
+what the dot’s color does not.
 A caption naming the population labels the legend and the table for assistive technology
-only. Legend items wrap whole.
-The table sits behind a **Details** toggle, the same trigger and bold label as an **N
-more** row, which starts closed on each mount and keeps its state through repaints.
+only.
+Legend items wrap whole: in a pane too narrow for a line of them a dot never ends a
+line with its name on the next, no entry is cut or clipped, and they read in order down
+the lines (`tests/test_overview_label_column_chrome.py`). The table sits behind a
+**Details** toggle, the same trigger and bold label as an **N more** row, which starts
+closed on each mount and keeps its state through repaints.
 Each group of rows is headed by its category, led by the category’s icon
 ([File-Type Category Icons](#file-type-category-icons)). Every row names its category
 and reports absolute values and percentages; fills are not tab stops, carry no duplicate
@@ -4263,6 +4493,19 @@ question at a finer resolution.
 Each tally shows one absolute value and a track segmented by the top-level families in
 their colors, in one order across the three rows; `buildFolderTotalsComposition` in
 `folder-totals.js` explains the three rows, the order, and the pending fill.
+The bars of the tallies and of Details start at one place, in every row, with Details
+closed or open and with Files or Bytes.
+What they stand to the right of is a label column of one width,
+`--file-type-summary-label-width` in `file_type_summary.css`: as wide as the longest
+label the table holds in practice, the Documentation heading and the No extension and
+Markdown rows, measured in both font sets and recorded beside the token, and no wider,
+so the bars sit as far left as those labels allow.
+A pane too narrow for it keeps the column a share of the table, as it always was, which
+is never wider than the width would be: no pane has its bars further right than before.
+A label wider than the column, a plugin’s family name or a filename, wraps inside it and
+moves no bar. The Treemap’s tally rows keep their share of the table.
+`tests/test_overview_label_column_chrome.py` measures it, at widths either side of the
+one where the column becomes one width, in both font sets.
 Show ignored begins checked without a saved preference and changes only the population
 the distribution counts.
 There is one chooser and one checkbox, because both act on the same numbers.
@@ -4529,8 +4772,8 @@ Home keeps what a fresh load would only fetch again, or keeps itself:
 The name reads as a link home.
 Its box is the name’s own, and it takes a folder crumb’s treatment: the hover surface
 under the name and the link-colored ring on keyboard focus.
-Its accessible name is “Home:” and the name it shows, read from its own content, so a
-mirror’s ref and commit are in it too.
+Its accessible name is “Home:” and the name it shows, read from its own content, so the
+ref and commit that head a pin with no mirror are in it too.
 It stays a link to `/view/`, so a modified or middle click and its context menu do what
 they do on any link.
 A plain click, or Enter on it, stays in the page.
@@ -4561,10 +4804,20 @@ Source view, Commits, and the root at Treemap.
 It also checks that the pane never blanks on the way, that the tooltip survives the
 click, and that the name is called “Home: <folder>”.
 
+### The Main Page’s Focus Ring
+
+**With the main page focused from the keyboard, a 2 px `--link` ring frames it, over
+anything the page itself draws.** The ring is on the frame (`.preview-frame::after` in
+`static/styles.css`), not on the scrolling pane: the pane’s own inset outline painted
+under a positioned box with a ground of its own, so a pull request’s tab bar covered its
+top edge. It takes no press, sits under KPress’s floating UI, and does not print.
+`tests/test_nav_collapse_chrome.py` samples a painted pixel at its top edge over a
+positioned band.
+
 ### Hiding the Navigation Pane
 
-**A chevron at the start of the main page’s top row hides the navigation pane, and so
-does the Backslash key.** The page slides left over the pane to fill the window, and the
+**A chevron at the start of the main page’s foot hides the navigation pane, and so does
+the Backslash key.** The page slides left over the pane to fill the window, and the
 chevron turns to point right; a second press slides the page back and shows the pane as
 it was. Shift-Backslash, which types `|` on a US keyboard, does the same, as Shift
 changes no key ([Keyboard Shortcuts](#keyboard-shortcuts)); the key is read by the
@@ -4574,20 +4827,22 @@ is not it.
 The chevron is the shared disclosure chevron in an icon button
 ([Every Icon-Only Control Is the Same Control](#every-icon-only-control-is-the-same-control)),
 muted at rest with the hover surface, pointing left at the pane it hides.
-It fills the main frame’s gutter at the start of the top row, before a file’s or a
-folder’s Up and address, centered on that row as the navigation title’s gear is across
-the divider, so the two read as the one top bar’s ends.
-It is a target of Up’s size, with space before Up, and the divider’s resize reach stops
-under the row, so a press anywhere in it hides the pane.
-A pull request’s and a commit’s page, which have no eyebrow, have it in the same place,
-in the gutter at the page’s top.
-It stays there while the pane is hidden.
-The stylesheet places it from the row’s height token, `--pane-header-row-height`, the
-gutter’s, `--content-padding-x`, and Up’s size, `--view-header-up-size`, so no script
-measures it. It has no plate of its own, so the page’s edge and the pane’s shadow show
-through it; only the hover surface fills it.
+It fills the main frame’s gutter, before the content’s edge, on the shortcut strip’s row
+at the foot: centered on the strip below its rule, the line the strip’s keys are on
+across the divider, so it reads as the strip’s last control.
+It is a target of Up’s size, and the divider’s resize reach stops above the row, so a
+press anywhere in it hides the pane.
+Every page has it in the same place, and it stays there while the pane is hidden.
+The strip moves up when a row under it shows, the scan’s progress or a mirror’s
+freshness, so `alignNavCollapseButton` in `static/app.js`, in the shell’s eager path,
+measures the strip’s row from the first paint and gives `--nav-shortcut-row-top` and
+`--nav-shortcut-row-height` to the chevron and the divider alone; set on their shared
+container, each change restyled the whole open document.
+The stylesheet places the chevron from them, the gutter’s `--content-padding-x`, and
+Up’s size, `--view-header-up-size`. It has no plate of its own, so the page’s edge and
+the pane’s shadow show through it; only the hover surface fills it.
 Holding Shift badges it with Backslash, over its inline end, as every icon button’s
-badge sits, and over the Up beside it.
+badge sits.
 
 The pane does not shrink.
 Hidden, it leaves the layout, keeps its width under the frame, and is `inert`, so no Tab
@@ -4679,15 +4934,39 @@ Each exception has a reason:
   the file lacks it. A file in a folder the reader closed gets no note.
   Under Group by, the file is looked for in its own section first, then in each other
   section.
-- **A pull request outside the list is named.** Open and Closed hold only their state’s
-  pull requests, and the list reads its windows from the newest.
-  A pull request the list does not hold is named under its band: “#8 is not listed under
-  Open.”, or under All, “#8 is not in this list.”
-  A list that has not read as far says only “#8 is not among the pull requests loaded.”,
-  since it may be further down.
-  Under All, the list keeps reading for one older than the rows it has read, up to its
-  display limit, and reveals it when it arrives.
-  A reveal never changes the filter, which is the reader’s choice.
+- **A pull request the list does not draw moves the list to a filter that draws it.**
+  Open and Closed hold only their state’s pull requests, and every list reads its
+  windows from the newest, up to its display limit.
+  A navigation to one that Open or Closed leaves out moves the list, as a reveal opens a
+  stack the reader closed: to All, which holds every pull request, when All’s drawn rows
+  reach it, so that a stack walk across open and merged pull requests stays on one list,
+  and otherwise to the filter of its own state, which reaches as far or further.
+  A navigation under All to one further down than All draws moves the list to its
+  state’s filter the same way.
+  Where it is comes from the catalog, by two one-row indexed reads: the pull request
+  itself, and the newest, since no more pull requests than the difference of their
+  numbers are newer than it (`readSought` in `pulls-panel.js`). The windows a list has
+  read cannot say it: they do not tell an older pull request from one the filter leaves
+  out, nor a catalog still being read from GitHub from one read to its end.
+  While the catalog cannot say yet, the list stays and says nothing, and asks again at
+  its next poll. One the catalog, read to its end, lacks is asked for again after a poll
+  whose list says the catalog has read more, as it has when a pull request was opened
+  since its last read, and placed then; an unchanged catalog is not asked again.
+  A catalog that starts again, for a new reader or source, has not said what the old one
+  lacked, so the list says nothing of it until the new one can.
+  The list a navigation moved to reveals the row at the first read that brings it,
+  though its first read failed.
+  When the list moves while focus is on one of its rows, the revealed row takes focus,
+  unless the reader has moved focus out of the list by the time it arrives.
+  A filter the reader picks while a pull request is shown is theirs: the list says
+  nothing of a pull request it leaves out, since the filter’s chip says what it holds,
+  and a note that a filter leaves a pull request out reads as a row gone missing.
+  The list reads on for the pull request, up to its display limit, and reveals it when
+  it arrives. Only one the list still cannot show is named under its band: one further
+  down than the list draws, “#8 is not among the pull requests loaded.”, or one the
+  catalog, read to its end, lacks, “#8 is not in this list.”
+  (`outsideText`). A page the reader scrolls in keeps the note until the page that
+  brings the row.
 - **A commit outside the history read is not chased.** Commits reads history from the
   newest commit, 250 commits a page.
   A commit’s address reveals its row once the pages read hold it, so the first page’s
@@ -5269,15 +5548,76 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
 - **A ref’s row is its name, its commit, and its age.** The name is its
   [chip](#branch-chips), the commit is its [short ID](#short-commit-ids), and the age is
   `MetabrowserFormatters.age` in the compact style, in its tier’s ink, with the commit’s
-  time as its tooltip ([Age](#age)). A tag’s age is its commit’s. The ID sits one step
-  below the text beside it, as it does in a history, and since this list is at the small
-  size, the ramp’s last step before the micro marks, it takes the ratio a chip takes to
-  its text. The ages end the rows in one column, so the IDs line up.
+  time as its tooltip ([Age](#age)). A tag’s age is its commit’s. The ID is the size of
+  the row’s text, as an ID is everywhere.
+  The ages end the rows in one column, so the IDs line up.
   A pin that names no ref puts “Commit:” and the same face on the button.
 
-- **A commit reads the same wherever a line names it.** The navigation heading, the
-  button, the rows, and a mirror’s offer of its ref’s newer commit all show it by the
-  one rule in [Short Commit IDs](#short-commit-ids).
+- **A commit reads the same wherever a line names it.** The button, the rows, and a
+  mirror’s line about the commit its branch moved to all show it by the one rule in
+  [Short Commit IDs](#short-commit-ids).
+
+- **The button names the ref and the heading does not.** A served mirror’s navigation
+  heading is the repository’s name alone, and a checkout’s revision’s is the folder’s
+  (`_pin_label_html` in `server.py`): this button names the ref, and the heading’s
+  tooltip the full commit, so a ref and a commit beside the name only repeated them, and
+  the owner found them clutter.
+  A pin with no mirror has no selector, so its heading is its ref and its short commit.
+
+- **A branch that is a pull request’s head shows the pull request, on a second line.**
+  The row’s own line, the chip, its badge, its commit, and its age, is every row’s;
+  under it goes the pull request: its [state’s icon](#a-pull-requests-state) in the
+  Pulls tab’s shape and hue, its [number](#pull-request-numbers), and its
+  [title](#titles), bold in normal text ink and cut at the line’s end, with the whole
+  title and any other pull request of the branch in the row’s tooltip.
+  A branch with several shows the open ones first and then the newest, and counts the
+  rest, “+1”, in the muted ink; the row lists the first `REF_PULLS_PER_ROW` of them and
+  says how many there are, so a branch with dozens is no larger a row, and the others
+  are named for assistive technology in the row’s description as well as its tooltip.
+  Only a pull request from the repository’s own branch is its branch’s: a fork’s branch
+  of the same name is another branch.
+  A tag, which no pull request has for its head, never has the line, and a pull
+  request’s `refs/pull/<n>/head` is not listed as a ref of its own: it is the branch’s
+  pull request, and a page served on one says “Pull request: #7” on the button.
+  The pull requests are what the repository’s provider has cached, so the list never
+  waits for GitHub: a list opened before they are cached shows none, asks again every
+  `PULLS_POLL_MS` while the server fills them, and its rows gain the line as the pages
+  arrive. The filter box then says “Filter branches or pull requests” and finds a branch
+  by its pull request’s number, `#` and the start of one, or by every word of its title,
+  as well as by its name; “#” alone lists the branches that have one.
+  While the server has cached only some of the pull requests, the list says under a
+  filter’s finds that a number or a title may match more branches.
+  What arrives while the list is open changes what the reader sees as little as it can:
+  an ask that finds the listing unchanged draws nothing, so focus, a tooltip, and a
+  press in progress stay where they are, and one that finds pull requests for rows the
+  list has patches them into those rows.
+  The rows above the view grow when they gain a line, so the list is scrolled to keep
+  the row at the top of its view where it was, a list at its foot at its foot, and a
+  focused row in view (`anchoredScroll`). The icon is the GitHub plugin’s, which the
+  list loads on demand and draws the rows with once it has; the slot is the icon’s width
+  from the first frame, so nothing moves.
+
+- **The list holds every ref, newest first, and draws only the rows near its view.** It
+  reads by the age its rows show, after the mirror’s default branch or the checkout’s
+  checked-out one, and states no count, since it leaves nothing out.
+  Each row is placed by its offset over a box as tall as the whole list (`rowOffsets`,
+  `ROWS_OVERSCAN` and `drawWindow` in `static/source-ref-selector.js`), and a row has
+  one of two heights, with a pull request or without, each measured by a row drawn out
+  of sight, so nothing else in a row may make it taller than the rest of its kind: the
+  badge’s border reaches into the row’s padding, and the pull request’s line is one line
+  of `--nav-metadata-line-height`, however tall the glyphs of its title are: an emoji or
+  a Japanese title falls back to a font whose `normal` line is taller, which made the
+  row 2 to 3 px taller than the list places it.
+  A row with no pull request is as tall as every row was before the line existed.
+  The row that takes Tab stays drawn however far the list scrolls from it, so focus on
+  it is never lost, and a list that holds the served ref opens scrolled to its row.
+  The `ul` says `role="list"`, which WebKit drops from a list drawn without markers.
+  `tests/test_ref_selector_long_list_chrome.py` measures in headless Chrome over
+  thousands of branches that the rows are one height and abut, that a scroll and End
+  draw the rows they bring into view, that a focused row keeps focus, and that the
+  filter narrows the list; `tests/test_ref_selector_pulls_chrome.py` does the same over
+  branches that are pull requests’ heads, with the two heights, each row where the rows
+  before it put it, the pull request’s icon, number, and title, and the filter’s finds.
 
 A checkout adds three things, and each uses a primitive the control already had:
 
@@ -5299,10 +5639,10 @@ A checkout adds three things, and each uses a primitive the control already had:
   the `.source-ref-selector-badge` a mirror’s default branch says “default” in.
 
 - **The button says “Working tree” in words,** with no chip, since a chip is a ref.
-  On a revision it is the ref’s chip, as on a mirror, and the navigation heading carries
-  the ref and the short commit, in the commit-ID face, beside the folder’s name, so a
-  revision’s page is told from the working tree’s in two places before the list is
-  opened.
+  On a revision it is the ref’s chip, as on a mirror, so the button is what tells a
+  revision’s page from the working tree’s before the list is opened: both are headed by
+  the folder’s name. The main heading’s note says “committed revision of” the folder, and
+  the navigation heading’s tooltip names the full commit.
 
 - **A page the server has moved on from says so at the foot of the pane,** in the
   freshness row a mirror offers its reload in, with one `.btn`, “Reload”
@@ -5317,11 +5657,12 @@ A checkout adds three things, and each uses a primitive the control already had:
   will have, and the module adopts that button and never swaps it, so focus put on it
   early stays ([Regions Keep Their Boxes](#regions-keep-their-boxes)). The toolbar is
   drawn again whenever a filter or a tally changes, and it carries the selector over
-  rather than drawing it, so an open list keeps what was typed and the control that had
-  focus keeps it. `tests/test_checkout_ref_selector_chrome.py` records the selector’s
-  height and the first tree row’s place in every frame of the working tree’s page and of
-  a revision’s, and each has one value; `tests/test_files_totals_stable_chrome.py` holds
-  the same for every box of the Files navigation on a folder that holds a `.git`.
+  rather than drawing it, so an open list keeps what was typed and where it was scrolled
+  to, and the control that had focus keeps it.
+  `tests/test_checkout_ref_selector_chrome.py` records the selector’s height and the
+  first tree row’s place in every frame of the working tree’s page and of a revision’s,
+  and each has one value; `tests/test_files_totals_stable_chrome.py` holds the same for
+  every box of the Files navigation on a folder that holds a `.git`.
 
 What each state shows is pinned by
 `tests/golden/cli-ui-source-ref-selector.tryscript.md`, and
@@ -5425,6 +5766,7 @@ The headings that carry a tally, each with the builder that writes its markup:
 | --- | --- | --- |
 | A Files Group by section’s ([Grouping the Files Tree](#grouping-the-files-tree)) | `treeSectionHeadingHtml` in `src/metabrowser/static/app.js` | With an ellipsis and a tooltip, in a flex heading |
 | A pull request page’s Review comments | `reviewThreads` in `src/metabrowser/builtin_plugins/github/pull-page.js` | Never: an inline `.section-heading`, whose name wraps |
+| An event log view’s section headings, over what failed, what never ended, what the pages reported, and each kind | `tally` in `src/metabrowser/builtin_plugins/event_log/event-log-views.js` | Never: an inline `.section-heading`, whose name wraps |
 
 A filter menu’s group headings, the stack menu’s heading, Overview’s panel headings, and
 File Overview’s type groups count nothing.

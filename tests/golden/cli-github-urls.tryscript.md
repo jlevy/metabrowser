@@ -177,6 +177,59 @@ Error: invalid ROOT (invalid_percent_encoding): the URL has a % not followed by 
 ? 1
 ```
 
+## Test: a GitHub URL typed without https://
+
+An argument with no scheme that names nothing on disk, and whose first segment is a host
+the GitHub reducer claims, is the URL with `https://` written before it, so the reducer
+refuses or accepts it as it would the full URL.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab github.com/octo/demo/issues/5 --no-serve
+Error: invalid ROOT (unsupported_github_url): GitHub issues pages are not opened; open the repository at https://github.com/octo/demo
+? 1
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab WWW.GitHub.com/octo/demo --walk
+Error: --walk runs the filesystem inventory walker, and a Git source has no filesystem to walk (https://github.com/octo/demo). Read a pinned tree with --api '/api/tree?depth=N', or --walk a local directory.
+? 1
+```
+
+Another host, a host with a user name or a port, and `owner/repo` stay local paths.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab gitlab.com/octo/demo --walk
+Error: [CWD]/gitlab.com/octo/demo is not a directory
+? 1
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab github.com:8443/octo/demo --walk
+Error: [CWD]/github.com:8443/octo/demo is not a directory
+? 1
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab octo/demo --walk
+Error: [CWD]/octo/demo is not a directory
+? 1
+```
+
+A folder of that name is that folder.
+
+```console
+$ mkdir -p github.com/octo/demo && printf 'a' > github.com/octo/demo/a.txt && METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab github.com/octo/demo --walk
+walk: demo
+status: done
+counts: files=1 dirs=1 symlinks=0
+totals: total_files=1 total_size=1
+
+entries:
+  . [dir] files=1 size=1
+  a.txt [file] size=1
+? 0
+```
+
 ## Test: no command created the application home
 
 ```console

@@ -23,47 +23,23 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const repoRoot = path.resolve(__dirname, "../..");
-const staticDir = path.join(repoRoot, "src/metabrowser/static");
-const recorded = JSON.parse(
-  fs.readFileSync(path.join(repoRoot, "tests/fixtures/source-ref-selector-responses.json"), "utf8"),
-);
+const {
+  assert,
+  createPage,
+  emptyState,
+  recorded,
+  repoRoot,
+  selectorRuntime,
+  settle,
+  staticDir,
+} = require("./source-ref-selector-harness.js");
+
 const recordedCheckout = JSON.parse(
   fs.readFileSync(
     path.join(repoRoot, "tests/fixtures/source-ref-selector-checkout-responses.json"),
     "utf8",
   ),
 );
-
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
-function loadProductionModule() {
-  const context = {
-    window: {},
-    AbortController,
-    console,
-    JSON,
-    Object,
-    Promise,
-    URLSearchParams,
-  };
-  context.window.window = context.window;
-  vm.createContext(context);
-  // formatters.js names each commit as every line does, as the shell's startup scripts
-  // load it first.
-  for (const name of ["formatters.js", "source-ref-selector.js"]) {
-    const file = path.join(staticDir, name);
-    vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
-  }
-  return context.window.MetabrowserSourceRefSelector;
-}
-
-const selectorRuntime = loadProductionModule();
-assert(selectorRuntime, "the production module did not install its runtime");
 
 // The pin guard, which a checkout's working-tree page takes with the selector's bundle.
 // Its window here has no `fetch`, so it defines its functions and guards nothing.
@@ -74,143 +50,6 @@ function loadPinGuard() {
   const file = path.join(staticDir, "source-pin-guard.js");
   vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
   return context.window.MetabrowserSourcePinGuard;
-}
-
-async function settle() {
-  for (let turn = 0; turn < 20; turn += 1) {
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-}
-
-/**
- * Injected browser facilities for one page: requests wait for the step to answer them.
- *
- * @param {{view: string | null}} page The page's pathname.
- */
-function createPage(page) {
-  const log = [];
-  const waiting = [];
-  const timers = new Map();
-  let nextTimer = 1;
-  const navigated = [];
-  let model = null;
-
-  const deps = {
-    request(method, route, body, signal) {
-      const line =
-        body === undefined ? `${method} ${route}` : `${method} ${route} ${JSON.stringify(body)}`;
-      log.push(line);
-      return new Promise((resolve, reject) => {
-        const request = { route, resolve };
-        waiting.push(request);
-        // As fetch does: an aborted request settles at once with an AbortError.
-        signal?.addEventListener("abort", () => {
-          const at = waiting.indexOf(request);
-          if (at >= 0) {
-            waiting.splice(at, 1);
-            log.push(`aborted ${line}`);
-            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
-          }
-        });
-      });
-    },
-    schedule(callback, delayMs) {
-      const handle = nextTimer;
-      nextTimer += 1;
-      timers.set(handle, { callback, delayMs });
-      return handle;
-    },
-    cancel(handle) {
-      timers.delete(handle);
-    },
-    render(next) {
-      model = next;
-    },
-    navigate(href) {
-      navigated.push(href);
-    },
-    currentView: () => page.view,
-  };
-
-  return {
-    deps,
-    /** Answer the oldest waiting request (or the one at *index*) with a recorded answer. */
-    async answer(recording, index = 0) {
-      assert(waiting.length > index, "no request is waiting for an answer");
-      const [request] = waiting.splice(index, 1);
-      request.resolve({ status: recording.status, etag: null, body: recording.body });
-      await settle();
-    },
-    async fireTimer() {
-      const pending = [...timers.entries()];
-      assert(pending.length === 1, `expected one pending timer, found ${pending.length}`);
-      const [handle, timer] = pending[0];
-      assert(timer.delayMs === selectorRuntime.FILTER_DELAY_MS, "the pause is the filter delay");
-      timers.delete(handle);
-      timer.callback();
-      await settle();
-    },
-    observe(step) {
-      const observed = {
-        step,
-        requests: log.splice(0),
-        filterPending: timers.size > 0,
-        paint: paintOf(model),
-      };
-      if (navigated.length > 0) {
-        observed.navigated = navigated.splice(0);
-      }
-      return observed;
-    },
-  };
-}
-
-// When a row's commit was made, as the model holds it. The page shows it as an age, which
-// depends on the clock, so the transcript prints the time itself.
-function committedOf(seconds) {
-  return seconds === null
-    ? "(no date)"
-    : new Date(seconds * 1000).toISOString().replace(".000Z", "Z");
-}
-
-// What the selector would show, one line per row, so a transcript reads as the page does:
-// a row's name, its commit's short ID, and when the commit was made. A checkout's selector
-// adds what a mirror's has none of: the lists it offers, its working-tree row, named by
-// the folder's path, the checked-out branch's badge, each row's chip, and its offer to
-// reload.
-function paintOf(model) {
-  if (model === null) {
-    return null;
-  }
-  const checkout = model.workingTree !== null;
-  const stale = model.stale === null ? {} : { stale: `${model.stale} [Reload]` };
-  if (model.removed) {
-    return { removed: true };
-  }
-  if (!model.open) {
-    return { button: model.button, open: false, ...stale };
-  }
-  return {
-    button: model.button,
-    open: true,
-    ...(checkout
-      ? {
-          workingTree: `Working tree${model.workingTree.location === "" ? "" : `: ${model.workingTree.location} (kept whole: ${model.workingTree.base})`}${model.workingTree.current ? " [current]" : ""}`,
-          lists: model.kinds,
-        }
-      : {}),
-    kind: model.kind,
-    query: model.query,
-    loading: model.loading,
-    switching: model.switching,
-    rows: model.rows.map(
-      (row) =>
-        `${row.name} ${row.commit} ${committedOf(row.committedAt)}${row.default ? " [default]" : ""}${row.checkedOut ? " [checked out]" : ""}${row.current ? " [current]" : ""}${checkout ? ` (${row.chip} chip)` : ""}`,
-    ),
-    note: model.note,
-    error: model.error,
-    ...stale,
-  };
 }
 
 function shownOf(switched) {
@@ -264,9 +103,9 @@ async function run() {
   steps.push(page.observe("tags list newest first"));
 
   const back = selector.setKind("branch");
-  await page.answer(recorded.page);
+  await page.answer(recorded.branches);
   await back;
-  steps.push(page.observe("a list longer than a page says it stops short"));
+  page.observe("back to branches");
 
   const refused = selector.setKind("tag");
   await page.answer(recorded.refused);
@@ -393,7 +232,68 @@ async function run() {
   }
   keys.push(`ArrowDown from -1 in an empty list: ${selectorRuntime.moveRow("ArrowDown", -1, 0)}`);
 
-  return { steps, labels, copies, keys, checkout: await runCheckout() };
+  // Which rows a list draws: those in its view and the overscan on either side, however
+  // many it holds, so a listing of every ref costs the page what its view holds, and the
+  // row that takes Tab wherever it is, since focus may be on it and Tab from the filter
+  // box goes to it. A view 320 px tall over rows 28 px tall, at the top, partway, and at
+  // the end of 10,001 rows, with that row in the window or far from it; a short list;
+  // and a list whose rows have not been measured.
+  const overscan = selectorRuntime.ROWS_OVERSCAN;
+  // Rows with a pull request are taller than the rest, so a row sits at its own offset:
+  // *every* is how often a row has one (0 for none).
+  const rowsOf = (count, every) =>
+    Array.from({ length: count }, (_, at) => ({
+      pulls: every > 0 && at % every === 0 ? [{ number: at + 1 }] : [],
+    }));
+  const windows = [
+    [10001, 28, 28, 0, 0, 320, 0],
+    [10001, 28, 28, 0, 0, 320, 9000],
+    [10001, 28, 28, 0, 28 * 5000 + 10, 320, 0],
+    [10001, 28, 28, 0, 28 * 5000 + 10, 320, 5003],
+    [10001, 28, 28, 0, 28 * 10001 - 320, 320, 10000],
+    [3, 28, 28, 0, 0, 320, 1],
+    [10001, 0, 0, 0, 0, 0, 0],
+    [0, 28, 28, 0, 0, 320, 0],
+    // Every fourth row has a pull request and is 46 px tall: 10,001 rows are 340,034 px.
+    [10001, 28, 46, 4, 0, 320, 0],
+    [10001, 28, 46, 4, 46 * 2500 + 9 * 28 + 12, 320, 0],
+    [10001, 28, 46, 4, 28 * 10001 + 18 * 2501 - 320, 320, 10000],
+    // A list whose only row with a pull request is the first.
+    [10001, 28, 46, 10001, 0, 320, 0],
+  ].map(([count, plain, tall, every, scrollTop, viewHeight, roving]) => {
+    const rows = rowsOf(count, every);
+    const offsets = selectorRuntime.rowOffsets(rows, plain, tall);
+    const { start, end, also } = selectorRuntime.rowWindow(offsets, scrollTop, viewHeight, roving);
+    // The window is the rows that touch the view and the overscan on either side, found
+    // here by looking at every row.
+    if (offsets[count] > 0) {
+      let first = count;
+      let last = -1;
+      for (let at = 0; at < count; at += 1) {
+        if (offsets[at + 1] > scrollTop && at < first) {
+          first = at;
+        }
+        if (offsets[at] < scrollTop + viewHeight) {
+          last = at;
+        }
+      }
+      assert(
+        start === Math.max(0, first - overscan) && end === Math.min(count, last + 1 + overscan),
+        "a window is its view and the overscan",
+      );
+    }
+    assert(start >= 0 && end <= count && start <= end, "a window is inside the list");
+    assert(
+      count === 0 || (start <= roving && roving < end ? also === -1 : also === roving),
+      "the row that takes Tab is drawn, in the window or as well as it",
+    );
+    const beside = also >= 0 ? ` and row ${also}` : "";
+    const tallRows =
+      every > 0 ? ` (every ${every === 10001 ? "10,001st" : `${every}th`} ${tall} px)` : "";
+    return `${count} rows ${plain} px tall${tallRows}, scrolled ${scrollTop} px in ${viewHeight} px, Tab on row ${roving}: rows ${start} to ${end}${beside}`;
+  });
+
+  return { steps, labels, copies, keys, overscan, windows, checkout: await runCheckout() };
 }
 
 // A served checkout: a folder that is a repository's root.
@@ -724,19 +624,6 @@ async function runHold(recording, onReadme, options) {
   spendBounds();
   selector.dispose();
   return observed;
-}
-
-function emptyState() {
-  return {
-    shown: null,
-    open: false,
-    kind: "branch",
-    query: "",
-    listing: null,
-    loading: false,
-    switching: false,
-    error: null,
-  };
 }
 
 run()

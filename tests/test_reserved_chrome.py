@@ -154,8 +154,12 @@ def test_the_shortcut_strip_keeps_one_row_until_it_is_filled() -> None:
     rule = _rule(_css(), ".nav-shortcut-hints[hidden]")
     assert "visibility: hidden;" in rule
     assert "display: none" not in rule
-    # A keycap is 1.5 lines of the strip's own type, so the reservation is in line units.
-    assert re.search(r"min-height: calc\([^;]*1\.5em\)", rule), rule
+    # A keycap is 1.5 lines of the strip's own type, so the reservation is in line units:
+    # the row's height token, which the chevron is placed on too (mb-yw18), plus the rule.
+    assert "min-height: calc(1px + var(--nav-shortcut-row-height));" in rule, rule
+    assert re.search(
+        r"--nav-shortcut-row-height: calc\([^;]*1\.5 \* var\(--kbd-font-size\)\);", _css()
+    )
     keycap = _rule(_css(), ".kbd")
     assert "line-height: 1.5;" in keycap
     assert "font-size: var(--kbd-font-size);" in keycap
@@ -558,7 +562,7 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     assert "grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr);" in change
     assert "column-gap: var(--github-pull-row-gap);" in change
     assert "column-gap: var(--github-pull-row-gap);" in _rule(css, ".github-pulls-row")
-    assert "  --github-pull-row-gap: 6px;\n" in css
+    assert "  --github-pull-row-gap: var(--tree-icon-gap);\n" in css
     column = (
         "--github-pull-row-text-column: calc(var(--tree-icon-slot) + var(--github-pull-row-gap));"
     )

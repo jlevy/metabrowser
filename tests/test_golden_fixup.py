@@ -30,6 +30,10 @@ def _fixed(body: str) -> str:
 # The application home a transcript's fixture builds in the sandbox, joined here so that
 # no line of this file reads as a path in someone's home directory.
 _SANDBOX_HOME = "/".join(("/private/var/folders/x/T/tryscript-AbC123", "home"))
+# The key of a store of a sandbox origin, which is named for `local` and the origin's last
+# segment, and of one of a hosted origin, which is named for its host and path.
+_SANDBOX_KEY = "local--origin--" + "0f" * 8
+_HOSTED_KEY = "github-com--octo--demo--" + "0f" * 8
 
 
 @pytest.mark.parametrize(
@@ -46,14 +50,14 @@ _SANDBOX_HOME = "/".join(("/private/var/folders/x/T/tryscript-AbC123", "home"))
         ),
         (
             '  "origin": "file:///private/var/folders/x/T/tryscript-AbC123/origin.git",\n'
-            '  "location": "~/repository-stores/' + "0f" * 32 + '/repository.git",\n',
+            '  "location": "~/repository-stores/' + _SANDBOX_KEY + '/repository.git",\n',
             '  "origin": "file://[CWD]/origin.git",\n'
             '  "location": "~/repository-stores/[STORE_KEY]/repository.git",\n',
         ),
         (
             '  "origin": "file:///private/var/folders/x/T/tryscript-AbC123/origin.git",\n'
             '  "location": "' + _SANDBOX_HOME + "/"
-            "repository-stores/" + "0f" * 32 + '/repository.git",\n',
+            "repository-stores/" + _SANDBOX_KEY + '/repository.git",\n',
             '  "origin": "file://[CWD]/origin.git",\n'
             '  "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",\n',
         ),
@@ -61,9 +65,9 @@ _SANDBOX_HOME = "/".join(("/private/var/folders/x/T/tryscript-AbC123", "home"))
             # A hosted origin's key is derived from its address alone and stays literal.
             '  "origin": "https://github.com/octo/demo",\n'
             '  "location": "' + _SANDBOX_HOME + "/"
-            "repository-stores/" + "0f" * 32 + '/repository.git",\n',
+            "repository-stores/" + _HOSTED_KEY + '/repository.git",\n',
             '  "origin": "https://github.com/octo/demo",\n'
-            '  "location": "[APP_HOME]/repository-stores/' + "0f" * 32 + '/repository.git",\n',
+            '  "location": "[APP_HOME]/repository-stores/' + _HOSTED_KEY + '/repository.git",\n',
         ),
         ("metab 0.12.0a1 (3 commits past v0.11.0, dirty)\n", "metab [VERSION]\n"),
         (

@@ -24,7 +24,7 @@
 
 /* The section's status and its empty state are the main view's secondary text, at the body
    size of the table beside them (docs/design-system.md, "Type Scale"). */
-.file-type-summary-status,
+.file-type-summary-status:not(.notice),
 .file-type-summary-empty {
   color: var(--muted);
   font-size: var(--body-font-size);
@@ -47,6 +47,37 @@
   --file-type-summary-metric-gap: 6px;
   --file-type-summary-metric-padding: 18px;
   --file-type-summary-value-width: 76px;
+  /* The label column's width in the Overview, which is where the bars start less the
+     metric cell's padding, value, and gap: wide enough for the longest label the table
+     holds in practice, and no wider, so the bars sit as far left as the labels allow, at
+     one place in every row of both tables, with Details closed or open and Files or
+     Bytes, and at every pane width that has the room.
+
+     Those labels are the Details table's: a category heading (the widest is
+     Documentation: its icon and its name in the heading's 12 px uppercase, tracked
+     type), and a family row, which is the family's icon, its name, and the chevron after
+     it (Markdown, TypeScript, and JavaScript are the widest a repository usually holds),
+     and the two rows every repository with files of no family has, No extension and Other
+     types. Their natural widths, in headless Chrome 152 on macOS at 14 px (2026-11-20),
+     by font set, from a script that put each label in a copy of its row:
+
+                                 default (Source Sans 3)   system (system-ui)
+       Documentation heading          115.6 px                 125.7 px
+       No extension row               118.7 px                 128.6 px
+       Other types row                111.5 px                 120.4 px
+       Markdown row                   104.3 px                 110.7 px
+       TypeScript, JavaScript rows    104.5-105.3 px           112.5-114.5 px
+
+     The column is the widest of those, the system set's No extension row, 128.6 px,
+     rounded up to 130. The 24% of the table it replaces was 184 px in the default pane's
+     767 px table. A label wider than the column wraps inside it, at a space and then,
+     for a word wider than the column, inside the word (overflow-wrap on
+     .file-type-summary-type): the table is fixed, so a long label, a plugin's family
+     name or a filename, adds lines and moves no bar. Three of the 56 registered
+     families are wider than 130 px in the default set (OpenDocument 135.4,
+     Protocol Buffers 138.0, reStructuredText 143.8) and a fourth, Delimited text, in
+     the system set (135.4), and wrap so. */
+  --file-type-summary-label-width: 130px;
 
   table-layout: fixed;
   width: 100%;
@@ -82,7 +113,7 @@
   flex: none;
   width: var(--mb-distribution-track-height);
   height: var(--mb-distribution-track-height);
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: var(--mb-distribution-color);
   transition: filter var(--viz-hover-grow-duration) var(--viz-hover-grow-ease);
 }
@@ -115,6 +146,9 @@
   font-variant-numeric: var(--tabular-numerals);
 }
 
+/* The label column is a share of the table, and in the Overview it is one width where the
+   table is wide enough for that width to be the smaller of the two: see the container rule
+   at the end of this file. */
 .file-type-summary-type-column {
   width: 24%;
 }
@@ -154,8 +188,8 @@
 }
 
 .file-type-summary-disclosure:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Details is the same control as an "N more" row's, outside the table: the
@@ -375,6 +409,19 @@
 
   .folder-totals .file-type-summary-metric-content {
     grid-template-columns: var(--file-type-summary-value-width) minmax(16px, 1fr);
+  }
+}
+
+/* In the Overview, the label column is one width, --file-type-summary-label-width, from
+   the width at which that is no wider than the share above would make it: a host whose
+   content is 566 px wide, which holds a table 542 px wide (24 px narrower, measured), of
+   which 24% is 130.1 px. Narrower, a table's own share applies, as it always did: it
+   keeps the bars on screen in a pane the longest label does not fit, and is never wider
+   than this width would be, so no pane has its bars further right than before.
+   tests/test_overview_label_column_chrome.py measures both sides of the width. */
+@container (min-width: 566px) {
+  .folder-overview-host .file-type-summary-type-column {
+    width: var(--file-type-summary-label-width);
   }
 }
 

@@ -450,8 +450,10 @@ private storage.
 ### Render-Time-Only Namespace Rule
 
 A built-in plugin may publish helpers for others on `mb.builtins.<name>`, as Markdown
-publishes `mb.builtins.markdown` and structured data `mb.builtins.structured`. Read
-another plugin’s namespace only at render time, inside `render` or a handler, never
+publishes `mb.builtins.markdown` and structured data `mb.builtins.structured`, and the
+GitHub plugin `mb.builtins.github.pullStateIcon`, which the ref selector’s rows draw a
+branch’s pull request with.
+Read another plugin’s namespace only at render time, inside `render` or a handler, never
 while your `index.js` evaluates: plugins load on demand, so the other plugin may not
 have run yet. Await `ensureKindAssets(kind)` for that plugin’s kind first.
 `tests/test_plugin_e2e_render.py` fails when a plugin reads a missing namespace at load
@@ -486,11 +488,11 @@ Useful helpers include:
   address you vouch for, and the host’s person glyph without one or when the image
   fails, so nothing moves.
   The image is requested in anonymous CORS mode with no referrer, so its host must send
-  `Access-Control-Allow-Origin`, and a folder served untrusted loads images only from
-  GitHub’s avatar host; any other image shows the glyph.
-  `loading` is lazy unless the placement is built again on a repaint; `className` and
-  `nameClass` add classes; `placeholder: false` draws no box for a person with no
-  avatar, for a dense list row.
+  `Access-Control-Allow-Origin`, and a folder served untrusted whose reader has turned
+  on Block remote images loads images only from GitHub’s avatar host; any other image
+  shows the glyph. `loading` is lazy unless the placement is built again on a repaint;
+  `className` and `nameClass` add classes; `placeholder: false` draws no box for a
+  person with no avatar, for a dense list row.
   `actorIdentityHtml` writes the same markup, its box holding the glyph;
 - `mountCounterpart(corner, page)` and `counterpartButton(counterpart)` for a page’s
   [View on GitHub](design-system.md#view-on-github) button.
@@ -522,7 +524,8 @@ Useful helpers include:
   weight; a title with no prefix is its text alone ([Titles](design-system.md#titles));
 - `shortCommit(commit)` for a commit’s ID as every line names one, cut from its full ID
   to the host’s one length; put it in an element of class `git-commit-sha`, which sets
-  it in the commit-ID face and gray, and keep the full ID for copying and links
+  it in the commit-ID face and gray at the size of the text around it, so give the
+  element no size of its own, and keep the full ID for copying and links
   ([Short Commit IDs](design-system.md#short-commit-ids));
 - `countPartsNodes(parts)` for a count summary, such as “3 success · 1 failure”, as the
   nodes its element holds, painted as the host paints every count summary: the parts are
@@ -540,6 +543,13 @@ Useful helpers include:
   `label` in words; `changeLineNodes` paints it as the nodes of one `span.change-line`,
   with `{spoken: ", "}` on a line whose name does not say it in words
   ([Brief Change Line](design-system.md#brief-change-line));
+- `changeSizeLine(change)` and `changeSizeLineNodes(line)` for a change set’s size line,
+  “77 commits · 83 files changed · 2.3 MB compressed (14.0 MB raw diff)”:
+  `changeSizeLine` builds it from `{commits?, files, pushedBytes?, diffBytes?}`, a count
+  `null` where it is not known and left out where `undefined`, and the size group there
+  once `pushedBytes` is known, and returns its parts, `text`, `label`, and the size’s
+  `tooltip`; `changeSizeLineNodes` paints it as the nodes of one `span.change-size-line`
+  ([Change Size Line](design-system.md#change-size-line));
 - `countClass(value)` and `sizeClass(value)` for the magnitude-driven emphasis classes
   of core numeric readouts;
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and
@@ -555,8 +565,8 @@ Useful helpers include:
 - `filterControls` for the host’s accessible filter chips and menus, and for any
   exclusive choice among labelled values;
 - `shortcuts.attach(element, spec)`; see [Keyboard Shortcuts](#keyboard-shortcuts);
-- `chart(container, type, data, options)`, `ensureAsset(name)`, and
-  `ensureKindAssets(kind)`, below;
+- `chart(container, type, data, options)`, `ensureAsset(name)`, `ensureModule(name)`,
+  `moduleUrl(name)`, and `ensureKindAssets(kind)`, below;
 - `whenIdle(callback, {timeout})`, which runs `callback` when the page is free, no later
   than `timeout` milliseconds, and returns a canceller
   ([Idle Work](project/architecture/arch-browser-shell.md#idle-work));
@@ -621,6 +631,14 @@ callers share one load, and it rejects for an unknown name or a failed script, s
 can say so.
 The bundles are named in `on_demand_script_bundles` in `server.py`; `"chart"`
 is Chart.js with its annotation plugin and date adapter.
+`ensureModule(name)` is its counterpart for a bundle that is one ES module, declared
+there as `{"module": url}`, such as `"mermaid"`: it imports the module once and resolves
+to its namespace, so read the library from what it returns rather than from a global.
+Simultaneous callers share one import, a failed import rejects and the next call imports
+again, and a name that is not a module bundle, a script bundle’s among them, rejects.
+`moduleUrl(name)` is the same bundle’s absolute URL, or `null` for a name that is not a
+module bundle: what a frame of the plugin’s own imports to run the module in that
+frame’s realm, where the namespace `ensureModule` returns cannot reach.
 [Asset Loading Tiers](project/architecture/arch-browser-shell.md#asset-loading-tiers)
 says which tier an asset belongs in.
 
@@ -668,12 +686,27 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   summary and the Pulls tab’s changed files both draw with it;
   `static/changed-files-tree.js` documents each function.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
+- `eventReports`, once `await mb.ensureAsset("event-reports")` has loaded it, tells the
+  event log what the page waits for
+  ([What the Page Reports](realtime-debugging.md#what-the-page-reports)).
+  `eventReports.wait(name, { startedAt, detail, onLate })` names a wait that reports
+  nothing unless it has run `eventReports.lateMs` while the page was shown; then it is
+  reported, `onLate(ms)` lets the view say so, and the handle’s `end(outcome)` reports
+  how it ended. Pass the `performance.now()` at which the wait began as `startedAt`,
+  since the bundle may arrive later, and end every wait from `dispose`, as
+  `never_completed` when the reader leaves first.
+  `eventReports.showDetails(panel, query, { signal })` paints into *panel* what the
+  event log holds for `{ client, since, until }`: `client` is `eventReports.page` for
+  this page’s own records, and a failure’s window can be `eventReports.failureWindowS`
+  seconds before it ended, the window the failure’s recent count covers.
 - `navigation.href(target)` returns the canonical `/view/` URL for a
   `{ path, query?, fragment? }` target, whose path is served-root-relative with `/`
   separators and no leading slash; the empty path selects the served root.
 - `navigation.open(target, options?)` performs normal user navigation and returns a
   promise. `{ viewId }` prefers a view the destination declares, falling back to its
-  default, without changing the URL.
+  default, without changing the URL. When the destination is the file already shown, it
+  selects that view of it, as its tab does, which is how a view takes a person to
+  another view of the same file.
 - `navigation.current()` returns the current target, or `null` on the landing URL.
 - `fileCatalog.snapshot()` returns an immutable view of the files the shell knows, as
   canonical logical-file paths ordered by UTF-16 code units, with no global path-length
@@ -872,6 +905,20 @@ Obsidian transclusions.
 Transclusions share depth, document, source-byte, cycle, abort, and disposal limits
 across the mounted document, and each embed’s time limit starts when that embed begins
 loading. Do not copy Markdown DOM or table-of-contents behavior into a contribution.
+
+`mb.builtins.markdown.drawDiagrams(root, {inert, isolated})` draws the Mermaid diagrams
+of a KPress render your plugin placed under `root`, as the Markdown view draws its own:
+an inert render’s `<pre lang="mermaid">` blocks become images, and only `inert: false`,
+for a render the reader trusts, puts the SVG in the page.
+It returns null, and loads nothing, when `root` holds no diagram; otherwise its
+`dispose()` stops drawing and leaves the figures as drawn, so call it when you replace
+`root`. Mermaid lays an image out in a document before it becomes one, and there a
+diagram’s own CSS can load an image, so a plain image is laid out in the page and
+bounded only by the page’s policy.
+For untrusted text on a page that may have none, such as a folder’s page served trusted,
+pass `isolated: true`, as a pull request’s page does: the images are laid out in a frame
+whose own policy loads nothing (`builtin_plugins/markdown/diagram-frame.js`;
+[Inert Markdown](project/architecture/arch-server-and-content.md#inert-markdown)).
 
 ### The SDK Version
 

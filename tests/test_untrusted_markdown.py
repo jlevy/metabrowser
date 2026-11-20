@@ -11,6 +11,7 @@ and no policy.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -19,7 +20,7 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
-from metabrowser import server
+from metabrowser import kpress_adapter, server
 from metabrowser.capabilities import (
     DEFAULT_CAPABILITIES,
     Capabilities,
@@ -27,6 +28,7 @@ from metabrowser.capabilities import (
     untrusted_shell_csp,
 )
 from metabrowser.server import app
+from metabrowser.settings import BLOCK_REMOTE_IMAGES_COOKIE
 from tests.git_pin_harness import fast_import_store, pinned_client
 from tests.github_pull_fixture import allowlist_violations
 from tests.required_tools import needs_git
@@ -99,22 +101,34 @@ def test_the_untrusted_shell_runs_only_this_servers_scripts(untrusted: None) -> 
     policy = first.headers["content-security-policy"]
     nonce = re.search(r"'nonce-([^']+)'", policy)
     assert nonce is not None
-    assert policy == untrusted_shell_csp(nonce.group(1), "http://testserver")
+    diagram_scripts = tuple(
+        kpress_adapter.kpress_static_url(module) for module in kpress_adapter.DIAGRAM_MODULES
+    )
+    assert policy == untrusted_shell_csp(
+        nonce.group(1), "http://testserver", diagram_scripts, remote_images=True
+    )
     assert first.headers["x-frame-options"] == "DENY"
+    # No address of the page reaches an image's host, from an image the allowlist did not write.
+    assert first.headers["referrer-policy"] == "no-referrer"
     # A fresh nonce per response, carried by every inline script of the shell.
     assert nonce.group(1) not in second.headers["content-security-policy"]
     inline = re.findall(r"<script(?![^>]*\bsrc=)([^>]*)>", first.text)
     assert inline and all(f'nonce="{nonce.group(1)}"' in attrs for attrs in inline)
-    # Code only from the application's own static paths: never /raw, never inline.
+    # Code only from the application's own static paths, and KPress's diagram modules
+    # by exact path: never /raw, never inline, never the rest of KPress's tree.
     assert (
         f"script-src 'nonce-{nonce.group(1)}' http://testserver/static/"
-        " http://testserver/plugin-static/;"
+        " http://testserver/plugin-static/ "
+        + " ".join(f"http://testserver{path}" for path in diagram_scripts)
+        + ";"
     ) in policy
+    assert all(path.startswith("/kpress-static/") for path in diagram_scripts)
+    assert "http://testserver/kpress-static/ " not in policy.split("script-src", 1)[1].split(";")[0]
     assert "'unsafe-hashes'" not in policy and "script-src 'self'" not in policy
     for directive in (
         "style-src http://testserver/static/ http://testserver/plugin-static/"
         " http://testserver/kpress-static/",
-        "img-src 'self' data: https://avatars.githubusercontent.com",
+        "img-src 'self' data: https:",
         "connect-src 'self'",
         "worker-src http://testserver/plugin-static/",
         "frame-src 'none'",
@@ -190,23 +204,92 @@ def test_the_application_writes_no_inline_handler() -> None:
     assert found == []
 
 
-def test_avatar_origin_does_not_admit_remote_document_images(
+def _img_src(shell: Any) -> str:
+    return next(
+        part.strip()
+        for part in shell.headers["content-security-policy"].split(";")
+        if part.strip().startswith("img-src ")
+    )
+
+
+def _settings(shell: Any) -> dict[str, Any]:
+    found = re.search(r"window\.METABROWSER_SETTINGS=(\{.*?\});</script>", shell.text, re.DOTALL)
+    assert found is not None
+    return json.loads(found.group(1))  # type: ignore[no-any-return]
+
+
+def test_an_untrusted_render_shows_images_from_the_web_over_https_with_no_referrer(
     tmp_path: Path, untrusted: None
 ) -> None:
     (tmp_path / "README.md").write_text(
-        "![outside](https://avatars.githubusercontent.com/u/123?s=40)\n"
+        "[![Follow](https://img.shields.io/badge/follow-x-black)](https://x.com/ojoshe)\n\n"
+        "![outside](https://avatars.githubusercontent.com/u/123?s=40)\n\n"
+        "![insecure](http://example.com/a.png)\n"
     )
-    server._set_root_dir(tmp_path)
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
     with TestClient(app) as client:
         rendered = client.get(
             "/api/kpress/render", params={"path": "README.md", "view": "document"}
         ).json()
         shell = client.get("/view/")
-    assert "<img" not in rendered["html"]
-    assert 'href="https://avatars.githubusercontent.com/u/123?s=40"' in rendered["html"]
-    directive = next(
-        part.strip()
-        for part in shell.headers["content-security-policy"].split(";")
-        if part.strip().startswith("img-src ")
+    html = rendered["html"]
+    # The link keeps its destination around the image; the image is fetched under
+    # a policy that sends no referrer, from https alone.
+    assert (
+        '<a href="https://x.com/ojoshe" target="_blank" rel="noopener noreferrer">'
+        '<img loading="lazy" referrerpolicy="no-referrer"'
+        ' src="https://img.shields.io/badge/follow-x-black" alt="Follow"></a>'
+    ) in html
+    assert 'src="https://avatars.githubusercontent.com/u/123?s=40"' in html
+    assert 'src="http://example.com/a.png"' not in html
+    assert 'data-tip-text="http://example.com/a.png"' in html
+    # The page's policy admits https images and no other address.
+    assert _img_src(shell) == "img-src 'self' data: https:"
+    assert _settings(shell)["BLOCK_REMOTE_IMAGES"] is False
+
+
+def test_the_reader_who_blocks_remote_images_gets_the_narrow_policy(
+    tmp_path: Path, untrusted: None
+) -> None:
+    """Their cookie, read from the page request, narrows ``img-src`` and is the page's setting.
+
+    The browser itself then refuses an image from the web, whatever the page's code does,
+    so a page that built one would show nothing and send nothing. Only the exact cookie
+    value turns it on.
+    """
+
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    narrow = "img-src 'self' data: https://avatars.githubusercontent.com"
+    with TestClient(app) as client:
+        client.cookies.set(BLOCK_REMOTE_IMAGES_COOKIE, "1")
+        blocked = client.get("/view/")
+        for value in ("0", "", "true", "yes", "11"):
+            client.cookies.set(BLOCK_REMOTE_IMAGES_COOKIE, value)
+            other = client.get("/view/")
+            assert _img_src(other) == "img-src 'self' data: https:", value
+            assert _settings(other)["BLOCK_REMOTE_IMAGES"] is False, value
+    assert _img_src(blocked) == narrow
+    assert _settings(blocked)["BLOCK_REMOTE_IMAGES"] is True
+    # The menu's box is drawn as the server read the cookie: ticked only when blocking.
+    box = r'<input class="menu-check" id="block-remote-images-input" type="checkbox"( checked)?'
+    assert re.search(box, blocked.text).group(1) == " checked"  # type: ignore[union-attr]
+    assert re.search(box, other.text).group(1) is None  # type: ignore[union-attr]
+    # Everything else the policy says is the same as without the cookie.
+    assert untrusted_shell_csp("n", "http://testserver", (), remote_images=False) == (
+        untrusted_shell_csp("n", "http://testserver", (), remote_images=True).replace(
+            "img-src 'self' data: https:", narrow
+        )
     )
-    assert directive == "img-src 'self' data: https://avatars.githubusercontent.com"
+    assert blocked.headers["referrer-policy"] == "no-referrer"
+    with pytest.raises(TypeError):
+        untrusted_shell_csp("n", "http://testserver", ())  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
+
+
+def test_a_trusted_folders_page_has_the_setting_and_no_policy_either_way(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text("# Title\n")
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(app) as client:
+        client.cookies.set(BLOCK_REMOTE_IMAGES_COOKIE, "1")
+        shell = client.get("/view/")
+    assert "content-security-policy" not in shell.headers
+    assert _settings(shell)["BLOCK_REMOTE_IMAGES"] is True

@@ -23,10 +23,9 @@ has not finished. This judges the record:
   and the top pad, so the header is that line, the eyebrow, and the two pads;
 - the top bar's rhythm across the divider (mb-ch82, mb-tl7p): the eyebrow is the
   navigation's path row's twin, its rule at the path row's rule's height and its address,
-  at the path row's text size, on the navigation name's baseline; the chevron that hides
-  the navigation sits in the gutter before the eyebrow's Up, centered on the row's line, as
-  the Metabrowser menu's gear is across the divider; Up is an icon button with no hairline
-  or surface at rest, and both while hovered (mb-igva);
+  at the path row's text size, on the navigation name's baseline; Up is centered on the
+  row's line, as the Metabrowser menu's gear is across the divider, and is an icon button
+  with no hairline or surface at rest, and both while hovered (mb-igva);
 - the line after the name: where the room after the name's last line holds it, the line
   sits there, the title gap after the name's text and on its baseline; where it does not,
   the line starts the next line, at the name's start. The file's, the folder's, and the
@@ -432,20 +431,17 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         assert rhythm["addressBaseline"] == rhythm["navNameBaseline"], (
             f"{name}: address {rhythm['addressBaseline']}, nav {rhythm['navNameBaseline']}"
         )
-        # The chevron that hides the navigation (mb-tl7p): in the gutter before the
-        # eyebrow's Up, centered on the row's line, the line above its rule, as the
-        # Metabrowser menu's gear is across the divider, and as Up is.
+        # Up is centered on the row's line, the line above its rule, as the Metabrowser
+        # menu's gear is across the divider. The chevron that hides the navigation is on
+        # the shortcut strip's row (mb-yw18), which test_nav_collapse_chrome.py checks.
         line_middle = eyebrow["top"] + (row - 1) / 2
-        assert rhythm["chevron"] == rhythm["gear"] == line_middle, f"{name}: {rhythm}"
-        up_box, chevron_box = rhythm["upBox"], rhythm["chevronBox"]
+        assert rhythm["gear"] == line_middle, f"{name}: {rhythm}"
+        up_box = rhythm["upBox"]
         assert (up_box["top"] + up_box["bottom"]) / 2 == line_middle, f"{name}: {up_box}"
-        assert rhythm["frame"]["left"] <= chevron_box["left"], f"{name}: {rhythm}"
-        assert chevron_box["right"] <= up_box["left"], f"{name}: {chevron_box} {up_box}"
-        # Each is a target of the Up size, 24 px, WCAG 2.2's minimum (review A on #608).
+        # A target of the Up size, 24 px, WCAG 2.2's minimum (review A on #608).
         target = _px(tokens["--view-header-up-size"])
-        for box in (up_box, chevron_box):
-            assert box["right"] - box["left"] == target, f"{name}: {box}"
-            assert box["bottom"] - box["top"] == target, f"{name}: {box}"
+        assert up_box["right"] - up_box["left"] == target, f"{name}: {up_box}"
+        assert up_box["bottom"] - up_box["top"] == target, f"{name}: {up_box}"
         # Up at rest is the arrow alone: no hairline and no surface (mb-igva).
         clear = "rgba(0, 0, 0, 0)"
         assert rhythm["upRest"] == {"border": clear, "ground": clear}, f"{name}: {rhythm}"
@@ -691,9 +687,6 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         # page, whatever the subject's lines (mb-wcbc).
         title_gap = page["firstLine"]["top"] - page["subject"]["bottom"]
         assert title_gap == _px(tokens["--page-title-gap"]), f"{name}: {title_gap}"
-        # The chevron on the gear's line, where it is on a page with an eyebrow (mb-tl7p).
-        line_middle = (_px(tokens["--pane-header-row-height"]) - 1) / 2
-        assert rhythm["chevron"] == rhythm["gear"] == line_middle, f"{name}: {rhythm}"
         assert (
             abs(view["right"] - button["right"] - _px(tokens["--view-header-corner-inset-end"]))
             <= TOLERANCE_PX

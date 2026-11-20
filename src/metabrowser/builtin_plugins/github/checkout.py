@@ -44,6 +44,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, overload
 
+from metabrowser import event_log
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.mirror_refresh import MAX_PULL_JOBS, PullJobStart, StoreTurn, mirror_session
@@ -198,7 +199,7 @@ def served_checkout(app: Any) -> CheckoutRepository | None:
 def _cached_store(source: GitSource, home: Path) -> PublishedSource | None:
     from metabrowser.cache.acquire import AcquisitionError, cached_source
     from metabrowser.cache.atomic import RecordError
-    from metabrowser.cache.identity import SlugCollisionError
+    from metabrowser.cache.identity import SlugCollisionError, StoreKeyCollisionError
     from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
     from metabrowser.home import PrivateStorageError, StorageDirectoryError
 
@@ -208,6 +209,7 @@ def _cached_store(source: GitSource, home: Path) -> PublishedSource | None:
         AcquisitionError,
         RecordError,
         SlugCollisionError,
+        StoreKeyCollisionError,
         LayoutError,
         FutureLayoutFormatError,
         PrivateStorageError,
@@ -288,7 +290,7 @@ def _claim_source(repository: CheckoutRepository) -> CheckoutRepository:
     """Blocking publication only; held pull state belongs to the caller's event loop."""
     from metabrowser.cache.acquire import AcquisitionError, publish_unattached_source
     from metabrowser.cache.atomic import RecordError
-    from metabrowser.cache.identity import SlugCollisionError
+    from metabrowser.cache.identity import SlugCollisionError, StoreKeyCollisionError
     from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
     from metabrowser.cache.locks import LockBusyError
     from metabrowser.home import PrivateStorageError, StorageDirectoryError
@@ -304,6 +306,7 @@ def _claim_source(repository: CheckoutRepository) -> CheckoutRepository:
         RecordError,
         LockBusyError,
         SlugCollisionError,
+        StoreKeyCollisionError,
         AcquisitionError,
     ) as exc:
         # Each is the cache refusing the write, which is all a job can say of it.
@@ -493,7 +496,7 @@ async def _acquire_comparison(repository: CheckoutRepository) -> PublishedSource
         acquire_source,
     )
     from metabrowser.cache.atomic import RecordError
-    from metabrowser.cache.identity import SlugCollisionError
+    from metabrowser.cache.identity import SlugCollisionError, StoreKeyCollisionError
     from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
     from metabrowser.cache.lender import CheckoutRefusedError
     from metabrowser.cache.locks import LockBusyError
@@ -525,6 +528,7 @@ async def _acquire_comparison(repository: CheckoutRepository) -> PublishedSource
         AcquisitionError,
         RecordError,
         SlugCollisionError,
+        StoreKeyCollisionError,
         LayoutError,
         FutureLayoutFormatError,
         PrivateStorageError,
@@ -661,7 +665,13 @@ async def _idle_phase(
     state: _CheckoutPulls, companion: ServedPull, eager: _EagerComparison
 ) -> _IdleFailure | None:
     """Run :func:`_prepare_idle` as a task a reader's metadata request can cancel."""
-    work = asyncio.get_running_loop().create_task(_prepare_idle(state, companion, eager))
+    work = asyncio.get_running_loop().create_task(
+        event_log.job(
+            _prepare_idle(state, companion, eager),
+            "checkout.prepare_idle",
+            attrs={"pull": companion.number},
+        )
+    )
     eager.work = work
     try:
         await asyncio.wait((work,))

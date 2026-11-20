@@ -68,6 +68,13 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Tabular data browsing and live SQLite](specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md):
+  a draft for one generic table plugin over CSV, record lists, and SQLite, with
+  nondestructive, live reads of databases other applications are writing
+- [A structured event log](specs/active/plan-2026-11-19-structured-event-log.md): one
+  JSON line for every request, background job, and `git` or `gh` process, with latency,
+  outcome, and what started it; the causes of GitHub failures in the page; browser
+  reports of waits that never ended; then views of the log in Metabrowser
 - [The app’s command-line dependencies and a complete doctor](specs/active/plan-2026-11-18-cli-dependencies-and-doctor.md):
   where each tool’s minimum version lives, the app’s versioning contract with `metab`, a
   doctor that checks everything a setup needs, and Check Setup… in the macOS app
@@ -106,6 +113,10 @@ It links each document below and the contributor standards in `docs/`.
 - [Switching folders in the macOS app](specs/active/plan-2026-11-18-macos-folder-switching.md):
   a window that can show any open folder, the title as a native chooser of open and
   recent folders, a keyboard switcher, and marks shared with the page
+- [Operational views of Claude Code and Codex](specs/active/plan-2026-11-19-agent-operations-views.md):
+  one shared model, record kinds with one color each, and the home, session, timeline,
+  live, usage, and latency views for both agents, in six phases, with `urollup` as an
+  optional accelerator
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
   the icon and release pipeline, warm folder switching, host mode and the agent front
   door, and the app-managed runtime
@@ -202,6 +213,9 @@ It links each document below and the contributor standards in `docs/`.
 A research record stays here while it informs open work, and moves to
 [`research/archive/`](research/archive/) once its questions are answered.
 
+- [Operational visibility into Claude Code and Codex](research/research-2026-11-19-agent-home-visibility.md):
+  every file format under `~/.claude` and `~/.codex`, what Metabrowser shows of them
+  today, and a proposed agents plugin built on the public plugin contract
 - [Why CI takes twenty minutes](research/research-2026-11-16-ci-speed.md): where a CI
   run’s minutes go by job, step, and test, what flakes cost, and the options for the
   fast CI plan

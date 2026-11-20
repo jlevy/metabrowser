@@ -15,15 +15,6 @@
 .tm-totals-heading {
   max-width: var(--tm-max-width);
   margin: 0 0 14px;
-  padding: 0 0 var(--section-heading-divider-gap);
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
-  font-family: var(--font-sans);
-  font-size: var(--body-font-size);
-  font-weight: var(--label-font-weight);
-  letter-spacing: var(--label-letter-spacing);
-  line-height: 1.25;
-  text-transform: var(--label-text-transform);
 }
 
 .tm-totals {
@@ -159,8 +150,8 @@
 /* Two-tone focus ring: the accent ring is backed by a neutral halo so
    it stays distinct from every categorical cell wash. */
 .tm-cell:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
   box-shadow: inset 0 0 0 4px var(--viz-surface);
   z-index: 3;
 }
@@ -184,12 +175,12 @@
   cursor: pointer;
   padding: 0 3px;
   margin-left: -3px;
-  border-radius: 3px;
+  border-radius: var(--radius-chrome);
 }
 
 .tm-cell-title[role="button"]:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
   box-shadow: 0 0 0 2px var(--viz-surface);
 }
 
@@ -288,8 +279,6 @@
 .tm-status {
   margin-top: 8px;
   max-width: var(--tm-max-width);
-  color: var(--muted);
-  font-size: var(--body-font-size);
   font-variant-numeric: var(--tabular-numerals);
   -webkit-user-select: text;
   user-select: text;

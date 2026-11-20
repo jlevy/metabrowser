@@ -26,10 +26,12 @@ starts with `scheme://`; today it opens the folder named, and
 repository’s root. Anything else goes to `classify_root_argument` in `cache/urls.py`,
 whose grammar is frozen in `tests/fixtures/repository-cache/url-grammar.json`; a bare
 path is never rewritten into a `file://` source.
-Provider reducers run first (`cache/providers.py`); core names no provider, and the
-GitHub reducer in `builtin_plugins/github/urls.py` turns web, raw, and SSH spellings of
-a github.com repository into its canonical `https://` source plus a selection.
-`file://` and `https://` sources are acquired; SSH is classified and refused.
+An argument that names nothing on disk and begins with a host a reducer claims, such as
+`github.com/owner/repo`, is given `https://` before it is classified (`_root_in_full` in
+`cli/main.py`). Provider reducers run first (`cache/providers.py`); core names no
+provider, and the GitHub reducer in `builtin_plugins/github/urls.py` turns web, raw, and
+SSH spellings of a github.com repository into its canonical `https://` source plus a
+selection. `file://` and `https://` sources are acquired; SSH is classified and refused.
 
 A new acquisition needs a Git at or above the acquisition security floor
 (`ACQUISITION_MINIMUM` and `ACQUISITION_PATCHED_TRACKS` in `git/process.py`, frozen in
@@ -293,8 +295,10 @@ network (`mirror_refresh.py`). A mirror is stale once its last fetch is older th
   A job takes its network slot only once its turn has come.
 - **When a refresh starts:** serve mode refreshes a stale mirror once at startup, and a
   page asks for one when it opens or becomes visible on a stale mirror.
-  When another process holds the fetch lock, a served mirror follows that refresh
-  (`ELSEWHERE_POLL_S`, up to `ELSEWHERE_WAIT_S`) and observes the store when it ends.
+  A refresh that moves the served branch moves the pin with it
+  ([Following a Branch](#following-a-branch)). When another process holds the fetch
+  lock, a served mirror follows that refresh (`ELSEWHERE_POLL_S`, up to
+  `ELSEWHERE_WAIT_S`) and observes the store when it ends.
 - **A commit the mirror lacks:** a page that opens a commit’s address asks for the fetch
   it waits on, which runs only when the mirror is stale, since a link in served content
   can lead to any address; a reader’s **Retry** always fetches.
@@ -314,6 +318,38 @@ revision as it was. A cached source whose pinned tree has gone from the store re
 path-free error when the pin is opened, with no traceback and no automatic clone;
 startup starts no repair fetch.
 
+### Following a Branch
+
+A mirror is browsed as github.com is: as of the data last fetched.
+A reader who opened a branch or a tag reads that ref, not one commit of it, so the
+served pin follows the ref when a fetch moves it, by a push or a force-push.
+The owner set this on 2026-11-19, replacing the earlier rule that a refresh never moved
+the served commit and offered the new one behind a **Switch** button (bead `mb-pq8y`).
+
+- **Which pins follow:** one served under the origin’s branch or a tag (`follows_moves`
+  in `mirror_refresh.py`), which status reports as `follows`. A commit opened by its ID
+  is served under no ref, or under one only while it is that ref’s tip, as View file’s
+  way back is, and then follows it as the selector names it.
+  A pull request’s head does not follow yet, which waits on bead `mb-qp3s`, so its new
+  head is still offered.
+- **The server follows:** `MirrorSession.observe`, which runs after every refresh job
+  and after following another process’s, opens the ref’s new tip under the pin lock and
+  serves it under a new generation.
+  So the server never serves a branch behind where the mirror has it, a page or none
+  open, and Files and the Commits tab, which walks the default branch, agree.
+  A ref the origin deleted is not followed; its last commit stays served, and the row
+  says the ref is gone.
+- **The page follows:** `static/source-freshness.js` sees on its next poll that the ref
+  it was drawn for is served at another commit.
+  It asks the pin route for that ref with its own `/view/` address, which changes
+  nothing once the server has followed and serves the tip when it could not yet, and the
+  answer’s `view_href` says where the page lands: the same file or folder when the new
+  commit has it, where the page reloads in place and keeps its line and scroll, or the
+  root. A refused follow says why and offers a reload, and is not asked again until the
+  reader’s refresh.
+- **A switch made in another tab** to another ref still only offers a reload: the reader
+  did not ask for that ref.
+
 ## Source Routes
 
 Each handler’s docstring in `source_routes.py` holds its contract; the route index is in
@@ -328,10 +364,18 @@ Each handler’s docstring in `source_routes.py` holds its contract; the route i
   `{"for": "commit"}` is the fetch a missing commit waits on, fetched only outside the
   freshness window unless `"retry": true`; its `pull_refresh` says how the attended pull
   request’s refresh was answered.
-- **`GET /api/source/refs`** lists the mirror’s branches or tags for the ref selector
-  from one `for-each-ref`, filtered and clamped (`REFS_DEFAULT_LIMIT`, `REFS_MAX_LIMIT`,
-  `REFS_MAX_QUERY_CHARS`), each with its commit, Git’s short form of it, and that
-  commit’s committer date, from which the selector shows its age.
+- **`GET /api/source/refs`** lists every one of the mirror’s branches or tags for the
+  ref selector from one `for-each-ref`, filtered by name (`REFS_MAX_QUERY_CHARS`), each
+  with its commit and that commit’s committer date, from which the selector shows its
+  age. The default branch lists first, then the rest newest first by that date, then by
+  name (`_newest_first` in `cache/resolve.py`); nothing pages the list, and the measured
+  cost of listing every ref is beside the constants in `source_routes.py`. An answer the
+  Git routes’ memo can keep is kept under the store’s ref state and the recorded default
+  branch (`_refs_answer_key`), so asking again while no ref moved runs no Git.
+  The memo keeps no body over its `MAX_ENTRY_BYTES`, about 9,000 branches, or about
+  5,200 where each is a pull request’s head (`REF_PULLS_PER_ROW` in `source_routes.py`),
+  and has no key for a repository with more loose refs than `MAX_REF_ENTRIES`; a listing
+  of either runs Git every time.
   A folder that is a repository’s root answers it and the pin route for its own
   checkout;
   [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)
@@ -369,8 +413,9 @@ in sight:
   A pin with no mirror is headed by its ref and commit.
 - **Title:** `/api/identity` gives the tab and window title, and a `full_name` of the
   origin without its scheme and the pin, which never names the cache.
-- **Commit:** the ref and short commit follow the name, the commit in the commit-ID
-  face, with a control that copies the full commit.
+- **Commit:** the heading is the name alone.
+  The ref selector in the Files toolbar names the ref, the heading’s tooltip names the
+  full commit, and a control after the name copies it (mb-qq4e).
 - **Location:** a note after the address names the store’s bare repository, with the
   home directory as `~` when it is under it (`display_directory`). Nothing is checked
   out, so the location is not drawn as the start of the address, and its tooltip says it

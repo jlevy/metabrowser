@@ -145,7 +145,7 @@ exit: 0
   },
   "file_type_legend": {
     "schema": "file-type-legend-v1",
-    "limit": 5,
+    "limit": 9,
     "minimum_share_percent": 1,
     "files": {
       "all": {
@@ -327,7 +327,7 @@ exit: 0
   },
   "file_type_legend": {
     "schema": "file-type-legend-v1",
-    "limit": 5,
+    "limit": 9,
     "minimum_share_percent": 1,
     "files": {
       "all": {

@@ -8,9 +8,18 @@ it carries an ETag so an unchanged answer is a ``304``. The browser's revision l
 rendered from the same :func:`source_status`, so the label and
 ``metab --api /api/source/status`` cannot disagree.
 
-``GET /api/source/refs`` lists the mirror's branches or tags for the ref selector,
-filtered and bounded, with the default branch first and the served ref marked. It reads
-the mirror alone, never the network.
+``GET /api/source/refs`` lists every one of the mirror's branches or tags for the ref
+selector, filtered by name, the default branch first and then newest first, with the
+served ref marked. It reads the mirror alone, never the network. An answer the Git
+routes' memo can keep is kept under the refs' state, so asking again while no ref moved
+runs no Git; past about 9,000 branches, fewer where branches list pull requests
+(:data:`REF_PULLS_PER_ROW`), or past ``MAX_REF_ENTRIES`` loose refs, every listing runs Git.
+
+A branch that is the head of a pull request lists that pull request on its row, and the
+filter finds a branch by its pull request's number or title too. The pull requests are
+what the repository's provider has cached (:func:`~metabrowser.cache.providers.ref_pulls_for`):
+the route never waits for the provider's own service, and says whether the cache is
+filled, so the page asks again while it is.
 
 A folder that is a repository's root answers the same two routes for its own checkout
 (:mod:`metabrowser.checkout_revisions`): the refs route lists its branches, tags, and
@@ -33,7 +42,18 @@ import hashlib
 import json
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Final, NamedTuple, TypedDict, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Final,
+    Literal,
+    NamedTuple,
+    NotRequired,
+    Protocol,
+    TypedDict,
+    cast,
+    runtime_checkable,
+)
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -46,6 +66,10 @@ from metabrowser.checkout_revisions import (
     checkout_revisions,
 )
 from metabrowser.content_errors import ContentReadError
+from metabrowser.git.process import GitError, GitLocation
+from metabrowser.git.ref_state import ref_state
+from metabrowser.git.repo import repo_info
+from metabrowser.git.route_memo import keep_body, kept_answer
 from metabrowser.http_caching import build_scoped_etag, etag_headers, matches_if_none_match
 from metabrowser.mirror_refresh import (
     UNSERVED_FRESHNESS,
@@ -77,7 +101,11 @@ from metabrowser.view_routes import (
 
 if TYPE_CHECKING:
     # Annotations only. The server registers this table for a folder too, so what a
-    # function needs from the revision tree source it imports where a pin is served.
+    # function needs from the revision tree source, or from a link, it imports where a
+    # pin is served.
+    from metabrowser.cache.providers import RefPull, RefPulls
+    from metabrowser.cache.resolve import ResolvedSelection, UnresolvedSelection
+    from metabrowser.cache.urls import RepositorySelection
     from metabrowser.git.tree_source import GitRevisionSubject
 
 log = logging.getLogger(__name__)
@@ -86,24 +114,41 @@ log = logging.getLogger(__name__)
 # bounds a ref name at the file system's name length; four KiB holds any real one with
 # room for the JSON around it and an address a few levels deep.
 MAX_SOURCE_REQUEST_BYTES: Final = 4 * 1024
-# Refs one listing answers. The selector shows a page of plain rows and narrows by the
-# filter box rather than scrolling far: a hundred rows is a few kilobytes of JSON. A
-# caller's limit is clamped to the range, as the ``/api/git/`` routes clamp theirs.
-# The listing's cost is one ``for-each-ref`` of the whole namespace whatever the page
-# size or filter, so it grows with the mirror's refs, not with ``limit``. Measured on
-# 2026-09-24, macOS, Git 2.50.1, under a load average above 20: over 3,000 branches the
-# ``for-each-ref`` took 0.23-0.26 s with loose refs and 0.13 s packed, and the review
-# measured 0.25-0.36 s per route call loose and 0.11 s packed. The browser asks after a
-# pause in typing and aborts a request a newer filter replaces, so a reader typing
-# costs about one listing per pause. No answer is memoized, since the refs change
-# whenever a fetch ends; the pause and the abort bound the calls instead.
-REFS_DEFAULT_LIMIT: Final = 100
-REFS_MAX_LIMIT: Final = 1000
+# A listing answers every matching ref; nothing pages or caps it. Its cost is one
+# ``for-each-ref`` of the kind's whole namespace, which the earlier page of 100 rows never
+# bounded, so a listing of every ref costs the server what a page did, plus encoding the
+# rows. Measured 2026-11-19 in process on macOS, Git 2.50.1, at a load average of 13, on
+# synthetic checkouts (``for-each-ref`` and parsing, then the rows encoded as JSON):
+#
+#   branches                1,301 loose  1,301 packed  10,001 loose  10,001 packed
+#   for-each-ref, ms                 77            29           478            120
+#   JSON, bytes, encode ms     291 KB, 1.7   291 KB, 1.7   2.2 MB, 12    2.2 MB, 12
+#
+# What bounds a listing is the store-read policy's output cap and deadline
+# (``GIT_SUBPROCESS_MAX_BYTES``, ``GIT_SUBPROCESS_TIMEOUT_S``): about 105 bytes of Git's
+# output a ref there, so the cap is reached past about 300,000 refs, and the deadline
+# sooner in a repository of loose refs. Past either the listing is refused, as it was
+# with a page, rather than cut short. The browser draws only the rows in view, so its
+# cost does not grow with the rows (static/source-ref-selector.js, ``ROWS_OVERSCAN``).
+# An answer is kept under the refs' state (:func:`_refs_answer_key`), so asking again
+# while no ref moved runs no Git, but only an answer the memo can keep: one under its
+# ``MAX_ENTRY_BYTES``, about 9,000 branches, from a repository with no more loose refs than
+# ``MAX_REF_ENTRIES``. Neither 10,001-branch case above is kept, so each listing there
+# costs what the table says.
+#
+# A branch that is a pull request's head makes its row larger. Measured 2026-11-20 on a
+# branch name of 36 characters: 245 bytes with none, 403 with one pull request titled with
+# 90 characters, 1,063 with six, so the memo keeps about 8,500 branches with none, 5,200
+# with one apiece, and 2,000 with six. A row lists at most this many pull requests, and
+# says how many there are (``pulls_total``): a branch with dozens is no larger a row.
+REF_PULLS_PER_ROW: Final = 6
 # The filter is a name fragment; a ref name longer than this is not one a reader types.
 REFS_MAX_QUERY_CHARS: Final = 256
 # The lists a mirror has, and the ones a checkout has: its remote-tracking branches too.
 _MIRROR_REF_KINDS: Final[tuple[RefKind, ...]] = ("branch", "tag")
 _CHECKOUT_REF_KINDS: Final[tuple[RefKind, ...]] = ("branch", "tag", "remote")
+# The remote a checkout's pull requests are of: its repository is the one ``origin`` names.
+_ORIGIN_REMOTE: Final = "origin/"
 # What a listing of a kind the subject has no list of is told, by whether a checkout answers.
 _KIND_REFUSAL: Final = {
     False: '"kind" is "branch" or "tag"',
@@ -153,6 +198,7 @@ class SourceStatus(TypedDict):
     borrows: str | None
     shallow: bool
     refreshable: bool
+    follows: bool
     latest: str | None
     # False when the origin deleted the ref. None for a pin by commit ID, a ref not yet
     # observed, or one the store swept (``cache/lender.py``) until a fetch names it again.
@@ -250,7 +296,11 @@ class SourceRef(TypedDict):
     checkout's ``HEAD`` is on; each lists first, and the other is false.
     ``committed_at`` is the commit's committer date in epoch seconds, from which a row
     shows its age; ``None`` when Git printed none. The page shows ``commit`` as every line
-    names a commit (``shortCommit`` in static/formatters.js).
+    names a commit (``shortCommit`` in static/formatters.js). ``pulls`` are the pull
+    requests the branch is the head of, open first and then newest first, and a filter's
+    matches before the rest, the first :data:`REF_PULLS_PER_ROW` of them, and ``pulls_total``
+    how many there are; a row with none has neither, so a list of thousands of branches
+    pays nothing for them.
     """
 
     name: str
@@ -260,6 +310,22 @@ class SourceRef(TypedDict):
     default: bool
     checked_out: bool
     current: bool
+    pulls: NotRequired[list[RefPull]]
+    pulls_total: NotRequired[int]
+
+
+class RefPullsStatus(TypedDict):
+    """What a listing says of its rows' pull requests: whether the cache has them.
+
+    ``state`` is ``ready`` once the repository's catalog of pull requests is cached, and
+    ``absent`` before. ``complete`` says it holds every pull request, so a branch with no
+    ``pulls`` has none, and ``refreshing`` that a job is filling it, so the listing is
+    worth asking for again.
+    """
+
+    state: Literal["absent", "ready"]
+    complete: bool
+    refreshing: bool
 
 
 class WorkingTree(TypedDict):
@@ -283,25 +349,41 @@ class WorkingTree(TypedDict):
 class SourceRefs(TypedDict):
     """The envelope of ``GET /api/source/refs``.
 
-    ``refs`` are the matching refs in listing order, at most ``limit`` of them;
-    ``total`` counts every match, and ``truncated`` says the page stops short of it.
-    ``pin`` and ``ref`` are what the server serves now, so the selector marks the
-    served ref even when the page was rendered for another; both are ``None`` while a
-    checkout's working tree is served. ``kinds`` are the lists the subject has: a
+    ``refs`` are every matching ref, in listing order: the default or checked-out branch
+    first, then newest first by the date each row shows (``_newest_first`` in
+    ``cache/resolve.py``). ``pin`` and ``ref`` are what the server serves now, so the
+    selector marks the served ref even when the page was rendered for another; both are
+    ``None`` while a checkout's working tree is served. ``kinds`` are the lists the subject has: a
     checkout's remote-tracking branches are a third. ``working_tree`` is ``None`` for a
-    mirror, which has none.
+    mirror, which has none. ``pull_requests`` is ``None`` where no provider has pull
+    requests for the subject, and for a list of tags, which no pull request has as its
+    head.
     """
 
     kind: RefKind
     query: str
-    limit: int
     pin: str | None
     ref: str | None
     kinds: list[RefKind]
     working_tree: WorkingTree | None
-    total: int
-    truncated: bool
+    pull_requests: RefPullsStatus | None
     refs: list[SourceRef]
+
+
+def _head_name(kind: RefKind, name: str) -> str | None:
+    """The name a pull request knows the branch listed as *name* by, or ``None`` for none.
+
+    A mirror's branches and a checkout's own are named as the repository names them. A
+    checkout's remote-tracking branch is under its remote, and only ``origin``'s are the
+    repository's, as the checkout's repository is the one its ``origin`` names. A tag is
+    nothing's head.
+    """
+
+    if kind == "branch":
+        return name
+    if kind == "remote" and name.startswith(_ORIGIN_REMOTE):
+        return name[len(_ORIGIN_REMOTE) :]
+    return None
 
 
 def source_refs(
@@ -310,55 +392,125 @@ def source_refs(
     *,
     kind: RefKind,
     query: str,
-    limit: int,
     working_tree: WorkingTree | None = None,
+    pulls: RefPulls | None = None,
 ) -> SourceRefs:
-    """The page of *listed* that matches *query*, a case-insensitive name fragment.
+    """Every ref of *listed* that matches *query*, a case-insensitive name fragment.
 
     *subject* is the served revision, ``None`` on a checkout's working tree, and
     *working_tree* is given for a checkout, whose first-listed branch is the one checked
-    out where a mirror's is its default.
+    out where a mirror's is its default. *pulls* are the pull requests the provider has
+    cached by head branch: a row lists the ones of its branch, and a branch whose pull
+    request matches *query* is listed whether or not its name does.
     """
 
     needle = query.casefold()
-    matches = [entry for entry in listed if needle in entry.name.casefold()]
     of_checkout = working_tree is not None
     served_ref = subject.ref if subject is not None else None
+    found = pulls.matching(query) if pulls is not None and needle else frozenset[str]()
+    rows: list[SourceRef] = []
+    for entry in listed:
+        head = _head_name(kind, entry.name) if pulls is not None else None
+        if needle not in entry.name.casefold() and (head is None or head not in found):
+            continue
+        row = SourceRef(
+            name=entry.name,
+            ref=entry.ref,
+            commit=entry.commit,
+            committed_at=entry.committed_at,
+            default=entry.default and not of_checkout,
+            checked_out=entry.default and of_checkout,
+            current=served_ref is not None and entry.ref == served_ref,
+        )
+        if pulls is not None and head is not None and (shown := pulls.pulls(head, query)):
+            row["pulls"] = list(shown[:REF_PULLS_PER_ROW])
+            row["pulls_total"] = len(shown)
+        rows.append(row)
     return SourceRefs(
         kind=kind,
         query=query,
-        limit=limit,
         pin=subject.commit_oid if subject is not None else None,
         ref=served_ref,
         kinds=list(_CHECKOUT_REF_KINDS if of_checkout else _MIRROR_REF_KINDS),
         working_tree=working_tree,
-        total=len(matches),
-        truncated=len(matches) > limit,
-        refs=[
-            SourceRef(
-                name=entry.name,
-                ref=entry.ref,
-                commit=entry.commit,
-                committed_at=entry.committed_at,
-                default=entry.default and not of_checkout,
-                checked_out=entry.default and of_checkout,
-                current=served_ref is not None and entry.ref == served_ref,
-            )
-            for entry in matches[:limit]
-        ],
+        pull_requests=RefPullsStatus(
+            state="ready" if pulls.ready else "absent",
+            complete=pulls.complete,
+            refreshing=pulls.refreshing,
+        )
+        if pulls is not None
+        else None,
+        refs=rows,
     )
 
 
-def _refs_limit(value: str | None) -> int:
-    try:
-        limit = int(value) if value is not None else REFS_DEFAULT_LIMIT
-    except ValueError:
-        limit = REFS_DEFAULT_LIMIT
-    return max(1, min(limit, REFS_MAX_LIMIT))
+async def _refs_answer_key(
+    location: GitLocation,
+    *,
+    kind: RefKind,
+    query: str,
+    subject: GitRevisionSubject | None,
+    first_ref: str | None,
+    pulls: RefPulls | None,
+) -> tuple[str, ...] | None:
+    """What a listing is kept under in the Git routes' memo, or ``None`` to keep nothing.
+
+    Everything the answer reads: the repository's refs, whose state
+    :func:`~metabrowser.git.ref_state.ref_state` names; the list and the filter; what is
+    served, which marks a row and says whether the working tree is; the pull requests'
+    ``token``, which names what the provider has cached and whether it is filling it; and
+    *first_ref*, the branch listed first and marked. That is a mirror's default branch, which its store
+    records outside its refs, or the branch a checkout's ``HEAD`` is on as
+    :func:`~metabrowser.git.repo.repo_info` names it, which ``working_tree`` reports too.
+    ``repo_info`` keeps ``HEAD`` for ``GIT_REPO_INFO_TTL_S``, so the state alone, which
+    reads ``HEAD`` afresh, could key a listing made from the ``HEAD`` it kept before a
+    switch, and serve it until a ref moved; ``/api/git/refs`` keys its answer on
+    ``HEAD``'s ref for the same reason. The served root's name and path cannot change
+    while it is served, and a new root empties the memo. ``None`` when the state cannot
+    be named, as for a repository with more loose refs than one state may stat
+    (``MAX_REF_ENTRIES``).
+    """
+
+    state = await ref_state(location)
+    if state is None:
+        return None
+    return (
+        "source-refs",
+        location.identity,
+        kind,
+        query,
+        subject.commit_oid if subject is not None else "",
+        (subject.ref or "") if subject is not None else "",
+        first_ref or "",
+        pulls.token if pulls is not None else "",
+        state,
+    )
 
 
-async def api_source_refs(request: Request) -> JSONResponse:
-    """``GET /api/source/refs?kind=branch|tag|remote&q=&limit=`` — the refs to choose among.
+def _encoded_refs(
+    listed: tuple[MirrorRef, ...],
+    subject: GitRevisionSubject | None,
+    *,
+    kind: RefKind,
+    query: str,
+    working_tree: WorkingTree | None,
+    pulls: RefPulls | None,
+) -> bytes:
+    """The listing's body, as :func:`keep_body` keeps it, filtered and encoded.
+
+    Run off the event loop: its cost grows with every ref the namespace holds, which only
+    Git's output cap bounds. Measured 2026-11-19 at a load average of about 20, filtering
+    10,001 refs took 7 ms and encoding them 13 ms.
+    """
+
+    page = source_refs(
+        listed, subject, kind=kind, query=query, working_tree=working_tree, pulls=pulls
+    )
+    return bytes(JSONResponse(dict(page)).body)
+
+
+async def api_source_refs(request: Request) -> Response:
+    """``GET /api/source/refs?kind=branch|tag|remote&q=`` — the refs to choose among.
 
     A mirror's branches or tags, read from the mirror alone. A checkout's branches, tags,
     or remote-tracking branches (``kind=remote``), read from its own Git directory, with
@@ -366,6 +518,18 @@ async def api_source_refs(request: Request) -> JSONResponse:
     subdirectory of a checkout, or a pin with no mirror answers
     ``unsupported_for_subject`` (409); a ``kind`` the subject has no list of, or an
     overlong ``q``, ``invalid_request`` (400).
+
+    The answer is kept in the Git routes' memo (:mod:`metabrowser.git.route_memo`) under
+    :func:`_refs_answer_key`, and carries that memo's entity tag, so the same listing
+    asked again while no ref moved runs no Git. Measured 2026-11-19 at a load average of
+    13: naming the state took 20 ms over 1,301 loose branches and 0.4 ms packed, against
+    the 77 and 29 ms a listing takes. The memo keeps only what it can: a body over its
+    ``MAX_ENTRY_BYTES``, past about 9,000 branches (about 5,200 where each is the head of a
+    pull request), is served and not kept, and a
+    repository with more loose refs than ``MAX_REF_ENTRIES`` has no state to key on, so
+    every listing of either runs Git. Both 10,001-branch checkouts measured beside
+    ``REFS_MAX_QUERY_CHARS`` are such, the packed one by its body and the loose one by
+    its 20,001 loose refs.
     """
 
     params = request.query_params
@@ -385,11 +549,42 @@ async def api_source_refs(request: Request) -> JSONResponse:
         return _error(_KIND_REFUSAL[of_checkout], "invalid_request", 400)
     kind = cast(RefKind, kind)
     subject = as_git_revision_subject(get_source_session().subject)
+    # What the provider has cached: never fetched here. A tag is no pull request's head.
+    # Imported here, past the refusal a plain folder gets, so a folder's page never loads
+    # the providers (tests/test_plugin_public_api.py).
+    from metabrowser.cache.providers import ref_pulls_for
+
+    pulls: RefPulls | None = None
+    if kind != "tag":
+        try:
+            pulls = await ref_pulls_for(request.app)
+        except Exception as exc:
+            # The pull requests are an addition the listing can do without: a provider
+            # that fails to read its cache shows none, and logs why, rather than fail the
+            # list of branches the reader came to choose from (mb-tjbm review A10).
+            log.warning("the pull requests of the refs could not be read: %s", exc)
     working_tree: WorkingTree | None = None
     try:
         if isinstance(source, CheckoutRevisions):
+            # HEAD as the listing will read it (`_repository`), and the key names it.
+            context, _info = await repo_info(source.root)
+            head_ref = context.head["ref"] if context is not None else None
+            key = await _refs_answer_key(
+                GitLocation.filesystem(source.root),
+                kind=kind,
+                query=query,
+                subject=subject,
+                first_ref=head_ref,
+                pulls=pulls,
+            )
+            kept = kept_answer(request, key)
+            if kept is not None:
+                return kept
             # One reading of the repository answers both: its HEAD and its refs.
             head, listed = await source.list_refs(kind)
+            if head != head_ref:
+                # HEAD was read again between the key and the listing: keep nothing.
+                key = None
             working_tree = WorkingTree(
                 current=subject is None,
                 head=head,
@@ -398,7 +593,21 @@ async def api_source_refs(request: Request) -> JSONResponse:
                 location=source.display.location,
             )
         else:
-            listed = await source.mirror.list_refs(kind)
+            # A mirror is the source only while it serves a pin (`_switchable`).
+            pin = cast("GitRevisionSubject", subject)
+            default_ref = await source.mirror.default_ref() if kind == "branch" else None
+            key = await _refs_answer_key(
+                GitLocation.revision(pin.command_target, pin.commit_oid),
+                kind=kind,
+                query=query,
+                subject=pin,
+                first_ref=default_ref,
+                pulls=pulls,
+            )
+            kept = kept_answer(request, key)
+            if kept is not None:
+                return kept
+            listed = await source.mirror.list_refs(kind, default_ref=default_ref)
     except UnsupportedSourceCapabilityError as exc:
         # Git does not take the served root for a repository's root.
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
@@ -410,15 +619,16 @@ async def api_source_refs(request: Request) -> JSONResponse:
         log.warning("listing the refs failed: %s", exc)
         where = "checkout" if isinstance(source, CheckoutRevisions) else "mirror"
         return _error(f"the {where}'s refs could not be listed", exc.code, exc.http_status)
-    page = source_refs(
+    body = await asyncio.to_thread(
+        _encoded_refs,
         listed,
         subject,
         kind=kind,
         query=query,
-        limit=_refs_limit(params.get("limit")),
         working_tree=working_tree,
+        pulls=pulls,
     )
-    return JSONResponse(dict(page))
+    return keep_body(request, key, body)
 
 
 def _served_mirror(request: Request, capability: str) -> MirrorSession:
@@ -545,6 +755,170 @@ async def api_source_refresh(request: Request) -> JSONResponse:
     return JSONResponse(
         {"refresh": started, **pulled, "status": dict(status)},
         status_code=202 if accepted else 200,
+    )
+
+
+@runtime_checkable
+class _LinkResolver(Protocol):
+    """A served mirror that reads what a link selects in it (``StoreMirror.resolve_link``)."""
+
+    async def resolve_link(
+        self, selection: RepositorySelection
+    ) -> ResolvedSelection | UnresolvedSelection: ...
+
+
+# What a link into the repository the mirror lacks is called, by why: the codes are
+# ``resolve.py``'s reasons, and none of these names a path or echoes the link.
+_UNRESOLVED_LINK: Final[dict[str, str]] = {
+    "ref_not_found": "the mirror has no branch, tag, or commit that this link names",
+    "commit_not_found": "the mirror has no commit that this link names",
+    "commit_ambiguous": "the link's commit ID names more than one commit; use more digits",
+    "not_a_commit": "the link names an object that is not a commit",
+    "invalid_ref": "the link does not name a valid ref or commit",
+}
+
+
+def _link_request(body: dict[str, Any]) -> tuple[str, bool]:
+    """The link a link request names, and whether it may fetch."""
+
+    unknown = sorted(set(body) - {"link", "fetch"})
+    if unknown:
+        raise _BadRequestError('a link request names only "link" and "fetch"')
+    link = body.get("link")
+    fetch = body.get("fetch", True)
+    if not isinstance(link, str) or not link:
+        raise _BadRequestError('"link" is a URL into the served repository')
+    if not isinstance(fetch, bool):
+        raise _BadRequestError('"fetch" is true or false')
+    return link, fetch
+
+
+def _link_selection(link: str, origin: str) -> RepositorySelection:
+    """What *link* selects, read as ``metab LINK`` reads it, if it is into *origin*."""
+
+    from metabrowser.cache.providers import url_reducers
+    from metabrowser.cache.urls import GitSource, RepositorySelection, classify_root_argument
+
+    classified = classify_root_argument(link, reducers=url_reducers())
+    if not isinstance(classified, GitSource):
+        raise _BadRequestError("the link is not a URL of a repository this server can read")
+    if classified.normalized != origin:
+        raise _BadRequestError(
+            "the link is into another repository than the one this server serves",
+            status_code=409,
+        )
+    return classified.selection or RepositorySelection()
+
+
+def _link_error(message: str, code: str, status_code: int) -> JSONResponse:
+    """A link request's refusal: nowhere to go, and why."""
+
+    return JSONResponse({"error": message, "href": None, "code": code}, status_code=status_code)
+
+
+async def api_source_link(request: Request) -> JSONResponse:
+    """``POST /api/source/link`` — open a link into the served repository in this server.
+
+    The body is ``{"link": "<URL>"}``: a provider web URL into the repository the mirror
+    serves, a pull request, a commit, a branch, a folder, or a file, read as ``metab
+    LINK`` reads it, so a ref that holds a ``/`` ends where the mirror says. It is what
+    the macOS app sends for every link into a repository: one mirror per repository,
+    started on the repository itself, opens each link where it is
+    (``arch-open-modes.md``, The File Menu).
+
+    It first starts or joins a refresh of the mirror, as ``POST /api/source/refresh``
+    does, so a link always brings the mirror up to date; ``"fetch": false`` starts
+    none. Then, by what the link selects:
+
+    - a pull request opens at ``/pull/<n>``, on the tab the link names, and switches
+      nothing: a pull request is its own address space and reads its own head;
+    - a commit opens at ``/commit/<id>`` with its full ID, and switches nothing;
+    - the repository serves its default branch, as on GitHub, at ``/view/``;
+    - a branch, tag, folder, or file serves the commit the link names, under the ref it
+      names, at its ``/view/`` address, as ``POST /api/source/pin`` would. So a window
+      never shows a link's page at another revision than the link's.
+
+    Every answer has ``href`` and ``code``, one of them null. ``href`` is where the page
+    goes, ``kind`` what the link selects, ``changed`` whether
+    the served pin moved, ``refresh`` how the refresh was answered (``null`` without
+    one), and ``status`` the envelope after the switch. A ref or commit the mirror lacks
+    answers ``202`` with ``selection_pending`` while a fetch could bring it, and the
+    client asks again with ``"fetch": false`` once ``refreshing`` in
+    ``/api/source/status`` is false; then, or with nothing to fetch, it is ``404`` with
+    the reason's code. A link into another repository is ``409 other_repository``; a
+    folder, a checkout among them, answers ``409`` as the refresh route does.
+    """
+
+    # Imported here: a folder's server, which registers these routes too, never reads a link.
+    from metabrowser.cache.resolve import UnresolvedSelection
+    from metabrowser.cli.selection_href import selection_view_href
+
+    try:
+        link, fetch = _link_request(await _json_object(request))
+        mirror = _served_mirror(request, "link")
+        selection = _link_selection(link, mirror.mirror.display.origin)
+    except _BadRequestError as exc:
+        code = "other_repository" if exc.status_code == 409 else "invalid_link"
+        return _link_error(str(exc), code, exc.status_code)
+    except UnsupportedSourceCapabilityError as exc:
+        return JSONResponse(unsupported_source_payload(exc), status_code=409)
+    resolver = mirror.mirror
+    if not isinstance(resolver, _LinkResolver):
+        return JSONResponse(
+            unsupported_source_payload(UnsupportedSourceCapabilityError("link")), status_code=409
+        )
+    refresh: str | None = mirror.request_refresh() if fetch else None
+    try:
+        resolution = await resolver.resolve_link(selection)
+    except GitError as exc:
+        # Git's text can name the store, so only the code leaves the server.
+        log.warning("resolving a link in the mirror failed: %s", exc)
+        return _link_error("the link could not be read in the mirror", "git_failed", 500)
+    if isinstance(resolution, UnresolvedSelection):
+        if fetch and resolution.needs_fetch:
+            # The mirror's own fetch, which the refresh above can leave out when only the
+            # data served beside the mirror was stale; it joins the one already running.
+            fetched = mirror.request_refresh(for_selection=True)
+            refresh = "started" if "started" in (refresh, fetched) else fetched
+            if selection.pull_request is not None and mirror.pull_requests is not None:
+                # A commit inside a pull request may come only with the pull request's own.
+                mirror.request_pull_refresh(selection.pull_request)
+            return JSONResponse(
+                {
+                    "error": "the mirror is fetching from its origin; ask again when it finishes",
+                    "href": None,
+                    "code": "selection_pending",
+                    "kind": selection.kind,
+                    "refresh": refresh,
+                    "status": dict(source_status(mirror)),
+                },
+                status_code=202,
+            )
+        reason = resolution.reason
+        return _link_error(
+            _UNRESOLVED_LINK.get(reason, _UNRESOLVED_LINK["ref_not_found"]), reason, 404
+        )
+    changed = False
+    href = selection_view_href(selection, resolution.path, commit=resolution.commit)
+    if selection.kind in {"repository", "tree", "blob"}:
+        try:
+            changed, _session = await mirror.switch_pin(
+                ref=None, oid=resolution.commit, under=resolution.ref
+            )
+        except SelectionError as exc:
+            return _link_error(str(exc), exc.code, exc.http_status)
+        except ContentReadError as exc:
+            log.warning("serving a link's revision failed: %s", exc)
+            return _link_error("the selection could not be opened", exc.code, exc.http_status)
+    return JSONResponse(
+        {
+            "href": href,
+            "code": None,
+            "kind": selection.kind,
+            "changed": changed,
+            "refresh": refresh,
+            "status": dict(source_status(mirror)),
+        }
     )
 
 
@@ -856,6 +1230,10 @@ PIN_CHANGED_HEADER: Final = "x-metabrowser-pin-changed"
 # hexadecimal, so it can never name a served pin.
 WORKING_TREE_PIN: Final = "working-tree"
 _PIN_EXEMPT_PREFIX: Final = "/api/source/"
+# The event log's routes (event_log_route.py) answer about the server, whichever revision
+# it serves. A page left on an old pin still sends its reports there, the last of them as
+# it is left, and its Details read the log, so neither is refused (A4, review A of #629).
+_PIN_EXEMPT_EVENT_LOG: Final = "/api/event-log"
 # A checkout's Commits tab and a commit's view: answered whichever revision a page names,
 # since they read the checkout's history and its Git directory whichever revision Files
 # shows (`history_git_location` in git/routes.py). The chooser that switches the served
@@ -890,7 +1268,7 @@ class SourcePinGuard:
     working tree names :data:`WORKING_TREE_PIN`, since its server can serve a revision
     of the checkout instead, and is refused while one is served. The ``/api/source/``
     routes are exempt: a page learns what is served from the status route and switches
-    through the pin route. So are a checkout's ``/api/git/`` routes, which answer the same
+    through the pin route. So are the event log's, which are about the server. So are a checkout's ``/api/git/`` routes, which answer the same
     whichever of its revisions is served. A mirror's stay guarded: its freshness row, at
     the foot of the pane, offers the reload on every tab. The refusal is
     ``409 pin_changed`` with the served commit, or
@@ -943,7 +1321,12 @@ def _route_path(scope: dict[str, Any]) -> str:
 
 def _guarded(scope: dict[str, Any]) -> bool:
     path = _route_path(scope)
-    return path.startswith("/api/") and not path.startswith(_PIN_EXEMPT_PREFIX)
+    return (
+        path.startswith("/api/")
+        and not path.startswith(_PIN_EXEMPT_PREFIX)
+        and path != _PIN_EXEMPT_EVENT_LOG
+        and not path.startswith(f"{_PIN_EXEMPT_EVENT_LOG}/")
+    )
 
 
 def _checkout_history(scope: dict[str, Any]) -> bool:
@@ -995,6 +1378,7 @@ SOURCE_ROUTES = [
     Route("/api/source/refs", api_source_refs),
     Route("/api/source/refresh", api_source_refresh, methods=["POST"]),
     Route("/api/source/pin", api_source_pin, methods=["POST"]),
+    Route("/api/source/link", api_source_link, methods=["POST"]),
 ]
 
 
@@ -1002,8 +1386,6 @@ __all__ = [
     "MAX_SOURCE_REQUEST_BYTES",
     "PIN_CHANGED_HEADER",
     "PIN_HEADER",
-    "REFS_DEFAULT_LIMIT",
-    "REFS_MAX_LIMIT",
     "REFS_MAX_QUERY_CHARS",
     "SOURCE_ROUTES",
     "WORKING_TREE_PIN",

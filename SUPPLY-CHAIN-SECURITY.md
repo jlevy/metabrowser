@@ -52,6 +52,7 @@ introduces.
 | Package | Reviewed against | Notes |
 | --- | --- | --- |
 | `kpress==0.3.8` | `0.3.6` | Browser assets plus two names in the public CSS contract (0.3.7 and 0.3.8 together): TOC scrollspy without `IntersectionObserver`, over host-rewritten same-document links, and past headings with no layout box; a reload scroll restore confirmed one frame later; the public `--kpress-code-border` and `--kpress-code-radius` tokens; TOC inset and blockquote defaults; `kbd`, `samp`, and link-preview code in the shipped mono face; runtime dependencies unchanged; lock delta is `kpress` alone, wheel SHA-256 `99c32266…f5b0efa9` and sdist `1db5df40…465833bd` match `uv.lock` |
+| `kpress` commit `5a8e9ae` (jlevy/kpress#80, branch `claude/diagrams-mermaid-mode`) | `0.3.8` | Built from that commit of jlevy/kpress#80 until it merges and KPress releases it, by owner decision; `uv.lock` records the same commit, and publish.yml refuses a release while `[tool.uv.sources]` names it. The branch adds the Mermaid diagram renderer and its opt-in controls (`js/diagrams.js`, `js/diagram-controls.js`), their styles and sprite symbols, and the `diagrams` render-request field; runtime dependencies unchanged; lock delta is `kpress` alone |
 | `flowmark-rs==0.3.2` | `0.3.1` | Formatting output unchanged |
 | `softschema==0.8.1` | `0.8.0` | Runtime contract validation; adds SoftSchema and upgrades `frontmatter-format` from 0.3.0 to 0.4.0 |
 | `tryscript==0.3.0` | `0.1.7` | Removes the vulnerable fast-glob/micromatch/braces chain; adds tinyglobby discovery and the tsx loader |
@@ -227,11 +228,16 @@ repository does not pin.
 The `admitted-git` CI job therefore builds Git from source, so acquisition and the
 full-clone acceptance tests run on releases production admits: the lowest admitted
 release and the newest patched one.
+It builds a third, the oldest it tests that reads file ages on a Git revision
+(`git last-modified`, `FILE_AGES_GIT_MINIMUM` in `src/metabrowser/git/file_ages.py`), so
+the present path of that feature runs in CI whichever Git the runner image ships and the
+other two builds exercise the absent one.
 
 | Release | Role | SHA-256 of `git-<release>.tar.xz` |
 | --- | --- | --- |
 | 2.43.7 | Lowest admitted release | `657e2374455d9e62f6cdb3e7c55d867b6db5404d744e97e112cc5b0db687a19f` |
 | 2.50.1 | Newest patched release | `7e3e6c36decbd8f1eedd14d42db6674be03671c2204864befa2a41756c5c8fc4` |
+| 2.56.1 | Reads file ages (`git last-modified`) | `f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f` |
 
 - **Source.** The archives come from
   `https://mirrors.edge.kernel.org/pub/software/scm/git/`. The checksums were copied
@@ -240,8 +246,13 @@ release and the newest patched one.
   `B8868C80BA62A1FFFAF5FDA9632D3A06589DA6B1`; the signature was not verified when the
   checksums were copied.
   The 2.50.1 values also match those recorded independently in the tracking issue.
-- **Cool-off.** Both archives were published on July 8, 2025, in the security batch the
-  version floor is based on, so they are well past the 14-day cool-off.
+  The 2.56.1 value was first copied from Homebrew’s `git` formula, whose `url` is that
+  directory’s `git-2.56.1.tar.xz`, and it matches the `git-2.56.1.tar.xz` line of that
+  directory’s `sha256sums.asc`, checked on November 20, 2026; the signature on that file
+  was not verified. The build fails closed on a wrong value.
+- **Cool-off.** The 2.43.7 and 2.50.1 archives were published on July 8, 2025, in the
+  security batch the version floor is based on, so they are well past the 14-day
+  cool-off. The 2.56.1 tag is dated October 26, 2026, 25 days before the pin.
 - **Build.** `devtools/build_admitted_git.sh` holds the pins and builds only a pinned
   release. It downloads over HTTPS only and checks the SHA-256 before unpacking.
   It builds without Tcl/Tk, gettext, Perl, Python, Expat, or OpenSSL. Its only other
@@ -389,6 +400,28 @@ satisfies the 14-day cool-off without an exception.
 Its source is [pygments/pygments](https://github.com/pygments/pygments), its license is
 BSD-2-Clause, and its Python requirement, `>=3.9`, covers this project’s supported
 range. Its registry artifact hashes in `uv.lock` are unchanged.
+
+### Mermaid (November 18, 2026)
+
+`mermaid` 12.3.0 is a new development dependency, vendored by
+`devtools/vendor_assets.py` into `src/metabrowser/static/vendor/mermaid/` so Markdown
+documents draw their Mermaid diagrams as GitHub does.
+12.3.0 is the release GitHub’s own renderer embeds, and nothing in this repository draws
+diagrams without it.
+Its source is [mermaid-js/mermaid](https://github.com/mermaid-js/mermaid), published by
+that project’s maintainers, and its license is MIT. It was published on November 3,
+2026, so it satisfies the 14-day cool-off without an exception, and `min-release-age` in
+`.npmrc` held every transitive release to the same age at install.
+
+The lock delta is 116 added packages and the root entry’s new pin: no existing package
+changes version or record, and none of the added ones has an install script.
+Their licenses are MIT (67), ISC (33), Apache-2.0 (6), BSD-3-Clause (6), Unlicense (1),
+DOMPurify’s MPL-2.0 or Apache-2.0, elkjs’s EPL-2.0 or GPL-3.0-or-later, and khroma’s MIT
+license file with no declared field; [NOTICE.md](NOTICE.md) records how they apply.
+The vendored tree is only the ESM entry and its chunks; source maps are left out, and
+`TOTAL_CAP_BYTES` in `devtools/vendor_assets.py` records the measured size.
+The browser imports the entry only for a document with a diagram, and Mermaid runs with
+`securityLevel: "strict"`, which sanitizes labels and disables `click` callbacks.
 
 ### Node Type Declarations (November 11, 2026)
 

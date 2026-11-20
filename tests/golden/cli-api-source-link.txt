@@ -1,0 +1,356 @@
+# metab https://github.com/octo/demo --api /api/source/link --data link-pull.json
+exit: 0
+--- stdout ---
+api: /api/source/link
+status: 200
+{
+  "href": "/pull/7",
+  "code": null,
+  "kind": "pull_request",
+  "changed": false,
+  "refresh": null,
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "demo",
+    "origin": "https://github.com/octo/demo",
+    "location": "<HOME>/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+# metab https://github.com/octo/demo --api /api/source/link --data link-pull-files.json
+exit: 0
+--- stdout ---
+api: /api/source/link
+status: 200
+{
+  "href": "/pull/7/files",
+  "code": null,
+  "kind": "pull_request",
+  "changed": false,
+  "refresh": null,
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "demo",
+    "origin": "https://github.com/octo/demo",
+    "location": "<HOME>/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+# metab https://github.com/octo/demo --api /api/source/link --data link-commit.json
+exit: 0
+--- stdout ---
+api: /api/source/link
+status: 200
+{
+  "href": "/commit/523f476bbcbde731f18dec9d6875df8fe8db13f3",
+  "code": null,
+  "kind": "commit",
+  "changed": false,
+  "refresh": null,
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "demo",
+    "origin": "https://github.com/octo/demo",
+    "location": "<HOME>/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+# metab https://github.com/octo/demo --api /api/source/link --data link-tree.json
+exit: 0
+--- stdout ---
+api: /api/source/link
+status: 200
+{
+  "href": "/view/g1-ZG9jcw/",
+  "code": null,
+  "kind": "tree",
+  "changed": true,
+  "refresh": null,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "89e0fadf1d6368c47b9363ff7df0cd26b48d67df",
+    "ref": "refs/remotes/origin/release/v1",
+    "ref_name": "release/v1",
+    "name": "demo",
+    "origin": "https://github.com/octo/demo",
+    "location": "<HOME>/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "89e0fadf1d6368c47b9363ff7df0cd26b48d67df",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+# metab https://github.com/octo/demo --api /api/source/link --data link-blob.json
+exit: 0
+--- stdout ---
+api: /api/source/link
+status: 200
+{
+  "href": "/view/g1-UkVBRE1FLm1k#L3-L4",
+  "code": null,
+  "kind": "blob",
+  "changed": false,
+  "refresh": null,
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "demo",
+    "origin": "https://github.com/octo/demo",
+    "location": "<HOME>/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+# metab https://github.com/octo/demo --api /api/source/link --data link-repository.json
+exit: 0
+--- stdout ---
+api: /api/source/link
+status: 200
+{
+  "href": "/view/",
+  "code": null,
+  "kind": "repository",
+  "changed": false,
+  "refresh": null,
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "demo",
+    "origin": "https://github.com/octo/demo",
+    "location": "<HOME>/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+# metab https://github.com/octo/demo --api /api/source/link --data link-missing.json
+exit: 1
+--- stdout ---
+api: /api/source/link
+status: 404
+{
+  "error": "the mirror has no branch, tag, or commit that this link names",
+  "href": null,
+  "code": "ref_not_found"
+}
+--- stderr ---
+Error: /api/source/link returned HTTP 404
+# metab https://github.com/octo/demo --api /api/source/link --data link-later.json
+exit: 0
+--- stdout ---
+api: /api/source/link
+status: 202
+{
+  "error": "the mirror is fetching from its origin; ask again when it finishes",
+  "href": null,
+  "code": "selection_pending",
+  "kind": "tree",
+  "refresh": "started",
+  "status": {
+    "subject": "git_revision",
+    "generation": 1,
+    "pin": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "demo",
+    "origin": "https://github.com/octo/demo",
+    "location": "<HOME>/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "523f476bbcbde731f18dec9d6875df8fe8db13f3",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:00Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "refreshing": true,
+    "stale": true,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+# metab https://github.com/octo/demo --api /api/source/link --data link-later-again.json
+exit: 0
+--- stdout ---
+api: /api/source/link
+status: 200
+{
+  "href": "/view/g1-ZG9jcw/",
+  "code": null,
+  "kind": "tree",
+  "changed": true,
+  "refresh": null,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "89e0fadf1d6368c47b9363ff7df0cd26b48d67df",
+    "ref": "refs/remotes/origin/later",
+    "ref_name": "later",
+    "name": "demo",
+    "origin": "https://github.com/octo/demo",
+    "location": "<HOME>/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "follows": true,
+    "latest": "89e0fadf1d6368c47b9363ff7df0cd26b48d67df",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:01:20Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:01:20Z"
+    },
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+# metab https://github.com/octo/demo --api /api/source/link --data link-elsewhere.json
+exit: 1
+--- stdout ---
+api: /api/source/link
+status: 409
+{
+  "error": "the link is into another repository than the one this server serves",
+  "href": null,
+  "code": "other_repository"
+}
+--- stderr ---
+Error: /api/source/link returned HTTP 409
+# metab https://github.com/octo/demo --api /api/source/link --data link-not-a-link.json
+exit: 1
+--- stdout ---
+api: /api/source/link
+status: 400
+{
+  "error": "the link is not a URL of a repository this server can read",
+  "href": null,
+  "code": "invalid_link"
+}
+--- stderr ---
+Error: /api/source/link returned HTTP 400

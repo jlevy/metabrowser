@@ -166,7 +166,7 @@ const SUMMARY_INDENT = `async (place) => {
   return {
     step: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-indent")),
     chevron: left(toggle.querySelector(".diff-summary-chevron")),
-    words: left(toggle.querySelector(".diff-summary-files")),
+    words: left(toggle.querySelector(".change-line")),
     rows: [...place.querySelectorAll('.diff-summary-body [role="treeitem"]')].map((row) => ({
       id: row.dataset.id,
       level: Number(row.getAttribute("aria-level")),
@@ -279,6 +279,7 @@ const MEASURE = `async (name, change, tab, width) => {
         };
       })(),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      formatInteger: (value) => Number(value).toLocaleString("en-US"),
       navigation: { href: () => "/view/" },
       sourceKind: () => "filesystem",
       repository: change.checkoutAtHead ? { revision: body.record?.pull?.head?.sha } : undefined,
@@ -335,8 +336,10 @@ const MEASURE = `async (name, change, tab, width) => {
   });
   // The pull request's Diff summary arrives with its comparison, in the header's last row,
   // held from first paint (mb-pb35). It is drawn by the diff plugin's own mountDiffSummary,
-  // on a change set whose breakdown names three statuses, "35 files changed · 2 A, 3 D, 30 M
-  // · +1,234 −3,423": it moves nothing, keeps its row's height, and starts on the header's
+  // on a change set whose breakdown names five statuses, "2 A, 3 D, 30 M, 12 R, 12 C ·
+  // +1,234 −3,423", its file count on the size line above ("Change Size Line"), so its
+  // breakdown is cut short at the narrowest width: it moves nothing, keeps its row's height,
+  // and starts on the header's
   // content edge. While its breakdown is cut short, its header's tooltip is its whole words,
   // and while it is whole there is none (A7 of review A on #470). It is measured on every
   // tab, by a flag of its own (A11 of review A on #470).
@@ -350,17 +353,21 @@ const MEASURE = `async (name, change, tab, width) => {
       ...Array(2).fill("added"),
       ...Array(3).fill("deleted"),
       ...Array(30).fill("modified"),
+      ...Array(12).fill("renamed"),
+      ...Array(12).fill("copied"),
     ];
     const files = kinds.map((kind, at) => ({
       kind,
-      ...(kind === "added" ? {} : { old: { path: "src/f" + at + ".py" } }),
+      ...(kind === "added"
+        ? {}
+        : { old: { path: (kind === "renamed" || kind === "copied" ? "old/f" : "src/f") + at + ".py" } }),
       ...(kind === "deleted" ? {} : { new: { path: "src/f" + at + ".py" } }),
       additions: 30,
       deletions: 90,
     }));
     const summary = diff.mountDiffSummary(
       slot,
-      { manifest: { totals: { files: 35, additions: 1234, deletions: 3423, exact: true }, files } },
+      { manifest: { totals: { files: 59, additions: 1234, deletions: 3423, exact: true }, files } },
       mb,
       { changedFiles: window.MetabrowserChangedFilesTree, openFile() {} },
     );
@@ -905,6 +912,7 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
       formatInteger: mb.formatInteger,
       formatAge: () => ({ label: "now", className: "age" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      formatInteger: (value) => Number(value).toLocaleString("en-US"),
       navigation: { href: () => "/view/" },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
@@ -967,7 +975,7 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
     places: places(),
     brief: (() => {
       const line = row.querySelector(".github-pull-summary-brief");
-      const words = line?.querySelector(".diff-summary-files");
+      const words = line?.querySelector(".change-line");
       if (!line || !words) return null;
       const range = document.createRange();
       range.selectNodeContents(line);
@@ -994,7 +1002,7 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
   await frames();
   const summary = row.querySelector(".diff-summary");
   const chevron = row.querySelector(".diff-summary-chevron svg, .diff-summary-chevron");
-  const words = row.querySelector(".diff-summary-files");
+  const words = row.querySelector(".change-line");
   const arrived = {
     placeholder: row.querySelector(".tally-pending") !== null,
     summary: summary !== null,
@@ -1026,8 +1034,8 @@ const ONE_STATUS = [
   { kinds: [["modified", 1]], lines: [3, 1] },
   { kinds: [["modified", 8]], lines: [120, 30] },
 ];
-// The placeholder's width in em of its type, as its rule sets it, `min(100%, 14.5em)`.
-const PENDING_EM = 14.5;
+// The placeholder's width in em of its type, as its rule sets it, `min(100%, 7em)`.
+const PENDING_EM = 7;
 
 // In the page: a pull request page mounted with no record in hand, as a direct load or a
 // reload mounts it, whose pull read the session answers (docs/design-system.md, "Layout").
@@ -1081,6 +1089,7 @@ const COLD_LANDING = `async (width, labelled, outcome, seeded) => {
     countPartsNodes: mb.countPartsNodes,
     formatAge: () => ({ label: "now", className: "age" }),
     formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+    formatInteger: (value) => Number(value).toLocaleString("en-US"),
     navigation: { href: () => "/view/" },
     sourceKind: () => "filesystem",
     icons: { toggle: "" },
@@ -1285,6 +1294,7 @@ const CORNER = `async (width, theme, longTitle, maxChars) => {
       countPartsNodes: mb.countPartsNodes,
       formatAge: () => ({ label: "now", className: "age" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      formatInteger: (value) => Number(value).toLocaleString("en-US"),
       navigation: { href: () => "/view/" },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
@@ -1942,7 +1952,7 @@ async function main() {
               check(
                 `${where}: the Diff summary's tooltip is its whole words only while cut short`,
                 moves.cut
-                  ? moves.tip === "35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423"
+                  ? moves.tip === "2 A, 3 D, 30 M, 12 R, 12 C · +1,234 −3,423"
                   : moves.tip === null,
                 JSON.stringify({ cut: moves.cut, tip: moves.tip }),
               );
@@ -2018,7 +2028,7 @@ async function main() {
               check(
                 `${where}: a rate limit's hold is said in the note's place, in the failure's ink, in view at every width`,
                 lead !== null &&
-                  /^GitHub rate limit · next check at /.test(lead.said) &&
+                  /^GitHub rate limit reached\. Next attempt after /.test(lead.said) &&
                   !/:\d\d:\d\d/.test(lead.said) &&
                   lead.held &&
                   lead.inView &&
@@ -2341,8 +2351,8 @@ async function main() {
         process.stderr.write(
           `summary-wait: ${JSON.stringify(summaryWaits.map(({ where, waiting, arrived }) => ({ where, block: [waiting.left, waiting.width, waiting.height, waiting.centre], row: [waiting.row, arrived.row], tabBar: [waiting.places.tabBar, arrived.places.tabBar], summary: [arrived.chevronLeft, arrived.wordsLeft, arrived.textRight] })))}\n`,
         );
-        // The placeholder is as wide as a summary of one status, "1 file changed · 1 M · +3
-        // −1" to "8 files changed · 8 M · +120 −30", as each arrives in the row: it ends no
+        // The placeholder is as wide as a summary of one status, "1 M · +3 −1" to "8 M · +120
+        // −30", its file count on the size line above, as each arrives in the row: it ends no
         // sooner than the shortest one's text and no later than the longest one's header,
         // from the row's start, in em of the header's type, in both themes (mb-vb51).
         const sizes = [];

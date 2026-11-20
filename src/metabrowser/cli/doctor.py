@@ -1,5 +1,5 @@
-"""The checks of ``metab --doctor``: the plugins, ``open_in``, this ``metab``, Git, and the
-two directories.
+"""The checks of ``metab --doctor``: the plugins, ``open_in``, this ``metab``, Git, the
+two directories, and the event log.
 
 ``doctor_plugins`` (:mod:`metabrowser.cli.plugins`) validates the plugins, reports where
 ``--present`` opens a target (``open_in``) and GitHub CLI's sign-in (``github``), and
@@ -16,8 +16,9 @@ changes nothing.
                oldest ``metab`` the app runs: the app running the check
                (:data:`DOCTOR_APP_ENV`), or else the one ``open_in`` found
 ``git``        The ``git`` on ``PATH`` against the cloning floor                   warning
-               (``ACQUISITION_MINIMUM``) and a partial clone's
-               (``PARTIAL_CLONE_GIT_MINIMUM``)
+               (``ACQUISITION_MINIMUM``), a partial clone's
+               (``PARTIAL_CLONE_GIT_MINIMUM``), and the release that reads
+               file ages on a Git revision (``FILE_AGES_GIT_MINIMUM``)
 ``config``     The configuration directory resolves, is private or can be          problem
                created, and its ``config.yml`` is one this release reads; an
                override the app's servers do not get is a warning
@@ -25,6 +26,9 @@ changes nothing.
                created, and is apart from the configuration; an override the
                app's servers do not get, or free space below
                :func:`low_free_space_bytes`, is a warning
+``event_log``  Whether a server writes its event log, where, and what it leaves    warning
+               out; an environment that turns it off, or a state directory that
+               cannot hold it, is a warning
 =============  ==================================================================  =========
 
 A ``problem`` is one ``metab`` cannot serve a folder with: it makes the doctor exit 1, and
@@ -120,7 +124,8 @@ LOW_FREE_SPACE_BYTES: Final[int] = int(MAX_FIRST_CLONE_KB * 1024 * _PACK_PER_REP
 # is the release build when both are installed (DEFAULT_BUNDLE_IDS). The open_in check
 # keeps a terminal's lookup, since it says where `--present` in a terminal opens a target.
 DOCTOR_APP_ENV: Final = "METABROWSER_DOCTOR_APP"
-# What the app's servers get of the storage variables: none (ChildEnvironment's allowlist,
+# What the app's servers get of the configuration and cache variables: none (the state
+# directory's, which hold only the event log, are passed; ChildEnvironment's allowlist,
 # apps/macos/Sources/ShellCore/Runtime/ChildEnvironment.swift, which
 # tests/test_macos_app_pins.py holds to this set).
 STORAGE_OVERRIDES: Final = frozenset(
@@ -336,12 +341,18 @@ def metab_check(*, app_path: str | None, app_minimum: str | None, looked_up: boo
 
 
 def git_check() -> Check:
-    """The ``git`` on ``PATH``, against the floor for cloning and a partial clone's."""
+    """The ``git`` on ``PATH``: where it is, its version, and each thing that version does.
+
+    The floors are the cloning floor, a partial clone's, and the release that reads file
+    ages on a Git revision. A detail line says whether file ages are available, since that
+    is the one a person upgrades Git for without anything else failing.
+    """
 
     from metabrowser.checkout_revisions import (
         PARTIAL_CLONE_GIT_MINIMUM,
         partial_clone_version_label,
     )
+    from metabrowser.git.file_ages import file_ages_availability, file_ages_version_label
     from metabrowser.git.process import (
         acquisition_allowed,
         detect_git_version,
@@ -356,13 +367,23 @@ def git_check() -> Check:
             "git",
             "Git",
             "warning",
-            "no git on PATH, so metab clones no Git source and shows no branch or tag of a "
-            "checkout",
+            "no git on PATH, so metab clones no Git source, shows no branch or tag of a "
+            "checkout, and dates no file of a Git revision",
             (("executable", "not found on PATH"),),
             git_upgrade_remedy(None),
         )
     version, line = detect_git_version()
-    details = (("executable", _shown(executable)), ("version", line or "unknown"))
+    ages = file_ages_availability()
+    ages_detail = (
+        "available"
+        if ages.available
+        else f"needs Git {file_ages_version_label()} or newer, so a Git revision shows no By age"
+    )
+    details = (
+        ("executable", _shown(executable)),
+        ("version", line or "unknown"),
+        ("file ages", ages_detail),
+    )
     if version is None:
         summary = f"git at {_shown(executable)} did not name a version metab can read"
     elif not acquisition_allowed(version):
@@ -375,6 +396,8 @@ def git_check() -> Check:
             f"{line} shows no branch or tag of a partial clone, which needs "
             f"{partial_clone_version_label()}"
         )
+    elif not ages.available:
+        summary = ages.hint or "file ages on Git revisions are unavailable"
     else:
         return Check("git", "Git", "ok", f"{line}, which meets every floor", details)
     return Check("git", "Git", "warning", summary, details, git_upgrade_remedy(executable))
@@ -393,7 +416,7 @@ def _servers_directory(
 ) -> str | None:
     """The directory the app's servers use instead of *directory*, when they differ.
 
-    The app gives its servers none of the storage variables, so an override set where
+    The app gives its servers none of these storage variables, so an override set where
     this ``metab`` runs, with an app to compare, names a directory they never read.
     """
 
@@ -613,6 +636,68 @@ def cache_check(*, app_path: str | None = None) -> Check:
     )
 
 
+def event_log_check() -> Check:
+    """The event log: whether a server writes one, where, and what it leaves out.
+
+    An environment that turns it off is a warning, since no latency or failure is then
+    recorded (the owner's aim is that they always are). So is a state directory that
+    cannot hold it. The check reads the environment of the process that runs it, and a
+    server in a folder inside the events directory writes none whatever the environment
+    says, which a detail states and the page's Details names when it happens
+    (:func:`metabrowser.event_log.off_reason`).
+    """
+
+    from metabrowser import event_log
+    from metabrowser.home import StorageDirectoryError
+
+    heading = "Event log"
+    source = _directory_source("METABROWSER_STATE_DIR", "XDG_STATE_HOME")
+    try:
+        _, directory = event_log.log_directory()
+    except StorageDirectoryError as exc:
+        summary = f"the state directory, which holds the event log, does not resolve: {exc}"
+        return Check("event_log", heading, "warning", summary, (("source", source),))
+    details: list[tuple[str, str]] = [("directory", _shown(directory)), ("source", source)]
+    if not event_log.enabled_by_environment():
+        return Check(
+            "event_log",
+            heading,
+            "warning",
+            f"{event_log.ENABLE_ENV} turns the event log off, so no latency or failure is recorded",
+            tuple(details),
+            Remedy(f"Unset {event_log.ENABLE_ENV}, or set it to 1."),
+        )
+    details.append(
+        (
+            "not recorded",
+            "a server whose folder is the events directory or inside it writes no log, "
+            "so that browsing the log does not change it; every other server writes one",
+        )
+    )
+    if directory.is_dir():
+        segments = sum(1 for _ in directory.glob("events-*.jsonl"))
+        details.append(("segments", str(segments)))
+        return Check(
+            "event_log", heading, "ok", "a server writes an event log here", tuple(details)
+        )
+    blocked = _not_creatable(directory)
+    if blocked is not None:
+        summary = f"the event log's directory does not exist, and metab cannot create it: {blocked}"
+        return Check(
+            "event_log",
+            heading,
+            "warning",
+            summary,
+            tuple(details),
+            Remedy(
+                "Create the state directory with mode 700 yourself, or set "
+                "METABROWSER_STATE_DIR to a private directory you own."
+            ),
+        )
+    summary = "no event log is written yet; the first server creates its directory"
+    return Check("event_log", heading, "ok", summary, tuple(details))
+
+
 def low_free_space_bytes() -> int:
     """The free space the largest first clone this ``metab`` admits can take: the floor
     :data:`LOW_FREE_SPACE_BYTES` sets for the default limit, or the same for the limit
@@ -675,6 +760,7 @@ def doctor_checks(
         git_check(),
         config,
         cache_check(app_path=app_path),
+        event_log_check(),
     )
 
 
@@ -692,6 +778,7 @@ __all__ = [
     "MetabInstallMethod",
     "declares_this_project",
     "doctor_checks",
+    "event_log_check",
     "low_free_space_bytes",
     "meets_release",
     "metab_check",

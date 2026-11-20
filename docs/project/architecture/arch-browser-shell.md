@@ -28,7 +28,7 @@ it, may read them, and an installed plugin uses the SDK.
 | Main tabs | `main-tabs.js`, `git-panel.js` with `git-graph.js` and `git-history-window.js`, `pulls-nav.js`, `pull-route.js` |
 | Keyboard and dialogs | `keyboard-shortcuts.js`, `shell-keymap.js`, `plugin-shortcuts.js`, `key-reveal.js`, `keyboard-help.js`, `overlay-layer.js` |
 | Quick Search | `search-controller.js`, `search-palette.js`, `file-fuzzy-match.js` |
-| Pinned revisions, mirrors, and a checkout’s revisions | `git-path.js`, `source-pin-guard.js`, `source-freshness.js`, `source-ref-selector.js`, `mirror-heading.js` |
+| Pinned revisions, mirrors, and a checkout’s revisions | `git-path.js`, `revision-ages.js`, `source-pin-guard.js`, `source-freshness.js`, `source-ref-selector.js`, `mirror-heading.js` |
 | Shared rendering | `formatters.js`, `icons.js`, `charts.js`, `file-type-taxonomy.js`, `inert-html.js`, `source-append.js`, `theme-state.js`, `document-width.js`, `request-error.js`, `contribution-registry.js` |
 
 `types.d.ts` declares the globals and the SDK. `tsconfig.json` type-checks every module
@@ -209,7 +209,8 @@ show it.
 - **Eager:** a blocking `<script>` in the shell, for code without which the first render
   is wrong. The shell template in `server.py` lists them, and the list stays small.
   `PIN_STARTUP_SCRIPTS` and `PULL_PAGE_STARTUP_SCRIPTS` add one script each to a pinned
-  revision’s shell and a pull-request address’s shell.
+  revision’s shell and a pull-request address’s shell, which the startup check reports
+  beside the budget without gating.
 - **Prefetched:** fetched after first paint, when the page is idle and before anything
   asks, for code that is small relative to how likely it is to be wanted and visibly
   late otherwise. Mustache, then Highlight.js, start through `whenIdle` with
@@ -240,6 +241,14 @@ A library that installs a global loads through `asset-loader.js`. The server pub
 the bundles as `METABROWSER_ASSET_BUNDLES`, and `ensureAsset(name)` appends a bundle’s
 scripts in order, since a Chart.js plugin is inert without `Chart`. A loaded set and an
 in-flight map make concurrent callers share one load.
+A bundle can instead be one ES module, `{module: url}`, for a library whose build
+imports its own parts by relative specifiers: `ensureModule(name)` imports it once and
+resolves to its namespace, and the browser fetches only the parts a caller reaches.
+Mermaid is one, and its chunks are fetched unstamped beside the stamped entry, and
+answered immutable all the same, because each one’s name is a hash of its content
+(`_SELF_NAMED_STATIC` in `server.py`). KPress’s diagram renderer and controls are two
+more, `kpress-diagrams` and `kpress-diagram-controls`, published at the stamped URLs a
+render’s manifest names, so they share the document’s one KPress runtime.
 KPress loads through `loadKpressAssets` in `static/plugin-sdk.js` instead: its
 stylesheets first, then the import map the KPress asset manifest carries, when it has
 one, then the manifest’s module and classic entry points as scripts, with its
@@ -297,13 +306,16 @@ them; the note beside the budget says why.
 | --- | --- | --- | --- |
 | Core shell modules | Eager | The shell template’s script tags in `server.py` | The note beside the startup gates in `performance-budgets.toml` |
 | Search, Help, keyboard, Git, and Pulls tools | On demand, once the first tree is usable; Pulls only in a shell that drew the tab | `shell-tools` in `on_demand_script_bundles` | The same note |
+| The event log’s reporter and its Details | On demand, with the shell’s tools once the first tree is usable, or at a page’s first wait or Details before then; requests answered before it loaded are read from Resource Timing | `event-reports`, and the last script of `shell-tools`, in `on_demand_script_bundles` | The comment beside the bundle in `server.py` |
 | The plugin shortcut queue | Eager, since a plugin can attach a key before the registry exists | `queueShortcut` in `plugin-sdk.js` | The comment beside it |
 | Line gutter, SDK view helpers, and the syntax service | On demand, beside the view compositor and before any plugin code | `sdk-views` | [exp-037](../../../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | A file’s and a folder’s view header | On demand, beside the view compositor and the SDK view helpers | `view-header` | The comment beside the bundle in `server.py` |
 | Pull-request routes and page host | Eager at a `/pull/` address; on demand otherwise | `PULL_PAGE_STARTUP_SCRIPTS`, `pull-route` | exp-037 |
+| The watch on a revision’s file ages, and the clause it adds to a filtered count | On demand, the first time a response says the ages are not all in (`dating`, `partial`, `failed`); not offered to a page whose Git cannot read them | `revision-ages` in `on_demand_script_bundles`, when the pin’s Git can date files | The comment beside the bundle in `server.py`: it was a startup script of every pin’s shell, 4,940 bytes (1,896 gzipped) |
 | GitPath wire codec | Eager on a pin’s shell, the only page whose addresses spell it | `PIN_STARTUP_SCRIPTS` | exp-037 |
 | The pin guard | Inline on a pin’s shell, before any script can fetch. On demand on the working-tree page of a checkout, with the ref selector that can make its server serve a revision, so a folder’s first paint carries none of it | `_SOURCE_PIN_GUARD_SCRIPT`; `source-ref-selector` in `on_demand_script_bundles` | The comment beside the bundle |
 | Chart.js and its plugins | On demand, at the first chart | `chart` | The comment beside it |
+| Mermaid, and KPress’s modules that draw its diagrams | On demand, at the first rendered document or `.mmd` file with a diagram; Mermaid then fetches only the chunks of the diagram types drawn | `mermaid`, `kpress-diagrams`, and `kpress-diagram-controls` (module bundles), and `drawDiagrams` in `builtin_plugins/markdown/place-rendered.js` | The comment beside the bundle in `server.py`, and `TOTAL_CAP_BYTES` in `devtools/vendor_assets.py` |
 | The changed-files tree every diff and the Pulls tab draw with | On demand: a diff asks beside its comparison, a pull request’s page warms it with the diff plugin on every tab, for its header’s Diff summary and for Changes, and the Pulls tab asks as it mounts | `changed-files-tree`, reached through `metabrowser.loadChangedFilesTree()` | The comment beside the bundle in `server.py` |
 | The Diff summary’s tree | On demand, at the summary’s first opening, asked for on the header’s hover or focus | `renderDiffSummary` in `builtin_plugins/diff/diff-view.js` | The comment at the head of `builtin_plugins/diff/diff-summary.js` |
 | Inert Markdown render with its table of contents, and the step that places a render | On demand: the first at the first inert render, the second at the first Markdown render | `builtin_plugins/markdown/place-rendered.js` | exp-037 and the comment at its head |

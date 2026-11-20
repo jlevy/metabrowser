@@ -87,13 +87,16 @@ separate, explicit operation.
 `ignore`, `watcher`, `activity`, and `mutation`. A folder has all of them
 (`FILESYSTEM_CAPABILITIES`, where `mutation` is a source fact, not the content-trust
 setting that keeps writes off).
-A pin has navigation and an index, and nothing else (`GIT_REVISION_CAPABILITIES`).
+A pin has navigation and an index, and nothing else (`GIT_REVISION_CAPABILITIES`). Where
+the Git can date its files, it also has `recency`
+(`GIT_REVISION_CAPABILITIES_WITH_AGES`, [file ages](arch-git.md#file-ages)).
 
 A route that needs an absent capability answers 409 `unsupported_for_subject` with the
 capability’s name, or its view is absent; it never answers a fake zero, an empty event
 stream, or a placeholder timestamp.
-So on a pin `/api/recent`, `/api/activity`, `/api/stream`, recency filters, and editing
-are unavailable, while size and kind rollups answer from the blob index.
+So on a pin `/api/activity`, `/api/stream`, and editing are unavailable, and so are
+`/api/recent` and the recency filters where the Git cannot date its files, while size
+and kind rollups answer from the blob index.
 
 ## The Plugin Content Boundary
 
@@ -160,8 +163,9 @@ The rules they follow:
   nodes, with `cat-file` blob sizes and recursive `total_files` and `total_size`.
   `depth` nests children as on a folder.
   Gitlinks are unsized files.
-  There is no mtime and no ignore state, so `include_ignored=0` is a no-op and the
-  browser hides Modified within.
+  There is no ignore state, so `include_ignored=0` is a no-op.
+  A node has an `mtime` only from [file ages](arch-git.md#file-ages), the last commit
+  that changed it, when the Git can read them and the background read has finished.
 - **The whole-tree index** is complete at once: `/api/catalog`, `/api/rollup`, the type
   rows and `summary` on `/api/tree`, and `/api/index/progress`, `/api/index/meta`, and
   `/api/capabilities` answer from the recursive blob index with no watcher.
@@ -171,8 +175,12 @@ The rules they follow:
   group’s tree from the same blob index, and `group=type:<id>` lists one group’s tree.
   A group’s `size` is null when its blob sizes are incomplete, and its `files` too when
   the index is truncated.
-  `group_by=age` and `group=age:…` answer `unsupported_for_subject` (409), as `recency`
-  does, and the page offers no Age.
+  `group_by=age`, `group=age:…`, and the recency filter read the times of
+  [file ages](arch-git.md#file-ages), cut at one instant per request, and a file with no
+  time is in the `undated` group alone and in no window.
+  Where the Git cannot date a revision, `recency` is false
+  (`GitRevisionSubject.capabilities`) and they answer `unsupported_for_subject` (409),
+  as `/api/recent` does, and the page offers neither.
 - **A tree** answered by `/api/file` is folder chrome with recursive tallies.
   A direct-child README mounts Overview, and a complete size tally mounts the treemap.
 - **A blob** answered by `/api/file` chooses its kind from its name’s last extension, as
@@ -210,6 +218,25 @@ same store, resolved in the mirror alone.
 Given the `/view/` address the page shows, it answers `view_href`, where that page goes
 on the new pin. How a selection is resolved, and what happens when the mirror lacks it,
 is in [mirror acquisition and refresh](arch-mirror-acquisition-and-refresh.md).
+`POST /api/source/link` switches it the same way for a link into the served repository,
+which the macOS app sends for every such link
+([GitHub Links](arch-macos-app.md#github-links)): a branch, folder, file, or the
+repository itself is served at the revision the link names before the window goes to its
+address, and a pull request or a commit, each a page of its own, switches nothing.
+
+`GET /api/source/refs` lists what a switch chooses among, and a branch that is the head
+of a pull request lists it on its row: `pulls`, open first and then newest first, from
+what the repository’s provider has cached (`ref_pulls_for` in `cache/providers.py`), and
+a filter that matches a pull request’s number or title lists its branch too.
+The route never fetches and never waits for the provider’s service.
+Its envelope says, in `pull_requests`, whether the provider’s cache holds the pull
+requests yet and whether a job is filling it, so the page asks again while one is; the
+answer is kept under the cache’s revision as well as the refs’ state, so a page that
+asks on every keystroke runs no Git and reads no row.
+A tag list, and a subject no provider has pull requests for, say `null`. Only a branch
+of the repository itself has a pull request: a fork’s branch of the same name is another
+branch, and a pull request’s `refs/pull/<n>/head` is not a row, being its branch’s pull
+request.
 
 A switch, or a restarted server serving another commit, can leave a tab showing the old
 pin. Reading the new pin’s files into a page labeled with the old one would mix two
@@ -233,7 +260,10 @@ revisions, so every data request from a pin’s page names its commit:
   answers one, as before.
 - The page announces the refusal as a `metabrowser:pin-changed` event, and the freshness
   row offers a reload.
-  Nothing changes under a reader who is looking at the page.
+  A switch made elsewhere changes nothing under a reader who is looking at the page.
+  A pin on a branch or tag that a refresh moved is different: the server follows the
+  ref, and the page goes with it to the same address
+  ([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)).
 - The page that makes a switch is left behind too, from the moment it asks the pin route
   until it has gone, so its guarded requests wait out the switch (`createSwitchHold` in
   `source-pin-guard.js`): they go as soon as the switch is refused or changes nothing,
@@ -337,6 +367,9 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   otherwise says whether the working tree is served, which branch `HEAD` is on, and the
   folder’s `name` and `location`, as the page names the folder, and a row’s
   `checked_out` marks that branch, which lists first.
+  Every ref is listed, the rest newest first by the committer date each row shows, then
+  by name, as a mirror’s are, and the answer is kept, within the same limits, under the
+  checkout’s ref state and the branch `HEAD` is on, as a mirror’s is under its store’s.
   Each row has its commit and `committed_at`, the committer date a row’s age is read
   from: a tag’s is its commit’s, by `for-each-ref`’s `*committerdate`, in the same one
   process. The page shortens the commit as every line names one (`shortCommit` in
@@ -439,9 +472,9 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   one of its own at the foot of the pane, where every tab shows it: the Pulls tab’s
   requests and a comparison’s are refused as the Files tab’s are, and the selector is in
   the Files toolbar, which the other tabs hide.
-- **Not yet.** A revision of a checkout has no Pulls tab; a branch that moves while it
-  is shown is not followed; and a revision is read in place, never through a store that
-  borrows the checkout’s objects.
+- **Not yet.** A revision of a checkout has no Pulls tab, and its branch list shows no
+  pull requests; a branch that moves while it is shown is not followed; and a revision
+  is read in place, never through a store that borrows the checkout’s objects.
 
 ## How a Mirror’s Page Names Itself
 

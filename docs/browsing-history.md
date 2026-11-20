@@ -81,16 +81,20 @@ A repository opened by its URL is pinned to one commit, its default branch’s u
 URL names another. The button under the navigation header names the served branch, tag,
 pull request, or commit; click it or press `W` to switch.
 
-It lists the mirror’s branches, default first, or its tags, newest first, and the filter
-box narrows either list by name.
+It lists every one of the mirror’s branches, or every one of its tags.
+The default branch is first, and the rest are newest first, by the date of each one’s
+last commit, which its row shows as an age.
+The filter box narrows either list by name.
 Choosing one serves it and reloads the page on the same file or folder when the new
 commit has it, or at the root when it does not.
 The switch lasts until the server stops.
 
 The foot of the navigation pane says when the mirror was last fetched from its origin;
 click it to fetch now.
-A fetch never moves the page under you: when it moves the served branch, the foot offers
-the new commit, and **Switch** serves it.
+A branch or tag is shown as the mirror last fetched it, as github.com shows a branch:
+when a fetch moves the served branch, the page follows it to the new commit by itself,
+on the same file or folder when the new commit has it, or at the root when it does not.
+A commit you opened by its ID stays put.
 
 ## Branches and Tags of a Local Checkout
 
@@ -101,11 +105,12 @@ Click it or press `W` to see any other branch or tag without checking it out.
 - **Working tree** is the first row, and the only one that shows your live files.
 - **Branches** are the checkout’s own, with the one you have checked out first and
   marked “checked out”.
-  **Tags** are its tags, newest first.
+  **Tags** are its tags.
   **Remotes** are its remote-tracking branches, such as `origin/main`, as your last
-  fetch left them.
+  fetch left them. Each list holds every one, newest first by its last commit.
 - Choosing a branch or tag shows its last commit, read from the repository’s Git
-  objects. The button and the navigation header then name it, with its short commit.
+  objects. The button then names it, and the navigation header, still the folder’s name,
+  names its full commit when you hover over it.
   This includes the checked-out branch: choosing it shows what is committed, without
   your uncommitted changes, and **Working tree** is the way back to them.
 

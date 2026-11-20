@@ -164,8 +164,8 @@ const BUTTON_SOURCE = `(corner) => {
 }`;
 
 // The top bar's rhythm across the divider (mb-ch82, mb-tatf, mb-tl7p): the navigation's
-// path row, its rule, and its name's baseline; the Metabrowser menu's gear's center and the
-// chevron's, which hides the navigation; and in the main view's header *scope*, the
+// path row, its rule, and its name's baseline; the Metabrowser menu's gear's center; and in
+// the main view's header *scope*, the
 // eyebrow's rule and its address's baseline, Up's box and paint at rest, the title's first
 // line's baseline and the View on GitHub label's, and the room the title's first line leaves
 // the corner. Its own function, so READ and COMMIT_READ share it in the page.
@@ -213,15 +213,11 @@ const RHYTHM_SOURCE = `(scope) => {
   const eyebrow = scope && scope.querySelector(':scope > .view-header-eyebrow');
   const up = eyebrow && eyebrow.querySelector('.folder-up');
   const group = scope && scope.querySelector('.view-header-title-group');
-  const chevron = document.getElementById('nav-collapse-toggle');
   return {
     navRow: box(nav),
     navRule: rule(nav),
     navNameBaseline: firstBaseline(name),
     gear: centre(document.getElementById('settings-btn')),
-    chevron: centre(chevron),
-    chevronBox: box(chevron),
-    frame: box(document.querySelector('.preview-frame')),
     eyebrowRule: rule(eyebrow),
     addressBaseline: firstBaseline(eyebrow && eyebrow.querySelector('.file-header-path')),
     upBox: box(up),

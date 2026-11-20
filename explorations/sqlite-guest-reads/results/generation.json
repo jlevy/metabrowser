@@ -1,0 +1,17 @@
+{
+  "environment": {
+    "machine": "x86_64",
+    "python": "3.13.18",
+    "sqlite": "3.53.1",
+    "system": "Linux 6.18.44-fc-v726",
+    "uid_is_superuser": false
+  },
+  "results": {
+    "cycles": 200,
+    "distinct_header_salts": 200,
+    "distinct_main_file_change_counters": 2,
+    "distinct_wal_sizes": 2
+  },
+  "seconds": 1,
+  "suite": "generation"
+}

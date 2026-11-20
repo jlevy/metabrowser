@@ -23,7 +23,8 @@ before: >-
   printf '# First\n' > 'showroot/%41.md' &&
   printf '# Second sibling\n' > 'showroot/%2541.md' &&
   printf 'nested percent\n' > 'showroot/docs%1/note%.txt' &&
-  touch -t 202311142213.20 showroot/README.md showroot/notes.txt showroot/data.json
+  printf 'flowchart LR\n  A --> B\n' > showroot/flow.mmd &&
+  touch -t 202311142213.20 showroot/README.md showroot/notes.txt showroot/data.json showroot/flow.mmd
   showroot/change.patch showroot/session.jsonl showroot/events.jsonl showroot/blob.bin
   showroot/pixel.png showroot/page.html showroot/card.html showroot/docs/a.md
   'showroot/%41.md' 'showroot/%2541.md' 'showroot/docs%1/note%.txt' showroot/docs
@@ -47,6 +48,21 @@ route: /view/README.md
 kind: markdown
 views: rendered (default, key V), source (key S)
 model: text envelope; size=17 content_bytes=17 content_truncated=False
+? 0
+```
+
+## Test: Mermaid diagram file
+
+A `.mmd` or `.mermaid` file opens on its Diagram view, which draws the file as one
+diagram, as GitHub’s Preview does, with its Source a key away.
+
+```console
+$ metab showroot --show flow.mmd
+show: flow.mmd
+route: /view/flow.mmd
+kind: mermaid
+views: diagram (default, key V), source (key S)
+model: text envelope; size=23 content_bytes=23 content_truncated=False
 ? 0
 ```
 

@@ -40,6 +40,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
+from metabrowser import event_log
 from metabrowser.builtin_plugins.github import pull_list
 from metabrowser.builtin_plugins.github.checkout import claim_source
 from metabrowser.builtin_plugins.github.gh_lists import (
@@ -456,6 +457,8 @@ async def refresh_pull_files(
             reader = f"gh:{login}"
             listed = await _from_github(repository, number, login, slot, generation, known_head)
     except PullDataError as exc:
+        # The job that runs this records the failure as its own (metabrowser.event_log).
+        event_log.current().note_failure(exc.state, str(exc))
         if held is not None and exc.state == "rate_limited":
             # This attempt stopped at the already saved hold, before any provider request.
             raise
@@ -486,7 +489,29 @@ async def refresh_pull_files(
     await asyncio.to_thread(
         write_files_refresh, repository.home, repository.slug, number, succeeded
     )
+    if local is not None and listed.listed_from == "comparison":
+        await _measure_size(local)
     return listed
+
+
+async def _measure_size(local: LocalComparison) -> None:
+    """Measure the size the list's comparison pushes, so its row says it with its counts.
+
+    Here, in the store's work that just listed it, since the summary route reads only what
+    is kept (:mod:`.pull_files_summary`). Once measured it is kept beside the store and
+    never measured again (:mod:`metabrowser.git.change_size`); measured 2026-11-20 on this
+    repository, a size took 20 to 70 ms for most pull requests and 374 ms for one whose
+    patch is 6.15 MB. A size that cannot be measured leaves the row without one.
+    """
+
+    from metabrowser.git.change_size import change_size
+    from metabrowser.git.process import GitError, GitLocation, repository_store_target
+
+    try:
+        location = GitLocation.revision(repository_store_target(git_dir=local.git_dir), local.head)
+        await change_size(location, local.base, local.head)
+    except GitError as exc:
+        log.debug("a pull request's size could not be measured: %r", exc)
 
 
 __all__ = ["Slot", "refresh_pull_files"]

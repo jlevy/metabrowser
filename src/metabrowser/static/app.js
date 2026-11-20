@@ -254,8 +254,9 @@ function pathBaseName(path) {
 /**
  * Settle the navigation heading once the tree has loaded. A folder shows the
  * served root's name from the tree payload. A pinned revision keeps the heading
- * the server rendered from its session, its ref and short commit: the tree's
- * root there is the empty GitPath, which has no name to show.
+ * the server rendered from its session, its name, or a pin with no mirror's ref
+ * and short commit: the tree's root there is the empty GitPath, which has no name
+ * to show.
  */
 function renderServedRootHeading(pathEl, root) {
   if (!pathEl || isGitRevisionSource()) {
@@ -730,6 +731,7 @@ function initSettingsControl() {
     };
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
+      void window.MetabrowserAssets?.ensureAsset("remote-images");
       setOpen(!isOpen());
     });
     // Dismiss on outside click or Escape.
@@ -790,25 +792,14 @@ function initSettingsControl() {
 // ── File type design system ───────────────────────────────────
 // The file tree's icon and colour, resolved through the rollup registry.
 //
-// This used to be a second taxonomy: sixteen hand-maintained matchers here
-// resolving to nine `ft-*` classes, beside a registry of 56 families each with
-// its own declared hue. Nothing kept them in step and they had drifted in both
-// directions at once — `.js` and `.jsx` were one family in the registry and two
-// different shapes in the tree, while `.json`, `.toml` and `.yaml` were three
-// families painted as one. A reader saw the bars disagree with the rows beside
-// them.
+// Classification is NOT re-implemented here: `MetabrowserFileTypeTaxonomy` is the registry
+// runtime (compound extensions, a family's shape through its group), and this file only
+// turns its answer into markup. A second taxonomy here had drifted from the registry, so
+// the bars disagreed with the rows beside them.
 //
-// Classification is NOT re-implemented here. `MetabrowserFileTypeTaxonomy` is
-// the registry runtime, it already canonicalises compound extensions and
-// resolves a family's shape through its group, and a second implementation of
-// that is exactly the defect being removed. This file only turns its answer
-// into markup.
-//
-// Colours arrive finished in `DISTRIBUTION_COLORS`, resolved per theme by the
-// server, because sRGB cannot hold the palette's target chroma at every hue and
-// a browser handed an out-of-gamut `oklch()` clips it — moving hue further than
-// the separation the palette is built on. The distribution bars read the same
-// list, which is what makes a family look like itself wherever it appears.
+// Colours arrive finished in `DISTRIBUTION_COLORS`, resolved per theme by the server, since
+// a browser clips an out-of-gamut `oklch()` and moves the hue. The distribution bars read
+// the same list, so a family looks like itself wherever it appears.
 
 /** Where a file row's colour for each theme is written. */
 const FILE_COLOR_LIGHT_PROPERTY = "--mb-file-color-light";
@@ -1144,16 +1135,13 @@ async function loadTree(options = {}) {
           responsePerfMeta(resp, ""),
         );
       } catch (error) {
-        // A throw has to land here for the same reason a non-ok status does, and
-        // more urgently since the inline rows are already painted: a dropped
-        // connection or a malformed body would otherwise leave the reader
-        // looking at two hundred rows with no chrome, no counts, and no error --
-        // a tree that appears complete and is not. Before those rows were
-        // inlined the same failure left an empty pane, which at least read as
-        // broken.
+        // A throw lands here as a non-ok status does: the inline rows are already
+        // painted, so a dropped connection or a malformed body would otherwise leave a tree
+        // that appears complete with no chrome, no counts, and no error.
         failTree(String(error));
         return;
       }
+      observeFileAges(data.ages);
       knownFileCatalog?.observeInitialTree(data.tree);
       var pathEl = queryHtml(".header-path");
       renderServedRootHeading(pathEl, data.root);
@@ -1397,6 +1385,7 @@ async function loadGroupedTreeInner(state, load) {
       load,
     });
     sections = treeFilterModel.groupSections(data);
+    observeFileAges(data.ages);
   } catch (error) {
     // A refresh that fails keeps the sections on screen; its pacing retries it with a
     // backoff (requestGroupedRefresh). A first load has nothing to keep.
@@ -1411,6 +1400,7 @@ async function loadGroupedTreeInner(state, load) {
   if (data.tally_cache_status === "scanning") {
     startIndexProgressPolling();
   }
+  applyFilterTallies(data);
   if (preserve) {
     await fetchReopenedFolders(sections, owns);
     if (!owns()) {
@@ -2003,17 +1993,7 @@ async function fetchRootSummary() {
   if (!document.querySelector(".tree-summary")) {
     return true;
   }
-  // Only rebuild the bar when no dropdown is open. Replacing
-  // its DOM mid-poll would drop focus out of a menu the user
-  // is arrowing through, and this runs repeatedly while the
-  // index warms up.
-  if (updateFilterTallies(data)) {
-    if (filterOpenMenu === null) {
-      renderNavFilterBar();
-    } else {
-      patchOpenRecencyTallyCounts();
-    }
-  }
+  applyFilterTallies(data);
   paintTreeSummary(treeSummaryHtml(rootTotals().totals(), null, null));
   return true;
 }
@@ -2729,7 +2709,7 @@ function treeLazyFailureHtml(message) {
   );
 }
 
-function responseErrorDetail(body, status) {
+function responseErrorDetail(body) {
   var text = String(body || "").trim();
   if (text) {
     try {
@@ -2745,7 +2725,7 @@ function responseErrorDetail(body, status) {
       return text;
     }
   }
-  return `The request failed (HTTP ${status}).`;
+  return "The server could not complete the request.";
 }
 
 function responseErrorSummary(body, fallback) {
@@ -3385,14 +3365,15 @@ if (typeof window !== "undefined") {
  * rendered document's own markup, which a trusted folder's Markdown keeps, so a
  * document cannot label itself in the application's tooltip layer. A control page
  * code placed in the document and marked with `mb.ownDelegate`, as the document's print
- * button is (builtin_plugins/markdown/print-indicator.js), keeps its tooltip. That test
- * is the element's identity, not its owner value, so a document that has come to carry
- * the value still cannot label itself.
+ * button is (builtin_plugins/markdown/print-indicator.js), keeps its tooltip, and so does
+ * an image's fallback chip (inert_html.py).
  */
 function tipTextAnchor(event) {
   var anchor = eventTargetElement(event)?.closest("[data-tip-text]");
   return anchor instanceof HTMLElement &&
-    (!anchor.closest(".metabrowser-kpress-host") || isPageElement(anchor))
+    (!anchor.closest(".metabrowser-kpress-host") ||
+      isPageElement(anchor) ||
+      anchor.classList.contains("mb-image-fallback"))
     ? anchor
     : null;
 }
@@ -3906,7 +3887,8 @@ async function toggleTreeContainer(row) {
         },
         error,
       );
-      children.innerHTML = '<div class="tree-empty-note">Could not load these entries.</div>';
+      children.innerHTML =
+        '<div class="tree-empty-note nav-error">Could not load these entries.</div>';
     }
     applyTreeFilters();
   }
@@ -5131,32 +5113,17 @@ function initNavScrollShadow() {
 // authoritative mapping in metabrowser/settings.py.
 const _RECENT_WINDOW_SECONDS = _METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS || {};
 
-// Recent is a hybrid
-// of "snapshot from /api/recent" + "live FileStore overlay".
+// Recent is a snapshot from /api/recent plus a live FileStore overlay. The SSE stream is
+// scoped to ``root-depth-2``, so FileStore holds no file at depth 3+ and a FileStore-only
+// panel silently truncated 24h / 7d / 30d / all to that scope.
 //
-// The SSE stream is scoped to ``root-depth-2`` (the right scope
-// for tree decoration). FileStore therefore does NOT contain
-// files at depth 3+. A FileStore-only Recent panel was correct
-// for 1h windows (recent edits cluster near the visible tree)
-// but silently truncated 24h / 7d / 30d / all to whatever
-// happened to fall within ``root-depth-2``.
+// * On chip change, fetch ``/api/recent?window=...``: the server queries every known entry,
+//   so ``entries_flat`` covers the whole window and is the base set, keyed by path.
+// * ``fs.change`` upserts/removes mutate the base set in place when they fall inside the
+//   window, and the panel re-paints (debounced); a change seen while the snapshot request
+//   is in flight invalidates that response and schedules one authoritative refetch.
 //
-// Data flow:
-// * On chip change, fetch ``/api/recent?window=...`` (the server
-//   uses a bounded provider query over all known entries, so the
-//   payload covers the whole window). Use the response's
-//   ``entries_flat`` field as the base set.
-// * Live overlay: ``fs.change`` upserts/removes mutate the base
-//   set in place when they fall inside the active window. The
-//   panel re-clusters + re-paints (debounced); a change observed
-//   while the snapshot request is in flight invalidates that
-//   response and schedules one authoritative refetch.
-// * The base set is keyed by path so a file edited twice doesn't
-//   double-count.
-//
-// FileStore stays the single source of truth for the Files tab
-// and tree decoration; Recent has its own base because it needs
-// wider coverage than SSE's scope.
+// FileStore stays the source of truth for the Files tab and tree decoration.
 var recentBaseEntries = new Map(); // path -> recent-flat dict
 var recentTotalMatching = 0;
 var recentTotalMatchingExact = true;
@@ -5334,7 +5301,7 @@ function fetchRecent(cursor, preserveRows) {
         showInitialError: () => {
           if (results) {
             results.innerHTML =
-              '<div class="recent-empty" role="alert">Could not load recently modified files. Refresh the page to try again.</div>';
+              '<div class="recent-empty nav-error" role="alert">Could not load recently modified files. Refresh the page to try again.</div>';
           }
         },
       });
@@ -5349,6 +5316,7 @@ function fetchRecent(cursor, preserveRows) {
 
 /** Commit one accepted provider response without rendering it. */
 function commitRecentResponse(data, cursor) {
+  observeFileAges(data?.ages, data?.undated);
   var flat = data?.entries_flat || [];
   knownFileCatalog?.observeRecent(flat);
   recentBaseEntries = new Map();
@@ -5507,9 +5475,13 @@ function renderRecentList(data) {
   var tree = data.tree || [];
   if (tree.length === 0) {
     var emptyText =
-      currentRecentWindow === "live"
-        ? `No files were modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds.`
-        : "No files were modified during the selected time range.";
+      fileAgesState === "dating"
+        ? "Reading file ages…"
+        : fileAgesState === "failed"
+          ? "No file ages to filter by."
+          : currentRecentWindow === "live"
+            ? `No files were modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds.`
+            : "No files were modified during the selected time range.";
     return `<div class="recent-empty">${emptyText}</div>`;
   }
   // Reuse the Files-tab renderer with one mode flip: dir rows
@@ -5646,14 +5618,30 @@ function updateFilterTallies(data) {
   return changed;
 }
 
+function applyFilterTallies(data) {
+  if (updateFilterTallies(data)) {
+    refreshFilterTallies();
+  }
+}
+
+// A bar rebuilt under an open menu would drop focus out of it, so only its counts change.
+function refreshFilterTallies() {
+  if (filterOpenMenu === null) {
+    renderNavFilterBar();
+  } else {
+    patchOpenRecencyTallyCounts();
+  }
+}
+
 function filterRecencyOptions() {
   const showIgnored = filterState ? filterState.get().showIgnored : true;
   const counts = new Map(
     _recencyTally.map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]),
   );
+  // "…" until a revision's ages are read: "0" would say they are none.
   return FILTER_RECENCY_OPTIONS.map((option) => ({
     ...option,
-    count: counts.get(option.value) || 0,
+    count: counts.get(option.value) || (fileAgesState === "dating" ? "…" : 0),
   }));
 }
 
@@ -5669,7 +5657,7 @@ function patchOpenRecencyTallyCounts() {
     var value = rows[i].getAttribute("data-chip-value");
     var count = value === null ? undefined : counts.get(value);
     var countEl = rows[i].querySelector(".chip-menu-count");
-    if (typeof count === "number" && countEl) {
+    if (count !== undefined && countEl) {
       countEl.textContent = count.toLocaleString();
     }
   }
@@ -5711,7 +5699,7 @@ function filterTypeFamilies(groupId) {
 function filterKeySlotsHtml() {
   /** @type {Record<string, string>} */
   var names = { recency: "Modified within", types: "File type" };
-  return (isGitRevisionSource() ? ["types"] : ["recency", "types"])
+  return (noFileAges ? ["types"] : ["recency", "types"])
     .map(
       (key) =>
         `<span class="filter-key-slot" data-filter-key-slot="${key}" aria-hidden="true"` +
@@ -5720,16 +5708,14 @@ function filterKeySlotsHtml() {
     .join("");
 }
 
-// Group by's choices beside "No grouping", each read the same on its row and on the closed
-// trigger, and each with the letter that chooses it while the menu is open: the first of
-// the word naming its value (docs/design-system.md, "Keys in a Menu"). A Git revision has
-// no mtime, so it offers no By age, as it offers no Modified within.
+// Group by's choices, each with the letter that chooses it while the menu is open
+// (docs/design-system.md, "Keys in a Menu"). With no file ages there is no By age.
 function filterGroupOptions() {
   var options = [
     { value: "age", label: "By age", key: "a" },
     { value: "type", label: "By file type", key: "t" },
   ];
-  return isGitRevisionSource() ? options.filter((option) => option.value !== "age") : options;
+  return noFileAges ? options.filter((option) => option.value !== "age") : options;
 }
 
 function filterTypePresetSections() {
@@ -5795,12 +5781,10 @@ function filterTypeOptions() {
   });
 }
 
-// A recency window reads from /api/recent, which scans the whole index
-// rather than the loaded subtrees — the one thing the Recent tab did
-// that a DOM walk cannot. This includes Live: it is the shortest
-// server-owned mtime window, not the specialized activity tracker.
+// A recency window, Live included, reads /api/recent, which scans the whole index and
+// not the loaded subtrees.
 function filesPanelUsesRecentSource() {
-  if (isGitRevisionSource() || !filterState) {
+  if (noFileAges || !filterState) {
     return false;
   }
   var st = filterState.get();
@@ -5819,9 +5803,8 @@ function renderNavFilterBar() {
   var count = filterState.activeCount();
   var drawerCount = treeFilterModel.drawerFilterCount(st);
   var fc = filterControls;
-  // The three filters, each a dropdown. A Git pin has no mtime, so recency is omitted
-  // rather than offered as a 409.
-  var recencyMenu = isGitRevisionSource()
+  // The three filters, each a dropdown. With no file ages, recency is omitted, not a 409.
+  var recencyMenu = noFileAges
     ? ""
     : fc.menuGroupHtml({
         key: "recency",
@@ -5931,7 +5914,7 @@ function renderNavFilterBar() {
   // "Keys in a Menu").
   var restoreFocus = fc.keepFocus(bar);
   // A page with the branch and tag chooser ships it leading the row, and its module owns
-  // it: it is carried over, not drawn (static/source-ref-selector.js#keepFocusAcross).
+  // it: it is carried over, not drawn (static/source-ref-selector.js#keepAcrossRefills).
   var chooser = document.getElementById("source-ref-selector");
   bar.innerHTML = main + drawer;
   if (chooser) {
@@ -6311,6 +6294,7 @@ function _renderFilteredTally(state, count) {
   remark.append(...window.MetabrowserFormatters.countPartsNodes(document, parts));
   if (existing) {
     existing.replaceChildren(remark);
+    window.MetabrowserRevisionAges?.annotate();
     return;
   }
   var summary = document.querySelector(".tree-summary");
@@ -6323,6 +6307,7 @@ function _renderFilteredTally(state, count) {
   } else {
     filesMetadataBand()?.insertAdjacentElement("afterbegin", line);
   }
+  window.MetabrowserRevisionAges?.annotate();
 }
 // Rows arriving from the event stream have to be classified too, or a
 // newly written file would appear regardless of the active filter.
@@ -6752,7 +6737,10 @@ async function selectFile(path, preferredViewId) {
               () => resp.text().catch(bodyFailure),
               responsePerfMeta(resp, path),
             );
-            throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
+            if (resp.status !== 404) {
+              console.error("file request failed", resp.status);
+            }
+            throw Object.assign(new Error(responseErrorDetail(text)), {
               notFound: resp.status === 404,
               summary: responseErrorSummary(text, "Could not open this file."),
             });
@@ -7678,6 +7666,37 @@ var catalogFeedCanStart = false;
 function isGitRevisionSource() {
   return window.METABROWSER_SOURCE_KIND === "git_revision";
 }
+// A revision whose Git cannot read file ages has no Modified within and no By age.
+var noFileAges = window.METABROWSER_FILE_AGES === false;
+var fileAgesState = "";
+// Each response says how the read of ages stands; revision-ages.js loads when it is not `ready`.
+function observeFileAges(ages, undated) {
+  var before = fileAgesState;
+  fileAgesState = ages?.state ?? "";
+  if ((before === "dating") !== (fileAgesState === "dating")) {
+    refreshFilterTallies();
+  }
+  if (window.MetabrowserRevisionAges) {
+    window.MetabrowserRevisionAges.track(ages, undated);
+  } else if (ages && ages.state !== "ready") {
+    void window.MetabrowserAssets?.ensureAsset("revision-ages").then(() =>
+      window.MetabrowserRevisionAges?.track(ages, undated),
+    );
+  }
+}
+// The ages landed: whatever was drawn without them is drawn again.
+function redrawForFileAges() {
+  subtreeCache.clear();
+  fileCache.clear();
+  void loadTree({ reconcileMountedRoot: true });
+  if (filesPanelUsesRecentSource()) {
+    loadRecent(currentRecentFilterCursor());
+  }
+  if (currentPath) {
+    void selectFile(currentPath);
+  }
+}
+window.addEventListener("metabrowser:file-ages-landed", redrawForFileAges);
 // The startup crawl establishes the navigation baseline. Its snapshot and
 // incremental walker upserts are not user-visible file changes, so newly
 // mounted rows stay neutral until the first terminal inventory event. A
@@ -9315,12 +9334,12 @@ async function applyNavigationTarget(target, context) {
     if (context.source === "user" && !target.fragment && !target.query) {
       await revealAddressedItem(route, { isCurrent: context.isCurrent, again: true });
     }
-    // A line anchor added to the file shown opens its Source tab, as opening it does.
+    // A line anchor opens its Source tab; a caller's `viewId` wins, as below.
     var shownView = anchorModule ? await addressedView(target, anchorModule) : null;
     if (!context.isCurrent()) {
       return { status: "cancelled" };
     }
-    showPreviewTab(path, shownView);
+    showPreviewTab(path, context.viewId || shownView);
     deliverNavigationFragment(target);
     return {
       focusTarget: document.getElementById("preview-pane") || undefined,
@@ -10065,6 +10084,46 @@ function drawNavCollapseButton() {
   // The chevron of the "icon-btn nav-collapse-toggle disclosure-toggle" server.py writes.
   button.innerHTML = `${ICONS.toggle}`;
   button.addEventListener("click", onEarlyNavCollapseClick);
+  alignNavCollapseButton(button);
+}
+
+/**
+ * Keep the chevron on the shortcut strip's row (mb-yw18), from the first paint on. The
+ * strip moves when a row under it shows, the scan's progress or a mirror's freshness,
+ * so a ResizeObserver on the pane and the rows from the strip down measures the row below
+ * the strip's rule, from the pane's top, where the frame and the divider start too, and
+ * gives `--nav-shortcut-row-top` and `--nav-shortcut-row-height` to the chevron, which it
+ * places, and to the divider, whose resize reach stops above it (`.nav-collapse-toggle`
+ * and `.resize-handle::after` in styles.css). Only those two take them: a property set on
+ * a shared ancestor restyled the whole open document on every change, 100 ms for a
+ * 28,000-node file in headless Chrome 152 (review A on #609). Boxes, not offsets, so the
+ * row is not rounded to a whole pixel under the app's fractional page zoom.
+ *
+ * @param {HTMLElement} button
+ */
+function alignNavCollapseButton(button) {
+  var pane = document.getElementById("tree-pane");
+  var strip = document.getElementById("nav-shortcut-hints");
+  var handle = document.getElementById("tree-resize");
+  if (!pane || !strip || typeof ResizeObserver !== "function") {
+    return;
+  }
+  var targets = handle ? [button, handle] : [button];
+  var row = strip;
+  var start = pane;
+  var observer = new ResizeObserver(() => {
+    var rect = row.getBoundingClientRect();
+    var top = `${rect.top + row.clientTop - start.getBoundingClientRect().top}px`;
+    var height = `${rect.height - row.clientTop}px`;
+    for (var target of targets) {
+      target.style.setProperty("--nav-shortcut-row-top", top);
+      target.style.setProperty("--nav-shortcut-row-height", height);
+    }
+  });
+  observer.observe(pane);
+  for (var node = /** @type {Element | null} */ (strip); node; node = node.nextElementSibling) {
+    observer.observe(node);
+  }
 }
 
 /** @param {MouseEvent} event */

@@ -317,7 +317,9 @@ struct LiveMetabTests {
             return
         }
         #expect(report.hasChecks)
-        #expect(report.rows.map(\.id) == ["plugins", "open_in", "metab", "git", "config", "cache", "github"])
+        #expect(
+            report.rows.map(\.id)
+                == ["plugins", "open_in", "metab", "git", "config", "cache", "event_log", "github"])
         #expect(!report.rows.contains { $0.state == .other("unreadable") })
     }
 
@@ -354,8 +356,12 @@ struct LiveMetabTests {
     /// The panel opens what `metab URL` opens as typed: the link the panel sends, its path
     /// encoded as a browser sends it, gets the plan `metab` gives the raw text, and text
     /// the panel refuses for a character `metab` refuses too (`OpenURLEntry.encoded`).
+    /// A GitHub URL typed without `https://` is written in full by both
+    /// (`OpenURLEntry.corrected`, and `_root_in_full` in `src/metabrowser/cli/main.py`).
     @Test(arguments: [
         "https://github.com/octo/demo/blob/main/a b.md",
+        "github.com/octo/demo/blob/main/a b.md",
+        "www.github.com/octo/demo/pull/7",
         "https://github.com/octo/demo/blob/main/café.md",
         "https://github.com/octo/demo/blob/main/❤️.md",
         #"https://github.com/octo/demo/blob/main/a"b{c}|d^e`f<g>[1].md"#,

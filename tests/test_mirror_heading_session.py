@@ -261,9 +261,13 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
         f"Mirror of file://~/git/squares.git at {pin}, stored in {location}: "
         "a bare Git repository, with no checked-out files."
     )
-    assert mirror["navigationHeading"]["text"] == f"squares topic {short_commit(pin)}"
-    assert mirror["mainHeading"]["file"]["text"] == f"\u2191 squares / docs mirror in {location}"
-    assert mirror["mainHeading"]["root"] == f"\u2191 mirror in {location} squares"
+    # The name alone: the ref selector names the ref, and the tooltip the commit (mb-qq4e).
+    assert mirror["navigationHeading"]["text"] == "squares"
+    # The note names the store's directory, and the tooltip the bare repository inside it.
+    directory = location.removesuffix("/repository.git")
+    assert directory != location
+    assert mirror["mainHeading"]["file"]["text"] == f"\u2191 squares / docs mirror in {directory}"
+    assert mirror["mainHeading"]["root"] == f"\u2191 mirror in {directory} squares"
     assert mirror["tooltips"] == {
         "navigationHeading": {
             "served": f"squares {sentence}",
@@ -272,7 +276,7 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
         "rootName": sentence,
         "note": sentence,
     }
-    # The full commit is copied from the control beside the short one.
+    # The full commit is copied from the control after the name.
     copy = mirror["navigationHeading"]["commitCopy"]
     assert copy["copied"] == [pin] and copy["ownerStamped"] is True
     assert copy["attributes"]["aria-label"] == f"Copy commit {pin}"

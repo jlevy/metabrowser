@@ -12,9 +12,9 @@
 //      toolbar, its bundle, and its panel: the Working tree row and the folder it names,
 //      the three lists, each ref's short commit ID and age, the checked-out branch's badge;
 //   2. chooses a branch, while the working tree's page asks for its root's tallies, as its
-//      own refresh of them can, and reads the revision's page: the button and heading that
-//      name it, the committed file where the working tree's edit was, a tree with no
-//      untracked file, and the document's policy;
+//      own refresh of them can, and reads the revision's page: the button that names it,
+//      the heading, which is the folder's name alone, the committed file where the working
+//      tree's edit was, a tree with no untracked file, and the document's policy;
 //   3. reads each list there, with the served branch marked;
 //   4. switches the server back from outside the page, as another tab would, asks the page
 //      for data, and reads the offer to reload that the selector then makes, and where
@@ -315,11 +315,12 @@ const PANEL = `(() => {
   const tree = root.querySelector(".source-ref-selector-working-tree");
   const pane = document.querySelector(".tree-pane").getBoundingClientRect();
   const box = panel.getBoundingClientRect();
-  // A row's text leaves out its age, which the clock moves; the age is read on its own.
+  // A row's text leaves out its age, which the clock moves; the age is read on its own. A
+  // ref's row holds its own line, and a pull request's line under it when it has one.
   const row = (button) => {
     const age = button.querySelector(".source-ref-selector-age");
     return {
-      text: [...button.children]
+      text: [...(button.querySelector(":scope > .source-ref-selector-main") ?? button).children]
         .filter((child) => child !== age)
         .map((child) => child.innerText)
         .join(" ")

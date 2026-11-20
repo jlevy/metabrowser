@@ -19,6 +19,9 @@ public nonisolated enum ChildEnvironment {
         // An app started with it, as `make run` starts a development build, records no
         // recent target, and neither does any `metab` it runs.
         RecentTargets.recordVariable,
+        // The event log's location and off-switch (`metabrowser.event_log`): a server the
+        // app starts logs where, and whether, the environment the app started with says.
+        "METABROWSER_STATE_DIR", "XDG_STATE_HOME", "METABROWSER_EVENT_LOG",
     ]
 
     public static func build(inherited: [String: String], toolDirectories: [String]) -> [String: String] {

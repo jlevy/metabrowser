@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import os
 import sys
+import tempfile
 from collections.abc import Generator
 from html.parser import HTMLParser
 from pathlib import Path
@@ -15,6 +16,10 @@ import pytest
 
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from tests import chrome_starts, suite_gates, suite_tiers, suite_timing, suite_workers
+from tests.file_ages_git import (  # noqa: F401
+    file_ages_git,  # pyright: ignore[reportUnusedImport]
+    fixed_file_ages_git,  # pyright: ignore[reportUnusedImport]
+)
 from tests.github_pull_fixture import Origin, build_origin, copy_origin
 from tests.process_group import owned_profile
 from tests.required_tools import require_git, require_node
@@ -27,6 +32,16 @@ os.environ["METABROWSER_PLUGINS_DIRS"] = ""
 # module- or session-scoped fixture that starts before any test's exists, in the list of
 # whoever runs the suite. A test of the record itself turns it back on.
 os.environ["METABROWSER_RECORD_RECENT"] = "0"
+# Nor does any server a test starts write an event log (metabrowser.event_log) into the
+# state directory of whoever runs the suite; and a read of the log, as `/api/event-log`
+# does, reads an empty directory of the suite's own. A test of the log opens one itself.
+os.environ["METABROWSER_EVENT_LOG"] = "0"
+# Nor does a gh that fails make a test probe the network (metabrowser.network_cause): a
+# test of the probe names a local target itself.
+os.environ["METABROWSER_NETWORK_PROBE"] = "0"
+os.environ["METABROWSER_STATE_DIR"] = os.path.join(
+    tempfile.gettempdir(), f"metabrowser-test-state-{os.getpid()}"
+)
 for _capability_env in ("METAB_UNTRUSTED", "METAB_ACTIVE_CONTENT", "METAB_ALLOW_EDITS"):
     os.environ.pop(_capability_env, None)
 # Where `--present` opens a target is the operator's preference; a test that reads one
@@ -452,6 +467,11 @@ def _reset_process_caches() -> Generator[None, None, None]:  # pyright: ignore[r
     events_route._CATALOG_BODY_CACHE.clear()  # pyright: ignore[reportPrivateUsage]
     events_route._CATALOG_ETAG_BY_CHECKPOINT.clear()  # pyright: ignore[reportPrivateUsage]
     events_route._CATALOG_REVISION.update(identity=None, value=0)  # pyright: ignore[reportPrivateUsage]
+    # Kept by commit IDs alone, which the fixtures share, so one test's measurement would
+    # answer another's without the store bank the second one checks.
+    from metabrowser.git.change_size import clear_kept_sizes
+
+    clear_kept_sizes()
 
 
 class DocumentReference(NamedTuple):

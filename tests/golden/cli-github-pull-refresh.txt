@@ -28,6 +28,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -276,6 +277,7 @@ status: 202
     "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
     "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+    "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "record": "<RECORD 7>",
     "core_preview": null,
     "repository_labels": [],
@@ -309,6 +311,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": "<RECORD 7>",
   "core_preview": null,
   "repository_labels": [],
@@ -369,6 +372,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": "<RECORD 7>",
   "core_preview": null,
   "repository_labels": [],
@@ -388,7 +392,7 @@ store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refresh failed: gh could not reach api.github.com (network_error))
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refresh failed: GitHub could not be reached because api.github.com did not resolve (DNS) (network_error))
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
@@ -419,6 +423,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -452,6 +457,7 @@ status: 200
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],
@@ -487,6 +493,7 @@ status: 202
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],
@@ -520,6 +527,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -636,6 +644,7 @@ status: 200
     "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE>",
     "image_route": "/api/plugin/github/pull-image?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
+    "size_route": "/api/plugin/github/pull-size?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
     "record": "<RECORD 10>",
     "core_preview": null,
     "repository_labels": [],
@@ -658,10 +667,11 @@ status: 200
   "ref_name": "topic",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "<HOME>/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "<HOME>/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "c691256511d05858850bc7684ae062fea0d41132",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -749,6 +759,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -947,7 +958,7 @@ store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
-pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: gh could not reach api.github.com (network_error); the pin is the default branch)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub could not be reached because the connection to api.github.com timed out (network_error); the pin is the default branch)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
@@ -982,6 +993,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -1101,6 +1113,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": "<RECORD 7>",
   "core_preview": null,
   "repository_labels": [],
@@ -1118,7 +1131,7 @@ api: /api/cache/source/github-com--octo--demo--46386669dc01
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "source": {
     "slug": "github-com--octo--demo--46386669dc01",
     "publication": "published",
@@ -1139,6 +1152,7 @@ status: 200
     },
     "problems": [],
     "store": {
+      "key": "github-com--octo--demo--65157fba6c20ff90",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "published",
       "mode": "full",

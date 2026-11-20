@@ -53,6 +53,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -175,7 +176,7 @@ api: /api/cache/source/github-com--octo--demo--46386669dc01
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "source": {
     "slug": "github-com--octo--demo--46386669dc01",
     "publication": "unattached",
@@ -221,6 +222,7 @@ status: 202
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],
@@ -255,6 +257,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -382,7 +385,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8efb2fa07a0a0370",
         "output_path": "css/style-tokens.css",
-        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/style-tokens.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/style-tokens.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -394,7 +397,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "807cf5be35b5a8dd",
         "output_path": "css/syntax.css",
-        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/syntax.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/syntax.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -406,7 +409,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "bc14c4d38a7a4d65",
         "output_path": "css/document.css",
-        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/document.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/document.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -416,9 +419,9 @@ status: 200
         "path": "css/components.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "b60a31e9efc56142",
+        "content_hash": "455ce6a0f538267b",
         "output_path": "css/components.css",
-        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/components.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/components.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -430,7 +433,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8a8f7b928ad6be2f",
         "output_path": "css/print.css",
-        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/print.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/print.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -442,7 +445,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "f4a0751b8416f372",
         "output_path": "css/print-fonts.css",
-        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/print-fonts.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/print-fonts.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -454,7 +457,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "9a5f82ca54019902",
         "output_path": "css/mono-planetaire-400-normal.css",
-        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/mono-planetaire-400-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -466,7 +469,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "c5232ad5d38dc5a6",
         "output_path": "css/mono-planetaire-700-normal.css",
-        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/mono-planetaire-700-normal.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -478,7 +481,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "34bd1d5b7aa5a794",
         "output_path": "css/mono-planetaire-400-italic.css",
-        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/mono-planetaire-400-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -490,7 +493,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "8fe04148a6caac2d",
         "output_path": "css/mono-planetaire-700-italic.css",
-        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@a009bfcd7946408c/v0.3.9.dev8+5a8e9ae/css/mono-planetaire-700-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       }
@@ -870,6 +873,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -955,7 +959,7 @@ api: /api/cache/source/github-com--octo--demo--46386669dc01
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "source": {
     "slug": "github-com--octo--demo--46386669dc01",
     "publication": "published",
@@ -976,6 +980,7 @@ status: 200
     },
     "problems": [],
     "store": {
+      "key": "github-com--octo--demo--65157fba6c20ff90",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "published",
       "mode": "full",
@@ -1034,6 +1039,7 @@ status: 202
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": {
       "schema_version": 2,
       "projection_version": 2,
@@ -1134,6 +1140,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
   "image_route": "/api/plugin/github/pull-image?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
+  "size_route": "/api/plugin/github/pull-size?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -1251,6 +1258,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -1358,6 +1366,7 @@ status: 202
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": {
       "schema_version": 2,
       "projection_version": 2,
@@ -1459,6 +1468,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
   "image_route": "/api/plugin/github/pull-image?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
+  "size_route": "/api/plugin/github/pull-size?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,

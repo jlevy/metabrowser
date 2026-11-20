@@ -287,10 +287,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// and one that waits for a runtime still opens there (`WaitingWindows`). A link still
     /// opens in a window of its own: which repository it names is `metab`'s answer, which
     /// arrives later.
-    func request(_ url: URL, into window: BrowserWindowController? = nil) {
+    ///
+    /// With `inOwnFolder`, a file opens in its own folder even inside an open one, as
+    /// `metab FILE` would serve it (Help > Open Event Log, `EventLogLocation`). With
+    /// `remember` false, the folder is not added to Open Recent, by the app or by the
+    /// server it starts.
+    func request(
+        _ url: URL, into window: BrowserWindowController? = nil, inOwnFolder: Bool = false,
+        remember: Bool = true
+    ) {
         guard url.isFileURL else { return requestLink(url) }
         let path = FileChecks.canonicalPath(url.path(percentEncoded: false))
-        let openRoots = folderSessions.filter(\.isLocal).map(\.path)
+        let openRoots = inOwnFolder ? [String]() : folderSessions.filter(\.isLocal).map(\.path)
         guard let target = OpenTarget.resolve(path, kind: OpenTarget.Kind(of: path), openRoots: openRoots) else {
             return refuse(
                 "Metabrowser opens folders and files",
@@ -301,7 +309,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return refuse("Metabrowser cannot open this folder", "\(root.lastPathComponent) cannot be served: \(reason).")
         }
         let open = sessions[SessionRoot.folder(root).key] as? FolderSession
-        recentFolders.noteOpened(root, isOpen: open != nil)
+        if remember { recentFolders.noteOpened(root, isOpen: open != nil) }
         if let session = open {
             session.showFrontWindow(page: target.page)
             return
@@ -323,17 +331,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let switched = window.map { folderWindows.switchWindow($0, to: session, page: target.page) } ?? false
         if !switched { folderWindows.place(session.makeWindow(page: target.page)) }
         Task {
-            await session.startServer()
-            self.recentFolders.refreshAfterOpen()
+            await session.startServer(recording: remember)
+            if remember { self.recentFolders.refreshAfterOpen() }
         }
     }
 
     /// Opens a GitHub link. `metab` resolves each (`PresentDryRun`), one at a time
-    /// (`LinkQueue`), to its repository and the canonical link to serve it with. A
-    /// repository with a window starts its server again on that link, so the window shows
-    /// the revision and page the link names (`FolderSession.open(link:)`). Otherwise a new
-    /// session starts its server on the link, after asking first when `metab`'s cache does
-    /// not hold the repository, a question that waits beside the queue (`CloneQuestions`).
+    /// (`LinkQueue`), to its repository and the canonical link into it. A repository with
+    /// a window opens the link in its running server, which shows the revision and page
+    /// the link names (`FolderSession.open(link:)`, `SourceLink`). Otherwise a new session
+    /// starts its server on the repository and opens the link once it is ready, after
+    /// asking first when `metab`'s cache does not hold the repository, a question that
+    /// waits beside the queue (`CloneQuestions`).
     /// The links a burst could not open are said in one alert once the burst has ended. A
     /// link waits for a runtime as a folder does. A repository's windows are not saved with
     /// the session (`FolderWindows.snapshot`).
@@ -477,9 +486,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         enteredLinkCheck = nil
     }
 
-    /// Shows `plan` in its repository's window, or in a new session whose server starts on
-    /// `plan.link`. A new window loads its server's entry page, which the server resolves
-    /// from the link against its mirror, so a ref with a `/` in it opens the right page.
+    /// Shows `plan` in its repository's window, or in a new session of the repository.
+    /// Either way the repository's one server, started on the repository itself, opens
+    /// `plan.link` once it is ready (`FolderSession.open(link:)`, `SourceLink`): it
+    /// resolves the link against its mirror, so a ref with a `/` in it opens the right
+    /// page, and a second pull request of the repository opens in the same window.
     ///
     /// A repository nobody has said may be cloned is looked up in `metab`'s cache in the
     /// link's turn; one the cache does not hold asks, and its question, with any later
@@ -531,16 +542,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// The repository's window, whose server starts again on `link`, or a new session whose
-    /// server starts on it. A new session's window joins the window of an open checkout of
+    /// The repository's window, whose server opens `link`, or a new session whose first
+    /// ready server opens it. A new session's window joins the window of an open checkout of
     /// the repository as a tab, if one is on screen (`CheckoutWindow`), and is placed as a
     /// new folder's otherwise. Without a runtime accepted now, the link waits for one, and
     /// is resolved again.
     ///
     /// Either is an open, so the repository moves to the front of the recent targets: a
     /// new session's server records it as it starts, and the app records one already open
-    /// itself, since starting its server again on a link records nothing
-    /// (`FolderServer.restart`).
+    /// itself, since opening a link in its server records nothing.
     private func openRepository(_ root: SessionRoot, on link: URL) {
         if let session = sessions[root.key] as? FolderSession {
             recentFolders.noteOpened(root.url, isOpen: true)
@@ -638,8 +648,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         session(for: .folder(root))
     }
 
-    /// The open session for `root`, or a new one, which starts its server with `link` when
-    /// one is given (`FolderSession.init`).
+    /// The open session for `root`, or a new one, whose first ready server opens `link`
+    /// when one is given (`FolderSession.init`).
     private func session(for root: SessionRoot, link: URL? = nil) -> FolderSession? {
         let key = root.key
         if let open = sessions[key] as? FolderSession { return open }
@@ -652,9 +662,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if self?.selection.isBusy == false { self?.showSettings(nil) }
         }
         session.onRootRefused = { [weak self] refused in self?.folderWindows.rootRefused(refused) }
-        session.onLinkSelectionMissing = { [weak self] missing, link, outcome in
+        session.onLinkNotFound = { [weak self] missing, link, outcome in
             let name = missing.served.identity().fullName
-            if let alert = LinkAlert.selectionMissing(outcome, link: link, repository: name) { self?.noteLinkProblem(alert) }
+            if let alert = LinkAlert.linkNotFound(outcome, link: link, repository: name) { self?.noteLinkProblem(alert) }
         }
         session.onAllPagesClosed = { [weak self] closed in
             self?.sessions.retire(closed)
@@ -1149,6 +1159,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     + "Check that ~/Library/Logs is a folder you can write to.")
         }
         NSWorkspace.shared.open(directory)
+    }
+
+    /// Help > Open Event Log: Metabrowser's own log of what its servers did, in a Metabrowser
+    /// window. `metab` says where the log is and which segment is newest
+    /// (`EventLogLocation`), and the segment opens in a window on the log's own directory,
+    /// not inside an open folder that holds it, and without a place in Open Recent
+    /// (`EventLogLocation.Action`). A log that does not exist yet, or a `metab` that cannot
+    /// say, is told in an alert, not left as a menu item that does nothing.
+    @objc func openEventLog(_ sender: Any?) {
+        guard let setup = selection.setup else {
+            if !selection.isBusy { showSettings(nil) }
+            return
+        }
+        let folder = appIdentity.supportDirectory()
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        Task {
+            let answer = await EventLogLocation.locate(
+                folder: folder.path(percentEncoded: false), with: setup,
+                inherited: ProcessInfo.processInfo.environment)
+            onRunLoop { [weak self] in
+                switch EventLogLocation.action(for: answer) {
+                case .open(let segment):
+                    self?.request(segment, inOwnFolder: true, remember: false)
+                case .tell(let title, let message):
+                    if case .unavailable(let reason) = answer {
+                        AppLog.app.error("could not ask metab where the event log is: \(reason, privacy: .public)")
+                    }
+                    self?.refuse(title, message)
+                }
+            }
+        }
     }
 
     @objc func openDocumentation(_ sender: Any?) {

@@ -117,6 +117,13 @@ opaque = ["next_after"]
 note = "Whether the cache holds a repository, asked before a link clones one. The app's limit is `RepositoryCache.pageLimit`; a smaller one in the golden shows the cursor."
 
 [[command]]
+id = "event-log"
+argv = ["{folder}", "--api", "/api/event-log?limit=1", "--format", "json"]
+source = "Sources/ShellCore/Folders/EventLogLocation.swift"
+json = ["directory", "files[].name"]
+note = "Help > Open Event Log: where Metabrowser's own event log is and which segment is newest, asked of the route that lists it, newest first. `{folder}` is any folder, whose server is never started, and `--api` writes the folder it serves as `<ROOT>`, so the app passes its own support folder, which is not the log's directory."
+
+[[command]]
 id = "doctor"
 argv = ["--doctor", "--json"]
 source = "Sources/ShellCore/Setup/DoctorReport.swift"
@@ -175,7 +182,8 @@ output = "shown"
 #
 # What the app asks a ready server over HTTP. `literal` is the route as the Swift source
 # spells it. The golden asks each with `metab ROOT --api ROUTE`, which issues the request
-# the app issues and prints the status the app checks.
+# the app issues and prints the status the app checks; `data` is the JSON body of a route
+# the app posts to, which the golden sends with `--data`.
 
 [[route]]
 id = "identity"
@@ -190,12 +198,20 @@ note = "Names each window. Status 200, or the window keeps the name it derived. 
 id = "source-status"
 route = "/api/source/status"
 literal = "api/source/status"
-source = "Sources/ShellCore/Folders/LinkSelection.swift"
-json = ["ref_name", "selection_state"]
-values = { selection_state = ["pending", "not_found", "fetch_failed"] }
-shown = ["ref_name"]
-values_in = "cli-github-url-waits.txt"
-note = "Whether a repository's server found what its link names. The three states need a refresh against an origin, which cli-github-url-waits.txt records; any other value reads as found."
+source = "Sources/ShellCore/Folders/SourceLink.swift"
+json = ["refreshing"]
+note = "Whether the refresh a link the mirror lacked waits for still runs (`SourceLink`): the app asks the link route again once it is false."
+
+[[route]]
+id = "source-link"
+route = "/api/source/link"
+literal = "api/source/link"
+data = "{body}"
+source = "Sources/ShellCore/Folders/SourceLink.swift"
+json = ["href", "code"]
+values = { code = ["selection_pending"] }
+values_in = "cli-api-source-link.txt"
+note = "Opens a link into the repository a mirror's server serves, its only one: the page its window goes to (`href`), switching the pin first where the link names another revision. A ref the mirror lacks needs a refresh against an origin, which cli-api-source-link.txt records with each kind of link; any other code is not found or a refusal, which leaves the window where it was."
 
 # ── Lines ───────────────────────────────────────────────────────────────────────────────
 #
@@ -283,6 +299,20 @@ name = "METABROWSER_DOCTOR_APP"
 source = "Sources/ShellCore/Setup/DoctorReport.swift"
 metab = "src/metabrowser/cli/doctor.py"
 note = "Set to the app's own bundle when Check Setup… runs the doctor, whose metab check then compares with that build's MetabrowserMinimumMetab rather than the app LaunchServices finds first."
+
+[[env]]
+name = "METABROWSER_STATE_DIR"
+source = "Sources/ShellCore/Runtime/ChildEnvironment.swift"
+golden = "cli-api-event-log.tryscript.md"
+metab = "src/metabrowser/home.py"
+note = "Not set by the app: passed through from the app's own environment, with XDG_STATE_HOME, so a server it starts writes its event log (metabrowser.event_log) where a terminal's would."
+
+[[env]]
+name = "METABROWSER_EVENT_LOG"
+source = "Sources/ShellCore/Runtime/ChildEnvironment.swift"
+golden = "cli-api-event-log.tryscript.md"
+metab = "src/metabrowser/event_log.py"
+note = "Not set by the app: passed through from the app's own environment, so 0 turns the event log off for the servers it starts too."
 
 [[env]]
 name = "METABROWSER_CONFIG_DIR"
@@ -500,6 +530,7 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 "Sources/ShellCore/Supervision/ServerLaunch.swift" = { sites = 1, runs = ["serve"] }
 "Sources/ShellCore/Folders/PresentPlan.swift" = { sites = 1, runs = ["present-dry-run"] }
 "Sources/ShellCore/Folders/RecentTargets.swift" = { sites = 1, runs = ["recent-list", "recent-add", "recent-forget", "recent-clear"] }
+"Sources/ShellCore/Folders/EventLogLocation.swift" = { sites = 1, runs = ["event-log"] }
 "Sources/ShellCore/Folders/RepositoryCache.swift" = { sites = 1, runs = ["cache-sources"] }
 "Sources/ShellCore/Setup/DoctorReport.swift" = { sites = 1, runs = ["doctor"] }
 
@@ -509,15 +540,17 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 [files.json]
 "Sources/ShellCore/Folders/PresentPlan.swift" = ["present-dry-run"]
 "Sources/ShellCore/Folders/RecentTargets.swift" = ["recent-list"]
+"Sources/ShellCore/Folders/EventLogLocation.swift" = ["event-log"]
 "Sources/ShellCore/Folders/RepositoryCache.swift" = ["cache-sources"]
 "Sources/ShellCore/Folders/FolderIdentity.swift" = ["identity"]
-"Sources/ShellCore/Folders/LinkSelection.swift" = ["source-status"]
+"Sources/ShellCore/Folders/SourceLink.swift" = ["source-link", "source-status"]
 "Sources/ShellCore/Setup/DoctorReport.swift" = ["doctor"]
 "Sources/ShellCore/Folders/SavedSession.swift" = ["own: the app's saved session"]
 "Sources/ShellCore/Runtime/Runtime.swift" = ["own: the runtime the app last settled on"]
 
 [files.http]
 "Sources/ShellCore/Folders/FolderIdentity.swift" = ["identity", "source-status"]
+"Sources/ShellCore/Folders/SourceLink.swift" = ["source-link"]
 "Sources/ShellCore/Supervision/ReadinessProbe.swift" = ["entry-page-answers"]
 "Sources/Metabrowser/FolderPage.swift" = ["own: the page a window loads, which the web view requests"]
 "Sources/Metabrowser/GitHubPopover.swift" = ["own: github.com, in the View on GitHub popover"]

@@ -331,29 +331,36 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
 3. **Each kind.** `$REPO`, `$REPO/tree/main/docs`, `$REPO/blob/main/README.md`, and
    `$REPO/commit/dcf2bcfa8` each bring the repository’s window forward at that page, as
    GitHub Links check 2 does.
-4. **The app’s refusals.** `jlevy/metabrowser`, `github.com/jlevy/metabrowser`,
-   `http://github.com/jlevy/metabrowser`,
+4. **The app’s refusals.** `jlevy/metabrowser`, `gitlab.com/jlevy/metabrowser`,
+   `git@github.com:jlevy/metabrowser.git`, `http://gitlab.com/jlevy/metabrowser`,
    `https://user:secret@github.com/jlevy/metabrowser`,
    `https://github.com:8443/jlevy/metabrowser`, and
    `https://gitlab.com/jlevy/metabrowser` each show a reason under the field, with no
    alert and no window; the panel stays open with the text, editing it clears the
    reason, and `log show --last 2m --predicate "subsystem == '$APP_ID'"` has no
    `Open URL…` line for any of them, since no `metab` ran.
-5. **`metab`’s refusals.** `$REPO/issues/1` shows `metab`’s message about issues pages,
+5. **An obvious URL is written in full.** `github.com/jlevy/metabrowser`,
+   `http://github.com/jlevy/metabrowser`, and `//github.com/jlevy/metabrowser` each show
+   `https://github.com/jlevy/metabrowser` in the field when Return is pressed, all of it
+   selected and the field still focused, with no message, and open the repository as
+   check 3 does. `github.com/jlevy/metabrowser/issues/1` shows
+   `https://github.com/jlevy/metabrowser/issues/1` in the field, selected, and `metab`’s
+   message about issues pages under it.
+6. **`metab`’s refusals.** `$REPO/issues/1` shows `metab`’s message about issues pages,
    and `$REPO/pull/0` its message about pull request numbers, under the field, with no
    alert and no window, and never JSON or a traceback; then editing the text to
    `$REPO/pull/517` and pressing Return opens it.
-6. **Cancel.** Escape, the Cancel button, the close button, and File > Close Window
+7. **Cancel.** Escape, the Cancel button, the close button, and File > Close Window
    (Command-W) each close the panel and open nothing, and close no window behind it.
    The panel comes back empty.
-7. **A repository the cache does not hold.** A small public repository you have never
+8. **A repository the cache does not hold.** A small public repository you have never
    opened: the panel closes, and the confirmation of GitHub Links check 4 appears.
-8. **No runtime yet.** As in GitHub Links check 10, choose a file that is not a `metab`
+9. **No runtime yet.** As in GitHub Links check 10, choose a file that is not a `metab`
    in Settings, then Open URL… `$REPO`: the panel closes and no window opens; choose
    this checkout’s `.venv/bin/metab`, and the repository opens.
-9. **Editing.** Command-V and Edit > Paste paste into the field, and Command-A selects
-   its text.
-10. **A space in the path.** `$REPO/blob/main/docs/a b.md` closes the panel and brings
+10. **Editing.** Command-V and Edit > Paste paste into the field, and Command-A selects
+    its text.
+11. **A space in the path.** `$REPO/blob/main/docs/a b.md` closes the panel and brings
     the repository’s window forward at the `handoff` that
     `metab "$REPO/blob/main/docs/a b.md" --present --dry-run --format json` prints,
     `docs/a%20b.md`, which the mirror reports missing.
@@ -441,13 +448,15 @@ yet been run on a Mac.
 ```shell
 APP="$PWD/apps/macos/build/dev/Metabrowser.app"
 mkdir -p /tmp/mb-check/{a,b,c,d}
+LONG=/tmp/mb-check/projects/2026/clients/northwind/archive/quarterly-reports
+mkdir -p "$LONG"
 ```
 
 Set Settings > Open folders in to Windows and close every window.
-Open `c` and close its window, then `d` and close its window, so both are recent and
-neither is open. Then open `a`, then `b`, each with `open -a "$APP" /tmp/mb-check/NAME`,
-so each has a window of its own.
-Each step starts where the one before it ends.
+Open `$LONG` and close its window, then `c` and close its window, then `d` and close its
+window, so all three are recent and none is open.
+Then open `a`, then `b`, each with `open -a "$APP" /tmp/mb-check/NAME`, so each has a
+window of its own. Each step starts where the one before it ends.
 
 1. **The title.** Each title reads its folder with a small chevron after it, dim at rest
    and darker under the pointer, where a rounded fill appears behind the title and
@@ -467,7 +476,15 @@ Each step starts where the one before it ends.
    Folders, disabled. Each folder shows the page’s folder glyph, and a GitHub repository
    among the recent ones the cloud mark; File > Open Recent and the Dock icon’s menu
    show the same marks on their rows.
-   Holding Option turns each row into “Open … in New Window”.
+   Each row’s mark sits on the line of its name, centered on that line as on Open
+   Recent’s one-line rows, never between the name and the subtitle, and the subtitle
+   starts under the name, not under the mark: in light and dark mode, on the highlighted
+   row as white as its text, and on the checked row, whose check mark stays centered on
+   the row. `quarterly-reports`, after `c`, shows its path on one line, cut in the middle
+   with an ellipsis, its mark still on the name’s line, and resting the pointer on the
+   row shows the whole path in a tooltip.
+   Holding Option turns each row into “Open … in New Window”, its mark still on the
+   name’s line and its subtitle the same.
    Escape closes it.
 4. **A folder another window shows.** Choosing `b` in `a`’s chooser brings `b`’s window
    forward and changes nothing in `a`’s.
@@ -506,8 +523,9 @@ Each step starts where the one before it ends.
     with an empty field that has the focus.
     It lists `a` first and selected, then `b` subtitled “In another window”, then the
     recent folders, and last `c`, checked.
-    Each row shows the page’s folder glyph, the selected row is drawn in the accent
-    color, and the check mark sits at the row’s trailing edge.
+    Each row shows the page’s folder glyph on the line of its name, as the chooser does,
+    the selected row is drawn in the accent color, and the check mark sits at the row’s
+    trailing edge, centered on the row.
     Return shows `a` in the window at once, as in step 6; Shift-Command-O, then Return,
     shows `c` again.
 12. **The panel’s keys.** In `c`’s window press Shift-Command-O, then:
@@ -729,8 +747,8 @@ mkdir -p "$stand_in"
 
 1. **A clean report.** Help > Check Setup…. Within seconds the window names the
    development build, the oldest `metab` it runs, and the checkout’s `metab`, then rows
-   for Plugins, Opening from a terminal, metab, Git, Configuration, Cache, and GitHub
-   CLI, each marked ok.
+   for Plugins, Opening from a terminal, metab, Git, Configuration, Cache, Event log,
+   and GitHub CLI, each marked ok.
    The metab row’s app detail names this development build and the `metab` it runs, even
    with a release app installed too.
    Copy Report, then `pbpaste` prints the same rows as text under the two header lines.
@@ -762,6 +780,49 @@ mkdir -p "$stand_in"
    Choose `$real` in Settings, then Check Again in the open window: it shows the clean
    report without reopening it from the Help menu.
    Then `rm -r "$stand_in"`.
+
+## Help > Open Event Log
+
+`EventLogLocation` (what each answer of `metab` does, and where the segment opens) is
+unit tested; these check the menu item, the window it opens, and what AppKit and the
+server do with it. Run them with the app’s servers writing to the log you will look at:
+the checks read it from `$state`, which the app’s servers use because the app passes
+`METABROWSER_STATE_DIR` on (`ChildEnvironment`).
+
+```shell
+state="${XDG_STATE_HOME:-$HOME/.local/state}/metabrowser/events"
+segment() { ls -t "$state"/events-*.jsonl | head -1; }
+```
+
+1. **The log opens on its own folder.** Open the home folder, an ancestor of the state
+   directory, `open -a "$APP" "$HOME"`, and click through a few files so its server
+   answers requests. Help > Open Event Log opens a window whose folder is `events`, at
+   the newest segment’s Timeline, and not a page inside the home folder’s window, which
+   still shows the home folder.
+   The Help item works from either window and from no window.
+2. **Not in Open Recent.** File > Open Recent and the Dock icon’s menu list `$HOME`, as
+   they did, and not `events`. Quit and reopen the app: `events` is restored with the
+   session, as any open folder is, and is still not in Open Recent.
+3. **Reading the log writes nothing into it.** Quit every window but `events`’s. Click
+   rows open in the Timeline and switch to Latency and Errors, then `wc -c "$(segment)"`
+   twice, a few seconds apart: the size is the same, because the server of the log’s own
+   directory writes no log.
+4. **The home folder’s server skips its reads of the log.** In the home folder’s window,
+   open `.local/state/metabrowser/events/` and a segment, switch the segment to Latency,
+   and `grep -c 'plugin/event-log' "$(segment)"`: the count does not change between two
+   reads of the segment, while a request for another file adds a `request` record.
+5. **No log yet.** Quit, and
+   `open --env METABROWSER_STATE_DIR="$(mktemp -d)" -a "$APP"`. With no folder open,
+   Help > Open Event Log says there is no event log yet and names the directory.
+6. **A `metab` that cannot say.** Choose a stand-in that fails for `--api`
+   (`printf '#!/bin/sh\ncase "$*" in\n*--api*) echo boom; exit 3;;\nesac\nexec "%s" "$@"\n' "$PWD/.venv/bin/metab" > /tmp/metab-stand-in; chmod 755 /tmp/metab-stand-in`,
+   then Settings > Choose metab…): Help > Open Event Log says it could not open the log,
+   shows `boom`, and points to Check Setup…. Choose the checkout’s `metab` again and
+   `rm /tmp/metab-stand-in`.
+7. **Turned off.** Quit, then `open --env METABROWSER_EVENT_LOG=0 -a "$APP" "$HOME"`.
+   Help > Check Setup… marks Event log as a warning that names the variable, and a late
+   wait’s Details on a pull request page say the log is off and why, where with the log
+   on they name Help > Open Event Log and not the `metab --event-log` command.
 
 ## Setup Flows
 

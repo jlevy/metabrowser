@@ -278,14 +278,17 @@ def _agent_chart_specs(events: list[LogEvent]) -> list[dict[str, Any]]:
     # Group events into bins by kind. Colors are CSS-var sentinels —
     # app.js resolveColor() substitutes computed values before Chart.js
     # consumes the spec (canvas can't resolve var() itself).
+    # The hues are the Log view's kind badges' (agent_log/styles.css), so a kind is one
+    # colour in the badge, the filter, and this chart; tests/test_plugin_design_consistency.py
+    # pins it. A tool call and its result share the badge's amber, the result lighter.
     kind_colors = {
-        "tool_call": "var(--chart-series-info)",
-        "tool_result": "var(--chart-series-info-soft)",
-        "text": "var(--chart-series-success)",
-        "thinking": "var(--chart-series-thinking)",
-        "result": "var(--chart-series-result)",
-        "init": "var(--chart-series-init)",
-        "system": "var(--chart-series-system)",
+        "tool_call": "var(--agent-log-kind-tool-text)",
+        "tool_result": "var(--agent-log-kind-tool-result-fill)",
+        "text": "var(--agent-log-kind-neutral-text)",
+        "thinking": "var(--agent-log-kind-thinking-text)",
+        "result": "var(--agent-log-kind-result-text)",
+        "init": "var(--agent-log-kind-init-text)",
+        "system": "var(--agent-log-kind-muted-text)",
     }
     # Collect event kinds present
     kinds_present: list[str] = []
@@ -318,7 +321,7 @@ def _agent_chart_specs(events: list[LogEvent]) -> list[dict[str, Any]]:
     for kind in kinds_present:
         if kind == "raw":
             continue
-        color = kind_colors.get(kind, "var(--chart-series-init)")
+        color = kind_colors.get(kind, "var(--agent-log-kind-muted-text)")
         data = [{"x": bin_times[j], "y": bins_by_kind[kind][j]} for j in range(num_bins)]
         series.append({"label": kind, "color": color, "data": data})
 

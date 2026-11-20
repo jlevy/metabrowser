@@ -11,7 +11,7 @@ env:
   GIT_CONFIG_SYSTEM: "/dev/null"
 patterns:
   APP_HOME: '[^\s"]+/home'
-  STORE_KEY: '[0-9a-f]{64}'
+  STORE_KEY: '[a-z0-9-]+--[0-9a-f]{16}'
 before: >-
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
   METABROWSER_CONFIG_DIR="$PWD/config"
@@ -163,6 +163,7 @@ status: 200
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": false,
     "latest": null,
     "ref_on_origin": null,
     "last_fetch_at": "2026-09-17T12:00:05Z",
@@ -215,6 +216,7 @@ status: 200
     "borrows": null,
     "shallow": false,
     "refreshable": true,
+    "follows": false,
     "latest": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
     "ref_on_origin": true,
     "last_fetch_at": "2026-09-17T12:00:05Z",

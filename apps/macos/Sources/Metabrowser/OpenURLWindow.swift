@@ -116,6 +116,8 @@ final class OpenURLWindowController: NSWindowController, NSWindowDelegate, NSTex
 
     @objc private func openLink(_ sender: Any?) {
         let link = panel.open()
+        // Open writes a GitHub URL typed without its scheme in full: the field shows it.
+        if field.stringValue != panel.text { field.stringValue = panel.text }
         render()
         if let link { onOpen(link) }
     }

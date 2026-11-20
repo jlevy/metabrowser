@@ -17,6 +17,7 @@ status: 200
   "borrows": null,
   "shallow": false,
   "refreshable": false,
+  "follows": false,
   "latest": null,
   "ref_on_origin": null,
   "last_fetch_at": null,
@@ -39,7 +40,6 @@ status: 200
 {
   "kind": "branch",
   "query": "",
-  "limit": 100,
   "pin": null,
   "ref": null,
   "kinds": [
@@ -54,8 +54,7 @@ status: 200
     "name": "checkout",
     "location": "<ROOT>"
   },
-  "total": 3,
-  "truncated": false,
+  "pull_requests": null,
   "refs": [
     {
       "name": "topic",
@@ -67,19 +66,19 @@ status: 200
       "current": false
     },
     {
-      "name": "feature",
-      "ref": "refs/heads/feature",
-      "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
-      "committed_at": 1767232800.0,
+      "name": "local-work",
+      "ref": "refs/heads/local-work",
+      "commit": "25e0a2a76ab47a407f3dee083221e6efdcca6283",
+      "committed_at": 1769904000.0,
       "default": false,
       "checked_out": false,
       "current": false
     },
     {
-      "name": "local-work",
-      "ref": "refs/heads/local-work",
-      "commit": "25e0a2a76ab47a407f3dee083221e6efdcca6283",
-      "committed_at": 1769904000.0,
+      "name": "feature",
+      "ref": "refs/heads/feature",
+      "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "committed_at": 1767232800.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -98,7 +97,6 @@ status: 200
 {
   "kind": "remote",
   "query": "",
-  "limit": 100,
   "pin": null,
   "ref": null,
   "kinds": [
@@ -113,8 +111,7 @@ status: 200
     "name": "checkout",
     "location": "<ROOT>"
   },
-  "total": 2,
-  "truncated": false,
+  "pull_requests": null,
   "refs": [
     {
       "name": "origin/feature",
@@ -146,7 +143,6 @@ status: 200
 {
   "kind": "tag",
   "query": "",
-  "limit": 100,
   "pin": null,
   "ref": null,
   "kinds": [
@@ -161,8 +157,7 @@ status: 200
     "name": "checkout",
     "location": "<ROOT>"
   },
-  "total": 2,
-  "truncated": false,
+  "pull_requests": null,
   "refs": [
     {
       "name": "local-tag",
@@ -207,6 +202,7 @@ status: 200
     "borrows": null,
     "shallow": false,
     "refreshable": false,
+    "follows": false,
     "latest": null,
     "ref_on_origin": null,
     "last_fetch_at": null,
@@ -242,6 +238,7 @@ status: 200
     "borrows": null,
     "shallow": false,
     "refreshable": false,
+    "follows": false,
     "latest": null,
     "ref_on_origin": null,
     "last_fetch_at": null,
@@ -277,6 +274,7 @@ status: 200
     "borrows": null,
     "shallow": false,
     "refreshable": false,
+    "follows": false,
     "latest": null,
     "ref_on_origin": null,
     "last_fetch_at": null,
@@ -309,6 +307,7 @@ status: 200
     "borrows": null,
     "shallow": false,
     "refreshable": false,
+    "follows": false,
     "latest": null,
     "ref_on_origin": null,
     "last_fetch_at": null,
@@ -343,6 +342,7 @@ status: 200
     "borrows": null,
     "shallow": false,
     "refreshable": false,
+    "follows": false,
     "latest": null,
     "ref_on_origin": null,
     "last_fetch_at": null,
@@ -413,6 +413,7 @@ status: 200
   "borrows": null,
   "shallow": false,
   "refreshable": false,
+  "follows": false,
   "latest": null,
   "ref_on_origin": null,
   "last_fetch_at": null,

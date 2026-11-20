@@ -4,7 +4,10 @@
    tokens. Colors are design tokens. */
 
 .github-pull {
-  --github-pull-text-inset: var(--pane-header-padding-x);
+  /* A card's inline inset: its head's, its text's, and a hunk's lines', so the head's avatar
+     and the text under it start at one x, as the timeline's line (below) is drawn down the
+     avatars' centers. It is the shell's boxed-prose padding (static/styles.css). */
+  --github-pull-text-inset: var(--boxed-prose-padding-inline);
   --github-pull-gap: 12px;
   /* The Conversation's one rhythm (mb-w7rt): the visible space between any two consecutive
      events, a card's border or a commit's text, and between two review comments. 20 px is
@@ -228,6 +231,22 @@
   min-width: 0;
   min-height: var(--ui-row-height);
 }
+/* The size line above the Diff summary (docs/design-system.md, "Change Size Line"): a row as
+   tall as the summary's, whether it holds the pending placeholder or the line, so the line
+   arriving moves nothing; one line, cut short at the row's end in a narrow pane, as the
+   summary's breakdown is, so it never wraps under the tabs' feet. */
+.github-pull-size {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: var(--ui-row-height);
+}
+.github-pull-size > .change-size-line {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .github-pull-header .github-pull-summary > .diff-summary {
   flex-wrap: nowrap;
   max-width: 100%;
@@ -256,14 +275,14 @@
    pulse (`.tally-pending`), shown after the quiet period (`.mb-delayed-loading`), in the
    summary header's type, centred on the row's line from the row's start, and as wide as a
    summary of one status. The summary takes its place in the row, which keeps its height, so
-   nothing moves. Measured in headless Chrome 152 in both themes (mb-vb51; again with the
-   status counts' letters bold, mb-8iwn), a summary header of one status, from "1 file
-   changed · 1 M · +3 −1" to "8 files changed · 8 M · +120 −30", ends 13.91 to 15.92 em of
-   its type from the row's start, its text 13.45 to 15.46 em; of three statuses, "35 files
-   changed · 2 A, 3 D, 30 M · +1,234 −3,423", its text ends 22.26 em. The old wording's one
-   status ended 16.6 to 17.6 em, for which this was 17 em.
-   tests/dom/github-pull-header-chrome.mjs holds the width between the two. */
-.github-pull-summary-pending {
+   nothing moves. Measured in headless Chrome 152 in both themes (mb-772c), with the file
+   count on the size line above ("Change Size Line"), a summary header of one status, from
+   "1 M · +3 −1" to "8 M · +120 −30", ends 6.71 to 8.3 em of its type from the row's start,
+   its text 6.28 to 7.87 em; with the file count before it, the same headers ended 13.91 to
+   15.92 em, for which this was 14.5 em. tests/dom/github-pull-header-chrome.mjs holds the
+   width between the two. */
+.github-pull-summary-pending,
+.github-pull-size-pending {
   display: flex;
   align-self: stretch;
   align-items: center;
@@ -271,7 +290,28 @@
   font-size: var(--body-font-size);
 }
 .github-pull-summary-pending > .tally-pending {
-  width: min(100%, 14.5em);
+  width: min(100%, 7em);
+}
+/* The size line's own placeholder, as wide as the line's counts before its size, "1 commit ·
+   3 files changed", about 13 em of the body's type. */
+.github-pull-size-pending > .tally-pending {
+  width: min(100%, 13em);
+}
+/* The placeholder's place once its wait is late (mb-9zp5): a muted line, as tall as the
+   placeholder, ending in Details. It wraps rather than run past the header. */
+.github-pull-summary-late {
+  display: flex;
+  flex-wrap: wrap;
+  align-self: stretch;
+  align-items: center;
+  column-gap: 0.3em;
+  min-height: var(--ui-row-height);
+  color: var(--muted);
+  font-size: var(--body-font-size);
+}
+/* The Details panel, the header's last row while it is open. */
+.github-pull-header > .github-pull-details {
+  margin-block-start: 4px;
 }
 /* The cached changed-files list's brief line, drawn in the row while the comparison is read
    (mb-z8ea; pull-summary-brief.js): the Diff summary header's line, its chevron's slot empty,
@@ -351,8 +391,8 @@
 .github-pull-commit-id:focus-visible,
 .github-pull-checks a:focus-visible,
 .github-pull-text-action:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* A text action that moves the pin, which is a button and looks as the links beside it do:
    docs/design-system.md, "Control Families". */
@@ -379,8 +419,6 @@
   padding-block: 0;
   border: 1px solid currentcolor;
   block-size: calc(1lh + 2 * 1px);
-  font-weight: var(--weight-medium);
-  line-height: 16px;
 }
 /* A state's badge is as wide as the widest state's, so a stale record that turns out
    merged does not widen it under the reader. Its slot is a one-column grid: the badge,
@@ -406,14 +444,14 @@
 }
 .github-pull-badge[data-state="success"],
 .github-pull-badge[data-state="APPROVED"] {
-  color: var(--status-success);
+  color: var(--status-success-text);
 }
 .github-pull-badge[data-state="failure"],
 .github-pull-badge[data-state="CHANGES_REQUESTED"] {
-  color: var(--status-error);
+  color: var(--status-error-text);
 }
 .github-pull-badge[data-state="pending"] {
-  color: var(--status-warning);
+  color: var(--status-warning-text);
 }
 .github-pull-badge[data-state="neutral"],
 .github-pull-badge[data-state="skipped"],
@@ -540,7 +578,7 @@
    before it wraps; its controls never are.
    A failure is the exception: it says what to do, so the row wraps to show all of it. */
 .github-pull-failure {
-  color: var(--status-warning-strong);
+  color: var(--status-warning-text);
 }
 .github-pull-status {
   display: flex;
@@ -661,7 +699,7 @@
   text-overflow: ellipsis;
 }
 .github-pull-freshness-slot > .github-pull-freshness-held {
-  color: var(--status-warning-strong);
+  color: var(--status-warning-text);
 }
 .github-pull-freshness-sizer {
   grid-area: 1 / 1;
@@ -717,10 +755,11 @@
    box, and the identity's gap (--actor-avatar-size, --actor-identity-gap,
    18 px and 4 px): its frame is as wide as a card's and draws
    nothing. Its box is its line, with no room of its own above or below, so its text is as
-   far from the events beside it as their boxes are, the rhythm (mb-w7rt). Its hash takes a
-   revision's own size, one step below the text beside it (`.git-commit-sha`). Measured in
-   Chrome 152 before the rhythm: a card head's room in the row put its glyphs 20 px from the
-   next commit's, and 23.5 px from a card, which stood 12 px from the next card. */
+   far from the events beside it as their boxes are, the rhythm (mb-w7rt). Its hash is the
+   size of the text beside it, as a short commit ID is everywhere (`.git-commit-sha`).
+   Measured in Chrome 152 before the rhythm: a card head's room in the row put its glyphs
+   20 px from the next commit's, and 23.5 px from a card, which stood 12 px from the next
+   card. */
 .github-pull-commit {
   display: flex;
   flex-wrap: wrap;
@@ -810,7 +849,9 @@
    the first and last block give up their own margins to it (below), so a heading that opens
    a text has only this above it, and it needs at least the space it keeps below itself,
    KPress's 1rem under an h1 or h2, or it reads as the card head's line and not its
-   section's. GitHub's own comment body is padded the same. */
+   section's. Its inline inset is `--boxed-prose-padding-inline` (static/styles.css), through
+   `--github-pull-text-inset`, the card head's too; GitHub's own comment body is padded the
+   same, 16px each way. */
 .github-pull-text {
   padding: var(--content-padding-y) var(--github-pull-text-inset);
 }
@@ -910,13 +951,11 @@
   min-height: 1lh;
   padding: 0 var(--github-pull-text-inset);
 }
-/* The diff view's row tints (--diff-add-row-bg and --diff-del-row-bg), written out because
-   the diff plugin's stylesheet loads only with Files changed. */
 .github-pull-hunk-line[data-kind="add"] {
-  background: color-mix(in srgb, var(--status-success) 9%, transparent);
+  background: var(--diff-add-row-bg);
 }
 .github-pull-hunk-line[data-kind="del"] {
-  background: color-mix(in srgb, var(--status-error) 9%, transparent);
+  background: var(--diff-del-row-bg);
 }
 .github-pull-hunk-line[data-kind="hunk"],
 .github-pull-hunk-line[data-kind="note"] {
@@ -1007,7 +1046,7 @@
   color: var(--link);
 }
 .github-pull-merge[data-state="conflicting"] {
-  color: var(--status-error);
+  color: var(--status-error-text);
 }
 
 /* ── A pull request's state ──────────────────────────────────────
@@ -1146,7 +1185,7 @@
    `--github-pull-file-depth` is: this sheet's `:root` declares only its own tokens
    (tests/test_pull_page_route.py). */
 :root {
-  --github-pull-row-gap: 6px;
+  --github-pull-row-gap: var(--tree-icon-gap);
   --github-pull-row-text-column: calc(var(--tree-icon-slot) + var(--github-pull-row-gap));
 }
 .github-pulls-list {
@@ -1218,8 +1257,8 @@
 }
 .github-pulls-stack-row:focus-visible,
 .github-pulls-entry:has(> .github-pulls-row:focus-visible) {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
   background: var(--hover-bg);
 }
 .github-pulls-entry > .github-pulls-row:focus-visible {
@@ -1495,8 +1534,8 @@
   position: absolute;
   z-index: 1;
   top: 0;
-  right: 12px;
-  padding: 0 6px;
+  right: var(--pane-header-padding-x);
+  padding: 0 var(--nav-toolbar-gap);
   border-radius: var(--radius-tag);
   background: var(--bg);
   line-height: var(--ui-row-height);
@@ -1528,7 +1567,7 @@
 }
 .github-pull-files-line {
   margin: 0;
-  padding: 2px 12px 2px
+  padding: 2px var(--pane-header-padding-x) 2px
     calc(
       10px +
       var(--github-pulls-indent, 0px) +
@@ -1540,7 +1579,7 @@
 .github-pull-files-line:not([hidden]) {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--tree-icon-gap);
 }
 .github-pull-files-line > .mb-delayed-loading:not([hidden]) {
   display: inline-flex;
@@ -1549,9 +1588,9 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  margin: 2px 12px 4px calc(10px + var(--github-pulls-indent, 0px) + var(--tree-indent));
-  padding: 4px 8px;
+  gap: var(--nav-toolbar-gap);
+  margin: 2px var(--pane-header-padding-x) 4px
+    calc(10px + var(--github-pulls-indent, 0px) + var(--tree-indent));
 }
 .github-pulls-foot {
   display: flex;
@@ -1581,8 +1620,8 @@
   text-decoration: underline;
 }
 .github-pulls-foot a:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Optional membership has its slot at the right end of the author's row (mb-cf0l), its
@@ -1614,7 +1653,7 @@
 .github-pull-stack-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--tree-icon-gap);
   list-style: none;
   font-variant-numeric: var(--tabular-numerals);
 }
@@ -1641,10 +1680,6 @@
   color: var(--text);
   white-space: normal;
   text-decoration: none;
-}
-.github-pull-stack-current {
-  flex: none;
-  width: var(--icon-glyph);
 }
 .github-pull-stack-member-copy {
   display: block;

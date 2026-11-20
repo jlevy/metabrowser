@@ -13,11 +13,16 @@
 //   headed the same way, and its note reads `committed revision of <location>`: the
 //   server writes the words (`data-mirror-note`), and the folder there holds the
 //   working tree, not these files.
+//   A mirror's note names the store's directory, without the `/repository.git` every
+//   store ends in: the directory's name is what tells one mirror from another. The
+//   tooltip and `/api/source/status` keep the whole location, where `git -C <location>`
+//   works. This file is written into a mirror's page, so it names no cache path itself.
 // - `tip()` is the line the navigation heading's tooltip gains, and the tooltip of the
 //   note and of the root's name: the sentence that says what the directory is, with the
 //   origin and the full commit.
-// - The short commit in the navigation heading gets a control that copies the full
-//   one, through the SDK's owner-stamped copy delegate.
+// - The navigation heading gets a control that copies the full commit, through the
+//   SDK's owner-stamped copy delegate. A mirror's heading and a checkout's revision's
+//   are the name alone, and the tooltip names the commit.
 //
 // tests/dom/mirror-heading-session.js runs this file on what the server served.
 
@@ -37,11 +42,22 @@
     return heading?.dataset ?? {};
   }
 
+  /**
+   * Where the note says a mirror is: its store's directory, which the bare repository the
+   * server names stands in. A checkout's revision names the checkout's own folder, whatever
+   * that folder is called.
+   * @param {string} location
+   * @param {boolean} mirror whether the page is a mirror, which carries no `data-mirror-note`
+   */
+  function shown(location, mirror) {
+    return mirror ? location.replace(/\/repository\.git$/, "") : location;
+  }
+
   /** The note after the main heading's address: where the mirror is kept. */
   function note() {
-    const { mirrorLocation: location, mirrorNote: words = "mirror in" } = served();
+    const { mirrorLocation: location, mirrorNote: words } = served();
     return location
-      ? `<span class="file-header-mirror"><span class="file-header-mirror-text">${esc(words)} ${esc(location)}</span></span>`
+      ? `<span class="file-header-mirror"><span class="file-header-mirror-text">${esc(words ?? "mirror in")} ${esc(shown(location, words === undefined))}</span></span>`
       : "";
   }
 
@@ -86,7 +102,7 @@
     true,
   );
 
-  /** Put the control that copies the full commit after the heading that shows it short. */
+  /** Put the control that copies the full commit after the navigation heading. */
   function mountCommitCopy() {
     const heading = document.querySelector(".header-path");
     const pin = window.METABROWSER_SOURCE_PIN?.pin;

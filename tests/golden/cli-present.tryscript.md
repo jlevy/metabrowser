@@ -220,6 +220,21 @@ reason: open_in is browser, so --present looks for no app and starts a metab ser
 ? 0
 ```
 
+A GitHub URL typed without `https://`, which names nothing on disk, is the full URL.
+
+```console
+$ metab github.com/octo/demo/pull/7 --present --dry-run
+kind: pull_request
+root: https://github.com/octo/demo
+page: /pull/7
+handoff: https://github.com/octo/demo/pull/7
+open_in: browser (environment)
+delivers_to: browser
+code: browser_preferred
+reason: open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser
+? 0
+```
+
 A branch is a `tree` at the top of the repository, named alone or spelled in full, and a
 path after `HEAD` has one reading, so their pages are known.
 

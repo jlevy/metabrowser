@@ -32,10 +32,10 @@ It asks the providers `cache/providers.py` lists, through `RepositoryProvider`, 
 reducers, Git configuration for a remote (the credential helper), what to say when a
 source was not found or needs credentials (`credential_hint`), a check before a first
 clone, a mirror’s `repository_context`, the commit a pull-request URL pins, the changed
-file a Changes tab URL’s anchor names (`pull_request_file`), and the set of pull
-requests a server keeps fresh.
-`GithubProvider` in `provider.py` answers each.
-`provider_statuses` in the same module collects each provider’s section of
+file a Changes tab URL’s anchor names (`pull_request_file`), the set of pull requests a
+server keeps fresh, and the pull requests a branch is the head of, from the cache alone
+(`ref_pulls`, [By head branch](#the-catalog)). `GithubProvider` in `provider.py` answers
+each. `provider_statuses` in the same module collects each provider’s section of
 `metab --doctor`, and `PullRequestUnavailableError.blocking` tells the command line that
 a pull request can open only once a tool is installed or signed in, without naming the
 tool; both come from [the GitHub status check](#the-github-status-check).
@@ -307,6 +307,32 @@ With `q`, the same route is Quick Search’s completion list across every state
 scans titles within `_SEARCH_TITLE_ROWS` and an instruction budget, saying `limited`
 when it stopped there.
 
+**By head branch.** The ref chooser lists a branch’s pull requests on its row, and its
+filter finds a branch by them (`GET /api/source/refs`,
+[Source Sessions and Pins](arch-source-sessions-and-pins.md#switching-the-pin-and-the-pin-guard)).
+Core asks the provider, through `ref_pulls_for` in `cache/providers.py`, which names no
+provider, and `ref_pulls.py` answers from the catalog alone: `catalog_heads` reads the
+cached rows whose `head_repository` is the repository itself, a fork’s or a deleted
+fork’s never, within the newest `_HEADS_SCAN_ROWS`, and the answer is kept for each
+`(epoch, revision)` of the catalog, so a chooser that asks on every keystroke reads no
+row. While a job is filling the catalog each page it writes moves the revision, and a
+scan holds off the next page’s write, so the answer is read again at most once in
+`RESCAN_WHILE_FILLING_S`, and a scan reads its rows inside the transaction and makes
+them pull requests after it; the measurements are beside the constants.
+A branch several pull requests name lists the open ones first and then the newest first.
+The repository’s own are told from a fork’s by the head repository’s name the catalog
+recorded, compared, ignoring case, with the name in the served repository’s address, so
+a repository renamed or transferred since its rows were cached reads as a fork’s until
+the catalog records its new name (`mb-n3hm`: compare the repository’s id).
+A catalog not yet cached answers as absent, with whether a job is filling it, which the
+chooser asks again while it is; nothing here starts a job or reaches GitHub.
+A checkout’s local branches and its `origin/` remote branches are named as the
+repository names them.
+A checkout served at one of its own revisions is not the folder the plugin resolves, and
+has no Pulls tab
+([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)),
+so its listing has no pull requests.
+
 ## Lightweight Cores
 
 A **core** is a pull request’s validated header and description, prepared ahead of
@@ -408,6 +434,30 @@ answers shows a placeholder in its place, never its Markdown source.
 A text farther off keeps its plain text, which find in page reaches, and is asked for as
 it nears the view, so a jump straight to it shows that text until it is asked for.
 Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
+A text whose render keeps a `pre[lang="mermaid"]` is drawn as an image on every page,
+through the Markdown plugin’s `mb.builtins.markdown.drawDiagrams` with `isolated: true`
+(`drawTextDiagrams` in `pull-page.js`): the page then loads Metabrowser’s own KPress
+diagram modules and vendored Mermaid, none of which the text names.
+Mermaid lays a diagram out in a document before it becomes an image, and there the
+diagram’s own CSS is live: its image shape, a `themeCSS` directive or front matter, a
+`fontFamily` directive, a `cursor: url()`, a state diagram’s `classDef`, a class
+diagram’s `style`, and a `block-beta` `style` (from the page’s own origin) each loaded
+its URL on a page with no policy, as a folder’s page served trusted has.
+So a text’s diagrams are laid out in the diagram frame
+(`builtin_plugins/markdown/diagram-frame.js`), an `about:srcdoc` frame sandboxed to
+scripts and its own origin, whose own Content-Security-Policy admits its entry and the
+Mermaid directory as scripts, its stylesheet (`diagram-frame.css`) and inline style, and
+`data:` images, and nothing else, under either profile; the page shows the SVG text it
+returns as an image.
+The stylesheet gives a label the box the app page’s reset gives it, which the frame
+needs under `--untrusted`: the frame inherits the page’s policy, which refuses the
+`<style>` Mermaid zeroes a label’s margins with.
+One frame serves every text on the page, opened with the first diagram and removed with
+the last binding; if it goes any other way, taken out of the page or navigated away, a
+render in flight fails rather than holding KPress’s page-wide queue of Mermaid calls,
+and the next render opens a new frame.
+A diagram drawn around an image, Mermaid’s image shape, cannot get it, so it shows its
+source with a message that images in diagrams from untrusted text are not loaded.
 The trust model behind that allowlist is in
 [Server and Content](arch-server-and-content.md).
 
@@ -485,9 +535,9 @@ It never asks GitHub, runs no Git, and reads nothing but each list’s file.
 The envelope has `source`, null with no `rows` on a server with no GitHub repository,
 and `rows` in the request’s order, each with `number`, `state` (`listed` or `absent`),
 `reason`, `listing`, `listed_from`, `generation`, `head`, `files`, `additions`,
-`deletions`, `exact`, and `statuses`, each a status and its count, sorted by the status.
-The reasons are `not_cached`, `schema_mismatch`, and `unreadable`, no usable list;
-`filling`, a list still being read or stopped part-way; `too_large`, a list GitHub
+`deletions`, `exact`, `statuses`, each a status and its count, sorted by the status, and
+`size`. The reasons are `not_cached`, `schema_mismatch`, and `unreadable`, no usable
+list; `filling`, a list still being read or stopped part-way; `too_large`, a list GitHub
 capped or one an item was left out of; and `deferred`, a list past the request’s byte
 budget, which a later request reads.
 A `filling` or `too_large` answer still names its list’s `listed_from`, `generation`,
@@ -499,6 +549,16 @@ numbers; anything else is refused 400 `invalid_request`. One request reads at mo
 `MAX_SUMMARY_BYTES` of lists it has not summed, the first whatever its size, and a sum
 is kept by its file’s inode, modification time, and size, at most `MAX_KEPT_SUMMARIES`
 of them, the least recently used out first, so an unchanged list is read once.
+
+`size` is the size the list’s comparison pushes and its patch’s
+([Change Sizes](arch-git.md#change-sizes)), when it is kept: in memory or beside the
+store, so the route still runs no Git.
+The refresh that makes a list from the store measures it right after listing it
+(`pull_files_refresh.py`), so a row’s size arrives with its counts; a list GitHub gave
+names no merge base and has none.
+A pull request’s page asks `GET pull-size` with the envelope’s `size_route`, which names
+the record’s comparison as `rendered_route` does and is admitted the same way
+(`pull_size.py`); it measures the head against the pair’s merge base once, and keeps it.
 
 ## Label Sets
 
@@ -679,6 +739,7 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `pull-comparison` | `GET` | The record’s comparison, from the store, for Changes and the header’s Diff summary |
 | `pull-image` | `GET` | An image at the comparison’s head, for its rendered Markdown |
 | `pull-rendered-diff` | `GET` | One changed Markdown, YAML, or JSON file, rendered |
+| `pull-size` | `GET` | The size the comparison pushes, against its merge base, and its patch’s |
 | `pull-timeline` | `POST` | Conversation’s order of commits, comments, and reviews |
 | `pull-markdown` | `GET` | One text of the record, or a core preview’s description, rendered inert |
 | `pulls` | `GET` | A catalog window, or a search with `q` |
