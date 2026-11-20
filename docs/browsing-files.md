@@ -109,9 +109,10 @@ first and says how many matched.
 A Git revision has no modification times, so a file’s age is the time of the last commit
 that changed it, as a hosting site’s file list shows, and a folder’s the newest of its
 files’. They come from `git last-modified`, which needs Git 2.53 or newer, and are read
-in the background after the page opens, so a file shows its age a moment after it shows
-its name; with an older Git a revision shows no ages, and `metab --doctor` says what to
-upgrade. Modified within and By age are not offered on a revision yet.
+in the background, so the page opens at once without them and shows them on its next
+load, once the read has finished; the page does not redraw by itself yet.
+With an older Git a revision shows no ages, and `metab --doctor` says what to upgrade.
+Modified within and By age are not offered on a revision yet.
 
 The same filters are available from the command line:
 `metab ROOT --walk --type .md --age 7d`.

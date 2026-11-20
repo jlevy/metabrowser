@@ -97,6 +97,7 @@ import pytest
 from metabrowser.git.tree_source import GitPath
 from metabrowser.settings import TEXT_PREVIEW_REQUEST_MAX_BYTES
 from metabrowser.wire_models import validate_rollup_envelope
+from tests.file_ages_git import service_is_idle
 from tests.git_pin_harness import git_env
 from tests.golden_harness import (
     Invocation,
@@ -631,7 +632,6 @@ def test_golden_pin_file_ages(
 
     assert progress["ages"]["state"] == "ready"
     assert progress["ages"]["dated"] == progress["ages"]["files"] == 7
-    assert progress["ages"]["commits"] == 5
     assert tree["ages"] == progress["ages"]
     times = {node["name"]: node["mtime"] for node in tree["tree"]}
     # a/ is the newest of its files, the tip's addition; docs/ is the side's edit; the guide
@@ -684,6 +684,6 @@ def test_a_command_that_prints_no_ages_never_reads_them(
     pin.use(ages_origin(tmp_path))
     for route in ("/api/rollup?depth=1", "/api/catalog", f"/api/file?path={_wire(b'README.md')}"):
         pin.api(route)
-        assert file_ages_service().is_idle(), route
+        assert service_is_idle(file_ages_service()), route
     pin.api("/api/tree?depth=1")
-    assert not file_ages_service().is_idle()
+    assert not service_is_idle(file_ages_service())

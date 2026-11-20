@@ -25,9 +25,16 @@ come from one ``git log --no-walk`` over the distinct commits.
 
 **From an ancestor.** An answer for a commit *C* whose ancestor *A* is answered reads
 ``C ^A``, so Git walks only the commits since *A*, and a file marked ``^A`` keeps *A*'s time.
-A file marked with any other excluded commit would need that commit's own answer, so the
-whole answer is read again without *A*. ``tests/test_git_file_ages.py`` checks the derived
-answer against a cold one on histories with merges.
+That is the same answer as a cold read only where nothing merged in between: over a range
+with a merge, ``last-modified`` can blame the excluded commit for a file a merge restored (a
+file mode put back to its first parent's, as the review of this module found), and *A*'s
+time is then newer than the truth. So :func:`nearest_ancestor` offers an ancestor only when
+``git rev-list --merges --count A..C`` is 0, and never an answer cut by its budget, whose
+undated files a derived answer would inherit. A file marked with any other excluded commit
+would need that commit's own answer, so the whole answer is then read again without *A*, with
+a budget of its own. ``tests/test_git_file_ages.py`` checks a derived answer against a cold
+one over linear ranges, and that a range with a merge is read cold on a history where
+deriving is wrong.
 
 What the answer does not know is stated, never guessed:
 
@@ -47,11 +54,10 @@ import contextlib
 import time
 from array import array
 from bisect import bisect_left
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
 
-from metabrowser import event_log
 from metabrowser.git.process import (
     GitCommandError,
     GitError,
@@ -188,8 +194,6 @@ class RevisionAges:
     times: array[int]
     older_than: int | None
     stop: StopReason
-    commits: int
-    """How many distinct commits last changed a file."""
     seconds: float
     from_commit: str | None = None
     """The ancestor whose answer this one was derived from, when it was."""
@@ -247,6 +251,16 @@ class _Read:
     cut: bool
 
 
+async def _stderr_text(task: asyncio.Task[str]) -> str:
+    """What *task* read of Git's stderr, which ends with the process; a stuck pipe (a helper
+    that kept it open) is given up on after :data:`_REAP_WAIT_S` and is not waited for."""
+
+    try:
+        return await asyncio.wait_for(task, timeout=_REAP_WAIT_S)
+    except TimeoutError:
+        return ""
+
+
 async def _drain_stderr(stream: asyncio.StreamReader | None) -> str:
     kept = bytearray()
     if stream is None:
@@ -290,7 +304,7 @@ async def _read_last_modified(
                 await asyncio.wait_for(process.wait(), timeout=_REAP_WAIT_S)
     finally:
         await terminate_git_process(process)
-        stderr = await stderr_task
+        stderr = await _stderr_text(stderr_task)
     if natural_end and process.returncode not in (0, None):
         raise GitCommandError(("last-modified",), process.returncode or 1, stderr)
     return _Read(found=found, cut=cut)
@@ -380,20 +394,27 @@ async def date_revision(
         raise FileAgesError("the revision is not a full commit ID")
     location = GitLocation.revision(target, commit)
     started = time.monotonic()
-    deadline = started + limits.timeout_s
     wanted = frozenset(names)
     read: _Read | None = None
     used_base: RevisionAges | None = None
     if base is not None:
         derived = await _read_last_modified(
-            location, commit=commit, exclude=base.commit, wanted=wanted, deadline=deadline
+            location,
+            commit=commit,
+            exclude=base.commit,
+            wanted=wanted,
+            deadline=time.monotonic() + limits.timeout_s,
         )
         excluded = {oid for oid in derived.found.values() if oid.startswith(b"^")}
         if derived.cut or excluded <= {b"^" + base.commit.encode("ascii")}:
             read, used_base = derived, base
     if read is None:
         read = await _read_last_modified(
-            location, commit=commit, exclude=None, wanted=wanted, deadline=deadline
+            location,
+            commit=commit,
+            exclude=None,
+            wanted=wanted,
+            deadline=time.monotonic() + limits.timeout_s,
         )
     commits = sorted({oid.lstrip(b"^").decode("ascii") for oid in read.found.values()})
     times = await _commit_times(location, [commit, *commits])
@@ -438,7 +459,6 @@ async def date_revision(
         times=values,
         older_than=older_than,
         stop=stop,
-        commits=len(commits),
         seconds=time.monotonic() - started,
         from_commit=used_base.commit if used_base is not None else None,
     )
@@ -459,45 +479,41 @@ async def is_ancestor(target: RepositoryStoreTarget, ancestor: str, commit: str)
     return True
 
 
+async def merges_between(target: RepositoryStoreTarget, ancestor: str, commit: str) -> int:
+    """How many merge commits lie in ``ancestor..commit``."""
+
+    if not (is_full_revision(ancestor) and is_full_revision(commit)):
+        raise FileAgesError("a range needs full commit IDs")
+    location = GitLocation.revision(target, commit)
+    output = await run_git_at(
+        ["rev-list", "--merges", "--count", f"{ancestor}..{commit}"], location
+    )
+    try:
+        return int(output.strip())
+    except ValueError as exc:
+        raise FileAgesError("a merge count is not a number") from exc
+
+
 async def nearest_ancestor(
     target: RepositoryStoreTarget, commit: str, candidates: Sequence[RevisionAges]
 ) -> RevisionAges | None:
     """The answered ancestor of *commit* among *candidates* that was committed last, so the
-    fewest commits lie between. Another answer would read more, never differently."""
+    fewest commits lie between, and a read from which is the same as a cold one.
+
+    That holds over a range with no merge (the module docstring says why), so an ancestor with
+    a merge between it and *commit* is passed over for an older one, or for none, and then
+    the answer is read cold. An answer cut by its budget is never offered: a read derived
+    from it would inherit the files it left undated.
+    """
 
     for candidate in sorted(candidates, key=lambda ages: ages.commit_time, reverse=True):
-        if candidate.commit == commit:
+        if candidate.commit == commit or candidate.stop == "budget":
             continue
-        if await is_ancestor(target, candidate.commit, commit):
+        if not await is_ancestor(target, candidate.commit, commit):
+            continue
+        if await merges_between(target, candidate.commit, commit) == 0:
             return candidate
     return None
-
-
-async def run_dating(
-    work: Callable[[], Awaitable[RevisionAges]], *, commit: str, files: int
-) -> RevisionAges:
-    """*work* as a logged job named for the read, ended with what it measured."""
-
-    with event_log.span(
-        "job", "file_ages.read", attrs={"commit": commit, "files": files}, announce=True
-    ) as span:
-        try:
-            ages = await work()
-        except FileAgesUnavailableError as exc:
-            span.end("failed", reason=exc.reason)
-            raise
-        except GitCommandError as exc:
-            span.end("failed", stderr=exc.stderr_summary, returncode=exc.returncode)
-            raise
-        span.end(
-            "ok",
-            stop=ages.stop,
-            dated=ages.dated,
-            commits=ages.commits,
-            seconds=round(ages.seconds, 3),
-            from_commit=ages.from_commit,
-        )
-        return ages
 
 
 __all__ = [
@@ -513,6 +529,6 @@ __all__ = [
     "file_ages_availability",
     "file_ages_version_label",
     "is_ancestor",
+    "merges_between",
     "nearest_ancestor",
-    "run_dating",
 ]
