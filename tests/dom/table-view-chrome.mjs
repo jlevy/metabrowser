@@ -223,8 +223,9 @@ async function main() {
       overflows: __t().scroll.scrollWidth > __t().scroll.clientWidth + 1,
     })`);
     await shot("4-fit");
-    const all = Array.from({ length: 24 }, (_, i) => `column_name_${i + 1}`).join(",");
-    await open(`wide.csv?cols=${all}`, 2);
+    // `cols` names one field a parameter.
+    const all = Array.from({ length: 24 }, (_, i) => `cols=column_name_${i + 1}`).join("&");
+    await open(`wide.csv?${all}`, 2);
     measured.pinned = await chrome.evaluate(`(async () => {
       const scroll = __t().scroll;
       const first = __t().q("tbody tr:not(.table-spacer) > :first-child");
