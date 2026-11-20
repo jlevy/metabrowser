@@ -5,17 +5,18 @@ title: Unified filtering across navigation and folder views
 kind: epic
 status: closed
 priority: 1
-version: 13
+version: 14
 spec_path: null
 labels:
   - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01ky071d4nwgt5x4920xe0y60e
   - is-01ky071dj04cfxc3gdq6z74xe0
   - is-01ky071dz7zqcfxgxf97pc9vfn
 created_at: 2026-07-20T16:51:20.795Z
-updated_at: 2026-11-20T19:15:00.110Z
+updated_at: 2026-11-20T19:20:21.247Z
 closed_at: 2026-11-01T16:21:22.624Z
 close_reason: All 3 children are closed with mb-0tu2 and mb-wta0.
 resolution: null

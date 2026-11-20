@@ -5,10 +5,11 @@ title: "Spec: bounded binary byte preview"
 kind: epic
 status: closed
 priority: 2
-version: 14
+version: 15
 spec_path: docs/project/specs/done/plan-2026-08-11-binary-byte-preview.md
 labels:
   - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m023aj0nsy3e8znz9bc0150f
@@ -19,7 +20,7 @@ child_order_hints:
   - is-01m023cq7qajqd0y3x4r4378sv
   - is-01m024s03n1vxyhxqm7dz7p5tp
 created_at: 2026-08-12T04:11:55.645Z
-updated_at: 2026-11-20T19:15:00.063Z
+updated_at: 2026-11-20T19:20:21.234Z
 closed_at: 2026-09-14T23:56:25.245Z
 close_reason: All child work is closed and the completed spec is filed under specs/done.
 resolution: null
