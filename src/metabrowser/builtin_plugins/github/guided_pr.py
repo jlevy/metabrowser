@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import re
+import threading
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Final, Literal
 
 from markdown_it import MarkdownIt
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -44,6 +46,15 @@ _MARKDOWN = MarkdownIt("commonmark").disable("inline")
 # Each step hydrates at most as many paths as the measured first paint of Changes
 # (INITIAL_PULL_FILES in sidekick.py). It renders only the selected ranges.
 MAX_REFERENCES = 8
+# A reviewer reads a guide one step at a time, and parse_guide costs by the step: markdown-it,
+# YAML, JSON Schema and pydantic, in Python that holds the GIL, take 3.3 ms a step of
+# MAX_REFERENCES references and 0.6 ms a KiB of text on top. Warm, best of nine, on a
+# 10-core Mac at a load average of 13 (2026-11-20): 20 steps took 66 ms with the shortest
+# text, 40 steps 131 ms and 80 steps 262 ms, and 40 steps with the description filled to
+# MAX_BODY_BYTES took 154 ms. The body bound alone admits 480 one-reference steps, which
+# took 322 ms, so this keeps the largest guide the caps admit near 150 ms. read_guide pays
+# it once for each record revision.
+MAX_STEPS = 40
 # Eight excerpts totaling 800 one-character rows, just past the PR body ceiling after
 # the per-row charge, mounted and laid out in 11–14 ms in five headless Chrome 157 runs
 # at 1280×900 on the Guided PR page (2026-11-18). A single long row must fit too.
@@ -97,7 +108,7 @@ class GuidedPR(_Model):
     comparison: GuideComparison
     feature: Prose
     architecture: Prose
-    steps: list[GuideStep] = Field(min_length=1)
+    steps: list[GuideStep] = Field(min_length=1, max_length=MAX_STEPS)
 
 
 def parse_guide(body: str) -> GuidedPR | None:
@@ -147,6 +158,40 @@ def parse_guide(body: str) -> GuidedPR | None:
         raise GuideError(f"Invalid guided-pr reference at {location}.") from exc
 
 
+@dataclass(frozen=True, slots=True)
+class _Read:
+    revision: str
+    guide: GuidedPR | None
+    message: str | None
+
+
+# One parse for each pull request, kept with the record revision (a hash of the record's
+# content) that it read, so a Previous or Next click reads the guide the first request
+# parsed and an edited description is parsed once. A guide that does not parse is kept as
+# its message, since it costs as much to refuse as to read.
+_READS: dict[tuple[str, str, int], _Read] = {}
+_READS_LOCK: Final = threading.Lock()
+_MAX_READS: Final = 16
+
+
+def read_guide(key: tuple[str, str, int], revision: str, body: str) -> GuidedPR | None:
+    """:func:`parse_guide` of *body*, reused while *key*'s record has this *revision*."""
+    with _READS_LOCK:
+        hit = _READS.get(key)
+    if hit is None or hit.revision != revision:
+        try:
+            hit = _Read(revision, parse_guide(body), None)
+        except GuideError as exc:
+            hit = _Read(revision, None, str(exc))
+        with _READS_LOCK:
+            if key not in _READS and len(_READS) >= _MAX_READS:
+                _READS.pop(next(iter(_READS)))
+            _READS[key] = hit
+    if hit.message is not None:
+        raise GuideError(hit.message)
+    return hit.guide
+
+
 def _excerpt(
     patch: FilePatch, reference: GuideReference, budget: int
 ) -> tuple[str, list[dict[str, object]], int]:
@@ -170,6 +215,12 @@ def _excerpt(
 def _hunk_rows(
     hunk: Hunk, start: int, end: int, old_side: bool, budget: int
 ) -> tuple[str, list[dict[str, object]], int]:
+    """The rows of *hunk* that lie in lines *start* to *end* of one side, within *budget*.
+
+    A replacement is shown whole. A line only the other side has, a deleted line for a new
+    range or an added one for an old range, is a row when it lies inside the range or
+    touches either end of it, so a changed line appears with the line it replaced.
+    """
     rows: list[dict[str, object]] = []
     old, new = hunk.old_start, hunk.new_start
     size = 0
@@ -273,10 +324,12 @@ async def guided_pr(host: PullHost, number: int, step_number: int) -> dict[str, 
         cached_pull_record, served.home, served.slug, number
     )
     identity: dict[str, object] = {"record_revision": revision}
-    if not isinstance(record, PullRecord):
+    if not isinstance(record, PullRecord) or revision is None:
         return {**identity, "state": "not_cached"}
     try:
-        guide = await asyncio.to_thread(parse_guide, record.pull.body)
+        guide = await asyncio.to_thread(
+            read_guide, (str(served.home), served.slug, number), revision, record.pull.body
+        )
     except GuideError as exc:
         return {**identity, "state": "invalid", "message": str(exc)}
     if guide is None:

@@ -1,14 +1,37 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 from softschema.compile import compile_model
 
+from metabrowser.builtin_plugins.github import guided_pr
 from metabrowser.builtin_plugins.github.guided_pr import (
     CONTRACT_ID,
+    MAX_EXCERPT_BYTES,
+    MAX_STEPS,
     SCHEMA_PATH,
     GuidedPR,
     GuideError,
+    GuideReference,
+    _hunk_rows,  # pyright: ignore[reportPrivateUsage]
+    _references,  # pyright: ignore[reportPrivateUsage]
     parse_guide,
+    read_guide,
+)
+from metabrowser.diff.format import (
+    Availability,
+    ChangeKind,
+    ContentRef,
+    ContentRefKind,
+    EntrySide,
+    EntryType,
+    FileChange,
+    FileMode,
+    FilePatch,
+    Hunk,
+    LineOp,
+    LineRecord,
 )
 
 _GUIDE = """```guided-pr
@@ -67,3 +90,223 @@ def test_packaged_schema_matches_the_model() -> None:
 def test_rejects_malformed_guide_blocks(body: str) -> None:
     with pytest.raises(GuideError):
         parse_guide(body)
+
+
+def _guide_of(steps: int) -> str:
+    one = _GUIDE.split("  steps:\n")[0]
+    step = "    - title: Step {n}\n      commentary: Check it.\n      references:\n        - {{path: a.py}}\n"
+    return one + "  steps:\n" + "".join(step.format(n=n) for n in range(steps)) + "```"
+
+
+def test_a_guide_may_have_at_most_max_steps_steps() -> None:
+    assert parse_guide(_guide_of(MAX_STEPS)) is not None
+    with pytest.raises(GuideError, match="does not satisfy the v1 SoftSchema"):
+        parse_guide(_guide_of(MAX_STEPS + 1))
+
+
+@pytest.fixture
+def parses(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
+    """Each body :func:`parse_guide` is asked to read, with the guide cache empty."""
+    asked: list[str] = []
+    real = parse_guide
+
+    def counting(body: str) -> GuidedPR | None:
+        asked.append(body)
+        return real(body)
+
+    guided_pr._READS.clear()  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(guided_pr, "parse_guide", counting)
+    yield asked
+    guided_pr._READS.clear()  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_guide_is_parsed_once_for_each_record_revision(parses: list[str]) -> None:
+    key = ("home", "octo-demo", 7)
+    first = read_guide(key, "one", _GUIDE)
+    assert first is not None
+    assert read_guide(key, "one", _GUIDE) is first
+    assert read_guide(key, "one", _GUIDE) is first
+    assert len(parses) == 1
+    # An edited description is a new revision: parsed again, and the old one is replaced.
+    assert read_guide(key, "two", _GUIDE) is not first
+    assert len(parses) == 2
+    # Another pull request has a guide of its own.
+    read_guide(("home", "octo-demo", 8), "one", _GUIDE)
+    assert len(parses) == 3
+
+
+def test_a_refused_guide_is_refused_from_the_cache_too(parses: list[str]) -> None:
+    key = ("home", "octo-demo", 7)
+    broken = _GUIDE.replace("status: enforced", "status: soft")
+    messages = []
+    for _ in range(3):
+        with pytest.raises(GuideError) as refused:
+            read_guide(key, "one", broken)
+        messages.append(str(refused.value))
+    assert len(parses) == 1
+    assert len(set(messages)) == 1 and messages[0]
+    # A description without a guide is cached as that.
+    assert read_guide(key, "two", "No guide here.") is None
+    assert read_guide(key, "two", "No guide here.") is None
+    assert len(parses) == 2
+
+
+def test_the_guide_cache_keeps_its_most_recent_pull_requests(
+    parses: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(guided_pr, "_MAX_READS", 2)
+    for number in (1, 2, 3):
+        read_guide(("home", "octo-demo", number), "one", _GUIDE)
+    assert len(guided_pr._READS) == 2  # pyright: ignore[reportPrivateUsage]
+    assert ("home", "octo-demo", 1) not in guided_pr._READS  # pyright: ignore[reportPrivateUsage]
+
+
+# old: a b d    new: a B c d    (b replaced by B, c added after it)
+_REPLACED = Hunk(
+    old_start=1,
+    old_count=3,
+    new_start=1,
+    new_count=4,
+    lines=(
+        LineRecord(op=LineOp.context, text="a"),
+        LineRecord(op=LineOp.delete, text="b"),
+        LineRecord(op=LineOp.add, text="B"),
+        LineRecord(op=LineOp.add, text="c"),
+        LineRecord(op=LineOp.context, text="d"),
+    ),
+)
+
+
+def _shown(start: int, end: int, *, old_side: bool) -> list[str]:
+    state, rows, _ = _hunk_rows(_REPLACED, start, end, old_side, 10_000)
+    assert state == "ready"
+    return [f"{row['op']}:{row['text']}" for row in rows]
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "old_side", "shown"),
+    [
+        # A new range shows the deleted line that sits inside it, or at either end.
+        (1, 1, False, ["context:a", "del:b"]),
+        (2, 2, False, ["del:b", "add:B"]),
+        (2, 3, False, ["del:b", "add:B", "add:c"]),
+        (3, 3, False, ["add:c"]),
+        (4, 4, False, ["context:d"]),
+        (1, 4, False, ["context:a", "del:b", "add:B", "add:c", "context:d"]),
+        # An old range shows the added lines that sit inside it, or at either end.
+        (1, 1, True, ["context:a"]),
+        (2, 2, True, ["del:b", "add:B", "add:c"]),
+        (3, 3, True, ["add:B", "add:c", "context:d"]),
+        (1, 3, True, ["context:a", "del:b", "add:B", "add:c", "context:d"]),
+    ],
+)
+def test_an_excerpt_shows_a_replacement_whole(
+    start: int, end: int, old_side: bool, shown: list[str]
+) -> None:
+    assert _shown(start, end, old_side=old_side) == shown
+
+
+def test_a_deleted_line_has_an_old_number_and_no_new_one() -> None:
+    _, rows, _ = _hunk_rows(_REPLACED, 2, 2, False, 10_000)
+    assert [(row["old"], row["new"], row["op"]) for row in rows] == [
+        (2, None, LineOp.delete),
+        (None, 2, LineOp.add),
+    ]
+
+
+def test_an_excerpt_past_its_budget_is_refused_not_cut() -> None:
+    # Each row costs 80 bytes and 6 for each character of its text.
+    cost = 80 + 6
+    state, rows, used = _hunk_rows(_REPLACED, 1, 4, False, cost * 5)
+    assert (state, len(rows), used) == ("ready", 5, cost * 5)
+    assert _hunk_rows(_REPLACED, 1, 4, False, cost * 5 - 1) == ("excerpt_too_large", [], 0)
+
+
+def _change(
+    path: str, number: int, *, availability: Availability = Availability.ready
+) -> FileChange:
+    side = EntrySide(
+        path=path,
+        entry_type=EntryType.file,
+        mode=FileMode.regular,
+        content=ContentRef(kind=ContentRefKind.empty),
+    )
+    return FileChange(
+        id=f"file-{number}",
+        kind=ChangeKind.modified,
+        old=side,
+        new=side,
+        binary=False,
+        availability=availability,
+    )
+
+
+def _long_row_patch(file_id: str, characters: int) -> FilePatch:
+    hunk = Hunk(
+        old_start=1,
+        old_count=0,
+        new_start=1,
+        new_count=1,
+        lines=(LineRecord(op=LineOp.add, text="x" * characters),),
+    )
+    return FilePatch(file_id=file_id, hunks=(hunk,), truncated=False)
+
+
+def _states(
+    references: list[GuideReference],
+    changes: dict[str, FileChange],
+    patches: dict[str, FilePatch],
+    *,
+    truncated: bool = False,
+) -> list[str]:
+    shown = _references(7, references, changes, patches, truncated=truncated)
+    return [str(entry["state"]) for entry in shown]
+
+
+def test_a_step_names_what_became_of_each_reference() -> None:
+    new = {"side": "new", "start_line": 1, "end_line": 1}
+    references = [
+        GuideReference(path="whole.py"),
+        GuideReference(path="a.py", **new),  # pyright: ignore[reportArgumentType]
+        GuideReference(path="b.py", side="old", start_line=3, end_line=4),
+        GuideReference(path="cut.py", **new),  # pyright: ignore[reportArgumentType]
+        GuideReference(path="gone.py", **new),  # pyright: ignore[reportArgumentType]
+    ]
+    changes = {
+        "whole.py": _change("whole.py", 1),
+        "a.py": _change("a.py", 2),
+        "b.py": _change("b.py", 3),
+        "cut.py": _change("cut.py", 4),
+    }
+    patches = {"file-2": _long_row_patch("file-2", 3), "file-3": _long_row_patch("file-3", 3)}
+    # cut.py is changed, but its patch was not hydrated; gone.py is not in the comparison.
+    assert _states(references, changes, patches) == [
+        "file",
+        "ready",
+        "range_unavailable",
+        "diff_unavailable",
+        "path_not_changed",
+    ]
+    # A manifest cut short says that, not that the path was not changed.
+    assert _states(references, changes, patches, truncated=True)[-1] == "manifest_truncated"
+
+
+def test_a_steps_excerpts_share_one_budget() -> None:
+    # One row of this length costs 80 + 6 * 7000 bytes, over half of MAX_EXCERPT_BYTES, so
+    # the second excerpt of the step is the one refused, and the first stays whole.
+    characters = MAX_EXCERPT_BYTES // 2 // 6 + 1
+    new = {"side": "new", "start_line": 1, "end_line": 1}
+    references = [
+        GuideReference(path="a.py", **new),  # pyright: ignore[reportArgumentType]
+        GuideReference(path="b.py", **new),  # pyright: ignore[reportArgumentType]
+    ]
+    changes = {"a.py": _change("a.py", 1), "b.py": _change("b.py", 2)}
+    patches = {
+        "file-1": _long_row_patch("file-1", characters),
+        "file-2": _long_row_patch("file-2", characters),
+    }
+    assert _states(references, changes, patches) == ["ready", "excerpt_too_large"]
+    # One row past the whole budget is refused on its own.
+    only = [GuideReference(path="a.py", **new)]  # pyright: ignore[reportArgumentType]
+    big = {"file-1": _long_row_patch("file-1", MAX_EXCERPT_BYTES // 6 + 1)}
+    assert _states(only, changes, big) == ["excerpt_too_large"]

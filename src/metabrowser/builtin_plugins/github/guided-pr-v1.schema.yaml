@@ -80,6 +80,7 @@ properties:
   steps:
     items:
       $ref: '#/$defs/GuideStep'
+    maxItems: 40
     minItems: 1
     title: Steps
     type: array
@@ -92,4 +93,4 @@ title: GuidedPR
 type: object
 x-softschema:
   contract: metabrowser.github:GuidedPR/v1
-  schema_sha256: adba339d398ac7859c02ea31b1462554e09d3bed795709c4966e4da5a2a4920c
+  schema_sha256: 43d7aa6622c6d444e01b8a78563603e680b402a7413f26c7be6acd63ec84cf51
