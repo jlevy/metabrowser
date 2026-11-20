@@ -5611,6 +5611,7 @@ The headings that carry a tally, each with the builder that writes its markup:
 | --- | --- | --- |
 | A Files Group by section’s ([Grouping the Files Tree](#grouping-the-files-tree)) | `treeSectionHeadingHtml` in `src/metabrowser/static/app.js` | With an ellipsis and a tooltip, in a flex heading |
 | A pull request page’s Review comments | `reviewThreads` in `src/metabrowser/builtin_plugins/github/pull-page.js` | Never: an inline `.section-heading`, whose name wraps |
+| An event log view’s section headings, over what failed, what never ended, what the pages reported, and each kind | `tally` in `src/metabrowser/builtin_plugins/event_log/event-log-views.js` | Never: an inline `.section-heading`, whose name wraps |
 
 A filter menu’s group headings, the stack menu’s heading, Overview’s panel headings, and
 File Overview’s type groups count nothing.

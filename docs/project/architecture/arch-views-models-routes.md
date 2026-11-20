@@ -59,6 +59,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
 | `agent-log` | `.jsonl` sniffed as an agent log | Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agent-log/charts` hook |
 | `unknown-jsonl` | Other `.jsonl` | Log `V`, Raw JSON `S` | File envelope |
+| `event-log` | A `.jsonl` file named `events-*.jsonl`, in a served folder (`path_glob`; a Git blob of that name is generic JSONL) | Timeline `V`, Latency `L`, By kind `B`, Errors `E`, Raw JSON `S` | File envelope and the `event-log/timeline`, `event-log/slowest`, `event-log/kinds`, and `event-log/errors` hooks over one segment of [the event log](../../realtime-debugging.md#event-log) |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | The `binary/chunk` hook’s bounded byte windows |
 | `comparison` | No file; the Commits tab selects it for `/commit/<rev>[/<inner>]` | The `diff` kind’s views | `diff/comparison` document in File Diff Format |
@@ -217,7 +218,9 @@ counts is missing here; the asset routes are not counted.
 Plugin hooks currently registered: `diff/document`, `diff/children`, and
 `diff/comparison` ([Diff Pipeline](arch-diff-pipeline.md)); `binary/chunk`,
 `structured/parsed`, and `agent-log/charts` ([Plugin System](arch-plugin-system.md));
-and `github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
+`event-log/timeline`, `event-log/slowest`, `event-log/kinds`, and `event-log/errors`
+([Real-Time Debugging](../../realtime-debugging.md#browsing-the-log)); and
+`github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
 `github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff`,
 `github/pull-size`, `github/pull-timeline`, `github/pull-markdown`, `github/pulls`,
 `github/pulls-refresh`, `github/pulls-prefetch`, `github/pull-files`,

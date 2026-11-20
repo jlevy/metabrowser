@@ -429,7 +429,7 @@ nonisolated enum ContractGolden {
                 runtime: Runtime(executable: "/opt/metab", version: MetabRequirement.minimum, source: .chosen),
                 tools: ToolPaths()),
             inherited: [:], appBundle: bundle)
-        let ids = ["plugins", "open_in", "metab", "git", "config", "cache", "github"]
+        let ids = ["plugins", "open_in", "metab", "git", "config", "cache", "event_log", "github"]
 
         let clean = try block("doctor/clean")
         #expect(clean.words == spec.arguments)
@@ -450,7 +450,7 @@ nonisolated enum ContractGolden {
         }
         #expect(!found.ok && found.hasChecks)
         #expect(found.rows.map(\.id) == ids)
-        #expect(found.rows.map(\.state) == [.ok, .ok, .warning, .ok, .warning, .problem, .warning])
+        #expect(found.rows.map(\.state) == [.ok, .ok, .warning, .ok, .warning, .problem, .ok, .warning])
         let fixes = Dictionary(uniqueKeysWithValues: found.rows.map { ($0.id, $0.remedy) })
         let step = DoctorReport.Remedy(text: ContractGolden.text, command: ContractGolden.text)
         #expect(fixes["metab"] == step, "the upgrade the app's minimum calls for")

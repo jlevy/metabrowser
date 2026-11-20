@@ -65,6 +65,7 @@ import os
 import re
 import threading
 import time
+import urllib.parse
 from collections.abc import Awaitable, Callable, Coroutine, Generator, Iterable, Mapping
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -1023,36 +1024,105 @@ def log_directory(environ: Mapping[str, str] | None = None) -> tuple[Path, Path]
     return home, home / EVENTS_DIRECTORY
 
 
+# Why this process writes no log, for the page's Details and the log that is not written: ``None``
+# while a log is open or no reason has been given. A served process sets it when it opens none.
+_off_reason: str | None = None
+# The folder served and the events directory, both resolved, when the folder holds the
+# directory without being inside it: what a request's target is judged against by
+# :func:`quiet_request`.
+_quiet: tuple[Path, Path] | None = None
+
+
+def off_reason() -> str | None:
+    """Why this server writes no event log, in words a page can say, or ``None``."""
+
+    return _off_reason
+
+
+def quiet_request(path: str, query: str) -> bool:
+    """Whether a request is for something inside the events directory, so it is not recorded.
+
+    A server whose folder holds the events directory (``metab ~``, the folder above the
+    state directory) shows the log as it shows any file. Recording each request for a
+    segment into that segment would change it, which the page shows, which asks again; so
+    a request whose target (the ``path`` it names, or ``/raw/<path>`` or ``/view/<path>``
+    for a file) is inside the events directory writes no record, and every other request
+    is recorded as usual. Only a server in that position pays for the lookup.
+    """
+
+    quiet = _quiet
+    if quiet is None:
+        return False
+    root, events = quiet
+    targets = list(urllib.parse.parse_qs(query).get("path", []))
+    for prefix in ("/raw/", "/view/"):
+        if path.startswith(prefix):
+            targets.append(path[len(prefix) :])
+    for target in targets:
+        try:
+            resolved = Path(os.path.realpath(root / target.lstrip("/")))
+        except (OSError, ValueError):
+            continue
+        if resolved == events or resolved.is_relative_to(events):
+            return True
+    return False
+
+
 def open_log(
     *,
     served: str,
     version: str,
+    served_directory: Path | None = None,
     environ: Mapping[str, str] | None = None,
     **options: Any,
 ) -> EventLog | None:
     """Open this process's log and start its watcher, or say why not and return None.
 
-    A log that cannot be opened is a warning: the server serves without one.
+    A log that cannot be opened is a warning: the server serves without one, and
+    :func:`off_reason` says why. A server whose folder (*served_directory*) is the events
+    directory, or inside it, opens none: it would record each request for the files it shows
+    into one of them, which changes them, which the page shows, which asks again, and a
+    process that records nothing says so, as a warning and in the page's Details. A server
+    whose folder holds the directory, such as ``metab ~``, records as usual, except the
+    requests for what is inside the directory (:func:`quiet_request`).
     """
 
-    global _sink
+    global _sink, _off_reason, _quiet
     from metabrowser import home as home_module
 
     if _sink is not None:
         return _sink
+    _quiet = None
     if not enabled_by_environment(environ):
+        _off_reason = f"{ENABLE_ENV} turns it off"
         return None
     try:
         state, directory = log_directory(environ)
+        if served_directory is not None:
+            root, events = served_directory.resolve(), directory.resolve()
+            if root == events or root.is_relative_to(events):
+                _off_reason = (
+                    "the folder this server shows is the event log's own, and recording "
+                    "its requests would change the files on screen"
+                )
+                log.warning("serving without an event log: %s", _off_reason)
+                return None
+            if events.is_relative_to(root):
+                _quiet = (root, events)
         home_module.ensure_storage_root(state)
         home_module.ensure_private_directory(state, EVENTS_DIRECTORY)
         sink = EventLog(directory, state, **options)
     except (OSError, ValueError, home_module.PrivateStorageError) as exc:
+        _quiet = None
+        _off_reason = f"it could not be opened: {exc}"
         log.warning("serving without an event log: %s", exc)
         return None
     if sink.path is None:
+        _quiet = None
+        _off_reason = "it could not be opened"
         return None
     _sink = sink
+    _off_reason = None
     mark("lifecycle", "server.start", served=served, version=version)
     sink.watch()
     return sink
@@ -1069,7 +1139,8 @@ def watch_loop(loop: asyncio.AbstractEventLoop) -> None:
 def close_log() -> None:
     """Close this process's log, if it has one."""
 
-    global _sink
+    global _sink, _quiet
+    _quiet = None
     sink = _sink
     if sink is None:
         return
@@ -1206,14 +1277,19 @@ def prune(directory: Path, max_total_bytes: int, *, keep: Path | None = None) ->
 
 
 def parse_lines(data: bytes) -> Iterable[dict[str, Any]]:
-    """The records in *data*, skipping a torn last line and lines of another version."""
+    """The records in *data*, skipping a torn last line and lines of another version.
+
+    A line no JSON reader will take is skipped as a torn one is: text that is not UTF-8,
+    an integer of more than Python's 4,300 digits (a ``ValueError``), or arrays nested past
+    the recursion limit (a ``RecursionError``), which a file the log did not write can hold.
+    """
 
     for raw in data.splitlines():
         if not raw.strip():
             continue
         try:
             decoded = json.loads(raw)
-        except (UnicodeDecodeError, json.JSONDecodeError):
+        except (ValueError, RecursionError):
             continue
         if isinstance(decoded, dict) and decoded.get("v") == SCHEMA_VERSION:
             yield decoded
@@ -1252,6 +1328,8 @@ __all__ = [
     "describe_error",
     "enabled",
     "enabled_by_environment",
+    "off_reason",
+    "quiet_request",
     "installed",
     "job",
     "job_name",

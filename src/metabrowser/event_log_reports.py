@@ -117,12 +117,14 @@ def browser_settings(*, long_lived: tuple[str, ...]) -> dict[str, Any]:
     """What ``static/event-reports.js`` reads as ``METABROWSER_SETTINGS.EVENT_REPORTS``.
 
     ``log`` says whether this server writes an event log; without one the page sends no
-    header and no report, and still says when a wait is late. *long_lived* are the paths
-    whose requests stay open by design, which the server does not time either.
+    header and no report, and still says when a wait is late, and ``off_reason`` says why
+    there is none (Details shows it). *long_lived* are the paths whose requests stay open
+    by design, which the server does not time either.
     """
 
     return {
         "log": event_log.enabled(),
+        "off_reason": None if event_log.enabled() else event_log.off_reason(),
         "route": REPORT_ROUTE,
         "header": event_log.CLIENT_HEADER,
         "slow_ms": SLOW_MS,

@@ -525,6 +525,12 @@ sentence, the details it read, and the step that fixes it:
   free. Less than the largest first clone `metab` admits can take is a warning:
   `low_free_space_bytes` in `cli/doctor.py`, which follows
   `METABROWSER_MAX_FIRST_CLONE_KB`.
+- **`event_log`:** whether a server writes its event log: where, and from which variable
+  the directory comes.
+  `METABROWSER_EVENT_LOG` turning it off is a warning, since no latency or failure is
+  then recorded, and so is a state directory `metab` cannot create.
+  A server whose folder is the events directory or inside it writes none, whatever the
+  environment says, and its Details name that reason.
 
 The macOS app runs its servers without `METABROWSER_CONFIG_DIR`,
 `METABROWSER_CACHE_DIR`, or the `XDG_` variables, so when `--present` would open the

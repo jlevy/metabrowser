@@ -1,0 +1,1520 @@
+{
+  "answers": {
+    "timeline?focus=7007%3A46&limit=1&path=events-20261119T220000Z-p7007-000.jsonl": {
+      "status": 200,
+      "body": {
+        "view": "timeline",
+        "log": {
+          "schema_version": 1,
+          "kinds": [
+            "request",
+            "job",
+            "subprocess",
+            "browser",
+            "lifecycle",
+            "loop",
+            "probe"
+          ],
+          "outcomes": [
+            "ok",
+            "failed",
+            "timeout",
+            "cancelled",
+            "abandoned",
+            "never_completed"
+          ],
+          "edges_ms": [
+            1.0,
+            10.0,
+            100.0,
+            500.0,
+            2000.0,
+            10000.0
+          ],
+          "bytes": 14917,
+          "records": 58,
+          "skipped": 2,
+          "spans": 46,
+          "unfinished": 2,
+          "started": "2026-11-19T22:00:00.100Z",
+          "ended": "2026-11-19T22:03:50.003Z",
+          "extent_ms": 229903.0,
+          "pids": [
+            7007
+          ],
+          "continues": false
+        },
+        "query": {
+          "kind": [],
+          "outcome": [],
+          "name": null,
+          "client": null,
+          "cause": null,
+          "min_ms": null
+        },
+        "order": "oldest",
+        "parent": null,
+        "total": 44,
+        "offset": 0,
+        "limit": 1,
+        "max_limit": 1000,
+        "has_more": true,
+        "rows": [
+          {
+            "type": "mark",
+            "key": "7007@1",
+            "kind": "lifecycle",
+            "name": "server.start",
+            "start_ms": 0.0,
+            "dur_ms": null,
+            "outcome": null,
+            "state": "mark",
+            "client": null,
+            "pid": 7007,
+            "span": null,
+            "parent": null,
+            "attrs": {
+              "served": "https://github.com/octo/demo",
+              "version": "0.13.0"
+            },
+            "elapsed_ms": null,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          }
+        ],
+        "focus": {
+          "key": "7007:46",
+          "found": true,
+          "steps": [
+            {
+              "parent": null,
+              "key": "7007:44",
+              "index": 42
+            },
+            {
+              "parent": "7007:44",
+              "key": "7007:45",
+              "index": 0
+            },
+            {
+              "parent": "7007:45",
+              "key": "7007:46",
+              "index": 0
+            }
+          ]
+        }
+      }
+    },
+    "timeline?limit=23&offset=20&path=events-20261119T220000Z-p7007-000.jsonl": {
+      "status": 200,
+      "body": {
+        "view": "timeline",
+        "log": {
+          "schema_version": 1,
+          "kinds": [
+            "request",
+            "job",
+            "subprocess",
+            "browser",
+            "lifecycle",
+            "loop",
+            "probe"
+          ],
+          "outcomes": [
+            "ok",
+            "failed",
+            "timeout",
+            "cancelled",
+            "abandoned",
+            "never_completed"
+          ],
+          "edges_ms": [
+            1.0,
+            10.0,
+            100.0,
+            500.0,
+            2000.0,
+            10000.0
+          ],
+          "bytes": 14917,
+          "records": 58,
+          "skipped": 2,
+          "spans": 46,
+          "unfinished": 2,
+          "started": "2026-11-19T22:00:00.100Z",
+          "ended": "2026-11-19T22:03:50.003Z",
+          "extent_ms": 229903.0,
+          "pids": [
+            7007
+          ],
+          "continues": false
+        },
+        "query": {
+          "kind": [],
+          "outcome": [],
+          "name": null,
+          "client": null,
+          "cause": null,
+          "min_ms": null
+        },
+        "order": "oldest",
+        "parent": null,
+        "total": 44,
+        "offset": 20,
+        "limit": 23,
+        "max_limit": 1000,
+        "has_more": true,
+        "rows": [
+          {
+            "type": "span",
+            "key": "7007:13",
+            "kind": "request",
+            "name": "GET /api/file",
+            "start_ms": 19599.8,
+            "dur_ms": 36.2,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-19",
+            "pid": 7007,
+            "span": 13,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 3170,
+              "query": "path=README.md"
+            },
+            "elapsed_ms": 36.2,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:21",
+            "kind": "request",
+            "name": "GET /api/tree",
+            "start_ms": 20799.7,
+            "dur_ms": 58.3,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-37",
+            "pid": 7007,
+            "span": 21,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 18200,
+              "query": "depth=2"
+            },
+            "elapsed_ms": 58.3,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:22",
+            "kind": "request",
+            "name": "POST /api/plugin/github/pull-refresh",
+            "start_ms": 29899.4,
+            "dur_ms": 3.6,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-41",
+            "pid": 7007,
+            "span": 22,
+            "parent": null,
+            "attrs": {
+              "status": 202,
+              "bytes": 693,
+              "query": "number=615",
+              "start_ms": 3.4
+            },
+            "elapsed_ms": 3.6,
+            "children": 1,
+            "below": 3,
+            "matched": true
+          },
+          {
+            "type": "report",
+            "key": "7007@29",
+            "kind": "browser",
+            "name": "wait githubPull:diffSummary",
+            "start_ms": 29900.0,
+            "dur_ms": 10000.0,
+            "outcome": null,
+            "state": "report",
+            "client": "k3v9q2zx",
+            "pid": 7007,
+            "span": null,
+            "parent": null,
+            "attrs": {
+              "threshold_ms": 10000.0,
+              "detail": {
+                "number": 615
+              },
+              "path": "/pull/615"
+            },
+            "elapsed_ms": null,
+            "event": "open",
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "report",
+            "key": "7007@41",
+            "kind": "browser",
+            "name": "wait githubPull:diffSummary",
+            "start_ms": 29900.0,
+            "dur_ms": 32100.0,
+            "outcome": "ok",
+            "state": "report",
+            "client": "k3v9q2zx",
+            "pid": 7007,
+            "span": null,
+            "parent": null,
+            "attrs": {
+              "threshold_ms": 10000.0,
+              "detail": {
+                "number": 615
+              },
+              "path": "/pull/615"
+            },
+            "elapsed_ms": 32100.0,
+            "event": "end",
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:26",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 31399.9,
+            "dur_ms": 1.1,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-50",
+            "pid": 7007,
+            "span": 26,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.1,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:27",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 33899.8,
+            "dur_ms": 1.2,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-51",
+            "pid": 7007,
+            "span": 27,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.2,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:28",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 36399.7,
+            "dur_ms": 1.3,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-52",
+            "pid": 7007,
+            "span": 28,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.3,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:29",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 38899.6,
+            "dur_ms": 1.4,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-53",
+            "pid": 7007,
+            "span": 29,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.4,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:30",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 41399.9,
+            "dur_ms": 1.1,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-54",
+            "pid": 7007,
+            "span": 30,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.1,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:31",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 43899.8,
+            "dur_ms": 1.2,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-55",
+            "pid": 7007,
+            "span": 31,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.2,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:32",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 46399.7,
+            "dur_ms": 1.3,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-56",
+            "pid": 7007,
+            "span": 32,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.3,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:33",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 48899.6,
+            "dur_ms": 1.4,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-57",
+            "pid": 7007,
+            "span": 33,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.4,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:34",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 51399.9,
+            "dur_ms": 1.1,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-58",
+            "pid": 7007,
+            "span": 34,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.1,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:35",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 53899.8,
+            "dur_ms": 1.2,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-59",
+            "pid": 7007,
+            "span": 35,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.2,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:36",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 56399.7,
+            "dur_ms": 1.3,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-60",
+            "pid": 7007,
+            "span": 36,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.3,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:37",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 58899.6,
+            "dur_ms": 1.4,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-61",
+            "pid": 7007,
+            "span": 37,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.4,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:38",
+            "kind": "request",
+            "name": "POST /api/plugin/github/pull-refresh",
+            "start_ms": 119899.1,
+            "dur_ms": 2.9,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-70",
+            "pid": 7007,
+            "span": 38,
+            "parent": null,
+            "attrs": {
+              "status": 202,
+              "bytes": 693,
+              "query": "number=615",
+              "start_ms": 2.7
+            },
+            "elapsed_ms": 2.9,
+            "children": 1,
+            "below": 3,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:42",
+            "kind": "subprocess",
+            "name": "git fetch",
+            "start_ms": 124899.8,
+            "dur_ms": 1810.2,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-70",
+            "pid": 7007,
+            "span": 42,
+            "parent": null,
+            "attrs": {
+              "args": [
+                "fetch",
+                "--prune",
+                "--",
+                "https://github.com/octo/demo.git"
+              ],
+              "exit": 0
+            },
+            "elapsed_ms": 1810.2,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "report",
+            "key": "7007@48",
+            "kind": "browser",
+            "name": "fetch GET /api/tree",
+            "start_ms": 125800.0,
+            "dur_ms": 4100.0,
+            "outcome": "ok",
+            "state": "report",
+            "client": "k3v9q2zx",
+            "pid": 7007,
+            "span": null,
+            "parent": null,
+            "attrs": {
+              "threshold_ms": 2000.0,
+              "status": 200,
+              "path": "/pull/615"
+            },
+            "elapsed_ms": 4100.0,
+            "event": "end",
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "mark",
+            "key": "7007@49",
+            "kind": "browser",
+            "name": "browser.reports_rate_limited",
+            "start_ms": 130900.0,
+            "dur_ms": null,
+            "outcome": null,
+            "state": "mark",
+            "client": null,
+            "pid": 7007,
+            "span": null,
+            "parent": null,
+            "attrs": {
+              "limit": 30,
+              "window_s": 60.0
+            },
+            "elapsed_ms": null,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:43",
+            "kind": "loop",
+            "name": "event_loop.turn",
+            "start_ms": 147900.0,
+            "dur_ms": 2410.0,
+            "outcome": "ok",
+            "state": "ended",
+            "client": null,
+            "pid": 7007,
+            "span": 43,
+            "parent": null,
+            "attrs": {},
+            "elapsed_ms": 2410.0,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:44",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull-comparison",
+            "start_ms": 199899.9,
+            "dur_ms": 30003.1,
+            "outcome": "cancelled",
+            "state": "ended",
+            "client": "k3v9q2zx-90",
+            "pid": 7007,
+            "span": 44,
+            "parent": null,
+            "attrs": {
+              "status": null,
+              "bytes": 0,
+              "query": "number=615&left=4922384&right=519dabc&base_policy=merge_base"
+            },
+            "elapsed_ms": 30003.1,
+            "children": 1,
+            "below": 2,
+            "matched": true
+          }
+        ]
+      }
+    },
+    "timeline?parent=7007%3A44&path=events-20261119T220000Z-p7007-000.jsonl": {
+      "status": 200,
+      "body": {
+        "view": "timeline",
+        "log": {
+          "schema_version": 1,
+          "kinds": [
+            "request",
+            "job",
+            "subprocess",
+            "browser",
+            "lifecycle",
+            "loop",
+            "probe"
+          ],
+          "outcomes": [
+            "ok",
+            "failed",
+            "timeout",
+            "cancelled",
+            "abandoned",
+            "never_completed"
+          ],
+          "edges_ms": [
+            1.0,
+            10.0,
+            100.0,
+            500.0,
+            2000.0,
+            10000.0
+          ],
+          "bytes": 14917,
+          "records": 58,
+          "skipped": 2,
+          "spans": 46,
+          "unfinished": 2,
+          "started": "2026-11-19T22:00:00.100Z",
+          "ended": "2026-11-19T22:03:50.003Z",
+          "extent_ms": 229903.0,
+          "pids": [
+            7007
+          ],
+          "continues": false
+        },
+        "query": {
+          "kind": [],
+          "outcome": [],
+          "name": null,
+          "client": null,
+          "cause": null,
+          "min_ms": null
+        },
+        "order": "oldest",
+        "parent": "7007:44",
+        "total": 1,
+        "offset": 0,
+        "limit": 200,
+        "max_limit": 1000,
+        "has_more": false,
+        "rows": [
+          {
+            "type": "span",
+            "key": "7007:45",
+            "kind": "job",
+            "name": "comparison_cache.manifest",
+            "start_ms": 199910.0,
+            "dur_ms": null,
+            "outcome": null,
+            "state": "unfinished",
+            "client": "k3v9q2zx-90",
+            "pid": 7007,
+            "span": 45,
+            "parent": "7007:44",
+            "attrs": {
+              "key": "store 4922384 519dabc merge_base"
+            },
+            "elapsed_ms": 29993.0,
+            "opens": 3,
+            "children": 1,
+            "below": 1,
+            "matched": true
+          }
+        ]
+      }
+    },
+    "timeline?parent=7007%3A45&path=events-20261119T220000Z-p7007-000.jsonl": {
+      "status": 200,
+      "body": {
+        "view": "timeline",
+        "log": {
+          "schema_version": 1,
+          "kinds": [
+            "request",
+            "job",
+            "subprocess",
+            "browser",
+            "lifecycle",
+            "loop",
+            "probe"
+          ],
+          "outcomes": [
+            "ok",
+            "failed",
+            "timeout",
+            "cancelled",
+            "abandoned",
+            "never_completed"
+          ],
+          "edges_ms": [
+            1.0,
+            10.0,
+            100.0,
+            500.0,
+            2000.0,
+            10000.0
+          ],
+          "bytes": 14917,
+          "records": 58,
+          "skipped": 2,
+          "spans": 46,
+          "unfinished": 2,
+          "started": "2026-11-19T22:00:00.100Z",
+          "ended": "2026-11-19T22:03:50.003Z",
+          "extent_ms": 229903.0,
+          "pids": [
+            7007
+          ],
+          "continues": false
+        },
+        "query": {
+          "kind": [],
+          "outcome": [],
+          "name": null,
+          "client": null,
+          "cause": null,
+          "min_ms": null
+        },
+        "order": "oldest",
+        "parent": "7007:45",
+        "total": 1,
+        "offset": 0,
+        "limit": 200,
+        "max_limit": 1000,
+        "has_more": false,
+        "rows": [
+          {
+            "type": "span",
+            "key": "7007:46",
+            "kind": "subprocess",
+            "name": "git diff-tree",
+            "start_ms": 199930.0,
+            "dur_ms": null,
+            "outcome": null,
+            "state": "unfinished",
+            "client": "k3v9q2zx-90",
+            "pid": 7007,
+            "span": 46,
+            "parent": "7007:45",
+            "attrs": {
+              "args": [
+                "diff-tree",
+                "--raw",
+                "-z",
+                "4922384",
+                "519dabc"
+              ],
+              "timeout_s": 900.0
+            },
+            "elapsed_ms": 29973.0,
+            "opens": 2,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          }
+        ]
+      }
+    },
+    "timeline?focus=7007%3A25&limit=1&path=events-20261119T220000Z-p7007-000.jsonl": {
+      "status": 200,
+      "body": {
+        "view": "timeline",
+        "log": {
+          "schema_version": 1,
+          "kinds": [
+            "request",
+            "job",
+            "subprocess",
+            "browser",
+            "lifecycle",
+            "loop",
+            "probe"
+          ],
+          "outcomes": [
+            "ok",
+            "failed",
+            "timeout",
+            "cancelled",
+            "abandoned",
+            "never_completed"
+          ],
+          "edges_ms": [
+            1.0,
+            10.0,
+            100.0,
+            500.0,
+            2000.0,
+            10000.0
+          ],
+          "bytes": 14917,
+          "records": 58,
+          "skipped": 2,
+          "spans": 46,
+          "unfinished": 2,
+          "started": "2026-11-19T22:00:00.100Z",
+          "ended": "2026-11-19T22:03:50.003Z",
+          "extent_ms": 229903.0,
+          "pids": [
+            7007
+          ],
+          "continues": false
+        },
+        "query": {
+          "kind": [],
+          "outcome": [],
+          "name": null,
+          "client": null,
+          "cause": null,
+          "min_ms": null
+        },
+        "order": "oldest",
+        "parent": null,
+        "total": 44,
+        "offset": 0,
+        "limit": 1,
+        "max_limit": 1000,
+        "has_more": true,
+        "rows": [
+          {
+            "type": "mark",
+            "key": "7007@1",
+            "kind": "lifecycle",
+            "name": "server.start",
+            "start_ms": 0.0,
+            "dur_ms": null,
+            "outcome": null,
+            "state": "mark",
+            "client": null,
+            "pid": 7007,
+            "span": null,
+            "parent": null,
+            "attrs": {
+              "served": "https://github.com/octo/demo",
+              "version": "0.13.0"
+            },
+            "elapsed_ms": null,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          }
+        ],
+        "focus": {
+          "key": "7007:25",
+          "found": true,
+          "steps": [
+            {
+              "parent": null,
+              "key": "7007:22",
+              "index": 22
+            },
+            {
+              "parent": "7007:22",
+              "key": "7007:23",
+              "index": 0
+            },
+            {
+              "parent": "7007:23",
+              "key": "7007:25",
+              "index": 1
+            }
+          ]
+        }
+      }
+    },
+    "timeline?limit=20&order=newest&path=events-20261119T220000Z-p7007-000.jsonl": {
+      "status": 200,
+      "body": {
+        "view": "timeline",
+        "log": {
+          "schema_version": 1,
+          "kinds": [
+            "request",
+            "job",
+            "subprocess",
+            "browser",
+            "lifecycle",
+            "loop",
+            "probe"
+          ],
+          "outcomes": [
+            "ok",
+            "failed",
+            "timeout",
+            "cancelled",
+            "abandoned",
+            "never_completed"
+          ],
+          "edges_ms": [
+            1.0,
+            10.0,
+            100.0,
+            500.0,
+            2000.0,
+            10000.0
+          ],
+          "bytes": 14917,
+          "records": 58,
+          "skipped": 2,
+          "spans": 46,
+          "unfinished": 2,
+          "started": "2026-11-19T22:00:00.100Z",
+          "ended": "2026-11-19T22:03:50.003Z",
+          "extent_ms": 229903.0,
+          "pids": [
+            7007
+          ],
+          "continues": false
+        },
+        "query": {
+          "kind": [],
+          "outcome": [],
+          "name": null,
+          "client": null,
+          "cause": null,
+          "min_ms": null
+        },
+        "order": "newest",
+        "parent": null,
+        "total": 44,
+        "offset": 0,
+        "limit": 20,
+        "max_limit": 1000,
+        "has_more": true,
+        "rows": [
+          {
+            "type": "report",
+            "key": "7007@57",
+            "kind": "browser",
+            "name": "fetch GET /api/plugin/github/pull-comparison",
+            "start_ms": 199900.0,
+            "dur_ms": 30000.0,
+            "outcome": "never_completed",
+            "state": "report",
+            "client": "k3v9q2zx-90",
+            "pid": 7007,
+            "span": null,
+            "parent": null,
+            "attrs": {
+              "threshold_ms": 2000.0,
+              "path": "/pull/615"
+            },
+            "elapsed_ms": 30000.0,
+            "event": "end",
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:44",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull-comparison",
+            "start_ms": 199899.9,
+            "dur_ms": 30003.1,
+            "outcome": "cancelled",
+            "state": "ended",
+            "client": "k3v9q2zx-90",
+            "pid": 7007,
+            "span": 44,
+            "parent": null,
+            "attrs": {
+              "status": null,
+              "bytes": 0,
+              "query": "number=615&left=4922384&right=519dabc&base_policy=merge_base"
+            },
+            "elapsed_ms": 30003.1,
+            "children": 1,
+            "below": 2,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:43",
+            "kind": "loop",
+            "name": "event_loop.turn",
+            "start_ms": 147900.0,
+            "dur_ms": 2410.0,
+            "outcome": "ok",
+            "state": "ended",
+            "client": null,
+            "pid": 7007,
+            "span": 43,
+            "parent": null,
+            "attrs": {},
+            "elapsed_ms": 2410.0,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "mark",
+            "key": "7007@49",
+            "kind": "browser",
+            "name": "browser.reports_rate_limited",
+            "start_ms": 130900.0,
+            "dur_ms": null,
+            "outcome": null,
+            "state": "mark",
+            "client": null,
+            "pid": 7007,
+            "span": null,
+            "parent": null,
+            "attrs": {
+              "limit": 30,
+              "window_s": 60.0
+            },
+            "elapsed_ms": null,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "report",
+            "key": "7007@48",
+            "kind": "browser",
+            "name": "fetch GET /api/tree",
+            "start_ms": 125800.0,
+            "dur_ms": 4100.0,
+            "outcome": "ok",
+            "state": "report",
+            "client": "k3v9q2zx",
+            "pid": 7007,
+            "span": null,
+            "parent": null,
+            "attrs": {
+              "threshold_ms": 2000.0,
+              "status": 200,
+              "path": "/pull/615"
+            },
+            "elapsed_ms": 4100.0,
+            "event": "end",
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:42",
+            "kind": "subprocess",
+            "name": "git fetch",
+            "start_ms": 124899.8,
+            "dur_ms": 1810.2,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-70",
+            "pid": 7007,
+            "span": 42,
+            "parent": null,
+            "attrs": {
+              "args": [
+                "fetch",
+                "--prune",
+                "--",
+                "https://github.com/octo/demo.git"
+              ],
+              "exit": 0
+            },
+            "elapsed_ms": 1810.2,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:38",
+            "kind": "request",
+            "name": "POST /api/plugin/github/pull-refresh",
+            "start_ms": 119899.1,
+            "dur_ms": 2.9,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-70",
+            "pid": 7007,
+            "span": 38,
+            "parent": null,
+            "attrs": {
+              "status": 202,
+              "bytes": 693,
+              "query": "number=615",
+              "start_ms": 2.7
+            },
+            "elapsed_ms": 2.9,
+            "children": 1,
+            "below": 3,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:37",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 58899.6,
+            "dur_ms": 1.4,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-61",
+            "pid": 7007,
+            "span": 37,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.4,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:36",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 56399.7,
+            "dur_ms": 1.3,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-60",
+            "pid": 7007,
+            "span": 36,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.3,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:35",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 53899.8,
+            "dur_ms": 1.2,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-59",
+            "pid": 7007,
+            "span": 35,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.2,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:34",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 51399.9,
+            "dur_ms": 1.1,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-58",
+            "pid": 7007,
+            "span": 34,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.1,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:33",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 48899.6,
+            "dur_ms": 1.4,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-57",
+            "pid": 7007,
+            "span": 33,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.4,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:32",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 46399.7,
+            "dur_ms": 1.3,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-56",
+            "pid": 7007,
+            "span": 32,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.3,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:31",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 43899.8,
+            "dur_ms": 1.2,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-55",
+            "pid": 7007,
+            "span": 31,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.2,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:30",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 41399.9,
+            "dur_ms": 1.1,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-54",
+            "pid": 7007,
+            "span": 30,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.1,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:29",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 38899.6,
+            "dur_ms": 1.4,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-53",
+            "pid": 7007,
+            "span": 29,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.4,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:28",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 36399.7,
+            "dur_ms": 1.3,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-52",
+            "pid": 7007,
+            "span": 28,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.3,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:27",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 33899.8,
+            "dur_ms": 1.2,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-51",
+            "pid": 7007,
+            "span": 27,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.2,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "span",
+            "key": "7007:26",
+            "kind": "request",
+            "name": "GET /api/plugin/github/pull",
+            "start_ms": 31399.9,
+            "dur_ms": 1.1,
+            "outcome": "ok",
+            "state": "ended",
+            "client": "k3v9q2zx-50",
+            "pid": 7007,
+            "span": 26,
+            "parent": null,
+            "attrs": {
+              "status": 200,
+              "bytes": 612,
+              "query": "number=615"
+            },
+            "elapsed_ms": 1.1,
+            "children": 0,
+            "below": 0,
+            "matched": true
+          },
+          {
+            "type": "report",
+            "key": "7007@41",
+            "kind": "browser",
+            "name": "wait githubPull:diffSummary",
+            "start_ms": 29900.0,
+            "dur_ms": 32100.0,
+            "outcome": "ok",
+            "state": "report",
+            "client": "k3v9q2zx",
+            "pid": 7007,
+            "span": null,
+            "parent": null,
+            "attrs": {
+              "threshold_ms": 10000.0,
+              "detail": {
+                "number": 615
+              },
+              "path": "/pull/615"
+            },
+            "elapsed_ms": 32100.0,
+            "event": "end",
+            "children": 0,
+            "below": 0,
+            "matched": true
+          }
+        ]
+      }
+    }
+  }
+}

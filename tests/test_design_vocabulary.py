@@ -1958,6 +1958,7 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     # The View on GitHub button's chevron, which opens its menu.
     "plugin-sdk-views.js": ('"chip chip-menu-trigger counterpart-more disclosure-toggle"',),
     "agent_log/index.js": ('class="log-event-header disclosure-toggle"',),
+    "event_log/event-log-views.js": ('"disclosure-toggle event-log-row-head"',),
     "structured/tree.js": ('" srow-container disclosure-toggle"',),
     "markdown/inert-toc.js": ('"kpress-toc-toggle disclosure-toggle"',),
     "markdown/rendered.js": ('class="section-disclosure-trigger disclosure-toggle">Diagnostics',),
@@ -2075,6 +2076,7 @@ _TOGGLE_CLASSES: frozenset[str] = frozenset(
         "chip-menu-trigger",
         "source-ref-selector-toggle",
         "log-event-header",
+        "event-log-row-head",
         "srow-container",
         "kpress-toc-toggle",
         "section-disclosure-trigger",
