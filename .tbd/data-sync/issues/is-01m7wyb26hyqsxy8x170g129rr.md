@@ -5,7 +5,7 @@ title: Hide the navigation pane with a chevron and the backslash key
 kind: feature
 status: closed
 priority: 2
-version: 4
+version: 5
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/591
@@ -13,8 +13,9 @@ refs:
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wysf407hkpj5n35r533gzc
 created_at: 2026-11-19T01:10:34.000Z
-updated_at: 2026-11-20T18:02:19.213Z
+updated_at: 2026-11-20T19:12:01.654Z
 closed_at: 2026-11-19T02:00:39.000Z
 close_reason: "Merged in #591"
 resolution: null

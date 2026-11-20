@@ -5,7 +5,7 @@ title: Commit message bodies render as Markdown, as pull request descriptions do
 kind: task
 status: closed
 priority: 2
-version: 9
+version: 10
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/603
@@ -14,10 +14,11 @@ delegate: claude-code@spud10.local
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 hold: null
 hold_until: null
 created_at: 2026-11-19T06:25:14.746Z
-updated_at: 2026-11-20T18:01:29.740Z
+updated_at: 2026-11-20T19:11:39.470Z
 started_at: 2026-11-19T06:25:33.935Z
 closed_at: 2026-11-19T07:35:35.736Z
 close_reason: "PR #603 merged"

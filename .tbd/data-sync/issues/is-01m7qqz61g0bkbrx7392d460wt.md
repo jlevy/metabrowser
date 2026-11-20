@@ -5,7 +5,7 @@ title: "Flake: test_files_totals_stable_chrome 'ignored fast 180px light' sees a
 kind: bug
 status: closed
 priority: 1
-version: 6
+version: 7
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/563
@@ -13,8 +13,9 @@ refs:
 labels:
   - linear
 dependencies: []
+parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 created_at: 2026-11-18T16:31:19.087Z
-updated_at: 2026-11-20T18:00:55.611Z
+updated_at: 2026-11-20T19:13:00.303Z
 closed_at: 2026-11-18T19:55:30.214Z
 close_reason: "Fixed by #563 (merged eb6e2e62f): the tree's first paint waits for the filter bar, bounded to 1 s."
 resolution: null

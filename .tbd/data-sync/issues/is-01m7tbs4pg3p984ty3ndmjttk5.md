@@ -5,7 +5,7 @@ title: Main page's focus ring is covered by a pull request's tab bar
 kind: bug
 status: closed
 priority: 2
-version: 7
+version: 8
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/609
@@ -14,10 +14,11 @@ delegate: claude-code@spud10
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wysf407hkpj5n35r533gzc
 hold: null
 hold_until: null
 created_at: 2026-11-19T16:56:01.486Z
-updated_at: 2026-11-20T18:01:36.230Z
+updated_at: 2026-11-20T19:11:57.231Z
 started_at: 2026-11-19T16:56:32.898Z
 closed_at: 2026-11-19T18:07:02.880Z
 close_reason: "PR #609 merged"

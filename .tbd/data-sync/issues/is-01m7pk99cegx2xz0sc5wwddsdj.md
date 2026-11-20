@@ -5,7 +5,8 @@ title: "One canonical design for open modes: docs/project/architecture/arch-open
 kind: task
 status: closed
 priority: 1
-version: 9
+version: 10
+spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/558
@@ -14,11 +15,11 @@ delegate: claude-code@spud10
 labels:
   - linear
 dependencies: []
-parent_id: is-01m7ksbn803jhw15qjc6beg7qf
+parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 hold: null
 hold_until: null
 created_at: 2026-11-18T05:50:12.878Z
-updated_at: 2026-11-20T18:00:52.649Z
+updated_at: 2026-11-20T19:12:40.322Z
 started_at: 2026-11-18T05:54:45.389Z
 closed_at: 2026-11-18T07:55:06.341Z
 close_reason: "Merged in #558 (cc7b1b008): docs/project/architecture/arch-open-modes.md, reviews A and B addressed."

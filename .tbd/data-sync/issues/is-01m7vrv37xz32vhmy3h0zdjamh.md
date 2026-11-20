@@ -5,7 +5,7 @@ title: A Git revision's files get their age from the last commit that changed th
 kind: feature
 status: closed
 priority: 1
-version: 10
+version: 11
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/643
@@ -17,10 +17,11 @@ delegate: claude-code@spud10.local
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wys3bp2ndx4v4m26exf0hz
 hold: null
 hold_until: null
 created_at: 2026-11-20T06:03:31.452Z
-updated_at: 2026-11-20T18:02:10.575Z
+updated_at: 2026-11-20T19:12:10.641Z
 started_at: 2026-11-20T06:04:12.590Z
 closed_at: 2026-11-20T11:28:30.865Z
 close_reason: "Landed in #643 (commit-derived file ages via git last-modified, doctor git check) and #652 (By age, Modified within, Recent on a revision; redraw when ages land)"

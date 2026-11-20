@@ -5,7 +5,7 @@ title: "Filter row: drop the chevron's count badge so Clear and the chevron stay
 kind: bug
 status: closed
 priority: 2
-version: 6
+version: 7
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/605
@@ -14,10 +14,11 @@ delegate: claude-code@spud10
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wysf407hkpj5n35r533gzc
 hold: null
 hold_until: null
 created_at: 2026-11-19T07:12:02.474Z
-updated_at: 2026-11-20T18:01:31.777Z
+updated_at: 2026-11-20T19:11:58.703Z
 started_at: 2026-11-19T07:12:10.235Z
 closed_at: 2026-11-19T07:33:21.355Z
 close_reason: "Merged in #605."

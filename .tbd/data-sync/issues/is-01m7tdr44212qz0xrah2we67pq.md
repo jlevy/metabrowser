@@ -5,7 +5,8 @@ title: "Open URL: correct an obvious missing https:// instead of refusing it"
 kind: bug
 status: closed
 priority: 2
-version: 8
+version: 9
+spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/612
@@ -14,10 +15,11 @@ delegate: claude-code@spud10
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 hold: null
 hold_until: null
 created_at: 2026-11-19T17:30:25.279Z
-updated_at: 2026-11-20T18:01:39.878Z
+updated_at: 2026-11-20T19:12:37.392Z
 started_at: 2026-11-19T17:31:02.481Z
 closed_at: 2026-11-19T18:22:06.093Z
 close_reason: "Landed in #612 (5055819d2): Open URL… adds https:// to a GitHub host typed without a scheme and upgrades http://; the CLI completes a scheme-less GitHub URL that names nothing on disk. owner/repo shorthand dropped per the owner's recorded answer."

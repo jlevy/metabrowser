@@ -5,7 +5,8 @@ title: "Address review A on #517: Overview README TOC follow-up"
 kind: task
 status: closed
 priority: 2
-version: 6
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/543
@@ -16,10 +17,11 @@ labels:
   - files
   - linear
 dependencies: []
+parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 hold: null
 hold_until: null
 created_at: 2026-11-18T00:57:30.468Z
-updated_at: 2026-11-20T18:00:24.314Z
+updated_at: 2026-11-20T19:12:22.370Z
 started_at: 2026-11-18T00:57:34.593Z
 closed_at: 2026-11-18T01:15:08.321Z
 close_reason: "Done in jlevy/metabrowser#543 (claude/overview-toc-review-a), not yet merged: A2, A3, A4, A5, A6 comments, A8 fixed; A1 deferred to mb-hpoq, A6 removal to mb-2nqa, A9 to mb-4el3; A7 declined with reason."

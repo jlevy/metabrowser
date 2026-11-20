@@ -5,7 +5,7 @@ title: "Flake: test_recent_targets concurrent writers hit the 2 s lock wait on l
 kind: bug
 status: closed
 priority: 3
-version: 7
+version: 8
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/569
@@ -14,10 +14,11 @@ delegate: claude-code@spud10
 labels:
   - linear
 dependencies: []
+parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 hold: null
 hold_until: null
 created_at: 2026-11-18T20:29:43.551Z
-updated_at: 2026-11-20T18:01:01.939Z
+updated_at: 2026-11-20T19:12:57.283Z
 started_at: 2026-11-18T21:02:22.944Z
 closed_at: 2026-11-18T22:17:17.266Z
 close_reason: null

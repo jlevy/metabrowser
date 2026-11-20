@@ -5,7 +5,7 @@ title: "Pulls tab: rows flush left unless stacked; chevron sits left of the chan
 kind: feature
 status: closed
 priority: 2
-version: 6
+version: 7
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/506
@@ -16,10 +16,11 @@ labels:
   - pulls
   - linear
 dependencies: []
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 hold: null
 hold_until: null
 created_at: 2026-11-17T06:53:18.445Z
-updated_at: 2026-11-20T17:59:46.350Z
+updated_at: 2026-11-20T19:11:31.203Z
 started_at: 2026-11-17T06:53:22.815Z
 closed_at: 2026-11-17T07:36:29.916Z
 close_reason: Done in jlevy/metabrowser#506 (claude/pulls-row-indent)

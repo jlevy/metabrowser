@@ -5,7 +5,7 @@ title: "Branch chooser: a branch with an open pull request shows the pull reques
 kind: feature
 status: closed
 priority: 2
-version: 6
+version: 7
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/651
@@ -14,10 +14,11 @@ delegate: claude-code@spud10.local
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wys615s2mfvbc93c9g2pac
 hold: null
 hold_until: null
 created_at: 2026-11-20T07:03:44.991Z
-updated_at: 2026-11-20T17:01:23.826Z
+updated_at: 2026-11-20T19:11:44.043Z
 started_at: 2026-11-20T07:05:04.264Z
 closed_at: 2026-11-20T09:35:02.824Z
 close_reason: "Landed in #651: the branch chooser shows each branch's pull requests"

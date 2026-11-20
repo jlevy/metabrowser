@@ -5,13 +5,14 @@ title: Flaky event-loop stall test under full-suite load
 kind: bug
 status: closed
 priority: 2
-version: 7
+version: 8
 labels: []
 dependencies:
   - type: blocks
     target: is-01m2fafd1v8d5pakt6r7zxw5n8
+parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 created_at: 2026-08-03T01:04:55.662Z
-updated_at: 2026-09-14T08:06:17.249Z
+updated_at: 2026-11-20T19:12:46.058Z
 closed_at: 2026-09-14T08:06:17.248Z
 close_reason: "Fixed in https://github.com/jlevy/metabrowser/pull/119: test_tick_does_not_block_event_loop no longer times the loop stall. A per-thread sys.setprofile hook on the event-loop thread counts filesystem primitive calls (os.stat, os.scandir, io.open, os.kill, ...) during two ticks and requires zero, with a companion test proving the hook sees every probe. Negative controls fail on 3.12/3.13/3.14/3.14t, including the stat-only regression the old share gate passed (4.6 ms)."
 resolution: null

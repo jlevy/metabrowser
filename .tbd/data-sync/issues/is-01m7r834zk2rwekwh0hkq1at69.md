@@ -5,7 +5,7 @@ title: "File type categories: one representative gray icon per category (e.g. Do
 kind: feature
 status: closed
 priority: 2
-version: 9
+version: 10
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/583
@@ -16,10 +16,11 @@ labels:
 dependencies:
   - type: blocks
     target: is-01m7raatxaeyxam9feb76y6w11
+parent_id: is-01m7wysf407hkpj5n35r533gzc
 hold: null
 hold_until: null
 created_at: 2026-11-18T21:13:06.273Z
-updated_at: 2026-11-20T18:01:07.485Z
+updated_at: 2026-11-20T19:11:54.363Z
 started_at: 2026-11-18T21:13:58.451Z
 closed_at: 2026-11-18T23:34:31.041Z
 close_reason: "Merged in #583 (729b67553)"

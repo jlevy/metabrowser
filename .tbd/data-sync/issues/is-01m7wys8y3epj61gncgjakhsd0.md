@@ -5,7 +5,7 @@ title: Pulls tab, pull request page, and commit page
 kind: epic
 status: open
 priority: 2
-version: 27
+version: 36
 labels: []
 dependencies: []
 child_order_hints:
@@ -35,8 +35,17 @@ child_order_hints:
   - is-01m7jfgj7wj9akkndrqfqsbj9p
   - is-01m6f39t9zax1nbajkkasya6st
   - is-01m7n6v8n050erzeb13c5tasar
+  - is-01m7r7t20z7q6bqhvqz12szhjs
+  - is-01m7tbsackd8zkq40k28sczhsm
+  - is-01m7m4g37tg38gevry207fkd1p
+  - is-01m7tecxp471vedhc0jascx58a
+  - is-01m7rc08e8rhfapch9mtg42aft
+  - is-01m7wy9vfce2hj7qc27zdk8g72
+  - is-01m7vvq2z9j4ksr626c8042pdf
+  - is-01m7s7p50603be3efeagnhavr0
+  - is-01m7v6edc1nqgwd7ef1r7tt0zb
 created_at: 2026-11-20T17:06:37.632Z
-updated_at: 2026-11-20T17:11:32.643Z
+updated_at: 2026-11-20T19:11:40.985Z
 ---
 The Pulls tab, the pull request page (Conversation, Changes, the Diff summary, stacks) and the commit page, for mirrors and local checkouts. The feature set shipped through the 0.12 line and the 2026-11 UI rounds (#444-#481, #506, #529, #584, #611, #615, #627).
 

@@ -5,7 +5,7 @@ title: "View on GitHub: one split button, upper right, on every page with a gith
 kind: feature
 status: closed
 priority: 1
-version: 6
+version: 7
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/586
@@ -17,10 +17,11 @@ delegate: claude-code@spud10
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wysf407hkpj5n35r533gzc
 hold: null
 hold_until: null
 created_at: 2026-11-18T23:24:01.127Z
-updated_at: 2026-11-20T18:01:16.058Z
+updated_at: 2026-11-20T19:12:09.169Z
 started_at: 2026-11-18T23:25:43.020Z
 closed_at: 2026-11-19T02:36:37.522Z
 close_reason: "Landed in #595 (b304e6ca3)"

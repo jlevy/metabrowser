@@ -5,7 +5,7 @@ title: "Flaky: test_present real-server test binds the default port 8411 and col
 kind: bug
 status: closed
 priority: 1
-version: 6
+version: 7
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/594
@@ -14,10 +14,11 @@ delegate: claude-code@spud10
 labels:
   - linear
 dependencies: []
+parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 hold: null
 hold_until: null
 created_at: 2026-11-19T01:11:42.728Z
-updated_at: 2026-11-20T18:01:21.487Z
+updated_at: 2026-11-20T19:12:48.997Z
 started_at: 2026-11-19T01:12:06.136Z
 closed_at: 2026-11-19T01:33:31.674Z
 close_reason: "Landed in #594"

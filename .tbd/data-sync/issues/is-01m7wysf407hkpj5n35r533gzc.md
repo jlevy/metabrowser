@@ -5,7 +5,7 @@ title: "Design system: icon catalog, shared view header, and visual consistency"
 kind: epic
 status: open
 priority: 2
-version: 19
+version: 34
 labels: []
 dependencies: []
 child_order_hints:
@@ -27,8 +27,23 @@ child_order_hints:
   - is-01m7pjs70jw1s54195e7f84v82
   - is-01m7sgg8y7t2z88xxfc54fbktn
   - is-01m7r8jfm690nwt4rbad8ny3k2
+  - is-01m7s7tqeqcwf4j0bew2p8g7h0
+  - is-01m7s7g08bc2khyfmrdj5wkge7
+  - is-01m7pab7r3k7xe521vyg5xmrgb
+  - is-01m7rmdg1n3p2yk50wbpa37s8c
+  - is-01m7r834zk2rwekwh0hkq1at69
+  - is-01m7r7k24sbwrkavevnpb6xrvp
+  - is-01m7tbs4pg3p984ty3ndmjttk5
+  - is-01m7sabtxbpsj2ak4ak4v9ezk1
+  - is-01m7s7er81e7k9rxj2em3n6t9j
+  - is-01m7wyb26hyqsxy8x170g129rr
+  - is-01m7wybeed2wbaee2vkfzj0awa
+  - is-01m7p85p0mg9yybh66113y5101
+  - is-01m7p9wxbnv6essbhr1rask8ve
+  - is-01m7tdygg4z9pkdpff2h98jrgw
+  - is-01m7rfjvq8xafvwfrw85ex2mwj
 created_at: 2026-11-20T17:06:43.967Z
-updated_at: 2026-11-20T17:18:30.415Z
+updated_at: 2026-11-20T19:12:09.181Z
 ---
 docs/design-system.md and the checks that hold the code to it: the icon catalog (#580), one view header for files and folders (#550, #592, #608), controls, badges and messages that follow one system (#622), and one type scale.
 

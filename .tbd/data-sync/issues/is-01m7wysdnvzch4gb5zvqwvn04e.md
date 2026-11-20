@@ -5,7 +5,7 @@ title: "Markdown and structured-text rendering: front matter, diagrams, untruste
 kind: epic
 status: open
 priority: 2
-version: 31
+version: 34
 labels: []
 dependencies: []
 child_order_hints:
@@ -39,8 +39,11 @@ child_order_hints:
   - is-01m0k3nbmdvy9x8g3r8t9ckzjt
   - is-01m7nz91me6818xtzmqzt9zrhs
   - is-01m7x1emmz9p122tphtdxdqp4e
+  - is-01m7vrbj7pcmfdv8tabbb57wpe
+  - is-01m7v62n9f3y3qh0qxe9m6ap2y
+  - is-01m7tnaxethq70h5dxyhfdzz8r
 created_at: 2026-11-20T17:06:42.489Z
-updated_at: 2026-11-20T17:57:59.424Z
+updated_at: 2026-11-20T19:12:44.621Z
 ---
 Rendered Markdown (KPress), wiki links and transclusion, front matter, the structured YAML and JSON views, and Mermaid diagrams, in the trusted and the inert (untrusted) profiles. Landed: Mermaid in Markdown (#597) and in pull request text (#616), GitHub's layout attributes (#626), bounded front matter parsed off the event loop (#542), untrusted Markdown rendered in an inert child under a deadline (#527), and the remote-image policy (#644).
 

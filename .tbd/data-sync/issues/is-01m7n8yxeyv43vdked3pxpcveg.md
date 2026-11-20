@@ -5,7 +5,7 @@ title: npm audit fails on GHSA-fc5q-39xc-vjpf (picomatch ReDoS) via tryscript
 kind: bug
 status: closed
 priority: 1
-version: 5
+version: 6
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/523
@@ -13,8 +13,9 @@ refs:
 labels:
   - linear
 dependencies: []
+parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
 created_at: 2026-11-17T17:30:32.798Z
-updated_at: 2026-11-20T18:00:02.171Z
+updated_at: 2026-11-20T19:13:19.479Z
 closed_at: 2026-11-18T01:19:30.944Z
 close_reason: "Duplicate of mb-p1o0: tryscript 0.4.0 landed on main in jlevy/metabrowser#538, removing tinyglobby/fdir/picomatch and the GHSA-fc5q-39xc-vjpf path."
 resolution: null

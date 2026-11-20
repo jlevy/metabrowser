@@ -5,7 +5,8 @@ title: "Plan: one object data model with several views"
 kind: task
 status: closed
 priority: 2
-version: 4
+version: 5
+spec_path: docs/project/specs/active/plan-2026-11-14-object-data-model-and-views.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/453
@@ -13,8 +14,9 @@ refs:
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7f2vek3t6sca32adhd4gq33
 created_at: 2026-11-15T09:29:35.000Z
-updated_at: 2026-11-20T18:02:12.563Z
+updated_at: 2026-11-20T19:13:16.578Z
 closed_at: 2026-11-17T00:38:11.000Z
 close_reason: "Merged in #453 (native stack #454)"
 resolution: null

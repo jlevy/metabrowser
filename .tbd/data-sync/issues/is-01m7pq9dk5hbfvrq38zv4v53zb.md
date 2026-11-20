@@ -5,7 +5,8 @@ title: CHANGELOG.md conflicts on every merge to main serialize landing
 kind: task
 status: closed
 priority: 2
-version: 10
+version: 11
+spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/585
@@ -14,10 +15,11 @@ delegate: claude-code@spud10
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wysgm9rg3fdch55nst1wrn
 hold: null
 hold_until: null
 created_at: 2026-11-18T07:00:11.492Z
-updated_at: 2026-11-20T18:00:54.164Z
+updated_at: 2026-11-20T19:13:12.261Z
 started_at: 2026-11-18T22:09:13.346Z
 closed_at: 2026-11-18T23:32:24.969Z
 close_reason: "Merged in #585"

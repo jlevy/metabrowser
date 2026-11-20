@@ -5,7 +5,8 @@ title: "metab TARGET --present: resolve (--dry-run --json) and hand a target to 
 kind: feature
 status: closed
 priority: 1
-version: 5
+version: 6
+spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/540
@@ -15,8 +16,9 @@ labels:
   - alpha
   - linear
 dependencies: []
+parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 created_at: 2026-11-17T23:45:57.914Z
-updated_at: 2026-11-20T18:00:18.511Z
+updated_at: 2026-11-20T19:12:35.952Z
 closed_at: 2026-11-18T17:04:22.836Z
 close_reason: "Done in #540 (merged e769513d9): metab --present with dry-run JSON and handoff to the app."
 resolution: null

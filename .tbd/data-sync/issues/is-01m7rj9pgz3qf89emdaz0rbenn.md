@@ -5,7 +5,8 @@ title: "One rule for the app's command-line dependencies (metab, gh, future tool
 kind: feature
 status: closed
 priority: 1
-version: 13
+version: 14
+spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/590
@@ -17,12 +18,13 @@ delegate: claude-code@spud10
 labels:
   - linear
 dependencies: []
+parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 child_order_hints:
   - is-01m7rmjmzgk91n9czy6g19qk75
 hold: null
 hold_until: null
 created_at: 2026-11-19T00:11:26.622Z
-updated_at: 2026-11-20T18:01:17.707Z
+updated_at: 2026-11-20T19:12:34.500Z
 started_at: 2026-11-19T00:12:06.859Z
 closed_at: 2026-11-19T04:11:15.457Z
 close_reason: "Phases 1-3 landed: #590 (minimum release and versioning rule), #596 (metab --doctor checks, gh minimum, Help > Check Setup..., contract entries). Review B Lows tracked separately."

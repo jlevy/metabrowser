@@ -5,14 +5,16 @@ title: "CI: the goldens tier outgrew the goldens-and-serial job's 6-minute cap (
 kind: bug
 status: closed
 priority: 1
-version: 3
+version: 4
+spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
+parent_id: is-01m7wysgm9rg3fdch55nst1wrn
 hold: null
 hold_until: null
 created_at: 2026-11-20T18:27:45.065Z
-updated_at: 2026-11-20T18:51:53.663Z
+updated_at: 2026-11-20T19:13:10.781Z
 started_at: 2026-11-20T18:32:21.049Z
 closed_at: 2026-11-20T18:51:53.662Z
 close_reason: PR 669

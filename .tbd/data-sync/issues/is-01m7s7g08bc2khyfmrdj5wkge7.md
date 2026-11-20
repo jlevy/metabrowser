@@ -5,7 +5,7 @@ title: "Short commit IDs: always 7 characters, monospace, one gray, as a design-
 kind: task
 status: closed
 priority: 2
-version: 7
+version: 8
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/604
@@ -14,10 +14,11 @@ delegate: claude-code@spud10
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wysf407hkpj5n35r533gzc
 hold: null
 hold_until: null
 created_at: 2026-11-19T06:21:53.287Z
-updated_at: 2026-11-20T18:01:28.622Z
+updated_at: 2026-11-20T19:11:49.908Z
 started_at: 2026-11-19T06:22:17.348Z
 closed_at: 2026-11-19T08:15:28.966Z
 close_reason: "PR #604 merged"

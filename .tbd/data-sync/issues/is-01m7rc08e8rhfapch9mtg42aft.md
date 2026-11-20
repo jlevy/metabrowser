@@ -5,7 +5,7 @@ title: Pull request view shows raw Markdown for 3-4 s before it renders
 kind: bug
 status: closed
 priority: 1
-version: 7
+version: 8
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/589
@@ -14,10 +14,11 @@ delegate: claude-code@spud10
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 hold: null
 hold_until: null
 created_at: 2026-11-18T22:21:25.831Z
-updated_at: 2026-11-20T18:01:13.574Z
+updated_at: 2026-11-20T19:11:34.375Z
 started_at: 2026-11-18T22:22:05.770Z
 closed_at: 2026-11-19T00:47:03.266Z
 close_reason: "Landed in #589 (ab324832d)"

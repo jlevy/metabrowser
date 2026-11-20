@@ -5,7 +5,7 @@ title: Regenerate the stack-lines golden for bold status counts
 kind: chore
 status: closed
 priority: 2
-version: 4
+version: 5
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/495
@@ -13,8 +13,9 @@ refs:
 labels:
   - linear
 dependencies: []
+parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 created_at: 2026-11-17T02:34:48.000Z
-updated_at: 2026-11-20T18:02:15.025Z
+updated_at: 2026-11-20T19:13:06.409Z
 closed_at: 2026-11-17T02:57:46.000Z
 close_reason: "Merged in #495"
 resolution: null

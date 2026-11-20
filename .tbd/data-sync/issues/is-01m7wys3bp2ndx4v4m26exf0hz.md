@@ -5,7 +5,7 @@ title: File ages, recency, and Files-tab grouping
 kind: epic
 status: open
 priority: 2
-version: 12
+version: 16
 labels: []
 dependencies: []
 child_order_hints:
@@ -20,8 +20,12 @@ child_order_hints:
   - is-01m7hh0sdnmyfxjrqzgkj1zn9x
   - is-01m7s898skvvqr3pjh0h263x1q
   - is-01kzn46nh5ezzj2re7rcc0gx8n
+  - is-01m7vrv37xz32vhmy3h0zdjamh
+  - is-01m7r804jrhk61bnjr979m4q94
+  - is-01m7s7apxe55ek1pds3fa2475v
+  - is-01m7p8c8jxvvb9qgs08wea9nk3
 created_at: 2026-11-20T17:06:31.923Z
-updated_at: 2026-11-20T17:09:26.027Z
+updated_at: 2026-11-20T19:12:15.010Z
 ---
 The Files tab groups, filters and dates what it lists: Group by (By age, By file type), Modified within, Recent, and each entry's age. On a folder the ages come from the inventory; on a Git revision they come from each file's last commit (git last-modified), which landed in #643 and #652.
 

@@ -5,7 +5,7 @@ title: Pulls list never reveals a pull request newer than the catalog once a pol
 kind: bug
 status: closed
 priority: 3
-version: 9
+version: 10
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/615
@@ -14,10 +14,11 @@ delegate: claude-code@macbookpro
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 hold: null
 hold_until: null
 created_at: 2026-11-19T17:41:46.817Z
-updated_at: 2026-11-20T18:01:42.445Z
+updated_at: 2026-11-20T19:11:32.690Z
 started_at: 2026-11-19T19:07:25.518Z
 closed_at: 2026-11-19T19:51:15.457Z
 close_reason: "PR #615 merged"

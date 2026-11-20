@@ -5,7 +5,7 @@ title: Open anything from the CLI, the skill, and the macOS app (owner asked 202
 kind: epic
 status: open
 priority: 1
-version: 33
+version: 37
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
 labels:
   - linear
@@ -40,8 +40,12 @@ child_order_hints:
   - is-01m7qrt4bdwgj652xr6qw9va4m
   - is-01m7pr9wr8d30pckgvp4teba1z
   - is-01m7nyeb57h28trbdp2m1hy2wk
+  - is-01m7nyeamv688pmsbbaq7m85fw
+  - is-01m7tdr44212qz0xrah2we67pq
+  - is-01m7wya71p80050bqxj40r1y9c
+  - is-01m7pk99cegx2xz0sc5wwddsdj
 created_at: 2026-11-17T21:16:59.095Z
-updated_at: 2026-11-20T18:00:06.062Z
+updated_at: 2026-11-20T19:12:40.333Z
 extensions:
   linear:
     id: 5499d118-7011-4615-b052-982dc46ae0f6

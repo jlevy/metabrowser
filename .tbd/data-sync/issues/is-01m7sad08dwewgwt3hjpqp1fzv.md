@@ -5,7 +5,8 @@ title: "macOS app: a GitHub link opens its mirror as a tab of an open checkout o
 kind: feature
 status: closed
 priority: 2
-version: 7
+version: 8
+spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/607
@@ -14,10 +15,11 @@ delegate: claude-code@spud10
 labels:
   - linear
 dependencies: []
+parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 hold: null
 hold_until: null
 created_at: 2026-11-19T07:12:40.717Z
-updated_at: 2026-11-20T18:01:33.924Z
+updated_at: 2026-11-20T19:12:28.412Z
 started_at: 2026-11-19T07:12:45.935Z
 closed_at: 2026-11-19T07:58:32.657Z
 close_reason: Merged in https://github.com/jlevy/metabrowser/pull/607 (9ea09a944).

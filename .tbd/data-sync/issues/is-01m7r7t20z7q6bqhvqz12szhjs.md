@@ -5,7 +5,7 @@ title: "Pulls nav: one outer hover/selection zone for a pull request's three lin
 kind: feature
 status: closed
 priority: 2
-version: 8
+version: 9
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/584
@@ -14,10 +14,11 @@ delegate: claude-code@spud10
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 hold: null
 hold_until: null
 created_at: 2026-11-18T21:08:08.349Z
-updated_at: 2026-11-20T18:01:05.431Z
+updated_at: 2026-11-20T19:11:27.787Z
 started_at: 2026-11-18T21:09:11.984Z
 closed_at: 2026-11-19T00:25:21.003Z
 close_reason: "Landed in #584 (db33e16d2)"

@@ -5,7 +5,7 @@ title: Stabilize the test suite under machine load
 kind: epic
 status: open
 priority: 2
-version: 27
+version: 41
 labels:
   - testing
 dependencies: []
@@ -30,8 +30,22 @@ child_order_hints:
   - is-01m7w7pt8rqjk0fk7jne3eh8db
   - is-01m7sbwjvm0smmadqp4w4ch1qr
   - is-01m7wztr8mpkr8braes7adb6js
+  - is-01kz2je0bep6bnk4bajjjfzp7a
+  - is-01m7qtwypd57wj46m0ry1xx7r3
+  - is-01m7rnr1w9m11ycqrwaex8j5bq
+  - is-01m7rrz0nqayqnha5hj3j2q238
+  - is-01m03xxachys56ym1n61t6krs0
+  - is-01m7r5kp7cdz240ed4avbh0yfs
+  - is-01m7v72e4vf96e778773nxk60z
+  - is-01m7r5kq8kjfbsbf8yk4whp0a8
+  - is-01m7tbqzdjk3vty046954g84by
+  - is-01m7qqz61g0bkbrx7392d460wt
+  - is-01m7n6st95vqhhc1jayfshp503
+  - is-01m7tn64k05kk14d7448tjd1sx
+  - is-01m7vnr99dgq5qyfbj40warset
+  - is-01m7wy9g6g33jfjygf98zg5gem
 created_at: 2026-09-14T16:13:19.443Z
-updated_at: 2026-11-20T17:30:36.334Z
+updated_at: 2026-11-20T19:13:06.419Z
 ---
 Sweep the full pytest suite and tryscript goldens under heavy machine load (load average 7-50 from an unrelated workload, or CPU burners on a quiet host). Classify each failure as a load or timing flake, a real bug, or an order dependence, and fix flakes by asserting the product guarantee with deterministic coordination rather than wall-clock thresholds. The starting flake, tests/test_serve_open_race.py (mb-0mu9), is fixed. CI flakes found since are tracked as children of this bead.
 

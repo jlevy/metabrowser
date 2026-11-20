@@ -5,7 +5,7 @@ title: Pulls rows lead with the title; statuses whole or not at all
 kind: feature
 status: closed
 priority: 2
-version: 4
+version: 5
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/529
@@ -13,8 +13,9 @@ refs:
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 created_at: 2026-11-17T20:45:43.000Z
-updated_at: 2026-11-20T18:02:16.030Z
+updated_at: 2026-11-20T19:11:36.332Z
 closed_at: 2026-11-18T03:45:18.000Z
 close_reason: "Merged in #529"
 resolution: null

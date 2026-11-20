@@ -5,11 +5,13 @@ title: CI takes ~20-25 minutes per push; assess end to end and design how to get
 kind: task
 status: closed
 priority: 1
-version: 41
+version: 42
+spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 delegate: claude-code@spud10.local
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wysgm9rg3fdch55nst1wrn
 child_order_hints:
   - is-01m7kpmdd2sqmd8xdkp7nmef7k
   - is-01m7kpme30x5k8w9nvtdwam8r2
@@ -43,7 +45,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T01:14:58.454Z
-updated_at: 2026-11-20T17:59:36.314Z
+updated_at: 2026-11-20T19:13:09.328Z
 started_at: 2026-11-17T01:15:52.976Z
 closed_at: 2026-11-20T17:00:28.355Z
 close_reason: "Per its own note (close when Phase 2 merges): the assessment and plan merged in PR #496, Phase 1 in #499 and Phase 2 in #504 (pull requests measured at 4.7 to 5.5 minutes). The remaining Fast CI work continues under the CI speed epic"

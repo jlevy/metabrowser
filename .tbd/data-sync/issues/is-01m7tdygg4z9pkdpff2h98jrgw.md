@@ -5,7 +5,7 @@ title: "Mirror heading: drop the ref and commit beside the repository name; comm
 kind: bug
 status: closed
 priority: 2
-version: 10
+version: 11
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/613
@@ -14,10 +14,11 @@ delegate: claude-code@spud10
 labels:
   - linear
 dependencies: []
+parent_id: is-01m7wysf407hkpj5n35r533gzc
 hold: null
 hold_until: null
 created_at: 2026-11-19T17:33:54.562Z
-updated_at: 2026-11-20T18:01:41.246Z
+updated_at: 2026-11-20T19:12:07.710Z
 started_at: 2026-11-19T17:34:26.174Z
 closed_at: 2026-11-19T19:16:10.834Z
 close_reason: "Landed in #613 (12e68f6f1): a mirror's and a checkout revision's nav heading is the name alone; .git-commit-sha takes its line's size via font-size-adjust with a measured per-font-set x-height. A3 follow-up is mb-oajg."

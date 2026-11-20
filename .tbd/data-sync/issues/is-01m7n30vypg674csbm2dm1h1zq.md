@@ -5,7 +5,8 @@ title: "Folder overview: a long README's table of contents fades in when scrolle
 kind: bug
 status: closed
 priority: 2
-version: 6
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/517
@@ -17,10 +18,11 @@ labels:
   - toc
   - linear
 dependencies: []
+parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 hold: null
 hold_until: null
 created_at: 2026-11-17T15:46:45.332Z
-updated_at: 2026-11-20T17:59:52.414Z
+updated_at: 2026-11-20T19:12:20.884Z
 started_at: 2026-11-17T15:47:51.034Z
 closed_at: 2026-11-17T17:48:56.602Z
 close_reason: Done in jlevy/metabrowser#517 (claude/overview-readme-toc)

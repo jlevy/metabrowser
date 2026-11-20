@@ -5,13 +5,14 @@ title: "Flaky: test_tick_does_not_block_event_loop fails under full-suite load"
 kind: bug
 status: closed
 priority: 3
-version: 6
+version: 7
 labels: []
 dependencies:
   - type: blocks
     target: is-01m2fafd1v8d5pakt6r7zxw5n8
+parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 created_at: 2026-08-16T00:00:28.038Z
-updated_at: 2026-09-14T08:06:17.555Z
+updated_at: 2026-11-20T19:12:52.345Z
 closed_at: 2026-09-14T08:06:17.554Z
 close_reason: "Duplicate of mb-087n, fixed in https://github.com/jlevy/metabrowser/pull/119. The cold-first-run failure cannot recur because the test no longer measures time. The tally heartbeat noted here (test_worker_tally_pass_cooperatively_yields_to_the_event_loop, 102 ms) is fixed in the same PR: it counts entries between the pass's time.sleep yields (<= 1,024) instead of timing a 1 ms heartbeat, which could not detect a removed yield on 3.14t."
 resolution: duplicate
