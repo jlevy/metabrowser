@@ -50,7 +50,7 @@ from metabrowser.git.process import ACQUISITION_MINIMUM
 from metabrowser.gz_io import GZIP_SUFFIX, ZLIB_SUFFIX
 from metabrowser.home import application_cache, configuration_directory
 from metabrowser.inventory_engine.factory import InventoryProvider
-from metabrowser.logutil.parsing import _BUILTIN_ADAPTERS
+from metabrowser.logutil.parsing import registered_log_adapters
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 from metabrowser.settings import (
     DEFAULT_BROWSER_PORT,
@@ -404,11 +404,12 @@ def test_user_guides_state_the_values_the_code_sets() -> None:
 
 
 def test_every_jsonl_adapter_has_a_name_the_guides_can_use() -> None:
-    assert _manifest_adapters() <= _BUILTIN_ADAPTERS
-    unnamed = sorted(_BUILTIN_ADAPTERS - AGENT_NAMES.keys())
+    adapters = frozenset(registered_log_adapters())
+    assert _manifest_adapters() <= adapters
+    unnamed = sorted(adapters - AGENT_NAMES.keys())
     assert not unnamed, f"name {unnamed} in AGENT_NAMES, then say which guides list it"
     # docs/working-with-agents.md says every recognized agent's logs open with Charts.
-    uncharted = sorted(_BUILTIN_ADAPTERS - _manifest_adapters())
+    uncharted = sorted(adapters - _manifest_adapters())
     assert not uncharted, (
         f"{uncharted} parse without Charts: say so in docs/working-with-agents.md and pin it"
     )

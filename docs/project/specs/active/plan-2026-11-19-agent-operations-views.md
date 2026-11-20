@@ -311,8 +311,23 @@ Every number links to what it counts:
 
 ### Surfaces
 
-All surfaces are route-backed pages of the `agents` plugin, which is the SDK addition
-named in Phase 2. Each is backed by a route that `metab --api` reaches.
+Each surface is a view of the `agents` plugin, backed by a data-hook route that
+`metab --api` reaches.
+No surface is an address space of its own:
+[Plugin System](../../architecture/arch-plugin-system.md#registration-surfaces-not-built)
+records that no plugin can register one, and the
+[object data model plan](plan-2026-11-14-object-data-model-and-views.md) keeps that out
+of scope and puts a new page on the `folder` kind instead (its Decision 19).
+
+- **The home and the session list are views of a home’s folder.** The plugin offers them
+  only on a folder that is a Claude Code or Codex home, or that holds `.claude` or
+  `.codex`, and the home view is then the folder’s default.
+  Serving `~/.claude` opens on its home; serving `~` opens on the combined home.
+
+- **The session page is the session’s own file.** A Claude Code transcript and a plain
+  Codex rollout are `agent-log` files, which gain a Session view.
+  A compressed Codex rollout is an `agent-thread` file: its Session and Log views read
+  `thread_history`, so it opens before Metabrowser reads zstd.
 
 - **Agents home.** One page for each home under the served root, and a combined page
   when the root holds both.
@@ -323,11 +338,13 @@ named in Phase 2. Each is backed by a route that `metab --api` reaches.
   - Sessions per day, a histogram of session sizes (log-spaced, by bytes or by turns),
     and the most recent sessions.
   - Later phases add usage, event-kind, and tool panels.
+
 - **Session list.** Sortable columns: agent, title, origin, project, model, start,
   duration, turns, size, and status.
   The tokens and errors columns arrive with their families.
   - Filters by agent, origin, project, model, status, and date range.
   - Automatic reviews are hidden by default, since they are most Codex threads.
+
 - **Session page.** A header with the session’s identity, origin, place, time, size,
   models, and status. Tabs:
   - **Log:** the Log timeline, colored by kind.
@@ -341,6 +358,7 @@ named in Phase 2. Each is backed by a route that `metab --api` reaches.
   - **Changes:** files changed, with diffs through the diff plugin’s renderer.
   - **Raw**, a link to the source file’s own view, and the provider sections, such as
     Claude Code’s hooks and permissions or Codex’s goals and queued messages.
+
 - **Timeline.** A horizontal time axis with one lane per project.
   - Sessions are bars, with their children nested under them.
   - It scrolls and zooms from hours to months, and keeps only the visible window in the
@@ -350,24 +368,30 @@ named in Phase 2. Each is backed by a route that `metab --api` reaches.
   - Clicking a bar opens its session.
   - The rendering technique (DOM, SVG, or canvas) and its bounds are set from a Chrome
     measurement, per [rendering large content](../../../large-content-rendering.md).
+
 - **Live events.** One merged, following tail of new events across running sessions,
   colored by kind.
   - It polls the `live` route with a cursor, so it needs no change-subscription API.
   - It can pause, filter by agent, session, or kind, and open any event in its session.
+
 - **Usage.**
   - Tokens by day, stacked by model.
   - Tallies by model, project, origin, and agent.
   - Input, output, cache read, and cache creation shown apart, so cache efficiency is
     visible.
   - Codex rate-limit headroom over time.
+
 - **Records and tools.** Across all history or a filtered set:
   - Event tallies by kind and raw type, over time.
   - The tool rollup: calls, errors, and latency percentiles per family and tool.
   - Event latency by kind, each with its slowest instances linked.
+
 - **Errors.** API errors, tool errors, failed turns, hook failures, and permission
   denials, grouped by class, with counts over time and links to each.
+
 - **Configuration.** Settings, hooks, permissions, plugins, skills, agents, MCP servers,
   scheduled tasks, and automations, with known secret fields masked.
+
 - **Health**, under [Trust and Health](#trust-and-health).
 
 ### What Else Full Visibility Needs
@@ -504,12 +528,13 @@ Each addition lands in the commit that first uses it:
 | Registry-driven adapter detection, with the reserved built-in names removed | Phase 2, moving the adapters |
 | An exported JSONL parse limit or bounded-read helper in `plugin_api` | Phase 2, the import-boundary test |
 | A plugin cache directory and its lifecycle | Phase 2, the catalog |
-| Route-backed plugin pages, as the [object data model plan](plan-2026-11-14-object-data-model-and-views.md) proposes | Phase 2, the home, list, and session pages |
+| A folder view a plugin offers only where its predicate accepts the folder, and that is then the folder’s default | Phase 2, the home and the session list |
+| A plugin kind that claims a binary file by its path, so the file reaches the plugin’s views | Phase 2, compressed Codex rollouts |
 | Read zstd through `ArtifactPath` | Phase 4, Codex rollout usage |
 
 The live views poll data-hook routes with a cursor, so they need no change-subscription
-API. A home is a route-backed page, not a folder kind, so the folder-kind gap the
-research brief lists is not needed.
+API. A home is a folder whose views the plugin extends, not a folder kind of its own, so
+the folder-kind gap the research brief lists is not needed.
 
 ### Routes and Parity
 
@@ -565,6 +590,12 @@ These are fixes in core’s existing path.
 Phase 2 carries them into the plugin unchanged.
 
 ### Phase 2: Basic Views
+
+The served-root question took its proposed default (see
+[Open Questions](#open-questions)). Phase 2 lands as a stack of pull requests, in this
+order: the SDK additions; the plugin package with the adapters moved into it; the shared
+model, kinds, colors, and the synthetic homes; the catalog and its routes; and the
+views.
 
 - [ ] Land the Phase 2 SDK additions.
 - [ ] Create the `agents` plugin package and its import-boundary test.
@@ -670,8 +701,9 @@ has a view, and Health accounts for every source.
 From the research brief, two of these now block a phase.
 Each has a proposed default:
 
-1. **Served root (blocks Phase 2):** the proposed default serves each home on its own,
-   and shows the combined home when the served root holds both.
+1. **Served root (decided 2026-11-19):** Phase 2 took the proposed default.
+   Each home is served on its own, and the combined home shows when the served folder
+   holds both.
 2. **zstd (blocks Phase 4):** the proposed default vets `backports.zstd`, which provides
    Python 3.14’s `compression.zstd` interface on older versions, as a dependency for
    Python below 3.14 only, under the supply-chain rules.

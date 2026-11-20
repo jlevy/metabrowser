@@ -18,23 +18,21 @@ import asyncio
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from metabrowser import jsonl_view
-from metabrowser.charts import (
-    extract_agent_charts_bytes,
-    lookup_agent_charts,
-    remember_agent_charts,
-)
 from metabrowser.plugin_api import (
     ContentReadError,
     JsonlParseLimitError,
+    extract_agent_charts_bytes,
+    jsonl_parse_max_bytes,
+    lookup_agent_charts,
     read_content_window,
+    remember_agent_charts,
     resolve_content,
 )
 
 
 def _too_large() -> JSONResponse:
     return JSONResponse(
-        {"error": f"JSONL content exceeds {jsonl_view._JSONL_PARSE_MAX_BYTES} decompressed bytes"},
+        {"error": f"JSONL content exceeds {jsonl_parse_max_bytes()} decompressed bytes"},
         status_code=413,
     )
 
@@ -47,7 +45,7 @@ async def charts_handler(request: Request) -> JSONResponse:
     """
 
     subpath = request.query_params.get("path", "")
-    parse_max_bytes = jsonl_view._JSONL_PARSE_MAX_BYTES
+    parse_max_bytes = jsonl_parse_max_bytes()
     try:
         ref = await resolve_content(subpath)
         if ref is None:

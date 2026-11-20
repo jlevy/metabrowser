@@ -132,9 +132,21 @@ class LogParser(Protocol):
 
 
 AdapterDetector = Callable[[dict[str, Any]], bool]
+LineDetector = Callable[[str], bool]
 LogParserFactory = Callable[[], LogParser]
-_BUILTIN_ADAPTERS = frozenset({"claude", "codex", "codex-rollout", "gemini", "pi"})
-_PLUGIN_ADAPTERS: dict[str, tuple[AdapterDetector, LogParserFactory]] = {}
+
+
+@dataclass(frozen=True)
+class _AdapterRegistration:
+    detector: AdapterDetector
+    parser_factory: LogParserFactory
+    line_detector: LineDetector | None = None
+
+
+# Every JSONL adapter, core and plugin alike, in registration order. Detection asks
+# each line's detectors in this order, so core's adapters, registered at import, are
+# asked before a plugin's; each detector recognizes only its own format.
+_ADAPTERS: dict[str, _AdapterRegistration] = {}
 
 
 def register_log_adapter(
@@ -142,25 +154,31 @@ def register_log_adapter(
     *,
     detector: AdapterDetector,
     parser_factory: LogParserFactory,
+    line_detector: LineDetector | None = None,
 ) -> None:
-    """Register a plugin-owned JSONL adapter.
+    """Register a JSONL adapter.
 
-    The detector receives a parsed JSON object from the first non-empty lines.
-    The parser factory must return a fresh ``LogParser`` for each stream. Plugin
-    names cannot replace Metabrowser's built-in agent adapters.
+    The detector receives a parsed JSON object from the first non-empty lines, and
+    the optional line detector receives each of those lines that is not a JSON
+    object, for a format whose stream opens with plain text. The parser factory must
+    return a fresh ``LogParser`` for each stream. Registering the same callables
+    again is a no-op; claiming a name already registered raises ``ValueError``.
     """
     normalized = name.strip().lower()
     if not normalized:
         raise ValueError("adapter name must not be empty")
-    if normalized in _BUILTIN_ADAPTERS:
-        raise ValueError(f"cannot replace built-in adapter: {normalized}")
-    registration = (detector, parser_factory)
-    existing = _PLUGIN_ADAPTERS.get(normalized)
+    registration = _AdapterRegistration(detector, parser_factory, line_detector)
+    existing = _ADAPTERS.get(normalized)
     if existing == registration:
         return
     if existing is not None:
         raise ValueError(f"adapter already registered: {normalized}")
-    _PLUGIN_ADAPTERS[normalized] = registration
+    _ADAPTERS[normalized] = registration
+
+
+def registered_log_adapters() -> tuple[str, ...]:
+    """Return the registered adapter names, in detection order."""
+    return tuple(_ADAPTERS)
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -1641,91 +1659,104 @@ class CodexRolloutParser:
 # ── Auto-detection ───────────────────────────────────────────────
 
 
+def _is_codex_exec_event(event: dict[str, Any]) -> bool:
+    """A ``codex exec --json`` stream event (codex-cli 0.124.0 flat envelope)."""
+    etype = event.get("type", "")
+    if etype == "thread.started" and "thread_id" in event:
+        return True
+    if etype in ("turn.started", "turn.completed", "turn.failed"):
+        return True
+    return etype in ("item.started", "item.updated", "item.completed") and isinstance(
+        event.get("item"), dict
+    )
+
+
+def _is_claude_stream_event(event: dict[str, Any]) -> bool:
+    """A Claude Code session transcript record or ``stream-json`` event."""
+    if _is_claude_transcript_record(event):
+        return True
+    etype = event.get("type", "")
+    if etype == "system" and event.get("subtype") in ("init", "hook_started", "hook_response"):
+        return True
+    message = event.get("message")
+    return (
+        etype == "assistant"
+        and isinstance(message, dict)
+        and isinstance(cast(dict[str, Any], message).get("content"), list)
+    )
+
+
+def _is_pi_event(event: dict[str, Any]) -> bool:
+    etype = event.get("type", "")
+    if etype == "session" and "version" in event and "cwd" in event:
+        return True
+    return etype in (
+        "agent_start",
+        "tool_execution_start",
+        "tool_execution_end",
+        "tool_execution_update",
+    )
+
+
+def _is_gemini_event(event: dict[str, Any]) -> bool:
+    etype = event.get("type", "")
+    if etype == "init" and "session_id" in event and "model" in event:
+        return True
+    if etype == "message" and "role" in event:
+        return True
+    return etype == "tool_use" and "tool_name" in event
+
+
+def _is_gemini_banner(line: str) -> bool:
+    """Gemini CLI writes a plain-text banner before its first JSON event."""
+    return line.strip().startswith(("YOLO mode", "Both GOOGLE_API_KEY"))
+
+
 def detect_adapter(lines: list[str]) -> str:
     """Detect adapter type from the first few lines of a JSONL file.
 
-    Returns a built-in adapter, a plugin-registered adapter, or ``"unknown"``.
+    Returns a registered adapter's name, or ``"unknown"``.
     """
     for line in lines[:20]:
         event = _parse_json(line)
-        if event is None:
-            stripped = line.strip()
-            if stripped.startswith(("YOLO mode", "Both GOOGLE_API_KEY")):
-                return "gemini"
-            continue
-
-        for name, (detector, _parser_factory) in _PLUGIN_ADAPTERS.items():
+        for name, registration in _ADAPTERS.items():
             try:
-                if detector(event):
-                    return name
+                if event is None:
+                    matched = registration.line_detector is not None and registration.line_detector(
+                        line
+                    )
+                else:
+                    matched = registration.detector(event)
             except Exception:
                 log.exception("log adapter detector %r failed", name)
-
-        if _is_claude_transcript_record(event):
-            return "claude"
-
-        if _is_codex_rollout_record(event):
-            return "codex-rollout"
-
-        etype = event.get("type", "")
-
-        # Codex events (codex-cli 0.124.0 flat envelope). thread.started +
-        # thread_id or the turn.* / item.* top-level types are distinctive.
-        if etype == "thread.started" and "thread_id" in event:
-            return "codex"
-        if etype in ("turn.started", "turn.completed", "turn.failed"):
-            return "codex"
-        if etype in ("item.started", "item.updated", "item.completed") and isinstance(
-            event.get("item"), dict
-        ):
-            return "codex"
-
-        # Pi events
-        if etype == "session" and "version" in event and "cwd" in event:
-            return "pi"
-        if etype == "agent_start":
-            return "pi"
-        if etype in ("tool_execution_start", "tool_execution_end", "tool_execution_update"):
-            return "pi"
-
-        if etype == "system" and event.get("subtype") in (
-            "init",
-            "hook_started",
-            "hook_response",
-        ):
-            return "claude"
-
-        if etype == "init" and "session_id" in event and "model" in event:
-            return "gemini"
-
-        if etype == "assistant" and isinstance(event.get("message", {}).get("content"), list):
-            return "claude"
-
-        if etype == "message" and "role" in event:
-            return "gemini"
-
-        if etype == "tool_use" and "tool_name" in event:
-            return "gemini"
-
+                continue
+            if matched:
+                return name
     return "unknown"
 
 
 def create_parser(adapter: str) -> LogParser:
-    """Create a parser instance for the given adapter name."""
-    if adapter == "claude":
-        return ClaudeLogParser()
-    if adapter == "codex":
-        return CodexLogParser()
-    if adapter == "codex-rollout":
-        return CodexRolloutParser()
-    if adapter == "gemini":
-        return GeminiLogParser()
-    if adapter == "pi":
-        return PiLogParser()
-    registered = _PLUGIN_ADAPTERS.get(adapter)
+    """Create a parser for a registered adapter; an unknown name gets the Claude parser."""
+    registered = _ADAPTERS.get(adapter)
     if registered is not None:
-        return registered[1]()
+        return registered.parser_factory()
     return ClaudeLogParser()
+
+
+# Core's adapters, in the order detection asks them. Their detectors are disjoint, so
+# the order decides nothing between them; it only puts them ahead of a plugin's.
+register_log_adapter("claude", detector=_is_claude_stream_event, parser_factory=ClaudeLogParser)
+register_log_adapter(
+    "codex-rollout", detector=_is_codex_rollout_record, parser_factory=CodexRolloutParser
+)
+register_log_adapter("codex", detector=_is_codex_exec_event, parser_factory=CodexLogParser)
+register_log_adapter("pi", detector=_is_pi_event, parser_factory=PiLogParser)
+register_log_adapter(
+    "gemini",
+    detector=_is_gemini_event,
+    parser_factory=GeminiLogParser,
+    line_detector=_is_gemini_banner,
+)
 
 
 # ── Renderer ─────────────────────────────────────────────────────
