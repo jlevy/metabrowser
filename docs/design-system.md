@@ -5444,11 +5444,12 @@ A checkout adds three things, and each uses a primitive the control already had:
   will have, and the module adopts that button and never swaps it, so focus put on it
   early stays ([Regions Keep Their Boxes](#regions-keep-their-boxes)). The toolbar is
   drawn again whenever a filter or a tally changes, and it carries the selector over
-  rather than drawing it, so an open list keeps what was typed and the control that had
-  focus keeps it. `tests/test_checkout_ref_selector_chrome.py` records the selector’s
-  height and the first tree row’s place in every frame of the working tree’s page and of
-  a revision’s, and each has one value; `tests/test_files_totals_stable_chrome.py` holds
-  the same for every box of the Files navigation on a folder that holds a `.git`.
+  rather than drawing it, so an open list keeps what was typed and where it was scrolled
+  to, and the control that had focus keeps it.
+  `tests/test_checkout_ref_selector_chrome.py` records the selector’s height and the
+  first tree row’s place in every frame of the working tree’s page and of a revision’s,
+  and each has one value; `tests/test_files_totals_stable_chrome.py` holds the same for
+  every box of the Files navigation on a folder that holds a `.git`.
 
 What each state shows is pinned by
 `tests/golden/cli-ui-source-ref-selector.tryscript.md`, and
