@@ -269,3 +269,21 @@ def test_embedded_kpress_wide_toc_uses_borderless_rail() -> None:
     assert "scrollbar-width: none;" in band_block
     assert ".metabrowser-kpress-host .kpress-toc::-webkit-scrollbar {" in band_block
     assert "display: none;" in band_block
+
+
+def test_print_page_margin_is_kpress_token_as_a_length() -> None:
+    """WebKit resolves no custom property in ``@page``, so the adapter writes KPress's margin out.
+
+    The copy in ``static/styles.css`` must stay KPress's ``--kpress-print-page-margin``,
+    and must outrank print.css's own ``@page`` rule, which loads after it.
+    """
+
+    tokens = get_static_asset("css/style-tokens.css").content.decode()
+    token = re.search(r"--kpress-print-page-margin:\s*([^;]+);", tokens)
+    assert token is not None
+    css = _read_styles_css()
+    adapter = css[css.index("/* ── Print adapter") :]
+    page = re.search(r"@page \{\s*(?:/\*.*?\*/\s*)?margin: ([^;]+);", adapter, re.DOTALL)
+    assert page is not None
+    assert page.group(1) == f"{token.group(1).strip()} !important"
+    assert "var(" not in page.group(1)
