@@ -1,6 +1,6 @@
 """Wire shapes for the read-only ``/api/cache/`` routes.
 
-The routes project logical ``f02`` state: the layout and config formats, source and store
+The routes project logical ``f03`` state: the layout and config formats, source and store
 identity, alias generations, publication state, and abandoned staging. Nothing here
 names a cache path, a pack file, a Git internal, or a count that changes with ``gc``, and
 nothing names the application home itself.
@@ -107,7 +107,7 @@ class CacheError(TypedDict):
     # home_not_private: the logical location and the violation, never an absolute path.
     location: NotRequired[str]
     violation: NotRequired[str]
-    # home_not_private: the fixed f02 location that failed, such as `sources`, so
+    # home_not_private: the fixed f03 location that failed, such as `sources`, so
     # the user knows what to fix. Absent for anything else, and never a slug, a store
     # key, or a staging entry name.
     path: NotRequired[str]

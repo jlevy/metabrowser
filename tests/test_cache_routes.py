@@ -298,7 +298,7 @@ def test_a_store_is_listed_by_the_key_that_names_its_directory(
         ],
         key=lambda row: row["slug"],
     )
-    assert FLASK_STORE.key.startswith("github-com--pallets--flask--")
+    assert FLASK_STORE.key.startswith("github-com-pallets-flask-")
     for key in rows:
         assert (populated / store_directory(key)).is_dir()
     detail = _json(client, f"/api/cache/source/{FLASK_HTTPS.slug}")["source"]
@@ -317,8 +317,8 @@ def test_a_store_whose_record_cannot_be_read_has_a_key_and_no_identity(
 
     assert damaged["id"] is None and damaged["publication"] == "damaged"
     assert [problem["code"] for problem in damaged["problems"]] == ["invalid"]
-    # No identity to match, so the aliases whose store digests begin with the key's prefix
-    # are its references: the one store an alias names is not reported unreferenced.
+    # No identity to match, so the aliases whose store ids have the key's suffix among
+    # theirs are its references: the one store an alias names is not reported unreferenced.
     assert {reference["slug"] for reference in damaged["referenced_by"]} == {
         FLASK_HTTPS.slug,
         FLASK_SSH.slug,

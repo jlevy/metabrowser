@@ -196,7 +196,7 @@ def test_the_home_label_is_refused_anywhere_but_the_whole_lines_that_may_name_it
 
     home = tmp_path / "home"
     url = "file:///srv/origin.git"
-    store_key = "github-com--octo--demo--" + "0f" * 8
+    store_key = "github-com-octo-demo-" + "0f" * 5 + "0"
     allowed = (
         f"cloning {url} into {home}\n"
         f"using the clone of {url} cached in {home}, fetched 2 hours ago\n"
@@ -227,8 +227,8 @@ def test_the_home_label_is_refused_anywhere_but_the_whole_lines_that_may_name_it
             label_home(leaked, home)
 
 
-# A store whose key sorts before any a sandbox origin's: `local--` comes after `a--`.
-FIRST_ORPHAN = FixedStore(id="sha256:" + "0" * 64, key="a--" + "0" * 16)
+# A store whose key sorts before any a sandbox origin's: `local-` comes after `a-`.
+FIRST_ORPHAN = FixedStore(id="sha256:" + "0" * 64, key="a-" + "0" * 11)
 
 
 def test_golden_unreferenced_store_is_kept_by_the_next_acquire(

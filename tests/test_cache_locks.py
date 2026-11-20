@@ -48,8 +48,8 @@ from tests.child_io import read_line
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="cache locks are BSD flock locks")
 fcntl = pytest.importorskip("fcntl")
 
-STORE_A = "github-com--acme--alpha--aaaaaaaaaaaaaaaa"
-STORE_B = "github-com--acme--beta--bbbbbbbbbbbbbbbb"
+STORE_A = "github-com-acme-alpha-aaaaaaaaaaa"
+STORE_B = "github-com-acme-beta-bbbbbbbbbbb"
 SLUG_A = "github-com--acme--alpha--0123456789ab"
 SLUG_B = "github-com--acme--beta--0123456789ab"
 CHILD_TIMEOUT = 30.0

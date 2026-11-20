@@ -59,7 +59,7 @@ skip_as_root = pytest.mark.skipif(
     reason="root is never denied by modes, so a denial cannot be staged",
 )
 
-STORE_KEY = "github-com--acme--gamma--cccccccccccccccc"
+STORE_KEY = "github-com-acme-gamma-ccccccccccc"
 CHILD_TIMEOUT = 50
 
 

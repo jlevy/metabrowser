@@ -111,7 +111,8 @@ def test_the_identity_specification_matches_the_production_constants() -> None:
     assert document["source_identity"]["domain"] == identity.SOURCE_IDENTITY_DOMAIN
     assert document["store_identity"]["domain"] == identity.STORE_IDENTITY_DOMAIN
     store_spec = document["store_identity"]
-    assert tuple(store_spec["key_suffix_hex_digits"]) == identity.STORE_KEY_SUFFIX_HEX_DIGITS
+    assert tuple(store_spec["key_suffix_chars"]) == identity.STORE_KEY_SUFFIX_CHARS
+    assert store_spec["key_separator"] == identity.STORE_KEY_SEPARATOR
     assert store_spec["key_max_bytes"] == identity.STORE_KEY_MAX_BYTES
     slug_spec = document["slug"]
     assert slug_spec["token_separator"] == identity.SLUG_TOKEN_SEPARATOR
@@ -292,7 +293,7 @@ def _lock_sequence_valid(steps: list[str]) -> bool:
 def _store_key(key: str) -> str:
     """A store key that sorts like the fixture's placeholder key."""
 
-    return f"{key}--{'0' * identity.STORE_KEY_SUFFIX_HEX_DIGITS[0]}"
+    return f"{key}-{'0' * identity.STORE_KEY_SUFFIX_CHARS[0]}"
 
 
 def _real_lock(home: Path, kind: LockKind, key: str | None) -> locks.CacheLock:
@@ -357,7 +358,7 @@ def test_lock_files_are_where_the_fixture_places_them(tmp_path: Path) -> None:
         lock["name"]: lock["path"] for lock in [*document["hierarchy"], *document["side_locks"]]
     }
     slug = "github-com--pallets--flask--e7b7fe0ffe8a"
-    store = "github-com--pallets--flask--4c2d8559cb0179ba"
+    store = "github-com-pallets-flask-apnenfl1h0x"
     source_digest = "e7b7fe0ffe8a446772b8a863f51222c90d256e511e1a4da3daec599735962fa9"
     acquisitions = {
         "home": (lambda: locks.application_cache_lock(home), {}),

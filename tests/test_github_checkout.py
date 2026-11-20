@@ -922,9 +922,9 @@ def test_existing_checkout_source_refuses_unknown_cache_before_writing(
     elif damage == "config_corrupt":
         config.write_text("not: [valid\n")
     else:
-        # The layout is at f02 and the configuration, which has its own history, at f01.
+        # The layout is at f03 and the configuration, which has its own history, at f01.
         path = config if damage == "config_future" else layout
-        current, future = ("f01", "f02") if damage == "config_future" else ("f02", "f03")
+        current, future = ("f01", "f02") if damage == "config_future" else ("f03", "f04")
         replacement = "f00" if damage == "unknown" else future
         path.write_text(path.read_text().replace(f"format: {current}", f"format: {replacement}", 1))
 

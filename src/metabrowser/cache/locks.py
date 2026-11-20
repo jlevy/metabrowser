@@ -1,4 +1,4 @@
-"""The fixed lock hierarchy and side locks of the ``f02`` cache.
+"""The fixed lock hierarchy and side locks of the ``f03`` cache.
 
 Locks are BSD ``flock`` on lock files under ``locks/``, never POSIX record locks,
 which vanish when a process closes any descriptor for the file. Measured 2026-09-16

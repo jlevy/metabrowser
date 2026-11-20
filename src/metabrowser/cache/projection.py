@@ -1,4 +1,4 @@
-"""Logical projections of the ``f02`` cache for the read-only ``/api/cache/`` routes.
+"""Logical projections of the ``f03`` cache for the read-only ``/api/cache/`` routes.
 
 Each projection resolves the application home per request and never creates it: a
 missing home is the ``absent`` state, not an error. Nothing here changes the home either:
@@ -37,12 +37,11 @@ from pydantic import BaseModel
 from metabrowser import home as home_module
 from metabrowser.cache.atomic import RecordError, read_record
 from metabrowser.cache.identity import (
-    SLUG_TOKEN_SEPARATOR,
-    STORE_KEY_SUFFIX_HEX_DIGITS,
-    identity_digest,
+    STORE_KEY_SEPARATOR,
     is_slug,
     is_store_key,
     store_key_matches_identity,
+    store_key_suffixes,
 )
 from metabrowser.cache.layout import (
     FORMAT_HISTORY,
@@ -160,7 +159,7 @@ type CacheAnswer[T] = tuple[int, T | CacheError]
 # per-row `not_private` problem for a record and a typed 409 for a directory.
 _READ_ONLY: Final[SharedEntryPolicy] = "refuse"
 
-# The locations a refusal may name: fixed f02 spellings, none of which carries a slug, a
+# The locations a refusal may name: fixed f03 spellings, none of which carries a slug, a
 # store key, or a staging entry name.
 _FIXED_LAYOUT_PATHS: Final[frozenset[str]] = frozenset(
     {
@@ -337,7 +336,7 @@ def _read_config() -> ApplicationConfig | None:
 def _not_private(error: PrivateStorageError, home: Path) -> _Refusal:
     """Refuse a read of the home, naming the fixed layout location that failed.
 
-    A fixed ``f02`` location is not a secret — ``layout_unreadable`` already names
+    A fixed ``f03`` location is not a secret — ``layout_unreadable`` already names
     ``layout.yml`` — and without it a refusal leaves the user to guess which
     directory to fix. Anything else, a slug, a store key, or a path outside the home, is
     left out.
@@ -613,12 +612,13 @@ def _source_row(
 
 @dataclass(frozen=True, slots=True)
 class _StoreNames:
-    """The store keys a request lists, indexed by the digest prefix each one ends in.
+    """The store keys a request lists, indexed by the suffix each one ends in.
 
-    A key does not spell its store's identity, only a prefix of it, so which directory an
-    alias names is answered from the prefixes: the keys that end in a prefix of its
-    ``store_id``. Names alone decide it, and the store's own record says whether the
-    directory is its (:func:`_store_records`), so the answer costs no read.
+    A key does not spell its store's identity, only a short encoding of the start of its
+    digest, so which directory an alias names is answered from the suffixes: the keys that
+    end in one of the suffixes of its ``store_id``. Names alone decide it, and the store's
+    own record says whether the directory is its (:func:`_store_records`), so the answer
+    costs no read.
     """
 
     by_suffix: Mapping[str, tuple[str, ...]]
@@ -628,17 +628,14 @@ class _StoreNames:
         grouped: dict[str, list[str]] = {}
         for key in names:
             if is_store_key(key):
-                grouped.setdefault(key.rpartition(SLUG_TOKEN_SEPARATOR)[2], []).append(key)
+                grouped.setdefault(key.rpartition(STORE_KEY_SEPARATOR)[2], []).append(key)
         return cls({suffix: tuple(found) for suffix, found in grouped.items()})
 
     def named_for(self, store_id: str) -> tuple[str, ...]:
-        """The listed keys that end in a digest prefix of *store_id*, shortest suffix first."""
+        """The listed keys that end in a suffix of *store_id*, shortest suffix first."""
 
-        digest = identity_digest(store_id)
         return tuple(
-            key
-            for width in STORE_KEY_SUFFIX_HEX_DIGITS
-            for key in self.by_suffix.get(digest[:width], ())
+            key for suffix in store_key_suffixes(store_id) for key in self.by_suffix.get(suffix, ())
         )
 
 
@@ -877,11 +874,11 @@ def _references(home: Path, budget: _Budget) -> tuple[dict[str, list[StoreRefere
 def _referenced_by(
     references: Mapping[str, list[StoreReference]], records: StoreRecords
 ) -> list[StoreReference]:
-    """The aliases that name a store: by its recorded identity, or by its key's prefix.
+    """The aliases that name a store: by its recorded identity, or by its key's suffix.
 
     A store whose record cannot be read has no identity to match, so an alias is taken to
-    name it when its store's digest begins with the prefix the key ends in, which can
-    over-report a store that shares the prefix and never under-reports.
+    name it when the key ends in a suffix of its store's digest, which can over-report a
+    store that shares the suffix and never under-reports.
     """
 
     store_id = records["id"]

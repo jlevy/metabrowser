@@ -35,7 +35,7 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "<HOME>/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
+  "location": "<HOME>/repository-stores/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": "<ROOT>/checkout",
   "shallow": false,
   "refreshable": true,
@@ -100,10 +100,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "stores": [
     {
-      "key": "github-com--octo--demo--65157fba6c20ff90",
+      "key": "github-com-octo-demo-e7qjzskw2rq",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "published",
       "mode": "overlay",
@@ -188,10 +188,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "stores": [
     {
-      "key": "github-com--octo--demo--65157fba6c20ff90",
+      "key": "github-com-octo-demo-e7qjzskw2rq",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "published",
       "mode": "full",
@@ -362,7 +362,7 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "<HOME>/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
+  "location": "<HOME>/repository-stores/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": "<ROOT>/shallow",
   "shallow": true,
   "refreshable": true,
@@ -607,10 +607,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "stores": [
     {
-      "key": "github-com--octo--demo--65157fba6c20ff90",
+      "key": "github-com-octo-demo-e7qjzskw2rq",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "published",
       "mode": "overlay",
@@ -694,10 +694,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "stores": [
     {
-      "key": "github-com--octo--demo--65157fba6c20ff90",
+      "key": "github-com-octo-demo-e7qjzskw2rq",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "damaged",
       "mode": "overlay",

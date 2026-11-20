@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -26,6 +27,7 @@ from metabrowser.cache.identity import (
     cache_slug,
     identity_digest,
     repository_store_id,
+    slug_readable_part,
     source_identity,
     store_key_candidates,
 )
@@ -388,6 +390,41 @@ def rewrite_as_f01(home: Path) -> dict[str, str]:
     return old_names
 
 
+def rewrite_as_f02(
+    home: Path, stores: Sequence[FixtureStore] = (FLASK_STORE, ORPHAN_STORE)
+) -> dict[str, str]:
+    """Rewrite *home* as the release that wrote ``f02`` left it; return each store's old name.
+
+    A store directory is named for its source's slug words joined by ``--`` and the first
+    16 hexadecimal digits of its identity, its lock files are named so too, and the layout
+    says ``f02``. *stores* are the fixture stores the home holds, which say each one's
+    repository. The map is from the key each store has now to the name it is given.
+    """
+
+    old_names: dict[str, str] = {}
+    directory = home / REPOSITORY_STORES
+    by_id = {store.id: store for store in stores}
+    for entry in sorted(directory.iterdir()):
+        record = read_record(
+            home, f"{REPOSITORY_STORES}/{entry.name}/store.yml", REPOSITORY_STORE_CONTRACT_ID
+        )
+        assert isinstance(record, RepositoryStore)
+        store = by_id[record.id]
+        readable = slug_readable_part(store.source.transport, store.source.address)
+        name = f"{readable}--{identity_digest(record.id)[:16]}"
+        entry.rename(directory / name)
+        old_names[entry.name] = name
+        for suffix in (".lock", ".fetch.lock"):
+            write_private_file_atomic(home, f"locks/stores/{name}{suffix}", b"")
+    write_record_atomic(
+        home,
+        LAYOUT_RECORD,
+        CacheLayout(format="f02", created_by="0.12.0"),
+        CACHE_LAYOUT_CONTRACT_ID,
+    )
+    return old_names
+
+
 def build_shared_directories_home(home: Path) -> None:
     """A private home in which two fixed cache directories let other users in."""
 
@@ -403,7 +440,7 @@ def build_future_home(home: Path) -> None:
     write_record_atomic(
         home,
         LAYOUT_RECORD,
-        CacheLayout(format="f03", created_by="0.12.0"),
+        CacheLayout(format="f04", created_by="0.12.0"),
         CACHE_LAYOUT_CONTRACT_ID,
     )
 

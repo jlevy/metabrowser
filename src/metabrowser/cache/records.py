@@ -1,4 +1,4 @@
-"""Strict records for the application home and the ``f02`` repository cache.
+"""Strict records for the application home and the ``f03`` repository cache.
 
 Each YAML family has one Pydantic model and one versioned SoftSchema contract, bound in
 :mod:`metabrowser.cache.contracts`. Machine-owned records forbid undeclared fields and

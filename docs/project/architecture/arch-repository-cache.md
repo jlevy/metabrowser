@@ -1,9 +1,9 @@
 # Repository Cache
 
-**Status:** Built: the cache and configuration roots, the `f02` layout and its migration
-from `f01`, source and store identity, the SoftSchema record contracts, owner-only
-storage, the lock hierarchy and side locks, the runtime probe, the startup sweep of
-staging, and the read-only `/api/cache/` routes.
+**Status:** Built: the cache and configuration roots, the `f03` layout and its
+migrations from `f01` and `f02`, source and store identity, the SoftSchema record
+contracts, owner-only storage, the lock hierarchy and side locks, the runtime probe, the
+startup sweep of staging, and the read-only `/api/cache/` routes.
 Planned: size accounting and a purge command for repository stores, which the
 [thin-mirror plan](../specs/done/plan-2026-09-23-v012-thin-mirror.md) defers until after
 the alpha.
@@ -124,19 +124,27 @@ Migration holds the home lock and publishes the layout after each step, so an
 interrupted chain resumes where it stopped.
 A newer format is refused with `FutureLayoutFormatError`, which asks for an upgrade.
 
-`f02` is the format in which a store directory is named by a [key](#store-keys) and not
-by the whole digest of its identity, as `f01` named it.
-`cache/store_rename.py` migrates a home between them by renaming each store where it
-stands, which `acquire_source` does before it looks for a hit, so a store cached by an
-older release is still a hit, and no clone is repeated.
+`f02` is the format in which a store directory is named by a key and not by the whole
+digest of its identity, as `f01` named it, and `f03` is the format of the
+[key](#store-keys) as it now reads: single-dash words and a base-36 suffix, where `f02`
+joined its words with `--` and spelled the suffix in hexadecimal.
+`cache/store_rename.py` migrates a home from either to `f03` by renaming each store
+where it stands, which `acquire_source` does before it looks for a hit, so a store
+cached by an older release is still a hit, and no clone is repeated.
+A home that is `f01` is renamed once, straight to its `f03` keys, and the step from
+`f02` that follows finds nothing left to rename.
 A rename was chosen over leaving the old names because a store can hold a repository of
 gigabytes and nothing in the cache deletes one: orphaned, every store would be cloned
 again and the old copies would stay, listed by nothing.
+The renames are planned first and applied by `apply_renames`, which takes paths relative
+to the home and moves each entry to the first target nothing holds, so a later step that
+moves other directories is another plan and not another mechanism.
 The repository a store holds is read from the source whose alias names it, or whose
 identity derives it in either object format, so a store that an interrupted acquisition
 left unreferenced keeps its repository’s name, and the next acquisition of that source
-reuses it. A store no source names takes the readable part `unattached`, so it is listed
-as unreferenced and kept, as it always was.
+reuses it. A store no source names keeps the words an `f02` name had, and an `f01` one,
+which had none, takes the readable part `unattached`, so it is listed as unreferenced
+and kept, as it always was.
 A directory whose `store.yml` does not record the identity its name spells was damaged
 already and is left as it is, and an entry the migration cannot read, such as a record
 with a second hard link or a file where a store belongs, is named in a warning and
@@ -153,8 +161,8 @@ Migrating while a process of the older release runs is unsupported, and the chan
 says to stop them first (the app restarts its own).
 Such a process refuses the migrated home as a newer format when it next opens the cache,
 and fails to read its mirrors until it is restarted, since the directories it reads have
-moved. One that has a clone in flight publishes its store under the whole-digest name
-after the migration, and its alias then names a store that no key holds.
+moved. One that has a clone in flight publishes its store under its old name after the
+migration, and its alias then names a store that no key holds.
 That is a miss and not damage: the next open fetches the repository again, publishes it
 under its key, and leaves the alias as it is, where `_find_published` used to refuse
 every open of it with “the aliased store is missing”.
@@ -185,18 +193,27 @@ Two stores are never merged because their owner and name text match.
 
 ### Store Keys
 
-A store directory is named `<readable>--<prefix>`, such as
-`github-com--jlevy--markform--589d51b16fd8f1a2`, where it was once the whole digest of
-the store identity. The readable part is the one a slug of the same address has, and the
-prefix is the first `STORE_KEY_SUFFIX_HEX_DIGITS[0]` digits of the identity’s digest.
+A store directory is named `<readable>-<suffix>`, such as
+`github-com-jlevy-markform-1bo2sp3ey2l`, where it was once the whole digest of the store
+identity, and then `github-com--jlevy--markform--096a832ec2dfe765`. The readable part is
+the words a slug of the same address has, joined by single dashes where the slug joins
+them with `--`, and the suffix is the first `STORE_KEY_SUFFIX_CHARS[0]` base-36
+characters (`0-9a-z`) of the identity’s digest, read as a fraction of 1 so that a longer
+suffix begins with a shorter one and a leading zero is kept.
 So the key is a name and the identity is the record: `store.yml` holds the whole `id`,
 and a lookup or a listing checks it.
 
-- **The width is sized, and never relied on.** `STORE_KEY_SUFFIX_HEX_DIGITS` in
+- **The width is sized, and never relied on.** `STORE_KEY_SUFFIX_CHARS` in
   `cache/identity.py` carries the birthday-bound arithmetic that picked the first width,
   and `tests/test_cache_store_keys.py` recomputes it.
   Two stores can take one first name only when they agree on that many bits of digest
   and on the readable part, and the sizing does not even count the readable part.
+- **The suffix is the last token, whatever the words before it look like.** A repository
+  named like a suffix, `abcdefghijk`, gives `github-com-jlevy-abcdefghijk-<suffix>`, and
+  the suffix is what follows the last dash.
+  A name of the right shape is not thereby a store’s: only a suffix of the identity
+  `store.yml` records ties a name to a store (`store_key_matches_identity`), and an
+  `f02` name with its `--` or an `f01` whole digest is no key at all.
 - **A name another store holds is never shared.** The claim reads the identity recorded
   at each candidate, takes the first no other store holds, and does it under the store’s
   lock (`_claim_store_key` in `cache/acquire.py`). A lookup finds the store at the
@@ -211,6 +228,8 @@ and a lookup or a listing checks it.
   key, but `locks/sources/<source digest>.acquire.lock` reserves a source’s cold load
   before any slug exists.
   Only the message of a wait that timed out shows it.
+- **A source’s slug is not changed.** `sources/<slug>` still joins its words with `--`
+  and ends in hexadecimal digits of the source identity.
 
 ## Records
 

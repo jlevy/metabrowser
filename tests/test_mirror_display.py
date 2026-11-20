@@ -26,7 +26,7 @@ from metabrowser.cache.served_mirror import (
 )
 from metabrowser.cache.urls import GitSource
 
-_STORE_KEY = "github-com--jlevy--squares--abababababababab"
+_STORE_KEY = "github-com-jlevy-squares-abababababa"
 
 
 @pytest.mark.parametrize(
