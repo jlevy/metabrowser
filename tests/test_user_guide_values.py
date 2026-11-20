@@ -45,12 +45,14 @@ from metabrowser.commit_ids import SHORT_COMMIT_CHARS
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.dotenv import ALLOWED_KEYS
 from metabrowser.file_extensions import BROWSER_TRACKABLE_EXTS
+from metabrowser.file_type_legend import LEGEND_MINIMUM_SHARE_PERCENT, LEGEND_TYPE_LIMIT
+from metabrowser.git.file_ages import file_ages_version_label
 from metabrowser.git.log import TRUNK_BRANCH_NAMES, TRUNK_REMOTES
 from metabrowser.git.process import ACQUISITION_MINIMUM
 from metabrowser.gz_io import GZIP_SUFFIX, ZLIB_SUFFIX
 from metabrowser.home import application_cache, configuration_directory
 from metabrowser.inventory_engine.factory import InventoryProvider
-from metabrowser.logutil.parsing import _BUILTIN_ADAPTERS
+from metabrowser.logutil.parsing import registered_log_adapters
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 from metabrowser.settings import (
     DEFAULT_BROWSER_PORT,
@@ -63,18 +65,33 @@ from metabrowser.settings import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC = REPO_ROOT / "src" / "metabrowser"
 APP_SOURCES = REPO_ROOT / "apps" / "macos" / "Sources" / "ShellCore"
-AGENT_LOG_MANIFEST = SRC / "builtin_plugins" / "agent_log" / "manifest.toml"
+AGENT_LOG_MANIFEST = SRC / "builtin_plugins" / "agents" / "manifest.toml"
 
 # What a guide calls each JSONL adapter. A new adapter fails here until it has a name, so
-# that the guides can be told about it.
-AGENT_NAMES = {"claude": "Claude Code", "gemini": "Gemini CLI", "pi": "Pi", "codex": "Codex"}
+# that the guides can be told about it. Codex's two formats share a name.
+AGENT_NAMES = {
+    "claude": "Claude Code",
+    "gemini": "Gemini CLI",
+    "pi": "Pi",
+    "codex": "Codex",
+    "codex-rollout": "Codex",
+}
 
 # The examples docs/browsing-files.md gives of directories the watcher does not observe.
 # They come from `watchfiles.DefaultFilter`, which `run_watcher` leaves in place; a
 # watchfiles release that drops one, or a filter of our own, fails here.
 UNWATCHED_EXAMPLES = ("node_modules", ".venv", "__pycache__")
 
-_NUMBER_WORDS = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven"}
+_NUMBER_WORDS = {
+    2: "two",
+    3: "three",
+    4: "four",
+    5: "five",
+    6: "six",
+    7: "seven",
+    8: "eight",
+    9: "nine",
+}
 
 
 @dataclass(frozen=True)
@@ -107,11 +124,16 @@ def _series(names: list[str], conjunction: str = "and") -> str:
 
 def _manifest_adapters() -> set[str]:
     manifest = tomllib.loads(AGENT_LOG_MANIFEST.read_text(encoding="utf-8"))
-    return {str(kind["match"]["adapter"]) for kind in manifest["kind"]}
+    # The rules that name an adapter; a rule that claims a file by its path, such as a
+    # compressed rollout's, names none.
+    return {
+        str(kind["match"]["adapter"]) for kind in manifest["kind"] if "adapter" in kind["match"]
+    }
 
 
 def _charted_agents() -> str:
-    return _series([AGENT_NAMES[name] for name in sorted(_manifest_adapters())])
+    names = [AGENT_NAMES[name] for name in sorted(_manifest_adapters())]
+    return _series(list(dict.fromkeys(names)))
 
 
 def stated_values() -> list[Stated]:
@@ -202,12 +224,6 @@ def stated_values() -> list[Stated]:
             "the charted agents",
             r"the session logs of ([^,]+(?:, [^,]+)*?) open with",
             (_charted_agents(),),
-        ),
-        Stated(
-            "docs/working-with-agents.md",
-            "the agents parsed without Charts",
-            r"(\w+) logs are\s+parsed into the same timeline, without Charts",
-            tuple(AGENT_NAMES[name] for name in sorted(_BUILTIN_ADAPTERS - _manifest_adapters())),
         ),
         Stated(
             "docs/reviewing-pull-requests.md",
@@ -336,6 +352,18 @@ def stated_values() -> list[Stated]:
             (".".join(str(part) for part in ACQUISITION_MINIMUM),),
         ),
         Stated(
+            "docs/browsing-files.md",
+            "the Git release that reads file ages",
+            r"which needs Git (\d+\.\d+) or newer",
+            (file_ages_version_label(),),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the Git release that reads file ages",
+            r"\(`git last-modified`, Git (\d+\.\d+)\)",
+            (file_ages_version_label(),),
+        ),
+        Stated(
             "docs/installation.md",
             "the GitHub CLI minimum",
             r"the doctor.s GitHub check, need `gh` (\d+\.\d+\.\d+) or later",
@@ -358,6 +386,18 @@ def stated_values() -> list[Stated]:
             "the app's minimum metab",
             r"the app needs `metab` (\d+\.\d+\.\d+) or later",
             (".".join(app_minimum.groups()),),
+        ),
+        Stated(
+            "docs/browsing-files.md",
+            "the legend's family limit",
+            r"largest file-type families, such as Python, Markdown, and JSON, up to (\w+),",
+            (_NUMBER_WORDS.get(LEGEND_TYPE_LIMIT, str(LEGEND_TYPE_LIMIT)),),
+        ),
+        Stated(
+            "docs/browsing-files.md",
+            "the legend's share floor",
+            r"each at least (\d+)% of what is shown",
+            (str(LEGEND_MINIMUM_SHARE_PERCENT),),
         ),
         Stated(
             "docs/macos-app.md",
@@ -403,9 +443,15 @@ def test_user_guides_state_the_values_the_code_sets() -> None:
 
 
 def test_every_jsonl_adapter_has_a_name_the_guides_can_use() -> None:
-    assert _manifest_adapters() <= _BUILTIN_ADAPTERS
-    unnamed = sorted(_BUILTIN_ADAPTERS - AGENT_NAMES.keys())
+    adapters = frozenset(registered_log_adapters())
+    assert _manifest_adapters() <= adapters
+    unnamed = sorted(adapters - AGENT_NAMES.keys())
     assert not unnamed, f"name {unnamed} in AGENT_NAMES, then say which guides list it"
+    # docs/working-with-agents.md says every recognized agent's logs open with Charts.
+    uncharted = sorted(adapters - _manifest_adapters())
+    assert not uncharted, (
+        f"{uncharted} parse without Charts: say so in docs/working-with-agents.md and pin it"
+    )
 
 
 def test_the_watcher_keeps_the_filter_the_guide_describes() -> None:

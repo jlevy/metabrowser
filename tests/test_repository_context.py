@@ -4,6 +4,7 @@ import asyncio
 import json
 import re
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 from metabrowser import server
@@ -105,7 +106,7 @@ def test_index_exposes_only_public_repository_identity(tmp_path: Path) -> None:
     served = tmp_path / "docs"
     served.mkdir()
     server._set_root_dir(served)
-    response = asyncio.run(server.index(cast(Any, object())))
+    response = asyncio.run(server.index(cast(Any, SimpleNamespace(cookies={}))))
 
     html = bytes(response.body).decode("utf-8")
     match = re.search(r"window\.METABROWSER_REPOSITORY_CONTEXT=([^;]+);", html)

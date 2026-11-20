@@ -42,6 +42,7 @@ from tests.golden_harness import (
     check_golden,
     isolate_cli,
     label_home,
+    mask_pushed_bytes,
     quoted,
     run_metab,
 )
@@ -144,4 +145,4 @@ def test_golden_pull_files_summary(
     assert refused.exit_code != 0 and "status: 400" in refused.stdout
     rendered = label_home(Labels().apply("".join(blocks)), home)
     assert str(tmp_path) not in rendered and "file://" not in rendered
-    check_golden("cli-github-pull-files-summary.txt", rendered)
+    check_golden("cli-github-pull-files-summary.txt", mask_pushed_bytes(rendered))

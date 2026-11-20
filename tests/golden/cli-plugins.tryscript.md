@@ -27,19 +27,20 @@ The setup checks that end the report depend on the host, so they are elided here
 
 ```console
 $ metab --plugins
-NAME           SOURCE   KINDS             VIEWS  HOOKS
--------------  -------  ----------------  -----  ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-agent-log      builtin  agent-log         3      charts
-binary         builtin  -                 1      chunk
-diff           builtin  diff              1      document,children,comparison
-folder         builtin  -                 2      -
-github         builtin  -                 2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
-html           builtin  html              2      -
-image          builtin  -                 1      -
-markdown       builtin  markdown,mermaid  4      -
-structured     builtin  structured        2      parsed
-text           builtin  -                 1      -
-unknown-jsonl  builtin  -                 2      -
+NAME           SOURCE   KINDS                   VIEWS  HOOKS
+-------------  -------  ----------------------  -----  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+agents         builtin  agent-log,agent-thread  8      charts,catalog,sessions,session,records,live
+binary         builtin  -                       1      chunk
+diff           builtin  diff                    1      document,children,comparison
+event-log      builtin  event-log               5      timeline,slowest,kinds,errors
+folder         builtin  -                       2      -
+github         builtin  -                       2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-size,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
+html           builtin  html                    2      -
+image          builtin  -                       1      -
+markdown       builtin  markdown,mermaid        4      -
+structured     builtin  structured              2      parsed
+text           builtin  -                       1      -
+unknown-jsonl  builtin  -                       2      -
 ? 0
 ```
 
@@ -50,22 +51,33 @@ $ metab --plugins --json
 {
   "plugins": [
     {
-      "name": "agent-log",
-      "display_name": "Agent log (Claude / Gemini / Pi)",
+      "name": "agents",
+      "display_name": "Agents (Claude Code, Codex, Gemini, Pi logs)",
       "version": "0.0.1",
       "source": "builtin",
-      "static_root": "[BUILTIN]/agent_log",
+      "static_root": "[BUILTIN]/agents",
       "kinds": [
-        "agent-log"
+        "agent-log",
+        "agent-thread"
       ],
       "views": [
+        "agents",
+        "agent-sessions",
+        "session",
         "log",
         "charts",
-        "raw"
+        "raw",
+        "session",
+        "log"
       ],
-      "view_count": 3,
+      "view_count": 8,
       "data_hooks": [
-        "charts"
+        "charts",
+        "catalog",
+        "sessions",
+        "session",
+        "records",
+        "live"
       ],
       "disabled_data_hooks": []
     },
@@ -106,6 +118,31 @@ $ metab --plugins --json
       "disabled_data_hooks": []
     },
     {
+      "name": "event-log",
+      "display_name": "Event log",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/event_log",
+      "kinds": [
+        "event-log"
+      ],
+      "views": [
+        "timeline",
+        "latency",
+        "kinds",
+        "errors",
+        "raw"
+      ],
+      "view_count": 5,
+      "data_hooks": [
+        "timeline",
+        "slowest",
+        "kinds",
+        "errors"
+      ],
+      "disabled_data_hooks": []
+    },
+    {
       "name": "folder",
       "display_name": "Folder",
       "version": "0.0.1",
@@ -139,6 +176,7 @@ $ metab --plugins --json
         "pull-comparison",
         "pull-image",
         "pull-rendered-diff",
+        "pull-size",
         "pull-timeline",
         "pull-markdown",
         "pulls",
@@ -445,7 +483,7 @@ recorded on its own: the answer is on stdout, and stderr is empty.
 ```console
 $ metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 11 plugin(s) OK
+metab --doctor: 12 plugin(s) OK
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -467,7 +505,7 @@ $ metab --doctor >/dev/null
 $ metab --doctor --json 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 11,
+  "plugin_count": 12,
   "problems": [],
   "open_in": {
     "value": "browser",

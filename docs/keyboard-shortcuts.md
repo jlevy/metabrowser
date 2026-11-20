@@ -25,9 +25,14 @@ work.
 | `Control-N` or `Control-P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open, outside text fields, on macOS and iOS |
 | `U` | Up: the parent folder | A file, or a folder below the root, is shown |
 | `W` | The branch or tag switcher | A repository opened by its URL, or a folder that is a repository’s root, is shown |
-| `V` | The rendered view: Document, Diagram, Preview, Tree, or Log | A file’s tab bar is shown |
-| `S` | The source: Source, or Raw JSON | A file’s tab bar is shown |
+| `V` | The rendered view: Document, Diagram, Preview, Tree, Timeline, or Log | A file’s tab bar is shown |
+| `S` | The source: Source, or Raw JSON; or the Sessions list of an agent home | A file’s tab bar is shown, or a folder that is or holds a Claude Code or Codex home |
+| `E` | Session, the session’s header and events | An agent log or a compressed Codex rollout is shown |
+| `A` | Agents, the home of a Claude Code or Codex history | A folder that is or holds a Claude Code or Codex home is shown |
 | `C` | Charts | An agent log is shown |
+| `L` | Latency | An event log is shown |
+| `B` | By kind | An event log is shown |
+| `E` | Errors | An event log is shown |
 | `O` | Overview | A folder is shown |
 | `M` | Treemap, from its map | A folder is shown |
 | `C` | Conversation | A pull request page is shown |
@@ -71,7 +76,7 @@ Each control is numbered only while it is shown:
 
 | Screen | Numbered controls |
 | --- | --- |
-| The Files tab | Group by, Modified within (Any age), and File type (Any type), whether the filter drawer is open or closed; a Git pin has no Modified within |
+| The Files tab | Group by, Modified within (Any age), and File type (Any type), whether the filter drawer is open or closed; a Git pin has Modified within, and Group by age, only where its Git can read file ages |
 | The Pulls tab | Open, Closed, and All, then Reload, which keeps its number while it waits |
 | A pull request page | The header’s links and actions, such as Browse code and Refresh, in the order the header shows them; Refresh keeps its number while it waits |
 

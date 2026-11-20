@@ -1,0 +1,115 @@
+{
+  "environment": {
+    "machine": "x86_64",
+    "python": "3.13.18",
+    "sqlite": "3.53.1",
+    "system": "Linux 6.18.44-fc-v726",
+    "uid_is_superuser": false
+  },
+  "results": {
+    "race_check_shm_handle": {
+      "closed_while_connected": {
+        "owner_restart_during_read": "ok busy=0 frames=502 checkpointed=502",
+        "owner_rewrites_log": "ok",
+        "reader_snapshot_of_2000_rows": {
+          "error": "SQLITE_CORRUPT",
+          "message": "database disk image is malformed"
+        }
+      },
+      "held_until_after_close": {
+        "owner_restart_during_read": "ok busy=1 frames=502 checkpointed=502",
+        "owner_rewrites_log": "ok",
+        "reader_snapshot_of_2000_rows": {
+          "big_rows": 2000,
+          "integrity_check": "ok"
+        }
+      }
+    },
+    "reader_killed_inside_a_read": {
+      "rollback_journal": {
+        "after_owner_closed": {
+          "app.db": 12288
+        },
+        "owner_commit_after_kill": "ok",
+        "owner_commit_while_reader_holds_its_lock": "error SQLITE_BUSY"
+      },
+      "write_ahead_log": {
+        "after_owner_closed": {
+          "app.db": 12288
+        },
+        "owner_commit_after_kill": "ok",
+        "owner_truncate_after_kill": "ok busy=0 frames=0 checkpointed=0",
+        "owner_truncate_while_reader_inside_a_read": "ok busy=1 frames=1 checkpointed=0"
+      }
+    },
+    "reader_killed_rebuilding_the_wal_index": {
+      "killed_at_20_percent": {
+        "owner_reopens": {
+          "quick_check": "ok",
+          "rewritten_rows": 1600000,
+          "rows": 1600000,
+          "wrote": true
+        },
+        "reader_had_exited": false
+      },
+      "killed_at_40_percent": {
+        "owner_reopens": {
+          "quick_check": "ok",
+          "rewritten_rows": 1600000,
+          "rows": 1600000,
+          "wrote": true
+        },
+        "reader_had_exited": false
+      },
+      "killed_at_60_percent": {
+        "owner_reopens": {
+          "quick_check": "ok",
+          "rewritten_rows": 1600000,
+          "rows": 1600000,
+          "wrote": true
+        },
+        "reader_had_exited": false
+      },
+      "killed_at_80_percent": {
+        "owner_reopens": {
+          "quick_check": "ok",
+          "rewritten_rows": 1600000,
+          "rows": 1600000,
+          "wrote": true
+        },
+        "reader_had_exited": false
+      },
+      "killed_at_95_percent": {
+        "owner_reopens": {
+          "quick_check": "ok",
+          "rewritten_rows": 1600000,
+          "rows": 1600000,
+          "wrote": true
+        },
+        "reader_had_exited": false
+      },
+      "rebuild_ms_median_of_3": 49.4,
+      "wal_bytes": 189462352
+    },
+    "worker_cost": {
+      "fork": {
+        "exits_when_its_pipe_closes": false,
+        "page_round_trip_us_median": 180,
+        "start_to_first_answer_ms_median": 2.3
+      },
+      "forkserver": {
+        "exits_when_its_pipe_closes": true,
+        "page_round_trip_us_median": 175,
+        "start_to_first_answer_ms_median": 3.1
+      },
+      "in_process_page_us_median": 52,
+      "spawn": {
+        "exits_when_its_pipe_closes": true,
+        "page_round_trip_us_median": 154,
+        "start_to_first_answer_ms_median": 47.5
+      }
+    }
+  },
+  "seconds": 21,
+  "suite": "process"
+}

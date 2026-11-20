@@ -749,8 +749,8 @@ mkdir -p "$stand_in"
 
 1. **A clean report.** Help > Check Setup…. Within seconds the window names the
    development build, the oldest `metab` it runs, and the checkout’s `metab`, then rows
-   for Plugins, Opening from a terminal, metab, Git, Configuration, Cache, and GitHub
-   CLI, each marked ok.
+   for Plugins, Opening from a terminal, metab, Git, Configuration, Cache, Event log,
+   and GitHub CLI, each marked ok.
    The metab row’s app detail names this development build and the `metab` it runs, even
    with a release app installed too.
    Copy Report, then `pbpaste` prints the same rows as text under the two header lines.
@@ -782,6 +782,49 @@ mkdir -p "$stand_in"
    Choose `$real` in Settings, then Check Again in the open window: it shows the clean
    report without reopening it from the Help menu.
    Then `rm -r "$stand_in"`.
+
+## Help > Open Event Log
+
+`EventLogLocation` (what each answer of `metab` does, and where the segment opens) is
+unit tested; these check the menu item, the window it opens, and what AppKit and the
+server do with it. Run them with the app’s servers writing to the log you will look at:
+the checks read it from `$state`, which the app’s servers use because the app passes
+`METABROWSER_STATE_DIR` on (`ChildEnvironment`).
+
+```shell
+state="${XDG_STATE_HOME:-$HOME/.local/state}/metabrowser/events"
+segment() { ls -t "$state"/events-*.jsonl | head -1; }
+```
+
+1. **The log opens on its own folder.** Open the home folder, an ancestor of the state
+   directory, `open -a "$APP" "$HOME"`, and click through a few files so its server
+   answers requests. Help > Open Event Log opens a window whose folder is `events`, at
+   the newest segment’s Timeline, and not a page inside the home folder’s window, which
+   still shows the home folder.
+   The Help item works from either window and from no window.
+2. **Not in Open Recent.** File > Open Recent and the Dock icon’s menu list `$HOME`, as
+   they did, and not `events`. Quit and reopen the app: `events` is restored with the
+   session, as any open folder is, and is still not in Open Recent.
+3. **Reading the log writes nothing into it.** Quit every window but `events`’s. Click
+   rows open in the Timeline and switch to Latency and Errors, then `wc -c "$(segment)"`
+   twice, a few seconds apart: the size is the same, because the server of the log’s own
+   directory writes no log.
+4. **The home folder’s server skips its reads of the log.** In the home folder’s window,
+   open `.local/state/metabrowser/events/` and a segment, switch the segment to Latency,
+   and `grep -c 'plugin/event-log' "$(segment)"`: the count does not change between two
+   reads of the segment, while a request for another file adds a `request` record.
+5. **No log yet.** Quit, and
+   `open --env METABROWSER_STATE_DIR="$(mktemp -d)" -a "$APP"`. With no folder open,
+   Help > Open Event Log says there is no event log yet and names the directory.
+6. **A `metab` that cannot say.** Choose a stand-in that fails for `--api`
+   (`printf '#!/bin/sh\ncase "$*" in\n*--api*) echo boom; exit 3;;\nesac\nexec "%s" "$@"\n' "$PWD/.venv/bin/metab" > /tmp/metab-stand-in; chmod 755 /tmp/metab-stand-in`,
+   then Settings > Choose metab…): Help > Open Event Log says it could not open the log,
+   shows `boom`, and points to Check Setup…. Choose the checkout’s `metab` again and
+   `rm /tmp/metab-stand-in`.
+7. **Turned off.** Quit, then `open --env METABROWSER_EVENT_LOG=0 -a "$APP" "$HOME"`.
+   Help > Check Setup… marks Event log as a warning that names the variable, and a late
+   wait’s Details on a pull request page say the log is off and why, where with the log
+   on they name Help > Open Event Log and not the `metab --event-log` command.
 
 ## Setup Flows
 

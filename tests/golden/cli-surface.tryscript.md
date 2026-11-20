@@ -39,6 +39,7 @@ $ metab --help
  only acquires it into the cache. Diagnostics: --check-api, --plugins,
  --plugin, --doctor.
  Remote serving: --remote. --present opens ROOT in the macOS app or a browser.
+ --event-log opens Metabrowser's own event log.
  Recent targets: --recent, --recent-add, --recent-forget, --recent-clear.
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
@@ -81,6 +82,19 @@ $ metab --help
 │                                              repository's root. Applies when │
 │                                              serving and to --api, --show,   │
 │                                              and --check-api.                │
+│ --event-log                                  Open Metabrowser's own event    │
+│                                              log: ROOT is the directory a    │
+│                                              served metab writes it to       │
+│                                              (under METABROWSER_STATE_DIR,   │
+│                                              else                            │
+│                                              XDG_STATE_HOME/metabrowser,     │
+│                                              else                            │
+│                                              ~/.local/state/metabrowser),    │
+│                                              and serving opens its newest    │
+│                                              segment as spans and latencies. │
+│                                              Applies when serving and to     │
+│                                              --api, --show, --walk, and      │
+│                                              --check-api.                    │
 │ --path                     TEXT              Serve and present: relative     │
 │                                              path from ROOT to select on     │
 │                                              launch. Walk: subtree for a     │
@@ -313,6 +327,7 @@ $ metab --help
  metab file:///path/to/repo.git --no-serve
  metab --remote example-host --path /srv/shared-files
  metab ./notes/report.md --present
+ metab --event-log
  metab --plugins
  Guide: https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md
 ? 0

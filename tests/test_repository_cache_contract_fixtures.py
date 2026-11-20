@@ -110,7 +110,9 @@ def test_the_identity_specification_matches_the_production_constants() -> None:
     document = _load("source-identity.json")
     assert document["source_identity"]["domain"] == identity.SOURCE_IDENTITY_DOMAIN
     assert document["store_identity"]["domain"] == identity.STORE_IDENTITY_DOMAIN
-    assert document["store_identity"]["key_hex_digits"] == identity.STORE_KEY_HEX_DIGITS
+    store_spec = document["store_identity"]
+    assert tuple(store_spec["key_suffix_hex_digits"]) == identity.STORE_KEY_SUFFIX_HEX_DIGITS
+    assert store_spec["key_max_bytes"] == identity.STORE_KEY_MAX_BYTES
     slug_spec = document["slug"]
     assert slug_spec["token_separator"] == identity.SLUG_TOKEN_SEPARATOR
     assert slug_spec["readable_max_bytes"] == identity.SLUG_READABLE_MAX_BYTES
@@ -138,7 +140,14 @@ def test_source_identity_and_slugs_are_reproducible() -> None:
         for object_format, store in record["generic_stores"].items():
             store_id = identity.repository_store_id(source, object_format)
             assert store["store_id"] == store_id
-            assert store["store_key"] == identity.store_key(store_id)
+            key = identity.store_key_candidates(
+                record["transport"], record["normalized"], store_id
+            )[0]
+            assert store["store_key"] == key
+            assert identity.is_store_key(key)
+            assert identity.store_key_matches_identity(key, store_id)
+            assert not identity.is_store_key(store_id.removeprefix("sha256:"))
+            assert len(key.encode()) <= document["store_identity"]["key_max_bytes"]
 
 
 def test_identity_equivalence_classes_follow_the_grammar() -> None:
@@ -167,6 +176,33 @@ def test_slug_collisions_extend_the_suffix_deterministically() -> None:
             slug_owner=existing.get,
         )
         assert slug == collision["expected_slug"], collision["why"]
+
+
+def test_store_key_collisions_extend_the_suffix_and_never_share_a_store() -> None:
+    document = _load("source-identity.json")
+    by_normalized = {record["normalized"]: record for record in document["sources"]}
+    for collision in document["store_key_collisions"]:
+        record = by_normalized[collision["normalized"]]
+        store_id = record["generic_stores"][collision["object_format"]]["store_id"]
+        existing = cast(dict[str, str], collision["existing"])
+        key = identity.cache_store_key(
+            record["transport"], record["normalized"], store_id, store_owner=existing.get
+        )
+        assert key == collision["expected_key"], collision["why"]
+        assert existing.get(key) in (None, store_id)
+
+
+def test_every_claimed_store_key_width_is_a_typed_collision() -> None:
+    record = _load("source-identity.json")["sources"][0]
+    store_id = record["generic_stores"]["sha1"]["store_id"]
+    claimed = dict.fromkeys(
+        identity.store_key_candidates(record["transport"], record["normalized"], store_id),
+        "sha256:" + "0" * 64,
+    )
+    with pytest.raises(identity.StoreKeyCollisionError):
+        identity.cache_store_key(
+            record["transport"], record["normalized"], store_id, store_owner=claimed.get
+        )
 
 
 def test_every_claimed_suffix_width_is_a_typed_collision() -> None:
@@ -254,9 +290,9 @@ def _lock_sequence_valid(steps: list[str]) -> bool:
 
 
 def _store_key(key: str) -> str:
-    """A 64-digit store key that sorts like the fixture's placeholder key."""
+    """A store key that sorts like the fixture's placeholder key."""
 
-    return key.encode().hex().rjust(64, "0")[-64:]
+    return f"{key}--{'0' * identity.STORE_KEY_SUFFIX_HEX_DIGITS[0]}"
 
 
 def _real_lock(home: Path, kind: LockKind, key: str | None) -> locks.CacheLock:
@@ -321,7 +357,8 @@ def test_lock_files_are_where_the_fixture_places_them(tmp_path: Path) -> None:
         lock["name"]: lock["path"] for lock in [*document["hierarchy"], *document["side_locks"]]
     }
     slug = "github-com--pallets--flask--e7b7fe0ffe8a"
-    store = "4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff"
+    store = "github-com--pallets--flask--4c2d8559cb0179ba"
+    source_digest = "e7b7fe0ffe8a446772b8a863f51222c90d256e511e1a4da3daec599735962fa9"
     acquisitions = {
         "home": (lambda: locks.application_cache_lock(home), {}),
         "source_alias": (lambda: locks.source_alias_lock(home, slug), {"<slug>": slug}),
@@ -330,8 +367,8 @@ def test_lock_files_are_where_the_fixture_places_them(tmp_path: Path) -> None:
             {"<store-key>": store},
         ),
         "source_acquisition": (
-            lambda: locks.source_acquisition_lock(home, f"sha256:{store}"),
-            {"<source-key>": store},
+            lambda: locks.source_acquisition_lock(home, f"sha256:{source_digest}"),
+            {"<source-key>": source_digest},
         ),
         "staging_entry": (lambda: locks.staging_entry_lock(home, "e1"), {"<entry>": "e1"}),
         "store_fetch": (

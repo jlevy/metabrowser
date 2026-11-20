@@ -145,7 +145,8 @@ for (const relative of [
   "static/plugin-sdk.js",
   "static/filter-controls.js",
   "static/icons.js",
-  "builtin_plugins/agent_log/index.js",
+  "builtin_plugins/agents/index.js",
+  "builtin_plugins/agents/agent-log.js",
   "builtin_plugins/unknown_jsonl/index.js",
 ]) {
   const filename = path.join(sourceRoot, relative);

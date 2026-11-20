@@ -332,7 +332,7 @@ def test_the_doctors_github_section_never_changes_its_exit_status(
     assert doctor.exit_code == 0, doctor.stderr
     assert doctor.stderr == ""
     lines = doctor.stdout.splitlines()
-    assert lines[1] == "metab --doctor: 11 plugin(s) OK"
+    assert lines[1] == "metab --doctor: 12 plugin(s) OK"
     assert lines[2] == (
         "github: not_logged_in: GitHub CLI is not signed in to github.com. "
         "Run gh auth login --hostname github.com, then retry."

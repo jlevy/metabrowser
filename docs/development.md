@@ -245,6 +245,12 @@ boundary:
   when one of `_GIT_SOURCE_MODULES` is loaded.
   A served pin imports its routes as it starts (`cli/git_pin_cli.py`), so its first
   request does not import them on the event loop.
+- **The file-ages service and the version check**, in `GitRevisionSubject.aclose` and
+  `GitRevisionSubject.capabilities`: `--present` imports `git/tree_source.py` for
+  `GitPath` alone, and they would load Git’s version check, the shallow-boundary reader,
+  and the event log with it.
+  `test_present_dry_run_loads_little_beyond_version` in
+  `tests/test_plugin_public_api.py` holds it.
 
 **Why KPress is deferred.** A CLI’s startup cost is paid on every invocation, by people
 waiting and by agents making many calls.

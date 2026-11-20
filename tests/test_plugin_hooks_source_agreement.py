@@ -79,8 +79,14 @@ COMPOUND_NAMES: dict[bytes, tuple[bytes, str, str]] = {
     b"logo.dark.svg": (b"<svg/>", "image", "image"),
     b"bundle.min.js": (b"var x;\n", "text", "text"),
 }
+# A segment of Metabrowser's own event log: the file's name is what makes it one.
+EVENT_LOG_NAME = b"events-20261119T220000Z-p7007-000.jsonl"
+EVENT_LOG = (
+    Path(__file__).parent / "fixtures" / "event-log-views" / EVENT_LOG_NAME.decode()
+).read_bytes()
 FILES: dict[bytes, bytes] = {
     b"session.jsonl": LOG,
+    EVENT_LOG_NAME: EVENT_LOG,
     b"config.json": CONFIG,
     b"change.patch": PATCH,
     b"refused.rej": PATCH,
@@ -203,10 +209,19 @@ def test_a_byte_bound_below_zero_answers_the_same_on_both(
 
 
 def test_agent_log_charts_report_the_same_tallies(tmp_path: Path) -> None:
-    folder, pinned = _both(tmp_path, "/api/plugin/agent-log/charts", "session.jsonl")
+    folder, pinned = _both(tmp_path, "/api/plugin/agents/charts", "session.jsonl")
     assert folder["summary"]["metadata"]["adapter"] == "claude"
     # The charts payload carries no address fields at all, so it matches whole.
     assert folder == pinned
+
+
+@pytest.mark.parametrize("route", ["timeline", "slowest", "kinds", "errors"])
+def test_event_log_views_report_the_same_story(tmp_path: Path, route: str) -> None:
+    folder, pinned = _both(tmp_path, f"/api/plugin/event-log/{route}", EVENT_LOG_NAME.decode())
+    # No answer names an address, so each is the same whole.
+    assert folder == pinned
+    assert folder["log"]["records"] == 58
+    assert folder["log"]["unfinished"] == 2
 
 
 def test_diff_document_reports_the_same_change_set(tmp_path: Path) -> None:

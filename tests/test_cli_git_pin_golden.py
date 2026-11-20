@@ -97,6 +97,7 @@ import pytest
 from metabrowser.git.tree_source import GitPath
 from metabrowser.settings import TEXT_PREVIEW_REQUEST_MAX_BYTES
 from metabrowser.wire_models import validate_rollup_envelope
+from tests.file_ages_git import service_is_idle
 from tests.git_pin_harness import git_env
 from tests.golden_harness import (
     Invocation,
@@ -541,3 +542,183 @@ def test_golden_pin_corrupt_blob_refusal(tmp_path: Path, monkeypatch: pytest.Mon
     assert refused.payload()["code"] == "object_corrupt"
     assert "forged content" not in refused.stdout
     pin.check("cli-git-pin-corrupt-blob.txt")
+
+
+# ── File ages ────────────────────────────────────────────────────────
+
+# Committer times of the ages origin's commits, one a month from 2020-01-01.
+AGES_ROOT = 1577836800
+AGES_MAIN_EDIT = 1580515200
+AGES_SIDE_EDIT = 1583020800
+AGES_MERGE = 1585699200
+AGES_TIP = 1588291200
+
+
+def _ages_stream() -> bytes:
+    """Five commits: a root, a main edit, a side-branch edit that a merge half discards, the
+    merge (which resolves ``shared.txt`` itself), and a tip that adds one file."""
+
+    out = bytearray()
+
+    def commit(branch: str, mark: int, when: int, message: str, *, parents: str = "") -> None:
+        text = message.encode() + b"\n"
+        out.extend(f"commit refs/heads/{branch}\nmark :{mark}\n".encode())
+        out.extend(f"committer Test <test@example.com> {when} +0000\n".encode())
+        out.extend(b"data " + str(len(text)).encode() + b"\n" + text)
+        out.extend(parents.encode())
+
+    def put(name: str, body: str) -> None:
+        data = body.encode()
+        out.extend(b"M 100644 inline " + name.encode() + b"\n")
+        out.extend(b"data " + str(len(data)).encode() + b"\n" + data + b"\n")
+
+    commit(PIN_ORIGIN_BRANCH, 1, AGES_ROOT, "root")
+    for name in ("README.md", "a/guide.md", "a/old.py", "docs/design.md", "shared.txt"):
+        put(name, f"root {name}\n")
+    commit(PIN_ORIGIN_BRANCH, 2, AGES_MAIN_EDIT, "main edits guide", parents="from :1\n")
+    put("a/guide.md", "main guide\n")
+    put("shared.txt", "main shared\n")
+    commit("side", 3, AGES_SIDE_EDIT, "side edits", parents="from :1\n")
+    put("a/guide.md", "side guide\n")
+    put("docs/design.md", "side design\n")
+    put("docs/side-only.md", "side only\n")
+    put("shared.txt", "side shared\n")
+    # The merge keeps main's guide (the side's is discarded) and takes the side's design and
+    # new file, and writes a shared.txt that neither parent had. A stream's `merge` records
+    # a parent only, so the merge's tree is spelled out.
+    commit(PIN_ORIGIN_BRANCH, 4, AGES_MERGE, "merge side", parents="from :2\nmerge :3\n")
+    put("a/guide.md", "main guide\n")
+    put("docs/design.md", "side design\n")
+    put("docs/side-only.md", "side only\n")
+    put("shared.txt", "resolved shared\n")
+    commit(PIN_ORIGIN_BRANCH, 5, AGES_TIP, "add new", parents="from :4\n")
+    put("a/new.py", "y = 2\n")
+    out.extend(b"\ndone\n")
+    return bytes(out)
+
+
+def ages_origin(tmp_path: Path) -> Path:
+    origin = tmp_path / "ages.git"
+    env = git_env(tmp_path)
+    subprocess.run(
+        ["git", "init", "-q", "--bare", "--template=", "-b", PIN_ORIGIN_BRANCH, str(origin)],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    subprocess.run(
+        ["git", "--git-dir", str(origin), "fast-import", "--quiet", "--done"],
+        check=True,
+        capture_output=True,
+        input=_ages_stream(),
+        env=env,
+    )
+    return origin
+
+
+@posix_only
+def test_golden_pin_file_ages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, file_ages_git: tuple[int, int, int]
+) -> None:
+    """A revision's files carry the time of the last commit that changed them, as ``git log
+    -1 -- path`` says, and a directory the newest of its files'."""
+
+    isolate_cli(tmp_path, monkeypatch)
+    pin = _Pin(tmp_path)
+    pin.use(ages_origin(tmp_path))
+    progress = pin.api("/api/index/progress").payload()
+    tree = pin.api("/api/tree?depth=2").payload()
+    pin.api(f"/api/tree?path={_wire(b'docs')}&depth=1")
+
+    assert progress["ages"]["state"] == "ready"
+    assert progress["ages"]["dated"] == progress["ages"]["files"] == 7
+    assert tree["ages"] == progress["ages"]
+    times = {node["name"]: node["mtime"] for node in tree["tree"]}
+    # a/ is the newest of its files, the tip's addition; docs/ is the side's edit; the guide
+    # in a/ is main's, not the side's, since the merge discarded the side's.
+    assert times == {
+        "a": AGES_TIP,
+        "docs": AGES_SIDE_EDIT,
+        "README.md": AGES_ROOT,
+        "shared.txt": AGES_MERGE,
+    }
+    under_a = {node["name"]: node["mtime"] for node in tree["tree"][0]["children"]}
+    assert under_a == {"guide.md": AGES_MAIN_EDIT, "new.py": AGES_TIP, "old.py": AGES_ROOT}
+    pin.check("cli-git-pin-ages.txt")
+
+
+@posix_only
+def test_a_pin_without_file_ages_has_no_times_and_says_why(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On a Git below the minimum, ``/api/tree`` carries no ``ages`` and no ``mtime``, as
+    before, and ``/api/capabilities`` says what to upgrade."""
+
+    isolate_cli(tmp_path, monkeypatch)
+    pin = _Pin(tmp_path)
+    pin.use(ages_origin(tmp_path))
+    tree = pin.api("/api/tree?depth=2").payload()
+    assert "ages" not in tree
+    assert all("mtime" not in node for node in tree["tree"])
+    progress = pin.api("/api/index/progress").payload()
+    assert "ages" not in progress
+    capabilities = pin.api("/api/capabilities").payload()
+    assert capabilities["file_ages"] == {
+        "available": False,
+        "minimum_git": "2.53",
+        "hint": "File ages on Git revisions need Git 2.53 or newer (found 2.50.1)",
+    }
+
+
+@posix_only
+def test_a_command_that_prints_no_ages_never_reads_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, file_ages_git: tuple[int, int, int]
+) -> None:
+    """``--api`` waits on the background read only for a route that prints its answer, so a
+    rollup, a catalog, or a file does not pay for it on a large history."""
+
+    from metabrowser.git.file_ages_service import file_ages_service
+
+    isolate_cli(tmp_path, monkeypatch)
+    pin = _Pin(tmp_path)
+    pin.use(ages_origin(tmp_path))
+    for route in ("/api/rollup?depth=1", "/api/catalog", f"/api/file?path={_wire(b'README.md')}"):
+        pin.api(route)
+        assert service_is_idle(file_ages_service()), route
+    pin.api("/api/tree?depth=1")
+    assert not service_is_idle(file_ages_service())
+
+
+@posix_only
+def test_golden_pin_age_groups(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, file_ages_git: tuple[int, int, int]
+) -> None:
+    """Group by age, Modified within, Recent, and the file envelope on a revision, with the
+    clock fixed three hours after the tip so the bands have something to say."""
+
+    from metabrowser.git import content_routes
+
+    monkeypatch.setattr(content_routes, "_request_instant", lambda: float(AGES_TIP + 3 * 3600))
+    isolate_cli(tmp_path, monkeypatch)
+    pin = _Pin(tmp_path)
+    pin.use(ages_origin(tmp_path))
+    # First, so the transcript shows the command alone dates the file: `ages=1` makes a
+    # command wait for the read of the times, which a file envelope never starts itself.
+    guide = pin.api(f"/api/file?path={_wire(b'a', b'guide.md')}&ages=1").payload()
+    grouped = pin.api("/api/tree?group_by=age&depth=1").payload()
+    pin.api("/api/tree?group=age:24h&depth=2")
+    windowed = pin.api("/api/tree?recency=24h&depth=2").payload()
+    recent = pin.api("/api/recent?window=24h").payload()
+    pin.api("/api/recent?window=all&limit=3")
+
+    # The tip's one file is three hours old: the only member of Past day; everything else is
+    # months older, and no file is undated.
+    assert [(group["id"], group["files"]) for group in grouped["groups"]] == [
+        ("24h", 1),
+        ("older", 6),
+    ], (grouped["ages"], [(group["id"], group["label"]) for group in grouped["groups"]])
+    assert windowed["filtered"]["files"] == 1
+    assert [row["name"] for row in recent["entries_flat"]] == ["new.py"]
+    assert recent["entries_flat"][0]["mtime"] == AGES_TIP
+    assert guide["mtime"] == AGES_MAIN_EDIT
+    pin.check("cli-git-pin-age-groups.txt")

@@ -315,11 +315,12 @@ const PANEL = `(() => {
   const tree = root.querySelector(".source-ref-selector-working-tree");
   const pane = document.querySelector(".tree-pane").getBoundingClientRect();
   const box = panel.getBoundingClientRect();
-  // A row's text leaves out its age, which the clock moves; the age is read on its own.
+  // A row's text leaves out its age, which the clock moves; the age is read on its own. A
+  // ref's row holds its own line, and a pull request's line under it when it has one.
   const row = (button) => {
     const age = button.querySelector(".source-ref-selector-age");
     return {
-      text: [...button.children]
+      text: [...(button.querySelector(":scope > .source-ref-selector-main") ?? button).children]
         .filter((child) => child !== age)
         .map((child) => child.innerText)
         .join(" ")

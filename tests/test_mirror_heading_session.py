@@ -263,8 +263,11 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
     )
     # The name alone: the ref selector names the ref, and the tooltip the commit (mb-qq4e).
     assert mirror["navigationHeading"]["text"] == "squares"
-    assert mirror["mainHeading"]["file"]["text"] == f"\u2191 squares / docs mirror in {location}"
-    assert mirror["mainHeading"]["root"] == f"\u2191 mirror in {location} squares"
+    # The note names the store's directory, and the tooltip the bare repository inside it.
+    directory = location.removesuffix("/repository.git")
+    assert directory != location
+    assert mirror["mainHeading"]["file"]["text"] == f"\u2191 squares / docs mirror in {directory}"
+    assert mirror["mainHeading"]["root"] == f"\u2191 mirror in {directory} squares"
     assert mirror["tooltips"] == {
         "navigationHeading": {
             "served": f"squares {sentence}",

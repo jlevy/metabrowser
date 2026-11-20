@@ -1,5 +1,8 @@
-// Agent-log built-in plugin — renders coding-agent JSONL session logs
-// (Claude Code, Gemini CLI, Pi).
+// Agent-log renderers: coding-agent JSONL session logs (Claude Code, Codex, Gemini CLI, Pi).
+//
+// Loaded on demand by index.js, the first time one of these views is shown, with
+// agent-log.css. Neither is in a folder page's load, which the plugin's folder views
+// would otherwise make them (index.js, "Loading tier").
 //
 // Owns three views:
 //   ("agent-log", "log")    — event timeline with filter chips + per-event chevron
@@ -7,11 +10,15 @@
 //                             agent-log data hook
 //   ("agent-log", "raw")    — pretty-printed JSON
 //
-// The unknown-jsonl plugin loads these shared views on demand through the SDK.
+// It registers them over index.js's stubs, so the unknown-jsonl plugin, which loads these
+// shared views through the SDK, gets the renderers themselves once they are here.
 // The agentLog namespace also exposes event rendering for live log updates.
 //
-// Helpers private to this plugin:
+// Helpers private to this file:
 //   renderLogEvent / renderFilterBar / renderSummary / logStat / fmtDuration
+//
+// This file has no import or export, so a browserless test can run it as a script in a
+// context of its own (tests/dom/agent-log-plugin-behavior.js).
 
 (() => {
   const mb = window.metabrowser;
@@ -45,8 +52,35 @@
     };
   }
 
+  // A parsed log's kinds are the adapters' (`tool_call`, `init`, ...). Each is shown in the
+  // color of the event kind (kinds.py KINDS) it is, so one kind is one color in a badge, a
+  // filter, and a chart. charts.py draws the same table; tests/test_agent_kind_palette.py
+  // pins the two together.
+  const EVENT_KINDS = [
+    "prompt",
+    "text",
+    "thinking",
+    "tool-call",
+    "tool-result",
+    "metering",
+    "control",
+    "context",
+    "error",
+    "unknown",
+  ];
+  const EVENT_KIND_OF_ADAPTER_KIND = {
+    tool_call: "tool-call",
+    tool_result: "tool-result",
+    text: "text",
+    thinking: "thinking",
+    result: "metering",
+    init: "context",
+    system: "control",
+  };
+
   function kindClassToken(kind) {
-    return String(kind || "unknown").replace(/[^a-z0-9_-]/gi, "-");
+    const name = String(kind || "unknown");
+    return EVENT_KIND_OF_ADAPTER_KIND[name] || (EVENT_KINDS.includes(name) ? name : "unknown");
   }
 
   function kindLabel(kind) {
@@ -448,7 +482,7 @@
     // work, so begin them together rather than putting one waterfall behind
     // the other. Resolves immediately once the bundle has been loaded.
     const [chartData] = await Promise.all([
-      mb.fetchPluginData("agent-log", "charts", { path: ctx.path }),
+      mb.fetchPluginData("agents", "charts", { path: ctx.path }),
       mb.ensureAsset("chart"),
     ]);
     if (generation !== chartsRenderGenerations.get(container)) {
@@ -475,6 +509,7 @@
     disposeLog: disposeLog,
     renderRaw: renderRaw,
     renderCharts: renderCharts,
+    disposeCharts: disposeCharts,
     // Single-event renderer exposed for the shell's SSE live-stream
     // handler — appending one batch of new events to an already-
     // rendered log pane without re-rendering the whole thing.
