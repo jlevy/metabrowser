@@ -5,11 +5,15 @@ title: "Guided PR walkthroughs (PR #599, outside contributor): bring current wit
 kind: feature
 status: in_progress
 priority: 2
-version: 8
+version: 9
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/599
     at: 2026-11-20T19:14:59.493Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/677
+    title: Guided PR walkthroughs draft
+    at: 2026-11-20T22:47:03.623Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -20,7 +24,7 @@ dependencies:
 hold: null
 hold_until: null
 created_at: 2026-11-20T18:29:05.420Z
-updated_at: 2026-11-20T19:16:57.422Z
+updated_at: 2026-11-20T22:47:03.626Z
 started_at: 2026-11-20T18:32:15.781Z
 extensions:
   linear:
