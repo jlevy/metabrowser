@@ -976,6 +976,36 @@ the toggle and the rail, the tooltip, a click, and print output, trusted and
 `--untrusted`, and `tests/dom/markdown-print-indicator-session.js` holds which mounts
 carry the button.
 
+A rendered document prints in KPress’s print model, the page KPress’s own PDF export
+draws: its `print.css` on white paper, its page margin and footer, and its static print
+faces. Its card, the app’s chrome, and the app’s theme do not print.
+
+- **Ready first.** A click on the button waits for the document before it prints
+  (`builtin_plugins/markdown/print-ready.js`, at most `PRINT_READY_BOUND_MS`): its
+  images not yet shown, which KPress loads lazily and WebKit prints as nothing; KPress’s
+  print sans, which loads only once print layout asks for it, so a print drew the
+  variable face’s Type3 outlines instead, as KPress’s export waits for it; and its
+  diagrams. Command-P waits on nothing: Chrome loads the images itself, and the app’s
+  File > Print prints what the page holds.
+- **Light paper.** While a rendered document is mounted, a print resolves the page light
+  and restores the theme after it (`holdLightPrintTheme` in `print-indicator.js`), and
+  the app’s color bridge to KPress is screen-only (`static/styles.css`), so text, links,
+  and code are KPress’s print ink whatever the theme.
+- **What WebKit leaves out.** The macOS app prints with WebKit, which resolves no custom
+  property in `@page`, applies no break rule inside a grid item or a size container, and
+  ignores `break-after: avoid`. So the page margin is KPress’s token written out
+  (`static/styles.css`, “Print adapter”); the document is one block column outside any
+  container in print; and a heading reserves room below it for the next lines, and for
+  an image under it the image’s own height, so it never ends a page alone
+  (`builtin_plugins/markdown/markdown.css`). WebKit draws no `@page` margin boxes, so
+  the app’s print has no footer or page numbers.
+- **Authored alignment.** A README’s `align="center"` logo and title stay centred, which
+  KPress’s print rule for paragraphs, justified, otherwise overrode.
+
+`tests/dom/document-print-chrome.mjs` holds the print model in Chrome, and
+`apps/macos/webkit-gate`’s driver (`webkit-driver print`) prints through the app’s own
+path for a check by hand.
+
 KPress’s `doc-actions` widget, an opt-in cluster pinned to its card’s corner, is where
 the button belongs once KPress can carry it in an embedded document, as an option the
 host turns on.
@@ -1037,13 +1067,15 @@ shows its last answer at once and replaces it only when the server’s new one d
 Another place that shows a page can hold the same button by giving it a corner.
 
 **The macOS app** shows a counterpart in a native popover of its own rather than leaving
-the app. The web page does nothing for it; the app reads three hooks in the button’s
-markup, which are a contract between the two: the root carries `data-view-on-github`,
-the link is `<a data-view-on-github="open" href="…" target="_blank" rel="noopener">`,
+the app. The web page does nothing for it.
+The root carries `data-view-on-<provider>`, as `data-view-on-github`, which names the
+button, and the app reads two hooks on its links, a contract between the two that names
+no site: the link is `<a data-web-view="open" href="…" target="_blank" rel="noopener">`,
 and Open in Browser is
-`<a data-view-on-github="external" href="…" target="_blank" rel="noopener">`. The app
-takes a trusted primary click on the link for its popover; Open in Browser, a modified
-click, and Copy Link do what they do in a browser.
+`<a data-web-view="external" href="…" target="_blank" rel="noopener">`. The app takes a
+trusted primary click on the link for its web pane, when the `href` is on a site it
+knows; Open in Browser, a modified click, and Copy Link do what they do in a browser.
+Any other control may mark a link `data-web-view="open"` the same way.
 
 ### Where It Appears
 
@@ -5704,10 +5736,15 @@ A checkout adds three things, and each uses a primitive the control already had:
   drawn again whenever a filter or a tally changes, and it carries the selector over
   rather than drawing it, so an open list keeps what was typed and where it was scrolled
   to, and the control that had focus keeps it.
-  `tests/test_checkout_ref_selector_chrome.py` records the selector’s height and the
-  first tree row’s place in every frame of the working tree’s page and of a revision’s,
-  and each has one value; `tests/test_files_totals_stable_chrome.py` holds the same for
-  every box of the Files navigation on a folder that holds a `.git`.
+  A box taken out of the page loses its scroll position, and a scroll made a moment
+  before has sent no event to say where, so the page reads each scrolled box’s position
+  before it rebuilds the bar and sets it again after: no scroll the page or the browser
+  makes is put back at the position the last event named (`renderNavFilterBar` in
+  `static/app.js`; `tests/test_ref_selector_long_list_chrome.py` scrolls and redraws in
+  one task). `tests/test_checkout_ref_selector_chrome.py` records the selector’s height
+  and the first tree row’s place in every frame of the working tree’s page and of a
+  revision’s, and each has one value; `tests/test_files_totals_stable_chrome.py` holds
+  the same for every box of the Files navigation on a folder that holds a `.git`.
 
 What each state shows is pinned by
 `tests/golden/cli-ui-source-ref-selector.tryscript.md`, and

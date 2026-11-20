@@ -3971,6 +3971,9 @@ declare global {
     Readonly<{
       activate(): Promise<void>;
       button: HTMLButtonElement;
+      /** The list's scroll position now, and a function that sets it again, for a rebuild
+       * of the toolbar around it. */
+      holdScroll(): () => void;
     }>;
 
   type MetabrowserSourceRefSelectorRuntime = Readonly<{

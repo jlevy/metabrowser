@@ -288,16 +288,18 @@ the window, without leaving Metabrowser’s page.
 Sign in to github.com once, in any window’s popover, and you stay signed in in every
 window and tab, and after you quit and reopen the app.
 The popover keeps what github.com stores, its sign-in cookies, cache, and other site
-data, in one store of the app’s own, which macOS keeps under `~/Library/WebKit` in the
-app’s folder. It is apart from your browser, from Metabrowser’s own pages and settings,
-and from your `gh` sign-in, which is what Metabrowser reads repositories and pull
-requests with. A development build keeps a store of its own.
+data, in one store of the app’s own, which every site the app shows in its own web views
+shares, as a browser profile does; macOS keeps it under `~/Library/WebKit` in the app’s
+folder. It is apart from your browser, from Metabrowser’s own pages and settings, and
+from your `gh` sign-in, which is what Metabrowser reads repositories and pull requests
+with. A development build keeps a store of its own.
 
 - **Who can use it:** as with a browser, anyone using your Mac account can open the app
   and act as you on github.com.
 - **Signing out:** sign out on github.com in the popover, or choose Metabrowser > Clear
-  GitHub Data…, which removes everything github.com stored in the app, signs you out in
-  every window, and reloads any popover’s page.
+  Website Data…, pick `github.com` or All Websites, and Clear.
+  That removes everything the sites you picked stored in the app, signs you out of them
+  in every window, and reloads each popover showing one of them.
   It leaves your `gh` sign-in, your browser, and Metabrowser’s settings as they were.
 - **Ways to sign in:** a password, with GitHub’s two-factor code, signs in within the
   popover. A sign-in that goes through another site, such as an organization’s single
