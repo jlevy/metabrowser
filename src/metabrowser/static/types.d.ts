@@ -268,6 +268,8 @@ type MetabrowserViewCompositionRuntime = Readonly<{
 type MetabrowserNavigationOpenOptions = {
   /** Activate this view when the destination declares it; otherwise use its default. */
   viewId?: string;
+  /** Replace the current history entry rather than push one. */
+  replace?: boolean;
 };
 
 type MetabrowserNavigationApi = Readonly<{

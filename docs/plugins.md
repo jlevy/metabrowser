@@ -797,6 +797,8 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   default, without changing the URL. When the destination is the file already shown, it
   selects that view of it, as its tab does, which is how a view takes a person to
   another view of the same file.
+  `{ replace: true }` replaces the current history entry instead of pushing one, for a
+  step Back should not stop at, such as the text typed into a search field.
 - `navigation.current()` returns the current target, or `null` on the landing URL.
 - `fileCatalog.snapshot()` returns an immutable view of the files the shell knows, as
   canonical logical-file paths ordered by UTF-16 code units, with no global path-length

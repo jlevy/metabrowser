@@ -3,12 +3,13 @@ name = "delimited"
 display_name = "Delimited Text"
 version = "0.0.1"
 sdk_version = "0.8"
-# The table plugin's routes serve this plugin's [[table_source]].
+# The table plugin's routes serve this plugin's [[table_source]], and its view draws the
+# kind's Table view (mb.plugins.load("table") in index.js).
 requires = ["table"]
 
 # Comma- and tab-separated text. Each file is one table, which the table routes serve
-# through the adapter below (metabrowser.builtin_plugins.delimited.source). Until the
-# table view arrives, the kind's one view is its source text.
+# through the adapter below (metabrowser.builtin_plugins.delimited.source) and the table
+# plugin's view draws; Source shows the file's text.
 [[kind]]
 id = "delimited"
 match = { exts = [".csv", ".tsv"] }
@@ -16,9 +17,20 @@ priority = 0
 
 [[view]]
 kind = "delimited"
+id = "table"
+label = "Table"
+key = "v"
+default = true
+container_class = "content-body table-view-host"
+printable = true
+print_profile = "table"
+render_runtime = "client"
+
+[[view]]
+kind = "delimited"
 id = "source"
 label = "Source"
-default = true
+key = "s"
 container_class = "content-body metabrowser-source-host"
 printable = true
 print_profile = "source"

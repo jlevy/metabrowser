@@ -1,0 +1,405 @@
+/* The table view (table-view.js), built on the Data Tables component in
+   static/styles.css (.data-grid, .data-num, .data-literal) and the host's
+   .field, .btn, .menu, and .notice. docs/design-system.md, "Data Tables",
+   states the rules. */
+
+/* The view fills its tab: a toolbar, the grid in a scroll box of its own, so the
+   header stays put and the window reads the box's own scroll. */
+.table-view-host {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding-bottom: 0;
+}
+.table-view {
+  --table-line-height: 18px;
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-bottom: 8px;
+}
+.table-toolbar[hidden],
+.table-notes[hidden],
+.table-scroll[hidden],
+.table-record[hidden],
+.table-fit-note[hidden] {
+  display: none;
+}
+.table-search {
+  width: 16em;
+  max-width: 100%;
+}
+.table-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.table-chips:empty {
+  display: none;
+}
+.table-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 28em;
+  padding: 1px 2px 1px 8px;
+  border: 1px solid var(--link);
+  border-radius: 999px;
+  font-size: var(--ui-small-font-size);
+}
+.table-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.table-chip-remove {
+  padding: 0 5px;
+  border-radius: 999px;
+  color: var(--muted);
+  text-decoration: none;
+}
+.table-chip-remove:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+.table-chip-remove:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+.table-status {
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  font-variant-numeric: var(--tabular-numerals);
+}
+.table-fit-note {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--ui-small-font-size);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.table-fit-note:hover {
+  color: var(--text);
+}
+.table-fit-note:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset-outset);
+}
+.table-columns-button {
+  margin-inline-start: auto;
+}
+.table-notes {
+  display: grid;
+  gap: 6px;
+}
+.table-notes:not(:empty) {
+  margin-bottom: 8px;
+}
+.table-empty {
+  margin: 12px 0;
+  color: var(--muted);
+}
+
+/* ── The grid ─────────────────────────────────────────────── */
+.table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  outline: none;
+}
+.table-view .data-grid {
+  table-layout: fixed;
+  width: max-content;
+  min-width: 100%;
+}
+.table-view .data-grid[hidden] {
+  display: none;
+}
+/* Every row is one height, the lines the table's longest cells need (one or two,
+   --table-row-lines, which the view sets), so the window can place any row by its
+   index. A longer value clamps, with its whole text in the shared tooltip. */
+.table-cell {
+  display: -webkit-box;
+  height: calc(var(--table-row-lines, 1) * var(--table-line-height));
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--table-row-lines, 1);
+  line-height: var(--table-line-height);
+}
+.data-grid .data-num .table-cell {
+  display: block;
+  text-overflow: ellipsis;
+}
+.data-grid .table-cell.data-literal {
+  line-height: var(--table-line-height);
+}
+.table-cell-null,
+.table-cell-absent,
+.table-cell-unpreviewed,
+.table-cell-error {
+  color: var(--muted);
+}
+.table-cell-error {
+  font-style: italic;
+}
+.table-cut {
+  color: var(--muted);
+}
+/* A value whose stored type differs from its column's: the stored type, small,
+   after the value. */
+.table-stored-mark {
+  margin-inline-start: 4px;
+  padding: 0 3px;
+  border: 1px solid var(--status-warning);
+  border-radius: var(--radius-chrome);
+  color: var(--status-warning-text);
+  font-family: var(--font-sans);
+  font-size: var(--ui-small-font-size);
+}
+.data-grid thead th {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.table-sort,
+.table-head-menu {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.table-sort:hover,
+.table-head-menu:hover {
+  color: var(--text);
+}
+.table-sort:focus-visible,
+.table-head-menu:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset-outset);
+}
+.table-sort-arrow {
+  color: var(--link);
+}
+.table-head-menu {
+  margin-inline-start: 4px;
+  opacity: 0;
+}
+.data-grid th:hover .table-head-menu,
+.table-head-menu:focus-visible,
+.table-head-menu[aria-expanded="true"] {
+  opacity: 1;
+}
+.data-grid tbody tr {
+  cursor: pointer;
+}
+.data-grid tbody tr:focus {
+  outline: none;
+  box-shadow: inset 2px 0 0 var(--link);
+  background: var(--hover-bg);
+}
+.data-grid tbody tr[aria-selected="true"] {
+  background: var(--highlight-bg);
+}
+.data-grid tbody td:focus-visible,
+.data-grid tbody a:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+.data-grid tbody tr.table-spacer,
+.data-grid tbody tr.table-spacer:hover {
+  background: transparent;
+  cursor: default;
+}
+.data-grid tbody tr.table-spacer > td {
+  padding: 0;
+  border: 0;
+}
+.table-position-head,
+.table-position-cell {
+  width: 1%;
+  text-align: right;
+}
+.data-grid th.table-position-cell {
+  font-weight: var(--weight-normal);
+}
+.table-position {
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  font-variant-numeric: var(--tabular-numerals);
+  text-decoration: none;
+}
+.table-position:hover {
+  color: var(--link);
+}
+.table-value-filter {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--muted);
+  text-underline-offset: 3px;
+}
+.table-value-filter:hover {
+  color: var(--link);
+}
+.table-ref {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: var(--ui-small-font-size);
+  line-height: calc(var(--table-line-height) - 2px);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  vertical-align: top;
+  white-space: nowrap;
+}
+.table-ref:hover {
+  border-color: var(--muted);
+  background: var(--hover-bg);
+}
+/* The first column stays in place while columns the reader chose scroll sideways. */
+.table-pinned thead tr > :first-child,
+.table-pinned tbody tr:not(.table-spacer) > :first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg);
+  box-shadow: inset -1px 0 0 var(--border);
+}
+.table-pinned thead tr > :first-child {
+  z-index: 3;
+}
+.table-ch-probe {
+  position: absolute;
+  visibility: hidden;
+  white-space: pre;
+}
+
+/* ── Menus ────────────────────────────────────────────────── */
+.table-menu {
+  position: absolute;
+  z-index: var(--z-overlay);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.table-menu-check {
+  cursor: pointer;
+}
+.table-menu-note {
+  max-width: 24em;
+  padding: 6px var(--menu-row-inset);
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  white-space: normal;
+}
+.table-filter-form {
+  display: flex;
+  gap: 4px;
+  padding: 6px var(--menu-row-inset);
+}
+.table-filter-value {
+  width: 10em;
+}
+
+/* ── The record ───────────────────────────────────────────── */
+.table-record {
+  max-width: 72rem;
+  overflow-y: auto;
+  padding-bottom: 24px;
+}
+.table-record-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  margin-bottom: 12px;
+}
+.table-record-title {
+  margin: 0;
+  font-size: var(--body-font-size);
+  font-weight: var(--weight-bold);
+}
+.table-back {
+  font-size: var(--ui-small-font-size);
+}
+.table-record-fields {
+  display: grid;
+  grid-template-columns: minmax(8em, 14em) minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+}
+.table-record-fields > dt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  overflow-wrap: anywhere;
+  font-weight: var(--weight-bold);
+}
+.table-record-type {
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  font-weight: var(--weight-normal);
+}
+.table-record-fields > dd {
+  min-width: 0;
+  margin: 0;
+}
+.table-record-value {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.table-record-value.data-num-value {
+  font-variant-numeric: var(--tabular-numerals);
+}
+.table-record-note {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+.table-record-backrefs {
+  margin-top: 20px;
+}
+.table-record-subtitle {
+  margin: 0 0 6px;
+}
+
+/* The hover card is the shared tooltip's content. */
+.table-card-label {
+  font-weight: var(--weight-bold);
+}
+.table-card-name {
+  color: var(--muted);
+}
+
+@media print {
+  .table-toolbar,
+  .table-head-menu {
+    display: none;
+  }
+  .table-scroll {
+    overflow: visible;
+  }
+  .table-view-host,
+  .table-view {
+    display: block;
+  }
+}

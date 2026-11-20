@@ -6000,15 +6000,12 @@ pre.code-block.metabrowser-source-lines > code {
   color: oklch(64.4% 0.175 146.9);
 }
 
-/* ── Markdown panels: tables and frontmatter ─────────────────── */
-/* Tables (``.table-container``) and frontmatter blocks share one
-   envelope — outer ``--panel-border``, ``--radius-document`` corners,
-   and a ``--panel-header-bg`` strip that holds all-caps label
-   typography. The border lives on the container (not the table), so
-   the radius clips a real 1px outline cleanly; cells only paint
-   internal grid lines, so there's no double-edge anywhere. */
+/* ── Markdown panels: frontmatter ────────────────────────────── */
+/* A frontmatter block is an envelope: an outer ``--panel-border``,
+   ``--radius-document`` corners, and a ``--panel-header-bg`` strip that holds
+   all-caps label typography. The border lives on the block, so the radius
+   clips a real 1px outline cleanly. */
 
-.table-container,
 .frontmatter-block {
   margin: 0.5em 0;
   border: var(--panel-border);
@@ -6016,78 +6013,67 @@ pre.code-block.metabrowser-source-lines > code {
   overflow: hidden;
 }
 
-/* Tables shrink to fit their content but cap at the parent so a small
-   numeric table doesn't span the full prose width; very wide tables
-   still get horizontal scroll via the per-axis override below. */
-.table-container {
-  width: fit-content;
-  max-width: 100%;
-  overflow-x: auto;
+/* ── Data tables ──────────────────────────────────────────────
+   One component for every table of data the app draws: the table plugin's grid,
+   and the folder's Distribution and totals tables, which take its numeric and
+   label rules. docs/design-system.md, "Data Tables", states the rules; these
+   are their one definition.
+
+     .data-grid      the table: chrome in sans at the body size, a hairline
+                     under each row, a header that stays put in its scroll box
+                     with the resting label typography, and the hover ground.
+     .data-num       a number, or a cell or header of a numeric column:
+                     right-aligned, in tabular numerals, never wrapped, so a
+                     column of figures scans as a column.
+     .data-literal   a literal value (a key, timestamp, hex, JSON, null) in the
+                     monospaced face.
+     .data-label     the resting label typography a table's header uses, for a
+                     heading that is not a .data-grid header. */
+.data-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
 }
-.data-table {
-  border-collapse: collapse;
-}
-.data-table th,
-.data-table td {
+.data-grid th,
+.data-grid td {
   padding: var(--panel-cell-padding);
+  border-bottom: 1px solid var(--border);
   text-align: left;
-  border-right: var(--panel-border);
-  border-bottom: var(--panel-border);
+  vertical-align: top;
 }
-.data-table th:last-child,
-.data-table td:last-child {
-  border-right: 0;
-}
-.data-table tbody tr:last-child td {
-  border-bottom: 0;
-}
-.data-table th {
-  background: var(--panel-header-bg);
+.data-grid thead th,
+.data-label {
+  color: var(--label-color);
   font-size: var(--label-font-size);
   font-weight: var(--label-font-weight);
-  text-transform: var(--label-text-transform);
   letter-spacing: var(--label-letter-spacing);
-  /* One label tier: every resting section label (tabs, DIAGNOSTICS,
-     FRONTMATTER, table headers, the TOC CONTENTS title) shares the
-     muted --label-color and --label-font-weight; full-strength --text
-     is reserved for interactive states (tab hover/active). */
-  color: var(--label-color);
-  white-space: nowrap;
-  /* Default header alignment is centered. Explicit per-column alignment
-     from markdown (`:---:`, `---:`) wins via inline style/attr. The
-     auto-numeric-column pass in markdown/index.js does NOT touch
-     headers — only the numeric cells in the body — so a column of
-     numbers reads as right-aligned data under a centered label. */
-  text-align: center;
+  text-transform: var(--label-text-transform);
 }
-/* Numeric body cells, applied by the auto-numeric pass in
-   markdown/index.js. Tabular-nums lines decimal points up across rows
-   so a column of figures scans as a column instead of a ragged edge.
-   See ``.size`` / ``.count`` for the same convention elsewhere. */
-.data-table td.numeric-cell {
+.data-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
+  white-space: nowrap;
+}
+.data-grid tbody tr:hover {
+  background: var(--hover-bg);
+}
+.data-grid .data-num,
+.data-num {
   text-align: right;
   font-variant-numeric: var(--tabular-numerals);
+  white-space: nowrap;
 }
-/* Zebra striping reuses the panel header fill so the alternating rows
-   read as part of the same table envelope (same hue family) rather
-   than a separate accent. Hover then switches to the neutral
-   --hover-bg so pointer feedback stays visible on striped rows and
-   matches hover behavior elsewhere in the app. */
-.data-table tbody tr:nth-child(even) {
-  background: var(--panel-header-bg);
-}
-.data-table tbody tr:hover {
-  background: var(--hover-bg);
-}
-.data-table code {
+.data-literal {
+  font-family: var(--font-mono);
   font-size: var(--mono-block-font-size);
-  background: var(--hover-bg);
-  padding: 1px 4px;
-  border-radius: var(--radius-document);
 }
 
 /* The frontmatter ``<summary>`` reads as a one-row thead: same fill,
-   same label typography, same divider stroke as ``.data-table th``. */
+   the same label typography as ``.data-grid`` headers. */
 .frontmatter-block {
   margin: 0 0 1em;
 }
@@ -6101,7 +6087,7 @@ pre.code-block.metabrowser-source-lines > code {
   font-weight: var(--label-font-weight);
   text-transform: var(--label-text-transform);
   letter-spacing: var(--label-letter-spacing);
-  /* Matches .data-table th — see the note there. */
+  /* The resting label tier, as a .data-grid header has. */
   color: var(--label-color);
   cursor: pointer;
   border-bottom: var(--panel-border);
