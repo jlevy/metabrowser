@@ -95,7 +95,7 @@ const shellSource = [
 // The shell services a stream event is handed to, and the page's teardown and rebuild.
 // None of them decides anything about a connection; each records that it was called.
 const COLLABORATORS = `
-var _perf = { measure: (_label, fn) => fn() };
+var _perf = { measure: (_label, fn) => fn(), measureAsync: (_label, fn) => fn() };
 var quickFileCatalogFeed = null;
 var quickFilePalette = { reconnected() {} };
 var knownFileCatalog = null;
