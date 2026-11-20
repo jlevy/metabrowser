@@ -298,6 +298,16 @@ def _plugin_kind_for_git_path(
     )
 
 
+def plugin_kind_for_git_wire(wire: str) -> str | None:
+    """The plugin kind a blob's GitPath wire matches by extension and basename alone."""
+
+    try:
+        path = GitPath.from_wire(wire)
+    except GitPathError:
+        return None
+    return _plugin_kind_for_git_path(path)
+
+
 def _git_blob_content_predicates(
     ext: str, body: bytes
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:

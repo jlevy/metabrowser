@@ -234,6 +234,7 @@ from metabrowser.settings import (
     client_settings_dict,
 )
 from metabrowser.source import (
+    ContentRef,
     SubjectNotOpenError,
     UnsupportedSourceCapabilityError,
     as_git_revision_subject,
@@ -254,6 +255,7 @@ from metabrowser.source_routes import (
     source_status,
 )
 from metabrowser.sse import api_stream
+from metabrowser.table_source import TableSourceDeclaration, install_table_sources
 from metabrowser.tree import (
     _IGNORE_CACHE,
     DEFAULT_TREE_DEPTH,
@@ -5069,6 +5071,50 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
             }
         )
     return None
+
+
+def _table_source_declarations() -> list[TableSourceDeclaration]:
+    """Every ``[[table_source]]`` the server serves, in discovery order.
+
+    An operator-directory plugin runs no Python, so its declarations are ignored with a
+    log line, as its data hooks are (``build_plugin_routes``).
+    """
+    out: list[TableSourceDeclaration] = []
+    for plugin in _LOADED_PLUGINS:
+        if not plugin.manifest.table_source:
+            continue
+        if plugin.source.startswith("local:"):
+            LOG.warning(
+                "metabrowser local plugin '%s' declares table sources; operator-directory "
+                "plugins are JavaScript-only, so they are ignored",
+                plugin.name,
+            )
+            continue
+        out.extend(
+            TableSourceDeclaration(plugin=plugin.name, kind=spec.kind, adapter=spec.adapter)
+            for spec in plugin.manifest.table_source
+        )
+    return out
+
+
+async def _table_content_kind(ref: ContentRef) -> str | None:
+    """The kind of the content a table route names, as ``/api/file`` classifies it.
+
+    On a served folder it runs the plugin classifier and the fallback chain on the file;
+    on a pin it applies the Git-blob subset of the rules (extension and basename), which
+    is every rule a table source's kind uses.
+    """
+    if get_source_session().subject.filesystem_root is not None:
+        target = resolve_session_identity(ref.identity)
+        if target is None or not target.is_file():
+            return None
+        return await asyncio.to_thread(_classify_with_plugins, target, ref.logical_ext)
+    from metabrowser.git.content_routes import plugin_kind_for_git_wire
+
+    return plugin_kind_for_git_wire(ref.identity) or classify_by_ext(ref.logical_ext)
+
+
+install_table_sources(_table_source_declarations(), _table_content_kind)
 
 
 def _views_for_kind(

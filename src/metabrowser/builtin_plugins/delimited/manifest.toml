@@ -1,0 +1,29 @@
+[plugin]
+name = "delimited"
+display_name = "Delimited Text"
+version = "0.0.1"
+sdk_version = "0.8"
+# The table plugin's routes serve this plugin's [[table_source]].
+requires = ["table"]
+
+# Comma- and tab-separated text. Each file is one table, which the table routes serve
+# through the adapter below (metabrowser.builtin_plugins.delimited.source). Until the
+# table view arrives, the kind's one view is its source text.
+[[kind]]
+id = "delimited"
+match = { exts = [".csv", ".tsv"] }
+priority = 0
+
+[[view]]
+kind = "delimited"
+id = "source"
+label = "Source"
+default = true
+container_class = "content-body metabrowser-source-host"
+printable = true
+print_profile = "source"
+render_runtime = "client"
+
+[[table_source]]
+kind = "delimited"
+adapter = "metabrowser.builtin_plugins.delimited.source:adapter"

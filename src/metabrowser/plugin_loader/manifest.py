@@ -298,6 +298,31 @@ class DataHookSpec(BaseModel):
     )
 
 
+class TableSourceSpec(BaseModel):
+    """One ``[[table_source]]`` block — the adapter that serves a kind as tables.
+
+    The built-in ``table`` plugin owns the routes; this declares which Python adapter
+    answers them for files of one of this plugin's own kinds
+    (:mod:`metabrowser.table_source`). Like a data hook, it runs only from a built-in or
+    an installed distribution.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str = Field(..., description="A [[kind]].id this plugin declares.")
+    adapter: str = Field(
+        ...,
+        description=(
+            "Python callable in ``module.path:callable`` form that takes a TableHandle and "
+            "returns a TableSource. Recorded as text and imported on first use."
+        ),
+    )
+
+
+# The plugin that owns the table routes; a plugin declaring a [[table_source]] requires it.
+TABLE_PLUGIN = "table"
+
+
 # ── Plugin manifest ────────────────────────────────────────────
 
 
@@ -348,7 +373,8 @@ class PluginInfo(BaseModel):
         default_factory=list,
         description=(
             "Names of the plugins whose exports this plugin's browser code loads with "
-            "``metabrowser.plugins.load(name)``. Discovery refuses this plugin when one "
+            "``metabrowser.plugins.load(name)``, and ``table`` for a plugin that declares a "
+            "``[[table_source]]``, whose routes the table plugin serves. Discovery refuses this plugin when one "
             "is not discovered or was refused, or when the requirements form a cycle "
             "(:func:`metabrowser.plugin_loader.discovery.resolve_requirements`)."
         ),
@@ -375,6 +401,9 @@ class PluginManifest(BaseModel):
     view: list[ViewSpec] = Field(default_factory=list, description="View bindings.")
     data_hook: list[DataHookSpec] = Field(
         default_factory=list, description="Python sidekick HTTP handlers."
+    )
+    table_source: list[TableSourceSpec] = Field(
+        default_factory=list, description="Table source adapters for this plugin's kinds."
     )
 
     def validate_consistency(self) -> list[str]:
@@ -411,6 +440,29 @@ class PluginManifest(BaseModel):
                     f"kind '{kr.id}' declares container.children="
                     f"{kr.container.children!r} but no [[data_hook]] has that route"
                 )
+
+        # A table source serves one of this plugin's own kinds, once, through the table
+        # plugin's routes, so the dependency is declared and discovery can check it.
+        local_kinds = {kr.id for kr in self.kind}
+        source_kinds: set[str] = set()
+        for spec in self.table_source:
+            if spec.kind not in local_kinds:
+                problems.append(
+                    f"table_source kind '{spec.kind}' is not a [[kind]] this plugin declares"
+                )
+            if spec.kind in source_kinds:
+                problems.append(f"table_source kind '{spec.kind}' is declared more than once")
+            source_kinds.add(spec.kind)
+            if ":" not in spec.adapter:
+                problems.append(
+                    f"table_source '{spec.kind}' has malformed adapter "
+                    f"'{spec.adapter}'; expected module.path:callable"
+                )
+        if self.table_source and TABLE_PLUGIN not in self.plugin.requires:
+            problems.append(
+                f"plugin '{self.plugin.name}' declares a [[table_source]] but does not "
+                f"require '{TABLE_PLUGIN}', whose routes serve it"
+            )
 
         # Each kind needs a non-empty match predicate.
         for kr in self.kind:

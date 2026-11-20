@@ -1,0 +1,36 @@
+[plugin]
+name = "table"
+display_name = "Tables"
+version = "0.0.1"
+sdk_version = "0.8"
+
+# The table experience every tabular source shares. The plugin has no kind of its own:
+# a source plugin claims a kind, declares `requires = ["table"]`, and names the adapter
+# that answers for that kind in a `[[table_source]]` block, and these five routes serve
+# every source alike (metabrowser.table_source holds the protocol and the wire contract).
+# The kind of the file at `?path=` selects the adapter, so a new source adds no route.
+
+[[data_hook]]
+route = "tables"
+sidekick = "metabrowser.builtin_plugins.table.routes:tables_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "schema"
+sidekick = "metabrowser.builtin_plugins.table.routes:schema_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "rows"
+sidekick = "metabrowser.builtin_plugins.table.routes:rows_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "record"
+sidekick = "metabrowser.builtin_plugins.table.routes:record_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "card"
+sidekick = "metabrowser.builtin_plugins.table.routes:card_handler"
+methods = ["GET"]
