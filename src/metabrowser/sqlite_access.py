@@ -40,7 +40,7 @@ import time
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, get_args
 
 # ── The file format ────────────────────────────────────────────
 
@@ -71,6 +71,7 @@ type ErrorState = Literal[
     "refused",
     "reader_stopped",
 ]
+ERROR_STATES: Final = frozenset(get_args(ErrorState.__value__))
 
 # ── Library versions ───────────────────────────────────────────
 
