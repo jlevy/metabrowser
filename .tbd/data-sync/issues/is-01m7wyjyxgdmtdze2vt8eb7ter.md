@@ -3,9 +3,9 @@ type: is
 id: is-01m7wyjyxgdmtdze2vt8eb7ter
 title: "Linear shows the project's efforts: one issue per top-level epic, kept current by tbd sync"
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 7
+version: 8
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/659
@@ -15,7 +15,11 @@ labels:
   - Improvement
 dependencies: []
 created_at: 2026-11-20T17:03:10.767Z
-updated_at: 2026-11-20T19:22:47.517Z
+updated_at: 2026-11-20T20:02:23.496Z
+closed_at: 2026-11-20T20:02:23.492Z
+close_reason: "Merged in #659: Linear shows one issue per top-level effort, kept current by tbd sync; guidance in docs/development.md#linear"
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 1a9c016a-4690-4473-b101-b89dbdb3b2dd
