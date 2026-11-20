@@ -674,6 +674,19 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   summary and the Pulls tab’s changed files both draw with it;
   `static/changed-files-tree.js` documents each function.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
+- `eventReports`, once `await mb.ensureAsset("event-reports")` has loaded it, tells the
+  event log what the page waits for
+  ([What the Page Reports](realtime-debugging.md#what-the-page-reports)).
+  `eventReports.wait(name, { startedAt, detail, onLate })` names a wait that reports
+  nothing unless it has run `eventReports.lateMs` while the page was shown; then it is
+  reported, `onLate(ms)` lets the view say so, and the handle’s `end(outcome)` reports
+  how it ended. Pass the `performance.now()` at which the wait began as `startedAt`,
+  since the bundle may arrive later, and end every wait from `dispose`, as
+  `never_completed` when the reader leaves first.
+  `eventReports.showDetails(panel, query, { signal })` paints into *panel* what the
+  event log holds for `{ client, since, until }`: `client` is `eventReports.page` for
+  this page’s own records, and a failure’s window can be `eventReports.failureWindowS`
+  seconds before it ended, the window the failure’s recent count covers.
 - `navigation.href(target)` returns the canonical `/view/` URL for a
   `{ path, query?, fragment? }` target, whose path is served-root-relative with `/`
   separators and no leading slash; the empty path selects the served root.

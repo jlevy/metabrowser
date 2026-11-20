@@ -800,11 +800,26 @@ $ node tests/dom/source-freshness-session.js
         "pin": null
       },
       {
+        "url": "/api/event-log/client",
+        "pin": null
+      },
+      {
+        "url": "/api/event-log?client=k3v9q2zx",
+        "pin": null
+      },
+      {
+        "url": "/api/event-logs",
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
+      },
+      {
         "url": "/api/tree?depth=1",
         "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
       }
     ],
     "answered": [
+      200,
+      200,
+      200,
       200,
       200,
       200,

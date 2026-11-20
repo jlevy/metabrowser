@@ -543,7 +543,10 @@ def test_the_session_runs_on_the_recording() -> None:
     assert by_name["an unchanged status is a 304"]["repaints"] == 0
     assert by_name["switched before the first poll"]["paint"]["offer"].endswith("[Reload]")
     guard = transcript["guard"]
-    assert [row["pin"] for row in guard["sent"]] == [guard["page"], None, None, guard["page"]]
+    page = guard["page"]
+    # The status route, another origin, and the event log's routes name no pin; a route
+    # whose name only begins like the event log's does.
+    assert [row["pin"] for row in guard["sent"]] == [page, None, None, None, None, page, page]
     assert guard["answered"][-1] == 409
     assert guard["reported"] == [recording["after_switch"]["pin"]]
     # A page opened while its URL selection waited goes to the selection once, anchor kept.

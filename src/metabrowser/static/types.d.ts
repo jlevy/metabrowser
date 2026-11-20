@@ -1537,6 +1537,8 @@ type MetabrowserSdk = {
   builtins: MetabrowserBuiltins;
   debug?: MetabrowserDebug;
   errors: MetabrowserRequestErrorRuntime;
+  /** What the page reports to the event log, and its Details panel (static/event-reports.js). */
+  eventReports?: MetabrowserEventReports;
   directoryTotals: MetabrowserDirectoryTotalsStore;
   filters: MetabrowserFilterState;
   folderOverview?: FolderOverviewRegistry;
@@ -3057,6 +3059,172 @@ type MetabrowserTreeKeyboardRuntime = Readonly<{
 }>;
 
 declare global {
+  /** What static/event-reports.js reads: event_log_reports.browser_settings. */
+  type MetabrowserEventReportSettings = {
+    /** Whether the server writes an event log; without one nothing is tagged or sent. */
+    log: boolean;
+    route: string;
+    header: string;
+    slow_ms: number;
+    freeze_ms: number;
+    late_ms: number;
+    flush_ms: number;
+    max_batch: number;
+    per_minute: number;
+    long_lived: string[];
+    failure_window_s: number;
+  };
+
+  type MetabrowserEventOutcome = "ok" | "failed" | "cancelled" | "never_completed";
+
+  /** One report, as POST /api/event-log/client takes it. */
+  type MetabrowserEventReport = {
+    type: "fetch" | "render" | "wait";
+    event: "open" | "end";
+    name: string;
+    client: string;
+    dur_ms: number;
+    outcome?: MetabrowserEventOutcome;
+    attrs: {
+      status?: number;
+      server_ms?: number;
+      threshold_ms?: number;
+      error?: string;
+      /** A wait the page spent some of hidden, and how long: time that is not late. */
+      hidden?: boolean;
+      hidden_ms?: number;
+      detail?: Record<string, string | number | boolean | null>;
+    };
+  };
+
+  type MetabrowserEventReportsEnvironment = {
+    settings: MetabrowserEventReportSettings;
+    /** The page's ID; a fresh one when absent. */
+    pageId?: string;
+    origin: string;
+    path(): string;
+    now(): number;
+    setTimeout(callback: () => void, ms: number): unknown;
+    clearTimeout(id: unknown): void;
+    send(route: string, body: string): unknown;
+    warn?(...args: unknown[]): void;
+    /** Whether the page is hidden now; a wait's late timer runs only while it is shown. */
+    hidden?(): boolean;
+  };
+
+  type MetabrowserEventWaitOptions = {
+    /** When the wait began, on the page's clock, where it began before the reporter. */
+    startedAt?: number;
+    detail?: Record<string, string | number | boolean | null>;
+    /** Told once, when the wait has run `late_ms` while the page was shown. */
+    onLate?: (ms: number) => void;
+  };
+
+  type MetabrowserEventWait = Readonly<{
+    startedAt: number;
+    isLate(): boolean;
+    end(outcome?: MetabrowserEventOutcome): void;
+  }>;
+
+  type MetabrowserEventReporter = Readonly<{
+    page: string;
+    settings: MetabrowserEventReportSettings;
+    tag(url: string, method: string): { id: string; name: string } | null;
+    started(request: { id: string; name: string }): void;
+    settled(
+      request: { id: string; name: string },
+      result: { status?: number; serverTiming?: string | null; error?: { name?: string } | null },
+    ): void;
+    wait(name: string, options?: MetabrowserEventWaitOptions): MetabrowserEventWait;
+    blocked(entry: {
+      duration: number;
+      startTime: number;
+      blockingDuration?: number;
+      scripts?: ReadonlyArray<{
+        duration?: number;
+        sourceFunctionName?: string;
+        sourceURL?: string;
+        invoker?: string;
+      }>;
+    }): void;
+    earlier(
+      entries: ReadonlyArray<{
+        name: string;
+        initiatorType: string;
+        duration: number;
+        responseStatus?: number;
+        serverTiming?: ReadonlyArray<{ name: string; duration: number }>;
+      }>,
+    ): void;
+    /** The page was hidden or shown: a wait's late timer stops while it is hidden. */
+    visibility(hidden: boolean): void;
+    leaving(): void;
+    flush(): Promise<void>;
+    queued(): MetabrowserEventReport[];
+  }>;
+
+  /** Which records the Details panel reads: a page's, and the failures in a window. */
+  type MetabrowserEventDetailsQuery = {
+    /** A page's ID, or one request's. */
+    client?: string;
+    /** UTC times to the second, as /api/event-log/failures takes them. */
+    since?: string;
+    until?: string;
+  };
+
+  type MetabrowserEventDetails = {
+    /** `off`: this server writes no log, so whatever an older one wrote is not shown. */
+    log: "present" | "absent" | "unreadable" | "off";
+    running: Array<{ kind: string; name: string; age_ms: number; mine: boolean }>;
+    causes: Array<{
+      cause: string;
+      count: number;
+      last: string;
+      message: string;
+      addresses: string[];
+      examples: Array<{
+        kind: string;
+        name: string;
+        outcome: string;
+        dur_ms: number | null;
+        ts: string;
+      }>;
+    }>;
+    failures: number;
+    since: string;
+    probe: {
+      target: string;
+      verdict: string;
+      ts: string;
+      addresses: Array<{ address: string; result: string; ms: number | null }>;
+    } | null;
+    mine: Array<{
+      event: string;
+      kind: string;
+      name: string;
+      outcome: string | null;
+      dur_ms: number | null;
+      cause: string | null;
+      ts: string;
+    }>;
+  };
+
+  /** `mb.eventReports`: present once the `event-reports` bundle has loaded. */
+  type MetabrowserEventReports = Readonly<{
+    /** This page's ID, which every request it sends to /api/ is named under. */
+    page: string;
+    /** How long a wait runs before it is late. */
+    lateMs: number;
+    /** The window, in seconds, a failure's recent count covers. */
+    failureWindowS: number;
+    wait(name: string, options?: MetabrowserEventWaitOptions): MetabrowserEventWait;
+    showDetails(
+      panel: HTMLElement,
+      query: MetabrowserEventDetailsQuery,
+      options?: { signal?: AbortSignal },
+    ): Promise<void>;
+  }>;
+
   /** The shell's helpers view-header.js builds a header with, which app.js passes to it. */
   interface MetabrowserViewHeaderShell {
     esc(value: unknown): string;
@@ -4292,6 +4460,24 @@ declare global {
       routeChanged(options?: { preserveScroll?: boolean }): void;
     }>;
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
+    /** static/event-reports.js, the `event-reports` on-demand bundle. */
+    MetabrowserEventReports?: Readonly<{
+      createReporter(env: MetabrowserEventReportsEnvironment): MetabrowserEventReporter;
+      wrapFetch(fetchImpl: typeof fetch, reporter: MetabrowserEventReporter): typeof fetch;
+      describeDetails(
+        failures: unknown,
+        pageLog: unknown,
+        options: { slowMs: number; page?: string },
+      ): MetabrowserEventDetails;
+      detailLines(details: MetabrowserEventDetails): Array<{ heading: string; items: string[] }>;
+      detailRoutes(query: MetabrowserEventDetailsQuery): { failures: string; page: string };
+      showDetails(
+        panel: HTMLElement,
+        query: MetabrowserEventDetailsQuery,
+        options?: { fetch?: typeof fetch; signal?: AbortSignal; slowMs?: number; log?: boolean },
+      ): Promise<void>;
+      serverMs(raw: string | null | undefined): number | null;
+    }>;
     MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;
     MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;
     /** static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. */
@@ -4364,6 +4550,8 @@ declare global {
     METABROWSER_SETTINGS?: {
       /** This build's tag, which a request names to be told its answer cannot change. */
       BUILD_TAG?: string;
+      /** What the page reports to the event log, and when (static/event-reports.js). */
+      EVENT_REPORTS?: MetabrowserEventReportSettings;
       /** The served store's token, named beside the build for the same reason; a folder has none. */
       STORE_TAG?: string;
       /**

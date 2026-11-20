@@ -4118,6 +4118,7 @@ _FOCUS_RING_OUTSET = frozenset(
         ".source-freshness-label:focus-visible",
         ".filter-check:has(input:focus-visible)",
         ".help-project a:focus-visible",
+        ".event-log-details a:focus-visible",
     }
 )
 

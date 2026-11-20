@@ -74,9 +74,12 @@ metab . --api '/api/event-log?span=8'
 
 The answer names the directory and its segments, and reads the one this server writes,
 else the newest; `file=` reads another.
-Filters are `kind`, `outcome`, `event`, `name`, `client`, `span` (that span’s records
-and those of the spans it started), and `min_ms`, and `sort=duration` puts the slowest
-first. From a running server, `open` lists what it is waiting on now.
+Filters are `kind`, `outcome`, `event`, `name`, `client` (a request’s client ID, or a
+page’s, which finds every request the page sent and every report it made), `span` (that
+span’s records and those of the spans it started), and `min_ms`, and `sort=duration`
+puts the slowest first.
+From a running server, `open` lists what it is waiting on now, each with the client that
+started it.
 
 For a page that waits and nothing arrives:
 
@@ -93,6 +96,63 @@ At shutdown each span still open ends `abandoned`, and a turn of the event loop 
 took longer than `OPEN_AFTER_MS` is a `loop` record, so a blocked loop is on record too.
 The log holds request paths and folder names but never a token: command lines drop field
 and header values, and process text is redacted.
+
+### What the Page Reports
+
+Only the page knows what it waited for, so it reports that too
+(`static/event-reports.js`, to `POST /api/event-log/client`, which
+`metabrowser/event_log_reports.py` checks, bounds, and redacts).
+Each page has a client ID of eight letters and digits, and every request it sends to its
+own server’s `/api/` carries `<page>-<n>` in the `x-metabrowser-client` header.
+The server’s record of that request has it as `client`, and so does every job and
+process the request starts, so `client=<page>` reads everything one page asked for and
+saw, and `client=<page>-<n>` one request and the work behind it.
+Each report is a `browser` record named for its type: `fetch`, `render`, or `wait`.
+
+| Report | When | Threshold |
+| --- | --- | --- |
+| `fetch … open` | A request to this server still pending | `SLOW_MS` |
+| `fetch … end` | A request that took that long or longer, with its status, its `srv` Server-Timing, and `ok`, `failed`, or `cancelled`; or `never_completed` for one reported open that the page left first | `SLOW_MS` |
+| `render blocked` | A frame that blocked the page, with the function, source, and invoker the browser blamed, where it reports long animation frames or long tasks, as Chrome does; WebKit, the macOS app’s engine, reports neither, so the app reports no freezes | `FREEZE_MS` |
+| `wait … open` | Something the page shows as loading, still running after that long shown: the pull request page’s Diff summary and its refresh, and a mirror’s refresh | `WAIT_LATE_MS` |
+| `wait … end` | That wait’s end, once it was reported: `ok`, `failed`, `cancelled`, or `never_completed` when the page was left first | `WAIT_LATE_MS` |
+
+The thresholds are constants in `event_log_reports.py`, with the measurement that set
+each beside it; the page reads them from `METABROWSER_SETTINGS.EVENT_REPORTS`. A wait
+that ends before its threshold, and a request answered sooner, report nothing.
+A wait’s threshold counts only the time the page was shown: a hidden page stops polling,
+so its waits run long for no fault of the work behind them.
+A wait that spent some of its time hidden says how long, as `hidden_ms`. A page kept in
+the browser’s back/forward cache is not left, so its waits go on when it is restored.
+Reports are gathered for `FLUSH_MS` and sent in bodies of at most `MAX_REPORTS`, with
+`keepalive`, so the last leave with the page; a page sends at most
+`PAGE_REPORTS_PER_MINUTE`, and the server takes at most `RATE_REPORTS` in
+`RATE_WINDOW_S` from all pages, marking what it refused.
+A server that writes no log gets no header and no report, and its Details say the log is
+off rather than show what an earlier server wrote.
+The event log’s routes are exempt from a pinned revision’s guard, so a page left on a
+revision the server no longer serves still reports and reads the log.
+The reporter is an on-demand bundle the shell loads after the first usable tree;
+requests answered before it loaded are read from Resource Timing.
+
+A wait still running at its threshold says so on the page.
+On a pull request’s page the Diff summary’s placeholder becomes “The summary of changes
+has not arrived after N s.”, and a failed refresh’s line ends the same way, each with
+**Details**: a button that opens, under the header, what the event log holds for it.
+The Details list what the server is still running, this page’s first; the failures in
+the window by cause, with the message, the addresses that failed, and the latest calls;
+the last probe of GitHub; and this page’s own slow, failed, or unfinished records, with
+links to both answers as JSON. A failure’s window is the hour before its refresh ended,
+to a minute after.
+
+To read what one page saw from a terminal, take its ID from a request’s
+`x-metabrowser-client` header in the browser’s developer tools, or from the Details’
+JSON link:
+
+```shell
+metab . --api '/api/event-log?client=k3v9q2zx'
+metab . --api '/api/event-log?kind=browser&outcome=never_completed'
+```
 
 ## GitHub Failures
 
@@ -144,6 +204,9 @@ metab . --api '/api/event-log?cause=connect_timeout&event=end'
 The summary groups the failures since `since` (an hour ago by default) by cause, with
 how many, which work, the addresses that failed, the latest message, a `details` link to
 each example’s records, and the latest probe that failed.
+A page’s own reports of failure, such as a wait that never completed, are listed apart
+under `page_reports`, not counted as causes: they are the page’s view of a failure the
+server’s records name, so the cause leads.
 When the addresses vary between failures, DNS is answering a GitHub name with addresses
 the network reaches only some of the time.
 
