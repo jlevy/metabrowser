@@ -18,7 +18,6 @@ status: 200
     "dated": 7,
     "older_than": null,
     "stop": "complete",
-    "commits": 5,
     "derived": false
   }
 }
@@ -248,7 +247,6 @@ status: 200
     "dated": 7,
     "older_than": null,
     "stop": "complete",
-    "commits": 5,
     "derived": false
   },
   "recency_tallies": [
@@ -423,7 +421,6 @@ status: 200
     "dated": 7,
     "older_than": null,
     "stop": "complete",
-    "commits": 5,
     "derived": false
   },
   "recency_tallies": [

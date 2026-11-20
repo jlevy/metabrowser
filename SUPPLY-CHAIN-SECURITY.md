@@ -250,9 +250,9 @@ other two builds exercise the absent one.
   directory’s `git-2.56.1.tar.xz`, and it matches the `git-2.56.1.tar.xz` line of that
   directory’s `sha256sums.asc`, checked on November 20, 2026; the signature on that file
   was not verified. The build fails closed on a wrong value.
-- **Cool-off.** Both archives were published on July 8, 2025, in the security batch the
-  version floor is based on, so they are well past the 14-day cool-off.
-  The 2.56.1 tag is dated October 26, 2026, 25 days before the pin.
+- **Cool-off.** The 2.43.7 and 2.50.1 archives were published on July 8, 2025, in the
+  security batch the version floor is based on, so they are well past the 14-day
+  cool-off. The 2.56.1 tag is dated October 26, 2026, 25 days before the pin.
 - **Build.** `devtools/build_admitted_git.sh` holds the pins and builds only a pinned
   release. It downloads over HTTPS only and checks the SHA-256 before unpacking.
   It builds without Tcl/Tk, gettext, Perl, Python, Expat, or OpenSSL. Its only other

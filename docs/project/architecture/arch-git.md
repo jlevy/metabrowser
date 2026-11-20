@@ -434,9 +434,16 @@ for the command.
   A route asks `request`, which returns the answer, or `dating`, or why there is none,
   at once. `/api/tree` carries `mtime` on the nodes it can date and an `ages` state;
   `/api/index/progress` carries the same state, which a page polls and a command that
-  prints it waits on (`wait_for_index` in `cli/asgi_client.py`, for `/api/tree` and the
-  progress route itself; every other `--api` route passes `ages=0` and never starts the
-  read). A file the answer leaves undated carries no `mtime`.
+  prints it waits on (`wait_for_index` in `cli/asgi_client.py`, for `/api/tree`,
+  `/api/recent` and the progress route itself; every other `--api` route passes `ages=0`
+  and never starts the read).
+  A file the answer leaves undated carries no `mtime`. A read that fails, or is cut by
+  its budget, is asked again after `GIT_AGES_RETRY_AFTER_S` or
+  `GIT_AGES_CUT_RETRY_AFTER_S`, and every step of one is inside its `file_ages.read`
+  span, so a failure leaves a record with Git’s stderr.
+  At most `GIT_AGES_MAX_CONCURRENT_READS` reads run at once across every revision the
+  process shows, because a read’s memory follows its history; the next waits for a slot
+  and is `dating` meanwhile, and a read cancelled while it waits leaves the queue.
 - **What reads them.** The age bands and windows are cut at one instant per request, so
   the groups of one grouped answer partition the times; a file the answer leaves undated
   is in no window and no band but a last group, `undated`, whose name carries
@@ -455,11 +462,20 @@ for the command.
   The page never waits: until then every file is undated.
 - **Per commit.** A commit ID names a tree for good, so an answer is never stale: a
   branch shown again is a lookup, a new branch or tag is read for its own tip, and a tip
-  whose ancestor is answered reads `C ^A`, so Git walks only the commits since it.
-  A file it reports as unchanged since an excluded commit other than the ancestor would
-  need that commit’s own answer, so the whole answer is then read again, which is the
-  same answer and costs a cold read.
-  `tests/test_git_file_ages.py` checks each against `git log -1 -- <path>`.
+  whose ancestor is answered, with no merge commit between them, reads `C ^A`, so Git
+  walks only the commits since it.
+  That derivation is the same answer as a cold read only over a range with no merge:
+  Git’s `^A` boundary marks a file whose last change it could not place after `A`, and
+  across a merge that can name `A` for a file whose last change is older (a merge that
+  restores a mode, for one).
+  `nearest_ancestor` therefore offers an ancestor only when
+  `git rev-list --merges --count A..C` is 0, and never an answer that was cut by its
+  budget, and otherwise the answer is read cold.
+  A file the derived read reports as unchanged since an excluded commit other than the
+  ancestor would need that commit’s own answer, so the whole answer is then read again,
+  with its own budget.
+  `tests/test_git_file_ages.py` checks cold reads against `git log -1 -- <path>`, and
+  derived reads against cold ones over random histories with merges.
 - **What it does not know.** A shallow boundary is a root to Git, which adds every file,
   so a file last changed there is *undated* and the answer says `older_than`: the
   boundary commit’s time, never the time a file was not changed at.

@@ -22,6 +22,7 @@ from metabrowser.git import content_routes
 from metabrowser.git.file_ages_service import file_ages_service
 from metabrowser.git.tree_source import GitPath
 from metabrowser.tree_groups import UNDATED_GROUP_ID, groups_for
+from tests.file_ages_git import service_is_idle, settled
 from tests.git_pin_harness import pinned_client
 from tests.test_git_file_ages import DAY, EPOCH, History, build_branchy
 
@@ -42,7 +43,7 @@ def now(monkeypatch: pytest.MonkeyPatch) -> float:
 
 async def _settled(client: Any, subject: Any) -> None:
     await client.get("/api/index/progress")
-    await file_ages_service().settled(subject.command_target, subject.commit_oid)
+    await settled(file_ages_service(), subject.command_target, subject.commit_oid)
 
 
 def test_bands_partition_the_files_at_one_instant(
@@ -183,7 +184,7 @@ def test_the_file_envelope_carries_the_time_of_its_last_commit(
             # Nothing has asked for the times yet, and a file read starts no read of them.
             before = (await client.get(f"/api/file?path={_wire(b'shared')}")).json()
             assert "mtime" not in before
-            assert file_ages_service().is_idle()
+            assert service_is_idle(file_ages_service())
             await _settled(client, subject)
             shared = (await client.get(f"/api/file?path={_wire(b'shared')}")).json()
             assert shared["mtime"] == EPOCH + 6 * DAY

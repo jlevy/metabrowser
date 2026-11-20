@@ -126,6 +126,7 @@ CHROME_TESTS = (
     "tests.test_nav_collapse_chrome",
     "tests.test_nav_metadata_chrome",
     "tests.test_nav_reveal_chrome",
+    "tests.test_overview_label_column_chrome",
     "tests.test_overview_legend_hover_chrome",
     "tests.test_overview_readme_toc_chrome",
     "tests.test_page_header_chrome",

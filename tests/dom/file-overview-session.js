@@ -780,7 +780,7 @@ const rollupError = (status) =>
     assert(closed.details === "false", "Details starts open");
     assert(
       closed.distribution ===
-        "JSON 24% YAML 17% Markdown 15% TypeScript 6% Python 3.3% Other 34.7% Details" &&
+        "JSON 24% YAML 17% Markdown 15% TypeScript 6% Python 3.3% JavaScript 2.5% Log files 2.1% Other 30.1% Details" &&
         closed.caption === "Share of Total (1,000 files)",
       `the compact summary: ${closed.distribution}`,
     );
@@ -812,13 +812,13 @@ const rollupError = (status) =>
     }
     assert(
       bySize.distribution.startsWith(
-        "Markdown 30% TypeScript 20% Python 15% JavaScript 12% JSON 10% Other 13% Details",
+        "Markdown 30% TypeScript 20% Python 15% JavaScript 12% JSON 10% YAML 5% Log files 2.5% Other 5.5% Details",
       ) && bySize.caption === "Share of Total (1,000 B)",
       `by bytes: ${bySize.distribution}`,
     );
     assert(
       unignored.distribution.startsWith(
-        "Markdown 32.6% TypeScript 21.7% Python 16.3% JavaScript 13% YAML 5.4% Other 10.9% Details",
+        "Markdown 32.6% TypeScript 21.7% Python 16.3% JavaScript 13% YAML 5.4% Log files 2.7% JSON 2.2% Other 6% Details",
       ) && unignored.caption === "Share of Files (920 B)",
       `Show ignored off: ${unignored.distribution}`,
     );
@@ -834,7 +834,7 @@ const rollupError = (status) =>
     const reclosed = state("Details closed");
     assert(reclosed.details === "false", "Details did not close");
     assert(
-      reclosed.distribution.endsWith("Other 10.9% Details"),
+      reclosed.distribution.endsWith("Other 6% Details"),
       `a closed Details shows its table: ${reclosed.distribution}`,
     );
     toggle().listeners.click();

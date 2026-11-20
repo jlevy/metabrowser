@@ -15,15 +15,17 @@ the same modules and exercise the absent path.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Generator
 from typing import Final
 
 import pytest
 
 from metabrowser.git import file_ages
-from metabrowser.git.file_ages import FILE_AGES_GIT_MINIMUM, file_ages_availability
-from metabrowser.git.file_ages_service import reset_file_ages_service
-from metabrowser.git.process import detect_git_version
+from metabrowser.git import file_ages_service as service_module
+from metabrowser.git.file_ages import FILE_AGES_GIT_MINIMUM, RevisionAges, file_ages_availability
+from metabrowser.git.file_ages_service import FileAgesService
+from metabrowser.git.process import RepositoryStoreTarget, detect_git_version
 from tests.admitted_git import REQUIRE_ADMITTED_GIT_ENV, required_admitted_git
 from tests.required_tools import require_git
 
@@ -46,6 +48,44 @@ def pretend_git(patch: pytest.MonkeyPatch, line: str, version: tuple[int, int, i
 
     patch.setattr(file_ages, "git_executable", lambda: "/usr/bin/git")
     patch.setattr(file_ages, "detect_git_version", lambda: (version, line))
+
+
+def reset_file_ages_service() -> None:
+    """Forget the process's answers and cancel its reads, as a test starts and ends.
+
+    These helpers are the tests' alone: production asks the service for a status and never
+    waits for a read, counts one, or looks inside it.
+    """
+
+    service, service_module._service = service_module._service, None  # pyright: ignore[reportPrivateUsage]
+    if service is not None:
+        for task in list(service._jobs.values()):  # pyright: ignore[reportPrivateUsage]
+            task.cancel()
+
+
+def kept_answer(
+    service: FileAgesService, target: RepositoryStoreTarget, commit: str
+) -> RevisionAges | None:
+    """The answer *service* keeps for *commit*, without asking for one."""
+
+    return service._answers.get((target.git_dir, commit))  # pyright: ignore[reportPrivateUsage]
+
+
+def service_is_idle(service: FileAgesService) -> bool:
+    """Whether *service* keeps no answer, read, or failure."""
+
+    return not (
+        service._answers or service._jobs or service._failures  # pyright: ignore[reportPrivateUsage]
+    )
+
+
+async def settled(service: FileAgesService, target: RepositoryStoreTarget, commit: str) -> None:
+    """Wait for *commit*'s running read to end; its failure is the service's to record, and a
+    cancellation of the waiter is the waiter's."""
+
+    task = service._jobs.get((target.git_dir, commit))  # pyright: ignore[reportPrivateUsage]
+    if task is not None:
+        await asyncio.wait({task})
 
 
 def require_file_ages_git() -> tuple[int, int, int]:

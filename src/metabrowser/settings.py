@@ -393,7 +393,12 @@ GIT_COMPARISON_CACHE_BYTES = 16 * 1024 * 1024
 # ── File ages on a Git revision (git/file_ages.py, git/file_ages_service.py) ──────────
 
 # Wall time one ``git last-modified -r -z`` read may take before it is cut and the files it
-# had not reached stay undated. A background job, so no request waits on it. Measured
+# had not reached stay undated. A background job, so no request waits on it. It bounds the
+# read of the history and nothing else: a read derived from an ancestor and, when it must,
+# the cold read that follows it each have their own; the blob index, the probes that find an
+# ancestor (`merge-base`, `rev-list --count`), and the read of the commit times run before or
+# after it, each under the 15 s `GIT_SUBPROCESS_TIMEOUT_S` of a store read, so a whole job can
+# take about this long again. Measured
 # 2026-11-20 with Git 2.56.1 on four local histories, best of three, on a machine at load
 # average 80 to 100 (so every figure is a ceiling): 0.24 s for 799 files over 2,214
 # commits; 2.0 s for 2,350 over 4,818; 3.0 s for 12,836 over 10,881; 13.6 s for 35,824
@@ -408,15 +413,33 @@ GIT_COMPARISON_CACHE_BYTES = 16 * 1024 * 1024
 # read, ``git last-modified <commit>``, took 0.04 to 0.13 s on every one of them.
 GIT_AGES_TIMEOUT_S = 45.0
 
-# Answers kept, one per commit, across every revision the process has shown. One is the
-# file names and an 8-byte time each: 0.3 MB for the 35,824-file history above. A branch
-# switch back to a revision shown a moment ago is a lookup, and an answer for a commit whose
-# ancestor is kept reads only the commits since it.
+# Answers kept, one per commit, across every revision the process has shown. One is each
+# file's name and an 8-byte time, about 95 bytes a file (measured 2026-11-20 on this
+# repository's 2,394 files, whose paths average 46 bytes, with tracemalloc, the names held as
+# their own objects as a kept answer holds them): 3.4 MB for the 35,824-file history above,
+# so eight are about 27 MB. A branch switch back to a revision shown a moment ago is a
+# lookup, and an answer for a commit whose ancestor is kept, with no merge between, reads
+# only the commits since it.
 GIT_AGES_CACHE_REVISIONS = 8
 
 # How long a revision whose read failed is left alone before a page asks again, so a
 # failing Git is run once per interval and not once per poll.
 GIT_AGES_RETRY_AFTER_S = 30.0
+
+# How long an answer cut by the budget is served before the next request reads again. A
+# history that was cut once will be cut again unless the machine was busy, and a read is
+# 45 s of Git, so this is five minutes and not 30 s: a judgment, not a measurement.
+GIT_AGES_CUT_RETRY_AFTER_S = 300.0
+
+# Reads that may run at once, across every revision the process shows; the next waits, and
+# its page sees the state dating. A read is a Git process whose memory follows the history:
+# `git last-modified -r -z HEAD` peaked at 254 MB resident on the 35,824-file, 11,899-commit
+# history above and at 87 MB on this repository's 2,394 files (`/usr/bin/time -l`, Git 2.56.1,
+# 2026-11-20). Time did not limit it: on a 10-core machine at load average 5, one read of the
+# large history took 1.9 s, and 2, 4 and 8 at once took 1.6, 1.6 and 1.7 to 1.8 s each. So the
+# bound is memory: two keep the worst case near half a gigabyte and let the revision a user
+# switched to start while the one just left finishes.
+GIT_AGES_MAX_CONCURRENT_READS = 2
 
 # Client polling of a read in progress, in milliseconds. Quicker than the inventory's
 # index progress poll because a revision's read is one job with one end.
@@ -499,6 +522,8 @@ __all__ = [
     "GIT_COMMIT_MAX_FILES",
     "GIT_COMPARISON_CACHE_BYTES",
     "GIT_AGES_CACHE_REVISIONS",
+    "GIT_AGES_CUT_RETRY_AFTER_S",
+    "GIT_AGES_MAX_CONCURRENT_READS",
     "GIT_AGES_POLL_MS",
     "GIT_AGES_RETRY_AFTER_S",
     "GIT_AGES_TIMEOUT_S",
