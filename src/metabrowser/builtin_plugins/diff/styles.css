@@ -5,8 +5,6 @@
    system; the title is styled as a filename, not a heading. */
 
 .metabrowser-diff-host {
-  --diff-add-row-bg: color-mix(in srgb, var(--status-success) 9%, transparent);
-  --diff-del-row-bg: color-mix(in srgb, var(--status-error) 9%, transparent);
   --diff-add-refined-row-bg: color-mix(in srgb, var(--status-success) 3%, transparent);
   --diff-del-refined-row-bg: color-mix(in srgb, var(--status-error) 3%, transparent);
   --diff-add-inner-bg: color-mix(in srgb, var(--status-success) 20%, transparent);
@@ -86,8 +84,8 @@
 }
 
 .metabrowser-diff-host .diff-summary-toggle:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
   background: var(--hover-bg);
 }
 
@@ -280,12 +278,12 @@
 }
 
 .metabrowser-diff-host .diff-stat-add {
-  color: var(--status-success);
+  color: var(--status-success-text);
   font-weight: var(--weight-bold);
 }
 
 .metabrowser-diff-host .diff-stat-del {
-  color: var(--status-error);
+  color: var(--status-error-text);
   font-weight: var(--weight-bold);
 }
 
@@ -324,8 +322,8 @@
 }
 
 .metabrowser-diff-host .diff-file-view:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .metabrowser-diff-host .diff-file-view[aria-busy="true"] {
@@ -542,9 +540,14 @@
   padding: 0 12px;
 }
 
-.metabrowser-diff-host .diff-availability {
+.metabrowser-diff-host .diff-availability:not(.notice) {
   padding: var(--diff-notice-padding-y) 12px;
   color: var(--muted);
+}
+
+/* A notice box inside the diff: only its spacing is the diff's. */
+.metabrowser-diff-host .diff-notice {
+  margin-block: 8px;
 }
 
 /* Patch chrome remains complete on one line in the existing horizontal scroller.

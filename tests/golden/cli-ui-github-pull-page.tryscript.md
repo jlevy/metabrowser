@@ -1193,7 +1193,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "message": null,
         "canRefresh": false,
         "freshness": "Fetched 5 min ago via GitHub CLI",
-        "failure": "GitHub rate limit · next check at 12:06 PM",
+        "failure": "GitHub rate limit reached. Next attempt after 12:06 PM.",
         "browse": "link to the root",
         "headOffer": null
       },
@@ -1212,7 +1212,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "message": null,
         "canRefresh": false,
         "freshness": "Fetched 6 min ago via GitHub CLI",
-        "failure": "GitHub rate limit · next check at 12:06 PM",
+        "failure": "GitHub rate limit reached. Next attempt after 12:06 PM.",
         "browse": "link to the root",
         "headOffer": null
       },
@@ -1232,7 +1232,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "canRefresh": false,
         "freshness": "Fetched 6 min ago via GitHub CLI",
         "revalidating": true,
-        "failure": "GitHub rate limit · next check at 12:06 PM",
+        "failure": "GitHub rate limit reached. Next attempt after 12:06 PM.",
         "browse": "link to the root",
         "headOffer": null
       },
@@ -1349,25 +1349,25 @@ $ node tests/dom/github-pull-page-second-session.js
   ],
   "filesUnavailable": {
     "fetch_failed": {
-      "files": "Changes are unavailable: the pull request's base could not be compared with its head.",
+      "files": "Changes are unavailable: the pull request’s base could not be compared with its head.",
       "notes": [
         "Changes could not be read (fetch failed)."
       ]
     },
     "no_merge_base": {
-      "files": "Changes are unavailable: the pull request's base could not be compared with its head.",
+      "files": "Changes are unavailable: the pull request’s base could not be compared with its head.",
       "notes": [
         "Changes could not be read (no merge base)."
       ]
     },
     "base_uncertain": {
-      "files": "Changes are not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.",
+      "files": "Changes are not shown: this checkout’s history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.",
       "notes": [
         "Changes could not be read (base uncertain)."
       ]
     },
     "commits_unavailable": {
-      "files": "Changes are unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.",
+      "files": "Changes are unavailable: a commit of this pull request’s history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.",
       "notes": [
         "Changes could not be read (commits unavailable)."
       ]
@@ -1377,13 +1377,13 @@ $ node tests/dom/github-pull-page-second-session.js
       "notes": []
     },
     "comparison_timeout": {
-      "files": "Changes are unavailable: checking this pull request's history took too long. Refresh to try again.",
+      "files": "Changes are unavailable: checking this pull request’s history took too long. Refresh to try again.",
       "notes": [
         "Changes could not be read (comparison timeout)."
       ]
     },
     "comparison_too_large": {
-      "files": "Changes are unavailable: checking this pull request's history exceeded the comparison limit.",
+      "files": "Changes are unavailable: checking this pull request’s history exceeded the comparison limit.",
       "notes": [
         "Changes could not be read (comparison too large)."
       ]
@@ -1393,7 +1393,7 @@ $ node tests/dom/github-pull-page-second-session.js
     "HEAD is the pull request's head": {
       "browse": null,
       "headOffer": null,
-      "checkoutAtHead": "This checkout's HEAD is this pull request's head.",
+      "checkoutAtHead": "This checkout’s HEAD is this pull request’s head.",
       "comparison": null,
       "files": "Changes could not be fetched."
     },
@@ -1717,16 +1717,25 @@ paintHeader’s own retarget that badges the returning links.
 A text’s Mermaid blocks are drawn as github.com draws them, in the description and in a
 comment alike, each as an image, since a text is untrusted, through the Markdown
 plugin’s published host, which a page asks for only once a text has a block
-(`textDiagrams`). Only a pinned revision’s page draws them: it is always under the
-untrusted policy that bounds what Mermaid loads while it lays a diagram out, and a
-folder’s page may not be, so its blocks stay their source.
-A poll of the same record and a trip to Changes keep a text’s binding, an edited text’s
-ends with its section, one replaced before the plugin arrives never binds, and the
-page’s end ends the rest.
+(`textDiagrams`). A folder’s page draws them as a pinned revision’s does: on either,
+each binding’s Mermaid is the Markdown plugin’s diagram frame’s, whose own policy bounds
+what Mermaid loads while it lays a diagram out, and never the page’s. A poll of the same
+record and a trip to Changes keep a text’s binding, an edited text’s ends with its
+section, one replaced before the plugin arrives never binds, and the page’s end ends the
+rest. The Diff summary’s wait is one the event log hears of if it runs late
+(`eventLogDetails`, mb-9zp5): the page asks for the `event-reports` bundle on demand and
+names the wait, timed from when it began.
+At the late threshold the placeholder gives way to a line that says how long the summary
+has not arrived, with a Details button that controls the panel it opens as the header’s
+last row; the panel reads the event log for this page’s client ID, and closes with
+Details or with its control, as when the summary arrives.
+A page left while it waits ends the wait as `never_completed`; one whose summary arrives
+ends it `ok`. A failed refresh’s Details read the failures from an hour before it ended
+to a minute after, and with no reporter the panel says the event log is not available.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"headerShape":true,"widestNotes":{"Fetched just now via GitHub CLI":"Fetched 59 min ago via GitHub CLI","Fetched 3 h ago via GitHub CLI":"Fetched 59 min ago via GitHub CLI","Offline · fetched 12 d ago via GitHub CLI":"Offline · fetched 59 min ago via GitHub CLI","Description fetched 7 min ago via GitHub CLI":"Description fetched 59 min ago via GitHub CLI","Fetched at an unknown time via GitHub CLI":"Fetched at an unknown time via GitHub CLI"},"holdLifts":{"today":"2:05 PM","tomorrow":"9/18/26, 12:30 AM","next year":"1/2/27, 8:00 AM"},"headerSummary":["Conversation, the comparison not yet read: the pending placeholder","the comparison read: the summary","Changes: the summary","Checks, the comparison not yet read: the pending placeholder","Checks, the comparison read: the summary","the same pull request again in this document, before any idle: the summary","opened on Changes, from what its diff read: the summary","opened again on Conversation after Changes, before any idle: the summary","a read that will fail, not yet answered: the pending placeholder","the read fails: nothing","a repaint after it failed, its read asked again: the pending placeholder","that read fails too: nothing","a comparison the summary draws nothing for: nothing","opened on Changes, whose diff reads no comparison: nothing","the record on its way: the pending placeholder","a direct link's page before its first answer: the pending placeholder","its first answer: not cached, its own fetch to be sent: the pending placeholder","its fetch's core preview: the pending placeholder","its record lands, the comparison not yet read: the pending placeholder","the comparison read: the summary","a direct link's first answer: not GitHub's: nothing","a direct link's first answer: a server with no store, its own fetch to be sent: nothing","a direct link's first answer: its refresh failed, nothing running: nothing","a direct link's first answer: a core, its refresh failed, nothing running: nothing","a record that names no comparison: nothing","a core preview whose read prepares its comparison: the pending placeholder","its record lands, the comparison not yet read: the pending placeholder","the comparison read: the summary","a core preview whose read prepares no comparison: nothing","a prepared core, the page's own fetch still to be sent: the pending placeholder","a core whose read ended, the page's own fetch still to be sent: the pending placeholder","a record whose comparison the page asked to prepare: the pending placeholder","the preparation ends with no comparison: nothing","a record whose comparison nothing prepares: nothing","Changes, its diff reads no comparison: nothing","a record with a moved head lands, offering the newer changes: nothing","the reader takes them, their diff not yet read: the pending placeholder","their diff reads the comparison: the summary","Changes, its diff throws: nothing","Retry, the diff not yet read: the pending placeholder","the diff reads the comparison: the summary","Changes, its diff still reading: the pending placeholder","the record then names no comparison: nothing"],"summaryBrief":["a direct link's page before its first answer, its head unknown: the pending placeholder; 1 reads","its core preview, of the list's head and base branch: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","its record lands, the comparison not yet read: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","the comparison read: the summary; 1 reads","a direct link's page, the list of an older head: the pending placeholder; 1 reads","its core preview, of a newer head: the pending placeholder; 1 reads","a record whose list was read for another base branch: the pending placeholder; 1 reads","a core preview, the local comparison's list, whose base the core cannot say: the pending placeholder; 1 reads","its record lands, naming the same comparison: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","a record whose comparison has another base than the local list's: the pending placeholder; 1 reads","a record of the list's head, its comparison not yet read: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","the comparison's read fails: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","no list cached: the pending placeholder; 1 reads","opened from a Pulls row that drew its line: the brief line \"1 M · +12 −4\"; 0 reads","opened from a Pulls row whose line the lane marked out of date, read again: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","a page that went before its read answered, its summary drawn: the summary; 1 reads"],"coldHold":["mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands, the conversation waiting for its Markdown: header shown, tab column shown","the conversation's first paint, at its bound: header shown, tab column shown","on Changes, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands: header shown, tab column shown","mounted with its record in hand: header shown, tab column shown","no Pulls row in hand, mounted with no record in hand: title \"Pull request #7\", plain","its Pulls row in hand, mounted with no record in hand: title \"Count to two in the app #7\", the record's shape","its Pulls row in hand, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","two repositories' rows for its number, mounted with no record in hand: title \"Pull request #7\", plain"],"counterpart":["mounted with no record in hand: the corner after the title \"Pull request #7\"; asked /pull/7","its record lands: the corner after the title \"Count to two in the app\", the same corner; asked /pull/7","a poll brings a new title: the corner after the title \"Count to three in the app\", the same corner; asked /pull/7","the route shows Checks: the corner after the title \"Count to three in the app\", the same corner; asked /pull/7/checks","an SDK with no button: the corner after the title \"Count to two in the app\"; asked for none"],"tabKeys":["before the record, the tab column in the page: Conversation C, Changes G, Checks E; live conversation files checks","C: showed Conversation","G: opened the files route","the record arrives and paintHeader keeps the column: Conversation C, Changes G, Checks E","live: conversation files checks","numbered: 1 Browse code","1: POST /api/source/pin {\"oid\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\",\"under\":\"refs/pull/7/head\",\"view\":\"/view/\"}","C: showed Conversation","G: opened the files route","the route arrives: Changes","numbered on Changes: 1 Browse code, 2 Refresh","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh serves the head: 1 Browse code, 2 Refresh","1: navigation.open /view/","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh with no pin: 1 Refresh","1: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","2: not handled","1: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered with the code behind the head: 1 Browse code, 2 Refresh, 3 Switch to the head","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered while that refresh runs: 1 Browse code, 2 Refresh, 3 Switch to the head","2: nothing asked","numbered once the refresh ends: 1 Browse code, 2 Refresh, 3 Switch to the head","numbered on Conversation once the refresh ends: 1 Browse code, 2 Switch to the head","3: POST /api/source/pin {\"oid\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\",\"under\":\"refs/pull/7/head\"}","Shift+H: not handled","Shift+E: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Changes none, Checks none; keys none; G: not handled","a failed first read takes the column out: live none","G: not handled","on Changes, Shift held while it is out: badges none","the next read answers, and the returning tabs are badged: Conversation C, Changes G, Checks E","the next read answers and paintHeader puts the column back: Conversation C, Changes G, Checks E","live: conversation files checks","G: showed Changes","disposed: keys none"],"textRefusal":["refused past the deadline: plain, 1 notice right after it, a status: This text took longer than 5 seconds to render, so it is shown as plain text.","rebuilt for another state, its Markdown not yet answered: plain, 1 notice right after it, a status: This text took longer than 5 seconds to render, so it is shown as plain text., new element","a newer record, the same text refused again as unavailable: plain, 1 notice right after it, a status: The renderer could not start, so this text is shown as plain text. Reload to try again., new element","a newer record whose Markdown renders: rendered rendered A, no notice, same element"],"textDiagrams":["a description and a comment with no Mermaid block: 0 blocks, 0 in a figure; asked nothing; bindings none","the same with Mermaid blocks, on a folder's page: 2 blocks, 0 in a figure; asked nothing; bindings none","a description and a comment each with a Mermaid block: 2 blocks, 2 in a figure; asked markdown plugin, markdown plugin, kpress-diagrams, kpress-diagram-controls, kpress-diagrams, kpress-diagram-controls; bindings body as image, 1 figure, Mermaid on demand; issue_comment/3341937855 as image, 1 figure, Mermaid on demand","a poll of the same record: 2 blocks, 2 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid on demand; issue_comment/3341937855 as image, 1 figure, Mermaid on demand","Changes and back to Conversation: 2 blocks, 2 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid on demand; issue_comment/3341937855 as image, 1 figure, Mermaid on demand","the description edited, the comment not: 2 blocks, 2 in a figure; asked markdown plugin, kpress-diagrams, kpress-diagram-controls; bindings body as image, 1 figure, Mermaid on demand, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid on demand; body as image, 1 figure, Mermaid on demand","the description's block taken out: 1 block, 1 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid on demand, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid on demand; body as image, 1 figure, Mermaid on demand, disposed","a block whose text is replaced before the Markdown plugin arrives: 1 block, 1 in a figure; asked markdown plugin; bindings body as image, 1 figure, Mermaid on demand, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid on demand; body as image, 1 figure, Mermaid on demand, disposed","the page ends: 1 block, 1 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid on demand, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid on demand, disposed; body as image, 1 figure, Mermaid on demand, disposed"],"switchUnavailable":["the diff plugin's assets not loading: The switch request failed.; asked nothing","the switch module not loading: The switch request failed.; asked nothing"]}
+{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"headerShape":true,"widestNotes":{"Fetched just now via GitHub CLI":"Fetched 59 min ago via GitHub CLI","Fetched 3 h ago via GitHub CLI":"Fetched 59 min ago via GitHub CLI","Offline · fetched 12 d ago via GitHub CLI":"Offline · fetched 59 min ago via GitHub CLI","Description fetched 7 min ago via GitHub CLI":"Description fetched 59 min ago via GitHub CLI","Fetched at an unknown time via GitHub CLI":"Fetched at an unknown time via GitHub CLI"},"holdLifts":{"today":"2:05 PM","tomorrow":"9/18/26, 12:30 AM","next year":"1/2/27, 8:00 AM"},"headerSummary":["Conversation, the comparison not yet read: the pending placeholder","the comparison read: the summary","Changes: the summary","Checks, the comparison not yet read: the pending placeholder","Checks, the comparison read: the summary","the same pull request again in this document, before any idle: the summary","opened on Changes, from what its diff read: the summary","opened again on Conversation after Changes, before any idle: the summary","a read that will fail, not yet answered: the pending placeholder","the read fails: nothing","a repaint after it failed, its read asked again: the pending placeholder","that read fails too: nothing","a comparison the summary draws nothing for: nothing","opened on Changes, whose diff reads no comparison: nothing","the record on its way: the pending placeholder","a direct link's page before its first answer: the pending placeholder","its first answer: not cached, its own fetch to be sent: the pending placeholder","its fetch's core preview: the pending placeholder","its record lands, the comparison not yet read: the pending placeholder","the comparison read: the summary","a direct link's first answer: not GitHub's: nothing","a direct link's first answer: a server with no store, its own fetch to be sent: nothing","a direct link's first answer: its refresh failed, nothing running: nothing","a direct link's first answer: a core, its refresh failed, nothing running: nothing","a record that names no comparison: nothing","a core preview whose read prepares its comparison: the pending placeholder","its record lands, the comparison not yet read: the pending placeholder","the comparison read: the summary","a core preview whose read prepares no comparison: nothing","a prepared core, the page's own fetch still to be sent: the pending placeholder","a core whose read ended, the page's own fetch still to be sent: the pending placeholder","a record whose comparison the page asked to prepare: the pending placeholder","the preparation ends with no comparison: nothing","a record whose comparison nothing prepares: nothing","Changes, its diff reads no comparison: nothing","a record with a moved head lands, offering the newer changes: nothing","the reader takes them, their diff not yet read: the pending placeholder","their diff reads the comparison: the summary","Changes, its diff throws: nothing","Retry, the diff not yet read: the pending placeholder","the diff reads the comparison: the summary","Changes, its diff still reading: the pending placeholder","the record then names no comparison: nothing"],"summaryBrief":["a direct link's page before its first answer, its head unknown: the pending placeholder; 1 reads","its core preview, of the list's head and base branch: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","its record lands, the comparison not yet read: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","the comparison read: the summary; 1 reads","a direct link's page, the list of an older head: the pending placeholder; 1 reads","its core preview, of a newer head: the pending placeholder; 1 reads","a record whose list was read for another base branch: the pending placeholder; 1 reads","a core preview, the local comparison's list, whose base the core cannot say: the pending placeholder; 1 reads","its record lands, naming the same comparison: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","a record whose comparison has another base than the local list's: the pending placeholder; 1 reads","a record of the list's head, its comparison not yet read: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","the comparison's read fails: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","no list cached: the pending placeholder; 1 reads","opened from a Pulls row that drew its line: the brief line \"1 M · +12 −4\"; 0 reads","opened from a Pulls row whose line the lane marked out of date, read again: the brief line \"1 A, 2 M · +12 −4\"; 1 reads","a page that went before its read answered, its summary drawn: the summary; 1 reads"],"coldHold":["mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands, the conversation waiting for its Markdown: header shown, tab column shown","the conversation's first paint, at its bound: header shown, tab column shown","on Changes, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands: header shown, tab column shown","mounted with its record in hand: header shown, tab column shown","no Pulls row in hand, mounted with no record in hand: title \"Pull request #7\", plain","its Pulls row in hand, mounted with no record in hand: title \"Count to two in the app #7\", the record's shape","its Pulls row in hand, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","two repositories' rows for its number, mounted with no record in hand: title \"Pull request #7\", plain"],"counterpart":["mounted with no record in hand: the corner after the title \"Pull request #7\"; asked /pull/7","its record lands: the corner after the title \"Count to two in the app\", the same corner; asked /pull/7","a poll brings a new title: the corner after the title \"Count to three in the app\", the same corner; asked /pull/7","the route shows Checks: the corner after the title \"Count to three in the app\", the same corner; asked /pull/7/checks","an SDK with no button: the corner after the title \"Count to two in the app\"; asked for none"],"tabKeys":["before the record, the tab column in the page: Conversation C, Changes G, Checks E; live conversation files checks","C: showed Conversation","G: opened the files route","the record arrives and paintHeader keeps the column: Conversation C, Changes G, Checks E","live: conversation files checks","numbered: 1 Browse code","1: POST /api/source/pin {\"oid\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\",\"under\":\"refs/pull/7/head\",\"view\":\"/view/\"}","C: showed Conversation","G: opened the files route","the route arrives: Changes","numbered on Changes: 1 Browse code, 2 Refresh","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh serves the head: 1 Browse code, 2 Refresh","1: navigation.open /view/","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh with no pin: 1 Refresh","1: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","2: not handled","1: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered with the code behind the head: 1 Browse code, 2 Refresh, 3 Switch to the head","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered while that refresh runs: 1 Browse code, 2 Refresh, 3 Switch to the head","2: nothing asked","numbered once the refresh ends: 1 Browse code, 2 Refresh, 3 Switch to the head","numbered on Conversation once the refresh ends: 1 Browse code, 2 Switch to the head","3: POST /api/source/pin {\"oid\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\",\"under\":\"refs/pull/7/head\"}","Shift+H: not handled","Shift+E: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Changes none, Checks none; keys none; G: not handled","a failed first read takes the column out: live none","G: not handled","on Changes, Shift held while it is out: badges none","the next read answers, and the returning tabs are badged: Conversation C, Changes G, Checks E","the next read answers and paintHeader puts the column back: Conversation C, Changes G, Checks E","live: conversation files checks","G: showed Changes","disposed: keys none"],"textRefusal":["refused past the deadline: plain, 1 notice right after it, a status: This text took longer than 5 seconds to render, so it is shown as plain text.","rebuilt for another state, its Markdown not yet answered: plain, 1 notice right after it, a status: This text took longer than 5 seconds to render, so it is shown as plain text., new element","a newer record, the same text refused again as unavailable: plain, 1 notice right after it, a status: The renderer could not start, so this text is shown as plain text. Reload to try again., new element","a newer record whose Markdown renders: rendered rendered A, no notice, same element"],"textDiagrams":["a description and a comment with no Mermaid block: 0 blocks, 0 in a figure; asked nothing; bindings none","the same with Mermaid blocks, on a folder's page: 2 blocks, 2 in a figure; asked markdown plugin, markdown plugin, kpress-diagrams, kpress-diagram-controls, kpress-diagrams, kpress-diagram-controls, the mermaid bundle's address; bindings body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","a description and a comment each with a Mermaid block: 2 blocks, 2 in a figure; asked markdown plugin, markdown plugin, kpress-diagrams, kpress-diagram-controls, kpress-diagrams, kpress-diagram-controls, the mermaid bundle's address; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","a poll of the same record: 2 blocks, 2 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","Changes and back to Conversation: 2 blocks, 2 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's","the description edited, the comment not: 2 blocks, 2 in a figure; asked markdown plugin, kpress-diagrams, kpress-diagram-controls, the mermaid bundle's address; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's; body as image, 1 figure, Mermaid the diagram frame's","the description's block taken out: 1 block, 1 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's; body as image, 1 figure, Mermaid the diagram frame's, disposed","a block whose text is replaced before the Markdown plugin arrives: 1 block, 1 in a figure; asked markdown plugin; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's; body as image, 1 figure, Mermaid the diagram frame's, disposed","the page ends: 1 block, 1 in a figure; asked nothing; bindings body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed; issue_comment/3341937855 as image, 1 figure, Mermaid the diagram frame's, disposed; body as image, 1 figure, Mermaid the diagram frame's, disposed"],"switchUnavailable":["the diff plugin's assets not loading: The switch request failed.; asked nothing","the switch module not loading: The switch request failed.; asked nothing"],"eventLogDetails":["mounted, the comparison not yet read: the pending placeholder; githubPull:diffSummary {\"number\":7} timed from its start running","still waiting at the late threshold: the late line \"The summary of changes has not arrived after 10 s. Details\"; githubPull:diffSummary {\"number\":7} timed from its start running","Details asked for {\"client\":\"k3v9q2zx\"}, abortable true","Details opened: expanded true; the panel says \"Still running: checkout._pull_job for 61.0 s\"","Details closed: expanded false; panel in the header false","Details asked for {\"client\":\"k3v9q2zx\"}, abortable true","the page left: panel in the header false; expanded false; githubPull:diffSummary {\"number\":7} timed from its start ended never_completed","another page, late: the late line \"The summary of changes has not arrived after 10 s. Details\"; githubPull:diffSummary {\"number\":7} timed from its start running","Details asked for {\"client\":\"k3v9q2zx\"}, abortable true","its comparison read, its Details open: the summary; githubPull:diffSummary {\"number\":7} timed from its start ended ok","the late line's Details: expanded false; panel in the header false","a page whose comparison is read at once: the summary; githubPull:diffSummary {\"number\":7} timed from its start ended ok","a failed refresh, ended 2026-09-17T12:30:00Z: \"The last refresh failed: GitHub could not be reached because the connection to api.github.com timed outDetails\"","Details asked for {\"client\":\"k3v9q2zx\",\"since\":\"2026-09-17T11:30:00Z\",\"until\":\"2026-09-17T12:31:00Z\"}, abortable true","no reporter: \"The event log is not available here.\""]}
 ? 0
 ```
 
@@ -1821,179 +1830,6 @@ $ node tests/dom/github-pull-timeline-session.js
     "review/19": "maintainer reviewed 1d ago [Constructor]",
     "review/3279967139": "maintainer reviewed 1d ago [Approved]",
     "review/15": "maintainer reviewed (pending)"
-  }
-}
-? 0
-```
-
-## Conversation and Changes First Paints
-
-The conversation’s first paint of a full record is laid out out of sight until the
-Markdown of every text its first screen shows can be inserted, within
-`DESCRIPTION_HOLD_MS`, and the page is not ready meanwhile (`firstVisit`, `comments`).
-The first screen is the page’s own, measured from its top, not the view of a scrolled
-page it replaces, and a text that comes into it as those above render is waited for too,
-the next few past it asked for at once (`firstScreen`); a text it never waited for that
-fails leaves the hold met.
-Over the loading page only the body waits: the header paints the record at once, and any
-loading blocks that had shown stay over the held body until it shows (`landing`,
-`landingAfterBlocksShowed`), and a page replaced while held stays out of sight
-(`cancelledWhileHeld`). A revisit and a refreshed record with the same text paint the
-render kept for that text at once, keeping its node (`revisit`, `refreshedSameText`).
-Past the bound the page shows with a placeholder in the text’s place and its Markdown
-follows (`pastTheBound`). When the record follows a core preview, whose first paint is
-spent, the comments in view are asked for and pending before the record’s frame paints
-(`recordAfterCore`). The state badge’s first paint is the fresher of the cached record
-and the repository’s list (`listedState`). Changes with rendered Markdown stays out of
-sight until its first screen settles or `CHANGES_FIRST_SCREEN_MS` passes, and a page
-that goes while it waits keeps it out of sight and records the wait as cancelled
-(`changes`). The kept renders are bounded by count and by characters, descriptions apart
-from other parts (`bounded`). Under a held first paint over the loading page the header
-does not wait: its tab column is live and badged while Shift is held, all three keys
-act, and a link that has focus keeps it, as at release (`tabKeysWhileHeld`). A stack
-that arrives during the hold paints its menu at once, and Control-N and Control-P are
-live and in the Shift strip and walk the stack, while N alone opens nothing.
-
-```console
-$ node tests/dom/github-pull-first-paint-behavior.js
-{
-  "firstVisit": "held, then final",
-  "refreshedSameText": "kept",
-  "revisit": "final at first paint",
-  "pastTheBound": "a placeholder, then Markdown",
-  "comments": {
-    "texts": 5,
-    "asked": 5,
-    "plainAtReady": 0
-  },
-  "holdSpans": [
-    "hidden met 1",
-    "hidden bound 1"
-  ],
-  "landing": {
-    "blocksBefore": true,
-    "whileHeld": {
-      "holding": true,
-      "blocks": false,
-      "heading": "Count to two in the app #7"
-    },
-    "final": true,
-    "heading": "Count to two in the app #7"
-  },
-  "landingAfterBlocksShowed": {
-    "whileHeld": {
-      "holding": true,
-      "sameBlocks": true,
-      "cover": true,
-      "heading": "Count to two in the app #7"
-    },
-    "shown": {
-      "blocks": false,
-      "holding": false,
-      "final": true,
-      "heading": "Count to two in the app #7"
-    }
-  },
-  "cancelledWhileHeld": {
-    "holding": true
-  },
-  "firstScreen": {
-    "0": {
-      "plainOnFirstScreenAtReady": [],
-      "waitedFor": 3,
-      "outcome": "met",
-      "askedBeforeSecondAnswer": 3
-    },
-    "5000": {
-      "plainOnFirstScreenAtReady": [],
-      "waitedFor": 3,
-      "outcome": "met",
-      "askedBeforeSecondAnswer": 3
-    },
-    "failsPastTheScreen": {
-      "plainOnFirstScreenAtReady": [],
-      "waitedFor": 2,
-      "outcome": "met",
-      "askedBeforeSecondAnswer": 4
-    },
-    "cascade": {
-      "plainOnFirstScreenAtReady": [],
-      "waitedFor": 6,
-      "outcome": "met",
-      "rounds": 4
-    }
-  },
-  "recordAfterCore": {
-    "commentsInView": 4,
-    "pendingAtPaint": true
-  },
-  "ages": [
-    "186 min",
-    "185 min",
-    "4 min"
-  ],
-  "listedState": {
-    "newerList": "Merged",
-    "olderList": "Open"
-  },
-  "changes": {
-    "settled": {
-      "asked": 200,
-      "held": true,
-      "readyWhileHeld": false,
-      "shown": true,
-      "ready": true,
-      "holdingAtJump": true
-    },
-    "bound": {
-      "asked": 200,
-      "held": true,
-      "readyWhileHeld": false,
-      "shown": true,
-      "ready": true,
-      "holdingAtJump": true
-    },
-    "cancelled": {
-      "held": true,
-      "keptOutOfSight": true,
-      "outcome": "cancelled"
-    }
-  },
-  "bounded": true,
-  "tabKeysWhileHeld": {
-    "whileHeld": {
-      "holding": true,
-      "tabColumn": "live",
-      "live": [
-        "conversation",
-        "files",
-        "checks"
-      ],
-      "badges": "Conversation C, Changes G, Checks E",
-      "g": "opened the files route",
-      "stackMenus": 1,
-      "stackKeys": "pulls.stack.top, pulls.stack.base",
-      "strip": "pulls.stack.top, pulls.stack.base",
-      "control-n": "opened #8"
-    },
-    "released": {
-      "holding": false,
-      "tabColumn": "live",
-      "live": [
-        "conversation",
-        "files",
-        "checks"
-      ],
-      "badges": "Conversation C, Changes G, Checks E",
-      "focus": "none",
-      "g": "opened the files route",
-      "stackMenus": 1,
-      "stackKeys": "pulls.stack.top, pulls.stack.base",
-      "strip": "pulls.stack.top, pulls.stack.base",
-      "n": "not handled",
-      "control-n": "opened #8",
-      "control-p": "opened #6"
-    }
   }
 }
 ? 0

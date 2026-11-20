@@ -294,6 +294,22 @@
 .github-pull-size-pending > .tally-pending {
   width: min(100%, 13em);
 }
+/* The placeholder's place once its wait is late (mb-9zp5): a muted line, as tall as the
+   placeholder, ending in Details. It wraps rather than run past the header. */
+.github-pull-summary-late {
+  display: flex;
+  flex-wrap: wrap;
+  align-self: stretch;
+  align-items: center;
+  column-gap: 0.3em;
+  min-height: var(--ui-row-height);
+  color: var(--muted);
+  font-size: var(--body-font-size);
+}
+/* The Details panel, the header's last row while it is open. */
+.github-pull-header > .github-pull-details {
+  margin-block-start: 4px;
+}
 /* The cached changed-files list's brief line, drawn in the row while the comparison is read
    (mb-z8ea; pull-summary-brief.js): the Diff summary header's line, its chevron's slot empty,
    pulled left as the header's toggle is, so its words are where the header's will be and
@@ -372,8 +388,8 @@
 .github-pull-commit-id:focus-visible,
 .github-pull-checks a:focus-visible,
 .github-pull-text-action:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* A text action that moves the pin, which is a button and looks as the links beside it do:
    docs/design-system.md, "Control Families". */
@@ -400,8 +416,6 @@
   padding-block: 0;
   border: 1px solid currentcolor;
   block-size: calc(1lh + 2 * 1px);
-  font-weight: var(--weight-medium);
-  line-height: 16px;
 }
 /* A state's badge is as wide as the widest state's, so a stale record that turns out
    merged does not widen it under the reader. Its slot is a one-column grid: the badge,
@@ -427,14 +441,14 @@
 }
 .github-pull-badge[data-state="success"],
 .github-pull-badge[data-state="APPROVED"] {
-  color: var(--status-success);
+  color: var(--status-success-text);
 }
 .github-pull-badge[data-state="failure"],
 .github-pull-badge[data-state="CHANGES_REQUESTED"] {
-  color: var(--status-error);
+  color: var(--status-error-text);
 }
 .github-pull-badge[data-state="pending"] {
-  color: var(--status-warning);
+  color: var(--status-warning-text);
 }
 .github-pull-badge[data-state="neutral"],
 .github-pull-badge[data-state="skipped"],
@@ -561,7 +575,7 @@
    before it wraps; its controls never are.
    A failure is the exception: it says what to do, so the row wraps to show all of it. */
 .github-pull-failure {
-  color: var(--status-warning-strong);
+  color: var(--status-warning-text);
 }
 .github-pull-status {
   display: flex;
@@ -682,7 +696,7 @@
   text-overflow: ellipsis;
 }
 .github-pull-freshness-slot > .github-pull-freshness-held {
-  color: var(--status-warning-strong);
+  color: var(--status-warning-text);
 }
 .github-pull-freshness-sizer {
   grid-area: 1 / 1;
@@ -932,13 +946,11 @@
   min-height: 1lh;
   padding: 0 var(--github-pull-text-inset);
 }
-/* The diff view's row tints (--diff-add-row-bg and --diff-del-row-bg), written out because
-   the diff plugin's stylesheet loads only with Files changed. */
 .github-pull-hunk-line[data-kind="add"] {
-  background: color-mix(in srgb, var(--status-success) 9%, transparent);
+  background: var(--diff-add-row-bg);
 }
 .github-pull-hunk-line[data-kind="del"] {
-  background: color-mix(in srgb, var(--status-error) 9%, transparent);
+  background: var(--diff-del-row-bg);
 }
 .github-pull-hunk-line[data-kind="hunk"],
 .github-pull-hunk-line[data-kind="note"] {
@@ -1029,7 +1041,7 @@
   color: var(--link);
 }
 .github-pull-merge[data-state="conflicting"] {
-  color: var(--status-error);
+  color: var(--status-error-text);
 }
 
 /* ── A pull request's state ──────────────────────────────────────
@@ -1168,7 +1180,7 @@
    `--github-pull-file-depth` is: this sheet's `:root` declares only its own tokens
    (tests/test_pull_page_route.py). */
 :root {
-  --github-pull-row-gap: 6px;
+  --github-pull-row-gap: var(--tree-icon-gap);
   --github-pull-row-text-column: calc(var(--tree-icon-slot) + var(--github-pull-row-gap));
 }
 .github-pulls-list {
@@ -1240,8 +1252,8 @@
 }
 .github-pulls-stack-row:focus-visible,
 .github-pulls-entry:has(> .github-pulls-row:focus-visible) {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
   background: var(--hover-bg);
 }
 .github-pulls-entry > .github-pulls-row:focus-visible {
@@ -1517,8 +1529,8 @@
   position: absolute;
   z-index: 1;
   top: 0;
-  right: 12px;
-  padding: 0 6px;
+  right: var(--pane-header-padding-x);
+  padding: 0 var(--nav-toolbar-gap);
   border-radius: var(--radius-tag);
   background: var(--bg);
   line-height: var(--ui-row-height);
@@ -1550,7 +1562,7 @@
 }
 .github-pull-files-line {
   margin: 0;
-  padding: 2px 12px 2px
+  padding: 2px var(--pane-header-padding-x) 2px
     calc(
       10px +
       var(--github-pulls-indent, 0px) +
@@ -1562,7 +1574,7 @@
 .github-pull-files-line:not([hidden]) {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--tree-icon-gap);
 }
 .github-pull-files-line > .mb-delayed-loading:not([hidden]) {
   display: inline-flex;
@@ -1571,9 +1583,9 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  margin: 2px 12px 4px calc(10px + var(--github-pulls-indent, 0px) + var(--tree-indent));
-  padding: 4px 8px;
+  gap: var(--nav-toolbar-gap);
+  margin: 2px var(--pane-header-padding-x) 4px
+    calc(10px + var(--github-pulls-indent, 0px) + var(--tree-indent));
 }
 .github-pulls-foot {
   display: flex;
@@ -1603,8 +1615,8 @@
   text-decoration: underline;
 }
 .github-pulls-foot a:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Optional membership has its slot at the right end of the author's row (mb-cf0l), its
@@ -1636,7 +1648,7 @@
 .github-pull-stack-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--tree-icon-gap);
   list-style: none;
   font-variant-numeric: var(--tabular-numerals);
 }
@@ -1663,10 +1675,6 @@
   color: var(--text);
   white-space: normal;
   text-decoration: none;
-}
-.github-pull-stack-current {
-  flex: none;
-  width: var(--icon-glyph);
 }
 .github-pull-stack-member-copy {
   display: block;

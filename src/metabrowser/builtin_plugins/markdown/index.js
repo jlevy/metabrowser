@@ -15,8 +15,15 @@ const mountRendered = (container, ctx, options = {}) =>
 const renderSource = (container, ctx) => renderMarkdownSource(container, ctx, mb);
 // Another plugin's KPress render draws its Mermaid diagrams through this plugin's host, as
 // a pull request's description and comments do: an image for each unless the caller says
-// the render is trusted (`inert: false`). Null when the root holds no diagram.
-const drawRenderDiagrams = (root, options = {}) => drawDiagrams(root, mb, options.inert !== false);
+// the render is trusted (`inert: false`), laid out in a frame whose policy loads nothing
+// when the caller says nothing else bounds it (`isolated: true`). Null when the root holds
+// no diagram.
+const drawRenderDiagrams = (root, options = {}) =>
+  drawDiagrams(
+    root,
+    mb,
+    options.isolated === true ? "isolated" : options.inert === false ? "document" : "image",
+  );
 
 mb.builtins.markdown = { mountRendered, renderSource, drawDiagrams: drawRenderDiagrams };
 // The file's Document view prints the document, so its card carries the print button.

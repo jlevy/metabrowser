@@ -671,6 +671,7 @@ status: 200
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "c691256511d05858850bc7684ae062fea0d41132",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",

@@ -113,6 +113,7 @@ status: 200
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "8653ceb4d5ca69e2e7e3b39d04645b3820233854",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",

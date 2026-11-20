@@ -20,9 +20,11 @@ without a server, and a page can link to the records behind a failure. It answer
 Filters: ``file`` (a listed segment; the default is the one this process writes, else
 the newest), ``kind``, ``outcome``, and ``event`` (comma-separated lists of the values
 the schema names), ``name`` (a substring), ``cause`` (one of
-:data:`metabrowser.network_cause.CAUSES`), ``client`` (the browser's request ID),
-``span`` (that span's records and those of the spans it started), and ``min_ms`` (a
-duration at least this long). ``sort`` is ``time`` (newest first) or ``duration``
+:data:`metabrowser.network_cause.CAUSES`), ``client`` (a request's client ID, which the
+work it started carries too, or a page's ID, which finds every request the page sent
+and every report it made, since each request's ID is the page's and ``-<n>``), ``span``
+(that span's records and those of the spans it started), and ``min_ms`` (a duration at
+least this long). ``sort`` is ``time`` (newest first) or ``duration``
 (longest first); ``limit`` is at most :data:`MAX_LIMIT`.
 
 ``GET /api/event-log/failures`` counts the failures since ``since`` (an hour ago by
@@ -32,7 +34,10 @@ message, and links to the records. ``probe`` is the latest connectivity probe th
 failed (:func:`metabrowser.network_cause.probe`). ``kind`` limits the count to those
 kinds; by default one failure is counted once for each span that records it: a ``gh``
 call that gave up, the probe that explained it, and the job it failed are three, so
-``kind=subprocess`` counts calls.
+``kind=subprocess`` counts calls. A page's reports (``browser`` records, from
+:mod:`metabrowser.event_log_reports`) are not counted among the causes: they are what
+the page saw of a failure the server's records name, so they are listed apart, under
+``page_reports``.
 """
 
 from __future__ import annotations
@@ -44,12 +49,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final
+from urllib.parse import urlencode
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from metabrowser import event_log, network_cause
+from metabrowser.event_log_reports import api_event_log_client
 
 DEFAULT_LIMIT: Final = 100
 # The most records one answer carries: about 270 KB at the measured 268 bytes a record.
@@ -109,8 +116,12 @@ class Query:
             attrs = record.get("attrs")
             if not isinstance(attrs, dict) or attrs.get("cause") != self.cause:
                 return False
-        if self.client is not None and record.get("client") != self.client:
-            return False
+        if self.client is not None:
+            client = record.get("client")
+            if not isinstance(client, str) or (
+                client != self.client and not client.startswith(f"{self.client}-")
+            ):
+                return False
         if self.span is not None and self.span not in (record.get("span"), record.get("parent")):
             return False
         if self.min_ms is not None:
@@ -274,6 +285,7 @@ def read_log(query: Query, *, state: Path, directory: Path) -> tuple[int, dict[s
             "kind": s.kind,
             "name": s.name,
             "age_ms": s.age_ms,
+            "client": s.client,
             "attrs": s.attrs,
         }
         for s in event_log.open_spans()
@@ -331,6 +343,23 @@ def _record_time(record: dict[str, Any]) -> datetime | None:
         return None
 
 
+def _record_link(file: str, record: dict[str, Any]) -> str:
+    """Where ``/api/event-log`` lists *record*: by its span, or, for a record that has
+    none, as a page's report has not, by its segment, kind, client, and name."""
+
+    span = record.get("span")
+    if isinstance(span, int):
+        return f"/api/event-log?file={file}&span={span}"
+    params = {"file": file, "kind": str(record.get("kind", ""))}
+    client = record.get("client")
+    if isinstance(client, str) and client:
+        params["client"] = client
+    name = str(record.get("name", ""))
+    if name:
+        params["name"] = name[:_MAX_NAME_FILTER]
+    return f"/api/event-log?{urlencode(params)}"
+
+
 def _failure_text(attrs: dict[str, Any]) -> str | None:
     """What the record says went wrong, most specific first."""
 
@@ -357,6 +386,10 @@ def summarize_failures(
     from metabrowser import home
 
     groups: dict[str, dict[str, Any]] = {}
+    # What the pages saw: listed apart from the causes (the module's docstring says why).
+    page_outcomes: dict[str, int] = {}
+    page_names: dict[str, int] = {}
+    page_examples: list[dict[str, Any]] = []
     # For each group, the rank and time of the record its message came from.
     said_at: dict[str, tuple[int, str]] = {}
     read: list[str] = []
@@ -399,6 +432,30 @@ def summarize_failures(
                     **attrs,
                 }
             if kinds and kind not in kinds:
+                continue
+            if kind == "browser":
+                # A page's never_completed wait for a refresh and the gh call that timed out
+                # under it are one failure, seen from two sides, and a slow 5xx the page
+                # reports is a request the server recorded as failed: counting the page's
+                # side would count it twice and could rank it above the cause.
+                outcome = str(record.get("outcome"))
+                name = str(record.get("name", ""))
+                page_outcomes[outcome] = page_outcomes.get(outcome, 0) + 1
+                page_names[name] = page_names.get(name, 0) + 1
+                seen: dict[str, Any] = {
+                    "ts": str(record.get("ts")),
+                    "file": f.name,
+                    "client": record.get("client"),
+                    "name": name,
+                    "outcome": outcome,
+                    "dur_ms": record.get("dur_ms"),
+                    "status": attrs.get("status"),
+                    "path": attrs.get("path"),
+                    "details": _record_link(f.name, record),
+                }
+                page_examples = sorted([*page_examples, seen], key=lambda e: str(e["ts"]))[
+                    -_EXAMPLES:
+                ]
                 continue
             total += 1
             cause, source = (
@@ -463,7 +520,7 @@ def summarize_failures(
                 "outcome": record.get("outcome"),
                 "dur_ms": record.get("dur_ms"),
                 "address": attrs.get("address"),
-                "details": f"/api/event-log?file={f.name}&span={record.get('span')}",
+                "details": _record_link(f.name, record),
             }
             group["examples"] = sorted([*group["examples"], example], key=lambda e: str(e["ts"]))[
                 -_EXAMPLES:
@@ -471,6 +528,7 @@ def summarize_failures(
     causes = sorted(groups.values(), key=lambda g: (g["count"], g["last"]), reverse=True)
     for group in causes:
         group["examples"].reverse()
+    page_examples.reverse()
     return {
         "schema_version": event_log.SCHEMA_VERSION,
         "directory": str(directory),
@@ -483,6 +541,12 @@ def summarize_failures(
         "failures": total,
         "causes": causes,
         "probe": probe,
+        "page_reports": {
+            "count": sum(page_outcomes.values()),
+            "outcomes": page_outcomes,
+            "names": page_names,
+            "examples": page_examples,
+        },
     }
 
 
@@ -514,6 +578,10 @@ async def api_event_log_failures(request: Request) -> JSONResponse:
 EVENT_LOG_ROUTES = [
     Route("/api/event-log", api_event_log),
     Route("/api/event-log/failures", api_event_log_failures),
+    # What a page saw: its slow and pending requests, freezes, and late waits. Spelled out,
+    # as devtools/check_parity.py reads registrations; it is event_log_reports.REPORT_ROUTE,
+    # which tests/test_event_log_reports.py posts to through the application.
+    Route("/api/event-log/client", api_event_log_client, methods=["POST"]),
 ]
 
 

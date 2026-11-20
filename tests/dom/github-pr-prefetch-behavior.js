@@ -339,6 +339,7 @@ async function run() {
       isVisible: () => visible,
       isOnline: () => online,
       formatTime: (s) => s,
+      formatCount: (count) => count.toLocaleString("en-US"),
       render() {},
       markCurrent() {},
       markAnchor() {},

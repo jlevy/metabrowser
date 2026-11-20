@@ -279,6 +279,7 @@ const MEASURE = `async (name, change, tab, width) => {
         };
       })(),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      formatInteger: (value) => Number(value).toLocaleString("en-US"),
       navigation: { href: () => "/view/" },
       sourceKind: () => "filesystem",
       repository: change.checkoutAtHead ? { revision: body.record?.pull?.head?.sha } : undefined,
@@ -911,6 +912,7 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
       formatInteger: mb.formatInteger,
       formatAge: () => ({ label: "now", className: "age" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      formatInteger: (value) => Number(value).toLocaleString("en-US"),
       navigation: { href: () => "/view/" },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
@@ -1087,6 +1089,7 @@ const COLD_LANDING = `async (width, labelled, outcome, seeded) => {
     countPartsNodes: mb.countPartsNodes,
     formatAge: () => ({ label: "now", className: "age" }),
     formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+    formatInteger: (value) => Number(value).toLocaleString("en-US"),
     navigation: { href: () => "/view/" },
     sourceKind: () => "filesystem",
     icons: { toggle: "" },
@@ -1291,6 +1294,7 @@ const CORNER = `async (width, theme, longTitle, maxChars) => {
       countPartsNodes: mb.countPartsNodes,
       formatAge: () => ({ label: "now", className: "age" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      formatInteger: (value) => Number(value).toLocaleString("en-US"),
       navigation: { href: () => "/view/" },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
@@ -2024,7 +2028,7 @@ async function main() {
               check(
                 `${where}: a rate limit's hold is said in the note's place, in the failure's ink, in view at every width`,
                 lead !== null &&
-                  /^GitHub rate limit · next check at /.test(lead.said) &&
+                  /^GitHub rate limit reached\. Next attempt after /.test(lead.said) &&
                   !/:\d\d:\d\d/.test(lead.said) &&
                   lead.held &&
                   lead.inView &&

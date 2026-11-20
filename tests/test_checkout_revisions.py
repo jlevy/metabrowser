@@ -675,6 +675,19 @@ def test_a_working_tree_page_is_refused_while_a_revision_is_served(served: TestC
     # nothing, as `metab --api` and curl do, is never refused.
     assert served.get("/api/source/status", headers=on_tree).status_code == 200
     assert served.get("/api/tree").status_code == 200
+    # So are the event log's, which are about the server whichever revision it shows: a
+    # page left behind still reports what it saw, and its Details read the log (A4, review
+    # A of #629). Without a log they answer that, never that the pin changed.
+    report = {"page": "k3v9q2zx", "reports": [], "dropped": 0}
+    for answer in (
+        served.get("/api/event-log", headers=on_tree),
+        served.get("/api/event-log/failures", headers=on_tree),
+        served.post("/api/event-log/client", json=report, headers={**_JSON, **on_tree}),
+    ):
+        assert PIN_CHANGED_HEADER not in answer.headers, answer.text
+        assert answer.status_code in {200, 409}, answer.text
+        assert answer.json().get("code") != "pin_changed", answer.text
+    assert served.get("/api/event-logs", headers=on_tree).status_code == 409
     revision_shell = served.get("/view/").text
     assert 'window.METABROWSER_SOURCE_CHECKOUT={"working_tree": false}' in revision_shell
     assert "MetabrowserSourcePinGuard" in revision_shell
@@ -838,6 +851,14 @@ def test_showing_revisions_leaves_the_checkout_byte_for_byte(checkout: Path) -> 
 def test_the_snapshot_sees_an_index_rewritten_with_the_same_entries(checkout: Path) -> None:
     """The comparison above would catch a careless ``git status``, not only a checkout."""
 
+    # ``git status`` rewrites the index only when it has stat data to refresh, so a bare
+    # run sometimes leaves it alone (a run on main did, mb-c8hi). Give it some: a tracked
+    # file's modification time moves with its bytes unchanged, which Git finds out of date
+    # with the index and refreshes, deterministically. The file is touched before the
+    # snapshot, so what differs after is only what ``git status`` wrote.
+    tracked = checkout / "STAGED.md"
+    later = tracked.stat().st_mtime_ns + 5_000_000_000
+    os.utime(tracked, ns=(later, later))
     before = snapshot(checkout)
     subprocess.run(
         ["git", "-C", str(checkout), "status", "--porcelain"],

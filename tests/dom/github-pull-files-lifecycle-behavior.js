@@ -67,6 +67,7 @@ async function treeLoadFailsOnce(create) {
       now: () => 1000,
       isVisible: () => true,
       formatTime: (stamp) => stamp,
+      formatCount: (count) => count.toLocaleString("en-US"),
       render: (next) => {
         model = next;
       },
@@ -129,6 +130,7 @@ function rig(create) {
       now: () => 1000,
       isVisible: () => visible,
       formatTime: (stamp) => stamp,
+      formatCount: (count) => count.toLocaleString("en-US"),
       render: (next) => {
         model = next;
       },

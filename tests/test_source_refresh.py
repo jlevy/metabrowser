@@ -220,9 +220,15 @@ def test_a_folder_reports_no_freshness_and_refuses_both_routes(tmp_path: Path) -
 # ── Refresh ──────────────────────────────────────────────────────────
 
 
-def test_a_refresh_shows_the_newer_revision_and_switching_serves_it(
+def test_a_refresh_that_moves_the_served_branch_is_followed(
     served: TestClient, origin: _Origin
 ) -> None:
+    """A mirror is browsed as github.com is: a branch is served at its newest commit.
+
+    The refresh moves the branch in the mirror, and the server serves the new tip itself
+    under a new generation, with no switch asked for. A commit opened by its ID stays.
+    """
+
     newer = _push_commit(origin, "NEW.md", "# New\n", "third")
     before = served.get("/api/source/status").json()
 
@@ -235,22 +241,19 @@ def test_a_refresh_shows_the_newer_revision_and_switching_serves_it(
     assert status["last_outcome"]["operation"] == "refresh"
     assert status["last_outcome"]["outcome"] == "succeeded"
     assert status["last_fetch_at"] >= before["last_fetch_at"]
-    # The page keeps its pin; the ref moved in the mirror, which is the offer.
-    assert status["pin"] == origin.second
+    # The server followed the branch: its new tip is served, under the same ref.
+    assert (before["follows"], status["follows"]) == (True, True)
+    assert status["pin"] == newer
     assert status["latest"] == newer
-    assert status["generation"] == before["generation"]
-    readme = served.get("/api/file", params={"path": _wire("README.md")})
-    assert readme.status_code == 200
-    assert served.get("/api/file", params={"path": _wire("NEW.md")}).status_code == 404
+    assert status["ref"] == "refs/remotes/origin/topic"
+    assert status["generation"] == before["generation"] + 1
 
-    switched = _post(served, "/api/source/pin", {"ref": status["ref"]})
-    assert switched.status_code == 200
-    payload = switched.json()
-    assert payload["changed"] is True
-    assert payload["status"]["pin"] == newer
-    assert payload["status"]["latest"] == newer
-    assert payload["status"]["ref"] == "refs/remotes/origin/topic"
-    assert payload["status"]["generation"] == before["generation"] + 1
+    # A page still drawn for the commit before asks for its ref, which changes nothing.
+    followed = _post(served, "/api/source/pin", {"ref": status["ref"], "view": "/view/"})
+    assert followed.status_code == 200
+    payload = followed.json()
+    assert (payload["changed"], payload["view_href"]) == (False, "/view/")
+    assert payload["status"]["generation"] == status["generation"]
     new_file = served.get("/api/file", params={"path": _wire("NEW.md")})
     assert new_file.status_code == 200
     assert new_file.json()["content"] == "# New\n"
@@ -261,6 +264,7 @@ def test_a_refresh_shows_the_newer_revision_and_switching_serves_it(
     assert back.json()["status"]["pin"] == origin.second
     assert back.json()["status"]["ref"] is None
     assert back.json()["status"]["latest"] is None
+    assert back.json()["status"]["follows"] is False
     again = _post(served, "/api/source/pin", {"oid": origin.second})
     assert again.json()["changed"] is False
     assert again.json()["status"]["generation"] == back.json()["status"]["generation"]
@@ -356,8 +360,9 @@ def test_a_stale_mirror_is_refreshed_once_when_the_server_starts(
     assert status["last_outcome"]["operation"] == "refresh"
     assert status["last_outcome"]["outcome"] == "succeeded"
     assert status["stale"] is False
-    # The server opened the pin it announced; the refresh only moved the mirror.
-    assert status["pin"] == origin.second
+    # The server opened the pin it announced, and then followed the branch the refresh
+    # moved.
+    assert status["pin"] == newer
     assert status["latest"] == newer
 
 
@@ -471,10 +476,12 @@ def test_a_commit_id_at_the_tip_of_the_ref_last_served_keeps_the_ref(
     # A commit that is not the tip of the ref last served has no ref, as before.
     again = _post(served, "/api/source/pin", {"oid": origin.first}).json()["status"]
     assert again["ref"] is None
-    # After the branch moves in the mirror, its old tip is only a commit.
+    # After the branch moves in the mirror, its old tip is only a commit. The commit
+    # served by its ID does not move with the branch.
     newer = _push_commit(origin, "later.txt", "later\n", "third")
     assert _post(served, "/api/source/refresh").status_code == 202
-    _settle(served)
+    stayed = _settle(served)
+    assert (stayed["pin"], stayed["ref"], stayed["follows"]) == (origin.first, None, False)
     old_tip = _post(served, "/api/source/pin", {"oid": origin.second}).json()["status"]
     assert (old_tip["pin"], old_tip["ref"]) == (origin.second, None)
     tip = _post(served, "/api/source/pin", {"oid": newer}).json()["status"]
@@ -951,6 +958,8 @@ def test_a_server_follows_a_refresh_another_process_is_running(
         )
     followed = _settle(served)
     assert followed["latest"] == newer
+    # Once the other process's fetch ended, the served branch followed it too.
+    assert followed["pin"] == newer
     assert followed["refreshing"] is False
     # The other refresh has ended and wrote no record, so the busy result is gone and
     # the record reports what was there before.

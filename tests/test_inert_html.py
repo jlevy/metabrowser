@@ -58,6 +58,7 @@ if (input.lists) {
   process.stdout.write(JSON.stringify({
     tags: inert.ALLOWED_TAGS, dropped: inert.DROPPED_WITH_CONTENT,
     attributes: inert.ALLOWED_ATTRIBUTES, prefix: inert.ANCHOR_PREFIX,
+    align: inert.ALIGN_VALUES, dimensions: inert.DIMENSIONS,
   }));
   process.exit(0);
 }
@@ -147,6 +148,12 @@ def test_the_browser_and_the_server_share_one_allowlist() -> None:
         inert_html.ALLOWED_ATTRIBUTES
     )
     assert lists["prefix"] == inert_html.ANCHOR_PREFIX
+    assert {tag: tuple(values) for tag, values in lists["align"].items()} == (
+        inert_html.ALIGN_VALUES
+    )
+    assert {tag: tuple(names) for tag, names in lists["dimensions"].items()} == (
+        inert_html.DIMENSIONS
+    )
 
 
 # A commit message's base keeps only absolute http(s) addresses (git/message.py).
@@ -281,10 +288,11 @@ def test_harden_is_idempotent() -> None:
         '<img src="docs/a.png" alt="a" loading="LAZY">',
         '<img src="docs/a.png" alt="a" loading>',
         '<img src="docs/a.png" alt="a" loading="lazy&quot; onload=&quot;alert(1)">',
-        # Everything else an image can carry, none of which may come along with it.
+        # Everything else an image can carry, and sizes that are not numbers, none of which
+        # may come along with it.
         '<img src="docs/a.png" alt="a" loading="eager" srcset="https://example.com/x.png 2x"'
         ' sizes="1px" fetchpriority="high" decoding="sync" crossorigin="use-credentials"'
-        ' referrerpolicy="unsafe-url" ismap usemap="#m" width="1" height="1" longdesc="x"'
+        ' referrerpolicy="unsafe-url" ismap usemap="#m" width="1;x" height="auto" longdesc="x"'
         ' lowsrc="https://example.com/y.png" attributionsrc="https://example.com/z"'
         ' style="position:fixed" class="c" id="i" name="n" data-x="1" onerror="alert(1)"'
         ' onload="alert(2)">',
@@ -344,6 +352,126 @@ def test_an_image_that_is_not_kept_gains_nothing_from_loading(
 ) -> None:
     assert harden(written, base) == expected
     assert _node({"tree": html_tree(written), "base": base}) == expected
+
+
+# The opening of Metabrowser's own README, which github.com draws as a 192-pixel logo
+# centered over a centered title, and the other layouts a README writes with the
+# attributes github.com keeps (html-pipeline's SanitizationFilter): an aligned block, a
+# floated image, an image sized by its height alone, and an aligned, sized table.
+GITHUB_LAYOUT = (
+    '<p align="center"><img src="images/metabrowser-icon.png" alt="Metabrowser app icon"'
+    ' width="192"></p>\n\n<h1 align="center">Metabrowser</h1>\n\n'
+    '<div align="right">Right</div>\n\n'
+    '<img src="docs/logo.png" alt="logo" align="right" width="25%">'
+    '<img src="docs/badge.svg" alt="badge" height="20px">\n\n'
+    '<table align="center" width="80%"><tr align="right"><td align="center" width="50%"'
+    ' height="40">A</td><td>B</td></tr></table>\n'
+)
+
+
+def test_github_layout_attributes_survive_the_allowlist() -> None:
+    """An untrusted README keeps the layout github.com draws it with, on both sides.
+
+    The allowlist dropped every ``align`` but a cell's and every ``width`` and ``height``,
+    so Metabrowser's README drew its logo at the file's 512 pixels, against the left edge.
+    """
+
+    rendered = _kpress(GITHUB_LAYOUT)
+    server = harden(rendered)
+    assert (
+        '<p align="center"><img loading="lazy" src="images/metabrowser-icon.png"'
+        ' alt="Metabrowser app icon" width="192"></p>'
+    ) in server
+    assert '<h1 id="user-content-metabrowser" align="center">Metabrowser</h1>' in server
+    assert '<div align="right">Right</div>' in server
+    assert (
+        '<img loading="lazy" src="docs/logo.png" alt="logo" align="right" width="25%">'
+        '<img loading="lazy" src="docs/badge.svg" alt="badge" height="20px">'
+    ) in server
+    assert (
+        '<table align="center" width="80%"><tbody><tr align="right">'
+        '<td align="center" width="50%" height="40">A</td><td>B</td></tr></tbody></table>'
+    ) in server
+    assert allowlist_violations(server, images=True) == []
+    assert _tokens(_node({"tree": html_tree(rendered), "base": None})) == _tokens(server)
+    # The page hardens the server's answer again, and it comes out the same.
+    assert harden(server) == server
+    assert _tokens(_node({"tree": html_tree(server), "base": None})) == _tokens(server)
+    # A pull request's text keeps its blocks' layout; its images are links, as ever.
+    comment = harden(rendered, PR_PAGE)
+    assert (
+        '<p align="center"><a href="https://github.com/octo/demo/pull/images/metabrowser-icon.png"'
+    ) in comment
+    assert '<h1 align="center">Metabrowser</h1>' in comment
+    assert allowlist_violations(comment) == []
+    assert _tokens(_node({"tree": html_tree(rendered), "base": PR_PAGE})) == _tokens(comment)
+
+
+@pytest.mark.parametrize(
+    ("written", "expected"),
+    [
+        # A keyword in any case is kept, lowercased, as a browser matches it.
+        ('<p align="CENTER">x</p>', '<p align="center">x</p>'),
+        (
+            '<img src="docs/a.png" align="Center">',
+            '<img loading="lazy" src="docs/a.png" align="center">',
+        ),
+        # Anything else in it, or around it, is not a keyword a browser reads.
+        ('<p align="center;color:red">x</p>', "<p>x</p>"),
+        ('<p align=" center">x</p>', "<p>x</p>"),
+        ('<h2 align="middle">x</h2>', '<h2 id="user-content-x">x</h2>'),
+        ('<img src="docs/a.png" align="justify">', '<img loading="lazy" src="docs/a.png">'),
+        (
+            '<table align="justify"><tr><td align="char">x</td></tr></table>',
+            "<table><tr><td>x</td></tr></table>",
+        ),
+        # An element GitHub's attribute lays out nothing on keeps none.
+        ('<span align="center" width="9">x</span>', "<span>x</span>"),
+        ('<ul><li align="center">x</li></ul>', "<ul><li>x</li></ul>"),
+        ('<a href="docs/a.md" align="right">x</a>', '<a href="docs/a.md">x</a>'),
+        ('<p width="50%" height="9">x</p>', "<p>x</p>"),
+        # A size is a number of pixels or a percentage, and nothing else.
+        (
+            '<img src="docs/a.png" width="expression(alert(1))" height="1e9">',
+            '<img loading="lazy" src="docs/a.png">',
+        ),
+        (
+            '<img src="docs/a.png" width="100vh" height="-5">',
+            '<img loading="lazy" src="docs/a.png">',
+        ),
+        (
+            '<img src="docs/a.png" width="123456" height="1.2345">',
+            '<img loading="lazy" src="docs/a.png">',
+        ),
+        ('<img src="docs/a.png" width=" 9" height="9\n">', '<img loading="lazy" src="docs/a.png">'),
+        (
+            '<img src="docs/a.png" width="12.5%" height="80PX">',
+            '<img loading="lazy" src="docs/a.png" width="12.5%" height="80PX">',
+        ),
+        (
+            '<table width="100;position:fixed"><tr><td height="1 0">x</td></tr></table>',
+            "<table><tr><td>x</td></tr></table>",
+        ),
+        # Nothing else comes with a kept one.
+        (
+            '<p align="center" style="position:fixed" onclick="alert(1)" class="c" id="i">x</p>',
+            '<p align="center">x</p>',
+        ),
+    ],
+)
+def test_a_layout_attribute_is_a_keyword_or_a_number(written: str, expected: str) -> None:
+    assert harden(written) == expected
+    assert _node({"tree": html_tree(written), "base": None}) == expected
+    assert allowlist_violations(expected, images=True) == []
+
+
+def test_the_allowlist_check_refuses_a_layout_value_the_hardener_drops() -> None:
+    assert allowlist_violations('<p align="center;x">x</p><td width="9vh">y</td>') == [
+        "p[align=center;x]",
+        "td[width=9vh]",
+    ]
+    assert allowlist_violations('<p align="CENTER">x</p>') == ["p[align=CENTER]"]
+    assert allowlist_violations('<p align="center">x</p><td width="9%">y</td>') == []
 
 
 FIXTURE_README = REPO_ROOT / "tests" / "fixtures" / "untrusted-markdown" / "README.md"

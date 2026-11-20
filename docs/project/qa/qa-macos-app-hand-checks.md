@@ -448,13 +448,15 @@ yet been run on a Mac.
 ```shell
 APP="$PWD/apps/macos/build/dev/Metabrowser.app"
 mkdir -p /tmp/mb-check/{a,b,c,d}
+LONG=/tmp/mb-check/projects/2026/clients/northwind/archive/quarterly-reports
+mkdir -p "$LONG"
 ```
 
 Set Settings > Open folders in to Windows and close every window.
-Open `c` and close its window, then `d` and close its window, so both are recent and
-neither is open. Then open `a`, then `b`, each with `open -a "$APP" /tmp/mb-check/NAME`,
-so each has a window of its own.
-Each step starts where the one before it ends.
+Open `$LONG` and close its window, then `c` and close its window, then `d` and close its
+window, so all three are recent and none is open.
+Then open `a`, then `b`, each with `open -a "$APP" /tmp/mb-check/NAME`, so each has a
+window of its own. Each step starts where the one before it ends.
 
 1. **The title.** Each title reads its folder with a small chevron after it, dim at rest
    and darker under the pointer, where a rounded fill appears behind the title and
@@ -474,7 +476,15 @@ Each step starts where the one before it ends.
    Folders, disabled. Each folder shows the page’s folder glyph, and a GitHub repository
    among the recent ones the cloud mark; File > Open Recent and the Dock icon’s menu
    show the same marks on their rows.
-   Holding Option turns each row into “Open … in New Window”.
+   Each row’s mark sits on the line of its name, centered on that line as on Open
+   Recent’s one-line rows, never between the name and the subtitle, and the subtitle
+   starts under the name, not under the mark: in light and dark mode, on the highlighted
+   row as white as its text, and on the checked row, whose check mark stays centered on
+   the row. `quarterly-reports`, after `c`, shows its path on one line, cut in the middle
+   with an ellipsis, its mark still on the name’s line, and resting the pointer on the
+   row shows the whole path in a tooltip.
+   Holding Option turns each row into “Open … in New Window”, its mark still on the
+   name’s line and its subtitle the same.
    Escape closes it.
 4. **A folder another window shows.** Choosing `b` in `a`’s chooser brings `b`’s window
    forward and changes nothing in `a`’s.
@@ -513,8 +523,9 @@ Each step starts where the one before it ends.
     with an empty field that has the focus.
     It lists `a` first and selected, then `b` subtitled “In another window”, then the
     recent folders, and last `c`, checked.
-    Each row shows the page’s folder glyph, the selected row is drawn in the accent
-    color, and the check mark sits at the row’s trailing edge.
+    Each row shows the page’s folder glyph on the line of its name, as the chooser does,
+    the selected row is drawn in the accent color, and the check mark sits at the row’s
+    trailing edge, centered on the row.
     Return shows `a` in the window at once, as in step 6; Shift-Command-O, then Return,
     shows `c` again.
 12. **The panel’s keys.** In `c`’s window press Shift-Command-O, then:

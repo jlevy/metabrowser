@@ -295,8 +295,10 @@ network (`mirror_refresh.py`). A mirror is stale once its last fetch is older th
   A job takes its network slot only once its turn has come.
 - **When a refresh starts:** serve mode refreshes a stale mirror once at startup, and a
   page asks for one when it opens or becomes visible on a stale mirror.
-  When another process holds the fetch lock, a served mirror follows that refresh
-  (`ELSEWHERE_POLL_S`, up to `ELSEWHERE_WAIT_S`) and observes the store when it ends.
+  A refresh that moves the served branch moves the pin with it
+  ([Following a Branch](#following-a-branch)). When another process holds the fetch
+  lock, a served mirror follows that refresh (`ELSEWHERE_POLL_S`, up to
+  `ELSEWHERE_WAIT_S`) and observes the store when it ends.
 - **A commit the mirror lacks:** a page that opens a commit’s address asks for the fetch
   it waits on, which runs only when the mirror is stale, since a link in served content
   can lead to any address; a reader’s **Retry** always fetches.
@@ -315,6 +317,38 @@ A valid pin opens without network access, and a failed refresh leaves the served
 revision as it was. A cached source whose pinned tree has gone from the store reports a
 path-free error when the pin is opened, with no traceback and no automatic clone;
 startup starts no repair fetch.
+
+### Following a Branch
+
+A mirror is browsed as github.com is: as of the data last fetched.
+A reader who opened a branch or a tag reads that ref, not one commit of it, so the
+served pin follows the ref when a fetch moves it, by a push or a force-push.
+The owner set this on 2026-11-19, replacing the earlier rule that a refresh never moved
+the served commit and offered the new one behind a **Switch** button (bead `mb-pq8y`).
+
+- **Which pins follow:** one served under the origin’s branch or a tag (`follows_moves`
+  in `mirror_refresh.py`), which status reports as `follows`. A commit opened by its ID
+  is served under no ref, or under one only while it is that ref’s tip, as View file’s
+  way back is, and then follows it as the selector names it.
+  A pull request’s head does not follow yet, which waits on bead `mb-qp3s`, so its new
+  head is still offered.
+- **The server follows:** `MirrorSession.observe`, which runs after every refresh job
+  and after following another process’s, opens the ref’s new tip under the pin lock and
+  serves it under a new generation.
+  So the server never serves a branch behind where the mirror has it, a page or none
+  open, and Files and the Commits tab, which walks the default branch, agree.
+  A ref the origin deleted is not followed; its last commit stays served, and the row
+  says the ref is gone.
+- **The page follows:** `static/source-freshness.js` sees on its next poll that the ref
+  it was drawn for is served at another commit.
+  It asks the pin route for that ref with its own `/view/` address, which changes
+  nothing once the server has followed and serves the tip when it could not yet, and the
+  answer’s `view_href` says where the page lands: the same file or folder when the new
+  commit has it, where the page reloads in place and keeps its line and scroll, or the
+  root. A refused follow says why and offers a reload, and is not asked again until the
+  reader’s refresh.
+- **A switch made in another tab** to another ref still only offers a reload: the reader
+  did not ask for that ref.
 
 ## Source Routes
 

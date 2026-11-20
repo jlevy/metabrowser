@@ -20,7 +20,9 @@ session. It answers what ``GET /api/source/status`` reports about freshness from
 memory -- the tip of the pinned ref as last observed, the last fetch time and outcome,
 whether a refresh is running -- so the status route runs no Git and reads no store. The
 observations are taken again when a job finishes and when the pin changes, one at a
-time, so a pin switch during a refresh cannot leave the other ref's tip behind. When a
+time, so a pin switch during a refresh cannot leave the other ref's tip behind. A pin on
+a branch or tag follows its ref: when an observation finds that a fetch moved it, the
+server serves the new tip, and a commit opened by its ID stays. When a
 refresh finds another process refreshing the store, a served mirror follows that one
 and observes the store again once it ends. Switching the pin resolves a selection in
 the mirror, opens the new subject, and replaces the served one under a new generation.
@@ -416,11 +418,13 @@ class FreshnessFields(TypedDict):
     """The freshness half of ``/api/source/status``.
 
     ``refreshable`` says whether the refresh and pin routes act on this server's
-    subject. ``latest`` is the commit the pinned ref names in the mirror as last
-    observed: equal to the pin when nothing moved, different when a refresh moved the
-    ref, and ``None`` otherwise. ``ref_on_origin`` tells those apart: ``False`` when the
-    origin no longer had the ref at the last fetch, ``None`` when there is no ref or it
-    has not been observed. ``pull_request`` is the attended pull request: the one the
+    subject. ``follows`` says whether the pin moves with its ref (:func:`follows_moves`):
+    true for a branch or tag, whose new tip the server serves itself once a fetch moves
+    it. ``latest`` is the commit the pinned ref names in the mirror as last observed:
+    equal to the pin when nothing moved, different when a refresh moved a ref the pin
+    does not follow, or one it could not follow yet, and ``None`` otherwise.
+    ``ref_on_origin`` tells those apart: ``False`` when the origin no longer had the ref
+    at the last fetch, ``None`` when there is no ref or it has not been observed. ``pull_request`` is the attended pull request: the one the
     URL named, or whose head a pin switch last served. ``selection_state`` follows a URL
     selection the mirror did not have when serving began: ``pending`` until a fetch for it ends,
     then ``found`` (and served) or ``not_found``, or ``fetch_failed`` when that fetch
@@ -431,6 +435,7 @@ class FreshnessFields(TypedDict):
     """
 
     refreshable: bool
+    follows: bool
     latest: str | None
     ref_on_origin: bool | None
     last_fetch_at: str | None
@@ -444,6 +449,7 @@ class FreshnessFields(TypedDict):
 
 UNSERVED_FRESHNESS: Final[FreshnessFields] = {
     "refreshable": False,
+    "follows": False,
     "latest": None,
     "ref_on_origin": None,
     "last_fetch_at": None,
@@ -472,6 +478,22 @@ def pull_head_number(ref: str | None) -> int | None:
 
     head = _PULL_HEAD.fullmatch(ref or "")
     return int(head.group(1)) if head is not None else None
+
+
+# The refs a served pin follows when a fetch moves them: the origin's branches and its
+# tags, where a mirror keeps them (``MIRROR_REFS`` in ``cache/resolve.py``, which this
+# module does not import). A reader who opened a branch reads that branch, so the server
+# serves its new tip itself (:meth:`MirrorSession.observe`) and the page goes with it.
+# A commit opened by its ID is served under no ref, or under one only while it is that
+# ref's tip, and a pull request's head waits on its own decision (mb-qp3s), so neither
+# moves: the page offers the newer head as before.
+_FOLLOWED_REF_PREFIXES: Final = ("refs/remotes/origin/", "refs/tags/")
+
+
+def follows_moves(ref: str | None) -> bool:
+    """Whether a pin served under *ref* moves when a fetch moves that ref."""
+
+    return ref is not None and ref.startswith(_FOLLOWED_REF_PREFIXES)
 
 
 # Outcomes after which the store holds what the origin had: the fetch ran.
@@ -825,10 +847,50 @@ class MirrorSession:
     # ── Observation ─────────────────────────────────────────────
 
     async def observe(self) -> None:
-        """Read the mirror's record and the pinned ref's tip again."""
+        """Read the mirror's record and the pinned ref's tip again, and follow the ref.
+
+        A pin on a branch or tag (:func:`follows_moves`) whose ref a fetch moved, by a
+        push or a force-push, is replaced by the ref's new tip under a new generation, so
+        the server never serves a branch behind where the mirror has it. Any other pin
+        stays, and status reports the ref's new tip as ``latest``.
+        """
 
         self._recorded = await self.mirror.recorded_freshness()
         await self._observe_tip()
+        await self._follow_ref()
+
+    async def _follow_ref(self) -> None:
+        # Under the pin lock, as a switch is: a reader's switch that ran meanwhile is the
+        # pin now, and this follows only the pin it finds.
+        async with self._pin_lock:
+            subject = _served_revision()
+            tip = self._tip
+            if (
+                subject is None
+                or not follows_moves(subject.ref)
+                or tip is None
+                or tip[0] != subject.ref
+                or tip[1] is None
+                or tip[1] == subject.commit_oid
+            ):
+                return
+            try:
+                moved = await self.mirror.open_selection(ref=subject.ref, oid=None)
+            except Exception:
+                # The pin stays, and status reports the tip as latest, where the page
+                # asks for the switch itself.
+                log.warning("could not follow the served ref to its new tip", exc_info=True)
+                return
+            if moved.ref != subject.ref or moved.commit_oid == subject.commit_oid:
+                await moved.aclose()
+                return
+            await replace_owned_subject(moved)
+            self._tip = (tip[0], moved.commit_oid)
+            if self._selection_state == "found":
+                # The URL's address was served on the commit before; a page that follows
+                # stays where its reader is rather than going back to it.
+                self._selection_state = "superseded"
+            log.info("followed %s to %s", subject.ref, moved.commit_oid)
 
     async def _observe_tip(self) -> None:
         # One observation or switch at a time: a refresh that ends while a switch is
@@ -883,6 +945,7 @@ class MirrorSession:
             on_origin = latest is not None
         return {
             "refreshable": True,
+            "follows": follows_moves(subject.ref),
             "latest": latest,
             "ref_on_origin": on_origin,
             "last_fetch_at": self.last_fetch_at(),

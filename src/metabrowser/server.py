@@ -68,7 +68,14 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from strif import file_mtime_hash
 
-from metabrowser import __version__, delivery, event_log, kpress_adapter, server_timing
+from metabrowser import (
+    __version__,
+    delivery,
+    event_log,
+    event_log_reports,
+    kpress_adapter,
+    server_timing,
+)
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.asset_stamps import StampedStaticFiles, StampedTree, split_stamp
@@ -1182,6 +1189,24 @@ def _end_request_span(
         span.end("failed" if status is not None and status >= 500 else "ok", **attrs)
 
 
+# Long-lived endpoints never flagged as slow. The SSE transport intentionally holds the
+# connection open for as long as the tab does, far past ``_SLOW_SERVER_REQUEST_MS``, so
+# without this skip every connected browser tab would emit a slow-request warning. These
+# paths also get no ``Server-Timing`` header, and a page never reports them as slow or
+# pending (``event_log_reports.browser_settings``). ``/api/tail`` has no route.
+LONG_LIVED_PATHS: Final[tuple[str, ...]] = ("/api/events", "/api/tail", "/api/stream")
+
+
+def _request_client(scope: dict[str, Any]) -> str | None:
+    """The page's ID for this request (``event_log.CLIENT_HEADER``), when it sent one."""
+
+    wanted = event_log.CLIENT_HEADER.encode("latin-1")
+    for name, value in scope.get("headers") or []:
+        if name == wanted:
+            return event_log.client_id(value)
+    return None
+
+
 class _SlowRequestLogMiddleware:
     """Time + log browser server requests.
 
@@ -1203,12 +1228,7 @@ class _SlowRequestLogMiddleware:
         self.threshold_ms = threshold_ms
         self.verbose = verbose
 
-    # Long-lived endpoints we never want flagged as slow. The SSE
-    # transport intentionally holds the connection open for as long as the
-    # tab does, far past ``_SLOW_SERVER_REQUEST_MS``, so without this skip
-    # every connected browser tab would emit a slow-request warning. These
-    # paths also get no ``Server-Timing`` header. ``/api/tail`` has no route.
-    _LONG_LIVED_PATHS: tuple[str, ...] = ("/api/events", "/api/tail", "/api/stream")
+    _LONG_LIVED_PATHS: tuple[str, ...] = LONG_LIVED_PATHS
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope.get("type") != "http":
@@ -1231,9 +1251,14 @@ class _SlowRequestLogMiddleware:
         start_ms: float | None = None
         record, token = server_timing.begin()
         # The event log's record of the request (metabrowser.event_log): current while
-        # the application runs, so a job the request starts names it as its parent.
+        # the application runs, so a job the request starts names it as its parent, and
+        # carries the page's ID for it, which a page's reports name too.
         method = scope.get("method", "")
-        request_span = event_log.begin("request", f"{method} {path}")
+        request_span = (
+            event_log.begin("request", f"{method} {path}", client=_request_client(scope))
+            if event_log.enabled()
+            else event_log.NULL_SPAN
+        )
 
         async def send_wrapper(message: dict[str, Any]) -> None:
             nonlocal body_bytes, start_ms, status
@@ -1722,6 +1747,7 @@ async def index(
     git_graph_url = _static_asset_url("git-graph.js")
     git_history_window_url = _static_asset_url("git-history-window.js")
     git_panel_url = _static_asset_url("git-panel.js")
+    event_reports_url = _static_asset_url("event-reports.js")
     source_freshness_url = _static_asset_url("source-freshness.js")
     source_ref_selector_url = _static_asset_url("source-ref-selector.js")
     app_url = _static_asset_url("app.js")
@@ -1736,6 +1762,7 @@ async def index(
             capabilities=page_capabilities,
         ),
         "BUILD_TAG": BUILD_TAG,
+        "EVENT_REPORTS": event_log_reports.browser_settings(long_lived=LONG_LIVED_PATHS),
     }
     if pin is not None:
         client_settings["STORE_TAG"] = store_tag(pin.command_target.git_dir)
@@ -2103,11 +2130,21 @@ async def index(
             {"src": git_panel_url},
             # Only a shell that drew the Pulls tab has it, so a folder fetches nothing new.
             *([{"src": _static_asset_url("pulls-nav.js")}] if pulls_tab else []),
+            # The event log's reporter, last: nothing here waits on it (`event-reports`).
+            {"src": event_reports_url},
         ],
         # The compositor is needed only once file navigation begins, after the
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # What the page reports to the event log, and the Details a failure or a late
+        # wait offers (static/event-reports.js). It is the last script of `shell-tools`,
+        # so it loads after the first usable tree, and a page that waits on something
+        # before then asks for it by this name; the loader runs a script once whichever
+        # bundle asks. A report of what came earlier reads the browser's Resource Timing.
+        # Not a startup script, nor a call in app.js: the startup budget had 99 bytes left
+        # when it was written, and #622's changes left 2 after such a call (2026-11-19).
+        "event-reports": [{"src": event_reports_url}],
         # Mermaid 12.3.0's ESM entry (static/vendor/mermaid/), imported by the Markdown
         # plugin's diagram renderer only when a mounted view holds a diagram. The entry
         # imports the chunks of each diagram type it draws by relative specifiers, so a
@@ -2394,10 +2431,10 @@ async def index(
               <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="sans" data-tip-text="Sans-serif reading font" aria-label="Sans-serif reading font"></button>
             </div>
             <div class="menu-separator"></div>
-            <select class="menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>
+            <select class="field menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>
             <div class="menu-separator"></div>
             <label class="menu-row" for="doc-max-chars-input">Max text width
-              <input class="menu-number" id="doc-max-chars-input" type="number"
+              <input class="field menu-number" id="doc-max-chars-input" type="number"
                      min="40" max="160" step="1" inputmode="numeric"
                      data-tip-text="Characters per line in rendered documents"></label>
             <div class="menu-separator"></div>

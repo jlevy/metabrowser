@@ -562,7 +562,7 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     assert "grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr);" in change
     assert "column-gap: var(--github-pull-row-gap);" in change
     assert "column-gap: var(--github-pull-row-gap);" in _rule(css, ".github-pulls-row")
-    assert "  --github-pull-row-gap: 6px;\n" in css
+    assert "  --github-pull-row-gap: var(--tree-icon-gap);\n" in css
     column = (
         "--github-pull-row-text-column: calc(var(--tree-icon-slot) + var(--github-pull-row-gap));"
     )

@@ -1,6 +1,7 @@
 import {
   disposeDistributionView,
   mountDistributionView,
+  setStatusNotice,
   updateDistributionView,
 } from "./distribution-view.js";
 import { buildFileTypeSummaryModel, normalizeRollupEnvelope } from "./file-type-summary-model.js";
@@ -133,6 +134,7 @@ export function mountFileTypeSummary(
           const status = view.body.querySelector(".file-type-summary-status");
           if (status) {
             status.textContent = "Could not refresh file types; showing the previous totals.";
+            setStatusNotice(status, "warning");
           }
           return;
         }
@@ -144,9 +146,9 @@ export function mountFileTypeSummary(
           console.warn("Could not display the file-type rollup.", error);
         }
         const message = contractFailure
-          ? "Could not display file types because the rollup data is incompatible."
+          ? "Could not display file types for this folder."
           : "Could not load file types.";
-        view.body.innerHTML = `<div class="folder-overview-panel-error" role="alert">${message}${classification.retryable ? ' <button type="button" data-file-types-retry>Retry</button>' : ""}</div>`;
+        view.body.innerHTML = `<div class="notice folder-overview-panel-error" data-severity="error" role="alert">${message}${classification.retryable ? ' <button type="button" class="btn" data-file-types-retry>Retry</button>' : ""}</div>`;
         view.body.querySelector("[data-file-types-retry]")?.addEventListener("click", () => {
           void watch.refresh();
         });

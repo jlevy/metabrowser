@@ -41,6 +41,7 @@
 // chip group and icons.
 
 import { createComparisonWarmer, diffComparisonLoader } from "./comparison-prefetch.js";
+import { OUTCOME_FALLBACK, rateLimitText, refreshRefusedText, unavailableText } from "./copy.js";
 import { createRowExpansion } from "./pull-files-tree.js";
 import { mountFileTree } from "./pull-files-view.js";
 import {
@@ -207,7 +208,7 @@ const NO_GITHUB = "This server serves no GitHub repository.";
 // A checkout's tab is drawn for an `origin` on github.com that the plugin's grammar may still
 // refuse, which the route answers as `not_github`.
 const CHECKOUT_NOT_LISTED =
-  "This checkout's origin is not a GitHub repository Metabrowser can list.";
+  "This checkout’s origin is not a GitHub repository Metabrowser can list.";
 
 /**
  * @typedef {{outcome: string, message: string | null, reset_at: string | null, at: string}} LastRefresh
@@ -339,9 +340,10 @@ export function describeRow(row) {
  * How many pull requests that is, in the words a count is said with everywhere.
  *
  * @param {number} count
+ * @param {(count: number) => string} formatCount
  */
-function pullsCount(count) {
-  return `${new Intl.NumberFormat("en-US").format(count)} pull request${count === 1 ? "" : "s"}`;
+function pullsCount(count, formatCount) {
+  return `${formatCount(count)} pull request${count === 1 ? "" : "s"}`;
 }
 
 /**
@@ -363,13 +365,10 @@ export function refreshFailure(envelope, formatTime, { includeWhileRefreshing = 
   }
   if (last.outcome === "rate_limited") {
     return {
-      text:
-        last.reset_at === null
-          ? "GitHub rate limit reached."
-          : `GitHub rate limit reached. Next attempt after ${formatTime(last.reset_at)}.`,
+      text: rateLimitText(last.reset_at === null ? null : formatTime(last.reset_at)),
     };
   }
-  const said = FAILURES[last.outcome] ?? last.message ?? last.outcome.replaceAll("_", " ");
+  const said = FAILURES[last.outcome] ?? last.message ?? OUTCOME_FALLBACK;
   const sentence = `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
   const help =
     last.outcome === "gh_missing"
@@ -424,6 +423,7 @@ function watchPaused(envelope) {
  *   filterTotals?: PullFilterTotals | null,
  *   nowMs: number,
  *   formatTime: (iso: string) => string,
+ *   formatCount: (count: number) => string,
  *   more: boolean,
  *   error: string | null,
  *   checkout?: boolean,
@@ -482,12 +482,14 @@ export function describePulls(envelope, page) {
   model.repository = repository;
   const repositoryTotal = model.filterTotals?.all ?? envelope.repository_total;
   if (repositoryTotal !== null && repository !== null) {
-    model.countNumber = new Intl.NumberFormat("en-US").format(repositoryTotal);
+    model.countNumber = page.formatCount(repositoryTotal);
     model.countSuffix = repositoryTotal === 1 ? " PR on " : " PRs on ";
   }
   const name = repository === null ? "Pull requests" : `Pull requests of ${repository}`;
   const known = envelope.state === "current" || envelope.state === "stale";
-  model.listName = known ? `${name}: ${pullsCount(envelope.total ?? envelope.fetched)}` : name;
+  model.listName = known
+    ? `${name}: ${pullsCount(envelope.total ?? envelope.fetched, page.formatCount)}`
+    : name;
   if (known && (envelope.total === 0 || (envelope.fetched === 0 && envelope.complete))) {
     model.empty = page.filter === "all" ? "No pull requests." : `No ${page.filter} pull requests.`;
   }
@@ -547,7 +549,7 @@ export function describePulls(envelope, page) {
     // As the nav's scan says "~N files scanned": a count only once one is known.
     model.progress =
       crawling && envelope.fetched > 0
-        ? `~${new Intl.NumberFormat("en-US").format(envelope.fetched)} pull requests fetched`
+        ? `~${page.formatCount(envelope.fetched)} pull requests fetched`
         : FETCHING;
   }
   return model;
@@ -635,6 +637,7 @@ function pinChanged(response) {
  *   isVisible(): boolean,
  *   isOnline?(): boolean,
  *   formatTime(iso: string): string,
+ *   formatCount(count: number): string,
  *   render(model: PullsModel, identity: import("./pull-stacks.js").StackIdentity | null, arrivals: number[]): void,
  *   markCurrent(previous: number | null, next: number | null): void,
  *   markAnchor(previous: number | null, next: number | null, focus: boolean): void,
@@ -1553,6 +1556,7 @@ export function createPullsController(deps, options = {}) {
       filterTotals,
       nowMs: deps.now(),
       formatTime: deps.formatTime,
+      formatCount: deps.formatCount,
       more: list.more,
       error: list.error,
       checkout,
@@ -2195,7 +2199,7 @@ export function createPullsController(deps, options = {}) {
       } else {
         arrivalBaseline = null;
         if (!pinChanged(response)) {
-          list.error = `The list is unavailable (HTTP ${response.status}).`;
+          list.error = unavailableText("The list");
         }
       }
     } catch {
@@ -2368,7 +2372,7 @@ export function createPullsController(deps, options = {}) {
       } else if (reader) {
         const said = answer !== null && typeof answer.error === "string" ? answer.error : null;
         if (!pinChanged(response)) {
-          list.error = `The refresh was refused (${said ?? `HTTP ${response.status}`}).`;
+          list.error = refreshRefusedText("The refresh", said);
         }
         list.more = false;
       }
@@ -2818,7 +2822,7 @@ export function createPullsController(deps, options = {}) {
           list.more = false;
         }
       } else if (!pinChanged(response)) {
-        list.error = `The list is unavailable (HTTP ${response.status}).`;
+        list.error = unavailableText("The list");
         list.more = false;
       }
     } catch {
@@ -4989,12 +4993,16 @@ export function mountPullsPanel(container, ctx, mb) {
         (model.connection?.state === "working" || model.connection?.refreshing === true);
       tally.classList.toggle("tally-pending", pending);
       tally.classList.toggle("tally-pending-narrow", pending);
-      const text = count === null ? (pending ? "" : "—") : count.toLocaleString("en-US");
+      const text = count === null ? (pending ? "" : "—") : mb.formatInteger(count);
       if (tally.textContent !== text) {
         tally.textContent = text;
       }
       const description =
-        count === null ? (pending ? "count pending" : "count unavailable") : pullsCount(count);
+        count === null
+          ? pending
+            ? "count pending"
+            : "count unavailable"
+          : pullsCount(count, mb.formatInteger);
       const label = `${LIST_LABELS[value]}, ${description}`;
       if (chip.getAttribute("aria-label") !== label) {
         chip.setAttribute("aria-label", label);
@@ -5145,6 +5153,7 @@ export function mountPullsPanel(container, ctx, mb) {
       isVisible: () => document.visibilityState === "visible",
       isOnline: () => window.navigator?.onLine !== false,
       formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
+      formatCount: (count) => mb.formatInteger(count),
       render(model, identity, arrivals) {
         stackIdentity = identity;
         mb.perf.measure("githubPulls:render", () => paint(model, arrivals), {

@@ -1,15 +1,17 @@
-// Freshness of a served mirror: the quiet fetched label, the newer-revision offer,
-// and switching the pin.
+// Freshness of a served mirror: the quiet fetched label, following a branch to its
+// new commit, and switching the pin.
 //
 // A page on a pinned revision polls /api/source/status while it is visible: quickly
 // while a refresh runs, slowly otherwise, and with If-None-Match so an unchanged
 // answer is a 304. When the mirror is older than the server's freshness window and
 // nothing is refreshing, opening or revealing the page asks for one background
 // refresh; the page never waits for it, and a refusal of that ask, which the reader did
-// not make, says nothing. When a refresh moves the pinned ref, the
-// label offers the newer commit, and accepting switches the pin and reloads the view.
-// When the server serves another pin than the one the page was rendered for -- another
-// tab switched it, or a data request came back `pin_changed` -- it offers a reload.
+// not make, says nothing. A page on a branch or tag reads that ref as the mirror has it,
+// as github.com shows a branch: when a refresh moves the ref, the server serves its new
+// tip, and the page goes with it to the same address, by itself. Only a ref the pin does
+// not follow, a pull request's head, is offered instead, and accepting switches the pin.
+// When the server serves another ref than the one the page was rendered for -- another
+// tab switched it, or a restart -- the row offers a reload.
 //
 // A commit the mirror lacks is an address not fetched too. The commit view hands it to
 // `openMissingCommit`, which asks through the page's controller for the fetch such a
@@ -123,6 +125,7 @@
         offer: null,
         error,
         pull: null,
+        follow: null,
       };
     }
     const age = relativeAge(status.last_fetch_at, page.nowMs);
@@ -145,6 +148,26 @@
       detail = `${OUTCOME_DETAIL.refreshing_elsewhere} It was last fetched here ${age}.`;
     } else if (outcome !== null && outcome.outcome === "default_branch_unknown") {
       detail = `${detail} ${OUTCOME_DETAIL.default_branch_unknown}`;
+    }
+    const pull =
+      typeof status.pull_request === "number"
+        ? { href: `/pull/${status.pull_request}`, text: `Pull request #${status.pull_request}` }
+        : null;
+    // Not while something failed: a follow the server refused says why, with the reload
+    // offer below, rather than claiming to update.
+    const follow = error === null ? followTarget(status, page.shown) : null;
+    if (follow !== null) {
+      const name = status.ref_name ?? follow.ref;
+      return {
+        visible: true,
+        tone: "refreshing",
+        label: `Updating to ${name}…`,
+        detail: `${name} is now at ${window.MetabrowserFormatters.shortCommit(follow.commit)}, and this page follows it.`,
+        offer: null,
+        error,
+        pull,
+        follow,
+      };
     }
     const selection = status.selection_state ?? null;
     const retrySelection = selection === "fetch_failed" && !status.refreshing;
@@ -171,11 +194,13 @@
     } else if (retrySelection) {
       offer = { kind: "retry", text: "Fetch the address again", button: "Retry" };
     } else if (
+      !status.follows &&
       status.ref !== null &&
       status.latest !== null &&
       status.pin !== null &&
       status.latest !== status.pin
     ) {
+      // A ref the pin does not follow, a pull request's head, moved: offer its new tip.
       offer = {
         kind: "switch",
         ref: status.ref,
@@ -190,11 +215,38 @@
       detail = `${detail} ${status.ref_name ?? status.ref} is no longer on the origin; its commits stay readable here.`;
     }
     // The attended pull request's page is one link away from every page on its pin.
-    const pull =
-      typeof status.pull_request === "number"
-        ? { href: `/pull/${status.pull_request}`, text: `Pull request #${status.pull_request}` }
-        : null;
-    return { visible: true, tone, label, detail, offer, error, pull };
+    return { visible: true, tone, label, detail, offer, error, pull, follow: null };
+  }
+
+  /**
+   * The branch or tag a page follows to a new commit, and that commit, or `null`. Pure.
+   *
+   * A page on a branch or tag reads that ref as the mirror has it, not one commit of it:
+   * the server serves the ref's new tip itself once a fetch moves it (`follows`), and a
+   * page still drawn for the commit before goes with it, to the same address. When the
+   * server could not follow yet, status reports the tip as `latest`, and the page asks for
+   * it. A page drawn for another ref than the one served was switched by another tab or
+   * a restart, which a reload offer answers instead, and a commit or a pull request's head
+   * does not move.
+   *
+   * @param {MetabrowserSourceStatus} status
+   * @param {MetabrowserSourcePage | null} shown
+   * @returns {MetabrowserSourceFollow | null}
+   */
+  function followTarget(status, shown) {
+    if (shown === null || status.follows !== true || status.ref === null || status.pin === null) {
+      return null;
+    }
+    if (status.ref !== shown.ref) {
+      return null;
+    }
+    if (status.pin !== shown.pin) {
+      return { ref: status.ref, commit: status.pin };
+    }
+    if (status.latest !== null && status.latest !== status.pin && !status.refreshing) {
+      return { ref: status.ref, commit: status.latest };
+    }
+    return null;
   }
 
   // What the commit view says about a commit the mirror lacks. The states are the ones a
@@ -241,7 +293,7 @@
       return {
         state: "fetch_failed",
         title: "Commit not fetched",
-        detail: `${MISSING_COMMIT_DETAIL.fetch_failed} ${error ?? "The server did not answer"}.`,
+        detail: `${MISSING_COMMIT_DETAIL.fetch_failed} ${error ?? "The server did not answer."}`,
         retry: true,
       };
     }
@@ -258,7 +310,7 @@
       return {
         state: "fetch_failed",
         title: `Commit not fetched · fetched ${age}`,
-        detail: `${MISSING_COMMIT_DETAIL.fetch_failed} ${error}.`,
+        detail: `${MISSING_COMMIT_DETAIL.fetch_failed} ${error}`,
         retry: true,
       };
     }
@@ -390,6 +442,18 @@
   }
 
   /**
+   * Whether two `/view/` addresses name the same place, a folder's trailing slash aside.
+   *
+   * @param {string} a
+   * @param {string} b
+   */
+  function sameAddress(a, b) {
+    const bare = (/** @type {string} */ value) =>
+      value.length > "/view/".length ? value.replace(/\/$/, "") : value;
+    return bare(a) === bare(b);
+  }
+
+  /**
    * @param {unknown} value
    * @returns {value is MetabrowserSourceStatus}
    */
@@ -437,6 +501,13 @@
     // (its origin is gone) must not ask again on every poll.
     let refreshAskedWhileVisible = false;
     let switching = false;
+    // A page follows its ref at most once: it leaves, or a refused follow says why and
+    // waits for the reader's refresh rather than asking on every poll.
+    let following = false;
+    // Why the server refused a follow, which stays said, unlike a poll's own failure,
+    // until the reader's refresh lets the page ask again.
+    /** @type {string | null} */
+    let followError = null;
     // A page goes to a selection that arrived at most once.
     let openedSelection = false;
     /** @type {string | null} */
@@ -461,7 +532,11 @@
     }
 
     function render() {
-      const model = describe(status, { shown, nowMs: deps.now(), error });
+      const model = describe(status, { shown, nowMs: deps.now(), error: error ?? followError });
+      if (model.follow !== null && !following && !disposed) {
+        following = true;
+        void follow(model.follow.ref);
+      }
       const key = JSON.stringify(model);
       if (key === painted) {
         return;
@@ -521,10 +596,10 @@
         } else if (response.status === 304) {
           error = null;
         } else {
-          error = `Status unavailable (HTTP ${response.status})`;
+          error = "The source's status could not be read.";
         }
       } catch {
-        error = "The server did not answer";
+        error = "The server did not answer.";
       } finally {
         polling = false;
       }
@@ -550,7 +625,50 @@
      * @returns {Promise<string | null>}
      */
     async function requestRefresh(body = {}) {
+      following = false;
+      followError = null;
       return (await ask(body, { own: false }))?.refresh ?? null;
+    }
+
+    /**
+     * Go with the page's branch or tag to the commit the server serves for it now.
+     *
+     * Asks the pin route for the ref, which changes nothing once the server has followed
+     * and serves the tip when it has not yet, naming the page's own `/view/` address, so
+     * the answer says where the page is on the new commit: the same file or folder when
+     * the commit has it, else the root. The page reloads in place when that is where it
+     * is, which keeps its line anchor and scroll, and otherwise goes there. Any other
+     * page, a pull request's or a commit's, reloads.
+     *
+     * @param {string} ref
+     */
+    async function follow(ref) {
+      const view = deps.address();
+      try {
+        const response = await deps.request("POST", PIN_ROUTE, {
+          body: view === null ? { ref } : { ref, view },
+        });
+        if (disposed) {
+          return;
+        }
+        const answer = /** @type {{view_href?: unknown} | null} */ (response.body);
+        if (response.status === 200) {
+          const href = answer !== null ? answer.view_href : undefined;
+          if (typeof href === "string" && view !== null && !sameAddress(href, view)) {
+            deps.navigate(href);
+          } else {
+            deps.reload();
+          }
+          return;
+        }
+        followError = `Could not follow ${status?.ref_name ?? ref} to its new commit.`;
+      } catch {
+        if (disposed) {
+          return;
+        }
+        followError = "The request to follow the branch failed.";
+      }
+      render();
     }
 
     /**
@@ -595,14 +713,11 @@
           };
         } else if (!options.own) {
           const said = answer !== null && typeof answer.error === "string" ? answer.error : null;
-          error =
-            said === null
-              ? `Refresh refused (HTTP ${response.status})`
-              : `Refresh refused: ${said}`;
+          error = said === null ? "The refresh could not be started." : `Refresh refused: ${said}.`;
         }
       } catch {
         if (!options.own) {
-          error = "The refresh request failed";
+          error = "The refresh request failed.";
         }
       }
       if (!disposed) {
@@ -668,7 +783,7 @@
     }
 
     async function acceptOffer() {
-      const model = describe(status, { shown, nowMs: deps.now() });
+      const model = describe(status, { shown, nowMs: deps.now(), error: followError });
       const offer = model.offer;
       if (disposed || switching || offer === null) {
         return;
@@ -688,11 +803,9 @@
           deps.reload();
           return;
         }
-        const body = /** @type {{code?: unknown} | null} */ (response.body);
-        const code = body !== null && typeof body.code === "string" ? body.code : "";
-        error = `Could not switch (${code || `HTTP ${response.status}`})`;
+        error = "Could not switch to that commit.";
       } catch {
-        error = "The switch request failed";
+        error = "The switch request failed.";
       } finally {
         switching = false;
       }
@@ -760,7 +873,7 @@
       );
     }
     if (model.error !== null) {
-      parts.push(model.error);
+      parts.push(model.error.replace(/\.$/, ""));
     }
     return parts.join(". ");
   }
@@ -862,6 +975,33 @@
     const live = document.createElement("span");
     live.className = "sr-only";
     live.setAttribute("aria-live", "polite");
+    // A refresh the row shows running is a wait the event log hears of if it runs late, and
+    // how it ended (static/event-reports.js, mb-9zp5). The reporter is an on-demand bundle,
+    // so it is told when the wait began.
+    /** @type {{handle: MetabrowserEventWait | null, ended: boolean} | null} */
+    let refreshWait = null;
+    /** @param {MetabrowserSourceFreshnessModel} model */
+    const noteRefresh = (model) => {
+      if (model.tone === "refreshing" && refreshWait === null) {
+        const startedAt = performance.now();
+        /** @type {{handle: MetabrowserEventWait | null, ended: boolean}} */
+        const wait = { handle: null, ended: false };
+        refreshWait = wait;
+        window.MetabrowserAssets?.ensureAsset("event-reports").then(
+          () => {
+            if (!wait.ended) {
+              wait.handle =
+                window.metabrowser?.eventReports?.wait("source:refresh", { startedAt }) ?? null;
+            }
+          },
+          () => {},
+        );
+      } else if (model.tone !== "refreshing" && refreshWait !== null) {
+        refreshWait.ended = true;
+        refreshWait.handle?.end(model.tone === "warning" ? "failed" : "ok");
+        refreshWait = null;
+      }
+    };
     controller = createController(
       {
         async request(method, route, options) {
@@ -893,9 +1033,14 @@
         cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
         now: () => Date.now(),
         isVisible: () => document.visibilityState === "visible",
-        render: (model) => paint(element, model, actions, live),
+        render: (model) => {
+          noteRefresh(model);
+          paint(element, model, actions, live);
+        },
         reload: () => window.location.reload(),
         navigate: (href) => window.location.assign(href),
+        address: () =>
+          window.location.pathname.startsWith("/view/") ? window.location.pathname : null,
       },
       { shown: window.METABROWSER_SOURCE_PIN ?? null },
     );

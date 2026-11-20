@@ -15,11 +15,16 @@
 //   (`placement: "image"`), which runs no script and loads nothing; `inert_html.py`
 //   reduces KPress's figure to GitHub's own fallback, `<pre lang="mermaid">`, which
 //   `mermaidFigureFor` turns back into a figure here. A `.mmd` file's view is the Document
-//   view of its text (`mermaid-view.js`), so it follows the same trust.
+//   view of its text (`mermaid-view.js`), so it follows the same trust. Mermaid lays an
+//   image out in the page first, where the page's policy bounds what its CSS loads; an
+//   untrusted text on a page that may have no policy, a pull request's, is laid out in a
+//   frame whose own policy loads nothing (`mode: "isolated"`, diagram-frame.js).
 // - **Theme.** The page's resolved `data-theme`, redrawn through `MetabrowserTheme`.
 // - **Chrome.** The copy button is the shell's copy delegate and every button's tooltip
 //   is the app's. The glyphs are KPress's sprites, which KPress fetches for an inert
 //   render whose allowlist dropped them (`ensureDiagramSprites`).
+
+import { leaseDiagramFrame } from "./diagram-frame.js";
 
 /** A KPress Mermaid figure in a trusted render. */
 export const KPRESS_DIAGRAM_SELECTOR = '[data-kpress-diagram="mermaid"]';
@@ -71,6 +76,7 @@ function subscribePageTheme(listener) {
 /**
  * @typedef {{
  *   ensureModule(name: string): Promise<unknown>,
+ *   moduleUrl(name: string): string | null,
  *   ownDelegate?: <T extends Element>(element: T) => T,
  * }} DiagramSdk
  */
@@ -78,15 +84,17 @@ function subscribePageTheme(listener) {
 /**
  * Draw the Mermaid diagrams under *root* with KPress.
  *
- * `mode` is "document" for a trusted render and "image" for an inert render or a file
- * view. The returned `figures` fills once KPress has bound; `ready` settles when every
- * diagram has drawn or failed; `dispose` stops drawing, unsubscribes the theme, closes
- * any open dialog, and leaves the figures as they are.
+ * `mode` is "document" for a trusted render, "image" for an inert render or a file view,
+ * whose page's policy bounds Mermaid's layout, and "isolated" for untrusted text on a page
+ * that may have none: images, laid out in the shared diagram frame (diagram-frame.js). The
+ * returned `figures` fills once KPress has bound; `ready` settles when every diagram has
+ * drawn or failed; `dispose` stops drawing, unsubscribes the theme, closes any open
+ * dialog, releases the frame, and leaves the figures as they are.
  *
  * @param {ParentNode} root
  * @param {DiagramSdk} mb
  * @param {{
- *   mode?: "document" | "image",
+ *   mode?: "document" | "image" | "isolated",
  *   theme?: () => "dark" | "light",
  *   subscribeTheme?: (listener: () => void) => () => void,
  *   yieldBetween?: () => Promise<unknown>,
@@ -94,7 +102,9 @@ function subscribePageTheme(listener) {
  * @returns {{dispose(): void, ready: Promise<void>, figures: HTMLElement[]}}
  */
 export function mountDiagrams(root, mb, options = {}) {
-  const mode = options.mode === "image" ? "image" : "document";
+  const isolated = options.mode === "isolated";
+  const placement = isolated || options.mode === "image" ? "image" : "document";
+  const frame = isolated ? leaseDiagramFrame(mb) : null;
   /** @type {HTMLElement[]} */
   const figures = [];
   let disposed = false;
@@ -117,10 +127,10 @@ export function mountDiagrams(root, mb, options = {}) {
       }
     }
     const bound = diagrams.initKpressDiagrams(root, {
-      mermaid: () => mb.ensureModule("mermaid"),
+      mermaid: frame ? () => frame.mermaid() : () => mb.ensureModule("mermaid"),
       theme: options.theme ?? documentTheme,
       subscribeTheme: options.subscribeTheme ?? subscribePageTheme,
-      placement: mode,
+      placement,
       yieldBetween: options.yieldBetween,
       controls: controls.diagramControls({
         decorate: decorateButton,
@@ -150,6 +160,7 @@ export function mountDiagrams(root, mb, options = {}) {
       disposed = true;
       binding?.dispose();
       binding = null;
+      frame?.release();
     },
   };
 }

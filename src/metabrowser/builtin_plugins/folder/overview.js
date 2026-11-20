@@ -137,7 +137,8 @@ export function mountOverview(container, initialContext, mb, registry) {
       : mb.errors.classifyRequestError(error);
     record.body.replaceChildren();
     const failure = document.createElement("div");
-    failure.className = "folder-overview-panel-error";
+    failure.className = "notice folder-overview-panel-error";
+    failure.setAttribute("data-severity", "error");
     failure.setAttribute("role", "alert");
     const message = document.createElement("span");
     message.textContent = classification.message;
@@ -145,6 +146,7 @@ export function mountOverview(container, initialContext, mb, registry) {
     if (classification.retryable) {
       const retry = document.createElement("button");
       retry.type = "button";
+      retry.className = "btn";
       retry.textContent = "Retry";
       const listener = () => void resolvePanel(record);
       retry.addEventListener("click", listener);

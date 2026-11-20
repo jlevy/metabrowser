@@ -1474,7 +1474,9 @@ def test_every_tab_is_the_tab_primitive() -> None:
     # A tab that is an address renders as the same tab.
     link = _rule(styles, "a.tab-btn")
     assert "text-decoration: none" in link and "line-height: normal" in link
-    assert "outline: 2px solid var(--link)" in _rule(styles, ".tab-btn:focus-visible")
+    assert "outline: var(--focus-ring-width) solid var(--focus-ring-color)" in _rule(
+        styles, ".tab-btn:focus-visible"
+    )
     # Only core styles the primitive; a use site adds positioning from its own class.
     for sheet in _stylesheets()[1:]:
         for selector, _declared in _rules_of(sheet):
@@ -1784,11 +1786,13 @@ def test_exclusive_choices_share_one_answer_to_each_state() -> None:
     wrapped_rest = styles.index('.chip-group:is([data-layout="wrap"], [data-fit="wrap"]) > .chip {')
     assert styles.index(".chip-group > .chip:hover {") > max(chip_rest, wrapped_rest)
     # One focus ring. A fill cannot be the signal, since a checked segment's would hide it.
-    ring = "outline: 2px solid var(--link)"
+    ring = "outline: var(--focus-ring-width) solid var(--focus-ring-color)"
     for selector in (".chip:focus-visible", ".menu-seg:focus-visible"):
         rule = _rule(styles, selector)
         assert ring in rule, f"{selector} lost the focus ring"
-        assert "outline-offset: -2px" in rule, f"{selector} moved the focus ring"
+        assert "outline-offset: var(--focus-ring-offset)" in rule, (
+            f"{selector} moved the focus ring"
+        )
     # A consumer repaints a group from its state, so focus has to survive that.
     controls = (STATIC / "filter-controls.js").read_text(encoding="utf-8")
     assert "chip.isConnected === false" in controls
@@ -2371,9 +2375,12 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     )
     assert github[".github-pulls-row.selected"]["border-left-color"] == "var(--highlight-bar)"
     ring = github[f"{item}:has(> .github-pulls-row:focus-visible)"]
-    assert ring["outline"] == "2px solid var(--link)"
-    assert ring["outline-offset"] == "-2px"
-    assert github[".github-pulls-stack-row:focus-visible"]["outline"] == "2px solid var(--link)"
+    assert ring["outline"] == "var(--focus-ring-width) solid var(--focus-ring-color)"
+    assert ring["outline-offset"] == "var(--focus-ring-offset)"
+    assert (
+        github[".github-pulls-stack-row:focus-visible"]["outline"]
+        == "var(--focus-ring-width) solid var(--focus-ring-color)"
+    )
     assert github[f"{item} > .github-pulls-row:focus-visible"]["outline"] == "none"
     # The change line is the item's inner target: no ground of its own, and only its chevron's
     # plate answers the pointer, so its status inks keep the grounds their contrast is held on.
@@ -2863,7 +2870,7 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # A conversation commit's hash links to it on GitHub and is a short commit ID, in the
     # commit-ID gray under the pointer too, which only underlines it (docs/design-system.md,
     # "Short Commit IDs"); tests/test_github_pull_timeline_chrome.py measures it.
-    assert '"github-pull-commit-id git-commit-sha github-pull-external-action"' in page
+    assert '"github-pull-commit-id git-commit-sha"' in page
     assert not any(
         "color" in declarations
         for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
@@ -3207,7 +3214,7 @@ def test_both_trees_of_changed_files_use_the_shells_rows() -> None:
     assert row["border-left"] == "2px solid transparent"
     assert row["height"] == "var(--ui-row-height)"
     assert shell[".changed-file-row:hover"] == {"background": "var(--hover-bg)"}
-    assert shell[".changed-file-row:focus-visible"]["outline-offset"] == "-2px"
+    assert shell[".changed-file-row:focus-visible"]["outline-offset"] == "var(--focus-ring-offset)"
     assert shell[".changed-file-toggle"]["width"] == "var(--tree-icon-slot)"
     sources = ("diff/diff-summary.js", "github/pull-files-view.js")
     for source in sources:
@@ -3234,7 +3241,7 @@ def test_both_trees_of_changed_files_use_the_shells_rows() -> None:
     diff = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
     toggle = ".metabrowser-diff-host .diff-summary-toggle"
     assert diff[toggle]["border-radius"] == "0"
-    assert diff[toggle + ":focus-visible"]["outline-offset"] == "-2px"
+    assert diff[toggle + ":focus-visible"]["outline-offset"] == "var(--focus-ring-offset)"
     # A folder's tooltip gives what its sums leave out, the counts alone.
     for source in sources:
         text = (REPO_ROOT / BUILTIN_PLUGINS / source).read_text(encoding="utf-8")
@@ -4044,3 +4051,280 @@ def test_a_heading_tally_out_of_sequence_fails() -> None:
     assert _heading_tally_problems("github/pull-page.js", padded)[1]
     elsewhere = text + '\nconst stray = `<span class="heading-tally">3</span>`;\n'
     assert _heading_tally_problems(key, elsewhere)[1]
+
+
+# ── Tokens: every one used is defined, and the system's inks read ────────────────────
+
+
+def _shipped_css_text() -> dict[Path, str]:
+    return {sheet: sheet.read_text(encoding="utf-8") for sheet in _stylesheets()}
+
+
+# A custom property a stylesheet reads that no shipped stylesheet or script sets: the host
+# page or an embedded document supplies these, so they are not ours to define. A prefix
+# names a family the host owns.
+_EXTERNAL_PROPERTIES: frozenset[str] = frozenset(
+    {
+        # Written per element by a script through a named constant, so no literal
+        # `setProperty("--name")` call is there to find (folder/category-palette.js's
+        # LIGHT_PROPERTY and DARK_PROPERTY; app.js's FILE_COLOR_*_PROPERTY).
+        "--mb-distribution-color-light",
+        "--mb-distribution-color-dark",
+        "--mb-file-color-light",
+        "--mb-file-color-dark",
+        # The embedded kpress document's own properties, which its stylesheet defines.
+        "--kpress-font-prose",
+        "--kpress-line-height-normal",
+        "--kpress-toc-toggle-clearance",
+        "--kpress-column-inset",
+    }
+)
+_VAR_WITHOUT_FALLBACK = re.compile(r"var\(\s*(--[\w-]+)\s*\)")
+_PROPERTY_DECLARATION = re.compile(r"(--[a-zA-Z][\w-]*)\s*:")
+_SET_PROPERTY = re.compile(r"setProperty\(\s*[\"'`](--[\w-]+)")
+
+
+def _defined_custom_properties() -> set[str]:
+    defined: set[str] = set()
+    for css in _shipped_css_text().values():
+        defined.update(_PROPERTY_DECLARATION.findall(re.sub(r"/\*.*?\*/", "", css, flags=re.S)))
+    for source in _browser_sources():
+        # A name in a comment is prose, not a definition.
+        text = re.sub(r"/\*.*?\*/", "", source.read_text(encoding="utf-8"), flags=re.S)
+        text = re.sub(r"^\s*//.*$", "", text, flags=re.M)
+        defined.update(_SET_PROPERTY.findall(text))
+        # An inline `style="--x: …"` or a style object key written by a script.
+        defined.update(_PROPERTY_DECLARATION.findall(text))
+    return defined
+
+
+def test_every_custom_property_a_stylesheet_reads_is_defined() -> None:
+    """`var(--x)` with no fallback names a token, so the token must exist.
+
+    A read of a name nothing defines falls through to the property's initial value, which
+    is how `min-height: var(--button-height-compact)` sat in the shell doing nothing. A
+    read with a fallback is an optional hook and is not checked.
+
+    Limit: "defined" is a name set anywhere in a shipped stylesheet, or in a script outside
+    a comment, at any selector; it does not check that the definition is in scope of the
+    reader (a token set only under one component's selector but read elsewhere passes).
+    """
+
+    defined = _defined_custom_properties()
+    undefined: dict[str, set[str]] = {}
+    for sheet, css in _shipped_css_text().items():
+        stripped = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        for name in _VAR_WITHOUT_FALLBACK.findall(stripped):
+            if name in defined or name in _EXTERNAL_PROPERTIES:
+                continue
+            undefined.setdefault(name, set()).add(_sheet_name(sheet))
+    assert not undefined, f"custom properties read but never defined: {undefined}"
+
+
+_FOCUS_OUTLINE = "var(--focus-ring-width) solid var(--focus-ring-color)"
+_FOCUS_OFFSET = "var(--focus-ring-offset)"
+_FOCUS_OFFSET_OUTSET = "var(--focus-ring-offset-outset)"
+# The bare controls whose box is their text: a ring inside it would sit on the glyphs, so it
+# stands outside (docs/design-system.md, "Focus Ring"). Nothing else takes the outset.
+_FOCUS_RING_OUTSET = frozenset(
+    {
+        ".nav-shortcut-action:focus-visible",
+        ".source-freshness-label:focus-visible",
+        ".filter-check:has(input:focus-visible)",
+        ".help-project a:focus-visible",
+        ".event-log-details a:focus-visible",
+    }
+)
+
+
+def test_every_focus_ring_is_the_one_ring() -> None:
+    """Width, color, and offset come from the focus-ring tokens, never a literal."""
+
+    problems: list[str] = []
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            outline = declarations.get("outline")
+            if "focus-visible" not in selector or outline is None or outline in {"none", "0"}:
+                continue
+            offset = declarations.get("outline-offset")
+            want = _FOCUS_OFFSET_OUTSET if selector in _FOCUS_RING_OUTSET else _FOCUS_OFFSET
+            if outline != _FOCUS_OUTLINE or offset != want:
+                problems.append(f"{_sheet_name(sheet)} {selector}: {outline}; offset {offset}")
+    assert not problems, "\n".join(problems)
+
+
+def test_the_outset_focus_ring_is_only_for_the_documented_controls() -> None:
+    """A control not in the allowlist cannot take the outset by naming the token."""
+
+    outset = {
+        selector
+        for sheet in _stylesheets()
+        for selector, declarations in _rules_of(sheet)
+        if declarations.get("outline-offset") == _FOCUS_OFFSET_OUTSET
+    }
+    assert outset == set(_FOCUS_RING_OUTSET)
+    root = _theme_tokens()["light"]
+    assert root["--focus-ring-offset"].startswith("-")
+    assert root["--focus-ring-offset-outset"][0].isdigit()
+
+
+_STATUS_TEXT_TOKENS = (
+    "--status-success-text",
+    "--status-warning-text",
+    "--status-error-text",
+    "--status-info-text",
+    "--status-success-soft-text",
+)
+_BADGE_TONES = (
+    "completed",
+    "failed",
+    "running",
+    "pending",
+    "claude",
+    "gemini",
+    "pi",
+    "adapter",
+    "compressed",
+)
+_STATUS_FILL_TOKENS = (
+    "--status-success",
+    "--status-warning",
+    "--status-warning-strong",
+    "--status-error",
+    "--status-error-strong",
+    "--status-info",
+)
+_AA_TEXT = 4.5
+
+
+def test_status_and_badge_inks_read_in_both_themes() -> None:
+    """A status ink is held to 4.5:1 on the page and the hover ground; a badge's on its own fill."""
+
+    for theme, tokens in _theme_tokens().items():
+        for ground_token in ("--bg", "--hover-bg"):
+            ground = _resolved(tokens, ground_token)
+            for token in _STATUS_TEXT_TOKENS:
+                ink = _resolved(tokens, token)
+                assert _contrast(ink, ground) >= _AA_TEXT, (
+                    f"{token} in the {theme} theme reads at {_contrast(ink, ground):.2f}:1 "
+                    f"on {ground_token}"
+                )
+        for tone in _BADGE_TONES:
+            fill = _resolved(tokens, f"--badge-{tone}-bg")
+            ink = _resolved(tokens, f"--badge-{tone}-text")
+            assert _contrast(ink, fill) >= _AA_TEXT, (
+                f"--badge-{tone} in the {theme} theme reads at {_contrast(ink, fill):.2f}:1"
+            )
+
+
+def test_status_text_inks_keep_their_fills_hue() -> None:
+    """A text ink is its fill's color seen as text, so the two share a hue family."""
+
+    light = _theme_tokens()["light"]
+    for name in ("success", "warning", "error"):
+        ink = _oklch_channels(_resolved(light, f"--status-{name}-text"))
+        fill = _oklch_channels(_resolved(light, f"--status-{name}"))
+        assert _hue_gap(ink[2], fill[2]) <= 15, name
+
+
+def test_no_stylesheet_sets_text_in_a_status_fill() -> None:
+    """A fill token is for dots, bars, tints, and borders; text takes the themed ink."""
+
+    fills = {f"var({token})" for token in _STATUS_FILL_TOKENS}
+    problems = [
+        f"{_sheet_name(sheet)} {selector}: color {declarations['color']}"
+        for sheet in _stylesheets()
+        for selector, declarations in _rules_of(sheet)
+        if declarations.get("color") in fills
+    ]
+    assert not problems, "\n".join(problems)
+
+
+def test_a_failure_is_one_ink_and_a_stat_is_one_pair() -> None:
+    """Additions and deletions read in one ink wherever drawn, and so does a failed load."""
+
+    ink = {
+        ".diff-stat-add": "--status-success-text",
+        ".diff-stat-del": "--status-error-text",
+        ".git-stat-add": "--status-success-text",
+        ".git-stat-del": "--status-error-text",
+    }
+    seen: dict[str, set[str]] = {}
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            for stat in ink:
+                if selector.endswith(stat) and "color" in declarations:
+                    seen.setdefault(stat, set()).add(declarations["color"])
+    for stat, token in ink.items():
+        assert seen.get(stat) == {f"var({token})"}, (stat, seen.get(stat))
+    failure = {
+        ".tree-lazy-error",
+        ".git-graph-more-failed",
+        ".nav-error",
+        ".source-freshness-error",
+        ".source-ref-selector-error",
+    }
+    found = {
+        selector: declarations["color"]
+        for selector, declarations in _rules_of(STATIC / "styles.css")
+        if selector in failure and "color" in declarations
+    }
+    assert set(found) == failure
+    assert set(found.values()) == {"var(--status-error-text)"}
+
+
+def test_the_diff_row_tints_are_shell_tokens() -> None:
+    """The plugins and the shell tint an added or removed line from one pair."""
+
+    root = _theme_tokens()["light"]
+    assert root["--diff-add-row-bg"] == "color-mix(in srgb, var(--status-success) 9%, transparent)"
+    assert root["--diff-del-row-bg"] == "color-mix(in srgb, var(--status-error) 9%, transparent)"
+
+
+_RADIUS_VALUE = r"(?:var\(--[\w-]*radius[\w-]*\)|0|inherit)"
+_BORDER_RADIUS = re.compile(rf"{_RADIUS_VALUE}(?:\s+{_RADIUS_VALUE})*")
+# A radius that is not a token, and why: a shape the token set cannot say.
+_RADIUS_EXCEPTIONS: dict[tuple[str, str], str] = {}
+
+
+def test_every_border_radius_is_a_radius_token() -> None:
+    """The app's corners are `--radius-*` tokens; a literal forks the shape vocabulary."""
+
+    problems = []
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            value = declarations.get("border-radius")
+            if value is None or _BORDER_RADIUS.fullmatch(value):
+                continue
+            if (_sheet_name(sheet), selector) in _RADIUS_EXCEPTIONS:
+                continue
+            problems.append(f"{_sheet_name(sheet)} {selector}: {value}")
+    assert not problems, "\n".join(problems)
+
+
+_FIELD_CONSUMERS = (".menu-select", ".menu-number", ".source-ref-selector-filter")
+_FIELD_OWNED = ("border", "background", "outline", "outline-offset", "border-radius")
+
+
+def test_text_fields_carry_the_field_primitive() -> None:
+    """Border, fill, ring, and hover are stated once; a field sets only its own layout."""
+
+    rules = _rules_of(STATIC / "styles.css")
+    alone = [
+        (selectors.strip(), dict(_declarations(body)))
+        for selectors, body in _style_rules((STATIC / "styles.css").read_text(encoding="utf-8"))
+    ]
+    for selector in _FIELD_CONSUMERS:
+        own = [declarations for selectors, declarations in alone if selectors == selector]
+        assert own, selector
+        for declarations in own:
+            restated = [name for name in _FIELD_OWNED if name in declarations]
+            assert not restated, f"{selector} restates {restated}"
+    field = dict(next(d for rule, d in rules if rule == ".field"))
+    assert {"border", "background", "border-radius", "padding"} <= set(field)
+    assert any(rule == ".field:focus-visible" for rule, _ in rules)
+    source = (STATIC / "source-ref-selector.js").read_text(encoding="utf-8")
+    assert 'filter.className = "field source-ref-selector-filter";' in source
+    server = (STATIC.parent / "server.py").read_text(encoding="utf-8")
+    assert '<select class="field menu-select"' in server
+    assert '<input class="field menu-number"' in server

@@ -408,11 +408,30 @@ answers shows a placeholder in its place, never its Markdown source.
 A text farther off keeps its plain text, which find in page reaches, and is asked for as
 it nears the view, so a jump straight to it shows that text until it is asked for.
 Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
-A text whose render keeps a `pre[lang="mermaid"]` is drawn as an image on a pinned
-revision’s page, which is under the untrusted policy, through the Markdown plugin’s
-`mb.builtins.markdown.drawDiagrams` (`drawTextDiagrams` in `pull-page.js`): the page
-then loads Metabrowser’s own KPress diagram modules and vendored Mermaid, none of which
-the text names; a folder’s page leaves the block as its source.
+A text whose render keeps a `pre[lang="mermaid"]` is drawn as an image on every page,
+through the Markdown plugin’s `mb.builtins.markdown.drawDiagrams` with `isolated: true`
+(`drawTextDiagrams` in `pull-page.js`): the page then loads Metabrowser’s own KPress
+diagram modules and vendored Mermaid, none of which the text names.
+Mermaid lays a diagram out in a document before it becomes an image, and there the
+diagram’s own CSS is live: its image shape, a `themeCSS` directive or front matter, a
+`fontFamily` directive, a `cursor: url()`, a state diagram’s `classDef`, a class
+diagram’s `style`, and a `block-beta` `style` (from the page’s own origin) each loaded
+its URL on a page with no policy, as a folder’s page served trusted has.
+So a text’s diagrams are laid out in the diagram frame
+(`builtin_plugins/markdown/diagram-frame.js`), an `about:srcdoc` frame sandboxed to
+scripts and its own origin, whose own Content-Security-Policy admits its entry and the
+Mermaid directory as scripts, its stylesheet (`diagram-frame.css`) and inline style, and
+`data:` images, and nothing else, under either profile; the page shows the SVG text it
+returns as an image.
+The stylesheet gives a label the box the app page’s reset gives it, which the frame
+needs under `--untrusted`: the frame inherits the page’s policy, which refuses the
+`<style>` Mermaid zeroes a label’s margins with.
+One frame serves every text on the page, opened with the first diagram and removed with
+the last binding; if it goes any other way, taken out of the page or navigated away, a
+render in flight fails rather than holding KPress’s page-wide queue of Mermaid calls,
+and the next render opens a new frame.
+A diagram drawn around an image, Mermaid’s image shape, cannot get it, so it shows its
+source with a message that images in diagrams from untrusted text are not loaded.
 The trust model behind that allowlist is in
 [Server and Content](arch-server-and-content.md).
 

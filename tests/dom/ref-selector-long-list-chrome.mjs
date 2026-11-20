@@ -10,7 +10,8 @@
 //   1. opens the chooser and reads the list: how many rows it says it has, the names
 //      drawn, the note, the list's and a row's height, and how many rows are drawn;
 //   2. scrolls the list to its middle and reads which row is under the list's center;
-//   3. focuses the first row and presses End, then Home;
+//   3. focuses the first row and presses End, draws the Files toolbar again around the
+//      list, as a tally refresh does, and presses Home;
 //   4. moves focus down to row KEPT, scrolls the list far from it, and reads that it
 //      keeps focus, that Tab from the filter box reaches it, and that ArrowDown brings
 //      the next row into view;
@@ -224,22 +225,27 @@ try {
     };
   })()`);
 
-  // 3. End and Home, from the first row: End's row was never drawn before the key. The
-  // row is focused without the scroll a focus brings, which the list is already at, and a
-  // frame passes before End: once, in a run of the suite at a load average of 46, a
-  // list that End had scrolled to its foot read as scrolled to its top, with the foot's
-  // rows drawn, as if that scroll had come after End's.
+  // 3. End and Home, from the first row: End's row was never drawn before the key.
   await chrome.evaluate(`(async () => {
     ${LIST}.scrollTop = 0;
     await ${FRAMES};
-    ${LIST}.querySelector("button").focus({ preventScroll: true });
-    await ${FRAMES};
+    ${LIST}.querySelector("button").focus();
     return true;
   })()`);
   started = Date.now();
   await press("End", "End", 35);
   result.endMs = Date.now() - started;
   result.end = await chrome.evaluate(LISTED);
+  // The Files toolbar is drawn again around the list whenever a filter or a tally
+  // changes, and on its own while the index warms up, which under load came after End.
+  // That redraw takes the list out of the page and puts it back, which once left it
+  // scrolled to its top with only the foot's rows drawn (mb-y1k0).
+  await chrome.evaluate(`(async () => {
+    renderNavFilterBar();
+    await ${FRAMES};
+    return true;
+  })()`);
+  result.redrawn = await chrome.evaluate(LISTED);
   await press("Home", "Home", 36);
   result.home = await chrome.evaluate(LISTED);
 

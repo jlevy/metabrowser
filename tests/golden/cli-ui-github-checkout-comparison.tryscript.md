@@ -194,7 +194,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "canFetchChanges": false,
     "canRefresh": false,
     "files": "Changes have not been fetched.",
-    "message": "The pull request is unavailable (HTTP 500).",
+    "message": "The pull request could not be loaded.",
     "failure": null,
     "refreshing": false,
     "comparison": null
@@ -364,7 +364,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "canRefresh": false,
     "files": "Changes could not be fetched.",
     "message": null,
-    "failure": "GitHub rate limit · next check at 12:05 PM",
+    "failure": "GitHub rate limit reached. Next attempt after 12:05 PM.",
     "refreshing": false,
     "comparison": null
   },

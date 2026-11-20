@@ -233,7 +233,10 @@ revisions, so every data request from a pin’s page names its commit:
   answers one, as before.
 - The page announces the refusal as a `metabrowser:pin-changed` event, and the freshness
   row offers a reload.
-  Nothing changes under a reader who is looking at the page.
+  A switch made elsewhere changes nothing under a reader who is looking at the page.
+  A pin on a branch or tag that a refresh moved is different: the server follows the
+  ref, and the page goes with it to the same address
+  ([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)).
 - The page that makes a switch is left behind too, from the moment it asks the pin route
   until it has gone, so its guarded requests wait out the switch (`createSwitchHold` in
   `source-pin-guard.js`): they go as soon as the switch is refused or changes nothing,
