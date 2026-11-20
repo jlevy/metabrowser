@@ -31,7 +31,7 @@ $ metab tableroot --show people.csv
 show: people.csv
 route: /view/people.csv
 kind: delimited
-views: source (default)
+views: table (default, key V), source (key S)
 model: text envelope; size=228 content_bytes=228 content_truncated=False
 ? 0
 ```

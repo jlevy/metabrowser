@@ -1,0 +1,743 @@
+{
+  "answers": {
+    "schema?path=people.csv": {
+      "status": 200,
+      "body": {
+        "type": "table_schema",
+        "path": "people.csv",
+        "table": "",
+        "generation": "G",
+        "key": [],
+        "default_columns": [
+          "name",
+          "age",
+          "score",
+          "joined",
+          "active",
+          "note",
+          "extra"
+        ],
+        "fields": [
+          {
+            "name": "name",
+            "title": null,
+            "type": "text",
+            "declared_type": null,
+            "nullable": null,
+            "key": false,
+            "hidden": null,
+            "generated": null,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          },
+          {
+            "name": "age",
+            "title": null,
+            "type": "text",
+            "declared_type": null,
+            "nullable": null,
+            "key": false,
+            "hidden": null,
+            "generated": null,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          },
+          {
+            "name": "score",
+            "title": null,
+            "type": "real",
+            "declared_type": null,
+            "nullable": null,
+            "key": false,
+            "hidden": null,
+            "generated": null,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": true
+          },
+          {
+            "name": "joined",
+            "title": null,
+            "type": "date",
+            "declared_type": null,
+            "nullable": null,
+            "key": false,
+            "hidden": null,
+            "generated": null,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          },
+          {
+            "name": "active",
+            "title": null,
+            "type": "boolean",
+            "declared_type": null,
+            "nullable": null,
+            "key": false,
+            "hidden": null,
+            "generated": null,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          },
+          {
+            "name": "note",
+            "title": null,
+            "type": "text",
+            "declared_type": null,
+            "nullable": null,
+            "key": false,
+            "hidden": null,
+            "generated": null,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          },
+          {
+            "name": "extra",
+            "title": null,
+            "type": "text",
+            "declared_type": null,
+            "nullable": null,
+            "key": false,
+            "hidden": null,
+            "generated": null,
+            "list": true,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": false,
+            "sort_note": "the cells of rows longer than the header, as a list",
+            "filterable": false,
+            "numeric": false
+          }
+        ],
+        "references": [],
+        "referenced_by": []
+      }
+    },
+    "rows?limit=200&path=people.csv": {
+      "status": 200,
+      "body": {
+        "type": "table_rows",
+        "path": "people.csv",
+        "table": "",
+        "generation": "G",
+        "columns": [
+          "name",
+          "age",
+          "score",
+          "joined",
+          "active",
+          "note",
+          "extra"
+        ],
+        "rows": [
+          {
+            "key": "@1",
+            "cells": {
+              "name": "Ada",
+              "age": "36",
+              "score": 1.5,
+              "joined": "2020-01-02",
+              "active": true,
+              "note": "first"
+            }
+          },
+          {
+            "key": "@2",
+            "cells": {
+              "name": "Bob",
+              "age": "",
+              "score": 2.25,
+              "joined": "2021-03-04",
+              "active": false,
+              "note": ""
+            }
+          },
+          {
+            "key": "@3",
+            "cells": {
+              "name": "Cy",
+              "age": "unknown",
+              "score": {
+                "real": "inf"
+              },
+              "joined": "2019-12-31",
+              "active": true,
+              "note": "quoted, with a comma"
+            }
+          },
+          {
+            "key": "@4",
+            "cells": {
+              "name": "Dee",
+              "age": "99999999999999999999",
+              "score": 0.5,
+              "joined": "2022-07-08",
+              "active": false
+            }
+          },
+          {
+            "key": "@5",
+            "cells": {
+              "name": "Eve",
+              "age": "41",
+              "score": 3.0,
+              "joined": "2018-05-06",
+              "active": true,
+              "note": "x",
+              "extra": [
+                "y",
+                "z"
+              ]
+            }
+          }
+        ],
+        "next_after": null,
+        "complete": true,
+        "truncated": false,
+        "reason": null,
+        "count": 5,
+        "count_complete": true,
+        "estimate": null,
+        "skipped": 0,
+        "examined": null,
+        "searched": null
+      }
+    },
+    "rows?limit=200&order=asc&path=people.csv&sort=score": {
+      "status": 200,
+      "body": {
+        "type": "table_rows",
+        "path": "people.csv",
+        "table": "",
+        "generation": "G",
+        "columns": [
+          "name",
+          "age",
+          "score",
+          "joined",
+          "active",
+          "note",
+          "extra"
+        ],
+        "rows": [
+          {
+            "key": "@4",
+            "cells": {
+              "name": "Dee",
+              "age": "99999999999999999999",
+              "score": 0.5,
+              "joined": "2022-07-08",
+              "active": false
+            }
+          },
+          {
+            "key": "@1",
+            "cells": {
+              "name": "Ada",
+              "age": "36",
+              "score": 1.5,
+              "joined": "2020-01-02",
+              "active": true,
+              "note": "first"
+            }
+          },
+          {
+            "key": "@2",
+            "cells": {
+              "name": "Bob",
+              "age": "",
+              "score": 2.25,
+              "joined": "2021-03-04",
+              "active": false,
+              "note": ""
+            }
+          },
+          {
+            "key": "@5",
+            "cells": {
+              "name": "Eve",
+              "age": "41",
+              "score": 3.0,
+              "joined": "2018-05-06",
+              "active": true,
+              "note": "x",
+              "extra": [
+                "y",
+                "z"
+              ]
+            }
+          },
+          {
+            "key": "@3",
+            "cells": {
+              "name": "Cy",
+              "age": "unknown",
+              "score": {
+                "real": "inf"
+              },
+              "joined": "2019-12-31",
+              "active": true,
+              "note": "quoted, with a comma"
+            }
+          }
+        ],
+        "next_after": null,
+        "complete": true,
+        "truncated": false,
+        "reason": null,
+        "count": 5,
+        "count_complete": true,
+        "estimate": null,
+        "skipped": 0,
+        "examined": null,
+        "searched": null
+      }
+    },
+    "rows?limit=200&order=desc&path=people.csv&sort=score": {
+      "status": 200,
+      "body": {
+        "type": "table_rows",
+        "path": "people.csv",
+        "table": "",
+        "generation": "G",
+        "columns": [
+          "name",
+          "age",
+          "score",
+          "joined",
+          "active",
+          "note",
+          "extra"
+        ],
+        "rows": [
+          {
+            "key": "@3",
+            "cells": {
+              "name": "Cy",
+              "age": "unknown",
+              "score": {
+                "real": "inf"
+              },
+              "joined": "2019-12-31",
+              "active": true,
+              "note": "quoted, with a comma"
+            }
+          },
+          {
+            "key": "@5",
+            "cells": {
+              "name": "Eve",
+              "age": "41",
+              "score": 3.0,
+              "joined": "2018-05-06",
+              "active": true,
+              "note": "x",
+              "extra": [
+                "y",
+                "z"
+              ]
+            }
+          },
+          {
+            "key": "@2",
+            "cells": {
+              "name": "Bob",
+              "age": "",
+              "score": 2.25,
+              "joined": "2021-03-04",
+              "active": false,
+              "note": ""
+            }
+          },
+          {
+            "key": "@1",
+            "cells": {
+              "name": "Ada",
+              "age": "36",
+              "score": 1.5,
+              "joined": "2020-01-02",
+              "active": true,
+              "note": "first"
+            }
+          },
+          {
+            "key": "@4",
+            "cells": {
+              "name": "Dee",
+              "age": "99999999999999999999",
+              "score": 0.5,
+              "joined": "2022-07-08",
+              "active": false
+            }
+          }
+        ],
+        "next_after": null,
+        "complete": true,
+        "truncated": false,
+        "reason": null,
+        "count": 5,
+        "count_complete": true,
+        "estimate": null,
+        "skipped": 0,
+        "examined": null,
+        "searched": null
+      }
+    },
+    "rows?f.active=eq%3Atrue&limit=200&path=people.csv": {
+      "status": 200,
+      "body": {
+        "type": "table_rows",
+        "path": "people.csv",
+        "table": "",
+        "generation": "G",
+        "columns": [
+          "name",
+          "age",
+          "score",
+          "joined",
+          "active",
+          "note",
+          "extra"
+        ],
+        "rows": [
+          {
+            "key": "@1",
+            "cells": {
+              "name": "Ada",
+              "age": "36",
+              "score": 1.5,
+              "joined": "2020-01-02",
+              "active": true,
+              "note": "first"
+            }
+          },
+          {
+            "key": "@3",
+            "cells": {
+              "name": "Cy",
+              "age": "unknown",
+              "score": {
+                "real": "inf"
+              },
+              "joined": "2019-12-31",
+              "active": true,
+              "note": "quoted, with a comma"
+            }
+          },
+          {
+            "key": "@5",
+            "cells": {
+              "name": "Eve",
+              "age": "41",
+              "score": 3.0,
+              "joined": "2018-05-06",
+              "active": true,
+              "note": "x",
+              "extra": [
+                "y",
+                "z"
+              ]
+            }
+          }
+        ],
+        "next_after": null,
+        "complete": true,
+        "truncated": false,
+        "reason": null,
+        "count": 3,
+        "count_complete": true,
+        "estimate": null,
+        "skipped": 0,
+        "examined": null,
+        "searched": null
+      }
+    },
+    "rows?limit=200&path=people.csv&q=COMMA": {
+      "status": 200,
+      "body": {
+        "type": "table_rows",
+        "path": "people.csv",
+        "table": "",
+        "generation": "G",
+        "columns": [
+          "name",
+          "age",
+          "score",
+          "joined",
+          "active",
+          "note",
+          "extra"
+        ],
+        "rows": [
+          {
+            "key": "@3",
+            "cells": {
+              "name": "Cy",
+              "age": "unknown",
+              "score": {
+                "real": "inf"
+              },
+              "joined": "2019-12-31",
+              "active": true,
+              "note": "quoted, with a comma"
+            }
+          }
+        ],
+        "next_after": null,
+        "complete": true,
+        "truncated": false,
+        "reason": null,
+        "count": 1,
+        "count_complete": true,
+        "estimate": null,
+        "skipped": 0,
+        "examined": null,
+        "searched": [
+          "name",
+          "age",
+          "note"
+        ]
+      }
+    },
+    "record?generation=G&key=%402&path=people.csv": {
+      "status": 200,
+      "body": {
+        "type": "table_record",
+        "path": "people.csv",
+        "table": "",
+        "key": "@2",
+        "positional": true,
+        "generation": "G",
+        "generation_moved": false,
+        "cells": {
+          "name": "Bob",
+          "age": "",
+          "score": 2.25,
+          "joined": "2021-03-04",
+          "active": false,
+          "note": ""
+        },
+        "referenced_by": []
+      }
+    },
+    "rows?f.age=contains%3A9&limit=200&path=people.csv": {
+      "status": 200,
+      "body": {
+        "type": "table_rows",
+        "path": "people.csv",
+        "table": "",
+        "generation": "G",
+        "columns": [
+          "name",
+          "age",
+          "score",
+          "joined",
+          "active",
+          "note",
+          "extra"
+        ],
+        "rows": [
+          {
+            "key": "@4",
+            "cells": {
+              "name": "Dee",
+              "age": "99999999999999999999",
+              "score": 0.5,
+              "joined": "2022-07-08",
+              "active": false
+            }
+          }
+        ],
+        "next_after": null,
+        "complete": true,
+        "truncated": false,
+        "reason": null,
+        "count": 1,
+        "count_complete": true,
+        "estimate": null,
+        "skipped": 0,
+        "examined": null,
+        "searched": null
+      }
+    },
+    "rows?cols=name%2Cage%2Cscore%2Cactive%2Cnote%2Cextra&limit=200&path=people.csv": {
+      "status": 200,
+      "body": {
+        "type": "table_rows",
+        "path": "people.csv",
+        "table": "",
+        "generation": "G",
+        "columns": [
+          "name",
+          "age",
+          "score",
+          "active",
+          "note",
+          "extra"
+        ],
+        "rows": [
+          {
+            "key": "@1",
+            "cells": {
+              "name": "Ada",
+              "age": "36",
+              "score": 1.5,
+              "active": true,
+              "note": "first"
+            }
+          },
+          {
+            "key": "@2",
+            "cells": {
+              "name": "Bob",
+              "age": "",
+              "score": 2.25,
+              "active": false,
+              "note": ""
+            }
+          },
+          {
+            "key": "@3",
+            "cells": {
+              "name": "Cy",
+              "age": "unknown",
+              "score": {
+                "real": "inf"
+              },
+              "active": true,
+              "note": "quoted, with a comma"
+            }
+          },
+          {
+            "key": "@4",
+            "cells": {
+              "name": "Dee",
+              "age": "99999999999999999999",
+              "score": 0.5,
+              "active": false
+            }
+          },
+          {
+            "key": "@5",
+            "cells": {
+              "name": "Eve",
+              "age": "41",
+              "score": 3.0,
+              "active": true,
+              "note": "x",
+              "extra": [
+                "y",
+                "z"
+              ]
+            }
+          }
+        ],
+        "next_after": null,
+        "complete": true,
+        "truncated": false,
+        "reason": null,
+        "count": 5,
+        "count_complete": true,
+        "estimate": null,
+        "skipped": 0,
+        "examined": null,
+        "searched": null
+      }
+    },
+    "rows?f.score=gt%3Ahigh&limit=200&path=people.csv": {
+      "status": 400,
+      "body": {
+        "type": "table_error",
+        "path": "people.csv",
+        "code": "bad_query",
+        "error": "'high' is not a number",
+        "param": "f.score"
+      }
+    },
+    "rows?f.name=eq%3AZed&limit=200&path=people.csv": {
+      "status": 200,
+      "body": {
+        "type": "table_rows",
+        "path": "people.csv",
+        "table": "",
+        "generation": "G",
+        "columns": [
+          "name",
+          "age",
+          "score",
+          "joined",
+          "active",
+          "note",
+          "extra"
+        ],
+        "rows": [],
+        "next_after": null,
+        "complete": true,
+        "truncated": false,
+        "reason": null,
+        "count": 0,
+        "count_complete": true,
+        "estimate": null,
+        "skipped": 0,
+        "examined": null,
+        "searched": null
+      }
+    },
+    "record?key=%404&path=people.csv": {
+      "status": 200,
+      "body": {
+        "type": "table_record",
+        "path": "people.csv",
+        "table": "",
+        "key": "@4",
+        "positional": true,
+        "generation": "G",
+        "generation_moved": null,
+        "cells": {
+          "name": "Dee",
+          "age": "99999999999999999999",
+          "score": 0.5,
+          "joined": "2022-07-08",
+          "active": false
+        },
+        "referenced_by": []
+      }
+    }
+  }
+}

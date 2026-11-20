@@ -101,7 +101,7 @@ $ metab showroot --show table.csv
 show: table.csv
 route: /view/table.csv
 kind: delimited
-views: source (default)
+views: table (default, key V), source (key S)
 model: text envelope; size=13 content_bytes=13 content_truncated=False
 ? 0
 ```

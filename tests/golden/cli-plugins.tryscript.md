@@ -31,7 +31,7 @@ NAME           SOURCE   KINDS             REQUIRES    VIEWS  HOOKS
 -------------  -------  ----------------  ----------  -----  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 agent-log      builtin  agent-log         structured  3      charts
 binary         builtin  -                 -           1      chunk
-delimited      builtin  delimited         table       1      -
+delimited      builtin  delimited         table       2      -
 diff           builtin  diff              structured  1      document,children,comparison
 event-log      builtin  event-log         agent-log   5      timeline,slowest,kinds,errors
 folder         builtin  -                 markdown    2      -
@@ -105,9 +105,10 @@ $ metab --plugins --json
         "table"
       ],
       "views": [
+        "table",
         "source"
       ],
-      "view_count": 1,
+      "view_count": 2,
       "data_hooks": [],
       "disabled_data_hooks": []
     },
