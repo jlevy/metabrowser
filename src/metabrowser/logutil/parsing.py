@@ -276,6 +276,9 @@ def _is_claude_transcript_record(event: dict[str, Any]) -> bool:
     if not isinstance(event.get("sessionId"), str):
         return False
     etype = event.get("type")
+    # A list or mapping ``type`` is unhashable, so membership would raise.
+    if not isinstance(etype, str):
+        return False
     if etype in _CLAUDE_CONVERSATION_TYPES:
         return "uuid" in event and "parentUuid" in event
     return etype in _CLAUDE_TRANSCRIPT_RECORD_TYPES
@@ -399,7 +402,9 @@ class ClaudeLogParser:
         if etype == "result":
             return self._parse_result(event, ts)
 
-        if etype == "attachment" or etype in _CLAUDE_TRANSCRIPT_RECORD_TYPES:
+        if isinstance(etype, str) and (
+            etype == "attachment" or etype in _CLAUDE_TRANSCRIPT_RECORD_TYPES
+        ):
             return [
                 LogEvent(
                     kind="system",
@@ -1335,8 +1340,11 @@ _CODEX_REPEATED_ITEM_TYPES = frozenset(
 
 def _is_codex_rollout_record(event: dict[str, Any]) -> bool:
     """Whether a record has a typed Codex rollout envelope."""
-    return event.get("type") in _CODEX_ROLLOUT_RECORD_TYPES and isinstance(
-        event.get("payload"), dict
+    etype = event.get("type")
+    return (
+        isinstance(etype, str)
+        and etype in _CODEX_ROLLOUT_RECORD_TYPES
+        and isinstance(event.get("payload"), dict)
     )
 
 
@@ -1538,13 +1546,15 @@ class CodexRolloutParser:
                     summary += f" first_token={fmt_timedelta(first_token_ms / 1000)}"
             else:
                 summary = f"[result] ABORTED {payload.get('reason', '')}".rstrip()
+            # A person interrupting a turn is a choice, not a failure.
+            failed = ptype == "turn_aborted" and payload.get("reason") != "interrupted"
             return [
                 self._event(
                     "result",
                     summary,
                     ts,
                     event,
-                    is_error=ptype == "turn_aborted",
+                    is_error=failed,
                     is_done=True,
                     duration_s=duration_s,
                 )

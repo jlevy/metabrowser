@@ -152,8 +152,7 @@ status: 200
       "tool_call/spawn_agent": 1,
       "tool_call/file_change": 1,
       "tool_call/mcp:docs.search": 1,
-      "result/done": 1,
-      "result/failed": 1
+      "result/done": 2
     },
     "metadata": {
       "adapter": "codex-rollout",

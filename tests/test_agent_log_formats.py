@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from metabrowser.file_kinds import classify_file_kind
+from metabrowser.jsonl_view import parse_jsonl_bytes
 from metabrowser.logutil.parsing import LogEvent, create_parser, detect_adapter
 
 FIXTURES = Path(__file__).parent / "fixtures" / "agent-logs"
@@ -121,10 +122,30 @@ def test_rollout_fixture_parses_to_the_conversation_without_repeats() -> None:
         ("system", "[turn.started]"),
         ("result", "[result] ABORTED interrupted"),
     ]
+    # A person's interrupt is not an error; a failed command is.
     failed = [event.summary for event in events if event.is_error]
-    assert failed == ["[call:command] cat missing exit=1", "[result] ABORTED interrupted"]
+    assert failed == ["[call:command] cat missing exit=1"]
     assert all(event.is_done for event in events if event.kind == "result")
     assert events[8].duration_s == 0.25
+
+
+def test_an_abort_for_another_reason_is_an_error() -> None:
+    record = {"type": "event_msg", "payload": {"type": "turn_aborted", "reason": "error"}}
+    (event,) = _parse("codex-rollout", [record])
+    assert (event.summary, event.is_error, event.is_done) == ("[result] ABORTED error", True, True)
+
+
+def test_the_summary_reports_the_last_turn() -> None:
+    summary = parse_jsonl_bytes((FIXTURES / "codex-rollout.jsonl").read_bytes())["summary"]
+    # The fixture's first turn completes in 8 s; its second is interrupted.
+    assert (summary["is_done"], summary["is_error"], summary["duration_s"]) == (True, False, None)
+
+
+def test_a_type_that_is_not_a_string_is_not_a_crash() -> None:
+    # A list or mapping is unhashable, so a set membership test on it would raise.
+    lines = [json.dumps({"type": value, "sessionId": "s", "payload": {}}) for value in ([], {})]
+    assert detect_adapter(lines) == "unknown"
+    assert len(_parse("claude", [{"type": [], "sessionId": "s"}])) == 1
 
 
 def test_a_rollout_without_usage_records_shows_token_count_usage() -> None:
