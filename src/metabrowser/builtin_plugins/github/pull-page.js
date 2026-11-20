@@ -27,8 +27,10 @@
 // only KPress's Markdown HTML is parsed, and only after it is reduced to an allowlist of
 // plain markup twice: by the hook on the server (src/metabrowser/inert_html.py), and by
 // static/inert-html.js, which rebuilds the inserted nodes from an inert template. No
-// class, id, data, style, or event attribute survives, nor any SVG, media, stylesheet,
-// frame, or form; an image becomes a link to it; a link is made absolute against the
+// class, id, data, style, or event attribute survives, but for the image fallback's own,
+// nor any SVG, media, stylesheet, frame, or form; an image written in full over https is
+// kept, with no referrer sent, unless the reader has turned that off, and any other is its
+// alt text in a chip inside its link; a link is made absolute against the
 // pull request's github.com page, kept only for http(s), and opened in a new tab with
 // rel="noopener noreferrer"; and no KPress script is loaded for a text, but for one with a
 // Mermaid block (a `pre` keeps `lang="mermaid"`), KPress's diagram modules, which draw each
@@ -187,6 +189,40 @@ const PLACE_KEY = "pullPlace";
 // How long an idle browser may take before Files changed is fetched anyway. A page rendering
 // its conversation is not idle, and the comparison should not wait for all of it.
 const PREFETCH_IDLE_TIMEOUT_MS = 300;
+// Pull requests' sizes, by their size route, kept for the document: a route names two
+// immutable commits, so its size never changes. Bounded as a Pulls window's rows are; each
+// entry is two numbers.
+const KEPT_PULL_SIZES_LIMIT = 256;
+/** @type {Map<string, {pushed_bytes: number | null, diff_bytes: number | null}>} */
+const KEPT_PULL_SIZES = new Map();
+
+/**
+ * @param {string} route
+ * @param {{pushed_bytes: number | null, diff_bytes: number | null}} size
+ */
+function keepPullSize(route, size) {
+  KEPT_PULL_SIZES.delete(route);
+  KEPT_PULL_SIZES.set(route, size);
+  while (KEPT_PULL_SIZES.size > KEPT_PULL_SIZES_LIMIT) {
+    const oldest = KEPT_PULL_SIZES.keys().next();
+    if (oldest.done) {
+      break;
+    }
+    KEPT_PULL_SIZES.delete(oldest.value);
+  }
+}
+
+/**
+ * A comparison's file count, from the manifest of what was read of it, or null.
+ *
+ * @param {unknown} raw
+ * @returns {number | null}
+ */
+function manifestFiles(raw) {
+  const files = /** @type {{manifest?: {totals?: {files?: unknown}}} | null} */ (raw)?.manifest
+    ?.totals?.files;
+  return typeof files === "number" && Number.isInteger(files) && files >= 0 ? files : null;
+}
 
 const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
@@ -396,13 +432,14 @@ const TRUNCATED = Object.freeze({
  *     base: string, head: string, htmlUrl: string, created: string, updated: string,
  *     closed: string | null, closedLabel: string | null, labels: PullLabel[],
  *     merge: {state: string, label: string} | null, text: string, truncated: boolean,
+ *     commits: number | null,
  *   },
  *   timeline: TimelineItem[],
  *   reviewComments: ReviewCommentItem[],
  *   checks: {counts: Record<string, number>, items: CheckItem[]} | null,
  *   checkNotes: string[],
  *   notes: string[],
- *   comparison: {left: string, right: string, route?: string, image_route?: string, rendered_route?: string, headMoved: boolean, branch: {ref: string} | null} | null,
+ *   comparison: {left: string, right: string, route?: string, image_route?: string, rendered_route?: string, size_route?: string, headMoved: boolean, branch: {ref: string} | null} | null,
  *   comparisonComing: boolean,
  *   head: string | null,
  *   baseRef: string | null,
@@ -1220,6 +1257,8 @@ function describeCore(pull, known = new Map()) {
     closedLabel: state === "merged" ? "merged" : state === "closed" ? "closed" : null,
     labels: list(pull.labels).map((label) => describeLabel(label, known)),
     merge: merge === null ? null : { state: merge, label: MERGEABLE[merge] ?? MERGEABLE.unknown },
+    // The header's size line opens with it (docs/design-system.md, "Change Size Line").
+    commits,
     text: text(pull.body),
     truncated: pull.body_truncated === true,
   };
@@ -1546,7 +1585,7 @@ export function describePull(envelope, page) {
  * click (comparison-prefetch.js, `createComparisonWarmer`). Pure.
  *
  * @param {unknown} envelope
- * @returns {{left: string, right: string, route?: string, image_route?: string, rendered_route?: string} | null}
+ * @returns {{left: string, right: string, route?: string, image_route?: string, rendered_route?: string, size_route?: string} | null}
  */
 export function pullComparison(envelope) {
   const shaped = /** @type {Record<string, any> | null} */ (
@@ -1566,6 +1605,8 @@ export function pullComparison(envelope) {
     ...(typeof shaped?.rendered_route === "string"
       ? { rendered_route: shaped.rendered_route }
       : {}),
+    // Where the header's size line asks what the comparison pushes (pull_size.py).
+    ...(typeof shaped?.size_route === "string" ? { size_route: shaped.size_route } : {}),
   };
 }
 
@@ -4248,6 +4289,14 @@ export function mountPullPage(container, ctx, mb) {
     },
     [h("span", { class: "tally-pending", "aria-hidden": "true" })],
   );
+  // The change set's size line, the header's line above its Diff summary
+  // (docs/design-system.md, "Change Size Line"): "2 commits · 36 files changed · 1.8 MB
+  // compressed (6.2 MB raw diff)". It is there whenever the summary's row is, holding the
+  // same pending placeholder while the summary waits, so neither row moves the tabs.
+  const sizeRow = h("div", { class: "github-pull-size page-header-line" });
+  const sizePending = h("span", { class: "mb-delayed-loading github-pull-size-pending" }, [
+    h("span", { class: "tally-pending", "aria-hidden": "true" }),
+  ]);
   // A wait for the summary still running at the event log's late threshold says so in the
   // placeholder's place, with Details (mb-9zp5): a placeholder that only pulsed left the
   // reader no way to tell slow from stuck, nor anyone a record of it. A line tall, as the
@@ -5726,7 +5775,7 @@ export function mountPullPage(container, ctx, mb) {
     status.hidden = agesRow && statusText.length === 0 && ending.length === 0;
     children.push(status);
     if (pull !== null || model.status !== "unavailable") {
-      children.push(summaryRow);
+      children.push(sizeRow, summaryRow);
     }
     paintSummaryWait(model);
     if (detailsOpen !== null) {
@@ -6333,6 +6382,10 @@ export function mountPullPage(container, ctx, mb) {
    * read of it starts again (mb-pb35, mb-onr2).
    */
   let summaryFailed = "";
+  /** The size routes asked for and not yet answered. */
+  const sizeAsked = new Set();
+  /** The file count of the Diff summary drawn, by its comparison, for the size line. */
+  let summaryFiles = { key: "", files: /** @type {number | null} */ (null) };
   /**
    * The cached changed-files list's brief line, drawn in the Diff summary's row while the
    * comparison is on its way or read (pull-summary-brief.js, mb-z8ea), and the line drawn,
@@ -6363,7 +6416,11 @@ export function mountPullPage(container, ctx, mb) {
           changed: () => paintSummaryWait(shown),
         })
       : null;
-  let briefShown = { key: "", node: /** @type {HTMLElement | null} */ (null) };
+  let briefShown = {
+    key: "",
+    node: /** @type {HTMLElement | null} */ (null),
+    files: /** @type {number | null} */ (null),
+  };
   // Asked as the page mounts: a page opened from a Pulls row has the row's line in the
   // document's memory, by the repository its envelope names; any other asks the route once.
   const readerSource = /** @type {{source?: unknown} | null | undefined} */ (
@@ -6394,7 +6451,7 @@ export function mountPullPage(container, ctx, mb) {
     const breakdown = summaryBrief.breakdown();
     const key = `${summary.generation}:${summary.head}:${breakdown === null ? 0 : 1}`;
     if (briefShown.key !== key || briefShown.node === null) {
-      briefShown = { key, node: briefLine(mb, h, summary, breakdown) };
+      briefShown = { key, node: briefLine(mb, h, summary, breakdown), files: summary.files };
     }
     return briefShown.node;
   }
@@ -6672,7 +6729,88 @@ export function mountPullPage(container, ctx, mb) {
       summaryLate.remove();
       briefShown.node?.remove();
     }
+    paintSize(model);
     noteSummaryWait();
+  }
+
+  /**
+   * The size line for *model*: the commits, the file count of the Diff summary drawn or of
+   * the cached list's brief line, and, once `size_route` answers, what the comparison pushes
+   * and its patch's size. While the summary's row waits with no count, this row holds the
+   * placeholder too; with nothing coming it is empty. A size is drawn only for the comparison
+   * whose files the line counts.
+   *
+   * @param {PullModel | null} model
+   */
+  function paintSize(model) {
+    if (listening.signal.aborted) {
+      return;
+    }
+    const comparison = model?.comparison ?? null;
+    const key = comparison === null ? "" : comparisonKey(comparison);
+    const drawn = summaryShown.handle !== null;
+    const files = drawn
+      ? summaryFiles.key === summaryShown.key
+        ? summaryFiles.files
+        : null
+      : summaryRow.firstChild === briefShown.node && briefShown.node !== null
+        ? briefShown.files
+        : null;
+    if (files === null) {
+      const waits = summaryRow.firstChild === summaryPending;
+      if (waits ? sizeRow.firstChild !== sizePending : sizeRow.firstChild !== null) {
+        sizeRow.replaceChildren(...(waits ? [sizePending] : []));
+      }
+      return;
+    }
+    const route = comparison?.size_route;
+    const size =
+      route === undefined || (drawn && summaryShown.key !== key) ? null : pullSize(route, model);
+    const commits = model?.pull?.commits ?? null;
+    const line = mb.changeSizeLine({
+      ...(commits === null ? {} : { commits }),
+      files,
+      pushedBytes: size?.pushed_bytes ?? null,
+      diffBytes: size?.diff_bytes ?? null,
+    });
+    if (sizeRow.dataset.said !== line.text) {
+      sizeRow.dataset.said = line.text;
+      sizeRow.replaceChildren(...mb.changeSizeLineNodes(line));
+    }
+  }
+
+  /**
+   * The size *route* answered, kept for the document, or null while it is on its way or
+   * failed; a request is sent once, and an answer repaints the size line for the page shown.
+   *
+   * @param {string} route
+   * @param {PullModel | null} model
+   * @returns {{pushed_bytes: number | null, diff_bytes: number | null} | null}
+   */
+  function pullSize(route, model) {
+    const kept = KEPT_PULL_SIZES.get(route);
+    if (kept !== undefined) {
+      return kept;
+    }
+    if (!sizeAsked.has(route)) {
+      sizeAsked.add(route);
+      void (async () => {
+        try {
+          const response = await fetch(route, { signal: listening.signal });
+          const body = await response.json().catch(() => null);
+          const size = response.ok ? body?.size : null;
+          if (size?.state === "measured") {
+            keepPullSize(route, { pushed_bytes: size.pushed_bytes, diff_bytes: size.diff_bytes });
+            paintSize(shown ?? model);
+          }
+        } catch {
+          // The line says its counts without a size; the next page asks again.
+        } finally {
+          sizeAsked.delete(route);
+        }
+      })();
+    }
+    return null;
   }
 
   /**
@@ -6719,6 +6857,7 @@ export function mountPullPage(container, ctx, mb) {
     summaryShown.handle?.dispose();
     summaryShown = { key: "", claim: summaryShown.claim + 1, handle: null };
     summaryRow.replaceChildren();
+    paintSize(shown);
     noteSummaryWait();
   }
 
@@ -6765,8 +6904,10 @@ export function mountPullPage(container, ctx, mb) {
         }
         summaryShown.handle?.dispose();
         summaryShown = { key, claim, handle };
+        summaryFiles = { key, files: manifestFiles(raw) };
         // In place of the placeholder or an older summary, in one step.
         summaryRow.replaceChildren(...stage.childNodes);
+        paintSize(shown);
         noteSummaryWait();
       },
       () => {

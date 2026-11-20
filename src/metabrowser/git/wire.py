@@ -284,6 +284,53 @@ class GitCommitDetail(TypedDict):
     files_truncated: bool
 
 
+# Why a change's size is not known: the commit's parent is beyond a shallow history
+# (``parent_unavailable``), the walk from one commit to the other crosses that boundary
+# (``history_unavailable``), the repository lacks an object the change needs
+# (``objects_unavailable``), or measuring it took longer than a request may
+# (``too_costly``). See :mod:`metabrowser.git.change_size`.
+type GitChangeSizeReason = Literal[
+    "parent_unavailable", "history_unavailable", "objects_unavailable", "too_costly"
+]
+
+
+class GitChangeSize(TypedDict):
+    """The size of a change, as Git pushes it and as a patch.
+
+    The change is what *head* has that *base* has not: a commit against its first
+    parent, or a pull request's head against its merge base. ``base`` is ``None`` for a
+    root commit, which has nothing to push against.
+
+    ``commits`` is how many commits the change holds: one for an ordinary commit, and for
+    a merge or a pull request, every commit *head* reaches that *base* does not.
+    ``pushed_bytes`` is the size of the thin pack ``git push`` would send for it: every
+    object *head* reaches that *base* does not, compressed, and stored as deltas against
+    one another and against objects *base* already has. ``diff_bytes`` is the size of the
+    change written out as a patch, ``git diff --binary``, uncompressed. Both are ``None``,
+    with ``reason`` saying why, when ``state`` is ``unknown``.
+
+    Each is a function of the two commit IDs (the pushed size, with the zlib Git is built
+    with) (:mod:`metabrowser.git.change_size`
+    pins every option that could move them), so a measured size never changes and is
+    kept rather than measured again.
+    """
+
+    base: str | None
+    head: str
+    state: Literal["measured", "unknown"]
+    reason: GitChangeSizeReason | None
+    commits: int | None
+    pushed_bytes: int | None
+    diff_bytes: int | None
+
+
+class GitCommitSize(TypedDict):
+    """Response shape for ``GET /api/git/commit-size/{revision}``."""
+
+    is_repo: bool
+    size: GitChangeSize
+
+
 # Required-key gate sets for the validators below. As in
 # :mod:`metabrowser.wire_models`, TypedDict carries no required-key
 # reflection in this form, so they are spelled out. Keep in sync with the
@@ -540,10 +587,39 @@ def validate_git_repo_info(info: Mapping[str, Any]) -> None:
         assert ref is None, f"detached head must have ref=None, got {ref!r}"
 
 
+_CHANGE_SIZE_REASONS: frozenset[str] = frozenset(
+    {"parent_unavailable", "history_unavailable", "objects_unavailable", "too_costly"}
+)
+
+
+def validate_git_change_size(size: Mapping[str, Any], *, _where: str = "") -> None:
+    """Raise :class:`AssertionError` if *size* violates :class:`GitChangeSize`."""
+    expected = {"base", "head", "state", "reason", "commits", "pushed_bytes", "diff_bytes"}
+    assert set(size) == expected, f"change size at {_where!r} keys {sorted(size)}"
+    assert size["base"] is None or is_full_revision(size["base"]), f"base at {_where!r}"
+    assert is_full_revision(size["head"]), f"head at {_where!r}"
+    if size["state"] == "measured":
+        assert size["reason"] is None, f"measured size with a reason at {_where!r}"
+        for key in ("commits", "pushed_bytes", "diff_bytes"):
+            value = size[key]
+            assert isinstance(value, int) and not isinstance(value, bool) and value >= 0, (
+                f"{key} not a count at {_where!r}: {value!r}"
+            )
+    else:
+        assert size["state"] == "unknown", f"state {size['state']!r} at {_where!r}"
+        assert size["reason"] in _CHANGE_SIZE_REASONS, f"reason {size['reason']!r}"
+        assert (
+            size["commits"] is None and size["pushed_bytes"] is None and size["diff_bytes"] is None
+        ), f"unknown size with counts at {_where!r}"
+
+
 __all__ = [
     "GitAuthor",
+    "GitChangeSize",
+    "GitChangeSizeReason",
     "GitCommit",
     "GitCommitDetail",
+    "GitCommitSize",
     "GitCommitStats",
     "GitFileChange",
     "GitGraphCheckpoint",
@@ -555,6 +631,7 @@ __all__ = [
     "GitRef",
     "GitRepoInfo",
     "is_full_revision",
+    "validate_git_change_size",
     "validate_git_commit",
     "validate_git_commit_detail",
     "validate_git_file_change",

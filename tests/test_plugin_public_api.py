@@ -154,6 +154,9 @@ _GIT_SOURCE_MODULES = (
     # The revision tree source, and the routes that answer from it.
     "metabrowser.git.tree_source",
     "metabrowser.git.content_routes",
+    # The answers a pin keeps of when its files last changed (``--doctor`` reads
+    # ``git.file_ages`` alone, to say whether the Git can).
+    "metabrowser.git.file_ages_service",
     # Acquiring a Git source and serving its pin, and what a first clone reads Git's
     # progress with and reports it through.
     "metabrowser.cli.acquire_cli",

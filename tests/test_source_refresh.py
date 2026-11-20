@@ -747,6 +747,8 @@ def test_a_pin_shell_has_a_freshness_row_loaded_on_demand(
 ) -> None:
     shell = served.get("/view/").text
     assert '<div class="source-freshness" id="source-freshness" hidden></div>' in shell
+    # Above the keyboard shortcut strip, which stays the pane's last row (owner, 2026-11-20).
+    assert shell.index('id="source-freshness"') < shell.index('id="nav-shortcut-hints"')
     bundles = shell[shell.index("window.METABROWSER_ASSET_BUNDLES=") :]
     bundles = bundles[: bundles.index("</script>")]
     assert '"source-freshness": [{"src": "/static/source-freshness.js' in bundles

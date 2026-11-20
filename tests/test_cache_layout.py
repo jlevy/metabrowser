@@ -60,8 +60,8 @@ from metabrowser.home import (
 from tests.cache_home_fixture import (
     ALIASED_AT,
     FLASK_HTTPS,
-    FLASK_STORE_KEY,
-    ORPHAN_STORE_KEY,
+    FLASK_STORE,
+    ORPHAN_STORE,
     _attach,
     _stage_and_publish_source,
     _stage_and_publish_store,
@@ -448,7 +448,7 @@ def _record_writes(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 
 def test_the_current_format_ends_the_history_and_every_older_format_migrates() -> None:
-    assert FORMAT_HISTORY[-1] == LAYOUT_FORMAT == "f01"
+    assert FORMAT_HISTORY[-1] == LAYOUT_FORMAT == "f02"
     assert set(MIGRATIONS) == set(FORMAT_HISTORY[:-1])
     assert [format_number(value) for value in FORMAT_HISTORY] == sorted(
         {format_number(value) for value in FORMAT_HISTORY}
@@ -464,7 +464,7 @@ def test_a_new_cache_initializes_separate_configuration_and_layout(
     outcome = migrate_layout(cache_home, version="0.11.0")
 
     assert writes == ["config.yml", "layout.yml"]
-    assert outcome.layout == CacheLayout(format="f01", created_by="0.11.0")
+    assert outcome.layout == CacheLayout(format="f02", created_by="0.11.0")
     assert outcome.config.model_dump(mode="json") == {
         "format": "f01",
         "written_by": "0.11.0",
@@ -487,25 +487,30 @@ def test_reopening_a_current_home_writes_nothing(
     outcome = migrate_layout(cache_home, version="0.12.0")
 
     assert writes == []
-    assert outcome.previous_format == "f01"
+    assert outcome.previous_format == "f02"
     assert _snapshot(cache_home) == before
 
 
 @posix_only
 @pytest.mark.parametrize(
-    "setup",
+    ("setup", "supported"),
     [
-        lambda home: _write_layout(home, "f02"),
-        lambda home: _write_layout(home, "f07", version="v3", extra="  shards: 256\n"),
-        lambda home: (
-            _write_layout(home, "f01"),
-            _write_config(home, "config:\n  format: f02\n  written_by: 0.13.0\n  upgrades: []\n"),
+        (lambda home: _write_layout(home, "f03"), "f02"),
+        (lambda home: _write_layout(home, "f07", version="v3", extra="  shards: 256\n"), "f02"),
+        (
+            lambda home: (
+                _write_layout(home, "f02"),
+                _write_config(
+                    home, "config:\n  format: f02\n  written_by: 0.13.0\n  upgrades: []\n"
+                ),
+            ),
+            "f01",
         ),
     ],
     ids=["future-layout", "future-layout-contract", "future-config"],
 )
 def test_an_older_client_refuses_a_future_home_before_writing(
-    cache_home: Path, setup: Callable[[Path], object]
+    cache_home: Path, setup: Callable[[Path], object], supported: str
 ) -> None:
     setup(cache_home)
     before = _snapshot(cache_home)
@@ -518,7 +523,7 @@ def test_an_older_client_refuses_a_future_home_before_writing(
     with pytest.raises(FutureLayoutFormatError, match="Upgrade Metabrowser") as refused:
         migrate_layout(cache_home, version="0.11.0")
 
-    assert refused.value.supported == "f01"
+    assert refused.value.supported == supported
     assert str(cache_home) not in str(refused.value)
     assert _snapshot(cache_home) == before
     assert all((cache_home / path).read_bytes() == data for path, data in contents.items())
@@ -539,7 +544,7 @@ def test_a_shared_future_home_is_refused_before_its_modes_are_tightened(
 ) -> None:
     """The future-format answer must precede every change, repairs included."""
 
-    _write_layout(cache_home, "f02")
+    _write_layout(cache_home, "f03")
     (cache_home / "locks").chmod(0o755)
     (cache_home / "layout.yml").chmod(0o644)
     before = _snapshot(cache_home)
@@ -572,7 +577,7 @@ def test_a_shared_but_readable_home_is_still_repaired_and_then_prepared(
 
     opened = open_cache(cache_home, version="0.11.0")
 
-    assert opened.layout.format == "f01"
+    assert opened.layout.format == "f02"
     assert {entry: _mode(cache_home / entry) for entry in shared} == {
         "locks": 0o700,
         "layout.yml": 0o600,
@@ -642,7 +647,7 @@ def test_a_config_past_its_bound_is_refused_rather_than_parsed(cache_home: Path)
 def test_cache_migrations_preserve_independent_configuration(
     cache_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    migrate_layout(cache_home, version="0.11.0")
+    _write_layout(cache_home, "f01")
     _write_config(
         cache_home,
         "config:\n  format: f01\n  written_by: 0.11.0\n  upgrades: []\n"
@@ -679,7 +684,7 @@ def test_cache_migrations_preserve_independent_configuration(
 
 @posix_only
 def test_an_interrupted_migration_resumes_from_its_last_published_step(cache_home: Path) -> None:
-    migrate_layout(cache_home, version="0.11.0")
+    _write_layout(cache_home, "f01")
     calls: list[str] = []
     history = ("f01", "f02", "f03")
 
@@ -732,7 +737,7 @@ def test_missing_configuration_is_initialized_without_rewriting_cache(
 
 @posix_only
 def test_a_missing_migration_is_a_programming_error(cache_home: Path) -> None:
-    migrate_layout(cache_home, version="0.11.0")
+    _write_layout(cache_home, "f01")
 
     with pytest.raises(RuntimeError, match="no migration from layout format f01"):
         migrate_layout(cache_home, version="0.12.0", history=("f01", "f02"), migrations={})
@@ -794,7 +799,7 @@ def test_open_cache_prepares_probes_migrates_and_sweeps(tmp_path: Path) -> None:
     opened = open_cache(home, version="0.11.0")
 
     assert opened.home == home
-    assert opened.layout.format == "f01"
+    assert opened.layout.format == "f02"
     assert opened.config.format == "f01"
     assert opened.sweep.removed == ("staging/crashed-clone",)
     assert not (home / "staging/crashed-clone").exists()
@@ -807,15 +812,15 @@ def test_open_cache_keeps_an_unreferenced_store_and_an_aliased_one(tmp_path: Pat
     home = tmp_path / "home"
     ensure_home(home)
     migrate_layout(home, version="0.11.0")
-    _stage_and_publish_store(home, ORPHAN_STORE_KEY, with_revision=False)
-    _stage_and_publish_store(home, FLASK_STORE_KEY, with_revision=True)
+    _stage_and_publish_store(home, ORPHAN_STORE, with_revision=False)
+    _stage_and_publish_store(home, FLASK_STORE, with_revision=True)
     _stage_and_publish_source(home, FLASK_HTTPS, opened=True)
-    _attach(home, FLASK_HTTPS, FLASK_STORE_KEY, generation=1, at=ALIASED_AT)
+    _attach(home, FLASK_HTTPS, FLASK_STORE, generation=1, at=ALIASED_AT)
 
     open_cache(home, version="0.11.0")
 
-    assert (home / f"repository-stores/{ORPHAN_STORE_KEY}").is_dir()
-    assert (home / f"repository-stores/{FLASK_STORE_KEY}").is_dir()
+    assert (home / f"repository-stores/{ORPHAN_STORE.key}").is_dir()
+    assert (home / f"repository-stores/{FLASK_STORE.key}").is_dir()
 
 
 @posix_only
@@ -922,7 +927,7 @@ def _hard_linked_future_layout(home: Path) -> None:
     """A future ``layout.yml`` whose bytes are reachable from outside the home."""
 
     home_module.ensure_private_directory(home, "cache")
-    _write_layout(home, "f02")
+    _write_layout(home, "f03")
     os.link(home / "layout.yml", home.parent / "backup-of-layout.yml")
 
 
@@ -930,7 +935,7 @@ def _unreadable_future_layout(home: Path) -> None:
     """A future ``layout.yml`` whose own permissions deny its owner a read."""
 
     home_module.ensure_private_directory(home, "cache")
-    _write_layout(home, "f02")
+    _write_layout(home, "f03")
     (home / "layout.yml").chmod(0o200)
 
 

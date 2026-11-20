@@ -1560,6 +1560,85 @@
           "attrs": [
            [
             "href",
+            "https://x.com/ojoshe"
+           ],
+           [
+            "target",
+            "_blank"
+           ],
+           [
+            "rel",
+            "noopener noreferrer"
+           ]
+          ],
+          "children": [
+           {
+            "tag": "img",
+            "attrs": [
+             [
+              "src",
+              "https://img.shields.io/badge/follow-%40ojoshe-black"
+             ],
+             [
+              "alt",
+              "Follow @ojoshe on X"
+             ],
+             [
+              "class",
+              "kpress-image"
+             ],
+             [
+              "data-kpress-image",
+              "true"
+             ],
+             [
+              "loading",
+              "lazy"
+             ]
+            ],
+            "children": []
+           }
+          ]
+         },
+         " ",
+         {
+          "tag": "img",
+          "attrs": [
+           [
+            "src",
+            "https://img.shields.io/badge/standalone-blue"
+           ],
+           [
+            "alt",
+            "standalone"
+           ],
+           [
+            "class",
+            "kpress-image"
+           ],
+           [
+            "data-kpress-image",
+            "true"
+           ],
+           [
+            "loading",
+            "lazy"
+           ]
+          ],
+          "children": []
+         }
+        ]
+       },
+       "\n",
+       {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+         {
+          "tag": "a",
+          "attrs": [
+           [
+            "href",
             "docs/guide.md"
            ]
           ],

@@ -37,7 +37,7 @@ api: /api/cache/layout
 status: 200
 {
   "home": "absent",
-  "supported_format": "f01",
+  "supported_format": "f02",
   "state": "absent",
   "layout": null,
   "config": {
@@ -73,10 +73,10 @@ api: /api/cache/layout
 status: 200
 {
   "home": "present",
-  "supported_format": "f01",
+  "supported_format": "f02",
   "state": "current",
   "layout": {
-    "format": "f01",
+    "format": "f02",
     "created_by": "0.11.0"
   },
   "config": {
@@ -97,7 +97,7 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "stores": [],
   "unrecognized_entries": 0,
   "limit": 25,
@@ -119,10 +119,10 @@ api: /api/cache/layout
 status: 200
 {
   "home": "present",
-  "supported_format": "f01",
+  "supported_format": "f02",
   "state": "current",
   "layout": {
-    "format": "f01",
+    "format": "f02",
     "created_by": "0.11.0"
   },
   "config": {
@@ -145,7 +145,7 @@ api: /api/cache/sources
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "sources": [
     {
       "slug": "github-com--pallets--click--76d8973c8c6c",
@@ -218,9 +218,37 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "stores": [
     {
+      "key": "github-com--pallets--click--c3c36fb283ea2c90",
+      "id": "sha256:c3c36fb283ea2c90a566bfb072d621839b3940b93ef33c8a53b8d4e120dc22bf",
+      "publication": "published",
+      "mode": "full",
+      "lender": null,
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "2.50.1",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": null,
+        "default_revision": null,
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        }
+      },
+      "problems": [],
+      "referenced_by": [],
+      "reference_state": "unreferenced"
+    },
+    {
+      "key": "github-com--pallets--flask--4c2d8559cb0179ba",
       "id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
       "publication": "published",
       "mode": "full",
@@ -254,32 +282,6 @@ status: 200
         }
       ],
       "reference_state": "referenced"
-    },
-    {
-      "id": "sha256:c3c36fb283ea2c90a566bfb072d621839b3940b93ef33c8a53b8d4e120dc22bf",
-      "publication": "published",
-      "mode": "full",
-      "lender": null,
-      "identity": {
-        "created_at": "2026-09-17T12:00:00Z",
-        "acquisition": {
-          "git_version": "2.50.1",
-          "object_format": "sha1"
-        }
-      },
-      "state": {
-        "default_remote_ref": null,
-        "default_revision": null,
-        "last_fetch_at": "2026-09-17T12:00:05Z",
-        "last_operation": {
-          "kind": "acquire",
-          "outcome": "succeeded",
-          "at": "2026-09-17T12:00:05Z"
-        }
-      },
-      "problems": [],
-      "referenced_by": [],
-      "reference_state": "unreferenced"
     }
   ],
   "unrecognized_entries": 0,
@@ -297,7 +299,7 @@ api: /api/cache/source/github-com--pallets--flask--e7b7fe0ffe8a
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "source": {
     "slug": "github-com--pallets--flask--e7b7fe0ffe8a",
     "publication": "published",
@@ -318,6 +320,7 @@ status: 200
     },
     "problems": [],
     "store": {
+      "key": "github-com--pallets--flask--4c2d8559cb0179ba",
       "id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
       "publication": "published",
       "mode": "full",
@@ -354,7 +357,7 @@ api: /api/cache/sources?limit=2
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "sources": [
     {
       "slug": "github-com--pallets--click--76d8973c8c6c",
@@ -403,10 +406,10 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/future metab roo
 api: /api/cache/sources
 status: 409
 {
-  "error": "This Metabrowser cache directory uses format f02, and this release reads formats up to f01. Upgrade Metabrowser, or set METABROWSER_CACHE_DIR to a different directory.",
+  "error": "This Metabrowser cache directory uses format f03, and this release reads formats up to f02. Upgrade Metabrowser, or set METABROWSER_CACHE_DIR to a different directory.",
   "code": "future_format",
-  "found": "f02",
-  "supported": "f01"
+  "found": "f03",
+  "supported": "f02"
 }
 Error: /api/cache/sources returned HTTP 409
 ? 1
@@ -453,7 +456,7 @@ api: /api/cache/sources
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "sources": [
     {
       "slug": "github-com--pallets--click--76d8973c8c6c",
@@ -614,9 +617,34 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "stores": [
     {
+      "key": "github-com--pallets--click--c3c36fb283ea2c90",
+      "id": "sha256:c3c36fb283ea2c90a566bfb072d621839b3940b93ef33c8a53b8d4e120dc22bf",
+      "publication": "damaged",
+      "mode": "full",
+      "lender": null,
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "2.50.1",
+          "object_format": "sha1"
+        }
+      },
+      "state": null,
+      "problems": [
+        {
+          "record": "state.yml",
+          "code": "missing",
+          "message": "The record is missing."
+        }
+      ],
+      "referenced_by": [],
+      "reference_state": "unknown"
+    },
+    {
+      "key": "github-com--pallets--flask--4c2d8559cb0179ba",
       "id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
       "publication": "published",
       "mode": "full",
@@ -650,29 +678,6 @@ status: 200
         }
       ],
       "reference_state": "referenced"
-    },
-    {
-      "id": "sha256:c3c36fb283ea2c90a566bfb072d621839b3940b93ef33c8a53b8d4e120dc22bf",
-      "publication": "damaged",
-      "mode": "full",
-      "lender": null,
-      "identity": {
-        "created_at": "2026-09-17T12:00:00Z",
-        "acquisition": {
-          "git_version": "2.50.1",
-          "object_format": "sha1"
-        }
-      },
-      "state": null,
-      "problems": [
-        {
-          "record": "state.yml",
-          "code": "missing",
-          "message": "The record is missing."
-        }
-      ],
-      "referenced_by": [],
-      "reference_state": "unknown"
     }
   ],
   "unrecognized_entries": 0,
@@ -693,7 +698,7 @@ api: /api/cache/source/github-com--pallets--flask--e7b7fe0ffe8a
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "source": {
     "slug": "github-com--pallets--flask--e7b7fe0ffe8a",
     "publication": "damaged",
@@ -738,9 +743,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "stores": [
     {
+      "key": "github-com--pallets--itsdangerous--84b4d10c2cb4434a",
       "id": "sha256:84b4d10c2cb4434a734326ce37e519802d313c88b83783304b3fdb8b8646a080",
       "publication": "damaged",
       "mode": "overlay",
@@ -778,37 +784,7 @@ status: 200
       "reference_state": "referenced"
     },
     {
-      "id": "sha256:c72e53ac1334507aefa51f16c87f73fdd076eb774f12b348b44f0baf40b6a530",
-      "publication": "published",
-      "mode": "overlay",
-      "lender": "lender_missing",
-      "identity": {
-        "created_at": "2026-09-17T12:00:00Z",
-        "acquisition": {
-          "git_version": "2.50.1",
-          "object_format": "sha1"
-        }
-      },
-      "state": {
-        "default_remote_ref": "refs/remotes/origin/trunk",
-        "default_revision": "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e",
-        "last_fetch_at": "2026-09-17T12:00:05Z",
-        "last_operation": {
-          "kind": "acquire",
-          "outcome": "succeeded",
-          "at": "2026-09-17T12:00:05Z"
-        }
-      },
-      "problems": [],
-      "referenced_by": [
-        {
-          "slug": "github-com--pallets--markupsafe--c9f236af140d",
-          "generation": 1
-        }
-      ],
-      "reference_state": "referenced"
-    },
-    {
+      "key": "github-com--pallets--jinja--f68db9d30e59b33c",
       "id": "sha256:f68db9d30e59b33c3db7869b2f860dda22207fddaf4ce29f8782c44710f1c142",
       "publication": "published",
       "mode": "overlay",
@@ -834,6 +810,38 @@ status: 200
       "referenced_by": [
         {
           "slug": "github-com--pallets--jinja--1b7f05892a34",
+          "generation": 1
+        }
+      ],
+      "reference_state": "referenced"
+    },
+    {
+      "key": "github-com--pallets--markupsafe--c72e53ac1334507a",
+      "id": "sha256:c72e53ac1334507aefa51f16c87f73fdd076eb774f12b348b44f0baf40b6a530",
+      "publication": "published",
+      "mode": "overlay",
+      "lender": "lender_missing",
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "2.50.1",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": "refs/remotes/origin/trunk",
+        "default_revision": "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e",
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        }
+      },
+      "problems": [],
+      "referenced_by": [
+        {
+          "slug": "github-com--pallets--markupsafe--c9f236af140d",
           "generation": 1
         }
       ],

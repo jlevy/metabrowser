@@ -46,6 +46,7 @@ from metabrowser.builtin_plugins.github.pull_list import (
     read_pull_files,
 )
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER
+from metabrowser.git.wire import GitChangeSize
 from metabrowser.http_caching import build_scoped_etag
 
 if TYPE_CHECKING:
@@ -115,6 +116,11 @@ class FilesSummaryWire(TypedDict):
     deletions: int | None
     exact: bool
     statuses: list[StatusCount]
+    # The size the list's comparison pushes, when it is kept: a list the store made, whose
+    # size the refresh measured after listing it (:mod:`.pull_files_refresh`). Read from
+    # what is kept alone, in memory or beside the store, so this route still runs no Git;
+    # ``None`` until then, and for a list GitHub gave, which names no merge base.
+    size: GitChangeSize | None
 
 
 class FilesSummaryEnvelope(TypedDict):
@@ -264,7 +270,36 @@ def _summed_lists(
     return out
 
 
-def _wire(number: int, found: _Sums | SummaryAbsence, listing: bool) -> FilesSummaryWire:
+def _kept_size(store: Path | None, sums: _Sums) -> GitChangeSize | None:
+    """The kept size of *sums*' comparison, for a list the store made. Blocking: it can read
+    one bank file beside *store*."""
+
+    if sums.listed_from != "comparison" or sums.base is None or sums.head is None:
+        return None
+    from metabrowser.git.change_size import KEPT_SIZES, kept_change_size
+    from metabrowser.git.process import GitLocation, repository_store_target
+
+    if store is None:
+        return KEPT_SIZES.get(("range", sums.base, sums.head))
+    try:
+        location = GitLocation.revision(repository_store_target(git_dir=store), sums.head)
+    except (OSError, ValueError):
+        return None
+    return kept_change_size(location, sums.base, sums.head)
+
+
+def _sizes(
+    store: Path | None, found: dict[int, _Sums | SummaryAbsence]
+) -> dict[int, GitChangeSize | None]:
+    return {
+        number: _kept_size(store, sums) if isinstance(sums, _Sums) and sums.reason is None else None
+        for number, sums in found.items()
+    }
+
+
+def _wire(
+    number: int, found: _Sums | SummaryAbsence, listing: bool, size: GitChangeSize | None
+) -> FilesSummaryWire:
     reason = found if isinstance(found, str) else found.reason
     if isinstance(found, str) or reason is not None:
         held = None if isinstance(found, str) else found
@@ -283,6 +318,7 @@ def _wire(number: int, found: _Sums | SummaryAbsence, listing: bool) -> FilesSum
             deletions=None,
             exact=False,
             statuses=[],
+            size=None,
         )
     return FilesSummaryWire(
         number=number,
@@ -299,20 +335,33 @@ def _wire(number: int, found: _Sums | SummaryAbsence, listing: bool) -> FilesSum
         deletions=found.deletions,
         exact=found.exact,
         statuses=[StatusCount(status=status, count=count) for status, count in found.statuses],
+        size=size,
     )
 
 
 async def files_summary(
-    repository: ListedRepository | None, listing: frozenset[int], numbers: tuple[int, ...]
+    repository: ListedRepository | None,
+    listing: frozenset[int],
+    numbers: tuple[int, ...],
+    store: Path | None = None,
 ) -> FilesSummaryEnvelope:
-    """Each of *numbers*' lists summed, in their order. *listing* is read on the loop."""
+    """Each of *numbers*' lists summed, in their order. *listing* is read on the loop.
+
+    *store* is the Git directory of the repository store the lists were made in, where
+    their sizes are kept, or ``None`` before one is attached.
+    """
 
     if repository is None:
         return FilesSummaryEnvelope(source=None, rows=[])
-    found = await asyncio.to_thread(_summed_lists, repository.home, repository.slug, numbers)
+
+    def read() -> tuple[dict[int, _Sums | SummaryAbsence], dict[int, GitChangeSize | None]]:
+        found = _summed_lists(repository.home, repository.slug, numbers)
+        return found, _sizes(store, found)
+
+    found, sizes = await asyncio.to_thread(read)
     return FilesSummaryEnvelope(
         source=repository.source,
-        rows=[_wire(number, found[number], number in listing) for number in numbers],
+        rows=[_wire(number, found[number], number in listing, sizes[number]) for number in numbers],
     )
 
 

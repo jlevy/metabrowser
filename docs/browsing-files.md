@@ -62,9 +62,9 @@ File Overview counts what the folder holds:
 
 - **Files, Ignored, and Total:** the folder’s files, the files Git ignores, and both
   together, each drawn as a bar split by file-type family.
-- **The type summary:** a legend of the largest families, such as Code, Documentation,
-  Data, Archives, and Media; **Details** opens the full table, where each family lists
-  its extensions.
+- **The type summary:** a legend of the largest file-type families, such as Python,
+  Markdown, and JSON, up to nine, each at least 1% of what is shown, then **Other** for
+  the rest; **Details** opens the full table, where each family lists its extensions.
 - **Files or Bytes** switches every figure between counts and sizes, and **Show
   ignored** adds the ignored files to the type summary.
 
@@ -106,8 +106,13 @@ A chain of folders that each hold one folder shows as one row, and a folder whos
 were all written at about the same time starts collapsed.
 The view holds at most 5,000 files; when more match, it leaves out gitignored files
 first and says how many matched.
-A pinned Git revision has no modification times, so it offers no Modified within and no
-By age grouping.
+A Git revision has no modification times, so a file’s age is the time of the last commit
+that changed it, as a hosting site’s file list shows, and a folder’s the newest of its
+files’. They come from `git last-modified`, which needs Git 2.53 or newer, and are read
+in the background, so the page opens at once without them and shows them on its next
+load, once the read has finished; the page does not redraw by itself yet.
+With an older Git a revision shows no ages, and `metab --doctor` says what to upgrade.
+Modified within and By age are not offered on a revision yet.
 
 The same filters are available from the command line:
 `metab ROOT --walk --type .md --age 7d`.
@@ -124,6 +129,7 @@ tabs, and `V` and `S` switch to the rendered view and the source wherever both e
 | Mermaid diagrams (`.mmd`, `.mermaid`) | Diagram and Source |
 | JSON and YAML | Tree, a collapsible view of the parsed structure, and Source |
 | JSONL logs | Log, a timeline of events, and Raw JSON; coding-agent logs add Charts |
+| Event logs (`events-*.jsonl`) | Timeline, Latency, By kind, Errors, and Raw JSON: Metabrowser’s own log of what it served and how long each took |
 | Code and text | Source, with syntax highlighting where a grammar exists |
 | Images | Image |
 | HTML | Preview, in a sandboxed frame, and Source |
@@ -199,6 +205,19 @@ Reloading it shows the source again at once for a while, since the server rememb
 The same line says when the renderer is busy with other documents or could not start;
 reloading the page then tries again.
 
+With active content off, a document shows its images from the web over `https`, as on
+github.com, such as a README’s badges, and the browser fetches them with no referrer
+sent. A badge that links somewhere keeps its link.
+An image the page does not load, one over `http`, is its alt text in a small chip with
+an image mark, in the link it was in or in a link to the image, and hovering the chip
+shows the address. Those requests tell the image’s host that you opened the page, so the
+Metabrowser menu has **Block remote images**, off unless you tick it: every such image
+is then its chip, and the page’s policy refuses an image from another site, so the
+browser sends no request for one.
+It applies to what is untrusted, a repository opened from its URL, a pull request’s
+text, a commit’s, a Markdown diff, and a folder served with `--untrusted`; your own
+folder’s Markdown is not changed.
+
 ### Data, Logs, and Code
 
 - **JSON and YAML:** Tree shows the parsed document with collapsible levels and draws
@@ -208,6 +227,10 @@ reloading the page then tries again.
   session logs of Claude Code, Codex, Gemini CLI, and Pi, Metabrowser shows the agent in
   the header and adds **Charts**.
   [Working with agents](working-with-agents.md#reading-agent-logs) has more.
+- **Event logs:** a file named `events-*.jsonl`, which a served `metab` writes about
+  itself, opens as spans nested under what started them, the slowest spans, each kind’s
+  timings, and failures by cause.
+  [Browsing the log](realtime-debugging.md#browsing-the-log) has more.
 - **Code and text:** Source highlights common programming, markup, and configuration
   languages by file extension, and shows plain text for the rest, `.log` files among
   them.

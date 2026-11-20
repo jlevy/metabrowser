@@ -59,6 +59,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
 | `agent-log` | `.jsonl` sniffed as an agent log | Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agents/charts` hook |
 | `unknown-jsonl` | Other `.jsonl` | Log `V`, Raw JSON `S` | File envelope |
+| `event-log` | A `.jsonl` file named `events-*.jsonl`, in a served folder (`path_glob`; a Git blob of that name is generic JSONL) | Timeline `V`, Latency `L`, By kind `B`, Errors `E`, Raw JSON `S` | File envelope and the `event-log/timeline`, `event-log/slowest`, `event-log/kinds`, and `event-log/errors` hooks over one segment of [the event log](../../realtime-debugging.md#event-log) |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | The `binary/chunk` hook’s bounded byte windows |
 | `comparison` | No file; the Commits tab selects it for `/commit/<rev>[/<inner>]` | The `diff` kind’s views | `diff/comparison` document in File Diff Format |
@@ -199,14 +200,15 @@ counts is missing here; the asset routes are not counted.
 | `/_debug/tasks`, `/_debug/inventory` | Task and inventory diagnostics, served only with `METABROWSER_DEBUG=1` | [Server and Content](arch-server-and-content.md) |
 | `/api/tree`, `/api/rollup`, `/api/catalog`, `/api/recent` | Navigation pages, folder rollups, the file universe for Quick Search, and newest-first leaves | [Inventory Provider](arch-inventory-provider.md) |
 | `/api/index/progress`, `/api/index/meta`, `/api/capabilities` | Index progress and metadata, and what the active source supports | [Inventory Provider](arch-inventory-provider.md) |
+| `/api/tree`, `/api/index/progress`, `/api/capabilities` on a pinned revision | A node’s `mtime` and the `ages` state of getting it, and `file_ages` in what the source supports | [File Ages](arch-git.md#file-ages) |
 | `/api/events` | The server-sent inventory snapshot and changes | [Live Delivery](arch-live-delivery.md) |
 | `/api/stream`, `/api/activity` | The live tail of a JSONL file, and the files being written now | [Live Delivery](arch-live-delivery.md) |
 | `/api/diagnostics/pending-tallies` | `POST`: a client’s pending-tally warning, matched with server state | [Live Delivery](arch-live-delivery.md) |
 | `/api/event-log` | Where the structured event log is, its segments, and its records filtered by kind, outcome, cause, span, client (a request’s, or a page’s and every request it sent), and duration, with the spans this process has open (`event_log_route.py`) | [Real-Time Debugging](../../realtime-debugging.md#event-log) |
 | `/api/event-log/failures` | The failures in the event log since a moment, an hour ago by default, grouped by cause, with the addresses that failed, the latest message, links to their records, and the latest failed connectivity probe; a page’s own reports of failure listed apart, under `page_reports` (`event_log_route.py`) | [Real-Time Debugging](../../realtime-debugging.md#github-failures) |
 | `/api/event-log/client` | `POST`: what a page saw, its slow and pending requests, frozen frames, and waits still running at the late threshold, checked, bounded, redacted, and written as `browser` records under the page’s client ID (`event_log_reports.py`, sent by `static/event-reports.js`) | [Real-Time Debugging](../../realtime-debugging.md#what-the-page-reports) |
-| `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>`, `/api/git/commit-markdown/<rev>` | Read-only history for the Commits tab: a repository folder’s own, and a mirror’s default branch’s, whichever revision the Files tab shows | [Git](arch-git.md), [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout) |
-| `/api/source/status`, `/api/source/refs`, `/api/source/pin` | What the server serves; the served root’s branches and tags, a mirror’s or a repository folder’s, with a checkout’s remote-tracking branches, each with its commit’s full ID and committer date, and a checkout’s working tree by its folder; and switching its view: a mirror’s pin, or a checkout between a revision and its working tree. `metab PATH --ref NAME` starts a checkout on a revision, so every route that answers a pin answers a checkout’s revision from a terminal | [Source Sessions and Pins](arch-source-sessions-and-pins.md), [Open Modes](arch-open-modes.md) |
+| `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>`, `/api/git/commit-markdown/<rev>`, `/api/git/commit-size/<rev>` | Read-only history for the Commits tab: a repository folder’s own, and a mirror’s default branch’s, whichever revision the Files tab shows; a commit’s size as Git pushes it and as a patch (`git/change_size.py`) | [Git](arch-git.md), [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout) |
+| `/api/source/status`, `/api/source/refs`, `/api/source/pin` | What the server serves; the served root’s branches and tags, a mirror’s or a repository folder’s, with a checkout’s remote-tracking branches, each with its commit’s full ID and committer date, and a checkout’s working tree by its folder, and the pull requests each branch is the head of, as its provider has cached them, which the filter finds a branch by too; and switching its view: a mirror’s pin, or a checkout between a revision and its working tree. `metab PATH --ref NAME` starts a checkout on a revision, so every route that answers a pin answers a checkout’s revision from a terminal | [Source Sessions and Pins](arch-source-sessions-and-pins.md), [Open Modes](arch-open-modes.md) |
 | `/api/identity` | What the served subject is called, for a window’s title, and the GitHub repository it belongs to (`root_identity.py`) | [Source Sessions and Pins](arch-source-sessions-and-pins.md) |
 | `/api/counterpart` | The github.com page that shows what a page shows, for its View on GitHub control, or why there is none (`counterpart.py`) | [Design System: View on GitHub](../../design-system.md#view-on-github) |
 | `/api/source/refresh` | `POST`: start or join a background refresh of the served mirror | [Mirror Acquisition and Refresh](arch-mirror-acquisition-and-refresh.md) |
@@ -216,14 +218,17 @@ counts is missing here; the asset routes are not counted.
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, and
 `diff/comparison` ([Diff Pipeline](arch-diff-pipeline.md)); `binary/chunk`,
-`structured/parsed`, and `agents/charts` ([Plugin System](arch-plugin-system.md)); and
+`structured/parsed`, and `agents/charts` ([Plugin System](arch-plugin-system.md));
+`event-log/timeline`, `event-log/slowest`, `event-log/kinds`, and `event-log/errors`
+([Real-Time Debugging](../../realtime-debugging.md#browsing-the-log)); and
 `github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
 `github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff`,
-`github/pull-timeline`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`,
-`github/pulls-prefetch`, `github/pull-files`, `github/pull-files-refresh`,
-`github/pull-files-summary`, `github/stacks`, `github/stacks-refresh`,
-`github/stack-change`, `github/labels`, `github/labels-refresh`, `github/cache-clear`,
-and `github/status` ([GitHub Pull Requests](arch-github-pull-requests.md)).
+`github/pull-size`, `github/pull-timeline`, `github/pull-markdown`, `github/pulls`,
+`github/pulls-refresh`, `github/pulls-prefetch`, `github/pull-files`,
+`github/pull-files-refresh`, `github/pull-files-summary`, `github/stacks`,
+`github/stacks-refresh`, `github/stack-change`, `github/labels`,
+`github/labels-refresh`, `github/cache-clear`, and `github/status`
+([GitHub Pull Requests](arch-github-pull-requests.md)).
 
 ## Adding Something
 
