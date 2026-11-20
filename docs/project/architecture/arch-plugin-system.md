@@ -147,17 +147,16 @@ Ordinary `[[kind]]` rules therefore see text and JSONL files only; a `magic` rul
 `binary` rule see only files found to be binary.
 `match.magic = {offset, hex}` names bytes at an offset within `MAGIC_MAX_END`
 (`plugin_loader/manifest.py`, the sniff prefix), and `classify_magic` in
-`plugin_loader/classify.py` checks it by priority, then discovery order. A magic rule
-takes only `ext` or `exts` beside it, which decide the tree’s container chevron and
-nothing else, so a `.db` file that is not SQLite stays binary and a database named
-`History` is SQLite.
+`plugin_loader/classify.py` checks it by priority, then discovery order.
+A magic rule takes only `ext` or `exts` beside it, which decide the tree’s container
+chevron and nothing else, so a `.db` file that is not SQLite stays binary and a database
+named `History` is SQLite.
 A compressed file is checked on its compressed bytes, so `x.sqlite.gz` stays binary.
 Every classification site applies it: `api_file`, the container walk
 (`_classify_content_kind`), the table routes’ kind on a served folder and on a pin, and
 a Git blob (`plugin_magic_kind` in `git/content_routes.py`), which a stored blob’s own
-bytes decide.
-A plugin claims any other binary format with a `binary` rule, or adds a view to the
-`binary` kind.
+bytes decide. A plugin claims any other binary format with a `binary` rule, or adds a
+view to the `binary` kind.
 
 `build_classifier` sorts every loaded rule by descending `priority`, then discovery
 index, and returns the first match.
@@ -457,9 +456,8 @@ Each is optional except the kind and one view.
    an extension, at a priority above the built-in rule it narrows.
    The format must reach step 5 of [Classification](#classification), or, for a binary
    format with a magic number, step 6 through a `magic` rule; any other binary format is
-   claimed by path with `binary = true`.
-   Check the result with `metab . --plugins-dir <dir> --show <file>`, which prints the
-   kind and its views.
+   claimed by path with `binary = true`. Check the result with
+   `metab . --plugins-dir <dir> --show <file>`, which prints the kind and its views.
 2. **Draw it.** Add a `[[view]]` and its `mb.registerView` call.
    The renderer owns its container, returns a disposer, and loads anything large on
    demand, as [Plugin Authoring](../../plugins.md#registration-and-lifecycle) requires.
