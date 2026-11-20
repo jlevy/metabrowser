@@ -193,7 +193,8 @@ adapter = "metabrowser.builtin_plugins.delimited.source:adapter"
 ```
 
 `table_source.py` in core holds the protocol, so core imports no plugin, and
-`plugin_api.py` re-exports it as SDK surface.
+`plugin_api.py` re-exports what a source implements as SDK surface: the types, errors,
+cell and token helpers, and bounds, but not the registry or the routes’ wire functions.
 
 - **Registration.** A `[[table_source]]` names one of its own plugin’s kinds, once, and
   its plugin must require `table`; `validate_consistency` refuses anything else.

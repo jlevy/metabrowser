@@ -282,7 +282,7 @@ def test_filters_compare_typed_values_and_skip_nulls(client: TestClient, scores:
     assert _rows(client, scores, **{"f.n": "eq:5"})["count"] == 2
 
 
-def test_search_reads_text_fields_and_says_which(client: TestClient, scores: str) -> None:
+def test_search_reads_text_fields_and_names_them(client: TestClient, scores: str) -> None:
     body = _rows(client, scores, q="E")
     assert (_keys(body), body["searched"]) == (["@5"], ["name"])
 
@@ -396,6 +396,6 @@ def test_the_cache_is_bounded_in_entries(client: TestClient, tmp_path: Path) -> 
     for number in range(delimited.DELIMITED_CACHE_MAX_ENTRIES + 2):
         (tmp_path / f"{number}.csv").write_text("n\n1\n")
         _rows(client, f"{number}.csv")
-    held = delimited.PARSE_CACHE._entries  # pyright: ignore[reportPrivateUsage]
+    held = delimited.PARSE_CACHE._held  # pyright: ignore[reportPrivateUsage]
     assert len(held) == delimited.DELIMITED_CACHE_MAX_ENTRIES
     assert ("0.csv", ",") not in held

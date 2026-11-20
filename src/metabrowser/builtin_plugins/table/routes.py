@@ -22,9 +22,9 @@ from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from metabrowser.plugin_api import (
+from metabrowser.content_errors import ContentReadError
+from metabrowser.table_source import (
     Budget,
-    ContentReadError,
     OpenedTableSource,
     TableQueryError,
     TableSourceError,

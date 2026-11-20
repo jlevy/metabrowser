@@ -321,31 +321,31 @@ class _ParseCache:
     """Parsed files by identity, each at the generation it was parsed under."""
 
     def __init__(self) -> None:
-        self._entries: OrderedDict[tuple[str, str], _Parsed] = OrderedDict()
+        self._held: OrderedDict[tuple[str, str], _Parsed] = OrderedDict()
         self._lock = threading.Lock()
 
     def get(self, key: tuple[str, str], generation: str) -> _Parsed | None:
         with self._lock:
-            found = self._entries.get(key)
+            found = self._held.get(key)
             if found is None or found.generation != generation:
                 return None
-            self._entries.move_to_end(key)
+            self._held.move_to_end(key)
             return found
 
     def put(self, key: tuple[str, str], parsed: _Parsed) -> None:
         with self._lock:
-            self._entries[key] = parsed
-            self._entries.move_to_end(key)
-            while len(self._entries) > 1 and (
-                len(self._entries) > DELIMITED_CACHE_MAX_ENTRIES
-                or sum(entry.held_bytes for entry in self._entries.values())
+            self._held[key] = parsed
+            self._held.move_to_end(key)
+            while len(self._held) > 1 and (
+                len(self._held) > DELIMITED_CACHE_MAX_ENTRIES
+                or sum(entry.held_bytes for entry in self._held.values())
                 > DELIMITED_CACHE_MAX_BYTES
             ):
-                self._entries.popitem(last=False)
+                self._held.popitem(last=False)
 
     def clear(self) -> None:
         with self._lock:
-            self._entries.clear()
+            self._held.clear()
 
 
 PARSE_CACHE = _ParseCache()

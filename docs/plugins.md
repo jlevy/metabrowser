@@ -1095,8 +1095,10 @@ which a CLI integration can catch to keep a command’s message and exit code, a
   limit.
 - **Lifecycle:** `register_root_callback(callback)` invalidates plugin caches when the
   served root changes.
-  Do not cache the resolved root, or import underscored helpers from
-  `metabrowser.paths_safe`.
+- **Table sources:** `TableSource`, `TableHandle`, and the types, errors, cell and token
+  helpers, and bounds a source implements, under [Table Sources](#table-sources).
+  The table routes’ own wiring stays in `metabrowser.table_source`. Do not cache the
+  resolved root, or import underscored helpers from `metabrowser.paths_safe`.
 
 The sidekick surface is provisional during the 0.x series, and release notes identify
 its changes. Plugin-loader and manifest types are available from their defining modules

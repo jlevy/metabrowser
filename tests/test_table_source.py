@@ -247,12 +247,13 @@ def test_filter_values_are_typed_by_their_field() -> None:
 # ── SDK surface ──────────────────────────────────────────────
 
 
-def test_the_protocol_is_reexported_from_the_plugin_api() -> None:
-    missing = [name for name in table_source.__all__ if not hasattr(plugin_api, name)]
-    assert missing == []
-    assert set(table_source.__all__) <= set(plugin_api.__all__)
-    # The host installs the registry; no plugin can.
-    assert "install_table_sources" not in plugin_api.__all__
+def test_the_plugin_api_exports_what_a_source_implements_and_no_host_wiring() -> None:
+    exported = set(plugin_api.__all__)
+    assert {"TableSource", "TableHandle", "text_cell", "encode_cursor"} <= exported
+    assert all(hasattr(table_source, name) for name in exported if name.startswith("Table"))
+    # The registry and the routes' own wiring are the host's, not a plugin's.
+    for host_only in ("install_table_sources", "open_table_source", "page_wire"):
+        assert host_only not in exported
 
 
 def _manifest(**fields: object) -> PluginManifest:

@@ -66,7 +66,12 @@ Rows longer than the header add one `extra` field, a list, which neither sorts n
 filters. No field is a key, so rows are named by position.
 
 ```console
-$ metab tableroot --api '/api/plugin/table/schema?path=people.csv' | grep -E '^      "(name|type|numeric|list|sortable|filterable)":|^  "key":'
+$ metab tableroot --api '/api/plugin/table/schema?path=people.csv' > schema.txt
+? 0
+```
+
+```console
+$ grep -E '^      "(name|type|numeric|list|sortable|filterable)":|^  "key":' schema.txt
   "key": [],
       "name": "name",
       "type": "text",
@@ -247,7 +252,12 @@ status: 200
 ```
 
 ```console
-$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&cols=name,extra&after=c.WzRd' | grep -A12 '"rows"'
+$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&cols=name,extra&after=c.WzRd' > page.txt
+? 0
+```
+
+```console
+$ grep -A12 '"rows"' page.txt
   "rows": [
     {
       "key": "@5",
@@ -272,7 +282,12 @@ A filter compares typed values (`f.<field>=<op>:<value>`), and a search reads te
 fields only and names them.
 
 ```console
-$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&sort=score&cols=name,score' | grep -E '"(key|name|score)":'
+$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&sort=score&cols=name,score' > sorted.txt
+? 0
+```
+
+```console
+$ grep -E '"(key|name|score)":' sorted.txt
       "key": "@4",
         "name": "Dee",
         "score": 0.5
@@ -292,7 +307,12 @@ $ metab tableroot --api '/api/plugin/table/rows?path=people.csv&sort=score&cols=
 ```
 
 ```console
-$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&sort=score&order=desc&cols=name&limit=2' | grep -E '"(key|next_after)"'
+$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&sort=score&order=desc&cols=name&limit=2' > descending.txt
+? 0
+```
+
+```console
+$ grep -E '"(key|next_after)"' descending.txt
       "key": "@3",
       "key": "@5",
   "next_after": "c.WzEsMy4wLDVd",
@@ -300,14 +320,24 @@ $ metab tableroot --api '/api/plugin/table/rows?path=people.csv&sort=score&order
 ```
 
 ```console
-$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&f.active=eq:true&f.score=lt:3&cols=name' | grep -E '"(key|count)"'
+$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&f.active=eq:true&f.score=lt:3&cols=name' > filtered.txt
+? 0
+```
+
+```console
+$ grep -E '"(key|count)"' filtered.txt
       "key": "@1",
   "count": 1,
 ? 0
 ```
 
 ```console
-$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&q=COMMA&cols=name' | grep -E '"key"|"searched"' -A3
+$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&q=COMMA&cols=name' > searched.txt
+? 0
+```
+
+```console
+$ grep -E '"key"|"searched"' -A3 searched.txt
       "key": "@3",
       "cells": {
         "name": "Cy"
