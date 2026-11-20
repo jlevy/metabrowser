@@ -1324,6 +1324,14 @@ type MetabrowserPluginExports = {
   structured: StructuredExports;
 };
 
+/** One plugin's assets, as the server's plugin table (`_build_plugin_asset_config_block`) names them. */
+type PluginAssets = Readonly<{
+  name: string;
+  module: string;
+  scripts: string[];
+  styles: string[];
+}>;
+
 /** `metabrowser.plugins`: a plugin's declared providers ("Declared Dependencies"). */
 type MetabrowserPlugins = Readonly<{
   load<Name extends keyof MetabrowserPluginExports>(
@@ -2422,7 +2430,7 @@ type MetabrowserPluginHostRuntime = Readonly<{
   shortcutQueue: Set<MetabrowserQueuedShortcut>;
   /** Each plugin's assets by name, and the plugins each kind's views come from. */
   configureAssets(config: {
-    plugins: Record<string, { name: string; module: string; scripts: string[]; styles: string[] }>;
+    plugins: Record<string, PluginAssets>;
     kinds: Record<string, string[]>;
   }): void;
   loadPluginsForKind(kind: string): Promise<void>;
@@ -4389,6 +4397,7 @@ declare global {
   }>;
 
   type MetabrowserPublicSdk = MetabrowserSdk;
+  type MetabrowserPluginAssets = PluginAssets;
   type MetabrowserStructuredExports = StructuredExports;
   type MetabrowserStructuredTreeRow = StructuredTreeRow;
   type MetabrowserPublicViewDescriptor = MetabrowserViewDescriptor;

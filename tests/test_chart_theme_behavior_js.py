@@ -28,6 +28,9 @@ def test_charts_repaint_from_theme_tokens_until_disposed() -> None:
     payload = json.loads(result.stdout)
 
     assert payload["lazyMountCreatesNoChart"] is True
+    assert payload["chartBeforeBundle"] == (
+        'metabrowser.chart: await metabrowser.ensureAsset("chart") first'
+    )
     assert payload["directInitialColors"] == {
         "series": "light-series",
         "label": "light-label",

@@ -263,6 +263,12 @@ description = "JavaScript requests started before DOMContentLoaded, excluding th
 # the compositor, which took the shell to 222,991 bytes, 2,800 under; header code added
 # there later is off this budget too. server.py's comment on the `view-header` bundle has
 # what the move costs a view.
+# Measured with it on 2026-11-20: declared plugin dependencies (#649) left the folder's shell
+# at 225,749 bytes, 42 under, after the SDK's plugin table lost its types and checks to fit.
+# `metabrowser.chart` and its two theme helpers are not startup code: the wrapper throws
+# until ensureAsset("chart") has loaded Chart.js, whose bundle holds static/charts.js, so
+# they moved there, 665 bytes of plugin-sdk.js as the server compresses it. With the
+# table's types and its kind-to-plugin check restored the shell is 225,192 bytes, 599 under.
 [metrics.startup_script_transfer_kb]
 category = "loading"
 maximum = 220
