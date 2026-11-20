@@ -3,16 +3,20 @@ type: is
 id: is-01m7xjk9st46vjsnkjgg454g7j
 title: SQLite reader workers fail to start watchdog threads on Linux CPython 3.14t
 kind: bug
-status: open
+status: in_progress
 priority: 1
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
+delegate: claude-code@spud10.local
 labels:
   - testing
 dependencies: []
 parent_id: is-01m7vtd1yhvcp2szqx4m266c1p
+hold: null
+hold_until: null
 created_at: 2026-11-20T22:52:53.433Z
-updated_at: 2026-11-20T22:52:53.433Z
+updated_at: 2026-11-20T23:13:59.844Z
+started_at: 2026-11-20T23:13:59.842Z
 ---
 The draft SQLite access layer fails on Linux/free-threaded CPython 3.14.6. On #674 at 5778f0d53, CI run 44817949088 passes the 3.12/3.13/3.14 unit jobs. The 3.14t jobs return `The reader failed: RuntimeError: can't start new thread` or memory-pressure errors on small fixtures, breaking test_a_worker_serves_one_subject, test_an_answer_past_the_cap_stops_its_reader, SQLite Info and pin requests, and the SQLite golden. The #675 failures inherit this behavior. The GitHub status golden and file-watch disclosure failures have separate test fixes.
 
