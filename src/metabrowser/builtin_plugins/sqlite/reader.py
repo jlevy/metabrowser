@@ -940,9 +940,15 @@ def _resolve(
         )
         _budget(connection, deadline)
         try:
-            found, _stopped = _fetch(connection, sql, params)
+            found, stopped = _fetch(connection, sql, params)
         except sqlite3.Error:
-            found = []
+            # The target cannot be read as the key says (a target that is a view, a
+            # value past the length limit): the values stay plain, never "missing".
+            found, stopped = [], True
+        if stopped:
+            # A resolution cut short cannot say which targets are missing.
+            out.append({"values": [], "keys": []})
+            continue
         keys: list[Any] = [None] * len(tuples)
         for result in found:
             number = int(result[0])

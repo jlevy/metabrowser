@@ -293,7 +293,7 @@ class SqliteSource:
         spec = self._spec(description, schema, columns, deadline)
         spec.update(
             {
-                "sort": _column(description, query.sort) if query.sort else None,
+                "sort": query.sort if query.sort else None,
                 "order": query.order,
                 "filters": _filters(schema, description, query),
                 "limit": limit,
@@ -312,7 +312,7 @@ class SqliteSource:
             ]
             searched = tuple(fields)
             spec["search"] = {
-                "fields": [_column(description, name) for name in fields],
+                "fields": list(fields),
                 "needle": query.q,
             }
         if query.ref is not None:
@@ -495,7 +495,7 @@ class SqliteSource:
             "table": description["name"],
             "key": description["key"],
             "rowid": _rowid(description),
-            "columns": [_column(description, name) for name in names],
+            "columns": list(names),
             "encoding": self._encoding(deadline),
             "refs": refs,
         }
@@ -534,10 +534,7 @@ class SqliteSource:
                 for value in values
             ):
                 continue
-            options.append(
-                {"fields": [_column(description, name) for name in ref.fields], "values": values}
-            )
-        del description
+            options.append({"fields": list(ref.fields), "values": values})
         return options
 
     def _read_record(
@@ -581,7 +578,6 @@ class SqliteSource:
             raise RecordNotFoundError(f"{key!r} names no row of this table", key=key)
         record = cast(dict[str, Any], found)
         record["spec"] = spec
-        del table
         return record
 
     def _row_keys(
@@ -640,11 +636,6 @@ def _rowid(description: dict[str, Any]) -> str | None:
     if description["type"] != "table" or description["without_rowid"] or not description["key"]:
         return None
     return str(description["key"][0])
-
-
-def _column(description: dict[str, Any], name: str) -> str:
-    del description
-    return name
 
 
 def _sortable(description: dict[str, Any]) -> tuple[set[str], str | None]:
@@ -766,7 +757,7 @@ def _filters(
             else:
                 typed = coerce_filter_value(target, item.value)
                 value = int(typed) if isinstance(typed, bool) else typed
-        out.append({"field": _column(description, item.field), "op": item.op, "value": value})
+        out.append({"field": item.field, "op": item.op, "value": value})
     return out
 
 
@@ -967,12 +958,9 @@ def _plain(
         if isinstance(wire, str):
             if kind == "json" and (max_chars is None or len(wire) <= max_chars):
                 try:
-                    parsed = json.loads(wire)
+                    return {"json": json.loads(wire), "preview": wire}
                 except ValueError:
-                    parsed = None
-                else:
-                    return {"json": parsed, "preview": wire}
-                del parsed
+                    pass  # Not JSON after all: shown as the text it is.
             return text_cell(wire, max_chars=max_chars, max_bytes=max_bytes)
         if isinstance(wire, dict):
             envelope = cast(dict[str, Any], wire)
