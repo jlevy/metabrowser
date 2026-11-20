@@ -298,6 +298,7 @@ def _shell_html() -> str:
         def __init__(self) -> None:
             self.query_params: dict[str, str] = {}
             self.headers: dict[str, str] = {}
+            self.cookies: dict[str, str] = {}
 
     response = asyncio.run(proc_browser.index(cast(Any, _Request())))
     return bytes(response.body).decode()

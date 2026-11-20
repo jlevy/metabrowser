@@ -1,0 +1,141 @@
+[plugin]
+name = "agents"
+display_name = "Agents (Claude Code, Codex, Gemini, Pi logs)"
+version = "0.0.1"
+sdk_version = "0.8"
+# Each event's payload in the Log is drawn as the structured plugin's tree.
+requires = ["structured"]
+register = "metabrowser.builtin_plugins.agents.adapters"
+
+# Coding-agent JSONL session logs from Claude Code, Codex, Gemini, or Pi CLI.
+# Each adapter gets its own [[kind]] entry that resolves to the same kind id.
+# Adapter sniffing happens in the JSONL parser (detect_adapter); the manifest
+# match.adapter field reads that value. Codex has two adapters: `codex` for the
+# `codex exec --json` stream and `codex-rollout` for the rollout files Codex keeps.
+
+[[kind]]
+id = "agent-log"
+match = { ext = ".jsonl", adapter = "claude" }
+priority = 0
+
+[[kind]]
+id = "agent-log"
+match = { ext = ".jsonl", adapter = "codex" }
+priority = 0
+
+[[kind]]
+id = "agent-log"
+match = { ext = ".jsonl", adapter = "codex-rollout" }
+priority = 0
+
+[[kind]]
+id = "agent-log"
+match = { ext = ".jsonl", adapter = "gemini" }
+priority = 0
+
+[[kind]]
+id = "agent-log"
+match = { ext = ".jsonl", adapter = "pi" }
+priority = 0
+
+# A Codex rollout that Codex has compressed with zstd. Metabrowser reads no zstd, so the
+# file's kind is claimed by its path, and its views read the thread's history store
+# through the `session` and `records` routes instead (agents/codex.py).
+[[kind]]
+id = "agent-thread"
+binary = true
+match = { path_glob = "**/sessions/**/rollout-*.jsonl.zst" }
+priority = 0
+
+[[data_hook]]
+route = "charts"
+sidekick = "metabrowser.builtin_plugins.agents.sidekick:charts_handler"
+methods = ["GET"]
+
+# The home and the session list are views of a folder that is, or holds, a Claude Code or
+# Codex home. `holds_homes` runs on every folder page, so it reads a handful of directory
+# entries at most (homes.py). The home is then the folder's default.
+[[view]]
+kind = "folder"
+id = "agents"
+label = "Agents"
+key = "a"
+default = true
+offer = "metabrowser.builtin_plugins.agents.homes:holds_homes"
+container_class = "content-body agents-home-host"
+
+[[view]]
+kind = "folder"
+id = "agent-sessions"
+label = "Sessions"
+key = "s"
+offer = "metabrowser.builtin_plugins.agents.homes:holds_homes"
+container_class = "content-body agents-list-host"
+
+# The session page is the session's own file: its header from the `session` route and its
+# events from `records`. It is the default; a file in no agent home falls back to the Log.
+[[view]]
+kind = "agent-log"
+id = "session"
+label = "Session"
+key = "e"
+default = true
+container_class = "content-body agents-session-host"
+
+[[view]]
+kind = "agent-log"
+id = "log"
+label = "Log"
+key = "v"
+
+[[view]]
+kind = "agent-log"
+id = "charts"
+label = "Charts"
+key = "c"
+
+[[view]]
+kind = "agent-log"
+id = "raw"
+label = "Raw JSON"
+key = "s"
+
+[[view]]
+kind = "agent-thread"
+id = "session"
+label = "Session"
+key = "e"
+default = true
+container_class = "content-body agents-session-host"
+
+[[view]]
+kind = "agent-thread"
+id = "log"
+label = "Log"
+key = "v"
+container_class = "content-body agents-session-host"
+
+[[data_hook]]
+route = "catalog"
+sidekick = "metabrowser.builtin_plugins.agents.routes:catalog_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "sessions"
+sidekick = "metabrowser.builtin_plugins.agents.routes:sessions_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "session"
+sidekick = "metabrowser.builtin_plugins.agents.routes:session_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "records"
+sidekick = "metabrowser.builtin_plugins.agents.routes:records_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "live"
+sidekick = "metabrowser.builtin_plugins.agents.routes:live_handler"
+methods = ["GET"]

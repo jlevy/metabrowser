@@ -1,0 +1,605 @@
+# metab file://<ORIGIN> --api '/api/file?path=g1-YQ/g1-Z3VpZGUubWQ&ages=1'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-YQ/g1-Z3VpZGUubWQ&ages=1
+status: 200
+{
+  "subject": "git_revision",
+  "size": 11,
+  "path": "g1-YQ/g1-Z3VpZGUubWQ",
+  "display": "a/guide.md",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "3b48befe7bde243d614cd111a03f149a72583f0a",
+  "ext": ".md",
+  "type": "text",
+  "kind": "markdown",
+  "views": [
+    {
+      "id": "rendered",
+      "label": "Document",
+      "key": "v",
+      "default": true,
+      "container_class": "content-body metabrowser-kpress-host md-body",
+      "printable": true,
+      "print_profile": "document",
+      "render_runtime": "kpress"
+    },
+    {
+      "id": "source",
+      "label": "Source",
+      "key": "s",
+      "default": false,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "main guide\n",
+  "content_offset": 0,
+  "content_bytes": 11,
+  "bytes_read": 11,
+  "content_truncated": false,
+  "content_preview_limit": 524288,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false,
+  "mtime": 1580515200
+}
+--- stderr ---
+cloning <ORIGIN> into <HOME>
+cloned <ORIGIN> in 0.0 s
+# metab file://<ORIGIN> --api '/api/tree?group_by=age&depth=1'
+exit: 0
+--- stdout ---
+api: /api/tree?group_by=age&depth=1
+status: 200
+{
+  "root": "",
+  "group_by": "age",
+  "groups": [
+    {
+      "id": "24h",
+      "label": "Past day",
+      "icon": null,
+      "files": 1,
+      "size": 6,
+      "entries": 1,
+      "tree": [
+        {
+          "name": "a",
+          "path": "g1-YQ",
+          "type": "dir",
+          "children": null,
+          "has_children": true,
+          "total_files": 1,
+          "total_size": 6,
+          "mtime": 1588291200
+        }
+      ]
+    },
+    {
+      "id": "older",
+      "label": "Older",
+      "icon": null,
+      "files": 6,
+      "size": 78,
+      "entries": 6,
+      "tree": [
+        {
+          "name": "a",
+          "path": "g1-YQ",
+          "type": "dir",
+          "children": null,
+          "has_children": true,
+          "total_files": 2,
+          "total_size": 25,
+          "mtime": 1580515200
+        },
+        {
+          "name": "docs",
+          "path": "g1-ZG9jcw",
+          "type": "dir",
+          "children": null,
+          "has_children": true,
+          "total_files": 2,
+          "total_size": 22,
+          "mtime": 1583020800
+        },
+        {
+          "name": "README.md",
+          "path": "g1-UkVBRE1FLm1k",
+          "type": "file",
+          "ext": ".md",
+          "mtime": 1577836800,
+          "size": 15
+        },
+        {
+          "name": "shared.txt",
+          "path": "g1-c2hhcmVkLnR4dA",
+          "type": "file",
+          "ext": ".txt",
+          "mtime": 1585699200,
+          "size": 16
+        }
+      ]
+    }
+  ],
+  "tally_cache_status": "done",
+  "tally_cache_max_files": 500000,
+  "ages": {
+    "state": "ready",
+    "files": 7,
+    "dated": 7,
+    "older_than": null,
+    "stop": "complete",
+    "derived": false
+  },
+  "recency_tallies": [
+    [
+      "live",
+      0,
+      0
+    ],
+    [
+      "1h",
+      0,
+      0
+    ],
+    [
+      "24h",
+      1,
+      0
+    ],
+    [
+      "7d",
+      1,
+      0
+    ],
+    [
+      "30d",
+      1,
+      0
+    ]
+  ]
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/tree?group=age:24h&depth=2'
+exit: 0
+--- stdout ---
+api: /api/tree?group=age:24h&depth=2
+status: 200
+{
+  "subject": "git_revision",
+  "path": "",
+  "display": "",
+  "oid": "8eecc0abdb67269ae92b96a9f7f04698fb18f6a9",
+  "kind": "tree",
+  "entries": [
+    {
+      "path": "g1-YQ",
+      "display": "a",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "60ed87e66c8e9862eccc209a4dc74e74690888c4"
+    }
+  ],
+  "tree": [
+    {
+      "name": "a",
+      "path": "g1-YQ",
+      "type": "dir",
+      "children": [
+        {
+          "name": "new.py",
+          "path": "g1-YQ/g1-bmV3LnB5",
+          "type": "file",
+          "ext": ".py",
+          "mtime": 1588291200,
+          "size": 6
+        }
+      ],
+      "has_children": true,
+      "total_files": 1,
+      "total_size": 6,
+      "mtime": 1588291200
+    }
+  ],
+  "tally_cache_status": "done",
+  "tally_cache_max_files": 500000,
+  "summary": {
+    "files": 7,
+    "size": 84,
+    "ignored_files": 0,
+    "ignored_size": 0
+  },
+  "extensions": [
+    [
+      ".md",
+      4,
+      0
+    ],
+    [
+      ".py",
+      2,
+      0
+    ],
+    [
+      ".txt",
+      1,
+      0
+    ]
+  ],
+  "canonical_extensions": [
+    [
+      ".md",
+      4,
+      0
+    ],
+    [
+      ".py",
+      2,
+      0
+    ],
+    [
+      ".txt",
+      1,
+      0
+    ]
+  ],
+  "type_families": [
+    [
+      "markdown",
+      4,
+      0
+    ],
+    [
+      "python",
+      2,
+      0
+    ],
+    [
+      "plain-text",
+      1,
+      0
+    ]
+  ],
+  "type_presets": [
+    [
+      "docs",
+      5,
+      0
+    ],
+    [
+      "code",
+      2,
+      0
+    ],
+    [
+      "data",
+      0,
+      0
+    ],
+    [
+      "archives",
+      0,
+      0
+    ],
+    [
+      "media",
+      0,
+      0
+    ]
+  ],
+  "ages": {
+    "state": "ready",
+    "files": 7,
+    "dated": 7,
+    "older_than": null,
+    "stop": "complete",
+    "derived": false
+  },
+  "recency_tallies": [
+    [
+      "live",
+      0,
+      0
+    ],
+    [
+      "1h",
+      0,
+      0
+    ],
+    [
+      "24h",
+      1,
+      0
+    ],
+    [
+      "7d",
+      1,
+      0
+    ],
+    [
+      "30d",
+      1,
+      0
+    ]
+  ],
+  "filtered": {
+    "files": 1,
+    "size": 6,
+    "entries": 1
+  }
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/tree?recency=24h&depth=2'
+exit: 0
+--- stdout ---
+api: /api/tree?recency=24h&depth=2
+status: 200
+{
+  "subject": "git_revision",
+  "path": "",
+  "display": "",
+  "oid": "8eecc0abdb67269ae92b96a9f7f04698fb18f6a9",
+  "kind": "tree",
+  "entries": [
+    {
+      "path": "g1-YQ",
+      "display": "a",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "60ed87e66c8e9862eccc209a4dc74e74690888c4"
+    }
+  ],
+  "tree": [
+    {
+      "name": "a",
+      "path": "g1-YQ",
+      "type": "dir",
+      "children": [
+        {
+          "name": "new.py",
+          "path": "g1-YQ/g1-bmV3LnB5",
+          "type": "file",
+          "ext": ".py",
+          "mtime": 1588291200,
+          "size": 6
+        }
+      ],
+      "has_children": true,
+      "total_files": 1,
+      "total_size": 6,
+      "mtime": 1588291200
+    }
+  ],
+  "tally_cache_status": "done",
+  "tally_cache_max_files": 500000,
+  "summary": {
+    "files": 7,
+    "size": 84,
+    "ignored_files": 0,
+    "ignored_size": 0
+  },
+  "extensions": [
+    [
+      ".md",
+      4,
+      0
+    ],
+    [
+      ".py",
+      2,
+      0
+    ],
+    [
+      ".txt",
+      1,
+      0
+    ]
+  ],
+  "canonical_extensions": [
+    [
+      ".md",
+      4,
+      0
+    ],
+    [
+      ".py",
+      2,
+      0
+    ],
+    [
+      ".txt",
+      1,
+      0
+    ]
+  ],
+  "type_families": [
+    [
+      "markdown",
+      4,
+      0
+    ],
+    [
+      "python",
+      2,
+      0
+    ],
+    [
+      "plain-text",
+      1,
+      0
+    ]
+  ],
+  "type_presets": [
+    [
+      "docs",
+      5,
+      0
+    ],
+    [
+      "code",
+      2,
+      0
+    ],
+    [
+      "data",
+      0,
+      0
+    ],
+    [
+      "archives",
+      0,
+      0
+    ],
+    [
+      "media",
+      0,
+      0
+    ]
+  ],
+  "ages": {
+    "state": "ready",
+    "files": 7,
+    "dated": 7,
+    "older_than": null,
+    "stop": "complete",
+    "derived": false
+  },
+  "recency_tallies": [
+    [
+      "live",
+      0,
+      0
+    ],
+    [
+      "1h",
+      0,
+      0
+    ],
+    [
+      "24h",
+      1,
+      0
+    ],
+    [
+      "7d",
+      1,
+      0
+    ],
+    [
+      "30d",
+      1,
+      0
+    ]
+  ],
+  "filtered": {
+    "files": 1,
+    "size": 6,
+    "entries": 1
+  }
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/recent?window=24h'
+exit: 0
+--- stdout ---
+api: /api/recent?window=24h
+status: 200
+{
+  "root": "",
+  "gitignored_dirs": [],
+  "window": "24h",
+  "limit": 5000,
+  "tally_cache_status": "done",
+  "ages": {
+    "state": "ready",
+    "files": 7,
+    "dated": 7,
+    "older_than": null,
+    "stop": "complete",
+    "derived": false
+  },
+  "entries_flat": [
+    {
+      "name": "new.py",
+      "path": "g1-YQ/g1-bmV3LnB5",
+      "type": "file",
+      "size": 6,
+      "mtime": 1588291200.0,
+      "ext": ".py",
+      "dir_names": [
+        "a"
+      ]
+    }
+  ],
+  "total_matching": 1,
+  "total_matching_exact": true,
+  "truncated": false,
+  "undated": 0
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/recent?window=all&limit=3'
+exit: 0
+--- stdout ---
+api: /api/recent?window=all&limit=3
+status: 200
+{
+  "root": "",
+  "gitignored_dirs": [],
+  "window": "all",
+  "limit": 3,
+  "tally_cache_status": "done",
+  "ages": {
+    "state": "ready",
+    "files": 7,
+    "dated": 7,
+    "older_than": null,
+    "stop": "complete",
+    "derived": false
+  },
+  "entries_flat": [
+    {
+      "name": "new.py",
+      "path": "g1-YQ/g1-bmV3LnB5",
+      "type": "file",
+      "size": 6,
+      "mtime": 1588291200.0,
+      "ext": ".py",
+      "dir_names": [
+        "a"
+      ]
+    },
+    {
+      "name": "shared.txt",
+      "path": "g1-c2hhcmVkLnR4dA",
+      "type": "file",
+      "size": 16,
+      "mtime": 1585699200.0,
+      "ext": ".txt"
+    },
+    {
+      "name": "design.md",
+      "path": "g1-ZG9jcw/g1-ZGVzaWduLm1k",
+      "type": "file",
+      "size": 12,
+      "mtime": 1583020800.0,
+      "ext": ".md",
+      "dir_names": [
+        "docs"
+      ]
+    }
+  ],
+  "total_matching": 7,
+  "total_matching_exact": true,
+  "truncated": true,
+  "undated": 0
+}
+--- stderr ---

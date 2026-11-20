@@ -16,6 +16,7 @@ from metabrowser import plugin_api, table_source
 from metabrowser.plugin_loader.manifest import PLUGIN_SDK_VERSION, PluginManifest
 from metabrowser.table_source import (
     MAX_SAFE_INTEGER,
+    TABLE_PAGE_CELLS_MAX,
     TABLE_PAGE_ROWS_DEFAULT,
     TABLE_PAGE_ROWS_MAX,
     TABLE_TOKEN_MAX_CHARS,
@@ -27,6 +28,7 @@ from metabrowser.table_source import (
     TableQuery,
     TableQueryError,
     TableSchema,
+    TableSourceError,
     check_table_query,
     coerce_filter_value,
     cut_utf8,
@@ -34,7 +36,9 @@ from metabrowser.table_source import (
     decode_key,
     encode_cursor,
     encode_key,
+    error_wire,
     integer_cell,
+    page_row_limit,
     parse_position_key,
     parse_positional_cursor,
     parse_table_query,
@@ -109,13 +113,13 @@ def test_positions_and_positional_cursors() -> None:
     assert position_key(3) == "@3"
     assert parse_position_key("@3") == 3
     assert parse_position_key("k.abc") is None
-    for bad in ("@0", "@03", "@x", "@", "@٣"):
+    for bad in ("@0", "@03", "@x", "@", "@٣", "@" + "9" * 19, "@" + "1" * 5000):
         with pytest.raises(RecordNotFoundError):
             parse_position_key(bad)
     assert positional_cursor(200, "ab12") == "@200.ab12"
     assert parse_positional_cursor("@200.ab12") == (200, "ab12")
     assert parse_positional_cursor("c.abc") is None
-    for bad in ("@200", "@x.ab", "@1.a.b"):
+    for bad in ("@200", "@x.ab", "@1.a.b", "@" + "1" * 5000 + ".abc"):
         with pytest.raises(TableQueryError):
             parse_positional_cursor(bad)
 
@@ -149,6 +153,7 @@ def test_every_parameter_parses() -> None:
             ("f.y", "eq:"),
             ("ref", "users:k.WzFd"),
             ("cols", "a,b"),
+            ("cols", "c"),
             ("after", "c.WzJd"),
             ("limit", "5000"),
         ]
@@ -164,10 +169,56 @@ def test_every_parameter_parses() -> None:
             Filter("y", "eq", ""),
         ),
         ref=RefFilter(table="users", key="k.WzFd"),
-        cols=("a", "b"),
+        cols=("a,b", "c"),
         after="c.WzJd",
         limit=TABLE_PAGE_ROWS_MAX,
     )
+
+
+def test_cols_names_one_field_per_parameter_in_page_order() -> None:
+    # A header cell may hold a comma, so `cols` never splits one.
+    query = parse_table_query([("cols", "Last, First"), ("cols", "b")])
+    assert query.cols == ("Last, First", "b")
+
+
+def test_ref_splits_at_its_last_colon() -> None:
+    # A key token has no colon, and a table name (a SQLite one) may.
+    query = parse_table_query([("ref", "app:users:k.WzFd")])
+    assert query.ref == RefFilter(table="app:users", key="k.WzFd")
+
+
+@pytest.mark.parametrize(
+    ("raw", "limit"),
+    [
+        ("7", 7),
+        ("007", 7),
+        (str(TABLE_PAGE_ROWS_MAX + 1), TABLE_PAGE_ROWS_MAX),
+        ("9" * 19, TABLE_PAGE_ROWS_MAX),
+        ("1" * 5000, TABLE_PAGE_ROWS_MAX),
+    ],
+)
+def test_a_limit_is_clamped_without_converting_a_long_digit_string(raw: str, limit: int) -> None:
+    assert parse_table_query([("limit", raw)]).limit == limit
+
+
+def test_a_page_of_wide_rows_carries_fewer_of_them() -> None:
+    assert page_row_limit(100, 12) == 100
+    assert page_row_limit(TABLE_PAGE_ROWS_MAX, 12) == TABLE_PAGE_CELLS_MAX // 12
+    assert page_row_limit(100, TABLE_PAGE_CELLS_MAX) == 1
+    assert page_row_limit(100, TABLE_PAGE_CELLS_MAX * 4) == 1
+    assert page_row_limit(5, 0) == 5
+
+
+def test_an_error_detail_cannot_replace_the_envelope_keys() -> None:
+    exc = TableSourceError("refused", code="forged", type="x", path="/etc", error="e", param="p")
+    wire = error_wire("a.csv", exc)
+    assert wire == {
+        "type": "table_error",
+        "path": "a.csv",
+        "code": "table_error",
+        "error": "refused",
+        "param": "p",
+    }
 
 
 @pytest.mark.parametrize(
@@ -184,7 +235,9 @@ def test_every_parameter_parses() -> None:
         ([("f.n", "null:x")], "f.n"),
         ([("f.", "eq:1")], "f."),
         ([("ref", "users")], "ref"),
-        ([("cols", ",")], "cols"),
+        ([("cols", "")], "cols"),
+        ([("cols", "a"), ("cols", "")], "cols"),
+        ([("limit", "000")], "limit"),
     ],
 )
 def test_a_malformed_parameter_is_refused_by_name(items: list[tuple[str, str]], param: str) -> None:

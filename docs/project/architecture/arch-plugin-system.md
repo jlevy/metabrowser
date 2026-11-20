@@ -53,6 +53,14 @@ the trust boundary it enforces.
   hook for a plugin discovered from `--plugins-dir`, and logs that it ignored them.
   Python runs only from a built-in or an installed distribution, which already belongs
   to the environment.
+- **Register modules:** a manifest’s optional `[plugin] register` names a Python module
+  that discovery imports once, as it loads a built-in or entry-point plugin, so the
+  plugin can register extensions such as log adapters.
+  An import failure becomes an error string like any other load error and the plugin is
+  skipped. For an operator-directory plugin the field is ignored with a logged warning,
+  as data hooks are, and `metab --doctor` reports it.
+  Discovery runs at server start and in the plugin-inspection modes, not on `--version`
+  or `--present --dry-run`, so those do not import a register module.
 
 ## Declared Dependencies
 
@@ -121,17 +129,22 @@ gives the reasons.
 
 `api_file` in `server.py` decides a file’s kind in this order:
 
-1. A directory is `folder`.
+1. A directory is `folder`. A folder view that declares `offer` is served only where its
+   predicate accepts the folder, off the event loop, and an offered default becomes the
+   folder’s only default (`_offered_folder_views` in `server.py`).
 2. A path that does not exist is offered to the containers below.
 3. A `.jsonl` file is parsed, and its sniffed adapter joins the classifier’s input.
 4. An extension in `BROWSER_IMAGE_EXTS` is `image`.
 5. A file read as text, because its extension is in `BROWSER_TEXT_EXTS` or because
    `content_sniff` finds text, runs the plugin classifier, then the fallback chain
    `FILE_KIND_DETECTORS` in `file_kinds.py`, then defaults to `text`.
-6. Anything else is `binary`.
+6. Anything else is asked of the `binary = true` rules, which match by path alone
+   (`_binary_kind`), and is `binary` when none claims it.
 
-`[[kind]]` rules therefore see text and JSONL files only.
-A plugin cannot claim a binary format by kind; it can add a view to the `binary` kind.
+Ordinary `[[kind]]` rules therefore see text and JSONL files only, and a `binary` rule
+sees only files found to be binary.
+A plugin claims a binary format with a `binary` rule, or adds a view to the `binary`
+kind.
 
 `build_classifier` sorts every loaded rule by descending `priority`, then discovery
 index, and returns the first match.
@@ -226,13 +239,21 @@ cell and token helpers, and bounds, but not the registry or the routes’ wire f
 | --- | --- |
 | `/api/plugin/table/tables?path=` | The source’s tables, each with its group, whether its rows have a key, an estimate where the source has one, and its address |
 | `/api/plugin/table/schema?path=` | Field descriptors, key fields, default columns, and references in both directions |
-| `/api/plugin/table/rows?path=&…` | One page in the collection envelope, for `sort`, `order`, `q`, `f.<field>=<op>:<value>`, `ref`, `cols`, `after`, and `limit` |
+| `/api/plugin/table/rows?path=&…` | One page in the collection envelope, for `sort`, `order`, `q`, `f.<field>=<op>:<value>`, `ref=<table>:<key>` (split at its last colon), `cols` (one field per parameter, repeated), `after`, and `limit` |
 | `/api/plugin/table/record?path=&key=` | One record, each value previewed past the record bound, and whether the generation the key was read under has moved |
 | `/api/plugin/table/card?path=&key=` | A hover card: a label and a few fields |
 
+A page’s rows come in the order its query asked for.
+Its `reason` says why it is not complete (`PageReason` in `table_source.py`): a scan
+that ran out of the request’s budget answers what it found, a sort that could not be
+done in the budget answers no rows and names the field in `sort_refused`, and a source
+that read only part of its content or a cursor from another generation says so.
+`limit` is the rows the page allowed, fewer than asked for when its rows are wide.
+
 `tests/test_table_source.py` checks the protocol, and `tests/test_delimited_source.py`
-the delimited source through these routes; `tests/golden/cli-api-table.tryscript.md`
-pins each route’s answers and refusals.
+the delimited source through these routes, on a served folder and on a Git pin, with the
+registry and the doctor’s checks; `tests/golden/cli-api-table.tryscript.md` pins each
+route’s answers and refusals.
 A file that is its own single table, such as a CSV file, is addressed by its own path;
 tables inside one file, such as a database’s, are planned as container children in
 [Tabular Data Browsing and Live SQLite](../specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md).
@@ -359,8 +380,8 @@ Each is optional except the kind and one view.
 1. **Claim the kind.** Add a `[[kind]]` rule to a plugin manifest.
    An extension or basename is cheapest; a content predicate is for a format that shares
    an extension, at a priority above the built-in rule it narrows.
-   The format must reach step 5 of [Classification](#classification), so a binary format
-   needs a view on `binary` instead.
+   The format must reach step 5 of [Classification](#classification); a binary format is
+   claimed by path with `binary = true` instead.
    Check the result with `metab . --plugins-dir <dir> --show <file>`, which prints the
    kind and its views.
 2. **Draw it.** Add a `[[view]]` and its `mb.registerView` call.
@@ -375,8 +396,9 @@ Each is optional except the kind and one view.
    `table` plugin’s routes serve it ([Table Sources](#table-sources)).
 4. **Parse a JSONL stream,** when the format is one.
    `register_log_adapter` adds a detector and parser for the JSONL view, and a rule with
-   `match = { ext = ".jsonl", adapter = "<name>" }` claims those files, as the
-   `agent-log` built-in does for its three adapters.
+   `match = { ext = ".jsonl", adapter = "<name>" }` claims those files, as the `agents`
+   built-in does for the Claude Code, Codex, Pi, and Gemini adapters, which register
+   from its manifest’s `register` module.
 5. **Make it a container,** when its parts are worth navigating, with
    `container = { children = "<route>" }`.
 6. **Give it a type family,** so the Files filter, Overview’s type breakdown, the

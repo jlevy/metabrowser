@@ -39,6 +39,7 @@ def _render_index_html() -> str:
         def __init__(self) -> None:
             self.query_params = _FakeQuery()
             self.headers: dict[str, str] = {}
+            self.cookies: dict[str, str] = {}
 
     resp = asyncio.run(proc_browser.index(cast(Any, _FakeReq())))
     return resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else str(resp.body)
@@ -346,15 +347,19 @@ def test_the_checkbox_exception_is_scoped_and_explained() -> None:
     )
 
 
-def test_git_pin_hides_mtime_backed_filter_controls() -> None:
-    """A pin has no mtime, so recency would 409. Omit the control rather
-    than offering a window the tree cannot answer."""
+def test_git_pin_hides_mtime_backed_filter_controls_without_file_ages() -> None:
+    """A pin whose Git cannot date its files has no mtime, so recency would 409. Omit the
+    control rather than offering a window the tree cannot answer; where the Git can, the
+    server says so (`METABROWSER_FILE_AGES`) and the controls come back."""
 
     app = _read("app.js")
+    assert "var noFileAges = window.METABROWSER_FILE_AGES === false;" in app
     recency_at = app.index('key: "recency"', app.index("function renderNavFilterBar()"))
-    assert "isGitRevisionSource()" in app[recency_at - 160 : recency_at]
+    assert "noFileAges" in app[recency_at - 160 : recency_at]
     recent_fn = app.index("function filesPanelUsesRecentSource()")
-    assert "isGitRevisionSource()" in app[recent_fn : recent_fn + 180]
+    assert "noFileAges" in app[recent_fn : recent_fn + 180]
+    options_fn = app.index("function filterGroupOptions()")
+    assert "noFileAges" in app[options_fn : options_fn + 300]
 
 
 def test_extension_tallies_come_from_the_index_not_the_catalog() -> None:
@@ -1049,7 +1054,10 @@ def test_opening_age_menu_refreshes_rolling_tallies() -> None:
 
     refresh_start = js.index("async function fetchRootSummary()")
     refresh_block = js[refresh_start : js.index("\nfunction ", refresh_start + 1)]
-    assert "patchOpenRecencyTallyCounts();" in refresh_block
+    assert "applyFilterTallies(data);" in refresh_block
+    helper_start = js.index("function refreshFilterTallies()")
+    helper_block = js[helper_start : js.index("\n}\n", helper_start)]
+    assert "patchOpenRecencyTallyCounts();" in helper_block
 
 
 def test_filters_reapply_when_new_rows_render() -> None:
@@ -1101,7 +1109,10 @@ def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
     # count: a comment added inside this one pushed the last assertion out
     # of an 1800-character window and failed a behavior that had not changed.
     block = js[start : js.index("\nfunction ", start + 1)]
-    assert "filterOpenMenu === null" in block
+    # Its counts go through the one helper, which leaves the bar alone while a menu is open.
+    assert "applyFilterTallies(data);" in block
+    helper = js[js.index("function refreshFilterTallies()") :]
+    assert "filterOpenMenu === null" in helper[: helper.index("\n}\n")]
     # The tally is painted in place in the Files metadata band, outside the panel, so no
     # cached copy of it can revert to first-paint figures under a recency filter: no source
     # paints the panel with a tally of its own.
@@ -1368,9 +1379,9 @@ def test_agent_log_uses_the_shared_additive_chip_family() -> None:
     """
 
     css = _read("styles.css")
-    plugin_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "agent_log"
-    plugin = (plugin_root / "index.js").read_text()
-    plugin_css = (plugin_root / "styles.css").read_text()
+    plugin_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "agents"
+    plugin = (plugin_root / "agent-log.js").read_text()
+    plugin_css = (plugin_root / "agent-log.css").read_text()
 
     assert ".nav-filter-bar {" in css
     assert "mb.filterControls" in plugin

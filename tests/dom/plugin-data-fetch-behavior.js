@@ -133,6 +133,15 @@ function jsonResponse(status, body) {
     calls[0].url,
   );
 
+  nextResponse = () => jsonResponse(200, { type: "table_rows" });
+  await mb.fetchPluginData("table", "rows", { path: "a.csv", cols: ["a, b", "c"], q: null });
+  check(
+    "an array repeats its parameter, one value each, a comma kept in its value",
+    calls[1].url === "http://localhost/api/plugin/table/rows?path=a.csv&cols=a%2C+b&cols=c",
+    calls[1].url,
+  );
+  calls.splice(1);
+
   // ── Structured non-ok errors ────────────────────────────────────
   nextResponse = () =>
     jsonResponse(413, {

@@ -165,10 +165,10 @@ $ node tests/dom/mirror-heading-session.js
       }
     },
     "mainHeading": {
-      "root": "↑ mirror in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git squares",
+      "root": "↑ mirror in ~/.cache/metabrowser/repository-stores/store-key-1 squares",
       "file": {
-        "html": "<button type=\"button\" class=\"icon-btn folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git</span></span></span>",
-        "text": "↑ squares / docs mirror in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git",
+        "html": "<button type=\"button\" class=\"icon-btn folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/.cache/metabrowser/repository-stores/store-key-1</span></span></span>",
+        "text": "↑ squares / docs mirror in ~/.cache/metabrowser/repository-stores/store-key-1",
         "title": "guide.md"
       },
       "fileHeaders": {
@@ -227,10 +227,10 @@ $ node tests/dom/mirror-heading-session.js
       }
     },
     "mainHeading": {
-      "root": "↑ mirror in ~/odd\"<&>home/repository-stores/store-key-2/repository.git a<b>&�x",
+      "root": "↑ mirror in ~/odd\"<&>home/repository-stores/store-key-2 a<b>&�x",
       "file": {
-        "html": "<button type=\"button\" class=\"icon-btn folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>a&lt;b&gt;&amp;�x</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/odd&quot;&lt;&amp;&gt;home/repository-stores/store-key-2/repository.git</span></span></span>",
-        "text": "↑ a<b>&�x / docs mirror in ~/odd\"<&>home/repository-stores/store-key-2/repository.git",
+        "html": "<button type=\"button\" class=\"icon-btn folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>a&lt;b&gt;&amp;�x</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/odd&quot;&lt;&amp;&gt;home/repository-stores/store-key-2</span></span></span>",
+        "text": "↑ a<b>&�x / docs mirror in ~/odd\"<&>home/repository-stores/store-key-2",
         "title": "guide.md"
       },
       "fileHeaders": {

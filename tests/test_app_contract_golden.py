@@ -82,6 +82,7 @@ from devtools.app_contract import OPAQUE, SCENARIO_SECTION, SHOWN_OUTPUT, Surfac
 from metabrowser import recent_targets
 from metabrowser.cli.doctor import DOCTOR_APP_ENV
 from metabrowser.cli.present import MINIMUM_METAB_KEY
+from metabrowser.git import file_ages
 from metabrowser.git import process as git_process
 from metabrowser.home import METABROWSER_CACHE_DIR_ENV
 from metabrowser.normalize import ROOT_PLACEHOLDER
@@ -262,12 +263,12 @@ def _cache(home: Path) -> None:
 
     build_empty_home(home)
     for store, sources in ((HELD, (HELD, HELD_BY_SSH)), (ANOTHER, (ANOTHER,))):
-        _stage_and_publish_store(home, store.store_key(), with_revision=True)
+        _stage_and_publish_store(home, store.store(), with_revision=True)
         for source in sources:
             _stage_and_publish_source(home, source, opened=False)
-            _attach(home, source, store.store_key(), generation=1, at=ALIASED_AT)
+            _attach(home, source, store.store(), generation=1, at=ALIASED_AT)
     # Acquired, and never attached to its store: the route lists it as not published.
-    _stage_and_publish_store(home, LISTED_ONLY.store_key(), with_revision=False)
+    _stage_and_publish_store(home, LISTED_ONLY.store(), with_revision=False)
     _stage_and_publish_source(home, LISTED_ONLY, opened=False)
 
 
@@ -578,6 +579,10 @@ def _doctor(sandbox: _Sandbox) -> list[str]:
     with sandbox.monkeypatch.context() as patched:
         patched.setenv("PATH", f"{GIT_STAND_IN}{os.pathsep}{os.environ['PATH']}")
         patched.setenv("METABROWSER_MAX_FIRST_CLONE_KB", "1")
+        # The suite starts every test on a pretend Git 2.50.1 for file ages
+        # (tests/file_ages_git.py); the doctor's Git check reads the stand-in as a whole.
+        patched.setattr(file_ages, "git_executable", git_process.git_executable)
+        patched.setattr(file_ages, "detect_git_version", git_process.detect_git_version)
         # The event log check is ok where the log is on and its directory can be made, and the
         # suite turns the log off (tests/conftest.py); the state directory is the sandbox's.
         patched.setenv("METABROWSER_EVENT_LOG", "1")

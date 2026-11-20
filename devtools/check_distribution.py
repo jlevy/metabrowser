@@ -96,7 +96,7 @@ WHEEL_SMOKE_SCRIPT = dedent(
     plugins = discover_plugins()
     names = {plugin.name for plugin in plugins.plugins}
     required = {
-        "agent-log",
+        "agents",
         "binary",
         "delimited",
         "diff",
@@ -140,6 +140,10 @@ WHEEL_SMOKE_SCRIPT = dedent(
         "builtin_plugins/html/index.js",
         "builtin_plugins/html/styles.css",
         "builtin_plugins/html/detect.py",
+        "builtin_plugins/agents/index.js",
+        "builtin_plugins/agents/agent-log.js",
+        "builtin_plugins/agents/agent-log.css",
+        "builtin_plugins/agents/adapters.py",
         "builtin_plugins/markdown/dom-traversal.js",
         "builtin_plugins/markdown/markdown-worker.js",
         "builtin_plugins/markdown/markdown-worker-client.js",

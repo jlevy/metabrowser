@@ -237,6 +237,7 @@ from metabrowser.settings import (
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
     VALID_LOG_LEVELS,
+    blocks_remote_images,
     client_settings_dict,
 )
 from metabrowser.source import (
@@ -287,6 +288,7 @@ from metabrowser.tree_filter import (
     parse_types,
 )
 from metabrowser.tree_groups import (
+    UNDATED_GROUP_ID,
     GroupBy,
     age_band,
     group_row,
@@ -1676,6 +1678,10 @@ async def index(
     # awaited: a pin is never trusted, so a switch of the served subject while this
     # request renders cannot hand a revision's shell the folder's policy.
     page_capabilities = capabilities_for(pinned_revision=git_pin)
+    # The reader's privacy preference, read from the request's cookies once, so the
+    # settings the page carries and the policy it is served under cannot disagree.
+    block_remote_images = blocks_remote_images(request.cookies)
+    remote_images_checked = " checked" if block_remote_images else ""
     # Only a pin has a mirror session; a folder's shell never reads the app's state.
     mirror = mirror_session(request.app) if pin is not None else None
     # The served checkout's own refs and revisions: a folder that is a repository's root,
@@ -1731,6 +1737,7 @@ async def index(
     view_state_url = _static_asset_url("view-state.js")
     navigation_url = _static_asset_url("navigation.js")
     source_append_url = _static_asset_url("source-append.js")
+    revision_ages_url = _static_asset_url("revision-ages.js")
     file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin-sdk.js")
     plugin_sdk_views_url = _static_asset_url("plugin-sdk-views.js")
@@ -1747,6 +1754,7 @@ async def index(
     pull_route_script = _startup_script_tags(PULL_PAGE_STARTUP_SCRIPTS if pull_page else ())
     view_composition_url = _static_asset_url("view-composition.js")
     inert_html_url = _static_asset_url("inert-html.js")
+    remote_images_url = _static_asset_url("remote-images.js")
     filter_state_url = _static_asset_url("filter-state.js")
     filter_controls_url = _static_asset_url("filter-controls.js")
     icons_url = _static_asset_url("icons.js")
@@ -1785,6 +1793,7 @@ async def index(
         **client_settings_dict(
             syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES,
             capabilities=page_capabilities,
+            block_remote_images=block_remote_images,
         ),
         "BUILD_TAG": BUILD_TAG,
         "EVENT_REPORTS": event_log_reports.browser_settings(long_lived=LONG_LIVED_PATHS),
@@ -2077,7 +2086,12 @@ async def index(
         # and the freshness row compares both with what the server serves, so a switch
         # or a restart onto another pin before its first poll still offers a reload.
         page_pin = _json.dumps({"pin": pin.commit_oid, "ref": pin.ref}).replace("<", "\\u003c")
+        # Whether the Git this server runs dates a revision's files, which is what the Files
+        # tab's age menus wait for: Group by age and Modified within, hidden on a revision
+        # that has no times (static/app.js `noFileAges`).
+        has_ages = "true" if pin.capabilities.recency else "false"
         repository_context_block += (
+            f"<script>window.METABROWSER_FILE_AGES={has_ages};</script>"
             f"<script>window.METABROWSER_SOURCE_PIN={page_pin};</script>"
             f"<script>{_SOURCE_PIN_GUARD_SCRIPT}</script>"
         )
@@ -2232,6 +2246,9 @@ async def index(
         # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
         # document under the untrusted profile, which the server marks inert.
         "inert-html": [{"src": inert_html_url}],
+        # The menu's Block remote images checkbox draws from the page's settings and
+        # needs this only to change them, once.
+        "remote-images": [{"src": remote_images_url, "provides": "MetabrowserRemoteImages"}],
         # The tree of a change set's files that both the Pulls tab and a diff's Diff summary
         # draw, which two plugins share through metabrowser.loadChangedFilesTree(). Only a
         # page that shows a pull request's files or a multi-file diff asks for it: a diff
@@ -2272,6 +2289,17 @@ async def index(
             {"src": source_ref_selector_url},
         ],
         "source-append": [{"src": source_append_url}],
+        # The watch on a revision's file ages and the notes about them, which only a page whose
+        # Git can read ages and whose response says they are not all in yet needs: asked for
+        # the first time a response says `dating`, `partial`, or `failed`, and never by a page
+        # whose answer is whole or whose Git cannot (it is not offered to that page at all).
+        # It was a startup script of every pin's shell, 4,940 bytes (1,896 gzipped) before a
+        # page could use it, and 3,783 bytes of that shell over the folder's budget.
+        **(
+            {"revision-ages": [{"src": revision_ages_url, "provides": "MetabrowserRevisionAges"}]}
+            if pin is not None and pin.capabilities.recency
+            else {}
+        ),
         "chart": [
             {"src": _static_asset_url("vendor/chart.umd.min.js"), "provides": "Chart"},
             {"src": charts_url, "requires": "Chart"},
@@ -2426,8 +2454,10 @@ async def index(
              which returns that line of the navigation column — the app's
              scarcest width — to the path. Inside: two icon-segment choosers
              (theme + reading font), a small font-set dropdown
-             (#app-font-select, options from _FONT_SETS), and the same build
-             version line printed by `metab --version`. Choices apply instantly.
+             (#app-font-select, options from _FONT_SETS), a privacy checkbox
+             (Block remote images, which reloads the page because the server's
+             policy follows it), and the same build version line printed by
+             `metab --version`. Other choices apply instantly.
              app.js (initSettingsControl) fills the icon segments and wires
              open/select + the dropdown. The wrapper's aria-expanded drives the
              menu's visibility via CSS.
@@ -2464,6 +2494,10 @@ async def index(
               <input class="field menu-number" id="doc-max-chars-input" type="number"
                      min="40" max="160" step="1" inputmode="numeric"
                      data-tip-text="Characters per line in rendered documents"></label>
+            <div class="menu-separator"></div>
+            <label class="menu-row" for="block-remote-images-input">Block remote images
+              <input class="menu-check" id="block-remote-images-input" type="checkbox"{remote_images_checked} disabled
+                     data-tip-text="Show an untrusted document's images from the web as their alt text. Reloads the page"></label>
             <div class="menu-separator"></div>
             <div class="menu-version">{version_line}</div>
           </div>
@@ -2574,8 +2608,14 @@ async def index(
                     kpress_adapter.kpress_static_url(module, prefix=kpress_prefix)
                     for module in kpress_adapter.DIAGRAM_MODULES
                 ),
+                remote_images=not block_remote_images,
             ),
             "X-Frame-Options": "DENY",
+            # No page address goes to an image's host, from an image the allowlist wrote
+            # (`referrerpolicy` on it says so too) or one a Mermaid diagram drawn in the
+            # page names, which no markup of the document reaches
+            # (`builtin_plugins/markdown/diagram-frame.js`). Nothing here reads a Referer.
+            "Referrer-Policy": "no-referrer",
         },
     )
 
@@ -3117,6 +3157,9 @@ async def api_tree(request: Request) -> Response:
         if group_by is not None:
             return await git_revision_tree_groups(request, pin, tree_filter, group_by)
         return await git_revision_tree(request, pin, tree_filter)
+    if tree_filter.group is not None and tree_filter.group.id == UNDATED_GROUP_ID:
+        # Only a Git revision has files with no time.
+        return JSONResponse({"error": "Not found"}, status_code=404)
     subpath = parse_inventory_path(requested)
     remaining_depth = _tree_depth_from_query(depth_str)
     if subpath is None or resolve_session_identity(subpath) is None:
@@ -3321,7 +3364,7 @@ async def api_rollup(request: Request) -> Response:
 
 
 @log_async_calls()
-async def api_recent(request: Request) -> JSONResponse:
+async def api_recent(request: Request) -> Response:
     """``GET /api/recent`` — top-N files by mtime within a
     rolling window (1h / 24h / 7d / 30d / all), filtered by
     the navigation filter vocabulary plus optional ``prefix`` and
@@ -3356,6 +3399,19 @@ async def api_recent(request: Request) -> JSONResponse:
     # CLI inspection. Merge it into `types` so one provider predicate decides
     # both spellings before the response cap is applied.
     types = parse_types((*requested_filter.types, *ext_filter))
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        # A revision has no inventory: the newest files by the time of their last commit.
+        from metabrowser.git.content_routes import git_revision_recent
+
+        return await git_revision_recent(
+            pin,
+            window=window,
+            limit=limit,
+            types=types,
+            min_size=requested_filter.min_size,
+            prefix=prefix_filter,
+        )
     recent_filter = TreeFilter(
         recency_seconds=int(RECENT_WINDOW_SECONDS[window] or 0),
         types=types,
@@ -3612,7 +3668,11 @@ async def _api_folder_envelope(
         "kind": "folder",
         "path": subpath,
         "name": target.name,
-        "views": _views_for_kind("folder"),
+        "views": (
+            await asyncio.to_thread(_views_for_kind, "folder", target=target)
+            if _FOLDER_OFFERS
+            else _views_for_kind("folder")
+        ),
         "dir": {
             "total_files": total_files,
             "total_size": total_size,
@@ -4029,8 +4089,8 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         return JSONResponse(result, headers=etag_headers)
 
     # A plugin kind that claims a binary format by its magic number, whatever the
-    # file's name; the model stays the file's bytes.
-    binary_kind = _magic_kind(disk_prefix) or "binary"
+    # file's name, then a plugin's claim by path; the model stays the file's bytes.
+    binary_kind = _magic_kind(disk_prefix) or _binary_kind(target, ext)
     return JSONResponse(
         {
             "type": "binary",
@@ -4926,9 +4986,11 @@ from metabrowser.plugin_loader.manifest import (
     view_entry,
 )
 from metabrowser.plugin_loader.static_assets import (
+    FolderOffer,
     build_plugin_routes,
     plugin_asset_prefix,
     plugin_asset_trees,
+    resolve_folder_offers,
 )
 from metabrowser.tree import (
     set_folder_markers,
@@ -4966,21 +5028,28 @@ _PLUGIN_ASSET_TREES = plugin_asset_trees(_LOADED_PLUGINS)
 # Pre-compile plugin kind rules and view bindings for fast lookup at
 # request time. Higher priority wins; within a priority, the plugin
 # discovered first wins (``CompiledKindRule.sort_key``).
+# A ``binary = true`` rule is asked only about a file already found to be binary, so it
+# sits in its own list and no text classifier sees it.
 _PLUGIN_KIND_RULES: list[CompiledKindRule] = []
+_PLUGIN_BINARY_KIND_RULES: list[CompiledKindRule] = []
 _PLUGIN_VIEWS_BY_KIND: dict[str, list[dict[str, Any]]] = {}
 for _idx, _plugin in enumerate(_LOADED_PLUGINS):
     for _kr in _plugin.manifest.kind:
-        _PLUGIN_KIND_RULES.append(
+        (_PLUGIN_BINARY_KIND_RULES if _kr.binary else _PLUGIN_KIND_RULES).append(
             CompiledKindRule(rule=_kr, plugin_name=_plugin.name, discovery_index=_idx)
         )
     for _view in _plugin.manifest.view:
         _PLUGIN_VIEWS_BY_KIND.setdefault(_view.kind, []).append(view_entry(_view))
 
+# Folder views a plugin offers only where its predicate accepts the folder, by view id.
+_FOLDER_OFFERS: dict[str, FolderOffer | None] = resolve_folder_offers(_LOADED_PLUGINS)
+
 _PLUGIN_CLASSIFY = build_classifier(_PLUGIN_KIND_RULES)
+_PLUGIN_CLASSIFY_BINARY = build_classifier(_PLUGIN_BINARY_KIND_RULES)
 # Hand the tree renderer the folder-marker set so directories whose direct
 # children include a known marker get a ``marker_basename`` field on their
 # row. This is the only piece of plugin state that ``tree.py`` needs.
-set_folder_markers(collect_folder_markers(_PLUGIN_KIND_RULES))
+set_folder_markers(collect_folder_markers(_PLUGIN_KIND_RULES + _PLUGIN_BINARY_KIND_RULES))
 
 
 def _classify_with_plugins(
@@ -5020,14 +5089,28 @@ def _magic_kind(disk_prefix: bytes | None) -> str | None:
 def _classify_content_kind(target: Path, ext: str) -> str:
     """The kind ``/api/file`` gives a file on the served folder, for a caller with no
     envelope of its own: an image extension, then text or JSONL through the plugin
-    classifier, then a ``magic`` kind or ``binary`` for bytes that sniff as binary."""
+    classifier, then a ``magic`` kind, a ``binary = true`` claim, or ``binary`` for bytes that sniff as binary."""
     if ext in BROWSER_IMAGE_EXTS:
         return "image"
     if ext != ".jsonl" and ext not in BROWSER_TEXT_EXTS:
         text_body, disk_prefix = _sniff_text_body(target)
         if not text_body:
-            return _magic_kind(disk_prefix) or "binary"
+            return _magic_kind(disk_prefix) or _binary_kind(target, ext)
     return _classify_with_plugins(target, ext)
+
+
+def _binary_kind(target: Path, ext: str) -> str:
+    """The kind of a served file found to be binary: a plugin's binary claim, or ``binary``.
+
+    Path predicates only, so this reads nothing; ``_classify_with_plugins`` is never
+    asked about a binary file, whose content its predicates would misread. A claim by a
+    kind no loaded plugin gives a view keeps ``binary``, so the file keeps its Bytes view
+    rather than reaching a page with nothing to show.
+    """
+    if not _PLUGIN_BINARY_KIND_RULES:
+        return "binary"
+    claimed = _PLUGIN_CLASSIFY_BINARY(FileContext(target, ext, None))
+    return claimed if claimed is not None and _PLUGIN_VIEWS_BY_KIND.get(claimed) else "binary"
 
 
 def _container_kinds() -> dict[str, dict[str, str]]:
@@ -5154,6 +5237,13 @@ def _table_source_declarations() -> list[TableSourceDeclaration]:
     return out
 
 
+def _classify_served_file(ref: ContentRef) -> str | None:
+    target = resolve_session_identity(ref.identity)
+    if target is None or not target.is_file():
+        return None
+    return _classify_content_kind(target, ref.logical_ext)
+
+
 async def _table_content_kind(ref: ContentRef) -> str | None:
     """The kind of the content a table route names, as ``/api/file`` classifies it.
 
@@ -5162,10 +5252,8 @@ async def _table_content_kind(ref: ContentRef) -> str | None:
     is every rule a table source's kind uses.
     """
     if get_source_session().subject.filesystem_root is not None:
-        target = resolve_session_identity(ref.identity)
-        if target is None or not target.is_file():
-            return None
-        return await asyncio.to_thread(_classify_content_kind, target, ref.logical_ext)
+        # Resolving and statting the file runs off the event loop, with the classifier.
+        return await asyncio.to_thread(_classify_served_file, ref)
     from metabrowser.git.content_routes import plugin_kind_for_git_wire, plugin_magic_kind
 
     kind = plugin_kind_for_git_wire(ref.identity)
@@ -5199,14 +5287,56 @@ def _views_for_kind(
     dropped when active content is off, and a bounded sniff may move the
     default tab to Source. *target* is the file being classified; omit it
     only when no file is in hand.
+
+    For the folder kind *target* is the folder, and :func:`_offered_folder_views`
+    keeps a plugin's offered view only where its predicate accepts the folder; with
+    no folder in hand no offered view is kept. The predicates touch the disk, so a
+    caller on the event loop runs this in a thread when :data:`_FOLDER_OFFERS` is
+    not empty.
     """
     merged = merge_views(VIEW_REGISTRY.get(kind, []), _PLUGIN_VIEWS_BY_KIND.get(kind, []))
     out = check_view_keys(kind, merged).views
+    if kind == "folder" and _FOLDER_OFFERS:
+        out = _offered_folder_views(out, target)
     if kind == "html":
         out = _html_kind_views(out, target, active_content=active_content)
     elif out and not any(v.get("default") for v in out):
         out[0] = {**out[0], "default": True}
     return live_view_keys(out)
+
+
+def _offered_folder_views(views: list[dict[str, Any]], target: Path | None) -> list[dict[str, Any]]:
+    """Keep each offered folder view only where its predicate accepts *target*.
+
+    A predicate that raises is logged and its view left out, so one plugin cannot take
+    every folder page down. An offered view that is a default becomes the only
+    default, the first such one if several are offered: the folder is the plugin's
+    subject, so its page opens there rather than on the Overview.
+    """
+
+    kept: list[dict[str, Any]] = []
+    offered_default: str | None = None
+    for view in views:
+        view_id = view["id"]
+        if view_id not in _FOLDER_OFFERS:
+            kept.append(view)
+            continue
+        predicate = _FOLDER_OFFERS[view_id]
+        if target is None or predicate is None:
+            continue
+        try:
+            offered = bool(predicate(target))
+        except Exception:
+            LOG.exception("folder view %s offer failed; leaving the view out", view_id)
+            continue
+        if not offered:
+            continue
+        kept.append(view)
+        if offered_default is None and view.get("default"):
+            offered_default = view_id
+    if offered_default is not None:
+        kept = [{**view, "default": view["id"] == offered_default} for view in kept]
+    return kept
 
 
 def _html_kind_views(

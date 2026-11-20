@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -106,7 +107,7 @@ def test_client_settings_publish_one_authoritative_registry() -> None:
 
 
 def test_index_loads_the_taxonomy_before_the_plugin_sdk() -> None:
-    response = asyncio.run(server.index(cast(Any, None)))
+    response = asyncio.run(server.index(cast(Any, SimpleNamespace(cookies={}))))
     html = bytes(response.body).decode()
     assert "/static/file-type-taxonomy.js?v=" in html
     assert html.index("/static/file-type-taxonomy.js") < html.index("/static/plugin-sdk.js")

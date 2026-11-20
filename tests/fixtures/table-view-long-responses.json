@@ -224,7 +224,7 @@
           {"key": "@199", "cells": {"n": 199, "word": "bravo 199", "even": false}},
           {"key": "@200", "cells": {"n": 200, "word": "charlie 200", "even": true}}
         ],
-        "next_after": "c.WzIwMF0",
+        "next_after": "c.W251bGwsImFzYyIsMjAwXQ",
         "complete": true,
         "truncated": false,
         "reason": null,
@@ -233,10 +233,12 @@
         "estimate": null,
         "skipped": 0,
         "examined": null,
-        "searched": null
+        "searched": null,
+        "sort_refused": null,
+        "limit": 200
       }
     },
-    "rows?after=c.WzIwMF0&limit=1000&path=long.csv": {
+    "rows?after=c.W251bGwsImFzYyIsMjAwXQ&limit=1000&path=long.csv": {
       "status": 200,
       "body": {
         "type": "table_rows",
@@ -655,7 +657,9 @@
         "estimate": null,
         "skipped": 0,
         "examined": null,
-        "searched": null
+        "searched": null,
+        "sort_refused": null,
+        "limit": 1000
       }
     },
     "rows?limit=200&order=asc&path=long.csv&sort=n": {
@@ -868,7 +872,7 @@
           {"key": "@199", "cells": {"n": 199, "word": "bravo 199", "even": false}},
           {"key": "@200", "cells": {"n": 200, "word": "charlie 200", "even": true}}
         ],
-        "next_after": "c.WzEsMjAwLDIwMF0",
+        "next_after": "c.WyJuIiwiYXNjIiwxLDIwMCwyMDBd",
         "complete": true,
         "truncated": false,
         "reason": null,
@@ -877,7 +881,9 @@
         "estimate": null,
         "skipped": 0,
         "examined": null,
-        "searched": null
+        "searched": null,
+        "sort_refused": null,
+        "limit": 200
       }
     },
     "rows?limit=200&order=desc&path=long.csv&sort=n": {
@@ -1090,7 +1096,7 @@
           {"key": "@402", "cells": {"n": 402, "word": "alpha 402", "even": true}},
           {"key": "@401", "cells": {"n": 401, "word": "foxtrot 401", "even": false}}
         ],
-        "next_after": "c.WzEsNDAxLDQwMV0",
+        "next_after": "c.WyJuIiwiZGVzYyIsMSw0MDEsNDAxXQ",
         "complete": true,
         "truncated": false,
         "reason": null,
@@ -1099,7 +1105,9 @@
         "estimate": null,
         "skipped": 0,
         "examined": null,
-        "searched": null
+        "searched": null,
+        "sort_refused": null,
+        "limit": 200
       }
     }
   }

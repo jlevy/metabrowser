@@ -32,10 +32,10 @@ It asks the providers `cache/providers.py` lists, through `RepositoryProvider`, 
 reducers, Git configuration for a remote (the credential helper), what to say when a
 source was not found or needs credentials (`credential_hint`), a check before a first
 clone, a mirror’s `repository_context`, the commit a pull-request URL pins, the changed
-file a Changes tab URL’s anchor names (`pull_request_file`), and the set of pull
-requests a server keeps fresh.
-`GithubProvider` in `provider.py` answers each.
-`provider_statuses` in the same module collects each provider’s section of
+file a Changes tab URL’s anchor names (`pull_request_file`), the set of pull requests a
+server keeps fresh, and the pull requests a branch is the head of, from the cache alone
+(`ref_pulls`, [By head branch](#the-catalog)). `GithubProvider` in `provider.py` answers
+each. `provider_statuses` in the same module collects each provider’s section of
 `metab --doctor`, and `PullRequestUnavailableError.blocking` tells the command line that
 a pull request can open only once a tool is installed or signed in, without naming the
 tool; both come from [the GitHub status check](#the-github-status-check).
@@ -306,6 +306,32 @@ With `q`, the same route is Quick Search’s completion list across every state
 (`catalog_search`): a number uses the number index, `#` alone lists the newest, and text
 scans titles within `_SEARCH_TITLE_ROWS` and an instruction budget, saying `limited`
 when it stopped there.
+
+**By head branch.** The ref chooser lists a branch’s pull requests on its row, and its
+filter finds a branch by them (`GET /api/source/refs`,
+[Source Sessions and Pins](arch-source-sessions-and-pins.md#switching-the-pin-and-the-pin-guard)).
+Core asks the provider, through `ref_pulls_for` in `cache/providers.py`, which names no
+provider, and `ref_pulls.py` answers from the catalog alone: `catalog_heads` reads the
+cached rows whose `head_repository` is the repository itself, a fork’s or a deleted
+fork’s never, within the newest `_HEADS_SCAN_ROWS`, and the answer is kept for each
+`(epoch, revision)` of the catalog, so a chooser that asks on every keystroke reads no
+row. While a job is filling the catalog each page it writes moves the revision, and a
+scan holds off the next page’s write, so the answer is read again at most once in
+`RESCAN_WHILE_FILLING_S`, and a scan reads its rows inside the transaction and makes
+them pull requests after it; the measurements are beside the constants.
+A branch several pull requests name lists the open ones first and then the newest first.
+The repository’s own are told from a fork’s by the head repository’s name the catalog
+recorded, compared, ignoring case, with the name in the served repository’s address, so
+a repository renamed or transferred since its rows were cached reads as a fork’s until
+the catalog records its new name (`mb-n3hm`: compare the repository’s id).
+A catalog not yet cached answers as absent, with whether a job is filling it, which the
+chooser asks again while it is; nothing here starts a job or reaches GitHub.
+A checkout’s local branches and its `origin/` remote branches are named as the
+repository names them.
+A checkout served at one of its own revisions is not the folder the plugin resolves, and
+has no Pulls tab
+([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)),
+so its listing has no pull requests.
 
 ## Lightweight Cores
 
