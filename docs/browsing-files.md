@@ -128,6 +128,7 @@ tabs, and `V` and `S` switch to the rendered view and the source wherever both e
 | Mermaid diagrams (`.mmd`, `.mermaid`) | Diagram and Source |
 | JSON and YAML | Tree, a collapsible view of the parsed structure, and Source |
 | JSONL logs | Log, a timeline of events, and Raw JSON; coding-agent logs add Charts |
+| Event logs (`events-*.jsonl`) | Timeline, Latency, By kind, Errors, and Raw JSON: Metabrowser’s own log of what it served and how long each took |
 | Code and text | Source, with syntax highlighting where a grammar exists |
 | Images | Image |
 | HTML | Preview, in a sandboxed frame, and Source |
@@ -212,6 +213,10 @@ reloading the page then tries again.
   session logs of Claude Code, Codex, Gemini CLI, and Pi, Metabrowser shows the agent in
   the header and adds **Charts**.
   [Working with agents](working-with-agents.md#reading-agent-logs) has more.
+- **Event logs:** a file named `events-*.jsonl`, which a served `metab` writes about
+  itself, opens as spans nested under what started them, the slowest spans, each kind’s
+  timings, and failures by cause.
+  [Browsing the log](realtime-debugging.md#browsing-the-log) has more.
 - **Code and text:** Source highlights common programming, markup, and configuration
   languages by file extension, and shows plain text for the rest, `.log` files among
   them.

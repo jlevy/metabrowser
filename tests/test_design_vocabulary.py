@@ -1958,6 +1958,7 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     # The View on GitHub button's chevron, which opens its menu.
     "plugin-sdk-views.js": ('"chip chip-menu-trigger counterpart-more disclosure-toggle"',),
     "agent_log/index.js": ('class="log-event-header disclosure-toggle"',),
+    "event_log/event-log-views.js": ('"disclosure-toggle event-log-row-head"',),
     "structured/tree.js": ('" srow-container disclosure-toggle"',),
     "markdown/inert-toc.js": ('"kpress-toc-toggle disclosure-toggle"',),
     "markdown/rendered.js": ('class="section-disclosure-trigger disclosure-toggle">Diagnostics',),
@@ -2075,6 +2076,7 @@ _TOGGLE_CLASSES: frozenset[str] = frozenset(
         "chip-menu-trigger",
         "source-ref-selector-toggle",
         "log-event-header",
+        "event-log-row-head",
         "srow-container",
         "kpress-toc-toggle",
         "section-disclosure-trigger",
@@ -3304,6 +3306,40 @@ def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
         assert "var(--actor-identity-gap)" in geometry, selector
     # No avatar size or gap is written as a pixel literal in a rule.
     assert "18px + 4px" not in github and "+ 9px" not in github
+
+
+def test_boxed_prose_takes_one_inline_padding() -> None:
+    """A bordered box that holds prose has one inline padding, `--boxed-prose-padding-inline`.
+
+    The pane inset, `--pane-header-padding-x`, aligns the navigation column's rows, and put a
+    description's h2 a few pixels inside its box's border (owner, 2026-11-20). The token is
+    declared once, on the shell's `:root`; a pull request's cards read it through
+    `--github-pull-text-inset`, which their head, text, hunk lines, and commit rows share, and
+    a commit's message reads it directly. docs/design-system.md, "Boxed Prose", names what
+    keeps its own padding and why. `tests/test_github_pull_text_chrome.py` measures the
+    padding the boxes lay out.
+    """
+
+    shell_path = STATIC / "styles.css"
+    github_path = REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"
+    token = "--boxed-prose-padding-inline"
+    shell_rules = _rules_of(shell_path)
+    declared = [
+        (selector, body[token])
+        for selector, body in shell_rules + _rules_of(github_path)
+        if token in body
+    ]
+    assert len(declared) == 1 and declared[0][0] == ":root", declared
+    assert re.fullmatch(r"\d+px", declared[0][1]), "the token's value is a length of its own"
+    github = dict(_rules_of(github_path))
+    shell = dict(shell_rules)
+    # A pull request's text is padded by the card's inset, which is the token and no pane inset.
+    assert github[".github-pull"]["--github-pull-text-inset"] == f"var({token})"
+    assert github[".github-pull-text"]["padding"] == (
+        "var(--content-padding-y) var(--github-pull-text-inset)"
+    )
+    # A commit's message is the same kind of box, and reads the token itself.
+    assert shell[".git-commit-body"]["padding"] == f"var(--pane-header-padding-y) var({token})"
 
 
 # A serif face, named directly, as a family, or through the token KPress reads it from.

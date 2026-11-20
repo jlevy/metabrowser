@@ -25,9 +25,12 @@ work.
 | `Control-N` or `Control-P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open, outside text fields, on macOS and iOS |
 | `U` | Up: the parent folder | A file, or a folder below the root, is shown |
 | `W` | The branch or tag switcher | A repository opened by its URL, or a folder that is a repository’s root, is shown |
-| `V` | The rendered view: Document, Diagram, Preview, Tree, or Log | A file’s tab bar is shown |
+| `V` | The rendered view: Document, Diagram, Preview, Tree, Timeline, or Log | A file’s tab bar is shown |
 | `S` | The source: Source, or Raw JSON | A file’s tab bar is shown |
 | `C` | Charts | An agent log is shown |
+| `L` | Latency | An event log is shown |
+| `B` | By kind | An event log is shown |
+| `E` | Errors | An event log is shown |
 | `O` | Overview | A folder is shown |
 | `M` | Treemap, from its map | A folder is shown |
 | `C` | Conversation | A pull request page is shown |

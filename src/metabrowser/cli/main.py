@@ -92,6 +92,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "allow_edits",
             "checkout",
             "ref",
+            "open_event_log",
         }
     ),
     "walk": frozenset(
@@ -99,6 +100,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "fmt",
             "stream",
             "path",
+            "open_event_log",
             "detail",
             "max_depth",
             "max_files",
@@ -122,6 +124,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "allow_edits",
             "checkout",
             "ref",
+            "open_event_log",
         }
     ),
     "show": frozenset(
@@ -135,6 +138,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "allow_edits",
             "checkout",
             "ref",
+            "open_event_log",
         }
     ),
     "check-api": frozenset(
@@ -147,6 +151,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "allow_edits",
             "checkout",
             "ref",
+            "open_event_log",
         }
     ),
     "no-serve": frozenset({"log_level", "checkout"}),
@@ -215,6 +220,7 @@ _OPTION_LABELS: dict[str, str] = {
     "dry_run": "--dry-run",
     "app_bundle_id": "--app-bundle-id",
     "open_in": "--open-in",
+    "open_event_log": "--event-log",
 }
 
 
@@ -543,6 +549,7 @@ _app = typer.Typer(add_completion=False)
         "metab file:///path/to/repo.git --no-serve\n\n"
         "metab --remote example-host --path /srv/shared-files\n\n"
         "metab ./notes/report.md --present\n\n"
+        "metab --event-log\n\n"
         "metab --plugins\n\n"
         "Guide: https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md"
     ),
@@ -593,6 +600,15 @@ def _metab(
         "serving and to --api, --show, and --check-api.",
         rich_help_panel=_PANEL_SHARED,
         show_default=False,
+    ),
+    open_event_log: bool = typer.Option(
+        False,
+        "--event-log",
+        help="Open Metabrowser's own event log: ROOT is the directory a served metab "
+        "writes it to (under METABROWSER_STATE_DIR, else XDG_STATE_HOME/metabrowser, else "
+        "~/.local/state/metabrowser), and serving opens its newest segment as spans and "
+        "latencies. Applies when serving and to --api, --show, --walk, and --check-api.",
+        rich_help_panel=_PANEL_SHARED,
     ),
     # ── Mode selectors ─────────────────────────────────────────────
     walk: bool = typer.Option(
@@ -997,6 +1013,7 @@ def _metab(
     only acquires it into the cache. Diagnostics: --check-api, --plugins,
     --plugin, --doctor.
     Remote serving: --remote. --present opens ROOT in the macOS app or a browser.
+    --event-log opens Metabrowser's own event log.
     Recent targets: --recent, --recent-add, --recent-forget, --recent-clear.
     """
     for variable, directory in (
@@ -1035,6 +1052,15 @@ def _metab(
     explicit = _explicit_params(ctx)
     _check_option_applicability(ctx, mode, explicit)
     _check_format_applicability(ctx, mode, fmt, explicit)
+    if open_event_log:
+        if root is not None:
+            ctx.fail("--event-log names the folder to open; ROOT is not used with it")
+        from metabrowser.cli.event_log_cli import event_log_directory, newest_segment
+
+        log_directory = event_log_directory()
+        root = str(log_directory)
+        if mode == "serve" and not path:
+            path = newest_segment(log_directory)
 
     if mode == "serve":
         # Only the macOS app's start, held by its stdin, says the client is on this machine;
