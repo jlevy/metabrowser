@@ -53,6 +53,7 @@ $ node tests/dom/event-reports-session.js
 {
   "settings": {
     "log": true,
+    "off_reason": null,
     "route": "/api/event-log/client",
     "header": "x-metabrowser-client",
     "slow_ms": 2000,
