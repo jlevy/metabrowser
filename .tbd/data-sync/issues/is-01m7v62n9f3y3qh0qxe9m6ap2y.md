@@ -5,7 +5,7 @@ title: "Markdown: honor GitHub's allowed HTML attributes (align, width, height) 
 kind: bug
 status: closed
 priority: 2
-version: 8
+version: 9
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/626
@@ -17,12 +17,16 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T00:35:36.365Z
-updated_at: 2026-11-20T17:01:53.212Z
+updated_at: 2026-11-20T18:01:57.788Z
 started_at: 2026-11-20T00:36:08.335Z
 closed_at: 2026-11-20T02:31:43.309Z
 close_reason: Merged in PR 626
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: 533dfad1-ca90-4632-86b2-ca710b79d7c2
+    linked_at: 2026-11-20T18:01:57.785Z
 ---
 Owner, 2026-11-19, verbatim: "the metabrowser README.md has the main image, the metabrowser icon, at the top of the readme and it's nicely small and centered on GitHub.com and github renders it nicely. But in our rendering, it's large and left-aligned. We should have the same rendering by default as GitHub's own web browser." README.md line 1: <p align="center"><img src="images/metabrowser-icon.png" alt="Metabrowser app icon" width="192"></p>, then <h1 align="center">.
 

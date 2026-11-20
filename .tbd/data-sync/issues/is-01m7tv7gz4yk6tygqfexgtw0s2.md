@@ -5,7 +5,7 @@ title: Tabular data browsing and live SQLite
 kind: epic
 status: open
 priority: 2
-version: 17
+version: 18
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
 labels:
   - linear
@@ -26,7 +26,11 @@ child_order_hints:
   - is-01m7vtd571483vj430fqd5tw4y
   - is-01m7v9mwy0ye52geq4eqdxwz5a
 created_at: 2026-11-19T21:26:01.444Z
-updated_at: 2026-11-20T17:16:46.616Z
+updated_at: 2026-11-20T18:01:45.676Z
+extensions:
+  linear:
+    id: da4dab2f-0682-4c31-8c9a-29da1bda661e
+    linked_at: 2026-11-20T18:01:45.674Z
 ---
 Generic table plugin (UI, query model, source protocol) with source plugins for CSV/TSV, record lists, and SQLite; nondestructive live SQLite reads; live reload for open files. See the spec.
 

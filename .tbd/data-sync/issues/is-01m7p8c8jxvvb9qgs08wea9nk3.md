@@ -5,7 +5,7 @@ title: "Recent folders: persist them in Metabrowser's own configuration, shared 
 kind: feature
 status: closed
 priority: 1
-version: 9
+version: 10
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/546
@@ -18,12 +18,16 @@ parent_id: is-01m7ksbn803jhw15qjc6beg7qf
 hold: null
 hold_until: null
 created_at: 2026-11-18T02:39:36.028Z
-updated_at: 2026-11-20T17:02:23.279Z
+updated_at: 2026-11-20T18:00:43.688Z
 started_at: 2026-11-18T02:50:57.554Z
 closed_at: 2026-11-18T18:02:30.400Z
 close_reason: "Merged in #546 (4e7759c51); owner hand checks 2, 11 and 18 pending on the rebuilt app."
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: 724a53b1-674a-4b28-9ca0-ae4135e81fde
+    linked_at: 2026-11-20T18:00:43.686Z
 ---
 Owner, 2026-11-18 in chat: 'Why do I not see all the recent folders in Open recent in the menu on the macos app? Can we save these in our configurations somewhere? It should be compatible with both the CLI and the native app so that the logic can be reused, e.g. for other shells in the future, around the CLI, or for features in the CLI where recently open folders are useful, even if right now it will primarily be a native app feature. Let's have a sub-agent design this out and implement end-to-end to make sure it's consistent.'
 

@@ -5,7 +5,7 @@ title: "Chevron that hides the navigation pane: transparent plate, 1px from the 
 kind: bug
 status: closed
 priority: 2
-version: 5
+version: 6
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/600
@@ -17,10 +17,14 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T06:21:12.283Z
-updated_at: 2026-11-20T17:04:00.955Z
+updated_at: 2026-11-20T18:01:26.722Z
 started_at: 2026-11-19T06:21:20.661Z
 closed_at: 2026-11-19T06:32:31.587Z
 close_reason: "Merged in #600 as c2c4d9958."
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: adb1a4f1-ea4f-4432-bacb-0a4c936ccc02
+    linked_at: 2026-11-20T18:01:26.720Z
 ---

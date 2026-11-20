@@ -5,7 +5,7 @@ title: "Flake: test_golden_pull_files_failures saw no account_changed stamp on d
 kind: bug
 status: closed
 priority: 2
-version: 7
+version: 8
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/513
@@ -20,12 +20,16 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T08:12:56.439Z
-updated_at: 2026-11-20T17:01:35.034Z
+updated_at: 2026-11-20T17:59:49.189Z
 started_at: 2026-11-17T08:16:02.342Z
 closed_at: 2026-11-17T17:48:13.230Z
 close_reason: "Fixed by #513 (review A addressed; A1 fixed with the reviewer's own verified form), merged 2026-11-17."
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: 4672e836-264f-4d72-97d7-48947477c8c4
+    linked_at: 2026-11-20T17:59:49.186Z
 ---
 Seen once, in unit (3.13, 1/2) of CI run 44043888346 (jlevy/metabrowser#504 at e6f77bfb3; the other seven unit legs and 3 earlier runs passed it): tests/test_cli_github_pull_files_golden.py::test_golden_pull_files_failures failed its golden, cli-github-pull-files-failures.txt, at the command after the account-changed refresh (the gh-missing case, golden line 550).
 

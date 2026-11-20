@@ -5,7 +5,7 @@ title: CI takes ~20-25 minutes per push; assess end to end and design how to get
 kind: task
 status: closed
 priority: 1
-version: 40
+version: 41
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -43,12 +43,16 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T01:14:58.454Z
-updated_at: 2026-11-20T17:00:28.357Z
+updated_at: 2026-11-20T17:59:36.314Z
 started_at: 2026-11-17T01:15:52.976Z
 closed_at: 2026-11-20T17:00:28.355Z
 close_reason: "Per its own note (close when Phase 2 merges): the assessment and plan merged in PR #496, Phase 1 in #499 and Phase 2 in #504 (pull requests measured at 4.7 to 5.5 minutes). The remaining Fast CI work continues under the CI speed epic"
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: 604029f5-10f2-4510-a11e-f4fecb1e5969
+    linked_at: 2026-11-20T17:59:36.312Z
 ---
 Owner, 2026-11-16: 'investigate why CI is taking so long. This is unacceptably slow for CI. CI should be something like 3 to 5 minutes, or else we should figure out ways to avoid extraneous checks except when they're appropriate. ... properly assess this end-to-end and what the proper engineering solution is to maintain the same levels of coverage but speed up our development velocity.' Deliverable: a research brief and plan PR with implementation beads; workflow-file changes need the owner's OK (no grant covers workflow files).
 

@@ -5,7 +5,7 @@ title: "One rule for the app's command-line dependencies (metab, gh, future tool
 kind: feature
 status: closed
 priority: 1
-version: 12
+version: 13
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/590
@@ -22,12 +22,16 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-19T00:11:26.622Z
-updated_at: 2026-11-20T17:05:26.099Z
+updated_at: 2026-11-20T18:01:17.707Z
 started_at: 2026-11-19T00:12:06.859Z
 closed_at: 2026-11-19T04:11:15.457Z
 close_reason: "Phases 1-3 landed: #590 (minimum release and versioning rule), #596 (metab --doctor checks, gh minimum, Help > Check Setup..., contract entries). Review B Lows tracked separately."
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: 2fb3a027-b54e-4da2-99e5-dee1aa143c83
+    linked_at: 2026-11-20T18:01:17.705Z
 ---
 Owner, 2026-11-18, verbatim: "another question for us to review is to be clear about the dependency between metab CLI and the native app. Let's figure out what the best way to handle this is. Probably it's just to have a minimum version dependency represented in each native app build and then to instruct the user on how to upgrade metab if necessary. And same for gh and potentially, in the future, other CLI dependencies". Today: MetabRequirement.minimumRelease (apps/macos ShellCore) for metab; the gh status check (mb-si2g, PR #581) for gh. Goal: one declared requirement per tool in each app build (name, minimum version, how it is found, how its version is read, upgrade instructions by install method), one status/remedy UI in the app, one doc, and the rule for when a minimum is raised.
 

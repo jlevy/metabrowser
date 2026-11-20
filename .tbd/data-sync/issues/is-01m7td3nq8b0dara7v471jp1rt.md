@@ -5,7 +5,7 @@ title: "Branch chooser: list every branch, most recently committed first (no 100
 kind: task
 status: closed
 priority: 2
-version: 7
+version: 8
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/614
@@ -17,12 +17,16 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T17:19:15.166Z
-updated_at: 2026-11-20T17:01:18.107Z
+updated_at: 2026-11-20T18:01:38.862Z
 started_at: 2026-11-19T17:55:57.990Z
 closed_at: 2026-11-19T19:40:24.345Z
 close_reason: "Landed in #614 (ab68526e9): the ref chooser lists every ref, checked-out/default first then newest commit first, windowed rows, memoized below MAX_ENTRY_BYTES/MAX_REF_ENTRIES, listing work off the event loop."
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: af7d05ea-d601-43a6-b176-77952c7295fd
+    linked_at: 2026-11-20T18:01:38.860Z
 ---
 Owner, 2026-11-19, verbatim: "the branch selector shows: Showing 100 of 1292 branches; filter to narrow. 1. We should not truncate at such an arbitrarily low number as 1,000. We can show all the branches. 2. We should sort them by recency, with most recently modified branches first"
 

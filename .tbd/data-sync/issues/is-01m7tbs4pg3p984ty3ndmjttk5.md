@@ -5,7 +5,7 @@ title: Main page's focus ring is covered by a pull request's tab bar
 kind: bug
 status: closed
 priority: 2
-version: 6
+version: 7
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/609
@@ -17,12 +17,16 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T16:56:01.486Z
-updated_at: 2026-11-20T17:04:45.540Z
+updated_at: 2026-11-20T18:01:36.230Z
 started_at: 2026-11-19T16:56:32.898Z
 closed_at: 2026-11-19T18:07:02.880Z
 close_reason: "PR #609 merged"
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: 77f55546-128b-4bb0-b384-2febb7d5affd
+    linked_at: 2026-11-20T18:01:36.228Z
 ---
 Owner, 2026-11-19, verbatim: "the border on the main window that indicates focus seems to have a lower z index than some backgrounds, the part of the tabs with the Conversation and Changs section is covering up the blue border indicating focus". Cause: .preview-pane:focus-visible draws an inset outline on the scroller, which paints under its scrolled content.
 

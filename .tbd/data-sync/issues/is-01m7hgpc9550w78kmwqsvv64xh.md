@@ -5,7 +5,7 @@ title: "Release 0.13: prepare the PyPI package and macOS app release (owner aske
 kind: epic
 status: open
 priority: 1
-version: 24
+version: 25
 labels:
   - linear
 dependencies: []
@@ -29,7 +29,11 @@ child_order_hints:
   - is-01m7jk552r4jya1wfe0p9acfmn
   - is-01m2670kk25nq2q162rbd2nqc7
 created_at: 2026-11-16T06:28:43.940Z
-updated_at: 2026-11-20T17:25:46.140Z
+updated_at: 2026-11-20T17:59:10.809Z
+extensions:
+  linear:
+    id: a18aa3cd-0329-4c1c-bca3-17921fe6703e
+    linked_at: 2026-11-20T17:59:10.803Z
 ---
 Owner: "and go through the thoroough process to prepare a release of macos and metabrowser app". Follow docs/publishing.md and apps/macos/README.md: land stacks #446 and #454, make verify, previous-release performance comparison, release-prep record, version, notes, owner approval of exact commit and notes, then publish.
 

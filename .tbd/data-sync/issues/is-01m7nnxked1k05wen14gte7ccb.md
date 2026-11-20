@@ -5,7 +5,7 @@ title: "open_in preference: config.yml, METABROWSER_OPEN_IN, --open-in, reported
 kind: feature
 status: closed
 priority: 2
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
 refs:
   - kind: pr
@@ -21,12 +21,16 @@ parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 hold: null
 hold_until: null
 created_at: 2026-11-17T21:17:01.261Z
-updated_at: 2026-11-20T17:01:51.762Z
+updated_at: 2026-11-20T18:00:08.074Z
 started_at: 2026-11-18T21:02:16.459Z
 closed_at: 2026-11-19T00:25:04.330Z
 close_reason: "Landed in #582 (14f9ec033)"
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: b5801e34-98a7-40e1-9947-d139ab835900
+    linked_at: 2026-11-20T18:00:08.071Z
 ---
 Phase 1. auto (default: app on macOS when detected), app (refuse when missing), browser. Known field in ApplicationConfig. --doctor --json reports value and source.
 

@@ -3,16 +3,16 @@ type: is
 id: is-01m7wztr8mpkr8braes7adb6js
 title: test_serve_pin forgot content_routes from sys.modules and left the package attribute on the re-import, so a later clock patch missed the server's module
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 6
+version: 7
 labels: []
 dependencies: []
 parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 created_at: 2026-11-20T17:24:54.674Z
-updated_at: 2026-11-20T17:57:39.724Z
-closed_at: null
-close_reason: null
+updated_at: 2026-11-20T18:02:22.691Z
+closed_at: 2026-11-20T18:02:22.689Z
+close_reason: "Mechanism (a forgotten module's re-import left the package attribute on the copy) fixed on main by #664 (947f314f3, forget_module, mb-6byq); duplicate #665 closed."
 resolution: null
 duplicate_of: null
 ---

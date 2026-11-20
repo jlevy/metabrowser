@@ -5,7 +5,7 @@ title: "PR view and Pulls: hunt a performance regression against v0.12.0 and rec
 kind: task
 status: closed
 priority: 1
-version: 6
+version: 7
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/524
@@ -24,12 +24,16 @@ parent_id: is-01m7n6v8n050erzeb13c5tasar
 hold: null
 hold_until: null
 created_at: 2026-11-17T17:19:32.281Z
-updated_at: 2026-11-20T17:01:42.976Z
+updated_at: 2026-11-20T17:59:59.029Z
 started_at: 2026-11-17T17:21:36.436Z
 closed_at: 2026-11-20T17:00:23.696Z
 close_reason: "Done: the regression step was found (#369's first-paint hold), the repeatable benchmark and exp-099 merged in #524, exp-100 in #525, and the fix (header painted at once) in #526"
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: d252d34b-ac08-4acb-bacf-1416b134aa51
+    linked_at: 2026-11-20T17:59:59.026Z
 ---
 The owner finds it a little slower since recent PRs. Benchmark the PR view against v0.12.0 and main from a few days ago, bisect a step change, and name the commit. Keep a durable, repeatable benchmark in explorations/performance-loop covering (1) route and git/gh time behind the diff summaries, cold and warm cache, and (2) time to display in a real browser (first paint of the loading box and of the summary, time to complete), back-to-back pairs per the tolerance policy.
 

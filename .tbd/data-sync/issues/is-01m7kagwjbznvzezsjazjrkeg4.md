@@ -5,7 +5,7 @@ title: "Font sizes follow one type scale by role: secondary metadata (ages, 'Upd
 kind: task
 status: closed
 priority: 1
-version: 31
+version: 32
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/493
@@ -41,12 +41,16 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T23:19:21.413Z
-updated_at: 2026-11-20T17:02:56.341Z
+updated_at: 2026-11-20T17:59:32.968Z
 started_at: 2026-11-16T23:20:08.996Z
 closed_at: 2026-11-17T05:46:06.772Z
 close_reason: "PR #493 merged at 9fe713bb5 after Review A (senior) and Review B (follow-up, Fable), every finding dispositioned; CI green at 28b12d6f8."
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: 73515191-1ca9-4c87-9857-4466ada9803f
+    linked_at: 2026-11-20T17:59:32.966Z
 ---
 Owner, 2026-11-16: 'review font size for consistency in our design system. "Updated just now" on the nav panel in PR tab is larger than "Fetched just now via GitHub CLI" in the PR main body. Things like update time and less important metadata like that should all be the same size unless there's a specific reason to make it larger or smaller. Probably the small font size on the main view should actually be the regular body size. The diff summary text on the toggle is also too small, at least in the current version I'm seeing right now.' Stacked on #487 (header parity), which already moves the PR page's status line and the Diff summary to the body size.
 

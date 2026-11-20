@@ -5,7 +5,7 @@ title: "File type categories: one representative gray icon per category (e.g. Do
 kind: feature
 status: closed
 priority: 2
-version: 8
+version: 9
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/583
@@ -19,12 +19,16 @@ dependencies:
 hold: null
 hold_until: null
 created_at: 2026-11-18T21:13:06.273Z
-updated_at: 2026-11-20T17:02:39.166Z
+updated_at: 2026-11-20T18:01:07.485Z
 started_at: 2026-11-18T21:13:58.451Z
 closed_at: 2026-11-18T23:34:31.041Z
 close_reason: "Merged in #583 (729b67553)"
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: cd6288f2-3d47-4458-8f93-dab6aa56753e
+    linked_at: 2026-11-20T18:01:07.482Z
 ---
 Owner, 2026-11-18: for each overall file type, we should have a selected icon that is for the type, typically the most important file type it includes, e.g. for Documents it would be the same as the Markdown file icon (but generally in gray as it is the overall file type not a specific format, so matches the category heading). We would use these icons within the Details > overview and within the "group by file type" organization of the files nav column. This would be a consistent design system we always use for file types.
 

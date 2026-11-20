@@ -5,10 +5,11 @@ title: "PR #645 review A follow-ups: print aligned-div paragraphs centred; say C
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
+parent_id: is-01m7wysdnvzch4gb5zvqwvn04e
 created_at: 2026-11-20T17:53:14.903Z
-updated_at: 2026-11-20T17:53:14.903Z
+updated_at: 2026-11-20T17:57:59.370Z
 ---
 From senior review A on #645 (attic/landing/reviews/pr645-senior-r1.txt): A1 to A7, all Low. Landed without them by the proportionate-review rule.
