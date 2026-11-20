@@ -228,11 +228,16 @@ repository does not pin.
 The `admitted-git` CI job therefore builds Git from source, so acquisition and the
 full-clone acceptance tests run on releases production admits: the lowest admitted
 release and the newest patched one.
+It builds a third, the oldest it tests that reads file ages on a Git revision
+(`git last-modified`, `FILE_AGES_GIT_MINIMUM` in `src/metabrowser/git/file_ages.py`), so
+the present path of that feature runs in CI whichever Git the runner image ships and the
+other two builds exercise the absent one.
 
 | Release | Role | SHA-256 of `git-<release>.tar.xz` |
 | --- | --- | --- |
 | 2.43.7 | Lowest admitted release | `657e2374455d9e62f6cdb3e7c55d867b6db5404d744e97e112cc5b0db687a19f` |
 | 2.50.1 | Newest patched release | `7e3e6c36decbd8f1eedd14d42db6674be03671c2204864befa2a41756c5c8fc4` |
+| 2.56.1 | Reads file ages (`git last-modified`) | `f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f` |
 
 - **Source.** The archives come from
   `https://mirrors.edge.kernel.org/pub/software/scm/git/`. The checksums were copied
@@ -241,8 +246,13 @@ release and the newest patched one.
   `B8868C80BA62A1FFFAF5FDA9632D3A06589DA6B1`; the signature was not verified when the
   checksums were copied.
   The 2.50.1 values also match those recorded independently in the tracking issue.
+  The 2.56.1 value was copied from Homebrew’s `git` formula, whose `url` is that
+  directory’s `git-2.56.1.tar.xz`, on November 20, 2026, and not from `sha256sums.asc`:
+  it has to be compared with that signed file before this is relied on.
+  The build fails closed on a wrong value.
 - **Cool-off.** Both archives were published on July 8, 2025, in the security batch the
   version floor is based on, so they are well past the 14-day cool-off.
+  The 2.56.1 tag is dated October 26, 2026, 25 days before the pin.
 - **Build.** `devtools/build_admitted_git.sh` holds the pins and builds only a pinned
   release. It downloads over HTTPS only and checks the SHA-256 before unpacking.
   It builds without Tcl/Tk, gettext, Perl, Python, Expat, or OpenSSL. Its only other

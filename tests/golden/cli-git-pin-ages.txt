@@ -1,0 +1,403 @@
+# metab file://<ORIGIN> --api /api/index/progress
+exit: 0
+--- stdout ---
+api: /api/index/progress
+status: 200
+{
+  "status": "done",
+  "indexed_files": 7,
+  "max_files": 500000,
+  "truncated": false,
+  "complete": true,
+  "provider": "git",
+  "contract": "git-revision",
+  "active": false,
+  "ages": {
+    "state": "ready",
+    "files": 7,
+    "dated": 7,
+    "older_than": null,
+    "stop": "complete",
+    "commits": 5,
+    "derived": false
+  }
+}
+--- stderr ---
+cloning <ORIGIN> into <HOME>
+cloned <ORIGIN> in 0.0 s
+# metab file://<ORIGIN> --api '/api/tree?depth=2'
+exit: 0
+--- stdout ---
+api: /api/tree?depth=2
+status: 200
+{
+  "subject": "git_revision",
+  "path": "",
+  "display": "",
+  "oid": "8eecc0abdb67269ae92b96a9f7f04698fb18f6a9",
+  "kind": "tree",
+  "entries": [
+    {
+      "path": "g1-UkVBRE1FLm1k",
+      "display": "README.md",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "787bb484bb71523bd254f0b720e48e9d61b80a59",
+      "size": 15
+    },
+    {
+      "path": "g1-YQ",
+      "display": "a",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "60ed87e66c8e9862eccc209a4dc74e74690888c4"
+    },
+    {
+      "path": "g1-ZG9jcw",
+      "display": "docs",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "8ddc408155be9178af778b4fea4255d1a574c942"
+    },
+    {
+      "path": "g1-c2hhcmVkLnR4dA",
+      "display": "shared.txt",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "c5015103cb1ab344451e771a4dc531225f846d26",
+      "size": 16
+    }
+  ],
+  "tree": [
+    {
+      "name": "a",
+      "path": "g1-YQ",
+      "type": "dir",
+      "children": [
+        {
+          "name": "guide.md",
+          "path": "g1-YQ/g1-Z3VpZGUubWQ",
+          "type": "file",
+          "ext": ".md",
+          "mtime": 1580515200,
+          "size": 11
+        },
+        {
+          "name": "new.py",
+          "path": "g1-YQ/g1-bmV3LnB5",
+          "type": "file",
+          "ext": ".py",
+          "mtime": 1588291200,
+          "size": 6
+        },
+        {
+          "name": "old.py",
+          "path": "g1-YQ/g1-b2xkLnB5",
+          "type": "file",
+          "ext": ".py",
+          "mtime": 1577836800,
+          "size": 14
+        }
+      ],
+      "has_children": true,
+      "total_files": 3,
+      "total_size": 31,
+      "mtime": 1588291200
+    },
+    {
+      "name": "docs",
+      "path": "g1-ZG9jcw",
+      "type": "dir",
+      "children": [
+        {
+          "name": "design.md",
+          "path": "g1-ZG9jcw/g1-ZGVzaWduLm1k",
+          "type": "file",
+          "ext": ".md",
+          "mtime": 1583020800,
+          "size": 12
+        },
+        {
+          "name": "side-only.md",
+          "path": "g1-ZG9jcw/g1-c2lkZS1vbmx5Lm1k",
+          "type": "file",
+          "ext": ".md",
+          "mtime": 1583020800,
+          "size": 10
+        }
+      ],
+      "has_children": true,
+      "total_files": 2,
+      "total_size": 22,
+      "mtime": 1583020800
+    },
+    {
+      "name": "README.md",
+      "path": "g1-UkVBRE1FLm1k",
+      "type": "file",
+      "ext": ".md",
+      "mtime": 1577836800,
+      "size": 15
+    },
+    {
+      "name": "shared.txt",
+      "path": "g1-c2hhcmVkLnR4dA",
+      "type": "file",
+      "ext": ".txt",
+      "mtime": 1585699200,
+      "size": 16
+    }
+  ],
+  "tally_cache_status": "done",
+  "tally_cache_max_files": 500000,
+  "summary": {
+    "files": 7,
+    "size": 84,
+    "ignored_files": 0,
+    "ignored_size": 0
+  },
+  "extensions": [
+    [
+      ".md",
+      4,
+      0
+    ],
+    [
+      ".py",
+      2,
+      0
+    ],
+    [
+      ".txt",
+      1,
+      0
+    ]
+  ],
+  "canonical_extensions": [
+    [
+      ".md",
+      4,
+      0
+    ],
+    [
+      ".py",
+      2,
+      0
+    ],
+    [
+      ".txt",
+      1,
+      0
+    ]
+  ],
+  "type_families": [
+    [
+      "markdown",
+      4,
+      0
+    ],
+    [
+      "python",
+      2,
+      0
+    ],
+    [
+      "plain-text",
+      1,
+      0
+    ]
+  ],
+  "type_presets": [
+    [
+      "docs",
+      5,
+      0
+    ],
+    [
+      "code",
+      2,
+      0
+    ],
+    [
+      "data",
+      0,
+      0
+    ],
+    [
+      "archives",
+      0,
+      0
+    ],
+    [
+      "media",
+      0,
+      0
+    ]
+  ],
+  "ages": {
+    "state": "ready",
+    "files": 7,
+    "dated": 7,
+    "older_than": null,
+    "stop": "complete",
+    "commits": 5,
+    "derived": false
+  }
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/tree?path=g1-ZG9jcw&depth=1'
+exit: 0
+--- stdout ---
+api: /api/tree?path=g1-ZG9jcw&depth=1
+status: 200
+{
+  "subject": "git_revision",
+  "path": "g1-ZG9jcw",
+  "display": "docs",
+  "oid": "8ddc408155be9178af778b4fea4255d1a574c942",
+  "kind": "tree",
+  "entries": [
+    {
+      "path": "g1-ZG9jcw/g1-ZGVzaWduLm1k",
+      "display": "docs/design.md",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "8c2bb7c703411333ec42b91e393c52e13b770048",
+      "size": 12
+    },
+    {
+      "path": "g1-ZG9jcw/g1-c2lkZS1vbmx5Lm1k",
+      "display": "docs/side-only.md",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "63c0a67c05421f97a85b74a078fd1baacf1ac430",
+      "size": 10
+    }
+  ],
+  "tree": [
+    {
+      "name": "design.md",
+      "path": "g1-ZG9jcw/g1-ZGVzaWduLm1k",
+      "type": "file",
+      "ext": ".md",
+      "mtime": 1583020800,
+      "size": 12
+    },
+    {
+      "name": "side-only.md",
+      "path": "g1-ZG9jcw/g1-c2lkZS1vbmx5Lm1k",
+      "type": "file",
+      "ext": ".md",
+      "mtime": 1583020800,
+      "size": 10
+    }
+  ],
+  "tally_cache_status": "done",
+  "tally_cache_max_files": 500000,
+  "summary": {
+    "files": 7,
+    "size": 84,
+    "ignored_files": 0,
+    "ignored_size": 0
+  },
+  "extensions": [
+    [
+      ".md",
+      4,
+      0
+    ],
+    [
+      ".py",
+      2,
+      0
+    ],
+    [
+      ".txt",
+      1,
+      0
+    ]
+  ],
+  "canonical_extensions": [
+    [
+      ".md",
+      4,
+      0
+    ],
+    [
+      ".py",
+      2,
+      0
+    ],
+    [
+      ".txt",
+      1,
+      0
+    ]
+  ],
+  "type_families": [
+    [
+      "markdown",
+      4,
+      0
+    ],
+    [
+      "python",
+      2,
+      0
+    ],
+    [
+      "plain-text",
+      1,
+      0
+    ]
+  ],
+  "type_presets": [
+    [
+      "docs",
+      5,
+      0
+    ],
+    [
+      "code",
+      2,
+      0
+    ],
+    [
+      "data",
+      0,
+      0
+    ],
+    [
+      "archives",
+      0,
+      0
+    ],
+    [
+      "media",
+      0,
+      0
+    ]
+  ],
+  "ages": {
+    "state": "ready",
+    "files": 7,
+    "dated": 7,
+    "older_than": null,
+    "stop": "complete",
+    "commits": 5,
+    "derived": false
+  }
+}
+--- stderr ---

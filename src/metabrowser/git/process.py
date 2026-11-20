@@ -599,6 +599,7 @@ _STORE_READ_COMMANDS: Final = frozenset(
         "diff",
         "for-each-ref",
         "hash-object",
+        "last-modified",
         "log",
         "ls-tree",
         "merge-base",

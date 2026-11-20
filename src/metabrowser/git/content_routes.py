@@ -103,6 +103,12 @@ from metabrowser.file_type_legend import build_file_type_legend
 from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.folder_discovery import choose_readme_name
 from metabrowser.fs_paths import derive_ext
+from metabrowser.git.file_ages import (
+    RevisionAges,
+    file_ages_availability,
+    file_ages_version_label,
+)
+from metabrowser.git.file_ages_service import AgesStatus, file_ages_service
 from metabrowser.git.process import GitError, GitTimeoutError, failure_detail
 from metabrowser.git.tree_source import (
     GitBlobIndex,
@@ -202,8 +208,13 @@ def _nav_tree_node(
     tally: GitTreeTally | None = None,
     children: list[dict[str, Any]] | None = None,
     loaded: bool = False,
+    ages: RevisionAges | None = None,
 ) -> dict[str, Any]:
-    """SPA nav node. Omit inventory aggregates rather than invent zeros."""
+    """SPA nav node. Omit inventory aggregates rather than invent zeros.
+
+    With *ages*, a file carries ``mtime``, its last commit's time in seconds, and a
+    directory the newest of its files'; a name the answer leaves undated carries none.
+    """
 
     node: dict[str, Any] = {
         "name": _display_basename(entry.path),
@@ -237,9 +248,26 @@ def _nav_tree_node(
                 compression = artifact.compression
                 if compression is not None:
                     node["compression"] = compression
+    if ages is not None:
+        stamp = _age_of(entry, ages)
+        if stamp is not None:
+            node["mtime"] = stamp
     if entry.size is not None:
         node["size"] = entry.size
     return node
+
+
+def _age_of(entry: GitTreeEntry, ages: RevisionAges) -> int | None:
+    """*entry*'s time in the revision's answer: a file's own, a directory's newest, in
+    seconds, or ``None`` when the answer leaves it undated. A gitlink is not a name the
+    answer dates."""
+
+    if entry.is_gitlink:
+        return None
+    name = b"/".join(entry.path.segments)
+    if entry.is_tree:
+        return ages.newest_under(name)
+    return ages.time_of(name)
 
 
 def _identity_fields(entry: GitTreeEntry, *, path: GitPath | None = None) -> dict[str, Any]:
@@ -589,6 +617,7 @@ async def _git_nav_tree(
     index_prefix: bytes,
     semantic: frozenset[str] | None,
     budget: _NavNodeBudget,
+    ages: RevisionAges | None = None,
 ) -> list[dict[str, Any]]:
     """SPA ``tree`` nodes. Nest while depth and the node budget allow; else a lazy sentinel."""
 
@@ -605,7 +634,7 @@ async def _git_nav_tree(
             try:
                 nested = await subject.tree_source.list_tree_entry(entry)
             except GitObjectUnavailableError:
-                nodes.append(_nav_tree_node(entry, tally=tally))
+                nodes.append(_nav_tree_node(entry, tally=tally, ages=ages))
                 continue
             nested = _git_visible_entries(
                 nested, tree_filter, view, index_prefix=prefix, semantic=semantic
@@ -621,10 +650,13 @@ async def _git_nav_tree(
                     index_prefix=prefix,
                     semantic=semantic,
                     budget=budget,
+                    ages=ages,
                 )
-                nodes.append(_nav_tree_node(entry, tally=tally, children=children, loaded=True))
+                nodes.append(
+                    _nav_tree_node(entry, tally=tally, children=children, loaded=True, ages=ages)
+                )
                 continue
-        nodes.append(_nav_tree_node(entry, tally=tally))
+        nodes.append(_nav_tree_node(entry, tally=tally, ages=ages))
     return nodes
 
 
@@ -1141,6 +1173,26 @@ def _git_index_common(facts: _GitIndexFacts) -> dict[str, Any]:
     }
 
 
+async def _git_ages_status(subject: GitRevisionSubject) -> AgesStatus:
+    """The revision's file ages, asking for them when nothing has: never waits on Git.
+
+    The service reads them in the background; a page shows what is here and asks again
+    (`/api/index/progress`) until the state is no longer `dating`.
+    """
+
+    source = subject.tree_source
+
+    async def names() -> tuple[bytes, ...] | None:
+        index = await source.blob_index()
+        if index is None:
+            return None
+        return await source.derived(
+            ("ages-names", subject.tree_oid), lambda: tuple(rel for rel, _oid in index.blobs)
+        )
+
+    return file_ages_service().request(subject.command_target, subject.commit_oid, names)
+
+
 @_typed_git_failures
 async def git_revision_index_progress(subject: GitRevisionSubject) -> JSONResponse:
     """Terminal crawl footer for a pin. There is no walker."""
@@ -1149,7 +1201,11 @@ async def git_revision_index_progress(subject: GitRevisionSubject) -> JSONRespon
         facts = await _git_index_facts(subject)
     except GitObjectUnavailableError as exc:
         return _json(_object_unavailable_payload(exc), status_code=404)
-    return _json({**_git_index_common(facts), "active": False})
+    payload = {**_git_index_common(facts), "active": False}
+    ages = await _git_ages_status(subject)
+    if ages.state != "unavailable":
+        payload["ages"] = ages.wire(files=facts.indexed_files)
+    return _json(payload)
 
 
 @_typed_git_failures
@@ -1167,6 +1223,18 @@ async def git_revision_index_meta(subject: GitRevisionSubject) -> JSONResponse:
             "suffixes": [{"ext": ext, "count": count} for ext, count in facts.suffixes],
         }
     )
+
+
+def _file_ages_capability() -> dict[str, Any]:
+    """Whether this Git can date a revision's files, and the sentence for a page and
+    `metab --doctor` to say when it cannot (`git/file_ages.py`)."""
+
+    availability = file_ages_availability()
+    return {
+        "available": availability.available,
+        "minimum_git": file_ages_version_label(),
+        "hint": availability.hint,
+    }
 
 
 @_typed_git_failures
@@ -1202,6 +1270,7 @@ async def git_revision_capabilities(subject: GitRevisionSubject) -> JSONResponse
                 "contract": _GIT_INDEX_CONTRACT,
             },
             "events": {"stream": "off", "reason": "git-revision-no-watcher"},
+            "file_ages": _file_ages_capability(),
             "capabilities": _PIN_CAPABILITIES.as_wire(),
         }
     )
@@ -1264,6 +1333,7 @@ async def _git_revision_tree_payload(
         view = await _git_tally_view(
             source, index, tree_oid=located.oid, tree_filter=tree_filter, semantic=semantic
         )
+        ages_status = await _git_ages_status(subject)
         if remaining_depth <= 0:
             entries: tuple[GitTreeEntry, ...] = ()
             tree_nodes: list[dict[str, Any]] = []
@@ -1281,6 +1351,7 @@ async def _git_revision_tree_payload(
                 index_prefix=b"",
                 semantic=semantic,
                 budget=_NavNodeBudget(GIT_NAV_TREE_MAX_NODES - len(entries)),
+                ages=ages_status.ages,
             )
         root_index = index if not path.segments else await source.blob_index()
     except GitObjectUnavailableError as exc:
@@ -1298,6 +1369,12 @@ async def _git_revision_tree_payload(
         "tree": tree_nodes,
         **chrome,
     }
+    if ages_status.state != "unavailable":
+        # Where the Git cannot read file ages the key is absent and nothing else changes;
+        # `/api/capabilities` says why.
+        payload["ages"] = ages_status.wire(
+            files=len(root_index.blobs) if root_index is not None else None
+        )
     if filtered is None and tree_filter.group is not None:
         # A group's answer always says what it holds: its files when blob sizes are
         # incomplete, and nothing it cannot count when the index is truncated, so the

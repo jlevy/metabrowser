@@ -25,6 +25,7 @@ serves and how a pinned revision projects its tree, and the
 | `git/log.py`, `git/detail.py` | Argument vectors and parsers for refs, log records, and one commit |
 | `git/history.py` | History sessions, cursors, and graph checkpoints |
 | `git/ref_state.py`, `git/route_memo.py` | Naming the refs’ state, and answers kept under it |
+| `git/file_ages.py`, `git/file_ages_service.py` | When each file of a revision last changed, from `git last-modified`, and the answers kept per commit |
 | `git/shallow.py` | What a shallow boundary leaves certain |
 | `git/wire.py` | The JSON shapes the routes emit, and their validators |
 | `static/git-graph.js` | Lane assignment and row SVG, ported from VS Code |
@@ -397,6 +398,63 @@ and the commit’s first-parent comparison rendered by the diff plugin’s own v
 no diff surface of its own.
 The page keeps those comparisons, as [the diff pipeline](arch-diff-pipeline.md#caches)
 describes.
+
+## File Ages
+
+**Status:** Implemented for the data: a pinned revision’s tree nodes carry `mtime`, and
+its index progress carries the state of getting it.
+Planned: By age, Modified within, and the page’s own refill when the answer lands, in
+the same change as their documentation.
+
+A Git revision has no modification times, so a file’s age is the committer time of the
+last commit that changed it, which is what a hosting site’s file list shows, and a
+directory’s is the newest of its files’.
+`git/file_ages.py` takes both from Git itself: it runs
+`git last-modified -r -z <commit>` at the store, reads the commit each file names, asks
+`git log --no-walk` for those commits’ times, and walks no history of its own.
+The meaning is `git log -1 -- <path>`’s, which history simplification gives: a change on
+a side branch that a merge discarded is not the file’s last change, and a file only a
+merge’s resolution changed is dated by the merge.
+A plain `git log --name-only` pass gets both wrong, which is why this does not stand in
+for the command.
+
+- **The Git it needs.** `git last-modified` is Git 2.52’s and experimental there.
+  `FILE_AGES_GIT_MINIMUM` is the first release that carries the fixes of its early
+  defects, and it is tested at the release the `admitted-git` CI job builds for it, not
+  at the minimum itself.
+  The read names neither a pathspec nor a subdirectory.
+  With an older Git, or when the command fails, nothing replaces it: a revision shows no
+  times, as before, `/api/capabilities` says so (`file_ages.hint`), and `metab --doctor`
+  names the version found and the step that upgrades it.
+  `file_ages_availability` is the one place the question is answered.
+- **Never waited for.** `file_ages_service.FileAgesService` keeps one answer per commit
+  ID, in memory, bounded by `GIT_AGES_CACHE_REVISIONS`, and reads a missing one as a
+  background job named `file_ages.read` in the [event log](../../realtime-debugging.md).
+  A route asks `request`, which returns the answer, or `dating`, or why there is none,
+  at once. `/api/tree` carries `mtime` on the nodes it can date and an `ages` state;
+  `/api/index/progress` carries the same state, which a command reading it waits on
+  (`wait_for_index` in `cli/asgi_client.py`) and a page polls.
+  A file the answer leaves undated carries no `mtime`.
+- **Per commit.** A commit ID names a tree for good, so an answer is never stale: a
+  branch shown again is a lookup, a new branch or tag is read for its own tip, and a tip
+  whose ancestor is answered reads `C ^A`, so Git walks only the commits since it.
+  A file it reports as unchanged since an excluded commit other than the ancestor would
+  need that commit’s own answer, so the whole answer is then read again, which is the
+  same answer and costs a cold read.
+  `tests/test_git_file_ages.py` checks each against `git log -1 -- <path>`.
+- **What it does not know.** A shallow boundary is a root to Git, which adds every file,
+  so a file last changed there is *undated* and the answer says `older_than`: the
+  boundary commit’s time, never the time a file was not changed at.
+  A read past `GIT_AGES_TIMEOUT_S` is cut, and Git prints a file as soon as it knows it,
+  so the files it had printed keep their times and the rest are undated, last changed
+  before the oldest commit printed.
+- **A checkout’s revision.** The mechanism is the same: the commit’s store target is the
+  checkout’s Git directory, which a read leaves as it found it, and the answers are in
+  the process’s memory, so nothing is written there.
+
+`settings.py` records beside `GIT_AGES_TIMEOUT_S` what a read cost on four histories,
+with and without a commit-graph, and what a one-level read cost, which is why no store
+is given a commit-graph and why the whole tree is read, not the directory on screen.
 
 ## Wire Models
 

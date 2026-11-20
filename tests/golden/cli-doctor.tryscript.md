@@ -66,9 +66,10 @@ metab: ok: metab [METAB_VERSION]
   python: [PYTHON]
   installed: from the source checkout [ENVIRONMENT]
   app: not looked for
-git: ok: git version 2.50.1, which meets every floor
+git: ok: git version 2.56.1, which meets every floor
   executable: [FAKE_GIT]
-  version: git version 2.50.1
+  version: git version 2.56.1
+  file ages: available
 config: ok: the configuration directory is private
   directory: [SANDBOX]/config
   source: METABROWSER_CONFIG_DIR
@@ -182,7 +183,7 @@ $ metab --doctor --json
       "id": "git",
       "title": "Git",
       "state": "ok",
-      "summary": "git version 2.50.1, which meets every floor",
+      "summary": "git version 2.56.1, which meets every floor",
       "details": [
         {
           "name": "executable",
@@ -190,7 +191,11 @@ $ metab --doctor --json
         },
         {
           "name": "version",
-          "value": "git version 2.50.1"
+          "value": "git version 2.56.1"
+        },
+        {
+          "name": "file ages",
+          "value": "available"
         }
       ],
       "remedy": null
@@ -259,9 +264,10 @@ metab: ok: metab [METAB_VERSION]
   python: [PYTHON]
   installed: from the source checkout [ENVIRONMENT]
   app: not looked for
-git: ok: git version 2.50.1, which meets every floor
+git: ok: git version 2.56.1, which meets every floor
   executable: [FAKE_GIT]
-  version: git version 2.50.1
+  version: git version 2.56.1
+  file ages: available
 config: problem: the configuration directory does not exist, and metab cannot create it: / is not writable by this user
   directory: /nonexistent/metabrowser-doctor-golden/config
   source: METABROWSER_CONFIG_DIR
@@ -280,11 +286,12 @@ cache: problem: the cache directory does not exist, and metab cannot create it: 
 A warning never changes the exit status: a folder is served without cloning anything.
 
 ```console
-$ FAKE_GIT_VERSION=apple-old METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A3 '^git:' doctor.txt
+$ FAKE_GIT_VERSION=apple-old METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A4 '^git:' doctor.txt
 exit: 0
 git: warning: git version 2.39.5 (Apple Git-154) is below the floor for cloning, 2.43.7 or a patched release at least 2.50.1 on a newer track, so metab clones no Git source and shows no branch or tag of a checkout
   executable: [FAKE_GIT]
   version: git version 2.39.5 (Apple Git-154)
+  file ages: needs Git 2.53 or newer, so a Git revision shows no By age
   fix: Update Git with the package manager that installed it, or from Git's downloads. https://git-scm.com/downloads
 ? 0
 ```
@@ -292,11 +299,29 @@ git: warning: git version 2.39.5 (Apple Git-154) is below the floor for cloning,
 ## Test: a Git below a partial clone’s release
 
 ```console
-$ FAKE_GIT_VERSION=before-partial-clone METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A3 '^git:' doctor.txt
+$ FAKE_GIT_VERSION=before-partial-clone METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A4 '^git:' doctor.txt
 exit: 0
 git: warning: git version 2.44.4 shows no branch or tag of a partial clone, which needs 2.45.4 or a patched release at least 2.50.1 on a newer track
   executable: [FAKE_GIT]
   version: git version 2.44.4
+  file ages: needs Git 2.53 or newer, so a Git revision shows no By age
+  fix: Update Git with the package manager that installed it, or from Git's downloads. https://git-scm.com/downloads
+? 0
+```
+
+## Test: a Git that clones but reads no file ages is a warning with its remedy
+
+`git last-modified`, which dates the files of a Git revision, is Git 2.53’s, so a Git
+that meets every floor for cloning still shows a revision no By age.
+The report says so, and says which release it needs, and the exit status stays 0.
+
+```console
+$ FAKE_GIT_VERSION=before-file-ages METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A4 '^git:' doctor.txt
+exit: 0
+git: warning: File ages on Git revisions need Git 2.53 or newer (found 2.50.1)
+  executable: [FAKE_GIT]
+  version: git version 2.50.1
+  file ages: needs Git 2.53 or newer, so a Git revision shows no By age
   fix: Update Git with the package manager that installed it, or from Git's downloads. https://git-scm.com/downloads
 ? 0
 ```
@@ -304,11 +329,12 @@ git: warning: git version 2.44.4 shows no branch or tag of a partial clone, whic
 ## Test: a Git that names no version
 
 ```console
-$ FAKE_GIT_VERSION=unreadable METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A3 '^git:' doctor.txt
+$ FAKE_GIT_VERSION=unreadable METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A4 '^git:' doctor.txt
 exit: 0
 git: warning: git at [FAKE_GIT] did not name a version metab can read
   executable: [FAKE_GIT]
   version: a build of git that names no version
+  file ages: needs Git 2.53 or newer, so a Git revision shows no By age
   fix: Update Git with the package manager that installed it, or from Git's downloads. https://git-scm.com/downloads
 ? 0
 ```
@@ -347,9 +373,10 @@ metab: ok: metab [METAB_VERSION]
   python: [PYTHON]
   installed: from the source checkout [ENVIRONMENT]
   app: not looked for
-git: ok: git version 2.50.1, which meets every floor
+git: ok: git version 2.56.1, which meets every floor
   executable: [FAKE_GIT]
-  version: git version 2.50.1
+  version: git version 2.56.1
+  file ages: available
 config: problem: The Metabrowser storage directory is accessible to other users (mode 0755). Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own.
   directory: [SANDBOX]/shared
   source: METABROWSER_CONFIG_DIR
@@ -476,7 +503,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doct
       "id": "git",
       "title": "Git",
       "state": "ok",
-      "summary": "git version 2.50.1, which meets every floor",
+      "summary": "git version 2.56.1, which meets every floor",
       "details": [
         {
           "name": "executable",
@@ -484,7 +511,11 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doct
         },
         {
           "name": "version",
-          "value": "git version 2.50.1"
+          "value": "git version 2.56.1"
+        },
+        {
+          "name": "file ages",
+          "value": "available"
         }
       ],
       "remedy": null

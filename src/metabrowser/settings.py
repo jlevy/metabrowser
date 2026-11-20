@@ -390,6 +390,38 @@ GIT_DETAIL_CACHE_SIZE = 200
 # 90th-percentile commits, and one answer may take a quarter of it.
 GIT_COMPARISON_CACHE_BYTES = 16 * 1024 * 1024
 
+# ── File ages on a Git revision (git/file_ages.py, git/file_ages_service.py) ──────────
+
+# Wall time one ``git last-modified -r -z`` read may take before it is cut and the files it
+# had not reached stay undated. A background job, so no request waits on it. Measured
+# 2026-11-20 with Git 2.56.1 on four local histories, best of three, on a machine at load
+# average 80 to 100 (so every figure is a ceiling): 0.24 s for 799 files over 2,214
+# commits; 2.0 s for 2,350 over 4,818; 3.0 s for 12,836 over 10,881; 13.6 s for 35,824
+# over 11,899. The time follows the files a history still has to date, not the commits:
+# the 35,824-file history took 4.5 times the 12,836-file one over about the same commits.
+# 45 s is three times the slowest of those, so a history of about 100,000 files over the same
+# depth is read whole, and a larger one is cut and says so. It stays under the 60 s a one-shot
+# command waits for the index (`INDEX_READY_TIMEOUT_S` in `cli/asgi_client.py`), so a cut read
+# is printed as partial and does not time the command out. Writing a commit-graph with
+# ``--changed-paths`` first was measured too and did not help (2.27, 5.9, and 16.0 s for the
+# same three, against 2.0, 3.0, and 13.6 without), so no store is given one. A one-level
+# read, ``git last-modified <commit>``, took 0.04 to 0.13 s on every one of them.
+GIT_AGES_TIMEOUT_S = 45.0
+
+# Answers kept, one per commit, across every revision the process has shown. One is the
+# file names and an 8-byte time each: 0.3 MB for the 35,824-file history above. A branch
+# switch back to a revision shown a moment ago is a lookup, and an answer for a commit whose
+# ancestor is kept reads only the commits since it.
+GIT_AGES_CACHE_REVISIONS = 8
+
+# How long a revision whose read failed is left alone before a page asks again, so a
+# failing Git is run once per interval and not once per poll.
+GIT_AGES_RETRY_AFTER_S = 30.0
+
+# Client polling of a read in progress, in milliseconds. Quicker than the inventory's
+# index progress poll because a revision's read is one job with one end.
+GIT_AGES_POLL_MS = 500
+
 
 # ── Client settings export ───────────────────────────────────
 
@@ -430,6 +462,7 @@ def client_settings_dict(
         "GIT_HISTORY_WINDOW_OVERSCAN_ROWS": GIT_HISTORY_WINDOW_OVERSCAN_ROWS,
         "GIT_HISTORY_PAGE_CACHE_PAGES": GIT_HISTORY_PAGE_CACHE_PAGES,
         "GIT_HISTORY_SEGMENT_REBASE_PX": GIT_HISTORY_SEGMENT_REBASE_PX,
+        "GIT_AGES_POLL_MS": GIT_AGES_POLL_MS,
         "GIT_HOVER_DEBOUNCE_MS": GIT_HOVER_DEBOUNCE_MS,
         "GIT_DETAIL_CACHE_SIZE": GIT_DETAIL_CACHE_SIZE,
         "GIT_COMPARISON_CACHE_BYTES": GIT_COMPARISON_CACHE_BYTES,
@@ -465,6 +498,10 @@ __all__ = [
     "GIT_COMMIT_BODY_MARKDOWN_MAX_BYTES",
     "GIT_COMMIT_MAX_FILES",
     "GIT_COMPARISON_CACHE_BYTES",
+    "GIT_AGES_CACHE_REVISIONS",
+    "GIT_AGES_POLL_MS",
+    "GIT_AGES_RETRY_AFTER_S",
+    "GIT_AGES_TIMEOUT_S",
     "GIT_DETAIL_CACHE_SIZE",
     "GIT_HISTORY_PAGE_CACHE_PAGES",
     "GIT_HISTORY_SEGMENT_REBASE_PX",

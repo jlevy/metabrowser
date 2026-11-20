@@ -90,6 +90,11 @@ status: 200
     "stream": "off",
     "reason": "git-revision-no-watcher"
   },
+  "file_ages": {
+    "available": false,
+    "minimum_git": "2.53",
+    "hint": "File ages on Git revisions need Git 2.53 or newer (found 2.50.1)"
+  },
   "capabilities": {
     "active_content": false,
     "mutations": false

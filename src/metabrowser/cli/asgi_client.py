@@ -337,7 +337,11 @@ async def wait_for_index(
     *,
     timeout_s: float = INDEX_READY_TIMEOUT_S,
 ) -> IndexResult:
-    """Poll the cheap progress route until the inventory reaches a terminal state."""
+    """Poll the cheap progress route until the inventory reaches a terminal state.
+
+    A Git revision's file ages are read in the background, and a page shows them when they
+    land; a command prints once, so it waits for them as well (`ages.state` of `dating`).
+    """
 
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -347,7 +351,9 @@ async def wait_for_index(
         payload = _read_json(response)
         if isinstance(payload, dict):
             status = payload.get("status")
-            if status in ("done", "truncated"):
+            ages = payload.get("ages")
+            dating = isinstance(ages, dict) and ages.get("state") == "dating"
+            if status in ("done", "truncated") and not dating:
                 return IndexResult(status, True)
             if status == "failed":
                 return IndexResult("failed", False)
