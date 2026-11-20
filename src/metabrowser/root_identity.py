@@ -98,6 +98,9 @@ TITLE_SEPARATOR: Final = " \u2022 "
 
 type IdentityKind = Literal["folder", "git", "mirror"]
 
+# The kinds of root that are a folder on this computer: a plain folder and a checkout.
+LOCAL_KINDS: Final[frozenset[IdentityKind]] = frozenset({"folder", "git"})
+
 # The words for each kind of root. They name the kind wherever a shell says one: a window's
 # subtitle in the macOS app, and the tooltip on the mark beside the root's name
 # (:func:`kind_tip`), which docs/design-system-icons.md, "Source Kinds", draws a glyph for.
@@ -435,6 +438,7 @@ __all__ = [
     "APP_NAME",
     "IDENTITY_ROUTES",
     "KIND_LABELS",
+    "LOCAL_KINDS",
     "TITLE_SEPARATOR",
     "IdentityKind",
     "RootIdentity",
