@@ -202,7 +202,15 @@ def test_settings_are_applied(tmp_path: Path) -> None:
 
     def settings(connection: sqlite3.Connection) -> tuple[object, ...]:
         connection.set_authorizer(None)
-        return (*tuple(connection.execute(f"PRAGMA {name}").fetchone()[0] for name in ("query_only", "trusted_schema", "cell_size_check", "mmap_size")), connection.getlimit(sqlite3.SQLITE_LIMIT_LENGTH), connection.getlimit(sqlite3.SQLITE_LIMIT_ATTACHED), connection.getconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE))
+        return (
+            *tuple(
+                connection.execute(f"PRAGMA {name}").fetchone()[0]
+                for name in ("query_only", "trusted_schema", "cell_size_check", "mmap_size")
+            ),
+            connection.getlimit(sqlite3.SQLITE_LIMIT_LENGTH),
+            connection.getlimit(sqlite3.SQLITE_LIMIT_ATTACHED),
+            connection.getconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE),
+        )
 
     value, _ = read(db, settings, deadline=_deadline(), scratch=tmp_path)
     assert value == (1, 0, 1, 0, sqlite_access.VALUE_MAX_BYTES, 0, True)
@@ -294,7 +302,86 @@ def test_a_worker_loads_only_the_access_module(tmp_path: Path) -> None:
         if environ.exists():
             arguments = environ.read_bytes().split(b"\0")
             assert b"-I" in arguments
-            assert arguments[-3].endswith(b"sqlite_access.py")
+            assert arguments[-4].endswith(b"sqlite_access.py")
         assert Path(f"/proc/{pid}/cwd").resolve() == Path("/") or not Path("/proc").exists()
     finally:
         pool.close()
+
+
+# ── Worker modules ─────────────────────────────────────────────
+
+_PROBE_MODULE = """
+import sys
+
+from metabrowser import sqlite_access
+
+
+def probe(args, deadline):
+    return {
+        "doubled": args["x"] * 2,
+        "name": __name__,
+        "version": VERSION,
+        "metabrowser": sorted(name for name in sys.modules if name.startswith("metabrowser")),
+    }
+
+
+sqlite_access.OPS["probe"] = probe
+"""
+
+
+def test_a_registered_module_answers_in_the_worker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser import sqlite_readers
+
+    monkeypatch.setattr(sqlite_readers, "_worker_modules", {})
+    first = tmp_path / "probe_one.py"
+    first.write_text(_PROBE_MODULE + "VERSION = 1\n")
+    second = tmp_path / "probe_two.py"
+    second.write_text(_PROBE_MODULE + "VERSION = 2\n")
+    sqlite_readers.register_worker_module("metabrowser.builtin_plugins.probe.reader", first)
+    pool = ReaderPool(size=1, temporary_root=tmp_path)
+    try:
+        answer = pool.call("probe", {"x": 21}, deadline=_deadline(), subject="s")
+        assert answer == {
+            "doubled": 42,
+            "name": "metabrowser.builtin_plugins.probe.reader",
+            "version": 1,
+            "metabrowser": [
+                "metabrowser",
+                "metabrowser.builtin_plugins",
+                "metabrowser.builtin_plugins.probe",
+                "metabrowser.builtin_plugins.probe.reader",
+                "metabrowser.sqlite_access",
+            ],
+        }
+        [before] = pool.workers()
+        # The same registration again changes nothing; another path replaces the worker.
+        sqlite_readers.register_worker_module("metabrowser.builtin_plugins.probe.reader", first)
+        pool.call("probe", {"x": 1}, deadline=_deadline(), subject="s")
+        assert pool.workers() == [before]
+        sqlite_readers.register_worker_module("metabrowser.builtin_plugins.probe.reader", second)
+        answer = pool.call("probe", {"x": 1}, deadline=_deadline(), subject="s")
+        assert answer["version"] == 2
+        assert pool.workers() != [before]
+        assert pool.started == 2
+    finally:
+        pool.close()
+
+
+def test_worker_module_registrations_are_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser import sqlite_readers
+
+    monkeypatch.setattr(sqlite_readers, "_worker_modules", {})
+    module = tmp_path / "m.py"
+    module.write_text("")
+    with pytest.raises(ValueError, match="dotted import name"):
+        sqlite_readers.register_worker_module("not a name", module)
+    with pytest.raises(ValueError, match="not a Python file"):
+        sqlite_readers.register_worker_module("m", tmp_path / "missing.py")
+    for index in range(sqlite_readers.MAX_WORKER_MODULES):
+        sqlite_readers.register_worker_module(f"m{index}", module)
+    with pytest.raises(ValueError, match="more than"):
+        sqlite_readers.register_worker_module("one_more", module)
