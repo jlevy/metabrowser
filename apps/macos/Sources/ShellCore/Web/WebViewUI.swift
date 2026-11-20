@@ -1,15 +1,15 @@
 import WebKit
 
-/// The popover's GitHub view as a `WKUIDelegate`: the file panel and the JavaScript
-/// dialogs github.com asks for, and the windows it asks to open.
+/// A web pane's `WKUIDelegate`: the file panel and the JavaScript dialogs its site asks
+/// for, and the windows it asks to open.
 ///
 /// Without a delegate for each dialog, WebKit answers `alert()` with OK and `confirm()` and
 /// `prompt()` with Cancel, so an action GitHub guards with `confirm()` is cancelled
 /// silently, and without `runOpenPanelWith` an `<input type=file>` opens nothing, so
-/// "click to add files" on a comment box does nothing. `present` shows each as the app
-/// chooses, keeping the popover open behind it, and answers it; the window asks the
-/// popover's own policy (`GitHubViewPolicy.decideNewWindow`).
-public final class GitHubViewUI: NSObject, WKUIDelegate {
+/// "click to add files" on a GitHub comment box does nothing. `present` shows each as the
+/// app chooses, keeping the pane's popover open behind it, and answers it; a new window
+/// asks the pane's own policy (`WebViewPolicy.decideNewWindow`), through `policy`.
+public final class WebViewUI: NSObject, WKUIDelegate {
     /// What the page asked for.
     public enum Request: Equatable, Sendable {
         case alert(String)
@@ -28,26 +28,30 @@ public final class GitHubViewUI: NSObject, WKUIDelegate {
         case files([URL]?)
     }
 
+    private let policy: () -> WebViewPolicy?
     private let present: (Request, @escaping @MainActor (Answer) -> Void) -> Void
     private let openExternally: (URL) -> Void
 
-    /// `present` shows a request and calls its answer once; `openExternally` hands a URL to
-    /// the default browser.
+    /// `policy` is the pane's, for the site it shows, or nil before it shows one, when a new
+    /// window opens nothing; `present` shows a request and calls its answer once;
+    /// `openExternally` hands a URL to the default browser.
     public init(
+        policy: @escaping () -> WebViewPolicy?,
         present: @escaping (Request, @escaping @MainActor (Answer) -> Void) -> Void,
         openExternally: @escaping (URL) -> Void
     ) {
+        self.policy = policy
         self.present = present
         self.openExternally = openExternally
     }
 
-    /// `target=_blank` to a GitHub page loads here, in place; anything else on the web opens
-    /// in the default browser.
+    /// `target=_blank` to a page of the pane's site loads here, in place; anything else on
+    /// the web opens in the default browser.
     public func webView(
         _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
         for action: WKNavigationAction, windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
-        switch GitHubViewPolicy.decideNewWindow(action.request.url) {
+        switch policy()?.decideNewWindow(action.request.url) ?? .cancel {
         case .allow: webView.load(action.request)
         case .openExternally(let url): openExternally(url)
         case .download, .openInNewWindow, .cancel: break

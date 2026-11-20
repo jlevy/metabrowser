@@ -179,6 +179,16 @@ def test_a_list_of_every_branch_draws_only_its_view_in_chrome(
     assert middle["centerIndex"] == middle["expectedIndex"]
     assert middle["drawn"] <= in_view + 2 * overscan + 2
 
+    # A scroll made in the same task as a redraw of the Files toolbar, or of the list's own
+    # rows, is where the scroll put the list: no scroll event has come for it, so the page
+    # reads the position before it rebuilds the toolbar and sets it after (the nightly
+    # soak's 6 for 1001: the list came back at its top).
+    for step in ("scrollThenToolbar", "scrollThenToolbarTwice", "scrollThenRender"):
+        moved = result[step]
+        assert moved["got"] == moved["want"], (step, moved)
+        assert moved["centerIndex"] == moved["expectedIndex"], (step, moved)
+        assert moved["drawn"] <= in_view + 2 * overscan + 2, (step, moved)
+
     end = result["end"]
     # End reaches the last branch, never drawn until then, and brings it into view.
     assert (end["focusedIndex"], end["focusedName"]) == (BRANCHES + 1, newest[-1])
