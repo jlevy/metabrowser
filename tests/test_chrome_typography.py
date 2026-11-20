@@ -67,6 +67,8 @@ MONO_ALLOWED_SELECTORS = frozenset(
         ".event-log-fact-value",
         ".event-log-attrs",
         ".event-log-cell-start",
+        # The command a page's Details tells a person to run, which is code they copy.
+        ".event-log-details-open code",
     }
 )
 
