@@ -843,6 +843,46 @@ It keeps the table of contents the same file has opened on its own: in the wide 
 rail sits to the right of the card’s edge, and below it the overlay’s toggle keeps its
 trailing gutter; see [Embedded Document Navigation](#embedded-document-navigation).
 
+### Boxed Prose
+
+A bordered box that holds prose gives that prose one inline padding, on each side:
+`--boxed-prose-padding-inline`, declared once on `:root` in `static/styles.css` beside
+`--content-padding-x`, with the measurement that set it.
+It is the room between the box’s edge and the text, so a heading that opens a text is
+never nearer the border than a paragraph is.
+It replaced the pane inset, `--pane-header-padding-x`, which is the navigation column’s
+alignment inset and not a reading measure: with it, an h2 in a pull request’s
+description sat a few pixels inside the border and read as touching it (owner,
+2026-11-20). No box that holds prose writes its own literal.
+
+| Box | How it takes the token |
+| --- | --- |
+| A pull request’s description, a comment, a review, and a review comment | `.github-pull-text`’s padding is `--github-pull-text-inset`, which the page sets to the token |
+| The head of those cards, a commit’s row in the Conversation, and a review comment’s hunk lines | The same `--github-pull-text-inset`, so a head’s avatar and the text under it start at one x, and the timeline’s line down the avatars’ centers moves with them ([Conversation Timeline](#conversation-timeline)) |
+| A commit’s message on its page | `.git-commit-body`’s inline padding, a message set as a pull request’s description is |
+
+Four kinds of box keep their own padding, each for a reason:
+
+- **A rendered document’s card**, a Markdown file’s or the Folder Overview’s README.
+  KPress draws the card’s border only where its pane is wide enough for the card, and
+  pads the text there by its band’s inset, wider than the token; below that the card is
+  full-bleed and draws no border, so there is no edge for a heading to crowd
+  ([Rendered Markdown Layout](#rendered-markdown-layout)).
+- **A rendered Markdown diff’s blocks.** They pad `--content-padding-x` inside the diff
+  file’s frame, a wider inset than the token, and their left edge is the change gutter,
+  not a reading box’s.
+- **A notice**, which holds the application’s own sentence and a control rather than a
+  document’s prose, and sets its own padding ([Notices](#notices)).
+- **A toolbar, a header row, or a tree row** that carries `--pane-header-padding-x`:
+  they align with the navigation column, which is what that inset is for.
+
+The pull request page and a commit’s page hold the only prose in a bordered box, and no
+hover card or callout holds Markdown, so a new box that does takes the token, and a new
+kind of box is added to the table.
+`test_boxed_prose_takes_one_inline_padding` holds the declaration and each box’s use of
+it, and `tests/test_github_pull_text_chrome.py` measures the padding the boxes lay out,
+in a wide and a narrow pane, with nothing padded twice and no overflow.
+
 ### Embedded Document Themes
 
 Metabrowser owns one theme input for the embedded document:
@@ -2557,11 +2597,11 @@ The top of a text is where a message departs from a document.
 A document’s card has KPress’s top padding, and only an opening h1 gives up its margin
 to it (`static/styles.css`); any other first block’s top margin adds to that padding.
 A message card is denser, like a comment body on GitHub, which trims the first and last
-margins.
-The text’s padding is `--content-padding-y` above and below, and the card head’s
-inset at the sides. Since the trim leaves a heading that opens a text only that padding
-above it, the padding is at least any heading’s space below, so an opening heading is
-never nearer the card head than its own paragraph.
+margins. The text’s padding is `--content-padding-y` above and below, and at the sides
+the card head’s inset, which is `--boxed-prose-padding-inline`
+([Boxed Prose](#boxed-prose)). Since the trim leaves a heading that opens a text only
+that padding above it, the padding is at least any heading’s space below, so an opening
+heading is never nearer the card head than its own paragraph.
 `test_a_heading_is_nearer_its_section_than_what_precedes_it` holds the rule, and
 `tests/test_github_pull_text_chrome.py` measures it in Chrome against a document’s
 frame.

@@ -4,7 +4,10 @@
    tokens. Colors are design tokens. */
 
 .github-pull {
-  --github-pull-text-inset: var(--pane-header-padding-x);
+  /* A card's inline inset: its head's, its text's, and a hunk's lines', so the head's avatar
+     and the text under it start at one x, as the timeline's line (below) is drawn down the
+     avatars' centers. It is the shell's boxed-prose padding (static/styles.css). */
+  --github-pull-text-inset: var(--boxed-prose-padding-inline);
   --github-pull-gap: 12px;
   /* The Conversation's one rhythm (mb-w7rt): the visible space between any two consecutive
      events, a card's border or a commit's text, and between two review comments. 20 px is
@@ -846,7 +849,9 @@
    the first and last block give up their own margins to it (below), so a heading that opens
    a text has only this above it, and it needs at least the space it keeps below itself,
    KPress's 1rem under an h1 or h2, or it reads as the card head's line and not its
-   section's. GitHub's own comment body is padded the same. */
+   section's. Its inline inset is `--boxed-prose-padding-inline` (static/styles.css), through
+   `--github-pull-text-inset`, the card head's too; GitHub's own comment body is padded the
+   same, 16px each way. */
 .github-pull-text {
   padding: var(--content-padding-y) var(--github-pull-text-inset);
 }
