@@ -3,17 +3,21 @@ type: is
 id: is-01m7vrv37xz32vhmy3h0zdjamh
 title: A Git revision's files get their age from the last commit that changed them, so By age and file ages work on cloud mirrors and pinned revisions
 kind: feature
-status: in_progress
+status: closed
 priority: 1
-version: 6
+version: 7
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T06:03:31.452Z
-updated_at: 2026-11-20T11:27:37.167Z
+updated_at: 2026-11-20T11:28:30.866Z
 started_at: 2026-11-20T06:04:12.590Z
+closed_at: 2026-11-20T11:28:30.865Z
+close_reason: "Landed in #643 (commit-derived file ages via git last-modified, doctor git check) and #652 (By age, Modified within, Recent on a revision; redraw when ages land)"
+resolution: null
+duplicate_of: null
 ---
 Owner, 2026-11-20: 'on a cloud mirror repo like the one I just opened for metabrowser I don't see any grouping by age. Is this because it's a fresh clone? Is there any way for us to have the ages of the files represent the actual files from the git commits?' and 'closer to what a normal Git repo would be'. Today a Git revision offers no By age, by design (docs/design-system.md Grouping the Files Tree: 'A Git revision has no modification times'). Give each blob at a revision the commit time of the last commit at or before the revision that changed it (as GitHub's file list does), cached per revision and computed incrementally from a parent revision's answer, bounded by measured budgets on large histories, with an honest state for files not yet dated.
 
