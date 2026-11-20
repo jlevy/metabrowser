@@ -201,7 +201,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
         "offer": "The server now serves another revision [Reload]",
-        "error": "Could not follow topic (selection_not_found)"
+        "error": "Could not follow topic to its new commit."
       }
     },
     {
@@ -217,7 +217,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
         "offer": "The server now serves another revision [Reload]",
-        "error": "Could not follow topic (selection_not_found)"
+        "error": "Could not follow topic to its new commit."
       }
     },
     {
@@ -231,7 +231,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
         "offer": "The server now serves another revision [Reload]",
-        "error": "Could not follow topic (selection_not_found)"
+        "error": "Could not follow topic to its new commit."
       }
     },
     {
@@ -462,7 +462,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
         "offer": "The server now serves another revision [Reload]",
-        "error": "The request to follow the branch failed"
+        "error": "The request to follow the branch failed."
       },
       "commit": {
         "repaints": 1,
@@ -484,7 +484,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
         "offer": "The server now serves another revision [Reload]",
-        "error": "The request to follow the branch failed"
+        "error": "The request to follow the branch failed."
       },
       "commit": {
         "repaints": 1,
@@ -509,7 +509,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
         "offer": "The server now serves another revision [Reload]",
-        "error": "The request to follow the branch failed"
+        "error": "The request to follow the branch failed."
       },
       "commit": {
         "repaints": 1,
@@ -696,7 +696,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "refreshing",
         "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
         "offer": null,
-        "error": "The server did not answer"
+        "error": "The server did not answer."
       },
       "commit": {
         "repaints": 1,
@@ -819,7 +819,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "stale",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
         "offer": null,
-        "error": "Refresh refused: too many pull requests are being fetched; try again when one has finished"
+        "error": "Refresh refused: too many pull requests are being fetched; try again when one has finished."
       }
     }
   ],

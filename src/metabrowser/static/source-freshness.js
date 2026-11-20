@@ -651,7 +651,7 @@
         if (disposed) {
           return;
         }
-        const answer = /** @type {{view_href?: unknown, code?: unknown} | null} */ (response.body);
+        const answer = /** @type {{view_href?: unknown} | null} */ (response.body);
         if (response.status === 200) {
           const href = answer !== null ? answer.view_href : undefined;
           if (typeof href === "string" && view !== null && !sameAddress(href, view)) {
@@ -661,13 +661,12 @@
           }
           return;
         }
-        const code = answer !== null && typeof answer.code === "string" ? answer.code : "";
-        followError = `Could not follow ${status?.ref_name ?? ref} (${code || `HTTP ${response.status}`})`;
+        followError = `Could not follow ${status?.ref_name ?? ref} to its new commit.`;
       } catch {
         if (disposed) {
           return;
         }
-        followError = "The request to follow the branch failed";
+        followError = "The request to follow the branch failed.";
       }
       render();
     }
