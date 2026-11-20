@@ -72,6 +72,7 @@ import {
   PULL_FILES_SUMMARY_ROUTE,
   rowLineHint,
   rowLineInput,
+  rowSize,
 } from "./row-lines.js";
 import { createStackLines, STACK_CHANGE_ROUTE, stackLineInput } from "./stack-lines.js";
 
@@ -4315,7 +4316,7 @@ export function mountPullsPanel(container, ctx, mb) {
     };
     const shown =
       line.phase === "shown"
-        ? `${line.summary.generation}:${JSON.stringify(line.summary.statuses)}:${line.summary.additions}:${line.summary.deletions}:${changedFilesModel === null ? 0 : 1}`
+        ? `${line.summary.generation}:${JSON.stringify(line.summary.statuses)}:${line.summary.additions}:${line.summary.deletions}:${line.summary.size?.pushed_bytes ?? ""}:${changedFilesModel === null ? 0 : 1}`
         : line.phase;
     if (entry.changeKey === shown) {
       return;
@@ -4326,8 +4327,21 @@ export function mountPullsPanel(container, ctx, mb) {
       const said = mb.changeLine(
         rowLineInput(line.summary, changedFilesModel?.statusBreakdown ?? null),
       );
-      entry.changeLine.replaceChildren(...mb.changeLineNodes(said));
-      words = said.label;
+      const sized = rowSize(line.summary, mb.formatSize);
+      entry.changeLine.replaceChildren(
+        ...mb.changeLineNodes(said),
+        // What the pull request pushes, once its size is kept, with its patch's in the tip.
+        ...(sized === null
+          ? []
+          : [
+              h(
+                "span",
+                { class: "github-pulls-row-size", "data-tip-text": sized.tooltip },
+                mb.countPartsNodes(sized.parts),
+              ),
+            ]),
+      );
+      words = sized === null ? said.label : `${said.label}; ${sized.label}`;
     } else if (line.phase === "waiting") {
       // The shell's pending placeholder (`.tally-pending`), after the quiet period
       // (`.mb-delayed-loading`), where the line will be; the name says nothing of it.

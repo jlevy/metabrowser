@@ -2212,6 +2212,130 @@
    *
    * @returns {Promise<MetabrowserChangedFilesTree>}
    */
+  // A change set's size line, "77 commits · 83 files changed · 2.3 MB compressed (14.0 MB raw
+  // diff)", the line a page header gives its change set above its Diff summary
+  // (docs/design-system.md, "Change Size Line"). A count summary, painted by the shell's one
+  // painter of them: its numbers bold in the line's own ink, a size's unit with its number,
+  // the words and parentheses regular, never a status's color. Here, not in a startup
+  // script: only a commit's or a pull request's page, and a commit's hover card, draw it.
+
+  /**
+   * A change set's size line in its parts: each group a count and its words, set apart by
+   * muted dots, each kept with the group before it by a no-break space, so no line starts
+   * with one, and said as a comma. A count `undefined` is left out and one null is "?"; the
+   * size group is there once the pushed size is known.
+   *
+   * @param {MetabrowserChangeSizeInput} change
+   * @returns {MetabrowserChangeSizeLine}
+   */
+  function changeSizeLine(change) {
+    /** @param {number | null} count */
+    const written = (count) => (count === null ? "?" : mb.formatInteger(count));
+    /** @type {Array<{parts: MetabrowserCountParts, words: string}>} */
+    const groups = [];
+    if (change.commits !== undefined) {
+      const noun = change.commits === 1 ? "commit" : "commits";
+      groups.push({
+        parts: [{ number: written(change.commits) }, ` ${noun}`],
+        words: `${written(change.commits)} ${noun}`,
+      });
+    }
+    const files = change.files === 1 ? "file changed" : "files changed";
+    groups.push({
+      parts: [{ number: written(change.files) }, ` ${files}`],
+      words: `${written(change.files)} ${files}`,
+    });
+    /** @type {MetabrowserCountParts} */
+    let sizeParts = [];
+    let tooltip = null;
+    if (typeof change.pushedBytes === "number") {
+      const pushed = formatSize(change.pushedBytes);
+      sizeParts = [{ number: pushed }, " compressed"];
+      groups.push({ parts: [], words: `${pushed} compressed` });
+      tooltip = `${pushed} compressed: what Git pushes for this change.`;
+      if (typeof change.diffBytes === "number") {
+        const diff = formatSize(change.diffBytes);
+        sizeParts = [...sizeParts, " (", { number: diff }, " raw diff)"];
+        groups.push({ parts: [], words: `${diff} raw diff` });
+        tooltip += ` ${diff} raw diff: its patch, uncompressed.`;
+      }
+    }
+    const separator = { separator: "·", spoken: ", " };
+    const counts = groups.filter((group) => group.parts.length > 0).map((group) => group.parts);
+    /** @type {MetabrowserCountParts} */
+    const parts = [...counts, ...(sizeParts.length > 0 ? [sizeParts] : [])].flatMap((group, at) => [
+      ...(at === 0 ? [] : ["\u00a0", separator, " "]),
+      ...group,
+    ]);
+    const text = parts
+      .map((part) =>
+        typeof part === "string"
+          ? part
+          : "number" in part
+            ? part.number
+            : "separator" in part
+              ? part.separator
+              : "",
+      )
+      .join("");
+    return {
+      parts,
+      sizeParts,
+      text,
+      label: groups.map((group) => group.words).join(", "),
+      tooltip,
+    };
+  }
+
+  /**
+   * The line's counts, and its size in a `span.change-size-line-size` whose tooltip says
+   * what each size is.
+   * @param {MetabrowserChangeSizeLine} line
+   */
+  function sizeLineSplit(line) {
+    const at = line.parts.length - line.sizeParts.length;
+    return { counts: line.parts.slice(0, at), size: line.sizeParts };
+  }
+
+  /**
+   * A change set's size line as the nodes of one `span.change-size-line`.
+   * @param {MetabrowserChangeSizeLine} line
+   * @returns {Array<Node | string>}
+   */
+  function changeSizeLineNodes(line) {
+    const { counts, size } = sizeLineSplit(line);
+    const element = document.createElement("span");
+    element.className = "change-size-line";
+    element.append(...mb.countPartsNodes(counts));
+    if (size.length > 0) {
+      const sized = document.createElement("span");
+      sized.className = "change-size-line-size";
+      if (line.tooltip !== null) {
+        sized.dataset.tipText = line.tooltip;
+      }
+      sized.append(...mb.countPartsNodes(size));
+      element.append(sized);
+    }
+    return [element];
+  }
+
+  /**
+   * A change set's size line as markup, for a view that writes its markup as text, as the
+   * Git panel's commit summary does.
+   * @param {MetabrowserChangeSizeLine} line
+   * @returns {string}
+   */
+  function changeSizeLineHtml(line) {
+    const { counts, size } = sizeLineSplit(line);
+    const paint = global.MetabrowserFormatters.countPartsHtml;
+    const tip = line.tooltip === null ? "" : ` data-tip-text="${escapeHtml(line.tooltip)}"`;
+    return (
+      `<span class="change-size-line">${paint(counts)}` +
+      (size.length > 0 ? `<span class="change-size-line-size"${tip}>${paint(size)}</span>` : "") +
+      "</span>"
+    );
+  }
+
   function loadChangedFilesTree() {
     return mb.ensureAsset("changed-files-tree").then(() => {
       const tree = global.MetabrowserChangedFilesTree;
@@ -2225,6 +2349,9 @@
   Object.assign(mb, {
     actorIdentity,
     actorIdentityHtml,
+    changeSizeLine,
+    changeSizeLineHtml,
+    changeSizeLineNodes,
     counterpartButton,
     decorateExternalLink,
     loadChangedFilesTree,

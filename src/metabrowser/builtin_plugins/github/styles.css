@@ -228,6 +228,22 @@
   min-width: 0;
   min-height: var(--ui-row-height);
 }
+/* The size line above the Diff summary (docs/design-system.md, "Change Size Line"): a row as
+   tall as the summary's, whether it holds the pending placeholder or the line, so the line
+   arriving moves nothing; one line, cut short at the row's end in a narrow pane, as the
+   summary's breakdown is, so it never wraps under the tabs' feet. */
+.github-pull-size {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: var(--ui-row-height);
+}
+.github-pull-size > .change-size-line {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .github-pull-header .github-pull-summary > .diff-summary {
   flex-wrap: nowrap;
   max-width: 100%;
@@ -256,14 +272,14 @@
    pulse (`.tally-pending`), shown after the quiet period (`.mb-delayed-loading`), in the
    summary header's type, centred on the row's line from the row's start, and as wide as a
    summary of one status. The summary takes its place in the row, which keeps its height, so
-   nothing moves. Measured in headless Chrome 152 in both themes (mb-vb51; again with the
-   status counts' letters bold, mb-8iwn), a summary header of one status, from "1 file
-   changed · 1 M · +3 −1" to "8 files changed · 8 M · +120 −30", ends 13.91 to 15.92 em of
-   its type from the row's start, its text 13.45 to 15.46 em; of three statuses, "35 files
-   changed · 2 A, 3 D, 30 M · +1,234 −3,423", its text ends 22.26 em. The old wording's one
-   status ended 16.6 to 17.6 em, for which this was 17 em.
-   tests/dom/github-pull-header-chrome.mjs holds the width between the two. */
-.github-pull-summary-pending {
+   nothing moves. Measured in headless Chrome 152 in both themes (mb-772c), with the file
+   count on the size line above ("Change Size Line"), a summary header of one status, from
+   "1 M · +3 −1" to "8 M · +120 −30", ends 6.71 to 8.3 em of its type from the row's start,
+   its text 6.28 to 7.87 em; with the file count before it, the same headers ended 13.91 to
+   15.92 em, for which this was 14.5 em. tests/dom/github-pull-header-chrome.mjs holds the
+   width between the two. */
+.github-pull-summary-pending,
+.github-pull-size-pending {
   display: flex;
   align-self: stretch;
   align-items: center;
@@ -271,7 +287,12 @@
   font-size: var(--body-font-size);
 }
 .github-pull-summary-pending > .tally-pending {
-  width: min(100%, 14.5em);
+  width: min(100%, 7em);
+}
+/* The size line's own placeholder, as wide as the line's counts before its size, "1 commit ·
+   3 files changed", about 13 em of the body's type. */
+.github-pull-size-pending > .tally-pending {
+  width: min(100%, 13em);
 }
 /* The cached changed-files list's brief line, drawn in the row while the comparison is read
    (mb-z8ea; pull-summary-brief.js): the Diff summary header's line, its chevron's slot empty,

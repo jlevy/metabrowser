@@ -1100,15 +1100,21 @@ def test_git_commit_summary_is_one_component() -> None:
     assert '"git-commit-summary git-commit-summary-compact"' in panel
     assert 'class="git-commit-change-stats"' in panel
     assert "html += renderCommitSummary(detail);" in panel
-    assert "renderCommitSummary(detail, { compact: true })" in panel
-    # The commit page's change counts are its one Diff summary, which its diff draws in the
-    # summary's place (mb-pb35); only the compact summary, in a tooltip, draws its own, one
-    # line in the Diff summary's words and paint (mb-khm6). Until the diff draws it, and where
-    # it is not drawn, the place holds the commit's totals (A6 of review A on #470).
+    assert "return renderCommitSummary(detail, {\n      compact: true," in panel
+    # The commit page's change counts are its size line and its one Diff summary, which its
+    # diff draws in the summary's place (mb-pb35): the size line, the page header's line
+    # above it, says the file count and the size ("Change Size Line"), and the summary the
+    # statuses and line totals. Only the compact summary, in a tooltip, draws its own, its
+    # size line and one line in the Diff summary's words and paint (mb-khm6). Until the diff
+    # draws it, and where it is not drawn, the place holds the commit's totals (A6 of review
+    # A on #470).
+    assert "html += renderCommitChangeStats(stats, options.size ?? null);" in panel
     assert (
-        "html += compact\n"
-        "      ? renderCommitChangeStats(stats)\n"
-        '      : `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">'
+        'html += `<div class="git-commit-size page-header-line">'
+        "${commitSizeLineHtml(stats, kept)}</div>`;"
+    ) in panel
+    assert (
+        'html += `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">'
         "${renderCommitTotals(stats)}</div>`;"
     ) in panel
     assert (
@@ -2597,15 +2603,23 @@ _PUNCTUATION_PAINTERS = {
         "changeLine: changeLine,",
         "changeLineNodes: changeLineNodes,",
     ),
+    # The size line is a view helper, drawn only by a commit's or a pull request's page
+    # and a commit's hover card, so it is not in a startup script ("Change Size Line").
+    "static/plugin-sdk-views.js": (
+        "element.append(...mb.countPartsNodes(counts));",
+        "sized.append(...mb.countPartsNodes(size));",
+        "const paint = global.MetabrowserFormatters.countPartsHtml;",
+        "changeSizeLineNodes,",
+    ),
     "static/changed-files-tree.js": (
         "return formatters().changeSummary(totals, statusBreakdown(statuses), formatCount);",
         'letter: STATUS_BADGES[/** @type {keyof typeof STATUS_BADGES} */ (status)] ?? "?",',
     ),
     "static/git-panel.js": (
         "const said = formatters.changeSummary(",
-        "formatters.countPartsHtml([COMMIT_CHANGE_SEPARATOR])",
         "formatters.changeLineHtml(said.line)",
-        'const COMMIT_CHANGE_SEPARATOR = Object.freeze({ separator: "·" });',
+        # The size line, the SDK's one component for it ("Change Size Line").
+        "return mb.changeSizeLineHtml(",
     ),
     "builtin_plugins/diff/diff-view.js": (
         'const SUMMARY_SEPARATOR = Object.freeze({ separator: "·" });',

@@ -7607,8 +7607,16 @@ pre.code-block.metabrowser-source-lines > code {
    line totals the inline change stats: its file count, then the brief change line
    (`.change-line`). Its groups are items of one line, spaced as the Diff summary's are, and
    each dot is one item with the group before it, so a line that wraps breaks after a dot. */
-.git-commit-change-stats {
+/* The hover card's size line, "32 files changed · 56.9 KB compressed (…)", above its change
+   line, in the change line's ink and size (docs/design-system.md, "Change Size Line"). */
+.git-commit-size-line {
   margin-top: 6px;
+  color: var(--text);
+  font-size: var(--body-font-size);
+}
+
+.git-commit-change-stats {
+  margin-top: 2px;
   color: var(--text);
   font-size: var(--body-font-size);
 }
