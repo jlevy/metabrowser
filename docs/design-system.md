@@ -4398,11 +4398,23 @@ a folder shows first: in the manner of GitHub’s Languages box, a legend of the
 families under the population bars, each a dot in its color as tall as the tracks above
 it, its bold name, and its muted share, with one neutral **Other** for the rest.
 Which families it names is data, decided on the route by `file_type_legend.py`, whose
-docstring has the rule.
+docstring has the rule: the largest families, at most `LEGEND_TYPE_LIMIT`, that are at
+least `LEGEND_MINIMUM_SHARE_PERCENT` of the population, the share below which the table
+folds a row into “N more”, so a family at exactly that share is named and shown.
+Counting Other, the legend is ten entries at most.
+Nine families and Other are never taken for one another by color: every family has a
+color of its own, `MINIMUM_HOUSE_DELTA_E` or more from every other in both themes
+(`devtools/check_file_type_colors.py`), Other’s neutral is several times that from every
+family (`OTHER_CLEARANCE_FLOORS`, in
+`test_other_is_clear_of_every_family_in_both_themes`), and the name beside each dot says
+what the dot’s color does not.
 A caption naming the population labels the legend and the table for assistive technology
-only. Legend items wrap whole.
-The table sits behind a **Details** toggle, the same trigger and bold label as an **N
-more** row, which starts closed on each mount and keeps its state through repaints.
+only.
+Legend items wrap whole: in a pane too narrow for a line of them a dot never ends a
+line with its name on the next, no entry is cut or clipped, and they read in order down
+the lines (`tests/test_overview_label_column_chrome.py`). The table sits behind a
+**Details** toggle, the same trigger and bold label as an **N more** row, which starts
+closed on each mount and keeps its state through repaints.
 Each group of rows is headed by its category, led by the category’s icon
 ([File-Type Category Icons](#file-type-category-icons)). Every row names its category
 and reports absolute values and percentages; fills are not tab stops, carry no duplicate
@@ -4435,6 +4447,19 @@ question at a finer resolution.
 Each tally shows one absolute value and a track segmented by the top-level families in
 their colors, in one order across the three rows; `buildFolderTotalsComposition` in
 `folder-totals.js` explains the three rows, the order, and the pending fill.
+The bars of the tallies and of Details start at one place, in every row, with Details
+closed or open and with Files or Bytes.
+What they stand to the right of is a label column of one width,
+`--file-type-summary-label-width` in `file_type_summary.css`: as wide as the longest
+label the table holds in practice, the Documentation heading and the No extension and
+Markdown rows, measured in both font sets and recorded beside the token, and no wider,
+so the bars sit as far left as those labels allow.
+A pane too narrow for it keeps the column a share of the table, as it always was, which
+is never wider than the width would be: no pane has its bars further right than before.
+A label wider than the column, a plugin’s family name or a filename, wraps inside it and
+moves no bar. The Treemap’s tally rows keep their share of the table.
+`tests/test_overview_label_column_chrome.py` measures it, at widths either side of the
+one where the column becomes one width, in both font sets.
 Show ignored begins checked without a saved preference and changes only the population
 the distribution counts.
 There is one chooser and one checkbox, because both act on the same numbers.

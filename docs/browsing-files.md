@@ -62,9 +62,9 @@ File Overview counts what the folder holds:
 
 - **Files, Ignored, and Total:** the folder’s files, the files Git ignores, and both
   together, each drawn as a bar split by file-type family.
-- **The type summary:** a legend of the largest families, such as Code, Documentation,
-  Data, Archives, and Media; **Details** opens the full table, where each family lists
-  its extensions.
+- **The type summary:** a legend of the largest file-type families, such as Python,
+  Markdown, and JSON, up to nine, each at least 1% of what is shown, then **Other** for
+  the rest; **Details** opens the full table, where each family lists its extensions.
 - **Files or Bytes** switches every figure between counts and sizes, and **Show
   ignored** adds the ignored files to the type summary.
 
