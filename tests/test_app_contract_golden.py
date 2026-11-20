@@ -67,6 +67,7 @@ import json
 import os
 import plistlib
 import re
+import shutil
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -113,6 +114,7 @@ posix_only = pytest.mark.skipif(os.name != "posix", reason="the owner-only cache
 CONTRACT: Final = app_contract.load()
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
 SHELL_CORE: Final = app_contract.APP_ROOT / "Sources" / "ShellCore"
+FIXTURES: Final = Path(__file__).resolve().parent / "fixtures"
 GH_STAND_IN: Final = Path(__file__).resolve().parent / "fixtures" / "github-status"
 GIT_STAND_IN: Final = Path(__file__).resolve().parent / "fixtures" / "doctor"
 # A minimum `metab` no release meets, so the doctor's `metab` check warns whatever this
@@ -530,6 +532,26 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         )
     )
     assert cast("dict[str, object]", sandbox.answer)["next_after"] is None
+    # Where Metabrowser's own event log is: a state directory with two segments, newest
+    # first in the answer, and one with a log directory and no segment.
+    state = sandbox.root / "events-state"
+    log = state / "events"
+    state.mkdir(mode=0o700)
+    log.mkdir(mode=0o700)
+    for segment in sorted((FIXTURES / "event-log").glob("events-*.jsonl")):
+        shutil.copy(segment, log / segment.name)
+        (log / segment.name).chmod(0o600)
+    quiet = sandbox.root / "quiet-state" / "events"
+    quiet.parent.mkdir(mode=0o700)
+    quiet.mkdir(mode=0o700)
+    blocks.append(
+        run("event-log/found", {"folder": support}, env={"METABROWSER_STATE_DIR": str(state)})
+    )
+    blocks.append(
+        run(
+            "event-log/empty", {"folder": support}, env={"METABROWSER_STATE_DIR": str(quiet.parent)}
+        )
+    )
     blocks += _doctor(sandbox)
     assert app_contract.GOLDEN_NAME == "app-contract.txt"
     check_golden("app-contract.txt", "".join(blocks))

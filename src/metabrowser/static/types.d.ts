@@ -3088,6 +3088,10 @@ declare global {
     per_minute: number;
     long_lived: string[];
     failure_window_s: number;
+    /** The command that opens the whole log in Metabrowser, which Details names. */
+    open_command: string;
+    /** The macOS app's menu item for it, which Details names instead when the app started the server. */
+    open_menu: string | null;
   };
 
   type MetabrowserEventOutcome = "ok" | "failed" | "cancelled" | "never_completed";

@@ -6950,8 +6950,14 @@ pre.code-block.metabrowser-source-lines > code {
   padding-inline-start: 1.2em;
 }
 .event-log-details-part + .event-log-details-part,
-.event-log-details-links {
+.event-log-details-links,
+.event-log-details-open {
   margin-block-start: 6px;
+}
+/* The command a person copies to open the whole log: in the code face, its own ink. */
+.event-log-details-open code {
+  color: var(--text);
+  font-family: var(--font-mono);
 }
 .event-log-details-heading {
   color: var(--text);

@@ -1139,8 +1139,9 @@ def watch_loop(loop: asyncio.AbstractEventLoop) -> None:
 def close_log() -> None:
     """Close this process's log, if it has one."""
 
-    global _sink, _quiet
+    global _sink, _quiet, _off_reason
     _quiet = None
+    _off_reason = None
     sink = _sink
     if sink is None:
         return

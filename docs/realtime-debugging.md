@@ -153,11 +153,12 @@ as far as it can be and answers a 422 naming the file where it cannot.
 When a later segment of the same process follows, the Errors view says that work with no
 end here may have ended there (`log.continues`).
 
-To open the log, serve the directory it is in, which `/api/event-log` names:
-
-```shell
-metab "$(metab . --api /api/event-log --format json | jq -r .directory)"
-```
+To open the log, run `metab --event-log`, which serves the directory it is in at its
+newest segment. The same flag names the directory for `--api`, `--show`, and the other
+modes that take a folder, and the macOS app’s Help menu has Open Event Log, which opens
+the log’s own directory in a window of its own, and not in Open Recent.
+A pull request page’s Details names the menu item for a server the app started, and the
+command for any other.
 
 A server whose folder holds the events directory, such as `metab ~`, writes its log as
 usual, except that a request for something inside the directory is not recorded: each
@@ -212,8 +213,9 @@ has not arrived after N s.”, and a failed refresh’s line ends the same way, 
 The Details list what the server is still running, this page’s first; the failures in
 the window by cause, with the message, the addresses that failed, and the latest calls;
 the last probe of GitHub; and this page’s own slow, failed, or unfinished records, with
-links to both answers as JSON. A failure’s window is the hour before its refresh ended,
-to a minute after.
+links to both answers as JSON, and the command that opens the whole log
+([Browsing the Log](#browsing-the-log), the settings’ `open_command`). A failure’s
+window is the hour before its refresh ended, to a minute after.
 
 To read what one page saw from a terminal, take its ID from a request’s
 `x-metabrowser-client` header in the browser’s developer tools, or from the Details’

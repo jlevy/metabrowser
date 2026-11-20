@@ -913,7 +913,7 @@
    *
    * @param {HTMLElement} panel
    * @param {MetabrowserEventDetailsQuery} query
-   * @param {{fetch?: typeof fetch, signal?: AbortSignal, slowMs?: number, log?: boolean, offReason?: string | null}} [options]
+   * @param {{fetch?: typeof fetch, signal?: AbortSignal, slowMs?: number, log?: boolean, offReason?: string | null, openCommand?: string, openMenu?: string | null}} [options]
    *   `log` false: this server writes no log, so the panel says so, with *offReason* (the
    *   server's own words for why) and reads nothing, since what a log directory still holds
    *   is from an earlier server and not about this.
@@ -961,7 +961,24 @@
       link(routes.failures, "Failures as JSON"),
       ...(query.client ? [" · ", link(routes.page, "This page’s records as JSON")] : []),
     ]);
-    panel.replaceChildren(...sections, links);
+    // The whole log is a Metabrowser window on a directory of the server's machine, which a
+    // page cannot open, so the panel names what does: the app's menu item where the app
+    // started this server, and the command otherwise.
+    const reports = window.METABROWSER_SETTINGS?.EVENT_REPORTS;
+    const menu = options.openMenu !== undefined ? options.openMenu : (reports?.open_menu ?? null);
+    const command = options.openCommand ?? reports?.open_command;
+    const how = menu
+      ? element("span", "", [menu])
+      : command
+        ? element("code", "", [command])
+        : null;
+    panel.replaceChildren(
+      ...sections,
+      links,
+      ...(how
+        ? [element("p", "event-log-details-open", ["Browse the whole log in Metabrowser: ", how])]
+        : []),
+    );
   }
 
   /** The reporter this page runs, or null where there is no namespace to attach to. */
