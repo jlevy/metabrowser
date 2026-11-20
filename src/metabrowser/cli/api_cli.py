@@ -39,6 +39,10 @@ from metabrowser.normalize import NormalizeContext, normalize_payload, normalize
 
 LOG = logging.getLogger(__name__)
 
+# The routes that print a Git revision's file ages, which a command waits for the background
+# read of (`wait_for_index`), beside the index.
+_AGES_DEPENDENT: tuple[str, ...] = ("/api/tree", "/api/recent", "/api/index/progress")
+
 # Routes whose answer changes once the inventory scan finishes. Measured by
 # requesting each one with and without the wait and comparing: /api/recent grew
 # from 6 KB to 853 KB on this repository, while /api/routes, /api/file, and the
@@ -48,9 +52,6 @@ LOG = logging.getLogger(__name__)
 # 0.7s on a three-thousand-file tree and grows with it, so making every route
 # pay for it made the cheap ones -- route discovery, one file's kind, a Git log
 # -- several times slower than the work they do.
-# The routes that print a Git revision's file ages, which a command waits for the background
-# read of (`wait_for_index`), beside the index.
-_AGES_DEPENDENT: tuple[str, ...] = ("/api/tree", "/api/index/progress")
 _INDEX_DEPENDENT: tuple[str, ...] = (
     "/api/tree",
     "/api/rollup",

@@ -495,6 +495,12 @@ GIT_REVISION_CAPABILITIES = SourceCapabilities(
     mutation=False,
 )
 
+# What a pin can do where the Git can date its files (`git/file_ages.py`): the files have a
+# time, so recency, Group by age, and Modified within have something to read. A pin reads
+# it from `GitRevisionSubject.capabilities`, since the answer is the Git’s and not the
+# pin’s.
+GIT_REVISION_CAPABILITIES_WITH_AGES = replace(GIT_REVISION_CAPABILITIES, recency=True)
+
 
 @dataclass(frozen=True, slots=True)
 class _ObjectInfo:
@@ -1639,6 +1645,12 @@ class GitRevisionSubject:
 
     @property
     def capabilities(self) -> SourceCapabilities:
+        # Imported here because `--present` imports this module for `GitPath` alone and
+        # loads little beyond `--version` (`test_present_dry_run_loads_little_beyond_version`).
+        from metabrowser.git.file_ages import file_ages_availability
+
+        if file_ages_availability().available:
+            return GIT_REVISION_CAPABILITIES_WITH_AGES
         return self._capabilities
 
     @property
@@ -1733,6 +1745,7 @@ async def git_revision_subject(
 __all__ = [
     "BLOB_WINDOW_DRAIN_MAX_BYTES",
     "GIT_REVISION_CAPABILITIES",
+    "GIT_REVISION_CAPABILITIES_WITH_AGES",
     "MAX_BATCH_READERS_PER_STORE",
     "GitBatchProtocolError",
     "GitBlobIndex",

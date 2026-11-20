@@ -28,7 +28,7 @@ it, may read them, and an installed plugin uses the SDK.
 | Main tabs | `main-tabs.js`, `git-panel.js` with `git-graph.js` and `git-history-window.js`, `pulls-nav.js`, `pull-route.js` |
 | Keyboard and dialogs | `keyboard-shortcuts.js`, `shell-keymap.js`, `plugin-shortcuts.js`, `key-reveal.js`, `keyboard-help.js`, `overlay-layer.js` |
 | Quick Search | `search-controller.js`, `search-palette.js`, `file-fuzzy-match.js` |
-| Pinned revisions, mirrors, and a checkout’s revisions | `git-path.js`, `source-pin-guard.js`, `source-freshness.js`, `source-ref-selector.js`, `mirror-heading.js` |
+| Pinned revisions, mirrors, and a checkout’s revisions | `git-path.js`, `revision-ages.js`, `source-pin-guard.js`, `source-freshness.js`, `source-ref-selector.js`, `mirror-heading.js` |
 | Shared rendering | `formatters.js`, `icons.js`, `charts.js`, `file-type-taxonomy.js`, `inert-html.js`, `source-append.js`, `theme-state.js`, `document-width.js`, `request-error.js`, `contribution-registry.js` |
 
 `types.d.ts` declares the globals and the SDK. `tsconfig.json` type-checks every module

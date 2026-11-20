@@ -687,3 +687,36 @@ def test_a_command_that_prints_no_ages_never_reads_them(
         assert file_ages_service().is_idle(), route
     pin.api("/api/tree?depth=1")
     assert not file_ages_service().is_idle()
+
+
+@posix_only
+def test_golden_pin_age_groups(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, file_ages_git: tuple[int, int, int]
+) -> None:
+    """Group by age, Modified within, Recent, and the file envelope on a revision, with the
+    clock fixed three hours after the tip so the bands have something to say."""
+
+    from metabrowser.git import content_routes
+
+    monkeypatch.setattr(content_routes, "_request_instant", lambda: float(AGES_TIP + 3 * 3600))
+    isolate_cli(tmp_path, monkeypatch)
+    pin = _Pin(tmp_path)
+    pin.use(ages_origin(tmp_path))
+    grouped = pin.api("/api/tree?group_by=age&depth=1").payload()
+    pin.api("/api/tree?group=age:24h&depth=2")
+    windowed = pin.api("/api/tree?recency=24h&depth=2").payload()
+    recent = pin.api("/api/recent?window=24h").payload()
+    pin.api("/api/recent?window=all&limit=3")
+    guide = pin.api(f"/api/file?path={_wire(b'a', b'guide.md')}").payload()
+
+    # The tip's one file is three hours old: the only member of Past day; everything else is
+    # months older, and no file is undated.
+    assert [(group["id"], group["files"]) for group in grouped["groups"]] == [
+        ("24h", 1),
+        ("older", 6),
+    ]
+    assert windowed["filtered"]["files"] == 1
+    assert [row["name"] for row in recent["entries_flat"]] == ["new.py"]
+    assert recent["entries_flat"][0]["mtime"] == AGES_TIP
+    assert guide["mtime"] == AGES_MAIN_EDIT
+    pin.check("cli-git-pin-age-groups.txt")

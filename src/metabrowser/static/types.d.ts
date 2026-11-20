@@ -1058,6 +1058,31 @@ type MetabrowserNavCollapseRuntime = Readonly<{
   }): MetabrowserNavCollapseController;
 }>;
 
+/** static/revision-ages.js: the watch on a Git revision's file ages while they are read. */
+type MetabrowserRevisionAgesState = { state: string };
+
+type MetabrowserRevisionAgesController = Readonly<{
+  observe(ages: { state?: string } | null | undefined): void;
+  stop(): void;
+  isWatching(): boolean;
+}>;
+
+type MetabrowserRevisionAgesRuntime = Readonly<{
+  createController(deps: {
+    fetchState: () => Promise<MetabrowserRevisionAgesState | null>;
+    landed: (state: MetabrowserRevisionAgesState) => void;
+    setTimer: (run: () => void, ms: number) => unknown;
+    clearTimer: (timer: unknown) => void;
+    now: () => number;
+    pollMs: number;
+  }): MetabrowserRevisionAgesController;
+  mount(options: {
+    reload: (state: MetabrowserRevisionAgesState) => void;
+    pollMs?: number;
+  }): MetabrowserRevisionAgesController;
+  observe(ages: { state?: string } | null | undefined): void;
+}>;
+
 type MetabrowserThemeRuntime = {
   notifyChanged(detail: MetabrowserThemeChange): void;
   subscribe(listener: (detail: MetabrowserThemeChange) => void): () => void;
@@ -1808,6 +1833,8 @@ type MetabrowserTreeExpansion = {
 };
 
 type MetabrowserRecentEntry = {
+  /** A Git revision's folders above the file, as a person reads them; its path is wires. */
+  dir_names?: string[];
   ext?: string;
   gitignored?: boolean;
   logical_ext?: string;
@@ -4506,6 +4533,7 @@ declare global {
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserNavCollapse?: MetabrowserNavCollapseRuntime;
+    MetabrowserRevisionAges?: MetabrowserRevisionAgesRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
     MetabrowserTreeFilterModel: MetabrowserTreeFilterModel;
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
@@ -4619,6 +4647,9 @@ declare global {
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
     METABROWSER_SOURCE_KIND?: "filesystem" | "git_revision";
+    /** Whether the server's Git dates a revision's files, so its page offers Group by age and
+     * Modified within (static/app.js `sourceHasFileAges`); set on a revision's page only. */
+    METABROWSER_FILE_AGES?: boolean;
     /** Container kinds by extension; see arch-plugin-system.md. */
     METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
     METABROWSER_SETTINGS?: {
@@ -4684,6 +4715,8 @@ declare global {
       GIT_HISTORY_WINDOW_MAX_ROWS?: number;
       GIT_HISTORY_WINDOW_OVERSCAN_ROWS?: number;
       GIT_HOVER_DEBOUNCE_MS?: number;
+      /** How often a revision's page asks whether its files' ages have landed. */
+      GIT_AGES_POLL_MS?: number;
       GIT_LOG_LIMIT?: number;
       INDEX_PROGRESS_POLL_MS?: number;
       INDEX_PROGRESS_UPDATE_FILES?: number;

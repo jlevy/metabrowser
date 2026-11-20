@@ -278,6 +278,7 @@ from metabrowser.tree_filter import (
     parse_types,
 )
 from metabrowser.tree_groups import (
+    UNDATED_GROUP_ID,
     GroupBy,
     age_band,
     group_row,
@@ -1584,7 +1585,7 @@ PREFETCH_IDLE_TIMEOUT_MS = 2000
 # that page's routes before it can show anything; a folder's page at any other address
 # fetches neither. devtools/check_startup_scripts.py reports what each adds to the
 # startup-script budget, so they are named here once.
-PIN_STARTUP_SCRIPTS: tuple[str, ...] = ("git-path.js",)
+PIN_STARTUP_SCRIPTS: tuple[str, ...] = ("git-path.js", "revision-ages.js")
 PULL_PAGE_STARTUP_SCRIPTS: tuple[str, ...] = ("pull-route.js",)
 
 
@@ -2057,7 +2058,12 @@ async def index(
         # and the freshness row compares both with what the server serves, so a switch
         # or a restart onto another pin before its first poll still offers a reload.
         page_pin = _json.dumps({"pin": pin.commit_oid, "ref": pin.ref}).replace("<", "\\u003c")
+        # Whether the Git this server runs dates a revision's files, which is what the Files
+        # tab's age menus wait for: Group by age and Modified within, hidden on a revision
+        # that has no times (static/app.js `sourceHasFileAges`).
+        has_ages = "true" if pin.capabilities.recency else "false"
         repository_context_block += (
+            f"<script>window.METABROWSER_FILE_AGES={has_ages};</script>"
             f"<script>window.METABROWSER_SOURCE_PIN={page_pin};</script>"
             f"<script>{_SOURCE_PIN_GUARD_SCRIPT}</script>"
         )
@@ -3097,6 +3103,9 @@ async def api_tree(request: Request) -> Response:
         if group_by is not None:
             return await git_revision_tree_groups(request, pin, tree_filter, group_by)
         return await git_revision_tree(request, pin, tree_filter)
+    if tree_filter.group is not None and tree_filter.group.id == UNDATED_GROUP_ID:
+        # Only a Git revision has files with no time.
+        return JSONResponse({"error": "Not found"}, status_code=404)
     subpath = parse_inventory_path(requested)
     remaining_depth = _tree_depth_from_query(depth_str)
     if subpath is None or resolve_session_identity(subpath) is None:
@@ -3301,7 +3310,7 @@ async def api_rollup(request: Request) -> Response:
 
 
 @log_async_calls()
-async def api_recent(request: Request) -> JSONResponse:
+async def api_recent(request: Request) -> Response:
     """``GET /api/recent`` — top-N files by mtime within a
     rolling window (1h / 24h / 7d / 30d / all), filtered by
     the navigation filter vocabulary plus optional ``prefix`` and
@@ -3336,6 +3345,19 @@ async def api_recent(request: Request) -> JSONResponse:
     # CLI inspection. Merge it into `types` so one provider predicate decides
     # both spellings before the response cap is applied.
     types = parse_types((*requested_filter.types, *ext_filter))
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        # A revision has no inventory: the newest files by the time of their last commit.
+        from metabrowser.git.content_routes import git_revision_recent
+
+        return await git_revision_recent(
+            pin,
+            window=window,
+            limit=limit,
+            types=types,
+            min_size=requested_filter.min_size,
+            prefix=prefix_filter,
+        )
     recent_filter = TreeFilter(
         recency_seconds=int(RECENT_WINDOW_SECONDS[window] or 0),
         types=types,

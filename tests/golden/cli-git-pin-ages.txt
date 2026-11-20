@@ -250,7 +250,34 @@ status: 200
     "stop": "complete",
     "commits": 5,
     "derived": false
-  }
+  },
+  "recency_tallies": [
+    [
+      "live",
+      0,
+      0
+    ],
+    [
+      "1h",
+      0,
+      0
+    ],
+    [
+      "24h",
+      0,
+      0
+    ],
+    [
+      "7d",
+      0,
+      0
+    ],
+    [
+      "30d",
+      0,
+      0
+    ]
+  ]
 }
 --- stderr ---
 # metab file://<ORIGIN> --api '/api/tree?path=g1-ZG9jcw&depth=1'
@@ -398,6 +425,33 @@ status: 200
     "stop": "complete",
     "commits": 5,
     "derived": false
-  }
+  },
+  "recency_tallies": [
+    [
+      "live",
+      0,
+      0
+    ],
+    [
+      "1h",
+      0,
+      0
+    ],
+    [
+      "24h",
+      0,
+      0
+    ],
+    [
+      "7d",
+      0,
+      0
+    ],
+    [
+      "30d",
+      0,
+      0
+    ]
+  ]
 }
 --- stderr ---

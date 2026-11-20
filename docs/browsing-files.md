@@ -111,7 +111,11 @@ that changed it, as a hosting site’s file list shows, and a folder’s the new
 files’. They come from `git last-modified`, which needs Git 2.53 or newer, and are read
 in the background after the page opens, so a file shows its age a moment after it shows
 its name; with an older Git a revision shows no ages, and `metab --doctor` says what to
-upgrade. Modified within and By age are not offered on a revision yet.
+upgrade. With file ages, Modified within and By age work on a revision as on a folder: a
+file is in a window or a band by its last commit, and a file whose last commit is not
+known (a shallow clone, or a read that has not finished) is in a last group, Undated,
+which says what it is older than when that is known; the page draws again when the ages
+arrive.
 
 The same filters are available from the command line:
 `metab ROOT --walk --type .md --age 7d`.

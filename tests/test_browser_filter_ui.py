@@ -346,15 +346,19 @@ def test_the_checkbox_exception_is_scoped_and_explained() -> None:
     )
 
 
-def test_git_pin_hides_mtime_backed_filter_controls() -> None:
-    """A pin has no mtime, so recency would 409. Omit the control rather
-    than offering a window the tree cannot answer."""
+def test_git_pin_hides_mtime_backed_filter_controls_without_file_ages() -> None:
+    """A pin whose Git cannot date its files has no mtime, so recency would 409. Omit the
+    control rather than offering a window the tree cannot answer; where the Git can, the
+    server says so (`METABROWSER_FILE_AGES`) and the controls come back."""
 
     app = _read("app.js")
+    assert "var noFileAges = window.METABROWSER_FILE_AGES === false;" in app
     recency_at = app.index('key: "recency"', app.index("function renderNavFilterBar()"))
-    assert "isGitRevisionSource()" in app[recency_at - 160 : recency_at]
+    assert "noFileAges" in app[recency_at - 160 : recency_at]
     recent_fn = app.index("function filesPanelUsesRecentSource()")
-    assert "isGitRevisionSource()" in app[recent_fn : recent_fn + 180]
+    assert "noFileAges" in app[recent_fn : recent_fn + 180]
+    options_fn = app.index("function filterGroupOptions()")
+    assert "noFileAges" in app[options_fn : options_fn + 300]
 
 
 def test_extension_tallies_come_from_the_index_not_the_catalog() -> None:

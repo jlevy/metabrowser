@@ -1155,6 +1155,7 @@ async function loadTree(options = {}) {
         failTree(String(error));
         return;
       }
+      window.MetabrowserRevisionAges?.observe(data.ages);
       knownFileCatalog?.observeInitialTree(data.tree);
       var pathEl = queryHtml(".header-path");
       renderServedRootHeading(pathEl, data.root);
@@ -1398,6 +1399,7 @@ async function loadGroupedTreeInner(state, load) {
       load,
     });
     sections = treeFilterModel.groupSections(data);
+    window.MetabrowserRevisionAges?.observe(data.ages);
   } catch (error) {
     // A refresh that fails keeps the sections on screen; its pacing retries it with a
     // backoff (requestGroupedRefresh). A first load has nothing to keep.
@@ -5713,7 +5715,7 @@ function filterTypeFamilies(groupId) {
 function filterKeySlotsHtml() {
   /** @type {Record<string, string>} */
   var names = { recency: "Modified within", types: "File type" };
-  return (isGitRevisionSource() ? ["types"] : ["recency", "types"])
+  return (noFileAges ? ["types"] : ["recency", "types"])
     .map(
       (key) =>
         `<span class="filter-key-slot" data-filter-key-slot="${key}" aria-hidden="true"` +
@@ -5722,16 +5724,14 @@ function filterKeySlotsHtml() {
     .join("");
 }
 
-// Group by's choices beside "No grouping", each read the same on its row and on the closed
-// trigger, and each with the letter that chooses it while the menu is open: the first of
-// the word naming its value (docs/design-system.md, "Keys in a Menu"). A Git revision has
-// no mtime, so it offers no By age, as it offers no Modified within.
+// Group by's choices, each with the letter that chooses it while the menu is open
+// (docs/design-system.md, "Keys in a Menu"). With no file ages there is no By age.
 function filterGroupOptions() {
   var options = [
     { value: "age", label: "By age", key: "a" },
     { value: "type", label: "By file type", key: "t" },
   ];
-  return isGitRevisionSource() ? options.filter((option) => option.value !== "age") : options;
+  return noFileAges ? options.filter((option) => option.value !== "age") : options;
 }
 
 function filterTypePresetSections() {
@@ -5797,12 +5797,10 @@ function filterTypeOptions() {
   });
 }
 
-// A recency window reads from /api/recent, which scans the whole index
-// rather than the loaded subtrees — the one thing the Recent tab did
-// that a DOM walk cannot. This includes Live: it is the shortest
-// server-owned mtime window, not the specialized activity tracker.
+// A recency window, Live included, reads /api/recent, which scans the whole index and
+// not the loaded subtrees.
 function filesPanelUsesRecentSource() {
-  if (isGitRevisionSource() || !filterState) {
+  if (noFileAges || !filterState) {
     return false;
   }
   var st = filterState.get();
@@ -5821,9 +5819,8 @@ function renderNavFilterBar() {
   var count = filterState.activeCount();
   var drawerCount = treeFilterModel.drawerFilterCount(st);
   var fc = filterControls;
-  // The three filters, each a dropdown. A Git pin has no mtime, so recency is omitted
-  // rather than offered as a 409.
-  var recencyMenu = isGitRevisionSource()
+  // The three filters, each a dropdown. With no file ages, recency is omitted, not a 409.
+  var recencyMenu = noFileAges
     ? ""
     : fc.menuGroupHtml({
         key: "recency",
@@ -7683,6 +7680,14 @@ var catalogFeedCanStart = false;
 function isGitRevisionSource() {
   return window.METABROWSER_SOURCE_KIND === "git_revision";
 }
+var noFileAges = window.METABROWSER_FILE_AGES === false;
+window.addEventListener("metabrowser:file-ages-landed", () => {
+  subtreeCache.clear();
+  void loadTree({ reconcileMountedRoot: true });
+  if (filesPanelUsesRecentSource()) {
+    loadRecent(currentRecentFilterCursor());
+  }
+});
 // The startup crawl establishes the navigation baseline. Its snapshot and
 // incremental walker upserts are not user-visible file changes, so newly
 // mounted rows stay neutral until the first terminal inventory event. A

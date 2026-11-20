@@ -834,7 +834,7 @@ def test_a_pins_shell_adds_the_startup_scripts_the_budget_check_reports(
     pin = check_startup_scripts.startup_script_paths(client.get("/view/").text)
     folder = check_startup_scripts.startup_script_paths(check_startup_scripts.render_folder_shell())
     added = [f"/static/{name}" for name in server.PIN_STARTUP_SCRIPTS]
-    assert added == ["/static/git-path.js"]
+    assert added == ["/static/git-path.js", "/static/revision-ages.js"]
     assert sorted(pin) == sorted(folder + added)
     assert not set(added) & set(folder)
 

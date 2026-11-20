@@ -13,7 +13,9 @@ would show, restricted to that group's members:
   Past hour, Past day, Past week, and Past month, each holding only what the windows
   before it do not, and then Older for the rest. A band intersected with the recency
   filter keeps its lower edge and takes the nearer of the two upper edges; a band that
-  ends up empty is not offered.
+  ends up empty is not offered. A Git revision's files have the time of their last commit
+  when Git can say it, and adds one group a folder never has: Undated, the files whose
+  time is not known (a shallow boundary, a read cut by its budget, or one still running).
 
 The order is the presentation order (``FILE_TYPE_GROUP_DISPLAY_ORDER``), Documentation
 first, which the type filter shares. ``/api/tree?group_by=`` serves the groups that hold
@@ -44,6 +46,7 @@ _AGE_LABELS: dict[str, str] = {
     "30d": "Past month",
 }
 OLDER_GROUP_ID = "older"
+UNDATED_GROUP_ID = "undated"
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,12 +111,17 @@ def _age_groups() -> tuple[TreeGroup, ...]:
     )
 
 
+UNDATED_GROUP = TreeGroup(by="age", id=UNDATED_GROUP_ID, label="Undated")
 _GROUPS: dict[GroupBy, tuple[TreeGroup, ...]] = {"type": _type_groups(), "age": _age_groups()}
 
 
-def groups_for(by: GroupBy) -> tuple[TreeGroup, ...]:
-    """Every group *by* can split a tree into, in display order."""
+def groups_for(by: GroupBy, *, undated: bool = False) -> tuple[TreeGroup, ...]:
+    """Every group *by* can split a tree into, in display order. With *undated*, an age
+    split ends in Undated, which a source whose files have no times of its own (a Git
+    revision) needs and a folder never does."""
 
+    if undated and by == "age":
+        return (*_GROUPS[by], UNDATED_GROUP)
     return _GROUPS[by]
 
 
@@ -133,6 +141,8 @@ def parse_group(raw: str) -> TreeGroup | None:
     by = parse_group_by(by_raw)
     if by is None:
         return None
+    if by == "age" and group_id == UNDATED_GROUP_ID:
+        return UNDATED_GROUP
     return next((group for group in _GROUPS[by] if group.id == group_id), None)
 
 
@@ -145,8 +155,8 @@ def age_band(group: TreeGroup, recency_seconds: int) -> AgeBand:
     Past hour holds what is newer than an hour and not newer than the Live window.
     """
 
-    if group.by != "age":
-        raise ValueError(f"{group.key} is not an age group")
+    if group.by != "age" or group.id == UNDATED_GROUP_ID:
+        raise ValueError(f"{group.key} is not an age band")
     windows = _windows()
     keys = [key for key, _seconds in windows]
     if group.id == OLDER_GROUP_ID:
@@ -225,6 +235,8 @@ def groups_payload(
 __all__ = [
     "GROUP_BY_VALUES",
     "OLDER_GROUP_ID",
+    "UNDATED_GROUP",
+    "UNDATED_GROUP_ID",
     "AgeBand",
     "GroupBy",
     "TreeGroup",

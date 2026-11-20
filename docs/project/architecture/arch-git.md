@@ -403,10 +403,9 @@ describes.
 
 ## File Ages
 
-**Status:** Implemented for the data: a pinned revision’s tree nodes carry `mtime`, and
-its index progress carries the state of getting it.
-Planned: By age, Modified within, and the page’s own refill when the answer lands, in
-the same change as their documentation.
+**Status:** Implemented: a pinned revision’s tree nodes and file envelopes carry
+`mtime`, its index progress carries the state of getting it, Group by age, Modified
+within, and Recent read those times, and the page draws again when they land.
 
 A Git revision has no modification times, so a file’s age is the committer time of the
 last commit that changed it, which is what a hosting site’s file list shows, and a
@@ -438,6 +437,22 @@ for the command.
   prints it waits on (`wait_for_index` in `cli/asgi_client.py`, for `/api/tree` and the
   progress route itself; every other `--api` route passes `ages=0` and never starts the
   read). A file the answer leaves undated carries no `mtime`.
+- **What reads them.** The age bands and windows are cut at one instant per request, so
+  the groups of one grouped answer partition the times; a file the answer leaves undated
+  is in no window and no band but a last group, `undated`, whose name carries
+  `older_than` when the answer has one.
+  `/api/recent` lists the newest files of a window with the folders above each by name
+  (`dir_names`) and counts the files it could not date (`undated`), and the file
+  envelope carries `mtime` only from an answer that is already there: a file read starts
+  no read of the history.
+  A revision whose Git cannot date its files has `recency` false, so these answer
+  `unsupported_for_subject` and the page does not offer them
+  (`GitRevisionSubject.capabilities`, `METABROWSER_FILE_AGES`).
+- **The page.** A response that says `ages.state` is `dating` starts one watch
+  (`static/revision-ages.js`) that asks `/api/index/progress` every `GIT_AGES_POLL_MS`
+  and, when the answer lands, draws the tree, grouped tree, or Recent list again, once;
+  folders opened before it are read again when opened.
+  The page never waits: until then every file is undated.
 - **Per commit.** A commit ID names a tree for good, so an answer is never stale: a
   branch shown again is a lookup, a new branch or tag is read for its own tip, and a tip
   whose ancestor is answered reads `C ^A`, so Git walks only the commits since it.
