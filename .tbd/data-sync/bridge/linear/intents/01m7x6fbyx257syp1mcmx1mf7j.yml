@@ -1,0 +1,13 @@
+created_at: 2026-11-20T19:21:01.662Z
+ops:
+  - bead_id: is-01kzs5m38dz1egphfwf30c8h7n
+    external_id: 06ad4ed9-e57c-43ff-a0bd-72bc542de8f5
+    kind: update_issue
+    patch:
+      hold: null
+      resolution: null
+      slot: backlog
+      status: open
+provider: linear
+run_id: 01m7x6fbyx257syp1mcmx1mf7j
+type: in
