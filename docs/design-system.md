@@ -3744,7 +3744,8 @@ acknowledgement.
 The component owns this focused behavior; it is not a document-level application
 shortcut. The maintained registry in
 `test_nav_like_row_sets_share_the_vertical_keyboard_contract` covers the file tree, Git
-history, pull-request rows, and their changed-file trees.
+history, pull-request rows, their changed-file trees, and the table view’s grid
+([Data Tables](#data-tables)), whose arrows move without opening.
 The adjacent `test_git_row_selection_avoids_full_collection_mutation` pins Git’s
 interaction cost. Register every new navigational row collection in the shared check so
 its Tab order and vertical navigation cannot silently fork this contract.
@@ -5815,14 +5816,77 @@ Use structured rows rather than syntax-colored walls of punctuation when the use
 inspecting object relationships.
 Keys, scalar values, array counts, and expansion controls each have consistent roles.
 
-Tables should:
+## Data Tables
 
-- align numeric columns to the right;
-- keep headers visible where practical;
-- use restrained row striping and hover states;
-- preserve copyable text;
-- wrap or scroll long paths without widening the entire page;
-- expose an explicit empty state instead of rendering a blank panel.
+Every table of data the app draws is one component, with one definition of each rule in
+`static/styles.css`: the table plugin’s grid (`builtin_plugins/table/`), which every
+tabular source draws through, and the folder’s Distribution and totals tables, which
+take its numeric and label rules.
+The view is drawn after the knowledge-base browser in
+[paraverse](https://github.com/jlevy/paraverse) and adapted to these tokens.
+
+| Class | Rule |
+| --- | --- |
+| `.data-grid` | The table: chrome in `--font-sans` at the body size, a hairline in `--border` under each row, the header in the resting label type and on `--bg`, staying at the top of its scroll box, and `--hover-bg` under the pointer |
+| `.data-num` | A number, or a numeric column’s cell or header: right-aligned, in `--tabular-numerals`, never wrapped |
+| `.data-literal` | A literal value, a key, timestamp, hex, JSON, or `null`, in `--font-mono` at `--mono-block-font-size` |
+| `.data-label` | The resting label type a header has, for a heading that is not a `.data-grid` header, as a Distribution group’s is |
+
+**Every value is visible, and none is mistaken for another.**
+
+- `null` is drawn as the word, muted and monospaced; the empty string is an empty cell;
+  a short row’s missing cell is a muted dash whose tooltip says the row is shorter than
+  the header.
+- A number keeps its digits: an integer past what a browser number holds arrives as text
+  and is drawn as text, and an infinite or undefined real says `Infinity` or `NaN`.
+- A value whose stored type differs from its column’s, which SQLite allows, carries a
+  small outlined badge naming the stored type, in `--status-warning`, beside the value
+  rather than in its place.
+- A value the server cut for the page ends in a muted ellipsis, and its tooltip gives
+  its length and says the record shows more; the record says how much of it it shows.
+
+**Rows are one height, and cells are cut, never wrapped past it.** A table’s rows are
+one line, or two when a value it holds is longer than its column or holds a line break;
+a longer value is cut with an ellipsis, and its whole text is the shared tooltip, which
+shows only while the value is cut
+([Tooltips Add Information](#tooltips-add-information)). Each column is as wide as its
+header and its first values in the face they are drawn in, up to `COLUMN_MAX_CH`
+characters (`builtin_plugins/table/table-model.js`), and keeps that width as more rows
+arrive or a filter narrows them, so columns do not move under the reader.
+Numbers are right-aligned only in a column the source says is numeric.
+
+**Columns fit the pane.** With a source’s default columns, those from the right hide
+until the rest fit, and a note in the toolbar says how many are hidden and opens the
+Columns menu; columns the reader chose never hide, and when they overflow, the table
+scrolls sideways with its first column in place.
+
+**Values that mean a choice are links.** A boolean or enum value adds a filter on its
+column; a reference is a chip, a rounded box rather than the filter pill, whose card is
+the shared tooltip, and which opens the record it names.
+Every filter is a removable chip in the filter pill, `--radius-pill`; a header’s menu
+sorts its column either way, filters it by an operator and a value, and hides it.
+Search is one field, which asks the server once the typing pauses.
+
+**One Tab stop.** The grid is a row collection under
+[Navigational Row Collections](#navigational-row-collections): one row is in the Tab
+order, Up and Down or `J` and `K` move a row, Left and Right move between the row and
+its cells, so a link in a cell is reachable, and Enter on the row opens its record in
+place of the grid; Back returns the keyboard to that row.
+Arrows do not open a row here, because a record replaces the grid the reader is reading.
+
+**Small tables are tables; large ones are windows.** A table of at most
+`WHOLE_TABLE_MAX_ROWS` (`builtin_plugins/table/table-view.js`) is a plain `<table>` with
+`scope="col"` headers and `aria-sort`, and keeps the browser’s find, select all, copy,
+and print. A larger one is `role="grid"` with `aria-rowcount` and `aria-rowindex`, and
+draws only the rows near the view at one fixed row height; there, Search stands in for
+find in page, Shift with Up or Down and Control-A or Command-A select rows that copy as
+tab-separated values, and print draws every row held
+([Rendering Large Content](large-content-rendering.md)).
+
+`tests/dom/table-view-session.js` runs the view’s behavior from the command line, and
+`tests/test_table_view_chrome.py` checks in Chrome what only layout shows: one row
+height, cutting and its tooltip, the inks and faces, the header that stays put, and the
+pinned first column.
 
 ## Source and Syntax Colors
 

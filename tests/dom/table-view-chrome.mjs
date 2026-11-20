@@ -133,7 +133,9 @@ async function main() {
     const open = async (address, rows) => {
       await chrome.send("Page.navigate", { url: `${base}/view/${address}` });
       await chrome.evaluate(VIEW);
-      await chrome.waitFor(`(() => { try { ${VIEW}; return __t().qa("tbody tr:not(.table-spacer)").length >= ${rows}; } catch { return false; } })()`);
+      await chrome.waitFor(
+        `(() => { try { ${VIEW}; return __t().qa("tbody tr:not(.table-spacer)").length >= ${rows}; } catch { return false; } })()`,
+      );
       await chrome.evaluate(VIEW);
       await sleep(200);
     };

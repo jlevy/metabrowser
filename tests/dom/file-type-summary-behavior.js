@@ -329,7 +329,8 @@ function familyRow() {
   );
   check(
     "breakdown values use the selected metric emphasis",
-    handle.rows.get(".py").metricValue.className === "file-type-summary-value data-num count count-large" &&
+    handle.rows.get(".py").metricValue.className ===
+      "file-type-summary-value data-num count count-large" &&
       handle.rows.get(".md").metricValue.className === "file-type-summary-value data-num count",
   );
   check(
@@ -366,7 +367,8 @@ function familyRow() {
   check(
     "live updates replace metric emphasis classes",
     handle.rows.get(".md").metricValue.className === "file-type-summary-value data-num count" &&
-      handle.rows.get(".py").metricValue.className === "file-type-summary-value data-num count count-large",
+      handle.rows.get(".py").metricValue.className ===
+        "file-type-summary-value data-num count count-large",
   );
   const filesColorClass = handle.rows.get(".py").metricFill.className;
   view.updateDistributionView(handle, {

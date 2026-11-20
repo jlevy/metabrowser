@@ -986,12 +986,49 @@ As built, where this plan left a choice open:
 
 ### Phase 3: The Table View
 
-- [ ] The table view: grid, windowing, filters, search, sort in both directions, column
+- [x] The table view: grid, windowing, filters, search, sort in both directions, column
   fit, record view, hover cards, URL state, keyboard, accessibility; Table becomes the
   delimited kind’s default
-- [ ] Data Tables section in the design system; folder tables adopt it; `.data-table`
+- [x] Data Tables section in the design system; folder tables adopt it; `.data-table`
   deleted
-- [ ] The browserless table session, parity rows, changelog fragment
+- [x] The browserless table session, parity rows, changelog fragment
+
+As built, where this plan left a choice open:
+
+- **Fixed row height, one or two lines.** A table’s rows are one line, or two when a
+  value it reads first is cut or longer than its column; every row of a table is that
+  one height, whole or windowed, so the window places a row by its index.
+  A column’s width comes from its header and the first values that showed it, in the
+  face they are drawn in, and holds for the table’s life.
+- **Whole or windowed** is decided by the first answer’s exact count against
+  `WHOLE_TABLE_MAX_ROWS`, measured in Chrome (`tests/dom/table-view-measure.mjs`); a
+  windowed grid reads the next page as the window nears the last row held, so its scroll
+  height grows with what it has read rather than standing for the count.
+- **One filter per field in the view.** `fetchPluginData` sends one value per parameter,
+  so the header menu and the value links keep one filter per field, and a new one
+  replaces it; the route takes more, and a range waits for a reader who needs it.
+- **The open record** is `record=<key>` on the table’s address, which the view reads and
+  the rows route ignores; a record opens in place of the grid, and Back, or its own Back
+  link, returns the grid with the keyboard on the row.
+  The scroll position and focused row are kept in the history entry’s state, not the
+  address.
+- **Hover cards** are the shared tooltip’s content, shown on hover and on keyboard focus
+  of a reference chip, and nothing in a card is interactive, since a tooltip takes no
+  interactive children; the chip itself opens the record.
+  Delimited text has no references, so the card waits for SQLite (Phase 5) to be
+  exercised against a source; the session checks how a reference cell is presented.
+- **JSON and blob values** are shown as text in the record until a source sends them
+  (Phases 5 and 7), which can then draw them through the structured tree and the binary
+  view.
+- **Address changes** reach the view through `navigation.open` and the window’s
+  `popstate`, which the shell’s controller applies first; `navigation.open`’s `replace`
+  option, which the shell already took, is now documented.
+- **Warming the provider** (review A9 of Phase 1): the delimited plugin starts
+  `mb.plugins.load("table")` when its own module is evaluated, since its kind always
+  opens in the Table view; starting every declared provider with its dependent would put
+  Markdown on every folder’s page.
+- `.table-container`, unused like `.data-table`, went with it; the folder tables take
+  `.data-num` and `.data-label`.
 
 ### Phase 4: SQLite Access
 

@@ -7,11 +7,12 @@ env:
 # Golden test: the table view
 
 The table plugin draws one table of a tabular source.
-The server sorts, filters, searches, pages, and counts, and each of those is a route that
-`metab --api` reads (`cli-api-table.tryscript.md`); this session pins what the page does
-with the answers. It loads the plugin’s production modules, `table-model.js` and
-`table-view.js`, and drives `mountTable` through a scripted page whose answers are the
-server’s, recorded in `tests/fixtures/table-view-responses.json` and
+The server sorts, filters, searches, pages, and counts, and each of those is a route
+that `metab --api` reads (`cli-api-table.tryscript.md`); this session pins what the page
+does with the answers.
+It loads the plugin’s production modules, `table-model.js` and `table-view.js`, and
+drives `mountTable` through a scripted page whose answers are the server’s, recorded in
+`tests/fixtures/table-view-responses.json` and
 `tests/fixtures/table-view-long-responses.json` by `tests/test_table_view_session.py`
 over the files in `tests/fixtures/table-view/`.
 
@@ -19,10 +20,12 @@ The address holds the view’s state: a header’s press sorts ascending, then d
 then back to the file’s order; a boolean value’s press adds a filter, which a chip
 removes; Search asks once the typing pauses and replaces the address rather than adding
 to its history; a header’s menu filters and hides its column; and Back shows the address
-before. The grid is one Tab stop: `j` and `k` move a row, Right and Left move between the
+before.
+The grid is one Tab stop: `j` and `k` move a row, Right and Left move between the
 row and its cells, and Enter opens the row’s record in place of the grid, whose Back
-returns the keyboard to the row. A refusal is said in an alert with a way back to the
-whole table, and a view disposed before its answers arrive draws nothing from them.
+returns the keyboard to the row.
+A refusal is said in an alert with a way back to the whole table, and a view disposed
+before its answers arrive draws nothing from them.
 
 A table past the whole-table bound is a grid that draws only a window of its rows over
 two spacers, reads the next page as the window nears the last row held, selects rows

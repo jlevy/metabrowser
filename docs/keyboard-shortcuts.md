@@ -21,11 +21,11 @@ work.
 | `F` | The Files tab | Always |
 | `P` | The Pulls tab | The Pulls tab is shown, for a GitHub repository |
 | `H` | The Commits tab: commit History | The served folder is a Git repository’s root, or a repository opened by its URL |
-| `J` or `K` | Down or up a row | A tree, Commits, Pulls, or changed-file row has focus |
+| `J` or `K` | Down or up a row | A tree, Commits, Pulls, changed-file, or table row has focus |
 | `Control-N` or `Control-P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open, outside text fields, on macOS and iOS |
 | `U` | Up: the parent folder | A file, or a folder below the root, is shown |
 | `W` | The branch or tag switcher | A repository opened by its URL, or a folder that is a repository’s root, is shown |
-| `V` | The rendered view: Document, Diagram, Preview, Tree, Timeline, or Log | A file’s tab bar is shown |
+| `V` | The rendered view: Document, Diagram, Preview, Table, Tree, Timeline, or Log | A file’s tab bar is shown |
 | `S` | The source: Source, or Raw JSON | A file’s tab bar is shown |
 | `C` | Charts | An agent log is shown |
 | `L` | Latency | An event log is shown |

@@ -202,6 +202,14 @@ reloading the page then tries again.
 
 ### Data, Logs, and Code
 
+- **CSV and TSV:** Table shows the file as a table: press a column’s header to sort it
+  either way, open its menu to filter or hide it, search the text, and press a row, or
+  Enter on it, to see every value of that row.
+  `null`, an empty value, and a missing one look different, and a value too long for its
+  column shows whole in its tooltip.
+  The table’s sort, filters, search, and columns are in the page’s address, so a link or
+  Back returns to them.
+  **Source** shows the file’s text.
 - **JSON and YAML:** Tree shows the parsed document with collapsible levels and draws
   only the rows in view.
 - **JSONL:** Log lists one row per event, with filter chips by kind of event, such as

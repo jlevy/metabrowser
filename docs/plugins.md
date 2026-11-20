@@ -432,6 +432,38 @@ routes, and `builtin_plugins/delimited/source.py` is a complete source.
   route answers its `code` and status.
   Stop a scan when `budget.expired()` and answer `complete=False` with the reason.
 
+The table plugin also draws the table: its exports are `mountTable(container, {path})`,
+which mounts the table view for the table at `path` and returns a handle with `ready`
+and `dispose()`. Give your kind a Table view that mounts it:
+
+```toml
+[[view]]
+kind = "example-table"
+id = "table"
+label = "Table"
+key = "v"
+default = true
+container_class = "content-body table-view-host"
+printable = true
+print_profile = "table"
+```
+
+```javascript
+const tables = mb.plugins.load("table"); // start the load as the plugin is evaluated
+mb.registerView("example-table", "table", {
+  async render(container, ctx) {
+    const { mountTable } = await tables;
+    return mountTable(container, { path: ctx.path });
+  },
+});
+```
+
+The view keeps its sort, filters, search, columns, and open record in the address’s
+query, in the rows route’s own names, so a link reproduces it.
+A plugin whose files always open in the Table view starts the load when its own module
+is evaluated, as above, so the table plugin’s module is on its way while the shell
+prepares the pane; one that shows it only sometimes asks for it in `render`.
+
 ## Browser SDK
 
 The supported API is available as `window.metabrowser`. Use only the surface documented

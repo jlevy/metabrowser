@@ -56,7 +56,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | `html` | `.html`, `.htm` | Preview `V`, Source `S` | File envelope; sandboxed raw document |
 | `text` | Text files | Source | File envelope |
 | `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Source `S` | File envelope and the `structured/parsed` hook |
-| `delimited` | `.csv`, `.tsv` | Source | File envelope; one table through the `table/*` hooks ([Table Sources](arch-plugin-system.md#table-sources)) |
+| `delimited` | `.csv`, `.tsv` | Table `V`, Source `S` | File envelope; one table through the `table/*` hooks, which the table plugin’s view draws ([Table Sources](arch-plugin-system.md#table-sources)) |
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
 | `agent-log` | `.jsonl` sniffed as an agent log | Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agent-log/charts` hook |
 | `unknown-jsonl` | Other `.jsonl` | Log `V`, Raw JSON `S` | File envelope |
@@ -81,7 +81,8 @@ consumes has no exact `kind: <id>` line in the output of a successful `--show` c
 in a golden transcript.
 
 The `table` plugin has no kind: it owns the `table/*` hooks, which serve every kind a
-plugin declares a `[[table_source]]` for
+plugin declares a `[[table_source]]` for, and the table view, which a source plugin
+mounts for its kind’s Table view through `mb.plugins.load("table")`
 ([Table Sources](arch-plugin-system.md#table-sources)).
 
 Two kinds are also **containers**, folder-like entries whose children are addressable

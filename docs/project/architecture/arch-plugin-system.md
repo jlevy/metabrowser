@@ -237,6 +237,16 @@ A file that is its own single table, such as a CSV file, is addressed by its own
 tables inside one file, such as a database’s, are planned as container children in
 [Tabular Data Browsing and Live SQLite](../specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md).
 
+**The view.** The table plugin’s `index.js` exports `mountTable(container, {path})`, the
+table view, which a source plugin registers as its kind’s Table view through
+`mb.plugins.load("table")`, as `builtin_plugins/delimited/index.js` does; the plugin has
+no kind, so it registers no view of its own.
+`table-model.js` holds what the view decides, pure functions of the address, the schema,
+and the rows held, and `table-view.js` draws it
+([Data Tables](../../design-system.md#data-tables)). `tests/dom/table-view-session.js`
+runs both over the routes’ recorded answers, and
+`tests/golden/cli-ui-table-view.tryscript.md` pins what it shows.
+
 ## Navigation Containers
 
 ### Item-Like and Folder-Like

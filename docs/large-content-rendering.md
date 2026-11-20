@@ -1,7 +1,8 @@
 # Rendering Large Content
 
 **Status:** Current.
-Every limit named below is in force, and no content view virtualizes its loaded text.
+Every limit named below is in force; no text view virtualizes its loaded text, and the
+table view windows the rows of a large table.
 Figures are Chromium 141 measurements with software raster unless a table names another
 engine. The diff view’s bounds are in
 [Diff Pipeline](project/architecture/arch-diff-pipeline.md), and the macOS app’s WebKit
@@ -193,9 +194,12 @@ It is flat at any size, 33 ms from 1 MiB through 8 GiB with 132 nodes, and the o
 option past a few tens of MB. It gives up find-in-page and select-all over the file,
 needs scrollbar downscaling past the height clamp, and is substantially more code.
 The source and binary views do not virtualize their loaded text; the Pulls panel, the
-Git history, and the branch and tag chooser virtualize their rows.
-For file content, reach for virtualization when the view must open files larger than
-memory allows, and say in the plan what replaces the native behaviors.
+Git history, the branch and tag chooser, and a table past `WHOLE_TABLE_MAX_ROWS`
+virtualize their rows.
+The table view states what replaces find, select all, copy, and print
+([Data Tables](design-system.md#data-tables)). For file content, reach for
+virtualization when the view must open files larger than memory allows, and say in the
+plan what replaces the native behaviors.
 
 Canvas rendering is not on this ladder: the design system reserves canvas for charts,
 because text must stay selectable.
@@ -333,6 +337,8 @@ this standard. Paths are under `src/metabrowser/`.
 | `TABLE_REQUEST_DEADLINE_SECONDS` | `table_source.py` | A table request’s scan; past it a filter or search answers the rows it found with `complete: false` |
 | `DELIMITED_PARSE_MAX_BYTES` | `builtin_plugins/delimited/source.py` | The bytes of a `.csv` or `.tsv` file read as a table; past it the table holds the leading rows and says so |
 | `DELIMITED_CACHE_MAX_ENTRIES`, `DELIMITED_CACHE_MAX_BYTES` | `builtin_plugins/delimited/source.py` | Server memory for parsed delimited files |
+| `WHOLE_TABLE_MAX_ROWS` | `builtin_plugins/table/table-view.js` | The rows a table may hold and still be drawn whole, keeping the browser’s find, select all, copy, and print; a larger one is a window with Search, row selection that copies as tab-separated values, and print of the rows held in their place |
+| `FIRST_PAGE_ROWS`, `NEXT_PAGE_ROWS`, `ROWS_OVERSCAN`, `ROW_HEIGHT_ESTIMATE_PX` | `builtin_plugins/table/table-view.js` | The table view’s first and later requests, the rows its window draws past the view, and a row’s height before one is measured |
 | `SUMMARY_ROWS_OVERSCAN` | `builtin_plugins/diff/diff-summary.js` | Diff summary rows mounted on either side of the window’s view of its tree, which has no scroll of its own and no length bound beyond `MAX_MANIFEST_FILES` |
 
 ## References
