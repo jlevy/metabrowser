@@ -5,7 +5,7 @@ title: Implement the pluggable inventory engine
 kind: feature
 status: open
 priority: 1
-version: 22
+version: 23
 spec_path: docs/project/specs/active/plan-2026-08-23-pluggable-inventory-engine.md
 labels: []
 dependencies: []
@@ -26,8 +26,9 @@ child_order_hints:
   - is-01m1d3qscgv75446y3x56tyhbj
   - is-01kzcwmhbancvf58sxae7c6qpf
   - is-01m1mva118h2a2j3b8swefvk8y
+  - is-01m7rwjtqep1zqb91jyq9pnxc9
 created_at: 2026-08-23T21:11:56.857Z
-updated_at: 2026-11-14T18:48:20.531Z
+updated_at: 2026-11-20T17:08:15.913Z
 ---
 Parent for the pluggable inventory engine (docs/project/specs/active/plan-2026-08-23-pluggable-inventory-engine.md; implementation plan in plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md). Phase 1, the Python reference provider behind the sealed provider contract, shipped in v0.10.0 through #74, #99, and #101 (mb-lsgg, closed). Phase 2, the fdu provider and its adoption gates, is mb-hej8.
 
