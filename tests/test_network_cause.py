@@ -15,7 +15,9 @@ import json
 import os
 import socket
 import stat
+import time
 from collections.abc import Generator, Iterator
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -32,7 +34,9 @@ from tests.required_tools import require_git
 # gh 2.98.0's error text (Go's net and net/http errors, wrapped by gh). The first was
 # captured 2026-11-19 from a `gh pr create` on this repository while api.github.com
 # resolved to an address the network could not reach; the rest are the forms Go prints
-# for each failure (net.OpError, net.DNSError, tls, and net/http).
+# for each failure (net.OpError, net.DNSError, tls, and net/http). gh prints "error
+# connecting to" only for a *net.DNSError, checked live against gh 2.98.0 by review A of
+# #620 (a .invalid host, a refused proxy, and a refused port).
 GH_SAMPLES: dict[str, network_cause.NetworkCause] = {
     'Post "https://api.github.com/graphql": dial tcp 172.182.252.137:443: i/o timeout': (
         "connect_timeout"
@@ -43,28 +47,72 @@ GH_SAMPLES: dict[str, network_cause.NetworkCause] = {
     "dial tcp 140.82.112.6:443: connect: network is unreachable": "network_unreachable",
     "dial tcp [2606:50c0:8000::154]:443: connect: no route to host": "network_unreachable",
     "error connecting to api.github.com\ncheck your internet connection or "
-    "https://githubstatus.com": "connect_failed",
+    "https://githubstatus.com": "dns_failed",
     'Get "https://api.github.com/user": net/http: TLS handshake timeout': "connect_timeout",
     "tls: failed to verify certificate: x509: certificate signed by unknown authority": (
         "tls_failed"
     ),
     "proxyconnect tcp: dial tcp 10.0.0.1:3128: connect: connection refused": "proxy_failed",
-    'Get "https://api.github.com/user": net/http: timeout awaiting response headers': "stalled",
+    # The proxy's own connection timed out: the proxy's failure, not GitHub's timeout.
+    'Get "https://api.github.com/user": proxyconnect tcp: dial tcp 10.0.0.1:3128: '
+    "i/o timeout": "proxy_failed",
+    # macOS words a connect timeout as the system call's error.
+    "dial tcp 20.172.24.160:443: connect: operation timed out": "connect_timeout",
+    # Headers that never came: GitHub never answered, rather than stopping partway.
+    'Get "https://api.github.com/user": net/http: timeout awaiting response headers': ("no_answer"),
+    'Get "https://api.github.com/user": context deadline exceeded (Client.Timeout '
+    "exceeded while awaiting headers)": "no_answer",
+    # A repository's name in Go's quoted URL decides nothing.
+    'Get "https://api.github.com/repos/o/schannel-notes": dial tcp 140.82.112.6:443: '
+    "connect: connection refused": "connect_refused",
     "read tcp 10.0.0.2:52000->140.82.112.6:443: read: connection reset by peer": (
         "connection_reset"
     ),
     "HTTP 503: Service Unavailable (https://api.github.com/graphql)": "server_error",
     "HTTP 401: Bad credentials (https://api.github.com/graphql)": "auth_refused",
     "HTTP 403: API rate limit exceeded for user ID 1.": "rate_limited",
+    "HTTP 403: You have exceeded a secondary rate limit. Please wait a few minutes "
+    "before you try again.": "rate_limited",
     "HTTP 403: Resource not accessible by integration": "forbidden",
     "HTTP 404: Not Found (https://api.github.com/repos/o/r)": "not_found",
     "To get started with GitHub CLI, please run:  gh auth login": "not_signed_in",
 }
 
 
-@pytest.mark.parametrize(("text", "cause"), list(GH_SAMPLES.items()))
+# curl's (Git's) forms that the order of the patterns decides.
+CURL_SAMPLES: dict[str, network_cause.NetworkCause] = {
+    "fatal: unable to access 'https://github.com/o/r/': Resolving timed out after 10000 "
+    "milliseconds": "dns_failed",
+    "fatal: unable to access 'https://github.com/o/r/': Failed to connect to github.com "
+    "port 443 after 75003 ms: Operation timed out": "connect_timeout",
+}
+
+
+@pytest.mark.parametrize(("text", "cause"), list({**GH_SAMPLES, **CURL_SAMPLES}.items()))
 def test_gh_errors_classify_to_their_cause(text: str, cause: str) -> None:
     assert network_cause.classify(text) == cause
+
+
+def test_gh_and_the_classifier_share_one_rate_limit_vocabulary() -> None:
+    secondary = b'{"message":"You have exceeded a secondary rate limit."}'
+    assert gh_module._mentions_rate_limit(secondary)  # pyright: ignore[reportPrivateUsage]
+    assert network_cause.mentions_rate_limit("API rate limit exceeded for user ID 1.")
+    assert not network_cause.mentions_rate_limit("moderate limits")
+
+
+def test_the_host_a_failure_names_is_read_and_github_s_are_told_apart() -> None:
+    assert network_cause.named_host(
+        "fatal: unable to access 'https://user:pw@github.com/o/r/': Could not resolve host"
+    ) == ("github.com")
+    assert network_cause.named_host("ssh: Could not resolve hostname gitlab.example: x") == (
+        "gitlab.example"
+    )
+    assert network_cause.named_host("Failed to connect to GitHub.com port 443") == "github.com"
+    assert network_cause.named_host("fatal: the remote end hung up") is None
+    assert network_cause.is_github_host("api.github.com")
+    assert network_cause.is_github_host("github.com")
+    assert not network_cause.is_github_host("notgithub.com")
+    assert not network_cause.is_github_host(None)
 
 
 def test_an_address_gh_failed_to_connect_to_is_read_from_its_error() -> None:
@@ -74,6 +122,9 @@ def test_an_address_gh_failed_to_connect_to_is_read_from_its_error() -> None:
         "2606:50c0:8000::154"
     )
     assert network_cause.failed_address("dial tcp: lookup api.github.com: no such host") is None
+    # A proxy's address is never taken for GitHub's.
+    proxy = 'Get "https://api.github.com/": proxyconnect tcp: dial tcp 10.0.0.1:3128: i/o timeout'
+    assert network_cause.failed_address(proxy) is None
     assert network_cause.http_status("HTTP 503: Service Unavailable") == 503
     assert network_cause.http_status("The requested URL returned error: 429") == 429
 
@@ -88,8 +139,14 @@ def test_every_cause_has_words_and_git_causes_have_a_state() -> None:
         assert classify_remote_failure(text) is not None, text
     assert network_cause.reason("server_error", status=503) == "GitHub answered HTTP 503"
     assert network_cause.reason("connect_timeout", address="20.172.24.160") == (
-        "Couldn't connect to GitHub (api.github.com at 20.172.24.160): the connection timed out"
+        "GitHub could not be reached because the connection to api.github.com at "
+        "20.172.24.160 timed out"
     )
+    # Each reads as the rest of a sentence a caller begins: no colon, and GitHub first.
+    for cause in network_cause.CAUSES:
+        words = network_cause.reason(cause)
+        assert ":" not in words, words
+        assert words.startswith("GitHub"), words
 
 
 # ── the probe ──────────────────────────────────────────────────────────────
@@ -154,8 +211,55 @@ def test_a_probe_is_off_in_the_suite_and_follows_a_proxy_without_its_credentials
         9,
         False,
     )
-    assert network_cause.control_target({}) == network_cause.CONTROL_TARGET
-    assert network_cause.control_target({"METABROWSER_NETWORK_PROBE_CONTROL": "off"}) is None
+
+
+@pytest.mark.parametrize(
+    ("environ", "via_proxy"),
+    [
+        # gh's Go client reads HTTPS_PROXY for an https request and ignores ALL_PROXY.
+        ({"ALL_PROXY": "socks5://proxy.example:1080"}, False),
+        ({"https_proxy": "http://proxy.example:3128"}, True),
+        # NO_PROXY exempts GitHub as Go reads it: *, the domain, a dotted suffix, a port.
+        ({"HTTPS_PROXY": "http://proxy.example:3128", "NO_PROXY": "*"}, False),
+        ({"HTTPS_PROXY": "http://proxy.example:3128", "NO_PROXY": "github.com"}, False),
+        ({"HTTPS_PROXY": "http://proxy.example:3128", "no_proxy": "x.org, .github.com"}, False),
+        ({"HTTPS_PROXY": "http://proxy.example:3128", "NO_PROXY": "api.github.com:443"}, False),
+        ({"HTTPS_PROXY": "http://proxy.example:3128", "NO_PROXY": "api.github.com:80"}, True),
+        ({"HTTPS_PROXY": "http://proxy.example:3128", "NO_PROXY": "notgithub.com"}, True),
+        ({"HTTPS_PROXY": "http://proxy.example:3128", "NO_PROXY": "10.0.0.0/8"}, True),
+    ],
+)
+def test_the_probe_takes_the_proxy_gh_takes(environ: dict[str, str], via_proxy: bool) -> None:
+    target = network_cause.probe_target(environ)
+    assert target is not None and target[2] is via_proxy
+
+
+def test_the_control_host_runs_only_on_macos_and_never_through_a_proxy() -> None:
+    darwin, linux = "darwin", "linux"
+    assert network_cause.control_target({}, platform=darwin) == network_cause.CONTROL_TARGET
+    assert network_cause.control_target({}, platform=linux) is None
+    assert network_cause.control_target({}, via_proxy=True, platform=darwin) is None
+    off = {"METABROWSER_NETWORK_PROBE_CONTROL": "off"}
+    assert network_cause.control_target(off, platform=darwin) is None
+    # A host the user names runs wherever they name it, but never past their proxy.
+    named = {"METABROWSER_NETWORK_PROBE_CONTROL": "example.org:80"}
+    assert network_cause.control_target(named, platform=linux) == ("example.org", 80)
+    assert network_cause.control_target(named, via_proxy=True, platform=linux) is None
+
+
+def test_a_probe_that_cannot_run_explains_nothing_and_never_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Review A of #620: this proxy's name raised UnicodeEncodeError out of the probe.
+    unusable = {"HTTPS_PROXY": "http://proxy..corp:3128"}
+    found = asyncio.run(network_cause.probe(unusable, timeout_s=0.5))
+    assert found is None or found.cause == "dns_failed"
+
+    async def broken(*_: Any, **__: Any) -> Any:
+        raise RuntimeError("unexpected")
+
+    monkeypatch.setattr(network_cause, "_probe", broken)
+    assert asyncio.run(network_cause.probe({"METABROWSER_NETWORK_PROBE": "127.0.0.1:9"})) is None
 
 
 def test_a_reachable_target_names_its_address_and_time(sink: event_log.EventLog) -> None:
@@ -164,7 +268,10 @@ def test_a_reachable_target_names_its_address_and_time(sink: event_log.EventLog)
         found = asyncio.run(network_cause.probe(env))
     assert found is not None and found.reachable
     assert [a.address for a in found.attempts] == ["127.0.0.1"]
-    assert found.headline().startswith("127.0.0.1 (127.0.0.1) accepted a connection in ")
+    assert found.headline().startswith(
+        "a fresh lookup of 127.0.0.1 gave 127.0.0.1, which accepted a connection in "
+    )
+    assert found.headline().endswith("; DNS answers vary, so gh may have used another address")
     (record,) = [r for r in _records(sink) if r["kind"] == "probe"]
     assert record["outcome"] == "ok" and record["attrs"]["verdict"] == "reachable"
 
@@ -181,8 +288,8 @@ def test_a_refused_target_with_a_reachable_control_blames_the_route_to_github(
         found = asyncio.run(network_cause.probe(env))
         assert found is not None and found.cause == "connect_refused"
         assert found.headline() == (
-            "Couldn't connect to GitHub (127.0.0.1 at 127.0.0.1): the connection was refused; "
-            "other sites are reachable"
+            "GitHub could not be reached because 127.0.0.1 at 127.0.0.1 refused the "
+            "connection; other sites are reachable"
         )
         # Within the interval a later failure reuses the result: one probe, one record.
         again = asyncio.run(network_cause.probe(env))
@@ -209,7 +316,57 @@ def test_a_connection_that_never_opens_is_a_timeout_naming_the_address(
     assert found is not None and found.cause == "connect_timeout"
     assert found.attempts[0].result == "timeout"
     assert found.headline() == (
-        "Couldn't connect to GitHub (127.0.0.1 at 127.0.0.1): the connection timed out after 0.2 s"
+        "GitHub could not be reached because the connection to 127.0.0.1 at 127.0.0.1 "
+        "timed out after 0.2 s"
+    )
+
+
+def test_the_target_and_the_control_share_one_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def never(*_: Any, **__: Any) -> Any:
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr(asyncio, "open_connection", never)
+    env = {
+        "METABROWSER_NETWORK_PROBE": "127.0.0.1:443",
+        "METABROWSER_NETWORK_PROBE_CONTROL": "127.0.0.1:80",
+    }
+    started = time.monotonic()
+    found = asyncio.run(network_cause.probe(env, timeout_s=0.9))
+    elapsed = time.monotonic() - started
+    assert found is not None and found.control is not None
+    assert found.control.verdict == "connect_timeout"
+    # The control keeps a third of the time; the whole probe ends at the one deadline.
+    assert found.timeout_s == 0.6
+    assert elapsed < 0.9 + 0.4
+
+
+def test_a_reachable_probe_names_what_failed_and_does_not_conclude() -> None:
+    found = network_cause.ProbeResult(
+        host="api.github.com",
+        port=443,
+        via_proxy=False,
+        verdict="reachable",
+        dns_ms=6.0,
+        attempts=(
+            network_cause.Attempt("140.82.114.5", "connected", 38.2),
+            network_cause.Attempt("20.172.24.160", "timeout", 2000.0),
+        ),
+        timeout_s=2.0,
+        control=None,
+        at=time.monotonic(),
+        at_wall="2026-11-19T21:35:00Z",
+    )
+    assert found.headline(failed_lately=("20.172.24.160", "172.182.252.137")) == (
+        "a fresh lookup of api.github.com gave 140.82.114.5, which accepted a connection in "
+        "38 ms (20.172.24.160 timed out); DNS answers vary, so gh may have used another "
+        "address, and 172.182.252.137 could not be reached in the last hour"
+    )
+    through_proxy = replace(
+        found, host="proxy.corp", port=3128, via_proxy=True, verdict="connect_refused"
+    )
+    assert through_proxy.headline() == (
+        "GitHub could not be reached because the proxy at proxy.corp (20.172.24.160) "
+        "refused the connection"
     )
 
 
@@ -224,7 +381,9 @@ def test_a_name_that_does_not_resolve_is_dns(monkeypatch: pytest.MonkeyPatch) ->
     }
     found = asyncio.run(network_cause.probe(env))
     assert found is not None and found.cause == "dns_failed"
-    assert found.headline() == "Couldn't reach GitHub: api.github.example did not resolve (DNS)"
+    assert found.headline() == (
+        "GitHub could not be reached because api.github.example did not resolve (DNS)"
+    )
 
 
 # ── gh, with a stand-in ────────────────────────────────────────────────────
@@ -262,7 +421,7 @@ def test_a_gh_that_never_answers_says_what_the_probe_found(
     failure = asyncio.run(scenario())
     assert failure.state == "network_error" and failure.cause == "connect_refused"
     assert str(failure) == (
-        "Couldn't connect to GitHub (127.0.0.1 at 127.0.0.1): the connection was refused; "
+        "GitHub could not be reached because 127.0.0.1 at 127.0.0.1 refused the connection; "
         "gh gave up after 0.5 s"
     )
     records = _records(sink)
@@ -284,7 +443,10 @@ def test_a_slow_gh_on_a_working_network_says_so(
         with pytest.raises(gh_module.GhError) as failed:
             asyncio.run(gh_module.gh_active_account(timeout_s=0.5))
     message = str(failed.value)
-    assert message.startswith("gh did not answer within 0.5 s, although 127.0.0.1 (127.0.0.1)")
+    assert message.startswith(
+        "gh did not answer within 0.5 s; a fresh lookup of 127.0.0.1 gave 127.0.0.1, which "
+        "accepted a connection in "
+    )
     assert failed.value.cause == "no_answer"
 
 
@@ -296,33 +458,40 @@ def test_a_slow_gh_on_a_working_network_says_so(
             'Post "https://api.github.com/graphql": dial tcp 172.182.252.137:443: i/o timeout',
             "network_error",
             "connect_timeout",
-            "Couldn't connect to GitHub (api.github.com at 172.182.252.137): "
-            "the connection timed out",
+            "GitHub could not be reached because the connection to api.github.com at "
+            "172.182.252.137 timed out",
         ),
         (
             "dial tcp: lookup api.github.com: no such host",
             "network_error",
             "dns_failed",
-            "Couldn't reach GitHub: api.github.com did not resolve (DNS)",
+            "GitHub could not be reached because api.github.com did not resolve (DNS)",
+        ),
+        (
+            "error connecting to api.github.com",
+            "network_error",
+            "dns_failed",
+            "GitHub could not be reached because api.github.com did not resolve (DNS)",
         ),
         (
             "dial tcp 140.82.112.6:443: connect: connection refused",
             "network_error",
             "connect_refused",
-            "Couldn't connect to GitHub (api.github.com at 140.82.112.6): "
-            "the connection was refused",
+            "GitHub could not be reached because api.github.com at 140.82.112.6 refused the "
+            "connection",
         ),
         (
             "tls: failed to verify certificate: x509: certificate signed by unknown authority",
             "network_error",
             "tls_failed",
-            "Couldn't reach GitHub: the secure connection (TLS) to api.github.com failed",
+            "GitHub could not be reached because the secure connection (TLS) to "
+            "api.github.com failed",
         ),
         (
             "proxyconnect tcp: dial tcp 10.0.0.1:3128: connect: connection refused",
             "network_error",
             "proxy_failed",
-            "Couldn't reach GitHub through the proxy",
+            "GitHub could not be reached because the connection through the proxy failed",
         ),
         ("HTTP 502: Bad Gateway", "network_error", "server_error", "GitHub answered HTTP 502"),
         ("HTTP 401: Bad credentials", "not_logged_in", "auth_refused", "gh auth login"),
@@ -397,7 +566,41 @@ def test_repeated_failures_say_how_many_in_the_last_hour(
     first, second = asyncio.run(twice())
     assert "in the last hour" not in first
     assert second.endswith("(2 calls could not reach GitHub in the last hour)")
-    assert event_log.recent_failures(causes=network_cause.TRANSPORT_CAUSES) == 2
+    github = network_cause.is_github_host
+    assert event_log.recent_failures(causes=network_cause.TRANSPORT_CAUSES, host=github) == 2
+    # A failure to reach another host is not GitHub's.
+    with event_log.span("subprocess", "git fetch") as span:
+        span.end("failed", cause="connect_timeout", host="gitlab.example")
+    assert event_log.recent_failures(causes=network_cause.TRANSPORT_CAUSES, host=github) == 2
+    assert event_log.recent_failed_addresses(host=github) == ("20.172.24.160",)
+
+
+def test_a_stale_failed_probe_does_not_override_a_more_specific_gh_error(
+    sink: event_log.EventLog,
+) -> None:
+    refused = network_cause.ProbeResult(
+        host="api.github.com",
+        port=443,
+        via_proxy=False,
+        verdict="connect_refused",
+        dns_ms=6.0,
+        attempts=(network_cause.Attempt("140.82.112.6", "refused", 3.0),),
+        timeout_s=3.0,
+        control=None,
+        at=time.monotonic(),
+        at_wall="2026-11-19T21:35:00Z",
+    )
+    network_cause.remember_probe(refused)
+    env = {"METABROWSER_NETWORK_PROBE": "api.github.com:443"}
+    with pytest.MonkeyPatch.context() as patch:
+        for name, value in env.items():
+            patch.setenv(name, value)
+        tls = gh_module._unreachable("tls_failed")  # pyright: ignore[reportPrivateUsage]
+        vague = gh_module._unreachable("connect_failed")  # pyright: ignore[reportPrivateUsage]
+        same = gh_module._unreachable("connect_refused")  # pyright: ignore[reportPrivateUsage]
+    assert tls.cause == "tls_failed" and "TLS" in str(tls)
+    assert vague.cause == "connect_refused" and str(vague) == refused.headline()
+    assert same.cause == "connect_refused" and str(same) == refused.headline()
 
 
 def test_a_git_fetch_that_cannot_connect_records_its_cause(
@@ -424,7 +627,7 @@ def test_failures_are_summarized_by_cause_with_links_to_their_records(
     with event_log.span("subprocess", "gh api") as span:
         span.end("timeout", cause="no_answer")
     with event_log.span("job", "pull_files_refresh.refresh") as span:
-        span.note_failure("network_error", "Couldn't connect to GitHub")
+        span.note_failure("network_error", "GitHub could not be reached")
         span.set(cause="connect_timeout")
     with event_log.span("request", "GET /api/plugin/github/pull"):
         pass
@@ -443,7 +646,7 @@ def test_failures_are_summarized_by_cause_with_links_to_their_records(
         2,
         {"subprocess": 1, "job": 1},
     )
-    assert first["message"] == "Couldn't connect to GitHub"
+    assert first["message"] == "GitHub could not be reached"
     assert first["examples"][0]["details"].startswith(f"/api/event-log?file={sink.path.name}&span=")
     assert (second["cause"], second["count"]) == ("no_answer", 1)
     only_processes = summarize_failures(

@@ -1359,11 +1359,15 @@ async def run_git(
             remote = "unable to access" in exc.stderr_summary or "remote:" in exc.stderr_summary
             if cause not in network_cause.TRANSPORT_CAUSES and not remote:
                 cause = None
+            # The host it failed to reach, so a count of GitHub's failures counts only
+            # those (network_cause.is_github_host); only the host, never the URL.
+            host = network_cause.named_host(exc.stderr_summary) if cause is not None else None
             span.end(
                 "failed",
                 exit=exc.returncode,
                 stderr_tail=event_log.redact(exc.stderr_summary),
                 **({"cause": cause} if cause is not None else {}),
+                **({"host": host} if host is not None else {}),
             )
             raise
 

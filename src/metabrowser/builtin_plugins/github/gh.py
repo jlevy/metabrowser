@@ -99,7 +99,8 @@ type GhFailureState = Literal[
 
 # gh's own text, captured 2026-09-23 from gh 2.98.0: a logged-out ``gh api`` exits 4
 # with "To get started with GitHub CLI, please run:  gh auth login", an offline one with
-# "error connecting to api.github.com", and a gh without ``auth status --json`` answers
+# "error connecting to api.github.com" (which gh prints only for a name that did not
+# resolve), and a gh without ``auth status --json`` answers
 # "unknown flag: --json". Only ever matched, never shown: the cause it names
 # (metabrowser.network_cause.classify, shared with Git's errors) is what a message says.
 # A gh that gives up, or cannot connect, is followed by a probe of the network
@@ -302,7 +303,11 @@ async def _run(
         with event_log.span(
             "subprocess",
             f"gh {next((arg for arg in args if not arg.startswith('-')), '')}".rstrip(),
-            attrs={"args": loggable_args(args), "timeout_s": timeout_s},
+            attrs={
+                "args": loggable_args(args),
+                "timeout_s": timeout_s,
+                "host": network_cause.GITHUB_API_HOST,
+            },
         ) as span:
             completed = await _run_in(exe, args, timeout_s=timeout_s, max_bytes=max_bytes, cwd=cwd)
             span.set(exit=completed.returncode, stdout_bytes=len(completed.stdout))
@@ -330,19 +335,26 @@ async def _run(
 async def _explained_silence(silence: GhError, *, timeout_s: float) -> GhError:
     """*silence*, a gh that gave up with no answer, with what a probe found.
 
-    When the network could not reach GitHub either, that is the message: "Couldn't
-    connect to GitHub (api.github.com at 20.172.24.160): the connection timed out after
-    3 s; gh gave up after 15 s". When it could, the network works and GitHub or gh was
-    slow: "gh did not answer within 15 s, although api.github.com (140.82.112.6)
-    accepted a connection in 38 ms".
+    When the network could not reach GitHub either, that is the message: "GitHub could
+    not be reached because the connection to api.github.com at 20.172.24.160 timed out
+    after 2 s; gh gave up after 15 s". When it could, the message says only what this
+    lookup found, since DNS answers vary and gh may have dialed another address: "gh did
+    not answer within 15 s; a fresh lookup of api.github.com gave 140.82.112.6, which
+    accepted a connection in 38 ms; DNS answers vary, so gh may have used another
+    address", with the addresses that failed lately.
     """
 
     found = await network_cause.probe()
     if found is None:
         failure = silence
     elif found.reachable:
+        lately = event_log.recent_failed_addresses(
+            causes=network_cause.TRANSPORT_CAUSES, host=network_cause.is_github_host
+        )
         failure = GhError(
-            f"{silence}, although {found.headline()}", state="network_error", cause=silence.cause
+            f"{silence}; {found.headline(failed_lately=lately)}",
+            state="network_error",
+            cause=silence.cause,
         )
     else:
         failure = GhError(
@@ -355,9 +367,12 @@ async def _explained_silence(silence: GhError, *, timeout_s: float) -> GhError:
 
 def _counted(failure: GhError) -> GhError:
     """*failure* with how many gh and git calls failed to reach GitHub in the last hour,
-    when this is not the first: a pattern, not a blip."""
+    when this is not the first: a pattern, not a blip. Only calls to GitHub's hosts
+    count: a fetch from another origin that failed says nothing about GitHub."""
 
-    count = event_log.recent_failures(causes=network_cause.TRANSPORT_CAUSES)
+    count = event_log.recent_failures(
+        causes=network_cause.TRANSPORT_CAUSES, host=network_cause.is_github_host
+    )
     if count < 2:
         return failure
     renamed = GhError(
@@ -377,15 +392,28 @@ def _noted(failure: GhError) -> GhError:
     return failure
 
 
-def _unreachable(cause: network_cause.NetworkCause, diagnostic: str = "") -> GhError:
-    """A gh that could not reach GitHub, in the words of the latest probe if it failed.
+# The causes whose gh text says little: the probe's finding, when it failed, says more.
+_VAGUE_CAUSES: Final[frozenset[network_cause.NetworkCause]] = frozenset(
+    {"connect_failed", "no_answer", "stalled"}
+)
 
-    Without one, gh's own error names the cause and, for a connection, the address:
-    gh 2.98.0 prints ``dial tcp 172.182.252.137:443: i/o timeout``.
+
+def _unreachable(cause: network_cause.NetworkCause, diagnostic: str = "") -> GhError:
+    """A gh that could not reach GitHub, in the words of the latest probe if it failed
+    and gh's own text says no more than it, or the same.
+
+    Otherwise gh's own error names the cause and, for a connection, the address: gh
+    2.98.0 prints ``dial tcp 172.182.252.137:443: i/o timeout``. A probe from up to
+    :data:`~metabrowser.network_cause.PROBE_INTERVAL_S` ago does not override a cause gh
+    reported now, such as a TLS failure.
     """
 
     found = network_cause.recent_probe()
-    if found is not None and not found.reachable:
+    if (
+        found is not None
+        and not found.reachable
+        and (cause in _VAGUE_CAUSES or found.cause == cause)
+    ):
         return _noted(_counted(GhError(found.headline(), state="network_error", cause=found.cause)))
     address = network_cause.failed_address(diagnostic) if diagnostic else None
     message = network_cause.reason(cause, address=address)
@@ -624,7 +652,7 @@ def _mentions_rate_limit(body: bytes) -> bool:
     except ValueError:
         return False
     message = payload.get("message") if isinstance(payload, dict) else None
-    return isinstance(message, str) and "rate limit" in message.lower()
+    return isinstance(message, str) and network_cause.mentions_rate_limit(message)
 
 
 def _refusal(response: GhResponse, *, now: datetime) -> GhError | None:

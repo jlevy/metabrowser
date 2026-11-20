@@ -30,7 +30,9 @@ default; ``until`` closes the window), across every segment written to since the
 grouped by cause: what each was, how many, which work, when first and last, the latest
 message, and links to the records. ``probe`` is the latest connectivity probe that
 failed (:func:`metabrowser.network_cause.probe`). ``kind`` limits the count to those
-kinds; by default a failed ``gh`` call and the job it failed counts twice, once each.
+kinds; by default one failure is counted once for each span that records it: a ``gh``
+call that gave up, the probe that explained it, and the job it failed are three, so
+``kind=subprocess`` counts calls.
 """
 
 from __future__ import annotations

@@ -202,23 +202,27 @@ The record keeps them, redacted: the process’s stderr tail, and GitHub’s `me
 
 A `gh` that times out, or cannot connect, is followed by a connectivity probe
 (`network_cause.probe`): DNS for `api.github.com`, then a TCP connect to each address it
-returned (up to `PROBE_ADDRESSES`), through the proxy `gh` would use when one is set,
-within `PROBE_TIMEOUT_S`, at most once per `PROBE_INTERVAL_S`, recorded as a `probe`
-span with every address and how its connection ended.
-When none connects, one connection to a host outside GitHub (`CONTROL_TARGET`, the host
-macOS’s own captive-portal check connects to) tells “GitHub unreachable from this
-network” from “this network is down”.
+returned (up to `PROBE_ADDRESSES`), through the proxy `gh` would use (`HTTPS_PROXY`,
+less `NO_PROXY`), all within one `PROBE_TIMEOUT_S` deadline, at most once per
+`PROBE_INTERVAL_S`, recorded as a `probe` span with every address and how its connection
+ended.
+It is best effort: anything it cannot do is logged and explains nothing, and never
+replaces the failure it was asked about.
+On macOS, when none connects and no proxy is in the way, one connection to a host
+outside GitHub (`CONTROL_TARGET`, the host macOS’s own captive-portal check connects to)
+tells “GitHub unreachable from this network” from “this network is down”.
 On 2026-11-19 the owner’s machine showed why addresses matter: DNS answered
 `api.github.com` sometimes with an address the network could not connect to and
 sometimes with one it could, so the failures were intermittent.
 
 Messages lead with the cause, and name the address when one is known:
 
-- “Couldn’t connect to GitHub (api.github.com at 20.172.24.160): the connection timed
-  out after 3 s; other sites are reachable; gh gave up after 15 s”
-- “gh did not answer within 15 s, although api.github.com (140.82.114.5) accepted a
-  connection in 38 ms”: the network works, and `gh` or GitHub was slow.
-- “Couldn’t reach GitHub: api.github.com did not resolve (DNS)”
+- “GitHub could not be reached because the connection to api.github.com at 20.172.24.160
+  timed out after 2 s; other sites are reachable; gh gave up after 15 s”
+- “gh did not answer within 15 s; a fresh lookup of api.github.com gave 140.82.114.5,
+  which accepted a connection in 38 ms; DNS answers vary, so gh may have used another
+  address”: this lookup reached GitHub, which does not prove that `gh`’s did.
+- “GitHub could not be reached because api.github.com did not resolve (DNS)”
 - “GitHub answered HTTP 503”, and the rate limit as before, with its reset.
 
 A failure that is not the first in an hour says how many calls could not reach GitHub in
@@ -300,7 +304,12 @@ segment that tells the 2026-11-19 outage.
 - Is a connection to `captive.apple.com` the right control for the probe?
   It sends no request and goes only to a host macOS already checks, and only after
   GitHub could not be reached; `METABROWSER_NETWORK_PROBE_CONTROL` replaces or turns it
-  off.
+  off. Decided by the coordinator on 2026-11-19, after review A of #620, until the owner
+  says otherwise: the default control runs only on macOS, which connects to that host
+  itself, and never when the probe goes through a proxy, which a direct connection would
+  bypass. A host named in `METABROWSER_NETWORK_PROBE_CONTROL` runs on any platform, never
+  through a proxy. The host, its purpose, and both variables are named in the changelog
+  and in [GitHub Failures](../../../realtime-debugging.md#github-failures).
 
 ## References
 

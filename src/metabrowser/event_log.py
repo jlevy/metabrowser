@@ -449,29 +449,68 @@ def mark(kind: Kind, name: str, **attrs: Any) -> None:
         sink.write(sink.record("mark", kind, name, attrs=attrs))
 
 
+@dataclass(frozen=True, slots=True)
+class RecentFailure:
+    """A span that failed naming a cause, kept for :func:`recent_failures`: when
+    (monotonic), its kind and cause, and the ``host`` and ``address`` it recorded."""
+
+    at: float
+    kind: str
+    cause: str
+    host: str | None
+    address: str | None
+
+
+def _recent(
+    causes: Iterable[str] | None,
+    kind: str,
+    window_s: float,
+    host: Callable[[str | None], bool] | None,
+) -> list[RecentFailure]:
+    sink = _sink
+    if sink is None:
+        return []
+    wanted = None if causes is None else frozenset(causes)
+    since = time.monotonic() - window_s
+    return [
+        f
+        for f in sink.failures()
+        if f.at >= since
+        and f.kind == kind
+        and (wanted is None or f.cause in wanted)
+        and (host is None or host(f.host))
+    ]
+
+
 def recent_failures(
     *,
     causes: Iterable[str] | None = None,
     kind: str = "subprocess",
     window_s: float = RECENT_WINDOW_S,
+    host: Callable[[str | None], bool] | None = None,
 ) -> int:
-    """How many *kind* spans failed with one of *causes* in the last *window_s* seconds.
+    """How many *kind* spans failed with one of *causes* in the last *window_s* seconds,
+    counting only those whose recorded host *host* accepts, when it is given.
 
     The count is this process's, since its log opened; with no log open it is 0. The
     default counts processes, one per failed gh or git call, so a job and the call it
     failed on are not counted twice.
     """
 
-    sink = _sink
-    if sink is None:
-        return 0
-    wanted = None if causes is None else frozenset(causes)
-    since = time.monotonic() - window_s
-    return sum(
-        1
-        for at, failed_kind, cause in sink.failures()
-        if at >= since and failed_kind == kind and (wanted is None or cause in wanted)
-    )
+    return len(_recent(causes, kind, window_s, host))
+
+
+def recent_failed_addresses(
+    *,
+    causes: Iterable[str] | None = None,
+    kind: str = "subprocess",
+    window_s: float = RECENT_WINDOW_S,
+    host: Callable[[str | None], bool] | None = None,
+) -> tuple[str, ...]:
+    """The addresses the failures :func:`recent_failures` counts were to, newest first."""
+
+    found = [f.address for f in reversed(_recent(causes, kind, window_s, host)) if f.address]
+    return tuple(dict.fromkeys(found))
 
 
 @dataclass(frozen=True, slots=True)
@@ -535,9 +574,9 @@ class EventLog:
         self._watcher: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._ping: Span | None = None
-        # The recent failures that named a cause: (monotonic time, kind, cause), for
-        # recent_failures. Bounded, so a long outage costs a fixed amount of memory.
-        self._failures: collections.deque[tuple[float, str, str]] = collections.deque(
+        # The recent failures that named a cause, for recent_failures. Bounded, so a long
+        # outage costs a fixed amount of memory.
+        self._failures: collections.deque[RecentFailure] = collections.deque(
             maxlen=RECENT_FAILURES_KEPT
         )
         self._closed = False
@@ -768,7 +807,16 @@ class EventLog:
     def finish(self, span: Span, outcome: Outcome) -> None:
         cause = span.attrs.get("cause")
         if outcome != "ok" and isinstance(cause, str):
-            self._failures.append((time.monotonic(), span.kind, cause))
+            host, address = span.attrs.get("host"), span.attrs.get("address")
+            self._failures.append(
+                RecentFailure(
+                    time.monotonic(),
+                    span.kind,
+                    cause,
+                    host if isinstance(host, str) else None,
+                    address if isinstance(address, str) else None,
+                )
+            )
         with self._open_lock:
             self._open.pop(span.id, None)
         duration = span.age_ms()
@@ -786,8 +834,8 @@ class EventLog:
             )
         )
 
-    def failures(self) -> list[tuple[float, str, str]]:
-        """The failures kept for recent_failures: (monotonic time, kind, cause)."""
+    def failures(self) -> list[RecentFailure]:
+        """The failures kept for recent_failures, oldest first."""
 
         return list(self._failures)
 
@@ -1134,6 +1182,7 @@ __all__ = [
     "EventLog",
     "LogFile",
     "OpenSpan",
+    "RecentFailure",
     "Span",
     "begin",
     "close_log",
@@ -1148,6 +1197,7 @@ __all__ = [
     "list_files",
     "log_directory",
     "mark",
+    "recent_failed_addresses",
     "recent_failures",
     "open_log",
     "open_spans",

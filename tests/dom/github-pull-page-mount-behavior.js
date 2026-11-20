@@ -1872,7 +1872,7 @@ async function headerShape(page) {
   /** What each variant's status line says, on every tab, or null where it is not there. */
   const STATUS = {
     failed:
-      "The last refresh failed: Couldn't connect to GitHub (api.github.com): the connection timed out",
+      "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed out",
     "behind the head":
       "This page's code is f7c5a99, not the pull request's head 85fcb2f. Switch to the head",
     "a checkout at the head":

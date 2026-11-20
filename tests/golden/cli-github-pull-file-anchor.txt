@@ -242,7 +242,7 @@ selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 tab: files
 file: not resolved: pull request 11's changed files are not known offline: no list of them is cached, and no cached record names a comparison the store can list in full (files_unknown); opening the Changes tab
-pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: Couldn't reach GitHub: the connection to api.github.com failed (network_error); the pin is the default branch)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub could not be reached because api.github.com did not resolve (DNS) (network_error); the pin is the default branch)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---

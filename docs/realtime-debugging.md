@@ -102,22 +102,36 @@ resolve (`dns_failed`), a connection refused or timed out (`connect_refused`,
 `connect_timeout`), a TLS or proxy failure, an answer that stalled or never came
 (`stalled`, `no_answer`), or GitHub’s own refusal (`auth_refused`, `forbidden`,
 `not_found`, `rate_limited`, `server_error`). The refresh message on a page leads with
-it, as in “Couldn’t connect to GitHub (api.github.com at 20.172.24.160): the connection
-timed out”.
-GitHub’s own error text, and `gh`’s and Git’s, are never shown; the event log
-keeps them, redacted.
+it, as in “GitHub could not be reached because the connection to api.github.com at
+20.172.24.160 timed out”.
+GitHub’s own error text, and `gh`’s and Git’s, are never shown; the event log keeps
+them, redacted.
 
 A `gh` that gives up with no answer says nothing about why, so Metabrowser then probes
-the network itself (`network_cause.probe`): it resolves `api.github.com`, connects to
-each address DNS gave (through the proxy `gh` would use, when one is set), and, when
-none answers, connects once to a host outside GitHub (`CONTROL_TARGET`). The probe sends
-no request and no credential, runs at most once per `PROBE_INTERVAL_S`, and is a `probe`
-record in the log. Its finding says which it was: GitHub unreachable from this network
-("other sites are reachable"), the network down ("other sites are not reachable
-either"), or GitHub reachable and `gh` or GitHub slow ("gh did not answer within N s,
-although api.github.com accepted a connection in M ms"). `METABROWSER_NETWORK_PROBE=0`
-turns the probe off, and `METABROWSER_NETWORK_PROBE_CONTROL=0` turns off the outside
-host.
+the network itself (`network_cause.probe`): it resolves `api.github.com` and connects to
+each address DNS gave, through the proxy `gh` would use when `HTTPS_PROXY` is set and
+`NO_PROXY` does not exempt GitHub.
+The probe sends no request and no credential, finishes within `PROBE_TIMEOUT_S`, runs at
+most once per `PROBE_INTERVAL_S`, never replaces the failure it explains, and is a
+`probe` record in the log.
+Its finding says which it was: GitHub unreachable from this network, with the addresses
+that failed, or GitHub reachable from a fresh lookup (“gh did not answer within N s; a
+fresh lookup of api.github.com gave 140.82.114.5, which accepted a connection in M ms;
+DNS answers vary, so gh may have used another address”), with any address that failed in
+that lookup or in the last hour.
+A reachable probe is not proof that `gh`’s connection could open: DNS can answer the
+same name with a different address each time.
+
+On macOS, when no address of GitHub’s connects and no proxy is in the way, the probe
+opens one TCP connection to `captive.apple.com` port 80 (`CONTROL_TARGET`), the host
+macOS itself checks for a working network, and sends nothing on it.
+That tells “other sites are reachable” (GitHub, or the route to it, is the problem) from
+“other sites are not reachable either” (the network is down).
+It never runs on other platforms or through a proxy, and it shares the probe’s one
+deadline (`CONTROL_TIMEOUT_S` of it).
+`METABROWSER_NETWORK_PROBE_CONTROL=0` turns it off and `HOST:PORT` names another host,
+which then runs on any platform; `METABROWSER_NETWORK_PROBE=0` turns the whole probe
+off.
 
 To see what has been failing, and how often:
 

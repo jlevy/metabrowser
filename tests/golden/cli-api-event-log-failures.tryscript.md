@@ -65,7 +65,7 @@ status: 200
       },
       "first": "2026-11-19T21:40:32.322Z",
       "last": "2026-11-19T21:41:10.502Z",
-      "message": "Couldn't connect to GitHub (api.github.com at 20.172.24.160): the connection timed out after 3 s; other sites are reachable",
+      "message": "GitHub could not be reached because the connection to api.github.com at 20.172.24.160 timed out after 2 s; other sites are reachable",
       "addresses": [
         "20.172.24.160"
       ],
@@ -99,7 +99,7 @@ status: 200
           "kind": "probe",
           "name": "probe api.github.com:443",
           "outcome": "failed",
-          "dur_ms": 3006.9,
+          "dur_ms": 2031.2,
           "address": null,
           "details": "/api/event-log?file=events-20261119T213500Z-p5151-000.jsonl&span=14"
         }
@@ -119,7 +119,7 @@ status: 200
       },
       "first": "2026-11-19T21:42:20.880Z",
       "last": "2026-11-19T21:42:20.991Z",
-      "message": "gh did not answer within 15 s, although api.github.com (140.82.114.5) accepted a connection in 38 ms",
+      "message": "gh did not answer within 15 s; a fresh lookup of api.github.com gave 140.82.114.5, which accepted a connection in 38 ms; DNS answers vary, so gh may have used another address, and 20.172.24.160 could not be reached in the last hour",
       "addresses": [],
       "examples": [
         {
@@ -188,7 +188,7 @@ status: 200
       {
         "address": "20.172.24.160",
         "result": "timeout",
-        "ms": 3000.4
+        "ms": 1993.0
       }
     ],
     "probed_at": "2026-11-19T21:40:35Z",
@@ -197,7 +197,7 @@ status: 200
       "verdict": "reachable"
     },
     "cause": "connect_timeout",
-    "message": "Couldn't connect to GitHub (api.github.com at 20.172.24.160): the connection timed out after 3 s; other sites are reachable"
+    "message": "GitHub could not be reached because the connection to api.github.com at 20.172.24.160 timed out after 2 s; other sites are reachable"
   }
 }
 ? 0
@@ -308,7 +308,7 @@ status: 200
       {
         "address": "20.172.24.160",
         "result": "timeout",
-        "ms": 3000.4
+        "ms": 1993.0
       }
     ],
     "probed_at": "2026-11-19T21:40:35Z",
@@ -317,7 +317,7 @@ status: 200
       "verdict": "reachable"
     },
     "cause": "connect_timeout",
-    "message": "Couldn't connect to GitHub (api.github.com at 20.172.24.160): the connection timed out after 3 s; other sites are reachable"
+    "message": "GitHub could not be reached because the connection to api.github.com at 20.172.24.160 timed out after 2 s; other sites are reachable"
   }
 }
 ? 0
@@ -356,7 +356,7 @@ status: 200
       },
       "first": "2026-11-19T21:40:35.336Z",
       "last": "2026-11-19T21:40:35.336Z",
-      "message": "Couldn't connect to GitHub (api.github.com at 20.172.24.160): the connection timed out after 3 s; other sites are reachable",
+      "message": "GitHub could not be reached because the connection to api.github.com at 20.172.24.160 timed out after 2 s; other sites are reachable",
       "addresses": [],
       "examples": [
         {
@@ -386,7 +386,7 @@ status: 200
       {
         "address": "20.172.24.160",
         "result": "timeout",
-        "ms": 3000.4
+        "ms": 1993.0
       }
     ],
     "probed_at": "2026-11-19T21:40:35Z",
@@ -395,7 +395,7 @@ status: 200
       "verdict": "reachable"
     },
     "cause": "connect_timeout",
-    "message": "Couldn't connect to GitHub (api.github.com at 20.172.24.160): the connection timed out after 3 s; other sites are reachable"
+    "message": "GitHub could not be reached because the connection to api.github.com at 20.172.24.160 timed out after 2 s; other sites are reachable"
   }
 }
 ? 0
@@ -421,7 +421,7 @@ status: 200
   "files": [
     {
       "name": "events-20261119T213500Z-p5151-000.jsonl",
-      "bytes": 4041,
+      "bytes": 4190,
       "modified": "2026-11-19T21:44:00Z",
       "pid": 5151,
       "started": "20261119T213500Z",
@@ -487,7 +487,7 @@ status: 200
         "queued_ms": 0.2,
         "cause": "connect_timeout",
         "failure": "network_error",
-        "failure_message": "Couldn't connect to GitHub (api.github.com at 20.172.24.160): the connection timed out after 3 s; other sites are reachable"
+        "failure_message": "GitHub could not be reached because the connection to api.github.com at 20.172.24.160 timed out after 2 s; other sites are reachable"
       }
     },
     {
@@ -498,7 +498,7 @@ status: 200
       "name": "probe api.github.com:443",
       "span": 14,
       "parent": 12,
-      "dur_ms": 3006.9,
+      "dur_ms": 2031.2,
       "outcome": "failed",
       "pid": 5151,
       "attrs": {
@@ -511,7 +511,7 @@ status: 200
           {
             "address": "20.172.24.160",
             "result": "timeout",
-            "ms": 3000.4
+            "ms": 1993.0
           }
         ],
         "probed_at": "2026-11-19T21:40:35Z",
@@ -520,7 +520,7 @@ status: 200
           "verdict": "reachable"
         },
         "cause": "connect_timeout",
-        "message": "Couldn't connect to GitHub (api.github.com at 20.172.24.160): the connection timed out after 3 s; other sites are reachable"
+        "message": "GitHub could not be reached because the connection to api.github.com at 20.172.24.160 timed out after 2 s; other sites are reachable"
       }
     },
     {
