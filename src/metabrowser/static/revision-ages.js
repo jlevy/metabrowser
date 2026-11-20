@@ -7,8 +7,10 @@
 // response says `dating` it asks /api/index/progress, which carries the same state, every
 // `GIT_AGES_POLL_MS`; when the answer lands, or the read fails, it asks the shell to draw
 // again, once, so the rows that had no age get one without the reader doing anything. It also
-// says in the Files band what the state is when it is not "all dated": reading, failed, or
-// some files that could not be dated.
+// says, in the line that counts the files a filter keeps, what the state is when it is not
+// "all dated": reading, failed, or some files that could not be dated. That line already
+// stands there, so what it says adds a clause and moves nothing; a note of its own would
+// shift the tree when it came and went.
 //
 // The shell loads this on demand (the `revision-ages` bundle), the first time a response says
 // anything but `ready`: a page whose Git has no file ages never gets an `ages` key, and one
@@ -167,7 +169,7 @@
 
   /**
    * The sentence about the state of a revision's ages, or null when they are all there: what
-   * the Files band says while they are read, when the read failed, and when some files could
+   * a filtered count says while they are read, when the read failed, and when some files could
    * not be dated (a shallow clone, or a read that ran out of time).
    *
    * @param {{state?: string, reason?: string, files?: number, dated?: number,
@@ -202,30 +204,29 @@
     return `${count.toLocaleString()} ${count === 1 ? "file" : "files"} could not be dated (${why}${bound}).`;
   }
 
-  // The note's own line in the Files band, which the totals and their remarks stand in and
-  // which a redraw of the tree leaves as it is.
+  /** @type {{ages: Parameters<typeof noteText>[0], undated: number | null | undefined} | null} */
+  let last = null;
+
   /**
-   * @param {Parameters<typeof noteText>[0]} ages
-   * @param {number | null | undefined} undated
+   * Put the sentence about the state of the ages into the line that counts the files a filter
+   * keeps, as one more item of it, when that line is there. The shell calls this each time it
+   * draws the line, and this module calls it when it learns a state, so the line has the
+   * clause whichever came first.
    */
-  function showNote(ages, undated) {
-    const band = global.document?.getElementById("nav-metadata-files");
-    if (!band) {
+  function annotate() {
+    const line = global.document?.querySelector(".tree-summary-filtered");
+    if (!line) {
       return;
     }
-    const text = noteText(ages, undated);
-    let note = band.querySelector(".file-ages-note");
+    line.querySelector(".file-ages-note")?.remove();
+    const text = last ? noteText(last.ages, last.undated) : null;
     if (text === null) {
-      note?.remove();
       return;
     }
-    if (!note) {
-      note = global.document.createElement("div");
-      note.className = "file-ages-note nav-metadata nav-metadata-note";
-      note.setAttribute("role", "status");
-      band.append(note);
-    }
+    const note = global.document.createElement("span");
+    note.className = "file-ages-note";
     note.textContent = text;
+    line.append(note);
   }
 
   /** @type {ReturnType<typeof createController> | null} */
@@ -248,15 +249,16 @@
     });
     shared.observe(ages);
     if (ages) {
-      showNote(ages, undated);
+      last = { ages, undated };
+      annotate();
     }
   }
 
   global.MetabrowserRevisionAges = Object.freeze({
+    annotate,
     createController,
     mount,
     noteText,
-    showNote,
     track,
   });
 })(window);

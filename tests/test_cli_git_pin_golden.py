@@ -716,7 +716,7 @@ def test_golden_pin_age_groups(
     assert [(group["id"], group["files"]) for group in grouped["groups"]] == [
         ("24h", 1),
         ("older", 6),
-    ]
+    ], (grouped["ages"], [(group["id"], group["label"]) for group in grouped["groups"]])
     assert windowed["filtered"]["files"] == 1
     assert [row["name"] for row in recent["entries_flat"]] == ["new.py"]
     assert recent["entries_flat"][0]["mtime"] == AGES_TIP

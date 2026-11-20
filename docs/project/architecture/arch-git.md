@@ -488,8 +488,10 @@ swap(<<'OLD', <<'NEW', “the page”);
   page draws the tree, grouped tree, Recent list and the open file again, once, and
   drops the folders it had read.
   The page never waits: until then every file is undated, the Modified within counts
-  read “…”, a Recent list says it is reading, and a line in the Files band says so; it
-  also says why a read failed and how many files could not be dated.
+  read “…”, a Recent list says it is reading, and the line that counts the files a
+  filter keeps adds a clause saying so (an item of a line that is already there, so the
+  tree does not move; `annotate`); it also says why a read failed and how many files
+  could not be dated, and the Undated group’s name says which state it is in.
   A revision whose Git cannot date its files has `recency` false, so these answer
   `unsupported_for_subject` and the page does not offer them
   (`GitRevisionSubject.capabilities`, `METABROWSER_FILE_AGES`).

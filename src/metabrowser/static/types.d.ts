@@ -1096,6 +1096,7 @@ type MetabrowserRevisionAgesController = Readonly<{
 }>;
 
 type MetabrowserRevisionAgesRuntime = Readonly<{
+  annotate(): void;
   createController(deps: {
     fetchState: () => Promise<MetabrowserRevisionAgesState | null>;
     landed: (state: MetabrowserRevisionAgesState) => void;
@@ -1114,7 +1115,6 @@ type MetabrowserRevisionAgesRuntime = Readonly<{
     ages: MetabrowserRevisionAgesStatus | null | undefined,
     undated?: number | null,
   ): string | null;
-  showNote(ages: MetabrowserRevisionAgesStatus | null | undefined, undated?: number | null): void;
   track(ages: MetabrowserRevisionAgesStatus | null | undefined, undated?: number | null): void;
 }>;
 

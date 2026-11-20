@@ -4125,9 +4125,10 @@ it resets them all, Show ignored back on, and keeps the grouping.
   the rest are not in either.
   The page opens at once and draws them again when the ages land.
   Until then the Modified within counts read “…”, a Recent list says it is reading, and
-  a line in the Files band says so; it says too why a read failed, and how many files
-  could not be dated when some could not (a shallow clone, or a read that ran out of
-  time).
+  the line that counts the files a filter keeps says so, as one more item of that line,
+  which moves nothing; it says too why a read failed, and how many files could not be
+  dated when some could not (a shallow clone, or a read that ran out of time), and the
+  Undated group is named for each state.
 - **Groups.** Age groups are disjoint bands cut from Modified within’s windows: Live,
   then Past hour, Past day, Past week, and Past month, each holding only what the
   windows before it do not, then Older.

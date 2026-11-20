@@ -124,7 +124,7 @@ def test_a_read_still_running_leaves_every_file_undated(
                 assert grouped["ages"]["state"] == "dating"
                 assert "recency_tallies" not in grouped
                 assert [group["id"] for group in grouped["groups"]] == [UNDATED_GROUP_ID]
-                assert grouped["groups"][0]["label"] == "Undated"
+                assert grouped["groups"][0]["label"] == "Undated, reading file ages\u2026"
                 assert grouped["groups"][0]["files"] == len(history.names(tip))
                 windowed = (await client.get("/api/tree?recency=30d&depth=1")).json()
                 assert windowed["filtered"]["files"] == 0
@@ -340,3 +340,33 @@ def test_a_command_waits_for_the_ages_only_where_it_prints_them() -> None:
     assert _waits_for_ages("/api/file?path=a&ages=1")
     for route in ("/api/file?path=a", "/api/file?path=a&ages=0", "/api/rollup", "/api/catalog"):
         assert not _waits_for_ages(route), route
+
+
+def test_a_failed_read_leaves_every_file_in_undated_and_the_group_says_so(
+    tmp_path: Path, file_ages_git: tuple[int, int, int], now: float, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.git import file_ages_service as service_module
+
+    history = History(tmp_path / "repo")
+    tip = build_branchy(history)
+
+    async def breaks(**_kwargs: object) -> None:
+        raise RuntimeError("git is gone")
+
+    monkeypatch.setattr(service_module, "date_revision", breaks)
+
+    async def run() -> None:
+        async with pinned_client(history.root / ".git", tip) as (client, subject):
+            await _settled(client, subject)
+            grouped = (await client.get("/api/tree?group_by=age&depth=1")).json()
+            assert grouped["ages"]["state"] == "failed"
+            assert grouped["ages"]["reason"] == "git_failed"
+            assert "recency_tallies" not in grouped
+            assert [(group["id"], group["label"]) for group in grouped["groups"]] == [
+                (UNDATED_GROUP_ID, "Undated, file ages could not be read")
+            ]
+            assert grouped["groups"][0]["files"] == len(history.names(tip))
+            recent = (await client.get("/api/recent?window=7d")).json()
+            assert recent["entries_flat"] == [] and recent["ages"]["state"] == "failed"
+
+    asyncio.run(run())

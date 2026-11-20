@@ -4,8 +4,8 @@
 // it, so a tree, a grouped tree, or a Recent list asked for early says `ages.state:
 // "dating"` with every file undated. static/revision-ages.js watches for that state, asks
 // /api/index/progress until it changes, and asks the shell to draw once more when it does
-// (docs/project/architecture/arch-git.md, "File Ages"). It also says in the Files band what
-// the state is when it is not all dated.
+// (docs/project/architecture/arch-git.md, "File Ages"). It also says what the state is when it
+// is not all dated, in the line that counts a filter's files.
 //
 // This runs the real module under fake timers and a scripted /api/index/progress, in
 // three parts: the controller, which owns every decision, with the state each poll
@@ -141,25 +141,17 @@ function appPage() {
   const listeners = {};
   const timers = new Map();
   let nextId = 1;
-  const note = {
-    className: "",
-    textContent: "",
-    attributes: {},
-    setAttribute(name, value) {
-      this.attributes[name] = value;
-    },
-    remove() {
-      band.children = band.children.filter((child) => child !== note);
-    },
-  };
-  const band = {
+  // The line that counts the files a filter keeps: there only while a filter is set.
+  const line = {
+    present: false,
     children: [],
     querySelector(selector) {
-      return selector === ".file-ages-note" ? (band.children[0] ?? null) : null;
+      return selector === ".file-ages-note" ? (line.children[0] ?? null) : null;
     },
     append(child) {
-      band.children.push(child);
+      line.children.push(child);
     },
+    texts: () => line.children.map((child) => child.textContent),
   };
   const context = vm.createContext({
     __events: events,
@@ -169,8 +161,15 @@ function appPage() {
     ],
     filterState: { get: () => ({ showIgnored: true }) },
     document: {
-      getElementById: (id) => (id === "nav-metadata-files" ? band : null),
-      createElement: () => note,
+      querySelector: (selector) =>
+        selector === ".tree-summary-filtered" && line.present ? line : null,
+      createElement: () => ({
+        className: "",
+        textContent: "",
+        remove() {
+          line.children = line.children.filter((child) => child !== this);
+        },
+      }),
     },
     CustomEvent: class {
       constructor(type, init) {
@@ -243,8 +242,7 @@ ${liftLine('window.addEventListener("metabrowser:file-ages-landed", redrawForFil
   return {
     context,
     events,
-    band,
-    note,
+    line,
     counts: () => context.filterRecencyOptions().map((option) => option.count),
     drain: () => new Promise((resolve) => setImmediate(resolve)),
     async fire() {
@@ -405,9 +403,9 @@ ${liftLine('window.addEventListener("metabrowser:file-ages-landed", redrawForFil
     watching: mounted.isWatching(),
   };
 
-  // The words the Files band says about each state.
+  // The words the line that counts a filter's files adds for each state.
   const notes = glue.api.noteText;
-  transcript["what the Files band says of each state"] = {
+  transcript["what the filtered count says of each state"] = {
     absent: notes(undefined),
     ready: notes({ state: "ready" }),
     dating: notes({ state: "dating" }),
@@ -443,14 +441,21 @@ ${liftLine('window.addEventListener("metabrowser:file-ages-landed", redrawForFil
     app.context.observeFileAges(undefined);
     steps.aResponseWithNoAgesAsksForNothing = { events: app.take(), timers: app.timers() };
 
+    // No filter is set, so there is no line to say anything in, and nothing is added to move
+    // the tree.
     app.context.observeFileAges({ state: "dating", files: 6 });
     await app.drain();
-    steps.theFirstResponseSaysDating = {
+    steps.theFirstResponseSaysDatingWithNoFilterSet = {
       events: app.take(),
       menuCounts: app.counts(),
-      note: app.note.textContent,
+      tallyLine: app.line.texts(),
       timers: app.timers(),
     };
+
+    // A filter is set: the line the shell draws for it gets the clause, as one more item.
+    app.line.present = true;
+    app.context.MetabrowserRevisionAges.annotate();
+    steps.theShellDrawsTheFilteredLine = { tallyLine: app.line.texts() };
 
     // The poll finds the answer: the shell redraws what was drawn without ages, once; the
     // tree it asks for says `ready`, which ends the watch's note and the menu's pending marks.
@@ -465,28 +470,34 @@ ${liftLine('window.addEventListener("metabrowser:file-ages-landed", redrawForFil
     steps.theRedrawnTreeSaysReady = {
       events: app.take(),
       menuCounts: app.counts(),
-      noteLines: app.band.children.length,
+      tallyLine: app.line.texts(),
       timers: app.timers(),
     };
 
     // A page opened after the read failed is told so, and keeps no watch.
     const failed = appPage();
+    failed.line.present = true;
     failed.context.observeFileAges({ state: "failed", reason: "git_failed" });
     await failed.drain();
     steps.aFailedReadIsSaid = {
       events: failed.take(),
-      note: failed.note.textContent,
+      tallyLine: failed.line.texts(),
       timers: failed.timers(),
     };
 
     // A Recent list of a shallow clone counts the files it could not date.
     const shallow = appPage();
+    shallow.line.present = true;
     shallow.context.observeFileAges(
       { state: "partial", files: 40, dated: 3, older_than: 1700000000, stop: "boundary" },
       37,
     );
     await shallow.drain();
-    steps.aShallowHistoryIsSaid = { note: shallow.note.textContent, timers: shallow.timers() };
+    steps.aShallowHistoryIsSaid = { tallyLine: shallow.line.texts(), timers: shallow.timers() };
+    // The shell draws the line again, as it does for every response: one clause, not two.
+    shallow.context.MetabrowserRevisionAges.annotate();
+    shallow.context.MetabrowserRevisionAges.annotate();
+    steps.theLineIsDrawnAgainWithOneClause = { tallyLine: shallow.line.texts() };
 
     // The Recent list with nothing in it says why, as the state of the ages has it.
     const lists = appPage();

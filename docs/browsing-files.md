@@ -116,9 +116,10 @@ file is in a window or a band by its last commit, and a file whose last commit i
 known (a shallow clone, or a read that has not finished) is in a last group, Undated,
 which says what it is older than when that is known; the page draws again when the ages
 arrive, the open file’s age included.
-Until then the Modified within counts read “…” and a note in the Files band says the
-ages are being read; it says why they could not be read when a read failed, and how many
-files could not be dated when some could not.
+Until then the Modified within counts read “…”, and the Undated group is named for it.
+The line that counts the files a filter keeps says that the ages are being read, why
+they could not be read when a read failed, and how many files could not be dated when
+some could not, and the Undated group says so too.
 A folder in a group or a window is dated by the newest of the files that put it there,
 and a submodule has no age, so it is in no group.
 

@@ -1135,13 +1135,9 @@ async function loadTree(options = {}) {
           responsePerfMeta(resp, ""),
         );
       } catch (error) {
-        // A throw has to land here for the same reason a non-ok status does, and
-        // more urgently since the inline rows are already painted: a dropped
-        // connection or a malformed body would otherwise leave the reader
-        // looking at two hundred rows with no chrome, no counts, and no error --
-        // a tree that appears complete and is not. Before those rows were
-        // inlined the same failure left an empty pane, which at least read as
-        // broken.
+        // A throw lands here as a non-ok status does: the inline rows are already
+        // painted, so a dropped connection or a malformed body would otherwise leave a tree
+        // that appears complete with no chrome, no counts, and no error.
         failTree(String(error));
         return;
       }
@@ -6298,6 +6294,7 @@ function _renderFilteredTally(state, count) {
   remark.append(...window.MetabrowserFormatters.countPartsNodes(document, parts));
   if (existing) {
     existing.replaceChildren(remark);
+    window.MetabrowserRevisionAges?.annotate();
     return;
   }
   var summary = document.querySelector(".tree-summary");
@@ -6310,6 +6307,7 @@ function _renderFilteredTally(state, count) {
   } else {
     filesMetadataBand()?.insertAdjacentElement("afterbegin", line);
   }
+  window.MetabrowserRevisionAges?.annotate();
 }
 // Rows arriving from the event stream have to be classified too, or a
 // newly written file would appear regardless of the active filter.

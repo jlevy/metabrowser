@@ -32,13 +32,16 @@ The transcript pins these behaviors:
   be the root’s alone; one with no watch running draws nothing.
 - A watch gives up once it has run past the bound the page’s settings name, which the
   server derives from its own bound on a read.
-- The Files band says what the state is when it is not all dated: that the ages are
-  being read, why they could not be read, or how many files could not be dated.
+- The line that counts the files a filter keeps says what the state is when it is not
+  all dated: that the ages are being read, why they could not be read, or how many files
+  could not be dated. It is one more item of a line that is already there, so it moves
+  nothing, and it is added whichever comes first, the line or the state; drawn again, it
+  holds one clause, not two.
 - On the page, a response that says `dating` asks the asset loader for the module once,
   shows “…” for the Modified within counts and the pending line, and a landed answer
   draws the tree, the Recent list and the open file again once, with the counts and no
-  note. A whole answer asks for nothing; a menu that is open has its counts patched, not
-  rebuilt.
+  clause. A whole answer asks for nothing; a menu that is open has its counts patched,
+  not rebuilt.
 - A revision’s Recent list names its folders by the names the server sends beside each
   row’s path (`dir_names`), because a path there is a wire whose segments are encoded; a
   folder’s own rows are named by their path.
@@ -217,7 +220,7 @@ $ node tests/dom/revision-ages-session.js
     ],
     "watching": false
   },
-  "what the Files band says of each state": {
+  "what the filtered count says of each state": {
     "absent": null,
     "ready": null,
     "dating": "Reading file ages…",
@@ -242,7 +245,7 @@ $ node tests/dom/revision-ages-session.js
       "events": [],
       "timers": 0
     },
-    "theFirstResponseSaysDating": {
+    "theFirstResponseSaysDatingWithNoFilterSet": {
       "events": [
         "renderNavFilterBar",
         "ensureAsset revision-ages"
@@ -251,8 +254,13 @@ $ node tests/dom/revision-ages-session.js
         "…",
         "…"
       ],
-      "note": "Reading file ages…",
+      "tallyLine": [],
       "timers": 1
+    },
+    "theShellDrawsTheFilteredLine": {
+      "tallyLine": [
+        "Reading file ages…"
+      ]
     },
     "theAnswerLands": {
       "events": [
@@ -273,19 +281,28 @@ $ node tests/dom/revision-ages-session.js
         2,
         5
       ],
-      "noteLines": 0,
+      "tallyLine": [],
       "timers": 0
     },
     "aFailedReadIsSaid": {
       "events": [
         "ensureAsset revision-ages"
       ],
-      "note": "Git could not read this revision's file ages. Files show no age.",
+      "tallyLine": [
+        "Git could not read this revision's file ages. Files show no age."
+      ],
       "timers": 0
     },
     "aShallowHistoryIsSaid": {
-      "note": "37 files could not be dated (a shallow history, older than 2023-11-14).",
+      "tallyLine": [
+        "37 files could not be dated (a shallow history, older than 2023-11-14)."
+      ],
       "timers": 0
+    },
+    "theLineIsDrawnAgainWithOneClause": {
+      "tallyLine": [
+        "37 files could not be dated (a shallow history, older than 2023-11-14)."
+      ]
     },
     "theRecentListSaysWhyItIsEmpty": {
       "whole": "<div class=\"recent-empty\">No files were modified during the selected time range.</div>",

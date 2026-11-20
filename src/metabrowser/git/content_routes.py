@@ -1809,6 +1809,11 @@ def _undated_label(ages: object) -> str:
     """What the Undated group is called: with the time it is known to be older than, when the
     answer has one (a shallow boundary, or a read cut at the oldest commit it reached)."""
 
+    state = ages.get("state") if isinstance(ages, dict) else None
+    if state == "dating":
+        return "Undated, reading file ages…"
+    if state == "failed":
+        return "Undated, file ages could not be read"
     older_than = ages.get("older_than") if isinstance(ages, dict) else None
     if not isinstance(older_than, int):
         return "Undated"
