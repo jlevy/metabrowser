@@ -3124,6 +3124,39 @@ def test_a_hovered_legend_entrys_ink_reads_for_every_family() -> None:
             assert ratio >= 4.5, f"{family['key']} reads {ratio:.2f}:1 on the {theme} page"
 
 
+# How many times the separation floor Other's neutral must be from every family's color. The
+# legend names up to nine families and Other (file_type_legend.py), and the family colors are
+# held a floor apart from each other (devtools/check_file_type_colors.py), which nothing held
+# for Other, drawn in --muted. Measured 2026-11-20, 56 families: 0.1111 in the light theme and
+# 0.1074 in the dark, 7.4 and 7.2 times the floor, the nearest to Other plain text and asciidoc.
+OTHER_CLEARANCE_FLOORS = 5
+
+
+def test_other_is_clear_of_every_family_in_both_themes() -> None:
+    """The legend's Other, drawn in `--muted`, is never taken for a family it sits beside.
+
+    Every family's color is `MINIMUM_HOUSE_DELTA_E` or more from every other's in both themes,
+    held by `devtools/check_file_type_colors.py`. Other is none of them and takes the page's
+    muted ink (`--mb-distribution-other`), so this holds it the same distance in Oklab,
+    several times over, from each family, as the server resolves them for each theme.
+    """
+
+    from devtools.check_file_type_colors import MINIMUM_HOUSE_DELTA_E
+    from metabrowser.file_type_filters import serialize_distribution_colors
+
+    light_block, dark_block = _theme_blocks()
+    assert _declared(light_block, "--mb-distribution-other") == "var(--muted)"
+    colors = serialize_distribution_colors()
+    assert len(colors) > 9
+    for theme, block in (("light", light_block), ("dark", dark_block)):
+        other = _oklab(_declared(block, "--muted"))
+        for family in colors:
+            distance = math.dist(other, _oklab(family[theme]))
+            assert distance >= OTHER_CLEARANCE_FLOORS * MINIMUM_HOUSE_DELTA_E, (
+                f"{family['key']} is {distance:.4f} from Other on the {theme} page"
+            )
+
+
 def test_only_the_group_by_wait_dims_shown_content_and_never_twice() -> None:
     """The one wait that dims what is shown has its own token, and dims nothing twice.
 
@@ -3306,6 +3339,40 @@ def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
         assert "var(--actor-identity-gap)" in geometry, selector
     # No avatar size or gap is written as a pixel literal in a rule.
     assert "18px + 4px" not in github and "+ 9px" not in github
+
+
+def test_boxed_prose_takes_one_inline_padding() -> None:
+    """A bordered box that holds prose has one inline padding, `--boxed-prose-padding-inline`.
+
+    The pane inset, `--pane-header-padding-x`, aligns the navigation column's rows, and put a
+    description's h2 a few pixels inside its box's border (owner, 2026-11-20). The token is
+    declared once, on the shell's `:root`; a pull request's cards read it through
+    `--github-pull-text-inset`, which their head, text, hunk lines, and commit rows share, and
+    a commit's message reads it directly. docs/design-system.md, "Boxed Prose", names what
+    keeps its own padding and why. `tests/test_github_pull_text_chrome.py` measures the
+    padding the boxes lay out.
+    """
+
+    shell_path = STATIC / "styles.css"
+    github_path = REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"
+    token = "--boxed-prose-padding-inline"
+    shell_rules = _rules_of(shell_path)
+    declared = [
+        (selector, body[token])
+        for selector, body in shell_rules + _rules_of(github_path)
+        if token in body
+    ]
+    assert len(declared) == 1 and declared[0][0] == ":root", declared
+    assert re.fullmatch(r"\d+px", declared[0][1]), "the token's value is a length of its own"
+    github = dict(_rules_of(github_path))
+    shell = dict(shell_rules)
+    # A pull request's text is padded by the card's inset, which is the token and no pane inset.
+    assert github[".github-pull"]["--github-pull-text-inset"] == f"var({token})"
+    assert github[".github-pull-text"]["padding"] == (
+        "var(--content-padding-y) var(--github-pull-text-inset)"
+    )
+    # A commit's message is the same kind of box, and reads the token itself.
+    assert shell[".git-commit-body"]["padding"] == f"var(--pane-header-padding-y) var({token})"
 
 
 # A serif face, named directly, as a family, or through the token KPress reads it from.

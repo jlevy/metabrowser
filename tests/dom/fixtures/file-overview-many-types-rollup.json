@@ -298,7 +298,7 @@
   },
   "file_type_legend": {
     "schema": "file-type-legend-v1",
-    "limit": 5,
+    "limit": 9,
     "minimum_share_percent": 1,
     "files": {
       "all": {
@@ -323,9 +323,17 @@
           {
             "family": "python",
             "value": 33
+          },
+          {
+            "family": "javascript",
+            "value": 25
+          },
+          {
+            "family": "log",
+            "value": 21
           }
         ],
-        "other": 347
+        "other": 301
       },
       "unignored": {
         "total": 800,
@@ -349,9 +357,21 @@
           {
             "family": "python",
             "value": 33
+          },
+          {
+            "family": "javascript",
+            "value": 25
+          },
+          {
+            "family": "log",
+            "value": 21
+          },
+          {
+            "family": "rust",
+            "value": 8
           }
         ],
-        "other": 347
+        "other": 293
       }
     },
     "bytes": {
@@ -377,9 +397,17 @@
           {
             "family": "json",
             "value": 100
+          },
+          {
+            "family": "yaml",
+            "value": 50
+          },
+          {
+            "family": "log",
+            "value": 25
           }
         ],
-        "other": 130
+        "other": 55
       },
       "unignored": {
         "total": 920,
@@ -403,9 +431,17 @@
           {
             "family": "yaml",
             "value": 50
+          },
+          {
+            "family": "log",
+            "value": 25
+          },
+          {
+            "family": "json",
+            "value": 20
           }
         ],
-        "other": 100
+        "other": 55
       }
     }
   }
