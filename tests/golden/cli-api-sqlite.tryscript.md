@@ -16,12 +16,12 @@ before: >-
 # Golden tests: SQLite databases, read as a guest
 
 The built-in `sqlite` plugin claims any SQLite database by the 16 bytes it starts with,
-whatever its name, and shows its Info view from `/api/plugin/sqlite/info`.
-Every connection runs in a reader process, through `metabrowser.sqlite_access`, which
-chooses how to open each database from what it finds beside it, and never writes to it
-or leaves a file beside it.
-The databases are built from SQL text in `tests/sqlite_guest_scenarios.py` and
-`tests/sqlite_golden_fixture.py`, with their owners in processes of their own.
+whatever its name, and shows its Info view from `/api/plugin/sqlite/info`. Every
+connection runs in a reader process, through `metabrowser.sqlite_access`, which chooses
+how to open each database from what it finds beside it, and never writes to it or leaves
+a file beside it. The databases are built from SQL text in
+`tests/sqlite_guest_scenarios.py` and `tests/sqlite_golden_fixture.py`, with their
+owners in processes of their own.
 
 A generation names a file’s identity and time, and the library block names the SQLite
 this interpreter loads and which of the releases it lists that library includes, so the

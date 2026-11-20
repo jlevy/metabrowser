@@ -212,12 +212,12 @@ whose bytes sniff as binary keeps the built-in `binary` kind unless a `magic` ru
 claims it; a plugin can add a view to either instead.
 
 A `magic` rule claims a binary format by the bytes it starts with, whatever the file is
-called: every file that would otherwise be `binary` is checked against every magic
-rule, so a SQLite database named `History` is SQLite. It takes only `ext` or `exts`
-beside it, which decide the tree’s container chevron and do not narrow the match, and
-its bytes must end within the sniff prefix (`MAGIC_MAX_END` in
-`src/metabrowser/plugin_loader/manifest.py`). It is checked on the bytes on disk, so a
-compressed file keeps its kind:
+called: every file that would otherwise be `binary` is checked against every magic rule,
+so a SQLite database named `History` is SQLite.
+It takes only `ext` or `exts` beside it, which decide the tree’s container chevron and
+do not narrow the match, and its bytes must end within the sniff prefix (`MAGIC_MAX_END`
+in `src/metabrowser/plugin_loader/manifest.py`). It is checked on the bytes on disk, so
+a compressed file keeps its kind:
 
 ```toml
 [[kind]]

@@ -135,8 +135,9 @@ tabs, and `V` and `S` switch to the rendered view and the source wherever both e
 A patch file also expands in the tree like a folder, with one row per changed file.
 A SQLite database is read as a guest, in a separate reader process: Metabrowser never
 writes to it, never leaves a file beside it, and never takes a lock that could make the
-application that owns it fail to save. When it cannot read one at a given moment, as
-when its owner is in the middle of writing, the Info view says so.
+application that owns it fail to save.
+When it cannot read one at a given moment, as when its owner is in the middle of
+writing, the Info view says so.
 A compressed copy of a supported file, whose name ends in `.gz` or `.zlib`, opens as the
 file it holds. A large source file opens with its beginning and a **Load more** button.
 Plugins add views for other formats ([plugin authoring](plugins.md)).

@@ -1050,21 +1050,24 @@ Accepted from `metab` through the Info view, before any table is drawn.
 As built, where this plan left a choice open:
 
 - **The rule** is `match.magic = {offset, hex}`, the bytes in hexadecimal since a
-  format’s magic is often not text. A magic rule takes only `ext` or `exts` beside it,
-  and must end within the sniff prefix, which every site already holds.
+  format’s magic is often not text.
+  A magic rule takes only `ext` or `exts` beside it, and must end within the sniff
+  prefix, which every site already holds.
 - **A worker is started with `subprocess`**, `python -I` running a short bootstrap that
   loads `sqlite_access.py` by its path under a stand-in `metabrowser` package: the exec
   `multiprocessing`’s `spawn` uses, without `spawn` importing the parent’s `__main__`,
   which for `metab` is the whole CLI. Requests and answers are one JSON line each over
-  the worker’s stdin and stdout. A plugin’s standard-library module joins the worker
-  through `register_worker_module`, and its requests through `sqlite_access.OPS`.
+  the worker’s stdin and stdout.
+  A plugin’s standard-library module joins the worker through `register_worker_module`,
+  and its requests through `sqlite_access.OPS`.
 - **Private folders** are under the system’s temporary directory, one per process, held
   by an advisory lock that the next pool’s sweep tests; they hold only copies a later
   request recreates.
 - **A log holds frames** when it is longer than its 32-byte header; a journal is live
-  when any of its 28 header bytes is set. The racy window applies to write-ahead-log
-  databases only, since every rollback-journal commit changes the change counter. A
-  private copy is read with `mode=ro`, which builds its index in the private folder.
+  when any of its 28 header bytes is set.
+  The racy window applies to write-ahead-log databases only, since every
+  rollback-journal commit changes the change counter.
+  A private copy is read with `mode=ro`, which builds its index in the private folder.
 - **Errors.** Only SQLite’s codes for a damaged file are `damaged`; an authorizer’s
   denial, which SQLite reports at prepare time as a plain error, is `refused`, and any
   other error is `unreadable`. A worker killed at the hard deadline answers `busy`, one
@@ -1072,9 +1075,9 @@ As built, where this plan left a choice open:
   database it could not read, and 404 only for a path with nothing there.
 - **The catalog** was hit by the lock hazard (bead `mb-cggp`, reproduced in
   `tests/test_github_pull_catalog_locks.py`): a reader thread’s close dropped a writer
-  thread’s lock, and a second process then locked mid-transaction. It closes every
-  handle through `sqlite_access.PROCESS_HANDLES`, which defers a close while a
-  connection in the process is open on the file, as SQLite defers its own.
+  thread’s lock, and a second process then locked mid-transaction.
+  It closes every handle through `sqlite_access.PROCESS_HANDLES`, which defers a close
+  while a connection in the process is open on the file, as SQLite defers its own.
 - **The SQLite kind has the Info view alone**; it no longer offers Bytes.
 - **Not here:** a commit during a `mode=ro` read followed by a `file.changed` waits for
   file watches (Phase 6).

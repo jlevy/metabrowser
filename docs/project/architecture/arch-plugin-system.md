@@ -138,11 +138,12 @@ bytes at an offset within `MAGIC_MAX_END` (`plugin_loader/manifest.py`, the snif
 prefix), and `classify_magic` in `plugin_loader/classify.py` checks it by priority, then
 discovery order. A magic rule takes only `ext` or `exts` beside it, which decide the
 tree’s container chevron and nothing else, so a `.db` file that is not SQLite stays
-binary and a database named `History` is SQLite. A compressed file is checked on its
-compressed bytes, so `x.sqlite.gz` stays binary. Every classification site applies it:
-`api_file`, the container walk (`_classify_content_kind`), the table routes’ kind on a
-served folder and on a pin, and a Git blob (`plugin_magic_kind` in
-`git/content_routes.py`), which a stored blob’s own bytes decide.
+binary and a database named `History` is SQLite.
+A compressed file is checked on its compressed bytes, so `x.sqlite.gz` stays binary.
+Every classification site applies it: `api_file`, the container walk
+(`_classify_content_kind`), the table routes’ kind on a served folder and on a pin, and
+a Git blob (`plugin_magic_kind` in `git/content_routes.py`), which a stored blob’s own
+bytes decide.
 
 `build_classifier` sorts every loaded rule by descending `priority`, then discovery
 index, and returns the first match.
@@ -269,26 +270,28 @@ and the measurements behind them are
 [Reading Another Application’s SQLite Database](../../../explorations/sqlite-guest-reads/README.md).
 
 - **One helper.** `src/metabrowser/sqlite_access.py` is the one way the product opens a
-  database it does not own, and imports only the standard library. `observe` stats the
-  real file and its sidecars and reads their headers; `choose` is the access table;
-  `read` runs one short read transaction under it, validating a lock-free read against
-  a second look and waiting out a live journal or a failed validation until the
-  deadline, or for at most the attempts its caller names. `apply_settings`,
-  `bound_work`, and the reads-only authorizer are the connection settings, each a named
-  constant there. Its errors carry the state the view shows (`ERROR_STATES`).
+  database it does not own, and imports only the standard library.
+  `observe` stats the real file and its sidecars and reads their headers; `choose` is
+  the access table; `read` runs one short read transaction under it, validating a
+  lock-free read against a second look and waiting out a live journal or a failed
+  validation until the deadline, or for at most the attempts its caller names.
+  `apply_settings`, `bound_work`, and the reads-only authorizer are the connection
+  settings, each a named constant there.
+  Its errors carry the state the view shows (`ERROR_STATES`).
 - **Reader processes.** Every connection runs in a worker of
   `src/metabrowser/sqlite_readers.py`, never in the server, since a handle the server
-  closes on a database drops every lock its process holds there. A worker is a fresh
-  interpreter that loads only `sqlite_access.py` and the modules registered with
-  `register_worker_module`, under a stand-in `metabrowser` package; it answers the
-  requests in `sqlite_access.OPS`, one at a time. The pool’s size, queue, kill grace,
-  and address-space limit are named constants there, with what set them; it creates,
-  removes, and sweeps the private folders where copies and Git blobs go.
+  closes on a database drops every lock its process holds there.
+  A worker is a fresh interpreter that loads only `sqlite_access.py` and the modules
+  registered with `register_worker_module`, under a stand-in `metabrowser` package; it
+  answers the requests in `sqlite_access.OPS`, one at a time.
+  The pool’s size, queue, kill grace, and address-space limit are named constants there,
+  with what set them; it creates, removes, and sweeps the private folders where copies
+  and Git blobs go.
 - **The product’s own databases.** The GitHub plugin’s pull request catalog runs in the
-  server process, since it is written there. It takes `apply_settings` and
-  `is_database_header` from the helper, and closes every handle it opens on the catalog
-  through `PROCESS_HANDLES`, which defers a close until the last connection in the
-  process to that file has closed.
+  server process, since it is written there.
+  It takes `apply_settings` and `is_database_header` from the helper, and closes every
+  handle it opens on the catalog through `PROCESS_HANDLES`, which defers a close until
+  the last connection in the process to that file has closed.
 - **Evidence.** `tests/test_sqlite_guest_access.py` runs each case of
   `tests/sqlite_guest_scenarios.py` with a real owner in another process, as an
   unprivileged user, and compares the folder before and after;

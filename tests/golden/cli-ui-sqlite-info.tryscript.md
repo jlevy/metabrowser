@@ -7,8 +7,8 @@ env:
 # Golden test: the SQLite Info view
 
 The sqlite plugin’s Info view says what a reader process saw of a database: how it
-opened it and why, the database as its connection reads it, the files beside it, and
-the SQLite library against the reader’s minimum.
+opened it and why, the database as its connection reads it, the files beside it, and the
+SQLite library against the reader’s minimum.
 What the route answers is pinned by `cli-api-sqlite.tryscript.md`; this session pins
 what the page draws from each answer.
 It loads the plugin’s production modules, `info-model.js` and `info-view.js`, and mounts
@@ -20,9 +20,10 @@ copy, a file with a second name, a writer killed inside a transaction, and a fil
 is not a database.
 
 A state other than Current is a notice: a warning for one a later read may clear, an
-error for one it will not. The library recorded is one that meets the minimum; the
-session also draws an older one, a request that fails, and a view disposed before its
-answer arrives, which draws nothing.
+error for one it will not.
+The library recorded is one that meets the minimum; the session also draws an older one,
+a request that fails, and a view disposed before its answer arrives, which draws
+nothing.
 
 ```console
 $ node tests/dom/sqlite-info-session.js
