@@ -391,6 +391,47 @@ GIT_DETAIL_CACHE_SIZE = 200
 # 90th-percentile commits, and one answer may take a quarter of it.
 GIT_COMPARISON_CACHE_BYTES = 16 * 1024 * 1024
 
+# ── File ages on a Git revision (git/file_ages.py, git/file_ages_service.py) ──────────
+
+# Wall time one ``git last-modified -r -z`` read may take before it is cut and the files it
+# had not reached stay undated. A background job, so no request waits on it. It bounds the
+# read of the history and nothing else: a read derived from an ancestor and, when it must,
+# the cold read that follows it each have their own; the blob index, the probes that find an
+# ancestor (`merge-base`, `rev-list --count`), and the read of the commit times run before or
+# after it, each under the 15 s `GIT_SUBPROCESS_TIMEOUT_S` of a store read, so a whole job can
+# take about this long again. Measured
+# 2026-11-20 with Git 2.56.1 on four local histories, best of three, on a machine at load
+# average 80 to 100 (so every figure is a ceiling): 0.24 s for 799 files over 2,214
+# commits; 2.0 s for 2,350 over 4,818; 3.0 s for 12,836 over 10,881; 13.6 s for 35,824
+# over 11,899. The time follows the files a history still has to date, not the commits:
+# the 35,824-file history took 4.5 times the 12,836-file one over about the same commits.
+# 45 s is three times the slowest of those, so a history of about 100,000 files over the same
+# depth is read whole, and a larger one is cut and says so. It stays under the 60 s a one-shot
+# command waits for the index (`INDEX_READY_TIMEOUT_S` in `cli/asgi_client.py`), so a cut read
+# is printed as partial and does not time the command out. Writing a commit-graph with
+# ``--changed-paths`` first was measured too and did not help (2.27, 5.9, and 16.0 s for the
+# same three, against 2.0, 3.0, and 13.6 without), so no store is given one. A one-level
+# read, ``git last-modified <commit>``, took 0.04 to 0.13 s on every one of them.
+GIT_AGES_TIMEOUT_S = 45.0
+
+# Answers kept, one per commit, across every revision the process has shown. One is each
+# file's name and an 8-byte time, about 95 bytes a file (measured 2026-11-20 on this
+# repository's 2,394 files, whose paths average 46 bytes, with tracemalloc, the names held as
+# their own objects as a kept answer holds them): 3.4 MB for the 35,824-file history above,
+# so eight are about 27 MB. A branch switch back to a revision shown a moment ago is a
+# lookup, and an answer for a commit whose ancestor is kept, with no merge between, reads
+# only the commits since it.
+GIT_AGES_CACHE_REVISIONS = 8
+
+# How long a revision whose read failed is left alone before a page asks again, so a
+# failing Git is run once per interval and not once per poll.
+GIT_AGES_RETRY_AFTER_S = 30.0
+
+# How long an answer cut by the budget is served before the next request reads again. A
+# history that was cut once will be cut again unless the machine was busy, and a read is
+# 45 s of Git, so this is five minutes and not 30 s: a judgment, not a measurement.
+GIT_AGES_CUT_RETRY_AFTER_S = 300.0
+
 
 # ── Remote images ────────────────────────────────────────────
 
@@ -489,6 +530,10 @@ __all__ = [
     "GIT_COMMIT_BODY_MARKDOWN_MAX_BYTES",
     "GIT_COMMIT_MAX_FILES",
     "GIT_COMPARISON_CACHE_BYTES",
+    "GIT_AGES_CACHE_REVISIONS",
+    "GIT_AGES_CUT_RETRY_AFTER_S",
+    "GIT_AGES_RETRY_AFTER_S",
+    "GIT_AGES_TIMEOUT_S",
     "GIT_DETAIL_CACHE_SIZE",
     "GIT_HISTORY_PAGE_CACHE_PAGES",
     "GIT_HISTORY_SEGMENT_REBASE_PX",

@@ -226,6 +226,7 @@ benchmark: | install
 # beside other workers, like the parallel tier, so the same gates fail a serial or chrome
 # test in it.
 ADMITTED_GIT_TESTS := \
+	tests/test_git_file_ages.py \
 	tests/test_git_full_clone_acceptance.py \
 	tests/test_cli_live_acquire_golden.py \
 	tests/test_cache_acquire.py \

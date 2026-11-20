@@ -25,6 +25,7 @@ prefix="${2:?usage: build_admitted_git.sh VERSION PREFIX}"
 case "$version" in
   2.43.7) sha256=657e2374455d9e62f6cdb3e7c55d867b6db5404d744e97e112cc5b0db687a19f ;;
   2.50.1) sha256=7e3e6c36decbd8f1eedd14d42db6674be03671c2204864befa2a41756c5c8fc4 ;;
+  2.56.1) sha256=f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f ;;
   *)
     echo "build_admitted_git.sh: no pinned SHA-256 for Git ${version}" >&2
     exit 2

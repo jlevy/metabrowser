@@ -200,6 +200,7 @@ counts is missing here; the asset routes are not counted.
 | `/_debug/tasks`, `/_debug/inventory` | Task and inventory diagnostics, served only with `METABROWSER_DEBUG=1` | [Server and Content](arch-server-and-content.md) |
 | `/api/tree`, `/api/rollup`, `/api/catalog`, `/api/recent` | Navigation pages, folder rollups, the file universe for Quick Search, and newest-first leaves | [Inventory Provider](arch-inventory-provider.md) |
 | `/api/index/progress`, `/api/index/meta`, `/api/capabilities` | Index progress and metadata, and what the active source supports | [Inventory Provider](arch-inventory-provider.md) |
+| `/api/tree`, `/api/index/progress`, `/api/capabilities` on a pinned revision | A node’s `mtime` and the `ages` state of getting it, and `file_ages` in what the source supports | [File Ages](arch-git.md#file-ages) |
 | `/api/events` | The server-sent inventory snapshot and changes | [Live Delivery](arch-live-delivery.md) |
 | `/api/stream`, `/api/activity` | The live tail of a JSONL file, and the files being written now | [Live Delivery](arch-live-delivery.md) |
 | `/api/diagnostics/pending-tallies` | `POST`: a client’s pending-tally warning, matched with server state | [Live Delivery](arch-live-delivery.md) |

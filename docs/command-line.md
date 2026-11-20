@@ -535,9 +535,14 @@ sentence, the details it read, and the step that fixes it:
   oldest that app runs, and an older one is a warning whose step upgrades it with the
   tool that installed it.
   Run from the app’s Check Setup…, it compares with that app instead.
-- **`git`:** the `git` on `PATH`, against the floor for cloning and fetching and the one
-  for showing a branch or tag of a partial clone.
-  Below either is a warning: browsing a folder needs no Git.
+- **`git`:** the `git` on `PATH`: where it is, its version, and each thing that version
+  does. It is checked against the floor for cloning and fetching, the one for showing a
+  branch or tag of a partial clone, and the one for file ages on a Git revision
+  (`git last-modified`, Git 2.53), and a `file ages` line says whether they are
+  available. Below any is a warning that names what is missing, with the step that
+  upgrades Git: browsing a folder needs no Git, and a Git revision without file ages
+  shows no times. Run from the app’s Check Setup…, it reports the Git the app’s servers
+  use.
 - **`config`:** the configuration directory: its override is valid, it is private or can
   be created, and its `config.yml` is one this release reads.
 - **`cache`:** the cache directory: its override is valid, it is private and writable or

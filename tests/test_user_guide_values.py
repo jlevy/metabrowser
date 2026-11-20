@@ -46,6 +46,7 @@ from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.dotenv import ALLOWED_KEYS
 from metabrowser.file_extensions import BROWSER_TRACKABLE_EXTS
 from metabrowser.file_type_legend import LEGEND_MINIMUM_SHARE_PERCENT, LEGEND_TYPE_LIMIT
+from metabrowser.git.file_ages import file_ages_version_label
 from metabrowser.git.log import TRUNK_BRANCH_NAMES, TRUNK_REMOTES
 from metabrowser.git.process import ACQUISITION_MINIMUM
 from metabrowser.gz_io import GZIP_SUFFIX, ZLIB_SUFFIX
@@ -345,6 +346,18 @@ def stated_values() -> list[Stated]:
             "the Git security floor",
             r"a Git older than (\d+\.\d+\.\d+)",
             (".".join(str(part) for part in ACQUISITION_MINIMUM),),
+        ),
+        Stated(
+            "docs/browsing-files.md",
+            "the Git release that reads file ages",
+            r"which needs Git (\d+\.\d+) or newer",
+            (file_ages_version_label(),),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the Git release that reads file ages",
+            r"\(`git last-modified`, Git (\d+\.\d+)\)",
+            (file_ages_version_label(),),
         ),
         Stated(
             "docs/installation.md",

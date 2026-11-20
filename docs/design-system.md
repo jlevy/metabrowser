@@ -4113,7 +4113,10 @@ it resets them all, Show ignored back on, and keeps the grouping.
   By age splits by modification time and By file type by the registry’s display groups.
   Each row reads as the closed trigger does when it is chosen, so the menu and the
   trigger never name one value two ways.
-  A Git revision has no modification times, so it offers no By age.
+  A Git revision has no modification times of its own; its files are dated by their last
+  commit when the Git can read that
+  ([file ages](project/architecture/arch-git.md#file-ages)), and it offers no By age
+  yet.
 - **Groups.** Age groups are disjoint bands cut from Modified within’s windows: Live,
   then Past hour, Past day, Past week, and Past month, each holding only what the
   windows before it do not, then Older.

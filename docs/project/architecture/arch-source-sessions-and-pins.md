@@ -160,8 +160,10 @@ The rules they follow:
   nodes, with `cat-file` blob sizes and recursive `total_files` and `total_size`.
   `depth` nests children as on a folder.
   Gitlinks are unsized files.
-  There is no mtime and no ignore state, so `include_ignored=0` is a no-op and the
-  browser hides Modified within.
+  There is no ignore state, so `include_ignored=0` is a no-op.
+  A node has an `mtime` only from [file ages](arch-git.md#file-ages), the last commit
+  that changed it, when the Git can read them and the background read has finished; the
+  page hides Modified within.
 - **The whole-tree index** is complete at once: `/api/catalog`, `/api/rollup`, the type
   rows and `summary` on `/api/tree`, and `/api/index/progress`, `/api/index/meta`, and
   `/api/capabilities` answer from the recursive blob index with no watcher.

@@ -106,8 +106,13 @@ A chain of folders that each hold one folder shows as one row, and a folder whos
 were all written at about the same time starts collapsed.
 The view holds at most 5,000 files; when more match, it leaves out gitignored files
 first and says how many matched.
-A pinned Git revision has no modification times, so it offers no Modified within and no
-By age grouping.
+A Git revision has no modification times, so a file’s age is the time of the last commit
+that changed it, as a hosting site’s file list shows, and a folder’s the newest of its
+files’. They come from `git last-modified`, which needs Git 2.53 or newer, and are read
+in the background, so the page opens at once without them and shows them on its next
+load, once the read has finished; the page does not redraw by itself yet.
+With an older Git a revision shows no ages, and `metab --doctor` says what to upgrade.
+Modified within and By age are not offered on a revision yet.
 
 The same filters are available from the command line:
 `metab ROOT --walk --type .md --age 7d`.

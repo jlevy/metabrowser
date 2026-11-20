@@ -1658,6 +1658,13 @@ class GitRevisionSubject:
         return self._content.target
 
     async def aclose(self) -> None:
+        # A page that is gone has no use for the read of its files' ages, which is
+        # bounded but can run for seconds; the answer, once made, is kept per commit.
+        # Imported here because `--present` imports this module for `GitPath` alone and
+        # loads little beyond `--version` (`test_present_dry_run_loads_little_beyond_version`).
+        from metabrowser.git.file_ages_service import file_ages_service
+
+        file_ages_service().cancel(self._content.target, self._commit_oid)
         await self._content.aclose()
 
 

@@ -148,7 +148,7 @@ async def _run_navigation_scenario(
         initial = await client.get("/api/tree", params={"depth": "2"})
         live = await client.get("/api/recent", params={"window": "live"})
         cleared = await client.get("/api/tree", params={"depth": "2"})
-        index_result = await wait_for_index(client, timeout_s=index_timeout_s)
+        index_result = await wait_for_index(client, timeout_s=index_timeout_s, ages=True)
         final = await client.get("/api/tree", params={"depth": "2"})
         # Rows and tallies travel separately now: a request carrying rows never
         # waits for the pass over every index entry that produces the summary.

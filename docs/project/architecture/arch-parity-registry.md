@@ -126,6 +126,8 @@ interaction session and fails when a named function did not execute.
 | `navigation.route-identity` | interaction | `static/navigation.js#href`, `static/navigation.js#parse`, `static/navigation.js#commitHref`, `static/navigation.js#parseCommit`, `static/pull-route.js#pullHref`, `static/pull-route.js#parsePull`, `static/navigation.js#displayPath` | `/api/file`, `/api/plugin/diff/comparison` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `navigation.served-source-kind` | interaction | `static/plugin-sdk.js#sourceKind`, `static/navigation.js#displayPath` | `/view`, `/api/tree` | `node tests/dom/source-kind-session.js` | `cli-ui-source-kind.tryscript.md` |
 | `source.pinned-revision` | data | `/api/source/status` | `owned-route` | `metab shellroot --api /api/source/status` | `cli-api-shell.tryscript.md` |
+| `source.revision-file-ages` | data | `/api/tree` | `owned-route` | `metab file://<ORIGIN> --api '/api/tree?depth=2'` | `cli-git-pin-ages.txt` |
+| `source.revision-file-ages-state` | data | `/api/index/progress` | `owned-route` | `metab file://<ORIGIN> --api /api/index/progress` | `cli-git-pin-ages.txt` |
 | `shell.window-title` | data | `/api/identity` | `owned-route` | `metab shellroot --api /api/identity` | `cli-api-shell.tryscript.md` |
 | `github.page-counterpart` | data | `/api/counterpart` | `owned-route` | `metab checkout --api '/api/counterpart?page=/view/docs/guide.md'` | `cli-api-counterpart.tryscript.md` |
 | `shell.page-connections` | interaction | `static/navigation.js#createPageConnections` | `/api/catalog`, `transport-exempt:/api/events` | `node tests/dom/page-connections-session.js` | `cli-ui-page-connections.tryscript.md` |
