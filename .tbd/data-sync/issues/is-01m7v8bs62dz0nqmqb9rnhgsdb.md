@@ -5,7 +5,7 @@ title: "Branches follow the repository: a view of a branch tracks it in mirror a
 kind: epic
 status: in_progress
 priority: 1
-version: 6
+version: 8
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -14,10 +14,11 @@ child_order_hints:
   - is-01m7v8cv4e6sjryervx72qmn90
   - is-01m7v8cvnhxhpd84rsjmtqqrm3
   - is-01m7v8d2dzrf8cg3wrxezg9bh1
+  - is-01m7v8prb166f74m9855fmntda
 hold: null
 hold_until: null
 created_at: 2026-11-20T01:15:32.417Z
-updated_at: 2026-11-20T01:17:55.716Z
+updated_at: 2026-11-20T01:21:55.511Z
 started_at: 2026-11-20T01:17:55.715Z
 ---
 Owner, 2026-11-19 in chat, after the macOS app's mirror of jlevy/metabrowser showed "main is now at 1d85c49 · Switch" at the foot of the nav pane:
@@ -30,3 +31,7 @@ The rule this replaces: "a refresh never moves the page under you" (thin-mirror 
 - Folder, revision of a branch: "a branch that moves while it is shown is not followed" (arch-source-sessions-and-pins.md, Not yet); no status poll, no offer.
 
 Target model: what the reader opened decides whether the view moves. A branch follows its branch; a commit ID stays; the working tree is always live. The children carry each part.
+
+## Notes
+
+2026-11-19 owner (chat), the governing principle: "using Metabrowser in Cloud Mirror mode should be much like using it on the web on github.com. You're browsing everything as of the current data. When using in local mode, it is blended, with an extra layer of the current working tree but the cache layers are still the same as mirror mode." So a mirror shows current data the way github.com does: a branch is its latest commit, never a stale one behind an offer. A repository folder is the same revision layer plus the live working tree. Each child (mb-pq8y, mb-0qgm, mb-gkq1, mb-qp3s, mb-30xb) is judged against this.
