@@ -1,20 +1,21 @@
 base:
   assignee: null
-  description_hash: sha256v7:bb2a99368fc0c8a1bcc917bb94401024d016b8b1f43813561cbdc4487578679f
+  description_hash: sha256v7:029015d4ecdf5161c950fa12f23025448751cb3bb9b1e16de63ef7e48d7b7edc
   labels:
     - linear
     - Improvement
   priority: 2
   slot: in_progress
   status: in_progress
-  title: Map merged pull requests and stacks to Linear issues through a linear label
+  title: "Linear shows the project's efforts: one issue per top-level epic, kept current
+    by tbd sync"
 bead_id: is-01m7wyjyxgdmtdze2vt8eb7ter
 external_id: 1a9c016a-4690-4473-b101-b89dbdb3b2dd
 external_key: OS-478
 external_url: https://linear.app/finterm-ai/issue/OS-478/map-merged-pull-requests-and-stacks-to-linear-issues-through-a-linear
 refinement_slot: in_progress
 refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
-remote_updated_at: 2026-11-20T19:20:31.475Z
+remote_updated_at: 2026-11-20T19:23:01.238Z
 state: linked
-synced_at: 2026-11-20T19:21:11.445Z
+synced_at: 2026-11-20T19:23:01.311Z
 type: lk
