@@ -1,12 +1,14 @@
-"""Unified log parsing for Claude Code, Gemini CLI, and Pi CLI JSONL output.
+"""Unified log parsing for Claude Code, Codex, Gemini CLI, and Pi CLI JSONL output.
 
 Provides:
   LogEvent       — normalized event dataclass
   LogParser      — per-adapter parser protocol
-  ClaudeLogParser — parser for Claude Code stream-json
+  ClaudeLogParser — parser for Claude Code stream-json and session transcripts
   GeminiLogParser — parser for Gemini CLI stream-json (with delta coalescing)
   PiLogParser    — parser for Pi CLI JSON mode JSONL
-  detect_adapter — auto-detect adapter from first JSON line
+  CodexLogParser — parser for the ``codex exec --json`` stream
+  CodexRolloutParser — parser for Codex rollout files under ``~/.codex/sessions``
+  detect_adapter — auto-detect adapter from the first JSON lines
   render_log_event — compact one-liner renderer
   LogFile        — file watcher with parser integration
 """
@@ -98,7 +100,7 @@ class LogEvent:
 
     kind: str  # "init", "tool_call", "tool_result", "text", "thinking", "rate_limit", "result", "system", "raw"
     summary: str  # compact one-liner for display
-    adapter: str = "unknown"  # "claude", "gemini", "pi", "unknown"
+    adapter: str = "unknown"  # "claude", "codex", "codex-rollout", "gemini", "pi", "unknown"
     provider: str | None = (
         None  # "anthropic", "vertex-maas", "openai", etc. — set on rate_limit events
     )
@@ -131,7 +133,7 @@ class LogParser(Protocol):
 
 AdapterDetector = Callable[[dict[str, Any]], bool]
 LogParserFactory = Callable[[], LogParser]
-_BUILTIN_ADAPTERS = frozenset({"claude", "codex", "gemini", "pi"})
+_BUILTIN_ADAPTERS = frozenset({"claude", "codex", "codex-rollout", "gemini", "pi"})
 _PLUGIN_ADAPTERS: dict[str, tuple[AdapterDetector, LogParserFactory]] = {}
 
 
@@ -231,9 +233,78 @@ def _format_cost(cost_usd: float | None) -> str:
 
 # ── Claude Code parser ───────────────────────────────────────────
 
+# Conversation records in a Claude Code session transcript
+# (``~/.claude/projects/<project>/<session>.jsonl``) share an envelope: ``sessionId``,
+# ``uuid``, and ``parentUuid`` (``null`` on a first record) beside the record type.
+_CLAUDE_CONVERSATION_TYPES = frozenset({"user", "assistant", "attachment", "system"})
+
+# The transcript's other records: session metadata appended again and again through
+# the file, queue operations, model call records, and file history. They carry no
+# conversation, so the Log shows each as one compact line and the Raw view keeps the
+# record. These are the types observed in Claude Code 2.1.3xx transcripts, listed in
+# docs/project/research/research-2026-11-19-agent-home-visibility.md.
+_CLAUDE_TRANSCRIPT_RECORD_TYPES = frozenset(
+    {
+        "agent-name",
+        "api-request",
+        "api-request-blob",
+        "api-request-shape",
+        "atis-latch",
+        "cost-state",
+        "custom-title",
+        "file-history-delta",
+        "file-history-snapshot",
+        "last-prompt",
+        "mode",
+        "permission-mode",
+        "pr-link",
+        "queue-operation",
+        "relocated",
+        "tools-used",
+        "worktree-state",
+    }
+)
+
+
+def _is_claude_transcript_record(event: dict[str, Any]) -> bool:
+    """Whether a record has a Claude Code session transcript's shape.
+
+    A current transcript opens with queue operations, attachments, and session
+    metadata, and its first ``assistant`` record is usually past line 20, so detection
+    reads the shape of any record rather than waiting for an ``assistant`` one.
+    """
+    if not isinstance(event.get("sessionId"), str):
+        return False
+    etype = event.get("type")
+    if etype in _CLAUDE_CONVERSATION_TYPES:
+        return "uuid" in event and "parentUuid" in event
+    return etype in _CLAUDE_TRANSCRIPT_RECORD_TYPES
+
+
+def _claude_transcript_record_label(event: dict[str, Any], etype: str) -> str:
+    """One compact line for a transcript record that carries no conversation.
+
+    An attachment names its own type and a queue operation its operation. Other records
+    name only their type, since some, such as ``api-request-blob``, hold a whole system
+    prompt that a one-line summary would repeat.
+    """
+    if etype == "attachment":
+        attachment = event.get("attachment")
+        if isinstance(attachment, dict):
+            subtype = cast(dict[str, Any], attachment).get("type")
+            if isinstance(subtype, str) and subtype:
+                return f"[attachment:{subtype}]"
+        return "[attachment]"
+    if etype == "queue-operation":
+        operation = event.get("operation")
+        if isinstance(operation, str) and operation:
+            return f"[queue:{operation}]"
+    return f"[{etype}]"
+
 
 class ClaudeLogParser:
-    """Parser for Claude Code stream-json JSONL output."""
+    """Parser for Claude Code JSONL: the ``--output-format stream-json`` stream and the
+    session transcripts Claude Code keeps under ``~/.claude/projects``."""
 
     adapter_name: str = "claude"
 
@@ -272,6 +343,21 @@ class ClaudeLogParser:
             # Skip noisy hook events
             if subtype in ("hook_started", "hook_response"):
                 return []
+            if _is_claude_transcript_record(event):
+                # A transcript's system record repeats the conversation envelope, so
+                # the line names its subtype and any message, and Raw keeps the rest.
+                content = event.get("content")
+                message = f" {content}" if isinstance(content, str) and content else ""
+                return [
+                    LogEvent(
+                        kind="system",
+                        adapter=self.adapter_name,
+                        timestamp=ts,
+                        is_error=subtype == "api_error",
+                        summary=f"[system:{subtype}]{message}",
+                        raw=event,
+                    )
+                ]
             return [
                 LogEvent(
                     kind="system",
@@ -312,6 +398,17 @@ class ClaudeLogParser:
         # Result (session completion)
         if etype == "result":
             return self._parse_result(event, ts)
+
+        if etype == "attachment" or etype in _CLAUDE_TRANSCRIPT_RECORD_TYPES:
+            return [
+                LogEvent(
+                    kind="system",
+                    adapter=self.adapter_name,
+                    timestamp=ts,
+                    summary=_claude_transcript_record_label(event, str(etype)),
+                    raw=event,
+                )
+            ]
 
         return [
             LogEvent(
@@ -457,12 +554,20 @@ class ClaudeLogParser:
                 )
 
         if not events:
+            # A transcript's prompt arrives as text blocks; show their text rather
+            # than the block list's repr.
+            texts = [
+                cast(dict[str, Any], b).get("text")
+                for b in user_blocks
+                if isinstance(b, dict) and cast(dict[str, Any], b).get("type") == "text"
+            ]
+            prompt = " ".join(t for t in texts if isinstance(t, str) and t.strip())
             return [
                 LogEvent(
                     kind="text",
                     adapter=self.adapter_name,
                     timestamp=ts,
-                    summary=f"[user] {user_blocks!s}",
+                    summary=f"[user] {prompt}" if prompt else f"[user] {user_blocks!s}",
                     raw=event,
                 )
             ]
@@ -1201,6 +1306,328 @@ class CodexLogParser:
         ]
 
 
+# ── Codex rollout parser (``~/.codex/sessions``) ─────────────────
+
+# Each line of a typed Codex rollout is ``{timestamp, ordinal?, type, payload}``, and
+# these are its record types. The typed envelope arrived in Codex about 2025-12; the
+# older single-document and untyped rollouts are not read here.
+_CODEX_ROLLOUT_RECORD_TYPES = frozenset(
+    {
+        "compacted",
+        "event_msg",
+        "inter_agent_communication_metadata",
+        "response_item",
+        "session_meta",
+        "token_usage_record",
+        "turn_context",
+        "world_state",
+    }
+)
+
+# ``item_completed`` items that repeat a ``response_item`` the Log already shows: the
+# messages, reasoning, tool output, and compactions. The other items (commands, file
+# changes, MCP calls, web searches) are the operations a script run by Codex's ``exec``
+# tool performed, which no ``response_item`` records, so the Log shows those.
+_CODEX_REPEATED_ITEM_TYPES = frozenset(
+    {"AgentMessage", "ContextCompaction", "FunctionCallOutput", "Reasoning", "UserMessage"}
+)
+
+
+def _is_codex_rollout_record(event: dict[str, Any]) -> bool:
+    """Whether a record has a typed Codex rollout envelope."""
+    return event.get("type") in _CODEX_ROLLOUT_RECORD_TYPES and isinstance(
+        event.get("payload"), dict
+    )
+
+
+def _codex_text(content: Any) -> str:
+    """Join the ``text`` of a rollout content list, or return a string as it is."""
+    if isinstance(content, str):
+        return content.strip()
+    if not isinstance(content, list):
+        return ""
+    texts: list[str] = []
+    for part in cast(list[Any], content):
+        if isinstance(part, dict):
+            text = cast(dict[str, Any], part).get("text")
+            if isinstance(text, str) and text.strip():
+                texts.append(text.strip())
+    return " ".join(texts)
+
+
+def _codex_duration_s(value: Any) -> float | None:
+    """Seconds from a rollout ``{secs, nanos}`` duration, or ``None``."""
+    if not isinstance(value, dict):
+        return None
+    duration = cast(dict[str, Any], value)
+    secs = duration.get("secs")
+    nanos = duration.get("nanos", 0)
+    if not isinstance(secs, int) or not isinstance(nanos, int):
+        return None
+    return secs + nanos / 1e9
+
+
+def _codex_usage_summary(usage: Any) -> str:
+    """``[usage] input=… output=… cached=… reasoning=…`` from a rollout usage mapping."""
+    return (
+        f"[usage] input={_number_from_mapping(usage, 'input_tokens')} "
+        f"output={_number_from_mapping(usage, 'output_tokens')} "
+        f"cached={_number_from_mapping(usage, 'cached_input_tokens')} "
+        f"reasoning={_number_from_mapping(usage, 'reasoning_output_tokens')}"
+    )
+
+
+class CodexRolloutParser:
+    """Parser for the rollout files Codex keeps under ``~/.codex/sessions``.
+
+    ``response_item`` records are the conversation: messages, reasoning summaries, tool
+    calls, and their output. ``event_msg`` records add turn boundaries, metering, and
+    each ``item_completed`` operation that ``_CODEX_REPEATED_ITEM_TYPES`` does not list.
+
+    Metering is shown once per model response. A ``token_usage_record`` is followed by a
+    ``token_count`` whose last usage repeats it, so once a file has written a usage
+    record the ``token_count`` lines are skipped; rollouts older than usage records show
+    their ``token_count`` usage instead.
+    """
+
+    adapter_name: str = "codex-rollout"
+
+    def __init__(self) -> None:
+        self._saw_usage_record = False
+
+    def _event(
+        self, kind: str, summary: str, ts: str | None, raw: dict[str, Any], **fields: Any
+    ) -> LogEvent:
+        return LogEvent(
+            kind=kind,
+            adapter=self.adapter_name,
+            provider="openai",
+            timestamp=ts,
+            summary=summary,
+            raw=raw,
+            **fields,
+        )
+
+    def parse_line(self, line: str) -> list[LogEvent]:
+        event = _parse_json(line)
+        if event is None:
+            return [
+                LogEvent(
+                    kind="raw",
+                    summary=f"[raw] {line.strip()}",
+                    adapter=self.adapter_name,
+                    raw=line,
+                )
+            ]
+        etype = str(event.get("type", "unknown"))
+        ts_value = event.get("timestamp")
+        ts = ts_value if isinstance(ts_value, str) else None
+        payload_value = event.get("payload")
+        payload = cast(dict[str, Any], payload_value) if isinstance(payload_value, dict) else {}
+
+        if etype == "session_meta":
+            fields = [
+                f"{label}={value}"
+                for label, value in (
+                    ("thread", str(payload.get("id", ""))[:8]),
+                    ("cli", payload.get("cli_version")),
+                    ("originator", payload.get("originator")),
+                )
+                if isinstance(value, str) and value
+            ]
+            return [self._event("init", " ".join(["[init]", *fields]), ts, event)]
+        if etype == "turn_context":
+            fields = [
+                f"{key}={payload[key]}"
+                for key in ("model", "effort")
+                if isinstance(payload.get(key), str)
+            ]
+            return [self._event("system", " ".join(["[turn_context]", *fields]), ts, event)]
+        if etype == "token_usage_record":
+            self._saw_usage_record = True
+            return [self._event("usage", _codex_usage_summary(payload.get("usage")), ts, event)]
+        if etype == "response_item":
+            return self._parse_response_item(payload, ts, event)
+        if etype == "event_msg":
+            return self._parse_event_msg(payload, ts, event)
+        return [self._event("system", f"[{etype}]", ts, event)]
+
+    def flush(self) -> list[LogEvent]:
+        return []
+
+    def _parse_response_item(
+        self, payload: dict[str, Any], ts: str | None, event: dict[str, Any]
+    ) -> list[LogEvent]:
+        ptype = str(payload.get("type", "unknown"))
+        if ptype == "message":
+            role = str(payload.get("role", "?"))
+            text = _codex_text(payload.get("content"))
+            if role == "assistant":
+                return [self._event("text", f"[text] {text}", ts, event)] if text else []
+            if role == "user":
+                return [self._event("text", f"[user] {text}", ts, event)]
+            # Developer and system messages are injected instructions, not conversation.
+            return [self._event("system", f"[{role}]", ts, event)]
+        if ptype == "reasoning":
+            # Reasoning is encrypted; only its summaries, when written, are readable.
+            text = _codex_text(payload.get("summary"))
+            return [self._event("thinking", f"[thinking] {text}", ts, event)] if text else []
+        if ptype in ("function_call", "custom_tool_call"):
+            name = str(payload.get("name", "?"))
+            raw_input = payload.get("arguments" if ptype == "function_call" else "input")
+            arguments: Any = raw_input
+            if ptype == "function_call" and isinstance(raw_input, str):
+                try:
+                    arguments = json.loads(raw_input)
+                except ValueError:
+                    arguments = raw_input
+            if isinstance(arguments, dict):
+                inp = cast(dict[str, Any], arguments)
+                return [
+                    self._event(
+                        "tool_call",
+                        f"[call:{name}] {_format_tool_params(inp)}",
+                        ts,
+                        event,
+                        summary_parts=_tool_call_summary_parts(name, inp),
+                    )
+                ]
+            preview = str(arguments or "").replace("\n", " ").strip()
+            return [self._event("tool_call", f"[call:{name}] {preview}", ts, event)]
+        if ptype in ("function_call_output", "custom_tool_call_output"):
+            output: Any = payload.get("output", "")
+            preview = _tool_result_preview(cast("str | list[Any] | object", output))
+            size = len(output) if isinstance(output, str) else len(preview)
+            return [
+                self._event(
+                    "tool_result",
+                    f"[result] {preview}",
+                    ts,
+                    event,
+                    summary_parts=[
+                        {"type": "label", "text": "[result]"},
+                        {"type": "value", "text": f" {preview}"},
+                        {"type": "omitted", "text": f" ({size} chars)"},
+                    ],
+                )
+            ]
+        if ptype == "agent_message":
+            text = _codex_text(payload.get("content"))
+            return [self._event("text", f"[agent_message] {text}", ts, event)]
+        return [self._event("system", f"[{ptype}]", ts, event)]
+
+    def _parse_event_msg(
+        self, payload: dict[str, Any], ts: str | None, event: dict[str, Any]
+    ) -> list[LogEvent]:
+        ptype = str(payload.get("type", "unknown"))
+        if ptype == "token_count":
+            info = payload.get("info")
+            if self._saw_usage_record or not isinstance(info, dict):
+                return []
+            usage = cast(dict[str, Any], info).get("last_token_usage")
+            return [self._event("usage", _codex_usage_summary(usage), ts, event)]
+        if ptype == "task_started":
+            return [self._event("system", "[turn.started]", ts, event)]
+        if ptype in ("task_complete", "turn_aborted"):
+            duration_ms = payload.get("duration_ms")
+            duration_s = duration_ms / 1000 if isinstance(duration_ms, int) else None
+            first_token_ms = payload.get("time_to_first_token_ms")
+            if ptype == "task_complete":
+                summary = "[result] DONE" + _format_duration(None, duration_s)
+                if isinstance(first_token_ms, int):
+                    summary += f" first_token={fmt_timedelta(first_token_ms / 1000)}"
+            else:
+                summary = f"[result] ABORTED {payload.get('reason', '')}".rstrip()
+            return [
+                self._event(
+                    "result",
+                    summary,
+                    ts,
+                    event,
+                    is_error=ptype == "turn_aborted",
+                    is_done=True,
+                    duration_s=duration_s,
+                )
+            ]
+        if ptype == "item_completed":
+            item = payload.get("item")
+            if isinstance(item, dict):
+                return self._parse_item(cast(dict[str, Any], item), ts, event)
+            return []
+        if ptype == "thread_settings_applied":
+            settings_value = payload.get("thread_settings")
+            settings = (
+                cast(dict[str, Any], settings_value) if isinstance(settings_value, dict) else {}
+            )
+            fields = [
+                f"{label}={settings[key]}"
+                for key, label in (("model", "model"), ("reasoning_effort", "effort"))
+                if isinstance(settings.get(key), str)
+            ]
+            return [self._event("system", " ".join(["[thread_settings]", *fields]), ts, event)]
+        return [self._event("system", f"[{ptype}]", ts, event)]
+
+    def _parse_item(
+        self, item: dict[str, Any], ts: str | None, event: dict[str, Any]
+    ) -> list[LogEvent]:
+        itype = str(item.get("type", "unknown"))
+        if itype in _CODEX_REPEATED_ITEM_TYPES:
+            return []
+        duration_s = _codex_duration_s(item.get("duration"))
+        if itype == "CommandExecution":
+            command: Any = item.get("command", "?")
+            if isinstance(command, list):
+                argv = [str(part) for part in cast(list[Any], command)]
+                # Codex runs each command as ``<shell> -lc <script>``; show the script.
+                if len(argv) == 3 and argv[1] in ("-c", "-lc"):
+                    argv = argv[2:]
+                command = " ".join(argv)
+            exit_code = item.get("exit_code")
+            summary = f"[call:command] {command}"
+            if isinstance(exit_code, int):
+                summary += f" exit={exit_code}"
+            return [
+                self._event(
+                    "tool_call",
+                    summary,
+                    ts,
+                    event,
+                    is_error=isinstance(exit_code, int) and exit_code != 0,
+                    duration_s=duration_s,
+                )
+            ]
+        if itype == "FileChange":
+            changes = item.get("changes")
+            paths = list(cast(dict[str, Any], changes)) if isinstance(changes, dict) else []
+            summary = "[call:file_change]"
+            if paths:
+                more = f" (+{len(paths) - 1} more)" if len(paths) > 1 else ""
+                summary += f" {paths[0]}{more}"
+            return [self._event("tool_call", summary, ts, event)]
+        if itype == "McpToolCall":
+            name = f"mcp:{item.get('server', '?')}.{item.get('tool', '?')}"
+            result = item.get("result")
+            failed = (
+                isinstance(result, dict) and cast(dict[str, Any], result).get("isError") is True
+            )
+            return [
+                self._event(
+                    "tool_call", f"[call:{name}]", ts, event, is_error=failed, duration_s=duration_s
+                )
+            ]
+        if itype == "WebSearch":
+            return [
+                self._event("tool_call", f"[call:web_search] {item.get('query', '')}", ts, event)
+            ]
+        if itype == "Extension":
+            return [
+                self._event("tool_call", f"[call:extension:{item.get('kind', '?')}]", ts, event)
+            ]
+        if itype == "SubAgentActivity":
+            return [self._event("system", f"[subagent:{item.get('kind', '?')}]", ts, event)]
+        return [self._event("system", f"[item:{itype}]", ts, event)]
+
+
 # ── Auto-detection ───────────────────────────────────────────────
 
 
@@ -1223,6 +1650,12 @@ def detect_adapter(lines: list[str]) -> str:
                     return name
             except Exception:
                 log.exception("log adapter detector %r failed", name)
+
+        if _is_claude_transcript_record(event):
+            return "claude"
+
+        if _is_codex_rollout_record(event):
+            return "codex-rollout"
 
         etype = event.get("type", "")
 
@@ -1273,6 +1706,8 @@ def create_parser(adapter: str) -> LogParser:
         return ClaudeLogParser()
     if adapter == "codex":
         return CodexLogParser()
+    if adapter == "codex-rollout":
+        return CodexRolloutParser()
     if adapter == "gemini":
         return GeminiLogParser()
     if adapter == "pi":

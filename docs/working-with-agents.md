@@ -182,12 +182,16 @@ path, as it runs a separate checkout’s, needs that path in place of `metab`.
 
 Coding-agent session logs are JSONL files, and Metabrowser opens them as timelines.
 
-- **Recognized agents:** the session logs of Claude Code, Gemini CLI, and Pi open with
-  three views: **Log**, a timeline of messages, tool calls, and results with filter
+- **Recognized agents:** the session logs of Claude Code, Codex, Gemini CLI, and Pi open
+  with three views: **Log**, a timeline of messages, tool calls, and results with filter
   chips; **Charts**, the session’s events by kind over time; and **Raw JSON**. The
   header names the agent and the run’s state.
-- **Other JSONL:** any other `.jsonl` file opens with Log and Raw JSON. Codex logs are
-  parsed into the same timeline, without Charts.
+  - **Claude Code:** both the session transcripts under `~/.claude/projects` and the
+    `--output-format stream-json` stream.
+  - **Codex:** both the rollout files under `~/.codex/sessions` and the
+    `codex exec --json` stream.
+    Compressed rollouts (`.jsonl.zst`) do not open yet.
+- **Other JSONL:** any other `.jsonl` file opens with Log and Raw JSON.
 - **While the agent runs:** a log under a `.logs` or `.state` folder that is being
   written tails in the Log view as events arrive
   ([tailing a JSONL log](browsing-files.md#tailing-a-jsonl-log)).
