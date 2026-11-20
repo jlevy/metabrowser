@@ -31,8 +31,13 @@ export const START_ATTEMPTS = 2;
 // The end of a start's stderr kept for its failure, each chunk marked with the seconds
 // since the spawn it arrived at: about 20 of Chrome's log lines.
 const STDERR_TAIL_CHARS = 3000;
-// How long Chrome is given to exit once signalled, a session's at its close (SIGTERM) and
-// a failed start's (SIGKILL), before its profile is removed.
+// How long Chrome is given to exit once signalled: a session's at its close (SIGTERM,
+// then, if it is still up, SIGKILL) and a failed start's (SIGKILL), before its profile is
+// removed. Chrome's exit after SIGTERM is not bounded by anything it does: on a Mac at a
+// load average of 110 to 230 it took 5 to 35 s, with the checks done in 4 s, and the
+// session's process cannot exit while Chrome runs, so a close that only waited and gave up
+// held the whole session to its test's bound (tests/test_title_prefix_chrome.py).
+// SIGKILL ends it at once; nothing a test reads is left for a graceful exit to write.
 const EXIT_WAIT_MS = 5000;
 // How often a start looks again at DevToolsActivePort and at the port.
 const POLL_MS = 50;
@@ -65,18 +70,37 @@ const seconds = (ms) => (ms / 1000).toFixed(1);
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Wait for *exited*, at most EXIT_WAIT_MS. The bound is cleared once Chrome exits: left
+ * Wait for *exited*, at most *waitMs*. The bound is cleared once Chrome exits: left
  * pending, it held every session's process open 5 s after its last check.
  * @param {Promise<unknown>} exited
+ * @param {number} [waitMs]
  */
-async function exitedWithin(exited) {
+async function exitedWithin(exited, waitMs = EXIT_WAIT_MS) {
   /** @type {NodeJS.Timeout | undefined} */
   let bound;
-  await Promise.race([
-    exited,
-    new Promise((resolve) => (bound = setTimeout(resolve, EXIT_WAIT_MS))),
-  ]);
+  await Promise.race([exited, new Promise((resolve) => (bound = setTimeout(resolve, waitMs)))]);
   clearTimeout(bound);
+}
+
+/**
+ * Stop a Chrome the session is done with, and leave nothing of it holding this process
+ * open. SIGTERM first, so a Chrome that exits promptly closes its profile cleanly, then
+ * SIGKILL after *waitMs* if it is still up, then the end of the stderr pipe: a helper that
+ * outlived the browser holds that pipe's other end, and a pipe node still reads keeps
+ * node from exiting. Whatever helper is left is the caller's process group to stop
+ * (tests/process_group.py).
+ * @param {import("node:child_process").ChildProcess} chrome
+ * @param {Promise<unknown>} exited
+ * @param {number} [waitMs]
+ */
+export async function stopChrome(chrome, exited, waitMs = EXIT_WAIT_MS) {
+  chrome.kill("SIGTERM");
+  await exitedWithin(exited, waitMs);
+  if (chrome.exitCode === null && chrome.signalCode === null) {
+    chrome.kill("SIGKILL");
+    await exitedWithin(exited, waitMs);
+  }
+  chrome.stderr?.destroy();
 }
 
 /**
@@ -357,8 +381,7 @@ function session({ chrome, exited, profile, socket }) {
   };
   const close = async () => {
     socket.close();
-    chrome.kill();
-    await exitedWithin(exited);
+    await stopChrome(chrome, exited);
     fs.rmSync(profile, { force: true, recursive: true, maxRetries: 5, retryDelay: 200 });
   };
   return { close, evaluate, on, send, waitFor };
