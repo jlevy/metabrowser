@@ -164,20 +164,20 @@ integrations:
       user_map: {}
     enabled: true
     policy:
+      # A bead reaches Linear only when it carries the `linear` label, open or
+      # closed: one per GitHub stack, one per standalone PR's bead, and the
+      # epics and features they nest under. See docs/development.md#linear.
       outbound:
-        kinds:
-          - epic
-          - feature
-          - task
-          - bug
-          - chore
+        kinds: []
         statuses:
           - open
           - in_progress
           - blocked
           - deferred
-        labels: []
-        specs: any
+          - closed
+        labels:
+          - linear
+        specs: none
         linked: true
         max_nesting: 3
       inbound:

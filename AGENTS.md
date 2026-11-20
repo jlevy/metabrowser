@@ -176,7 +176,9 @@ first principles that it is necessary.
 Keep changes focused and preserve unrelated work.
 Before handoff: review the diff, run `make verify`, update and close the relevant tbd
 issues, run `tbd sync`, commit, push, open or update the pull request, and watch CI to
-completion.
+completion. Give the pull request or stack its Linear issue as
+[Linear](docs/development.md#linear) describes: label its unit bead `linear` and record
+the pull request on it.
 
 Merge into `main` by `main`’s state.
 `ci-ok` cannot see a pull request whose run went green before `main` turned red, or a
@@ -235,8 +237,9 @@ or working-tree copy is a proposal, and `tbd policy show` reports the effective 
 - `github-merge`: autonomous
 - `github-stacked-prs`: granted
 - `subagents`: granted
+- `linear`: custom
 
-Recorded 2026-11-16.
+Recorded 2026-11-20.
 <!-- END TBD POLICY GRANTS -->
 <!-- END TBD INTEGRATION -->
 

@@ -569,6 +569,34 @@ the same tbd release into every Node version used here, at least the manager’s
 and the one `.node-version` pins: a stale copy can revert caches and documents the newer
 one wrote.
 
+### Linear
+
+Beads mirror to the Linear project through tbd’s integration
+(`tbd shortcut setup-linear`), and a bead reaches Linear only when it carries the
+`linear` label, open or closed.
+The selection lives in `.tbd/config.yml` under `integrations.linear.policy`. A label
+rather than a kind or spec rule, because this repository merges dozens of pull requests
+a day across thousands of beads: on 2026-11-20 every open bead would have been 576
+Linear issues, and most beads are review findings and steps no one asks about in Linear.
+
+The unit on the board is the unit of work that merges:
+
+- **A native GitHub stack** is one issue: the bead every layer names, or a bead created
+  for the stack when the layers name different ones.
+- **A standalone pull request** is its title’s bead.
+  Several pull requests that close one bead share its issue.
+- **The epic or feature a unit belongs to** gets the label too, so the unit nests under
+  it. Process beads, such as one coordinating a landing, do not.
+
+When opening a pull request or stack, label its unit bead (`tbd label add <id> linear`)
+and record the pull request on it (`tbd ref add <id> <pr-url> --kind pr`). A pull
+request with no bead gets one, so nothing merges without an issue.
+`tbd integration sync --push --bead <id>` creates the issue; after that, a full
+`tbd integration sync` reconciles linked pairs in both directions, and closing the bead
+moves the issue to Done.
+Never run `--push` without `--bead` for a bead that is already linked: it overwrites
+Linear-side edits that a full sync would merge.
+
 ## Shared Working Tree
 
 Several agents and worktrees often work this repository at once, so files can appear
