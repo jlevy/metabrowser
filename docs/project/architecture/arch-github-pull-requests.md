@@ -772,10 +772,27 @@ The request names a PR and an optional one-based step.
 The handler checks both comparison endpoints, rejects a known newer head, and hydrates
 just the paths that the chosen step needs through the same manifest and diff adapter as
 Changes. It reports unresolved references in place.
-The limits in `guided_pr.py` cap the per-step hydration and excerpt text.
-Guide text and diff lines are inserted as text.
+The limits in `guided_pr.py` (`MAX_STEPS`, `MAX_REFERENCES`, and `MAX_EXCERPT_BYTES`)
+cap the guide’s steps, the per-step hydration, and the excerpt text, each with the
+measurement that set it beside the constant.
+The parse is kept for each pull request by record revision, so a step click reads the
+guide the first request parsed and an edited description is parsed once.
+An excerpt shows a replacement whole: `_hunk_rows` includes a line that exists only on
+the other side when it lies inside the range or touches either end of it.
+Guide text and diff lines are inserted as text, and an excerpt’s rows carry
+`no-highlight`, the shell’s opt-out in `highlightCode`, because a one-line snippet has
+no language for the highlighter to find.
 `guided-pr.js` loads on demand when the tab opens, aborts reads on disposal, and matches
 results to the page’s record revision.
+
+The tab is shown from a hint, not from the parse: `GUIDED_FENCE` in `pull-page.js`
+matches a line that opens a `guided-pr` fence in the description, and the server’s
+reading, which counts only a top-level fence, decides what the tab shows.
+A description that documents the format inside another fence therefore shows a tab that
+says the pull request has no guide.
+Letting the server answer for the tab, with a `has_guide` on the `pull` envelope, would
+change an envelope the browser and every `--api` golden of the route share, so it is not
+done here; mb-y0en tracks it, with a way to check a guide before it is published.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

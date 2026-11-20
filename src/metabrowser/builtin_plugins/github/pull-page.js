@@ -249,7 +249,9 @@ const PULL_TABS = Object.freeze([
   Object.freeze({ id: "guided", label: "Guided PR", key: "d" }),
   Object.freeze({ id: "checks", label: "Checks", key: "e" }),
 ]);
-// A cheap tab visibility hint. The server's Markdown parser decides if a guide exists.
+// A cheap tab visibility hint, which does not parse: the server's Markdown parser decides if a
+// guide exists, and counts only a top-level fence, so a description that shows the format inside
+// another fence gets a tab that says there is no guide (arch-github-pull-requests.md, "Guided PR").
 const GUIDED_FENCE = /^ {0,3}(?:`{3,}|~{3,})[ \t]*guided-pr[ \t]*$/m;
 
 /** @type {Readonly<Record<string, string>>} */

@@ -140,7 +140,8 @@ A cached page shows at once and refreshes in the background; the
   follows the diff as you scroll.
 - **Guided PR** (`D`), when the description includes a guide: the feature’s purpose, an
   architecture overview, and ordered review steps with commentary above selected diff
-  excerpts.
+  excerpts. The tab appears when the description has a line that opens a `guided-pr`
+  fence; the server’s reading of the block decides what the tab then shows.
 - **Checks** (`E`): the check runs and commit statuses, with links to their details.
 
 ### Guided PR
@@ -155,6 +156,8 @@ Give the agent the PR description and the diff from its merge base to its head.
 Ask it to explain the feature, trace the main components, and choose the code to review
 in dependency or execution order.
 Each step should explain why the reviewer is looking there and what to verify.
+Write every guide field as plain text: the page shows it as typed and keeps its line
+breaks, so Markdown such as backticks, lists, and links prints literally.
 
 ````markdown
 ```guided-pr
@@ -178,15 +181,33 @@ guide:
 
 Use the changed path shown in Changes, the `old` or `new` side, and an inclusive line
 range within one diff hunk.
+An excerpt shows a replacement whole: a line that exists only on the other side, a
+deleted line for a `new` range or an added line for an `old` range, is shown when it
+lies inside the range or touches either end of it, so a changed line appears with what
+it replaced. A step’s excerpts share one size budget (`MAX_EXCERPT_BYTES` in
+`guided_pr.py`); an excerpt past it says it is too large to show.
 A `path` alone links to the file, including binary changes and renames without a text
 diff. The
 [compiled SoftSchema](../src/metabrowser/builtin_plugins/github/guided-pr-v1.schema.yaml)
-describes the payload.
+describes the payload, and `MAX_STEPS` and `MAX_REFERENCES` in `guided_pr.py` bound its
+steps and each step’s references.
 
 The guide is read from the cached description and its excerpts come from the cached
 comparison. If the merge base or head changes, update the guide’s references and commit
 IDs in the PR description.
 A stale guide cannot show excerpts against the new comparison.
+
+A guide the page cannot read says why in place of the steps: invalid YAML, a second
+block, another contract, or a field that fails the schema.
+The same answer is the `guided-pr` route’s, which this prints from the cached pull
+request:
+
+```shell
+metab <pull request URL> --api '/api/plugin/github/guided-pr?number=<n>'
+```
+
+There is no check for a guide before the description carries it, and a block inside
+another fence, as in the example above, is not a guide even where the tab appears.
 
 ### Code Controls
 
