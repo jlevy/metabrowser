@@ -175,7 +175,10 @@ function renderReference(reference, open) {
         element("span", String(row.old ?? ""), "github-pull-guide-line-number"),
         element("span", String(row.new ?? ""), "github-pull-guide-line-number"),
         element("span", row.op === "add" ? "+" : row.op === "del" ? "−" : " "),
-        element("code", row.text),
+        // A row is one line of someone's code, and the shell's highlighter would take it for
+        // a snippet in some language and paint a block of its own into the row. The row owns
+        // its tint, and `no-highlight` is the shell's opt-out (`highlightCode` in app.js).
+        element("code", row.text, "no-highlight"),
       );
       excerpt.append(line);
     }

@@ -1424,12 +1424,13 @@ def write_damaged_records(home: Path) -> None:
     write_private_file_atomic(home, source_pull_record(slug, 13), b"{not json")
 
 
-def serve_stand_in(directory: Path, number: int, port: int) -> None:
+def serve_stand_in(directory: Path, number: int, port: int, *, exit_on_eof: bool = False) -> None:
     """Serve pull request *number* from a home :func:`build_home` wrote, for a browser.
 
     The same seams as :func:`build_home`, with the real clock, so the records read as
     stale and a refresh through the page asks the fake ``gh`` again. Nothing leaves
-    ``127.0.0.1``: the mirror refreshes from the ``file://`` origin.
+    ``127.0.0.1``: the mirror refreshes from the ``file://`` origin. With *exit_on_eof* the
+    server stops when its standard input closes, as a test that owns it needs.
     """
 
     from metabrowser.cache import acquire
@@ -1450,7 +1451,10 @@ def serve_stand_in(directory: Path, number: int, port: int) -> None:
         _patched(acquire, "remote_url_for", remote_url_for),
         _patched(acquire, "require_acquisition_git", lambda: version),
     ):
-        _run_cli([f"{CANONICAL}/pull/{number}", "--no-open", "--port", str(port)])
+        _run_cli(
+            [f"{CANONICAL}/pull/{number}", "--no-open", "--port", str(port)]
+            + (["--exit-on-eof"] if exit_on_eof else [])
+        )
 
 
 # The checkouts :func:`build_checkout_home` makes, each with its ``origin`` and any other
@@ -1532,8 +1536,17 @@ if __name__ == "__main__":
         run_files_refresh(sys.argv[2:])
     elif len(sys.argv) == 3 and sys.argv[2] == "--checkout":
         build_checkout_home(Path(sys.argv[1]).resolve())
-    elif len(sys.argv) == 5 and sys.argv[2] == "--serve":
-        serve_stand_in(Path(sys.argv[1]).resolve(), int(sys.argv[3]), int(sys.argv[4]))
+    elif (
+        len(sys.argv) in (5, 6)
+        and sys.argv[2] == "--serve"
+        and sys.argv[5:] in ([], ["--exit-on-eof"])
+    ):
+        serve_stand_in(
+            Path(sys.argv[1]).resolve(),
+            int(sys.argv[3]),
+            int(sys.argv[4]),
+            exit_on_eof=sys.argv[5:] == ["--exit-on-eof"],
+        )
     elif len(sys.argv) == 3 and sys.argv[2] == "--files":
         build_home(Path(sys.argv[1]).resolve(), files=True)
     elif len(sys.argv) == 3 and sys.argv[2] == "--guided":
@@ -1543,6 +1556,6 @@ if __name__ == "__main__":
     else:
         raise SystemExit(
             "usage: github_pull_fixture.py <directory> "
-            "[--files | --guided | --checkout | --serve <number> <port>] "
+            "[--files | --guided | --checkout | --serve <number> <port> [--exit-on-eof]] "
             "or --files-refresh <metab arguments>"
         )

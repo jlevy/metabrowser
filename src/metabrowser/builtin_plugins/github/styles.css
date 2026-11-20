@@ -2009,6 +2009,14 @@
   padding-inline: 0.75rem;
 }
 
+/* The row's own tint shows through its text: no block, padding, or background of a code
+   element's own, which the shell gives `pre code.hljs` where a highlighter has run. */
+.github-pull-guide-excerpt .github-pull-guide-line code {
+  display: inline;
+  padding: 0;
+  background: none;
+}
+
 .github-pull-guide-line-number {
   text-align: end;
   color: var(--muted);
