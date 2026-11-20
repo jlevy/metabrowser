@@ -7635,19 +7635,25 @@ function appendLiveEvents(path, batch) {
       // not extended: they show the events there were when the file loaded.
       var logPane = queryHtml('[data-tab-content="log"]');
       if (logPane && logPane.style.display !== "none") {
-        var tail = "";
-        var startIdx = cached.events.length - batch.events.length;
-        // The agent-log built-in plugin owns renderLogEvent and exposes it
-        // through the public namespace. If the plugin isn't loaded
-        // (shouldn't happen for built-ins), the live tail is silently
-        // skipped — the static log render still shows up on full reload.
-        var renderEvt = window.metabrowser?.builtins?.agentLog?.renderLogEvent;
-        if (renderEvt) {
-          for (var j = 0; j < batch.events.length; j++) {
-            tail += renderEvt(logPane, batch.events[j], startIdx + j);
-          }
-        }
-        logPane.insertAdjacentHTML("beforeend", tail);
+        var pane = logPane;
+        var events = batch.events;
+        var startIdx = cached.events.length - events.length;
+        // The agent-log built-in plugin owns renderLogEvent and exports it. It drew
+        // this pane, so its load has settled and each batch appends in arrival order.
+        // If it failed, the live tail is skipped: a reload still shows every event.
+        window.metabrowser.plugins.load("agent-log").then(
+          function (agentLog) {
+            if (!pane.isConnected) {
+              return;
+            }
+            var tail = "";
+            for (var j = 0; j < events.length; j++) {
+              tail += agentLog.renderLogEvent(pane, events[j], startIdx + j);
+            }
+            pane.insertAdjacentHTML("beforeend", tail);
+          },
+          function () {},
+        );
       }
     },
     {

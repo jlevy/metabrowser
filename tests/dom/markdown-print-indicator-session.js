@@ -433,13 +433,19 @@ async function flush() {
   const PRINTER = '<svg data-icon="printer"></svg>';
   const renders = new Map();
   const registered = new Map();
+  // The Markdown plugin's exports, which the README panel loads as a dependent does.
+  let markdown = null;
   const mb = {
-    builtins: {},
     decorateExternalLink: sdk.metabrowser.decorateExternalLink,
     async ensureAsset(name) {
       check("the inert render loads only its sanitizer", name === "inert-html", name);
     },
-    async ensureKindAssets() {},
+    plugins: {
+      async load(name) {
+        check("the README panel loads only the Markdown plugin", name === "markdown", name);
+        return markdown;
+      },
+    },
     errors: { isAbortError: (error) => error?.name === "AbortError" },
     escapeHtml: (value) => String(value),
     async fetchKpressRender(ctx) {
@@ -475,7 +481,7 @@ async function flush() {
     sanitizeHtml: (html) => build(doc, html).children,
   };
 
-  await import(moduleUrl("markdown/index.js"));
+  markdown = await import(moduleUrl("markdown/index.js"));
   const { createReadmePanel } = await import(moduleUrl("folder/readme-panel.js"));
   const { PRINT_INDICATOR_LABEL } = await import(moduleUrl("markdown/print-indicator.js"));
   // A file's text arrives without its content here, so no mount runs the Markdown Worker.
@@ -578,11 +584,11 @@ async function flush() {
   // A host that does not ask, and one that asks for something else.
   const plainView = container();
   const plainHandle = await mounted(
-    mb.builtins.markdown.mountRendered(plainView, context("README.md")),
+    markdown.mountRendered(plainView, context("README.md")),
   );
   const offView = container();
   const offHandle = await mounted(
-    mb.builtins.markdown.mountRendered(offView, context("README.md"), { printIndicator: false }),
+    markdown.mountRendered(offView, context("README.md"), { printIndicator: false }),
   );
   const hosts = {
     asked: file.buttons,

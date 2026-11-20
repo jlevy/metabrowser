@@ -2,7 +2,9 @@
 name = "agent-log"
 display_name = "Agent log (Claude / Codex / Gemini / Pi)"
 version = "0.0.1"
-sdk_version = "0.7"
+sdk_version = "0.8"
+# Each event's payload is drawn as the structured plugin's tree.
+requires = ["structured"]
 
 # Coding-agent JSONL session logs from Claude Code, Codex, Gemini, or Pi CLI.
 # Each adapter gets its own [[kind]] entry that resolves to the same kind id.

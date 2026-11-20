@@ -16,12 +16,12 @@ before: >-
   mkdir -p viewroot mdroot pair/alpha pair/beta stack/prnotes pulls/pullkey reserved/reskey override/steal &&
   printf 'mine\n' > viewroot/b.myk &&
   printf '# Notes\n' > mdroot/a.md &&
-  printf '[plugin]\nname = "alpha"\nsdk_version = "0.7"\n[[kind]]\nid = "myk"\nmatch = { ext = ".myk" }\n[[view]]\nkind = "myk"\nid = "main"\nlabel = "Main"\nkey = "m"\ndefault = true\n' > pair/alpha/manifest.toml &&
-  printf '[plugin]\nname = "beta"\nsdk_version = "0.7"\n[[view]]\nkind = "myk"\nid = "more"\nlabel = "More"\nkey = "M"\n' > pair/beta/manifest.toml &&
-  printf '[plugin]\nname = "prnotes"\nsdk_version = "0.7"\n[[view]]\nkind = "pull-request"\nid = "notes"\nlabel = "Notes"\nkey = "N"\n' > stack/prnotes/manifest.toml &&
-  printf '[plugin]\nname = "pullkey"\nsdk_version = "0.7"\n[[view]]\nkind = "markdown"\nid = "preview"\nlabel = "Preview"\nkey = "P"\n' > pulls/pullkey/manifest.toml &&
-  printf '[plugin]\nname = "reskey"\nsdk_version = "0.7"\n[[view]]\nkind = "markdown"\nid = "outline"\nlabel = "Outline"\nkey = "T"\n' > reserved/reskey/manifest.toml &&
-  printf '[plugin]\nname = "steal"\nsdk_version = "0.7"\n[[view]]\nkind = "markdown"\nid = "rendered"\nlabel = "Document"\nkey = "s"\ndefault = true\n' > override/steal/manifest.toml &&
+  printf '[plugin]\nname = "alpha"\nsdk_version = "0.8"\n[[kind]]\nid = "myk"\nmatch = { ext = ".myk" }\n[[view]]\nkind = "myk"\nid = "main"\nlabel = "Main"\nkey = "m"\ndefault = true\n' > pair/alpha/manifest.toml &&
+  printf '[plugin]\nname = "beta"\nsdk_version = "0.8"\n[[view]]\nkind = "myk"\nid = "more"\nlabel = "More"\nkey = "M"\n' > pair/beta/manifest.toml &&
+  printf '[plugin]\nname = "prnotes"\nsdk_version = "0.8"\n[[view]]\nkind = "pull-request"\nid = "notes"\nlabel = "Notes"\nkey = "N"\n' > stack/prnotes/manifest.toml &&
+  printf '[plugin]\nname = "pullkey"\nsdk_version = "0.8"\n[[view]]\nkind = "markdown"\nid = "preview"\nlabel = "Preview"\nkey = "P"\n' > pulls/pullkey/manifest.toml &&
+  printf '[plugin]\nname = "reskey"\nsdk_version = "0.8"\n[[view]]\nkind = "markdown"\nid = "outline"\nlabel = "Outline"\nkey = "T"\n' > reserved/reskey/manifest.toml &&
+  printf '[plugin]\nname = "steal"\nsdk_version = "0.8"\n[[view]]\nkind = "markdown"\nid = "rendered"\nlabel = "Document"\nkey = "s"\ndefault = true\n' > override/steal/manifest.toml &&
   for dir in pair/alpha pair/beta stack/prnotes pulls/pullkey reserved/reskey override/steal; do printf '// No renderer: these plugins exist for their manifests.\n' > "$dir/index.js"; done
 ---
 # Golden tests: view keys across plugin manifests

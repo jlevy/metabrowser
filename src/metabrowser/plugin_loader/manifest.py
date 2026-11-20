@@ -20,6 +20,7 @@ stdlib ``tomllib`` reader and validated by the Pydantic models below.
 
 from __future__ import annotations
 
+import re
 import tomllib
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -40,12 +41,15 @@ from metabrowser.keymap import view_key_error
 # built-in manifest in the same commit. The host ships no shims for older
 # values: an external plugin is expected to update and declare it. See
 # docs/development.md "Compatibility and Legacy Code".
-PLUGIN_SDK_VERSION = "0.7"
+PLUGIN_SDK_VERSION = "0.8"
 
 # Metabrowser 0.4.0 allowed manifests to omit sdk_version. Such a manifest
 # targets the only SDK that existed under that contract. Keep this value pinned
 # when PLUGIN_SDK_VERSION changes so omission fails the ordinary mismatch gate.
 _IMPLICIT_PLUGIN_SDK_VERSION = "0.1"
+
+# A plugin's name, which is also how another plugin's ``requires`` names it.
+_PLUGIN_NAME = re.compile(r"^[a-z][a-z0-9_-]*$")
 
 # ── Match predicate ────────────────────────────────────────────
 
@@ -308,7 +312,7 @@ class PluginInfo(BaseModel):
             "Lowercase plugin name. Used as the URL path segment under "
             "/plugin-static/<name>/ and /api/plugin/<name>/."
         ),
-        pattern=r"^[a-z][a-z0-9_-]*$",
+        pattern=_PLUGIN_NAME.pattern,
     )
     display_name: str = Field(default="", description="Human-readable plugin name.")
     version: str = Field(default="0.0.0", description="Plugin version, semver-ish.")
@@ -340,6 +344,25 @@ class PluginInfo(BaseModel):
             "is served from /plugin-static/<plugin>/<filename>."
         ),
     )
+    requires: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Names of the plugins whose exports this plugin's browser code loads with "
+            "``metabrowser.plugins.load(name)``. Discovery refuses this plugin when one "
+            "is not discovered or was refused, or when the requirements form a cycle "
+            "(:func:`metabrowser.plugin_loader.discovery.resolve_requirements`)."
+        ),
+    )
+
+    @field_validator("requires")
+    @classmethod
+    def _requires_names_plugins(cls, requires: list[str]) -> list[str]:
+        for name in requires:
+            if not _PLUGIN_NAME.fullmatch(name):
+                raise ValueError(f"requires entry {name!r} is not a plugin name")
+        if len(set(requires)) != len(requires):
+            raise ValueError(f"requires lists a plugin more than once: {requires}")
+        return requires
 
 
 class PluginManifest(BaseModel):
@@ -373,6 +396,11 @@ class PluginManifest(BaseModel):
                 f"{PLUGIN_SDK_VERSION!r}; update the plugin for the current SDK "
                 "and set sdk_version accordingly"
             )
+
+        # A plugin that requires itself is the shortest cycle; discovery refuses longer
+        # ones, which need every manifest to see.
+        if self.plugin.name in self.plugin.requires:
+            problems.append(f"plugin '{self.plugin.name}' requires itself")
 
         # A container kind's children hook must be one of this plugin's
         # declared data hooks — the capability is a contract, not a URL.

@@ -30,7 +30,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {MetabrowserPublicSdk["ensureAsset"]} [ensureAsset]
  * @property {MetabrowserPublicSdk["loadKpressAssets"]} [loadKpressAssets]
  * @property {MetabrowserPublicSdk["ensureKindAssets"]} [ensureKindAssets]
- * @property {{structured?: MetabrowserStructuredBuiltins}} [builtins]
+ * @property {MetabrowserPublicSdk["plugins"]} [plugins]
  * @property {{get: <T>(name: string, fallback: T) => T, set: (name: string, value: unknown) => boolean} | undefined} [prefs]
  * @property {MetabrowserPublicSdk["shortcuts"]} [shortcuts]
  * @property {MetabrowserPublicSdk["formatInteger"]} [formatInteger]
@@ -3192,10 +3192,10 @@ export function mountDiffView(container, document_, api, options = {}) {
           await api?.ensureAsset?.("inert-html");
           return window.MetabrowserInertHtml;
         },
-        // The structured plugin draws a YAML or JSON file's tree, as in the file view.
+        // The structured plugin draws a YAML or JSON file's tree, as in the file view
+        // (`requires` in manifest.toml).
         async ensureStructured() {
-          await api?.ensureKindAssets?.("structured");
-          return api?.builtins?.structured;
+          return api?.plugins?.load("structured");
         },
         loadStyles: (assets) => api?.loadKpressAssets?.(assets) ?? Promise.resolve(),
         mutate(change) {

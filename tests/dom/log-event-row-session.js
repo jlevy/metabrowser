@@ -63,6 +63,11 @@ class RowElement {
   querySelector(selector) {
     return selector === ".log-event-raw" ? this.raw : null;
   }
+  /** Where an opened payload's tree is drawn. */
+  appendChild(child) {
+    this.children = [...(this.children ?? []), child];
+    return child;
+  }
 }
 
 /** The page's preview pane: the listeners on it, and the markup written into it. */
@@ -145,10 +150,17 @@ for (const relative of [
   "static/plugin-sdk.js",
   "static/filter-controls.js",
   "static/icons.js",
-  "builtin_plugins/agent_log/index.js",
-  "builtin_plugins/unknown_jsonl/index.js",
 ]) {
   const filename = path.join(sourceRoot, relative);
+  vm.runInContext(fs.readFileSync(filename, "utf8"), sandbox, { filename });
+}
+// The agent-log plugin is an ES module, which this realm evaluates; it reaches the page
+// only through `window`, which is the sandbox's. Its exports are what
+// `mb.plugins.load("agent-log")` answers the shell's live tail.
+globalThis.window = sandbox;
+const agentLog = require(path.join(sourceRoot, "builtin_plugins/agent_log/index.js"));
+{
+  const filename = path.join(sourceRoot, "builtin_plugins/unknown_jsonl/index.js");
   vm.runInContext(fs.readFileSync(filename, "utf8"), sandbox, { filename });
 }
 const toggleEvent = appSource.match(/\nfunction toggleEvent\(header\) \{[\s\S]*?\n\}/);
@@ -157,6 +169,8 @@ vm.runInContext(toggleEvent[0], sandbox, { filename: "app.js (lifted)" });
 
 const mb = sandbox.metabrowser;
 mb.ensureKindAssets = async () => {};
+// An opened payload is the structured plugin's tree, which this session does not draw.
+mb.plugins = { load: async () => ({ renderInlineTree() {} }) };
 
 const LOG = {
   raw: {
@@ -259,7 +273,7 @@ function dispatch(pane, type, target, keys = {}) {
 
     // A row the live tail appends is the same control.
     assert(
-      mb.builtins.agentLog
+      agentLog
         .renderLogEvent(pane, LOG.raw.events[0], 2)
         .includes('role="button" tabindex="0" aria-expanded="false"'),
       `${kind}: an appended row is not a control`,

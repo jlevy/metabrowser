@@ -31,7 +31,7 @@ import importlib
 import importlib.metadata
 import importlib.resources
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -228,5 +228,74 @@ def discover_plugins(
             )
         seen[cand.name] = cand
 
-    result.plugins = list(seen.values())
+    # The server logs each refusal and the CLI modes print it, as for any discovery error.
+    result.plugins, refused = resolve_requirements(list(seen.values()))
+    result.errors.extend(refused)
     return result
+
+
+def resolve_requirements(plugins: list[LoadedPlugin]) -> tuple[list[LoadedPlugin], list[str]]:
+    """Keep the plugins whose ``requires`` can be met, in their order, and say why each
+    other one is refused.
+
+    A plugin on a cycle of requirements is refused: a provider's exports exist only once
+    its module has run, so two modules that each wait for the other's never finish. So is
+    one that requires a plugin that was not discovered or was itself refused, which
+    carries a refusal to everything that depends on it, directly or not. The order is
+    untouched: it is the discovery index that breaks kind priority ties, and a dependent
+    loads a provider when it asks for one (``metabrowser.plugins.load`` in
+    ``static/plugin-sdk.js``).
+    """
+    by_name = {plugin.name: plugin for plugin in plugins}
+    reasons: dict[str, str] = {}
+    for plugin in plugins:
+        cycle = _requirement_cycle(plugin.name, by_name)
+        if cycle is not None:
+            reasons[plugin.name] = (
+                f"plugin '{plugin.name}' is refused: its requirements form a cycle, "
+                + " -> ".join(cycle)
+            )
+    changed = True
+    while changed:
+        changed = False
+        for plugin in plugins:
+            if plugin.name in reasons:
+                continue
+            for provider in plugin.manifest.plugin.requires:
+                if provider not in by_name:
+                    cause = "which was not discovered"
+                elif provider in reasons:
+                    cause = "which was refused"
+                else:
+                    continue
+                reasons[plugin.name] = (
+                    f"plugin '{plugin.name}' is refused: it requires '{provider}', {cause}"
+                )
+                changed = True
+                break
+    kept = [plugin for plugin in plugins if plugin.name not in reasons]
+    return kept, [reasons[plugin.name] for plugin in plugins if plugin.name in reasons]
+
+
+def _requirement_cycle(name: str, by_name: Mapping[str, LoadedPlugin]) -> list[str] | None:
+    """The shortest chain of requirements from *name* back to itself, or None.
+
+    Breadth first over discovered plugins only; a missing provider ends its branch, and
+    :func:`resolve_requirements` refuses it separately.
+    """
+    previous: dict[str, str] = {}
+    frontier = [name]
+    while frontier:
+        following: list[str] = []
+        for current in frontier:
+            for provider in by_name[current].manifest.plugin.requires:
+                if provider == name:
+                    chain = [current]
+                    while chain[-1] != name:
+                        chain.append(previous[chain[-1]])
+                    return [*reversed(chain), name]
+                if provider in by_name and provider not in previous:
+                    previous[provider] = current
+                    following.append(provider)
+        frontier = following
+    return None

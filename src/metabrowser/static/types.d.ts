@@ -1256,7 +1256,7 @@ type StructuredExpansion = Readonly<{
   indentChars: number;
 }>;
 
-type StructuredBuiltins = {
+type StructuredExports = {
   calculateOptimalExpansion: (
     parsed: unknown,
     options: { maxLines?: number; maxExpandThreshold?: number; indentChars?: number },
@@ -1279,7 +1279,7 @@ type StructuredBuiltins = {
   renderTree: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
 
-type AgentLogBuiltins = {
+type AgentLogExports = {
   disposeLog: (container?: HTMLElement) => void;
   renderCharts: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
   renderLog: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
@@ -1287,11 +1287,7 @@ type AgentLogBuiltins = {
   renderRaw: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
 
-type TextBuiltins = {
-  renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
-};
-
-type MarkdownBuiltins = {
+type MarkdownExports = {
   mountRendered: (
     container: HTMLElement,
     ctx: MetabrowserRenderContext,
@@ -1315,19 +1311,26 @@ type MarkdownBuiltins = {
    * nothing when `isolated: true` says nothing else bounds them. Null when *root* holds
    * no diagram, so nothing is fetched; otherwise `dispose` stops drawing and leaves the
    * figures. */
-  drawDiagrams?: (
+  drawDiagrams: (
     root: ParentNode,
     options?: { inert?: boolean; isolated?: boolean },
   ) => { dispose(): void; ready: Promise<void> } | null;
 };
 
-type MetabrowserBuiltins = {
-  agentLog?: AgentLogBuiltins;
-  markdown?: MarkdownBuiltins;
-  structured?: StructuredBuiltins;
-  text?: TextBuiltins;
-  [name: string]: unknown;
+/** A provider plugin's exports, the namespace of its index.js, by the plugin's name. */
+type MetabrowserPluginExports = {
+  "agent-log": AgentLogExports;
+  markdown: MarkdownExports;
+  structured: StructuredExports;
 };
+
+/** `metabrowser.plugins`: a plugin's declared providers ("Declared Dependencies"). */
+type MetabrowserPlugins = Readonly<{
+  load<Name extends keyof MetabrowserPluginExports>(
+    name: Name,
+  ): Promise<MetabrowserPluginExports[Name]>;
+  load(name: string): Promise<object>;
+}>;
 
 type MetabrowserRollupEnvelope = {
   root: string;
@@ -1536,13 +1539,13 @@ type MetabrowserSdk = {
   ageBucket(mtimeSeconds: number | null | undefined): MetabrowserAgeBucket | null;
   ageLabelHtml(mtimeSeconds: number | null | undefined): string;
   bench?: MetabrowserBench;
-  builtins: MetabrowserBuiltins;
   debug?: MetabrowserDebug;
   errors: MetabrowserRequestErrorRuntime;
   /** What the page reports to the event log, and its Details panel (static/event-reports.js). */
   eventReports?: MetabrowserEventReports;
   directoryTotals: MetabrowserDirectoryTotalsStore;
   filters: MetabrowserFilterState;
+  plugins: MetabrowserPlugins;
   folderOverview?: FolderOverviewRegistry;
   folderContext: Readonly<{
     refresh(path: string): Promise<void>;
@@ -1756,15 +1759,15 @@ type MetabrowserSdk = {
 };
 
 type StructuredPreviewGlobal = {
-  calculateOptimalExpansion: StructuredBuiltins["calculateOptimalExpansion"];
+  calculateOptimalExpansion: StructuredExports["calculateOptimalExpansion"];
   formatValue: (...args: Array<unknown>) => unknown;
   generateStructuredPreview: (...args: Array<unknown>) => unknown;
 };
 
 type StructuredTreeGlobal = {
   expansion: StructuredExpansion;
-  materializeRows: StructuredBuiltins["materializeRows"];
-  renderRowHtml: StructuredBuiltins["renderRowHtml"];
+  materializeRows: StructuredExports["materializeRows"];
+  renderRowHtml: StructuredExports["renderRowHtml"];
   renderInlineTree: (
     container: HTMLElement,
     data: unknown,
@@ -2408,17 +2411,11 @@ type MetabrowserPluginHostRuntime = Readonly<{
   ownsElement(element: Element | null | undefined): boolean;
   /** Keys still held from before static/plugin-shortcuts.js loaded; it empties this. */
   shortcutQueue: Set<MetabrowserQueuedShortcut>;
-  configureAssets(
-    assetsByKind: Record<
-      string,
-      Array<{
-        name: string;
-        module: string;
-        scripts: string[];
-        styles: string[];
-      }>
-    >,
-  ): void;
+  /** Each plugin's assets by name, and the plugins each kind's views come from. */
+  configureAssets(config: {
+    plugins: Record<string, { module: string; scripts: string[]; styles: string[] }>;
+    kinds: Record<string, string[]>;
+  }): void;
   loadPluginsForKind(kind: string): Promise<void>;
 }>;
 
@@ -4337,7 +4334,7 @@ declare global {
   }>;
 
   type MetabrowserPublicSdk = MetabrowserSdk;
-  type MetabrowserStructuredBuiltins = StructuredBuiltins;
+  type MetabrowserStructuredExports = StructuredExports;
   type MetabrowserStructuredTreeRow = StructuredTreeRow;
   type MetabrowserPublicViewDescriptor = MetabrowserViewDescriptor;
   type MetabrowserPublicViewSpec = MetabrowserViewSpec;

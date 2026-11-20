@@ -5161,18 +5161,21 @@ async def _shell_asset_prefixes() -> tuple[dict[str, str], str]:
 
 
 def _build_plugin_asset_config_block(prefixes: Mapping[str, str]) -> str:
-    """Configure manifest-owned assets by the kinds that consume them.
+    """Configure manifest-owned assets by plugin, and the plugins each kind consumes.
 
     No plugin asset is an eager shell dependency. The private plugin host
-    loads one descriptor at most once when ``app.js`` selects any kind in its
-    manifest. Extra classic scripts retain manifest order before ``index.js``;
-    styles load in parallel and settle before the plugin renderer mounts.
+    loads one plugin at most once, when ``app.js`` selects any kind in its
+    manifest or code asks for its exports by name (``metabrowser.plugins.load``),
+    which is how a plugin with no kind of its own is reached. Extra classic
+    scripts retain manifest order before ``index.js``; styles load in parallel
+    and settle before the plugin renderer mounts.
 
     Every URL is under the plugin's stamped prefix (*prefixes*, from
     :func:`_shell_asset_prefixes`, which takes them off the event loop), so its
     relative imports, worker, and stylesheet references inherit the stamp.
     """
-    assets_by_kind: dict[str, list[dict[str, object]]] = {}
+    plugins: dict[str, dict[str, object]] = {}
+    kinds: dict[str, list[str]] = {}
     for plugin in _LOADED_PLUGINS:
         prefix = prefixes.get(plugin.name, f"/plugin-static/{plugin.name}")
         styles: list[str] = []
@@ -5182,17 +5185,16 @@ def _build_plugin_asset_config_block(prefixes: Mapping[str, str]) -> str:
             url = f"{prefix}/{extra}"
             if url not in styles:
                 styles.append(url)
-        descriptor: dict[str, object] = {
-            "name": plugin.name,
+        plugins[plugin.name] = {
             "module": f"{prefix}/index.js",
             "scripts": [f"{prefix}/{extra}" for extra in plugin.manifest.plugin.extra_scripts],
             "styles": styles,
         }
-        kinds = {view.kind for view in plugin.manifest.view}
-        kinds.update(kind.id for kind in plugin.manifest.kind)
-        for kind in sorted(kinds):
-            assets_by_kind.setdefault(kind, []).append(descriptor)
-    encoded = _json.dumps(assets_by_kind).replace("<", "\\u003c")
+        owned = {view.kind for view in plugin.manifest.view}
+        owned.update(kind.id for kind in plugin.manifest.kind)
+        for kind in sorted(owned):
+            kinds.setdefault(kind, []).append(plugin.name)
+    encoded = _json.dumps({"plugins": plugins, "kinds": kinds}).replace("<", "\\u003c")
     return f"<script>window.MetabrowserPluginHost.configureAssets({encoded});</script>"
 
 

@@ -250,15 +250,25 @@ _INSTALLED_AS: Final[dict[MetabInstallMethod, str]] = {
 }
 
 
-def plugins_check(plugin_count: int, problems: Sequence[str]) -> Check:
-    """The plugins and the packaged cache record contracts, each problem a detail."""
+def plugins_check(
+    plugin_count: int,
+    problems: Sequence[str],
+    requirements: Sequence[tuple[str, str]] = (),
+) -> Check:
+    """The plugins and the packaged cache record contracts, each problem a detail.
+
+    *requirements* is the loaded plugins' dependency graph, one ``(plugin, "requires
+    a, b")`` detail per plugin that declares ``requires``
+    (:func:`metabrowser.cli.plugins.requirement_details`).
+    """
 
     found = "1 plugin" if plugin_count == 1 else f"{plugin_count} plugins"
+    details = (("plugins", str(plugin_count)), *requirements)
     if not problems:
         summary = f"{found} and the packaged cache record contracts check out"
-        return Check("plugins", "Plugins", "ok", summary, (("plugins", str(plugin_count)),))
+        return Check("plugins", "Plugins", "ok", summary, details)
     summary = f"{len(problems)} problem(s) with the {found} or the packaged cache record contracts"
-    details = (("plugins", str(plugin_count)), *(("problem", problem) for problem in problems))
+    details = (*details, *(("problem", problem) for problem in problems))
     return Check("plugins", "Plugins", "problem", summary, details)
 
 
@@ -657,7 +667,11 @@ def running_app() -> tuple[str, str | None] | None:
 
 
 def doctor_checks(
-    *, plugin_count: int, plugin_problems: Sequence[str], open_in: DoctorOpenIn
+    *,
+    plugin_count: int,
+    plugin_problems: Sequence[str],
+    open_in: DoctorOpenIn,
+    plugin_requirements: Sequence[tuple[str, str]] = (),
 ) -> tuple[Check, ...]:
     """Every check, in the order the report lists them."""
 
@@ -670,7 +684,7 @@ def doctor_checks(
         looked_up = open_in.section.get("app") is not None
     config = config_check(app_path=app_path)
     return (
-        plugins_check(plugin_count, plugin_problems),
+        plugins_check(plugin_count, plugin_problems, plugin_requirements),
         open_in_check(open_in, config_unreadable=config.state == "problem"),
         metab_check(app_path=app_path, app_minimum=app_minimum, looked_up=looked_up),
         git_check(),

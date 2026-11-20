@@ -2,15 +2,15 @@
 name = "structured"
 display_name = "Structured Data"
 version = "0.0.1"
-sdk_version = "0.7"
+sdk_version = "0.8"
 extra_scripts = ["preview.js", "tree.js"]
 
 # Generic JSON / YAML browser. Renders the parsed structure as a
 # virtualized, YAML-styled tree (default) with the original raw text
 # also available via the source view. Schema-aware variants
 # (e.g. analysis-report, report-bundle) can claim specific files
-# at higher priority and fall back to mb.builtins.structured.renderInlineTree
-# for their raw view.
+# at higher priority and fall back to the renderInlineTree its exports
+# offer (`requires = ["structured"]`) for their raw view.
 [[kind]]
 id = "structured"
 match = { exts = [".json", ".yaml", ".yml"] }

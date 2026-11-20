@@ -143,7 +143,6 @@ class Element {
 function createSdk(answer, files) {
   const calls = { renders: [], completeText: [], fetched: [], sources: [] };
   const mb = {
-    builtins: {},
     escapeHtml,
     errors: { isAbortError: (error) => error?.name === "AbortError" },
     formatSize: (bytes) => `${bytes} B`,
@@ -307,9 +306,14 @@ async function documentTab(rendered, answer, envelope, complete) {
       complete: README_TEXT,
       envelopes: { "README.md": README_ENVELOPE },
     });
-    mb.builtins.markdown = {
-      mountRendered: (container, ctx, options) =>
-        rendered.mountRenderedMarkdown(container, ctx, mb, { ...options, workerClient: NO_WORKER }),
+    mb.plugins = {
+      load: async () => ({
+        mountRendered: (container, ctx, options) =>
+          rendered.mountRenderedMarkdown(container, ctx, mb, {
+            ...options,
+            workerClient: NO_WORKER,
+          }),
+      }),
     };
     const panel = readme.createReadmePanel(mb);
     const folder = { path: "", raw: { type: "folder", path: "", readme_path: "README.md" } };
