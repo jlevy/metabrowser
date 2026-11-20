@@ -623,7 +623,7 @@ Do not hand one out as a release.
 
 | Path | Holds |
 | --- | --- |
-| `Sources/ShellCore/`, `Sources/ShellViews/`, `Sources/Metabrowser/` | The decisions testable without a window, the web view and its container, and the AppKit app |
+| `Sources/ShellCore/`, `Sources/ShellViews/`, `Sources/Metabrowser/` | The decisions testable without a window, the web view and its container and the chooser’s menu item, and the AppKit app |
 | `Tests/ShellCoreTests/` | Swift Testing tests of `ShellCore`, with fake processes and machines, plus real `posix_spawn` children and real `WKDownload`s from a local server |
 | `Resources/Info.plist` | The bundle’s property list |
 | `AppIcon/`, `scripts/build-icon.sh`, `Resources/AppIcon*.icns` | The icon’s SVG masters and renderer, and the icons they build ([AppIcon/README.md](AppIcon/README.md)) |

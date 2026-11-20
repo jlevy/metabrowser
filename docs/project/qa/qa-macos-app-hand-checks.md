@@ -481,10 +481,12 @@ window of its own. Each step starts where the one before it ends.
    Each row’s mark sits on the line of its name, centered on that line as on Open
    Recent’s one-line rows, never between the name and the subtitle, and the subtitle
    starts under the name, not under the mark: in light and dark mode, on the highlighted
-   row as white as its text, and on the checked row, whose check mark stays centered on
-   the row. `quarterly-reports`, after `c`, shows its path on one line, cut in the middle
-   with an ellipsis, its mark still on the name’s line, and resting the pointer on the
-   row shows the whole path in a tooltip.
+   row as white as its text, and on the checked row, whose check mark stands on the
+   name’s line too, level with the name and the mark, in the column AppKit gives a
+   check, not between the lines.
+   `quarterly-reports`, after `c`, shows its path on one line, cut in the middle with an
+   ellipsis, its mark still on the name’s line, and resting the pointer on the row shows
+   the whole path in a tooltip.
    Holding Option turns each row into “Open … in New Window”, its mark still on the
    name’s line and its subtitle the same.
    Escape closes it.
@@ -577,7 +579,8 @@ window of its own. Each step starts where the one before it ends.
     on the screen.
 17. **VoiceOver.** With VoiceOver on, the title reads as a pop-up button with the
     folder’s name; VO-Space and VO-Shift-M on it each open the chooser, and VoiceOver
-    lands in it; the Actions rotor offers Show Path, which opens the path menu.
+    lands in it and reads the open folder `a` as checked, and the others not; the
+    Actions rotor offers Show Path, which opens the path menu.
     In the Switch Folder panel, VoiceOver reads the selected row as the panel opens and
     each time Up, Down, or typing moves the selection: its name, its location or “In
     another window”, and “shown in this window” for this window’s folder.
