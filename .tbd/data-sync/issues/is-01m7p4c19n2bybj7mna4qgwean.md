@@ -5,17 +5,17 @@ title: "Merge-ready: fdu-swap groundwork stack on the Python provider (switchove
 kind: epic
 status: in_progress
 priority: 1
-version: 15
+version: 17
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 refs:
-  - kind: pr
-    url: https://github.com/jlevy/metabrowser/pull/520
-    title: Fdu grounding work overview
-    at: 2026-11-20T23:48:43.787Z
   - kind: other
     url: https://api.github.com/repos/jlevy/metabrowser/stacks/682
     title: "GitHub stack #682"
     at: 2026-11-20T23:48:44.126Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/520
+    title: fdu provider groundwork overview
+    at: 2026-11-20T23:49:36.818Z
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -33,7 +33,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-18T01:29:34.261Z
-updated_at: 2026-11-20T23:48:45.100Z
+updated_at: 2026-11-20T23:49:36.818Z
 started_at: 2026-11-18T01:29:34.982Z
 ---
 User request 2026-11-18: 'make sure everything is ready to merge incrementally ... the parts that are possible to merge incrementally with no real operational change (cleanups and refactors with the pure Python backend), and then make the switchover something we could delay for the next release.' Mode: merge-ready (review-and-merge-prs). The nine stack PRs (#498, #501, #502, #503, #507, #508, #518, #519, #520) add no fdu provider, flag, or extra; the switchover (mb-urh5 thin adapter + experimental flag + extra, mb-e9uw macOS preference, and any default change) stays out of this release.
