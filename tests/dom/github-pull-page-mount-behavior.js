@@ -1179,7 +1179,7 @@ async function switchUnavailable(page) {
   return said;
 }
 
-// The page's tabs answer to C, G, and E through the SDK's shortcut surface, and its header's
+// The page's tabs answer to C, G, D, and E through the SDK's shortcut surface, and its header's
 // links and actions to the numbers of their places, through the same surface. The production
 // shortcut registry and plugin shortcut facade (static/keyboard-shortcuts.js and
 // static/plugin-shortcuts.js) load whole into a realm of their own, as `shell-tools` loads
@@ -1405,7 +1405,7 @@ async function tabKeys(page) {
       .map((command) => command.bindings.visible.join(""))
       .join(" ");
   const live = () =>
-    ["conversation", "files", "checks"].filter((id) =>
+    ["conversation", "files", "guided", "checks"].filter((id) =>
       registry.isLive(`plugin.github.pull.tab.${id}`),
     );
   /** Press `key`, and say what the page did: the route it opened, or the tab now shown. */
@@ -1566,6 +1566,47 @@ async function tabKeys(page) {
   steps.push(`the next read answers and paintHeader puts the column back: ${keyed().join(", ")}`);
   steps.push(`live: ${live().join(" ")}`);
   steps.push(result("g"));
+  // Guided PR is a tab only where the description opens a `guided-pr` fence, and D is its
+  // key: the link joins the bar between Changes and Checks when a record brings the fence,
+  // and leaves it when a record no longer has one, unless it is the tab shown. The key
+  // waits while the link is out of the page, and the link's return retargets it, which is
+  // what badges it at once while Shift is held. The page cannot tell a block from an example
+  // of one inside another fence (the server's parse can), so the example shows the tab too.
+  const described = (generation, description) => {
+    const next = structuredClone(recorded.current.body);
+    next.record_revision = String(generation).padStart(64, "0");
+    next.record.pull.body = description;
+    return next;
+  };
+  const GUIDE = "Counts to two.\n\n```guided-pr\nsoftschema: {}\n```\n";
+  const EXAMPLE = "How to write one:\n\n````markdown\n```guided-pr\nsoftschema: {}\n```\n````\n";
+  arrive("");
+  answer = described(1, "Counts to two.");
+  await elapse();
+  steps.push(`no block in the description: ${keyed().join(", ")}; live ${live().join(" ")}`);
+  steps.push(result("d"));
+  answer = described(2, GUIDE);
+  await elapse();
+  steps.push(`a block in the description: ${keyed().join(", ")}; live ${live().join(" ")}`);
+  steps.push(result("d"));
+  arrive("guided");
+  steps.push(`the route arrives: ${shown()}`);
+  answer = described(3, "Counts to two.");
+  await elapse();
+  steps.push(`the block leaves while its tab is shown: ${keyed().join(", ")}; ${shown()}`);
+  arrive("");
+  await settle();
+  steps.push(`back on Conversation: ${keyed().join(", ")}; ${result("d")}`);
+  registry.setRevealed(true);
+  answer = described(4, GUIDE);
+  await elapse();
+  steps.push(`the block returns while Shift is held: badges ${badged().join(", ")}`);
+  registry.setRevealed(false);
+  steps.push(result("d"));
+  arrive("");
+  answer = described(5, EXAMPLE);
+  await elapse();
+  steps.push(`an example of the block inside another fence: ${keyed().join(", ")}`);
   handle.dispose();
   steps.push(`disposed: keys ${attached() || "none"}`);
   assert.equal(

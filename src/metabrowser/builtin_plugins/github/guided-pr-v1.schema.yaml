@@ -1,0 +1,96 @@
+$defs:
+  GuideComparison:
+    additionalProperties: false
+    properties:
+      head:
+        $ref: '#/$defs/Sha'
+      merge_base:
+        $ref: '#/$defs/Sha'
+    required:
+    - head
+    - merge_base
+    title: GuideComparison
+    type: object
+  GuideReference:
+    additionalProperties: false
+    properties:
+      end_line:
+        anyOf:
+        - $ref: '#/$defs/LineNumber'
+        - type: 'null'
+        default: null
+      path:
+        $ref: '#/$defs/Prose'
+      side:
+        anyOf:
+        - enum:
+          - old
+          - new
+          type: string
+        - type: 'null'
+        default: null
+        title: Side
+      start_line:
+        anyOf:
+        - $ref: '#/$defs/LineNumber'
+        - type: 'null'
+        default: null
+    required:
+    - path
+    title: GuideReference
+    type: object
+  GuideStep:
+    additionalProperties: false
+    properties:
+      commentary:
+        $ref: '#/$defs/Prose'
+      references:
+        items:
+          $ref: '#/$defs/GuideReference'
+        maxItems: 8
+        minItems: 1
+        title: References
+        type: array
+      title:
+        $ref: '#/$defs/Prose'
+    required:
+    - commentary
+    - references
+    - title
+    title: GuideStep
+    type: object
+  LineNumber:
+    minimum: 1
+    type: integer
+  Prose:
+    minLength: 1
+    type: string
+  Sha:
+    pattern: ^[0-9a-f]{40}(?:[0-9a-f]{24})?$
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  architecture:
+    $ref: '#/$defs/Prose'
+  comparison:
+    $ref: '#/$defs/GuideComparison'
+  feature:
+    $ref: '#/$defs/Prose'
+  steps:
+    items:
+      $ref: '#/$defs/GuideStep'
+    maxItems: 40
+    minItems: 1
+    title: Steps
+    type: array
+required:
+- architecture
+- comparison
+- feature
+- steps
+title: GuidedPR
+type: object
+x-softschema:
+  contract: metabrowser.github:GuidedPR/v1
+  schema_sha256: 43d7aa6622c6d444e01b8a78563603e680b402a7413f26c7be6acd63ec84cf51

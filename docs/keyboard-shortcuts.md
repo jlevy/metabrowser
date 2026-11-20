@@ -37,6 +37,7 @@ work.
 | `M` | Treemap, from its map | A folder is shown |
 | `C` | Conversation | A pull request page is shown |
 | `G` | Changes, from chan-*g*es | A pull request page is shown |
+| `D` | Guided PR, from gui-*d*-ed | The Guided PR tab is shown |
 | `E` | Checks, from ch-*e*-cks | A pull request page is shown |
 | `L` | Diff layout: Split or Unified | A diff with a layout control is shown |
 | `1`–`9` | The numbered links and actions on this screen, in reading order | A numbered control is shown |

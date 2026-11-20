@@ -60,6 +60,7 @@ from tests.github_pull_fixture import (
     build_origin,
     files_scenario,
     graph_core_data,
+    guide_body,
     install_fake_gh,
     ok,
     pull_bodies,
@@ -318,6 +319,7 @@ def _build(root: Path, origin: Origin) -> Built:
     answers = files_scenario(origin)
     api = answers["api"]
     api["repos/octo/demo/pulls/7"]["body"]["user"]["avatar_url"] = AVATAR
+    api["repos/octo/demo/pulls/7"]["body"]["body"] = guide_body(origin)
     answers["stack_version"] = "0.1.0"
     stacks = "repos/octo/demo/stacks?per_page=100&page=1"
     api[stacks] = _stack_page(stacks, [7, TREE_PULL])
@@ -530,6 +532,21 @@ def _markdown(built: Built, result: Invocation) -> None:
     assert rendered["html"].strip()
 
 
+def _guided(built: Built, result: Invocation) -> None:
+    guide = answer(result)
+    assert (guide["record_revision"], guide["state"], guide["step_count"]) == (
+        built.revision,
+        "ready",
+        2,
+    )
+    reference = guide["references"][0]
+    assert reference["path"] == "src/app.txt"
+    assert [(row["op"], row["text"]) for row in reference["rows"]] == [
+        ("context", "one"),
+        ("add", "two"),
+    ]
+
+
 def _timeline(built: Built, result: Invocation) -> None:
     timeline = answer(result)
     assert (timeline["record_revision"], timeline["state"]) == (built.revision, "complete")
@@ -596,6 +613,7 @@ ELEMENTS: Final[tuple[Drawn, ...]] = (
         "Description Markdown", "PR page", "pull-markdown", _fixed("number=7&part=body"), _markdown
     ),
     Drawn("Conversation timeline", "PR page", "pull-timeline", _fixed(""), _timeline),
+    Drawn("Guided PR excerpts", "PR page", "guided-pr", _fixed("number=7"), _guided, _COMPARES),
     Drawn(
         "Diff summary",
         "PR page",

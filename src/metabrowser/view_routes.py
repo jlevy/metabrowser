@@ -20,8 +20,8 @@ COMMIT_ROUTE_PREFIX = "/commit/"
 PULL_ROUTE_PREFIX = "/pull/"
 # The list of a repository's pull requests, with `?state=` for a filter, as on GitHub.
 PULLS_ROUTE = "/pulls"
-# Conversation is the PR page itself. Changes and Checks have their own addresses.
-PULL_ROUTE_TABS = ("", "files", "checks")
+# Conversation is the PR page itself. The other tabs have their own addresses.
+PULL_ROUTE_TABS = ("", "files", "guided", "checks")
 # A pull-request number as the GitHub URL reducer admits one.
 _PULL_NUMBER = re.compile(r"^[1-9][0-9]{0,9}$")
 _VIEW_ROUTE_PREFIX_BYTES = VIEW_ROUTE_PREFIX.encode()
@@ -214,7 +214,7 @@ def _pull_file_segments(file: str) -> list[str]:
 
 
 def format_pull_href(number: int, tab: str = "", file: str = "") -> str:
-    """Return the address of a PR's Conversation, Changes or Checks tab.
+    """Return the address of a PR's Conversation, Changes, Guided PR or Checks tab.
 
     A changed file has an address under ``/pull/<n>/files/`` with each segment
     percent-encoded.

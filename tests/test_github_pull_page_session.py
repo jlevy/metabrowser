@@ -741,7 +741,7 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             'an SDK with no button: the corner after the title "Count to two in the app"; '
             "asked for none",
         ],
-        # C, G, and E run the page's setTab through the shortcut facade, with or without
+        # C, G, D, and E run the page's setTab through the shortcut facade, with or without
         # Shift. H is the Commits tab's, so Checks is E. The header keeps the tab column
         # unless its first read fails, so they are live from first paint, as the links
         # are; they wait while the column is out after a failed first read, and while the
@@ -807,6 +807,27 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "Conversation C, Changes G, Checks E",
             "live: conversation files checks",
             "G: showed Changes",
+            # Guided PR's tab and its key D exist only where the description opens a
+            # `guided-pr` fence: the link joins the bar between Changes and Checks when a
+            # record brings one, stays while its tab is shown, and leaves the bar, and the
+            # key, otherwise. The page cannot tell a block from an example of one inside
+            # another fence, which the server's parse can (mb-y0en), so the example shows
+            # the tab too.
+            "no block in the description: Conversation C, Changes G, Checks E; "
+            "live conversation files checks",
+            "D: not handled",
+            "a block in the description: Conversation C, Changes G, Guided PR D, Checks E; "
+            "live conversation files guided checks",
+            "D: opened the guided route",
+            "the route arrives: Guided PR",
+            "the block leaves while its tab is shown: "
+            "Conversation C, Changes G, Guided PR D, Checks E; Guided PR",
+            "back on Conversation: Conversation C, Changes G, Checks E; D: not handled",
+            "the block returns while Shift is held: "
+            "badges Conversation C, Changes G, Guided PR D, Checks E",
+            "D: opened the guided route",
+            "an example of the block inside another fence: "
+            "Conversation C, Changes G, Guided PR D, Checks E",
             "disposed: keys none",
         ],
         # A refused text on the mounted page (review A of #527, A6 and A8; review D, D8):

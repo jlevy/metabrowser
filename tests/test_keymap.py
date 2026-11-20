@@ -290,7 +290,7 @@ def test_the_built_in_plugins_keys_are_not_reserved() -> None:
     panel = (_BUILTIN_PLUGINS / "github" / "pulls-panel.js").read_text(encoding="utf-8")
     assert panel.count("numbered: true,") == 2, "the Pulls panel's two calls take no letter"
     letters = _builtin_plugin_letters()
-    assert set(letters) == {"c", "g", "e", "l"}
+    assert set(letters) == {"c", "g", "d", "e", "l"}
     served = serialize_reserved_shell_keys()
     assert {key: source for key, source in letters.items() if key in served} == {}
     assert not set(letters) & reserved_keys_for("pull-request")

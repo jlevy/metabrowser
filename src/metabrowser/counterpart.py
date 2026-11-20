@@ -183,8 +183,8 @@ PAGES: Final[dict[PageKind, PageCounterpart]] = {
         ("uncommitted", "untracked", "ignored", "missing", "not_on_origin"),
     ),
     "pull": PageCounterpart(
-        "/pull/<n>, /pull/<n>/files, /pull/<n>/checks",
-        "pull/<n>, pull/<n>/files, pull/<n>/checks",
+        "/pull/<n>, /pull/<n>/files, /pull/<n>/guided, /pull/<n>/checks",
+        "pull/<n>, pull/<n>/files, pull/<n>, pull/<n>/checks",
         (),
     ),
     "pull_file": PageCounterpart("/pull/<n>/files/<path>", "pull/<n>/files#diff-<hash>", ()),
