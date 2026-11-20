@@ -55,7 +55,7 @@ import time
 from array import array
 from bisect import bisect_left
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final, Literal
 
 from metabrowser.git.process import (
@@ -197,6 +197,7 @@ class RevisionAges:
     seconds: float
     from_commit: str | None = None
     """The ancestor whose answer this one was derived from, when it was."""
+    _sorted: array[int] | None = field(default=None, init=False, repr=False, compare=False)
 
     @property
     def dated(self) -> int:
@@ -205,6 +206,20 @@ class RevisionAges:
     @property
     def complete(self) -> bool:
         return self.stop == "complete"
+
+    def sorted_times(self) -> array[int]:
+        """The dated times in ascending order, which the Modified within counts bisect. Built on
+        first use and kept with the answer, so a replaced answer is counted afresh and an
+        evicted one frees it."""
+
+        if self._sorted is None:
+            object.__setattr__(
+                self,
+                "_sorted",
+                array("q", sorted(value for value in self.times if value != UNDATED)),
+            )
+        assert self._sorted is not None
+        return self._sorted
 
     def time_of(self, name: bytes) -> int | None:
         """*name*'s time, or ``None`` when it is not a name here or is undated."""

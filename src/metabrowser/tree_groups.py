@@ -171,6 +171,24 @@ def age_band(group: TreeGroup, recency_seconds: int) -> AgeBand:
     return AgeBand(within_seconds=within, older_than_seconds=older_than)
 
 
+def age_windows() -> tuple[float, ...]:
+    """The bounded recency windows in seconds, shortest first: the edges between the age
+    groups. A file whose age is no more than the first is in the first group, one no more
+    than the second (and more than the first) in the second, and one older than the last in
+    Older, so the group of an age is the number of windows it is more than."""
+
+    return tuple(seconds for _key, seconds in _windows())
+
+
+def age_group_index(group: TreeGroup) -> int:
+    """Where *group* is among the age groups other than Undated, in display order: the number
+    `age_windows` gives an age in it."""
+
+    if group.by != "age" or group.id == UNDATED_GROUP_ID:
+        raise ValueError(f"{group.key} is not an age band")
+    return next(at for at, member in enumerate(_GROUPS["age"]) if member.id == group.id)
+
+
 def inventory_group_filter(group: TreeGroup) -> TreeGroupFilter:
     """*group* as the inventory provider selects it in a grouped tree (`GroupedTreeQuery`):
     a type group by its id, and an age group as its band, which a recency window then cuts
@@ -241,6 +259,8 @@ __all__ = [
     "GroupBy",
     "TreeGroup",
     "age_band",
+    "age_group_index",
+    "age_windows",
     "group_row",
     "groups_for",
     "groups_payload",

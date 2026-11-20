@@ -69,6 +69,8 @@ function session(setup) {
     },
     failGroupedTree: (reason) => calls.push(["failed", reason]),
     startIndexProgressPolling() {},
+    observeFileAges() {},
+    applyFilterTallies() {},
     treeTruncationNoteHtml: () => "",
     subtreeCacheKey: (folder, group) => `${group}\u0000${folder}`,
     // The folders open now; a fetched folder's children appear in the cache, as in the shell.

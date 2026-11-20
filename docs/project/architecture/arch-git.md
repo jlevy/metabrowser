@@ -435,23 +435,61 @@ for the command.
   at once. `/api/tree` carries `mtime` on the nodes it can date and an `ages` state;
   `/api/index/progress` carries the same state, which a page polls and a command that
   prints it waits on (`wait_for_index` in `cli/asgi_client.py`, for `/api/tree`,
-  `/api/recent` and the progress route itself; every other `--api` route passes `ages=0`
-  and never starts the read).
-  A file the answer leaves undated carries no `mtime`. A read that fails, or is cut by
-  its budget, is asked again after `GIT_AGES_RETRY_AFTER_S` or
-  `GIT_AGES_CUT_RETRY_AFTER_S`, and every step of one is inside its `file_ages.read`
+  `/api/recent` and the progress route itself, and for `/api/file` only when asked with
+  `?ages=1`, which the route ignores: a file’s envelope takes its time from an answer
+  that is there and starts no read, since a page opens many files and asks for none.
+  Every other `--api` route passes `ages=0` and never starts the read).
+  A file the answer leaves undated carries no `mtime`. A read that fails is asked again
+  after `GIT_AGES_RETRY_AFTER_S`, and every step of one is inside its `file_ages.read`
   span, so a failure leaves a record with Git’s stderr.
+  An answer cut by its budget is served, and the first request after
+  `GIT_AGES_CUT_RETRY_AFTER_S` starts a read to replace it while it goes on being
+  served, so a history too large to finish does not lose its ages for the length of
+  every read; a read that fails leaves it.
   At most `GIT_AGES_MAX_CONCURRENT_READS` reads run at once across every revision the
   process shows, because a read’s memory follows its history; the next waits for a slot
   and is `dating` meanwhile, and a read cancelled while it waits leaves the queue.
+  A served pin has one revision and leaving it cancels its read, so the bound is a
+  defence for a caller of the service, and only its tests reach it.
 - **What reads them.** The age bands and windows are cut at one instant per request, so
   the groups of one grouped answer partition the times; a file the answer leaves undated
   is in no window and no band but a last group, `undated`, whose name carries
   `older_than` when the answer has one.
+  A grouped answer asks for the state of the read once and buckets every file once at
+  that instant (`_GitTimes`), so all its groups are cut from one state of one answer,
+  and the split costs one pass over the files and not one per group (the measurement is
+  beside `_GitTimes`). The answer carries `recency_tallies` for the Modified within
+  menu, grouped or not.
+  A folder row in a group or a window is dated by the newest of the files that put it
+  there, as its count is, and not by the whole folder.
+  A submodule (a gitlink) has no time and is no file the answer dates, so it is listed
+  in no age group and in no window, as it is in the ungrouped tree and in By file type.
   `/api/recent` lists the newest files of a window with the folders above each by name
-  (`dir_names`) and counts the files it could not date (`undated`), and the file
-  envelope carries `mtime` only from an answer that is already there: a file read starts
-  no read of the history.
+  (`dir_names`) and counts the files it could not date (`undated`): those that pass its
+  other filters and have no time, whatever the window, since a window cannot place them
+  and a shallow clone’s may be inside it.
+  The file envelope carries `mtime` only from an answer that is already there.
+  OLD
+
+swap(<<'OLD', <<'NEW', “the page”);
+- **The page.** A response that says `ages.state` is `dating` starts one watch
+  (`static/revision-ages.js`) that asks `/api/index/progress` every `GIT_AGES_POLL_MS`
+  and, when the answer lands, draws the tree, grouped tree, or Recent list again, once;
+  folders opened before it are read again when opened.
+  The page never waits: until then every file is undated.
+  OLD
+- **The page.** A response that says `ages.state` is anything but `ready` brings in
+  `static/revision-ages.js`, an on-demand script (the `revision-ages` bundle, offered
+  only to a page whose Git can read ages), so a page whose Git cannot, or whose answer
+  was whole at its first request, never fetches it.
+  A `dating` response starts one watch that asks `/api/index/progress` every
+  `GIT_AGES_POLL_MS`, retries a failed poll a few times, and gives up after
+  `GIT_AGES_WATCH_GIVE_UP_MS`. When the answer lands, or a response says it has, the
+  page draws the tree, grouped tree, Recent list and the open file again, once, and
+  drops the folders it had read.
+  The page never waits: until then every file is undated, the Modified within counts
+  read “…”, a Recent list says it is reading, and a line in the Files band says so; it
+  also says why a read failed and how many files could not be dated.
   A revision whose Git cannot date its files has `recency` false, so these answer
   `unsupported_for_subject` and the page does not offer them
   (`GitRevisionSubject.capabilities`, `METABROWSER_FILE_AGES`).

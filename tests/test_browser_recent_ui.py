@@ -816,7 +816,7 @@ def test_recent_recompute_called_from_fs_change_handler() -> None:
 def test_render_recent_list_uses_dir_metric_count_mode() -> None:
     js = _read_app_js()
     fn_start = js.index("function renderRecentList(data)")
-    fn_block = js[fn_start : fn_start + 1200]
+    fn_block = js[fn_start : js.index("\n}\n", fn_start)]
     # isRoot=true so Recent uses the same viewport-bounded expansion
     # planner as the Files panel.
     assert "renderTreeNodes(tree, true, { dirMetric: TREE_DIR_METRIC_COUNT })" in fn_block

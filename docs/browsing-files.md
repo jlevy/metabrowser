@@ -115,7 +115,12 @@ upgrade. With file ages, Modified within and By age work on a revision as on a f
 file is in a window or a band by its last commit, and a file whose last commit is not
 known (a shallow clone, or a read that has not finished) is in a last group, Undated,
 which says what it is older than when that is known; the page draws again when the ages
-arrive.
+arrive, the open file’s age included.
+Until then the Modified within counts read “…” and a note in the Files band says the
+ages are being read; it says why they could not be read when a read failed, and how many
+files could not be dated when some could not.
+A folder in a group or a window is dated by the newest of the files that put it there,
+and a submodule has no age, so it is in no group.
 
 The same filters are available from the command line:
 `metab ROOT --walk --type .md --age 7d`.

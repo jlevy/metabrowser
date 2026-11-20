@@ -209,7 +209,8 @@ show it.
 - **Eager:** a blocking `<script>` in the shell, for code without which the first render
   is wrong. The shell template in `server.py` lists them, and the list stays small.
   `PIN_STARTUP_SCRIPTS` and `PULL_PAGE_STARTUP_SCRIPTS` add one script each to a pinned
-  revision’s shell and a pull-request address’s shell.
+  revision’s shell and a pull-request address’s shell, which the startup check reports
+  beside the budget without gating.
 - **Prefetched:** fetched after first paint, when the page is idle and before anything
   asks, for code that is small relative to how likely it is to be wanted and visibly
   late otherwise. Mustache, then Highlight.js, start through `whenIdle` with
@@ -310,6 +311,7 @@ them; the note beside the budget says why.
 | Line gutter, SDK view helpers, and the syntax service | On demand, beside the view compositor and before any plugin code | `sdk-views` | [exp-037](../../../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | A file’s and a folder’s view header | On demand, beside the view compositor and the SDK view helpers | `view-header` | The comment beside the bundle in `server.py` |
 | Pull-request routes and page host | Eager at a `/pull/` address; on demand otherwise | `PULL_PAGE_STARTUP_SCRIPTS`, `pull-route` | exp-037 |
+| The watch on a revision’s file ages, and the Files band’s note about them | On demand, the first time a response says the ages are not all in (`dating`, `partial`, `failed`); not offered to a page whose Git cannot read them | `revision-ages` in `on_demand_script_bundles`, when the pin’s Git can date files | The comment beside the bundle in `server.py`: it was a startup script of every pin’s shell, 4,940 bytes (1,896 gzipped) |
 | GitPath wire codec | Eager on a pin’s shell, the only page whose addresses spell it | `PIN_STARTUP_SCRIPTS` | exp-037 |
 | The pin guard | Inline on a pin’s shell, before any script can fetch. On demand on the working-tree page of a checkout, with the ref selector that can make its server serve a revision, so a folder’s first paint carries none of it | `_SOURCE_PIN_GUARD_SCRIPT`; `source-ref-selector` in `on_demand_script_bundles` | The comment beside the bundle |
 | Chart.js and its plugins | On demand, at the first chart | `chart` | The comment beside it |

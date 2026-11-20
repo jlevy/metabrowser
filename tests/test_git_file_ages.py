@@ -841,16 +841,99 @@ def test_a_cut_answer_is_served_then_read_again_after_its_window(
             assert service.request(history.target, tip, names).state == "partial"
             assert len(reads) == 1
             now[0] = 301.0
-            assert service.request(history.target, tip, names).state == "dating"
+            # The window has passed: a read starts to replace the answer, which is served as it
+            # is meanwhile and not dropped (the ages of a history too large to finish would
+            # otherwise vanish for the length of every read).
+            again = service.request(history.target, tip, names)
+            assert (again.state, again.ages) == ("partial", cut.ages)
+            assert service.peek(history.target, tip) is cut.ages
+            assert service.request(history.target, tip, names).ages is cut.ages
             await settled(service, history.target, tip)
             assert len(reads) == 2
-        # With the Git as it is, the next read replaces the cut answer.
+            # That read was cut as well, and replaced the answer with its own.
+            second = service.request(history.target, tip, names)
+            assert second.ages is not None and second.ages is not cut.ages
+        # With the Git as it is, the next read replaces the cut answer with a whole one.
         now[0] = 1000.0
-        service.request(history.target, tip, names)
+        during = service.request(history.target, tip, names)
+        assert during.state == "partial"
         await settled(service, history.target, tip)
+        done = service.request(history.target, tip, names)
+        assert (done.state, done.ages is not None and done.ages.complete) == ("ready", True)
+        # And a whole answer is never read again.
+        now[0] = 10_000.0
         assert service.request(history.target, tip, names).state == "ready"
 
     asyncio.run(run())
+
+
+def test_a_failed_read_of_a_cut_answer_keeps_it_and_is_asked_again_later(
+    history: History, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.git import file_ages, file_ages_service
+
+    tip = build_branchy(history)
+    now = [0.0]
+
+    async def names() -> list[bytes]:
+        return history.names(tip)
+
+    async def stalls(*_args: object) -> None:
+        await asyncio.sleep(3600)
+
+    async def run() -> None:
+        service = FileAgesService(
+            limits=AgeLimits(timeout_s=0.3),
+            cut_retry_after_s=300.0,
+            retry_after_s=30.0,
+            clock=lambda: now[0],
+        )
+        with monkeypatch.context() as patch:
+            patch.setattr(file_ages, "_consume", stalls)
+            service.request(history.target, tip, names)
+            await settled(service, history.target, tip)
+            cut = service.request(history.target, tip, names)
+            assert cut.state == "partial"
+            now[0] = 301.0
+            real = file_ages_service.date_revision
+
+            async def breaks(**_kwargs: object) -> RevisionAges:
+                raise RuntimeError("git is gone")
+
+            patch.setattr(file_ages_service, "date_revision", breaks)
+            assert service.request(history.target, tip, names).ages is cut.ages
+            await settled(service, history.target, tip)
+            # The failed read left the answer, and a poll within the retry interval starts none.
+            assert service.request(history.target, tip, names).ages is cut.ages
+            assert not service._jobs  # pyright: ignore[reportPrivateUsage]
+            now[0] = 340.0
+            patch.setattr(file_ages_service, "date_revision", real)
+            assert service.request(history.target, tip, names).ages is cut.ages
+            assert service._jobs  # pyright: ignore[reportPrivateUsage]
+            await settled(service, history.target, tip)
+
+    asyncio.run(run())
+
+
+def test_the_sorted_times_belong_to_the_answer_that_made_them() -> None:
+    from array import array
+
+    def answer(times: list[int]) -> RevisionAges:
+        return RevisionAges(
+            commit="b" * 40,
+            commit_time=0,
+            names=tuple(f"n{at}".encode() for at in range(len(times))),
+            times=array("q", times),
+            older_than=None,
+            stop="complete",
+            seconds=0.0,
+        )
+
+    first, second = answer([5, UNDATED, 3]), answer([9, 8, UNDATED])
+    assert list(first.sorted_times()) == [3, 5]
+    assert first.sorted_times() is first.sorted_times()
+    # The same commit with another answer is counted from its own times.
+    assert list(second.sorted_times()) == [8, 9]
 
 
 @pytest.fixture

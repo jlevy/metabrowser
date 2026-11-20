@@ -18,8 +18,8 @@ A restart reads again; the cost of that is ``GIT_AGES_TIMEOUT_S``'s measurement.
 
 **Failure.** A read that fails, with the Git too old or the command failing or anything
 else, is recorded for ``GIT_AGES_RETRY_AFTER_S`` so a poll is answered from the record and
-does not start Git again; an answer cut by the read's budget is served and read again after
-``GIT_AGES_CUT_RETRY_AFTER_S``, and is never the base of a derived read. Every step of a read
+does not start Git again; an answer cut by the read's budget is served, read again after
+``GIT_AGES_CUT_RETRY_AFTER_S`` while it is still served, and never the base of a derived read. Every step of a read
 is inside one ``file_ages.read`` job span, which says why a read failed, with Git's stderr;
 none of it goes to a response.
 """
@@ -138,9 +138,10 @@ class FileAgesService:
 
         The first request for a commit starts its read as a task on the running loop;
         *names* gives the sorted files of its tree, ``None`` when the index is truncated.
-        An answer cut by the read's budget is served as it is, and read again by the first
-        request after ``GIT_AGES_CUT_RETRY_AFTER_S``, as a failed read is after
-        ``GIT_AGES_RETRY_AFTER_S``.
+        An answer cut by the read's budget is served as it is, and the first request after
+        ``GIT_AGES_CUT_RETRY_AFTER_S`` starts a read to replace it, which keeps serving it
+        until the new answer lands and keeps it if that read fails (the failure is asked
+        again after ``GIT_AGES_RETRY_AFTER_S``, as any is).
         """
 
         availability = file_ages_availability()
@@ -149,20 +150,32 @@ class FileAgesService:
         key = self._key(target, commit)
         answer = self._answers.get(key)
         if answer is not None:
+            # A cut answer is read again once its window has passed, and served as it is
+            # until the new one replaces it: a read that fails keeps it, and a history too
+            # large to finish does not blank its ages for the length of every read.
             cut_at = self._cut_at.get(key)
-            if cut_at is None or self._clock() - cut_at < self._cut_retry_after_s:
-                self._answers.move_to_end(key)
-                return AgesStatus("ready" if answer.complete else "partial", ages=answer)
-            self._forget(key)
+            if (
+                cut_at is not None
+                and self._clock() - cut_at >= self._cut_retry_after_s
+                and key not in self._jobs
+                and not self._failed_recently(key)
+            ):
+                self._start(key, target, commit, names)
+            self._answers.move_to_end(key)
+            return AgesStatus("ready" if answer.complete else "partial", ages=answer)
         if key in self._jobs:
             return AgesStatus("dating")
         failure = self._failures.get(key)
         if failure is not None:
-            if self._clock() - failure[0] < self._retry_after_s:
+            if self._failed_recently(key):
                 return AgesStatus("failed", reason=failure[1])
             del self._failures[key]
         self._start(key, target, commit, names)
         return AgesStatus("dating")
+
+    def _failed_recently(self, key: _Key) -> bool:
+        failure = self._failures.get(key)
+        return failure is not None and self._clock() - failure[0] < self._retry_after_s
 
     def _forget(self, key: _Key) -> None:
         self._answers.pop(key, None)
@@ -241,8 +254,11 @@ class FileAgesService:
             else:
                 self._answers[key] = ages
                 self._answers.move_to_end(key)
+                self._failures.pop(key, None)
                 if ages.stop == "budget":
                     self._cut_at[key] = self._clock()
+                else:
+                    self._cut_at.pop(key, None)
                 while len(self._answers) > self._capacity:
                     self._forget(next(iter(self._answers)))
                 span.end(

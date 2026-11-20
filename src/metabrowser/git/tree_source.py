@@ -58,6 +58,8 @@ from collections import OrderedDict
 from collections.abc import AsyncGenerator, Callable, Coroutine, Hashable, Mapping, Sequence
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, replace
+from itertools import accumulate
+from operator import mul
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final, Literal, Protocol, cast
@@ -400,7 +402,7 @@ class GitBlobTallies:
     a walk over its blobs. *matches* keeps only the selected blobs, for a filter.
     """
 
-    __slots__ = ("_files", "_sizes", "_unsized")
+    __slots__ = ("_files", "_size_column", "_sizes", "_unsized", "_unsized_column", "_zeros")
 
     def __init__(
         self,
@@ -408,24 +410,47 @@ class GitBlobTallies:
         sizes: Mapping[str, int],
         matches: Sequence[int] | None = None,
     ) -> None:
-        files = array("q", [0])
-        total = array("q", [0])
-        unsized = array("q", [0])
-        file_count = byte_count = unsized_count = 0
-        for position, (_name, oid) in enumerate(blobs):
-            if matches is None or matches[position]:
-                file_count += 1
-                size = sizes.get(oid)
-                if size is None:
-                    unsized_count += 1
-                else:
-                    byte_count += size
-            files.append(file_count)
-            total.append(byte_count)
-            unsized.append(unsized_count)
-        self._files = files
-        self._sizes = total
-        self._unsized = unsized
+        size_column = array("q")
+        unsized_column = bytearray()
+        for _name, oid in blobs:
+            size = sizes.get(oid)
+            size_column.append(0 if size is None else size)
+            unsized_column.append(size is None)
+        self._size_column = size_column
+        self._unsized_column = bytes(unsized_column)
+        # The common index has every size, and then no filter has an unsized blob to count.
+        self._zeros = None if 1 in unsized_column else array("q", bytes(8 * (len(size_column) + 1)))
+        self._sum(matches)
+
+    def _sum(self, matches: Sequence[int] | None) -> None:
+        """The running counts over the blobs *matches* keeps, each a C-speed pass over the
+        columns, so a filter's tallies cost the same few milliseconds however many files."""
+
+        sizes = self._size_column
+        unsized = self._unsized_column
+        if matches is None:
+            self._files = array("q", range(len(sizes) + 1))
+            self._sizes = array("q", accumulate(sizes, initial=0))
+            self._unsized = array("q", accumulate(unsized, initial=0))
+            return
+        self._files = array("q", accumulate(matches, initial=0))
+        self._sizes = array("q", accumulate(map(mul, matches, sizes), initial=0))
+        self._unsized = (
+            array("q", accumulate(map(mul, matches, unsized), initial=0))
+            if self._zeros is None
+            else self._zeros
+        )
+
+    def select(self, matches: Sequence[int]) -> GitBlobTallies:
+        """These blobs' tallies over only the ones *matches* keeps (one byte each, in index
+        order), without reading a size again."""
+
+        chosen = object.__new__(GitBlobTallies)
+        chosen._size_column = self._size_column
+        chosen._unsized_column = self._unsized_column
+        chosen._zeros = self._zeros
+        chosen._sum(matches)
+        return chosen
 
     def tally(self, spans: Sequence[tuple[int, int]]) -> GitTreeTally:
         files = size = unsized = 0

@@ -1,3 +1,56 @@
+# metab file://<ORIGIN> --api '/api/file?path=g1-YQ/g1-Z3VpZGUubWQ&ages=1'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-YQ/g1-Z3VpZGUubWQ&ages=1
+status: 200
+{
+  "subject": "git_revision",
+  "size": 11,
+  "path": "g1-YQ/g1-Z3VpZGUubWQ",
+  "display": "a/guide.md",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "3b48befe7bde243d614cd111a03f149a72583f0a",
+  "ext": ".md",
+  "type": "text",
+  "kind": "markdown",
+  "views": [
+    {
+      "id": "rendered",
+      "label": "Document",
+      "key": "v",
+      "default": true,
+      "container_class": "content-body metabrowser-kpress-host md-body",
+      "printable": true,
+      "print_profile": "document",
+      "render_runtime": "kpress"
+    },
+    {
+      "id": "source",
+      "label": "Source",
+      "key": "s",
+      "default": false,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "main guide\n",
+  "content_offset": 0,
+  "content_bytes": 11,
+  "bytes_read": 11,
+  "content_truncated": false,
+  "content_preview_limit": 524288,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false,
+  "mtime": 1580515200
+}
+--- stderr ---
+cloning <ORIGIN> into <HOME>
+cloned <ORIGIN> in 0.0 s
 # metab file://<ORIGIN> --api '/api/tree?group_by=age&depth=1'
 exit: 0
 --- stdout ---
@@ -43,7 +96,7 @@ status: 200
           "has_children": true,
           "total_files": 2,
           "total_size": 25,
-          "mtime": 1588291200
+          "mtime": 1580515200
         },
         {
           "name": "docs",
@@ -83,11 +136,36 @@ status: 200
     "older_than": null,
     "stop": "complete",
     "derived": false
-  }
+  },
+  "recency_tallies": [
+    [
+      "live",
+      0,
+      0
+    ],
+    [
+      "1h",
+      0,
+      0
+    ],
+    [
+      "24h",
+      1,
+      0
+    ],
+    [
+      "7d",
+      1,
+      0
+    ],
+    [
+      "30d",
+      1,
+      0
+    ]
+  ]
 }
 --- stderr ---
-cloning <ORIGIN> into <HOME>
-cloned <ORIGIN> in 0.0 s
 # metab file://<ORIGIN> --api '/api/tree?group=age:24h&depth=2'
 exit: 0
 --- stdout ---
@@ -523,56 +601,5 @@ status: 200
   "total_matching_exact": true,
   "truncated": true,
   "undated": 0
-}
---- stderr ---
-# metab file://<ORIGIN> --api '/api/file?path=g1-YQ/g1-Z3VpZGUubWQ'
-exit: 0
---- stdout ---
-api: /api/file?path=g1-YQ/g1-Z3VpZGUubWQ
-status: 200
-{
-  "subject": "git_revision",
-  "size": 11,
-  "path": "g1-YQ/g1-Z3VpZGUubWQ",
-  "display": "a/guide.md",
-  "mode": "100644",
-  "git_kind": "blob",
-  "symlink": false,
-  "gitlink": false,
-  "oid": "3b48befe7bde243d614cd111a03f149a72583f0a",
-  "ext": ".md",
-  "type": "text",
-  "kind": "markdown",
-  "views": [
-    {
-      "id": "rendered",
-      "label": "Document",
-      "key": "v",
-      "default": true,
-      "container_class": "content-body metabrowser-kpress-host md-body",
-      "printable": true,
-      "print_profile": "document",
-      "render_runtime": "kpress"
-    },
-    {
-      "id": "source",
-      "label": "Source",
-      "key": "s",
-      "default": false,
-      "container_class": "content-body metabrowser-source-host",
-      "printable": true,
-      "print_profile": "source",
-      "render_runtime": "client"
-    }
-  ],
-  "content": "main guide\n",
-  "content_offset": 0,
-  "content_bytes": 11,
-  "bytes_read": 11,
-  "content_truncated": false,
-  "content_preview_limit": 524288,
-  "content_max_preview_limit": 16777216,
-  "highlight_disabled": false,
-  "mtime": 1580515200
 }
 --- stderr ---

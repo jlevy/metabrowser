@@ -1054,7 +1054,10 @@ def test_opening_age_menu_refreshes_rolling_tallies() -> None:
 
     refresh_start = js.index("async function fetchRootSummary()")
     refresh_block = js[refresh_start : js.index("\nfunction ", refresh_start + 1)]
-    assert "patchOpenRecencyTallyCounts();" in refresh_block
+    assert "applyFilterTallies(data);" in refresh_block
+    helper_start = js.index("function refreshFilterTallies()")
+    helper_block = js[helper_start : js.index("\n}\n", helper_start)]
+    assert "patchOpenRecencyTallyCounts();" in helper_block
 
 
 def test_filters_reapply_when_new_rows_render() -> None:
@@ -1106,7 +1109,10 @@ def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
     # count: a comment added inside this one pushed the last assertion out
     # of an 1800-character window and failed a behavior that had not changed.
     block = js[start : js.index("\nfunction ", start + 1)]
-    assert "filterOpenMenu === null" in block
+    # Its counts go through the one helper, which leaves the bar alone while a menu is open.
+    assert "applyFilterTallies(data);" in block
+    helper = js[js.index("function refreshFilterTallies()") :]
+    assert "filterOpenMenu === null" in helper[: helper.index("\n}\n")]
     # The tally is painted in place in the Files metadata band, outside the panel, so no
     # cached copy of it can revert to first-paint figures under a recency filter: no source
     # paints the panel with a tally of its own.

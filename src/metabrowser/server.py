@@ -1586,7 +1586,7 @@ PREFETCH_IDLE_TIMEOUT_MS = 2000
 # that page's routes before it can show anything; a folder's page at any other address
 # fetches neither. devtools/check_startup_scripts.py reports what each adds to the
 # startup-script budget, so they are named here once.
-PIN_STARTUP_SCRIPTS: tuple[str, ...] = ("git-path.js", "revision-ages.js")
+PIN_STARTUP_SCRIPTS: tuple[str, ...] = ("git-path.js",)
 PULL_PAGE_STARTUP_SCRIPTS: tuple[str, ...] = ("pull-route.js",)
 
 
@@ -1717,6 +1717,7 @@ async def index(
     view_state_url = _static_asset_url("view-state.js")
     navigation_url = _static_asset_url("navigation.js")
     source_append_url = _static_asset_url("source-append.js")
+    revision_ages_url = _static_asset_url("revision-ages.js")
     file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin-sdk.js")
     plugin_sdk_views_url = _static_asset_url("plugin-sdk-views.js")
@@ -2067,7 +2068,7 @@ async def index(
         page_pin = _json.dumps({"pin": pin.commit_oid, "ref": pin.ref}).replace("<", "\\u003c")
         # Whether the Git this server runs dates a revision's files, which is what the Files
         # tab's age menus wait for: Group by age and Modified within, hidden on a revision
-        # that has no times (static/app.js `sourceHasFileAges`).
+        # that has no times (static/app.js `noFileAges`).
         has_ages = "true" if pin.capabilities.recency else "false"
         repository_context_block += (
             f"<script>window.METABROWSER_FILE_AGES={has_ages};</script>"
@@ -2268,6 +2269,17 @@ async def index(
             {"src": source_ref_selector_url},
         ],
         "source-append": [{"src": source_append_url}],
+        # The watch on a revision's file ages and the notes about them, which only a page whose
+        # Git can read ages and whose response says they are not all in yet needs: asked for
+        # the first time a response says `dating`, `partial`, or `failed`, and never by a page
+        # whose answer is whole or whose Git cannot (it is not offered to that page at all).
+        # It was a startup script of every pin's shell, 4,940 bytes (1,896 gzipped) before a
+        # page could use it, and 3,783 bytes of that shell over the folder's budget.
+        **(
+            {"revision-ages": [{"src": revision_ages_url, "provides": "MetabrowserRevisionAges"}]}
+            if pin is not None and pin.capabilities.recency
+            else {}
+        ),
         "chart": [
             {"src": _static_asset_url("vendor/chart.umd.min.js"), "provides": "Chart"},
             {"src": charts_url, "requires": "Chart"},

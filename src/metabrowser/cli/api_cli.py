@@ -19,6 +19,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, BinaryIO, Final
+from urllib.parse import parse_qs, urlsplit
 
 import typer
 import yaml
@@ -42,6 +43,21 @@ LOG = logging.getLogger(__name__)
 # The routes that print a Git revision's file ages, which a command waits for the background
 # read of (`wait_for_index`), beside the index.
 _AGES_DEPENDENT: tuple[str, ...] = ("/api/tree", "/api/recent", "/api/index/progress")
+
+
+def _waits_for_ages(route: str) -> bool:
+    """Whether a command asking for *route* waits for the read of file ages.
+
+    A file's envelope carries its time only from an answer that is already there, and never
+    starts a read (a page opens many files and asks for none), so a command that prints it
+    asks ``?ages=1``, which only makes the command wait; the route ignores it.
+    """
+
+    if route.startswith(_AGES_DEPENDENT):
+        return True
+    split = urlsplit(route)
+    return split.path == "/api/file" and "1" in parse_qs(split.query).get("ages", [])
+
 
 # Routes whose answer changes once the inventory scan finishes. Measured by
 # requesting each one with and without the wait and comparing: /api/recent grew
@@ -125,7 +141,7 @@ async def _issue(
             result = await _wait_for_index(
                 client,
                 timeout_s=index_timeout_s,
-                ages=route.startswith(_AGES_DEPENDENT),
+                ages=_waits_for_ages(route),
             )
             index_detail = result.detail if result.completed else f"incomplete: {result.detail}"
         if body:

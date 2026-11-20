@@ -1145,7 +1145,7 @@ async function loadTree(options = {}) {
         failTree(String(error));
         return;
       }
-      window.MetabrowserRevisionAges?.observe(data.ages);
+      observeFileAges(data.ages);
       knownFileCatalog?.observeInitialTree(data.tree);
       var pathEl = queryHtml(".header-path");
       renderServedRootHeading(pathEl, data.root);
@@ -1389,7 +1389,7 @@ async function loadGroupedTreeInner(state, load) {
       load,
     });
     sections = treeFilterModel.groupSections(data);
-    window.MetabrowserRevisionAges?.observe(data.ages);
+    observeFileAges(data.ages);
   } catch (error) {
     // A refresh that fails keeps the sections on screen; its pacing retries it with a
     // backoff (requestGroupedRefresh). A first load has nothing to keep.
@@ -1404,6 +1404,7 @@ async function loadGroupedTreeInner(state, load) {
   if (data.tally_cache_status === "scanning") {
     startIndexProgressPolling();
   }
+  applyFilterTallies(data);
   if (preserve) {
     await fetchReopenedFolders(sections, owns);
     if (!owns()) {
@@ -1996,17 +1997,7 @@ async function fetchRootSummary() {
   if (!document.querySelector(".tree-summary")) {
     return true;
   }
-  // Only rebuild the bar when no dropdown is open. Replacing
-  // its DOM mid-poll would drop focus out of a menu the user
-  // is arrowing through, and this runs repeatedly while the
-  // index warms up.
-  if (updateFilterTallies(data)) {
-    if (filterOpenMenu === null) {
-      renderNavFilterBar();
-    } else {
-      patchOpenRecencyTallyCounts();
-    }
-  }
+  applyFilterTallies(data);
   paintTreeSummary(treeSummaryHtml(rootTotals().totals(), null, null));
   return true;
 }
@@ -5126,32 +5117,17 @@ function initNavScrollShadow() {
 // authoritative mapping in metabrowser/settings.py.
 const _RECENT_WINDOW_SECONDS = _METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS || {};
 
-// Recent is a hybrid
-// of "snapshot from /api/recent" + "live FileStore overlay".
+// Recent is a snapshot from /api/recent plus a live FileStore overlay. The SSE stream is
+// scoped to ``root-depth-2``, so FileStore holds no file at depth 3+ and a FileStore-only
+// panel silently truncated 24h / 7d / 30d / all to that scope.
 //
-// The SSE stream is scoped to ``root-depth-2`` (the right scope
-// for tree decoration). FileStore therefore does NOT contain
-// files at depth 3+. A FileStore-only Recent panel was correct
-// for 1h windows (recent edits cluster near the visible tree)
-// but silently truncated 24h / 7d / 30d / all to whatever
-// happened to fall within ``root-depth-2``.
+// * On chip change, fetch ``/api/recent?window=...``: the server queries every known entry,
+//   so ``entries_flat`` covers the whole window and is the base set, keyed by path.
+// * ``fs.change`` upserts/removes mutate the base set in place when they fall inside the
+//   window, and the panel re-paints (debounced); a change seen while the snapshot request
+//   is in flight invalidates that response and schedules one authoritative refetch.
 //
-// Data flow:
-// * On chip change, fetch ``/api/recent?window=...`` (the server
-//   uses a bounded provider query over all known entries, so the
-//   payload covers the whole window). Use the response's
-//   ``entries_flat`` field as the base set.
-// * Live overlay: ``fs.change`` upserts/removes mutate the base
-//   set in place when they fall inside the active window. The
-//   panel re-clusters + re-paints (debounced); a change observed
-//   while the snapshot request is in flight invalidates that
-//   response and schedules one authoritative refetch.
-// * The base set is keyed by path so a file edited twice doesn't
-//   double-count.
-//
-// FileStore stays the single source of truth for the Files tab
-// and tree decoration; Recent has its own base because it needs
-// wider coverage than SSE's scope.
+// FileStore stays the source of truth for the Files tab and tree decoration.
 var recentBaseEntries = new Map(); // path -> recent-flat dict
 var recentTotalMatching = 0;
 var recentTotalMatchingExact = true;
@@ -5344,6 +5320,7 @@ function fetchRecent(cursor, preserveRows) {
 
 /** Commit one accepted provider response without rendering it. */
 function commitRecentResponse(data, cursor) {
+  observeFileAges(data?.ages, data?.undated);
   var flat = data?.entries_flat || [];
   knownFileCatalog?.observeRecent(flat);
   recentBaseEntries = new Map();
@@ -5502,9 +5479,13 @@ function renderRecentList(data) {
   var tree = data.tree || [];
   if (tree.length === 0) {
     var emptyText =
-      currentRecentWindow === "live"
-        ? `No files were modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds.`
-        : "No files were modified during the selected time range.";
+      fileAgesState === "dating"
+        ? "Reading file ages…"
+        : fileAgesState === "failed"
+          ? "No file ages to filter by."
+          : currentRecentWindow === "live"
+            ? `No files were modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds.`
+            : "No files were modified during the selected time range.";
     return `<div class="recent-empty">${emptyText}</div>`;
   }
   // Reuse the Files-tab renderer with one mode flip: dir rows
@@ -5641,14 +5622,30 @@ function updateFilterTallies(data) {
   return changed;
 }
 
+function applyFilterTallies(data) {
+  if (updateFilterTallies(data)) {
+    refreshFilterTallies();
+  }
+}
+
+// A bar rebuilt under an open menu would drop focus out of it, so only its counts change.
+function refreshFilterTallies() {
+  if (filterOpenMenu === null) {
+    renderNavFilterBar();
+  } else {
+    patchOpenRecencyTallyCounts();
+  }
+}
+
 function filterRecencyOptions() {
   const showIgnored = filterState ? filterState.get().showIgnored : true;
   const counts = new Map(
     _recencyTally.map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]),
   );
+  // "…" until a revision's ages are read: "0" would say they are none.
   return FILTER_RECENCY_OPTIONS.map((option) => ({
     ...option,
-    count: counts.get(option.value) || 0,
+    count: counts.get(option.value) || (fileAgesState === "dating" ? "…" : 0),
   }));
 }
 
@@ -5664,7 +5661,7 @@ function patchOpenRecencyTallyCounts() {
     var value = rows[i].getAttribute("data-chip-value");
     var count = value === null ? undefined : counts.get(value);
     var countEl = rows[i].querySelector(".chip-menu-count");
-    if (typeof count === "number" && countEl) {
+    if (count !== undefined && countEl) {
       countEl.textContent = count.toLocaleString();
     }
   }
@@ -7671,14 +7668,37 @@ var catalogFeedCanStart = false;
 function isGitRevisionSource() {
   return window.METABROWSER_SOURCE_KIND === "git_revision";
 }
+// A revision whose Git cannot read file ages has no Modified within and no By age.
 var noFileAges = window.METABROWSER_FILE_AGES === false;
-window.addEventListener("metabrowser:file-ages-landed", () => {
+var fileAgesState = "";
+// Each response says how the read of ages stands; revision-ages.js loads when it is not `ready`.
+function observeFileAges(ages, undated) {
+  var before = fileAgesState;
+  fileAgesState = ages?.state ?? "";
+  if ((before === "dating") !== (fileAgesState === "dating")) {
+    refreshFilterTallies();
+  }
+  if (window.MetabrowserRevisionAges) {
+    window.MetabrowserRevisionAges.track(ages, undated);
+  } else if (ages && ages.state !== "ready") {
+    void window.MetabrowserAssets?.ensureAsset("revision-ages").then(() =>
+      window.MetabrowserRevisionAges?.track(ages, undated),
+    );
+  }
+}
+// The ages landed: whatever was drawn without them is drawn again.
+function redrawForFileAges() {
   subtreeCache.clear();
+  fileCache.clear();
   void loadTree({ reconcileMountedRoot: true });
   if (filesPanelUsesRecentSource()) {
     loadRecent(currentRecentFilterCursor());
   }
-});
+  if (currentPath) {
+    void selectFile(currentPath);
+  }
+}
+window.addEventListener("metabrowser:file-ages-landed", redrawForFileAges);
 // The startup crawl establishes the navigation baseline. Its snapshot and
 // incremental walker upserts are not user-visible file changes, so newly
 // mounted rows stay neutral until the first terminal inventory event. A

@@ -702,12 +702,14 @@ def test_golden_pin_age_groups(
     isolate_cli(tmp_path, monkeypatch)
     pin = _Pin(tmp_path)
     pin.use(ages_origin(tmp_path))
+    # First, so the transcript shows the command alone dates the file: `ages=1` makes a
+    # command wait for the read of the times, which a file envelope never starts itself.
+    guide = pin.api(f"/api/file?path={_wire(b'a', b'guide.md')}&ages=1").payload()
     grouped = pin.api("/api/tree?group_by=age&depth=1").payload()
     pin.api("/api/tree?group=age:24h&depth=2")
     windowed = pin.api("/api/tree?recency=24h&depth=2").payload()
     recent = pin.api("/api/recent?window=24h").payload()
     pin.api("/api/recent?window=all&limit=3")
-    guide = pin.api(f"/api/file?path={_wire(b'a', b'guide.md')}").payload()
 
     # The tip's one file is three hours old: the only member of Past day; everything else is
     # months older, and no file is undated.

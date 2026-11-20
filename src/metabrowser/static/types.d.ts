@@ -1079,6 +1079,16 @@ type MetabrowserNavCollapseRuntime = Readonly<{
 /** static/revision-ages.js: the watch on a Git revision's file ages while they are read. */
 type MetabrowserRevisionAgesState = { state: string };
 
+/** The `ages` a response carries: the state of the read of a revision's file times. */
+type MetabrowserRevisionAgesStatus = {
+  state?: string;
+  reason?: string;
+  files?: number;
+  dated?: number;
+  older_than?: number | null;
+  stop?: string;
+};
+
 type MetabrowserRevisionAgesController = Readonly<{
   observe(ages: { state?: string } | null | undefined): void;
   stop(): void;
@@ -1093,12 +1103,19 @@ type MetabrowserRevisionAgesRuntime = Readonly<{
     clearTimer: (timer: unknown) => void;
     now: () => number;
     pollMs: number;
+    giveUpMs?: number;
   }): MetabrowserRevisionAgesController;
   mount(options: {
     reload: (state: MetabrowserRevisionAgesState) => void;
     pollMs?: number;
+    giveUpMs?: number;
   }): MetabrowserRevisionAgesController;
-  observe(ages: { state?: string } | null | undefined): void;
+  noteText(
+    ages: MetabrowserRevisionAgesStatus | null | undefined,
+    undated?: number | null,
+  ): string | null;
+  showNote(ages: MetabrowserRevisionAgesStatus | null | undefined, undated?: number | null): void;
+  track(ages: MetabrowserRevisionAgesStatus | null | undefined, undated?: number | null): void;
 }>;
 
 type MetabrowserThemeRuntime = {
@@ -4748,7 +4765,7 @@ declare global {
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
     METABROWSER_SOURCE_KIND?: "filesystem" | "git_revision";
     /** Whether the server's Git dates a revision's files, so its page offers Group by age and
-     * Modified within (static/app.js `sourceHasFileAges`); set on a revision's page only. */
+     * Modified within (static/app.js `noFileAges`); set on a revision's page only. */
     METABROWSER_FILE_AGES?: boolean;
     /** Container kinds by extension; see arch-plugin-system.md. */
     METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
@@ -4822,6 +4839,8 @@ declare global {
       GIT_HOVER_DEBOUNCE_MS?: number;
       /** How often a revision's page asks whether its files' ages have landed. */
       GIT_AGES_POLL_MS?: number;
+      /** How long a page keeps asking for a read before it gives up, in milliseconds. */
+      GIT_AGES_WATCH_GIVE_UP_MS?: number;
       GIT_LOG_LIMIT?: number;
       INDEX_PROGRESS_POLL_MS?: number;
       INDEX_PROGRESS_UPDATE_FILES?: number;
