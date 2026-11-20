@@ -48,6 +48,7 @@ const SHELL_VARIABLES = [
   "inventoryEventSource",
   "lastInventorySnapshot",
   "catalogFeedCanStart",
+  "containerHtml",
 ];
 
 const SHELL_FUNCTIONS = [
@@ -65,6 +66,8 @@ const SHELL_FUNCTIONS = [
   "_createInventoryEventSource",
   "startInventoryEventStream",
   "announceUnchangedSnapshot",
+  "watchContainer",
+  "loadContainerChildren",
 ];
 
 const shellSource = [
@@ -77,7 +80,7 @@ const shellSource = [
   ),
   ...SHELL_FUNCTIONS.map((name) =>
     appDeclaration(
-      new RegExp(`^function ${name}\\([^)]*\\) \\{[\\s\\S]*?^\\}`, "m"),
+      new RegExp(`^(?:async )?function ${name}\\([^)]*\\) \\{[\\s\\S]*?^\\}`, "m"),
       `function ${name}`,
     ),
   ),
@@ -127,6 +130,16 @@ function retryUnreachablePreview() {}
 // These stream-only pages have no failed mounted folder. The folder loader's
 // recovery boundary runs against production code in page-reconnect-behavior.js.
 function retryFailedExpandedSubtrees() {}
+// A container's children as the tree draws them: their names.
+function renderContainerChildren(rows) {
+  return rows.map((row) => row.name).join(" | ");
+}
+function applyTreeFilters() {
+  __did("tree: filters applied");
+}
+function synchronizeTreeNow() {
+  __did("tree: keyboard synchronized");
+}
 function flagRunEndedBadge() {
   __did("live log: marked ended");
 }
@@ -182,9 +195,25 @@ function createPage(sourceKind) {
   const listeners = new Map();
   let nextTimer = 0;
   let catalogRequests = 0;
-  // The server's side of file watches: the connections it holds, and each file's
-  // generation now. A restart forgets the connections.
-  const server = { connections: new Set(), generations: new Map() };
+  // The server's side of file watches: the connections it holds, the paths each watches
+  // up to its bound, and each file's generation now. A restart forgets the connections.
+  // While `holding`, a watch request waits for `answerHeld`, as a slow server's does.
+  const server = {
+    connections: new Set(),
+    generations: new Map(),
+    watched: new Map(),
+    maxPaths: 32,
+    holding: false,
+    held: [],
+    // A container's children: the names its file holds now, and a read held until
+    // `answerChildren` while `holdingChildren`.
+    children: new Map(),
+    holdingChildren: false,
+    heldChildren: [],
+  };
+  /** What the server's watches for *connection* are now, as a line of the page's record. */
+  const watchedLine = (connection) =>
+    `server: ${connection} watches [${[...(server.watched.get(connection) ?? [])].join(", ")}]`;
 
   class RecordingEventSource {
     constructor(url) {
@@ -250,14 +279,26 @@ function createPage(sourceKind) {
     // Only file-watches.js fetches through the global: POST /api/events/watch.
     async fetch(url, init) {
       did.push(`request: POST ${url} ${init.body}`);
+      if (server.holding) {
+        await new Promise((resolve) => server.held.push(resolve));
+      }
       const body = JSON.parse(init.body);
       const answer = (status, payload) => ({ status, json: async () => payload });
       if (!server.connections.has(body.connection)) {
         return answer(409, { type: "watch_error", code: "unknown_connection" });
       }
+      const watched = server.watched.get(body.connection) ?? new Set();
+      server.watched.set(body.connection, watched);
       if (body.watch === false) {
+        watched.delete(body.path);
+        did.push(watchedLine(body.connection));
         return answer(200, { type: "file_watch", watching: false });
       }
+      if (!watched.has(body.path) && watched.size >= server.maxPaths) {
+        return answer(409, { type: "watch_error", code: "too_many_watches" });
+      }
+      watched.add(body.path);
+      did.push(watchedLine(body.connection));
       const generation = server.generations.get(body.path) ?? null;
       return answer(200, {
         type: "file_watch",
@@ -265,6 +306,24 @@ function createPage(sourceKind) {
         generation,
         changed: "generation" in body ? generation !== body.generation : null,
       });
+    },
+    // The asset loader, which watchContainer asks for file-watches.js.
+    MetabrowserAssets: {
+      ensureAsset(name) {
+        did.push(`asset: ${name}`);
+        page.loadFileWatches();
+        return Promise.resolve();
+      },
+    },
+    // The SDK's data hook, which loadContainerChildren reads a container's children with.
+    metabrowser: {
+      async fetchPluginData(plugin, hook, params) {
+        did.push(`request: GET /api/plugin/${plugin}/${hook}?path=${params.path}`);
+        if (server.holdingChildren) {
+          await new Promise((resolve) => server.heldChildren.push(resolve));
+        }
+        return { children: (server.children.get(params.path) ?? []).map((name) => ({ name })) };
+      },
     },
     setTimeout(callback, delayMs) {
       nextTimer += 1;
@@ -343,6 +402,22 @@ function createPage(sourceKind) {
     },
     run,
     server,
+    sandbox,
+    note: (line) => did.push(line),
+    /** Answer every watch request the server held. */
+    answerHeld() {
+      server.holding = false;
+      for (const resolve of server.held.splice(0)) {
+        resolve();
+      }
+    },
+    /** Answer every children read the server held. */
+    answerChildren() {
+      server.holdingChildren = false;
+      for (const resolve of server.heldChildren.splice(0)) {
+        resolve();
+      }
+    },
     start: () => run("startInventoryEventStream()"),
     /** Load file-watches.js, as metabrowser.watchFile does on its first call. */
     loadFileWatches() {
@@ -613,7 +688,12 @@ async function main() {
   console.log(JSON.stringify(transcript, null, 2));
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+// file-watches-session.js runs its scenarios on this page.
+module.exports = { createPage, snapshotOf };
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

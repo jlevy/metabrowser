@@ -585,6 +585,7 @@ $ node tests/dom/page-connections-session.js
         "step": "a table read at g1 watches its file: registered on c1",
         "did": [
           "request: POST /api/events/watch {\"connection\":\"c1\",\"path\":\"people.csv\",\"generation\":\"g1\"}",
+          "server: c1 watches [people.csv]",
           "table: watch live"
         ],
         "after": {
@@ -684,6 +685,7 @@ $ node tests/dom/page-connections-session.js
           "request: GET /api/catalog",
           "tree: snapshot of 1 entries applied",
           "request: POST /api/events/watch {\"connection\":\"c2\",\"path\":\"people.csv\",\"generation\":\"g2\"}",
+          "server: c2 watches [people.csv]",
           "table: people.csv is now g3"
         ],
         "after": {
@@ -768,7 +770,9 @@ $ node tests/dom/page-connections-session.js
           "request: GET /api/catalog",
           "event: metabrowser:inventory-change snapshot anything may have changed",
           "request: POST /api/events/watch {\"connection\":\"c3\",\"path\":\"people.csv\",\"generation\":\"g3\"}",
+          "server: c3 watches [people.csv]",
           "request: POST /api/events/watch {\"connection\":\"c3\",\"path\":\"deep/notes.txt\",\"generation\":\"n1\"}",
+          "server: c3 watches [people.csv, deep/notes.txt]",
           "tree: watch live"
         ],
         "after": {
@@ -833,7 +837,9 @@ $ node tests/dom/page-connections-session.js
           "request: GET /api/catalog",
           "event: metabrowser:inventory-change snapshot anything may have changed",
           "request: POST /api/events/watch {\"connection\":\"c4\",\"path\":\"people.csv\",\"generation\":\"g3\"}",
-          "request: POST /api/events/watch {\"connection\":\"c4\",\"path\":\"deep/notes.txt\",\"generation\":\"n1\"}"
+          "server: c4 watches [people.csv]",
+          "request: POST /api/events/watch {\"connection\":\"c4\",\"path\":\"deep/notes.txt\",\"generation\":\"n1\"}",
+          "server: c4 watches [people.csv, deep/notes.txt]"
         ],
         "after": {
           "streams": [
@@ -864,7 +870,8 @@ $ node tests/dom/page-connections-session.js
       {
         "step": "the table is disposed: its file is unregistered",
         "did": [
-          "request: POST /api/events/watch {\"connection\":\"c4\",\"path\":\"people.csv\",\"watch\":false}"
+          "request: POST /api/events/watch {\"connection\":\"c4\",\"path\":\"people.csv\",\"watch\":false}",
+          "server: c4 watches [deep/notes.txt]"
         ],
         "after": {
           "streams": [

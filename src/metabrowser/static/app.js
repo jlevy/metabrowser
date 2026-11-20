@@ -3841,24 +3841,13 @@ async function toggleTreeFolder(row, options) {
 // Container expansion mirrors lazy folder expansion: fetch children on
 // first open, then toggle visibility. Failures state themselves in the
 // group rather than leaving an empty box.
-// A container's children change with its file, as a database's tables do: once read,
-// a change reads them again, or on the next expand; a row gone stops watching.
-var containerWatches = new WeakMap();
+// A container's children follow its file, as a database's tables do (file-watches.js,
+// followContainer): a change reads them again, coalesced, or on the next expand.
+var containerHtml = new WeakMap();
 function watchContainer(row, children) {
-  if (!containerWatches.has(row)) {
-    containerWatches.set(
-      row,
-      window.metabrowser.watchFile?.(row.dataset.path || "", {
-        onChange() {
-          if (!row.isConnected) {
-            containerWatches.get(row)?.();
-          } else if (row.getAttribute("aria-expanded") === "true") {
-            void loadContainerChildren(row, children).then(synchronizeTreeNow);
-          } else {
-            delete children.dataset.loaded;
-          }
-        },
-      }),
+  if (!isGitRevisionSource()) {
+    void window.MetabrowserAssets?.ensureAsset("file-watches").then(() =>
+      window.MetabrowserFileWatches?.followContainer(row, children, loadContainerChildren),
     );
   }
 }
@@ -3870,6 +3859,7 @@ async function loadContainerChildren(row, children) {
     '<span class="spinner spinner-sm" aria-hidden="true"></span></div>';
   var level = Number(row.dataset.treeLevel || "1") + 1;
   var childrenStartedAt = Date.now();
+  var html;
   try {
     var payload = await window.metabrowser.fetchPluginData(
       row.dataset.containerPlugin,
@@ -3877,7 +3867,7 @@ async function loadContainerChildren(row, children) {
       { path: row.dataset.path || "" },
     );
     var rows = Array.isArray(payload?.children) ? payload.children : [];
-    children.innerHTML = rows.length
+    html = rows.length
       ? renderContainerChildren(rows, { level: level })
       : '<div class="tree-empty-note">No entries in this file.</div>';
     children.dataset.loaded = "1";
@@ -3893,10 +3883,15 @@ async function loadContainerChildren(row, children) {
       },
       error,
     );
-    children.innerHTML =
-      '<div class="tree-empty-note nav-error">Could not load these entries.</div>';
+    html = '<div class="tree-empty-note nav-error">Could not load these entries.</div>';
   }
-  applyTreeFilters();
+  // Drawn again only when they differ, so a refresh keeps a child's focus and hover.
+  if (containerHtml.get(children) !== html) {
+    containerHtml.set(children, html);
+    children.innerHTML = html;
+    applyTreeFilters();
+    synchronizeTreeNow();
+  }
 }
 
 async function toggleTreeContainer(row) {

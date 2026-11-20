@@ -162,8 +162,8 @@ spend them
   lookups for each changed path, measured beside the index.
   Each connection that saw another generation gets one `file.changed`, so a burst
   between two polls is one event.
-  A path is compared as soon as it is sampled, and only with an entry written before
-  the sample, so a registration answered meanwhile is never sent an older generation.
+  A path is compared as soon as it is sampled, and only with an entry written before the
+  sample, so a registration answered meanwhile is never sent an older generation.
   Every watched path is polled, the ones the inventory reports too, since which paths
   the inventory covers depends on its ignore rules and its watcher’s state; the cost per
   path is measured beside `FILE_WATCH_MAX_PATHS`.
@@ -176,7 +176,18 @@ spend them
   connection, after a resync, a server restart, or a page restored from Back
   (`createPageConnections`), registers every watch again with the generation it holds; a
   registration refused for an unknown connection waits for the next snapshot
-  (`tests/dom/page-connections-session.js`).
+  (`tests/dom/page-connections-session.js`). A watch released is unregistered whenever a
+  registration of it was sent on the connection now open, answered or not, so leaving
+  views faster than the server answers never fills the bound; a watch refused for
+  another reason, such as `too_many_watches`, registers again once another watch has
+  been unregistered. While the page is hidden its watches are unregistered, so a tab
+  nobody looks at costs the server no polls, and shown again each registers with the
+  generation it holds (`tests/dom/file-watches-session.js`).
+- **Containers.** A container in the tree whose children were read follows its file
+  (`createContainerFollower`): changes gather for `CONTAINER_COALESCE_MS`, one read of
+  its children runs at a time with one more if a change came during it, the children are
+  drawn again only when they differ, a collapsed container reads them on its next
+  expand, and a row the tree drops releases its watch.
 
 The table view refreshes on a change
 ([Data Tables](../../design-system.md#data-tables)), and a container in the tree reads

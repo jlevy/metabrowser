@@ -3165,7 +3165,8 @@ type MetabrowserTreeKeyboardRuntime = Readonly<{
 declare global {
   /** A watched file's new generation (`file.changed`); null when nothing readable is there. */
   type MetabrowserFileChange = { path: string; generation: string | null };
-  /** Where a file watch stands: waiting for a connection, live, or refused (its reason says why). */
+  /** Where a file watch stands: waiting for a connection (or for a hidden page to be shown,
+   *  reason `hidden`), live, or refused (its reason says why). */
   type MetabrowserFileWatchState = "waiting" | "live" | "refused";
   type MetabrowserFileWatchListener = {
     onChange(change: MetabrowserFileChange): void;
@@ -3182,6 +3183,7 @@ declare global {
       generation?: string | null,
     ): () => void;
     connected(id: string | null): void;
+    hidden(now: boolean): void;
     changed(change: MetabrowserFileChange): void;
     describe(): ReadonlyArray<
       Readonly<{
@@ -4813,8 +4815,28 @@ declare global {
       createFileWatches(deps: {
         post(body: Record<string, unknown>): Promise<{ status: number; body: unknown }>;
         connection?: string | null;
+        hidden?: boolean;
       }): MetabrowserFileWatchRegistry;
+      createContainerFollower(deps: {
+        watches: Pick<MetabrowserFileWatchRegistry, "watch">;
+        setTimeout(callback: () => void, delayMs: number): ReturnType<typeof setTimeout>;
+        clearTimeout(handle: ReturnType<typeof setTimeout>): void;
+        observe(onMutation: () => void): () => void;
+      }): Readonly<{
+        follow(
+          row: HTMLElement,
+          children: HTMLElement,
+          load: (row: HTMLElement, children: HTMLElement) => Promise<unknown>,
+        ): void;
+        sweep(): void;
+        describe(): ReadonlyArray<Readonly<{ path: string; pending: boolean; running: boolean }>>;
+      }>;
       shared(): MetabrowserFileWatchRegistry;
+      followContainer(
+        row: HTMLElement,
+        children: HTMLElement,
+        load: (row: HTMLElement, children: HTMLElement) => Promise<unknown>,
+      ): void;
       connected(id: string | null): void;
       changed(change: MetabrowserFileChange): void;
     }>;
