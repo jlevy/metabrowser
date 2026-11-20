@@ -772,14 +772,17 @@ async function textRefusal() {
 // them in a description and in comments, and so does the page, each as an image, since a
 // text is untrusted. The page reads the Markdown plugin's published host
 // (`mb.builtins.markdown.drawDiagrams`) once a text has a block, and a page with none asks
-// for nothing; so does a folder's page, which may lack the untrusted policy that bounds what
-// Mermaid loads while it lays a diagram out. A binding lasts as long as its text's
-// section: a poll or a tab that keeps
-// the section keeps it, a section the conversation drops ends it, one dropped before the
-// plugin arrives never binds, and the page's end ends them all. The Markdown plugin's
-// index.js, place-rendered.js, and diagrams.js run as production code; KPress's two diagram
-// modules are stubs that `ensureModule` returns, and record the placement each binding asks
-// for, the figures it holds, and its disposal. Returns what each step asked and bound.
+// for nothing. A folder's page draws them as a pinned revision's does: on either, each
+// binding's Mermaid is the Markdown plugin's diagram frame's, whose own policy bounds what
+// Mermaid loads while it lays a diagram out, never the page's (markdown/diagram-frame.js).
+// A binding lasts as long as its text's section: a poll or a tab that keeps the section
+// keeps it, a section the conversation drops ends it, one dropped before the plugin
+// arrives never binds, and the page's end ends them all. The Markdown plugin's index.js,
+// place-rendered.js, diagrams.js, and diagram-frame.js run as production code; KPress's two
+// diagram modules are stubs that `ensureModule` returns, and record the placement each
+// binding asks for, the figures it holds, where its Mermaid comes from, and its disposal.
+// The SDK publishes no Mermaid bundle, so a frame's lease says so before any frame opens.
+// Returns what each step asked and bound.
 async function textDiagrams() {
   const pullPage = pathToFileURL(
     path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js"),
@@ -886,10 +889,23 @@ async function textDiagrams() {
           part: partOf(root),
           placement: options.placement,
           figures: root.querySelectorAll('[data-kpress-diagram="mermaid"]').length,
-          mermaid: typeof options.mermaid === "function",
+          mermaid: "not asked",
           disposed: false,
         };
         bound.push(binding);
+        // KPress asks for Mermaid once a figure needs it; the stub asks at once, to show
+        // where the binding's Mermaid comes from.
+        Promise.resolve(options.mermaid?.()).then(
+          () => {
+            binding.mermaid = "the page's";
+          },
+          (error) => {
+            binding.mermaid =
+              error.message === "The Mermaid module bundle is not published"
+                ? "the diagram frame's"
+                : error.message;
+          },
+        );
         return {
           figures: [],
           ready: Promise.resolve(),
@@ -906,7 +922,7 @@ async function textDiagrams() {
   let arrives = Promise.resolve();
   const loads = [];
   // A pinned revision's page, always under the untrusted policy, unless a step serves a
-  // folder's, whose policy the SDK does not say.
+  // folder's, which may have none.
   let served = "git_revision";
   const sdk = {
     perf,
@@ -933,6 +949,10 @@ async function textDiagrams() {
     async ensureModule(name) {
       asked.push(name);
       return modules[name];
+    },
+    moduleUrl(name) {
+      asked.push(`the ${name} bundle's address`);
+      return null;
     },
     ...require("./sdk-ref-fixture.js").refHelpers(document),
     formatAge: () => ({ label: "now", className: "age" }),
@@ -979,8 +999,8 @@ async function textDiagrams() {
     const loaded = asked.splice(0);
     const bindings = bound.map(
       (binding) =>
-        `${binding.part} as ${binding.placement}, ${binding.figures} figure` +
-        `${binding.mermaid ? ", Mermaid on demand" : ""}${binding.disposed ? ", disposed" : ""}`,
+        `${binding.part} as ${binding.placement}, ${binding.figures} figure, ` +
+        `Mermaid ${binding.mermaid}${binding.disposed ? ", disposed" : ""}`,
     );
     steps.push(
       `${label}: ${shown}; asked ${loaded.length === 0 ? "nothing" : loaded.join(", ")}; ` +

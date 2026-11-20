@@ -211,6 +211,7 @@ counts is missing here; the asset routes are not counted.
 | `/api/identity` | What the served subject is called, for a window’s title, and the GitHub repository it belongs to (`root_identity.py`) | [Source Sessions and Pins](arch-source-sessions-and-pins.md) |
 | `/api/counterpart` | The github.com page that shows what a page shows, for its View on GitHub control, or why there is none (`counterpart.py`) | [Design System: View on GitHub](../../design-system.md#view-on-github) |
 | `/api/source/refresh` | `POST`: start or join a background refresh of the served mirror | [Mirror Acquisition and Refresh](arch-mirror-acquisition-and-refresh.md) |
+| `/api/source/link` | `POST`: open a link into the served mirror’s repository: start a refresh, switch the pin to the revision a branch, folder, or file link names, and answer the page to go to, a pull request’s or a commit’s with no switch | [GitHub Links](arch-macos-app.md#github-links), [Source Sessions and Pins](arch-source-sessions-and-pins.md) |
 | `/api/cache/layout`, `/api/cache/sources`, `/api/cache/source/<slug>`, `/api/cache/stores` | Read-only logical state of the repository cache (`cache/wire.py`) | [Repository Cache](arch-repository-cache.md) |
 | `/api/plugin/<plugin>/<route>` | A plugin’s `[[data_hook]]` | [Plugin System](arch-plugin-system.md) |
 

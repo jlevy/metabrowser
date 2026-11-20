@@ -7,8 +7,8 @@ import Foundation
 /// `metab URL --present --dry-run --format json` reports it (`PresentPlan`), never by its
 /// pin: a page can switch the pin while the server runs (View on branch), so a key that
 /// held the pin would stop naming the session. Every link into one repository opens in
-/// its one session, then, which starts its server again on a link that its window does
-/// not show (`FolderSession.open(link:)`).
+/// its one session, then, whose one server is started on the repository and opens each
+/// link where it is (`FolderSession.open(link:)`, `SourceLink`).
 public nonisolated enum SessionRoot: Hashable, Sendable {
     /// A canonical folder, as `OpenTarget` resolves one.
     case folder(URL)

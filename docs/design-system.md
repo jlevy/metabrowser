@@ -5382,7 +5382,7 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   A pin that names no ref puts “Commit:” and the same face on the button.
 
 - **A commit reads the same wherever a line names it.** The button, the rows, and a
-  mirror’s offer of its ref’s newer commit all show it by the one rule in
+  mirror’s line about the commit its branch moved to all show it by the one rule in
   [Short Commit IDs](#short-commit-ids).
 
 - **The button names the ref and the heading does not.** A served mirror’s navigation

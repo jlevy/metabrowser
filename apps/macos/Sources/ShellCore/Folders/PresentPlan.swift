@@ -134,11 +134,10 @@ public nonisolated struct LinkAlert: Equatable, Sendable {
     /// Which links an alert is about, which the alert for a burst counts (`LinkProblems`,
     /// review D3 on #539).
     public enum Links: Equatable, Sendable {
-        /// Links that were not opened: one refused, unreadable, or not a GitHub link, or
-        /// those a decline turned away.
+        /// Links that were not opened: one refused, unreadable, or not a GitHub link, one
+        /// whose repository has nothing it names (`linkNotFound`), or those a decline
+        /// turned away.
         case notOpened(Int)
-        /// A link that opened, on another revision than it names (`selectionMissing`).
-        case openedElsewhere
     }
 
     public var message: String
@@ -195,10 +194,8 @@ public nonisolated struct LinkProblems: Equatable, Sendable {
     /// Links never resolved, by why.
     public private(set) var turnedAway: [Turnaway: Int] = [:]
     /// The links the problems noted stand for, shown or not (`LinkAlert.links`): a decline
-    /// stands for every link it turned away, and a link that opened on another revision
-    /// is no link that was not opened (review D3 on #539).
+    /// stands for every link it turned away (review D3 on #539).
     private var notOpened = 0
-    private var openedElsewhere = 0
 
     public init() {}
 
@@ -208,7 +205,6 @@ public nonisolated struct LinkProblems: Equatable, Sendable {
         if shown.count < LinkAlert.shownInBatch { shown.append(alert) } else { more += 1 }
         switch alert.links {
         case .notOpened(let count): notOpened += count
-        case .openedElsewhere: openedElsewhere += 1
         }
     }
 
@@ -230,23 +226,8 @@ public nonisolated struct LinkProblems: Equatable, Sendable {
         if more > 0 { detail.append("and \(more) more.") }
         let unopened = notOpened + dropped
         return LinkAlert(
-            message: Self.title(notOpened: unopened, openedElsewhere: openedElsewhere),
+            message: "Metabrowser could not open \(unopened) \(unopened == 1 ? "link" : "links")",
             detail: detail.joined(separator: "\n\n"), links: .notOpened(unopened))
-    }
-
-    /// A burst's title, which counts links, not the problems listed: `notOpened` links
-    /// not opened, and `openedElsewhere` that opened on another revision than they name.
-    static func title(notOpened: Int, openedElsewhere: Int) -> String {
-        let links = { (count: Int) in "\(count) \(count == 1 ? "link" : "links")" }
-        let named = { (count: Int) in count == 1 ? "names" : "name" }
-        switch (notOpened, openedElsewhere) {
-        case (_, 0):
-            return "Metabrowser could not open \(links(notOpened))"
-        case (0, _):
-            return "Metabrowser could not show what \(links(openedElsewhere)) \(named(openedElsewhere))"
-        default:
-            return "Metabrowser could not open \(links(notOpened)), or show what \(openedElsewhere) more \(named(openedElsewhere))"
-        }
     }
 }
 

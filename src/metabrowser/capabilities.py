@@ -190,17 +190,22 @@ def untrusted_shell_csp(nonce: str, origin: str, kpress_scripts: tuple[str, ...]
     paths and ``/kpress-static/``; the Markdown worker from ``/plugin-static/``. Fonts
     and requests stay on this origin. Images also admit ``data:`` ones the stylesheet
     draws and GitHub's exact avatar host for application-owned author portraits;
-    document images remain restricted by the markup allowlist. The page frames nothing
-    -- the untrusted profile removes the HTML preview, its only frame -- is framed by
-    nothing, and has no plugins, ``<base>``, or form submission. Inline ``style``
+    document images remain restricted by the markup allowlist. The page frames no URL
+    -- the untrusted profile removes the HTML preview, its only framed address; its one
+    frame is the ``about:srcdoc`` diagram frame, under a stricter policy of its own as
+    well as this one, which admits its stylesheet from ``/plugin-static/``
+    (``builtin_plugins/markdown/diagram-frame.js``) -- is framed by nothing, and has no
+    plugins, ``<base>``, or form submission. Inline ``style``
     attributes stay allowed because the application writes them; an outside ``url()``
     inside one is still limited to those image origins. A ``<style>`` element is not:
     Mermaid lays each diagram out with one, so an untrusted document with diagrams logs
     one expected ``style-src-elem`` violation per diagram, which costs nothing because
     KPress's measuring host carries Mermaid's font and the image applies the style
     outside the page (``tests/dom/markdown-diagrams-chrome.mjs`` admits only those). The
-    same image-origin limit bounds the one network load an untrusted diagram can still
-    make, Mermaid's image shape (``A@{ img: … }``) while it lays the diagram out.
+    same image-origin limit bounds what an untrusted document's diagram can still load
+    while Mermaid lays it out in the page, its image shape (``A@{ img: … }``) and images
+    its own CSS names; a pull request's text is laid out in the diagram frame instead,
+    which loads none of them.
     """
 
     static = f"{origin}/static/"

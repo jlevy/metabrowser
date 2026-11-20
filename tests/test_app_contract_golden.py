@@ -436,6 +436,14 @@ class _Sandbox:
         return normalize_console(label_home(text, self.home), self.root)
 
 
+def _body(directory: Path, name: str, link: str) -> str:
+    """A link request's body, as ``SourceLink`` sends it, written where ``--data`` reads it."""
+
+    body = directory / f"{name}.json"
+    body.write_text(json.dumps({"fetch": False, "link": link}) + "\n", encoding="utf-8")
+    return str(body)
+
+
 @posix_only
 @needs_git
 def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -483,6 +491,13 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         run("serve/repository-cached", repository),
         run("identity/mirror", {"root": mirror}),
         run("source-status/mirror", {"root": mirror}),
+        # A link into the mirror's repository opens at its page; one into another is refused.
+        run("source-link/repository", {"root": mirror, "body": _body(tmp_path, "link", mirror)}),
+        run(
+            "source-link/elsewhere",
+            {"root": mirror, "body": _body(tmp_path, "elsewhere", f"{mirror}-other")},
+            status=1,
+        ),
         run("acquire/in-terminal", {"url": mirror}),
     ]
     # What a GitHub link opens: each kind the app knows, and a refusal.

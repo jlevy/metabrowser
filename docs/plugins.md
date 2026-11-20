@@ -557,7 +557,7 @@ Useful helpers include:
   exclusive choice among labelled values;
 - `shortcuts.attach(element, spec)`; see [Keyboard Shortcuts](#keyboard-shortcuts);
 - `chart(container, type, data, options)`, `ensureAsset(name)`, `ensureModule(name)`,
-  and `ensureKindAssets(kind)`, below;
+  `moduleUrl(name)`, and `ensureKindAssets(kind)`, below;
 - `whenIdle(callback, {timeout})`, which runs `callback` when the page is free, no later
   than `timeout` milliseconds, and returns a canceller
   ([Idle Work](project/architecture/arch-browser-shell.md#idle-work));
@@ -627,6 +627,9 @@ there as `{"module": url}`, such as `"mermaid"`: it imports the module once and 
 to its namespace, so read the library from what it returns rather than from a global.
 Simultaneous callers share one import, a failed import rejects and the next call imports
 again, and a name that is not a module bundle, a script bundle’s among them, rejects.
+`moduleUrl(name)` is the same bundle’s absolute URL, or `null` for a name that is not a
+module bundle: what a frame of the plugin’s own imports to run the module in that
+frame’s realm, where the namespace `ensureModule` returns cannot reach.
 [Asset Loading Tiers](project/architecture/arch-browser-shell.md#asset-loading-tiers)
 says which tier an asset belongs in.
 
@@ -892,16 +895,19 @@ Transclusions share depth, document, source-byte, cycle, abort, and disposal lim
 across the mounted document, and each embed’s time limit starts when that embed begins
 loading. Do not copy Markdown DOM or table-of-contents behavior into a contribution.
 
-`mb.builtins.markdown.drawDiagrams(root, {inert})` draws the Mermaid diagrams of a
-KPress render your plugin placed under `root`, as the Markdown view draws its own: an
-inert render’s `<pre lang="mermaid">` blocks become images, and only `inert: false`, for
-a render the reader trusts, puts the SVG in the page.
+`mb.builtins.markdown.drawDiagrams(root, {inert, isolated})` draws the Mermaid diagrams
+of a KPress render your plugin placed under `root`, as the Markdown view draws its own:
+an inert render’s `<pre lang="mermaid">` blocks become images, and only `inert: false`,
+for a render the reader trusts, puts the SVG in the page.
 It returns null, and loads nothing, when `root` holds no diagram; otherwise its
 `dispose()` stops drawing and leaves the figures as drawn, so call it when you replace
-`root`. Mermaid lays an image out in the page before it becomes one, so draw an
-untrusted render only on a page under the untrusted Content-Security-Policy, as a pull
-request’s page does
-([Inert Markdown](project/architecture/arch-server-and-content.md#inert-markdown)).
+`root`. Mermaid lays an image out in a document before it becomes one, and there a
+diagram’s own CSS can load an image, so a plain image is laid out in the page and
+bounded only by the page’s policy.
+For untrusted text on a page that may have none, such as a folder’s page served trusted,
+pass `isolated: true`, as a pull request’s page does: the images are laid out in a frame
+whose own policy loads nothing (`builtin_plugins/markdown/diagram-frame.js`;
+[Inert Markdown](project/architecture/arch-server-and-content.md#inert-markdown)).
 
 ### The SDK Version
 

@@ -30,11 +30,12 @@
 // class, id, data, style, or event attribute survives, nor any SVG, media, stylesheet,
 // frame, or form; an image becomes a link to it; a link is made absolute against the
 // pull request's github.com page, kept only for http(s), and opened in a new tab with
-// rel="noopener noreferrer"; and no KPress script is loaded for a text, but on a pinned
-// revision's page, for one with a Mermaid block (a `pre` keeps `lang="mermaid"`), KPress's
-// diagram modules, which draw each block as an image (`drawTextDiagrams`). KPress's
-// stylesheets are, the route's one fixed list, and the page sets the rebuilt nodes in a
-// KPress article of its own making, so a text reads as the same Markdown in a file does.
+// rel="noopener noreferrer"; and no KPress script is loaded for a text, but for one with a
+// Mermaid block (a `pre` keeps `lang="mermaid"`), KPress's diagram modules, which draw each
+// block as an image laid out in a frame whose policy loads nothing (`drawTextDiagrams`).
+// KPress's stylesheets are, the route's one fixed list, and the page sets the rebuilt nodes
+// in a KPress article of its own making, so a text reads as the same Markdown in a file
+// does.
 
 import {
   comparisonKey,
@@ -4763,13 +4764,15 @@ export function mountPullPage(container, ctx, mb) {
    * them in a description or comment. A text is untrusted, so each is an image, which runs
    * no script and loads nothing. A text with no block asks for nothing.
    *
-   * Only on a page under the untrusted Content-Security-Policy, which a pinned revision's
-   * page always is (`capabilities_for` in capabilities.py, `index` in server.py). Mermaid
-   * lays a diagram out in the page before it becomes an image, and there its image shape
-   * loads its URL and a label's markup is live while it is measured (KPress's
-   * `js/diagrams.js`); that policy's `img-src` and script rules are what bound it. A folder's
-   * page has the policy only when served untrusted, which the SDK does not say, so there a
-   * block stays its source, as the text's other Markdown keeps every other load away.
+   * On every page, a folder's served trusted among them, with no Content-Security-Policy.
+   * Mermaid lays a diagram out in a document before it becomes an image, and there the
+   * diagram's own CSS is live: its image shape, a `themeCSS` directive, and a state
+   * diagram's `classDef` each load their URL. So each text's diagrams are laid out in the
+   * Markdown plugin's diagram frame (`isolated: true`), whose own policy admits nothing but
+   * its scripts, inline style, and `data:` images, under either profile
+   * (markdown/diagram-frame.js has the measurement), as the text's other Markdown keeps
+   * every other load away. A block whose image the frame refuses shows its error and
+   * source.
    *
    * The Markdown plugin owns the host for KPress's diagrams (markdown/diagrams.js) and
    * publishes it as `mb.builtins.markdown.drawDiagrams`, read at render time once its kind's
@@ -4783,7 +4786,7 @@ export function mountPullPage(container, ctx, mb) {
    */
   function drawTextDiagrams(element, article) {
     disposeTextDiagrams(element);
-    if (article.querySelector(TEXT_DIAGRAM) === null || mb.sourceKind() !== "git_revision") {
+    if (article.querySelector(TEXT_DIAGRAM) === null) {
       return;
     }
     let disposed = false;
@@ -4800,7 +4803,7 @@ export function mountPullPage(container, ctx, mb) {
       .ensureKindAssets("markdown")
       .then(() => {
         if (!disposed && !listening.signal.aborted) {
-          drawn = mb.builtins.markdown?.drawDiagrams?.(article, { inert: true }) ?? null;
+          drawn = mb.builtins.markdown?.drawDiagrams?.(article, { isolated: true }) ?? null;
         }
       })
       .catch((error) => {
