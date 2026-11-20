@@ -59,10 +59,18 @@ public nonisolated final class TitleLineMenuItem: NSMenuItem {
     /// The check mark AppKit draws in a menu's state column, as an image of its own.
     nonisolated enum CheckMark {
         /// The slot a menu's state column gives a check, whose width the column keeps: a
-        /// wider image widens the menu (macOS 26.5: 18 points widen it by 5).
+        /// state image's width sets the column's, a point for a point (macOS 26.5: an 18-point
+        /// image widened a menu by 5), and every item in the menu shifts with it. 13 points
+        /// make the open menu as wide as AppKit's own check does (macOS 26.5, in the open
+        /// chooser: 231 points both ways); 12 draw the same pixels and a menu a point narrower.
+        /// A menu measured offscreen is not as steady: with AppKit's own check it came out
+        /// 5 points wider in some test processes (macOS 26.5), and a point narrower than with
+        /// this slot on a CI runner (26.7), so no test holds the width to AppKit's.
         static let slot = CGSize(width: 13, height: 16)
 
-        /// Where the check's ink is centered in the slot, from its bottom left corner.
+        /// Where the check's ink is centered in the slot, from its bottom left corner: its
+        /// distance from the left edge is the same for any whole-point slot width (slots of
+        /// 12 and of 13 points draw the same pixels), and a fractional width moves it.
         static let inkCenter = CGPoint(x: 6.375, y: 7.5)
 
         /// What AppKit draws: the SF Symbol `checkmark` at the menu font's 13 points, bold,

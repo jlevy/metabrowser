@@ -150,10 +150,10 @@ import Testing
         #expect(layout.mark.contains(ink))
     }
 
-    @Test func theRaisedCheckLeavesTheMenuTheSizeAppKitsCheckMakes() {
+    @Test func theRaisedCheckMakesNoWiderAMenuThanAppKitsCheckDoes() {
         func menuSize(_ check: NSImage?) -> NSSize {
             let menu = NSMenu()
-            let row = item(subtitle: "~/Documents/notes", state: .on)
+            let row = item(subtitle: "In another window", state: .on)
             // As the chooser's rows are, with the mark on the title's line.
             row.image = NSImage(size: NSSize(width: 16, height: 30), flipped: false) { _ in true }
             if let check { row.onStateImage = check }
@@ -161,9 +161,16 @@ import Testing
             return menu.size
         }
         let stockCheck = NSMenuItem(title: "", action: nil, keyEquivalent: "").onStateImage
-        // The same menu as with AppKit's own check. A state image's width is the state
-        // column's (an 18-point one made this menu 5 points wider); its height never changes
-        // the item's, as the mark's does (macOS 26.5: 16 to 80 points, the same item).
-        #expect(menuSize(TitleLineMenuItem.raisedCheck) == menuSize(stockCheck))
+        let raised = menuSize(TitleLineMenuItem.raisedCheck), stock = menuSize(stockCheck)
+        // A state image's width sets the state column's, point for point (an 18-point one
+        // made a menu 5 points wider), and the slot is 13 points, which makes the open menu
+        // as wide as AppKit's check does (`CheckMark.slot`). Offscreen, a menu with AppKit's
+        // own check is not as steady: it came out 5 points wider in some test processes
+        // (macOS 26.5) and a point narrower on a CI runner (26.7), so the test only holds
+        // the menu to no wider than that, to a point. Its height never changes the item's,
+        // as the mark's does (macOS 26.5: 16 to 80 points, the same item).
+        #expect(raised.width <= stock.width + 1, "raised \(raised.width), stock \(stock.width)")
+        #expect(raised.height == stock.height)
+        #expect(CheckMark.slot == CGSize(width: 13, height: 16))
     }
 }
