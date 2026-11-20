@@ -792,25 +792,14 @@ function initSettingsControl() {
 // ── File type design system ───────────────────────────────────
 // The file tree's icon and colour, resolved through the rollup registry.
 //
-// This used to be a second taxonomy: sixteen hand-maintained matchers here
-// resolving to nine `ft-*` classes, beside a registry of 56 families each with
-// its own declared hue. Nothing kept them in step and they had drifted in both
-// directions at once — `.js` and `.jsx` were one family in the registry and two
-// different shapes in the tree, while `.json`, `.toml` and `.yaml` were three
-// families painted as one. A reader saw the bars disagree with the rows beside
-// them.
+// Classification is NOT re-implemented here: `MetabrowserFileTypeTaxonomy` is the registry
+// runtime (compound extensions, a family's shape through its group), and this file only
+// turns its answer into markup. A second taxonomy here had drifted from the registry, so
+// the bars disagreed with the rows beside them.
 //
-// Classification is NOT re-implemented here. `MetabrowserFileTypeTaxonomy` is
-// the registry runtime, it already canonicalises compound extensions and
-// resolves a family's shape through its group, and a second implementation of
-// that is exactly the defect being removed. This file only turns its answer
-// into markup.
-//
-// Colours arrive finished in `DISTRIBUTION_COLORS`, resolved per theme by the
-// server, because sRGB cannot hold the palette's target chroma at every hue and
-// a browser handed an out-of-gamut `oklch()` clips it — moving hue further than
-// the separation the palette is built on. The distribution bars read the same
-// list, which is what makes a family look like itself wherever it appears.
+// Colours arrive finished in `DISTRIBUTION_COLORS`, resolved per theme by the server, since
+// a browser clips an out-of-gamut `oklch()` and moves the hue. The distribution bars read
+// the same list, so a family looks like itself wherever it appears.
 
 /** Where a file row's colour for each theme is written. */
 const FILE_COLOR_LIGHT_PROPERTY = "--mb-file-color-light";
