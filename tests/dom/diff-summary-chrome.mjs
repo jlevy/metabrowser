@@ -102,7 +102,9 @@ const LAYOUT = `(() => {
     viewHeight: innerHeight,
     header: {
       chevron: round(left(toggle.querySelector(".diff-summary-chevron"))),
-      words: round(left(toggle.querySelector(".diff-summary-files"))),
+      // The header's words start at its change line where its page says the file count on
+      // its size line ("Change Size Line"), and at the file count where it says it itself.
+      words: round(left(toggle.querySelector(".diff-summary-files") ?? toggle.querySelector(".change-line"))),
     },
     body: body === null ? null : {
       overflowY: bodyStyle.overflowY,
@@ -211,12 +213,14 @@ const PAINT = `async (theme) => {
   for (const name of ["--text", "--muted", "--git-status-added", "--git-status-deleted", "--git-status-modified", "--git-status-renamed"]) {
     tokens[name] = token(name);
   }
-  const files = header.querySelector(".diff-summary-files");
+  // The file count: the header's own, or, on a page that says it on its size line above the
+  // header ("Change Size Line"), that line's, with the size's numbers after it once known.
+  const files = header.querySelector(".diff-summary-files") ?? document.querySelector(".page-header-line > .change-size-line");
   const painted = {
     theme,
     tokens,
     words: files ? ink(files) : null,
-    numbers: [...header.querySelectorAll(".diff-summary-files .summary-number")].map((node) => [node.textContent, ink(node), getComputedStyle(node).fontWeight]),
+    numbers: [...(files?.querySelectorAll(".summary-number") ?? [])].map((node) => [node.textContent, ink(node), getComputedStyle(node).fontWeight]),
     counts: (${STATUS_COUNTS})(header),
     marks: [...header.querySelectorAll(".summary-punctuation")].map((node) => [node.textContent, node.getAttribute("aria-hidden"), ink(node), getComputedStyle(node).fontWeight]),
     text: header.textContent,

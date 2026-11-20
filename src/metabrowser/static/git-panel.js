@@ -324,11 +324,6 @@
     Object.freeze({ key: "files_modified", status: "modified", letter: "M", word: "modified" }),
   ]);
 
-  /** The dot between the hover card's groups, muted and hidden, as the Diff summary's is. */
-  const COMMIT_CHANGE_SEPARATOR = Object.freeze({ separator: "·" });
-  /** The commit totals line's dot, which says a comma in its place, as a line has no name. */
-  const COMMIT_TOTALS_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });
-
   /**
    * A commit's changes in its hover card, in the Diff summary's words and paint
    * (docs/design-system.md, "Git Commit Summary"): "32 files changed · 4 A, 28 M · +1,921
@@ -342,9 +337,10 @@
    * 160 deleted", in place of its letters and marks.
    *
    * @param {Record<string, unknown>} stats
+   * @param {MetabrowserGitChangeSize | null} [size] The commit's size, once it is known.
    * @returns {string}
    */
-  function renderCommitChangeStats(stats) {
+  function renderCommitChangeStats(stats, size = null) {
     const formatters = window.MetabrowserFormatters;
     /** @param {unknown} value */
     const known = (value) => (typeof value === "number" ? value : null);
@@ -362,18 +358,41 @@
       entries,
       formatters.formatInteger,
     );
-    /** @param {string} className @param {MetabrowserCountParts} parts */
-    const group = (className, parts) =>
-      '<span class="git-commit-change-group">' +
-      `<span class="${className}">${formatters.countPartsHtml(parts)}</span>` +
-      `${formatters.countPartsHtml([COMMIT_CHANGE_SEPARATOR])}</span>`;
+    // The file count and the size on the size line, then the statuses and line totals,
+    // as a commit's page says them (docs/design-system.md, "Change Size Line").
     return (
+      `<div class="git-commit-size-line">${commitSizeLineHtml(stats, size)}</div>` +
       '<div class="git-commit-change-stats">' +
-      `<span class="visually-hidden">${escapeHtml(said.label)}</span>` +
+      `<span class="visually-hidden">${escapeHtml(said.line.label)}</span>` +
       '<span class="git-commit-change-line" aria-hidden="true">' +
-      group("git-commit-change-files", said.filesParts) +
       formatters.changeLineHtml(said.line) +
       "</span></div>"
+    );
+  }
+
+  /**
+   * A commit's size line, "32 files changed · 56.9 KB compressed (194.0 KB raw diff)": its file
+   * count from its stats, and, once `GET /api/git/commit-size` answers it, what Git pushes for
+   * it and its patch's size (docs/design-system.md, "Change Size Line"). A merge says how many
+   * commits it brings in; one commit does not say it is one.
+   *
+   * @param {Partial<MetabrowserGitCommitStats> | Record<string, unknown>} stats
+   * @param {MetabrowserGitChangeSize | null} size
+   * @returns {string}
+   */
+  function commitSizeLineHtml(stats, size) {
+    // The SDK's view helpers, which the panel waits for before it draws (`ensureViewHelpers`).
+    const mb = window.metabrowser;
+    const files = stats.files_changed;
+    const measured = size?.state === "measured" ? size : null;
+    const commits = measured?.commits ?? null;
+    return mb.changeSizeLineHtml(
+      mb.changeSizeLine({
+        ...(commits !== null && commits > 1 ? { commits } : {}),
+        files: typeof files === "number" && Number.isInteger(files) ? files : null,
+        pushedBytes: measured?.pushed_bytes ?? null,
+        diffBytes: measured?.diff_bytes ?? null,
+      }),
     );
   }
 
@@ -423,12 +442,9 @@
     }
     const formatters = window.MetabrowserFormatters;
     const said = formatters.changeSummary(totals, [], formatters.formatInteger);
-    return (
-      '<div class="diff-summary"><span class="diff-summary-group">' +
-      `<span class="diff-summary-files">${formatters.countPartsHtml(said.filesParts)}</span> ` +
-      `${formatters.countPartsHtml([COMMIT_TOTALS_SEPARATOR])}</span> ` +
-      `${formatters.changeLineHtml(said.line)}</div>`
-    );
+    // The file count is on the size line above; this place says the line totals alone, as
+    // the Diff summary that replaces it does in a page's header.
+    return `<div class="diff-summary">${formatters.changeLineHtml(said.line, { spoken: ", " })}</div>`;
   }
 
   /**
@@ -443,7 +459,8 @@
    * subject is at the body size. The hover card keeps its one line of metadata.
    *
    * @param {MetabrowserGitCommitDetail} detail
-   * @param {{compact?: boolean}} [options]
+   * @param {{compact?: boolean, size?: MetabrowserGitChangeSize | null}} [options] *size* is
+   *   the commit's size for the hover card, once it is known.
    * @returns {string}
    */
   function renderCommitSummary(detail, options = {}) {
@@ -513,9 +530,17 @@
     // the commit's files (`mountCommitDiff`). Until it does, and where it is not drawn, the
     // place says the commit's totals. The hover summary says its changes itself, in the Diff
     // summary's words and paint.
-    html += compact
-      ? renderCommitChangeStats(stats)
-      : `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">${renderCommitTotals(stats)}</div>`;
+    if (compact) {
+      html += renderCommitChangeStats(stats, options.size ?? null);
+    } else {
+      // The size line, the page header's line above its Diff summary: the file count at once,
+      // and the size when `placeCommitSize` has it. None where the detail has no count.
+      if (commitTotals(stats) !== null) {
+        const kept = sizeCache.get(commit.id) ?? null;
+        html += `<div class="git-commit-size page-header-line">${commitSizeLineHtml(stats, kept)}</div>`;
+      }
+      html += `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">${renderCommitTotals(stats)}</div>`;
+    }
     html += "</div>";
     if (!compact && detail.body) {
       // The message as written, until its Markdown replaces it (`placeCommitBody`): a
@@ -533,7 +558,10 @@
    * @returns {string}
    */
   function renderCommitTooltip(detail) {
-    return renderCommitSummary(detail, { compact: true });
+    return renderCommitSummary(detail, {
+      compact: true,
+      size: sizeCache.get(detail.commit.id) ?? null,
+    });
   }
 
   /**
@@ -1244,6 +1272,74 @@
   // reader's request (`prepareRevision`).
   /** @type {Map<string, {request: Promise<CommitBodyOutcome>, speculative: boolean}>} */
   const bodyInFlight = new Map();
+  // Commit sizes, by commit ID, bounded as the detail cache is: a size names immutable
+  // commits, so an answer is kept for the page (`GET /api/git/commit-size`, git/change_size.py).
+  // A request that failed is not kept and is asked again on the next visit.
+  /** @type {Map<string, MetabrowserGitChangeSize>} */
+  const sizeCache = new Map();
+  /** @type {Map<string, Promise<MetabrowserGitChangeSize | null>>} */
+  const sizeInFlight = new Map();
+
+  /**
+   * A commit's size, asked once however many callers want it, and kept.
+   *
+   * @param {string} revision A full commit ID.
+   * @returns {Promise<MetabrowserGitChangeSize | null>}
+   */
+  function fetchCommitSize(revision) {
+    const kept = sizeCache.get(revision);
+    if (kept) {
+      return Promise.resolve(kept);
+    }
+    const existing = sizeInFlight.get(revision);
+    if (existing) {
+      return existing;
+    }
+    const request = (async () => {
+      try {
+        const response = await apiFetch(`/api/git/commit-size/${revision}`);
+        /** @type {{is_repo?: boolean, size?: MetabrowserGitChangeSize} | null} */
+        const body = await response.json().catch(() => null);
+        const size = response.ok && body?.is_repo === true ? (body.size ?? null) : null;
+        if (size !== null) {
+          if (sizeCache.size >= DETAIL_CACHE_SIZE) {
+            const oldest = sizeCache.keys().next();
+            if (!oldest.done) {
+              sizeCache.delete(oldest.value);
+            }
+          }
+          sizeCache.set(revision, size);
+        }
+        return size;
+      } catch {
+        return null;
+      } finally {
+        sizeInFlight.delete(revision);
+      }
+    })();
+    sizeInFlight.set(revision, request);
+    return request;
+  }
+
+  /**
+   * Put the commit's size on its page's size line once it is known; the file count is there
+   * from the first paint, so nothing moves but the line's end.
+   *
+   * @param {ParentNode} root The stage or the page that holds the summary.
+   * @param {MetabrowserGitCommitDetail} detail
+   * @returns {Promise<void>}
+   */
+  function placeCommitSize(root, detail) {
+    if (sizeCache.has(detail.commit.id) || root.querySelector(".git-commit-size") === null) {
+      return Promise.resolve();
+    }
+    return fetchCommitSize(detail.commit.id).then((size) => {
+      const line = root.querySelector(".git-commit-size");
+      if (size !== null && line instanceof HTMLElement && line.isConnected !== false) {
+        line.innerHTML = commitSizeLineHtml(detail.stats, size);
+      }
+    });
+  }
   // KPress's stylesheets, loaded once for every body, as a pull request's page loads them
   // once for its texts. A load that failed is tried again by the next body.
   /** @type {Promise<void> | null} */
@@ -2559,6 +2655,9 @@
         lastSelection?.revision === revision &&
         shell()?.isPreviewClaimCurrent(lastSelection.claim);
       const preparation = selectedHere ? null : prepareRevision(revision, true);
+      // The size is asked beside the detail, so the card shows it when it is in by then; the
+      // card is shown once and never redrawn for it, and a later hover has it kept.
+      void fetchCommitSize(revision);
       let detail = await (preparation?.detail ?? fetchCommitDetail(revision));
       // The history was rebuilt while the detail was read: read it in this session, if
       // the hover is still wanted. A hover cancelled meanwhile, as by teardown, asks
@@ -3039,6 +3138,7 @@
     // Before the stage is shown: a kept render is in place at once, and one on its way
     // lands in the stage or the page, whichever holds the body when it comes.
     void placeCommitBody(stage, detail);
+    void placeCommitSize(stage, detail);
     const diffPreparation = preparation ?? {
       ...beginDiffPreparation(commit.id, null),
     };

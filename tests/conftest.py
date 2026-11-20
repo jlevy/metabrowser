@@ -463,6 +463,11 @@ def _reset_process_caches() -> Generator[None, None, None]:  # pyright: ignore[r
     events_route._CATALOG_BODY_CACHE.clear()  # pyright: ignore[reportPrivateUsage]
     events_route._CATALOG_ETAG_BY_CHECKPOINT.clear()  # pyright: ignore[reportPrivateUsage]
     events_route._CATALOG_REVISION.update(identity=None, value=0)  # pyright: ignore[reportPrivateUsage]
+    # Kept by commit IDs alone, which the fixtures share, so one test's measurement would
+    # answer another's without the store bank the second one checks.
+    from metabrowser.git.change_size import clear_kept_sizes
+
+    clear_kept_sizes()
 
 
 class DocumentReference(NamedTuple):

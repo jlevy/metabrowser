@@ -1,0 +1,96 @@
+# metab <PATH>/pull/7 --no-serve
+exit: 0
+--- stdout ---
+acquired: <PATH>
+slug: <SLUG>
+store: <STORE>
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+cloning <PATH> into <HOME>
+cloned <PATH> in 0.0 s
+--- gh ---
+gh auth status
+gh api repos/octo/demo --jq .size
+gh auth status
+gh api repos/octo/demo/pulls/7
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
+gh auth status
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>
+status: 200
+{
+  "number": 7,
+  "size": {
+    "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+    "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "state": "measured",
+    "reason": null,
+    "commits": 2,
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 265
+  }
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>
+status: 200
+{
+  "number": 7,
+  "size": {
+    "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+    "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "state": "measured",
+    "reason": null,
+    "commits": 2,
+    "pushed_bytes": <PUSHED>,
+    "diff_bytes": 265
+  }
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-size?number=7&left=0000000000000000000000000000000000000000&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-size?number=7&left=0000000000000000000000000000000000000000&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>
+status: 410
+{
+  "code": "snapshot_expired"
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-size?number=7&left=0000000000000000000000000000000000000000&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE> returned HTTP 410
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=x85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=x85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>
+status: 400
+{
+  "code": "invalid_pull_size"
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=x85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE> returned HTTP 400
+--- gh ---
