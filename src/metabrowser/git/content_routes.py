@@ -298,6 +298,17 @@ def _plugin_kind_for_git_path(
     )
 
 
+def plugin_magic_kind(prefix: bytes) -> str:
+    """The kind of a blob whose bytes sniff as binary: a plugin kind whose ``magic``
+    bytes *prefix* holds, or ``binary``. A stored blob is never decompressed, so its
+    bytes are the ones a magic number is checked against."""
+
+    from metabrowser.plugin_loader.classify import classify_magic
+    from metabrowser.server import _PLUGIN_KIND_RULES
+
+    return classify_magic(_PLUGIN_KIND_RULES, prefix) or "binary"
+
+
 def plugin_kind_for_git_wire(wire: str) -> str | None:
     """The plugin kind a blob's GitPath wire matches by extension and basename alone."""
 
@@ -1440,13 +1451,8 @@ async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request)
     if content_class is ContentClass.BINARY or (
         ext not in BROWSER_TEXT_EXTS and content_class is not ContentClass.TEXT
     ):
-        payload.update(
-            {
-                "type": "binary",
-                "kind": "binary",
-                "views": _views_for_kind("binary"),
-            }
-        )
+        kind = plugin_magic_kind(body[:SNIFF_PREFIX_BYTES])
+        payload.update({"type": "binary", "kind": kind, "views": _views_for_kind(kind)})
         return payload
     if ext == ".jsonl":
         from metabrowser.jsonl_view import parse_jsonl_bytes
@@ -1532,7 +1538,8 @@ async def _windowed_blob_file_response(
     if content_class is ContentClass.BINARY or (
         ext not in BROWSER_TEXT_EXTS and content_class is not ContentClass.TEXT
     ):
-        payload.update({"type": "binary", "kind": "binary", "views": _views_for_kind("binary")})
+        kind = plugin_magic_kind(head[:SNIFF_PREFIX_BYTES])
+        payload.update({"type": "binary", "kind": kind, "views": _views_for_kind(kind)})
         return _json(_with_requested_path(payload, entry, requested))
     if ext == ".jsonl":
         return await _windowed_jsonl_response(source, entry, size, payload, requested, wire)

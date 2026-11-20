@@ -95,7 +95,13 @@ from metabrowser.charts import clear_charts_cache
 from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.commit_ids import short_commit
-from metabrowser.content_sniff import ContentClass, sniff_artifact
+from metabrowser.content_sniff import (
+    SNIFF_PREFIX_BYTES,
+    ContentClass,
+    classify_prefix,
+    sniff_artifact,
+    sniff_artifact_prefix,
+)
 from metabrowser.counterpart import COUNTERPART_ROUTES
 from metabrowser.diff.markdown_projection_worker import (
     InertRender,
@@ -240,6 +246,7 @@ from metabrowser.source import (
     as_git_revision_subject,
     get_source_session,
     lifespan_subject,
+    read_content_window,
     require_filesystem_hooks,
     require_filter_capabilities,
     require_source_capability,
@@ -687,6 +694,17 @@ def _prefers_text_body(target: Path) -> bool:
     where the byte view would answer a broken file with an empty dump.
     """
     return sniff_artifact(target) is not ContentClass.BINARY
+
+
+def _sniff_text_body(target: Path) -> tuple[bool, bytes | None]:
+    """:func:`_prefers_text_body`, with the bytes on disk the sniff read.
+
+    The bytes are the file's own leading bytes, which a ``magic`` kind rule is matched
+    against when the file falls to the ``binary`` fallback (:func:`_magic_kind`); they
+    are None for a compressed artifact, whose sniff read decompressed bytes.
+    """
+    content_class, prefix = sniff_artifact_prefix(target)
+    return content_class is not ContentClass.BINARY, prefix
 
 
 # Defaults live in settings.py, which is also what the client reads, so the
@@ -3871,8 +3889,12 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             headers=etag_headers,
         )
 
+    disk_prefix: bytes | None = None
     with server_timing.phase("read"):
-        text_body = ext in BROWSER_TEXT_EXTS or await asyncio.to_thread(_prefers_text_body, target)
+        if ext in BROWSER_TEXT_EXTS:
+            text_body = True
+        else:
+            text_body, disk_prefix = await asyncio.to_thread(_sniff_text_body, target)
     if text_body:
         try:
             content_has_more = False
@@ -4006,11 +4028,14 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         # document in the normal file response.
         return JSONResponse(result, headers=etag_headers)
 
+    # A plugin kind that claims a binary format by its magic number, whatever the
+    # file's name; the model stays the file's bytes.
+    binary_kind = _magic_kind(disk_prefix) or "binary"
     return JSONResponse(
         {
             "type": "binary",
-            "kind": "binary",
-            "views": _views_for_kind("binary"),
+            "kind": binary_kind,
+            "views": _views_for_kind(binary_kind),
             "path": subpath,
             "size": disk_size,
             **_mtime_field(file_mtime),
@@ -4890,6 +4915,7 @@ async def raw_file(request: Request) -> Response:
 from metabrowser.plugin_loader.classify import (
     CompiledKindRule,
     build_classifier,
+    classify_magic,
     collect_folder_markers,
 )
 from metabrowser.plugin_loader.discovery import (
@@ -4980,6 +5006,30 @@ def _classify_with_plugins(
     return classify_file_kind(target, ext, adapter)
 
 
+def _magic_kind(disk_prefix: bytes | None) -> str | None:
+    """The plugin kind whose ``magic`` bytes a file's leading bytes on disk hold.
+
+    Checked only where a file would otherwise be ``binary``, from the sniff prefix the
+    caller already read; None for no prefix (a compressed artifact) or no match.
+    """
+    if disk_prefix is None:
+        return None
+    return classify_magic(_PLUGIN_KIND_RULES, disk_prefix)
+
+
+def _classify_content_kind(target: Path, ext: str) -> str:
+    """The kind ``/api/file`` gives a file on the served folder, for a caller with no
+    envelope of its own: an image extension, then text or JSONL through the plugin
+    classifier, then a ``magic`` kind or ``binary`` for bytes that sniff as binary."""
+    if ext in BROWSER_IMAGE_EXTS:
+        return "image"
+    if ext != ".jsonl" and ext not in BROWSER_TEXT_EXTS:
+        text_body, disk_prefix = _sniff_text_body(target)
+        if not text_body:
+            return _magic_kind(disk_prefix) or "binary"
+    return _classify_with_plugins(target, ext)
+
+
 def _container_kinds() -> dict[str, dict[str, str]]:
     """Kinds whose files are folder-like containers in the tree.
 
@@ -5049,7 +5099,7 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
             continue
         artifact = ArtifactPath(target)
         ext = artifact.logical_ext
-        kind = _classify_with_plugins(target, ext)
+        kind = _classify_content_kind(target, ext)
         info = kinds.get(kind)
         if info is None:
             return None
@@ -5115,10 +5165,19 @@ async def _table_content_kind(ref: ContentRef) -> str | None:
         target = resolve_session_identity(ref.identity)
         if target is None or not target.is_file():
             return None
-        return await asyncio.to_thread(_classify_with_plugins, target, ref.logical_ext)
-    from metabrowser.git.content_routes import plugin_kind_for_git_wire
+        return await asyncio.to_thread(_classify_content_kind, target, ref.logical_ext)
+    from metabrowser.git.content_routes import plugin_kind_for_git_wire, plugin_magic_kind
 
-    return plugin_kind_for_git_wire(ref.identity) or classify_by_ext(ref.logical_ext)
+    kind = plugin_kind_for_git_wire(ref.identity)
+    if kind is not None or ref.logical_ext in BROWSER_IMAGE_EXTS:
+        return kind or "image"
+    head = await read_content_window(ref, max_bytes=SNIFF_PREFIX_BYTES)
+    content_class = classify_prefix(head.data)
+    if content_class is ContentClass.BINARY or (
+        ref.logical_ext not in BROWSER_TEXT_EXTS and content_class is not ContentClass.TEXT
+    ):
+        return plugin_magic_kind(head.data)
+    return classify_by_ext(ref.logical_ext)
 
 
 install_table_sources(_table_source_declarations(), _table_content_kind)
