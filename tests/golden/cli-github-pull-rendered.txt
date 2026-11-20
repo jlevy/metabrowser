@@ -53,6 +53,7 @@ status: 202
     "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
     "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+    "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "record": {
       "schema_version": 2,
       "projection_version": 2,
@@ -260,6 +261,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,

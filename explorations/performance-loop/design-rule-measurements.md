@@ -354,6 +354,15 @@ later.
 Recorded again on 2026-11-16, when the summary’s header took the body size (mb-26zj):
 the block is 203 by 11.89 px, still 14.5 em of the header’s type, now 14 px.
 
+Recorded again on 2026-11-20, when a page header’s file count moved to its size line
+above the summary (mb-772c;
+[Change Size Line](../../docs/design-system.md#change-size-line)): measured in headless
+Chrome 152 at 560 px in both themes, a summary of one status, from “1 M · +3 −1” to “8 M
+· +120 −30”, ends 6.71 to 8.3 em from the row’s start, its text 6.28 to 7.87 em, so the
+block became 7 em, which ends between the two; the row is 24 px before and after the
+summary arrives, and the tab bar under it does not move.
+The size line’s row above it is 24 px too, holding its own placeholder or its line.
+
 Recorded on 2026-11-17, when the placeholder began at a page’s first paint rather than
 at its core preview (mb-30dz): headless Chrome 152, this repository served as a checkout
 on a copy of an everyday cache, three back-to-back pairs a case at a load average of 16

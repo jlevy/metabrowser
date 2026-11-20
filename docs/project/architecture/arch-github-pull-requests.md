@@ -509,9 +509,9 @@ It never asks GitHub, runs no Git, and reads nothing but each list’s file.
 The envelope has `source`, null with no `rows` on a server with no GitHub repository,
 and `rows` in the request’s order, each with `number`, `state` (`listed` or `absent`),
 `reason`, `listing`, `listed_from`, `generation`, `head`, `files`, `additions`,
-`deletions`, `exact`, and `statuses`, each a status and its count, sorted by the status.
-The reasons are `not_cached`, `schema_mismatch`, and `unreadable`, no usable list;
-`filling`, a list still being read or stopped part-way; `too_large`, a list GitHub
+`deletions`, `exact`, `statuses`, each a status and its count, sorted by the status, and
+`size`. The reasons are `not_cached`, `schema_mismatch`, and `unreadable`, no usable
+list; `filling`, a list still being read or stopped part-way; `too_large`, a list GitHub
 capped or one an item was left out of; and `deferred`, a list past the request’s byte
 budget, which a later request reads.
 A `filling` or `too_large` answer still names its list’s `listed_from`, `generation`,
@@ -523,6 +523,16 @@ numbers; anything else is refused 400 `invalid_request`. One request reads at mo
 `MAX_SUMMARY_BYTES` of lists it has not summed, the first whatever its size, and a sum
 is kept by its file’s inode, modification time, and size, at most `MAX_KEPT_SUMMARIES`
 of them, the least recently used out first, so an unchanged list is read once.
+
+`size` is the size the list’s comparison pushes and its patch’s
+([Change Sizes](arch-git.md#change-sizes)), when it is kept: in memory or beside the
+store, so the route still runs no Git.
+The refresh that makes a list from the store measures it right after listing it
+(`pull_files_refresh.py`), so a row’s size arrives with its counts; a list GitHub gave
+names no merge base and has none.
+A pull request’s page asks `GET pull-size` with the envelope’s `size_route`, which names
+the record’s comparison as `rendered_route` does and is admitted the same way
+(`pull_size.py`); it measures the head against the pair’s merge base once, and keeps it.
 
 ## Label Sets
 
@@ -703,6 +713,7 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `pull-comparison` | `GET` | The record’s comparison, from the store, for Changes and the header’s Diff summary |
 | `pull-image` | `GET` | An image at the comparison’s head, for its rendered Markdown |
 | `pull-rendered-diff` | `GET` | One changed Markdown, YAML, or JSON file, rendered |
+| `pull-size` | `GET` | The size the comparison pushes, against its merge base, and its patch’s |
 | `pull-timeline` | `POST` | Conversation’s order of commits, comments, and reviews |
 | `pull-markdown` | `GET` | One text of the record, or a core preview’s description, rendered inert |
 | `pulls` | `GET` | A catalog window, or a search with `q` |

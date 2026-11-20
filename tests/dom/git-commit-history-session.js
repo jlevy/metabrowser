@@ -448,6 +448,10 @@ async function createPage(start, options = {}) {
       // The commit page's author, the SDK's identity, whose markup this session does not
       // read (tests/dom/git-panel-behavior.js holds it).
       actorIdentityHtml: () => '<span class="actor-identity"></span>',
+      // The commit page's size line, the SDK's, whose markup this session does not read
+      // either (tests/dom/git-panel-behavior.js holds it).
+      changeSizeLine: () => ({ parts: [], sizeParts: [], text: "", label: "", tooltip: null }),
+      changeSizeLineHtml: () => '<span class="change-size-line"></span>',
       perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
       tooltip: { hide() {}, show() {} },
     },
