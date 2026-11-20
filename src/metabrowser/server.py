@@ -231,6 +231,7 @@ from metabrowser.settings import (
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
     VALID_LOG_LEVELS,
+    blocks_remote_images,
     client_settings_dict,
 )
 from metabrowser.source import (
@@ -1254,9 +1255,14 @@ class _SlowRequestLogMiddleware:
         # the application runs, so a job the request starts names it as its parent, and
         # carries the page's ID for it, which a page's reports name too.
         method = scope.get("method", "")
+        # A request for something inside the events directory is not recorded, when this
+        # server's folder holds the directory (event_log.quiet_request says why).
         request_span = (
             event_log.begin("request", f"{method} {path}", client=_request_client(scope))
             if event_log.enabled()
+            and not event_log.quiet_request(
+                path, (scope.get("query_string") or b"").decode("latin-1")
+            )
             else event_log.NULL_SPAN
         )
 
@@ -1651,6 +1657,10 @@ async def index(
     # awaited: a pin is never trusted, so a switch of the served subject while this
     # request renders cannot hand a revision's shell the folder's policy.
     page_capabilities = capabilities_for(pinned_revision=git_pin)
+    # The reader's privacy preference, read from the request's cookies once, so the
+    # settings the page carries and the policy it is served under cannot disagree.
+    block_remote_images = blocks_remote_images(request.cookies)
+    remote_images_checked = " checked" if block_remote_images else ""
     # Only a pin has a mirror session; a folder's shell never reads the app's state.
     mirror = mirror_session(request.app) if pin is not None else None
     # The served checkout's own refs and revisions: a folder that is a repository's root,
@@ -1722,6 +1732,7 @@ async def index(
     pull_route_script = _startup_script_tags(PULL_PAGE_STARTUP_SCRIPTS if pull_page else ())
     view_composition_url = _static_asset_url("view-composition.js")
     inert_html_url = _static_asset_url("inert-html.js")
+    remote_images_url = _static_asset_url("remote-images.js")
     filter_state_url = _static_asset_url("filter-state.js")
     filter_controls_url = _static_asset_url("filter-controls.js")
     icons_url = _static_asset_url("icons.js")
@@ -1760,6 +1771,7 @@ async def index(
         **client_settings_dict(
             syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES,
             capabilities=page_capabilities,
+            block_remote_images=block_remote_images,
         ),
         "BUILD_TAG": BUILD_TAG,
         "EVENT_REPORTS": event_log_reports.browser_settings(long_lived=LONG_LIVED_PATHS),
@@ -1775,6 +1787,8 @@ async def index(
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
     # A pin's freshness row, filled by static/source-freshness.js. A folder has none.
+    # It sits above the keyboard shortcut strip, so the strip stays the pane's last row
+    # (owner, 2026-11-20).
     source_freshness_row = (
         '\n      <div class="source-freshness" id="source-freshness" hidden></div>'
         if git_pin
@@ -2205,6 +2219,9 @@ async def index(
         # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
         # document under the untrusted profile, which the server marks inert.
         "inert-html": [{"src": inert_html_url}],
+        # The menu's Block remote images checkbox draws from the page's settings and
+        # needs this only to change them, once.
+        "remote-images": [{"src": remote_images_url, "provides": "MetabrowserRemoteImages"}],
         # The tree of a change set's files that both the Pulls tab and a diff's Diff summary
         # draw, which two plugins share through metabrowser.loadChangedFilesTree(). Only a
         # page that shows a pull request's files or a multi-file diff asks for it: a diff
@@ -2399,8 +2416,10 @@ async def index(
              which returns that line of the navigation column — the app's
              scarcest width — to the path. Inside: two icon-segment choosers
              (theme + reading font), a small font-set dropdown
-             (#app-font-select, options from _FONT_SETS), and the same build
-             version line printed by `metab --version`. Choices apply instantly.
+             (#app-font-select, options from _FONT_SETS), a privacy checkbox
+             (Block remote images, which reloads the page because the server's
+             policy follows it), and the same build version line printed by
+             `metab --version`. Other choices apply instantly.
              app.js (initSettingsControl) fills the icon segments and wires
              open/select + the dropdown. The wrapper's aria-expanded drives the
              menu's visibility via CSS.
@@ -2438,6 +2457,10 @@ async def index(
                      min="40" max="160" step="1" inputmode="numeric"
                      data-tip-text="Characters per line in rendered documents"></label>
             <div class="menu-separator"></div>
+            <label class="menu-row" for="block-remote-images-input">Block remote images
+              <input class="menu-check" id="block-remote-images-input" type="checkbox"{remote_images_checked} disabled
+                     data-tip-text="Show an untrusted document's images from the web as their alt text. Reloads the page"></label>
+            <div class="menu-separator"></div>
             <div class="menu-version">{version_line}</div>
           </div>
         </div>
@@ -2462,7 +2485,7 @@ async def index(
           <div class="loading mb-delayed-loading"><div class="spinner"></div><span
             class="sr-only">Loading files…</span></div>
         </div>{git_container}{pulls_container}
-      </div>
+      </div>{source_freshness_row}
       <!-- role="group" carries the accessible name: ARIA forbids naming a
            generic element, so a bare div would drop the label and announce
            the hints and their controls with no grouping context. Not a live
@@ -2473,7 +2496,7 @@ async def index(
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
         <span class="index-progress-spinner" aria-hidden="true"></span>
         <span class="index-progress-text">Scanning…</span>
-      </div>{source_freshness_row}
+      </div>
     </div>
     <div class="resize-handle" id="tree-resize"></div>
     <!-- Every route that serves this shell selects something: /view/ names a
@@ -2547,8 +2570,14 @@ async def index(
                     kpress_adapter.kpress_static_url(module, prefix=kpress_prefix)
                     for module in kpress_adapter.DIAGRAM_MODULES
                 ),
+                remote_images=not block_remote_images,
             ),
             "X-Frame-Options": "DENY",
+            # No page address goes to an image's host, from an image the allowlist wrote
+            # (`referrerpolicy` on it says so too) or one a Mermaid diagram drawn in the
+            # page names, which no markup of the document reaches
+            # (`builtin_plugins/markdown/diagram-frame.js`). Nothing here reads a Referer.
+            "Referrer-Policy": "no-referrer",
         },
     )
 

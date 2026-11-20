@@ -13,6 +13,7 @@ import asyncio
 import json
 import subprocess
 from collections.abc import Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ from metabrowser import server
 from metabrowser.cache import served_mirror
 from metabrowser.cache.acquire import acquire_source
 from metabrowser.cache.paths import store_directory
+from metabrowser.cache.providers import RefPull
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.git.tree_source import GitPath, GitRevisionSubject
 from metabrowser.mirror_refresh import mirror_session, serve_mirror
@@ -306,6 +308,134 @@ def test_a_listing_is_kept_until_a_ref_moves(
     )
     assert "moved" in [row["name"] for row in _refs(served)["refs"]]
     assert calls == ["branch", "branch", "tag", "branch"]
+
+
+@dataclass
+class _Pulls:
+    """What a provider answers a listing with: pull requests by head branch, as it holds them."""
+
+    by_head: dict[str, tuple[RefPull, ...]]
+    token: str = "one"
+    ready: bool = True
+    complete: bool = True
+    refreshing: bool = False
+    asked: list[str] = field(default_factory=list[str])
+
+    def pulls(self, head: str, needle: str = "") -> tuple[RefPull, ...]:
+        self.asked.append(head)
+        return self.by_head.get(head, ())
+
+    def matching(self, needle: str) -> frozenset[str]:
+        return frozenset(
+            head
+            for head, pulls in self.by_head.items()
+            if any(needle.casefold() in pull["title"].casefold() for pull in pulls)
+        )
+
+
+def _provide(monkeypatch: pytest.MonkeyPatch, pulls: _Pulls | None) -> None:
+    async def provided(app: object) -> _Pulls | None:
+        return pulls
+
+    monkeypatch.setattr("metabrowser.cache.providers.ref_pulls_for", provided)
+
+
+def test_a_branch_lists_the_pull_requests_it_is_the_head_of(
+    served: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pulls = _Pulls(
+        {
+            "feature": (
+                {"number": 21, "title": "Draw the picker", "state": "open"},
+                {"number": 18, "title": "An earlier try", "state": "closed"},
+            ),
+            "Release/v1": ({"number": 9, "title": "Cut the release", "state": "merged"},),
+        }
+    )
+    _provide(monkeypatch, pulls)
+    listing = _refs(served)
+    by_name = {row["name"]: row for row in listing["refs"]}
+    assert [pull["number"] for pull in by_name["feature"]["pulls"]] == [21, 18]
+    assert by_name["Release/v1"]["pulls"] == [
+        {"number": 9, "title": "Cut the release", "state": "merged"}
+    ]
+    # A branch that is the head of none has no key, so the listing costs it nothing.
+    assert "pulls" not in by_name["topic"]
+    assert listing["pull_requests"] == {"state": "ready", "complete": True, "refreshing": False}
+    # A tag is no pull request's head: nothing is asked of the provider for one.
+    pulls.asked.clear()
+    tags = _refs(served, kind="tag")
+    assert tags["pull_requests"] is None and not pulls.asked
+    assert all("pulls" not in row for row in tags["refs"])
+
+
+def test_the_filter_finds_a_branch_by_its_pull_request(
+    served: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _provide(
+        monkeypatch,
+        _Pulls({"feature": ({"number": 21, "title": "Draw the picker", "state": "open"},)}),
+    )
+    # `patches` matches by name and `feature` by its pull request's title: both are listed,
+    # in the listing's order, with no name in common.
+    assert [row["name"] for row in _refs(served, q="picker")["refs"]] == ["feature"]
+    assert [row["name"] for row in _refs(served, q="patch")["refs"]] == ["patches"]
+    assert _refs(served, q="nothing-matches")["refs"] == []
+
+
+def test_a_provider_with_pull_requests_is_asked_for_a_listing_that_follows_its_token(
+    served: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pulls = _Pulls({"feature": ({"number": 21, "title": "Draw the picker", "state": "open"},)})
+    _provide(monkeypatch, pulls)
+    first = served.get("/api/source/refs")
+    again = served.get("/api/source/refs")
+    assert again.content == first.content
+    # Kept: the second ask read no pull request of a row.
+    asked = len(pulls.asked)
+    assert asked > 0
+    served.get("/api/source/refs", headers={"if-none-match": first.headers["etag"]})
+    assert len(pulls.asked) == asked
+    # The provider's own cache moved, so the listing is made again, from what it holds now.
+    pulls.by_head["feature"] = (
+        {"number": 22, "title": "Draw the picker", "state": "open"},
+        *pulls.by_head["feature"],
+    )
+    pulls.token = "two"
+    moved = served.get("/api/source/refs")
+    assert moved.headers["etag"] != first.headers["etag"]
+    rows = {row["name"]: row for row in moved.json()["refs"]}
+    assert [pull["number"] for pull in rows["feature"]["pulls"]] == [22, 21]
+    # And whether the provider is still filling its cache is part of what it was kept under.
+    pulls.refreshing = True
+    pulls.token = "three"
+    assert served.get("/api/source/refs").json()["pull_requests"]["refreshing"] is True
+
+
+def test_a_provider_that_fails_shows_no_pull_requests_and_the_branches_still_list(
+    served: TestClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The pull requests are an addition: a provider that cannot read its cache costs the
+    list nothing but them, and the server says why in its log (mb-tjbm review A10)."""
+
+    async def broken(app: object) -> None:
+        raise RuntimeError("the catalog is on fire")
+
+    monkeypatch.setattr("metabrowser.cache.providers.ref_pulls_for", broken)
+    with caplog.at_level("WARNING", logger="metabrowser.source_routes"):
+        listing = _refs(served)
+    assert listing["pull_requests"] is None
+    assert listing["refs"][0]["name"] == "topic"
+    assert "the catalog is on fire" in caplog.text
+
+
+def test_a_provider_with_nothing_cached_says_so(
+    served: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _provide(monkeypatch, _Pulls({}, ready=False, complete=False, refreshing=True))
+    listing = _refs(served)
+    assert listing["pull_requests"] == {"state": "absent", "complete": False, "refreshing": True}
+    assert all("pulls" not in row for row in listing["refs"])
 
 
 @pytest.mark.parametrize(

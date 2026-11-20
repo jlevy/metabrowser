@@ -55,6 +55,10 @@ function element(tag, attrs = []) {
     nodeType: 1,
     tagName: tag.toUpperCase(),
     className: "",
+    get classList() {
+      const names = node.className.split(/\s+/);
+      return { contains: (name) => names.includes(name) };
+    },
     childNodes: [],
     parentElement: null,
     getAttribute: (name) => (attributes.has(name) ? attributes.get(name) : null),
@@ -140,6 +144,8 @@ async function main() {
       assert.ok(
         isTarget(value, image) ||
           (!image && value.startsWith(`#${inert.ANCHOR_PREFIX}`)) ||
+          // An image from the web is kept over https, with no referrer sent.
+          (image && /^https:\/\//i.test(value)) ||
           (!image && /^https?:\/\//i.test(value) && !value.startsWith(ORIGIN)),
         `${name}: kept ${value}`,
       );

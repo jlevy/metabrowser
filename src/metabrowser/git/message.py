@@ -32,8 +32,9 @@ What a commit body is, and how it differs from a description:
   commit message has no page whose relative references it could mean, so its links
   resolve against :data:`COMMIT_MESSAGE_LINK_BASE`: an absolute ``http`` or ``https`` link
   is kept, opening in a new tab, and every relative reference, fragment, and
-  protocol-relative address loses its address and keeps its text. An image becomes a link
-  to its absolute address. ``#123`` and a bare URL stay text, as they do in a
+  protocol-relative address loses its address and keeps its text. An image written in full
+  over ``https`` is an image, as in a description, and any other is its alt text in a
+  chip inside a link to its absolute address. ``#123`` and a bare URL stay text, as they do in a
   description: KPress links neither.
 - **Size.** A description is cut to its bound when its record is written. A commit's
   message is in the repository whole, so a body past

@@ -73,6 +73,7 @@ status: 200
         {
           "ts": "2026-11-19T21:41:10.502Z",
           "file": "events-20261119T213500Z-p5151-000.jsonl",
+          "pid": 5151,
           "span": 16,
           "kind": "subprocess",
           "name": "git fetch",
@@ -84,6 +85,7 @@ status: 200
         {
           "ts": "2026-11-19T21:40:35.336Z",
           "file": "events-20261119T213500Z-p5151-000.jsonl",
+          "pid": 5151,
           "span": 12,
           "kind": "job",
           "name": "pull_files_refresh.refresh_files",
@@ -95,6 +97,7 @@ status: 200
         {
           "ts": "2026-11-19T21:40:35.330Z",
           "file": "events-20261119T213500Z-p5151-000.jsonl",
+          "pid": 5151,
           "span": 14,
           "kind": "probe",
           "name": "probe api.github.com:443",
@@ -125,6 +128,7 @@ status: 200
         {
           "ts": "2026-11-19T21:42:20.991Z",
           "file": "events-20261119T213500Z-p5151-000.jsonl",
+          "pid": 5151,
           "span": 17,
           "kind": "job",
           "name": "pull_cores.refresh_core",
@@ -136,6 +140,7 @@ status: 200
         {
           "ts": "2026-11-19T21:42:20.880Z",
           "file": "events-20261119T213500Z-p5151-000.jsonl",
+          "pid": 5151,
           "span": 18,
           "kind": "subprocess",
           "name": "gh auth",
@@ -164,6 +169,7 @@ status: 200
         {
           "ts": "2026-11-19T21:43:05.114Z",
           "file": "events-20261119T213500Z-p5151-000.jsonl",
+          "pid": 5151,
           "span": 19,
           "kind": "job",
           "name": "pull_list_refresh.refresh_list",
@@ -251,6 +257,7 @@ status: 200
         {
           "ts": "2026-11-19T21:41:10.502Z",
           "file": "events-20261119T213500Z-p5151-000.jsonl",
+          "pid": 5151,
           "span": 16,
           "kind": "subprocess",
           "name": "git fetch",
@@ -262,6 +269,7 @@ status: 200
         {
           "ts": "2026-11-19T21:40:32.322Z",
           "file": "events-20261119T213500Z-p5151-000.jsonl",
+          "pid": 5151,
           "span": 13,
           "kind": "subprocess",
           "name": "gh api",
@@ -290,6 +298,7 @@ status: 200
         {
           "ts": "2026-11-19T21:42:20.880Z",
           "file": "events-20261119T213500Z-p5151-000.jsonl",
+          "pid": 5151,
           "span": 18,
           "kind": "subprocess",
           "name": "gh auth",
@@ -374,6 +383,7 @@ status: 200
         {
           "ts": "2026-11-19T21:40:35.336Z",
           "file": "events-20261119T213500Z-p5151-000.jsonl",
+          "pid": 5151,
           "span": 12,
           "kind": "job",
           "name": "pull_files_refresh.refresh_files",

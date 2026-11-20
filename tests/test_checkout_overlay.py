@@ -30,7 +30,7 @@ from metabrowser.builtin_plugins.diff import sidekick
 from metabrowser.builtin_plugins.diff.comparison_cache import ComparisonCache
 from metabrowser.cache import pull_refs
 from metabrowser.cache.acquire import acquire_source
-from metabrowser.cache.identity import repository_store_id, source_identity, store_key
+from metabrowser.cache.identity import repository_store_id, source_identity, store_key_candidates
 from metabrowser.cache.lender import (
     CheckoutRefusedError,
     Lender,
@@ -93,7 +93,8 @@ class _Stand:
     @property
     def store(self) -> Path:
         identity = repository_store_id(source_identity("https", CANONICAL), "sha1")
-        return self.home / store_directory(store_key(identity)) / "repository.git"
+        key = store_key_candidates("https", CANONICAL, identity)[0]
+        return self.home / store_directory(key) / "repository.git"
 
     def store_git(self, *args: str) -> str:
         return pinned_git(self.store, *args)

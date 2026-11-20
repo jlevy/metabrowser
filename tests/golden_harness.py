@@ -78,7 +78,12 @@ from metabrowser import mirror_refresh
 from metabrowser.builtin_plugins.github.gh_status import forget_github_status
 from metabrowser.cache import records
 from metabrowser.cache.acquire import PublishedSource
-from metabrowser.cache.identity import cache_slug, repository_store_id, source_identity
+from metabrowser.cache.identity import (
+    cache_slug,
+    repository_store_id,
+    source_identity,
+    store_key_candidates,
+)
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource, classify_root_argument
@@ -222,7 +227,7 @@ _BUILD_STATE: Final = re.compile(r"  \[dev build: [^\]]*\]")
 def normalize_pull_comparison_scopes(text: str) -> str:
     """Keep a PR comparison's endpoints while labeling build and sandbox-store identity.
 
-    The same for the image and rendered-Markdown routes of that comparison, which
+    The same for the image, rendered-Markdown, and size routes of that comparison, which
     name the store too.
     """
     text = re.sub(
@@ -233,7 +238,7 @@ def normalize_pull_comparison_scopes(text: str) -> str:
         text,
     )
     return re.sub(
-        r"(/api/plugin/github/pull-(?:image|rendered-diff)\?number=\d+"
+        r"(/api/plugin/github/pull-(?:image|rendered-diff|size)\?number=\d+"
         r"&left=[0-9a-f]{40}(?:[0-9a-f]{24})?"
         r"&right=[0-9a-f]{40}(?:[0-9a-f]{24})?&store=)[0-9a-f]{16}",
         r"\1<STORE>",
@@ -363,6 +368,7 @@ class OriginIdentity:
     path: str
     source_id: str
     store_id: str
+    store_key: str
     slug: str
 
 
@@ -373,11 +379,13 @@ def origin_identity(url: str) -> OriginIdentity:
     slug = cache_slug(
         classified.transport, classified.normalized, source_id, slug_owner=lambda _candidate: None
     )
+    store_id = repository_store_id(source_id, "sha1")
     return OriginIdentity(
         url=classified.normalized,
         path=classified.normalized.removeprefix("file://"),
         source_id=source_id,
-        store_id=repository_store_id(source_id, "sha1"),
+        store_id=store_id,
+        store_key=store_key_candidates(classified.transport, classified.normalized, store_id)[0],
         slug=slug,
     )
 
@@ -417,7 +425,7 @@ class Labels:
         self.add(identity.store_id, f"<{store}{suffix}>")
         # The store's directory is named by its key, which a served mirror's status
         # shows in its location.
-        self.add(identity.store_id.removeprefix("sha256:"), f"<STORE_KEY{suffix}>")
+        self.add(identity.store_key, f"<STORE_KEY{suffix}>")
         self.add(identity.source_id, f"<{source}{suffix}>")
         self.add(identity.slug, f"<SLUG{suffix}>")
         return identity
@@ -462,7 +470,7 @@ _HOME_LINES: Final = (
     r"using the clone of \S+ cached in {home}"
     r"(?:, fetched (?:less than a minute ago|\d+ (?:minute|hour|day)s? ago|<AGE>))?"
     r"(?:, borrowing objects from .*)?",
-    r'\s*"location": "{home}/repository-stores/(?:<STORE_KEY[^>"]*>|[0-9a-f]{{64}})'
+    r'\s*"location": "{home}/repository-stores/(?:<STORE_KEY[^>"]*>|[a-z0-9-]+--[0-9a-f]{{16}})'
     r'/repository\.git",',
 )
 
@@ -485,6 +493,20 @@ def cache_hit_stderr(url: str, home: Path) -> str:
 
     age = r"(?:less than a minute|\d+ (?:minute|hour|day)s?) ago"
     return re.escape(f"using the clone of {url} cached in {home}, fetched ") + age + r"\n"
+
+
+_PUSHED_BYTES = re.compile(r'"pushed_bytes": \d+')
+
+
+def mask_pushed_bytes(text: str) -> str:
+    """*text* with every change's pushed size as ``<PUSHED>``.
+
+    The pushed size is zlib's output, which can differ by a few bytes between zlib builds
+    (``metabrowser.git.change_size``); ``tests/test_git_change_size.py`` checks it against
+    the pack Git writes. The patch's size and the commits are Git's text and stay.
+    """
+
+    return _PUSHED_BYTES.sub('"pushed_bytes": <PUSHED>', text)
 
 
 def label_home(text: str, home: Path, label: str = HOME_LABEL) -> str:

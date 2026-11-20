@@ -731,6 +731,7 @@ function initSettingsControl() {
     };
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
+      void window.MetabrowserAssets?.ensureAsset("remote-images");
       setOpen(!isOpen());
     });
     // Dismiss on outside click or Escape.
@@ -3386,14 +3387,15 @@ if (typeof window !== "undefined") {
  * rendered document's own markup, which a trusted folder's Markdown keeps, so a
  * document cannot label itself in the application's tooltip layer. A control page
  * code placed in the document and marked with `mb.ownDelegate`, as the document's print
- * button is (builtin_plugins/markdown/print-indicator.js), keeps its tooltip. That test
- * is the element's identity, not its owner value, so a document that has come to carry
- * the value still cannot label itself.
+ * button is (builtin_plugins/markdown/print-indicator.js), keeps its tooltip, and so does
+ * an image's fallback chip (inert_html.py).
  */
 function tipTextAnchor(event) {
   var anchor = eventTargetElement(event)?.closest("[data-tip-text]");
   return anchor instanceof HTMLElement &&
-    (!anchor.closest(".metabrowser-kpress-host") || isPageElement(anchor))
+    (!anchor.closest(".metabrowser-kpress-host") ||
+      isPageElement(anchor) ||
+      anchor.classList.contains("mb-image-fallback"))
     ? anchor
     : null;
 }
@@ -9320,12 +9322,12 @@ async function applyNavigationTarget(target, context) {
     if (context.source === "user" && !target.fragment && !target.query) {
       await revealAddressedItem(route, { isCurrent: context.isCurrent, again: true });
     }
-    // A line anchor added to the file shown opens its Source tab, as opening it does.
+    // A line anchor opens its Source tab; a caller's `viewId` wins, as below.
     var shownView = anchorModule ? await addressedView(target, anchorModule) : null;
     if (!context.isCurrent()) {
       return { status: "cancelled" };
     }
-    showPreviewTab(path, shownView);
+    showPreviewTab(path, context.viewId || shownView);
     deliverNavigationFragment(target);
     return {
       focusTarget: document.getElementById("preview-pane") || undefined,

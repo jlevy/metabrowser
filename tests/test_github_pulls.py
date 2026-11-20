@@ -969,7 +969,8 @@ def test_harden_keeps_the_allowlist_and_is_idempotent() -> None:
     )
     once = harden(source, base)
     assert once == (
-        '<p>a &amp; b &lt;c&gt; <code>x</code></p><span>"q"</span><ol start="3"><li>i</li></ol>'
+        '<p>a &amp; b &lt;c&gt; <code>x</code></p><span class="mb-image-fallback">"q"</span>'
+        '<ol start="3"><li>i</li></ol>'
         '<table><tr><td colspan="2" align="center">t</td></tr></table>'
         "<details open><summary>s</summary>d</details>kept text"
     )

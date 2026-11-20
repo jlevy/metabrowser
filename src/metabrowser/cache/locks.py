@@ -1,4 +1,4 @@
-"""The fixed lock hierarchy and side locks of the ``f01`` cache.
+"""The fixed lock hierarchy and side locks of the ``f02`` cache.
 
 Locks are BSD ``flock`` on lock files under ``locks/``, never POSIX record locks,
 which vanish when a process closes any descriptor for the file. Measured 2026-09-16
@@ -63,7 +63,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import Final, Self
 
-from metabrowser.cache.identity import is_identity, is_slug, is_store_key, store_key
+from metabrowser.cache.identity import identity_digest, is_identity, is_slug, is_store_key
 from metabrowser.cancellable_thread import run_acquiring_thread, run_cancellable_thread
 from metabrowser.home import (
     UNSUPPORTED_LOCK_ERRNOS,
@@ -587,7 +587,7 @@ def source_acquisition_lock_name(source_id: str) -> str:
     """The cold-load reservation's lock file, relative to the cache home."""
 
     _require(is_identity(source_id), "source identity")
-    return f"{LOCKS_DIRECTORY}/sources/{store_key(source_id)}.acquire.lock"
+    return f"{LOCKS_DIRECTORY}/sources/{identity_digest(source_id)}.acquire.lock"
 
 
 def source_acquisition_lock(
@@ -599,7 +599,7 @@ def source_acquisition_lock(
     return _acquire(
         home,
         LockKind.SOURCE_ACQUISITION,
-        store_key(source_id),
+        identity_digest(source_id),
         name,
         blocking=False,
         order=order,

@@ -17,6 +17,10 @@ import pytest
 import metabrowser.builtin_plugins.agents.adapters  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from tests import chrome_starts, suite_gates, suite_tiers, suite_timing, suite_workers
+from tests.file_ages_git import (  # noqa: F401
+    file_ages_git,  # pyright: ignore[reportUnusedImport]
+    fixed_file_ages_git,  # pyright: ignore[reportUnusedImport]
+)
 from tests.github_pull_fixture import Origin, build_origin, copy_origin
 from tests.process_group import owned_profile
 from tests.required_tools import require_git, require_node
@@ -464,6 +468,11 @@ def _reset_process_caches() -> Generator[None, None, None]:  # pyright: ignore[r
     events_route._CATALOG_BODY_CACHE.clear()  # pyright: ignore[reportPrivateUsage]
     events_route._CATALOG_ETAG_BY_CHECKPOINT.clear()  # pyright: ignore[reportPrivateUsage]
     events_route._CATALOG_REVISION.update(identity=None, value=0)  # pyright: ignore[reportPrivateUsage]
+    # Kept by commit IDs alone, which the fixtures share, so one test's measurement would
+    # answer another's without the store bank the second one checks.
+    from metabrowser.git.change_size import clear_kept_sizes
+
+    clear_kept_sizes()
 
 
 class DocumentReference(NamedTuple):

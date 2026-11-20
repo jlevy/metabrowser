@@ -971,7 +971,9 @@ async def api_index_progress(request: Request) -> Response:
     if subject is not None:
         from metabrowser.git.content_routes import git_revision_index_progress
 
-        return await git_revision_index_progress(subject)
+        return await git_revision_index_progress(
+            subject, ages=request.query_params.get("ages") != "0"
+        )
 
     require_filesystem_hooks()
     progress, session = await _read_index_progress(_runtime_for(request))
