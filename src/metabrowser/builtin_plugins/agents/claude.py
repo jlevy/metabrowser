@@ -350,10 +350,10 @@ def summarize(home: Home, session: SessionSummary) -> tuple[SessionSummary, Drif
     last_kind: str | None = None
     for record, events, replay in _walk(path, session.session_id, subagent=subagent, drift=drift):
         records += 1
-        title = _title_of(record) or title
         if replay:
             replayed += 1
             continue
+        title = _title_of(record) or title
         cwd = cwd or as_str(record.get("cwd"))
         branch = branch or as_str(record.get("gitBranch"))
         stamp = parse_timestamp(record.get("timestamp"))

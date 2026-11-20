@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from collections import Counter
 from pathlib import Path
 
@@ -162,11 +163,82 @@ def test_apply_live_marks_only_vouched_sessions(home: Home) -> None:
     assert marked[syn.S2] == "unknown"  # a stale pid file is not proof
 
 
-def test_default_probe_checks_the_process() -> None:
-    assert default_pid_probe(os.getpid(), None)
-    assert not default_pid_probe(0, None)
-    assert not default_pid_probe(2**22 + 12345, None)
+def _own_proc_start() -> str:
+    result = subprocess.run(
+        ["ps", "-o", "lstart=", "-p", str(os.getpid())],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "TZ": "UTC"},
+        check=True,
+    )
+    return result.stdout.strip()
+
+
+def test_default_probe_needs_a_matching_process_start() -> None:
+    assert default_pid_probe(os.getpid(), _own_proc_start())
     assert not default_pid_probe(os.getpid(), "Mon Jan  1 00:00:00 1990")
+    assert not default_pid_probe(0, "x")
+    assert not default_pid_probe(2**22 + 12345, _own_proc_start())
+
+
+def test_default_probe_never_proves_liveness_without_a_start_time() -> None:
+    assert not default_pid_probe(os.getpid(), None)
+    assert not default_pid_probe(os.getpid(), "")
+
+
+def test_default_probe_rejects_out_of_range_pids() -> None:
+    for pid in (2**31, 2**63, 10**30):
+        assert not default_pid_probe(pid, "x")
+
+
+def test_default_probe_is_false_when_ps_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    start = _own_proc_start()
+
+    def broken(*args: object, **kwargs: object) -> object:
+        raise FileNotFoundError("ps")
+
+    monkeypatch.setattr(subprocess, "run", broken)
+    assert not default_pid_probe(os.getpid(), start)
+
+    def nonzero(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess([], 1, stdout=start, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", nonzero)
+    assert not default_pid_probe(os.getpid(), start)
+
+    def empty(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", empty)
+    assert not default_pid_probe(os.getpid(), start)
+
+
+def test_live_with_the_default_probe_ignores_a_pid_file_without_a_start_time(
+    tmp_path: Path,
+) -> None:
+    home = Home("claude", tmp_path)
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    (sessions / "1.json").write_text(
+        json.dumps({"pid": os.getpid(), "sessionId": "s"}), encoding="utf-8"
+    )
+    assert claude.live(home, syn.NOW) == []
+
+
+def test_a_replayed_title_does_not_override_the_sessions_own(tmp_path: Path) -> None:
+    project = tmp_path / "projects" / "-p"
+    project.mkdir(parents=True)
+    lines = [
+        {"type": "custom-title", "sessionId": "own", "customTitle": "Mine"},
+        {"type": "custom-title", "sessionId": "other", "customTitle": "Copied"},
+        {"type": "user", "sessionId": "own", "message": {"content": "hi"}},
+    ]
+    (project / "own.jsonl").write_text(
+        "".join(json.dumps(x) + "\n" for x in lines), encoding="utf-8"
+    )
+    home = Home("claude", tmp_path)
+    summary, _ = claude.summarize(home, claude.discover(home)[0])
+    assert (summary.title, summary.replayed_records) == ("Mine", 1)
 
 
 def test_empty_home_has_nothing(tmp_path: Path) -> None:

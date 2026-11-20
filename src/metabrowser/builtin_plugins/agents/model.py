@@ -11,6 +11,7 @@ Times are Unix seconds as floats, ``None`` where the source does not say.
 from __future__ import annotations
 
 import dataclasses
+import math
 import os
 import subprocess
 from collections.abc import Callable, Iterable, Mapping
@@ -27,6 +28,9 @@ ORIGINS: Final = ("human", "scheduled", "subagent", "review", "automation")
 
 # How long a `ps` probe may take before the pid is judged by `kill(pid, 0)` alone.
 _PS_TIMEOUT_SECONDS: Final = 2.0
+
+# The largest pid `os.kill` accepts; a larger one is not a process.
+_MAX_PID: Final = 2**31 - 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,12 +105,15 @@ class DriftSummary:
     ``unknown_types`` counts events no mapping rule matched, keyed by raw type (and
     subtype). ``unexpected_columns`` and ``missing_columns`` count SQLite columns outside
     or absent from the schema the provider was written against, keyed ``db.table.column``.
-    ``truncated`` is true when a read stopped at its byte budget.
+    ``read_errors`` counts reads that failed (a locked or malformed database, an
+    unreadable file), keyed by what was being read. ``truncated`` is true when a read
+    stopped early, at its byte budget or at an error.
     """
 
     unknown_types: Mapping[str, int] = field(default_factory=lambda: {})
     unexpected_columns: Mapping[str, int] = field(default_factory=lambda: {})
     missing_columns: Mapping[str, int] = field(default_factory=lambda: {})
+    read_errors: Mapping[str, int] = field(default_factory=lambda: {})
     truncated: bool = False
 
     @property
@@ -120,6 +127,7 @@ class DriftSummary:
             "unknown_types": dict(sorted(self.unknown_types.items())),
             "unexpected_columns": dict(sorted(self.unexpected_columns.items())),
             "missing_columns": dict(sorted(self.missing_columns.items())),
+            "read_errors": dict(sorted(self.read_errors.items())),
             "truncated": self.truncated,
         }
 
@@ -131,6 +139,7 @@ class DriftCollector:
         self.unknown_types: dict[str, int] = {}
         self.unexpected_columns: dict[str, int] = {}
         self.missing_columns: dict[str, int] = {}
+        self.read_errors: dict[str, int] = {}
         self.truncated = False
 
     def unknown(self, key: str) -> None:
@@ -142,11 +151,16 @@ class DriftCollector:
     def missing(self, key: str) -> None:
         self.missing_columns[key] = self.missing_columns.get(key, 0) + 1
 
+    def read_error(self, key: str) -> None:
+        self.read_errors[key] = self.read_errors.get(key, 0) + 1
+        self.truncated = True
+
     def freeze(self) -> DriftSummary:
         return DriftSummary(
             unknown_types=dict(self.unknown_types),
             unexpected_columns=dict(self.unexpected_columns),
             missing_columns=dict(self.missing_columns),
+            read_errors=dict(self.read_errors),
             truncated=self.truncated,
         )
 
@@ -162,6 +176,8 @@ def merge_drift(parts: Iterable[DriftSummary]) -> DriftSummary:
             collector.unexpected_columns[key] = collector.unexpected_columns.get(key, 0) + count
         for key, count in part.missing_columns.items():
             collector.missing_columns[key] = collector.missing_columns.get(key, 0) + count
+        for key, count in part.read_errors.items():
+            collector.read_errors[key] = collector.read_errors.get(key, 0) + count
         collector.truncated = collector.truncated or part.truncated
     return collector.freeze()
 
@@ -254,25 +270,22 @@ PidProbe = Callable[[int, str | None], bool]
 
 
 def default_pid_probe(pid: int, proc_start: str | None) -> bool:
-    """True when *pid* is a live process, and when it started at *proc_start* if known.
+    """True only when *pid* is provably the process a pid file recorded.
 
     ``kill(pid, 0)`` finds a live process but not a reused pid, so the recorded start
-    time (UTC, in ``ps -o lstart`` format) is compared when ``ps`` can answer. When it
-    cannot, the answer is the ``kill`` alone.
+    time (UTC, in ``ps -o lstart`` format) must match what ``ps`` reports. A missing
+    *proc_start*, or a ``ps`` that fails, cannot prove it, so the answer is False: a
+    session is never shown as running on weaker evidence.
     """
 
-    if pid <= 0:
+    if pid <= 0 or pid > _MAX_PID or not proc_start:
         return False
     try:
         os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
     except PermissionError:
         pass
-    except OSError:
+    except (OSError, OverflowError, ValueError):
         return False
-    if not proc_start:
-        return True
     try:
         result = subprocess.run(
             ["ps", "-o", "lstart=", "-p", str(pid)],
@@ -283,11 +296,9 @@ def default_pid_probe(pid: int, proc_start: str | None) -> bool:
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return True
+        return False
     started = result.stdout.split()
-    if result.returncode != 0 or not started:
-        return True
-    return started == proc_start.split()
+    return result.returncode == 0 and bool(started) and started == proc_start.split()
 
 
 def parse_timestamp(value: object) -> float | None:
@@ -296,7 +307,12 @@ def parse_timestamp(value: object) -> float | None:
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        number = float(value)
+        try:
+            number = float(value)
+        except OverflowError:
+            return None
+        if not math.isfinite(number):
+            return None
         return number / 1000.0 if number > 1e11 else number
     if isinstance(value, str) and value:
         text = value[:-1] + "+00:00" if value.endswith("Z") else value
