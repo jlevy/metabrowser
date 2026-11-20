@@ -51,7 +51,7 @@ from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
 
-from metabrowser import server_timing
+from metabrowser import event_log, server_timing
 from metabrowser.content_errors import ContentReadError
 from metabrowser.git.children import child_pids, executable, prepare_child_listing
 from metabrowser.settings import GIT_SUBPROCESS_MAX_BYTES, GIT_SUBPROCESS_TIMEOUT_S
@@ -1321,21 +1321,69 @@ async def run_git(
     enough), or :class:`GitCommandError`.
 
     The time it takes is the request's ``git`` phase in ``Server-Timing``
-    (:mod:`metabrowser.server_timing`).
+    (:mod:`metabrowser.server_timing`), and a ``subprocess`` span in the event log
+    (:mod:`metabrowser.event_log`): the command without its ``-c`` settings, its
+    deadline, and how it ended, with stderr's last lines on a failure and the last
+    progress Git reported on a timeout.
     """
-    with server_timing.phase("git"):
-        return await _run_git(
-            args,
-            cwd=cwd,
-            target=target,
-            policy=policy,
-            timeout_s=timeout_s,
-            max_bytes=max_bytes,
-            pass_fds=pass_fds,
-            stdin_bytes=stdin_bytes,
-            on_progress=on_progress,
-            stop_when=stop_when,
-        )
+    with (
+        server_timing.phase("git"),
+        event_log.span(
+            "subprocess", f"git {_subcommand(args) or ''}".rstrip(), attrs=_loggable(args, policy)
+        ) as span,
+    ):
+        if on_progress is not None and span is not event_log.NULL_SPAN:
+            on_progress = _remembering_progress(on_progress, span)
+        try:
+            return await _run_git(
+                args,
+                cwd=cwd,
+                target=target,
+                policy=policy,
+                timeout_s=timeout_s,
+                max_bytes=max_bytes,
+                pass_fds=pass_fds,
+                stdin_bytes=stdin_bytes,
+                on_progress=on_progress,
+                stop_when=stop_when,
+            )
+        except GitTimeoutError as exc:
+            span.end("timeout", error=event_log.describe_error(exc))
+            raise
+        except GitCommandError as exc:
+            span.end(
+                "failed",
+                exit=exc.returncode,
+                stderr_tail=event_log.redact(exc.stderr_summary),
+            )
+            raise
+
+
+def _loggable(args: Sequence[str], policy: GitProcessPolicy | None) -> dict[str, object]:
+    """A Git command line as the event log records it: from the command on, redacted."""
+
+    index = _command_index(args)
+    words = [event_log.redact(arg, limit=200) for arg in args[(index or 0) :]]
+    if len(words) > event_log.MAX_LOGGED_ARGS:
+        words = [*words[: event_log.MAX_LOGGED_ARGS], "…"]
+    attrs: dict[str, object] = {"args": words}
+    if policy is not None:
+        attrs["timeout_s"] = policy.timeout_s
+    return attrs
+
+
+def _remembering_progress(
+    on_progress: Callable[[GitProgress], None], span: event_log.Span
+) -> Callable[[GitProgress], None]:
+    """*on_progress*, also keeping the latest record on *span*: where a timeout stalled."""
+
+    def remember(progress: GitProgress) -> None:
+        stage = getattr(progress.stage, "value", progress.stage)
+        total = "" if progress.total is None else f"/{progress.total}"
+        span.set(progress=f"{stage} {progress.done}{total}")
+        on_progress(progress)
+
+    return remember
 
 
 async def _run_git(

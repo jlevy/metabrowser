@@ -222,6 +222,19 @@ private func loginShellOutput(path: String) -> [String] {
         }
     }
 
+    @Test func theEventLogsLocationAndOffSwitchPassThrough() {
+        // `metabrowser.event_log` logs under METABROWSER_STATE_DIR, else XDG_STATE_HOME,
+        // and METABROWSER_EVENT_LOG=0 turns it off.
+        let parent = [
+            "METABROWSER_STATE_DIR": "/Volumes/Home/state", "XDG_STATE_HOME": "/Volumes/Home/.state",
+            "METABROWSER_EVENT_LOG": "0",
+        ]
+        let built = ChildEnvironment.build(inherited: parent, toolDirectories: [])
+        for (name, value) in parent {
+            #expect(built[name] == value)
+        }
+    }
+
     @Test func toolDirectoriesComeFirstOnAFixedPath() {
         let tools = ToolPaths(git: "/opt/homebrew/bin/git", gh: "/opt/homebrew/bin/gh")
         let built = ChildEnvironment.build(inherited: [:], toolDirectories: tools.directories + ["relative", "/a:b"])

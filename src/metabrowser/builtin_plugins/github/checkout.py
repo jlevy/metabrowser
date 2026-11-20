@@ -44,6 +44,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, overload
 
+from metabrowser import event_log
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.mirror_refresh import MAX_PULL_JOBS, PullJobStart, StoreTurn, mirror_session
@@ -661,7 +662,13 @@ async def _idle_phase(
     state: _CheckoutPulls, companion: ServedPull, eager: _EagerComparison
 ) -> _IdleFailure | None:
     """Run :func:`_prepare_idle` as a task a reader's metadata request can cancel."""
-    work = asyncio.get_running_loop().create_task(_prepare_idle(state, companion, eager))
+    work = asyncio.get_running_loop().create_task(
+        event_log.job(
+            _prepare_idle(state, companion, eager),
+            "checkout.prepare_idle",
+            attrs={"pull": companion.number},
+        )
+    )
     eager.work = work
     try:
         await asyncio.wait((work,))

@@ -39,6 +39,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final, Literal
 
+from metabrowser import event_log
 from metabrowser.builtin_plugins.github import gh_budget
 from metabrowser.git.process import (
     forget_process_group,
@@ -251,10 +252,17 @@ def gh_environment() -> dict[str, str]:
     return env
 
 
-async def _read_capped(stream: asyncio.StreamReader | None, limit: int) -> tuple[bytes, bool]:
+async def _read_capped(
+    stream: asyncio.StreamReader | None, limit: int, *, kept: list[bytes] | None = None
+) -> tuple[bytes, bool]:
+    """Drain *stream*, keeping at most *limit* bytes, into *kept* when given.
+
+    A caller that passes *kept* still has what was read when the read is cancelled, as a
+    deadline cancels it: the event log says how far gh got.
+    """
     if stream is None:
         return b"", False
-    chunks: list[bytes] = []
+    chunks: list[bytes] = [] if kept is None else kept
     total = 0
     overflowed = False
     while chunk := await stream.read(_READ_CHUNK_BYTES):
@@ -278,6 +286,55 @@ async def _run(
     exe = gh_executable()
     if exe is None:
         raise GhUnavailableError
+    # Every gh process is a span in the event log (metabrowser.event_log): its command
+    # without field values or headers, its deadline, and how it ended.
+    with event_log.span(
+        "subprocess",
+        f"gh {next((arg for arg in args if not arg.startswith('-')), '')}".rstrip(),
+        attrs={"args": loggable_args(args), "timeout_s": timeout_s},
+    ) as span:
+        completed = await _run_in(exe, args, timeout_s=timeout_s, max_bytes=max_bytes, cwd=cwd)
+        span.set(exit=completed.returncode, stdout_bytes=len(completed.stdout))
+        if completed.returncode != 0:
+            span.note_failure("exit", event_log.stderr_tail(completed.stderr))
+        return completed
+
+
+# Options whose value is data rather than the command: a GraphQL query or field, a header,
+# a jq program. The event log keeps the option and the field's name, never the value.
+_FIELD_OPTIONS: Final = frozenset({"-f", "-F", "--field", "--raw-field"})
+_HEADER_OPTIONS: Final = frozenset({"-H", "--header"})
+_PROGRAM_OPTIONS: Final = frozenset({"-q", "--jq", "-t", "--template", "--input"})
+
+
+def loggable_args(args: Sequence[str]) -> list[str]:
+    """*args* as the event log records them: no field values, header values, or programs.
+
+    ``-f query=…`` keeps the field's name; ``-H 'If-None-Match: …'`` the header's. What
+    remains is passed through :func:`metabrowser.event_log.redact`.
+    """
+
+    out: list[str] = []
+    rest = iter(args)
+    for arg in rest:
+        if arg in _FIELD_OPTIONS:
+            out += [arg, f"{next(rest, '').partition('=')[0][:60]}=…"]
+        elif arg in _HEADER_OPTIONS:
+            out += [arg, f"{next(rest, '').partition(':')[0][:60]}: …"]
+        elif arg in _PROGRAM_OPTIONS:
+            next(rest, None)
+            out += [arg, "…"]
+        else:
+            out.append(event_log.redact(arg, limit=200))
+        if len(out) >= event_log.MAX_LOGGED_ARGS:
+            out.append("…")
+            break
+    return out
+
+
+async def _run_in(
+    exe: str, args: Sequence[str], *, timeout_s: float, max_bytes: int, cwd: Path | None
+) -> _Completed:
     env = gh_environment()
 
     own_group = os.name == "posix"
@@ -315,8 +372,12 @@ async def _run(
 async def _finish(
     proc: asyncio.subprocess.Process, args: Sequence[str], *, timeout_s: float, max_bytes: int
 ) -> _Completed:
-    stdout_task = asyncio.ensure_future(_read_capped(proc.stdout, max_bytes))
-    stderr_task = asyncio.ensure_future(_read_capped(proc.stderr, _STDERR_MAX_BYTES))
+    printed: list[bytes] = []
+    complained: list[bytes] = []
+    stdout_task = asyncio.ensure_future(_read_capped(proc.stdout, max_bytes, kept=printed))
+    stderr_task = asyncio.ensure_future(
+        _read_capped(proc.stderr, _STDERR_MAX_BYTES, kept=complained)
+    )
     try:
         (stdout, overflowed), (stderr, _), returncode = await asyncio.wait_for(
             asyncio.gather(stdout_task, stderr_task, proc.wait()), timeout=timeout_s
@@ -325,6 +386,15 @@ async def _finish(
         stdout_task.cancel()
         stderr_task.cancel()
         await terminate_git_process(proc)
+        # Where it stalled, as far as its output says: before a byte of an answer, or
+        # partway through one.
+        received = sum(len(chunk) for chunk in printed)
+        event_log.current().end(
+            "timeout",
+            stdout_bytes=received,
+            stderr_tail=event_log.stderr_tail(b"".join(complained)),
+            stalled="before any answer" if received == 0 else "partway through its answer",
+        )
         raise GhError(f"gh did not answer within {timeout_s:g} s", state="network_error") from None
     except asyncio.CancelledError:
         stdout_task.cancel()
@@ -846,6 +916,7 @@ __all__ = [
     "gh_environment",
     "gh_executable",
     "gh_version",
+    "loggable_args",
     "parse_active_account",
     "parse_included_response",
     "rate_limit_reset",
