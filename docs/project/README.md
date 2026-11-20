@@ -83,6 +83,10 @@ It links each document below and the contributor standards in `docs/`.
 - [Switching folders in the macOS app](specs/active/plan-2026-11-18-macos-folder-switching.md):
   a window that can show any open folder, the title as a native chooser of open and
   recent folders, a keyboard switcher, and marks shared with the page
+- [Operational views of Claude Code and Codex](specs/active/plan-2026-11-19-agent-operations-views.md):
+  one shared model, record kinds with one color each, and the home, session, timeline,
+  live, usage, and latency views for both agents, in five phases, with `urollup` as an
+  optional accelerator
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
   the icon and release pipeline, warm folder switching, host mode and the agent front
   door, and the app-managed runtime
