@@ -409,7 +409,7 @@ A text farther off keeps its plain text, which find in page reaches, and is aske
 it nears the view, so a jump straight to it shows that text until it is asked for.
 Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
 A text whose render keeps a `pre[lang="mermaid"]` is drawn as an image on every page,
-through the Markdown plugin’s `mb.builtins.markdown.drawDiagrams` with `isolated: true`
+through the Markdown plugin’s exported `drawDiagrams` with `isolated: true`
 (`drawTextDiagrams` in `pull-page.js`): the page then loads Metabrowser’s own KPress
 diagram modules and vendored Mermaid, none of which the text names.
 Mermaid lays a diagram out in a document before it becomes an image, and there the

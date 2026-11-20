@@ -382,9 +382,7 @@ function renderLog(container, ctx) {
     const toggle = (event) => {
       const target = event.target;
       const header =
-        target && typeof target.closest === "function"
-          ? target.closest(".log-event-header")
-          : null;
+        target && typeof target.closest === "function" ? target.closest(".log-event-header") : null;
       if (header && container.contains(header)) {
         window.toggleEvent(header);
         header.setAttribute(

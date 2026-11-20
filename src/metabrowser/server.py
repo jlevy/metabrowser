@@ -5186,6 +5186,7 @@ def _build_plugin_asset_config_block(prefixes: Mapping[str, str]) -> str:
             if url not in styles:
                 styles.append(url)
         plugins[plugin.name] = {
+            "name": plugin.name,
             "module": f"{prefix}/index.js",
             "scripts": [f"{prefix}/{extra}" for extra in plugin.manifest.plugin.extra_scripts],
             "styles": styles,

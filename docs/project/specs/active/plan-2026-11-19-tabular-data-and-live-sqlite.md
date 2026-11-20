@@ -115,9 +115,10 @@ contract. The approach for reading live databases follows the SQLite research in
   Only a kind matched by extension gets the tree’s chevron: the server injects
   `METABROWSER_CONTAINER_EXTS` from extensions alone.
 - **Plugins share helpers informally.** A built-in publishes `mb.builtins.<name>` and a
-  consumer reads it only at render time, after awaiting the provider kind’s assets
-  ([Render-Time-Only Namespace Rule](../../../plugins.md#render-time-only-namespace-rule)).
+  consumer reads it only at render time, after awaiting the provider kind’s assets.
   Nothing declares the dependency, so nothing checks it.
+  Phase 1 replaced this with
+  [Declared Dependencies](../../../plugins.md#declared-dependencies).
 - **An open file does not refresh.**
   [Live Updates](../../../browsing-files.md#live-updates) says an open file shows new
   content on reopen or reload; only files under `.logs` and `.state` with a few
@@ -430,12 +431,16 @@ its key is an opaque token.
 ### Framework Improvements
 
 **Declared plugin dependencies.** `[plugin] requires = ["table"]` in a manifest.
-The loader refuses a missing or cyclic dependency, loads a provider’s assets before its
-dependents’, and `metab --doctor` reports the graph.
-In the browser, `await mb.plugins.load("table")` returns the provider’s exports after
-its assets have run, replacing the render-time-only `mb.builtins` convention.
+The loader refuses a missing or cyclic dependency, and `metab --doctor` reports the
+graph. In the browser, `await mb.plugins.load("table")` returns the provider’s exports
+(its `index.js` module’s) after its assets have run, replacing the render-time-only
+`mb.builtins` convention.
 Markdown, structured data, agent logs, the folder README panel, and the pull request
 page move to it in the same change, and the rule and its test change with them.
+As built, a provider loads on demand when a dependent asks for it, not before the
+dependent: every existing consumer needs its provider only on some pages (a folder with
+a README, a pull request with a diagram), and loading Markdown with every folder would
+put its module graph on the start page.
 
 **Binary kinds by magic number.** A `[[kind]]` match may name `magic` (an offset and the
 bytes expected there).
@@ -945,11 +950,11 @@ on everything else. Each source brings its generation token in the phase that ad
 
 ### Phase 1: Declared Plugin Dependencies
 
-- [ ] Manifest `requires`, loader validation and ordering, `mb.plugins.load`, doctor
+- [x] Manifest `requires`, loader validation and ordering, `mb.plugins.load`, doctor
   report; move every `mb.builtins` consumer; update
   [Plugin Authoring](../../../plugins.md) and
   [Plugin System](../../architecture/arch-plugin-system.md)
-- [ ] `PLUGIN_SDK_VERSION` bump with every built-in manifest updated
+- [x] `PLUGIN_SDK_VERSION` bump with every built-in manifest updated
 
 ### Phase 2: The Table Protocol and Delimited Text
 

@@ -154,6 +154,7 @@ def test_image_asset_config_includes_its_on_demand_stylesheet() -> None:
     prefix = image["module"].removesuffix("/index.js")
     assert re.fullmatch(r"/plugin-static/image/@[0-9a-f]{16}", prefix)
     assert image == {
+        "name": "image",
         "module": f"{prefix}/index.js",
         "scripts": [],
         "styles": [f"{prefix}/styles.css"],
@@ -171,9 +172,7 @@ def test_asset_config_names_every_plugin_once_and_each_kind_by_plugin() -> None:
     assert list(assets["plugins"]) == [plugin.name for plugin in server._LOADED_PLUGINS]
     assert assets["kinds"]["markdown"] == ["markdown"]
     assert assets["kinds"]["structured"] == ["structured"]
-    assert all(
-        name in assets["plugins"] for names in assets["kinds"].values() for name in names
-    )
+    assert all(name in assets["plugins"] for names in assets["kinds"].values() for name in names)
 
 
 def test_file_render_waits_for_the_selected_kind_plugin() -> None:

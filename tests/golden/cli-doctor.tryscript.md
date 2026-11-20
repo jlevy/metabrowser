@@ -56,6 +56,11 @@ of low free space only on a full volume; `tests/test_doctor.py` covers that warn
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
 metab --doctor: 11 plugin(s) OK
+plugin requirements:
+  agent-log: requires structured
+  diff: requires structured
+  folder: requires markdown
+  github: requires markdown
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -124,6 +129,22 @@ $ metab --doctor --json
         {
           "name": "plugins",
           "value": "11"
+        },
+        {
+          "name": "agent-log",
+          "value": "requires structured"
+        },
+        {
+          "name": "diff",
+          "value": "requires structured"
+        },
+        {
+          "name": "folder",
+          "value": "requires markdown"
+        },
+        {
+          "name": "github",
+          "value": "requires markdown"
         }
       ],
       "remedy": null
@@ -249,6 +270,11 @@ $ METABROWSER_CONFIG_DIR=/nonexistent/metabrowser-doctor-golden/config METABROWS
 metab --doctor: 2 problem(s):
   • config: the configuration directory does not exist, and metab cannot create it: / is not writable by this user
   • cache: the cache directory does not exist, and metab cannot create it: / is not writable by this user
+plugin requirements:
+  agent-log: requires structured
+  diff: requires structured
+  folder: requires markdown
+  github: requires markdown
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -337,6 +363,11 @@ check notes that it did not read it there, so the problem is listed once, at its
 $ METABROWSER_CONFIG_DIR=$PWD/shared METABROWSER_CACHE_DIR=$PWD/cache metab --doctor 2>&1 >/dev/null
 metab --doctor: 1 problem(s):
   • config: The Metabrowser storage directory is accessible to other users (mode 0755). Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own.
+plugin requirements:
+  agent-log: requires structured
+  diff: requires structured
+  folder: requires markdown
+  github: requires markdown
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -418,6 +449,22 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doct
         {
           "name": "plugins",
           "value": "11"
+        },
+        {
+          "name": "agent-log",
+          "value": "requires structured"
+        },
+        {
+          "name": "diff",
+          "value": "requires structured"
+        },
+        {
+          "name": "folder",
+          "value": "requires markdown"
+        },
+        {
+          "name": "github",
+          "value": "requires markdown"
         }
       ],
       "remedy": null

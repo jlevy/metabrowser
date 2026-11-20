@@ -27,6 +27,7 @@ const drawRenderDiagrams = (root, options = {}) =>
 
 // What a plugin that requires this one gets from `mb.plugins.load("markdown")`.
 export { drawRenderDiagrams as drawDiagrams, mountRendered, renderSource };
+
 // The file's Document view prints the document, so its card carries the print button.
 mb.registerView("markdown", "rendered", {
   render: (container, ctx) => mountRendered(container, ctx, { printIndicator: true }),

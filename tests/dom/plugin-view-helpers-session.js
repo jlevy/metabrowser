@@ -208,6 +208,7 @@ function createPage() {
       sandbox.MetabrowserPluginHost.configureAssets({
         plugins: {
           [`${kind}-plugin`]: {
+            name: `${kind}-plugin`,
             module: `${fixtureUrl}?page=${pages}&kind=${kind}`,
             scripts: [],
             styles: [`/plugin-static/${kind}/styles.css`],

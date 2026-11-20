@@ -583,9 +583,7 @@ async function flush() {
 
   // A host that does not ask, and one that asks for something else.
   const plainView = container();
-  const plainHandle = await mounted(
-    markdown.mountRendered(plainView, context("README.md")),
-  );
+  const plainHandle = await mounted(markdown.mountRendered(plainView, context("README.md")));
   const offView = container();
   const offHandle = await mounted(
     markdown.mountRendered(offView, context("README.md"), { printIndicator: false }),

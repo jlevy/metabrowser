@@ -2413,7 +2413,7 @@ type MetabrowserPluginHostRuntime = Readonly<{
   shortcutQueue: Set<MetabrowserQueuedShortcut>;
   /** Each plugin's assets by name, and the plugins each kind's views come from. */
   configureAssets(config: {
-    plugins: Record<string, { module: string; scripts: string[]; styles: string[] }>;
+    plugins: Record<string, { name: string; module: string; scripts: string[]; styles: string[] }>;
     kinds: Record<string, string[]>;
   }): void;
   loadPluginsForKind(kind: string): Promise<void>;

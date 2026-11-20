@@ -12,10 +12,7 @@
 //     getRegisteredView(kindId, viewId)
 //     listViewsForKind(kindId)
 //
-//   Declared dependencies ("Declared Dependencies" in docs/plugins.md):
-//     plugins.load(name)                 — a plugin named in this plugin's manifest
-//                                          `requires`: resolves to its index.js exports
-//                                          once its assets have run, loading it on demand
+//   plugins.load(name)                   — a required plugin's index.js exports
 //
 //   View lifecycle ("Registration and Lifecycle" in docs/plugins.md):
 //     render(container, ctx)             — own container; may return a Promise, or a
@@ -170,15 +167,10 @@
   });
   /** @type {{snapshot: () => unknown, subscribe: (listener: () => void) => () => void} | null} */
   let _attachedFileCatalog = null;
-  /** @typedef {{name: string, module: string, scripts: string[], styles: string[]}} PluginDescriptor */
-  /** Each plugin's assets, by its name (`configureAssets`). @type {Map<string, PluginDescriptor>} */
-  const _pluginsByName = new Map();
-  /** The plugins each kind's views come from, in discovery order. @type {Map<string, string[]>} */
-  const _pluginNamesByKind = new Map();
-  /**
-   * Each plugin's one load: its index.js module's namespace, its exports, once its assets
-   * have run, or a rejection when the module failed. @type {Map<string, Promise<object>>}
-   */
+  // The server's plugin table (`_build_plugin_asset_config_block`), by name and by kind.
+  let _plugins = new Map();
+  let _pluginKinds = new Map();
+  /** @type {Map<string, Promise<object>>} */
   const _pluginLoads = new Map();
 
   const fileCatalog = Object.freeze({
@@ -318,33 +310,9 @@
     });
   }
 
-  /**
-   * The server's plugin table (`_build_plugin_asset_config_block` in server.py): each
-   * plugin's assets by name, and the plugins each kind's views come from.
-   * @param {{plugins: Record<string, Omit<PluginDescriptor, "name">>, kinds: Record<string, string[]>}} config
-   */
   function configureAssets(config) {
-    if (!config || typeof config !== "object" || !config.plugins || !config.kinds) {
-      throw new TypeError("configureAssets: expected {plugins, kinds}");
-    }
-    _pluginsByName.clear();
-    _pluginNamesByKind.clear();
-    for (const [name, assets] of Object.entries(config.plugins)) {
-      if (
-        typeof assets?.module !== "string" ||
-        !Array.isArray(assets.scripts) ||
-        !Array.isArray(assets.styles)
-      ) {
-        throw new TypeError(`configureAssets: plugin ${name} needs module, scripts, and styles`);
-      }
-      _pluginsByName.set(name, { ...assets, name });
-    }
-    for (const [kind, names] of Object.entries(config.kinds)) {
-      if (!Array.isArray(names) || names.some((name) => !_pluginsByName.has(name))) {
-        throw new TypeError(`configureAssets: ${kind} must list configured plugins`);
-      }
-      _pluginNamesByKind.set(kind, names);
-    }
+    _plugins = new Map(Object.entries(config.plugins));
+    _pluginKinds = new Map(Object.entries(config.kinds));
   }
 
   /** @type {Map<string, Promise<unknown>>} */
@@ -373,13 +341,6 @@
     return styles;
   }
 
-  /**
-   * Load one plugin, once: its stylesheets, its extra scripts in order, then its module.
-   * Resolves to the module's namespace; rejects, after saying so on the console, when
-   * the module failed, and a later call answers the same.
-   * @param {PluginDescriptor} descriptor
-   * @returns {Promise<object>}
-   */
   function _loadPlugin(descriptor) {
     const existing = _pluginLoads.get(descriptor.name);
     if (existing) {
@@ -396,9 +357,7 @@
         return await import(descriptor.module);
       } catch (error) {
         console.error(`metabrowser plugin failed to load: ${descriptor.name}`, error);
-        throw new Error(`metabrowser plugin failed to load: ${descriptor.name}`, {
-          cause: error,
-        });
+        throw error;
       }
     })();
     _pluginLoads.set(descriptor.name, loading);
@@ -418,13 +377,8 @@
 
   // The helpers gate each plugin's code, not its transfer. Rejects when they cannot
   // be loaded: no plugin's code has run then, and the next call tries again.
-  // A plugin whose module failed has said so on the console, and the kind's other plugins
-  // still load.
-  /** @param {string} kind @returns {Promise<void>} */
   async function loadPluginsForKind(kind) {
-    const descriptors = (_pluginNamesByKind.get(kind) || []).map(
-      (name) => /** @type {PluginDescriptor} */ (_pluginsByName.get(name)),
-    );
+    const descriptors = (_pluginKinds.get(kind) || []).map((name) => _plugins.get(name));
     const helpers = _ensureViewHelpers();
     for (const descriptor of descriptors) {
       if (!_pluginLoads.has(descriptor.name)) {
@@ -437,21 +391,11 @@
     }
   }
 
-  // A provider's exports for a plugin that declares it in its manifest's `requires`
-  // ("Declared Dependencies" in docs/plugins.md): the namespace of the provider's
-  // index.js, once its stylesheets, extra scripts, and module have run. The provider
-  // loads on demand, the first time anything asks for it or for one of its kinds, and
-  // once: every caller shares that load. Discovery refused a plugin whose requirements
-  // are missing or circular, so a declared provider is always here; an unknown name, or
-  // a provider whose module failed, rejects.
-  /** @param {string} name @returns {Promise<object>} */
+  // "Declared Dependencies" in docs/plugins.md.
   async function loadPluginExports(name) {
-    const descriptor = typeof name === "string" ? _pluginsByName.get(name) : undefined;
+    const descriptor = _plugins.get(name);
     if (!descriptor) {
-      throw new Error(`metabrowser.plugins.load: no plugin named ${JSON.stringify(name)}`);
-    }
-    if (!_pluginLoads.has(descriptor.name)) {
-      void _startPluginAssets(descriptor);
+      throw new Error(`plugins.load: no plugin ${name}`);
     }
     await _ensureViewHelpers();
     return _loadPlugin(descriptor);

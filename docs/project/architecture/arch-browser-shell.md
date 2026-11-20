@@ -126,10 +126,14 @@ inert while the next view prepares, and `dispose()` follows the actual replaceme
 
 ### Plugin Assets
 
-The server writes `MetabrowserPluginHost.configureAssets` with each kind’s plugin
-descriptors (`_build_plugin_asset_config_block`), so no plugin asset is a startup
-dependency. The first selection of a kind, or a call to `ensureKindAssets`, loads its
-plugins once: styles in parallel, then extra scripts in manifest order, then `index.js`.
+The server writes `MetabrowserPluginHost.configureAssets` with each plugin’s assets by
+name and the plugins each kind’s views come from (`_build_plugin_asset_config_block`),
+so no plugin asset is a startup dependency.
+The first selection of a kind, or a call to `ensureKindAssets`, loads its plugins once:
+styles in parallel, then extra scripts in manifest order, then `index.js`.
+`metabrowser.plugins.load(name)` shares that load and resolves to the plugin’s
+`index.js` exports, which is how a plugin reaches a provider it declares in `requires`,
+and how a plugin with no kind of its own is reached at all.
 [Plugin Authoring](../../plugins.md#plugin-asset-lifecycle) states the guarantees a
 plugin relies on.
 
@@ -137,8 +141,9 @@ plugin relies on.
 
 `window.metabrowser` is defined by `plugin-sdk.js`, eager, and extended by
 `plugin-sdk-views.js` with the view-phase helpers before any plugin code runs, by
-`filter-controls.js` with `filterControls`, and by the built-in folder and Markdown
-plugins with `folderOverview` and `builtins.markdown`.
+`filter-controls.js` with `filterControls`, and by the built-in folder plugin with
+`folderOverview`. A plugin’s helpers for other plugins are its module’s exports, which
+`plugins.load` answers, never a property of this object.
 [Plugin Authoring](../../plugins.md#browser-sdk) documents it.
 It is also the one console entry point, so diagnostics extend it instead of adding
 globals:

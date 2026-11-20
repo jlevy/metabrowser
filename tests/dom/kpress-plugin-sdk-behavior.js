@@ -758,6 +758,7 @@ async function check_selected_kind_plugin_assets() {
   sandbox.MetabrowserPluginHost.configureAssets({
     plugins: {
       fixture: {
+        name: "fixture",
         module: "/plugin-static/fixture/index.js",
         scripts: ["/plugin-static/fixture/setup.js"],
         styles: ["/plugin-static/fixture/styles.css"],
@@ -803,6 +804,7 @@ async function check_cached_plugin_stylesheet_settles_without_onload() {
   sandbox.MetabrowserPluginHost.configureAssets({
     plugins: {
       "cached-plugin": {
+        name: "cached-plugin",
         module: "/plugin-static/cached-plugin/index.js",
         scripts: [],
         styles: ["/plugin-static/cached-plugin/styles.css"],
@@ -828,8 +830,18 @@ async function check_cached_plugin_stylesheet_settles_without_onload() {
 async function check_same_kind_plugins_follow_manifest_order() {
   sandbox.MetabrowserPluginHost.configureAssets({
     plugins: {
-      "order-first": { module: "/plugin-static/order-first/index.js", scripts: [], styles: [] },
-      "order-second": { module: "/plugin-static/order-second/index.js", scripts: [], styles: [] },
+      "order-first": {
+        name: "order-first",
+        module: "/plugin-static/order-first/index.js",
+        scripts: [],
+        styles: [],
+      },
+      "order-second": {
+        name: "order-second",
+        module: "/plugin-static/order-second/index.js",
+        scripts: [],
+        styles: [],
+      },
     },
     kinds: { "ordered-kind": ["order-first", "order-second"] },
   });
@@ -856,8 +868,13 @@ async function check_plugins_load_returns_exports() {
   }
   sandbox.MetabrowserPluginHost.configureAssets({
     plugins: {
-      provider: { module: "/plugin-static/provider/index.js", scripts: [], styles: [] },
-      broken: { module: "/plugin-static/broken/index.js", scripts: [], styles: [] },
+      provider: {
+        name: "provider",
+        module: "/plugin-static/provider/index.js",
+        scripts: [],
+        styles: [],
+      },
+      broken: { name: "broken", module: "/plugin-static/broken/index.js", scripts: [], styles: [] },
     },
     kinds: {},
   });
@@ -872,7 +889,7 @@ async function check_plugins_load_returns_exports() {
     () => "resolved",
     (error) => String(error?.message),
   );
-  if (!refusal.includes('no plugin named "absent"')) {
+  if (!refusal.includes("no plugin absent")) {
     return { ok: false, detail: `an unknown plugin did not reject: ${refusal}` };
   }
   const failures = await Promise.all(
@@ -883,7 +900,7 @@ async function check_plugins_load_returns_exports() {
       ),
     ),
   );
-  if (!failures.every((failure) => failure.includes("failed to load: broken"))) {
+  if (!failures.every((failure) => failure.includes("simulated provider module failure"))) {
     return { ok: false, detail: `a failed provider module did not reject: ${failures}` };
   }
   return { ok: true };

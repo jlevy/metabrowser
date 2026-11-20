@@ -24,8 +24,8 @@ before: >-
 # Golden tests: declared plugin dependencies
 
 A manifest’s `requires` names the plugins whose exports its browser code loads with
-`mb.plugins.load(name)`. Discovery refuses a plugin whose requirements cannot be met, and
-`--plugins`, `--plugin`, and `--doctor` report the graph of those it kept.
+`mb.plugins.load(name)`. Discovery refuses a plugin whose requirements cannot be met,
+and `--plugins`, `--plugin`, and `--doctor` report the graph of those it kept.
 [Plugin Authoring](../../docs/plugins.md#declared-dependencies) states the rule, and
 `tests/test_plugin_requirements.py` covers a manifest that requires itself, which its
 own validation refuses.

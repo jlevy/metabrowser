@@ -1,8 +1,8 @@
 # Plugin System
 
-**Status:** Built: manifest discovery from three sources, declarative kind
-classification, the SDK version gate, Python data hooks, JSONL adapters, and two
-container kinds, directories and patch files.
+**Status:** Built: manifest discovery from three sources, declared dependencies between
+plugins, declarative kind classification, the SDK version gate, Python data hooks, JSONL
+adapters, and two container kinds, directories and patch files.
 Planned: editing through plugins
 ([trusted-local editing plan](../specs/active/plan-2026-07-16-trusted-local-file-editing.md)).
 Proposed, with no plan yet: archive containers and re-rooting the tree at a container.
@@ -19,7 +19,7 @@ This document is how the host implements it, and the path for adding a file type
 | Module | Owns |
 | --- | --- |
 | `plugin_loader/manifest.py` | The manifest schema, its consistency checks, `PLUGIN_SDK_VERSION`, and the view merge |
-| `plugin_loader/discovery.py` | The three discovery sources and plugin-name collisions |
+| `plugin_loader/discovery.py` | The three discovery sources, plugin-name collisions, and refusing unmet requirements |
 | `plugin_loader/classify.py` | Compiling `[[kind]]` rules into one classifier, and the bounded content predicates |
 | `plugin_loader/static_assets.py` | The `/plugin-static/` and `/api/plugin/` routes and data-hook dispatch |
 | `file_kinds.py` | `FileContext`, the built-in view registry, and the fallback detector chain |
@@ -51,6 +51,31 @@ the trust boundary it enforces.
   hook for a plugin discovered from `--plugins-dir`, and logs that it ignored them.
   Python runs only from a built-in or an installed distribution, which already belongs
   to the environment.
+
+## Declared Dependencies
+
+A manifest’s `[plugin] requires` names the plugins whose exports its browser code loads
+with `metabrowser.plugins.load(name)`
+([Plugin Authoring](../../plugins.md#declared-dependencies)). `resolve_requirements` in
+`discovery.py` runs once collisions are settled, so it sees the plugin set the server
+serves:
+
+- A plugin that requires itself fails its own manifest’s validation.
+- A plugin on a longer cycle is refused, with the shortest cycle back to it, since two
+  modules that each wait for the other’s exports never finish.
+- A plugin that requires one that was not discovered, or was refused, is refused in
+  turn, so a refusal reaches everything that depends on it.
+
+Each refusal is a discovery error, so the server logs it and the CLI modes print it and
+exit nonzero. The kept plugins stay in discovery order, which breaks kind priority ties.
+A provider is not loaded before its dependents: in the browser, `plugins.load` loads it
+on demand and shares the one load that selecting its kind would start
+([Plugin Assets](arch-browser-shell.md#plugin-assets)), because the built-in providers
+are on-demand tiers whose consumers need them only for some pages, such as a folder with
+a README or a pull request with a diagram.
+`metab --doctor` reports the graph it kept, and `--plugins` and `--plugin NAME` show
+each plugin’s `requires`. `tests/test_plugin_requirements.py` checks that each built-in
+plugin loads exactly the providers it declares.
 
 ## Manifests
 

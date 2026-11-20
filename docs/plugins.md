@@ -145,14 +145,16 @@ The `[plugin]` table supports:
 | `sdk_version` | no | Strongly recommended. It must equal `PLUGIN_SDK_VERSION`; an omitted value targets the original SDK, not the host’s current one, and is refused. |
 | `extra_scripts` | no | Plain JavaScript filenames loaded before `index.js`. |
 | `extra_styles` | no | Plain CSS filenames loaded before the plugin’s selected-kind renderer mounts. |
+| `requires` | no | Names of the plugins whose exports this plugin loads with `mb.plugins.load`; see [Declared Dependencies](#declared-dependencies). |
 
 Extra asset entries may not contain slashes, traversal segments, or a leading dot.
 
 ### Plugin Asset Lifecycle
 
 The SDK loads a plugin when the browser first selects any kind declared by its
-`[[kind]]` or `[[view]]` entries, or when another plugin calls `ensureKindAssets(kind)`.
-Plugin CSS and module side effects therefore do not exist on an unrelated page.
+`[[kind]]` or `[[view]]` entries, when another plugin calls `ensureKindAssets(kind)`, or
+when a plugin that requires it calls `mb.plugins.load(name)`. Plugin CSS and module side
+effects therefore do not exist on an unrelated page.
 
 For one plugin, the host loads its automatically detected `styles.css` and every
 `extra_styles` entry in parallel and waits for them to settle.
@@ -173,8 +175,9 @@ stamp. An absolute `/plugin-static/<name>/<file>` URL is revalidated on every us
 module reached both ways is two instances with separate module state, so use one form.
 From a stamped module, `../other/x.js` stays inside your own plugin and is not found,
 while `../../other/x.js` reaches another plugin at its unstamped address; reach another
-plugin through `ensureKindAssets` instead, since plugins are not isolated from each
-other. A top-level directory whose name has a stamp’s form cannot be addressed.
+plugin through its exports ([Declared Dependencies](#declared-dependencies)) or
+`ensureKindAssets` instead, since plugins are not isolated from each other.
+A top-level directory whose name has a stamp’s form cannot be addressed.
 `src/metabrowser/asset_stamps.py` documents the policy.
 
 ### Kind Rules
@@ -447,15 +450,38 @@ size, frontmatter, body text where applicable, and the raw `/api/file` envelope.
 Use `mb.getRegisteredView` and `mb.listViewsForKind` for diagnostics, not the registry’s
 private storage.
 
-### Render-Time-Only Namespace Rule
+### Declared Dependencies
 
-A built-in plugin may publish helpers for others on `mb.builtins.<name>`, as Markdown
-publishes `mb.builtins.markdown` and structured data `mb.builtins.structured`. Read
-another plugin’s namespace only at render time, inside `render` or a handler, never
-while your `index.js` evaluates: plugins load on demand, so the other plugin may not
-have run yet. Await `ensureKindAssets(kind)` for that plugin’s kind first.
-`tests/test_plugin_e2e_render.py` fails when a plugin reads a missing namespace at load
-time.
+A plugin offers helpers to others by exporting them from its `index.js`, which is an ES
+module, as Markdown exports `mountRendered`, `renderSource`, and `drawDiagrams`, and
+structured data exports `renderInlineTree` and the tree’s helpers.
+A plugin that uses them names the provider in its manifest and asks for its exports:
+
+```toml
+[plugin]
+name = "readme-cards"
+requires = ["markdown"]
+```
+
+```javascript
+const markdown = await mb.plugins.load("markdown");
+markdown.mountRendered(container, ctx, { signal });
+```
+
+`mb.plugins.load(name)` resolves to the provider’s module namespace once its
+stylesheets, extra scripts, and `index.js` have run.
+It loads the provider on demand, the first time anything asks for it or selects one of
+its kinds, and once: every caller shares that load, so ask for it where you need it,
+usually in `render` or a handler, and the cost lands only on pages that use it.
+It rejects for a name that is not loaded, and when the provider’s module failed.
+
+Discovery refuses a plugin whose `requires` names a plugin that was not discovered or
+was itself refused, and every plugin on a cycle of requirements, since two modules that
+each wait for the other’s exports never finish.
+`metab --doctor` lists each refusal as a problem and reports the graph it kept, and
+`metab --plugins` and `--plugin NAME` show each plugin’s `requires`. Declare every
+provider you load and load every provider you declare:
+`tests/test_plugin_requirements.py` holds the built-in plugins to that.
 
 ### Rendering and Formatting
 
@@ -880,12 +906,13 @@ unsubscribe on disposal.
 view defer hidden work, and a composite renderer calls
 `mb.setViewPrintState(container, state)` when its printability changes.
 
-`mb.builtins.markdown.mountRendered(container, ctx, {signal, pagePath, printIndicator})`
-mounts a Markdown document panel with the ordinary KPress presentation, its table of
-contents included.
-`pagePath` names the page that shows the document as its own when that
-is not the document’s path, as a folder’s Overview shows its README: the document’s
-fragment links and table-of-contents entries are then places on that page.
+The Markdown plugin’s
+`mountRendered(container, ctx, {signal, pagePath, printIndicator})`, from
+`await mb.plugins.load("markdown")` with `requires = ["markdown"]`, mounts a Markdown
+document panel with the ordinary KPress presentation, its table of contents included.
+`pagePath` names the page that shows the document as its own when that is not the
+document’s path, as a folder’s Overview shows its README: the document’s fragment links
+and table-of-contents entries are then places on that page.
 `printIndicator: true` puts a print button in the corner of the document’s card, for a
 view whose print is the document itself; it is off unless the host asks
 ([Print](design-system.md#print)). Its handle aborts its request and disposes its table
@@ -895,10 +922,10 @@ Transclusions share depth, document, source-byte, cycle, abort, and disposal lim
 across the mounted document, and each embed’s time limit starts when that embed begins
 loading. Do not copy Markdown DOM or table-of-contents behavior into a contribution.
 
-`mb.builtins.markdown.drawDiagrams(root, {inert, isolated})` draws the Mermaid diagrams
-of a KPress render your plugin placed under `root`, as the Markdown view draws its own:
-an inert render’s `<pre lang="mermaid">` blocks become images, and only `inert: false`,
-for a render the reader trusts, puts the SVG in the page.
+Its `drawDiagrams(root, {inert, isolated})` draws the Mermaid diagrams of a KPress
+render your plugin placed under `root`, as the Markdown view draws its own: an inert
+render’s `<pre lang="mermaid">` blocks become images, and only `inert: false`, for a
+render the reader trusts, puts the SVG in the page.
 It returns null, and loads nothing, when `root` holds no diagram; otherwise its
 `dispose()` stops drawing and leaves the figures as drawn, so call it when you replace
 `root`. Mermaid lays an image out in a document before it becomes one, and there a
