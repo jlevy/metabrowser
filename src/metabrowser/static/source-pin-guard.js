@@ -33,7 +33,8 @@
 // served and reloads if it is not what the page shows; a data request refused meanwhile
 // says the same sooner. A page reloads itself at most once, and a reload is not a
 // history landing, so it cannot loop. A page the reader is looking at when another tab
-// switches is left to the freshness row's offer: nothing changes under a reader.
+// switches is left to the freshness row's offer: nothing changes under a reader. A page
+// on a branch a refresh moved is the row's too, which follows the branch by itself.
 //
 // The alternative, `Cache-Control: no-store` on the page, keeps every pin page out of
 // the back/forward cache: measured in Chrome 152, Back to a diff then took 342-630 ms

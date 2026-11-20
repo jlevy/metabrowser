@@ -156,7 +156,9 @@ def test_golden_refresh_and_pin_switching(tmp_path: Path, monkeypatch: pytest.Mo
     ended = _after(refreshed)
     assert ended["refreshing"] is False
     assert ended["last_outcome"]["outcome"] == "succeeded"
-    assert ended["latest"] == rewritten and ended["pin"] == SECOND
+    # The refresh moved the served branch, and the server followed it.
+    assert ended["latest"] == rewritten and ended["pin"] == rewritten
+    assert ended["follows"] is True
 
     after = _payload(api("/api/source/status"))
     assert after["pin"] == rewritten
