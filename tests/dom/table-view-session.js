@@ -11,8 +11,9 @@
 // timers and animation frames the session runs; a history Back walks; and a DOM of just
 // enough nodes to read the view back (pulls-test-dom.js). The answers are the server's,
 // recorded in tests/fixtures/table-view-responses.json,
-// tests/fixtures/table-view-long-responses.json, and
-// tests/fixtures/table-view-bounds-responses.json by tests/test_table_view_session.py,
+// tests/fixtures/table-view-long-responses.json,
+// tests/fixtures/table-view-bounds-responses.json, and
+// tests/fixtures/table-view-records-responses.json by tests/test_table_view_session.py,
 // which fails when they drift; a request the recordings do not hold fails the session. A
 // generation, which names a file's identity and time, is recorded as `G`. The bounds
 // recording's answers are the server's with a bound lowered for one small file, as that
@@ -34,6 +35,7 @@ for (const name of [
   "table-view-responses.json",
   "table-view-long-responses.json",
   "table-view-bounds-responses.json",
+  "table-view-records-responses.json",
 ]) {
   Object.assign(
     answers,
@@ -410,7 +412,7 @@ function step(name, value) {
 let model;
 let mountTable;
 
-function mount(file, query = "") {
+function mount(file, query = "", context = {}) {
   entries.splice(0);
   position = -1;
   void sdk.navigation.open({ path: file, query });
@@ -418,7 +420,7 @@ function mount(file, query = "") {
   documentStandIn.body.append(container);
   const handle = mountTable(
     container,
-    { path: file },
+    { path: file, ...context },
     {
       sdk,
       window: pageWindow,
@@ -881,6 +883,71 @@ async function bounds() {
   }
 }
 
+// The structured kind's Table view: a JSON list of mappings, whose record draws each nested
+// value with the renderer its view hands the table (record-table.js passes the
+// structured plugin's inline tree; this stand-in writes the value it was given), and a
+// JSON mapping, which is not a list of records.
+async function recordLists() {
+  const drawnTrees = [];
+  let released = 0;
+  const renderJson = (host, value) => {
+    const tree = new Element("div");
+    tree.textContent = `tree ${JSON.stringify(value)}`;
+    host.append(tree);
+    drawnTrees.push(value);
+    return {
+      dispose() {
+        released += 1;
+      },
+    };
+  };
+  const view = mount("records.json", "", { renderJson });
+  await ready(view);
+  step("a JSON list of mappings: a table of its records", {
+    requests: takeRequests(),
+    ...shown(view),
+  });
+  const ada = rowsOf(view)[0];
+  ada.focus();
+  key(ada, "Enter");
+  await settle();
+  const opened = shown(view, { rows: 0 });
+  step("a record: each nested value drawn as a tree, an absent field said", {
+    requests: takeRequests(),
+    record: opened.record,
+    trees: drawnTrees.length,
+  });
+  assert.equal(drawnTrees.length, 2, "one tree for each nested value of the record");
+  key(documentStandIn.activeElement, "Escape");
+  await settle();
+  step("Back to the table: the trees released", {
+    requests: takeRequests(),
+    released,
+  });
+  assert.equal(released, drawnTrees.length, "every tree a record drew is released with it");
+  click(headerButton(view, "age"));
+  await settle();
+  step("a field of values of several types, sorted: numbers, then text", {
+    requests: takeRequests(),
+    ...shown(view),
+  });
+  view.handle.dispose();
+  view.container.remove();
+
+  const mapping = mount("config.json", "", { renderJson });
+  await ready(mapping);
+  const said = shown(mapping);
+  step("a JSON mapping: not a list of records, said in place of the table", {
+    requests: takeRequests(),
+    toolbar: find(mapping.container, hasClass("table-toolbar")).hidden ? "hidden" : "shown",
+    notes: said.notes,
+    table: said.table,
+    links: findAll(mapping.container, hasClass("table-reset")).length,
+  });
+  mapping.handle.dispose();
+  mapping.container.remove();
+}
+
 async function main() {
   model = await import(pathToFileURL(path.join(plugin, "table-model.js")).href);
   ({ mountTable } = await import(pathToFileURL(path.join(plugin, "table-view.js")).href));
@@ -889,6 +956,7 @@ async function main() {
   await refusals();
   await windowedTable();
   await bounds();
+  await recordLists();
   step("requests asked of the server", { unrecorded });
   assert.deepEqual(unrecorded, [], "every request the page made is recorded");
   process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);

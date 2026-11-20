@@ -39,7 +39,7 @@ github         builtin  -                       markdown    2      pull,pull-ref
 html           builtin  html                    -           2      -
 image          builtin  -                       -           1      -
 markdown       builtin  markdown,mermaid        -           4      -
-structured     builtin  structured              -           2      parsed
+structured     builtin  structured              table       3      parsed
 table          builtin  -                       -           0      tables,schema,rows,record,card
 text           builtin  -                       -           1      -
 unknown-jsonl  builtin  -                       agents      2      -
@@ -296,12 +296,15 @@ $ metab --plugins --json
       "kinds": [
         "structured"
       ],
-      "requires": [],
+      "requires": [
+        "table"
+      ],
       "views": [
         "tree",
+        "table",
         "source"
       ],
-      "view_count": 2,
+      "view_count": 3,
       "data_hooks": [
         "parsed"
       ],
@@ -559,6 +562,7 @@ plugin requirements:
   event-log: requires agents
   folder: requires markdown
   github: requires markdown
+  structured: requires table
   unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)

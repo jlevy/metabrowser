@@ -215,9 +215,11 @@ def truncated_payload() -> StructuredPayload:
     )
 
 
-def _payload_from_parsed(parsed: Any, *, label: str, source_bytes: int) -> StructuredPayload:
+def _payload_from_parsed(
+    parsed: Any, *, label: str, source_bytes: int, serialize: bool
+) -> StructuredPayload:
     try:
-        pretty_yaml = _serialize_to_yaml(parsed)
+        pretty_yaml = _serialize_to_yaml(parsed) if serialize else ""
     except Exception as exc:
         # Parsing succeeded but serialization failed — uncommon (the
         # output is just structured data the YAML serializer should
@@ -250,8 +252,12 @@ def error_payload(exc: Exception) -> StructuredPayload:
     )
 
 
-def parse_structured_bytes(data: bytes, ext: str) -> StructuredPayload:
+def parse_structured_bytes(data: bytes, ext: str, *, serialize: bool = True) -> StructuredPayload:
     """Parse JSON/YAML bytes. The only parse entry point; bounds are the caller's.
+
+    ``serialize=False`` leaves ``pretty_yaml`` empty: the canonical YAML is the Tree
+    view's, and writing it is most of a large file's cost, so the record-list table
+    source, which never draws it, asks for the parse alone (``load_structured_payload``).
 
     The caller reads through the bounded content reader, so the bytes that
     arrive here are already capped. The length check keeps that a fact rather
@@ -264,4 +270,6 @@ def parse_structured_bytes(data: bytes, ext: str) -> StructuredPayload:
         parsed = _parse_text(decode_text(data), ext)
     except Exception as exc:
         return error_payload(exc)
-    return _payload_from_parsed(parsed, label="bytes", source_bytes=len(data))
+    return _payload_from_parsed(
+        parsed, label="bytes", source_bytes=len(data), serialize=serialize
+    )

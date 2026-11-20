@@ -420,28 +420,31 @@ def test_a_change_moves_the_generation_and_is_read(client: TestClient, tmp_path:
     assert record["generation_moved"] is True
 
 
-def test_the_tree_and_the_table_share_one_parse(
+def test_the_table_reads_the_trees_parse_and_never_writes_its_yaml(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    calls: list[str] = []
+    calls: list[tuple[str, bool]] = []
     real = structured.parse_structured_bytes
 
-    def counted(data: bytes, ext: str) -> parser.StructuredPayload:
-        calls.append(ext)
-        return real(data, ext)
+    def counted(data: bytes, ext: str, *, serialize: bool = True) -> parser.StructuredPayload:
+        calls.append((ext, serialize))
+        return real(data, ext, serialize=serialize)
 
     monkeypatch.setattr(structured, "parse_structured_bytes", counted)
     path = _write(tmp_path, "a.json", [{"a": 1}])
     tree = client.get("/api/plugin/structured/parsed", params={"path": path})
-    assert tree.status_code == 200
+    assert (tree.status_code, tree.json()["pretty_yaml"]) == (200, "  - a: 1\n")
     for route in ("schema", "rows", "record", "card"):
         _ok(client, route, path, **({"key": "@1"} if route in ("record", "card") else {}))
-    assert calls == [".json"]
-    # A table read first parses for the tree too.
+    assert calls == [(".json", True)]
+    # A table read first parses without the canonical YAML, which the Tree view's route
+    # writes when it is first shown.
     other = _write(tmp_path, "b.json", [{"a": 1}])
     _ok(client, "rows", other)
-    assert client.get("/api/plugin/structured/parsed", params={"path": other}).status_code == 200
-    assert calls == [".json", ".json"]
+    _ok(client, "schema", other)
+    tree = client.get("/api/plugin/structured/parsed", params={"path": other})
+    assert (tree.status_code, tree.json()["pretty_yaml"]) == (200, "  - a: 1\n")
+    assert calls == [(".json", True), (".json", False), (".json", True)]
 
 
 def test_a_git_pin_reads_a_record_list(tmp_path: Path) -> None:

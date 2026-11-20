@@ -9,6 +9,8 @@ status: 409
   "capability": "recency"
 }
 --- stderr ---
+cloning <ORIGIN> into <HOME>
+cloned <ORIGIN> in 0.0 s
 Error: /api/recent returned HTTP 409
 # metab file://<ORIGIN> --api '/api/tree?recency=24h'
 exit: 1

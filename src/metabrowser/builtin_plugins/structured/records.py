@@ -88,18 +88,50 @@ from metabrowser.plugin_api import (
 
 # ── Bounds ─────────────────────────────────────────────────────
 #
-# The parse is the structured plugin's, under its byte bound, and is held whatever the
-# table reads of it; these bound what building and querying the table costs, which
-# follows its rows and values, not its bytes. Measured with
-# `devtools/bench_record_lists.py` on a shared 4-processor Linux container (Python 3.13,
+# The parse is the structured plugin's, under its byte bound, `STRUCTURED_PARSE_MAX_BYTES`
+# (an environment setting); these bound what building and querying the table costs,
+# which follows its rows and values, not its bytes. Measured with
+# `devtools/bench_record_lists.py` over JSON lists at that byte bound, 8 MiB, on a
+# shared 4-processor Linux container at a load average of 3 to 9 (Python 3.13,
 # 2026-11-20); rerun it for the current numbers.
+#
+# The parse the table reads costs 0.07 to 0.29 s for 8 MiB of JSON, without the Tree
+# view's YAML, which took 26 s for the 12-field shape and which the table never writes
+# (`load_structured_payload`). YAML parses about thirty times slower than JSON: 1 MiB of
+# a four-field list took 5 s, so a large YAML file's first open, in either view, is the
+# structured plugin's cost, not this source's.
 
+# The most rows read. With no row bound, one field of one character (838,860 rows at the
+# byte bound) took 0.29 s to build, 0.82 s for a first sort index, and 0.67 s for a
+# filtered and sorted page; at this bound 0.21 s, 0.45 s, and 0.38 s, about one second
+# for a first filtered and sorted page, half of `TABLE_REQUEST_DEADLINE_SECONDS`, as the
+# delimited source's `DELIMITED_MAX_ROWS` keeps.
 RECORDS_MAX_ROWS = 500_000
+
+# The most values read, the mappings' top-level values. 8 MiB of JSON holds at most
+# about 1.4 million (a one-character key and a one-digit value is six bytes), so this
+# bound is met only where the byte bound is raised; six fields of two-digit integers,
+# 1.1 million values, built in 0.07 s.
 RECORDS_MAX_CELLS = 2_000_000
+
+# The most fields read; a key first seen past it is not read. At this width, 283
+# records of datetimes, the dearest values to infer, built in 0.26 s, the schema encoded
+# in 2 ms as 0.42 MB of JSON, and a page carried 11 rows (`TABLE_PAGE_CELLS_MAX`).
 RECORDS_MAX_FIELDS = 1024
+
+# Rows whose values decide each field's type, as `DELIMITED_TYPE_SAMPLE_ROWS`; a later
+# value that contradicts the type is shown as stored. Its dearest case is in the
+# measurement above.
 RECORDS_TYPE_SAMPLE_ROWS = 1000
-RECORDS_CACHE_MAX_ENTRIES = 4
+
+# The table cache's bounds, as the delimited source's: entries, and the bytes the parses
+# it holds are estimated to hold with their sort indexes (`_Records.held_bytes`).
+RECORDS_CACHE_MAX_ENTRIES = 8
 RECORDS_CACHE_MAX_BYTES = 256 * 1024 * 1024
+
+# What a parse holds, as an upper fit over the bench's shapes: `tracemalloc` measured
+# from 3.0 to 19.3 bytes a byte of JSON and 40 to 110 bytes a node (a mapping, a list,
+# or a value), and this estimate came to 1.1 to 3.4 times what it measured, never less.
 _HELD_BYTES_PER_SOURCE_BYTE = 8
 _HELD_BYTES_PER_NODE = 64
 
@@ -598,7 +630,7 @@ class RecordListSource:
             ref = await resolve_content(identity)
             if ref is None:
                 raise SourceUnreadableError("This file is no longer available.")
-            return await load_structured_payload(ref)
+            return await load_structured_payload(ref, serialize=False)
 
         try:
             running = asyncio.get_running_loop()

@@ -1,0 +1,5 @@
+[
+  {"name": "Ada", "age": 36, "tags": ["math", "engines"], "meta": {"born": 1815, "notes": {"first": true}}},
+  {"name": "Bob", "age": "unknown", "tags": [], "active": true},
+  {"name": "Cy", "age": 41.5, "meta": null}
+]

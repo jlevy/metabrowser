@@ -13,8 +13,9 @@ does with the answers.
 It loads the plugin’s production modules, `table-model.js` and `table-view.js`, and
 drives `mountTable` through a scripted page whose answers are the server’s, recorded in
 `tests/fixtures/table-view-responses.json`,
-`tests/fixtures/table-view-long-responses.json`, and
-`tests/fixtures/table-view-bounds-responses.json` by `tests/test_table_view_session.py`
+`tests/fixtures/table-view-long-responses.json`,
+`tests/fixtures/table-view-bounds-responses.json`, and
+`tests/fixtures/table-view-records-responses.json` by `tests/test_table_view_session.py`
 over the files in `tests/fixtures/table-view/` and the small files that recorder writes,
 each with the bound it shows lowered to meet it.
 
@@ -44,6 +45,14 @@ names the field and offers the file’s order instead of saying the table is emp
 A file read in part says whether its rows or a row’s cells were cut.
 A cursor names the sort and order it was made for, so a new sort is a new question read
 from its first page.
+
+The structured kind’s Table view draws a JSON list of mappings through the same view.
+A nested value is its JSON text in the grid, and in the record it is drawn by the
+renderer the source’s view hands the table, the structured plugin’s inline tree, which a
+stand-in takes the place of here; going back to the table releases each tree.
+A field whose values are of several types sorts numbers before text, and a document that
+is not a list of records says so in place of the table, with no toolbar and no way back
+to a table it does not have.
 
 ```console
 $ node tests/dom/table-view-session.js
@@ -369,7 +378,7 @@ $ node tests/dom/table-view-session.js
         "joined (date): 2021-03-04",
         "active (boolean): false",
         "note (text): ",
-        "extra (text): No value: this row is shorter than the header."
+        "extra (text): No value: this row does not have this field."
       ]
     },
     "focus": {
@@ -623,8 +632,8 @@ $ node tests/dom/table-view-session.js
         "score (real): 0.5",
         "joined (date): 2022-07-08",
         "active (boolean): false",
-        "note (text): No value: this row is shorter than the header.",
-        "extra (text): No value: this row is shorter than the header."
+        "note (text): No value: this row does not have this field.",
+        "extra (text): No value: this row does not have this field."
       ]
     },
     "focus": {
@@ -1009,6 +1018,108 @@ $ node tests/dom/table-view-session.js
     },
     "record": null,
     "focus": null
+  },
+  "a JSON list of mappings: a table of its records": {
+    "requests": [
+      "schema?path=records.json",
+      "rows?limit=200&path=records.json"
+    ],
+    "address": "",
+    "status": "3 rows",
+    "chips": [],
+    "notes": [],
+    "empty": null,
+    "table": {
+      "role": "table",
+      "rowcount": null,
+      "lines": 1,
+      "header": [
+        "#",
+        "name",
+        "age",
+        "tags",
+        "meta",
+        "active"
+      ],
+      "drawn": 3,
+      "first": "0",
+      "spacers": [],
+      "rows": [
+        "1 | Ada | 36 | [\"math\",\"engines\"] [mono] | {\"born\":1815,\"notes\":{\"first\":true}} [mono] | — [absent]",
+        "2 | Bob | unknown | [] [mono] | — [mono] [absent] | true",
+        "3 | Cy | 41.5 | — [mono] [absent] | null [mono] [null] | — [absent]"
+      ]
+    },
+    "record": null,
+    "focus": null
+  },
+  "a record: each nested value drawn as a tree, an absent field said": {
+    "requests": [
+      "record?generation=G&key=%401&path=records.json"
+    ],
+    "record": {
+      "back": "← Back to the table",
+      "title": "Row 1",
+      "notes": [
+        "This row is named by its position in the file."
+      ],
+      "fields": [
+        "name (text): Ada",
+        "age (unknown): 36",
+        "tags (json): tree [\"math\",\"engines\"]",
+        "meta (json): tree {\"born\":1815,\"notes\":{\"first\":true}}",
+        "active (boolean): No value: this row does not have this field."
+      ]
+    },
+    "trees": 2
+  },
+  "Back to the table: the trees released": {
+    "requests": [],
+    "released": 2
+  },
+  "a field of values of several types, sorted: numbers, then text": {
+    "requests": [
+      "rows?limit=200&order=asc&path=records.json&sort=age"
+    ],
+    "address": "sort=age",
+    "status": "3 rows",
+    "chips": [],
+    "notes": [],
+    "empty": null,
+    "table": {
+      "role": "table",
+      "rowcount": null,
+      "lines": 1,
+      "header": [
+        "#",
+        "name",
+        "age ↑ (ascending)",
+        "tags",
+        "meta",
+        "active"
+      ],
+      "drawn": 3,
+      "first": "0",
+      "spacers": [],
+      "rows": [
+        "1 | Ada | 36 | [\"math\",\"engines\"] [mono] | {\"born\":1815,\"notes\":{\"first\":true}} [mono] | — [absent]",
+        "3 | Cy | 41.5 | — [mono] [absent] | null [mono] [null] | — [absent]",
+        "2 | Bob | unknown | [] [mono] | — [mono] [absent] | true"
+      ]
+    },
+    "record": null,
+    "focus": null
+  },
+  "a JSON mapping: not a list of records, said in place of the table": {
+    "requests": [
+      "schema?path=config.json"
+    ],
+    "toolbar": "hidden",
+    "notes": [
+      "This document is not a list of records: its top level is a mapping, not a list."
+    ],
+    "table": "hidden",
+    "links": 0
   },
   "requests asked of the server": {
     "unrecorded": []

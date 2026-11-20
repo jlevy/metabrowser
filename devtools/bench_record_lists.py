@@ -8,14 +8,14 @@ JSON built in memory at that byte bound:
 
 - 12-field records (text, integers, reals, dates, booleans, a nested list and mapping);
 - narrow records: one field of one character, one field of integer IDs, and six fields
-  of two-digit integers, each past the row or value bound;
-- records as wide as the field bound, and one YAML list, whose parse is the dearest.
+  of two-digit integers, the first two past the row bound;
+- records as wide as the field bound, and a YAML list an eighth of the byte bound.
 
-For each it times the parse as the Tree view's route runs it (with its YAML
-re-serialization), measures the Python objects the parsed value holds with
-``tracemalloc`` beside the estimate the cache counts, and times building the table, a
-first sort index, a filtered and sorted page once that index exists, a search, and a
-page of 1,000 rows encoded as the route answers it.
+For each it times the parse as the table reads it, without the Tree view's YAML
+re-serialization, which it times once, for the first shape; measures the Python objects
+the parse holds with ``tracemalloc`` beside the estimate the cache counts; and times
+building the table, a first sort index, a filtered and sorted page once that index
+exists, a search, and a page of 1,000 rows encoded as the route answers it.
 
 Run it with ``uv run python -m devtools.bench_record_lists``. It writes nothing.
 """
@@ -150,29 +150,25 @@ def _yaml(max_bytes: int) -> bytes:
     return "".join(lines).encode()
 
 
-def _measure(label: str, data: bytes, ext: str, sort_column: int, scan: Filter, q: str) -> None:
-    payload, parse_seconds = _timed(lambda: parse_structured_bytes(data, ext))
+def _measure(
+    label: str, data: bytes, ext: str, sort_column: int, scan: Filter, q: str, *, tree: bool
+) -> None:
+    if tree:
+        _payload, tree_seconds = _timed(lambda: parse_structured_bytes(data, ext))
+        print(f"{label}: the Tree view's parse, with its YAML, {tree_seconds:.2f} s")
+        del _payload
+    payload, parse_seconds = _timed(lambda: parse_structured_bytes(data, ext, serialize=False))
     del payload
     gc.collect()
-    # Again under tracemalloc, which slows it, for what the parsed value holds; the
-    # re-serialized YAML is the Tree view's and is not held by the table.
-    from metabrowser.builtin_plugins.structured.parser import (
-        _parse_text,  # pyright: ignore[reportPrivateUsage]
-    )
-    from metabrowser.structured_text import decode_text
-
-    text = decode_text(data)
+    # Again under tracemalloc, which slows it, for what the parsed value holds.
     tracemalloc.start()
-    parsed_only = _parse_text(text, ext)
+    payload = parse_structured_bytes(data, ext, serialize=False)
     held, _peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
-    del parsed_only, text
-    gc.collect()
-    payload = parse_structured_bytes(data, ext)
     records, build_seconds = _timed(lambda: build_records(payload, "g"))
     cut = " (cut at a bound)" if records.truncated else ""
     print(f"{label}: {len(data) / 2**20:.1f} MiB, {records.row_count} rows{cut}")
-    print(f"  structured parse {parse_seconds:.2f} s, {payload.node_count} nodes")
+    print(f"  parse {parse_seconds:.2f} s, {payload.node_count} nodes")
     print(
         f"  parse holds {held / 1e6:.0f} MB measured, {records.parsed_bytes / 1e6:.0f} MB "
         f"estimated; {held / len(data):.1f} bytes per byte, "
@@ -195,7 +191,8 @@ def _measure(label: str, data: bytes, ext: str, sort_column: int, scan: Filter, 
 
     (rows, size), seconds = _timed(encode)
     print(
-        f"  page asking {TABLE_PAGE_ROWS_MAX} rows: {rows} rows, {size / 1e6:.2f} MB in {seconds * 1e3:.0f} ms"
+        f"  page asking {TABLE_PAGE_ROWS_MAX} rows: {rows} rows, "
+        f"{size / 1e6:.2f} MB in {seconds * 1e3:.0f} ms"
     )
     schema, schema_seconds = _timed(
         lambda: len(json.dumps(schema_wire("a", "g", records.schema())))
@@ -204,8 +201,9 @@ def _measure(label: str, data: bytes, ext: str, sort_column: int, scan: Filter, 
 
 
 def main() -> None:
-    for label, (data, ext, column, scan, q) in _shapes().items():
-        _measure(label, data, ext, column, scan, q)
+    for number, (label, (data, ext, column, scan, q)) in enumerate(_shapes().items()):
+        # The Tree view's YAML is its own cost, which the table never pays: once is enough.
+        _measure(label, data, ext, column, scan, q, tree=number == 0)
     _measure(
         "YAML, 4 fields",
         _yaml(STRUCTURED_PARSE_MAX_BYTES // 8),
@@ -213,6 +211,7 @@ def main() -> None:
         2,
         Filter("count", "gt", "5000"),
         "Lima",
+        tree=False,
     )
 
 

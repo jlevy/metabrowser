@@ -67,6 +67,7 @@ plugin requirements:
   event-log: requires agents
   folder: requires markdown
   github: requires markdown
+  structured: requires table
   unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
@@ -298,6 +299,7 @@ plugin requirements:
   event-log: requires agents
   folder: requires markdown
   github: requires markdown
+  structured: requires table
   unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
@@ -419,6 +421,7 @@ plugin requirements:
   event-log: requires agents
   folder: requires markdown
   github: requires markdown
+  structured: requires table
   unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
