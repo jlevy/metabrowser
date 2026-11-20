@@ -41,15 +41,15 @@ started for local use sends a loopback browser its scripts uncompressed (H115,
 page requested, and a test holds the two equal.
 
 **The shells it does not gate.** The budget is calibrated on a folder's page. Two other
-shells carry one startup script more, and the summary reports each beside the budget
+shells carry more startup scripts, and the summary reports each beside the budget
 without failing on it: the page at a pull-request address (``pull-route.js``, rendered
 here from the same folder server, whose answer at such an address is the page that says
-it serves no GitHub repository) and a pinned revision's page (``git-path.js``, which the
-server names in ``PIN_STARTUP_SCRIPTS``; ``tests/test_serve_pin.py`` holds a real pin's
-shell to that list). The session runs on the pull-request shell too, so a
-script-initiated request there fails the check as well. A checkout whose ``origin`` is on
-github.com carries more in its HTML than a plain folder's, rather than as scripts it
-requests, so the gate's count never sees it. The summary reports how much more the
+it serves no GitHub repository) and a pinned revision's page (``git-path.js`` and
+``revision-ages.js``, which the server names in ``PIN_STARTUP_SCRIPTS``;
+``tests/test_serve_pin.py`` holds a real pin's shell to that list). The session runs on
+the pull-request shell too, so a script-initiated request there fails the check as well.
+A checkout whose ``origin`` is on github.com carries more in its HTML than a plain
+folder's, rather than as scripts it requests, so the gate's count never sees it. The summary reports how much more the
 application sends for that checkout's shell than for a plain folder's beside the budget
 too: the repository context, the Git tabs, and the larger bundle manifest they need, all
 of which a browser receives before it can paint.

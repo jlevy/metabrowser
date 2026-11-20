@@ -51,7 +51,7 @@ def test_the_shell_fits_the_budget(capsys: pytest.CaptureFixture[str]) -> None:
     assert " under the budget)" in summary[0]
     # The two shells with a script more are reported beside the same budget, by name.
     assert summary[1].startswith("  a pull-request address adds pull-route.js: ")
-    assert summary[2].startswith("  a pinned revision adds git-path.js: ")
+    assert summary[2].startswith("  a pinned revision adds git-path.js, revision-ages.js: ")
     # And a github.com checkout's shell, which carries its repository context in its HTML.
     assert summary[3].startswith("  a github.com checkout's shell is ")
     assert all(line.endswith("not gated)") for line in summary[1:])
