@@ -3,14 +3,18 @@ type: is
 id: is-01m7v8ctk4af96q7ykmb5psdd7
 title: "Mirror: a pin on a branch follows the branch when a refresh moves it; Refresh replaces the Switch offer"
 kind: feature
-status: open
+status: in_progress
 priority: 1
-version: 1
+version: 2
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m7v8bs62dz0nqmqb9rnhgsdb
+hold: null
+hold_until: null
 created_at: 2026-11-20T01:16:06.627Z
-updated_at: 2026-11-20T01:16:06.627Z
+updated_at: 2026-11-20T01:17:55.295Z
+started_at: 2026-11-20T01:17:55.294Z
 ---
 In mirror (cloud) mode a reader who opened a branch, by URL or the chooser, sees that branch as the mirror last fetched it. When a refresh moves the ref, including a force-push, the server serves the new tip itself and every open page follows. No "X is now at <sha> · Switch" offer.
 

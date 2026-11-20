@@ -3,9 +3,10 @@ type: is
 id: is-01m7v8bs62dz0nqmqb9rnhgsdb
 title: "Branches follow the repository: a view of a branch tracks it in mirror and folder modes; a commit or the working tree stays put"
 kind: epic
-status: open
+status: in_progress
 priority: 1
-version: 5
+version: 6
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 child_order_hints:
@@ -13,8 +14,11 @@ child_order_hints:
   - is-01m7v8cv4e6sjryervx72qmn90
   - is-01m7v8cvnhxhpd84rsjmtqqrm3
   - is-01m7v8d2dzrf8cg3wrxezg9bh1
+hold: null
+hold_until: null
 created_at: 2026-11-20T01:15:32.417Z
-updated_at: 2026-11-20T01:16:14.654Z
+updated_at: 2026-11-20T01:17:55.716Z
+started_at: 2026-11-20T01:17:55.715Z
 ---
 Owner, 2026-11-19 in chat, after the macOS app's mirror of jlevy/metabrowser showed "main is now at 1d85c49 · Switch" at the foot of the nav pane:
 
