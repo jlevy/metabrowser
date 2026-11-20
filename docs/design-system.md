@@ -976,6 +976,36 @@ the toggle and the rail, the tooltip, a click, and print output, trusted and
 `--untrusted`, and `tests/dom/markdown-print-indicator-session.js` holds which mounts
 carry the button.
 
+A rendered document prints in KPress’s print model, the page KPress’s own PDF export
+draws: its `print.css` on white paper, its page margin and footer, and its static print
+faces. Its card, the app’s chrome, and the app’s theme do not print.
+
+- **Ready first.** A click on the button waits for the document before it prints
+  (`builtin_plugins/markdown/print-ready.js`, at most `PRINT_READY_BOUND_MS`): its
+  images not yet shown, which KPress loads lazily and WebKit prints as nothing; KPress’s
+  print sans, which loads only once print layout asks for it, so a print drew the
+  variable face’s Type3 outlines instead, as KPress’s export waits for it; and its
+  diagrams. Command-P waits on nothing: Chrome loads the images itself, and the app’s
+  File > Print prints what the page holds.
+- **Light paper.** While a rendered document is mounted, a print resolves the page light
+  and restores the theme after it (`holdLightPrintTheme` in `print-indicator.js`), and
+  the app’s color bridge to KPress is screen-only (`static/styles.css`), so text, links,
+  and code are KPress’s print ink whatever the theme.
+- **What WebKit leaves out.** The macOS app prints with WebKit, which resolves no custom
+  property in `@page`, applies no break rule inside a grid item or a size container, and
+  ignores `break-after: avoid`. So the page margin is KPress’s token written out
+  (`static/styles.css`, “Print adapter”); the document is one block column outside any
+  container in print; and a heading reserves room below it for the next lines, and for
+  an image under it the image’s own height, so it never ends a page alone
+  (`builtin_plugins/markdown/markdown.css`). WebKit draws no `@page` margin boxes, so
+  the app’s print has no footer or page numbers.
+- **Authored alignment.** A README’s `align="center"` logo and title stay centred, which
+  KPress’s print rule for paragraphs, justified, otherwise overrode.
+
+`tests/dom/document-print-chrome.mjs` holds the print model in Chrome, and
+`apps/macos/webkit-gate`’s driver (`webkit-driver print`) prints through the app’s own
+path for a check by hand.
+
 KPress’s `doc-actions` widget, an opt-in cluster pinned to its card’s corner, is where
 the button belongs once KPress can carry it in an embedded document, as an option the
 host turns on.
