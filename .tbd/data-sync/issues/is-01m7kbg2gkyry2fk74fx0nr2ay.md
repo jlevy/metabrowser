@@ -5,12 +5,12 @@ title: "Line totals (+N, −N) meet 4.5:1: --status-success in light and --statu
 kind: bug
 status: open
 priority: 2
-version: 3
+version: 4
 labels: []
 dependencies: []
-parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+parent_id: is-01m7wysf407hkpj5n35r533gzc
 created_at: 2026-11-16T23:36:23.312Z
-updated_at: 2026-11-20T17:01:41.980Z
+updated_at: 2026-11-20T17:17:43.103Z
 ---
 From #489 review A5 (measured from tokens at 8-bit sRGB). Changes every tree row's and file bar's stats too, so it needs the owner's choice of ink. --git-status-added/-deleted share the hues and measure >= 5.46:1 light, 5.89:1 dark on all four grounds.
 

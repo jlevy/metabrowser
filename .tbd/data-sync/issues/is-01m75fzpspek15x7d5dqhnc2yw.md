@@ -5,7 +5,7 @@ title: Render untrusted Markdown in the projection child under a wall-clock dead
 kind: task
 status: closed
 priority: 2
-version: 21
+version: 22
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/511
@@ -17,7 +17,7 @@ delegate: claude-code@spud10.local
 labels:
   - linear
 dependencies: []
-parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
+parent_id: is-01m7wyspfffhwcfcze4mke8jjp
 child_order_hints:
   - is-01m7p7s1qphz27kfk9cj68657y
   - is-01m7p7s2kagrx7ab2m94xbaf8n
@@ -33,7 +33,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-11T14:25:27.861Z
-updated_at: 2026-11-20T17:05:31.059Z
+updated_at: 2026-11-20T17:16:41.181Z
 started_at: 2026-11-17T18:30:16.884Z
 closed_at: 2026-11-17T22:00:26.100Z
 close_reason: Done in jlevy/metabrowser#527 (claude/inert-markdown-worker); handed to the landing coordinator

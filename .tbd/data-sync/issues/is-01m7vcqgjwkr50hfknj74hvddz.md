@@ -5,11 +5,12 @@ title: Lay inert Markdown documents' Mermaid diagrams out in the diagram frame
 kind: bug
 status: open
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
+parent_id: is-01m7wysdnvzch4gb5zvqwvn04e
 created_at: 2026-11-20T02:31:51.131Z
-updated_at: 2026-11-20T02:31:51.131Z
+updated_at: 2026-11-20T17:12:54.630Z
 ---
 An inert (untrusted) Markdown document's Mermaid diagrams are still laid out in the page
 (`drawDiagrams(root, {inert: true})`, KPress image placement), where the diagram's own

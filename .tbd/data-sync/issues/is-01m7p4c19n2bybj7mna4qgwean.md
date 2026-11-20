@@ -5,7 +5,7 @@ title: "Merge-ready: fdu-swap groundwork stack on the Python provider (switchove
 kind: epic
 status: in_progress
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 delegate: claude-code@vm
 labels: []
@@ -24,7 +24,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-18T01:29:34.261Z
-updated_at: 2026-11-18T01:29:42.858Z
+updated_at: 2026-11-20T17:15:49.362Z
 started_at: 2026-11-18T01:29:34.982Z
 ---
 User request 2026-11-18: 'make sure everything is ready to merge incrementally ... the parts that are possible to merge incrementally with no real operational change (cleanups and refactors with the pure Python backend), and then make the switchover something we could delay for the next release.' Mode: merge-ready (review-and-merge-prs). The nine stack PRs (#498, #501, #502, #503, #507, #508, #518, #519, #520) add no fdu provider, flag, or extra; the switchover (mb-urh5 thin adapter + experimental flag + extra, mb-e9uw macOS preference, and any default change) stays out of this release.
+
+## Notes
+
+2026-11-20 audit: All nine stack PRs (#498, #501, #502, #503, #507, #508, #518, #519, #520) are still open drafts, so their beads stay in progress. Nothing here is done until they merge.

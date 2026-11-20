@@ -5,12 +5,20 @@ title: "CI speed: finish the Fast CI plan and verify its phases"
 kind: epic
 status: open
 priority: 2
-version: 1
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 labels: []
 dependencies: []
+child_order_hints:
+  - is-01m7m3rn4x4ttt604xrtj32vff
+  - is-01m7m5vfv9h31f3b6hha08r57z
+  - is-01m7ks85cztbqgy4bw9ntv7c7s
+  - is-01m7kpnfbtzejh3redbeppejmp
+  - is-01m7kpnew2rrszv4ekchm6c75z
+  - is-01m7pj8gve71bkvxyw96nqa4yn
+  - is-01m7pjrkn0aprh3pz0m4ba5ff6
 created_at: 2026-11-20T17:06:45.512Z
-updated_at: 2026-11-20T17:06:45.512Z
+updated_at: 2026-11-20T17:19:01.064Z
 ---
 The owner asked on 2026-11-16 for a pull request's gate in 3 to 5 minutes at the same coverage. The assessment and plan merged in #496 (docs/project/specs/active/plan-2026-11-16-fast-ci.md); Phase 1 (#499, four processors) and Phase 2 (#504, parallel jobs with one ci-ok verdict) are merged, and the first measured pull requests took 4.7 to 5.5 minutes.
 

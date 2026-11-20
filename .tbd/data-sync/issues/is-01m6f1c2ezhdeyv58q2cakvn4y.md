@@ -5,16 +5,16 @@ title: "PR #272 https://github.com/jlevy/metabrowser/pull/272#discussion_r443644
 kind: bug
 status: open
 priority: 2
-version: 6
+version: 7
 delegate: claude-code@spud10
 labels:
   - upstream-tbd
 dependencies: []
-parent_id: null
+parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:06:46.878Z
-updated_at: 2026-11-14T18:43:07.566Z
+updated_at: 2026-11-20T17:27:56.207Z
 started_at: 2026-11-02T21:06:52.427Z
 ---
 Unmarked bot comment, bot severity Medium. .tbd/doc-forks/base/shortcut/review-github-pr.md:223-225, docs/tbd/shortcuts/review-github-pr.md. Upstream wording in tbd 0.10.0.

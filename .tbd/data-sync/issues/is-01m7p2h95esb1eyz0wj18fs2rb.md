@@ -5,14 +5,15 @@ title: Trusted TOC scroll-spy stops following the reader after in-app navigation
 kind: bug
 status: open
 priority: 2
-version: 3
+version: 4
 labels:
   - ui
   - toc
   - files
 dependencies: []
+parent_id: is-01m7wysdnvzch4gb5zvqwvn04e
 created_at: 2026-11-18T00:57:29.005Z
-updated_at: 2026-11-18T01:07:11.635Z
+updated_at: 2026-11-20T17:14:04.916Z
 ---
 Review A1 on jlevy/metabrowser#517 (merged as dcf2bcfa8 before the review was published).
 

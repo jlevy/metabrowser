@@ -5,7 +5,8 @@ title: "macOS app: open https GitHub repo and pull request URLs"
 kind: feature
 status: closed
 priority: 1
-version: 14
+version: 15
+spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/539
@@ -18,6 +19,7 @@ labels:
   - alpha
   - linear
 dependencies: []
+parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 child_order_hints:
   - is-01m7ps02xeyq573ycx69a5zw38
   - is-01m7ps03b12jamq4mztv5v25ec
@@ -28,7 +30,7 @@ child_order_hints:
   - is-01m7pvqa59443hvcrrczxef78t
   - is-01m7qqfgcrxaw4qrcd855nwf3a
 created_at: 2026-11-17T23:45:58.438Z
-updated_at: 2026-11-20T17:05:14.391Z
+updated_at: 2026-11-20T17:23:20.545Z
 closed_at: 2026-11-18T17:31:29.258Z
 close_reason: "Done in #539 (merged 8673780f5): the app opens GitHub links via metab --present; deferrals have their own beads."
 resolution: null

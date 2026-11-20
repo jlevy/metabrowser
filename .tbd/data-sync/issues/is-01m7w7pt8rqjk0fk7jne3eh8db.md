@@ -5,10 +5,11 @@ title: WebKit suites ran in parallel on one main thread; a web view's setup bloc
 kind: bug
 status: open
 priority: 3
-version: 3
+version: 4
 labels: []
 dependencies: []
+parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 created_at: 2026-11-20T10:23:19.832Z
-updated_at: 2026-11-20T17:12:31.507Z
+updated_at: 2026-11-20T17:21:06.012Z
 ---
 PR 640 run 44715405233 job 136217426026 (macOS 26, Xcode 26.6): GitHubViewWebKitTests.swift:213 eventually(within: 10 s) watcher.windows == 1 failed, and windowModifiers was empty. The same app code passed on PR 639 and PR 654 in the same stack. Unrelated to the change under test; rerun once.

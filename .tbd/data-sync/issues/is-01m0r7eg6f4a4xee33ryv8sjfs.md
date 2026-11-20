@@ -5,7 +5,7 @@ title: Implement the pluggable inventory engine
 kind: feature
 status: open
 priority: 1
-version: 23
+version: 24
 spec_path: docs/project/specs/active/plan-2026-08-23-pluggable-inventory-engine.md
 labels: []
 dependencies: []
@@ -28,10 +28,12 @@ child_order_hints:
   - is-01m1mva118h2a2j3b8swefvk8y
   - is-01m7rwjtqep1zqb91jyq9pnxc9
 created_at: 2026-08-23T21:11:56.857Z
-updated_at: 2026-11-20T17:08:15.913Z
+updated_at: 2026-11-20T17:15:37.781Z
 ---
 Parent for the pluggable inventory engine (docs/project/specs/active/plan-2026-08-23-pluggable-inventory-engine.md; implementation plan in plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md). Phase 1, the Python reference provider behind the sealed provider contract, shipped in v0.10.0 through #74, #99, and #101 (mb-lsgg, closed). Phase 2, the fdu provider and its adoption gates, is mb-hej8.
 
 ## Notes
 
 The semantic design and adoption gates remain in plan-2026-08-23-pluggable-inventory-engine.md. Delivery is now split by plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md into two independently shippable child features: mb-lsgg extracts the behavior-preserving Python reference provider with no fdu dependency; mb-hej8 depends on it and implements/evaluates the same contract through fdu. The atomic rollup/ETag bug mb-2cvn is a child of the Python phase. Planning work is tracked by mb-c7mk.
+
+2026-11-20 audit: The Python provider contract is merged (#101). The fdu provider is mb-hej8; its groundwork stack is open as drafts (#498, #501-#503, #507, #508, #518-#520, tracked by mb-r75q). The review items R3.3-R4 from #101 remain.

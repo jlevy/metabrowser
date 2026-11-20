@@ -5,12 +5,12 @@ title: "View headers step 2: pull requests and commits onto the shared view head
 kind: task
 status: open
 priority: 2
-version: 3
+version: 4
 labels: []
 dependencies: []
-parent_id: is-01m7pab7r3k7xe521vyg5xmrgb
+parent_id: is-01m7wysf407hkpj5n35r533gzc
 created_at: 2026-11-18T04:15:35.441Z
-updated_at: 2026-11-18T22:03:22.305Z
+updated_at: 2026-11-20T17:18:15.532Z
 ---
 Owner, 2026-11-18: "make sure that the headers are better organized for consistency on files, PRs, and commits"; "the overall layout of the header material, the heading, and the metadata below it, and then the tabs ... should all be similarly styled"; "Eyebrow should be optional"; "about white versus gray backgrounds and border lines all of this should have a consistent design system."
 

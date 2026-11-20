@@ -5,7 +5,7 @@ title: "v0.12 follow-ups: deferred QA, dependency refresh, and defects found in 
 kind: epic
 status: open
 priority: 1
-version: 50
+version: 51
 labels: []
 dependencies: []
 child_order_hints:
@@ -58,6 +58,10 @@ child_order_hints:
   - is-01m3wjge2pn6nf3cvcvpbbdx2z
   - is-01m6f3nm5xr0xc912vqyky74hz
 created_at: 2026-10-03T05:04:57.396Z
-updated_at: 2026-11-15T05:57:20.917Z
+updated_at: 2026-11-20T17:16:00.423Z
 ---
 0.12.0 was tagged at main 87b8ec81 and published on GitHub and PyPI on 2026-11-09 (mb-4bd2, closed). This epic holds what the v0.12 stabilization left open after the release: the deferred full QA runbook (mb-m20f), the post-release dependency refresh (mb-1jq3), and small defects that the reviews and browser checks of stack 278 (PRs #272-#277) and PR #279 found on main. Fixes ship in 0.12.x or later. A green merge or CI run alone does not establish QA acceptance: keep explicit pass/fail/untested results, and the human-only checks in mb-etqi.
+
+## Notes
+
+2026-11-20 audit: Release QA and defects from v0.12 stabilization: the runbook run (mb-m20f), the owner's sign-off (mb-etqi), the folder comparison (mb-8pyc) and the P2-P4 defects. Unchanged by the audit apart from mb-q9jg and mb-ur22 joining it.

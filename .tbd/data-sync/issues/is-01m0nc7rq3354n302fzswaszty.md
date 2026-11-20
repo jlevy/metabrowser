@@ -5,11 +5,12 @@ title: Remote agent sessions ship a toolchain older than the repo requires
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
+parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
 created_at: 2026-08-22T18:37:55.811Z
-updated_at: 2026-08-22T18:37:55.811Z
+updated_at: 2026-11-20T17:28:08.710Z
 ---
 A Claude Code remote session starts with uv 0.8.17 and Node 22.22.2 / npm 10.9.7. The repository requires uv >= 0.11.26 (uv.toml required-version) and Node 24.18.0 with npm >= 11.10 (.node-version, .npmrc min-release-age).
 

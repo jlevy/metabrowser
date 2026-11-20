@@ -5,7 +5,7 @@ title: "Object data model and views: plan and decisions"
 kind: epic
 status: open
 priority: 2
-version: 18
+version: 19
 spec_path: docs/project/specs/active/plan-2026-11-14-object-data-model-and-views.md
 labels: []
 dependencies: []
@@ -27,6 +27,10 @@ child_order_hints:
   - is-01m7kcj1zhedcbge81ch06x6pk
   - is-01m7r76k6f8m2een1fvgt1a1ea
 created_at: 2026-11-15T07:48:21.218Z
-updated_at: 2026-11-19T06:36:23.227Z
+updated_at: 2026-11-20T17:17:01.550Z
 ---
 Design (not yet implementation) of one object data model with multiple views, a view state agents can read and change, and the Recent tab. Six plan specs, all decisions taken 2026-11-18 (PR #570): the object data model and views (docs/project/specs/active/plan-2026-11-14-object-data-model-and-views.md, Decisions 1 to 23), the view model and view state (VM-1 to VM-10), the Recent tab (RT-1 to RT-7), the agent interface (AI-1 to AI-6; the CLI is the complete agent surface), plugin authoring (PS-1 to PS-7), and the implementation map (Ordering 2: groundwork, then working-tree changes, with the view slice and the /pulls stack in parallel). Implementation lands on separate stacks after #570 merges.
+
+## Notes
+
+2026-11-20 audit: The object model, view model, Recent tab, agent interface, host mode, plugin authoring and implementation map are in plan PR #570 (open, mb-aumr in progress). Host mode's beads are the epic mb-ycjx.

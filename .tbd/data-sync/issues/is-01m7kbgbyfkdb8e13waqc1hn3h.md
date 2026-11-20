@@ -5,7 +5,7 @@ title: Muted secondary text (the --muted token) meets 4.5:1 on raised and hover 
 kind: task
 status: open
 priority: 3
-version: 3
+version: 4
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/489
@@ -13,8 +13,8 @@ refs:
 labels:
   - linear
 dependencies: []
-parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+parent_id: is-01m7wysf407hkpj5n35r533gzc
 created_at: 2026-11-16T23:36:32.973Z
-updated_at: 2026-11-20T17:01:40.586Z
+updated_at: 2026-11-20T17:17:49.901Z
 ---
 From #489 review A6. Real text uses it: the Diff summary's (estimated) and (N listed) notes inside a hovered toggle read at 4.06:1. A token audit, not a punctuation fix.

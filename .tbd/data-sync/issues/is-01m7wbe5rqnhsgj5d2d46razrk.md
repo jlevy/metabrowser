@@ -5,11 +5,12 @@ title: "test_golden_pin_age_groups failed once on CI (Python 3.12): all 7 files 
 kind: bug
 status: open
 priority: 1
-version: 4
+version: 5
 labels: []
 dependencies: []
+parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 created_at: 2026-11-20T11:28:30.998Z
-updated_at: 2026-11-20T17:06:08.127Z
+updated_at: 2026-11-20T17:20:42.362Z
 ---
 
 ## Notes

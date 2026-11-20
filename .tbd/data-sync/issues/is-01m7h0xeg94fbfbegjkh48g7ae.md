@@ -5,15 +5,16 @@ title: "PR #455 B2: on the app's start the store holds identity bytes the app's 
 kind: bug
 status: open
 priority: 2
-version: 3
+version: 4
+spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
-parent_id: is-01m7h0wnsjyz9enemj0de4q5wg
+parent_id: is-01m774q0ep0jq6vhb790rart0v
 hold: null
 hold_until: null
 created_at: 2026-11-16T01:52:58.376Z
-updated_at: 2026-11-16T02:08:49.845Z
+updated_at: 2026-11-20T17:23:55.540Z
 started_at: 2026-11-16T01:53:15.183Z
 ---
 Severity: Medium. PR #455 (https://github.com/jlevy/metabrowser/pull/455), review B (https://github.com/jlevy/metabrowser/pull/455#pullrequestreview-5914011305), finding B2. References: src/metabrowser/delivery.py:138-142; src/metabrowser/encoded_assets.py:91-101, :163-179.

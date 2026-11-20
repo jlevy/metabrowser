@@ -5,16 +5,17 @@ title: "Markdown: measure the enhancement and transclusion bounds, and add real-
 kind: bug
 status: open
 priority: 2
-version: 7
+version: 8
 labels:
   - markdown
 dependencies:
   - type: blocks
     target: is-01m2f38npt37vtbyys1t8bgp7s
+parent_id: is-01m7wysdnvzch4gb5zvqwvn04e
 child_order_hints:
   - is-01m2f0fb55v9h6480r6cfx514k
 created_at: 2026-09-13T21:38:14.114Z
-updated_at: 2026-11-14T18:48:34.425Z
+updated_at: 2026-11-20T17:13:32.020Z
 ---
 Remaining from the v0.9.2 release review (Markdown lane). PR #114 fixed the shared transclusion deadline, task-box bracket pairing, the truncated-catalog final state and per-mount Worker construction.
 

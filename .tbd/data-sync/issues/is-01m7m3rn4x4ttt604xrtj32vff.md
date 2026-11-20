@@ -5,13 +5,13 @@ title: "CI speed 1.6: finish Phase 1's 10-run acceptance on #499 (7 more CI atte
 kind: task
 status: open
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 labels: []
 dependencies: []
-parent_id: is-01m7kh4k0qtd75277xcq14dt1b
+parent_id: is-01m7wysgm9rg3fdch55nst1wrn
 created_at: 2026-11-17T06:40:30.364Z
-updated_at: 2026-11-17T08:28:36.701Z
+updated_at: 2026-11-20T17:18:35.004Z
 ---
 The plan's Testing Strategy asks for 10 runs of the pull request for the xdist row, the admitted-git row, and the concurrent goldens. #499 (CI run 44026747033 at d5a05e20) has three green attempts: the parallel tier ran 2.0 to 2.4 times faster than one process (bar 2.3), with up to 54 percent run-to-run variation, recorded in plan section Phase 1 Measurements. Rerun until 10 green attempts or a failure that a serial run does not have; append the numbers to Phase 1 Measurements. If the median factor stays under 2.3, Phase 2 (mb-oz36) splits unit in two with SHARD=I/2 from the start. Optional measurement: PYTEST_WORKERS above 4, since the tests spawn Git, Node, and metab processes and each ran 1.1 to 1.8 times slower beside the others.
 

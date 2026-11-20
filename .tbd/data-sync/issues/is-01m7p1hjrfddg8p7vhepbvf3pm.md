@@ -5,13 +5,14 @@ title: "Structured viewer: YAML aliases expand unbounded in /api/plugin/structur
 kind: bug
 status: open
 priority: 1
-version: 2
+version: 3
 labels:
   - security
   - alpha
 dependencies: []
+parent_id: is-01m7wysdnvzch4gb5zvqwvn04e
 created_at: 2026-11-18T00:40:10.254Z
-updated_at: 2026-11-18T03:36:37.607Z
+updated_at: 2026-11-20T17:13:03.811Z
 ---
 Found while fixing mb-yqv2 (PR #542): builtin_plugins/structured/parser.py parses whole .yaml files with the safe loader, counts nodes and JSON-encodes the parsed tree, so it expands aliases: a 6-level 267-byte file gives node_count 672,604 (probe: .claude/worktrees/frontmatter-alias-bomb/attic/probe_structured.py). Reuse frontmatter_yaml.py's _Walk with a larger measured budget; refuse with a visible reason.
 

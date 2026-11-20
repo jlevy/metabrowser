@@ -5,11 +5,13 @@ title: "Content typing: record sniff results during the inventory crawl"
 kind: feature
 status: open
 priority: 3
-version: 3
+version: 4
+spec_path: TODO.md
 labels: []
 dependencies: []
+parent_id: is-01kxnx985gd2k5epmcswersqdk
 created_at: 2026-08-15T23:05:57.359Z
-updated_at: 2026-11-14T18:45:09.010Z
+updated_at: 2026-11-20T17:27:23.997Z
 extensions:
   linear:
     id: d108e0bd-8e3e-4a4a-beb2-41e2cad50ed2

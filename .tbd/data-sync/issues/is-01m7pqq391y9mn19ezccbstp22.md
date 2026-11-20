@@ -5,11 +5,11 @@ title: "Projection-thread budget: in-budget projections take 1.1-1.3 s in the se
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
 labels: []
 dependencies: []
-parent_id: is-01m75fzpspek15x7d5dqhnc2yw
+parent_id: is-01m7wyspfffhwcfcze4mke8jjp
 created_at: 2026-11-18T07:07:39.680Z
-updated_at: 2026-11-18T07:07:39.680Z
+updated_at: 2026-11-20T17:16:36.344Z
 ---
 From PR #527 review E6: 250-256 [ then % to 48 KiB takes 1,073-1,339 ms in the server thread, against 222-268 ms recorded beside the budget. Re-measure and set the projection budget, or always project in the child.

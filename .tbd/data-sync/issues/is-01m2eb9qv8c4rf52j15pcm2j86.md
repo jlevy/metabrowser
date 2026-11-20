@@ -5,14 +5,14 @@ title: Simplify catalog, feed, file preview, and Markdown engines per release re
 kind: epic
 status: open
 priority: 3
-version: 3
+version: 4
 labels:
   - simplification
 dependencies: []
 child_order_hints:
   - is-01m2h3tmn24f6ghdrzd28ywjs3
 created_at: 2026-09-13T21:38:14.503Z
-updated_at: 2026-11-14T18:48:40.080Z
+updated_at: 2026-11-20T17:18:00.385Z
 ---
 Simplifications proposed by the release senior reviews. Each would remove a class of bugs found in release review, but each is a refactor that needs its own measured change and should not ride on a release:
 
@@ -30,3 +30,5 @@ Markdown (Markdown lane):
 ## Notes
 
 2026-11-14 audit: all seven items still apply on main. mb-e22r (wiki resolver suffix-query keys) is proposed as a child, since item 6 removes the suffix state machines it concerns.
+
+2026-11-20 audit: Release-review simplifications; one child (mb-e22r) is open.

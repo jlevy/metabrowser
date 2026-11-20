@@ -5,7 +5,7 @@ title: "Host mode H7: control verbs (identity, present, clients, close) on an ow
 kind: feature
 status: open
 priority: 2
-version: 12
+version: 13
 spec_path: docs/project/specs/active/plan-2026-11-18-host-mode.md
 labels: []
 dependencies:
@@ -15,9 +15,9 @@ dependencies:
     target: is-01m7ezsmcn4k6h57vwcaxq9tsx
   - type: blocks
     target: is-01m748y1pa5yyy4wf2t16cpf0y
-parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
+parent_id: is-01m7wysrh5ggf7dm4xvqm8dmmp
 created_at: 2026-11-11T03:02:53.232Z
-updated_at: 2026-11-19T16:59:18.774Z
+updated_at: 2026-11-20T17:21:49.504Z
 ---
 Host mode plan step H7, the control socket (docs/project/specs/active/plan-2026-11-18-host-mode.md, Implementation Plan and Reaching a Gated Server; Decisions HM-1 A and HM-4 A, taken 2026-11-19). After discovery (mb-baee), whose server record names the socket's path, and before the token (mb-qzny).
 

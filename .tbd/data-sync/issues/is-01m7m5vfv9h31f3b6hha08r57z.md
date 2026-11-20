@@ -5,13 +5,13 @@ title: "CI speed 2.5: verify Phase 2 after the merge: 20 pull request runs, a re
 kind: task
 status: open
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 labels: []
 dependencies: []
-parent_id: is-01m7kh4k0qtd75277xcq14dt1b
+parent_id: is-01m7wysgm9rg3fdch55nst1wrn
 created_at: 2026-11-17T07:17:00.392Z
-updated_at: 2026-11-17T17:02:10.817Z
+updated_at: 2026-11-20T17:18:38.728Z
 ---
 After-merge acceptance of Fast CI Phase 2 (jlevy/metabrowser#504, branch claude/ci-split-jobs), from the accept criteria of mb-oz36, mb-r283, and mb-stg2 that need runs only a merged workflow can produce. plan-2026-11-16-fast-ci.md, Testing Strategy.
 

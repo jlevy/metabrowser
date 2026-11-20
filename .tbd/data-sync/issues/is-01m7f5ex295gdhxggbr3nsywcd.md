@@ -5,12 +5,12 @@ title: KPress styles every details in a .kpress article as a disclosure box; sco
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
 labels: []
 dependencies: []
-parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+parent_id: is-01m7wysdnvzch4gb5zvqwvn04e
 created_at: 2026-11-15T08:33:55.785Z
-updated_at: 2026-11-15T08:33:55.785Z
+updated_at: 2026-11-20T17:14:44.604Z
 ---
 Raised in the Design Assessment of review A on PR #447 (https://github.com/jlevy/metabrowser/pull/447#pullrequestreview-5909858397).
 

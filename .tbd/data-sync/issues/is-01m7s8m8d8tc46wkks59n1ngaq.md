@@ -5,16 +5,18 @@ title: "Site-neutral in-app web views: a web pane, per-site profiles, one shared
 kind: task
 status: closed
 priority: 2
-version: 4
+version: 5
+spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 delegate: claude-code@spud10
 labels: []
 dependencies:
   - type: blocks
     target: is-01m7s8m8y3w8ktzkpxjfet7eba
+parent_id: is-01m7wysqjj7ps8vx91xva66k54
 hold: null
 hold_until: null
 created_at: 2026-11-19T06:41:41.287Z
-updated_at: 2026-11-19T06:57:54.716Z
+updated_at: 2026-11-20T17:16:55.361Z
 started_at: 2026-11-19T06:41:50.319Z
 closed_at: 2026-11-19T06:57:54.713Z
 close_reason: "PR #602"

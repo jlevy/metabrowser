@@ -5,7 +5,7 @@ title: "Spec: switch folders in a macOS app window"
 kind: epic
 status: open
 priority: 2
-version: 22
+version: 23
 spec_path: docs/project/specs/active/plan-2026-11-18-macos-folder-switching.md
 refs:
   - kind: pr
@@ -47,7 +47,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-18T20:25:51.840Z
-updated_at: 2026-11-20T17:08:04.966Z
+updated_at: 2026-11-20T17:17:37.219Z
 started_at: 2026-11-18T20:58:34.140Z
 ---
 A window shows any open folder in place; folders a window switches away from stay open in the background; the title is a native chooser of open and recent folders with an always-shown chevron and a hover surface; a native switcher panel; marks shared with the page. Native chrome, design-system content. Draft awaiting the owner's answers to Q1-Q5.
@@ -55,3 +55,5 @@ A window shows any open folder in place; folders a window switches away from sta
 ## Notes
 
 2026-11-20 audit: moved from in_progress back to open. The stack (#565 plan, #566, #568, #575, #578) is merged and no PR is open; the description's 'Draft awaiting the owner's answers' is superseded. What remains is mb-89bu (app tests, live tests and screenshot set), mb-q2hc (an app test target), mb-6ccy (stays open until the hand checks are run), mb-so7f (rename the window-named page events), and mb-bvla (keep the open-folder order across a relaunch).
+
+2026-11-20 audit: Folder switching merged (#565-#578). The four open children and mb-bvla are test, parity-hand-check and rename follow-ups.

@@ -5,12 +5,13 @@ title: Dismiss the narrow Markdown Contents drawer with Escape
 kind: bug
 status: open
 priority: 2
-version: 3
+version: 4
 labels:
   - markdown
 dependencies: []
+parent_id: is-01m7wysdnvzch4gb5zvqwvn04e
 created_at: 2026-11-09T00:19:21.592Z
-updated_at: 2026-11-14T18:45:21.645Z
+updated_at: 2026-11-20T17:14:10.033Z
 ---
 The built-in browser on installed 0.11.1.dev1304+b2fb62099 opened the narrow Markdown Contents drawer from its button and closed it when a heading was selected. On a disposable long Markdown document, Escape did not close the reopened drawer in either of two attempts. The Markdown Reading Layout check in docs/e2e-testing.md expects Escape dismissal. Neither the inert TOC (builtin_plugins/markdown/inert-toc.js) nor KPress 0.3.5's toc.js handles Escape, so the trusted path's fix may belong upstream in KPress (see mb-jybd).
 

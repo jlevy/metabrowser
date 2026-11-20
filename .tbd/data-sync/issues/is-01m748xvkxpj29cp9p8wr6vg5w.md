@@ -5,15 +5,15 @@ title: "Host mode H5: per-root find-or-start lock, so a root has at most one liv
 kind: feature
 status: open
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-18-host-mode.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m748xwwxrrvvnb49fw9ez5ra
-parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
+parent_id: is-01m7wysrh5ggf7dm4xvqm8dmmp
 created_at: 2026-11-11T03:02:52.796Z
-updated_at: 2026-11-19T16:59:16.888Z
+updated_at: 2026-11-20T17:21:43.949Z
 ---
 Host mode plan step H5, its lock (docs/project/specs/active/plan-2026-11-18-host-mode.md, Implementation Plan and Discovery; Decision HM-1 A, taken 2026-11-19). Discovery, which the lock reads to find a server, is mb-baee (H3).
 

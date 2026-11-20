@@ -5,10 +5,11 @@ title: test_github_ref_pulls timed the publisher's fsyncs against the busy timeo
 kind: bug
 status: open
 priority: 3
-version: 3
+version: 4
 labels: []
 dependencies: []
+parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 created_at: 2026-11-20T16:25:42.268Z
-updated_at: 2026-11-20T17:04:16.628Z
+updated_at: 2026-11-20T17:20:01.157Z
 ---
 PR 655 run 44771960710 job 136411653812 (admitted-git 2.43.7): assert time.monotonic() - began < 0.25 failed at 0.35 s. A wall-clock bound this tight fails on a loaded runner; unrelated to the change under test. Rerun once; consider a bound that does not depend on runner load.

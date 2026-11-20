@@ -5,7 +5,7 @@ title: Implement and evaluate the fdu inventory provider
 kind: feature
 status: open
 priority: 1
-version: 39
+version: 40
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 labels: []
 dependencies: []
@@ -49,10 +49,12 @@ child_order_hints:
   - is-01m7p4c19n2bybj7mna4qgwean
   - is-01m7bbsczjpsn8sc1xpj7vbhad
 created_at: 2026-08-23T21:37:47.300Z
-updated_at: 2026-11-20T17:08:18.172Z
+updated_at: 2026-11-20T17:15:43.996Z
 ---
 Phase 2 of the inventory-provider implementation plan. Prove the real PyO3 seam, implement the fdu Rust library behind the same InventoryHandle contract without mirror state, run the shared parity and reliability suites, measure Python versus fdu at the engine/server/browser layers, and add automatic selection only if the adoption gates pass.
 
 ## Notes
 
 Final PR101 review establishes native adoption gates: native aggregate projections without rebuilding a Python inventory graph, recovery/session policy (mb-6o0l), useful pinned-page completion and explicit eviction under churn (contract now states semantics; current Python behavior fixed in mb-6elt), text/stream walk semantics (mb-iyu7), and measured binding/readback costs (mb-l2eh). The Python stack can merge separately after full verification.
+
+2026-11-20 audit: The merge-ready groundwork stack (mb-r75q) is open as draft PRs #498, #501-#503, #507, #508, #518-#520; the owner marks them ready and merges. The switchover (mb-urh5, mb-e9uw) is deferred to the next release, and the upstream fdu groups (mb-xd56, mb-sdqe, mb-bve2, mb-77tq, mb-pvc4) wait on fdu.

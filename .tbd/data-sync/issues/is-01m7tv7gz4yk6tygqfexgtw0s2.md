@@ -5,7 +5,7 @@ title: Tabular data browsing and live SQLite
 kind: epic
 status: open
 priority: 2
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
 labels:
   - linear
@@ -26,6 +26,10 @@ child_order_hints:
   - is-01m7vtd571483vj430fqd5tw4y
   - is-01m7v9mwy0ye52geq4eqdxwz5a
 created_at: 2026-11-19T21:26:01.444Z
-updated_at: 2026-11-20T17:08:13.026Z
+updated_at: 2026-11-20T17:16:46.616Z
 ---
 Generic table plugin (UI, query model, source protocol) with source plugins for CSV/TSV, record lists, and SQLite; nondestructive live SQLite reads; live reload for open files. See the spec.
+
+## Notes
+
+2026-11-20 audit: Plan merged (#617); the owner adopted each key decision's recommendation on 2026-11-20 (mb-nv9k), and Decision 12 can be revisited before Phase 7. Stack PRs #649 (Phase 1, declared plugin dependencies) and #656 (Phase 2, table protocol and CSV/TSV) are open drafts; Phases 3 to 8 have no PR yet. mb-cggp (SQLite POSIX locks) was added.

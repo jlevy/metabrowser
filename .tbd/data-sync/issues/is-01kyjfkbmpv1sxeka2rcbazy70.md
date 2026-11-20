@@ -5,11 +5,12 @@ title: Derive CLI mode/option metadata from one declarative table
 kind: chore
 status: open
 priority: 3
-version: 3
+version: 4
 labels: []
 dependencies: []
+parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
 created_at: 2026-07-27T19:07:34.422Z
-updated_at: 2026-08-16T08:06:39.761Z
+updated_at: 2026-11-20T17:27:32.445Z
 extensions:
   linear:
     id: 2f6c78dc-7e7a-4ed8-adb9-00d2ec586432

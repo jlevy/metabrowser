@@ -5,11 +5,13 @@ title: "Storage: cut the per-call ancestor walk cost (getattrlist, batching)"
 kind: task
 status: open
 priority: 3
-version: 2
+version: 3
+spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies: []
+parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 created_at: 2026-11-14T09:02:41.001Z
-updated_at: 2026-11-14T18:44:37.712Z
+updated_at: 2026-11-20T17:24:38.593Z
 ---
 Follow-up from #422 (mb-89zo): after held directory descriptors, the ancestor walk (an lstat plus an ACL read per ancestor, per walk) is most of the remaining private-storage cost: 25,722 of 37,733 GIL-releasing calls in a Pulls session at a 12-deep home.
 

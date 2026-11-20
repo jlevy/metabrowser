@@ -5,7 +5,7 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: open
 priority: 1
-version: 113
+version: 116
 delegate: codex@spud10
 labels:
   - linear
@@ -92,10 +92,12 @@ child_order_hints:
   - is-01m758dtc7p78btkjrhc1xfkqv
   - is-01m7nr76frgc8gdmbj2j53zknw
   - is-01m7nr7j5vjsjbxwa2trt2wecq
+  - is-01m7ey9zd5446r5ag56emsanha
+  - is-01m7pn8phe80x1yskgq3v2kk6c
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-20T17:00:14.788Z
+updated_at: 2026-11-20T17:26:26.727Z
 started_at: 2026-11-07T05:39:51.585Z
 ---
 The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. The delivered layers, native stacks #302 and #339, are merged and shipped in 0.12.0. The open children hold the rest: large-PR performance (mb-9n12, mb-4ifm, mb-jwfx, mb-ivvw), the folder comparison re-run (mb-8pyc), the owner's walkthrough (mb-i9ll), and the paused working-tree workflow design (mb-itzy).
@@ -201,3 +203,5 @@ The installed b2fb browser showed Open 2, Closed 325 and All 327 without Reload,
 Scoped Unicode, reconnect, Treemap, QA document and SDK fixes delivered. PR/Git performance and broader release work remain on their respective beads. The user keeps mb-itzy paused and #341 separate. Draft #247 is reference only.
 
 2026-11-14 audit: stacks #302 and #339 are in v0.12.0; no activity on this epic or its open children since 2026-11-09, so back to open.
+
+2026-11-20 audit: Large-repository PR review shipped across the 0.12 line. Open: measured prefetching (mb-4ifm), quiet-machine timings (mb-jwfx), the Files workflow for working trees (mb-itzy moved to mb-1tvg), and the owner walk-through of real PRs (mb-i9ll). The eleven #527 follow-ups moved to mb-p9i5; mb-fu5b and mb-z849 were added.

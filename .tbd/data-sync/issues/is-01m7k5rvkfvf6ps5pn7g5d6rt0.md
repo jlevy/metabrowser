@@ -5,12 +5,12 @@ title: "macOS app: launch the built development app in macos-app.yml"
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-16-macos-app-publishing.md
 labels: []
 dependencies: []
-parent_id: is-01m7k1vctj6d370jg7hqdps4hk
+parent_id: is-01m7hgpc9550w78kmwqsvv64xh
 created_at: 2026-11-16T21:56:19.694Z
-updated_at: 2026-11-16T21:56:19.694Z
+updated_at: 2026-11-20T17:25:20.866Z
 ---
 Phase 2 of the publishing plan (PR #485 A16). After make macos-app, macos-app.yml opens the development bundle on a scratch folder, waits for its server to answer, quits the app, and checks that no server process is left, failing the job on any miss. No secrets, no signing. Done when the step passes in CI and fails on a deliberately broken launch in a test run.

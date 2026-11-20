@@ -5,7 +5,7 @@ title: "Aggregate delivery: compute once, push incrementally"
 kind: epic
 status: open
 priority: 3
-version: 17
+version: 18
 labels: []
 dependencies: []
 child_order_hints:
@@ -22,7 +22,7 @@ child_order_hints:
   - is-01m0hfmknkz8znnb2m9gm4x8d4
   - is-01m0jt3f1hdn6aqt75q7ct5bpn
 created_at: 2026-08-20T21:02:05.941Z
-updated_at: 2026-11-14T18:43:35.281Z
+updated_at: 2026-11-20T17:17:50.619Z
 ---
 Metabrowser delivers two kinds of inventory state, and only one is done well.
 
@@ -56,3 +56,5 @@ scope or pushing per-directory aggregate deltas rather than entries.
 ## Notes
 
 2026-11-14 audit: the steady state is compute-once through mb-l8oy (ETag) and mb-weoj (coalescing); see arch-state-and-delivery.md, What Is Not Solved. Open: mb-gqci (push deltas, deferred), mb-65mg (per-write tallies; overlaps mb-0cmt, H34, under mb-ww58), and mb-9696 (filtered-tree memo). Priority now matches its open children.
+
+2026-11-20 audit: Aggregate delivery: one deferred feature (mb-gqci) and mb-9696 (a cacheable recency filter) remain.
