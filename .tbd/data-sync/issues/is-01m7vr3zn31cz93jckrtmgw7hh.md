@@ -3,11 +3,30 @@ type: is
 id: is-01m7vr3zn31cz93jckrtmgw7hh
 title: "Agent operations Phase 2: basic views"
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 6
-labels: []
+version: 11
+spec_path: docs/project/specs/active/plan-2026-11-19-agent-operations-views.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/639
+    at: 2026-11-20T17:03:52.150Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/640
+    at: 2026-11-20T17:03:52.163Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/648
+    at: 2026-11-20T17:03:52.163Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/654
+    at: 2026-11-20T17:03:52.163Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/655
+    at: 2026-11-20T17:03:52.163Z
+labels:
+  - linear
 dependencies: []
+parent_id: is-01m7wysc4mfcdyek4vgsexz8y9
 child_order_hints:
   - is-01m7vr4448r7931hqrsp5b41ax
   - is-01m7vr44k9m78ppvrwyg9bedcn
@@ -15,6 +34,14 @@ child_order_hints:
   - is-01m7vr45rqhdjbqk3bnhwajc6b
   - is-01m7vr46rebr2dvrg54t7sfqsj
 created_at: 2026-11-20T05:50:54.106Z
-updated_at: 2026-11-20T05:51:01.389Z
+updated_at: 2026-11-20T17:12:21.155Z
+closed_at: 2026-11-20T16:33:13.134Z
+close_reason: "Phase 2 merged: the stack #639-#655 landed as ab64b5c"
+resolution: null
+duplicate_of: null
+extensions:
+  linear:
+    id: 02205b4c-36cf-4a16-b9bd-147784dadf0e
+    linked_at: 2026-11-20T16:53:01.072Z
 ---
 Phase 2 of docs/project/specs/active/plan-2026-11-19-agent-operations-views.md: SDK additions, the agents plugin, shared model and kinds, catalog and routes, home/session list/session page/live strip. Lands as a stack of PRs.

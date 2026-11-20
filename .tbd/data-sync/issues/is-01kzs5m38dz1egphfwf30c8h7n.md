@@ -5,7 +5,7 @@ title: Repository library and hosted-review roadmap
 kind: epic
 status: open
 priority: 2
-version: 96
+version: 98
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: claude-code@spud10.local
 labels: []
@@ -73,10 +73,11 @@ child_order_hints:
   - is-01m5wd9jf0zw7bwh0f8qk5eqw5
   - is-01m3w3xzvv8g0y0hrjrs4npp8x
   - is-01m3w465p1fgn0da5w3cgxknpj
+  - is-01m7r7q9er548vppawgpbk6dyj
 hold: null
 hold_until: null
 created_at: 2026-08-11T19:43:35.692Z
-updated_at: 2026-11-14T18:48:32.117Z
+updated_at: 2026-11-20T17:16:31.445Z
 started_at: 2026-09-16T21:10:44.764Z
 extensions:
   linear:
@@ -121,3 +122,5 @@ Spec status refreshed on #216 (repo library + hosted review) and #209 (HTML).
 2026-09-22 completed review/publication: https://github.com/jlevy/metabrowser/pull/225 is the ready-for-review eighth layer of Stack 218, head ff94e3676bf0f7caab7a8bdfdbb18eb8b1f8e1c9 over #216 b3c001a96eed64eb77961c2b7165b103af98b77c. The original seven heads and exact chain are unchanged. All seven CI checks passed: https://github.com/jlevy/metabrowser/actions/runs/35803858717 . Local make verify passed (3112 pytest tests, two skips, 147 CLI transcript checks, dependency audits and installed-wheel/distribution checks); pre-push gate passed. Real unmodified Git 2.50.1 CLI T0 smoke passed for cold/warm acquisition, nested Markdown/JSON/tree/progress, origin-absent reuse, and local filesystem inspection. Independent Astra plan review found no actionable plan blocker: https://github.com/jlevy/metabrowser/pull/225#issuecomment-5787107670 . Full top-level review: https://github.com/jlevy/metabrowser/pull/216#issuecomment-5786877244 . #136/#139 later functional deltas received independent technical review; #217/#216 acceptance remains open. New finding mb-sumg and future installed/browser acceptance mb-gnr9 remain open. Specs, QA procedure, roadmap, active release labels, PR descriptions and dependency graph are reconciled. mb-xada historical handoff is closed; #219/mb-dbue remain open awaiting a released tbd replacement. All future work extends Stack 218 and the whole stack stays held for stabilization and explicit landing approval. No GitHub URL/PR end-to-end pass, merge or release is claimed.
 
 2026-11-14 audit: v0.12.0 tagged 2026-11-08. The 2026-09 handoff notes above are historical. mb-cbak, mb-lnkl, and mb-iw1v shipped under mb-8rpp; the chooser mb-vmzy moved to mb-1apq.
+
+2026-11-20 audit: The thin mirror landed in v0.12. Open: the generic Git catalog (mb-0ybg), hosted releases (mb-7srn), Windows ACLs (mb-pyqf), large-repository acquisition (mb-dqvj), and deferred SSH, GitLab and issue-timeline work. mb-n0it (what to do with reference PR #247) was added.

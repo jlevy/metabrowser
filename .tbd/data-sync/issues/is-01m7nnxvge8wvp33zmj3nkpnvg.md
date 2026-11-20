@@ -5,20 +5,29 @@ title: "Skill and docs: use --present, document sandbox settings"
 kind: task
 status: closed
 priority: 2
-version: 3
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/562
+    at: 2026-11-20T17:01:31.613Z
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 hold: null
 hold_until: null
 created_at: 2026-11-17T21:17:09.517Z
-updated_at: 2026-11-18T18:16:43.915Z
+updated_at: 2026-11-20T18:00:14.162Z
 started_at: 2026-11-18T17:26:05.252Z
 closed_at: 2026-11-18T18:16:43.914Z
 close_reason: "Done in #562 (merged 3c864fe88): the skill and docs use --present and document sandbox settings, with the full-access warning."
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: e714e01f-d3bc-4f80-a68c-55836f366476
+    linked_at: 2026-11-20T18:00:14.160Z
 ---
 Phase 1 part of mb-ko5d. skills/metabrowser/SKILL.md Hand the User a Page uses --present; keep the --no-open server path; document Claude Code excludedCommands and Codex prefix approval. Update command-line.md, macos-app.md, arch-macos-app.md, arch-cli.md, CHANGELOG.md.

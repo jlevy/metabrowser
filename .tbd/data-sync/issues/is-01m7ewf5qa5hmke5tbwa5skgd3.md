@@ -5,12 +5,12 @@ title: "Wiki parser heading regexes backtrack superlinearly; ATX closing # needs
 kind: bug
 status: open
 priority: 3
-version: 1
+version: 2
 labels: []
 dependencies: []
-parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+parent_id: is-01m7wysdnvzch4gb5zvqwvn04e
 created_at: 2026-11-15T05:56:47.465Z
-updated_at: 2026-11-15T05:56:47.465Z
+updated_at: 2026-11-20T17:13:55.450Z
 ---
 Deferred from review A on PR #437 (mb-a9be), suggestion A6: https://github.com/jlevy/metabrowser/pull/437#pullrequestreview-5909332132
 

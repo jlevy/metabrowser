@@ -5,12 +5,13 @@ title: "macOS app: Open URL… offers 'borrow from the checkout' and 'open the c
 kind: feature
 status: open
 priority: 2
-version: 1
+version: 2
+spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
 labels: []
 dependencies: []
-parent_id: is-01m7ksbn803jhw15qjc6beg7qf
+parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 created_at: 2026-11-18T16:46:02.092Z
-updated_at: 2026-11-18T16:46:02.092Z
+updated_at: 2026-11-20T17:23:09.088Z
 ---
 Follows mb-m4mg, whose first release (File > Open URL…, stacked on #539) opens a supported GitHub URL in the repository's mirror, always, and offers no checkout: neither the app nor metab can yet tell that a checkout of a URL's repository is known, so per the owner's direction that part was not built.
 

@@ -5,12 +5,13 @@ title: Upstream tryscript fixes from the metabrowser golden migration
 kind: task
 status: open
 priority: 2
-version: 4
+version: 5
 labels:
   - tryscript
 dependencies: []
+parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
 created_at: 2026-07-27T23:36:00.205Z
-updated_at: 2026-11-14T18:46:53.152Z
+updated_at: 2026-11-20T17:27:38.288Z
 extensions:
   linear:
     id: 1434375c-de30-4a72-8d68-dbb68115ba2b

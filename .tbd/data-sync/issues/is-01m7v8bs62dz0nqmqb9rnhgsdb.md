@@ -5,9 +5,10 @@ title: "Branches follow the repository: a view of a branch tracks it in mirror a
 kind: epic
 status: in_progress
 priority: 1
-version: 8
+version: 11
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 child_order_hints:
   - is-01m7v8ctk4af96q7ykmb5psdd7
@@ -18,8 +19,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-20T01:15:32.417Z
-updated_at: 2026-11-20T01:21:55.511Z
+updated_at: 2026-11-20T18:02:02.537Z
 started_at: 2026-11-20T01:17:55.715Z
+extensions:
+  linear:
+    id: 77827478-a935-4840-ae95-ebfb068a7f1d
+    linked_at: 2026-11-20T18:02:02.533Z
 ---
 Owner, 2026-11-19 in chat, after the macOS app's mirror of jlevy/metabrowser showed "main is now at 1d85c49 · Switch" at the foot of the nav pane:
 
@@ -35,3 +40,5 @@ Target model: what the reader opened decides whether the view moves. A branch fo
 ## Notes
 
 2026-11-19 owner (chat), the governing principle: "using Metabrowser in Cloud Mirror mode should be much like using it on the web on github.com. You're browsing everything as of the current data. When using in local mode, it is blended, with an extra layer of the current working tree but the cache layers are still the same as mirror mode." So a mirror shows current data the way github.com does: a branch is its latest commit, never a stale one behind an offer. A repository folder is the same revision layer plus the live working tree. Each child (mb-pq8y, mb-0qgm, mb-gkq1, mb-qp3s, mb-30xb) is judged against this.
+
+2026-11-20 audit: #631 (one mirror per repository) and #632 (a served mirror branch follows its ref) are merged. Open: folder mode's branch follow (mb-0qgm) and two owner decisions (mb-gkq1: may Refresh fetch in folder mode; mb-qp3s: do a pull request's head and Changes follow new pushes).

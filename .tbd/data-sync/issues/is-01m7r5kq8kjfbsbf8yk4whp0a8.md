@@ -5,19 +5,28 @@ title: "Flake: test_recent_targets concurrent writers hit the 2 s lock wait on l
 kind: bug
 status: closed
 priority: 3
-version: 4
+version: 7
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/569
+    at: 2026-11-20T17:05:49.417Z
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T20:29:43.551Z
-updated_at: 2026-11-18T22:17:17.267Z
+updated_at: 2026-11-20T18:01:01.939Z
 started_at: 2026-11-18T21:02:22.944Z
 closed_at: 2026-11-18T22:17:17.266Z
 close_reason: null
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: aabaaa19-99fc-4212-9a56-c5163cdd9ad7
+    linked_at: 2026-11-20T18:01:01.935Z
 ---
 Main CI run 44386715486 at a1100bca6: unit (3.14t, 2/2) failed tests/test_recent_targets.py:803 (writers * each <= MAX_RECENT_TARGETS case) with RecentTargetsError 'another Metabrowser process has held the recent targets list for 2 seconds' (BlockingIOError EAGAIN). The test's concurrent writers can exceed the lock wait on a loaded free-threaded runner.
 

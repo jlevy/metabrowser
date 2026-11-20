@@ -5,11 +5,13 @@ title: Navigation tree rows are not real links
 kind: feature
 status: open
 priority: 2
-version: 2
+version: 3
+spec_path: TODO.md
 labels: []
 dependencies: []
+parent_id: is-01kxnx985gd2k5epmcswersqdk
 created_at: 2026-08-15T17:18:18.230Z
-updated_at: 2026-08-16T08:05:43.497Z
+updated_at: 2026-11-20T17:27:09.157Z
 extensions:
   linear:
     id: 50793e33-3f25-40a8-a941-d87da73a1971

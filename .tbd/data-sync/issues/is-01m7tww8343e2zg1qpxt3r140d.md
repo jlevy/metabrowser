@@ -5,10 +5,11 @@ title: "Pulls toolbar fallback path: verify a host without nav.toolbar exists, e
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
 labels: []
 dependencies: []
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 created_at: 2026-11-19T21:54:49.060Z
-updated_at: 2026-11-19T21:54:49.060Z
+updated_at: 2026-11-20T17:10:34.558Z
 ---
 Deferred from the 2026-11-19 design-system consistency audit (mb-yiti); see that bead's PR for the finding.

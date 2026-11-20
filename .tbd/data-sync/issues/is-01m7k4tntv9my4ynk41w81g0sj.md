@@ -5,9 +5,14 @@ title: The Files nav panel's '+ N ignored' summary line is laid out from first p
 kind: bug
 status: closed
 priority: 1
-version: 22
+version: 25
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/490
+    at: 2026-11-20T17:01:46.000Z
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 child_order_hints:
@@ -28,12 +33,16 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T21:39:50.746Z
-updated_at: 2026-11-17T06:21:13.493Z
+updated_at: 2026-11-20T17:59:25.114Z
 started_at: 2026-11-16T21:40:37.650Z
 closed_at: 2026-11-17T06:21:13.492Z
 close_reason: "PR #490 merged at 2c4692bd7: the Files nav's ignored-files line is laid out from first paint, so the tally row holds its settled shape while counts fill in (tests/test_files_totals_stable_chrome.py: 0 px movement after first paint across all loads). Reviews A, B, C dispositioned; CI green at 64aa838ab."
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: 114fbfc0-d6da-4e93-84ba-0aa5be71842e
+    linked_at: 2026-11-20T17:59:25.109Z
 ---
 Owner, 2026-11-16: 'also on the main files nav panel, the + xxxx ignored line appears later, so the view shifts. this should never happen. if something is slow it should be laid out in a stable way with a progress box to show it is filling in'. The line is the ignored half of the tree summary (navigation.js tree-summary-split, .tree-summary-ignored). Measure the shift, hold the line's box while its count is unknown with the shell's pending placeholder, and audit the Files nav panel for any other late line.
 

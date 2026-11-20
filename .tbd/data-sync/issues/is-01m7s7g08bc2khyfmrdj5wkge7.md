@@ -5,19 +5,28 @@ title: "Short commit IDs: always 7 characters, monospace, one gray, as a design-
 kind: task
 status: closed
 priority: 2
-version: 4
+version: 7
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/604
+    at: 2026-11-20T17:01:36.958Z
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T06:21:53.287Z
-updated_at: 2026-11-19T08:15:28.978Z
+updated_at: 2026-11-20T18:01:28.622Z
 started_at: 2026-11-19T06:22:17.348Z
 closed_at: 2026-11-19T08:15:28.966Z
 close_reason: "PR #604 merged"
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: 257ca12b-047a-482e-8912-d282f45cf529
+    linked_at: 2026-11-20T18:01:28.620Z
 ---
 Owner, 2026-11-18, verbatim: "let's make all short commits 7 chars, just like github. Make this part of the design system and apply it consistently. In the branch chooser, it's many more characters. They should always be monospace, always the same gray, and always 7 characters."
 

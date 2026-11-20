@@ -5,7 +5,7 @@ title: "Agent front door: metab TARGET --present"
 kind: feature
 status: open
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 labels: []
 dependencies:
@@ -15,9 +15,9 @@ dependencies:
     target: is-01m748xxr130p68h0zbjbb6k9f
   - type: blocks
     target: is-01m748xykvszgd0b8x0ws7k6j7
-parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
+parent_id: is-01m7wysrh5ggf7dm4xvqm8dmmp
 created_at: 2026-11-11T03:02:54.108Z
-updated_at: 2026-11-19T16:49:33.673Z
+updated_at: 2026-11-20T17:22:00.789Z
 ---
 Phase 3. Resolves a target to the most specific registered root; hands off to the app when installed and preferred, else presents on a live root, else starts a detached server with an idle exit and opens the browser, else prints a link or the command; reports which and exits with a distinct code when blocked. The client mode must not import the server (metab --version took 0.36-0.52 s).
 

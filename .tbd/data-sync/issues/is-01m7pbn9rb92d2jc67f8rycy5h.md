@@ -5,11 +5,12 @@ title: "KPress: an embeddable, reflow-free print indicator a host turns on (repl
 kind: feature
 status: open
 priority: 3
-version: 2
+version: 3
 labels: []
 dependencies: []
+parent_id: is-01m7wysdnvzch4gb5zvqwvn04e
 created_at: 2026-11-18T03:36:57.866Z
-updated_at: 2026-11-18T04:52:09.419Z
+updated_at: 2026-11-20T17:14:38.455Z
 ---
 Follow-up to mb-07a1, which moved Metabrowser's print button from the file header into the upper right corner of a rendered document's card, behind a mount option (`printIndicator: true`, `builtin_plugins/markdown/rendered.js`), drawn by Metabrowser itself (`builtin_plugins/markdown/print-indicator.js`, placement in `markdown.css`). The owner asked that this become part of KPress, as an optional print indicator a host turns on, if that is cleaner. It is: KPress 0.3.8 already ships the nearest thing, the opt-in `doc-actions` widget (`format/static/js/doc-actions.js`, `components.css` "Document actions"), which pins a PDF and an MD badge to the card's corner. It does not fit an embedded document yet. This bead is the KPress change; then Metabrowser replaces its own button with KPress's and removes print-indicator.js and its CSS.
 

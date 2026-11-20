@@ -3,12 +3,14 @@ type: is
 id: is-01m7n6v8n050erzeb13c5tasar
 title: Pull request diff summaries load slowly in the Pulls rows and on the PR page
 kind: epic
-status: in_progress
+status: open
 priority: 1
-version: 17
+version: 23
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 child_order_hints:
   - is-01m7n6v99j0bz3n0ja7mszthq9
   - is-01m7n6v9tbv4yn1xeap5zz6ryq
@@ -28,7 +30,17 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T16:53:36.020Z
-updated_at: 2026-11-18T02:41:56.462Z
+updated_at: 2026-11-20T17:59:56.052Z
 started_at: 2026-11-17T16:53:42.941Z
+extensions:
+  linear:
+    id: 1f080fc8-e3a8-4afb-8aab-c5c2986df69f
+    linked_at: 2026-11-20T17:59:56.050Z
 ---
 The owner reported that diff summaries (per-file line totals, the change summary) load slowly in the Pulls nav rows and on the main pull request page. Three children: prefetch and persist summaries as cache files and answer from the last persisted version first; measure the route and git/gh timings and fix the dominant cost; show the existing gentle loading box promptly whenever a summary has not loaded. Design rule: Metabrowser feels effortlessly fast, prefetch by default, never flash a spinner under ~50 ms, never leave an empty gap.
+
+## Notes
+
+2026-11-20 audit: moved from in_progress back to open. No open PR and no active session. Every child of the original scope is closed (prefetch and persisted summaries #536, the dominant-cost fix, the loading box #532, every drawn element from disk #528/#530/#533; the regression hunt mb-g5wf closed with #524-#526). What remains is the follow-up list under this epic, which is why it stays open.
+
+2026-11-20 audit: Original scope delivered (see the audit note on this bead); only follow-ups remain. Now nested under mb-3u8i.

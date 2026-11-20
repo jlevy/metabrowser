@@ -5,9 +5,11 @@ title: Rendered diffs for YAML, JSON, and Markdown front matter on a pull reques
 kind: epic
 status: closed
 priority: 2
-version: 15
+version: 16
+spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels: []
 dependencies: []
+parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 child_order_hints:
   - is-01m7pfyye7k2nfmvkkpzw4f8dg
   - is-01m7pfyyw8r4pbhcmshnqk8anc
@@ -21,7 +23,7 @@ child_order_hints:
   - is-01m7r96aynkd71s9ehjw8y4ze7
   - is-01m7r96j1rqavpv1pgx5fh6nwc
 created_at: 2026-11-18T04:52:07.776Z
-updated_at: 2026-11-19T01:04:50.339Z
+updated_at: 2026-11-20T17:26:59.496Z
 closed_at: 2026-11-19T01:04:50.338Z
 close_reason: "Landed in #557 (8437e48b0); follow-ups mb-hs06, mb-59mp, mb-10ip, mb-c14s, mb-xyxt stay open"
 resolution: null

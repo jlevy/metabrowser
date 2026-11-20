@@ -5,9 +5,14 @@ title: "Checkout branch chooser: a folder that is a repository's root shows the 
 kind: feature
 status: closed
 priority: 1
-version: 9
+version: 12
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/559
+    at: 2026-11-20T17:04:03.881Z
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies:
   - type: blocks
     target: is-01m6wpacpj9wtx02rt1g8kx49m
@@ -15,12 +20,16 @@ parent_id: is-01m7ksbn803jhw15qjc6beg7qf
 hold: null
 hold_until: null
 created_at: 2026-11-18T04:40:08.878Z
-updated_at: 2026-11-18T18:38:40.833Z
+updated_at: 2026-11-20T18:00:51.309Z
 started_at: 2026-11-18T04:41:02.677Z
 closed_at: 2026-11-18T18:38:40.832Z
 close_reason: "Merged in #559 (aa7808b80) after reviews A-C."
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: 98672d9f-8697-447b-856c-c14323ce87e0
+    linked_at: 2026-11-20T18:00:51.303Z
 ---
 Owner, 2026-11-18 in chat: 'Why do I still not see a branch chooser anymore? ... I'm looking at a local repo ~/wrk/aisw/tradekb'. The chooser (static/source-ref-selector.js, #236/mb-eezo) renders only for a pin served from a mirror (server.py: git_pin and mirror_session). Owner chose: view the picked ref read-only from the checkout's .git as a pinned revision; never git checkout. Coordinate with Open Modes (mb-wup3, plan-2026-11-02-pr-review-mirror-and-checkout.md) and the pin model (/api/source/pin, #511's View on branch).
 

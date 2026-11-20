@@ -5,7 +5,7 @@ title: "End-to-end load time: assets, time to first row, server and CLI"
 kind: epic
 status: open
 priority: 0
-version: 77
+version: 82
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies: []
@@ -85,8 +85,12 @@ child_order_hints:
   - is-01m0nyyjxbp58dwgp0g5msfafs
   - is-01m0pfhemn9y4t6qeky8kgz202
   - is-01m0nyyk9af0a9wrtfy3b5t70r
+  - is-01m7dqrfppjawy0g7hhnenkebc
+  - is-01m7rapxrkqdp972d6ts7ka7aq
+  - is-01m7pkgzth175ysqyfpp41brk9
+  - is-01m7cmptva96jf076a85g0kabx
 created_at: 2026-08-21T22:08:27.377Z
-updated_at: 2026-11-14T18:47:39.956Z
+updated_at: 2026-11-20T17:24:38.624Z
 ---
 Front-to-back performance pass. Measured on this machine, synthetic corpora, Chromium 141.
 
@@ -97,3 +101,7 @@ Waterfall at 100k: /api/tree returns 387,778 B in 38 ms at t+319 ms; /api/events
 Backend: start-to-serving 771 ms at 9k, 944 ms at 100k, 2,748 ms at 1M (so startup scales with the tree). Walk ~50 us/file. Warm /api/tree 77 ms at 9k, 866 ms at 100k, 4,990 ms and 3.68 MB at 1M. INVENTORY_MAX_FILES = 500_000 truncates silently.
 
 Assets: 432,092 B of vendored JS on every page; blocking the Chart.js stack moves load from 853 ms to 479 ms.
+
+## Notes
+
+2026-11-20 audit: Most children are v0.10-era load-time hypotheses (H-numbers) and rules (S-numbers) that no merged PR names; none was closed for lack of evidence. Added here: mb-p6wg (the owner's question whether the startup-script byte gate measures what users feel), mb-u1df (its structural half landed in #550 and #552; only the SDK copy of branch_on_origin, B8, remains), mb-uapv (benchmark: a file change to an open page) and mb-f38n (storage ancestor walk cost).

@@ -5,13 +5,13 @@ title: Page follows navigate events and reloads once on a new boot id
 kind: feature
 status: open
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 labels: []
 dependencies: []
-parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
+parent_id: is-01m7wysrh5ggf7dm4xvqm8dmmp
 created_at: 2026-11-11T03:02:53.672Z
-updated_at: 2026-11-19T16:49:34.080Z
+updated_at: 2026-11-20T17:22:04.939Z
 ---
 Phase 3. The page navigates on a navigate event, reloads once when the boot id changes, and refuses a root mismatch instead of silently reattaching. A browserless golden session against the production JavaScript.
 

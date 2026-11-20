@@ -5,7 +5,7 @@ title: "Host mode H8: per-launch stdin token, first-load and event-stream gates,
 kind: feature
 status: open
 priority: 2
-version: 21
+version: 22
 spec_path: docs/project/specs/active/plan-2026-11-18-host-mode.md
 labels: []
 dependencies:
@@ -15,9 +15,9 @@ dependencies:
     target: is-01kxrygx61r5j6rakwqtq7dh74
   - type: blocks
     target: is-01m748xsest94amc9cyx26j1zk
-parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
+parent_id: is-01m7wysrh5ggf7dm4xvqm8dmmp
 created_at: 2026-11-11T03:02:52.354Z
-updated_at: 2026-11-19T16:59:12.741Z
+updated_at: 2026-11-20T17:21:55.428Z
 ---
 Host mode plan step H8, the token (docs/project/specs/active/plan-2026-11-18-host-mode.md, Implementation Plan; Decisions HM-1 A and HM-5 C, taken 2026-11-19). Last of Stack H, after the control socket (mb-1zyp), so gating a server never removes agent access that discovery and the view slice gave.
 

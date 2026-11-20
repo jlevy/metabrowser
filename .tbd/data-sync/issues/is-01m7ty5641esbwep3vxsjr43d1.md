@@ -5,21 +5,30 @@ title: "Event log: browser reports of slow and never-completed waits, and a link
 kind: feature
 status: closed
 priority: 1
-version: 5
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-19-structured-event-log.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/629
+    at: 2026-11-20T17:03:12.320Z
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7ts09te3ty0ca6tbbsybgrj
 hold: null
 hold_until: null
 created_at: 2026-11-19T22:17:10.526Z
-updated_at: 2026-11-20T02:51:21.975Z
+updated_at: 2026-11-20T18:01:50.468Z
 started_at: 2026-11-20T00:35:23.719Z
 closed_at: 2026-11-20T02:51:21.974Z
 close_reason: "Merged in PR 629. Follow-ups: mb-nhf2 (A7), mb-fqy1 (A10)."
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: 3ae86d24-5dcb-4680-9d86-cf8227dd191c
+    linked_at: 2026-11-20T18:01:50.466Z
 ---
 Phase 1 remainder of mb-wr5e (spec: Browser Reports, and the unchecked Phase 1 items). perf.js sends a client ID header the server records as the request's client; reports a fetch slower than its threshold, a fetch still pending past it, and named waits (the pull request page's Diff summary first) to a bounded, rate-limited POST /api/event-log/client, with navigator.sendBeacon on pagehide for waits that never completed; the server writes each as a browser record. The page's failure line links to /api/event-log/failures for its cause and shows the recent count. Needs a parity row and golden for the POST route and a browserless test of the reporter against the production JS. Server side already landed: the log (#618) and cause classification with the probe and the failures route (stacked PR).
 

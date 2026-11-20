@@ -5,11 +5,19 @@ title: Render untrusted Markdown in the projection child under a wall-clock dead
 kind: task
 status: closed
 priority: 2
-version: 19
+version: 23
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/511
+    at: 2026-11-20T17:05:31.053Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/527
+    at: 2026-11-20T17:05:31.059Z
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
-parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
+parent_id: is-01m7wyspfffhwcfcze4mke8jjp
 child_order_hints:
   - is-01m7p7s1qphz27kfk9cj68657y
   - is-01m7p7s2kagrx7ab2m94xbaf8n
@@ -25,12 +33,16 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-11T14:25:27.861Z
-updated_at: 2026-11-18T07:07:39.680Z
+updated_at: 2026-11-20T17:59:08.936Z
 started_at: 2026-11-17T18:30:16.884Z
 closed_at: 2026-11-17T22:00:26.100Z
 close_reason: Done in jlevy/metabrowser#527 (claude/inert-markdown-worker); handed to the landing coordinator
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: dd29b58a-44ef-4ab6-8b84-3da53df41085
+    linked_at: 2026-11-20T17:59:08.935Z
 ---
 Follow-up from stack #350 (PR #348 reviews C1/F1-F3, #347 review D2), merged 2026-11-11. The revision page's full-file Markdown render (builtin_plugins/github/pull_snapshot.py) runs in a thread under a whole-document work estimate (_DOCUMENT_WORK_MS = 400). An estimate is not a deadline. Review G on #348 found that Pygments has no text-size bound: a 1.6 KB console line took 12 s in the shell session prompt pattern, and 15 of 594 lexers are quadratic in a line's length (48 KB of devicetree took 79 s), some of it inside one re match that holds the GIL. So neither a thread nor asyncio.to_thread with a timeout can stop such a render or keep the event loop running. Meanwhile the page renders fenced code unhighlighted (render_kpress_view(plain_code=True)), and the estimate charges code as text.
 

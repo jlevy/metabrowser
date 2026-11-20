@@ -5,13 +5,13 @@ title: "PR #277 B2: duplicate attributes: the server keeps the last, a browser k
 kind: bug
 status: open
 priority: 3
-version: 4
+version: 5
 labels:
   - security
 dependencies: []
-parent_id: null
+parent_id: is-01m7wysdnvzch4gb5zvqwvn04e
 created_at: 2026-11-02T22:10:50.282Z
-updated_at: 2026-11-14T18:45:42.050Z
+updated_at: 2026-11-20T17:13:59.830Z
 ---
 Low, pre-existing on main. src/metabrowser/inert_html.py:440 builds values = dict(attrs), so the server keeps the last of duplicate attributes while a browser's parse keeps the first: <img src=docs/a.png src=https://example.com/evil.png alt=a> hardens to a link to the second value, and the reverse order keeps the in-tree image. Both outcomes are allowlisted, the page sanitizes the server's single-attribute output, and KPress collapses duplicates first, so no path to harm was found.
 

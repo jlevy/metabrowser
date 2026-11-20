@@ -5,15 +5,15 @@ title: "PR #470 A14: unify the commit page's summaryHost with the pull page's su
 kind: task
 status: open
 priority: 3
-version: 3
+version: 4
 delegate: claude-code@spud10
 labels: []
 dependencies: []
-parent_id: is-01m7hcjv212191g3nw3tr8take
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 hold: null
 hold_until: null
 created_at: 2026-11-16T06:10:37.889Z
-updated_at: 2026-11-16T06:44:13.667Z
+updated_at: 2026-11-20T17:10:16.024Z
 started_at: 2026-11-16T06:42:55.533Z
 ---
 Suggestion. The commit page hands the diff a place outside its container (summaryHost); the pull request page draws through the view's summary. Unify on view.summary so summaryHost leaves diff-view.js and index.js and the renderer stays inside its container (docs/plugins.md:452). Severity: Suggestion. PR #470, review A round 1: https://github.com/jlevy/metabrowser/pull/470#pullrequestreview-5915665462

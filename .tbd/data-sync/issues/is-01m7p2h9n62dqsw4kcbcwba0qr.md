@@ -5,12 +5,13 @@ title: Remove the Markdown mount's unused browser-side includeToc option (#517 r
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
 labels:
   - toc
 dependencies: []
+parent_id: is-01m7wysdnvzch4gb5zvqwvn04e
 created_at: 2026-11-18T00:57:29.509Z
-updated_at: 2026-11-18T00:57:29.509Z
+updated_at: 2026-11-20T17:14:20.021Z
 ---
 Review A6 on jlevy/metabrowser#517.
 

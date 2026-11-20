@@ -3,10 +3,11 @@ type: is
 id: is-01m7dm3az28qmj39y5hmdq2k0v
 title: Small UI fixes (2026-11-14 round)
 kind: epic
-status: open
+status: closed
 priority: 2
-version: 88
-labels: []
+version: 91
+labels:
+  - linear
 dependencies: []
 child_order_hints:
   - is-01m7dm3bhd09bs34sbqbs4mjf5
@@ -97,6 +98,14 @@ child_order_hints:
   - is-01m7kbg2gkyry2fk74fx0nr2ay
   - is-01m7kbgbyfkdb8e13waqc1hn3h
 created_at: 2026-11-14T18:11:16.565Z
-updated_at: 2026-11-16T23:36:32.973Z
+updated_at: 2026-11-20T17:59:09.826Z
+closed_at: 2026-11-20T17:29:33.088Z
+close_reason: "Round complete: its pull requests (#444 to #481 and the stack around them) are merged, and every open follow-up has moved to a feature epic (mb-3u8i, mb-o2ax, mb-moo3, mb-3s19, mb-ge1b, mb-425f)"
+resolution: null
+duplicate_of: null
+extensions:
+  linear:
+    id: 12ed8b8f-de99-4858-bb52-10c2b86a0579
+    linked_at: 2026-11-20T17:59:09.824Z
 ---
 Small fixes the user asked for on 2026-11-14, each tracked as a child bead and done at once.

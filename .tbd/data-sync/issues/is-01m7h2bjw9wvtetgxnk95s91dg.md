@@ -5,15 +5,16 @@ title: "PR #442 A12: the dwell sweep's 200 ms point is 50 ms under the 250 ms ho
 kind: task
 status: open
 priority: 2
-version: 4
+version: 5
+spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
-parent_id: is-01m7h2ampfg7a32dp0rx5hpwra
+parent_id: is-01m774q0ep0jq6vhb790rart0v
 hold: null
 hold_until: null
 created_at: 2026-11-16T02:18:10.184Z
-updated_at: 2026-11-16T02:29:19.395Z
+updated_at: 2026-11-20T17:23:25.552Z
 started_at: 2026-11-16T02:28:57.126Z
 ---
 Suggestion finding A12 of review A on PR #442 (round 1, head 33b11020d21d2503ca60237f07b5f32795d3404e): https://github.com/jlevy/metabrowser/pull/442#pullrequestreview-5913924421

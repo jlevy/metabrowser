@@ -5,11 +5,12 @@ title: Order the pull, stacks and labels refresh answers as pull-files-refresh a
 kind: bug
 status: open
 priority: 3
-version: 1
+version: 2
 labels: []
 dependencies: []
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 created_at: 2026-11-17T16:50:52.086Z
-updated_at: 2026-11-17T16:50:52.086Z
+updated_at: 2026-11-20T17:10:47.925Z
 ---
 From review A on jlevy/metabrowser#513 (finding A5, Low).
 

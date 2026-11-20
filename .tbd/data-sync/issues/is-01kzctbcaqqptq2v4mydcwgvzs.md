@@ -5,14 +5,15 @@ title: "Menu and overlay primitives: anchored placement, action menu, action reg
 kind: feature
 status: open
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01kzctbjy7z530930gzmvakxws
+parent_id: is-01kxnx985gd2k5epmcswersqdk
 created_at: 2026-08-07T00:35:42.550Z
-updated_at: 2026-11-14T18:46:16.370Z
+updated_at: 2026-11-20T17:27:02.875Z
 extensions:
   linear:
     id: 01ac05ee-899f-410e-9948-efa3e2753f08

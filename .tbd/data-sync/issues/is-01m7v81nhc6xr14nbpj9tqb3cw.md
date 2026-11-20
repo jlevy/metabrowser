@@ -5,19 +5,28 @@ title: "Title folder menu: the cloud or folder icon sits on the name's line, not
 kind: bug
 status: closed
 priority: 2
-version: 5
+version: 8
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/628
+    at: 2026-11-20T17:05:54.516Z
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T01:10:01.003Z
-updated_at: 2026-11-20T02:39:54.467Z
+updated_at: 2026-11-20T18:02:01.575Z
 started_at: 2026-11-20T01:12:38.418Z
 closed_at: 2026-11-20T02:39:54.466Z
 close_reason: "Merged in PR 628. Check mark stays centered on two-line rows: a custom onStateImage loses AXMenuItemMarkChar (accessibility checked state), so the accessible native check was kept."
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: 47c26953-6e60-4744-8762-4c7f2f2c25b5
+    linked_at: 2026-11-20T18:02:01.571Z
 ---
 Owner, 2026-11-19, verbatim: "in the dropdown menu in the title, the cloud and folder icons should be to the left of the name of the foler or repo, not centered vertically as they are now. i.e. they should be on the same line as the main name and the smaller text below should be subsequent lines". Likely apps/macos/Sources/Metabrowser/FolderChooserMenu.swift (each.image = row.mark.image on a two-line item) and the same pattern in RecentTargetsMenu.swift and TitleAccessory.swift; RootMark.swift maps folder/cloud.
 

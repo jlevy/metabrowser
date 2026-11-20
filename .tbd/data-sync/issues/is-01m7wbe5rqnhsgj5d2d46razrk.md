@@ -1,0 +1,29 @@
+---
+type: is
+id: is-01m7wbe5rqnhsgj5d2d46razrk
+title: "test_golden_pin_age_groups failed once on CI (Python 3.12): all 7 files in older, as if the patched clock was not in effect"
+kind: bug
+status: closed
+priority: 1
+version: 9
+labels: []
+dependencies: []
+parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
+created_at: 2026-11-20T11:28:30.998Z
+updated_at: 2026-11-20T17:55:33.466Z
+closed_at: 2026-11-20T17:55:33.458Z
+close_reason: "Fixed in #664: a test re-imported content_routes and left two module objects; forget_module helper plus a conftest guard"
+resolution: null
+duplicate_of: null
+---
+
+## Notes
+
+Seen again 2026-11-20 on CI Python 3.13 (unit 3.13, 2/2), run 44771587418 for jlevy/metabrowser PR 645 at 928e94edf merged with main: same signature, [('older', 7)] instead of [('24h', 1), ('older', 6)]. Other interpreters passed; the failed job was rerun.
+
+Seen a third time 2026-11-20 on CI Python 3.14t (unit 3.14t, 1/2), run 44777918273 job 136432582834, for jlevy/metabrowser PR 602 at 1a2e3258b (a Swift-only change merged with main ab64b5c86, whose own run was green): same signature, ages {'state': 'ready', 'files': 7, 'dated': 7, 'older_than': None}, groups [('older', 'Older')]. The 24h group is absent, so new.py's stamp fell before as_of minus 24h: either as_of was not the patched content_routes._request_instant or new.py's stamp was not AGES_TIP. Three interpreters, so not specific to free-threading. Leads not yet checked: the process-wide file_ages_service and source.derived caches shared with earlier tests in the same xdist worker (the fast-import repo has identical oids in every test), and _GitTimes memo keys built from id(index).
+
+2026-11-20 audit: mb-3m45 (filed the same day, main run 44779757308 and PR 662 run 44781044946; tests/test_cli_git_pin_golden.py:716 with content_routes._request_instant monkeypatched to AGES_TIP + 3 h) records the same failure; close whichever is not kept.
+
+
+Root cause (2026-11-20), PR 664 (claude/age-groups-golden-flake): tests/test_serve_pin.py::test_a_served_pin_has_its_routes_before_its_first_request deleted metabrowser.git.content_routes from sys.modules so a pin's serve would import it again; undoing the deletion restored the old module in sys.modules but left the re-imported one as the package's attribute metabrowser.git.content_routes. Afterwards `from metabrowser.git import content_routes` (what the golden patches _request_instant on) read the new module while the server's per-request `from metabrowser.git.content_routes import git_revision_tree_groups` read the old one, so the fixed clock never reached the routes and every 2020 file was older. It depends on which tests an xdist worker ran before it, hence one interpreter or another, and a rerun passing. Reproduced on main in one process: test_golden_pin_file_ages, then the serve test, then test_golden_pin_age_groups. Fix: tests/forgotten_module.py forget_module restores both, an invariant test (fails with the old technique), and an autouse guard in conftest naming any test that leaves a metabrowser module as two objects. test_git_revision_ages_routes.py patched the clock the same way and was exposed too.

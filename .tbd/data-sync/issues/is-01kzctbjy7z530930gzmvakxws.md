@@ -5,12 +5,13 @@ title: Gated rename and trash via POST /api/mutate with nav context-menu actions
 kind: feature
 status: open
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md
 labels: []
 dependencies: []
+parent_id: is-01kxnx985gd2k5epmcswersqdk
 created_at: 2026-08-07T00:35:49.318Z
-updated_at: 2026-11-14T18:41:52.302Z
+updated_at: 2026-11-20T17:27:06.158Z
 extensions:
   linear:
     id: 188ffcb9-98fa-4aca-822b-c76718108e6c

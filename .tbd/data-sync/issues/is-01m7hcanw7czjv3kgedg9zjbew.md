@@ -3,9 +3,9 @@ type: is
 id: is-01m7hcanw7czjv3kgedg9zjbew
 title: "Stack #446 (merge): review every layer and merge into main"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 33
+version: 34
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -42,8 +42,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T05:12:26.236Z
-updated_at: 2026-11-16T20:17:37.644Z
+updated_at: 2026-11-20T17:00:17.822Z
 started_at: 2026-11-16T05:12:33.015Z
+closed_at: 2026-11-20T17:00:17.821Z
+close_reason: "Stack merged: #444 through #481 are all merged on main (#446 was never a pull request number); the layers had Review A and senior reviews. The app reinstall it asked for is mb-8f19"
+resolution: null
+duplicate_of: null
 ---
 Owner, 2026-11-15: "is the current app restarted with all the changes? Are all PRs reviewed? Make sure they follow our standard process of being reviewed, and then you should proceed with merging." Layers #444-#456 had Review A round 1, addressed. #457-#472 need senior reviews; #466 a dedicated performance review.
 

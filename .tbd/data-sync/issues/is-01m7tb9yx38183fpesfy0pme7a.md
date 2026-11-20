@@ -5,15 +5,15 @@ title: "Host mode H4: metab ROOT --api ROUTE --live reaches the root's live serv
 kind: feature
 status: open
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-18-host-mode.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m748xwwxrrvvnb49fw9ez5ra
-parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
+parent_id: is-01m7wysrh5ggf7dm4xvqm8dmmp
 created_at: 2026-11-19T16:47:44.034Z
-updated_at: 2026-11-19T16:49:47.546Z
+updated_at: 2026-11-20T17:21:31.440Z
 ---
 Host mode plan step H4 (docs/project/specs/active/plan-2026-11-18-host-mode.md, Implementation Plan and Discovery; Decision HM-1 A, taken 2026-11-19). New.
 

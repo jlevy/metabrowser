@@ -5,9 +5,17 @@ title: Design the macOS app's publishing setup (signing, notarization, DMG, inst
 kind: task
 status: closed
 priority: 1
-version: 45
+version: 48
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/509
+    at: 2026-11-20T17:05:37.698Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/510
+    at: 2026-11-20T17:05:37.702Z
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7hgpc9550w78kmwqsvv64xh
 child_order_hints:
@@ -56,11 +64,15 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T20:47:48.560Z
-updated_at: 2026-11-17T00:47:22.329Z
+updated_at: 2026-11-20T17:59:22.684Z
 started_at: 2026-11-16T20:49:22.082Z
 closed_at: 2026-11-17T00:47:22.328Z
 close_reason: "Publishing plan landed in #485 (squash); implementation beads under it remain"
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: 7a71af50-83c2-431e-854c-b204b1adb18e
+    linked_at: 2026-11-20T17:59:22.682Z
 ---
 Owner, 2026-11-16: look at the developer setup of a sibling private Electron app and its GitHub repo, design what metabrowser's Apple app publishing needs to be equivalent, including its testing tools that check app signing and that the app downloads and sets up correctly; adapt what makes sense, follow current best practices, and bring them up to date (that repo is over a year old). The sibling repo is private: metabrowser's public docs describe adopted practices without naming it or copying from it. Deliverable: a plan spec PR.

@@ -5,7 +5,7 @@ title: Post-v0.1 MetaBrowser core roadmap
 kind: epic
 status: open
 priority: 2
-version: 21
+version: 32
 spec_path: TODO.md
 labels:
   - roadmap
@@ -29,11 +29,25 @@ child_order_hints:
   - is-01kxnww2qv3mt7v5j17059bwpc
   - is-01kxrygx61r5j6rakwqtq7dh74
   - is-01kzcvm6cpe5b8sb9b9n3gb16g
+  - is-01kzctbcaqqptq2v4mydcwgvzs
+  - is-01kzctbjy7z530930gzmvakxws
+  - is-01m036wy3pwxv6afsdx4qpx25j
+  - is-01m0dkj19x30mgh6c7y4csg17m
+  - is-01m03qv53915238ktd5prxgkpy
+  - is-01m77anrettf3kkyabv7r891dy
+  - is-01m03tsgt14c397j4s0q8q8qdp
+  - is-01m03tsgc3m7e530qfhpdj92tb
+  - is-01m7ckp6950rtaehpvzv0cg2wd
+  - is-01m7p9mbrvcda53samf39e6xq0
 created_at: 2026-07-16T16:48:44.719Z
-updated_at: 2026-08-16T08:05:43.892Z
+updated_at: 2026-11-20T17:27:29.374Z
 extensions:
   linear:
     id: 4bf23327-faca-40ed-b28b-0b3870993e50
     linked_at: 2026-08-16T08:05:43.892Z
 ---
 Own the remaining generic MetaBrowser core work in the public repository after extraction: shell modularization, browser-grade contract coverage, scalable search and streaming, event-log backends, large-tree performance evidence, opt-in local file editing, scan-state visibility, and editor-capable plugin design. Consumer- or domain-specific plugins remain outside core.
+
+## Notes
+
+2026-11-20 audit: Roadmap bucket for core features nobody has scheduled: compression, search providers, archive containers, trusted-local editing, strict-type ratchets. Added 2026-11-20: menu primitives and file actions (mb-ojvf, mb-0d6a), navigation features (mb-9hhg, mb-nu1s, mb-npkt, mb-7nc0), content typing (mb-ct0o, mb-hr37), mb-n43q and config format discipline (mb-3x6y).

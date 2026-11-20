@@ -5,16 +5,16 @@ title: Design-system consistency pass over this round's changes
 kind: task
 status: open
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 labels: []
 dependencies: []
-parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+parent_id: is-01m7wysf407hkpj5n35r533gzc
 child_order_hints:
   - is-01m7gp5p8bkaq82nn63dmb4xs4
   - is-01m7gp5ppkv5m3ecb607b1r71r
 created_at: 2026-11-15T18:01:50.241Z
-updated_at: 2026-11-17T05:58:46.758Z
+updated_at: 2026-11-20T17:17:32.222Z
 ---
 The user's request (2026-11-15), verbatim: "Let's make all of these consistent design system changes too, so everything is following standard conventions."
 

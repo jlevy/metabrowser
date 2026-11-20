@@ -5,7 +5,7 @@ title: "Host mode H1: a ready moment after bind, a boot ID, and process fields o
 kind: feature
 status: open
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-18-host-mode.md
 labels: []
 dependencies:
@@ -13,9 +13,9 @@ dependencies:
     target: is-01m7tb9q5c69txa1c750dqe79j
   - type: blocks
     target: is-01m748xwf9kpmst8t6jk2n95hj
-parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
+parent_id: is-01m7wysrh5ggf7dm4xvqm8dmmp
 created_at: 2026-11-19T16:47:32.816Z
-updated_at: 2026-11-19T16:49:47.915Z
+updated_at: 2026-11-20T17:21:15.372Z
 ---
 Host mode plan step H1 (docs/project/specs/active/plan-2026-11-18-host-mode.md, Implementation Plan; Decision HM-1 A, taken 2026-11-19). Split from mb-qzny (the ready line's moment after bind) and mb-1zyp (its first clause, the identity fields).
 

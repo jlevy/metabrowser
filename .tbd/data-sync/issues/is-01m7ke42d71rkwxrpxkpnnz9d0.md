@@ -5,11 +5,11 @@ title: A Pulls row whose changed-files list is capped (3,000+ files) shows GitHu
 kind: feature
 status: open
 priority: 3
-version: 1
+version: 2
 labels: []
 dependencies: []
-parent_id: is-01m7k58sxt39xnf5cfd3ct05p8
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 created_at: 2026-11-17T00:22:15.718Z
-updated_at: 2026-11-17T00:22:15.718Z
+updated_at: 2026-11-20T17:10:43.650Z
 ---
 From #491 review A13: the PRs whose size matters most have no line today.

@@ -5,13 +5,13 @@ title: "PR #59 review R4: tbd npx fallback fails for 14 days after every tbd rel
 kind: bug
 status: open
 priority: 3
-version: 5
+version: 6
 labels:
   - upstream-tbd
 dependencies: []
-parent_id: null
+parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
 created_at: 2026-08-21T02:16:13.402Z
-updated_at: 2026-11-14T18:47:08.471Z
+updated_at: 2026-11-20T17:28:03.053Z
 ---
 PR #59 review R4 (High). Reproduced live on 2026-08-21:
 

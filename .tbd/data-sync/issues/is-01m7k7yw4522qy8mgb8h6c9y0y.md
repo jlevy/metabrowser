@@ -3,14 +3,18 @@ type: is
 id: is-01m7k7yw4522qy8mgb8h6c9y0y
 title: In a narrow pane the Files rows can paint a frame before the filter bar fills and wraps, then move 30 px with it
 kind: bug
-status: open
+status: closed
 priority: 3
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m7k4tntv9my4ynk41w81g0sj
 created_at: 2026-11-16T22:34:33.988Z
-updated_at: 2026-11-16T22:34:33.988Z
+updated_at: 2026-11-20T17:00:08.123Z
+closed_at: 2026-11-20T17:00:08.117Z
+close_reason: "Fixed by PR #563 (mb-kiqm): the tree holds its first paint until the filter bar is filled, which ends the 30 px move this bead recorded"
+resolution: null
+duplicate_of: null
 ---
 Found by the mb-h3hc audit of the Files nav panel (2026-11-16), headless Chrome 152, 1280x900, with the navigation pane set to its 180 px minimum.
 

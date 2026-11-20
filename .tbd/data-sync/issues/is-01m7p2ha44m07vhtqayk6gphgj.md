@@ -5,13 +5,14 @@ title: Measure the Overview README's TOC toggle, drawer and deep link in the mac
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
 labels:
   - toc
   - macos
 dependencies: []
+parent_id: is-01m7wysdnvzch4gb5zvqwvn04e
 created_at: 2026-11-18T00:57:29.987Z
-updated_at: 2026-11-18T00:57:29.987Z
+updated_at: 2026-11-20T17:14:25.568Z
 ---
 Review A9 on jlevy/metabrowser#517.
 

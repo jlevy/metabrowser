@@ -5,20 +5,29 @@ title: "One declared contract between the macOS app and metab: a declaration, a 
 kind: feature
 status: closed
 priority: 1
-version: 7
+version: 10
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/593
+    at: 2026-11-20T17:02:40.711Z
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7rj9pgz3qf89emdaz0rbenn
 hold: null
 hold_until: null
 created_at: 2026-11-19T00:51:17.102Z
-updated_at: 2026-11-19T03:39:30.461Z
+updated_at: 2026-11-20T18:01:20.203Z
 started_at: 2026-11-19T00:51:25.272Z
 closed_at: 2026-11-19T03:39:30.449Z
 close_reason: "Landed in #593"
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: 96011acb-5380-4c3d-b8d1-1203cf62e37e
+    linked_at: 2026-11-20T18:01:20.136Z
 ---
 Owner, 2026-11-18, verbatim: "We should also encode some sort of default convention, we are in if we change metab in a way that's incompatible with the front end, then we should create a new minor or major release but not a patch release (unless it's a bugfix), this contract would be at the minor release level or above" and "we should have a way to understand what that convention is and make sure it's reflected in our tests in a sensible way, where we're following our golden testing rules, but we know that those are compatible with the way that the native browser uses it. Maybe what we need is some golden test that represents all of the native browser surface area."
 

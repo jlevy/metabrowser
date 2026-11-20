@@ -5,7 +5,7 @@ title: "Host mode H2: the server record contract and the ready-line flag"
 kind: feature
 status: open
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-18-host-mode.md
 labels: []
 dependencies:
@@ -13,9 +13,9 @@ dependencies:
     target: is-01m7tb9tfnm9f644mc5sm6ab5e
   - type: blocks
     target: is-01m7tb9zw4d1mkfhh9kbz4r7mk
-parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
+parent_id: is-01m7wysrh5ggf7dm4xvqm8dmmp
 created_at: 2026-11-19T16:47:36.107Z
-updated_at: 2026-11-19T16:47:45.028Z
+updated_at: 2026-11-20T17:21:20.748Z
 ---
 Host mode plan step H2 (docs/project/specs/active/plan-2026-11-18-host-mode.md, Implementation Plan; Decisions HM-1 A, HM-2 A, and HM-6 A, taken 2026-11-19). Split from mb-qzny.
 

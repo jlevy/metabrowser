@@ -5,21 +5,30 @@ title: "GitHub URL gaps: /pull/N/files#diff-<hash> to a file, commit URL opens /
 kind: task
 status: closed
 priority: 2
-version: 6
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/574
+    at: 2026-11-20T17:05:53.148Z
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 hold: null
 hold_until: null
 created_at: 2026-11-17T21:17:04.469Z
-updated_at: 2026-11-18T23:10:29.814Z
+updated_at: 2026-11-20T18:00:12.681Z
 started_at: 2026-11-18T21:02:16.063Z
 closed_at: 2026-11-18T23:10:29.813Z
 close_reason: "Merged in #574"
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: f081d1cb-4e66-4864-b12a-4cd6e89141ec
+    linked_at: 2026-11-20T18:00:12.680Z
 ---
 Phase 1. Map GitHub's per-file anchor (hash of the path) to /pull/<n>/files/<path>; open a commit selection at /commit/<sha> instead of /view/.
 

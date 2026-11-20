@@ -5,10 +5,15 @@ title: "GitHub status check: gh path, version, account, scopes; --doctor section
 kind: feature
 status: closed
 priority: 2
-version: 8
+version: 11
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/581
+    at: 2026-11-20T17:05:57.514Z
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies:
   - type: blocks
     target: is-01m7nnxsky2r2jf9d5n3ac3vty
@@ -22,12 +27,16 @@ parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 hold: null
 hold_until: null
 created_at: 2026-11-17T21:17:03.309Z
-updated_at: 2026-11-19T01:12:00.552Z
+updated_at: 2026-11-20T18:00:11.086Z
 started_at: 2026-11-18T21:02:21.507Z
 closed_at: 2026-11-19T01:12:00.549Z
 close_reason: "Landed in #581"
 resolution: null
 duplicate_of: null
+extensions:
+  linear:
+    id: 43a89c74-a7a7-4bc7-8e88-eccc3a984472
+    linked_at: 2026-11-20T18:00:11.083Z
 ---
 Phase 1. gh auth status --active --hostname github.com --json hosts; report GhFailureState; registered route plus --doctor --json; check before a first clone or pull request read and stop with the fixing command instead of a silent fallback; read token scopes where gh reports them.
 

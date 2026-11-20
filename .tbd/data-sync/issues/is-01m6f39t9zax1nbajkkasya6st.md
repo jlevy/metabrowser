@@ -5,10 +5,11 @@ title: "Spec: GitHub Pulls tab for mirrors and local checkouts"
 kind: epic
 status: open
 priority: 2
-version: 26
+version: 28
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 labels: []
 dependencies: []
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 child_order_hints:
   - is-01m2h7hrjfx06hzpr7ptz7k9wn
   - is-01m6f39wqb7nqd20w7z5vpw9vh
@@ -27,7 +28,7 @@ child_order_hints:
   - is-01m6frzhg6207j9m3thprk45yn
   - is-01m6jbx6g0vbh9t7pc5m7p3fsr
 created_at: 2026-11-02T21:40:30.142Z
-updated_at: 2026-11-14T18:47:32.325Z
+updated_at: 2026-11-20T17:17:17.013Z
 ---
 Every pull request of a GitHub repository in a Pulls tab beside Files and Git, newest first, with GitHub-style state icons. Each row expands in place to its changed files as a tree, like a folder. The pane shows this tab at a pull request's address. Works on a mirror and on an existing checkout, with nothing written to the user's repository. Delivered as a native stack above the v0.12 stack. See the plan's Delivery.
 
@@ -50,3 +51,5 @@ Earlier chronological notes (superseded where they describe pending final gates)
 The implemented Pulls list, direct opening, changed-file tree, checkout support and overlay integration are reviewed and merged. The old step-4/step-5 WIP and owed strong-review statements are historical. Keep this parent open for the unimplemented expected-count mb-egnj and shared-manifest mb-w5rc descendants through mb-ywt7/mb-q3jt.
 
 2026-11-14 audit: all delivery layers are merged and shipped in 0.12.0. Partial-scope parents mb-q3jt, mb-ywt7 and mb-m13a are proposed closed, with their follow-ups mb-egnj, mb-w5rc and mb-xl14 reparented here. Open follow-ups: mb-egnj, mb-w5rc, mb-0cr3, mb-dpvu, mb-xl14. Nothing is in progress, so status is open.
+
+2026-11-20 audit: The Pulls tab spec epic; its open children are small follow-ups. Now nested under mb-3u8i.

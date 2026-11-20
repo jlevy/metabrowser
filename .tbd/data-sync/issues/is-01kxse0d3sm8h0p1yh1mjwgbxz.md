@@ -5,7 +5,7 @@ title: "General diff rendering: source-agnostic comparison model, renderer, and 
 kind: epic
 status: open
 priority: 2
-version: 48
+version: 53
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -53,11 +53,19 @@ child_order_hints:
   - is-01m0drggzq252k2xytpq6v7kqm
   - is-01m0dr9a14z5bqvcg2sge3fkd0
   - is-01m0dr9b250wwh2vqj741ssjgw
+  - is-01m7r965b9r95khy0934kr63hs
+  - is-01m7r96aynkd71s9ehjw8y4ze7
+  - is-01m7r96j1rqavpv1pgx5fh6nwc
+  - is-01m7pfyxz015mfas5phhvtqz33
 created_at: 2026-07-18T01:38:43.961Z
-updated_at: 2026-11-14T18:48:41.141Z
+updated_at: 2026-11-20T17:26:59.527Z
 extensions:
   linear:
     id: 0390e452-459b-479d-8bc2-d469e35c1dd5
     linked_at: 2026-08-16T08:06:23.032Z
 ---
 Epic for docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md. On main: File Diff Format with its schema, conformance corpus, and apply oracle; the patch-file and immutable Git sources in metabrowser.diff; the built-in diff plugin's renderer (unified and split, syntax, intraline, folding) and patch-file containers; commit comparisons in the Commits tab; and pull-request Changes through the GitHub plugin. Open children: comparison presets and two-revision comparisons (mb-8bjd), /compare/ and inner-file restore (mb-hgus), context expansion, whitespace, and virtualization (mb-hhmb), review-surface follow-ups and the renderer-library gate (mb-k0x3), and patch anchoring (mb-s8pq). Working-tree and index comparisons belong to the Git-status epic mb-097x. Research: docs/project/research/research-2026-07-17-web-diff-viewer-architecture.md.
+
+## Notes
+
+2026-11-20 audit: Rendered YAML, JSON and front matter diffs landed (#557). Open: presets and two-revision comparisons, context expansion and virtualization, the multi-file review surface, the patch emitter and ingest gaps, submodules. The #557 follow-ups (mb-10ip, mb-c14s, mb-xyxt) were added.

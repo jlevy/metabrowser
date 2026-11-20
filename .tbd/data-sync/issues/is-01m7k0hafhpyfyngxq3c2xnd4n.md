@@ -5,11 +5,11 @@ title: "Hover card and commit page can disagree on a rename: the card keeps Git'
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
 labels: []
 dependencies: []
-parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 created_at: 2026-11-16T20:24:49.904Z
-updated_at: 2026-11-16T20:24:49.904Z
+updated_at: 2026-11-20T17:10:21.070Z
 ---
 From #479 review B6: aligning needs a wire change to MetabrowserGitCommitStats (git/detail.py:91-92).
