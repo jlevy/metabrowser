@@ -13,3 +13,9 @@
   leaves out the requests for the log itself; one whose folder is the log’s own writes
   none, and says so in its Details and in `metab --doctor`, which now checks the event
   log too. See [Browsing the Log](docs/realtime-debugging.md#browsing-the-log).
+- **App contract:** `metab --doctor --json` lists one more check, `event_log`, in
+  `checks` (whether a server writes the event log, where, and what it leaves out), which
+  Help > Check Setup… shows as a row of its own, since the app draws every entry of
+  `checks` it receives.
+  No release the app already requires needs a change: an older `metab` lacks the row,
+  and the app does not look for it.
