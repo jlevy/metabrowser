@@ -1,0 +1,174 @@
+## A repository is cloned, and its store is named for it.
+# metab <ORIGIN-A> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN-A>
+slug: <SLUG-A>
+store: <STORE-A>
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---
+cloning <ORIGIN-A> into <HOME>
+cloned <ORIGIN-A> in 0.0 s
+# metab <ROOT> --api /api/cache/stores
+exit: 0
+--- stdout ---
+api: /api/cache/stores
+status: 200
+{
+  "home": "present",
+  "layout_format": "f02",
+  "stores": [
+    {
+      "key": "<STORE_KEY-A>",
+      "id": "<STORE-A>",
+      "publication": "published",
+      "mode": "full",
+      "lender": null,
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "<GIT_VERSION>",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": "refs/remotes/origin/topic",
+        "default_revision": "8f05aafe23bbeade03ef581868a59e3c944ac5c4",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        }
+      },
+      "problems": [],
+      "referenced_by": [
+        {
+          "slug": "<SLUG-A>",
+          "generation": 1
+        }
+      ],
+      "reference_state": "referenced"
+    }
+  ],
+  "unrecognized_entries": 0,
+  "limit": 25,
+  "next_after": null
+}
+--- stderr ---
+## The cache is rewritten as the release before this one left it: the store is named by the whole digest of its identity, and the layout says f01.
+## A read answers that the home awaits its migration, and changes nothing.
+# metab <ROOT> --api /api/cache/layout
+exit: 0
+--- stdout ---
+api: /api/cache/layout
+status: 200
+{
+  "home": "present",
+  "supported_format": "f02",
+  "state": "migration_pending",
+  "layout": {
+    "format": "f01",
+    "created_by": "0.12.0"
+  },
+  "config": {
+    "format": "f01",
+    "written_by": "<VERSION>",
+    "upgrades": []
+  },
+  "reclamation": {
+    "staging_entries": 0
+  }
+}
+--- stderr ---
+# metab <ROOT> --api /api/cache/stores
+exit: 1
+--- stdout ---
+api: /api/cache/stores
+status: 409
+{
+  "error": "This application home uses format f01, which this release migrates to f02 before it reads cache entries. Opening any repository with metab migrates the cache.",
+  "code": "migration_pending"
+}
+--- stderr ---
+Error: /api/cache/stores returned HTTP 409
+## The first open of a repository migrates the home, renames the store where it stands, and reuses it: nothing is fetched.
+# metab <ORIGIN-A> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN-A>
+slug: <SLUG-A>
+store: <STORE-A>
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---
+using the clone of <ORIGIN-A> cached in <HOME>, fetched less than a minute ago
+# metab <ROOT> --api /api/cache/layout
+exit: 0
+--- stdout ---
+api: /api/cache/layout
+status: 200
+{
+  "home": "present",
+  "supported_format": "f02",
+  "state": "current",
+  "layout": {
+    "format": "f02",
+    "created_by": "0.12.0"
+  },
+  "config": {
+    "format": "f01",
+    "written_by": "<VERSION>",
+    "upgrades": []
+  },
+  "reclamation": {
+    "staging_entries": 0
+  }
+}
+--- stderr ---
+# metab <ROOT> --api /api/cache/stores
+exit: 0
+--- stdout ---
+api: /api/cache/stores
+status: 200
+{
+  "home": "present",
+  "layout_format": "f02",
+  "stores": [
+    {
+      "key": "<STORE_KEY-A>",
+      "id": "<STORE-A>",
+      "publication": "published",
+      "mode": "full",
+      "lender": null,
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "<GIT_VERSION>",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": "refs/remotes/origin/topic",
+        "default_revision": "8f05aafe23bbeade03ef581868a59e3c944ac5c4",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        }
+      },
+      "problems": [],
+      "referenced_by": [
+        {
+          "slug": "<SLUG-A>",
+          "generation": 1
+        }
+      ],
+      "reference_state": "referenced"
+    }
+  ],
+  "unrecognized_entries": 0,
+  "limit": 25,
+  "next_after": null
+}
+--- stderr ---

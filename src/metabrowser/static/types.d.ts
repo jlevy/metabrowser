@@ -303,6 +303,24 @@ type MetabrowserDocumentWidthRuntime = Readonly<{
   readStored(readPreference: (key: string) => string | null): number;
 }>;
 
+type MetabrowserRemoteImagesRuntime = Readonly<{
+  INPUT_ID: string;
+  KEY: string;
+  choose(
+    blocked: boolean,
+    applied: boolean,
+    dependencies: { writePreference(key: string, value: string): void; reload(): void },
+  ): boolean;
+  mount(
+    doc: Pick<Document, "getElementById">,
+    dependencies: {
+      applied(): boolean;
+      writePreference(key: string, value: string): void;
+      reload(): void;
+    },
+  ): boolean;
+}>;
+
 type MetabrowserRepositoryContext = Readonly<{
   branch: string | null;
   /** Whether `origin` has the branch: in the context the server writes, not the SDK's copy. */
@@ -1058,6 +1076,48 @@ type MetabrowserNavCollapseRuntime = Readonly<{
   }): MetabrowserNavCollapseController;
 }>;
 
+/** static/revision-ages.js: the watch on a Git revision's file ages while they are read. */
+type MetabrowserRevisionAgesState = { state: string };
+
+/** The `ages` a response carries: the state of the read of a revision's file times. */
+type MetabrowserRevisionAgesStatus = {
+  state?: string;
+  reason?: string;
+  files?: number;
+  dated?: number;
+  older_than?: number | null;
+  stop?: string;
+};
+
+type MetabrowserRevisionAgesController = Readonly<{
+  observe(ages: { state?: string } | null | undefined): void;
+  stop(): void;
+  isWatching(): boolean;
+}>;
+
+type MetabrowserRevisionAgesRuntime = Readonly<{
+  annotate(): void;
+  createController(deps: {
+    fetchState: () => Promise<MetabrowserRevisionAgesState | null>;
+    landed: (state: MetabrowserRevisionAgesState) => void;
+    setTimer: (run: () => void, ms: number) => unknown;
+    clearTimer: (timer: unknown) => void;
+    now: () => number;
+    pollMs: number;
+    giveUpMs?: number;
+  }): MetabrowserRevisionAgesController;
+  mount(options: {
+    reload: (state: MetabrowserRevisionAgesState) => void;
+    pollMs?: number;
+    giveUpMs?: number;
+  }): MetabrowserRevisionAgesController;
+  noteText(
+    ages: MetabrowserRevisionAgesStatus | null | undefined,
+    undated?: number | null,
+  ): string | null;
+  track(ages: MetabrowserRevisionAgesStatus | null | undefined, undated?: number | null): void;
+}>;
+
 type MetabrowserThemeRuntime = {
   notifyChanged(detail: MetabrowserThemeChange): void;
   subscribe(listener: (detail: MetabrowserThemeChange) => void): () => void;
@@ -1279,12 +1339,29 @@ type StructuredExports = {
   renderTree: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
 
-type AgentLogExports = {
+/** agent-log.js's exports, which the agents plugin's `loadLogRenderers` answers. */
+type AgentLogRenderers = {
+  disposeCharts: (container?: HTMLElement) => void;
   disposeLog: (container?: HTMLElement) => void;
   renderCharts: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
   renderLog: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
   renderLogEvent: (container: HTMLElement, event: unknown, index: number) => string;
   renderRaw: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
+};
+
+type AgentsExports = {
+  /** The agent-log renderers and their stylesheet, loaded on demand, once. */
+  loadLogRenderers: () => Promise<AgentLogRenderers>;
+};
+
+/** What the GitHub plugin exports for the shell. */
+type GithubExports = {
+  /** A pull request's state as the Pulls tab draws it: its icon, named for assistive
+   * technology unless `named` is false. */
+  pullStateIcon: (
+    state: "open" | "draft" | "merged" | "closed",
+    options?: { named?: boolean },
+  ) => HTMLElement;
 };
 
 type MarkdownExports = {
@@ -1319,7 +1396,8 @@ type MarkdownExports = {
 
 /** A provider plugin's exports, the namespace of its index.js, by the plugin's name. */
 type MetabrowserPluginExports = {
-  "agent-log": AgentLogExports;
+  agents: AgentsExports;
+  github: GithubExports;
   markdown: MarkdownExports;
   structured: StructuredExports;
 };
@@ -1819,6 +1897,8 @@ type MetabrowserTreeExpansion = {
 };
 
 type MetabrowserRecentEntry = {
+  /** A Git revision's folders above the file, as a person reads them; its path is wires. */
+  dir_names?: string[];
   ext?: string;
   gitignored?: boolean;
   logical_ext?: string;
@@ -3522,6 +3602,9 @@ declare global {
     ANCHOR_PREFIX: string;
     DIMENSIONS: Readonly<Record<string, readonly string[]>>;
     DROPPED_WITH_CONTENT: readonly string[];
+    IMAGE_FALLBACK_CLASS: string;
+    IMAGE_REFERRER_POLICY: string;
+    blocksRemoteImages(): boolean;
     fragmentLink(href: string): string;
     headingSlug(text: string): string;
     allowedAttributes(
@@ -3538,6 +3621,7 @@ declare global {
     keepsImage(src: string | null, base: string | null): boolean;
     linkHref(href: string | null, base: string | null): { href: string; leaves: boolean } | null;
     outsideLink(href: string | null, base: string | null): string | null;
+    remoteImage(src: string | null, base: string | null): string | null;
     kpressProse(nodes: Node[], doc: Document): HTMLElement;
     sanitizeHtml(html: string, base: string | null): Node[];
     sanitizeNodes(
@@ -3690,6 +3774,27 @@ declare global {
     /** The branch a checkout's `HEAD` is on; false on a mirror. */
     checked_out: boolean;
     current: boolean;
+    /** The pull requests the branch is the head of, open first and then newest first;
+     * absent when it is the head of none. */
+    pulls?: MetabrowserSourceRefPull[];
+    /** How many pull requests the branch heads, of which `pulls` lists the first few. */
+    pulls_total?: number;
+  };
+
+  /** A pull request as the ref list shows it: its state as the Pulls tab does. */
+  type MetabrowserSourceRefPull = {
+    number: number;
+    title: string;
+    state: "open" | "draft" | "merged" | "closed";
+  };
+
+  /** What a listing says of its rows' pull requests: whether the server has cached them. */
+  type MetabrowserSourceRefPullRequests = {
+    state: "absent" | "ready";
+    /** Whether the cache holds every pull request, so a branch with none has none. */
+    complete: boolean;
+    /** Whether a job is filling it, so the list is worth asking for again. */
+    refreshing: boolean;
   };
 
   /** One answer of `GET /api/source/refs`: every matching ref, the default or
@@ -3711,6 +3816,8 @@ declare global {
       name: string;
       location: string;
     } | null;
+    /** Null where no provider has pull requests for the subject, and for tags. */
+    pull_requests: MetabrowserSourceRefPullRequests | null;
     refs: MetabrowserSourceRef[];
   };
 
@@ -3746,6 +3853,11 @@ declare global {
     /** The lists offered: a checkout's remote-tracking branches are a third. */
     kinds: MetabrowserSourceRefKind[];
     query: string;
+    /** What the filter box says and is named: it finds pull requests too once the server
+     * has them. */
+    filterLabel: string;
+    /** What the listing says of its pull requests; null with none. */
+    pullRequests: MetabrowserSourceRefPullRequests | null;
     loading: boolean;
     switching: boolean;
     /** A checkout's working-tree row: whether it is what the server serves, and the
@@ -3766,6 +3878,10 @@ declare global {
       current: boolean;
       /** The chip a row's name is drawn as. */
       chip: "local" | "remote" | "tag";
+      /** The pull requests the branch is the head of, the first of which the row shows. */
+      pulls: MetabrowserSourceRefPull[];
+      /** How many it heads, of which `pulls` lists the first few. */
+      pullsTotal: number;
     }>;
     note: string;
     error: string | null;
@@ -3795,6 +3911,8 @@ declare global {
   /** The elements the ref selector paints into. */
   type MetabrowserSourceRefSelectorParts = {
     releaseCopies?: () => void;
+    /** Set when the selector is disposed, so a late load draws nothing. */
+    disposed?: boolean;
     root: HTMLElement;
     /** The button's own box, which a ref chip's copy control is placed against. */
     buttonHost: HTMLElement;
@@ -3821,12 +3939,19 @@ declare global {
   };
 
   /** The windowed list's state: every row the model shows, the drawn ones by index, the
-   * row that takes Tab, and one row's height, measured. Browser only. */
+   * row that takes Tab, and where each row sits, from the heights measured. Browser only. */
   type MetabrowserSourceRefSelectorRows = {
     shown: MetabrowserSourceRefSelectorModel["rows"];
     drawn: Map<number, HTMLLIElement>;
     roving: number;
-    rowHeight: number;
+    /** Each row's top and the last row's foot: one more entry than there are rows. */
+    offsets: number[];
+    /** The model the rows were last drawn from, for drawing them again. */
+    model: MetabrowserSourceRefSelectorModel | null;
+    /** Whether the GitHub plugin, which draws a pull request's state, was asked for. */
+    iconsAsked: boolean;
+    /** Set when every row is to be drawn again, though its refs are the same. */
+    rebuild: boolean;
     /** The list's scroll position the drawn rows were drawn for, which a toolbar refill takes. */
     drawnAt: number;
     /** The list and filter the rows are of, so a new one starts at its top. */
@@ -3857,6 +3982,9 @@ declare global {
     Readonly<{
       activate(): Promise<void>;
       button: HTMLButtonElement;
+      /** The list's scroll position now, and a function that sets it again, for a rebuild
+       * of the toolbar around it. */
+      holdScroll(): () => void;
     }>;
 
   type MetabrowserSourceRefSelectorRuntime = Readonly<{
@@ -3870,10 +3998,35 @@ declare global {
     /** The selector this page mounted, for the branch or tag key; null until it mounts. */
     mounted(): MetabrowserSourceRefSelectorMount | null;
     moveRow(key: string, index: number, count: number): number | null;
+    /** How often an open list asks again while the server fills its pull requests, in ms. */
+    PULLS_POLL_MS: number;
     ROWS_OVERSCAN: number;
+    /** Where a list scrolls to when its rows are laid out again, keeping the reader's place. */
+    anchoredScroll(
+      before: { refs: readonly string[]; offsets: readonly number[] },
+      after: { refs: readonly string[]; offsets: readonly number[] },
+      top: number,
+      view: number,
+      focused: string | null,
+    ): number;
+    /** Whether two answers of the refs route say the same. */
+    sameListing(
+      a: MetabrowserSourceRefListing | null,
+      b: MetabrowserSourceRefListing | null,
+    ): boolean;
+    /** Whether two lists of rows are the same refs drawn the same way, whatever their pulls. */
+    sameRefLines(
+      a: ReadonlyArray<MetabrowserSourceRefSelectorModel["rows"][number]>,
+      b: ReadonlyArray<MetabrowserSourceRefSelectorModel["rows"][number]>,
+    ): boolean;
+    /** Where each row sits, and where the last ends: one more entry than there are rows. */
+    rowOffsets(
+      rows: ReadonlyArray<{ pulls: ReadonlyArray<unknown> }>,
+      plain: number,
+      tall: number,
+    ): number[];
     rowWindow(
-      count: number,
-      rowHeight: number,
+      offsets: readonly number[],
       scrollTop: number,
       viewHeight: number,
       roving: number,
@@ -4398,6 +4551,8 @@ declare global {
 
   type MetabrowserPublicSdk = MetabrowserSdk;
   type MetabrowserPluginAssets = PluginAssets;
+  type MetabrowserAgentLogRenderers = AgentLogRenderers;
+  type MetabrowserGithubPullStateIcon = GithubExports["pullStateIcon"];
   type MetabrowserStructuredExports = StructuredExports;
   type MetabrowserStructuredTreeRow = StructuredTreeRow;
   type MetabrowserPublicViewDescriptor = MetabrowserViewDescriptor;
@@ -4450,6 +4605,7 @@ declare global {
     };
     MetabrowserCharts?: MetabrowserChartRuntime;
     MetabrowserDocumentWidth: MetabrowserDocumentWidthRuntime;
+    MetabrowserRemoteImages?: MetabrowserRemoteImagesRuntime;
     MetabrowserFileTypes?: {
       classFor(path: string): string;
       /** `style` carries the family colour as custom properties; "" when the
@@ -4512,6 +4668,7 @@ declare global {
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserNavCollapse?: MetabrowserNavCollapseRuntime;
+    MetabrowserRevisionAges?: MetabrowserRevisionAgesRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
     MetabrowserTreeFilterModel: MetabrowserTreeFilterModel;
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
@@ -4625,6 +4782,9 @@ declare global {
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
     METABROWSER_SOURCE_KIND?: "filesystem" | "git_revision";
+    /** Whether the server's Git dates a revision's files, so its page offers Group by age and
+     * Modified within (static/app.js `noFileAges`); set on a revision's page only. */
+    METABROWSER_FILE_AGES?: boolean;
     /** Container kinds by extension; see arch-plugin-system.md. */
     METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
     METABROWSER_SETTINGS?: {
@@ -4643,6 +4803,11 @@ declare global {
         active_content: boolean;
         mutations: boolean;
       };
+      /**
+       * The reader's privacy preference the page was served under: an untrusted document's
+       * images from the web show as their alt text (static/remote-images.js).
+       */
+      BLOCK_REMOTE_IMAGES?: boolean;
       DOC_MAX_CHARS_DEFAULT?: number;
       /** Each family's distribution key with its color on each theme. */
       DISTRIBUTION_COLORS?: Array<{ key: string; light: string; dark: string }>;
@@ -4690,6 +4855,10 @@ declare global {
       GIT_HISTORY_WINDOW_MAX_ROWS?: number;
       GIT_HISTORY_WINDOW_OVERSCAN_ROWS?: number;
       GIT_HOVER_DEBOUNCE_MS?: number;
+      /** How often a revision's page asks whether its files' ages have landed. */
+      GIT_AGES_POLL_MS?: number;
+      /** How long a page keeps asking for a read before it gives up, in milliseconds. */
+      GIT_AGES_WATCH_GIVE_UP_MS?: number;
       GIT_LOG_LIMIT?: number;
       INDEX_PROGRESS_POLL_MS?: number;
       INDEX_PROGRESS_UPDATE_FILES?: number;

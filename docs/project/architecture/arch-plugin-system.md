@@ -53,6 +53,14 @@ the trust boundary it enforces.
   hook for a plugin discovered from `--plugins-dir`, and logs that it ignored them.
   Python runs only from a built-in or an installed distribution, which already belongs
   to the environment.
+- **Register modules:** a manifest’s optional `[plugin] register` names a Python module
+  that discovery imports once, as it loads a built-in or entry-point plugin, so the
+  plugin can register extensions such as log adapters.
+  An import failure becomes an error string like any other load error and the plugin is
+  skipped. For an operator-directory plugin the field is ignored with a logged warning,
+  as data hooks are, and `metab --doctor` reports it.
+  Discovery runs at server start and in the plugin-inspection modes, not on `--version`
+  or `--present --dry-run`, so those do not import a register module.
 
 ## Declared Dependencies
 
@@ -121,17 +129,22 @@ gives the reasons.
 
 `api_file` in `server.py` decides a file’s kind in this order:
 
-1. A directory is `folder`.
+1. A directory is `folder`. A folder view that declares `offer` is served only where its
+   predicate accepts the folder, off the event loop, and an offered default becomes the
+   folder’s only default (`_offered_folder_views` in `server.py`).
 2. A path that does not exist is offered to the containers below.
 3. A `.jsonl` file is parsed, and its sniffed adapter joins the classifier’s input.
 4. An extension in `BROWSER_IMAGE_EXTS` is `image`.
 5. A file read as text, because its extension is in `BROWSER_TEXT_EXTS` or because
    `content_sniff` finds text, runs the plugin classifier, then the fallback chain
    `FILE_KIND_DETECTORS` in `file_kinds.py`, then defaults to `text`.
-6. Anything else is `binary`.
+6. Anything else is asked of the `binary = true` rules, which match by path alone
+   (`_binary_kind`), and is `binary` when none claims it.
 
-`[[kind]]` rules therefore see text and JSONL files only.
-A plugin cannot claim a binary format by kind; it can add a view to the `binary` kind.
+Ordinary `[[kind]]` rules therefore see text and JSONL files only, and a `binary` rule
+sees only files found to be binary.
+A plugin claims a binary format with a `binary` rule, or adds a view to the `binary`
+kind.
 
 `build_classifier` sorts every loaded rule by descending `priority`, then discovery
 index, and returns the first match.
@@ -357,8 +370,8 @@ Each is optional except the kind and one view.
 1. **Claim the kind.** Add a `[[kind]]` rule to a plugin manifest.
    An extension or basename is cheapest; a content predicate is for a format that shares
    an extension, at a priority above the built-in rule it narrows.
-   The format must reach step 5 of [Classification](#classification), so a binary format
-   needs a view on `binary` instead.
+   The format must reach step 5 of [Classification](#classification); a binary format is
+   claimed by path with `binary = true` instead.
    Check the result with `metab . --plugins-dir <dir> --show <file>`, which prints the
    kind and its views.
 2. **Draw it.** Add a `[[view]]` and its `mb.registerView` call.
@@ -373,8 +386,9 @@ Each is optional except the kind and one view.
    `table` plugin’s routes serve it ([Table Sources](#table-sources)).
 4. **Parse a JSONL stream,** when the format is one.
    `register_log_adapter` adds a detector and parser for the JSONL view, and a rule with
-   `match = { ext = ".jsonl", adapter = "<name>" }` claims those files, as the
-   `agent-log` built-in does for its three adapters.
+   `match = { ext = ".jsonl", adapter = "<name>" }` claims those files, as the `agents`
+   built-in does for the Claude Code, Codex, Pi, and Gemini adapters, which register
+   from its manifest’s `register` module.
 5. **Make it a container,** when its parts are worth navigating, with
    `container = { children = "<route>" }`.
 6. **Give it a type family,** so the Files filter, Overview’s type breakdown, the

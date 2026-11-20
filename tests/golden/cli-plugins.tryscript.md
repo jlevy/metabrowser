@@ -27,22 +27,22 @@ The setup checks that end the report depend on the host, so they are elided here
 
 ```console
 $ metab --plugins
-NAME           SOURCE   KINDS             REQUIRES    VIEWS  HOOKS
--------------  -------  ----------------  ----------  -----  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-agent-log      builtin  agent-log         structured  3      charts
-binary         builtin  -                 -           1      chunk
-delimited      builtin  delimited         table       1      -
-diff           builtin  diff              structured  1      document,children,comparison
-event-log      builtin  event-log         agent-log   5      timeline,slowest,kinds,errors
-folder         builtin  -                 markdown    2      -
-github         builtin  -                 markdown    2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-size,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
-html           builtin  html              -           2      -
-image          builtin  -                 -           1      -
-markdown       builtin  markdown,mermaid  -           4      -
-structured     builtin  structured        -           2      parsed
-table          builtin  -                 -           0      tables,schema,rows,record,card
-text           builtin  -                 -           1      -
-unknown-jsonl  builtin  -                 agent-log   2      -
+NAME           SOURCE   KINDS                   REQUIRES    VIEWS  HOOKS
+-------------  -------  ----------------------  ----------  -----  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+agents         builtin  agent-log,agent-thread  structured  8      charts,catalog,sessions,session,records,live
+binary         builtin  -                       -           1      chunk
+delimited      builtin  delimited               table       1      -
+diff           builtin  diff                    structured  1      document,children,comparison
+event-log      builtin  event-log               agents      5      timeline,slowest,kinds,errors
+folder         builtin  -                       markdown    2      -
+github         builtin  -                       markdown    2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-size,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
+html           builtin  html                    -           2      -
+image          builtin  -                       -           1      -
+markdown       builtin  markdown,mermaid        -           4      -
+structured     builtin  structured              -           2      parsed
+table          builtin  -                       -           0      tables,schema,rows,record,card
+text           builtin  -                       -           1      -
+unknown-jsonl  builtin  -                       agents      2      -
 ? 0
 ```
 
@@ -53,25 +53,36 @@ $ metab --plugins --json
 {
   "plugins": [
     {
-      "name": "agent-log",
-      "display_name": "Agent log (Claude / Codex / Gemini / Pi)",
+      "name": "agents",
+      "display_name": "Agents (Claude Code, Codex, Gemini, Pi logs)",
       "version": "0.0.1",
       "source": "builtin",
-      "static_root": "[BUILTIN]/agent_log",
+      "static_root": "[BUILTIN]/agents",
       "kinds": [
-        "agent-log"
+        "agent-log",
+        "agent-thread"
       ],
       "requires": [
         "structured"
       ],
       "views": [
+        "agents",
+        "agent-sessions",
+        "session",
         "log",
         "charts",
-        "raw"
+        "raw",
+        "session",
+        "log"
       ],
-      "view_count": 3,
+      "view_count": 8,
       "data_hooks": [
-        "charts"
+        "charts",
+        "catalog",
+        "sessions",
+        "session",
+        "records",
+        "live"
       ],
       "disabled_data_hooks": []
     },
@@ -144,7 +155,7 @@ $ metab --plugins --json
         "event-log"
       ],
       "requires": [
-        "agent-log"
+        "agents"
       ],
       "views": [
         "timeline",
@@ -337,7 +348,7 @@ $ metab --plugins --json
       "static_root": "[BUILTIN]/unknown_jsonl",
       "kinds": [],
       "requires": [
-        "agent-log"
+        "agents"
       ],
       "views": [
         "log",
@@ -541,13 +552,13 @@ $ metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
 metab --doctor: 14 plugin(s) OK
 plugin requirements:
-  agent-log: requires structured
+  agents: requires structured
   delimited: requires table
   diff: requires structured
-  event-log: requires agent-log
+  event-log: requires agents
   folder: requires markdown
   github: requires markdown
-  unknown-jsonl: requires agent-log
+  unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)

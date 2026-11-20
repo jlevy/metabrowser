@@ -22,6 +22,11 @@ requires the operator to name a directory explicitly — viewed data
 cannot opt itself into running JS in the metabrowser page. Auto-
 discovery from the served root or the user's home is **not** a source.
 
+A manifest's optional ``[plugin] register`` module is imported once, here, for a
+built-in or entry-point plugin; that is how a plugin registers Python-side extensions
+such as log adapters. Operator-directory plugins are JavaScript-only, so theirs is
+ignored with a warning.
+
 Invalid plugins are logged and skipped — they don't take down the server.
 """
 
@@ -97,6 +102,19 @@ def _try_load_plugin(plugin_dir: Path, source: str) -> LoadedPlugin | str | None
     except (OSError, ValueError) as exc:
         return f"{manifest_path}: {exc}"
     name = manifest.plugin.name
+    register = manifest.plugin.register_module
+    if register is not None:
+        if source.startswith("local:"):
+            LOG.warning(
+                "metabrowser local plugin '%s' declares a Python register module; "
+                "operator-directory plugins are JavaScript-only, so it is ignored",
+                name,
+            )
+        else:
+            try:
+                importlib.import_module(register)
+            except Exception as exc:
+                return f"{manifest_path}: register module {register!r} failed to import: {exc!r}"
     return LoadedPlugin(
         name=name,
         static_root=plugin_dir.resolve(),

@@ -1,0 +1,124 @@
+# Codex: ordered mapping table (raw type, subtype, block -> kind)
+session_meta                        *                        *                    -> context
+turn_context                        *                        *                    -> context
+world_state                         *                        *                    -> context
+compacted                           *                        *                    -> context
+inter_agent_communication_metadata  *                        *                    -> context
+token_usage_record                  *                        *                    -> metering
+response_item                       message                  user                 -> prompt
+response_item                       message                  assistant            -> text
+response_item                       message                  *                    -> context
+response_item                       reasoning                *                    -> thinking
+response_item                       *_call                   *                    -> tool-call
+response_item                       *_call_output            *                    -> tool-result
+response_item                       compaction*              *                    -> context
+response_item                       ghost_snapshot           *                    -> context
+event_msg                           user_message             *                    -> prompt
+event_msg                           agent_message*           *                    -> text
+event_msg                           agent_reasoning*         *                    -> thinking
+event_msg                           token_count              *                    -> metering
+event_msg                           task_started             *                    -> context
+event_msg                           task_complete            *                    -> context
+event_msg                           thread_settings_applied  *                    -> context
+event_msg                           context_compacted        *                    -> context
+event_msg                           thread_rolled_back       *                    -> context
+event_msg                           turn_aborted             *                    -> error
+event_msg                           error                    *                    -> error
+event_msg                           stream_error             *                    -> error
+event_msg                           *_approval_request       *                    -> control
+event_msg                           exec_command_begin       *                    -> tool-call
+event_msg                           exec_command_end         *                    -> tool-result
+event_msg                           mcp_tool_call_begin      *                    -> tool-call
+event_msg                           mcp_tool_call_end        *                    -> tool-result
+event_msg                           patch_apply_begin        *                    -> tool-call
+event_msg                           patch_apply_end          *                    -> tool-result
+event_msg                           item_completed           userMessage          -> prompt
+event_msg                           item_completed           agentMessage         -> text
+event_msg                           item_completed           reasoning            -> thinking
+event_msg                           item_completed           contextCompaction    -> context
+event_msg                           item_completed           commandExecution     -> tool-result
+event_msg                           item_completed           fileChange           -> tool-result
+event_msg                           item_completed           mcpToolCall          -> tool-result
+event_msg                           item_completed           webSearch            -> tool-result
+event_msg                           item_completed           collabAgentToolCall  -> tool-result
+thread_item                         userMessage              *                    -> prompt
+thread_item                         agentMessage             *                    -> text
+thread_item                         reasoning                *                    -> thinking
+thread_item                         commandExecution         *                    -> tool-call
+thread_item                         fileChange               *                    -> tool-call
+thread_item                         mcpToolCall              *                    -> tool-call
+thread_item                         dynamicToolCall          *                    -> tool-call
+thread_item                         webSearch                *                    -> tool-call
+thread_item                         collabAgentToolCall      *                    -> tool-call
+thread_item                         imageView                *                    -> tool-call
+thread_item                         imageGeneration          *                    -> tool-call
+thread_item                         contextCompaction        *                    -> context
+thread_item                         enteredReviewMode        *                    -> context
+thread_item                         exitedReviewMode         *                    -> context
+thread_item                         plan                     *                    -> text
+thread_item                         error                    *                    -> error
+thread_turn                         error                    *                    -> error
+
+# Codex: every raw type the research brief lists
+session_meta / - / - -> context
+turn_context / - / - -> context
+world_state / - / - -> context
+compacted / - / - -> context
+inter_agent_communication_metadata / - / - -> context
+token_usage_record / - / - -> metering
+response_item / message / user -> prompt
+response_item / message / assistant -> text
+response_item / reasoning / - -> thinking
+response_item / function_call / - -> tool-call
+response_item / function_call_output / - -> tool-result
+response_item / custom_tool_call / - -> tool-call
+response_item / custom_tool_call_output / - -> tool-result
+response_item / compaction / - -> context
+event_msg / user_message / - -> prompt
+event_msg / agent_message / - -> text
+event_msg / token_count / - -> metering
+event_msg / task_started / - -> context
+event_msg / task_complete / - -> context
+event_msg / turn_aborted / - -> error
+event_msg / item_completed / commandExecution -> tool-result
+event_msg / item_completed / fileChange -> tool-result
+event_msg / item_completed / mcpToolCall -> tool-result
+event_msg / item_completed / webSearch -> tool-result
+event_msg / item_completed / collabAgentToolCall -> tool-result
+event_msg / item_completed / contextCompaction -> context
+thread_item / userMessage / - -> prompt
+thread_item / agentMessage / - -> text
+thread_item / reasoning / - -> thinking
+thread_item / commandExecution / - -> tool-call
+thread_item / fileChange / - -> tool-call
+thread_item / mcpToolCall / - -> tool-call
+thread_item / webSearch / - -> tool-call
+thread_item / collabAgentToolCall / - -> tool-call
+thread_item / contextCompaction / - -> context
+thread_turn / error / - -> error
+
+# Codex: tool name -> family (mcp__server__tool -> mcp:server.tool)
+shell -> shell
+exec_command -> shell
+local_shell -> shell
+container.exec -> shell
+write_stdin -> shell
+unified_exec -> shell
+commandExecution -> shell
+read_file -> read
+view_image -> read
+imageView -> read
+apply_patch -> edit
+fileChange -> edit
+grep_files -> search
+list_dir -> search
+tool_search -> search
+web_search -> web
+web.run -> web
+webSearch -> web
+spawn_agent -> subagent
+send_input -> subagent
+wait_agent -> subagent
+close_agent -> subagent
+resume_agent -> subagent
+collabAgentToolCall -> subagent

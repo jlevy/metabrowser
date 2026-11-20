@@ -242,7 +242,7 @@ def test_the_button_is_one_menu_button_and_the_corner_follows_the_page() -> None
     )
     link, chevron = group["children"]
     assert markup["data-view-on-github"] == ""
-    assert (link["tag"], link["data-view-on-github"], link["target"], link["rel"]) == (
+    assert (link["tag"], link["data-web-view"], link["target"], link["rel"]) == (
         "a",
         "open",
         "_blank",
@@ -252,7 +252,7 @@ def test_the_button_is_one_menu_button_and_the_corner_follows_the_page() -> None
     copy, external = menu["children"]
     assert (menu["role"], menu.get("hidden")) == ("menu", True)
     assert (copy["role"], external["role"]) == ("menuitem", "menuitem")
-    assert (external["data-view-on-github"], external["target"], external["rel"]) == (
+    assert (external["data-web-view"], external["target"], external["rel"]) == (
         "external",
         "_blank",
         "noopener",
@@ -262,7 +262,7 @@ def test_the_button_is_one_menu_button_and_the_corner_follows_the_page() -> None
     section = DESIGN_SYSTEM.read_text(encoding="utf-8")
     for hook, element in (("open", link), ("external", external)):
         stated = (
-            f'`<a data-view-on-github="{hook}" href="…" '
+            f'`<a data-web-view="{hook}" href="…" '
             f'target="{element["target"]}" rel="{element["rel"]}">`'
         )
         assert stated in " ".join(section.split()), stated

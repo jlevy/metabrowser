@@ -166,7 +166,16 @@ def test_markdown_diff_blocks_pass_the_pages_own_sanitizer(tmp_path: Path) -> No
                 '</a> <a href="../x.md">relative</a> <img src="https://example.com/t.gif" '
                 f'alt="tracker"> <img src="{wrong_mode}" alt="wrong mode"></p>'
             ),
-            "expect": {"lacks": ['href="/api/tree"', "127.0.0.1:8123", "../x.md", "t.gif", "src="]},
+            # An image from the web over https is kept, with no referrer; the image route's
+            # address with a name it never takes is not, and is its alt text.
+            "expect": {
+                "lacks": ['href="/api/tree"', "127.0.0.1:8123", "../x.md", "pull-image"],
+                "contains": [
+                    '<img loading="lazy" referrerpolicy="no-referrer"'
+                    ' src="https://example.com/t.gif" alt="tracker">',
+                    "wrong mode",
+                ],
+            },
         },
         {
             "name": "a forged target marker",

@@ -3,9 +3,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-// Generic JSONL registers its views before its provider, agent-log, has loaded, draws with
-// the provider's exports once `plugins.load` settles, and mounts nothing for a view
-// disposed while that load was in flight.
+// Generic JSONL registers its views before its provider, the agents plugin, has loaded,
+// draws with the agent-log renderers once `plugins.load` and the provider's
+// `loadLogRenderers` settle, and mounts nothing for a view disposed while that load was in
+// flight.
 (async () => {
   const registry = new Map();
   const calls = [];
@@ -19,8 +20,8 @@ const vm = require("node:vm");
     },
     plugins: {
       load(name) {
-        assert.equal(name, "agent-log");
-        return loaded;
+        assert.equal(name, "agents");
+        return Promise.resolve({ loadLogRenderers: () => loaded });
       },
     },
   };
@@ -31,7 +32,7 @@ const vm = require("node:vm");
   vm.runInNewContext(source, { window: { metabrowser: mb }, console });
   const log = registry.get("unknown-jsonl/log");
   const raw = registry.get("unknown-jsonl/raw");
-  assert.ok(log && raw, "generic JSONL must register before agent-log has loaded");
+  assert.ok(log && raw, "generic JSONL must register before the agents plugin has loaded");
   const disposed = {};
   const pending = log.render(disposed, { path: "events.jsonl" });
   log.dispose(disposed);

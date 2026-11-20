@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from metabrowser.builtin_plugins.github.gh import (
     ENVIRONMENT_TOKENS,
@@ -55,6 +55,7 @@ if TYPE_CHECKING:
         PullRequestFetch,
         PullRequestFile,
         PullRequestPin,
+        RefPulls,
     )
     from metabrowser.cache.urls import FileAnchor, GitSource, ProviderUrlReducer
     from metabrowser.mirror_refresh import PullRequestSet
@@ -327,6 +328,11 @@ class GithubProvider:
         if parse_repository_url(published.source.normalized) is None:
             return None
         return ServedPulls(published)
+
+    async def ref_pulls(self, app: Any) -> RefPulls | None:
+        from metabrowser.builtin_plugins.github.ref_pulls import served_ref_pulls
+
+        return await served_ref_pulls(app)
 
     def repository_context(
         self, source_url: str, *, revision: str, branch: str | None
