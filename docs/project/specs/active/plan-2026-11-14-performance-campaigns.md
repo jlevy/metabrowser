@@ -108,7 +108,7 @@ Its timed series still queue behind the others.
 | C | Retention | H112, one surface store (`mb-wki1`), which absorbs H95, H98, H99 (a), H100 and H105 | Lane 0 |
 | P | Pull request page | H114, the first screen in one answer (`mb-3zvb`), then whatever H108 (`mb-nitp`) still covers | Nothing |
 | D | Landing | H113, Markdown render by GET (`mb-mbf4`), with H118, landing data with the document (`mb-gdmt`), as one round; H109 and H110 (`mb-mjc0`), and H96’s concatenated startup scripts (`mb-a1nu`), only if U2 shows the server does not bound the landing, with H96’s remote value judged in H44’s regime; H102 (`mb-4ufj`) after H113 | H115 (a) before H118 |
-| R | Resident server | H117, a resident server and shell (`mb-obgj`), then Loop 1’s counters | `mb-qzny` and H97 |
+| R | Resident server | H117, a resident server and shell (`mb-obgj`), then Loop 1’s counters | Host mode’s control socket (`mb-1zyp`; `mb-qzny` before 2026-11-19) and H97 |
 | B | Background and prediction | H93 (a), a client cap that pauses on input (`mb-16d7`), then H94 (`mb-fejb`) and H104 (`mb-b7ru`); H93 (b) only if (a) fails | H112 before H94 |
 | E | Render cost | U6 (`mb-xws3`), then H101 with H99 (b) as one row (`mb-y04k`, `mb-1bh1`) | U6 |
 | W | `WKWebView` | U1 (`mb-r303`) and U5 (`mb-ttfq`) first, then `mb-o3hr`, `mb-32en`’s WebKit half, `mb-8k5g`, H97 (`mb-touu`), and the WebKit halves of H112, H117 and H118 | The user present; batch it |
