@@ -211,7 +211,7 @@ status: 200
   },
   "file_type_legend": {
     "schema": "file-type-legend-v1",
-    "limit": 5,
+    "limit": 9,
     "minimum_share_percent": 1,
     "files": {
       "all": {
@@ -397,7 +397,7 @@ status: 200
   },
   "file_type_legend": {
     "schema": "file-type-legend-v1",
-    "limit": 5,
+    "limit": 9,
     "minimum_share_percent": 1,
     "files": {
       "all": {
