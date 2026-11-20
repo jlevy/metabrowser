@@ -838,6 +838,14 @@ def test_showing_revisions_leaves_the_checkout_byte_for_byte(checkout: Path) -> 
 def test_the_snapshot_sees_an_index_rewritten_with_the_same_entries(checkout: Path) -> None:
     """The comparison above would catch a careless ``git status``, not only a checkout."""
 
+    # ``git status`` rewrites the index only when it has stat data to refresh, so a bare
+    # run sometimes leaves it alone (a run on main did, mb-c8hi). Give it some: a tracked
+    # file's modification time moves with its bytes unchanged, which Git finds out of date
+    # with the index and refreshes, deterministically. The file is touched before the
+    # snapshot, so what differs after is only what ``git status`` wrote.
+    tracked = checkout / "STAGED.md"
+    later = tracked.stat().st_mtime_ns + 5_000_000_000
+    os.utime(tracked, ns=(later, later))
     before = snapshot(checkout)
     subprocess.run(
         ["git", "-C", str(checkout), "status", "--porcelain"],

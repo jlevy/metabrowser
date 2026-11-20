@@ -348,13 +348,11 @@ def test_diff_syntax_hosts_and_split_geometry_keep_the_css_contract() -> None:
         '.metabrowser-diff-host .diff-root[data-selection-side="new"] .diff-split-old .diff-line-text',
     )
     host_tokens = _rule_body(css, ".metabrowser-diff-host")
-    assert (
-        "--diff-add-row-bg: color-mix(in srgb, var(--status-success) 9%, transparent);"
-        in host_tokens
-    )
-    assert (
-        "--diff-del-row-bg: color-mix(in srgb, var(--status-error) 9%, transparent);" in host_tokens
-    )
+    # The row tints are the shell's, so the GitHub plugin's review hunks share them.
+    shell = STYLES_CSS.read_text(encoding="utf-8")
+    assert "--diff-add-row-bg: color-mix(in srgb, var(--status-success) 9%, transparent);" in shell
+    assert "--diff-del-row-bg: color-mix(in srgb, var(--status-error) 9%, transparent);" in shell
+    assert "--diff-add-row-bg:" not in host_tokens
     assert (
         "--diff-add-refined-row-bg: color-mix(in srgb, var(--status-success) 3%, transparent);"
         in host_tokens

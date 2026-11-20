@@ -293,6 +293,20 @@ function el(tag, className, text) {
 }
 
 /**
+ * A box saying something about the diff it sits in: `.notice`, the shell's one primitive,
+ * with the severity on its border. The plain availability reasons stay muted text.
+ *
+ * @param {"warning" | "error"} severity
+ * @param {string} className
+ * @param {string} [text]
+ */
+function noticeEl(severity, className, text) {
+  const node = el("div", `notice diff-notice diff-availability ${className}`.trim(), text);
+  node.setAttribute("data-severity", severity);
+  return node;
+}
+
+/**
  * A glyph from the shell's shared registry, or "" outside the shell.
  *
  * @param {string} name
@@ -669,11 +683,7 @@ export function renderFileBody(state, layout) {
       }
       if (state.patch.truncated) {
         state.body.append(
-          el(
-            "div",
-            "diff-availability diff-patch-truncated",
-            "This patch was truncated at its bounds.",
-          ),
+          noticeEl("warning", "diff-patch-truncated", "This patch was truncated at its bounds."),
         );
       }
     },
@@ -2450,7 +2460,7 @@ function spliceDeferred(file, loaded, view) {
  */
 function failDeferred(file, error, view) {
   const count = ++view.deferredFailed;
-  view.hydrationFailure.textContent = `Could not load changes for ${count.toLocaleString("en-US")} ${count === 1 ? "file" : "files"}.`;
+  view.hydrationFailure.textContent = `Could not load changes for ${countFormatter(view.api)(count)} ${count === 1 ? "file" : "files"}.`;
   view.hydrationFailure.hidden = false;
   reportLoad(
     "file hydration",
@@ -2462,7 +2472,7 @@ function failDeferred(file, error, view) {
     },
     error,
   );
-  file.body.append(el("div", "diff-availability", "Could not load this file's changes."));
+  file.body.append(noticeEl("error", "", "Could not load this file's changes."));
   return "failed";
 }
 
@@ -3147,7 +3157,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     layoutKey: null,
     listTruncated: false,
     narrow,
-    hydrationFailure: el("div", "diff-availability diff-hydration-failure"),
+    hydrationFailure: noticeEl("error", "diff-hydration-failure"),
     pinListeners: null,
     pinned: null,
     pinnedAt: Number.NEGATIVE_INFINITY,
@@ -3233,7 +3243,7 @@ export function mountDiffView(container, document_, api, options = {}) {
   root.append(toolbar);
   // What the source could not model is left out of the files below, so it is said above them.
   for (const warning of /** @type {string[]} */ (view.resolved.warnings ?? [])) {
-    root.append(el("div", "diff-availability diff-warning", warning));
+    root.append(noticeEl("warning", "diff-warning", warning));
   }
   const context = { revision: String(document_.__revision ?? "") };
   view.hydrationFailure.hidden = true;
@@ -3261,7 +3271,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         }
       }
       if (manifest.truncated) {
-        root.append(el("div", "diff-availability", "The change list was truncated at its bounds."));
+        root.append(noticeEl("warning", "", "The change list was truncated at its bounds."));
       }
       view.spacer = el("div", "diff-end-spacer");
       root.append(view.spacer);

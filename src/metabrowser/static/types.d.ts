@@ -3631,6 +3631,8 @@ declare global {
     drawn: Map<number, HTMLLIElement>;
     roving: number;
     rowHeight: number;
+    /** The list's scroll position the drawn rows were drawn for, which a toolbar refill takes. */
+    drawnAt: number;
     /** The list and filter the rows are of, so a new one starts at its top. */
     listing: string;
     /** Whether this listing has been scrolled to the served ref's row, which it is once. */

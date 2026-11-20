@@ -32,8 +32,8 @@
 }
 
 .folder-overview-panel-toggle:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Clipped, for the collapse, without becoming a scroll container: one would hold a
@@ -97,8 +97,6 @@
   display: flex;
   gap: 12px;
   align-items: center;
-  padding: 12px;
-  color: var(--muted);
 }
 
 /* Every panel shares the README card's edges inside the outer pane gutter.

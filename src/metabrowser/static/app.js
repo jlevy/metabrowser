@@ -2730,7 +2730,7 @@ function treeLazyFailureHtml(message) {
   );
 }
 
-function responseErrorDetail(body, status) {
+function responseErrorDetail(body) {
   var text = String(body || "").trim();
   if (text) {
     try {
@@ -2746,7 +2746,7 @@ function responseErrorDetail(body, status) {
       return text;
     }
   }
-  return `The request failed (HTTP ${status}).`;
+  return "The server could not complete the request.";
 }
 
 function responseErrorSummary(body, fallback) {
@@ -3907,7 +3907,8 @@ async function toggleTreeContainer(row) {
         },
         error,
       );
-      children.innerHTML = '<div class="tree-empty-note">Could not load these entries.</div>';
+      children.innerHTML =
+        '<div class="tree-empty-note nav-error">Could not load these entries.</div>';
     }
     applyTreeFilters();
   }
@@ -5335,7 +5336,7 @@ function fetchRecent(cursor, preserveRows) {
         showInitialError: () => {
           if (results) {
             results.innerHTML =
-              '<div class="recent-empty" role="alert">Could not load recently modified files. Refresh the page to try again.</div>';
+              '<div class="recent-empty nav-error" role="alert">Could not load recently modified files. Refresh the page to try again.</div>';
           }
         },
       });
@@ -5932,7 +5933,7 @@ function renderNavFilterBar() {
   // "Keys in a Menu").
   var restoreFocus = fc.keepFocus(bar);
   // A page with the branch and tag chooser ships it leading the row, and its module owns
-  // it: it is carried over, not drawn (static/source-ref-selector.js#keepFocusAcross).
+  // it: it is carried over, not drawn (static/source-ref-selector.js#keepAcrossRefills).
   var chooser = document.getElementById("source-ref-selector");
   bar.innerHTML = main + drawer;
   if (chooser) {
@@ -6753,7 +6754,10 @@ async function selectFile(path, preferredViewId) {
               () => resp.text().catch(bodyFailure),
               responsePerfMeta(resp, path),
             );
-            throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
+            if (resp.status !== 404) {
+              console.error("file request failed", resp.status);
+            }
+            throw Object.assign(new Error(responseErrorDetail(text)), {
               notFound: resp.status === 404,
               summary: responseErrorSummary(text, "Could not open this file."),
             });
