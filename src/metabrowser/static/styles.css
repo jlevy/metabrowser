@@ -6777,6 +6777,40 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--status-error);
 }
 
+/* The event log's Details for a failure or a late wait (static/event-reports.js, mb-9zp5):
+   short muted lines under a quiet rule, small text, and links to the records as JSON. */
+.event-log-details {
+  padding-block: 6px;
+  padding-inline-start: 10px;
+  border-inline-start: 2px solid var(--border);
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.event-log-details p,
+.event-log-details ul {
+  margin: 0;
+}
+.event-log-details ul {
+  padding-inline-start: 1.2em;
+}
+.event-log-details-part + .event-log-details-part,
+.event-log-details-links {
+  margin-block-start: 6px;
+}
+.event-log-details-heading {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+.event-log-details a {
+  color: var(--link);
+}
+.event-log-details a:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+
 /* ── Tally skeleton cells ───────────────────────────────────── */
 /* Rendered by sizeHtml(null) / formatAge(null) when the
    inventory provider has not yet finalized a dir. The cell

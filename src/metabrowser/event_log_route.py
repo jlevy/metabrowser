@@ -20,9 +20,11 @@ without a server, and a page can link to the records behind a failure. It answer
 Filters: ``file`` (a listed segment; the default is the one this process writes, else
 the newest), ``kind``, ``outcome``, and ``event`` (comma-separated lists of the values
 the schema names), ``name`` (a substring), ``cause`` (one of
-:data:`metabrowser.network_cause.CAUSES`), ``client`` (the browser's request ID),
-``span`` (that span's records and those of the spans it started), and ``min_ms`` (a
-duration at least this long). ``sort`` is ``time`` (newest first) or ``duration``
+:data:`metabrowser.network_cause.CAUSES`), ``client`` (a request's client ID, which the
+work it started carries too, or a page's ID, which finds every request the page sent
+and every report it made, since each request's ID is the page's and ``-<n>``), ``span``
+(that span's records and those of the spans it started), and ``min_ms`` (a duration at
+least this long). ``sort`` is ``time`` (newest first) or ``duration``
 (longest first); ``limit`` is at most :data:`MAX_LIMIT`.
 
 ``GET /api/event-log/failures`` counts the failures since ``since`` (an hour ago by
@@ -50,6 +52,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from metabrowser import event_log, network_cause
+from metabrowser.event_log_reports import api_event_log_client
 
 DEFAULT_LIMIT: Final = 100
 # The most records one answer carries: about 270 KB at the measured 268 bytes a record.
@@ -109,8 +112,12 @@ class Query:
             attrs = record.get("attrs")
             if not isinstance(attrs, dict) or attrs.get("cause") != self.cause:
                 return False
-        if self.client is not None and record.get("client") != self.client:
-            return False
+        if self.client is not None:
+            client = record.get("client")
+            if not isinstance(client, str) or (
+                client != self.client and not client.startswith(f"{self.client}-")
+            ):
+                return False
         if self.span is not None and self.span not in (record.get("span"), record.get("parent")):
             return False
         if self.min_ms is not None:
@@ -274,6 +281,7 @@ def read_log(query: Query, *, state: Path, directory: Path) -> tuple[int, dict[s
             "kind": s.kind,
             "name": s.name,
             "age_ms": s.age_ms,
+            "client": s.client,
             "attrs": s.attrs,
         }
         for s in event_log.open_spans()
@@ -514,6 +522,10 @@ async def api_event_log_failures(request: Request) -> JSONResponse:
 EVENT_LOG_ROUTES = [
     Route("/api/event-log", api_event_log),
     Route("/api/event-log/failures", api_event_log_failures),
+    # What a page saw: its slow and pending requests, freezes, and late waits. Spelled out,
+    # as devtools/check_parity.py reads registrations; it is event_log_reports.REPORT_ROUTE,
+    # which tests/test_event_log_reports.py posts to through the application.
+    Route("/api/event-log/client", api_event_log_client, methods=["POST"]),
 ]
 
 

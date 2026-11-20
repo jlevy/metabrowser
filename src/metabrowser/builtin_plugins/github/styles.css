@@ -273,6 +273,22 @@
 .github-pull-summary-pending > .tally-pending {
   width: min(100%, 14.5em);
 }
+/* The placeholder's place once its wait is late (mb-9zp5): a muted line, as tall as the
+   placeholder, ending in Details. It wraps rather than run past the header. */
+.github-pull-summary-late {
+  display: flex;
+  flex-wrap: wrap;
+  align-self: stretch;
+  align-items: center;
+  column-gap: 0.3em;
+  min-height: var(--ui-row-height);
+  color: var(--muted);
+  font-size: var(--body-font-size);
+}
+/* The Details panel, the header's last row while it is open. */
+.github-pull-header > .github-pull-details {
+  margin-block-start: 4px;
+}
 /* The cached changed-files list's brief line, drawn in the row while the comparison is read
    (mb-z8ea; pull-summary-brief.js): the Diff summary header's line, its chevron's slot empty,
    pulled left as the header's toggle is, so its words are where the header's will be and

@@ -9964,6 +9964,11 @@ async function initDeferredShellTools() {
   if (!assets) {
     throw new Error("Metabrowser asset loader is unavailable");
   }
+  // What the page reports to the event log (static/event-reports.js), beside the tools: a
+  // page that waits on something before now asks for it itself.
+  assets.ensureAsset("event-reports").catch((error) => {
+    console.warn("metabrowser event reports: load failed", error);
+  });
   await _perf.measureAsync("loadShellTools", () => assets.ensureAsset("shell-tools"));
   attachMainTabs();
   // Before the keymap, whose backslash key targets the chevron.
