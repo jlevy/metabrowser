@@ -386,6 +386,8 @@ page to open.
 [Diagnostics](command-line.md#diagnostics-and-plugins) says what each check
 covers. Settings’ Check Setup… opens the same window.
 The `metab` row compares with the oldest `metab` this build of the app runs.
+The Git row names that `git`, its version, and whether it reads file ages on a Git
+revision; a Git too old for them is a warning that says which release it needs.
 
 - **Check Again** runs it again, as after following a step or choosing a `metab` in
   Settings.
