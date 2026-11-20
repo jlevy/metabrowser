@@ -125,10 +125,11 @@ def pinned_database(ref: ContentRef, data: bytes, subject: str) -> Database:
     )
 
 
-def blob_too_large() -> SqliteAccessError:
+def blob_too_large(limit: int = BLOB_MAX_BYTES) -> SqliteAccessError:
+    """The refusal of a revision's database past *limit* bytes."""
     return SqliteAccessError(
         "unreadable",
-        f"This database is larger than the {BLOB_MAX_BYTES:,} bytes read from a revision.",
+        f"This database is larger than the {limit:,} bytes read from a revision.",
     )
 
 

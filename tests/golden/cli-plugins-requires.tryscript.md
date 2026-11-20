@@ -78,6 +78,7 @@ plugin requirements:
   event-log: requires agents
   folder: requires markdown
   github: requires markdown
+  sqlite: requires table
   unknown-jsonl: requires agents
   uses-md: requires markdown
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
@@ -121,6 +122,7 @@ plugin requirements:
   event-log: requires agents
   folder: requires markdown
   github: requires markdown
+  sqlite: requires table
   unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
 ...
@@ -144,6 +146,7 @@ plugin requirements:
   event-log: requires agents
   folder: requires markdown
   github: requires markdown
+  sqlite: requires table
   unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
 ...

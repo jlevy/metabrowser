@@ -812,8 +812,9 @@ def test_the_routes_read_a_table_on_a_pin(tmp_path: Path) -> None:
 
 def test_every_table_source_kind_classifies_on_a_pin_by_name_alone() -> None:
     # On a pin a table route classifies by the Git-blob subset of the rules (extension
-    # and basename); a table source whose kind needed more would not be served there.
-    pin_rules = {"ext", "exts", "basename"}
+    # and basename) and, for bytes that sniff as binary, a kind's magic number from the
+    # blob's first bytes; a table source whose kind needed more would not be served there.
+    pin_rules = {"ext", "exts", "basename", "magic"}
     served = {
         declaration.kind
         for declaration in server._table_source_declarations()  # pyright: ignore[reportPrivateUsage]

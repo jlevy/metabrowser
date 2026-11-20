@@ -91,8 +91,10 @@ async def _database(ref: ContentRef) -> Database | None:
         except OSError:
             return None
     if ref.stored_size is not None and ref.stored_size > BLOB_MAX_BYTES:
-        raise blob_too_large()
+        raise blob_too_large(BLOB_MAX_BYTES)
     window = await read_content_window(ref, max_bytes=BLOB_MAX_BYTES + 1)
+    if len(window.data) > BLOB_MAX_BYTES:
+        raise blob_too_large(BLOB_MAX_BYTES)
     return await run_in_threadpool(pinned_database, ref, window.data, subject)
 
 

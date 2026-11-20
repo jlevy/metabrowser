@@ -96,6 +96,7 @@ PLUGIN_API_EXPORTS = {
     "TableSource",
     "TableSourceAdapter",
     "TableSourceError",
+    "blob_cell",
     "coerce_filter_value",
     "content_generation",
     "cut_utf8",
