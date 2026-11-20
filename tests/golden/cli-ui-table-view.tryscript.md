@@ -644,7 +644,7 @@ $ node tests/dom/table-view-session.js
       "first": "2",
       "spacers": [
         "height: 0px",
-        "height: 5456px"
+        "height: 5808px"
       ],
       "rows": [
         "1 | 1 [num] | bravo 1 | false",
@@ -676,8 +676,8 @@ $ node tests/dom/table-view-session.js
       "drawn": 36,
       "first": "140",
       "spacers": [
-        "height: 4278px",
-        "height: 13206px"
+        "height: 4554px",
+        "height: 14058px"
       ],
       "rows": [
         "139 | 139 [num] | bravo 139 | false"
@@ -687,7 +687,7 @@ $ node tests/dom/table-view-session.js
     "focus": null
   },
   "End: the last row held, scrolled into the window, focused": {
-    "scrollTop": 18259,
+    "scrollTop": 19437,
     "first": "579",
     "drawn": 23,
     "focus": {
@@ -737,7 +737,7 @@ $ node tests/dom/table-view-session.js
       "first": "2",
       "spacers": [
         "height: 0px",
-        "height: 5456px"
+        "height: 5808px"
       ],
       "rows": [
         "600 | 600 [num] | alpha 600 | true",

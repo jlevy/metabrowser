@@ -440,6 +440,16 @@ export function reconcileState(state, fields) {
 /** Field types whose values are literals, drawn in the monospaced face. */
 const LITERAL_TYPES = new Set(["date", "datetime", "json", "blob"]);
 
+/**
+ * Whether a field's values are literals, drawn in the monospaced face: a key, or a date,
+ * time, JSON, or bytes.
+ *
+ * @param {TableField | undefined} field
+ */
+export function literalField(field) {
+  return Boolean(field && (field.key || LITERAL_TYPES.has(field.type)));
+}
+
 /** @param {unknown} value @returns {value is Record<string, unknown>} */
 function isEnvelope(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -462,7 +472,7 @@ export function presentCell(cell, field) {
     cut: null,
     stored: null,
     invalid: false,
-    literal: Boolean(field && (field.key || LITERAL_TYPES.has(field.type))),
+    literal: literalField(field),
     filter: null,
     ref: null,
   };

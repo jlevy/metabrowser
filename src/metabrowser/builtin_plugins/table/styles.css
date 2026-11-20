@@ -12,7 +12,9 @@
   padding-bottom: 0;
 }
 .table-view {
-  --table-line-height: 18px;
+  /* One line of the body text: Source Sans 3 at the body size takes 20 px, so a shorter
+     line box spilled a pixel and every cell read as cut (tests/test_table_view_chrome.py). */
+  --table-line-height: 20px;
   position: relative;
   display: flex;
   flex: 1;
@@ -121,8 +123,6 @@
 }
 .table-view .data-grid {
   table-layout: fixed;
-  width: max-content;
-  min-width: 100%;
 }
 .table-view .data-grid[hidden] {
   display: none;
@@ -145,7 +145,7 @@
   display: -webkit-box;
   height: calc(2 * var(--table-line-height));
   overflow-wrap: anywhere;
-  white-space: normal;
+  white-space: pre-line;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }

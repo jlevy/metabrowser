@@ -626,14 +626,14 @@ async function refusals() {
 
 async function windowedTable() {
   const view = mount("long.csv");
-  view.scroller.clientHeight = 341;
+  view.scroller.clientHeight = 363;
   view.scroller.clientWidth = 0;
   await ready(view);
   step("a table past the whole-table bound: a grid that draws a window", {
     requests: takeRequests(),
     ...shown(view, { rows: 2 }),
   });
-  view.scroller.scrollTop = 150 * 31;
+  view.scroller.scrollTop = 150 * 33;
   dispatch(view.scroller, "scroll");
   tick(16);
   await settle();

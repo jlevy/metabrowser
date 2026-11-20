@@ -38,6 +38,7 @@ import {
   formatCount,
   isFiltered,
   keyStep,
+  literalField,
   pageNotes,
   parseState,
   positionOf,
@@ -67,16 +68,18 @@ import {
 // ── Bounds and timings ────────────────────────────────────────
 //
 // Measured with tests/dom/table-view-measure.mjs in headless Chrome on a shared
-// 4-processor Linux container at a load average of 3 to 5 (2026-11-20), over generated
-// tables of 12 columns of short text, numbers, dates, and booleans, one line a row, in a
-// 1,280 x 800 window; rerun it for the current numbers.
+// 4-processor Linux container (2026-11-20), over generated tables of 12 columns of short
+// text, numbers, dates, and booleans, one line a row, in a 1,280 x 800 window, three
+// opens of each; rerun it for the current numbers.
 
 // The most rows a table may hold and still be read and drawn whole, keeping the browser's
 // own find, select all, copy, and print. Drawing a whole table is linear in its rows, and
-// layout is most of it: from the last answer to laid out, over two runs of three, 500 rows
-// took 103 to 178 ms, 1,000 rows 216 to 299 ms, and 2,000 rows 421 to 681 ms, where the
-// first window of a windowed table of 50,000 rows took 8 to 32 ms. Five hundred rows keeps a whole table
-// under the 0.2 s past which a click stops feeling immediate.
+// layout is most of it: from the last answer to laid out, at a load average near 2, 500
+// rows took 64 to 93 ms, 1,000 rows 159 to 201 ms, and 2,000 rows 279 to 329 ms, and at a
+// load average of 4 to 5 about half as long again, where the first window of a windowed
+// table of 50,000 rows took 7 to 32 ms. Five hundred rows keeps a whole table under the
+// 0.2 s past which a click stops feeling immediate on a busy machine as well as an idle
+// one; a thousand reached it.
 export const WHOLE_TABLE_MAX_ROWS = 500;
 
 // Rows the first request asks for: a screen of them several times over, so a windowed
@@ -91,15 +94,15 @@ export const NEXT_PAGE_ROWS = 1000;
 
 // A row's height before the first drawn row is measured, by its line count, so the
 // window's first draw places its spacers near where they end up: one line of the 14 px
-// body text with the cell's padding measured 31.2 px, and two lines 48.2 px. The view
+// body text with the cell's padding measured 33.2 px, and two lines 52.2 px. The view
 // measures its first drawn row and uses that.
-export const ROW_HEIGHT_ESTIMATE_PX = Object.freeze({ 1: 31, 2: 48 });
+export const ROW_HEIGHT_ESTIMATE_PX = Object.freeze({ 1: 33, 2: 52 });
 
 // Rows the window draws past each edge of the view, so a scroll the compositor moves
 // ahead of the page's own redraw shows rows already drawn: twelve rows is about a third
 // of a view in the default window, more than a wheel step moves. Redrawing a window of the
 // view's rows and twelve past each edge, 41 rows of 12 columns, took 1.5 to 8.1 ms a step
-// while scrolling.
+// while scrolling, and 1.7 to 6.6 ms at a load average near 2.
 export const ROWS_OVERSCAN = 12;
 
 // How near the last row held, in rows, the window comes before the next page is read.
@@ -119,6 +122,8 @@ const PLACE_KEY = "metabrowserTablePlace";
 const HREFS_KEPT = 64;
 /** A key no source mints, which a row's record link holds until its key replaces it. */
 const RECORD_SLOT = "__record__";
+/** A cell's horizontal padding, both sides: --panel-cell-padding's 0.6rem twice, rounded up. */
+const CELL_PAD_PX = 20;
 
 /**
  * What the view needs from its host: the SDK, and the platform services it uses, so the
@@ -512,10 +517,10 @@ export function mountTable(container, ctx, host = {}) {
   function refit(force = false) {
     const next = fitColumns({
       columns,
-      widths,
-      chPx: measureCh(),
-      fixedPx: positional() ? (String(rows.length).length + 2) * measureCh() + 16 : 0,
-      padPx: 20,
+      widths: Object.fromEntries(columns.map((name) => [name, columnPx(name)])),
+      chPx: 1,
+      fixedPx: positionPx(),
+      padPx: 0,
       available: scroller.clientWidth || 0,
       chosen: state.cols !== null,
     });
@@ -541,17 +546,47 @@ export function mountTable(container, ctx, host = {}) {
     }
   }
 
-  let chPx = 0;
+  /** One character's width in the table's face, and in a literal value's. @type {{sans: number, mono: number} | null} */
+  let chPx = null;
   function measureCh() {
-    if (chPx > 0) {
+    if (chPx) {
       return chPx;
     }
-    const probe = el("span", { class: "table-ch-probe", "aria-hidden": "true" }, "0000000000");
-    table.append(probe);
-    const width = probe.getBoundingClientRect?.().width ?? 0;
-    probe.remove();
-    chPx = width > 0 ? width / 10 : 8;
+    /** @param {string} className */
+    const width = (className) => {
+      const probe = el(
+        "span",
+        { class: `table-ch-probe ${className}`, "aria-hidden": "true" },
+        "0000000000",
+      );
+      table.append(probe);
+      const measured = probe.getBoundingClientRect?.().width ?? 0;
+      probe.remove();
+      return measured > 0 ? measured / 10 : 8;
+    };
+    chPx = { sans: width(""), mono: width("data-literal") };
     return chPx;
+  }
+
+  /**
+   * A column's width in pixels: its width in characters, in the face its values are drawn
+   * in (a literal's monospaced face is wider than the table's), and the cell's padding.
+   *
+   * @param {string} name
+   */
+  function columnPx(name) {
+    const ch = measureCh();
+    return (
+      Math.ceil((widths[name] ?? 8) * (literalField(fieldsByName.get(name)) ? ch.mono : ch.sans)) +
+      CELL_PAD_PX
+    );
+  }
+
+  /** The row's own column's width in pixels: its largest number, room, and padding; none for keyed rows. */
+  function positionPx() {
+    return positional()
+      ? Math.ceil((String(rows.length).length + 2) * measureCh().sans) + CELL_PAD_PX
+      : 0;
   }
 
   /** Whether rows are named by position, so the row's own column shows its number. */
@@ -566,7 +601,7 @@ export function mountTable(container, ctx, host = {}) {
       cols.push(
         el("col", {
           class: "table-col-position",
-          style: `width: ${String(rows.length).length + 2}ch`,
+          style: `width: ${positionPx()}px`,
         }),
       );
       heads.push(
@@ -575,10 +610,14 @@ export function mountTable(container, ctx, host = {}) {
     }
     for (const name of fit.visible) {
       const field = fieldsByName.get(name);
-      cols.push(el("col", { style: `width: calc(${widths[name] ?? 8}ch + 20px)` }));
+      cols.push(el("col", { style: `width: ${columnPx(name)}px` }));
       heads.push(headerCell(name, field));
     }
     colgroup.replaceChildren(...cols);
+    // The table is as wide as its columns, so each holds the width its 'col' gives it
+    // rather than one its widest value would take.
+    const px = fit.visible.reduce((sum, name) => sum + columnPx(name), positionPx());
+    table.style.setProperty("width", `${px}px`);
     const row = el("tr", windowed ? { "aria-rowindex": "1" } : {}, ...heads);
     thead.replaceChildren(row);
   }
