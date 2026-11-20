@@ -58,7 +58,7 @@ from metabrowser.source import (
 #
 # Each bound caps one cost of one request. The numbers beside them were measured with
 # `devtools/bench_table_source.py` on a shared 4-processor Linux container (Python 3.12,
-# 2026-11-20), over a synthetic 12-column CSV; rerun it for the current numbers. What a
+# 2026-11-20), over synthetic CSV files; rerun it for the current numbers. What a
 # browser pays to draw a page belongs to the table view, which measures it when it
 # arrives.
 
@@ -72,8 +72,8 @@ TABLE_PAGE_ROWS_MAX = 1000
 # Cells in one page: a page of wide rows carries fewer of them (`page_row_limit`), and
 # the envelope's `limit` says how many it allowed. A page's cost follows its cells, not
 # its rows: 1,000 rows of 12 cells, each cell cut at the preview bound, is this many
-# cells, and it encoded in 24 to 30 ms as 5.3 MB of JSON, the largest page the row
-# bounds above admit at that width; a wider table pays the same per page.
+# cells, and it encoded in 24 to 39 ms as 5.3 MB of JSON, the largest page the row
+# bounds above admit at that width; a wider table pays no more per page.
 TABLE_PAGE_CELLS_MAX = 12_000
 
 # Characters of one text cell a page carries; a longer value is a `{text, length}`

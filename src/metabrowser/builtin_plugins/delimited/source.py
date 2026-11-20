@@ -91,38 +91,62 @@ from metabrowser.plugin_api import (
 # A parse is not interruptible, so these bound the first request's latency and the
 # cache's memory. What a parse costs follows the file's rows and cells, not its bytes, so
 # each has its own bound; past any of them the file shows its leading rows and says so.
-# The numbers beside them were measured with `devtools/bench_table_source.py`, as the
-# bounds in `metabrowser.table_source` are; rerun it for the current numbers.
+# Measured with `devtools/bench_table_source.py`, as the bounds in
+# `metabrowser.table_source` are (a shared 4-processor Linux container, Python 3.12,
+# 2026-11-20); rerun it for the current numbers.
 #
-# MEASURED
+# With no row or cell bound, a 16 MiB file was far dearer narrow than wide. Twelve
+# columns (151,000 rows) parsed in 0.31 s and held 118 MB, 7 bytes per byte of file; one
+# column of integer IDs (2.1 million rows) parsed in 1.44 s, held 302 MB, and took 1.65 s
+# for its first sort index and 1.59 s for each filtered and sorted page after it; one
+# column of one character (8.4 million rows) parsed in 4.8 s, held 805 MB, and took
+# 6.7 s to sort. Under the bounds below, every shape the bench builds parsed in at most
+# 0.29 s and took at most 0.51 s for a first sort index and 0.35 s for a filtered and
+# sorted page, so a first filtered and sorted page cost about one second, half of
+# `TABLE_REQUEST_DEADLINE_SECONDS`, and held at most 129 MB (six columns of two-digit
+# integers, cut at the cell bound after 333,000 rows).
 
-# The most bytes of a file parsed.
+# The most bytes of a file parsed: 16 MiB of the 12-column shape, about 150,000 rows.
 DELIMITED_PARSE_MAX_BYTES = 16 * 1024 * 1024
 
-# The most rows of a file parsed, the header's excepted.
+# The most rows of a file parsed, the header's excepted. At this bound one column of
+# integer IDs parsed in 0.25 s and held 72 MB, its first sort index took 0.43 s, and a
+# filtered and sorted page 0.35 s; one column of one character parsed in 0.18 s.
 DELIMITED_MAX_ROWS = 500_000
 
-# The most cells of a file parsed, the header's among them.
+# The most cells of a file parsed, the header's among them: above the 1.8 million the
+# 12-column shape holds at the byte cap, so that file is read whole. Six columns of
+# two-digit integers reached it after 333,000 rows, parsed in 0.29 s, and held 129 MB.
 DELIMITED_MAX_CELLS = 2_000_000
 
 # The most cells of one row read, the header's among them; a cell past it is not read.
+# A row's cells are what a schema, a record, and the type sample scale with: at this
+# width the schema encoded in 3 ms as 0.42 MB of JSON, and the sample of 1,000 rows of
+# datetimes, the dearest values to infer, took 0.37 s of a 0.62 s parse. A page carries
+# fewer wide rows (`TABLE_PAGE_CELLS_MAX`): 11 at this width, 0.36 MB in 10 ms.
 DELIMITED_MAX_COLUMNS = 1024
 
 # Rows whose values decide each column's type. A later value that contradicts the type
-# is shown as stored, not hidden.
+# is shown as stored, not hidden. Inference tries at most five patterns a value, and
+# stops a pattern at the first value that fails it; its dearest case is measured at
+# `DELIMITED_MAX_COLUMNS` above.
 DELIMITED_TYPE_SAMPLE_ROWS = 1000
 
 # The parse cache's bounds: entries, and the bytes the parsed files and their sort
-# indexes are estimated to hold (`_Parsed.held_bytes`).
+# indexes are estimated to hold (`_Parsed.held_bytes`). Two files of the 12-column shape
+# at the byte cap fit (133 MB estimated each), as does one file at the row and cell
+# bounds whose text is not ASCII, the dearest estimate the bounds admit (about 230 MB).
 DELIMITED_CACHE_MAX_ENTRIES = 8
 DELIMITED_CACHE_MAX_BYTES = 256 * 1024 * 1024
 
-# What a parse holds, measured with `tracemalloc` over shapes from one column of one
-# character to 12 columns of nine and 4 of 100 (the bench's "held" lines): each row's
-# list, each cell's string and its slot in the row, and the text itself, one byte a
-# character when the text is ASCII and at most four otherwise. A cell marked invalid
-# UTF-8 costs its entry in the set that marks it. These are upper fits, so the estimate
-# is never below what the bench measured.
+# What a parse holds, measured with `tracemalloc` over the bench's shapes, from one
+# column of one character to 1,024 columns of datetimes: each row's list, each cell's string and
+# its slot in the row, and the text itself, one byte a character when the text is ASCII
+# and at most four otherwise. A cell marked invalid UTF-8 costs its entry in the set
+# that marks it and its wider replaced string: 200,000 rows of two such cells held
+# 60 MB more than the same rows valid, 149 bytes a cell. These are upper fits: the bench
+# prints each shape's measured and estimated bytes, and no estimate is below what was
+# measured.
 _HELD_BYTES_PER_ROW = 96
 _HELD_BYTES_PER_CELL = 56
 _HELD_BYTES_PER_INVALID_CELL = 160
