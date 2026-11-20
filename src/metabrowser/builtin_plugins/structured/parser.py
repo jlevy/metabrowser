@@ -270,6 +270,4 @@ def parse_structured_bytes(data: bytes, ext: str, *, serialize: bool = True) -> 
         parsed = _parse_text(decode_text(data), ext)
     except Exception as exc:
         return error_payload(exc)
-    return _payload_from_parsed(
-        parsed, label="bytes", source_bytes=len(data), serialize=serialize
-    )
+    return _payload_from_parsed(parsed, label="bytes", source_bytes=len(data), serialize=serialize)

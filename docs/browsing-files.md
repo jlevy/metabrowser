@@ -136,7 +136,7 @@ tabs, and `V` and `S` switch to the rendered view and the source wherever both e
 | --- | --- |
 | Markdown (`.md`) | Document, rendered by KPress, and Source |
 | Mermaid diagrams (`.mmd`, `.mermaid`) | Diagram and Source |
-| JSON and YAML | Tree, a collapsible view of the parsed structure, and Source |
+| JSON and YAML | Tree, a collapsible view of the parsed structure; Table, a list of records as a table; and Source |
 | JSONL logs | Log, a timeline of events, and Raw JSON; coding-agent logs add Charts |
 | Event logs (`events-*.jsonl`) | Timeline, Latency, By kind, Errors, and Raw JSON: Metabrowser’s own log of what it served and how long each took |
 | Code and text | Source, with syntax highlighting where a grammar exists |
@@ -239,6 +239,10 @@ folder’s Markdown is not changed.
   **Source** shows the file’s text.
 - **JSON and YAML:** Tree shows the parsed document with collapsible levels and draws
   only the rows in view.
+  **Table** (`A`) shows a file whose top level is a list of mappings as a table, one row
+  a mapping and one column a key, with the CSV table’s sort, filters, search, and
+  records; a nested value is its JSON in the table and a collapsible tree in the record.
+  Any other document says there that it is not a list of records.
 - **JSONL:** Log lists one row per event, with filter chips by kind of event, such as
   text, tool calls, and tool results, and each row expands to its raw JSON. For the
   session logs of Claude Code, Codex, Gemini CLI, and Pi, Metabrowser shows the agent in

@@ -204,7 +204,7 @@ status: 200
 ? 0
 ```
 
-## Test: a page: absent values, nested values, and a number past a browser's
+## Test: a page: absent values, nested values, and a number past a browser’s
 
 A key a mapping lacks is absent from its row’s cells, apart from `null`. A nested value
 is `{json}`, the value itself, and an integer past what a browser number holds keeps its

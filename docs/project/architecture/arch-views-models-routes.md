@@ -55,7 +55,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | `mermaid` | `.mmd`, `.mermaid` | Diagram `V`, Source `S` | The file’s text as one `mermaid` fence through `/api/kpress/render`, drawn as a document’s diagrams are |
 | `html` | `.html`, `.htm` | Preview `V`, Source `S` | File envelope; sandboxed raw document |
 | `text` | Text files | Source | File envelope |
-| `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Source `S` | File envelope and the `structured/parsed` hook |
+| `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Table `A`, Source `S` | File envelope and the `structured/parsed` hook; Table reads a top-level list of mappings as one table through the `table/*` hooks ([Table Sources](arch-plugin-system.md#table-sources)) |
 | `delimited` | `.csv`, `.tsv` | Table `V`, Source `S` | File envelope; one table through the `table/*` hooks, which the table plugin’s view draws ([Table Sources](arch-plugin-system.md#table-sources)) |
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
 | `agent-log` | `.jsonl` sniffed as an agent log | Session `E`, Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agents/charts` hook; Session reads `agents/session` and `agents/records` |

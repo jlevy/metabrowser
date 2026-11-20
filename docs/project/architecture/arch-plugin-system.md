@@ -250,18 +250,41 @@ done in the budget answers no rows and names the field in `sort_refused`, and a 
 that read only part of its content or a cursor from another generation says so.
 `limit` is the rows the page allowed, fewer than asked for when its rows are wide.
 
-`tests/test_table_source.py` checks the protocol, and `tests/test_delimited_source.py`
-the delimited source through these routes, on a served folder and on a Git pin, with the
-registry and the doctor’s checks; `tests/golden/cli-api-table.tryscript.md` pins each
-route’s answers and refusals.
+Two built-in sources answer through them:
+
+- **`delimited`** (`builtin_plugins/delimited/source.py`): a `.csv` or `.tsv` file as
+  one table.
+- **The structured plugin’s record lists** (`builtin_plugins/structured/records.py`): a
+  JSON or YAML file whose top level is a list of mappings as one table, its fields the
+  keys typed from their values (plan Decision 12). It reads the structured plugin’s own
+  parse (`load_structured_payload`), the one the Tree view made when there is one, and
+  without the Tree view’s YAML re-serialization when there is not; any other document is
+  refused with `source_unreadable`, saying why.
+
+Both hold a whole file’s rows in memory and answer through the table plugin’s memory
+engine (`builtin_plugins/table/memory.py`): the scan, filters, search, sort indexes,
+cursors, and single-flight parse cache, behind a `MemoryTable` protocol each source
+implements with its rows, sort keys, and cells.
+The engine is the built-in sources’ own, not SDK surface.
+
+`tests/test_table_source.py` checks the protocol, `tests/test_delimited_source.py` the
+delimited source through these routes, on a served folder and on a Git pin, with the
+registry and the doctor’s checks, and `tests/test_record_list_source.py` the record
+lists the same way; `tests/golden/cli-api-table.tryscript.md` and
+`tests/golden/cli-api-table-records.tryscript.md` pin each route’s answers and refusals.
 A file that is its own single table, such as a CSV file, is addressed by its own path;
 tables inside one file, such as a database’s, are planned as container children in
 [Tabular Data Browsing and Live SQLite](../specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md).
 
-**The view.** The table plugin’s `index.js` exports `mountTable(container, {path})`, the
-table view, which a source plugin registers as its kind’s Table view through
-`mb.plugins.load("table")`, as `builtin_plugins/delimited/index.js` does; the plugin has
-no kind, so it registers no view of its own.
+**The view.** The table plugin’s `index.js` exports
+`mountTable(container, {path, renderJson})`, the table view, which a source plugin
+registers as its kind’s Table view through `mb.plugins.load("table")`, as
+`builtin_plugins/delimited/index.js` does; the plugin has no kind, so it registers no
+view of its own. `renderJson`, the context’s other member, draws a JSON value in a
+record: the table plugin requires no other plugin, and the structured plugin requires
+it, so the structured kind’s Table view (`builtin_plugins/structured/record-table.js`)
+hands the table its inline tree rather than the table loading the structured plugin,
+which would be a cycle discovery refuses.
 `table-model.js` holds what the view decides, pure functions of the address, the schema,
 and the rows held, and `table-view.js` draws it
 ([Data Tables](../../design-system.md#data-tables)). `tests/dom/table-view-session.js`

@@ -427,6 +427,9 @@ run on the route threadpool, and every file of the kind is then served by
 `metabrowser.plugin_api` exports the types, the cell and token helpers, and the bounds;
 [Table Sources](project/architecture/arch-plugin-system.md#table-sources) describes the
 routes, and `builtin_plugins/delimited/source.py` is a complete source.
+`builtin_plugins/structured/records.py` is another, a Table view of a kind that has
+other views: it reads the plugin’s own parse of a JSON or YAML file and refuses, with
+`SourceUnreadableError` and its reason, any document that holds no table.
 
 - A `[[table_source]]` names one of its own plugin’s kinds, once, and its plugin must
   require `table`; an operator-directory plugin’s are ignored, since it runs no Python.
@@ -456,9 +459,15 @@ routes, and `builtin_plugins/delimited/source.py` is a complete source.
   of wide rows stays within `TABLE_PAGE_CELLS_MAX` cells, and return that number as the
   page’s `limit`.
 
-The table plugin also draws the table: its exports are `mountTable(container, {path})`,
-which mounts the table view for the table at `path` and returns a handle with `ready`
-and `dispose()`. Give your kind a Table view that mounts it:
+The table plugin also draws the table: its exports are
+`mountTable(container, {path, renderJson})`, which mounts the table view for the table
+at `path` and returns a handle with `ready` and `dispose()`.
+`renderJson(element, value)`, optional, draws a JSON value (a `{json}` cell) into a
+record’s element and returns a handle with `dispose()`, which the view calls when the
+record goes; without it the value is its JSON text.
+The structured kind’s Table view passes the structured plugin’s inline tree
+(`builtin_plugins/structured/record-table.js`). Give your kind a Table view that mounts
+it:
 
 ```toml
 [[view]]
@@ -488,6 +497,8 @@ reproduces it. It draws what a source answers as the route defines it: a page sh
 than asked is read on from `next_after`, a `sort_budget` page is a notice naming the
 field rather than an empty table, and `budget`, `source_truncated`, and `truncated` are
 notices above the rows.
+A `source_unreadable` refusal is the source’s own words in place of the table, so say
+there why the file holds no table, as the record lists say a document is not one.
 A plugin whose files always open in the Table view starts the load when its own module
 is evaluated, as above, so the table plugin’s module is on its way while the shell
 prepares the pane; one that shows it only sometimes asks for it in `render`.

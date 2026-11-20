@@ -275,9 +275,7 @@ def test_the_record_list_recording_is_what_the_routes_answer(tmp_path: Path) -> 
     refused = answers[_key("schema", {"path": "config.json"})]
     assert (refused["status"], refused["body"]["code"]) == (422, "source_unreadable")
     record = answers[_key("record", {"path": "records.json", "key": "@1", "generation": "G"})]
-    assert record["body"]["cells"]["meta"] == {
-        "json": {"born": 1815, "notes": {"first": True}}
-    }
+    assert record["body"]["cells"]["meta"] == {"json": {"born": 1815, "notes": {"first": True}}}
 
 
 def test_the_bounds_recording_shows_what_each_bound_answers(tmp_path: Path) -> None:

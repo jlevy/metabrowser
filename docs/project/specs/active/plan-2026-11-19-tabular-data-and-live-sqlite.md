@@ -657,7 +657,7 @@ own `children` hook.
 
 Views: Table (`v`, the default) and Source (`s`).
 
-**Record lists** are a Table view (`r`) of the structured plugin’s `structured` kind,
+**Record lists** are a Table view (`A`) of the structured plugin’s `structured` kind,
 beside Tree and Source, reading the `parsed` hook’s result under its existing bound
 ([Decision 12](#decision-12-where-a-record-list-gets-its-table)). The Table tab draws a
 top-level list of mappings and, for any other document, says it is not a list of
@@ -1102,8 +1102,50 @@ Accepted from `metab` through the Info view, before any table is drawn.
 
 ### Phase 7: Record Lists
 
-- [ ] The Table view of the `structured` kind as Decision 12 settles it, with its
+- [x] The Table view of the `structured` kind as Decision 12 settles it, with its
   generation, goldens, and parity
+
+As built, where this plan left a choice open:
+
+- **The key is `A`.** The design said `r`, which is not a letter of “Table”, and the
+  design system gives a view a letter of its label; `t` is Quick Search’s, so the tab
+  takes `a`, the next.
+- **A list of records** is a top-level list whose every item is a mapping; one item of
+  another kind refuses the file, whatever the row bounds read, and the refusal names the
+  item. An empty list is an empty table.
+  A YAML stream of mappings, which the structured parse reads as a list, is one too.
+- **Fields** are the keys in the order each first appears.
+  A key that is not text is named by its JSON text, an empty one `field_<n>`, and a
+  repeated name gains `_<n>`, as a delimited header’s does.
+  A field’s type is the one its sampled values share (an integer counting as a real,
+  text that is all dates or datetimes being that, a nested value `json`); values that
+  disagree make it `unknown`, each value shown as its own type, sorted by storage class
+  (nulls, numbers and booleans, text, nested values) and filtered with a number as a
+  number. A later value that contradicts a known type is a `{value, stored}` cell.
+  A `json` field is not sortable.
+- **`{json}`** carries the nested value itself, and no `preview`, which the view writes
+  from it; past the bound the cell is read under it is the value’s JSON text, cut, a
+  `{text, length}` envelope in a `json` field.
+  A value JSON has no form for, such as a YAML date or binary value, is its text.
+- **The record’s tree.** The table plugin cannot load the structured plugin, which
+  requires it, so the structured kind’s view hands `mountTable` a `renderJson` that
+  draws the inline tree, and the view disposes of each tree with its record.
+- **The shared parse.** The source reads `load_structured_payload`, the Tree view’s
+  route’s cache, resolving the path again after sampling the generation, so a parse
+  looked up by fingerprint is never older than the generation it is labelled with.
+  A parse made for the table leaves out the Tree view’s YAML re-serialization, which is
+  most of a large file’s cost (26 s for 8 MiB of JSON records, where the parse took 0.14
+  s), and is not remembered for Tree; the table’s own cache holds what it built.
+- **The engine.** The delimited source’s scan, filters, search, sort indexes, cursors,
+  and cache moved to `builtin_plugins/table/memory.py`, which both sources answer
+  through, so the record lists share its paging and budget behavior rather than a copy.
+- **A refusal in the view.** A `source_unreadable` answer is the source’s words in place
+  of the table, with the toolbar hidden and no way back to a whole table, which is how
+  the Table tab says a document is not a list of records.
+- **What stays open.** A link that carries the table’s query opens the file in Tree, its
+  kind’s default, and the Table tab reads the query when it is shown; a
+  view-availability hook (Decision 12’s B) would let a record list open in its table.
+  SoftSchema typing stays an open question below.
 
 ### Phase 8: fsqlite Stores
 
