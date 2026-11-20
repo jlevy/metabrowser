@@ -36,7 +36,16 @@ import hashlib
 import json
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Final, NamedTuple, TypedDict, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Final,
+    NamedTuple,
+    Protocol,
+    TypedDict,
+    cast,
+    runtime_checkable,
+)
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -49,7 +58,7 @@ from metabrowser.checkout_revisions import (
     checkout_revisions,
 )
 from metabrowser.content_errors import ContentReadError
-from metabrowser.git.process import GitLocation
+from metabrowser.git.process import GitError, GitLocation
 from metabrowser.git.ref_state import ref_state
 from metabrowser.git.repo import repo_info
 from metabrowser.git.route_memo import keep_body, kept_answer
@@ -84,7 +93,10 @@ from metabrowser.view_routes import (
 
 if TYPE_CHECKING:
     # Annotations only. The server registers this table for a folder too, so what a
-    # function needs from the revision tree source it imports where a pin is served.
+    # function needs from the revision tree source, or from a link, it imports where a
+    # pin is served.
+    from metabrowser.cache.resolve import ResolvedSelection, UnresolvedSelection
+    from metabrowser.cache.urls import RepositorySelection
     from metabrowser.git.tree_source import GitRevisionSubject
 
 log = logging.getLogger(__name__)
@@ -168,6 +180,7 @@ class SourceStatus(TypedDict):
     borrows: str | None
     shallow: bool
     refreshable: bool
+    follows: bool
     latest: str | None
     # False when the origin deleted the ref. None for a pin by commit ID, a ref not yet
     # observed, or one the store swept (``cache/lender.py``) until a fetch names it again.
@@ -642,6 +655,170 @@ async def api_source_refresh(request: Request) -> JSONResponse:
     )
 
 
+@runtime_checkable
+class _LinkResolver(Protocol):
+    """A served mirror that reads what a link selects in it (``StoreMirror.resolve_link``)."""
+
+    async def resolve_link(
+        self, selection: RepositorySelection
+    ) -> ResolvedSelection | UnresolvedSelection: ...
+
+
+# What a link into the repository the mirror lacks is called, by why: the codes are
+# ``resolve.py``'s reasons, and none of these names a path or echoes the link.
+_UNRESOLVED_LINK: Final[dict[str, str]] = {
+    "ref_not_found": "the mirror has no branch, tag, or commit that this link names",
+    "commit_not_found": "the mirror has no commit that this link names",
+    "commit_ambiguous": "the link's commit ID names more than one commit; use more digits",
+    "not_a_commit": "the link names an object that is not a commit",
+    "invalid_ref": "the link does not name a valid ref or commit",
+}
+
+
+def _link_request(body: dict[str, Any]) -> tuple[str, bool]:
+    """The link a link request names, and whether it may fetch."""
+
+    unknown = sorted(set(body) - {"link", "fetch"})
+    if unknown:
+        raise _BadRequestError('a link request names only "link" and "fetch"')
+    link = body.get("link")
+    fetch = body.get("fetch", True)
+    if not isinstance(link, str) or not link:
+        raise _BadRequestError('"link" is a URL into the served repository')
+    if not isinstance(fetch, bool):
+        raise _BadRequestError('"fetch" is true or false')
+    return link, fetch
+
+
+def _link_selection(link: str, origin: str) -> RepositorySelection:
+    """What *link* selects, read as ``metab LINK`` reads it, if it is into *origin*."""
+
+    from metabrowser.cache.providers import url_reducers
+    from metabrowser.cache.urls import GitSource, RepositorySelection, classify_root_argument
+
+    classified = classify_root_argument(link, reducers=url_reducers())
+    if not isinstance(classified, GitSource):
+        raise _BadRequestError("the link is not a URL of a repository this server can read")
+    if classified.normalized != origin:
+        raise _BadRequestError(
+            "the link is into another repository than the one this server serves",
+            status_code=409,
+        )
+    return classified.selection or RepositorySelection()
+
+
+def _link_error(message: str, code: str, status_code: int) -> JSONResponse:
+    """A link request's refusal: nowhere to go, and why."""
+
+    return JSONResponse({"error": message, "href": None, "code": code}, status_code=status_code)
+
+
+async def api_source_link(request: Request) -> JSONResponse:
+    """``POST /api/source/link`` — open a link into the served repository in this server.
+
+    The body is ``{"link": "<URL>"}``: a provider web URL into the repository the mirror
+    serves, a pull request, a commit, a branch, a folder, or a file, read as ``metab
+    LINK`` reads it, so a ref that holds a ``/`` ends where the mirror says. It is what
+    the macOS app sends for every link into a repository: one mirror per repository,
+    started on the repository itself, opens each link where it is
+    (``arch-open-modes.md``, The File Menu).
+
+    It first starts or joins a refresh of the mirror, as ``POST /api/source/refresh``
+    does, so a link always brings the mirror up to date; ``"fetch": false`` starts
+    none. Then, by what the link selects:
+
+    - a pull request opens at ``/pull/<n>``, on the tab the link names, and switches
+      nothing: a pull request is its own address space and reads its own head;
+    - a commit opens at ``/commit/<id>`` with its full ID, and switches nothing;
+    - the repository serves its default branch, as on GitHub, at ``/view/``;
+    - a branch, tag, folder, or file serves the commit the link names, under the ref it
+      names, at its ``/view/`` address, as ``POST /api/source/pin`` would. So a window
+      never shows a link's page at another revision than the link's.
+
+    Every answer has ``href`` and ``code``, one of them null. ``href`` is where the page
+    goes, ``kind`` what the link selects, ``changed`` whether
+    the served pin moved, ``refresh`` how the refresh was answered (``null`` without
+    one), and ``status`` the envelope after the switch. A ref or commit the mirror lacks
+    answers ``202`` with ``selection_pending`` while a fetch could bring it, and the
+    client asks again with ``"fetch": false`` once ``refreshing`` in
+    ``/api/source/status`` is false; then, or with nothing to fetch, it is ``404`` with
+    the reason's code. A link into another repository is ``409 other_repository``; a
+    folder, a checkout among them, answers ``409`` as the refresh route does.
+    """
+
+    # Imported here: a folder's server, which registers these routes too, never reads a link.
+    from metabrowser.cache.resolve import UnresolvedSelection
+    from metabrowser.cli.selection_href import selection_view_href
+
+    try:
+        link, fetch = _link_request(await _json_object(request))
+        mirror = _served_mirror(request, "link")
+        selection = _link_selection(link, mirror.mirror.display.origin)
+    except _BadRequestError as exc:
+        code = "other_repository" if exc.status_code == 409 else "invalid_link"
+        return _link_error(str(exc), code, exc.status_code)
+    except UnsupportedSourceCapabilityError as exc:
+        return JSONResponse(unsupported_source_payload(exc), status_code=409)
+    resolver = mirror.mirror
+    if not isinstance(resolver, _LinkResolver):
+        return JSONResponse(
+            unsupported_source_payload(UnsupportedSourceCapabilityError("link")), status_code=409
+        )
+    refresh: str | None = mirror.request_refresh() if fetch else None
+    try:
+        resolution = await resolver.resolve_link(selection)
+    except GitError as exc:
+        # Git's text can name the store, so only the code leaves the server.
+        log.warning("resolving a link in the mirror failed: %s", exc)
+        return _link_error("the link could not be read in the mirror", "git_failed", 500)
+    if isinstance(resolution, UnresolvedSelection):
+        if fetch and resolution.needs_fetch:
+            # The mirror's own fetch, which the refresh above can leave out when only the
+            # data served beside the mirror was stale; it joins the one already running.
+            fetched = mirror.request_refresh(for_selection=True)
+            refresh = "started" if "started" in (refresh, fetched) else fetched
+            if selection.pull_request is not None and mirror.pull_requests is not None:
+                # A commit inside a pull request may come only with the pull request's own.
+                mirror.request_pull_refresh(selection.pull_request)
+            return JSONResponse(
+                {
+                    "error": "the mirror is fetching from its origin; ask again when it finishes",
+                    "href": None,
+                    "code": "selection_pending",
+                    "kind": selection.kind,
+                    "refresh": refresh,
+                    "status": dict(source_status(mirror)),
+                },
+                status_code=202,
+            )
+        reason = resolution.reason
+        return _link_error(
+            _UNRESOLVED_LINK.get(reason, _UNRESOLVED_LINK["ref_not_found"]), reason, 404
+        )
+    changed = False
+    href = selection_view_href(selection, resolution.path, commit=resolution.commit)
+    if selection.kind in {"repository", "tree", "blob"}:
+        try:
+            changed, _session = await mirror.switch_pin(
+                ref=None, oid=resolution.commit, under=resolution.ref
+            )
+        except SelectionError as exc:
+            return _link_error(str(exc), exc.code, exc.http_status)
+        except ContentReadError as exc:
+            log.warning("serving a link's revision failed: %s", exc)
+            return _link_error("the selection could not be opened", exc.code, exc.http_status)
+    return JSONResponse(
+        {
+            "href": href,
+            "code": None,
+            "kind": selection.kind,
+            "changed": changed,
+            "refresh": refresh,
+            "status": dict(source_status(mirror)),
+        }
+    )
+
+
 class _Selection(NamedTuple):
     ref: str | None
     oid: str | None
@@ -1098,6 +1275,7 @@ SOURCE_ROUTES = [
     Route("/api/source/refs", api_source_refs),
     Route("/api/source/refresh", api_source_refresh, methods=["POST"]),
     Route("/api/source/pin", api_source_pin, methods=["POST"]),
+    Route("/api/source/link", api_source_link, methods=["POST"]),
 ]
 
 

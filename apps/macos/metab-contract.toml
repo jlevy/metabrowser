@@ -182,7 +182,8 @@ output = "shown"
 #
 # What the app asks a ready server over HTTP. `literal` is the route as the Swift source
 # spells it. The golden asks each with `metab ROOT --api ROUTE`, which issues the request
-# the app issues and prints the status the app checks.
+# the app issues and prints the status the app checks; `data` is the JSON body of a route
+# the app posts to, which the golden sends with `--data`.
 
 [[route]]
 id = "identity"
@@ -197,12 +198,20 @@ note = "Names each window. Status 200, or the window keeps the name it derived. 
 id = "source-status"
 route = "/api/source/status"
 literal = "api/source/status"
-source = "Sources/ShellCore/Folders/LinkSelection.swift"
-json = ["ref_name", "selection_state"]
-values = { selection_state = ["pending", "not_found", "fetch_failed"] }
-shown = ["ref_name"]
-values_in = "cli-github-url-waits.txt"
-note = "Whether a repository's server found what its link names. The three states need a refresh against an origin, which cli-github-url-waits.txt records; any other value reads as found."
+source = "Sources/ShellCore/Folders/SourceLink.swift"
+json = ["refreshing"]
+note = "Whether the refresh a link the mirror lacked waits for still runs (`SourceLink`): the app asks the link route again once it is false."
+
+[[route]]
+id = "source-link"
+route = "/api/source/link"
+literal = "api/source/link"
+data = "{body}"
+source = "Sources/ShellCore/Folders/SourceLink.swift"
+json = ["href", "code"]
+values = { code = ["selection_pending"] }
+values_in = "cli-api-source-link.txt"
+note = "Opens a link into the repository a mirror's server serves, its only one: the page its window goes to (`href`), switching the pin first where the link names another revision. A ref the mirror lacks needs a refresh against an origin, which cli-api-source-link.txt records with each kind of link; any other code is not found or a refusal, which leaves the window where it was."
 
 # ── Lines ───────────────────────────────────────────────────────────────────────────────
 #
@@ -534,13 +543,14 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 "Sources/ShellCore/Folders/EventLogLocation.swift" = ["event-log"]
 "Sources/ShellCore/Folders/RepositoryCache.swift" = ["cache-sources"]
 "Sources/ShellCore/Folders/FolderIdentity.swift" = ["identity"]
-"Sources/ShellCore/Folders/LinkSelection.swift" = ["source-status"]
+"Sources/ShellCore/Folders/SourceLink.swift" = ["source-link", "source-status"]
 "Sources/ShellCore/Setup/DoctorReport.swift" = ["doctor"]
 "Sources/ShellCore/Folders/SavedSession.swift" = ["own: the app's saved session"]
 "Sources/ShellCore/Runtime/Runtime.swift" = ["own: the runtime the app last settled on"]
 
 [files.http]
 "Sources/ShellCore/Folders/FolderIdentity.swift" = ["identity", "source-status"]
+"Sources/ShellCore/Folders/SourceLink.swift" = ["source-link"]
 "Sources/ShellCore/Supervision/ReadinessProbe.swift" = ["entry-page-answers"]
 "Sources/Metabrowser/FolderPage.swift" = ["own: the page a window loads, which the web view requests"]
 "Sources/Metabrowser/GitHubPopover.swift" = ["own: github.com, in the View on GitHub popover"]

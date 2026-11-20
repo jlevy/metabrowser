@@ -1,0 +1,559 @@
+{
+  "environment": {
+    "machine": "x86_64",
+    "python": "3.13.18",
+    "sqlite": "3.53.1",
+    "system": "Linux 6.18.44-fc-v726",
+    "uid_is_superuser": false
+  },
+  "results": {
+    "crashed_owner_wal_and_shm_read_only_folder": {
+      "before": {
+        "app.db": 8192,
+        "app.db-shm": 32768,
+        "app.db-wal": 20632
+      },
+      "immutable": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 20632
+        },
+        "rows": 100
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 20632
+        },
+        "rows": 105
+      },
+      "shm_rewritten_by_mode_ro": false
+    },
+    "crashed_owner_wal_and_shm_writable_folder": {
+      "before": {
+        "app.db": 8192,
+        "app.db-shm": 32768,
+        "app.db-wal": 20632
+      },
+      "immutable": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 20632
+        },
+        "rows": 100
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 20632
+        },
+        "rows": 105
+      },
+      "shm_rewritten_by_mode_ro": true
+    },
+    "hard_link_hides_a_hot_journal": {
+      "after": {
+        "app.db": 450560,
+        "app.db-journal": 372232,
+        "hard.db": 450560
+      },
+      "before": {
+        "app.db": 450560,
+        "app.db-journal": 372232,
+        "hard.db": 450560
+      },
+      "immutable_through_hard_db_changed_rows_of_20000": {
+        "rows": 14585
+      },
+      "mode_ro_through_app_db": {
+        "error": "SQLITE_READONLY_ROLLBACK",
+        "message": "attempt to write a readonly database"
+      },
+      "mode_ro_through_hard_db_changed_rows_of_20000": {
+        "rows": 14585
+      },
+      "nlink": 2,
+      "validation_passes_through_hard_db": true
+    },
+    "hard_link_to_live_database": {
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 4152,
+          "hard.db": 8192,
+          "hard.db-shm": 32768,
+          "hard.db-wal": 0
+        },
+        "rows": 100
+      },
+      "nlink": 2
+    },
+    "held_read_starves_checkpoint": {
+      "after_release": {
+        "busy": 0,
+        "wal_bytes": 0
+      },
+      "while_held": {
+        "busy": 1,
+        "wal_bytes": 3712152
+      }
+    },
+    "interrupted_checkpoint": {
+      "killed_after_100_ms": {
+        "after": {
+          "app.db": 46374912,
+          "app.db-wal": 46646672
+        },
+        "before": {
+          "app.db": 46374912,
+          "app.db-wal": 46646672
+        },
+        "immutable_main_file_alone": {
+          "quick_check": "ok",
+          "rewritten_rows": 400000,
+          "rows": 400000
+        },
+        "mode_ro_on_a_private_copy_with_its_log": {
+          "quick_check": "ok",
+          "rewritten_rows": 400000,
+          "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "quick_check": "ok",
+          "rewritten_rows": 400000,
+          "rows": 400000
+        }
+      },
+      "killed_after_10_ms": {
+        "after": {
+          "app.db": 7524352,
+          "app.db-wal": 46646672
+        },
+        "before": {
+          "app.db": 7524352,
+          "app.db-wal": 46646672
+        },
+        "immutable_main_file_alone": {
+          "quick_check": "ok",
+          "rewritten_rows": 0,
+          "rows": 400000
+        },
+        "mode_ro_on_a_private_copy_with_its_log": {
+          "quick_check": "ok",
+          "rewritten_rows": 400000,
+          "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "quick_check": "ok",
+          "rewritten_rows": 0,
+          "rows": 400000
+        }
+      },
+      "killed_after_15_ms": {
+        "after": {
+          "app.db": 7524352,
+          "app.db-wal": 46646672
+        },
+        "before": {
+          "app.db": 7524352,
+          "app.db-wal": 46646672
+        },
+        "immutable_main_file_alone": {
+          "quick_check": "ok",
+          "rewritten_rows": 0,
+          "rows": 400000
+        },
+        "mode_ro_on_a_private_copy_with_its_log": {
+          "quick_check": "ok",
+          "rewritten_rows": 400000,
+          "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "quick_check": "ok",
+          "rewritten_rows": 0,
+          "rows": 400000
+        }
+      },
+      "killed_after_20_ms": {
+        "after": {
+          "app.db": 8130560,
+          "app.db-wal": 46646672
+        },
+        "before": {
+          "app.db": 8130560,
+          "app.db-wal": 46646672
+        },
+        "immutable_main_file_alone": {
+          "error": "SQLITE_CORRUPT",
+          "message": "database disk image is malformed"
+        },
+        "mode_ro_on_a_private_copy_with_its_log": {
+          "quick_check": "ok",
+          "rewritten_rows": 400000,
+          "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "error": "SQLITE_CORRUPT",
+          "message": "database disk image is malformed"
+        }
+      },
+      "killed_after_25_ms": {
+        "after": {
+          "app.db": 13660160,
+          "app.db-wal": 46646672
+        },
+        "before": {
+          "app.db": 13660160,
+          "app.db-wal": 46646672
+        },
+        "immutable_main_file_alone": {
+          "error": "SQLITE_CORRUPT",
+          "message": "database disk image is malformed"
+        },
+        "mode_ro_on_a_private_copy_with_its_log": {
+          "quick_check": "ok",
+          "rewritten_rows": 400000,
+          "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "error": "SQLITE_CORRUPT",
+          "message": "database disk image is malformed"
+        }
+      },
+      "killed_after_30_ms": {
+        "after": {
+          "app.db": 25690112,
+          "app.db-wal": 46646672
+        },
+        "before": {
+          "app.db": 25690112,
+          "app.db-wal": 46646672
+        },
+        "immutable_main_file_alone": {
+          "error": "SQLITE_CORRUPT",
+          "message": "database disk image is malformed"
+        },
+        "mode_ro_on_a_private_copy_with_its_log": {
+          "quick_check": "ok",
+          "rewritten_rows": 400000,
+          "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "error": "SQLITE_CORRUPT",
+          "message": "database disk image is malformed"
+        }
+      },
+      "killed_after_40_ms": {
+        "after": {
+          "app.db": 23941120,
+          "app.db-wal": 46646672
+        },
+        "before": {
+          "app.db": 23941120,
+          "app.db-wal": 46646672
+        },
+        "immutable_main_file_alone": {
+          "error": "SQLITE_CORRUPT",
+          "message": "database disk image is malformed"
+        },
+        "mode_ro_on_a_private_copy_with_its_log": {
+          "quick_check": "ok",
+          "rewritten_rows": 400000,
+          "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "error": "SQLITE_CORRUPT",
+          "message": "database disk image is malformed"
+        }
+      },
+      "killed_after_5_ms": {
+        "after": {
+          "app.db": 7524352,
+          "app.db-wal": 46646672
+        },
+        "before": {
+          "app.db": 7524352,
+          "app.db-wal": 46646672
+        },
+        "immutable_main_file_alone": {
+          "quick_check": "ok",
+          "rewritten_rows": 0,
+          "rows": 400000
+        },
+        "mode_ro_on_a_private_copy_with_its_log": {
+          "quick_check": "ok",
+          "rewritten_rows": 400000,
+          "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "quick_check": "ok",
+          "rewritten_rows": 0,
+          "rows": 400000
+        }
+      },
+      "killed_after_60_ms": {
+        "after": {
+          "app.db": 46374912,
+          "app.db-wal": 46646672
+        },
+        "before": {
+          "app.db": 46374912,
+          "app.db-wal": 46646672
+        },
+        "immutable_main_file_alone": {
+          "quick_check": "ok",
+          "rewritten_rows": 400000,
+          "rows": 400000
+        },
+        "mode_ro_on_a_private_copy_with_its_log": {
+          "quick_check": "ok",
+          "rewritten_rows": 400000,
+          "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "quick_check": "ok",
+          "rewritten_rows": 400000,
+          "rows": 400000
+        }
+      }
+    },
+    "lock_cancelled_by_a_closed_handle": {
+      "rollback_reader_inside_a_read": {
+        "main_file_opened_by_another_process": {
+          "owner_commit_during_read": "error SQLITE_BUSY"
+        },
+        "main_file_opened_by_no_one": {
+          "owner_commit_during_read": "error SQLITE_BUSY"
+        },
+        "main_file_opened_by_this_process": {
+          "owner_commit_during_read": "ok"
+        }
+      },
+      "wal_reader_inside_a_read": {
+        "shm_opened_by_another_process": {
+          "owner_rewrites_log": "ok",
+          "reader_snapshot_of_2000_rows": {
+            "big_rows": 2000,
+            "integrity_check": "ok"
+          },
+          "restart_after_open": "ok busy=1 frames=502 checkpointed=502",
+          "restart_before_open": "ok busy=1 frames=502 checkpointed=502"
+        },
+        "shm_opened_by_no_one": {
+          "owner_rewrites_log": "ok",
+          "reader_snapshot_of_2000_rows": {
+            "big_rows": 2000,
+            "integrity_check": "ok"
+          },
+          "restart_after_open": "ok busy=1 frames=502 checkpointed=502",
+          "restart_before_open": "ok busy=1 frames=502 checkpointed=502"
+        },
+        "shm_opened_by_this_process": {
+          "owner_rewrites_log": "ok",
+          "reader_snapshot_of_2000_rows": {
+            "error": "SQLITE_CORRUPT",
+            "message": "database disk image is malformed"
+          },
+          "restart_after_open": "ok busy=0 frames=502 checkpointed=502",
+          "restart_before_open": "ok busy=1 frames=502 checkpointed=502"
+        }
+      }
+    },
+    "owner_exits_between_stat_and_open": {
+      "at_open": {
+        "app.db": 8192
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 0
+        },
+        "rows": 101
+      },
+      "stat_saw": {
+        "app.db": 8192,
+        "app.db-shm": 32768,
+        "app.db-wal": 4152
+      }
+    },
+    "persist_journal_at_rest": {
+      "header_all_zero": true,
+      "journal_bytes": 8720,
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-journal": 8720
+        },
+        "rows": 100
+      }
+    },
+    "reader_closes_last": {
+      "with_reader": {
+        "app.db": 8192,
+        "app.db-shm": 32768,
+        "app.db-wal": 12392
+      },
+      "without_reader": {
+        "app.db": 8192
+      }
+    },
+    "rollback_hot_journal": {
+      "before": {
+        "app.db": 450560,
+        "app.db-journal": 372232
+      },
+      "immutable_changed_rows_of_20000": {
+        "rows": 14585
+      },
+      "journal_untouched": true,
+      "mode_ro": {
+        "after": {
+          "app.db": 450560,
+          "app.db-journal": 372232
+        },
+        "error": "SQLITE_READONLY_ROLLBACK",
+        "message": "attempt to write a readonly database"
+      }
+    },
+    "symlink_in_another_folder": {
+      "beside_link": ["app.db"],
+      "immutable": {
+        "rows": 100
+      },
+      "mode_ro": {
+        "rows": 101
+      }
+    },
+    "wal_commit_leaves_main_file": {
+      "main_file_unchanged": true,
+      "wal_bytes": [4152, 8272]
+    },
+    "wal_idle_read_only_folder": {
+      "immutable": {
+        "after": {
+          "app.db": 8192
+        },
+        "rows": 100
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192
+        },
+        "error": "SQLITE_READONLY_DIRECTORY",
+        "message": "attempt to write a readonly database"
+      }
+    },
+    "wal_idle_writable_folder": {
+      "before": {
+        "app.db": 8192
+      },
+      "immutable": {
+        "after": {
+          "app.db": 8192
+        },
+        "rows": 100
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 0
+        },
+        "rows": 100
+      }
+    },
+    "wal_live_owner": {
+      "before": {
+        "app.db": 8192,
+        "app.db-shm": 32768,
+        "app.db-wal": 20632
+      },
+      "immutable": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 20632
+        },
+        "rows": 100
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 20632
+        },
+        "rows": 105
+      }
+    },
+    "wal_live_schema_not_checkpointed": {
+      "immutable": {
+        "error": "SQLITE_ERROR",
+        "message": "no such table: t"
+      },
+      "mode_ro": {
+        "rows": 1
+      }
+    },
+    "wal_with_frames_no_shm_read_only_folder": {
+      "before": {
+        "app.db": 8192,
+        "app.db-wal": 20632
+      },
+      "immutable": {
+        "after": {
+          "app.db": 8192,
+          "app.db-wal": 20632
+        },
+        "rows": 100
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-wal": 20632
+        },
+        "error": "SQLITE_CANTOPEN",
+        "message": "unable to open database file"
+      },
+      "shm_rewritten_by_mode_ro": false
+    },
+    "wal_with_frames_no_shm_writable_folder": {
+      "before": {
+        "app.db": 8192,
+        "app.db-wal": 20632
+      },
+      "immutable": {
+        "after": {
+          "app.db": 8192,
+          "app.db-wal": 20632
+        },
+        "rows": 100
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 20632
+        },
+        "rows": 105
+      },
+      "shm_rewritten_by_mode_ro": false
+    }
+  },
+  "seconds": 16,
+  "suite": "access"
+}

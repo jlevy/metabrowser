@@ -121,39 +121,93 @@ $ node tests/dom/source-freshness-session.js
       }
     },
     {
-      "step": "the refresh brought a newer commit",
-      "requests": [
-        "GET /api/source/status If-None-Match: \"s2\""
-      ],
-      "timer": "slow",
-      "reloads": 0,
-      "repaints": 1,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
-        "error": null
-      }
-    },
-    {
       "step": "a hidden page stops polling",
       "requests": [],
       "timer": null,
       "reloads": 0,
       "repaints": 0,
       "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "label": "Refreshing…",
+        "tone": "refreshing",
+        "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
+        "offer": null,
         "error": null
       }
     },
     {
       "step": "a page shown again polls at once",
       "requests": [
-        "GET /api/source/status If-None-Match: \"s3\""
+        "GET /api/source/status If-None-Match: \"s2\""
+      ],
+      "timer": "fast",
+      "reloads": 0,
+      "repaints": 0,
+      "paint": {
+        "label": "Refreshing…",
+        "tone": "refreshing",
+        "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "the refresh moved the branch; the page follows it",
+      "requests": [
+        "GET /api/source/status If-None-Match: \"s2\"",
+        "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\",\"view\":\"/view/\"}"
+      ],
+      "timer": "slow",
+      "reloads": 1,
+      "repaints": 1,
+      "paint": {
+        "label": "Updating to topic…",
+        "tone": "refreshing",
+        "detail": "topic is now at 66f65bf, and this page follows it.",
+        "offer": null,
+        "error": null
+      }
+    },
+    {
+      "step": "a page on a file the new commit lacks goes to the root",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\",\"view\":\"/view/g1-R09ORS5tZA\"}"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Updating to topic…",
+        "tone": "refreshing",
+        "detail": "topic is now at 66f65bf, and this page follows it.",
+        "offer": null,
+        "error": null
+      },
+      "navigated": [
+        "/view/"
+      ]
+    },
+    {
+      "step": "a refused follow says why and offers a reload",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\",\"view\":\"/view/\"}"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 2,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "quiet",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": "The server now serves another revision [Reload]",
+        "error": "Could not follow topic to its new commit."
+      }
+    },
+    {
+      "step": "a refused follow is not asked again on the next poll",
+      "requests": [
+        "GET /api/source/status If-None-Match: \"s1\""
       ],
       "timer": "slow",
       "reloads": 0,
@@ -162,15 +216,13 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
-        "error": null
+        "offer": "The server now serves another revision [Reload]",
+        "error": "Could not follow topic to its new commit."
       }
     },
     {
-      "step": "accept the offer",
-      "requests": [
-        "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\"}"
-      ],
+      "step": "the reload a refused follow offers",
+      "requests": [],
       "timer": "slow",
       "reloads": 1,
       "repaints": 0,
@@ -178,8 +230,8 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
-        "error": null
+        "offer": "The server now serves another revision [Reload]",
+        "error": "Could not follow topic to its new commit."
       }
     },
     {
@@ -241,7 +293,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refreshing…",
         "tone": "refreshing",
         "detail": "Fetching from the origin. The mirror was last fetched 6 d ago. The address this page was opened at is not in the mirror yet; it opens when the fetch brings it.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       }
     },
@@ -292,7 +344,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Address not found · fetched 5 min ago",
         "tone": "warning",
         "detail": "The address this page was opened at is not on the origin, so the default branch is shown.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       }
     },
@@ -324,7 +376,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refreshing…",
         "tone": "refreshing",
         "detail": "Fetching from the origin. The mirror was last fetched 5 min ago. The address this page was opened at is not in the mirror yet; it opens when the fetch brings it.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       }
     },
@@ -338,7 +390,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       },
       "commit": {
@@ -361,7 +413,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refreshing…",
         "tone": "refreshing",
         "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       },
       "commit": {
@@ -384,7 +436,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refreshing…",
         "tone": "refreshing",
         "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       },
       "commit": {
@@ -399,17 +451,18 @@ $ node tests/dom/source-freshness-session.js
       "step": "the fetch brought the commit; it opens",
       "requests": [
         "GET /api/source/status If-None-Match: \"s2\"",
+        "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\",\"view\":\"/view/\"}",
         "GET /api/git/commit/92b31b0785485bd9eaa9619d198a779c2699295d"
       ],
       "timer": "slow",
       "reloads": 0,
-      "repaints": 1,
+      "repaints": 2,
       "paint": {
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "topic is now at 92b31b0 [Switch] → refs/remotes/origin/topic",
-        "error": null
+        "offer": "The server now serves another revision [Reload]",
+        "error": "The request to follow the branch failed."
       },
       "commit": {
         "repaints": 1,
@@ -420,17 +473,18 @@ $ node tests/dom/source-freshness-session.js
       "step": "the fetch ran and did not bring the commit",
       "requests": [
         "GET /api/source/status",
+        "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\",\"view\":\"/view/\"}",
         "GET /api/git/commit/0123456789abcdef0123456789abcdef01234567"
       ],
       "timer": "slow",
       "reloads": 0,
-      "repaints": 1,
+      "repaints": 2,
       "paint": {
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "topic is now at 92b31b0 [Switch] → refs/remotes/origin/topic",
-        "error": null
+        "offer": "The server now serves another revision [Reload]",
+        "error": "The request to follow the branch failed."
       },
       "commit": {
         "repaints": 1,
@@ -444,17 +498,18 @@ $ node tests/dom/source-freshness-session.js
       "step": "asking again failed; the view does not say not found",
       "requests": [
         "GET /api/source/status",
+        "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\",\"view\":\"/view/\"}",
         "GET /api/git/commit/92b31b0785485bd9eaa9619d198a779c2699295d"
       ],
       "timer": "slow",
       "reloads": 0,
-      "repaints": 1,
+      "repaints": 2,
       "paint": {
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "topic is now at 92b31b0 [Switch] → refs/remotes/origin/topic",
-        "error": null
+        "offer": "The server now serves another revision [Reload]",
+        "error": "The request to follow the branch failed."
       },
       "commit": {
         "repaints": 1,
@@ -476,7 +531,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refreshing…",
         "tone": "refreshing",
         "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       },
       "commit": {
@@ -500,7 +555,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       },
       "commit": {
@@ -523,7 +578,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refreshing…",
         "tone": "refreshing",
         "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       },
       "commit": {
@@ -547,7 +602,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refresh failed · fetched 6 d ago",
         "tone": "warning",
         "detail": "The origin could not be read. The pinned revision is still served from the mirror.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       },
       "commit": {
@@ -570,7 +625,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refresh failed · fetched 6 d ago",
         "tone": "warning",
         "detail": "The origin could not be read. The pinned revision is still served from the mirror.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       },
       "commit": {
@@ -593,7 +648,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refreshing…",
         "tone": "refreshing",
         "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       },
       "commit": {
@@ -617,7 +672,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "stale",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "topic is now at 92b31b0 [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       },
       "commit": {
@@ -640,7 +695,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refreshing…",
         "tone": "refreshing",
         "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": "The server did not answer."
       },
       "commit": {
@@ -663,7 +718,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refresh failed · fetched 5 min ago",
         "tone": "warning",
         "detail": "The repository was not found, or it is private and could not be read. The pinned revision is still served from the mirror.",
-        "offer": "topic is now at 92b31b0 [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       }
     },
@@ -684,22 +739,6 @@ $ node tests/dom/source-freshness-session.js
       }
     },
     {
-      "step": "a refused switch says why and does not reload",
-      "requests": [
-        "POST /api/source/pin {\"ref\":\"refs/remotes/origin/topic\"}"
-      ],
-      "timer": "slow",
-      "reloads": 0,
-      "repaints": 1,
-      "paint": {
-        "label": "Fetched 5 min ago",
-        "tone": "quiet",
-        "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
-        "error": "Could not switch to that commit."
-      }
-    },
-    {
       "step": "open a stale page whose origin is gone",
       "requests": [
         "GET /api/source/status",
@@ -712,7 +751,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refreshing…",
         "tone": "refreshing",
         "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       }
     },
@@ -729,7 +768,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refresh failed · fetched 6 d ago",
         "tone": "warning",
         "detail": "The origin could not be read. The pinned revision is still served from the mirror.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       }
     },
@@ -746,7 +785,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Refreshing…",
         "tone": "refreshing",
         "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
-        "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       }
     },
@@ -763,7 +802,7 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "stale",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "topic is now at 92b31b0 [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": null
       }
     },
@@ -779,17 +818,17 @@ $ node tests/dom/source-freshness-session.js
         "label": "Fetched 5 min ago",
         "tone": "stale",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
-        "offer": "topic is now at 92b31b0 [Switch] → refs/remotes/origin/topic",
+        "offer": null,
         "error": "Refresh refused: too many pull requests are being fetched; try again when one has finished."
       }
     }
   ],
   "guard": {
-    "page": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "page": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531",
     "sent": [
       {
         "url": "/api/file?path=g1-UkVBRE1FLm1k",
-        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
+        "pin": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
       },
       {
         "url": "/api/source/status",
@@ -809,11 +848,11 @@ $ node tests/dom/source-freshness-session.js
       },
       {
         "url": "/api/event-logs",
-        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
+        "pin": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
       },
       {
         "url": "/api/tree?depth=1",
-        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
+        "pin": "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
       }
     ],
     "answered": [
@@ -826,7 +865,7 @@ $ node tests/dom/source-freshness-session.js
       409
     ],
     "reported": [
-      "66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
+      "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
     ]
   },
   "landing": [
@@ -903,7 +942,7 @@ $ node tests/dom/source-freshness-session.js
         "GET /api/tree?depth=1 +pin"
       ],
       "events": [
-        "metabrowser:pin-changed 66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
+        "metabrowser:pin-changed 42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
       ],
       "reloads": 1
     },
@@ -913,7 +952,7 @@ $ node tests/dom/source-freshness-session.js
         "GET /api/tree?depth=1 +pin"
       ],
       "events": [
-        "metabrowser:pin-changed 66f65bf1e89dd9fdaeccc5377b2a342aa3fd2531"
+        "metabrowser:pin-changed 42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
       ],
       "reloads": 0
     }

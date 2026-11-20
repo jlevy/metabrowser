@@ -31,6 +31,7 @@ const ORIGIN = "http://localhost:8411";
 // event_log_reports.browser_settings(long_lived=server.LONG_LIVED_PATHS) with a log open.
 const SETTINGS = Object.freeze({
   log: true,
+  off_reason: null,
   route: "/api/event-log/client",
   header: "x-metabrowser-client",
   slow_ms: 2000,
@@ -786,6 +787,19 @@ async function details(api) {
     painted: off.outline(),
     asked: asked.length - askedBefore,
   };
+  const reasoned = new Node("div");
+  await api.showDetails(
+    reasoned,
+    { client: PAGE },
+    {
+      fetch: fetchImpl,
+      slowMs: 2000,
+      log: false,
+      offReason:
+        "the folder this server shows is the event log's own, and recording its requests would change the files on screen",
+    },
+  );
+  out.panel["the log off with its reason"] = reasoned.outline();
   return out;
 }
 

@@ -44,12 +44,13 @@ $ node tests/dom/event-log-view-session.js
       "From 2026-11-19 22:00:00 UTC"
     ],
     "notices": [
-      "warning: 2 lines were not read: a torn last line, or a record of another schema version. Raw JSON shows every line."
+      "warning: 2 lines were not read: a torn last line, a record of another schema version, a record with no usable time, or a line that is not a record. Raw JSON shows every line."
     ],
     "filterGroups": [
       "event-log-kind",
       "event-log-outcome",
-      "event-log-minimum"
+      "event-log-minimum",
+      "event-log-order"
     ],
     "kind chips": [
       "request",
@@ -70,9 +71,10 @@ $ node tests/dom/event-log-view-session.js
     ],
     "minimum choices": [
       "Any",
+      "1.0 ms",
       "10 ms",
       "100 ms",
-      "1.00 s",
+      "500 ms",
       "2.00 s",
       "10.0 s"
     ],
@@ -92,7 +94,8 @@ $ node tests/dom/event-log-view-session.js
       "timeline?limit=20&offset=20&path=events-20261119T220000Z-p7007-000.jsonl"
     ],
     "rows shown": 40,
-    "the last line": "[Show more (4 left)]"
+    "the last line": "[Show more (4 left)]",
+    "the keyboard is on": "7007:13"
   },
   "a request opens to the job it started": {
     "requests": [
@@ -102,7 +105,8 @@ $ node tests/dom/event-log-view-session.js
       "v request POST /api/plugin/github/pull-refresh +29.9 s 3.6 ms ok",
       "  > job mirror_refresh.MirrorSession._pull_job +29.9 s 32.0 s failed",
       "> request POST /api/plugin/github/pull-refresh +2 min 0 s 2.9 ms ok"
-    ]
+    ],
+    "the keyboard is on": "7007:22"
   },
   "and the job to the processes it ran": {
     "requests": [
@@ -121,7 +125,8 @@ $ node tests/dom/event-log-view-session.js
     "around": [
       "> request POST /api/plugin/github/pull-refresh +29.9 s 3.6 ms ok",
       "> request POST /api/plugin/github/pull-refresh +2 min 0 s 2.9 ms ok"
-    ]
+    ],
+    "the keyboard is on": "7007:22"
   },
   "opening it again reads nothing again": {
     "requests": [],
@@ -190,6 +195,116 @@ $ node tests/dom/event-log-view-session.js
     ],
     "rows": 21
   },
+  "the timeline's bar has an order beside the filters": {
+    "groups": [
+      "event-log-kind",
+      "event-log-outcome",
+      "event-log-minimum",
+      "event-log-order"
+    ],
+    "order": [
+      "Oldest first",
+      "Newest first"
+    ],
+    "chosen": "oldest",
+    "layouts": {
+      "event-log-kind": "wrap",
+      "event-log-outcome": "wrap",
+      "event-log-minimum": "wrap",
+      "event-log-order": "wrap"
+    }
+  },
+  "choosing newest first lists the roots last first, and asks the server so": {
+    "requests": [
+      "timeline?order=newest&path=events-20261119T220000Z-p7007-000.jsonl"
+    ],
+    "first rows": [
+      "> browser fetch GET /api/plugin/github/pull-comparison +3 min 20 s 30.0 s never completed",
+      "> request GET /api/plugin/github/pull-comparison +3 min 20 s 30.0 s cancelled",
+      "> loop event_loop.turn +2 min 28 s 2.41 s ok"
+    ],
+    "the last line": "[Show more (24 left)]",
+    "chosen": "newest"
+  },
+  "Show in timeline opens the Timeline, reads to the row, and focuses it": {
+    "navigations": [
+      {
+        "path": "events-20261119T220000Z-p7007-000.jsonl",
+        "view": "timeline"
+      }
+    ],
+    "requests": [
+      "timeline?path=events-20261119T220000Z-p7007-000.jsonl",
+      "timeline?focus=7007%3A46&limit=1&path=events-20261119T220000Z-p7007-000.jsonl",
+      "timeline?limit=23&offset=20&path=events-20261119T220000Z-p7007-000.jsonl",
+      "timeline?parent=7007%3A44&path=events-20261119T220000Z-p7007-000.jsonl",
+      "timeline?parent=7007%3A45&path=events-20261119T220000Z-p7007-000.jsonl"
+    ],
+    "path": "in GET /api/plugin/github/pull-comparison > comparison_cache.manifest",
+    "the keyboard is on": "7007:46",
+    "revealed": true,
+    "rows from the ancestor down": [
+      "> request GET /api/plugin/github/pulls +4.90 s 2.41 s ok",
+      "> request POST /api/plugin/github/pull-refresh +29.9 s 3.6 ms ok",
+      "> browser wait githubPull:diffSummary +29.9 s  still waiting",
+      "> browser wait githubPull:diffSummary +29.9 s 32.1 s ok",
+      "> request GET /api/plugin/github/pull +31.4 s 1.1 ms ok",
+      "> request GET /api/plugin/github/pull +33.9 s 1.2 ms ok",
+      "> request GET /api/plugin/github/pull +36.4 s 1.3 ms ok",
+      "> request GET /api/plugin/github/pull +38.9 s 1.4 ms ok",
+      "> request GET /api/plugin/github/pull +41.4 s 1.1 ms ok",
+      "> request GET /api/plugin/github/pull +43.9 s 1.2 ms ok",
+      "> request GET /api/plugin/github/pull +46.4 s 1.3 ms ok",
+      "> request GET /api/plugin/github/pull +48.9 s 1.4 ms ok",
+      "> request GET /api/plugin/github/pull +51.4 s 1.1 ms ok",
+      "> request GET /api/plugin/github/pull +53.9 s 1.2 ms ok",
+      "> request GET /api/plugin/github/pull +56.4 s 1.3 ms ok",
+      "> request GET /api/plugin/github/pull +58.9 s 1.4 ms ok",
+      "> request POST /api/plugin/github/pull-refresh +2 min 0 s 2.9 ms ok",
+      "> subprocess git fetch +2 min 5 s 1.81 s ok",
+      "v request GET /api/plugin/github/pull-comparison +3 min 20 s 30.0 s cancelled",
+      "  v job comparison_cache.manifest +3 min 20 s 30.0 s unfinished",
+      "    > subprocess git diff-tree +3 min 20 s 30.0 s unfinished"
+    ],
+    "the Timeline is the view shown": true
+  },
+  "an example in Errors is shown in the timeline already mounted": {
+    "navigations": [
+      {
+        "path": "events-20261119T220000Z-p7007-000.jsonl",
+        "view": "timeline"
+      }
+    ],
+    "requests": [
+      "timeline?focus=7007%3A25&limit=1&path=events-20261119T220000Z-p7007-000.jsonl",
+      "timeline?parent=7007%3A22&path=events-20261119T220000Z-p7007-000.jsonl",
+      "timeline?parent=7007%3A23&path=events-20261119T220000Z-p7007-000.jsonl"
+    ],
+    "the keyboard is on": "7007:25",
+    "revealed": true,
+    "the probe row": [
+      "    > probe probe api.github.com:443 +59.9 s 2.03 s failed"
+    ]
+  },
+  "a filter chosen in one view is the next view's when it is shown again": {
+    "chosen in the second": [
+      "slowest?kind=subprocess&path=events-20261119T220000Z-p7007-000.jsonl"
+    ],
+    "the first, while hidden": 49
+  },
+  "the first view reads again, with the filter, when it is shown": {
+    "requests": [
+      "slowest?kind=subprocess&path=events-20261119T220000Z-p7007-000.jsonl"
+    ],
+    "rows": 5,
+    "chips": "[\"subprocess\"]"
+  },
+  "and shown again with nothing changed, it reads nothing": {
+    "requests": []
+  },
+  "a view that is disposed stops listening": {
+    "watching": 0
+  },
   "what a choice in the bar asks of the server": {
     "chosen": {
       "kind": "job,request",
@@ -205,20 +320,37 @@ $ node tests/dom/event-log-view-session.js
   },
   "Latency: the slowest, with their distribution": {
     "requests": [
-      "slowest?path=events-20261119T220000Z-p7007-000.jsonl"
+      "slowest?kind=subprocess&path=events-20261119T220000Z-p7007-000.jsonl"
     ],
     "headings": [
       "Distribution of times",
-      "Slowest · 49 of 49"
+      "Slowest · 5 of 5"
     ],
     "distribution": [
       "0  < 1.0 ms",
-      "23  1.0 ms – 10 ms",
-      "11  10 ms – 100 ms",
+      "0  1.0 ms – 10 ms",
+      "0  10 ms – 100 ms",
       "0  100 ms – 500 ms",
-      "4  500 ms – 2.00 s",
-      "4  2.00 s – 10.0 s",
-      "7  ≥ 10.0 s"
+      "3  500 ms – 2.00 s",
+      "0  2.00 s – 10.0 s",
+      "2  ≥ 10.0 s"
+    ],
+    "rows": [
+      "> subprocess gh api +29.9 s 30.0 s failed",
+      "> subprocess git diff-tree +3 min 20 s 30.0 s unfinished",
+      "> subprocess git fetch +2 min 5 s 1.81 s ok",
+      "> subprocess gh api +2 min 1 s 689 ms failed",
+      "> subprocess gh auth +2 min 0 s 623 ms ok"
+    ]
+  },
+  "a slow row opens to where it ran": {
+    "requests": [],
+    "path": "in GET /api/plugin/github/pull-comparison > comparison_cache.manifestShow in timeline",
+    "facts": "Span7007:46Clientk3v9q2zx-90Began+3 min 20 sOpen records2"
+  },
+  "Latency, filtered to processes": {
+    "requests": [
+      "slowest?path=events-20261119T220000Z-p7007-000.jsonl"
     ],
     "rows": [
       "> browser wait githubPull:diffSummary +29.9 s 32.1 s ok",
@@ -227,24 +359,49 @@ $ node tests/dom/event-log-view-session.js
       "> request GET /api/plugin/github/pull-comparison +3 min 20 s 30.0 s cancelled",
       "> browser fetch GET /api/plugin/github/pull-comparison +3 min 20 s 30.0 s never completed",
       "> job comparison_cache.manifest +3 min 20 s 30.0 s unfinished",
-      "> subprocess git diff-tree +3 min 20 s 30.0 s unfinished"
-    ]
-  },
-  "a slow row opens to where it ran": {
-    "requests": [],
-    "path": "in GET /api/plugin/github/pull-comparison > comparison_cache.manifest",
-    "facts": "Span7007:46Clientk3v9q2zx-90Began+3 min 20 sOpen records2"
-  },
-  "Latency, filtered to processes": {
-    "requests": [
-      "slowest?kind=subprocess&path=events-20261119T220000Z-p7007-000.jsonl"
-    ],
-    "rows": [
-      "> subprocess gh api +29.9 s 30.0 s failed",
       "v subprocess git diff-tree +3 min 20 s 30.0 s unfinished",
+      "> browser fetch GET /api/tree +2 min 6 s 4.10 s ok",
+      "> request GET /api/plugin/github/pulls +4.90 s 2.41 s ok",
+      "> loop event_loop.turn +2 min 28 s 2.41 s ok",
+      "> probe probe api.github.com:443 +59.9 s 2.03 s failed",
       "> subprocess git fetch +2 min 5 s 1.81 s ok",
+      "> job pull_files_refresh.refresh_files +2 min 0 s 1.33 s failed",
       "> subprocess gh api +2 min 1 s 689 ms failed",
-      "> subprocess gh auth +2 min 0 s 623 ms ok"
+      "> subprocess gh auth +2 min 0 s 623 ms ok",
+      "> request GET /api/tree +20.8 s 58 ms ok",
+      "> request GET /api/tree +19.1 s 45 ms ok",
+      "> request GET /api/tree +1000 ms 41 ms ok",
+      "> request GET /api/file +19.6 s 36 ms ok",
+      "> request GET /api/tree +17.4 s 32 ms ok",
+      "> request GET /api/tree +15.7 s 23 ms ok",
+      "> request GET /api/file +18.3 s 21 ms ok",
+      "> request GET /api/tree +14.0 s 15 ms ok",
+      "> request GET /api/file +17.0 s 15 ms ok",
+      "> request GET /api/tree +12.3 s 12 ms ok",
+      "> request GET /view/ +899 ms 12 ms ok",
+      "> request GET /api/file +15.7 s 9.3 ms ok",
+      "> request GET /api/tree +10.6 s 9.1 ms ok",
+      "> request GET /api/tree +8.90 s 8.4 ms ok",
+      "> request GET /api/file +14.4 s 6.8 ms ok",
+      "> request GET /api/file +13.1 s 5.2 ms ok",
+      "> request GET /api/file +11.8 s 4.4 ms ok",
+      "> request GET /api/file +10.5 s 4.0 ms ok",
+      "> request POST /api/plugin/github/pull-refresh +29.9 s 3.6 ms ok",
+      "> request GET /api/file +9.20 s 3.4 ms ok",
+      "> request GET /api/file +7.90 s 3.1 ms ok",
+      "> request POST /api/plugin/github/pull-refresh +2 min 0 s 2.9 ms ok",
+      "> request GET /api/plugin/github/pull +38.9 s 1.4 ms ok",
+      "> request GET /api/plugin/github/pull +48.9 s 1.4 ms ok",
+      "> request GET /api/plugin/github/pull +58.9 s 1.4 ms ok",
+      "> request GET /api/plugin/github/pull +36.4 s 1.3 ms ok",
+      "> request GET /api/plugin/github/pull +46.4 s 1.3 ms ok",
+      "> request GET /api/plugin/github/pull +56.4 s 1.3 ms ok",
+      "> request GET /api/plugin/github/pull +33.9 s 1.2 ms ok",
+      "> request GET /api/plugin/github/pull +43.9 s 1.2 ms ok",
+      "> request GET /api/plugin/github/pull +53.9 s 1.2 ms ok",
+      "> request GET /api/plugin/github/pull +31.4 s 1.1 ms ok",
+      "> request GET /api/plugin/github/pull +41.4 s 1.1 ms ok",
+      "> request GET /api/plugin/github/pull +51.4 s 1.1 ms ok"
     ]
   },
   "By kind: each kind and its names": {
@@ -330,9 +487,9 @@ $ node tests/dom/event-log-view-session.js
         "mirror_refresh.MirrorSession._pull_job 1 · gh api 1 · probe api.github.com:443 1",
         "First 22:01:00.016 · last 22:01:02.051 UTC",
         [
-          "probe probe api.github.com:443 — failed after 2.03 s (in POST /api/plugin/github/pull-refresh > mirror_refresh.MirrorSession._pull_job)",
-          "job mirror_refresh.MirrorSession._pull_job — failed after 32.0 s (in POST /api/plugin/github/pull-refresh)",
-          "subprocess gh api — failed after 30.0 s (in POST /api/plugin/github/pull-refresh > mirror_refresh.MirrorSession._pull_job)"
+          "probe api.github.com:443 — failed after 2.03 s (in POST /api/plugin/github/pull-refresh > mirror_refresh.MirrorSession._pull_job) Show in timeline",
+          "job mirror_refresh.MirrorSession._pull_job — failed after 32.0 s (in POST /api/plugin/github/pull-refresh) Show in timeline",
+          "subprocess gh api — failed after 30.0 s (in POST /api/plugin/github/pull-refresh > mirror_refresh.MirrorSession._pull_job) Show in timeline"
         ]
       ],
       [
@@ -341,14 +498,35 @@ $ node tests/dom/event-log-view-session.js
         "pull_files_refresh.refresh_files 1 · gh api 1",
         "First 22:02:01.328 · last 22:02:01.331 UTC",
         [
-          "job pull_files_refresh.refresh_files — failed after 1.33 s (in POST /api/plugin/github/pull-refresh)",
-          "subprocess gh api — failed after 689 ms (in POST /api/plugin/github/pull-refresh > pull_files_refresh.refresh_files)"
+          "job pull_files_refresh.refresh_files — failed after 1.33 s (in POST /api/plugin/github/pull-refresh) Show in timeline",
+          "subprocess gh api — failed after 689 ms (in POST /api/plugin/github/pull-refresh > pull_files_refresh.refresh_files) Show in timeline"
         ]
       ]
     ],
     "unfinished": [
       "> job comparison_cache.manifest +3 min 20 s 30.0 s unfinished",
       "> subprocess git diff-tree +3 min 20 s 30.0 s unfinished"
+    ]
+  },
+  "Errors, when a later segment follows, does not say the work is stuck": {
+    "requests": [
+      "errors?path=events-20261119T220000Z-p7007-000.jsonl"
+    ],
+    "headings": [
+      "Failures by cause · 5",
+      "Last failed connectivity probe",
+      "Not ended in this segment · 2",
+      "What the pages reported · 1"
+    ],
+    "summary": [
+      "Records 58",
+      "Spans 46",
+      "No end here 2",
+      "Covers 3 min 50 s",
+      "From 2026-11-19 22:00:00 UTC"
+    ],
+    "notices": [
+      "notice neutral: The server went on logging in a later segment, which may hold the end of this work."
     ]
   },
   "a file the server refuses is said so, in an alert": {
@@ -361,8 +539,8 @@ $ node tests/dom/event-log-view-session.js
   },
   "a view replaced or disposed while its answer was out draws nothing": {
     "requests": [
-      "kinds?path=events-20261119T220000Z-p7007-000.jsonl",
-      "slowest?path=events-20261119T220000Z-p7007-000.jsonl"
+      "kinds?outcome=failed&path=events-20261119T220000Z-p7007-000.jsonl",
+      "slowest?outcome=failed&path=events-20261119T220000Z-p7007-000.jsonl"
     ],
     "body": "event-log-body preview-empty mb-delayed-loading",
     "rows": []

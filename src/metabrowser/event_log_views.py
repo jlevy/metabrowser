@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Final, Literal
@@ -98,6 +99,18 @@ LATENCY_EDGES_MS: Final[tuple[float, ...]] = (
 # so three are at most about 57 MB; a person browsing a log has one or two open, and every
 # view of one log shares its table.
 MAX_TABLES_KEPT: Final = 3
+
+# The longest time a record may claim, in milliseconds: a year. A duration is a span's own
+# length, and a file the log did not write can say anything (1e300), which would put a start
+# before the calendar's first year. A longer one is read as this.
+MAX_DURATION_MS: Final = 365 * 24 * 3600 * 1000.0
+# The years a record's time may name. The writer stamps the wall clock; a stamp outside
+# these is a file that is not the log, and the record is left out like one with no time.
+_EARLIEST: Final = datetime(2000, 1, 1, tzinfo=UTC).timestamp()
+_LATEST: Final = datetime(2200, 1, 1, tzinfo=UTC).timestamp()
+# How deep an attribute may nest before it is read as nothing: the writer's are one or two
+# levels, and the recursion that copies and serializes them must not be a file's to set.
+MAX_ATTR_DEPTH: Final = 6
 
 ItemType = Literal["span", "mark", "report"]
 SortKey = tuple[float, int]
@@ -179,6 +192,11 @@ class Table:
     last: float
     pids: list[int]
     size: int = 0
+    # How many spans are above each span: worked out once, as the table is built.
+    depth: dict[str, int] = field(default_factory=dict[str, int])
+    # The marks and reports, by key, as ``spans`` holds the spans: a row of the timeline is
+    # found by its key whichever it is.
+    points: dict[str, Item] = field(default_factory=dict[str, Item])
 
     def elapsed_ms(self, item: Item) -> float | None:
         """How long *item* took, or, for an unfinished span, how long it had run when
@@ -203,15 +221,29 @@ def _seconds(stamp: object) -> float | None:
     if not isinstance(stamp, str):
         return None
     try:
-        return datetime.fromisoformat(stamp).timestamp()
-    except ValueError:
+        moment = datetime.fromisoformat(stamp).timestamp()
+    except (ValueError, OverflowError, OSError):
         return None
+    return moment if _EARLIEST <= moment < _LATEST else None
 
 
 def _number(value: object) -> float | None:
+    """A finite number, or ``None``: a count or size, which a file may make any size."""
+
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
-    return float(value) if math.isfinite(value) else None
+    try:
+        number = float(value)
+    except OverflowError:
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _duration(value: object) -> float | None:
+    """A duration in milliseconds, kept from 0 to :data:`MAX_DURATION_MS`, or ``None``."""
+
+    number = _number(value)
+    return None if number is None else min(max(number, 0.0), MAX_DURATION_MS)
 
 
 def _whole(value: object) -> int | None:
@@ -222,8 +254,27 @@ def _text(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _clean(value: object, depth: int = 0) -> object:
+    """*value* as JSON can carry it: a number that is not finite is ``None``, and anything
+    nested deeper than :data:`MAX_ATTR_DEPTH` is cut, so what a file puts in an attribute
+    cannot fail the answer that repeats it."""
+
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        if depth >= MAX_ATTR_DEPTH:
+            return None
+        return {str(k): _clean(v, depth + 1) for k, v in value.items()}  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+    if isinstance(value, list):
+        if depth >= MAX_ATTR_DEPTH:
+            return None
+        return [_clean(v, depth + 1) for v in value]  # pyright: ignore[reportUnknownVariableType]
+    return value
+
+
 def _attrs(value: object) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}  # pyright: ignore[reportUnknownArgumentType]
+    cleaned = _clean(value)
+    return cleaned if isinstance(cleaned, dict) else {}  # pyright: ignore[reportUnknownVariableType]
 
 
 def _span_key(pid: int, span: int) -> str:
@@ -256,7 +307,7 @@ def build_table(data: bytes) -> Table:
         kind = _text(record.get("kind")) or "unknown"
         name = _text(record.get("name")) or ""
         event = _text(record.get("event")) or ""
-        duration = _number(record.get("dur_ms"))
+        duration = _duration(record.get("dur_ms"))
         span = _whole(record.get("span"))
         if kind == "browser" or span is None:
             began = (
@@ -339,22 +390,69 @@ def _link(
             item.parent_key = above
         else:
             item.orphan = True
-    # A file that nests spans in a circle, which no writer produces, still shows each of
-    # them: the link that closes the circle becomes a root.
-    for item in span_items:
-        seen = {item.key}
-        at = item
-        while at.parent_key is not None:
-            if at.parent_key in seen:
-                at.parent_key = None
-                break
-            seen.add(at.parent_key)
-            at = spans[at.parent_key]
+    _break_circles(span_items, spans)
+    depth = _depths(span_items, spans)
     ordered = sorted([*span_items, *points], key=lambda i: i.sort_key)
     children: dict[str | None, list[Item]] = defaultdict(list)
     for item in ordered:
         children[item.parent_key].append(item)
-    return Table(ordered, spans, dict(children), records, skipped, first, last, pids, size)
+    return Table(
+        ordered,
+        spans,
+        dict(children),
+        records,
+        skipped,
+        first,
+        last,
+        pids,
+        size,
+        depth,
+        {point.key: point for point in points},
+    )
+
+
+def _break_circles(span_items: list[Item], spans: dict[str, Item]) -> None:
+    """Make every span reach a root, in one walk of the links.
+
+    A file that nests spans in a circle, which no writer produces, still shows each of
+    them: the link that closes the circle becomes a root. Each span has at most one span
+    above it, so a walk follows links until it meets a span already settled, or one on
+    its own path (a circle), and settles the path. Every span is settled once, so the
+    cost is the number of spans, whatever the depth.
+    """
+
+    settled: set[str] = set()
+    for start in span_items:
+        path: dict[str, None] = {}
+        at = start
+        while at.key not in settled:
+            path[at.key] = None
+            above = at.parent_key
+            if above is None:
+                break
+            if above in path:
+                at.parent_key = None
+                break
+            at = spans[above]
+        settled.update(path)
+
+
+def _depths(span_items: list[Item], spans: dict[str, Item]) -> dict[str, int]:
+    """How many spans are above each span, each worked out once: a span is one deeper than
+    the span above it, which an earlier walk or this one has settled."""
+
+    depth: dict[str, int] = {}
+    for start in span_items:
+        pending: list[Item] = []
+        at: Item | None = start
+        while at is not None and at.key not in depth:
+            pending.append(at)
+            at = spans[at.parent_key] if at.parent_key is not None else None
+        base = depth[at.key] + 1 if at is not None else 0
+        for item in reversed(pending):
+            depth[item.key] = base
+            base += 1
+    return depth
 
 
 _TABLES: LRUCache[tuple[str, str], Table] = LRUCache(maxsize=MAX_TABLES_KEPT)
@@ -480,6 +578,8 @@ def log_summary(table: Table) -> dict[str, Any]:
         # The words a filter chooses among: the writer's, so a page names none of its own.
         "kinds": list(event_log.KINDS),
         "outcomes": list(event_log.OUTCOMES),
+        # Where the distribution of times is cut, which the page offers as the least times.
+        "edges_ms": list(LATENCY_EDGES_MS),
         "bytes": table.size,
         "records": table.records,
         "skipped": table.skipped,
@@ -537,27 +637,53 @@ def _counted(table: Table, kept: set[str] | None) -> dict[str, int]:
     Held apart from the table, which requests share, so two filters read it at once.
     """
 
-    depth: dict[str, int] = {}
-
-    def depth_of(item: Item) -> int:
-        cached = depth.get(item.key)
-        if cached is not None:
-            return cached
-        steps = 0
-        at = item
-        while at.parent_key is not None:
-            steps += 1
-            at = table.spans[at.parent_key]
-        depth[item.key] = steps
-        return steps
-
     below: dict[str, int] = defaultdict(int)
     # Deepest first, so each span's count is whole before its parent takes it.
-    for item in sorted(table.spans.values(), key=depth_of, reverse=True):
+    for item in sorted(table.spans.values(), key=lambda span: table.depth[span.key], reverse=True):
         if item.parent_key is None or (kept is not None and item.key not in kept):
             continue
         below[item.parent_key] += 1 + below[item.key]
     return below
+
+
+ORDERS: Final = ("oldest", "newest")
+
+
+def parse_order(raw: str | None) -> str:
+    """``oldest`` (the default) or ``newest``, or a ``ViewError``."""
+
+    if raw is None or raw == "":
+        return ORDERS[0]
+    if raw not in ORDERS:
+        raise ViewError(f"order must be one of {', '.join(ORDERS)}; not {raw}", "invalid_query")
+    return raw
+
+
+def _focus(
+    table: Table, key: str, siblings_of: Callable[[str | None], list[Item]]
+) -> dict[str, Any]:
+    """Where *key*'s row is, so a page can open down to it: each step from a root to the
+    row, with the row's place among what its parent shows.
+
+    A row the filter does not show is ``filtered``, and one the file does not hold is
+    ``missing``; the page says which instead of guessing.
+    """
+
+    item = table.spans.get(key) or table.points.get(key)
+    if item is None:
+        return {"key": key, "found": False, "reason": "missing", "steps": []}
+    chain: list[Item] = [item]
+    while chain[-1].parent_key is not None:
+        chain.append(table.spans[chain[-1].parent_key])
+    chain.reverse()
+    steps: list[dict[str, Any]] = []
+    for step in chain:
+        siblings = siblings_of(step.parent_key)
+        place = next((index for index, sibling in enumerate(siblings) if sibling is step), None)
+        if place is None:
+            return {"key": key, "found": False, "reason": "filtered", "steps": []}
+        steps.append({"parent": step.parent_key, "key": step.key, "index": place})
+    return {"key": key, "found": True, "steps": steps}
 
 
 def timeline(
@@ -567,12 +693,20 @@ def timeline(
     parent: str | None,
     offset: int,
     limit: int,
+    order: str = "oldest",
+    focus: str | None = None,
 ) -> dict[str, Any]:
     """The children of *parent*, or the roots, in time order, a page of them.
 
     Each row says how many spans sit directly under it and how many below, so the page
     can offer to open it. A filter keeps the matching spans and those above them, and a
-    row's ``matched`` says which it is.
+    row's ``matched`` says which it is. *order* ``newest`` lists the roots last first (what
+    a person who comes to a long log for its latest requests wants first); the spans under
+    a span stay in time order, as a sequence of work reads.
+
+    *focus* names a row, by its key, to find: the answer's ``focus`` gives each step from
+    a root down to it with its place among its parent's rows, in this order and under
+    this filter, so a page opens each parent at the page that holds the next step.
     """
 
     if parent is not None and parent not in table.spans:
@@ -587,7 +721,11 @@ def timeline(
             return item.key in kept
         return _matches(query, table, item)
 
-    siblings = [item for item in table.children.get(parent, []) if shown(item)]
+    def rows_under(above: str | None) -> list[Item]:
+        rows = [item for item in table.children.get(above, []) if shown(item)]
+        return rows[::-1] if above is None and order == "newest" else rows
+
+    siblings = rows_under(parent)
     rows: list[dict[str, Any]] = []
     for item in siblings[offset : offset + limit]:
         row = _row(table, item)
@@ -595,10 +733,11 @@ def timeline(
         row["below"] = below.get(item.key, 0)
         row["matched"] = kept is None or _matches(query, table, item)
         rows.append(row)
-    return {
+    answer: dict[str, Any] = {
         "view": "timeline",
         "log": log_summary(table),
         "query": describe_filter(query),
+        "order": order,
         "parent": parent,
         "total": len(siblings),
         "offset": offset,
@@ -607,6 +746,9 @@ def timeline(
         "has_more": offset + limit < len(siblings),
         "rows": rows,
     }
+    if focus is not None:
+        answer["focus"] = _focus(table, focus, rows_under)
+    return answer
 
 
 # ── Latency ──────────────────────────────────────────────────────────────────────────
@@ -767,7 +909,7 @@ def errors(table: Table, kinds: tuple[str, ...]) -> dict[str, Any]:
     tally = FailureTally(kinds=kinds, link=None)
     for item in table.items:
         if item.record is not None:
-            tally.add(item.record, file=None)
+            tally.add(item.record, file=None, origin=item.key)
     unfinished = sorted(
         (
             (elapsed, item)
@@ -792,7 +934,7 @@ def errors(table: Table, kinds: tuple[str, ...]) -> dict[str, Any]:
         "log": log_summary(table),
         "kinds": list(kinds),
         "failures": tally.total,
-        "causes": _with_keys(tally.causes(), table),
+        "causes": _with_paths(tally.causes(), table),
         "probe": tally.probe,
         "page_reports": tally.page_reports(),
         "unfinished": {
@@ -804,23 +946,15 @@ def errors(table: Table, kinds: tuple[str, ...]) -> dict[str, Any]:
     }
 
 
-def _with_keys(causes: list[dict[str, Any]], table: Table) -> list[dict[str, Any]]:
-    """Each example with the key of its span, which the timeline opens, and the spans above."""
+def _with_paths(causes: list[dict[str, Any]], table: Table) -> list[dict[str, Any]]:
+    """Each example's spans above it, from the span its ``key`` names: the timeline opens
+    that key, and an example of another process never names this one's span."""
 
-    by_span: dict[int, list[Item]] = defaultdict(list)
-    for item in table.spans.values():
-        if item.span is not None:
-            by_span[item.span].append(item)
     for group in causes:
         for example in group["examples"]:
-            matches = [
-                item
-                for item in by_span.get(example.get("span") or -1, [])
-                if item.ended and item.name == example["name"] and item.kind == example["kind"]
-            ]
-            if matches:
-                example["key"] = matches[0].key
-                example["path"] = _above(table, matches[0])
+            span = table.spans.get(example.get("key", ""))
+            if span is not None:
+                example["path"] = _above(table, span)
     return causes
 
 
@@ -846,6 +980,7 @@ __all__ = [
     "MAX_LIMIT",
     "MAX_TABLES_KEPT",
     "MAX_VIEW_BYTES",
+    "ORDERS",
     "Item",
     "Table",
     "ViewError",
@@ -856,6 +991,7 @@ __all__ = [
     "log_summary",
     "parse_filter",
     "parse_kinds",
+    "parse_order",
     "parse_page",
     "remember",
     "remembered",

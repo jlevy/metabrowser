@@ -473,7 +473,7 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
               },
             })
           : mb.kpressInitToc?.(aside, kpressTocConfig(aside)) || null;
-      diagrams = drawDiagrams(aside, mb, !!inertRender);
+      diagrams = drawDiagrams(aside, mb, inertRender ? "image" : "document");
     } catch (error) {
       if (disposed || options.signal?.aborted) {
         return;

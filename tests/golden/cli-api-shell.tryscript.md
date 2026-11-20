@@ -126,6 +126,7 @@ status: 200
   "borrows": null,
   "shallow": false,
   "refreshable": false,
+  "follows": false,
   "latest": null,
   "ref_on_origin": null,
   "last_fetch_at": null,
@@ -817,6 +818,13 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/source/link",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/source/pin",
       "methods": [
         "POST"
@@ -956,7 +964,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 77
+  "count": 78
 }
 ? 0
 ```

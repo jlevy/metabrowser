@@ -30,8 +30,13 @@ The transcript pins these behaviors:
   leaves the figures.
 - An inert render’s `<pre lang="mermaid">` blocks become figures placed as images, and a
   block already inside a figure is not wrapped again.
-- Only the mode `image` places as an image, the host’s own theme, subscription, and
-  yield reach KPress unchanged, and `figures` fills once KPress has bound.
+- Only the modes `image` and `isolated` place as an image, the host’s own theme,
+  subscription, and yield reach KPress unchanged, and `figures` fills once KPress has
+  bound.
+- The mode `isolated` takes its Mermaid from a lease on the diagram frame, never from
+  the page’s import: it asks the SDK for the `mermaid` bundle’s address, and with none
+  published rejects before any frame opens (`cli-ui-markdown-diagram-frame.tryscript.md`
+  pins the frame itself).
 - Disposing before the KPress modules arrive binds nothing, and a handle disposed at
   once asks for nothing.
 - A module that fails to load writes one warning and `ready` still settles; after
@@ -149,6 +154,7 @@ $ node tests/dom/markdown-diagrams-session.js
     "placementByMode": {
       "document": "document",
       "image": "image",
+      "isolated": "image",
       "svg": "document",
       "(none)": "document"
     },
@@ -161,6 +167,18 @@ $ node tests/dom/markdown-diagrams-session.js
       "beforeBinding": 0,
       "afterReady": 2
     }
+  },
+  "isolated": {
+    "placement": "image",
+    "modulesAsked": [
+      "kpress-diagrams",
+      "kpress-diagram-controls"
+    ],
+    "addressesAsked": [
+      "mermaid"
+    ],
+    "loaderSays": "The Mermaid module bundle is not published",
+    "frames": 0
   },
   "decorateButton": {
     "labelled": {

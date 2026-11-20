@@ -9,6 +9,7 @@
   `S`. Chips choose the kind and the outcome and a menu the least time.
   Each view is a route, `metab DIR --api '/api/plugin/event-log/timeline?path=<file>'`
   and its `slowest`, `kinds`, and `errors`, so a terminal reads what the page shows.
-  A server that serves the folder the log is in writes no log of its own, since each
-  request for the files on screen would change one of them.
-  See [Browsing the Log](docs/realtime-debugging.md#browsing-the-log).
+  A server whose folder holds the log, such as `metab ~`, writes its log as usual and
+  leaves out the requests for the log itself; one whose folder is the log’s own writes
+  none, and says so in its Details and in `metab --doctor`, which now checks the event
+  log too. See [Browsing the Log](docs/realtime-debugging.md#browsing-the-log).

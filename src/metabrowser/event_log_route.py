@@ -419,14 +419,18 @@ class FailureTally:
             return {}
         return {"details": self._link(file, record)}
 
-    def add(self, record: dict[str, Any], *, file: str | None) -> None:
+    def add(self, record: dict[str, Any], *, file: str | None, origin: str | None = None) -> None:
         """Count *record* if it is a failure: the end of work that failed or gave up.
 
         *file* names the segment it came from, which the records kept for it say; ``None``
-        for a reader that reads one file and has nothing to name.
+        for a reader that reads one file and has nothing to name. *origin* is a reader's own
+        name for the record, which an example it keeps carries as ``key``: the views of one
+        file name each span ``pid:span``, so an example can be opened where it happened.
         """
 
-        where = {} if file is None else {"file": file}
+        where: dict[str, Any] = {} if file is None else {"file": file}
+        if origin is not None:
+            where["key"] = origin
 
         if record.get("event") != "end" or record.get("outcome") not in FAILURE_OUTCOMES:
             return
@@ -456,6 +460,7 @@ class FailureTally:
             seen: dict[str, Any] = {
                 "ts": str(record.get("ts")),
                 **where,
+                "pid": record.get("pid"),
                 "client": record.get("client"),
                 "name": name,
                 "outcome": outcome,
@@ -525,6 +530,7 @@ class FailureTally:
         example: dict[str, Any] = {
             "ts": stamp,
             **where,
+            "pid": record.get("pid"),
             "span": record.get("span"),
             "kind": kind,
             "name": name,

@@ -288,7 +288,7 @@ def _detect_jsonl(ctx: FileContext) -> str | None:
     """
     if ctx.ext != ".jsonl":
         return None
-    if ctx.adapter in ("claude", "gemini", "pi"):
+    if ctx.adapter in ("claude", "codex", "codex-rollout", "gemini", "pi"):
         return "agent-log"
     return "unknown-jsonl"
 

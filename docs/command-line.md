@@ -169,10 +169,12 @@ A pinned source always runs under the untrusted profile: `--untrusted` is implie
 `METAB_*` enables are ignored, `--allow-edits` is an error, and HTML files show only
 their source.
 
-The mirror refreshes from its origin in the background, and a refresh never moves the
-page you are reading; the
-[history guide](browsing-history.md#branches-and-tags-of-a-repository-url) shows how to
-switch branches and take a newer commit.
+The mirror refreshes from its origin in the background.
+A served branch or tag follows the origin: when a refresh moves it, the server serves
+its new commit, and an open page follows it there.
+A commit the URL names by its ID stays put.
+The [history guide](browsing-history.md#branches-and-tags-of-a-repository-url) shows how
+to switch branches.
 [Mirror acquisition and refresh](project/architecture/arch-mirror-acquisition-and-refresh.md)
 covers the refresh cadence, the `/api/source/…` routes, and what a clone prints.
 
@@ -543,6 +545,12 @@ sentence, the details it read, and the step that fixes it:
   free. Less than the largest first clone `metab` admits can take is a warning:
   `low_free_space_bytes` in `cli/doctor.py`, which follows
   `METABROWSER_MAX_FIRST_CLONE_KB`.
+- **`event_log`:** whether a server writes its event log: where, and from which variable
+  the directory comes.
+  `METABROWSER_EVENT_LOG` turning it off is a warning, since no latency or failure is
+  then recorded, and so is a state directory `metab` cannot create.
+  A server whose folder is the events directory or inside it writes none, whatever the
+  environment says, and its Details name that reason.
 
 The macOS app runs its servers without `METABROWSER_CONFIG_DIR`,
 `METABROWSER_CACHE_DIR`, or the `XDG_` variables, so when `--present` would open the

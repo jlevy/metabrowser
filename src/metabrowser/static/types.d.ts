@@ -1311,11 +1311,13 @@ type MarkdownBuiltins = {
   ) => DisposableHandle;
   renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
   /** Draw the Mermaid diagrams in a placed KPress render under *root*: images unless
-   * `inert: false` says the render is trusted. Null when *root* holds no diagram, so
-   * nothing is fetched; otherwise `dispose` stops drawing and leaves the figures. */
+   * `inert: false` says the render is trusted, laid out in a frame whose policy loads
+   * nothing when `isolated: true` says nothing else bounds them. Null when *root* holds
+   * no diagram, so nothing is fetched; otherwise `dispose` stops drawing and leaves the
+   * figures. */
   drawDiagrams?: (
     root: ParentNode,
-    options?: { inert?: boolean },
+    options?: { inert?: boolean; isolated?: boolean },
   ) => { dispose(): void; ready: Promise<void> } | null;
 };
 
@@ -1697,6 +1699,8 @@ type MetabrowserSdk = {
   ensureAsset(name: string): Promise<void>;
   /** The namespace of an on-demand module bundle, imported once. */
   ensureModule(name: string): Promise<unknown>;
+  /** The absolute URL of an on-demand module bundle, or null for a name that is not one. */
+  moduleUrl(name: string): string | null;
   ensureKindAssets(kind: string): Promise<void>;
   /** Run *callback* when the page is idle, no later than *timeout* ms; returns its cancel. */
   whenIdle(callback: () => void, options?: { timeout?: number }): () => void;
@@ -3063,6 +3067,8 @@ declare global {
   type MetabrowserEventReportSettings = {
     /** Whether the server writes an event log; without one nothing is tagged or sent. */
     log: boolean;
+    /** When `log` is false, the server's own words for why, which Details shows. */
+    off_reason?: string | null;
     route: string;
     header: string;
     slow_ms: number;
@@ -3075,6 +3081,8 @@ declare global {
     failure_window_s: number;
     /** The command that opens the whole log in Metabrowser, which Details names. */
     open_command: string;
+    /** The macOS app's menu item for it, which Details names instead when the app started the server. */
+    open_menu: string | null;
   };
 
   type MetabrowserEventOutcome = "ok" | "failed" | "cancelled" | "never_completed";
@@ -3177,6 +3185,8 @@ declare global {
   type MetabrowserEventDetails = {
     /** `off`: this server writes no log, so whatever an older one wrote is not shown. */
     log: "present" | "absent" | "unreadable" | "off";
+    /** With `off`, why this server writes no log, in its own words. */
+    reason?: string | null;
     running: Array<{ kind: string; name: string; age_ms: number; mine: boolean }>;
     causes: Array<{
       cause: string;
@@ -3464,6 +3474,8 @@ declare global {
     origin: string | null;
     location: string | null;
     refreshable: boolean;
+    /** Whether the pin moves with its ref: a branch or tag, not a commit or pull request. */
+    follows: boolean;
     latest: string | null;
     ref_on_origin: boolean | null;
     last_fetch_at: string | null;
@@ -3530,7 +3542,12 @@ declare global {
     error: string | null;
     /** The attended pull request's page, when there is one. */
     pull: { href: string; text: string } | null;
+    /** The branch or tag the page goes with to a new commit, which the controller does. */
+    follow: MetabrowserSourceFollow | null;
   };
+
+  /** A ref the page follows, and the commit it is at now. */
+  type MetabrowserSourceFollow = { ref: string; commit: string };
 
   /**
    * What the commit view says about a commit the mirror lacks: being fetched, not
@@ -3585,6 +3602,8 @@ declare global {
     render(model: MetabrowserSourceFreshnessModel): void;
     reload(): void;
     navigate(href: string): void;
+    /** The page's own `/view/` address, or null on any other page. */
+    address(): string | null;
   };
 
   type MetabrowserSourceFreshnessController = Readonly<{
@@ -4476,7 +4495,13 @@ declare global {
       showDetails(
         panel: HTMLElement,
         query: MetabrowserEventDetailsQuery,
-        options?: { fetch?: typeof fetch; signal?: AbortSignal; slowMs?: number; log?: boolean },
+        options?: {
+          fetch?: typeof fetch;
+          signal?: AbortSignal;
+          slowMs?: number;
+          log?: boolean;
+          offReason?: string | null;
+        },
       ): Promise<void>;
       serverMs(raw: string | null | undefined): number | null;
     }>;

@@ -814,7 +814,10 @@
       return [
         {
           heading: "The event log is off on this server",
-          items: ["Nothing this server does is recorded, so there is nothing to show here."],
+          items: [
+            "Nothing this server does is recorded, so there is nothing to show here.",
+            ...(details.reason ? [`Why: ${details.reason}`] : []),
+          ],
         },
       ];
     }
@@ -910,13 +913,16 @@
    *
    * @param {HTMLElement} panel
    * @param {MetabrowserEventDetailsQuery} query
-   * @param {{fetch?: typeof fetch, signal?: AbortSignal, slowMs?: number, log?: boolean, openCommand?: string}} [options]
-   *   `log` false: this server writes no log, so the panel says so and reads nothing, since
-   *   what a log directory still holds is from an earlier server and not about this.
+   * @param {{fetch?: typeof fetch, signal?: AbortSignal, slowMs?: number, log?: boolean, offReason?: string | null, openCommand?: string, openMenu?: string | null}} [options]
+   *   `log` false: this server writes no log, so the panel says so, with *offReason* (the
+   *   server's own words for why) and reads nothing, since what a log directory still holds
+   *   is from an earlier server and not about this.
    */
   async function showDetails(panel, query, options = {}) {
     if (options.log === false) {
-      panel.replaceChildren(...detailSections(detailLines(OFF)));
+      panel.replaceChildren(
+        ...detailSections(detailLines({ ...OFF, reason: options.offReason ?? null })),
+      );
       return;
     }
     const fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
@@ -956,18 +962,21 @@
       ...(query.client ? [" · ", link(routes.page, "This page’s records as JSON")] : []),
     ]);
     // The whole log is a Metabrowser window on a directory of the server's machine, which a
-    // page cannot open, so the panel names the command that does.
-    const command = options.openCommand ?? window.METABROWSER_SETTINGS?.EVENT_REPORTS?.open_command;
+    // page cannot open, so the panel names what does: the app's menu item where the app
+    // started this server, and the command otherwise.
+    const reports = window.METABROWSER_SETTINGS?.EVENT_REPORTS;
+    const menu = options.openMenu !== undefined ? options.openMenu : (reports?.open_menu ?? null);
+    const command = options.openCommand ?? reports?.open_command;
+    const how = menu
+      ? element("span", "", [menu])
+      : command
+        ? element("code", "", [command])
+        : null;
     panel.replaceChildren(
       ...sections,
       links,
-      ...(command
-        ? [
-            element("p", "event-log-details-open", [
-              "Browse the whole log in Metabrowser: ",
-              element("code", "", [command]),
-            ]),
-          ]
+      ...(how
+        ? [element("p", "event-log-details-open", ["Browse the whole log in Metabrowser: ", how])]
         : []),
     );
   }
@@ -1058,7 +1067,12 @@
     const details = async (panel, query, options) => {
       // What this page has queued is sent first, so its own late waits are in what is read.
       await reporter.flush();
-      return showDetails(panel, query, { ...options, slowMs, log: settings.log });
+      return showDetails(panel, query, {
+        ...options,
+        slowMs,
+        log: settings.log,
+        offReason: settings.off_reason ?? null,
+      });
     };
     mb.eventReports = Object.freeze({
       page: reporter.page,

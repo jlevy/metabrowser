@@ -11,8 +11,9 @@ sdk_version = "0.7"
 # match, so a Git blob of that name stays a generic JSONL file.
 #
 # Every view but Raw JSON asks one hook, which reads the file through the content reader
-# and answers a query of the schema (metabrowser.event_log_views), so a folder and a
-# pinned revision answer alike and `metab ROOT --api` reads each view.
+# and answers a query of the schema (metabrowser.event_log_views), so `metab ROOT --api`
+# reads each view. The views open for a file of an attached folder only, for the reason
+# above.
 
 [[kind]]
 id = "event-log"

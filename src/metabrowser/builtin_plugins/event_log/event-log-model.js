@@ -45,6 +45,34 @@ export function emptyFilters() {
   return { kind: [], outcome: [], minMs: null };
 }
 
+/**
+ * What a view shares with the other views of the same file, so that choosing a filter in
+ * one is still chosen in the next, and so a row found in one is shown in the Timeline.
+ *
+ * @typedef {Object} Shared
+ * @property {Filters} filters
+ * @property {number} version Bumped by each choice, so a view shown again knows it is stale.
+ * @property {string | null} focus The key of a row a view asked the Timeline to show.
+ * @property {(() => void) | null} reveal The Timeline's way to show it, while it is mounted.
+ */
+
+/** @returns {Shared} */
+export function createShared() {
+  return { filters: emptyFilters(), version: 0, focus: null, reveal: null };
+}
+
+/**
+ * The least-time choices, from the edges of the server's distribution of times (the log
+ * summary's `edges_ms`), so "slow" is one thing in the log, in the distribution, and in
+ * this bar: each edge, and Any.
+ *
+ * @param {ReadonlyArray<number>} edges
+ * @returns {Array<number | null>}
+ */
+export function minimumChoices(edges) {
+  return [null, ...edges];
+}
+
 /** @param {Filters} filters */
 export function filtersActive(filters) {
   return filters.kind.length > 0 || filters.outcome.length > 0 || filters.minMs !== null;
@@ -192,15 +220,21 @@ export function lengthShare(elapsedMs, longestMs) {
  * @property {string | null} error
  */
 
+/** @typedef {"oldest" | "newest"} Order Which end of the log the roots are listed from. */
+
 /**
  * @typedef {Object} TimelineState
  * @property {Map<string, Level>} levels Keyed by the span above, `""` for the roots.
  * @property {Set<string>} open The keys of the rows that are open.
+ * @property {Order} order The roots' order; what a span started stays in time order.
  */
 
-/** @returns {TimelineState} */
-export function createTimeline() {
-  return { levels: new Map(), open: new Set() };
+/**
+ * @param {Order} [order]
+ * @returns {TimelineState}
+ */
+export function createTimeline(order = "oldest") {
+  return { levels: new Map(), open: new Set(), order };
 }
 
 /** @param {string | null} parent */
@@ -210,21 +244,42 @@ export const levelKey = (parent) => parent ?? "";
  * The parameters of the request that reads the next page of a level: the rows already
  * held are the offset, so a page read twice is not read twice.
  *
+ * *through* is the place of a row that has to be held when the page arrives: the page is
+ * as long as that takes, to the server's `maxLimit`, and no shorter than the usual page.
+ *
  * @param {TimelineState} state
  * @param {string | null} parent
  * @param {Filters} filters
+ * @param {{through?: number, maxLimit?: number}} [reach]
  * @returns {Record<string, string>}
  */
-export function pageParams(state, parent, filters) {
+export function pageParams(state, parent, filters, reach = {}) {
   const level = state.levels.get(levelKey(parent));
   const held = level?.rows.length ?? 0;
+  const usual = held > 0 && level?.limit != null ? level.limit : null;
+  const wanted =
+    reach.through === undefined ? null : Math.max(usual ?? 0, reach.through + 1 - held);
+  // Never past what the server takes: a longer reach is made in more than one page.
+  const limit = wanted === null ? usual : Math.min(wanted, reach.maxLimit ?? wanted);
   return {
     ...filterParams(filters),
     ...(parent === null ? {} : { parent }),
+    ...(parent === null && state.order === "newest" ? { order: "newest" } : {}),
     ...(held > 0 ? { offset: String(held) } : {}),
     // A later page is as long as the first the server sent, so the pages tile.
-    ...(held > 0 && level?.limit != null ? { limit: String(level.limit) } : {}),
+    ...(held > 0 && limit !== null ? { limit: String(limit) } : {}),
   };
+}
+
+/**
+ * Whether the level holds the row at *index*.
+ *
+ * @param {TimelineState} state
+ * @param {string | null} parent
+ * @param {number} index
+ */
+export function holds(state, parent, index) {
+  return (state.levels.get(levelKey(parent))?.rows.length ?? 0) > index;
 }
 
 /**

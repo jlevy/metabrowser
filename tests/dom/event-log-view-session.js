@@ -25,9 +25,9 @@ const { FakeElement } = require("./pulls-test-dom.js");
 
 const repoRoot = path.resolve(__dirname, "../..");
 const plugin = path.join(repoRoot, "src/metabrowser/builtin_plugins/event_log");
-// The answers the server gave, in three recordings: each is under the fixtures' review budget.
+// The answers the server gave, in four recordings: each is under the fixtures' review budget.
 const recording = { first_page: null, answers: {} };
-for (const name of ["timeline", "latency", "summary"]) {
+for (const name of ["timeline", "latency", "summary", "reveal"]) {
   const part = JSON.parse(
     fs.readFileSync(
       path.join(repoRoot, `tests/fixtures/event-log-view-${name}-responses.json`),
@@ -38,6 +38,8 @@ for (const name of ["timeline", "latency", "summary"]) {
   recording.first_page = part.first_page ?? recording.first_page;
 }
 const LOG = "events-20261119T220000Z-p7007-000.jsonl";
+/** The views module, loaded by `main`, which the shell stand-in mounts views with. */
+let views;
 
 globalThis.document = {
   createElement: (tag) => new FakeElement(tag),
@@ -55,12 +57,48 @@ const unrecorded = [];
 /** Each `fetchPluginData` the page makes: held until `release`, so the session can replace a view while one is out. */
 let hold = null;
 
-function createSdk() {
+/**
+ * A stand-in for the SDK, and for the shell's part in it: `navigation.open` shows a view of
+ * the file the way the shell does (mounting it if no container holds it yet, and reporting
+ * it active), and `viewState` says which containers are shown, so a view can wait to be.
+ *
+ * @param {{continues?: boolean}} [behavior] `continues`: the server says a later segment follows.
+ */
+function createSdk(behavior = {}) {
   const bound = new Map();
   const chips = new Map();
+  const navigations = [];
+  const watchers = new Map();
+  const shown = new Set();
+  const shell = new Map();
   const sdk = {
     formatInteger: (value) => String(value),
     icons: { toggle: "<svg data-icon='toggle'></svg>" },
+    viewState: {
+      isActive: (container) => shown.has(container),
+      subscribeActive: (container, listener) => {
+        watchers.set(container, listener);
+        return () => watchers.delete(container);
+      },
+    },
+    navigation: {
+      async open(target, how) {
+        navigations.push({ path: target.path, view: how?.viewId });
+        let container = shell.get(how.viewId);
+        if (!container) {
+          container = newContainer();
+          shell.set(how.viewId, container);
+          shown.add(container);
+          // The shell mounts a view of a file the first time it is shown.
+          views.mountEventLogView(container, { path: target.path }, sdk, how.viewId);
+        }
+        for (const other of shell.values()) {
+          shown.delete(other);
+        }
+        shown.add(container);
+        watchers.get(container)?.(true);
+      },
+    },
     filterControls: {
       keepFocus: () => () => {},
       groupHtml: (spec) => {
@@ -77,8 +115,14 @@ function createSdk() {
       const asked = { ...params };
       requests.push(keyOf(route, asked));
       // The first page is the server's page of 20, which the page cannot ask for itself.
-      const isFirstPage = route === "timeline" && Object.keys(asked).length === 1;
-      const key = isFirstPage ? recording.first_page : keyOf(route, asked);
+      const isFirstPage =
+        route === "timeline" &&
+        Object.keys(asked).every((name) => name === "path" || name === "order");
+      const key = !isFirstPage
+        ? keyOf(route, asked)
+        : "order" in asked
+          ? keyOf(route, { ...asked, limit: "20" })
+          : recording.first_page;
       if (hold) {
         await hold.promise;
       }
@@ -96,10 +140,13 @@ function createSdk() {
           payload: answer.body,
         });
       }
+      if (behavior.continues === true && answer.body.log) {
+        return { ...answer.body, log: { ...answer.body.log, continues: true } };
+      }
       return answer.body;
     },
   };
-  return { sdk, bound, chips };
+  return { sdk, bound, chips, navigations, watchers, shell, shown };
 }
 
 /** Let every answer the page is waiting for arrive and be drawn. */
@@ -171,7 +218,11 @@ function rowFor(container, key) {
   return found;
 }
 
-const click = (element) => element.childNodes[0].listeners.get("click")();
+/** A click on a row's header, by a person whose keyboard is on it. */
+const click = (element) => {
+  element.childNodes[0].focus();
+  return element.childNodes[0].listeners.get("click")();
+};
 const clickMore = (container) => {
   let more = null;
   const visit = (node) => {
@@ -186,8 +237,37 @@ const clickMore = (container) => {
   };
   visit(container);
   assert(more, "no Show more");
+  more.focus();
   more.listeners.get("click")();
 };
+
+/** The key of the row the keyboard is on: the row of the header focused, or the control's text. */
+const focusedKey = () => {
+  const at = globalThis.document.activeElement;
+  return at?.parentNode?.dataset?.key ?? at?.textContent ?? null;
+};
+/** The "Show in timeline" button of a row of Latency or Errors, or of an example line. */
+function showButton(container, match) {
+  let found = null;
+  const visit = (node) => {
+    for (const child of node.childNodes) {
+      if (!(child instanceof FakeElement)) {
+        continue;
+      }
+      if (child.classes.has("event-log-show") && match(child.parentNode)) {
+        found ??= child;
+      }
+      visit(child);
+    }
+  };
+  visit(container);
+  assert(found, "no Show in timeline");
+  return found;
+}
+const showFor = (container, key) =>
+  showButton(container, (line) => line.parentNode?.dataset?.key === key);
+const exampleShow = (container, words) =>
+  showButton(container, (line) => line.localName === "li" && line.textContent.includes(words));
 
 const newContainer = () => {
   const container = new FakeElement("div");
@@ -197,7 +277,7 @@ const newContainer = () => {
 
 async function main() {
   const model = await import(pathToFileURL(path.join(plugin, "event-log-model.js")).href);
-  const views = await import(pathToFileURL(path.join(plugin, "event-log-views.js")).href);
+  views = await import(pathToFileURL(path.join(plugin, "event-log-views.js")).href);
   const story = {};
   const taken = () => requests.splice(0, requests.length);
   const summaryOf = (container) =>
@@ -239,6 +319,8 @@ async function main() {
       "rows shown": second.filter((line) => !line.startsWith("[") && !line.startsWith("notice"))
         .length,
       "the last line": second.at(-1),
+      // The button the keyboard was on is replaced; it goes to the first row the page added.
+      "the keyboard is on": focusedKey(),
     };
     // A row with spans below opens to them, read when it opens and not again.
     click(rowFor(container, "7007:22"));
@@ -246,6 +328,8 @@ async function main() {
     story["a request opens to the job it started"] = {
       requests: taken(),
       around: outline(container).filter((line) => /pull-refresh|_pull_job/.test(line)),
+      // The row is drawn again as a new node, and the keyboard is put back on its header.
+      "the keyboard is on": focusedKey(),
     };
     click(rowFor(container, "7007:23"));
     await settle();
@@ -257,6 +341,7 @@ async function main() {
     story["closing the request hides everything under it"] = {
       requests: taken(),
       around: outline(container).filter((line) => /pull-refresh|_pull_job|gh api|probe/.test(line)),
+      "the keyboard is on": focusedKey(),
     };
     click(rowFor(container, "7007:22"));
     story["opening it again reads nothing again"] = {
@@ -318,6 +403,106 @@ async function main() {
       requests: taken(),
       rows: outline(container).length,
     };
+  }
+
+  // ── Newest first ───────────────────────────────────────────────────────────────
+  {
+    const { sdk, bound, chips } = createSdk();
+    const container = newContainer();
+    views.mountEventLogView(container, { path: LOG }, sdk, "timeline");
+    await settle();
+    taken();
+    story["the timeline's bar has an order beside the filters"] = {
+      groups: [...chips.keys()],
+      order: chips.get("event-log-order").options.map((o) => o.label),
+      chosen: chips.get("event-log-order").value,
+      layouts: Object.fromEntries([...chips].map(([key, spec]) => [key, spec.layout])),
+    };
+    bound.get(container.childNodes[1]).onChange("event-log-order", "newest", "one");
+    await settle();
+    const newest = outline(container);
+    story["choosing newest first lists the roots last first, and asks the server so"] = {
+      requests: taken(),
+      "first rows": newest.slice(0, 3),
+      "the last line": newest.at(-1),
+      chosen: chips.get("event-log-order").value,
+    };
+  }
+
+  // ── Show in timeline, from the views that list rows out of their place ─────────
+  {
+    const { sdk, navigations, shell, shown } = createSdk();
+    const latency = newContainer();
+    shell.set("latency", latency);
+    shown.add(latency);
+    views.mountEventLogView(latency, { path: LOG }, sdk, "latency");
+    await settle();
+    taken();
+    // The slowest row is deep in the log: the timeline opens, reads the roots through its
+    // ancestor's place, opens each span above it, and puts the keyboard on the row.
+    showFor(latency, "7007:46").listeners.get("click")();
+    await settle();
+    const timeline = shell.get("timeline");
+    story["Show in timeline opens the Timeline, reads to the row, and focuses it"] = {
+      navigations: [...navigations],
+      requests: taken(),
+      path: rowFor(latency, "7007:46").childNodes[1].childNodes[0].textContent,
+      "the keyboard is on": focusedKey(),
+      revealed: rowFor(timeline, "7007:46").dataset.revealed !== undefined,
+      "rows from the ancestor down": outline(timeline).filter((line) =>
+        /comparison|compare|gh api|git|7007/.test(line),
+      ),
+      "the Timeline is the view shown": shown.has(timeline) && !shown.has(latency),
+    };
+
+    // The Timeline is already mounted now; an example in Errors reaches its row from there.
+    const errors = newContainer();
+    shell.set("errors", errors);
+    views.mountEventLogView(errors, { path: LOG }, sdk, "errors");
+    await settle();
+    taken();
+    exampleShow(errors, "probe api.github.com:443").listeners.get("click")();
+    await settle();
+    story["an example in Errors is shown in the timeline already mounted"] = {
+      navigations: navigations.slice(1),
+      requests: taken(),
+      "the keyboard is on": focusedKey(),
+      revealed: rowFor(timeline, "7007:25").dataset.revealed !== undefined,
+      "the probe row": outline(timeline).filter((line) => /probe/.test(line)),
+    };
+  }
+
+  // ── Filters are chosen for the file, not for the view ──────────────────────────
+  {
+    const { sdk, bound, chips, watchers, shown } = createSdk();
+    const first = newContainer();
+    const second = newContainer();
+    shown.add(first);
+    views.mountEventLogView(first, { path: LOG }, sdk, "latency");
+    views.mountEventLogView(second, { path: LOG }, sdk, "latency");
+    await settle();
+    taken();
+    bound.get(second.childNodes[1]).onChange("event-log-kind", "subprocess", "many");
+    await settle();
+    story["a filter chosen in one view is the next view's when it is shown again"] = {
+      "chosen in the second": taken(),
+      "the first, while hidden": outline(first).length,
+    };
+    shown.add(first);
+    watchers.get(first)(true);
+    await settle();
+    story["the first view reads again, with the filter, when it is shown"] = {
+      requests: taken(),
+      rows: outline(first).length,
+      chips: JSON.stringify(chips.get("event-log-kind").value),
+    };
+    // Shown again with nothing changed, it reads nothing.
+    watchers.get(first)(true);
+    await settle();
+    story["and shown again with nothing changed, it reads nothing"] = { requests: taken() };
+    views.disposeEventLogView(first);
+    views.disposeEventLogView(second);
+    story["a view that is disposed stops listening"] = { watching: watchers.size };
   }
 
   // ── What the filter bar means ──────────────────────────────────────────────────
@@ -416,6 +601,21 @@ async function main() {
           ),
         ),
       unfinished: outline(container),
+    };
+  }
+
+  {
+    // A later segment of the same process follows: work with no end here may end there.
+    const { sdk } = createSdk({ continues: true });
+    const container = newContainer();
+    views.mountEventLogView(container, { path: LOG }, sdk, "errors");
+    await settle();
+    const body = container.childNodes.at(-1);
+    story["Errors, when a later segment follows, does not say the work is stuck"] = {
+      requests: taken(),
+      headings: body.childNodes.filter((node) => node.localName === "h3").map((n) => n.textContent),
+      summary: summaryOf(container),
+      notices: outline(container).filter((line) => line.startsWith("notice")),
     };
   }
 

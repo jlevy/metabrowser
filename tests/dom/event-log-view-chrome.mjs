@@ -16,9 +16,11 @@
 // nested row is indented by its depth; that Enter on a focused row opens it and the focus
 // ring is drawn; that the distribution's tallest column is the full height and the others
 // in proportion; that nothing overflows the pane at the default width and at a phone's,
-// where the bar and offset give way; and that the keys V, L, B, and E switch views. The
-// session's own state, the requests, and the filters run browserlessly in
-// tests/dom/event-log-view-session.js.
+// where the bar and offset give way; that the filter bar's every chip is inside the pane
+// at that width; that the keyboard stays on a row that Enter opens; that Show in timeline
+// in Errors opens the Timeline, opens the spans above the row, and focuses it; and that the
+// keys V, L, B, and E switch views. The session's own state, the requests, and the filters
+// run browserlessly in tests/dom/event-log-view-session.js.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -238,7 +240,11 @@ async function main() {
       const after = await chrome.evaluate(
         `__v().q('[data-key="7007:1"] .event-log-row-head').getAttribute("aria-expanded")`,
       );
-      return { ...focused, afterEnter: after };
+      // The row was drawn again as a new node; the keyboard is on that node's header.
+      const kept = await chrome.evaluate(
+        `document.activeElement === __v().q('[data-key="7007:1"] .event-log-row-head')`,
+      );
+      return { ...focused, afterEnter: after, keptFocus: kept };
     })();
 
     // A phone's width: the bar and the offset give way, and nothing overflows.
@@ -253,11 +259,28 @@ async function main() {
     measured.narrow = await chrome.evaluate(`(() => {
       const body = __v().body;
       const row = __v().q('[data-key="7007:2"]');
+      const bar = __v().q(".event-log-filters");
+      const barBox = bar.getBoundingClientRect();
+      const chips = [...bar.querySelectorAll(".chip")];
       return {
         barShown: getComputedStyle(row.querySelector(".event-log-bar")).display !== "none",
         whenShown: getComputedStyle(row.querySelector(".event-log-when")).display !== "none",
         noOverflow: body.scrollWidth <= body.getBoundingClientRect().width + 1,
         nameShown: row.querySelector(".event-log-name").getBoundingClientRect().width > 40,
+        // Every choice of the bar is inside the pane, the last "at least" among them:
+        // a group that clipped at its edge left the slowest choices out of reach.
+        filterBar: {
+          chips: chips.length,
+          everyChipInside: chips.every((chip) => {
+            const box = chip.getBoundingClientRect();
+            return box.left >= barBox.left - 1 && box.right <= barBox.right + 1;
+          }),
+          noOverflow: bar.scrollWidth <= bar.clientWidth + 1,
+          lastLeastChip: [...bar.querySelectorAll('.chip[data-chip-key="event-log-minimum"]')]
+            .at(-1)
+            .getBoundingClientRect().right <= barBox.right + 1,
+          width: Math.round(barBox.width),
+        },
       };
     })()`);
     await shot("3-timeline-narrow");
@@ -330,6 +353,44 @@ async function main() {
         await shot("6-errors");
       }
     }
+
+    // Show in timeline: from an example in Errors to its row in the Timeline, which opens
+    // each span above it, scrolls to it, and puts the keyboard on it. The spans are shut
+    // first, so the row is reached only by opening them.
+    await chrome.evaluate(`__v().q('[data-key="7007:22"] .event-log-row-head').click()`);
+    await chrome.waitFor(`__v().q('[data-key="7007:23"]') === null`);
+    await chrome.evaluate(`document.activeElement?.blur()`);
+    await press("e");
+    await chrome.waitFor(`__v().q(".event-log-cause") !== null`);
+    await chrome.evaluate(`__v().q(".event-log-examples .event-log-show").click()`);
+    try {
+      await chrome.waitFor(
+        `document.activeElement?.closest?.("[data-key]")?.getAttribute("data-key") === "7007:25"`,
+        8000,
+      );
+    } catch (error) {
+      const seen = await chrome.evaluate(
+        `JSON.stringify({tab: (${TABS}).find((tab) => tab.selected)?.text, active: document.activeElement?.outerHTML.slice(0, 160), rows: __v().qa(".event-log-row").length, note: __v().q(".event-log-reveal-note")?.textContent, open: [...__v().qa('.event-log-row-head[aria-expanded="true"]')].map((h) => h.parentNode.getAttribute("data-key"))})`,
+      );
+      throw new Error(`${error.message}; the page: ${seen}`);
+    }
+    await sleep(150);
+    measured.shown = await chrome.evaluate(`(() => {
+      const row = document.activeElement.closest(".event-log-row");
+      const box = row.getBoundingClientRect();
+      const open = (key) =>
+        __v().q('[data-key="' + key + '"] .event-log-row-head').getAttribute("aria-expanded");
+      return {
+        tab: (${TABS}).find((tab) => tab.selected)?.text ?? null,
+        focusedKey: row.getAttribute("data-key"),
+        revealed: row.hasAttribute("data-revealed"),
+        ancestorsOpen: [open("7007:22"), open("7007:23")],
+        inView: box.top >= 0 && box.bottom <= window.innerHeight,
+        tint: getComputedStyle(row).backgroundColor,
+        plain: getComputedStyle(__v().q('[data-key="7007:23"]')).backgroundColor,
+      };
+    })()`);
+    await shot("8-shown-in-timeline");
 
     // A filter a chip chooses narrows the timeline to the jobs, with the requests that
     // started them as context.

@@ -158,8 +158,8 @@ def test_a_copy_of_what_the_check_reads_passes(tmp_path: Path) -> None:
         (
             _replace(
                 DECLARATION,
-                '"ref_name", "selection_state"]',
-                '"ref_name", "selection_state", "pin"]',
+                'json = ["refreshing"]',
+                'json = ["refreshing", "pin"]',
             ),
             "source-status: declares the key `pin`, and",
         ),

@@ -206,8 +206,8 @@ reloading the page then tries again.
   only the rows in view.
 - **JSONL:** Log lists one row per event, with filter chips by kind of event, such as
   text, tool calls, and tool results, and each row expands to its raw JSON. For the
-  session logs of Claude Code, Gemini CLI, and Pi, Metabrowser shows the agent in the
-  header and adds **Charts**.
+  session logs of Claude Code, Codex, Gemini CLI, and Pi, Metabrowser shows the agent in
+  the header and adds **Charts**.
   [Working with agents](working-with-agents.md#reading-agent-logs) has more.
 - **Event logs:** a file named `events-*.jsonl`, which a served `metab` writes about
   itself, opens as spans nested under what started them, the slowest spans, each kind’s

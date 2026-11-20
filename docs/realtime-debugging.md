@@ -135,19 +135,36 @@ metab DIR --api '/api/plugin/event-log/errors?path=events-20261119T210201Z-p4242
 ```
 
 A timeline answers a page of the roots, or the children of `parent=<key>`, with `offset`
-and `limit`; each row’s key is `<pid>:<span>`. A segment is read whole up to
-`MAX_VIEW_BYTES` in `event_log_views.py`, the size the writer rolls at, and a larger
-file is for Raw JSON. Every file the log writes, a copy attached to a bug report, and a
-segment committed to a pinned revision answer the same.
+and `limit`; each row’s key is `<pid>:<span>`. `order=newest` lists the roots last
+first, and the Timeline’s **Order** chips ask for it; the spans under a span stay in
+time order. `focus=<key>` adds where that row is: each step from a root down to it, with
+its place among its parent’s rows in this order and under this filter, or why it is not
+shown.
+The **Show in timeline** button on a row of Latency, or an example in Errors, asks
+for that, opens each span above the row, reads the pages that hold them, and focuses it,
+so a slow or failed row is seen with what surrounded it.
+A segment is read whole up to `MAX_VIEW_BYTES` in `event_log_views.py`, the size the
+writer rolls at, and a larger file is for Raw JSON. Every file the log writes, and a
+copy attached to a bug report, answers the same in an attached folder.
+The views are offered for a file of an attached folder only, because the name match is a
+filesystem one: a segment committed to a repository is a generic JSONL file in a pinned
+revision. A file that is not the log, with a time or a number no calendar holds, is read
+as far as it can be and answers a 422 naming the file where it cannot.
+When a later segment of the same process follows, the Errors view says that work with no
+end here may have ended there (`log.continues`).
 
 To open the log, run `metab --event-log`, which serves the directory it is in at its
 newest segment. The same flag names the directory for `--api`, `--show`, and the other
 modes that take a folder, and the macOS app’s Help menu has Open Event Log.
 A pull request page’s Details names the command too.
 
-A server that serves the folder the log lives in writes no log of its own, because it
-would record each request for the files on screen into one of them, which changes it,
-and the page would ask again.
+A server whose folder holds the events directory, such as `metab ~`, writes its log as
+usual, except that a request for something inside the directory is not recorded: each
+would otherwise land in the segment on screen, which changes it, and the page would ask
+again. A server whose folder is the events directory itself, or inside it, such as the
+command above, writes no log at all, for the same reason, and says so: as a warning when
+it starts, in its Details, and in `metab --doctor`. `metab --doctor` also says when
+`METABROWSER_EVENT_LOG` turns the log off.
 
 ### What the Page Reports
 
