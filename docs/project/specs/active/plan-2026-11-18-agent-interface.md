@@ -16,7 +16,7 @@ It is written against
 plan” below, and that plan’s own parent,
 [Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), “the
 object model plan”. The owner took the decisions of both, VM-1 to VM-10 and 1 to 23, the
-same day. Written against `main` at `42e4bd1bb`. An independent review’s findings were
+same day. Written against `main` at `21dc39da7`. An independent review’s findings were
 applied on 2026-11-19: [Self-Description](#self-description) gains a route for the table
 of object routes, and [Trust](#trust) states the `control` default for each request.
 
@@ -72,7 +72,7 @@ Paths below are under `src/metabrowser/` unless they start with `docs/`, `tests/
   [Hand the User a Page](../../../../skills/metabrowser/SKILL.md#hand-the-user-a-page),
   with `--present` and its sandbox settings.
 - **Reading.** `--api ROUTE` issues any registered route in a server of its own inside
-  the command (`cli/api_cli.py:382`), “so a POST through `--api` changes nothing on a
+  the command (`cli/api_cli.py:406`), “so a POST through `--api` changes nothing on a
   server that is already running” (`skills/metabrowser/SKILL.md:80`). `--show PATH`
   reports the route, kind, views, and model of one path or address.
 - **Showing.** `--present` hands a folder, a file, or a GitHub URL to the macOS app and
@@ -220,7 +220,7 @@ reads first and sends both.
 
 **Show the line I am talking about.** A line anchor is part of the address.
 It opens the Source view with the lines marked
-(`docs/project/architecture/arch-views-models-routes.md:168`), and the answer’s
+(`docs/project/architecture/arch-views-models-routes.md:170`), and the answer’s
 `address` keeps the fragment.
 A diff has no line address, so for a line of a changed file the agent shows the file and
 names the line in its reply.
@@ -265,7 +265,7 @@ the parent’s publisher lets the newest state win.
 
 **Today nothing lists live servers or ties a root to an address.**
 
-- A server the agent started prints `Serving <root> at <url>` (`cli/serve.py:412`), so
+- A server the agent started prints `Serving <root> at <url>` (`cli/serve.py:417`), so
   the agent holds its address, and the page the reader opens there is a viewer.
   This is the one complete loop in the view slice.
 - A server the app or the reader started is at a port the agent cannot learn.
@@ -302,10 +302,10 @@ In the view slice an agent finds only a server it started, by the `Serving` line
   The family’s registry holds that, and [Self-Description](#self-description) has the
   route listing publish it.
 - **An artifact is read as one.** `--data` sends a file’s bytes today
-  (`cli/api_cli.py:186`). A file that opens with a `softschema:` header is instead
+  (`cli/api_cli.py:210`). A file that opens with a `softschema:` header is instead
   validated against the contract it names and sent as JSON.
 - **Nothing is rewritten for a tool.** In process, an explicit format still passes
-  through the golden normalizer (`cli/api_cli.py:226`), so `/api/identity` prints
+  through the golden normalizer (`cli/api_cli.py:250`), so `/api/identity` prints
   `full_name: <ROOT>` and the Git log prints `cursor: <CURSOR>` (`normalize.py:39`).
   With `--server` there is no fixture root, and the answer prints as served.
 
@@ -325,7 +325,7 @@ not looking at.
   pull list’s is a number, and the Git log’s names a server session
   (`git/history.py:102`), so a one-shot command reads one page of history.
 - A file’s route sends content, up to `_TEXT_PREVIEW_CHUNK_BYTES` by default
-  (`server.py:3636`), so a recipe passes `limit` there too (`:3643`).
+  (`server.py:3829`), so a recipe passes `limit` there too (`:3836`).
 - A pull request’s route answers the whole record; `--show /pull/<n>` sums it up, and
   the object model plan’s facets are the bounded read once that route conforms.
 
@@ -337,9 +337,9 @@ described: an agent with the command and no document can still find each one.
 
 | An agent asks | `metab` must answer with | On `main` |
 | --- | --- | --- |
-| What can I do here? | `metab --help`, naming each agent task beside its command | The help names modes, not tasks. Its summary names `--api`, `--show`, and `--present` (`cli/main.py:958-966`), names no route listing, and ends at a link to the guide on GitHub (`cli/main.py:513`), a document outside the command |
-| Which routes exist? | `GET /api/routes`, naming every `/api/ui` route and every object route | The route exists. It lists every mounted route with its methods, read from the application at request time, so plugin hooks are included (`server.py:5161`). It gives a path and methods, and not what a route answers |
-| What does a record hold? | Each contract’s compiled schema, read through `--api` | Nothing serves a schema. The cache family’s are package data under `data/cache-format/schemas/`; a plugin’s would be served under `/plugin-static/`, which `--api` refuses, since it issues `/api/` routes alone (`cli/api_cli.py:326`); and the object model plan’s `/api/object-types` answers a schema’s digest, not the schema |
+| What can I do here? | `metab --help`, naming each agent task beside its command | The help names modes, not tasks. Its summary names `--api`, `--show`, and `--present` (`cli/main.py:1008-1017`), names no route listing, and ends at a link to the guide on GitHub (`cli/main.py:554`), a document outside the command |
+| Which routes exist? | `GET /api/routes`, naming every `/api/ui` route and every object route | The route exists. It lists every mounted route with its methods, read from the application at request time, so plugin hooks are included (`server.py:5354`). It gives a path and methods, and not what a route answers |
+| What does a record hold? | Each contract’s compiled schema, read through `--api` | Nothing serves a schema. The cache family’s are package data under `data/cache-format/schemas/`; a plugin’s would be served under `/plugin-static/`, which `--api` refuses, since it issues `/api/` routes alone (`cli/api_cli.py:350`); and the object model plan’s `/api/object-types` answers a schema’s digest, not the schema |
 | Which route does a reference lead to? | `GET /api/ui/types`, listed by `/api/routes`, until `/api/object-types` supersedes it | Nothing serves it. The parent plans the table of object routes as a constant in `ui/`, which an agent could read only in the skill |
 
 So the gap is four additions, each small:
@@ -414,7 +414,7 @@ This document adds:
 What the design does not protect:
 
 - **The caller.** Until host mode’s credential, any local process reads view states and
-  sends intents, as it calls any route (`server.py:844`). A steered agent is such a
+  sends intents, as it calls any route (`server.py:862`). A steered agent is such a
   process. The limits are on what an intent can name, not on who sends it.
 - **Other routes.** `--server` reaches every `POST` route, as `curl` does today,
   `/api/source/pin` among them, which moves the served revision under every tab.

@@ -37,7 +37,7 @@ Numbered decisions are the parent plan’s, and VM decisions the view model plan
 
 Paths are under `src/metabrowser/` unless they start with `docs/`, `tests/`,
 `devtools/`, `explorations/`, `apps/`, or `skills/`; `github/` abbreviates
-`builtin_plugins/github/`. Citations are to `main` at `42e4bd1bb`. What exists:
+`builtin_plugins/github/`. Citations are to `main` at `21dc39da7`. What exists:
 
 - **The format.** File Diff Format reserves `index` and `worktree` snapshot kinds
   (`diff/format.py:69-77`), so a working-tree comparison needs no format change.
@@ -59,7 +59,7 @@ Paths are under `src/metabrowser/` unless they start with `docs/`, `tests/`,
   Its beads are open under the P1 epic mb-097x: mb-r5gn (Phase 0, now unblocked),
   mb-u4mf, mb-vibn, mb-y06t.
 - **A chooser row.** Since #559 a checkout’s ref chooser offers “Working tree” as the
-  served revision (`source_routes.py:265`); it shows files, not changes.
+  served revision (`source_routes.py:331`); it shows files, not changes.
 
 What the object adds to that design, as the Recent tab plan’s
 [Working-Tree Changes](plan-2026-11-18-recent-tab-updates-and-events.md#working-tree-changes)
@@ -93,12 +93,12 @@ Names and shared definitions, with no behavior change except T0.8’s requested 
 
 | PR | Changes | Proves | Size |
 | --- | --- | --- | --- |
-| T0.1 `refactor(cli): name targets folder, file, commit, and pull-request in --present, selections, and the app` | `PresentKind` (`cli/present.py:155`); `SelectionKind` (`cache/urls.py:77`), with a field keeping “no ref named” apart from a named tree, which the readers at `cli/selection.py:298`, `cli/git_pin_cli.py:199`, and `cache/resolve.py:775` move to; in `apps/macos/`, `PresentPlan.swift`, `minimumRelease` (`MetabVersion.swift:61`), and the `kind` values the app declares for `present-dry-run` (`apps/macos/metab-contract.toml:78`), which `devtools/check_app_contract.py` holds to the code; `skills/metabrowser/SKILL.md`; `docs/command-line.md`; CHANGELOG | Present, selection, and app-contract goldens change in tokens and gain the new field; `PresentPlanTests` | M |
+| T0.1 `refactor(cli): name targets folder, file, commit, and pull-request in --present, selections, and the app` | `PresentKind` (`cli/present.py:155`); `SelectionKind` (`cache/urls.py:77`), with a field keeping “no ref named” apart from a named tree, which the readers at `cli/selection.py:298`, `cli/git_pin_cli.py:199`, and `cache/resolve.py:798` move to; in `apps/macos/`, `PresentPlan.swift`, `minimumRelease` (`MetabVersion.swift:65`), and the `kind` values the app declares for `present-dry-run` (`apps/macos/metab-contract.toml:78`), which `devtools/check_app_contract.py` holds to the code; `skills/metabrowser/SKILL.md`; `docs/command-line.md`; CHANGELOG | Present, selection, and app-contract goldens change in tokens and gain the new field; `PresentPlanTests` | M |
 | T0.2 `feat(objects): one definition each for a reference, a collection reference, an actor, change totals, and a time` | New `objects/`, Pydantic models not yet registered: `Reference{type, id, parent?}`, the collection reference `{name, params, parent?}`, shape names, `Actor`, `ChangeTotals` with nullable counts, `statuses`, and `short`, the UTC-second time; projections from `ChangeSums`, `FilesSummaryWire`, `GitCommitStats`, and diff `Totals`; `static/types.d.ts`. Types are spelled as Decision 5 has them from the start, so it does not wait for T0.1’s rename. No wire change | Every producer projects losslessly; importing `objects` loads no schema library | M |
 | T0.3 `feat(cli): --show names the object an address selects` | `href` and `parse` per type with a page, over `view_routes.py` and `cli/selection_href.py:16`; an `object:` line | `cli-show.tryscript.md`; Python and JavaScript codecs agree over `navigation.route-identity` | S |
-| T0.4 `refactor(github): derive a pull request’s four states once` | The pull request projection’s single derivation of the four-valued state, Decision 10 A, written once and read by the three Python sites that derive it today (`github/pull_catalog.py:640`, `github/pulls.py:1239`, `cli/show_cli.py:248`). It is the projection’s own, not a helper kept beside the provider’s fields, which is that decision’s option B. One table `displayState` is tested against | Goldens unchanged | S |
+| T0.4 `refactor(github): derive a pull request’s four states once` | The pull request projection’s single derivation of the four-valued state, Decision 10 A, written once and read by the three Python sites that derive it today (`github/pull_catalog.py:652`, `github/pulls.py:1239`, `cli/show_cli.py:248`). It is the projection’s own, not a helper kept beside the provider’s fields, which is that decision’s option B. One table `displayState` is tested against | Goldens unchanged | S |
 | T0.5 `refactor(git): the log answers rows and next_after, as other collections do` | `git/wire.py:210-211`; `cursor` to `after`; `static/git-panel.js`; the golden normalizer’s cursor paths (`normalize.py:39`), which must still mask the log’s session token and leave a pull list’s `next_after`; a test of Decision 3’s keys across list routes. Times stay epoch seconds until C1 | Goldens differ only in key names | M |
-| T0.6 `refactor(github): the change-line lane lives with the pulls controller` | `createRowLines` moves from the panel’s mount (`github/pulls-panel.js:5047`) into `createPullsController`, still wanting nothing while hidden (`:4558-4564`) | `github.pulls-row-lines` byte for byte; Pulls-tab pairs | S |
+| T0.6 `refactor(github): the change-line lane lives with the pulls controller` | `createRowLines` moves from the panel’s mount (`github/pulls-panel.js:5327`) into `createPullsController`, still wanting nothing while hidden (`:4824-4830`) | `github.pulls-row-lines` byte for byte; Pulls-tab pairs | S |
 | T0.7 `refactor(devtools): check each contract registry against its own document` | `devtools/check_artifact_contracts.py` from one pair (`:10`, `:19`) to a list, to which V2, H2, and C2 each add a registry and its document | Fails on drift in either position | S |
 | T0.8 mb-7t5s `feat(shell): pull requests and commits on the view header, through an SDK frame` | A frame in #550’s on-demand `view-header` bundle; the pull request and commit pages onto it; the bead’s notes A2, A6, A11 | `test_git_commit_summary_is_one_component`; header pairs; the bead’s Chrome rhythm measurement | L |
 
@@ -143,11 +143,11 @@ holds, under Decision 22 D. In Ordering 2 it is no longer the first object type.
 | PR | Changes | Proves | Size |
 | --- | --- | --- | --- |
 | P1 `bench(github): a /pulls page scenario for pr-view, and a control round` | `pr-view.mjs` milestones; protocol; a control round on `main` | P2 to P6’s baseline | S |
-| P2 `refactor(github): the pulls rows carry the pull request object` | `github/objects.py`, projected at `github/pull_catalog.py:531`; every reader the parent’s Phase 1 lists, with `pulls-refresh`; six parity rows reread, not regenerated blind | Projection over the drawn-from-disk fixture; Pulls-tab pairs | L |
+| P2 `refactor(github): the pulls rows carry the pull request object` | `github/objects.py`, projected at `github/pull_catalog.py:543`; every reader the parent’s Phase 1 lists, with `pulls-refresh`; six parity rows reread, not regenerated blind | Projection over the drawn-from-disk fixture; Pulls-tab pairs | L |
 | P3 `feat(shell): the object store, in the sdk-views bundle` | `static/object-store.js`, `mb.objects`, merge rule, keyed facets, the `changes` loader over `documentRowLines` | A store session; bytes against `static/plugin-sdk-views.js:25` | M |
 | P4 `refactor(github): the pulls controller holds objects and reads while any list shows` | Decision 14’s other four changes | A session with the tab hidden and the pane list shown; pairs | M |
 | P5 `feat(shell): one list host for a collection in any shape` | On-demand `static/object-list.js`, prefetched once the panel mounts; windowing; the `nav-row` and `wide-row` frames; both key contracts as options the surface sets, Decision 21’s for a list in the pane and the navigation column’s of Navigational Row Collections, as the Pulls rows have it; disclosure; sections | A list session under each key contract; the shared keyboard check; tier probe | L |
-| P6 `feat(github): the pull requests page at /pulls, as wide rows` | The `wide-row` view replacing `mountPullsLanding` (`github/pulls-panel.js:5509`), under T0.8’s frame; row estimate and overscan; `arch-object-model.md`; map and parity rows | `describePullWideRow` in a session; a Chrome paint test; first paint, scroll, return | L |
+| P6 `feat(github): the pull requests page at /pulls, as wide rows` | The `wide-row` view replacing `mountPullsLanding` (`github/pulls-panel.js:5789`), under T0.8’s frame; row estimate and overscan; `arch-object-model.md`; map and parity rows | `describePullWideRow` in a session; a Chrome paint test; first paint, scroll, return | L |
 
 ### Stacks C, R, and X
 
@@ -280,7 +280,7 @@ here adds eager bytes: `view-header`, `object-list`, and `git-status-model` are 
 demand, the store rides `sdk-views`, and `ui-state.js` is deferred.
 The pull-request and pinned shells are reported, not gated, so P6 and V3 state theirs.
 `objects/` and `ui/` load no schema library at import or while serving
-(`tests/test_plugin_public_api.py:108`, `devtools/check_distribution.py:63`).
+(`tests/test_plugin_public_api.py:108`, `devtools/check_distribution.py:65`).
 
 ## Beads to Create
 

@@ -12,7 +12,7 @@ plan’s VM-1 to VM-10. A companion to
 the parent plan below, and to
 [View Model and View State](plan-2026-11-18-view-model-and-view-state.md), the view
 model plan, which holds the view state and its Phase 4. Written against `main` at
-`42e4bd1bb`. Clarifications dated 2026-11-19, from an independent review, are marked at
+`21dc39da7`. Clarifications dated 2026-11-19, from an independent review, are marked at
 the decisions they touch.
 
 ## Overview
@@ -45,7 +45,7 @@ Four facts about today’s plugin contract constrain the design.
 - **Unknown manifest keys are refused** (`plugin_loader/manifest.py:348`), so a new
   block is part of the SDK gate ([Versioning](#versioning)).
 - **A plugin’s code loads by kind.** The shell indexes a plugin’s assets under the kinds
-  its `[[kind]]` and `[[view]]` blocks name (`server.py:5061-5062`) and loads them when
+  its `[[kind]]` and `[[view]]` blocks name (`server.py:5254-5255`) and loads them when
   one is selected (`static/plugin-sdk.js:384`). A list drawn on another plugin’s page
   selects none of them
   ([Decision PS-6](#decision-ps-6-loading-the-plugins-a-list-needs)).
@@ -158,7 +158,7 @@ metab --doctor: 1 problem(s):
 
 ### JavaScript SDK
 
-`MetabrowserSdk` (`static/types.d.ts:1526`) gains `objects` and `ui`:
+`MetabrowserSdk` (`static/types.d.ts:1606`) gains `objects` and `ui`:
 
 ```typescript
 type MetabrowserObjectRef = Readonly<{ type: string; id: string; parent?: MetabrowserObjectRef }>;
@@ -261,7 +261,7 @@ receives it in its render context, as any open.
   It records, loads nothing, and has no disposer.
   The host evaluates one plugin at a time (`static/plugin-sdk.js:393-395`), so it knows
   whose registration each is, and it checks each against the declarations the shell
-  injects beside the asset index (`server.py:5033`).
+  injects beside the asset index (`server.py:5226`).
 - **A mount owns what it starts.** `mountList` returns at once with `ready` and an
   idempotent `dispose`, the form a view handle has
   ([Registration and Lifecycle](../../../plugins.md#registration-and-lifecycle)). A
@@ -501,7 +501,7 @@ A plugin’s own contract carries its own version.
 
 - **The binding test.** `tests/dom/load-plugins.js` reports each declared type, object
   view, and part beside what was registered, and
-  `test_every_declared_view_has_a_registration` (`tests/test_plugin_e2e_render.py:77`)
+  `test_every_declared_view_has_a_registration` (`tests/test_plugin_e2e_render.py:78`)
   gains three siblings: a type with no `registerType`, an `[[object_view]]` with no
   `mb.objects.registerView`, and a `[[view.part]]` its registered `describe` does not
   return. A registration with no declaration fails too.

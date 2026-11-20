@@ -11,7 +11,7 @@ The owner took every decision under [Key Decisions](#key-decisions), RT-1 to RT-
 parent plan below, whose Decision 19 this plan answers and whose mixed list it designs;
 [What This Plan Takes Over](#what-this-plan-takes-over) lists the parts, and
 [Settled](#settled) says which of the parent’s decisions this plan rests on.
-Written against `main` at `42e4bd1bb`. Clarifications dated 2026-11-19, from an
+Written against `main` at `21dc39da7`. Clarifications dated 2026-11-19, from an
 independent review, are marked at the decisions they touch.
 
 ## Overview
@@ -75,11 +75,11 @@ Three things are named Recent:
 
 - **The Files tab’s Recent view.** Setting **Modified within** turns the tree into “the
   Recent view” (`docs/browsing-files.md:80`), read from `/api/recent` and drawn by
-  `renderRecentList` (`static/app.js:5506`). It was a tab until the
+  `renderRecentList` (`static/app.js:5474`). It was a tab until the
   [nav filter plan](../done/plan-2026-08-09-nav-filter-controls.md) folded it into
   Files, and three documents still call it “the Recent tab”
   (`docs/project/architecture/arch-recent-targets.md:18`,
-  `docs/project/architecture/arch-open-modes.md:204`, `docs/browsing-history.md:120`).
+  `docs/project/architecture/arch-open-modes.md:209`, `docs/browsing-history.md:125`).
 - **Recent targets,** the roots a reader opened, kept by `metab --recent` for File >
   Open Recent ([Recent Targets](../../architecture/arch-recent-targets.md)).
 - **This tab.** [RT-6](#rt-6-the-name) settles the collision.
@@ -109,7 +109,7 @@ sources.
 | `pull-requests` | GitHub | No | Where `origin` is on github.com | The same | Where the origin is on github.com |
 
 - **The level is decided where the tabs are.** The Git level applies where the shell
-  draws Commits and the GitHub level where it draws Pulls (`server.py:1727`, `:1721`).
+  draws Commits and the GitHub level where it draws Pulls (`server.py:1836`, `:1830`).
 - **The tab is about the root, not the view.** The `commits` source walks the history’s
   `all` scope, every branch and tag (`resolve_history_scope`, `git/history.py:317`). The
   default scope of a revision is its own ancestors alone (`git/history.py:303`).
@@ -129,15 +129,15 @@ sources.
 No source answers a time-ordered cursor today.
 Each has a first read that needs little, and a cost to measure before it pages.
 Two costs are recorded: the browser’s for a full `/api/recent` answer
-(`settings.py:196`) and a first log page’s (`git/ref_state.py:5`).
+(`settings.py:197`) and a first log page’s (`git/ref_state.py:5`).
 
 | Source | Reads today | Needs |
 | --- | --- | --- |
-| `files` | The newest files in a window, capped, with no cursor (`server.py:3167`, `inventory_engine/contract.py:1172`): current modification times, not a log of writes. The Python provider filters and sorts the whole index for each query (`inventory_engine/providers/python_inventory.py:2718-2747`) | To page, a cursor below a time, from every inventory provider. For edit history, the recorder of [R4](#r4-later-each-alone) |
+| `files` | The newest files in a window, capped, with no cursor (`server.py:3347`, `inventory_engine/contract.py:1172`): current modification times, not a log of writes. The Python provider filters and sorts the whole index for each query (`inventory_engine/providers/python_inventory.py:2718-2747`) | To page, a cursor below a time, from every inventory provider. For edit history, the recorder of [R4](#r4-later-each-alone) |
 | `commits` | A log in `--date-order`, which follows topology, with each commit’s time (`git/history.py:641`, `git/log.py:49`) | First, the `all` scope’s first page, ordered by commit time. To page, a bounded walk before a time |
 | `working-tree` | Nothing | `GET /api/git/status`, measured by the status plan’s Phase 0. It never pages |
 | `refs` | Nothing: no reflog is read, and a mirror records when it last fetched, not what moved (`cache/records.py:357`) | A reflog read; a record of a mirror’s fetches |
-| `pull-requests` | Catalog rows with `created_at`, `updated_at`, `closed_at`, `merged_at`, and `head_oid`, indexed by `(state, number)` (`github/pull_list.py:99`, `github/pull_catalog.py:122`); a timeline of commits, comments, and reviews, one pull request at a time (`github/pull_timeline.py:47`) | First, the newest rows by `updated_at`: an event belongs to a row updated at or after it, so they hold every event above a bound. To page, an index on `updated_at` and a table of events |
+| `pull-requests` | Catalog rows with `created_at`, `updated_at`, `closed_at`, `merged_at`, and `head_oid`, indexed by `(state, number)` (`github/pull_list.py:100`, `github/pull_catalog.py:134`); a timeline of commits, comments, and reviews, one pull request at a time (`github/pull_timeline.py:47`) | First, the newest rows by `updated_at`: an event belongs to a row updated at or after it, so they hold every event above a bound. To page, an index on `updated_at` and a table of events |
 
 ### Updates and Events
 
@@ -243,7 +243,7 @@ move without input.
 **Order and key.** Files, Recent, Pulls, Commits: the two tabs every root has come
 first, so the tabs that come and go never shift them.
 The tab joins `MAIN_TABS` (`static/main-tabs.js:7`), the server draws its button
-(`server.py:2323`), and its panel registers as Commits’ does (`registerNavPanel`,
+(`server.py:2487`), and its panel registers as Commits’ does (`registerNavPanel`,
 `static/main-tabs.js:210`). Its letter is `R`, which no shell key or view holds
 (`keymap.py:66`, `tests/test_keymap.py:115`); Command-R stays the browser’s.
 
@@ -360,7 +360,7 @@ rows:
   `GET /api/git/working-tree` answers the working-tree changes object.
   These are where a reference to each type leads.
 - **The CLI.** `--api` reaches them, and no mode is added: `--recent` is the recent
-  targets’ (`cli/main.py:670`).
+  targets’ (`cli/main.py:720`).
 - **View state.** In the view model plan’s
   [view state](plan-2026-11-18-view-model-and-view-state.md#the-view-state), `nav.tab`
   is `recent`, `nav.current` is the row’s reference, an `update` or an `event`, and

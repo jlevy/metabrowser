@@ -17,7 +17,7 @@ A companion to
 [View Model and View State](plan-2026-11-18-view-model-and-view-state.md),
 [Agent Interface for Objects and View State](plan-2026-11-18-agent-interface.md), and
 the [implementation map](plan-2026-11-18-object-model-implementation-map.md).
-Written against `main` at `42e4bd1bb`.
+Written against `main` at `21dc39da7`.
 
 ## Overview
 
@@ -69,21 +69,21 @@ Paths are under `src/metabrowser/` unless they start with `docs/`, `apps/`, `tes
   ([v1, step 4](plan-2026-11-10-native-macos-app.md#milestone-v1-a-usable-app)). The
   flag also marks a local start for compression: `serving_locally()` is true only for a
   server started with it, on a loopback bind, outside a remote session
-  (`cli/main.py:1009`, `cli/serve.py:385-387`). The `control` default of
+  (`cli/main.py:1069`, `cli/serve.py:390-392`). The `control` default of
   [VM-5](plan-2026-11-18-view-model-and-view-state.md#decision-vm-5-consent-and-trust)
   makes the bind and environment tests itself, tests each request’s peer, and does not
   read the flag, so a server started with `metab ROOT`, on its default loopback bind, is
   local too.
 - **The announcement is text.** `Serving <root> at <url>` is printed before the socket
-  listens (`cli/serve.py:412`), so the app parses it, as the `serving` line
+  listens (`cli/serve.py:417`), so the app parses it, as the `serving` line
   [its contract with `metab`](../../architecture/arch-app-contract.md) declares, and
   then polls (`CLIServeLaunch`,
   `apps/macos/Sources/ShellCore/Supervision/ServerLaunch.swift:54`). A path with a line
   break could forge it, so the app refuses such a root (`:119`).
-- **The port is a walk** up from `--port`, which refuses 0 (`cli/main.py:761`), so a
+- **The port is a walk** up from `--port`, which refuses 0 (`cli/main.py:811`), so a
   root can return on another port, which is another origin.
 - **There is no credential.** A request with neither `Origin` nor `Sec-Fetch-Site`
-  passes the `/api` origin check (`server.py:833-855`), so any process that reaches the
+  passes the `/api` origin check (`server.py:851-873`), so any process that reaches the
   port calls any route.
 - **`--present` delivers to the app or a browser**
   ([Opening Anything from the CLI and the App](plan-2026-11-17-open-anything-from-cli-and-app.md)).
@@ -147,8 +147,8 @@ it relies on the part named:
   absent in a tab the app discarded, and be copied to a window a page opens.
 - **`WKWebView`, the event stream.** Count connections per host with several tabs open,
   and check that a hidden or detached web view’s scheduling does not stop the stream.
-  Under the token, a streamed `fetch` replaces `EventSource` (`static/app.js:7579`,
-  `:8808`), which sends no header.
+  Under the token, a streamed `fetch` replaces `EventSource` (`static/app.js:7567`,
+  `:8827`), which sends no header.
 - **`WKWebView`, the credential.** The app hands the token only to a frame whose
   `WKFrameInfo.securityOrigin` matches, and its navigation policy keeps cross-port
   navigations out of a view.
@@ -220,8 +220,8 @@ It never holds a credential.
   sit in one owner-only runtime directory, named in code, below the configuration
   directory that holds recent targets.
   `home.py` supplies every step: `configuration_directory` (`:793`) resolves the root,
-  `ensure_storage_root` (`:810`) and `ensure_private_directory` (`:562`) create the
-  directory for the owner alone, `write_private_file_atomic` (`:849`) publishes an
+  `ensure_storage_root` (`:819`) and `ensure_private_directory` (`:562`) create the
+  directory for the owner alone, `write_private_file_atomic` (`:858`) publishes an
   entry, and `read_private_file_bounded` (`:615`) reads one.
   The lock is a file there held by `flock`, as the recent targets list’s writer lock is
   (`_writing`, `recent_targets.py:539`), so the kernel frees it when its holder dies.
@@ -292,8 +292,8 @@ An agent with `metab` and no document can learn everything above.
 
 | An agent asks | `metab` answers with | On `main` |
 | --- | --- | --- |
-| What can I do? | `metab --help` | Exists. It names modes and not tasks, and of the host parts only `--exit-on-eof` (`cli/main.py:775`) |
-| Which routes exist? | `GET /api/routes` | Exists (`server.py:5161`): path, methods, and kind, and not what a route answers or which transport serves it |
+| What can I do? | `metab --help` | Exists. It names modes and not tasks, and of the host parts only `--exit-on-eof` (`cli/main.py:825`) |
+| Which routes exist? | `GET /api/routes` | Exists (`server.py:5354`): path, methods, and kind, and not what a route answers or which transport serves it |
 | Which servers are live? | The listing mode | Missing. `--recent` lists targets, not servers |
 | What does a ready line or a listing row hold? | The server record’s schema, through `--api` | Missing: no record, and no route serves a schema |
 | Which verbs reach a gated server? | A mark on each `/api/routes` entry the socket serves | Missing |
