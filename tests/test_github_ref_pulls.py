@@ -10,7 +10,6 @@ alone and kept until the catalog moves.
 from __future__ import annotations
 
 import threading
-import time
 from pathlib import Path
 from typing import Any
 
@@ -236,32 +235,38 @@ def test_a_scan_reads_its_rows_outside_the_transaction_so_a_page_write_is_not_he
     """A read transaction holds off the writer's commit, which waits 0.25 s, so what a scan
     does with its rows takes place after its connection is closed (mb-tjbm review A3).
 
-    The rows are made into pull requests slowly, 600 of them at 1 ms; a scan that did that
-    inside its transaction would hold the catalog for 0.6 s, and the page the job writes
-    meanwhile would fail with ``database is locked``.
+    The scan is held at its first row, where it makes pull requests out of what it read,
+    and the job's next page is written through the production publisher while it is held.
+    A scan still inside its transaction would leave that commit waiting out its 0.25 s and
+    fail with ``database is locked``; one that has closed it lets the page land at once.
+    The claim is that the commit succeeds while the scan is held, which a slow or busy
+    machine cannot change, so no clock is read: the scan is held, not timed.
     """
 
     _seed(repository, [head_item(n, f"b-{n}", f"Pull {n}") for n in range(1, 601)])
-    processing = threading.Event()
+    holding = threading.Event()
+    release = threading.Event()
     real = pull_catalog.HeadPull
 
-    def slow(*args: Any) -> Any:
-        processing.set()
-        time.sleep(0.001)
+    def held(*args: Any) -> Any:
+        if not holding.is_set():
+            holding.set()
+            assert release.wait(60), "the page write never finished"
         return real(*args)
 
-    monkeypatch.setattr(pull_catalog, "HeadPull", slow)
+    monkeypatch.setattr(pull_catalog, "HeadPull", held)
     found: list[int] = []
     scan = threading.Thread(
         target=lambda: found.append(len(catalog_heads(repository).pulls or ())), daemon=True
     )
     scan.start()
-    assert processing.wait(20), "the scan never reached its rows"
-    began = time.monotonic()
-    # The job's next page, through the production publisher, while the scan makes its rows.
-    _seed(repository, [head_item(n, f"b-{n}", f"Pull {n}") for n in range(1, 702)])
-    assert time.monotonic() - began < 0.25
-    scan.join(30)
+    try:
+        assert holding.wait(60), "the scan never reached its rows"
+        # The job's next page, through the production publisher, while the scan is held.
+        _seed(repository, [head_item(n, f"b-{n}", f"Pull {n}") for n in range(1, 702)])
+    finally:
+        release.set()
+    scan.join(60)
     assert found == [600]
 
 
