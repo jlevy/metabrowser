@@ -57,14 +57,18 @@ the trust boundary it enforces.
 A manifest’s `[plugin] requires` names the plugins whose exports its browser code loads
 with `metabrowser.plugins.load(name)`
 ([Plugin Authoring](../../plugins.md#declared-dependencies)). `resolve_requirements` in
-`discovery.py` runs once collisions are settled, so it sees the plugin set the server
-serves:
+`discovery.py` runs on the plugin in use for each name, once collisions are settled, so
+it sees the plugin set the server serves:
 
 - A plugin that requires itself fails its own manifest’s validation.
 - A plugin on a longer cycle is refused, with the shortest cycle back to it, since two
   modules that each wait for the other’s exports never finish.
 - A plugin that requires one that was not discovered, or was refused, is refused in
   turn, so a refusal reaches everything that depends on it.
+- A plugin that replaced another by name and is refused gives the name back:
+  `discover_plugins` restores the plugin it replaced and resolves again, as if the
+  replacement’s manifest had been invalid, so one operator’s typo cannot refuse the
+  built-ins that require the plugin it shadows.
 
 Each refusal is a discovery error, so the server logs it and the CLI modes print it and
 exit nonzero. The kept plugins stay in discovery order, which breaks kind priority ties.
