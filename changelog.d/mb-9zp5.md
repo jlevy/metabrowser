@@ -6,11 +6,14 @@
   The page reports to the event log what only it saw: a request slower than the
   slow-request threshold or still pending at it, a frame that froze it, and a wait still
   running at the late threshold, and how that wait ended, `never_completed` when the
-  reader left first. Every request a page sends to its server’s `/api/` carries the
-  page’s client ID in the `x-metabrowser-client` header, which the server’s records of
-  the request and of the jobs and processes it starts carry as `client`, so
+  reader left first. A wait counts only the time its tab was shown.
+  Every request a page sends to its server’s `/api/` carries the page’s client ID in the
+  `x-metabrowser-client` header, which the server’s records of the request and of the
+  jobs and processes it starts carry as `client`, so
   `metab . --api '/api/event-log?client=<page>'` reads everything one page asked for and
   saw. `POST /api/event-log/client` is new.
+  `/api/event-log/failures` lists the page’s reports under `page_reports`, apart from
+  the causes it ranks.
   See [What the Page Reports](docs/realtime-debugging.md#what-the-page-reports).
 
 - For plugin authors: `mb.eventReports`, present once the shell has loaded the

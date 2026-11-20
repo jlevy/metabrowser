@@ -243,10 +243,10 @@ The deadline stays; the probe tells a stall from a slow gh within `PROBE_TIMEOUT
 
 ### Browser Reports
 
-The reporter is `static/event-reports.js`, not `perf.js`: the shell’s startup scripts
-were within 99 bytes of their budget (`devtools/check_startup_scripts.py`), so it is an
-on-demand bundle the shell loads after the first usable tree, and a page that waits
-before then loads it itself.
+The reporter is `static/event-reports.js`, not `perf.js`, which is in the shell’s
+startup scripts and their budget (`devtools/check_startup_scripts.py`): it is the last
+script of the `shell-tools` bundle, which the shell loads after the first usable tree,
+and the `event-reports` bundle a page that waits before then loads itself.
 Each page has an ID, and each request it sends to its own server’s `/api/` carries
 `<page>-<n>` in the `x-metabrowser-client` header, which the server records as the
 request’s `client` and every job and process the request starts inherits;
@@ -259,13 +259,23 @@ slower than `SLOW_MS`, a fetch still pending at it, a frame that froze the page 
 `FREEZE_MS`, and named waits: a page marks what it is waiting for, such as a pull
 request’s Diff summary, and the wait is reported when it is late (`WAIT_LATE_MS`), when
 it ends late, and as `never_completed` when the page is left first.
+A wait counts only the time the page was shown: a hidden tab polls nothing, so its wait
+is not late until it has been late while shown, and its report says how long it was
+hidden (`hidden_ms`). A page the browser keeps in its back/forward cache has not been
+left: it sends what it has queued, and a wait it restores to ends as it would have.
 Reports leave in batches with `fetch(..., {keepalive: true})`, not
 `navigator.sendBeacon`, which cannot send the JSON type the same-origin guard requires
 of a `POST`. The server writes each as a `browser` record.
 
 A late wait says so on the page, and it and a failed refresh offer **Details**: what the
 server is still running, the failures in the window by cause, the last probe, and the
-page’s own records, read from `/api/event-log` and `/api/event-log/failures`.
+page’s own records, read from `/api/event-log` and `/api/event-log/failures`. The page’s
+reports are listed apart from the causes, under `page_reports`: they say what the page
+saw, not why, so the server’s cause leads.
+When the server’s log is off, Details says so and reads nothing.
+The event log’s routes are about the server, not the served revision, so the source pin
+guard lets them through, as it does `/api/source/`: a page left behind by a switch still
+reports and reads its Details.
 
 ## Implementation Plan
 

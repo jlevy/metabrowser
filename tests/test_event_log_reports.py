@@ -11,10 +11,13 @@ requests and jobs the server ran for it.
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Generator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlsplit
 
 import pytest
 from starlette.applications import Starlette
@@ -28,6 +31,7 @@ from metabrowser import event_log, home, server
 from metabrowser.event_log_reports import (
     MAX_BODY_BYTES,
     MAX_REPORTS,
+    RATE_REPORTS,
     REPORT_ROUTE,
     SLOW_MS,
     WAIT_LATE_MS,
@@ -38,7 +42,7 @@ from metabrowser.event_log_reports import (
     parse_body,
     parse_report,
 )
-from metabrowser.event_log_route import parse_query, read_log
+from metabrowser.event_log_route import parse_query, read_log, summarize_failures
 from metabrowser.mirror_refresh import RefreshCoordinator
 from metabrowser.server import _SlowRequestLogMiddleware
 
@@ -180,7 +184,6 @@ def test_text_from_the_page_is_redacted_like_the_servers(sink: event_log.EventLo
         ({"type": "click"}, "type must be one of fetch, render, wait"),
         ({"event": "start"}, "event must be one of open, end"),
         ({"name": ""}, "name must be text"),
-        ({"name": "x" * 201}, "name is longer than 200"),
         ({"client": "other123-1"}, "client must be the page's ID"),
         ({"client": f"{PAGE}x-1"}, "client must be the page's ID"),
         ({"client": f"{PAGE}-1 2"}, "client must be the page's ID"),
@@ -197,6 +200,7 @@ def test_text_from_the_page_is_redacted_like_the_servers(sink: event_log.EventLo
         ({"attrs": {"status": "200"}}, "attrs.status must be an HTTP status"),
         ({"attrs": {"server_ms": float("inf")}}, "attrs.server_ms must be from 0"),
         ({"attrs": {"hidden": "yes"}}, "attrs.hidden must be true or false"),
+        ({"attrs": {"hidden_ms": -1}}, "attrs.hidden_ms must be from 0"),
         ({"attrs": {"detail": {"Number": 1}}}, "names must be lowercase words"),
         ({"attrs": {"detail": {"nested": {"a": 1}}}}, "attrs.detail.nested must be text"),
         (
@@ -216,6 +220,22 @@ def test_a_report_is_refused_alone_and_says_which_field_and_why(
     assert answer["accepted"] == 1
     assert [r["index"] for r in answer["refused"]] == [1]
     assert message in answer["refused"][0]["error"]
+
+
+def test_a_long_name_or_path_is_cut_short_not_refused(sink: event_log.EventLog) -> None:
+    """A page's address can be any length, and a request's path too: either is kept to its
+    first characters, so a long one costs neither the report nor the body (A5, review A
+    of #629)."""
+
+    long_name = {**_SLOW_FETCH, "name": "GET /api/view/" + "a/" * 300}
+    body = json.dumps({"page": PAGE, "path": "/view/" + "a/" * 300, "reports": [long_name]})
+    status, answer = accept(body.encode(), limit=RateLimit())
+    assert (status, answer["accepted"], answer["refused"]) == (200, 1, [])
+    (record,) = _records(sink)
+    assert record["name"].startswith("fetch GET /api/view/a/a/")
+    assert len(record["name"]) == len("fetch ") + 200
+    assert record["name"].endswith("…")
+    assert record["attrs"]["path"].startswith("/view/a/") and len(record["attrs"]["path"]) == 400
 
 
 @pytest.mark.parametrize(
@@ -283,6 +303,57 @@ def test_reports_past_the_rate_limit_are_counted_and_marked_once_a_window(
     assert marks[0]["event"] == "mark"
     assert marks[0]["attrs"] == {"limit": 2, "window_s": 3600.0}
     assert len([r for r in records if r["name"] == "wait githubPull:summary"]) == 2
+
+
+def test_the_largest_record_a_report_can_become_bounds_the_log_a_minute() -> None:
+    """RATE_REPORTS's comment: a report with every field at its bound becomes a record of
+    about 3.1 KB, so the rate limit allows at most about 367 KiB of log a minute."""
+
+    detail = {f"k{i:02d}" + "x" * 36: "v" * 200 for i in range(8)}
+    maxed = {
+        "type": "fetch",
+        "event": "end",
+        "name": "n" * 5000,
+        "client": f"{PAGE}-" + "9" * 55,
+        "dur_ms": 86_399_999.9,
+        "outcome": "never_completed",
+        "attrs": {
+            "status": 504,
+            "server_ms": 86_399_999.9,
+            "threshold_ms": 86_399_999.9,
+            "hidden_ms": 86_399_999.9,
+            "error": "e" * 200,
+            "hidden": True,
+            "detail": detail,
+        },
+    }
+    body = {"page": PAGE, "path": "/" + "p" * 5000, "reports": [maxed]}
+    status, answer = accept(json.dumps(body).encode(), limit=RateLimit())
+    assert status == 200 and answer["refused"] == []
+    (written,) = answer["records"]
+    line = {"v": 1, "ts": "2026-11-19T21:41:22.411Z", "pid": 2**22, **written}
+    size = len(json.dumps(line, separators=(",", ":"), ensure_ascii=False).encode()) + 1
+    assert 3000 <= size <= 3200, size
+    assert size < event_log.MAX_LINE_BYTES
+    assert 360 * 1024 <= size * RATE_REPORTS <= 375 * 1024
+
+
+def test_a_body_of_nothing_but_a_dropped_count_takes_its_place_in_the_rate_limit(
+    sink: event_log.EventLog,
+) -> None:
+    """A page past its own bound sends only how many it dropped; each such mark is a
+    record, so it counts against the server's bound like a report (A6, review A of #629)."""
+
+    limit = RateLimit(limit=2, window_s=3600.0)
+    answers = [accept(_body(dropped=1), limit=limit)[1] for _ in range(4)]
+    assert [a["dropped_by_page"] for a in answers] == [1, 1, 1, 1]
+    names = [r["name"] for r in _records(sink)]
+    assert names.count("browser.reports_dropped") == 2
+    assert names.count("browser.reports_rate_limited") == 1
+    # A report and the count in one body: the report first, then the mark, if both fit.
+    limit = RateLimit(limit=1, window_s=3600.0)
+    _, answer = accept(_body(_LATE_WAIT, dropped=3), limit=limit)
+    assert (answer["accepted"], answer["rate_limited"]) == (1, 0)
 
 
 def test_reports_the_page_dropped_itself_are_marked_with_its_id(
@@ -445,3 +516,57 @@ def test_an_open_span_names_the_client_that_started_it(sink: event_log.EventLog)
     (still,) = [s for s in answer["open"] if s["name"] == "stuck"]
     assert still["client"] == f"{PAGE}-4"
     stuck.end()
+
+
+# ── a page's reports beside the server's failures ─────────────
+
+FIXTURE_SEGMENT = (
+    Path(__file__).resolve().parent
+    / "fixtures"
+    / "event-log-client"
+    / "events-20261119T214000Z-p6161-000.jsonl"
+)
+
+
+def test_the_failures_lead_with_the_servers_cause_and_list_the_pages_reports_apart(
+    tmp_path: Path,
+) -> None:
+    """On the golden's segment, a refresh whose gh call timed out connecting while the page
+    waited: the cause is the gh call's, and the page's two never_completed reports, one
+    failure seen from the page, are listed apart rather than ranked above it (A2, review A
+    of #629). Each record's link finds it through ``/api/event-log``."""
+
+    state = tmp_path / "state"
+    home.ensure_storage_root(state)
+    home.ensure_private_directory(state, event_log.EVENTS_DIRECTORY)
+    directory = state / event_log.EVENTS_DIRECTORY
+    segment = directory / FIXTURE_SEGMENT.name
+    segment.write_bytes(FIXTURE_SEGMENT.read_bytes())
+    segment.chmod(0o600)
+    written = datetime(2026, 11, 19, 21, 41, 30, tzinfo=UTC).timestamp()
+    os.utime(segment, (written, written))
+    answer = summarize_failures(
+        state=state,
+        directory=directory,
+        since=datetime(2026, 11, 19, 21, 0, tzinfo=UTC),
+        until=None,
+        kinds=(),
+    )
+    assert [group["cause"] for group in answer["causes"]] == ["connect_timeout"]
+    assert answer["failures"] == 1
+    page = answer["page_reports"]
+    assert (page["count"], page["outcomes"]) == (2, {"never_completed": 2})
+    assert [e["name"] for e in page["examples"]] == [
+        "fetch GET /api/plugin/github/pull-comparison",
+        "wait githubPull:diffSummary",
+    ]
+    examples = [e for g in answer["causes"] for e in g["examples"]] + page["examples"]
+    for example in examples:
+        assert "span=None" not in example["details"], example
+        params = dict(parse_qsl(urlsplit(example["details"]).query))
+        params["limit"] = "200"
+        status, found = read_log(parse_query(params), state=state, directory=directory)
+        assert status == 200, found
+        assert any(
+            e["name"] == example["name"] and e["ts"] == example["ts"] for e in found["events"]
+        ), (example, found["events"])

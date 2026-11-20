@@ -1,6 +1,6 @@
 // A Diff summary that never arrives, in headless Chrome: the page says so at the late
 // threshold, offers Details a keyboard reaches and opens, and reports the wait to the
-// event log, and its end as never completed when the page is left (mb-9zp5).
+// event log, and its end as never completed when the page is unloaded (mb-9zp5).
 //
 //   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
 //     KPRESS_STATIC=/dir/with/style-tokens.css \
@@ -15,7 +15,7 @@
 // POST /api/event-log/client, whose bodies it keeps. So what is checked here is the real
 // browser's: the header on each request, the late line and its Details painted and reached
 // by the keyboard, the panel's tokens, and the report that leaves with the page when it is
-// navigated away, which only `keepalive` delivers.
+// unloaded, which only `keepalive` delivers.
 //
 // The same behavior runs browserless in tests/dom/github-pull-page-mount-behavior.js
 // (`eventLogDetails`) and tests/dom/event-reports-session.js. Prints one line of checks.
@@ -453,31 +453,39 @@ try {
       ),
     seen.requests.filter((request) => request.path === SETTINGS.route),
   );
-  // Leaving the page ends the wait as never completed, and the report leaves with it.
+  // Unloading the page ends the wait as never completed, and the report leaves with it. A
+  // reload unloads it. Navigated to another page instead, headless Chrome kept it in the
+  // back/forward cache, its summary's request pending and all (pagehide's `persisted` was
+  // true, 2026-11-19), and a kept page is not left: it only sends what it has queued
+  // (event-reports.js; A9 of review A on #629, which tests/dom/event-reports-session.js
+  // holds without a browser).
   const before = seen.reports.length;
-  await chrome.send("Page.navigate", { url: `${base}/elsewhere` });
+  const ended = () =>
+    seen.reports
+      .slice(before)
+      .filter(
+        (body) =>
+          body.page === page &&
+          body.reports.some(
+            (report) =>
+              report.type === "wait" &&
+              report.event === "end" &&
+              report.outcome === "never_completed" &&
+              report.name === "githubPull:diffSummary",
+          ),
+      );
+  await chrome.send("Page.reload", { ignoreCache: true });
   const deadline = Date.now() + 10000;
-  while (seen.reports.length === before && Date.now() < deadline) {
+  while (ended().length === 0 && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
-  step("left");
-  const last = seen.reports.slice(before).flatMap((body) => body.reports);
+  step("unloaded");
   check(
-    "leaving reports the wait never completed",
-    last.some(
-      (report) =>
-        report.type === "wait" &&
-        report.event === "end" &&
-        report.outcome === "never_completed" &&
-        report.name === "githubPull:diffSummary",
-    ),
-    last,
+    "unloading reports the wait never completed",
+    ended().length > 0,
+    seen.reports.slice(before),
   );
-  check(
-    "from the page it left",
-    seen.reports.at(-1)?.page === page && seen.reports.at(-1)?.path === `/pull/${number}`,
-    seen.reports.at(-1),
-  );
+  check("from the page it left", ended()[0]?.path === `/pull/${number}`, ended()[0]);
 } finally {
   await chrome.close();
   server.close();

@@ -3090,7 +3090,9 @@ declare global {
       server_ms?: number;
       threshold_ms?: number;
       error?: string;
+      /** A wait the page spent some of hidden, and how long: time that is not late. */
       hidden?: boolean;
+      hidden_ms?: number;
       detail?: Record<string, string | number | boolean | null>;
     };
   };
@@ -3106,13 +3108,15 @@ declare global {
     clearTimeout(id: unknown): void;
     send(route: string, body: string): unknown;
     warn?(...args: unknown[]): void;
+    /** Whether the page is hidden now; a wait's late timer runs only while it is shown. */
+    hidden?(): boolean;
   };
 
   type MetabrowserEventWaitOptions = {
     /** When the wait began, on the page's clock, where it began before the reporter. */
     startedAt?: number;
     detail?: Record<string, string | number | boolean | null>;
-    /** Told once, when the wait is still running at `late_ms`. */
+    /** Told once, when the wait has run `late_ms` while the page was shown. */
     onLate?: (ms: number) => void;
   };
 
@@ -3152,6 +3156,8 @@ declare global {
         serverTiming?: ReadonlyArray<{ name: string; duration: number }>;
       }>,
     ): void;
+    /** The page was hidden or shown: a wait's late timer stops while it is hidden. */
+    visibility(hidden: boolean): void;
     leaving(): void;
     flush(): Promise<void>;
     queued(): MetabrowserEventReport[];
@@ -3167,7 +3173,8 @@ declare global {
   };
 
   type MetabrowserEventDetails = {
-    log: "present" | "absent" | "unreadable";
+    /** `off`: this server writes no log, so whatever an older one wrote is not shown. */
+    log: "present" | "absent" | "unreadable" | "off";
     running: Array<{ kind: string; name: string; age_ms: number; mine: boolean }>;
     causes: Array<{
       cause: string;
@@ -4465,7 +4472,7 @@ declare global {
       showDetails(
         panel: HTMLElement,
         query: MetabrowserEventDetailsQuery,
-        options?: { fetch?: typeof fetch; signal?: AbortSignal; slowMs?: number },
+        options?: { fetch?: typeof fetch; signal?: AbortSignal; slowMs?: number; log?: boolean },
       ): Promise<void>;
       serverMs(raw: string | null | undefined): number | null;
     }>;

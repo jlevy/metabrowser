@@ -26,18 +26,20 @@ dropped itself, past its own bound. Each report is:
 ``event``
     ``open`` (still running, past its threshold) or ``end``.
 ``name``
-    The request's method and path, the render's or wait's name.
+    The request's method and path, the render's or wait's name; one longer than the
+    record keeps is cut short, as the body's ``path`` is.
 ``client``
     The request's client ID, or the page's; always the page's or one of its requests'.
 ``dur_ms``
     How long it ran, or has run so far, on the page's monotonic clock.
 ``outcome``
     On an ``end``: ``ok``, ``failed``, ``cancelled``, or ``never_completed`` (the page
-    was left, or hidden, first).
+    was left first).
 ``attrs``
     Optional: ``status``, ``server_ms`` (the request's ``Server-Timing``),
-    ``threshold_ms``, ``error``, ``hidden``, and ``detail``, up to
-    :data:`MAX_DETAIL_KEYS` short scalars.
+    ``threshold_ms``, ``error``, ``hidden`` and ``hidden_ms`` (a wait the page spent
+    some of hidden, and how long, which does not count toward its late threshold), and
+    ``detail``, up to :data:`MAX_DETAIL_KEYS` short scalars.
 """
 
 from __future__ import annotations
@@ -62,10 +64,14 @@ REPORT_ROUTE: Final = "/api/event-log/client"
 # most 64 KiB in flight per document, which this keeps a page well under.
 MAX_REPORTS: Final = 20
 MAX_BODY_BYTES: Final = 16 * 1024
-# The most reports the server takes from all pages together in a window: past it the
-# rest are refused and one mark says so. A page bounds itself at PAGE_REPORTS_PER_MINUTE,
-# so this is four pages at their bound; at about 270 bytes a record it is 32 KB of log a
-# minute at most, a segment (event_log.MAX_FILE_BYTES) in an hour.
+# The most reports the server takes in a window, from every page and tab together: past
+# it the rest are refused and one mark says so, and a page's mark of what it dropped
+# itself takes a place too. A page bounds itself at PAGE_REPORTS_PER_MINUTE, so this is
+# four pages at their bound. The page's reports become records of about 270 bytes, 32 KB
+# of log a minute at this bound; a report with every field at its bound becomes 3,130
+# bytes (tests/test_event_log_reports.py, the largest record), so a page that sends
+# nothing else can write at most 367 KiB a minute: a segment (event_log.MAX_FILE_BYTES)
+# in six minutes, and the whole directory (event_log.MAX_TOTAL_BYTES) in about 90.
 RATE_REPORTS: Final = 120
 RATE_WINDOW_S: Final = 60.0
 PAGE_REPORTS_PER_MINUTE: Final = 30
@@ -100,7 +106,9 @@ MAX_DETAIL_KEYS: Final = 8
 # A day: no page waits longer and reports it.
 _MAX_DURATION_MS: Final = 24 * 3600 * 1000.0
 _DETAIL_KEY: Final = re.compile(r"[a-z][a-z0-9_]{0,39}")
-_ATTR_KEYS: Final = frozenset({"status", "server_ms", "threshold_ms", "error", "hidden", "detail"})
+_ATTR_KEYS: Final = frozenset(
+    {"status", "server_ms", "threshold_ms", "error", "hidden", "hidden_ms", "detail"}
+)
 _REPORT_KEYS: Final = frozenset({"type", "event", "name", "client", "dur_ms", "outcome", "attrs"})
 _BODY_KEYS: Final = frozenset({"page", "path", "reports", "dropped"})
 
@@ -132,11 +140,17 @@ class ReportError(ValueError):
     """A report, or a body, the route refuses; the message says which field and why."""
 
 
-def _text(value: Any, field: str, *, limit: int) -> str:
+def _text(value: Any, field: str, *, limit: int, cut: bool = False) -> str:
+    """*value* as text the log keeps, redacted. Past *limit* it is refused, or, with
+    *cut*, kept to its first *limit* characters: a page's address or a request's path
+    can be any length, and a long one should not cost the report, or the whole body."""
+
     if not isinstance(value, str) or not value.strip():
         raise ReportError(f"{field} must be text")
     if len(value) > limit:
-        raise ReportError(f"{field} is longer than {limit} characters")
+        if not cut:
+            raise ReportError(f"{field} is longer than {limit} characters")
+        value = value[: limit - 1] + "…"
     return event_log.redact(value, limit=limit)
 
 
@@ -187,7 +201,7 @@ def _attrs(value: Any) -> dict[str, Any]:
         if isinstance(status, bool) or not isinstance(status, int) or not 0 <= status <= 999:
             raise ReportError("attrs.status must be an HTTP status, or 0 for none")
         out["status"] = status
-    for key in ("server_ms", "threshold_ms"):
+    for key in ("server_ms", "threshold_ms", "hidden_ms"):
         if given.get(key) is not None:
             out[key] = _number(given[key], f"attrs.{key}", high=_MAX_DURATION_MS)
     if "error" in given:
@@ -221,7 +235,7 @@ def parse_report(raw: Any, *, page: str) -> dict[str, Any]:
     event = given.get("event")
     if event not in REPORT_EVENTS:
         raise ReportError(f"event must be one of {', '.join(REPORT_EVENTS)}")
-    name = _text(given.get("name"), "name", limit=_MAX_NAME_CHARS)
+    name = _text(given.get("name"), "name", limit=_MAX_NAME_CHARS, cut=True)
     client = given.get("client", page)
     if (
         not isinstance(client, str)
@@ -297,7 +311,7 @@ def parse_body(data: bytes) -> tuple[str, str | None, list[Any], int]:
     if path is not None:
         if not isinstance(path, str) or not path.startswith("/"):
             raise ReportError("path must be the page's path, from its first /")
-        path = _text(path, "path", limit=_MAX_PATH_CHARS)
+        path = _text(path, "path", limit=_MAX_PATH_CHARS, cut=True)
     reports = body.get("reports")
     if not isinstance(reports, list):
         raise ReportError("reports must be a list")
@@ -324,10 +338,14 @@ def accept(data: bytes, *, limit: RateLimit = RATE_LIMIT) -> tuple[int, dict[str
             parsed.append(parse_report(raw, page=page))
         except ReportError as exc:
             refused.append({"index": index, "error": str(exc)})
-    granted, first_refusal = limit.take(len(parsed))
+    # The mark that says how many the page dropped is a record too, and takes its place in
+    # the window after the reports: a page past its own bound cannot write past the
+    # server's by sending bodies of nothing but that count.
+    granted, first_refusal = limit.take(len(parsed) + (1 if dropped else 0))
+    kept = min(granted, len(parsed))
     logged = event_log.enabled()
     written: list[dict[str, Any]] = []
-    for record in parsed[:granted]:
+    for record in parsed[:kept]:
         attrs: dict[str, Any] = {**record["attrs"], "path": path} if path else record["attrs"]
         event_log.report(
             record["event"],
@@ -345,12 +363,12 @@ def accept(data: bytes, *, limit: RateLimit = RATE_LIMIT) -> tuple[int, dict[str
             limit=limit.limit,
             window_s=limit.window_s,
         )
-    if dropped:
+    if dropped and granted > len(parsed):
         event_log.mark("browser", "browser.reports_dropped", client=page, dropped=dropped)
     return 200, {
         "accepted": len(written),
         "refused": refused,
-        "rate_limited": len(parsed) - granted,
+        "rate_limited": len(parsed) - kept,
         "dropped_by_page": dropped,
         "logged": logged,
         "records": written,

@@ -181,11 +181,12 @@ function line(report) {
   return parts.join(" ");
 }
 
-/** The reporter with everything injected, and what it sent. */
-function reporterFor(api, settings = SETTINGS) {
+/** The reporter with everything injected, and what it sent; *env* adds to what it is given. */
+function reporterFor(api, settings = SETTINGS, env = {}) {
   const time = clock();
   const sent = [];
   const reporter = api.createReporter({
+    ...env,
     settings,
     pageId: PAGE,
     origin: ORIGIN,
@@ -365,6 +366,58 @@ async function story() {
     told.waits = { steps, sent: sentSince(sent, 0) };
   }
 
+  // ── A page hidden while it waits ─────────────────────────────────────
+  // The page stops polling while it is hidden, so a wait would run late for no fault of
+  // the work behind it: its late timer stops while the page is hidden, and its reports
+  // say how long it was (A3, review A of #629).
+  {
+    let hiddenNow = false;
+    const { reporter, time, sent } = reporterFor(api, SETTINGS, { hidden: () => hiddenNow });
+    const steps = [];
+    const lateCalls = [];
+    const step = (label) => {
+      steps.push({
+        step: label,
+        queued: reporter.queued().map(line),
+        late_told: lateCalls.slice(),
+      });
+    };
+    const hide = (value) => {
+      hiddenNow = value;
+      reporter.visibility(value);
+    };
+    const tab = reporter.wait("githubPull:diffSummary", {
+      detail: { number: 7 },
+      onLate: (ms) => lateCalls.push(`told late at ${ms} ms`),
+    });
+    time.advance(4000);
+    hide(true);
+    time.advance(60_000);
+    step("shown 4 s, then hidden a minute: not late");
+    hide(false);
+    time.advance(5999);
+    step("shown again 5999 ms: 9999 ms shown in all");
+    time.advance(1);
+    step("10 s shown: late, with the minute it was hidden");
+    time.advance(1000);
+    tab.end("ok");
+    step("it ends a second later");
+    hide(true);
+    const begunHidden = reporter.wait("source:refresh");
+    time.advance(30_000);
+    step("a wait begun while hidden, 30 s on: not late");
+    hide(false);
+    time.advance(SETTINGS.late_ms);
+    step("shown for the late threshold: late");
+    hide(true);
+    time.advance(5000);
+    reporter.leaving();
+    begunHidden.end("ok");
+    step("hidden 5 s more, then left: never completed, hidden 35 s");
+    keep(sent);
+    told.hiddenTab = { steps, sent: sentSince(sent, 0) };
+  }
+
   // ── Frozen frames and requests from before the reporter ──────────────
   {
     const { reporter, time, sent } = reporterFor(api);
@@ -498,8 +551,17 @@ async function story() {
     context.document.visibilityState = "hidden";
     listeners["document visibilitychange"]();
     const onHide = requests.filter(({ input }) => input === SETTINGS.route).length;
-    listeners.pagehide();
+    // Into the back/forward cache: kept, not left, so the wait is not ended; restored, it
+    // ends, and that is reported (A9, review A of #629).
+    listeners.pagehide({ persisted: true });
+    context.document.visibilityState = "visible";
+    listeners["document visibilitychange"]();
     late.end("ok");
+    // Unloaded: a wait still late is left, never completed.
+    const left = sdk.wait("githubPull:refresh");
+    time.advance(SETTINGS.late_ms);
+    listeners.pagehide({ persisted: false });
+    left.end("ok");
     const reportRequests = requests.filter(({ input }) => input === SETTINGS.route);
     keep(reportRequests.map(({ init }) => ({ body: JSON.parse(init.body) })));
     told.install = {
@@ -714,6 +776,15 @@ async function details(api) {
     },
   );
   out.panel["the routes unreachable, no page"] = failing.outline();
+  // A server that writes no log: the panel says so and reads nothing, since what the log
+  // directory holds is an earlier server's (A8, review A of #629).
+  const off = new Node("div");
+  const askedBefore = asked.length;
+  await api.showDetails(off, { client: PAGE }, { fetch: fetchImpl, slowMs: 2000, log: false });
+  out.panel["the log off on this server"] = {
+    painted: off.outline(),
+    asked: asked.length - askedBefore,
+  };
   return out;
 }
 

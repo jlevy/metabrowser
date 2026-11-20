@@ -675,6 +675,19 @@ def test_a_working_tree_page_is_refused_while_a_revision_is_served(served: TestC
     # nothing, as `metab --api` and curl do, is never refused.
     assert served.get("/api/source/status", headers=on_tree).status_code == 200
     assert served.get("/api/tree").status_code == 200
+    # So are the event log's, which are about the server whichever revision it shows: a
+    # page left behind still reports what it saw, and its Details read the log (A4, review
+    # A of #629). Without a log they answer that, never that the pin changed.
+    report = {"page": "k3v9q2zx", "reports": [], "dropped": 0}
+    for answer in (
+        served.get("/api/event-log", headers=on_tree),
+        served.get("/api/event-log/failures", headers=on_tree),
+        served.post("/api/event-log/client", json=report, headers={**_JSON, **on_tree}),
+    ):
+        assert PIN_CHANGED_HEADER not in answer.headers, answer.text
+        assert answer.status_code in {200, 409}, answer.text
+        assert answer.json().get("code") != "pin_changed", answer.text
+    assert served.get("/api/event-logs", headers=on_tree).status_code == 409
     revision_shell = served.get("/view/").text
     assert 'window.METABROWSER_SOURCE_CHECKOUT={"working_tree": false}' in revision_shell
     assert "MetabrowserSourcePinGuard" in revision_shell

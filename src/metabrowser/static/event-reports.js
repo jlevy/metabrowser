@@ -8,10 +8,13 @@
 // - a request to this server slower than `slow_ms`, when it answers, and one still
 //   pending at `slow_ms`, then again as `never_completed` if the page is left first;
 // - a frame that blocked the main thread for `freeze_ms` or more, with the script the
-//   browser blames for it, where the browser says (Long Animation Frames, else Long Tasks);
-// - a wait the page shows as loading that is still running at `late_ms`, then when it
-//   ends, or as `never_completed` if the page is left first. A wait under `late_ms`
-//   reports nothing.
+//   browser blames for it, where the browser says (Long Animation Frames, else Long Tasks;
+//   WebKit, the macOS app's engine, has neither, so the app reports no freezes);
+// - a wait the page shows as loading that has run `late_ms` while the page was shown, then
+//   when it ends, or as `never_completed` if the page is left first. A wait under
+//   `late_ms` reports nothing. Time the page spent hidden does not count: the page stops
+//   polling while hidden, so a wait would be late for no fault of the work; it is sent as
+//   `hidden_ms`.
 //
 // Every request it sends to /api/ carries the page's ID for it in a header
 // (`x-metabrowser-client`, `<page>-<n>`), which the server's record of the request, and
@@ -90,8 +93,10 @@
     const pending = new Map();
     /** @type {unknown} */
     let sweepTimer = null;
-    /** @type {Set<{name: string, at: number, late: boolean, done: boolean, timer: unknown, detail: Record<string, string | number | boolean | null> | undefined, onLate: ((ms: number) => void) | undefined}>} */
+    /** @typedef {{name: string, at: number, late: boolean, done: boolean, timer: unknown, hiddenMs: number, hiddenSince: number | null, detail: Record<string, string | number | boolean | null> | undefined, onLate: ((ms: number) => void) | undefined}} WaitState */
+    /** @type {Set<WaitState>} */
     const waits = new Set();
+    let hidden = env.hidden?.() ?? false;
 
     /** @param {MetabrowserEventReport} report */
     function enqueue(report) {
@@ -271,30 +276,47 @@
     }
 
     /**
-     * Something the page shows as loading. Silent unless it is still running at
-     * `late_ms`; then it is reported, `onLate` is told, and its end is reported too.
+     * How long *state* has run while the page was shown, at *now*.
      *
-     * @param {string} name
-     * @param {{startedAt?: number, detail?: Record<string, string | number | boolean | null>, onLate?: (ms: number) => void}} [options]
-     * @returns {MetabrowserEventWait}
+     * @param {WaitState} state
+     * @param {number} now
      */
-    function wait(name, options = {}) {
-      const at = options.startedAt ?? env.now();
-      const state = {
-        name,
-        at,
-        late: false,
-        done: false,
-        /** @type {unknown} */
-        timer: null,
-        detail: options.detail,
-        onLate: options.onLate,
-      };
-      waits.add(state);
+    function shownFor(state, now) {
+      return now - state.at - hiddenFor(state, now);
+    }
+
+    /**
+     * How long *state* has been hidden, at *now*.
+     *
+     * @param {WaitState} state
+     * @param {number} now
+     */
+    function hiddenFor(state, now) {
+      return state.hiddenMs + (state.hiddenSince === null ? 0 : now - state.hiddenSince);
+    }
+
+    /**
+     * Run *state*'s late timer for the shown time it has left; none while the page is
+     * hidden, or once it is late or over.
+     *
+     * @param {WaitState} state
+     */
+    function arm(state) {
+      if (state.timer !== null) {
+        env.clearTimeout(state.timer);
+        state.timer = null;
+      }
+      if (state.done || state.late || hidden) {
+        return;
+      }
       state.timer = env.setTimeout(
         () => {
           state.timer = null;
-          if (state.done) {
+          if (state.done || hidden) {
+            return;
+          }
+          if (shownFor(state, env.now()) < settings.late_ms) {
+            arm(state);
             return;
           }
           state.late = true;
@@ -302,10 +324,10 @@
           enqueue({
             type: "wait",
             event: "open",
-            name,
+            name: state.name,
             client: page,
             dur_ms: tenths(age),
-            attrs: waitAttrs(state.detail),
+            attrs: waitAttrs(state),
           });
           try {
             state.onLate?.(age);
@@ -313,8 +335,34 @@
             env.warn?.("event reports: a late wait's handler failed", error);
           }
         },
-        Math.max(0, at + settings.late_ms - env.now()),
+        Math.max(0, settings.late_ms - shownFor(state, env.now())),
       );
+    }
+
+    /**
+     * Something the page shows as loading. Silent unless it has run `late_ms` while the
+     * page was shown; then it is reported, `onLate` is told, and its end is reported too.
+     *
+     * @param {string} name
+     * @param {{startedAt?: number, detail?: Record<string, string | number | boolean | null>, onLate?: (ms: number) => void}} [options]
+     * @returns {MetabrowserEventWait}
+     */
+    function wait(name, options = {}) {
+      const at = options.startedAt ?? env.now();
+      /** @type {WaitState} */
+      const state = {
+        name,
+        at,
+        late: false,
+        done: false,
+        timer: null,
+        hiddenMs: 0,
+        hiddenSince: hidden ? env.now() : null,
+        detail: options.detail,
+        onLate: options.onLate,
+      };
+      waits.add(state);
+      arm(state);
       return Object.freeze({
         startedAt: at,
         isLate: () => state.late,
@@ -337,19 +385,47 @@
               client: page,
               dur_ms: tenths(env.now() - state.at),
               outcome,
-              attrs: waitAttrs(state.detail),
+              attrs: waitAttrs(state),
             });
           }
         },
       });
     }
 
-    /** @param {Record<string, string | number | boolean | null> | undefined} detail */
-    function waitAttrs(detail) {
+    /**
+     * The page was hidden, or shown again: the waits' late timers stop while it is hidden
+     * and go on, for the shown time each has left, when it is shown.
+     *
+     * @param {boolean} nowHidden
+     */
+    function visibility(nowHidden) {
+      if (nowHidden === hidden) {
+        return;
+      }
+      hidden = nowHidden;
+      const now = env.now();
+      for (const state of waits) {
+        if (hidden) {
+          state.hiddenSince = now;
+        } else if (state.hiddenSince !== null) {
+          state.hiddenMs += now - state.hiddenSince;
+          state.hiddenSince = null;
+        }
+        arm(state);
+      }
+    }
+
+    /** @param {WaitState} state */
+    function waitAttrs(state) {
       /** @type {MetabrowserEventReport["attrs"]} */
       const attrs = { threshold_ms: settings.late_ms };
-      if (detail !== undefined) {
-        attrs.detail = detail;
+      const hiddenMs = hiddenFor(state, env.now());
+      if (hiddenMs > 0) {
+        attrs.hidden = true;
+        attrs.hidden_ms = tenths(hiddenMs);
+      }
+      if (state.detail !== undefined) {
+        attrs.detail = state.detail;
       }
       return attrs;
     }
@@ -461,7 +537,7 @@
             client: page,
             dur_ms: tenths(now - state.at),
             outcome: "never_completed",
-            attrs: waitAttrs(state.detail),
+            attrs: waitAttrs(state),
           });
         }
       }
@@ -493,6 +569,7 @@
       started,
       settled,
       wait,
+      visibility,
       blocked,
       earlier,
       leaving,
@@ -733,6 +810,14 @@
   function detailLines(details) {
     /** @type {Array<{heading: string, items: string[]}>} */
     const parts = [];
+    if (details.log === "off") {
+      return [
+        {
+          heading: "The event log is off on this server",
+          items: ["Nothing this server does is recorded, so there is nothing to show here."],
+        },
+      ];
+    }
     if (details.log === "absent") {
       return [{ heading: "The event log is off on this server", items: [] }];
     }
@@ -786,15 +871,54 @@
   }
 
   /**
+   * What the panel says on a server that writes no log.
+   *
+   * @type {MetabrowserEventDetails}
+   */
+  const OFF = Object.freeze({
+    log: "off",
+    running: [],
+    causes: [],
+    failures: 0,
+    since: "",
+    probe: null,
+    mine: [],
+  });
+
+  /** @param {Array<{heading: string, items: string[]}>} parts */
+  function detailSections(parts) {
+    return parts.map((part) =>
+      element("div", "event-log-details-part", [
+        element("p", "event-log-details-heading", [part.heading]),
+        ...(part.items.length === 0
+          ? []
+          : [
+              element(
+                "ul",
+                "event-log-details-items",
+                part.items.map((item) => element("li", "", [item])),
+              ),
+            ]),
+      ]),
+    );
+  }
+
+  /**
    * Fill *panel* with the Details for *query*: a note while the log is read, then its
    * lines and links to the records as JSON. Resolves when painted; an aborted *signal*
    * leaves the panel as it is.
    *
    * @param {HTMLElement} panel
    * @param {MetabrowserEventDetailsQuery} query
-   * @param {{fetch?: typeof fetch, signal?: AbortSignal, slowMs?: number}} [options]
+   * @param {{fetch?: typeof fetch, signal?: AbortSignal, slowMs?: number, log?: boolean}} [options]
+   *   `log` false: this server writes no log, so the panel says so and reads nothing, since
+   *   what a log directory still holds is from an earlier server and not about this.
    */
   async function showDetails(panel, query, options = {}) {
+    if (options.log === false) {
+      panel.replaceChildren(...detailSections(detailLines(OFF)));
+      return;
+    }
     const fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     const routes = detailRoutes(query);
     panel.replaceChildren(element("p", "event-log-details-note", ["Reading the event log…"]));
@@ -818,20 +942,7 @@
       slowMs: options.slowMs ?? window.METABROWSER_SETTINGS?.EVENT_REPORTS?.slow_ms ?? 2000,
       page: query.client,
     });
-    const sections = detailLines(details).map((part) =>
-      element("div", "event-log-details-part", [
-        element("p", "event-log-details-heading", [part.heading]),
-        ...(part.items.length === 0
-          ? []
-          : [
-              element(
-                "ul",
-                "event-log-details-items",
-                part.items.map((item) => element("li", "", [item])),
-              ),
-            ]),
-      ]),
-    );
+    const sections = detailSections(detailLines(details));
     /** @param {string} href @param {string} label */
     const link = (href, label) => {
       const anchor = element("a", "", [label]);
@@ -871,6 +982,16 @@
           body,
         }),
       warn: (...args) => console.warn(...args),
+      hidden: () => document.visibilityState === "hidden",
+    });
+    // A hidden page's waits are not late for being hidden, with or without a log: the late
+    // line the page shows is told by the same timer.
+    document.addEventListener("visibilitychange", () => {
+      const hiddenNow = document.visibilityState === "hidden";
+      reporter.visibility(hiddenNow);
+      if (hiddenNow) {
+        void reporter.flush();
+      }
     });
     if (settings.log) {
       window.fetch = wrapFetch(send, reporter);
@@ -904,12 +1025,15 @@
           // An engine that lists the type and refuses it reports no freezes.
         }
       }
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "hidden") {
+      // A page kept in the back/forward cache is not left: its waits may still end when it
+      // is restored, so only what is queued is sent. One that is unloaded is left.
+      window.addEventListener("pagehide", (event) => {
+        if (/** @type {PageTransitionEvent} */ (event).persisted) {
           void reporter.flush();
+        } else {
+          reporter.leaving();
         }
       });
-      window.addEventListener("pagehide", () => reporter.leaving());
     }
     const slowMs = settings.slow_ms;
     /**
@@ -920,7 +1044,7 @@
     const details = async (panel, query, options) => {
       // What this page has queued is sent first, so its own late waits are in what is read.
       await reporter.flush();
-      return showDetails(panel, query, { ...options, slowMs });
+      return showDetails(panel, query, { ...options, slowMs, log: settings.log });
     };
     mb.eventReports = Object.freeze({
       page: reporter.page,

@@ -950,6 +950,10 @@ PIN_CHANGED_HEADER: Final = "x-metabrowser-pin-changed"
 # hexadecimal, so it can never name a served pin.
 WORKING_TREE_PIN: Final = "working-tree"
 _PIN_EXEMPT_PREFIX: Final = "/api/source/"
+# The event log's routes (event_log_route.py) answer about the server, whichever revision
+# it serves. A page left on an old pin still sends its reports there, the last of them as
+# it is left, and its Details read the log, so neither is refused (A4, review A of #629).
+_PIN_EXEMPT_EVENT_LOG: Final = "/api/event-log"
 # A checkout's Commits tab and a commit's view: answered whichever revision a page names,
 # since they read the checkout's history and its Git directory whichever revision Files
 # shows (`history_git_location` in git/routes.py). The chooser that switches the served
@@ -984,7 +988,7 @@ class SourcePinGuard:
     working tree names :data:`WORKING_TREE_PIN`, since its server can serve a revision
     of the checkout instead, and is refused while one is served. The ``/api/source/``
     routes are exempt: a page learns what is served from the status route and switches
-    through the pin route. So are a checkout's ``/api/git/`` routes, which answer the same
+    through the pin route. So are the event log's, which are about the server. So are a checkout's ``/api/git/`` routes, which answer the same
     whichever of its revisions is served. A mirror's stay guarded: its freshness row, at
     the foot of the pane, offers the reload on every tab. The refusal is
     ``409 pin_changed`` with the served commit, or
@@ -1037,7 +1041,12 @@ def _route_path(scope: dict[str, Any]) -> str:
 
 def _guarded(scope: dict[str, Any]) -> bool:
     path = _route_path(scope)
-    return path.startswith("/api/") and not path.startswith(_PIN_EXEMPT_PREFIX)
+    return (
+        path.startswith("/api/")
+        and not path.startswith(_PIN_EXEMPT_PREFIX)
+        and path != _PIN_EXEMPT_EVENT_LOG
+        and not path.startswith(f"{_PIN_EXEMPT_EVENT_LOG}/")
+    )
 
 
 def _checkout_history(scope: dict[str, Any]) -> bool:

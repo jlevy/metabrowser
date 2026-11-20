@@ -351,6 +351,103 @@ $ node tests/dom/event-reports-session.js
       }
     ]
   },
+  "hiddenTab": {
+    "steps": [
+      {
+        "step": "shown 4 s, then hidden a minute: not late",
+        "queued": [],
+        "late_told": []
+      },
+      {
+        "step": "shown again 5999 ms: 9999 ms shown in all",
+        "queued": [],
+        "late_told": []
+      },
+      {
+        "step": "10 s shown: late, with the minute it was hidden",
+        "queued": [
+          "wait open githubPull:diffSummary k3v9q2zx 70000 ms {\"threshold_ms\":10000,\"hidden\":true,\"hidden_ms\":60000,\"detail\":{\"number\":7}}"
+        ],
+        "late_told": [
+          "told late at 70000 ms"
+        ]
+      },
+      {
+        "step": "it ends a second later",
+        "queued": [
+          "wait end githubPull:diffSummary k3v9q2zx 71000 ms ok {\"threshold_ms\":10000,\"hidden\":true,\"hidden_ms\":60000,\"detail\":{\"number\":7}}"
+        ],
+        "late_told": [
+          "told late at 70000 ms"
+        ]
+      },
+      {
+        "step": "a wait begun while hidden, 30 s on: not late",
+        "queued": [],
+        "late_told": [
+          "told late at 70000 ms"
+        ]
+      },
+      {
+        "step": "shown for the late threshold: late",
+        "queued": [
+          "wait open source:refresh k3v9q2zx 40000 ms {\"threshold_ms\":10000,\"hidden\":true,\"hidden_ms\":30000}"
+        ],
+        "late_told": [
+          "told late at 70000 ms"
+        ]
+      },
+      {
+        "step": "hidden 5 s more, then left: never completed, hidden 35 s",
+        "queued": [],
+        "late_told": [
+          "told late at 70000 ms"
+        ]
+      }
+    ],
+    "sent": [
+      {
+        "to": "/api/event-log/client",
+        "at_ms": 71000,
+        "page": "k3v9q2zx",
+        "path": "/pull/7",
+        "dropped": 0,
+        "reports": [
+          "wait open githubPull:diffSummary k3v9q2zx 70000 ms {\"threshold_ms\":10000,\"hidden\":true,\"hidden_ms\":60000,\"detail\":{\"number\":7}}"
+        ]
+      },
+      {
+        "to": "/api/event-log/client",
+        "at_ms": 72000,
+        "page": "k3v9q2zx",
+        "path": "/pull/7",
+        "dropped": 0,
+        "reports": [
+          "wait end githubPull:diffSummary k3v9q2zx 71000 ms ok {\"threshold_ms\":10000,\"hidden\":true,\"hidden_ms\":60000,\"detail\":{\"number\":7}}"
+        ]
+      },
+      {
+        "to": "/api/event-log/client",
+        "at_ms": 112000,
+        "page": "k3v9q2zx",
+        "path": "/pull/7",
+        "dropped": 0,
+        "reports": [
+          "wait open source:refresh k3v9q2zx 40000 ms {\"threshold_ms\":10000,\"hidden\":true,\"hidden_ms\":30000}"
+        ]
+      },
+      {
+        "to": "/api/event-log/client",
+        "at_ms": 116000,
+        "page": "k3v9q2zx",
+        "path": "/pull/7",
+        "dropped": 0,
+        "reports": [
+          "wait end source:refresh k3v9q2zx 45000 ms never_completed {\"threshold_ms\":10000,\"hidden\":true,\"hidden_ms\":35000}"
+        ]
+      }
+    ]
+  },
   "blockedAndEarlier": [
     {
       "to": "/api/event-log/client",
@@ -422,13 +519,21 @@ $ node tests/dom/event-reports-session.js
         "keepalive": true,
         "credentials": "same-origin",
         "type": "application/json"
+      },
+      {
+        "method": "POST",
+        "keepalive": true,
+        "credentials": "same-origin",
+        "type": "application/json"
       }
     ],
     "what was sent": [
       "fetch end /api/tree <page> 2500 ms ok {\"threshold_ms\":2000,\"detail\":{\"source\":\"resource_timing\"}}",
       "wait open githubPull:diffSummary <page> 10000 ms {\"threshold_ms\":10000,\"detail\":{\"number\":7}}",
       "render end blocked <page> 900 ms ok {\"threshold_ms\":500,\"detail\":{\"at_ms\":50}}",
-      "wait end githubPull:diffSummary <page> 10000 ms never_completed {\"threshold_ms\":10000,\"detail\":{\"number\":7}}"
+      "wait end githubPull:diffSummary <page> 10000 ms ok {\"threshold_ms\":10000,\"detail\":{\"number\":7}}",
+      "wait open githubPull:refresh <page> 10000 ms {\"threshold_ms\":10000}",
+      "wait end githubPull:refresh <page> 10000 ms never_completed {\"threshold_ms\":10000}"
     ],
     "with no log, window.fetch is the page's own": true,
     "with no log, a wait still says it is late": true,
@@ -536,7 +641,14 @@ $ node tests/dom/event-reports-session.js
       "the routes unreachable, no page": [
         "The event log could not be read",
         "links: Failures as JSON -> /api/event-log/failures (_blank, noopener)"
-      ]
+      ],
+      "the log off on this server": {
+        "painted": [
+          "The event log is off on this server",
+          "  Nothing this server does is recorded, so there is nothing to show here."
+        ],
+        "asked": 0
+      }
     }
   },
   "serverTiming": {

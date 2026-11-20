@@ -113,18 +113,25 @@ Each report is a `browser` record named for its type: `fetch`, `render`, or `wai
 | --- | --- | --- |
 | `fetch … open` | A request to this server still pending | `SLOW_MS` |
 | `fetch … end` | A request that took that long or longer, with its status, its `srv` Server-Timing, and `ok`, `failed`, or `cancelled`; or `never_completed` for one reported open that the page left first | `SLOW_MS` |
-| `render blocked` | A frame that blocked the page, with the function, source, and invoker the browser blamed | `FREEZE_MS` |
-| `wait … open` | Something the page shows as loading, still running: the pull request page’s Diff summary and its refresh, and a mirror’s refresh | `WAIT_LATE_MS` |
+| `render blocked` | A frame that blocked the page, with the function, source, and invoker the browser blamed, where it reports long animation frames or long tasks, as Chrome does; WebKit, the macOS app’s engine, reports neither, so the app reports no freezes | `FREEZE_MS` |
+| `wait … open` | Something the page shows as loading, still running after that long shown: the pull request page’s Diff summary and its refresh, and a mirror’s refresh | `WAIT_LATE_MS` |
 | `wait … end` | That wait’s end, once it was reported: `ok`, `failed`, `cancelled`, or `never_completed` when the page was left first | `WAIT_LATE_MS` |
 
 The thresholds are constants in `event_log_reports.py`, with the measurement that set
 each beside it; the page reads them from `METABROWSER_SETTINGS.EVENT_REPORTS`. A wait
 that ends before its threshold, and a request answered sooner, report nothing.
+A wait’s threshold counts only the time the page was shown: a hidden page stops polling,
+so its waits run long for no fault of the work behind them.
+A wait that spent some of its time hidden says how long, as `hidden_ms`. A page kept in
+the browser’s back/forward cache is not left, so its waits go on when it is restored.
 Reports are gathered for `FLUSH_MS` and sent in bodies of at most `MAX_REPORTS`, with
 `keepalive`, so the last leave with the page; a page sends at most
 `PAGE_REPORTS_PER_MINUTE`, and the server takes at most `RATE_REPORTS` in
 `RATE_WINDOW_S` from all pages, marking what it refused.
-A server that writes no log gets no header and no report.
+A server that writes no log gets no header and no report, and its Details say the log is
+off rather than show what an earlier server wrote.
+The event log’s routes are exempt from a pinned revision’s guard, so a page left on a
+revision the server no longer serves still reports and reads the log.
 The reporter is an on-demand bundle the shell loads after the first usable tree;
 requests answered before it loaded are read from Resource Timing.
 
@@ -197,6 +204,9 @@ metab . --api '/api/event-log?cause=connect_timeout&event=end'
 The summary groups the failures since `since` (an hour ago by default) by cause, with
 how many, which work, the addresses that failed, the latest message, a `details` link to
 each example’s records, and the latest probe that failed.
+A page’s own reports of failure, such as a wait that never completed, are listed apart
+under `page_reports`, not counted as causes: they are the page’s view of a failure the
+server’s records name, so the cause leads.
 When the addresses vary between failures, DNS is answering a GitHub name with addresses
 the network reaches only some of the time.
 

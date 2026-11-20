@@ -27,6 +27,9 @@ from tests.required_tools import require_node
 ROOT = Path(__file__).resolve().parents[1]
 SESSION = ROOT / "tests" / "dom" / "event-reports-session.js"
 PAGE = "k3v9q2zx"
+# The session ran in 0.47 s on a Mac (2026-11-19); the bound leaves room for a loaded CI
+# runner, under the suite's own timeout (tests/test_suite_gates.py, MAX_INNER_BOUND_S).
+SESSION_TIMEOUT_S = 30
 
 
 def _node(*args: str) -> Any:
@@ -35,7 +38,7 @@ def _node(*args: str) -> Any:
         ["node", str(SESSION), *args],
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=SESSION_TIMEOUT_S,
         check=False,
         cwd=ROOT,
     )
@@ -79,7 +82,17 @@ def test_every_body_the_page_sends_is_accepted_whole(
         "fetch /api/plugin/github/pull",
         "wait githubPull:diffSummary",
         "render blocked",
+        "wait source:refresh",
     } <= names
+    # A wait the page spent some of hidden says how long, which the route keeps.
+    hidden = [
+        record["attrs"]
+        for record in _browser_records(sink)
+        if record["name"] == "wait source:refresh" and record.get("outcome") == "never_completed"
+    ]
+    assert {"threshold_ms": 10000.0, "hidden": True, "hidden_ms": 35000.0, "path": "/pull/7"} in (
+        hidden
+    )
 
 
 def _browser_records(log: event_log.EventLog) -> list[dict[str, Any]]:
@@ -141,8 +154,11 @@ def test_a_refresh_job_that_never_ends_is_in_the_details_with_the_wait_it_left_u
     assert any(
         item.startswith("gh api · timeout") for item in lines["connect timeout: 1 in the window"]
     )
-    # The page's wait is a failure in the window, and the page's own unfinished work.
-    assert "never completed: 1 in the window" in lines
+    # The page's wait is the page's own unfinished work, not a cause of its own: the cause
+    # is the gh call's (A2, review A of #629).
+    assert list(lines)[1] == "connect timeout: 1 in the window"
+    assert not any(heading.startswith("never completed") for heading in lines)
+    assert failures["page_reports"]["outcomes"] == {"never_completed": 1}
     mine = lines["This page’s slow or unfinished work"]
     assert mine[0].startswith("wait githubPull:diffSummary · never_completed · 61.2 s")
     assert any(item.startswith("gh api · timeout · connect timeout") for item in mine)

@@ -18,7 +18,7 @@ before: >-
   install -m 600
   "$TRYSCRIPT_TEST_DIR/../fixtures/event-log-client/events-20261119T214000Z-p6161-000.jsonl"
   state/events/ &&
-  touch -t 202611194123.00 state/events/events-20261119T214000Z-p6161-000.jsonl
+  touch -t 202611192141.30 state/events/events-20261119T214000Z-p6161-000.jsonl
 ---
 # Golden tests: what a page reports to the event log, through `--api --data`
 
@@ -286,5 +286,30 @@ $ grep -E '^  "matched"|^      "(event|name|client|outcome)": "[^e]' request.txt
       "event": "start",
       "name": "checkout._pull_job",
       "client": "k3v9q2zx-3",
+? 0
+```
+
+## Test: the failures lead with the server’s cause, and list the page’s reports apart
+
+In the same segment the page’s wait and its comparison request never completed, and the
+`gh api` call under the refresh timed out connecting.
+That is one failure, seen from two sides: `/api/event-log/failures` counts the server’s
+record by its cause, and lists the page’s two reports apart, under `page_reports`, each
+with a link that finds it by its segment, kind, client, and name.
+
+```console
+$ METABROWSER_STATE_DIR=$PWD/state metab root --api '/api/event-log/failures?since=2026-11-19T21:00:00Z' > failures.txt
+? 0
+```
+
+```console
+$ grep -E '^  "failures"|^      "cause"|^    "count"|^      "never_completed"|"details"' failures.txt
+  "failures": 1,
+      "cause": "connect_timeout",
+          "details": "/api/event-log?file=events-20261119T214000Z-p6161-000.jsonl&span=7"
+    "count": 2,
+      "never_completed": 2
+        "details": "/api/event-log?file=events-20261119T214000Z-p6161-000.jsonl&kind=browser&client=k3v9q2zx-9&name=fetch+GET+%2Fapi%2Fplugin%2Fgithub%2Fpull-comparison"
+        "details": "/api/event-log?file=events-20261119T214000Z-p6161-000.jsonl&kind=browser&client=k3v9q2zx&name=wait+githubPull%3AdiffSummary"
 ? 0
 ```
