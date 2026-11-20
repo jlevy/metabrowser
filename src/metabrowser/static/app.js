@@ -3841,6 +3841,64 @@ async function toggleTreeFolder(row, options) {
 // Container expansion mirrors lazy folder expansion: fetch children on
 // first open, then toggle visibility. Failures state themselves in the
 // group rather than leaving an empty box.
+// A container's children change with its file, as a database's tables do: once read,
+// a change reads them again, or on the next expand; a row gone stops watching.
+var containerWatches = new WeakMap();
+function watchContainer(row, children) {
+  if (!containerWatches.has(row)) {
+    containerWatches.set(
+      row,
+      window.metabrowser.watchFile?.(row.dataset.path || "", {
+        onChange() {
+          if (!row.isConnected) {
+            containerWatches.get(row)?.();
+          } else if (row.getAttribute("aria-expanded") === "true") {
+            void loadContainerChildren(row, children).then(synchronizeTreeNow);
+          } else {
+            delete children.dataset.loaded;
+          }
+        },
+      }),
+    );
+  }
+}
+
+async function loadContainerChildren(row, children) {
+  // A refresh keeps the children drawn until their replacement arrives.
+  children.innerHTML ||=
+    '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-label="Loading">' +
+    '<span class="spinner spinner-sm" aria-hidden="true"></span></div>';
+  var level = Number(row.dataset.treeLevel || "1") + 1;
+  var childrenStartedAt = Date.now();
+  try {
+    var payload = await window.metabrowser.fetchPluginData(
+      row.dataset.containerPlugin,
+      row.dataset.containerChildren,
+      { path: row.dataset.path || "" },
+    );
+    var rows = Array.isArray(payload?.children) ? payload.children : [];
+    children.innerHTML = rows.length
+      ? renderContainerChildren(rows, { level: level })
+      : '<div class="tree-empty-note">No entries in this file.</div>';
+    children.dataset.loaded = "1";
+    watchContainer(row, children);
+  } catch (error) {
+    console.error(
+      "metabrowser tree: container children failed",
+      {
+        path: row.dataset.path,
+        plugin: row.dataset.containerPlugin,
+        hook: row.dataset.containerChildren,
+        elapsedMs: Date.now() - childrenStartedAt,
+      },
+      error,
+    );
+    children.innerHTML =
+      '<div class="tree-empty-note nav-error">Could not load these entries.</div>';
+  }
+  applyTreeFilters();
+}
+
 async function toggleTreeContainer(row) {
   var children = /** @type {HTMLElement | null} */ (row.nextElementSibling);
   if (!children?.classList.contains("tree-children")) {
@@ -3860,37 +3918,7 @@ async function toggleTreeContainer(row) {
   row.classList.remove("collapsed");
   children.classList.remove("tree-children-collapsed");
   if (!children.dataset.loaded) {
-    children.innerHTML =
-      '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-label="Loading">' +
-      '<span class="spinner spinner-sm" aria-hidden="true"></span></div>';
-    var level = Number(row.dataset.treeLevel || "1") + 1;
-    var childrenStartedAt = Date.now();
-    try {
-      var payload = await window.metabrowser.fetchPluginData(
-        row.dataset.containerPlugin,
-        row.dataset.containerChildren,
-        { path: row.dataset.path || "" },
-      );
-      var rows = Array.isArray(payload?.children) ? payload.children : [];
-      children.innerHTML = rows.length
-        ? renderContainerChildren(rows, { level: level })
-        : '<div class="tree-empty-note">No entries in this file.</div>';
-      children.dataset.loaded = "1";
-    } catch (error) {
-      console.error(
-        "metabrowser tree: container children failed",
-        {
-          path: row.dataset.path,
-          plugin: row.dataset.containerPlugin,
-          hook: row.dataset.containerChildren,
-          elapsedMs: Date.now() - childrenStartedAt,
-        },
-        error,
-      );
-      children.innerHTML =
-        '<div class="tree-empty-note nav-error">Could not load these entries.</div>';
-    }
-    applyTreeFilters();
+    await loadContainerChildren(row, children);
   }
   synchronizeTreeNow();
   return row;
@@ -7669,14 +7697,7 @@ function flagRunEndedBadge() {
 }
 
 // ── FileStore + /api/events EventSource ────────────────────────
-//
-// Single source of truth for live tree decoration. Populated from
-// /api/events:
-//   1. fs.snapshot (id=0 sentinel) — initial snapshot at the
-//      requested scope.
-//   2. fs.change ops — walker / watcher updates; each upsert
-//      replaces an FsEntry in the store and triggers
-//      applyCellPatch() to update the rendered tree row.
+// arch-live-delivery.md, "The Browser's Stores" and "Recovery".
 var fileStore = new Map(); // path -> FsEntry
 var fileStoreSubscribers = [];
 var inventoryEventSource = null;
@@ -8969,9 +8990,7 @@ function _createInventoryEventSource() {
   });
   inventoryEventSource.onopen = () => {
     catalogFeedCanStart = true;
-    // Do not erase accumulated failure state as soon as a socket opens. A
-    // connection that survives this interval is healthy enough to reset the
-    // exponential backoff; repeated overflow/resync cycles keep backing off.
+    // The backoff resets only once the connection has lasted ("Recovery").
     _scheduleEsStableReset();
     // The first open starts the bulk catalog fetch after subscription;
     // later opens refetch to cover deltas lost while disconnected.
@@ -8983,10 +9002,6 @@ function _createInventoryEventSource() {
     _cancelEsStableReset();
     _esConsecutiveErrors += 1;
     if (_esConsecutiveErrors >= _ES_MAX_CONSECUTIVE_ERRORS) {
-      // Circuit breaker: too many consecutive errors without a
-      // successful open or message. Close and recreate with
-      // exponential backoff. A fresh connection gets a snapshot
-      // via the existing fs.snapshot/resync flow.
       _scheduleInventoryReconnect();
     }
   };
