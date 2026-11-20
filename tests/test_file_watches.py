@@ -282,6 +282,7 @@ def test_an_inventory_change_at_a_watched_path_or_its_sidecar_polls_soon() -> No
     assert _touches("app.db-wal", "app.db")
     assert _touches("app.db-journal", "app.db/users")
     assert not _touches("other.csv", "people.csv")
+    assert not _touches("", "people.csv")
     assert not _touches("data/other.csv", "data/people.csv")
 
 
@@ -304,10 +305,13 @@ def test_the_poll_loop_runs_on_a_nudge_and_spaces_its_polls() -> None:
         await watches.register("c", "a.csv")
         task = asyncio.create_task(watches.run())
         try:
-            watches.nudge(["a.csv"])
-            await asyncio.sleep(0.02)
-            watches.nudge(["a.csv-wal"])
-            await asyncio.sleep(0.2)
+            async with asyncio.timeout(10):
+                watches.nudge(["a.csv"])
+                while len(polls) < 2:
+                    await asyncio.sleep(0.005)
+                watches.nudge(["a.csv-wal"])
+                while len(polls) < 3:
+                    await asyncio.sleep(0.005)
         finally:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)

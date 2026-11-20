@@ -133,14 +133,16 @@ async def _stat_generation(path: str) -> str | None:
 def _touches(dirty: str, watched: str) -> bool:
     """Whether an inventory change at *dirty* may change what *watched* names.
 
-    True for the path itself, an ancestor of it (a folder whose entries changed, or the
-    file a container address names), and a sidecar of either: a name with a ``-suffix``
-    beside it, as SQLite's ``-wal``, ``-shm``, and ``-journal`` are. A false positive
-    costs one poll, which finds the generation unchanged.
+    True for the path itself, an ancestor of it (the file a container address names, or
+    a folder), and a sidecar of either: a name with a ``-suffix`` beside it, as SQLite's
+    ``-wal``, ``-shm``, and ``-journal`` are. Not for the served root, which the
+    inventory marks changed with every write anywhere; a watched file's own change marks
+    the file itself. A false positive costs one poll, which finds the generation
+    unchanged.
     """
 
     for candidate in (dirty, dirty.rsplit("-", 1)[0]):
-        if candidate == watched or watched.startswith(candidate + "/") or not candidate:
+        if candidate and (candidate == watched or watched.startswith(candidate + "/")):
             return True
     return False
 
