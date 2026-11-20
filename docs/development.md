@@ -571,31 +571,45 @@ one wrote.
 
 ### Linear
 
-Beads mirror to the Linear project through tbd’s integration
-(`tbd shortcut setup-linear`), and a bead reaches Linear only when it carries the
-`linear` label, open or closed.
-The selection lives in `.tbd/config.yml` under `integrations.linear.policy`. A label
-rather than a kind or spec rule, because this repository merges dozens of pull requests
-a day across thousands of beads: on 2026-11-20 every open bead would have been 576
-Linear issues, and most beads are review findings and steps no one asks about in Linear.
+Linear shows the project’s efforts, and tbd holds the work inside them.
+An effort is a top-level epic: a feature, a body of improvement, or a class of defects
+someone would ask about in a status meeting.
+The board should hold a few dozen of them; the hundreds of beads beneath them (tasks,
+bugs, review findings, single pull requests) stay in tbd.
+A per-pull-request mapping was tried first and left 205 linked issues on 2026-11-20, too
+many to read as a board.
 
-The unit on the board is the unit of work that merges:
+A bead reaches Linear only when it carries the `linear` label, open or closed
+(`integrations.linear.policy` in `.tbd/config.yml`). It also carries one type label,
+`Feature`, `Improvement`, or `Bug`, the names of the workspace’s Linear labels, so the
+board can be filtered by type.
+tbd does not copy the type label yet: give the Linear issue the same label by hand.
+`labels.mirror: verbatim` would copy it, but it also copies `linear` and every other
+bead label, which Linear does not have and tbd may not create, so every sync retries
+them all and goes over tbd’s 40-update guard (2026-11-20; jlevy/tbd#342 asks for a kind
+or label mapping).
 
-- **A native GitHub stack** is one issue: the bead every layer names, or a bead created
-  for the stack when the layers name different ones.
-- **A standalone pull request** is its title’s bead.
-  Several pull requests that close one bead share its issue.
-- **The epic or feature a unit belongs to** gets the label too, so the unit nests under
-  it. Process beads, such as one coordinating a landing, do not.
+**Keep the structure as you work:**
 
-When opening a pull request or stack, label its unit bead (`tbd label add <id> linear`)
-and record the pull request on it (`tbd ref add <id> <pr-url> --kind pr`). A pull
-request with no bead gets one, so nothing merges without an issue.
-`tbd integration sync --push --bead <id>` creates the issue; after that, a full
-`tbd integration sync` reconciles linked pairs in both directions, and closing the bead
-moves the issue to Done.
-Never run `--push` without `--bead` for a bead that is already linked: it overwrites
-Linear-side edits that a full sync would merge.
+- **Every bead in an effort is a descendant of its epic.** Create a bead with
+  `--parent`, and move a stray one under the epic it belongs to.
+  A one-off fix that belongs to no effort may stay unparented; it has no Linear issue.
+- **A new effort is a new top-level epic** with `linear` and a type label, and, when it
+  has one, its plan spec (`--spec`). Give it an issue with
+  `tbd integration sync --push --bead <epic>`, then set the issue’s type label.
+- **Record each pull request or stack on its epic** as well as on its bead:
+  `tbd ref add <epic> <pr-url> --kind pr`. One epic can carry many pull requests and
+  stacks; a pull request need not map to exactly one issue.
+- **An epic is `in_progress` while anything under it is**: a claimed bead, an open pull
+  request, or a session working on it.
+  When you start work, set the epic’s status too
+  (`tbd update <epic> --status in_progress`); when its last active work lands, set it
+  back to `open`, or close it when the effort is done.
+- **Run `tbd sync`.** It reconciles linked issues in both directions
+  (`integrations.on_tbd_sync`), so status, titles, and descriptions follow the beads.
+
+Never run `tbd integration sync --push` without `--bead` for a bead that is already
+linked: it overwrites Linear-side edits that a full sync would merge.
 
 ## Shared Working Tree
 

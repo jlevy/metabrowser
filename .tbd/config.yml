@@ -150,7 +150,7 @@ docs_cache:
     - .tbd/docs/shortcuts/system
     - .tbd/docs/shortcuts/standard
 integrations:
-  on_tbd_sync: off
+  on_tbd_sync: guarded
   linear:
     target:
       team_key: OS
@@ -165,8 +165,8 @@ integrations:
     enabled: true
     policy:
       # A bead reaches Linear only when it carries the `linear` label, open or
-      # closed: one per GitHub stack, one per standalone PR's bead, and the
-      # epics and features they nest under. See docs/development.md#linear.
+      # closed: the project's top-level efforts (epics), each with a Feature,
+      # Improvement, or Bug label. See docs/development.md#linear.
       outbound:
         kinds: []
         statuses:

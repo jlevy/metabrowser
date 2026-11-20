@@ -176,9 +176,9 @@ first principles that it is necessary.
 Keep changes focused and preserve unrelated work.
 Before handoff: review the diff, run `make verify`, update and close the relevant tbd
 issues, run `tbd sync`, commit, push, open or update the pull request, and watch CI to
-completion. Give the pull request or stack its Linear issue as
-[Linear](docs/development.md#linear) describes: label its unit bead `linear` and record
-the pull request on it.
+completion. Keep Linear current as [Linear](docs/development.md#linear) describes: the
+work’s bead sits under its effort epic, the pull request is recorded on that epic, and
+the epic is `in_progress` while the work is open.
 
 Merge into `main` by `main`’s state.
 `ci-ok` cannot see a pull request whose run went green before `main` turned red, or a
