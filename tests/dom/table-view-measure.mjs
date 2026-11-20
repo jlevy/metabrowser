@@ -133,7 +133,8 @@ try {
         }
         steps = await chrome.evaluate("window.__tableWindow");
       }
-      (results[file] ||= []).push({
+      results[file] ??= [];
+      results[file].push({
         draw_ms: Math.round(draw),
         drawn_rows: await chrome.evaluate(
           "document.querySelectorAll('.table-view tbody tr:not(.table-spacer)').length",
