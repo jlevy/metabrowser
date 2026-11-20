@@ -44,7 +44,7 @@ globalThis.window = {
     for (const last of [envelope.last_refresh, { ...envelope.last_refresh, message: null }]) {
       const supplied = { ...envelope, last_refresh: last };
       const catalogFailure = catalog.refreshFailure(supplied, (at) => at);
-      const fileFailure = tree.fileListFailure(supplied, (at) => at);
+      const fileFailure = tree.fileListFailure(supplied, (at) => at, String);
       const detail = page.describePull(
         { ...pages.current.body, last_refresh: last },
         {

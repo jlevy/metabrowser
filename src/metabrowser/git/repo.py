@@ -64,6 +64,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from metabrowser import event_log
 from metabrowser.git.process import (
     GitCommandError,
     GitError,
@@ -354,7 +355,7 @@ def _rediscover_in_background(location: GitLocation) -> None:
     async def run() -> None:
         await _discover_and_keep(location, entry)
 
-    task = asyncio.get_running_loop().create_task(run())
+    task = asyncio.get_running_loop().create_task(event_log.job(run(), "repo.rediscover"))
     _REFRESHING[key] = task
 
     def done(finished: asyncio.Task[None]) -> None:

@@ -89,8 +89,10 @@ async function main() {
   const tree = await import(pathToFileURL(treePath).href);
   const formatTime = (iso) => iso;
   const describe = (envelope) => {
-    const model = tree.describeFileList(envelope);
-    const failure = tree.fileListFailure(envelope, formatTime);
+    const model = tree.describeFileList(envelope, (count) => count.toLocaleString("en-US"));
+    const failure = tree.fileListFailure(envelope, formatTime, (count) =>
+      count.toLocaleString("en-US"),
+    );
     return { ...model, failure: model.failure?.outcome ?? null, says: failure?.text ?? null };
   };
   const stories = {};
@@ -265,6 +267,7 @@ async function main() {
       asking,
       error: null,
       formatTime,
+      formatCount: (count) => count.toLocaleString("en-US"),
     });
     return {
       line: model.line,
@@ -396,6 +399,7 @@ async function controllerStory(tree) {
       now: () => Date.parse("2026-09-17T12:00:30Z"),
       isVisible: () => visible,
       formatTime: (iso) => iso,
+      formatCount: (count) => count.toLocaleString("en-US"),
       render: (next) => {
         model = next;
       },

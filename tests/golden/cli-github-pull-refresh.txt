@@ -388,7 +388,7 @@ store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refresh failed: gh could not reach api.github.com (network_error))
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader; the refresh failed: GitHub could not be reached because api.github.com did not resolve (DNS) (network_error))
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
@@ -947,7 +947,7 @@ store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
-pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: gh could not reach api.github.com (network_error); the pin is the default branch)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub could not be reached because the connection to api.github.com timed out (network_error); the pin is the default branch)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---

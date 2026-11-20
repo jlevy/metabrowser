@@ -16,11 +16,11 @@ text, which is only ever logged, into a typed state a user can act on.
 
 from __future__ import annotations
 
-import re
 from typing import Final, Literal
 
 from metabrowser.cache.providers import provider_credential_hint, provider_git_config
 from metabrowser.git.wire import is_full_revision
+from metabrowser.network_cause import NetworkCause, classify
 
 # Every refspec a store fetches. A branch is mirrored under the remote-tracking
 # namespace so no local branch is invented; a tag keeps its own name.
@@ -114,93 +114,30 @@ type RemoteFailureState = Literal[
     "too_large",
 ]
 
-# Git runs with LC_ALL=C, so these are its and curl's untranslated messages. The samples
-# in tests/test_cache_origin.py were captured 2026-09-23 from Git 2.50.1 (Homebrew, curl
-# with OpenSSL) against github.com, an unresolvable host, a closed port, badssl.com's
-# certificate failures, a stalled server, CONNECT proxies that reset, truncate, or
-# demand authentication, and HTTP servers answering 429, 500, and 503. Two reported
-# forms the machine could not produce are included and marked there: OpenSSL on Linux
-# reports a reset as ``SSL_ERROR_SYSCALL, errno 104``, and HTTP/2 as curl 92.
-# Order matters, because one failure prints several lines: a low-speed abort also
-# prints ``early EOF``, so a timeout is decided first; an HTTP status outranks the
-# connection it arrived on; and an interrupted connection outranks the TLS layer it was
-# reported through. Quoted text, which is where Git puts the URL, is removed before
-# matching, so a repository named ``tls-notes`` stays not found.
-_QUOTED = re.compile(r"'[^'\n]*'")
-_SERVER_ERROR = re.compile(r"returned error: 5\d\d\b")
-_PATTERNS: Final[tuple[tuple[RemoteFailureState, tuple[str, ...]], ...]] = (
-    (
-        "timed_out",
-        (
-            "operation too slow",
-            "timed out",
-            "connection timeout",
-            "timeout was reached",
-            "curl 28 ",
-        ),
-    ),
-    (
-        "proxy_auth_required",
-        ("response 407", "received http code 407", "returned error: 407"),
-    ),
-    ("rate_limited", ("returned error: 429",)),
-    (
-        "connection_interrupted",
-        (
-            "connection reset",
-            "ssl_error_syscall",
-            "unexpected eof while reading",
-            "transferred a partial file",
-            "transfer closed with outstanding read data",
-            "curl 18 ",
-            "curl 56 ",
-            "curl 92 ",
-            "was not closed cleanly",
-            "unexpected disconnect",
-            "early eof",
-            "the remote end hung up unexpectedly",
-        ),
-    ),
-    (
-        "tls_failed",
-        (
-            "ssl certificate problem",
-            "ssl: no alternative certificate",
-            "ssl: certificate subject name",
-            "ssl connect error",
-            "tls connect error",
-            "gnutls_handshake",
-            "server certificate verification failed",
-            "certificate verify failed",
-            "schannel",
-        ),
-    ),
-    (
-        "network_unreachable",
-        (
-            "could not resolve host",
-            "could not resolve proxy",
-            "couldn't connect to server",
-            "failed to connect",
-            "network is unreachable",
-            "connection refused",
-            "no route to host",
-        ),
-    ),
-    (
-        "not_found_or_private",
-        (
-            "repository not found",
-            "not found",
-            "could not read username",
-            "could not read password",
-            "authentication failed",
-            "returned error: 401",
-            "returned error: 403",
-            "returned error: 404",
-        ),
-    ),
-)
+# What each cause of a failed clone or fetch means to do, as the states above say it. The
+# cause is read from Git's (curl's) error text by the classifier gh shares
+# (metabrowser.network_cause.classify), so the event log and the app name a failure the
+# same way whichever tool reported it; the samples in tests/test_cache_origin.py, captured
+# 2026-09-23 from Git 2.50.1 with LC_ALL=C, pin each text to its state. A cause Git does
+# not report (``no_answer``, ``not_signed_in``) has no state here.
+_STATE_OF_CAUSE: Final[dict[NetworkCause, RemoteFailureState]] = {
+    "connect_timeout": "timed_out",
+    "stalled": "timed_out",
+    "no_answer": "timed_out",
+    "proxy_auth_required": "proxy_auth_required",
+    "rate_limited": "rate_limited",
+    "server_error": "server_error",
+    "connection_reset": "connection_interrupted",
+    "tls_failed": "tls_failed",
+    "proxy_failed": "network_unreachable",
+    "dns_failed": "network_unreachable",
+    "connect_refused": "network_unreachable",
+    "network_unreachable": "network_unreachable",
+    "connect_failed": "network_unreachable",
+    "auth_refused": "not_found_or_private",
+    "forbidden": "not_found_or_private",
+    "not_found": "not_found_or_private",
+}
 
 # ``not_found_or_private`` makes no claim about credentials. The origin answers the same
 # way for a repository that does not exist, one read with no credentials, and one the
@@ -371,13 +308,8 @@ def remote_tracking_ref(head_ref: str | None) -> str | None:
 def classify_remote_failure(stderr_summary: str) -> RemoteFailureState | None:
     """The typed state Git's error text describes, or ``None`` when none matches."""
 
-    text = _QUOTED.sub("''", stderr_summary).lower()
-    for state, needles in _PATTERNS:
-        if any(needle in text for needle in needles):
-            return state
-        if state == "rate_limited" and _SERVER_ERROR.search(text):
-            return "server_error"
-    return None
+    cause = classify(stderr_summary)
+    return None if cause is None else _STATE_OF_CAUSE.get(cause)
 
 
 def describe_remote_failure(state: RemoteFailureState, source_url: str, *, detail: str = "") -> str:

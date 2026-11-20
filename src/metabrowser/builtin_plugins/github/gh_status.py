@@ -50,6 +50,7 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, replace
 from typing import Any, Final, Literal
 
+from metabrowser import event_log
 from metabrowser.builtin_plugins.github.gh import (
     ENVIRONMENT_TOKENS,
     GH_HOSTNAME,
@@ -385,7 +386,7 @@ async def _once[T](key: _FlightKey, run: Callable[[], Coroutine[Any, Any, T]]) -
     tasks = _in_flight.setdefault(loop, {})
     task = tasks.get(key)
     if task is None or task.done():
-        task = loop.create_task(run())
+        task = loop.create_task(event_log.job(run(), event_log.job_name(run)))
         tasks[key] = task
     try:
         return await asyncio.shield(task)

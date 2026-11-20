@@ -24,7 +24,7 @@
 
 /* The section's status and its empty state are the main view's secondary text, at the body
    size of the table beside them (docs/design-system.md, "Type Scale"). */
-.file-type-summary-status,
+.file-type-summary-status:not(.notice),
 .file-type-summary-empty {
   color: var(--muted);
   font-size: var(--body-font-size);
@@ -82,7 +82,7 @@
   flex: none;
   width: var(--mb-distribution-track-height);
   height: var(--mb-distribution-track-height);
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   background: var(--mb-distribution-color);
   transition: filter var(--viz-hover-grow-duration) var(--viz-hover-grow-ease);
 }
@@ -154,8 +154,8 @@
 }
 
 .file-type-summary-disclosure:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Details is the same control as an "N more" row's, outside the table: the
