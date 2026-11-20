@@ -116,7 +116,7 @@ def test_short_rows_are_absent_long_rows_go_to_extra(client: TestClient, tmp_pat
     # A blank line is not a row, so the long row is the second.
     assert _keys(body) == ["@1", "@2", "@3"]
     assert _cells(body) == [{"a": 1}, {"a": 2, "b": 3, "extra": ["4", "5"]}, {"a": 6, "b": None}]
-    status, schema = _get(client, "schema", "a.csv")
+    _status, schema = _get(client, "schema", "a.csv")
     extra = schema["fields"][-1]
     assert (extra["name"], extra["list"], extra["sortable"], extra["filterable"]) == (
         "extra",
@@ -134,7 +134,7 @@ def test_types_are_inferred_and_contradictions_shown(client: TestClient, tmp_pat
     ]
     lines.append("x,1e999,maybe,2020-02-30,later,8,99999999999999999999")
     (tmp_path / "a.csv").write_text("\n".join(lines) + "\n")
-    status, schema = _get(client, "schema", "a.csv")
+    _status, schema = _get(client, "schema", "a.csv")
     assert [f["type"] for f in schema["fields"]] == [
         "integer",
         "real",
@@ -179,7 +179,7 @@ def test_long_text_is_previewed_in_rows_and_whole_in_the_record(
     assert _cells(_rows(client, "a.csv")) == [
         {"t": {"text": "é" * TABLE_CELL_PREVIEW_CHARS, "length": len(long)}}
     ]
-    status, record = _get(client, "record", "a.csv", key="@1")
+    _status, record = _get(client, "record", "a.csv", key="@1")
     assert record["cells"] == {"t": long}
 
 
@@ -293,7 +293,11 @@ def test_an_exhausted_budget_returns_what_it_found_in_key_order(
     rows = 3 * delimited._BUDGET_CHECK_ROWS
     (tmp_path / "a.csv").write_text("n\n" + "".join(f"{n}\n" for n in range(rows)))
     _rows(client, "a.csv")  # parse first, outside the budget below
-    monkeypatch.setattr(delimited.Budget, "start", classmethod(lambda cls, seconds=0: Budget(0)))
+
+    def spent(cls: type[Budget], seconds: float = 0.0) -> Budget:
+        return Budget(0)
+
+    monkeypatch.setattr(Budget, "start", classmethod(spent))
     body = _rows(client, "a.csv", sort="n", order="desc", **{"f.n": "ge:0"}, limit="3")
     assert (body["complete"], body["reason"], body["next_after"]) == (False, "budget", None)
     assert body["examined"] == delimited._BUDGET_CHECK_ROWS
@@ -336,12 +340,12 @@ def test_a_record_is_named_by_position(client: TestClient, scores: str) -> None:
 def test_a_record_reports_a_moved_generation(
     client: TestClient, scores: str, tmp_path: Path
 ) -> None:
-    status, before = _get(client, "record", scores, key="@1")
+    _status, before = _get(client, "record", scores, key="@1")
     target = tmp_path / scores
     target.write_text("name,n\nnew,1\n")
     stamp = time.time() + 5
     os.utime(target, (stamp, stamp))
-    status, after = _get(client, "record", scores, key="@1", generation=before["generation"])
+    _status, after = _get(client, "record", scores, key="@1", generation=before["generation"])
     assert (after["generation_moved"], after["cells"]) == (True, {"name": "new", "n": 1})
 
 
