@@ -85,7 +85,7 @@ It links each document below and the contributor standards in `docs/`.
   recent folders, a keyboard switcher, and marks shared with the page
 - [Operational views of Claude Code and Codex](specs/active/plan-2026-11-19-agent-operations-views.md):
   one shared model, record kinds with one color each, and the home, session, timeline,
-  live, usage, and latency views for both agents, in five phases, with `urollup` as an
+  live, usage, and latency views for both agents, in six phases, with `urollup` as an
   optional accelerator
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
   the icon and release pipeline, warm folder switching, host mode and the agent front
