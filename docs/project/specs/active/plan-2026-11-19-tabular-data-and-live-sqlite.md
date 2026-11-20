@@ -526,8 +526,8 @@ touches anything:
 | Any journal mode, more than one hard link | As a missing `-shm` below, through a private copy | **Another name**, never Current: “this file has N names; a journal or log kept beside another name is not shown” |
 | Rollback journal | `immutable=1`, validated, never locked ([Decision 10](#decision-10-reading-a-rollback-journal-database)) | Current, or **writer busy** |
 | Write-ahead log, no `-wal` or a zero-byte one | `immutable=1`, validated | Current |
-| Write-ahead log, `-wal` with frames, `-shm` present | `mode=ro`, with the race check | Current |
-| Write-ahead log, `-wal` with frames, no `-shm` | Under the copy cap, a private copy of the main file and its `-wal`, validated, read `mode=ro`; past the cap, or after a copy fails validation twice, the main file with `immutable=1` | Current; past the cap, “without its N-byte log, which may be inconsistent” |
+| Write-ahead log, `-wal` with frames, `-shm` a live connection holds | `mode=ro`, with the race check | Current |
+| Write-ahead log, `-wal` with frames, no `-shm`, or one no connection holds | Under the copy cap, a private copy of the main file and its `-wal`, validated, read `mode=ro`; past the cap, or after a copy fails validation twice, the main file with `immutable=1` | Current; past the cap, “without its N-byte log, which may be inconsistent” |
 | Immutable content: a Git revision, an fsqlite snapshot | `immutable=1` | Current; a committed write-ahead-log database is shown without its log |
 
 - **A live journal** holds bytes and a header that is not zeroed;
@@ -546,11 +546,18 @@ touches anything:
   rollback-journal database is writer busy and any other is changing.
   An error from a read that failed validation is changing, never damaged, and in the
   another-name and past-the-cap states a corruption error is that state, not damage.
+- **A live connection** holds a shared lock on byte 128 of `-shm` while it is open
+  (SQLite’s dead-man switch).
+  The worker asks with `F_GETLK` on a read-only handle, which takes no lock; with no
+  holder, a crashed owner or a copied folder, `mode=ro` would rebuild the index by
+  rewriting `-shm`, so the log is read through the copy.
 - **The race check.** Before connecting, the worker opens the `-shm` it saw, read-only,
-  and holds it until after the connection closes; after connecting, it compares that
-  file’s identity with the path’s, as `pull_catalog._database` already does for the main
-  file. If the owner exited in between and the open created sidecars, the Info view says
-  so.
+  and holds it until after the connection closes; it asks again on that handle whether a
+  live connection holds it, and looks again if none does; after connecting, it compares
+  that file’s identity with the path’s, as `pull_catalog._database` already does for the
+  main file. If the owner exited in between and the open created sidecars, the Info view
+  says so. An owner that crashes between that question and the connection is the one
+  window left in which a read rewrites `-shm`.
 
 **Every request is short:** it samples the generation, opens a fresh connection, reads
 in one short transaction, and closes it.
@@ -622,7 +629,10 @@ Extension loading stays off.
 **Generation,** from stats and headers alone: the main file’s identity, size,
 modification time, and change counter, plus in write-ahead-log mode the `-wal` file’s
 size, modification time, and header checkpoint sequence and salts (bytes 12 to 24),
-which change every time the log restarts even when its size repeats.
+which change every time the log restarts even when its size repeats, and the wal-index
+header at the start of `-shm`, read without a lock, whose change counter and frame count
+move on every commit, even one that overwrites a restarted log in place within one tick
+of the file clock.
 
 **fsqlite stores.** The store’s `fsqlite.json` is the `sqlite-store` kind:
 `folder_marker = "fsqlite.json"` with `json_has_key = "format"` and
@@ -1100,17 +1110,36 @@ As built, where this plan left a choice open:
   and its requests through `sqlite_access.OPS`.
 - **Private folders** are under the system’s temporary directory, one per process, held
   by an advisory lock that the next pool’s sweep tests; they hold only copies a later
-  request recreates.
+  request recreates. A folder is made and locked under a name the sweep does not match
+  and renamed once locked, so no sweep removes a live pool’s folder, and one removed
+  from under a pool is made again.
+  Git blobs are kept to a measured total, the least recently used removed first, never
+  one a request is reading, and a blob already written is not read from Git again.
+- **Answers are bounded** at both ends: a worker answers `too_large` in place of an
+  answer past `ANSWER_MAX_BYTES`, and the parent stops a worker that sends more, reading
+  each chunk once.
+- **A caller that must not read some tables**, such as a virtual table where virtual
+  tables are refused, calls `deny_reads` inside its read, after reading the schema in
+  the same transaction, which composes the refusal with the authorizer; a view’s column
+  names are still computed without an authorizer, so a virtual table a view names is
+  still connected.
 - **A log holds frames** when it is longer than its 32-byte header; a journal is live
   when any of its 28 header bytes is set.
-  The racy window applies to write-ahead-log databases only, since every
-  rollback-journal commit changes the change counter.
+  The racy window applies to write-ahead-log databases only, since every complete
+  rollback-journal commit changes the change counter; a time further than the window
+  ahead of the clock is not racy, since any write moves it back to now.
+  A journal file is what marks a rollback-journal commit in progress, so an owner using
+  `journal_mode=MEMORY` or `OFF`, which keeps none, can be read mid-commit between its
+  page writes and the read validated: nothing lock-free can see that.
   A private copy is read with `mode=ro`, which builds its index in the private folder.
 - **Errors.** Only SQLite’s codes for a damaged file are `damaged`; an authorizer’s
   denial, which SQLite reports at prepare time as a plain error, is `refused`, and any
   other error is `unreadable`. A worker killed at the hard deadline answers `busy`, one
-  that exits answers `reader_stopped`. The Info route answers 200 with the state for a
-  database it could not read, and 404 only for a path with nothing there.
+  that exits answers `reader_stopped`, and an answer past its bound `too_large`, which
+  asking again does not change.
+  A `mode=ro` read that meets `SQLITE_BUSY` or `SQLITE_CANTOPEN` looks again until the
+  deadline. The Info route answers 200 with the state for a database it could not read,
+  and 404 only for a path with nothing there.
 - **The catalog** was hit by the lock hazard (bead `mb-cggp`, reproduced in
   `tests/test_github_pull_catalog_locks.py`): a reader thread’s close dropped a writer
   thread’s lock, and a second process then locked mid-transaction.

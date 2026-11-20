@@ -48,7 +48,9 @@ import sys
 import tempfile
 import threading
 import time
+from collections import OrderedDict
 from collections.abc import Callable, Generator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
@@ -84,9 +86,28 @@ READER_ADDRESS_SPACE_BYTES: Final = 1024 * 1024 * 1024
 # with `immutable=1`. The same bound as a private copy (`COPY_MAX_BYTES`), whose cost
 # was measured; a blob is written once rather than per request.
 BLOB_MAX_BYTES: Final = sqlite_access.COPY_MAX_BYTES
+# The Git blobs one process keeps written, by their total size; past it the least
+# recently used are removed. A removed blob comes back on its next request for the cost
+# of reading it from Git and writing it again: a median 138 ms at `BLOB_MAX_BYTES`
+# (`uv run python -m devtools.bench_sqlite_access`, 2026-11-20, 4 CPUs at a load of 6).
+# Four blobs at that size let a reader move between a few revisions' databases without
+# paying it, and bound what the folder holds, memory where the temporary directory is a
+# tmpfs, to that much.
+BLOBS_MAX_BYTES: Final = 4 * BLOB_MAX_BYTES
+# A blob handed out this recently is never removed, nor one a request is reading: the
+# path goes from `blob` to the request that opens it within one request's deadline.
+BLOB_HOLD_SECONDS: Final = SQLITE_REQUEST_DEADLINE_SECONDS
 # The private folders' prefix under the system's temporary directory.
 PRIVATE_PREFIX: Final = "metabrowser-sqlite-"
+# A folder is made under this name, which the sweep's pattern does not match, and
+# renamed to its `PRIVATE_PREFIX` name only once its lock is held, so a sweep never sees
+# a live pool's folder unlocked.
+_STAGING_PREFIX: Final = "." + PRIVATE_PREFIX
+# A staging folder older than this was left by a process that died while making it: a
+# live one is renamed within microseconds.
+STAGING_STALE_SECONDS: Final = 60.0
 _OWNER_LOCK: Final = "owner.lock"
+_MAKE_ATTEMPTS: Final = 8
 
 # The worker's whole program: load `sqlite_access.py` as `metabrowser.sqlite_access` and
 # run its loop, which loads the registered worker modules first (`serve`).
@@ -149,6 +170,11 @@ class _TimedOut(Exception):
     """The worker did not answer by the hard deadline."""
 
 
+class _TooLarge(Exception):
+    """The worker sent more than :data:`~metabrowser.sqlite_access.ANSWER_MAX_BYTES`
+    without ending its answer."""
+
+
 class _Worker:
     """One reader process and the subject it serves."""
 
@@ -191,19 +217,28 @@ class _Worker:
         except (BrokenPipeError, OSError) as exc:
             raise _Stopped from exc
         fd = stdout.fileno()
-        while b"\n" not in self._buffer:
+        # One answer and its newline at most; each chunk is searched once, so reading an
+        # answer is linear in its length.
+        limit = sqlite_access.ANSWER_MAX_BYTES + 1
+        end = self._buffer.find(b"\n")
+        while end < 0:
+            if len(self._buffer) >= limit:
+                raise _TooLarge
             remaining = hard_deadline - time.monotonic()
             if remaining <= 0:
                 raise _TimedOut
             ready, _, _ = select.select([fd], [], [], remaining)
             if not ready:
                 raise _TimedOut
-            chunk = os.read(fd, 65536)
+            chunk = os.read(fd, min(65536, limit - len(self._buffer)))
             if not chunk:
                 raise _Stopped
+            found = chunk.find(b"\n")
+            if found >= 0:
+                end = len(self._buffer) + found
             self._buffer += chunk
-        line, _, rest = bytes(self._buffer).partition(b"\n")
-        self._buffer = bytearray(rest)
+        line = bytes(self._buffer[:end])
+        del self._buffer[: end + 1]
         try:
             response = json.loads(line)
         except ValueError as exc:
@@ -235,19 +270,29 @@ class _Worker:
 def _sweep(root: Path) -> None:
     """Remove private folders a process that has died left behind.
 
-    A live pool holds an advisory lock on its folder's lock file, so a lock this process
-    can take marks a folder nobody owns. Only this user's folders are touched.
+    A live pool holds an advisory lock on its folder's lock file from before the folder
+    has its swept name, so a lock this process can take marks a folder nobody owns. A
+    staging folder is swept only once it is :data:`STAGING_STALE_SECONDS` old. Only this
+    user's folders are touched.
     """
     try:
-        candidates = list(root.glob(f"{PRIVATE_PREFIX}*"))
+        candidates = [(folder, False) for folder in root.glob(f"{PRIVATE_PREFIX}*")]
+        candidates += [(folder, True) for folder in root.glob(f"{_STAGING_PREFIX}*")]
     except OSError:
         return
-    for folder in candidates:
+    for folder, staging in candidates:
         try:
             info = folder.lstat()
             if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
                 continue
+            if staging and time.time() - info.st_mtime < STAGING_STALE_SECONDS:
+                continue
             fd = os.open(folder / _OWNER_LOCK, os.O_RDONLY | os.O_NOFOLLOW)
+        except FileNotFoundError:
+            if staging:
+                # Died before it made its lock file.
+                shutil.rmtree(folder, ignore_errors=True)
+            continue
         except OSError:
             continue
         try:
@@ -257,6 +302,60 @@ def _sweep(root: Path) -> None:
             continue
         shutil.rmtree(folder, ignore_errors=True)
         os.close(fd)
+
+
+def _make_folder(root: Path) -> tuple[Path, int]:
+    """A new private folder under *root* and the descriptor holding its lock.
+
+    It is made and locked under a staging name, then renamed to the name the sweep looks
+    at, so no sweep finds it unlocked.
+    """
+    for _ in range(_MAKE_ATTEMPTS):
+        staging = Path(tempfile.mkdtemp(prefix=_STAGING_PREFIX, dir=root))
+        fd = -1
+        try:
+            fd = os.open(
+                staging / _OWNER_LOCK, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
+            )
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            final = root / staging.name.removeprefix(".")
+            if not os.path.lexists(final):
+                os.rename(staging, final)
+                return final, fd
+        except BaseException:
+            if fd >= 0:
+                os.close(fd)
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        os.close(fd)
+        shutil.rmtree(staging, ignore_errors=True)
+    raise OSError("no free name for a private folder")
+
+
+def _held(folder: Path, lock: tuple[int, int]) -> bool:
+    """Whether *folder* still holds the lock file whose identity is *lock*."""
+    try:
+        info = os.stat(folder / _OWNER_LOCK, follow_symlinks=False)
+    except OSError:
+        return False
+    return (info.st_dev, info.st_ino) == lock
+
+
+def _folder_error(exc: OSError) -> SqliteAccessError:
+    return SqliteAccessError(
+        "unreadable",
+        f"The private folder databases are read through could not be made: {exc.strerror or exc}",
+    )
+
+
+@dataclass(slots=True)
+class _BlobFile:
+    """One written Git blob: its size, when it was last handed out, and the requests
+    reading it now."""
+
+    size: int
+    handed_out: float
+    reading: int = 0
 
 
 class ReaderPool:
@@ -278,6 +377,9 @@ class ReaderPool:
         self._waiting = 0
         self._folder: Path | None = None
         self._lock_fd: int | None = None
+        self._lock_key: tuple[int, int] = (0, 0)
+        # Written blobs by path, least recently used first.
+        self._blobs: OrderedDict[str, _BlobFile] = OrderedDict()
         self._requests = itertools.count()
         self._closed = False
         self.started = 0
@@ -285,47 +387,150 @@ class ReaderPool:
     # ── Private folders ──
 
     def folder(self) -> Path:
-        """This pool's private folder, created on first use after sweeping leftovers."""
+        """This pool's private folder: made on first use after sweeping leftovers, and
+        made again when something removed it (the system's cleaning of its temporary
+        directory, which a long-running server can outlive).
+
+        Raises :class:`~metabrowser.sqlite_access.SqliteAccessError` (``unreadable``)
+        when it cannot be made, and ``busy`` once the pool is closed.
+        """
         with self._cond:
-            if self._folder is None:
-                root = self._root or Path(tempfile.gettempdir())
-                _sweep(root)
-                folder = Path(tempfile.mkdtemp(prefix=PRIVATE_PREFIX, dir=root))
-                fd = os.open(folder / _OWNER_LOCK, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
-                fcntl.flock(fd, fcntl.LOCK_EX)
-                self._folder, self._lock_fd = folder, fd
-            return self._folder
+            if self._closed:
+                raise SqliteAccessError("busy", "The reader processes have stopped.")
+            if self._folder is not None and _held(self._folder, self._lock_key):
+                return self._folder
+            lost, fd = self._folder, self._lock_fd
+            self._folder = self._lock_fd = None
+            self._blobs.clear()
+            if fd is not None:
+                os.close(fd)
+            if lost is not None and not os.path.lexists(lost / _OWNER_LOCK):
+                # Whatever is left of it is this pool's own and no longer locked.
+                shutil.rmtree(lost, ignore_errors=True)
+            root = self._root or Path(tempfile.gettempdir())
+            _sweep(root)
+            try:
+                folder, fd = _make_folder(root)
+                held = os.fstat(fd)
+            except OSError as exc:
+                raise _folder_error(exc) from exc
+            self._folder, self._lock_fd = folder, fd
+            self._lock_key = (held.st_dev, held.st_ino)
+            return folder
+
+    def _in_folder[T](self, make: Callable[[Path], T]) -> T:
+        """*make* run on the private folder, and once more on a new folder when the
+        first was removed under it."""
+        for attempt in range(2):
+            base = self.folder()
+            try:
+                return make(base)
+            except FileNotFoundError as exc:
+                if attempt:
+                    raise _folder_error(exc) from exc
+            except OSError as exc:
+                raise _folder_error(exc) from exc
+        raise AssertionError("unreachable")
 
     @contextlib.contextmanager
     def scratch(self) -> Generator[Path]:
         """A fresh private folder for one request, removed when it ends."""
-        folder = self.folder() / f"request-{next(self._requests)}"
-        folder.mkdir(mode=0o700)
+
+        def make(base: Path) -> Path:
+            folder = base / f"request-{next(self._requests)}"
+            folder.mkdir(mode=0o700)
+            return folder
+
+        folder = self._in_folder(make)
         try:
             yield folder
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 
+    def written_blob(self, oid: str) -> Path | None:
+        """The private file already holding Git blob *oid*, or None.
+
+        Ask before reading the blob, so a blob written once is not read from Git again.
+        """
+        _require_oid(oid)
+        with self._cond:
+            if self._folder is None or not _held(self._folder, self._lock_key):
+                return None
+            target = self._folder / "blobs" / f"{oid}.db"
+            entry = self._blobs.get(str(target))
+            if entry is None:
+                return None
+            if not target.is_file():
+                del self._blobs[str(target)]
+                return None
+            entry.handed_out = time.monotonic()
+            self._blobs.move_to_end(str(target))
+            return target
+
     def blob(self, oid: str, load: Callable[[], bytes]) -> Path:
         """The private file holding Git blob *oid*, written once from *load*.
 
-        *oid* names the content, so a file already written for it is reused; it is
-        written to a temporary name and renamed, and left read-only.
+        *oid* names the content, so a file already written for it is reused, and *load*
+        runs only when none is (:meth:`written_blob` asks without a *load*). It is written
+        to a temporary name and renamed, and left read-only. Written blobs are kept to
+        :data:`BLOBS_MAX_BYTES` in all, the least recently used removed first, never one
+        handed out within :data:`BLOB_HOLD_SECONDS` or one a request is reading.
         """
-        if not oid.isalnum():
-            raise ValueError("a blob is named by its object id")
-        blobs = self.folder() / "blobs"
-        blobs.mkdir(mode=0o700, exist_ok=True)
-        target = blobs / f"{oid}.db"
-        if target.exists():
-            return target
+        written = self.written_blob(oid)
+        if written is not None:
+            return written
         data = load()
-        temporary = blobs / f".{oid}.{os.getpid()}.{threading.get_ident()}.tmp"
-        with open(temporary, "xb") as writer:
-            writer.write(data)
-        temporary.chmod(0o400)
-        os.replace(temporary, target)
+
+        def write(base: Path) -> Path:
+            blobs = base / "blobs"
+            blobs.mkdir(mode=0o700, exist_ok=True)
+            target = blobs / f"{oid}.db"
+            temporary = blobs / f".{oid}.{os.getpid()}.{threading.get_ident()}.tmp"
+            try:
+                with open(temporary, "xb") as writer:
+                    writer.write(data)
+                temporary.chmod(0o400)
+                os.replace(temporary, target)
+            except BaseException:
+                with contextlib.suppress(OSError):
+                    temporary.unlink()
+                raise
+            return target
+
+        target = self._in_folder(write)
+        with self._cond:
+            self._blobs[str(target)] = _BlobFile(len(data), time.monotonic())
+            self._blobs.move_to_end(str(target))
+            self._evict_blobs()
         return target
+
+    def _evict_blobs(self) -> None:
+        """Remove the least recently used blobs past :data:`BLOBS_MAX_BYTES`; called
+        with the pool's lock held."""
+        total = sum(entry.size for entry in self._blobs.values())
+        now = time.monotonic()
+        for path, entry in list(self._blobs.items()):
+            if total <= BLOBS_MAX_BYTES:
+                break
+            if entry.reading or now - entry.handed_out < BLOB_HOLD_SECONDS:
+                continue
+            with contextlib.suppress(OSError):
+                os.unlink(path)
+            del self._blobs[path]
+            total -= entry.size
+
+    def _blob_in_use(self, path: object, change: int) -> str | None:
+        """Count a request reading the written blob at *path* (a request's ``path``
+        argument), or stop counting it; the path when it is a written blob."""
+        if not isinstance(path, str):
+            return None
+        with self._cond:
+            entry = self._blobs.get(path)
+            if entry is None:
+                return None
+            entry.reading += change
+            entry.handed_out = time.monotonic()
+            return path
 
     # ── Requests ──
 
@@ -338,23 +543,34 @@ class ReaderPool:
         """
         worker = self._acquire(deadline, subject)
         seconds = max(0.0, deadline - time.monotonic())
+        blob = self._blob_in_use(args.get("path"), +1)
         try:
             response = worker.ask(
                 {"op": op, "args": args, "seconds": seconds},
                 deadline + READER_KILL_GRACE_SECONDS,
             )
-        except _TimedOut:
+        except BaseException as exc:
+            # Whatever ended the exchange, the worker may be mid-answer: it is never
+            # reused, and its place in the pool is given back.
             worker.kill()
             self._discard(worker)
-            raise SqliteAccessError(
-                "busy", "The read did not finish in time, and its reader was stopped."
-            ) from None
-        except _Stopped:
-            worker.kill()
-            self._discard(worker)
-            raise SqliteAccessError(
-                "reader_stopped", "The process reading this database stopped."
-            ) from None
+            if isinstance(exc, _TimedOut):
+                raise SqliteAccessError(
+                    "busy", "The read did not finish in time, and its reader was stopped."
+                ) from None
+            if isinstance(exc, _TooLarge):
+                raise SqliteAccessError(
+                    "too_large",
+                    f"The reader's answer passed {sqlite_access.ANSWER_MAX_BYTES:,} bytes, "
+                    "and its reader was stopped.",
+                ) from None
+            if isinstance(exc, _Stopped):
+                raise SqliteAccessError(
+                    "reader_stopped", "The process reading this database stopped."
+                ) from None
+            raise
+        finally:
+            self._blob_in_use(blob, -1)
         self._release(worker)
         if response.get("ok") is True:
             return response.get("result")
@@ -443,12 +659,18 @@ class ReaderPool:
             self._count -= len(idle)
             folder, fd = self._folder, self._lock_fd
             self._folder = self._lock_fd = None
+            self._blobs.clear()
         for worker in idle:
             worker.stop()
         if folder is not None:
             shutil.rmtree(folder, ignore_errors=True)
         if fd is not None:
             os.close(fd)
+
+
+def _require_oid(oid: str) -> None:
+    if not oid.isalnum():
+        raise ValueError("a blob is named by its object id")
 
 
 _pool: ReaderPool | None = None

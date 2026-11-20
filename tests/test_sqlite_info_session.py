@@ -35,7 +35,16 @@ TRANSCRIPT = "cli-ui-sqlite-info.tryscript.md"
 RECORDING = "sqlite-info-responses.json"
 
 # The databases the recording names, in the order the session draws them.
-FILES = ("app.db", "History", "live.db", "noshm.db", "linked.db", "busy.db", "fake.db")
+FILES = (
+    "app.db",
+    "History",
+    "live.db",
+    "crashed.db",
+    "noshm.db",
+    "linked.db",
+    "busy.db",
+    "fake.db",
+)
 
 
 def _dotted(version: tuple[int, int, int]) -> str:
@@ -76,7 +85,8 @@ def _stage(root: Path) -> None:
     connection.close()
     scenarios.age(app)
     scenarios.create(root / "History")
-    scenarios.crashed_with_frames(root / "live.db")
+    scenarios.create(root / "live.db")
+    scenarios.crashed_with_frames(root / "crashed.db")
     scenarios.crashed_with_frames(root / "noshm.db")
     (root / "noshm.db-shm").unlink()
     scenarios.create(root / "linked.db")
@@ -93,7 +103,11 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
     _stage(root)
     reset_source_session()
     server._set_root_dir(root)  # pyright: ignore[reportPrivateUsage]
-    with TestClient(server.app) as test_client:
+    # `live.db`'s owner is running and has five rows in its log, so it is read through
+    # the log; `crashed.db`'s was killed, so it is read through a private copy.
+    with scenarios.owner(root / "live.db") as owner, TestClient(server.app) as test_client:
+        for index in range(5):
+            owner.ok(f"exec INSERT INTO t(v) VALUES ('extra {index}')")
         yield test_client
 
 
@@ -111,6 +125,7 @@ def test_the_recorded_answers_are_what_the_route_answers(client: TestClient) -> 
         "app.db": "current:immutable",
         "History": "current:immutable",
         "live.db": "current:read_only",
+        "crashed.db": "current:private_copy",
         "noshm.db": "current:private_copy",
         "linked.db": "another_name:private_copy",
         "busy.db": "writer_busy",
@@ -125,6 +140,7 @@ def test_the_kind_is_claimed_by_magic_whatever_the_name(client: TestClient) -> N
         "app.db": "sqlite",
         "History": "sqlite",
         "live.db": "sqlite",
+        "crashed.db": "sqlite",
         "noshm.db": "sqlite",
         "linked.db": "sqlite",
         "busy.db": "sqlite",

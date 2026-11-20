@@ -6,7 +6,12 @@ the numbers this prints beside them:
 - a reader process's start to its first answer, and a warm Info round trip;
 - a reader process's address space and resident memory after an Info read (Linux);
 - a private copy of a database and its log (main file, then log) at several sizes, and
-  an Info read through one, which is what one request pays in the copy states.
+  an Info read through one, which is what one request pays in the copy states;
+- a reader's answer of several sizes, shaped like a table page, from the request to the
+  parsed value in the parent (``ANSWER_MAX_BYTES``);
+- a Git blob's first request at the largest size a revision is read at: reading it
+  from Git and writing it to the private folder, what a removed blob costs to bring back
+  (``BLOBS_MAX_BYTES``).
 
 Run it with ``uv run python -m devtools.bench_sqlite_access``. It writes only under a
 temporary folder it removes.
@@ -14,15 +19,19 @@ temporary folder it removes.
 
 from __future__ import annotations
 
+import os
+import resource
 import shutil
 import sqlite3
 import statistics
+import subprocess
 import tempfile
 import time
 from pathlib import Path
 
+from metabrowser import sqlite_readers
 from metabrowser.sqlite_access import _copy_file  # pyright: ignore[reportPrivateUsage]
-from metabrowser.sqlite_readers import ReaderPool
+from metabrowser.sqlite_readers import BLOB_MAX_BYTES, ReaderPool
 
 MIB = 1024 * 1024
 
@@ -54,6 +63,81 @@ def _status(pid: int) -> dict[str, str]:
         for line in lines
         if line.split(":")[0] in {"VmPeak", "VmSize", "VmRSS", "VmHWM"}
     }
+
+
+# A worker module whose request answers a page of about `megabytes` MiB: rows of twelve
+# cells, each a 400-character preview, a few of its characters outside ASCII.
+_PAGE_MODULE = """
+from metabrowser import sqlite_access
+
+CELL = "x" * 390 + "\\u00e9" * 10
+
+
+def page(args, deadline):
+    rows = int(args["megabytes"] * 1024 * 1024 / (12 * 470))
+    return {"rows": [[CELL] * 12 for _ in range(rows)]}
+
+
+sqlite_access.OPS["bench_page"] = page
+"""
+
+
+def _answers(base: Path) -> None:
+    module = base / "bench_page.py"
+    module.write_text(_PAGE_MODULE)
+    sqlite_readers.register_worker_module("metabrowser.devtools_bench.page", module)
+    pool = ReaderPool(size=1, temporary_root=base)
+    try:
+        for megabytes in (1, 8, 16, 30):
+            trips: list[float] = []
+            before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            for _ in range(5):
+                started = time.perf_counter()
+                pool.call(
+                    "bench_page",
+                    {"megabytes": megabytes},
+                    deadline=time.monotonic() + 30,
+                    subject="s",
+                )
+                trips.append(time.perf_counter() - started)
+            grew = (resource.getrusage(resource.RUSAGE_SELF).ru_maxrss - before) // 1024
+            print(
+                f"answer of about {megabytes} MiB: median round trip "
+                f"{statistics.median(trips) * 1000:.0f} ms, parent peak grew {grew} MiB"
+            )
+    finally:
+        pool.close()
+
+
+def _blob_miss(base: Path) -> None:
+    repository = base / "repository"
+    subprocess.run(["git", "init", "-q", str(repository)], check=True)
+    blob = repository / "app.db"
+    blob.write_bytes(os.urandom(BLOB_MAX_BYTES))
+    oid = subprocess.run(
+        ["git", "-C", str(repository), "hash-object", "-w", "app.db"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    pool = ReaderPool(size=1, temporary_root=base)
+    misses: list[float] = []
+    try:
+        for index in range(5):
+            started = time.perf_counter()
+            data = subprocess.run(
+                ["git", "-C", str(repository), "cat-file", "blob", oid],
+                check=True,
+                capture_output=True,
+            ).stdout
+            pool.blob(f"{oid[:-1]}{index}", lambda data=data: data)
+            misses.append(time.perf_counter() - started)
+    finally:
+        pool.close()
+    print(
+        f"a {BLOB_MAX_BYTES // MIB} MiB blob read from Git and written: median "
+        f"{statistics.median(misses) * 1000:.0f} ms of 5"
+    )
 
 
 def main() -> None:
@@ -135,6 +219,8 @@ def main() -> None:
             )
             owner.close()
             shutil.rmtree(folder)
+        _answers(base)
+        _blob_miss(base)
     finally:
         shutil.rmtree(base, ignore_errors=True)
 

@@ -103,7 +103,42 @@ $ node tests/dom/sqlite-info-session.js
         "Access": [
           "State: Current",
           "Opened: Read through its write-ahead log",
-          "Why: the write-ahead log holds frames and its index is present, so it is read through them as every reader does"
+          "Why: the write-ahead log holds frames and an application has it open, so it is read through them as every reader does"
+        ],
+        "Database": [
+          "Journal: Write-ahead log",
+          "Page size: 4,096 bytes  {sqlite-info-number}",
+          "Pages: 2  {sqlite-info-number}",
+          "Free pages: 0  {sqlite-info-number}",
+          "Encoding: UTF-8  {data-literal}",
+          "User version: 0  {sqlite-info-number}",
+          "Application: None declared  {sqlite-info-muted}",
+          "Schema: 1 table"
+        ],
+        "Files": [
+          "Main file: 8,192 bytes  {sqlite-info-number}",
+          "-wal: 20,632 bytes, 5 frames",
+          "-shm: 32,768 bytes"
+        ],
+        "Library": [
+          "SQLite: L  {data-literal}",
+          "3.7.0: write-ahead-log databases",
+          "3.8.2: WITHOUT ROWID tables",
+          "3.26.0: SQLITE_DBCONFIG_DEFENSIVE and PRAGMA table_xinfo",
+          "3.31.0: PRAGMA trusted_schema and generated columns",
+          "3.37.0: STRICT tables",
+          "3.43.0: octet_length(), the reader's minimum for reading tables",
+          "3.45.0: JSONB values"
+        ]
+      }
+    },
+    "crashed.db": {
+      "notices": [],
+      "sections": {
+        "Access": [
+          "State: Current",
+          "Opened: Read from a private copy",
+          "Why: the write-ahead log holds frames and no application has it open, so the database and its log are read through a private copy"
         ],
         "Database": [
           "Journal: Write-ahead log",

@@ -32,6 +32,26 @@ PRAGMA application_id = 1179865420;
 """
 
 
+# Schema rows whose `type` reads as `table` up to a NUL, each with its own suffix, and
+# one whose `type` is a blob: SQLite accepts them, and the Info view counts them as
+# `other` rather than as a group each.
+CRAFTED_TYPES = 40
+
+
+def crafted(path: Path) -> None:
+    connection = sqlite3.connect(path)
+    connection.execute("CREATE TABLE seed(a)")
+    connection.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, False)
+    connection.execute("PRAGMA writable_schema=ON")
+    insert = "INSERT INTO sqlite_schema(type, name, tbl_name, rootpage, sql) VALUES (?, ?, ?, 2, ?)"
+    for index in range(CRAFTED_TYPES):
+        name = f"t{index}"
+        connection.execute(insert, (f"table\x00{index:04d}", name, name, f"CREATE TABLE {name}(a)"))
+    connection.execute(insert, (b"table", "blob", "blob", "CREATE TABLE blob(a)"))
+    connection.commit()
+    connection.close()
+
+
 def main() -> None:
     root = Path(sys.argv[1])
     root.mkdir(parents=True, exist_ok=True)
@@ -42,6 +62,7 @@ def main() -> None:
     scenarios.crashed_with_frames(root / "live.db")
     scenarios.crashed_with_frames(root / "copied.sqlite3")
     (root / "copied.sqlite3-shm").unlink()
+    crafted(root / "crafted.db")
     notes = sqlite3.connect(root / "notes.dat")
     notes.executescript("CREATE TABLE note(text TEXT); INSERT INTO note VALUES ('kept');")
     notes.close()

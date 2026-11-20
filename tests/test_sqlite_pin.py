@@ -20,12 +20,15 @@ APP = "g1-YXBwLmRi"  # app.db
 HISTORY = "g1-SGlzdG9yeQ"  # History
 
 
-def _database_bytes(tmp_path: Path, name: str, *, wal: bool) -> bytes:
+def _database_bytes(tmp_path: Path, name: str, *, wal: bool, user_version: int = 0) -> bytes:
+    """A small database; *user_version* makes its bytes, and so its blob, its own."""
     path = tmp_path / name
     connection = sqlite3.connect(path)
     if wal:
         connection.execute("PRAGMA journal_mode=wal")
-    connection.executescript("CREATE TABLE t(x); INSERT INTO t VALUES (1), (2);")
+    connection.executescript(
+        f"CREATE TABLE t(x); INSERT INTO t VALUES (1), (2); PRAGMA user_version = {user_version};"
+    )
     connection.close()
     return path.read_bytes()
 
@@ -74,11 +77,34 @@ def test_a_pinned_database_is_read_once_from_a_private_copy(tmp_path: Path) -> N
 def test_a_pinned_database_past_the_cap_is_not_copied(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Bytes of its own, so no earlier test in this process has written its blob.
     store, commit = fast_import_store(
-        tmp_path, {b"app.db": _database_bytes(tmp_path, "wal.db", wal=False)}
+        tmp_path, {b"app.db": _database_bytes(tmp_path, "wal.db", wal=False, user_version=11)}
     )
     monkeypatch.setattr(sidekick, "BLOB_MAX_BYTES", 1024)
     [(kind, info)] = _ask(store, commit, [APP])
     assert kind == "sqlite"
     assert info["error"]["state"] == "unreadable"
     assert "larger than the 1,024 bytes" in info["error"]["message"]
+
+
+@needs_git
+def test_a_written_blob_is_not_read_from_git_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, commit = fast_import_store(
+        tmp_path, {b"app.db": _database_bytes(tmp_path, "once.db", wal=False, user_version=12)}
+    )
+    reads: list[str] = []
+    original = sidekick.read_content_window
+
+    async def counted(ref: Any, *, max_bytes: int) -> Any:
+        reads.append(ref.fingerprint)
+        return await original(ref, max_bytes=max_bytes)
+
+    monkeypatch.setattr(sidekick, "read_content_window", counted)
+    answers = _ask(store, commit, [APP, APP, APP])
+    assert [info["database"]["objects"] for _, info in answers] == [{"table": 1}] * 3
+    # Read from Git once, by the first request; the others find the private file.
+    assert len(reads) == 1
+    assert reader_pool().written_blob(answers[0][1]["generation"]) is not None

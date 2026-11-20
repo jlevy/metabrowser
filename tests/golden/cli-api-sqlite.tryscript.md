@@ -209,12 +209,25 @@ status: 200
 ? 0
 ```
 
-## Test: a crashed owner’s log is read through its index
+## Test: a crashed owner’s log is read through a private copy, its index untouched
 
-The owner committed five rows to its log and was killed, leaving `-wal` and `-shm`.
+The owner committed five rows to its log and was killed, leaving `-wal` and `-shm`. No
+process holds the index, so opening it in place would rebuild it by rewriting `-shm`;
+the database and its log are copied to a private folder and read there, and `-shm` keeps
+its bytes.
+
+```console
+$ cksum < sqlroot/live.db-shm > shm-before.txt
+? 0
+```
 
 ```console
 $ metab sqlroot --api '/api/plugin/sqlite/info?path=live.db' > live.txt
+? 0
+```
+
+```console
+$ cksum < sqlroot/live.db-shm | diff - shm-before.txt
 ? 0
 ```
 
@@ -227,9 +240,9 @@ status: 200
   "path": "live.db",
   "generation": "[..]",
   "access": {
-    "mode": "read_only",
+    "mode": "private_copy",
     "state": "current",
-    "reason": "the write-ahead log holds frames and its index is present, so it is read through them as every reader does",
+    "reason": "the write-ahead log holds frames and no application has it open, so the database and its log are read through a private copy",
     "attempts": 1,
     "notices": []
   },
@@ -312,6 +325,21 @@ status: 200
 ? 0
 ```
 
+## Test: a crafted schema’s object types are counted, not listed
+
+SQLite accepts a schema row whose type reads as `table` up to a NUL; the fixture has
+forty with forty suffixes, and one whose type is a blob.
+They are counted as `other`.
+
+```console
+$ metab sqlroot --api '/api/plugin/sqlite/info?path=crafted.db' | sed -n '/"objects"/,/}/p'
+    "objects": {
+      "other": 41,
+      "table": 1
+    }
+? 0
+```
+
 ## Test: the library block names the reader’s minimum
 
 ```console
@@ -372,6 +400,7 @@ History
 app.db
 copied.sqlite3
 copied.sqlite3-wal
+crafted.db
 fake.db
 live.db
 live.db-shm

@@ -3,9 +3,10 @@
 Each scenario stages a database with a real owner in a second process, reads it the way
 Metabrowser does (through ``metabrowser.sqlite_access``, and through the reader
 processes of ``metabrowser.sqlite_readers`` where the scenario is about them), and
-checks what the read answered and what it left beside the file: the names, and the main
-file's, journal's, and log's bytes, before and after. A ``-shm`` is the log's shared
-index, whose read marks every reader updates, so only whether it exists is compared.
+checks what the read answered and what it left beside the file: every name, and every
+file's bytes and modification time, before and after. Beside a live owner a ``-shm`` is
+the log's shared index, whose read marks every reader updates by the protocol, so there
+only whether it exists is compared; with no live owner its bytes and time must stay too.
 
 ``tests/test_sqlite_guest_access.py`` runs each scenario in a process of its own as an
 unprivileged user, since a superuser ignores the folder and file permissions several
@@ -159,14 +160,16 @@ def sidecar(path: Path, suffix: str) -> Path:
     return path.with_name(path.name + suffix)
 
 
-def listing(folder: Path) -> dict[str, str]:
-    """Every name in *folder* with a hash of its bytes; a `-shm` by its name alone."""
+def listing(folder: Path, *, live: bool = False) -> dict[str, str]:
+    """Every name in *folder* with a hash of its bytes and its modification time; beside
+    a *live* owner, a `-shm` by its name alone."""
     out: dict[str, str] = {}
     for entry in sorted(folder.iterdir()):
-        if entry.is_dir() or entry.name.endswith("-shm"):
+        if entry.is_dir() or (live and entry.name.endswith("-shm")):
             out[entry.name] = "present"
         else:
-            out[entry.name] = hashlib.sha256(entry.read_bytes()).hexdigest()[:16]
+            digest = hashlib.sha256(entry.read_bytes()).hexdigest()[:16]
+            out[entry.name] = f"{digest} {entry.stat().st_mtime_ns}"
     return out
 
 
@@ -293,9 +296,9 @@ def live_owner_log_with_frames(base: Path) -> Result:
     with owner(db) as app:
         for index in range(5):
             app.ok(f"exec INSERT INTO t(v) VALUES ('extra {index}')")
-        before = listing(folder)
+        before = listing(folder, live=True)
         rows, access = read_count(db, scratch_folder(base))
-        after = listing(folder)
+        after = listing(folder, live=True)
         app.ok("close")
         app.stop()
     unchanged(before, after, "a live owner's log")
@@ -338,8 +341,9 @@ def _crashed(base: Path, *, keep_shm: bool, read_only_folder: bool) -> Result:
     finally:
         writable(folder)
     unchanged(before, listing(folder), "a crashed owner's log")
-    expected = "read_only" if keep_shm else "private_copy"
-    check(rows == ROWS + 5 and access.plan.mode == expected, f"{rows} {access.plan}")
+    # With no live owner, a `mode=ro` read would rebuild the index by rewriting `-shm`,
+    # so a crashed owner's log is read through a private copy whether or not it is there.
+    check(rows == ROWS + 5 and access.plan.mode == "private_copy", f"{rows} {access.plan}")
     check(access.plan.state == "current", f"{access.plan}")
     return {"rows": rows, "mode": access.plan.mode}
 
@@ -362,6 +366,56 @@ def crashed_owner_wal_without_shm(base: Path) -> Result:
 @scenario
 def crashed_owner_wal_without_shm_read_only(base: Path) -> Result:
     return _crashed(base, keep_shm=False, read_only_folder=True)
+
+
+@scenario
+def crashed_owner_garbage_shm(base: Path) -> Result:
+    folder = base / "app"
+    folder.mkdir()
+    db = folder / "app.db"
+    crashed_with_frames(db)
+    shm = sidecar(db, "-shm")
+    shm.write_bytes(os.urandom(shm.stat().st_size))
+    age(shm)
+    before = listing(folder)
+    rows, access = read_count(db, scratch_folder(base))
+    unchanged(before, listing(folder), "a crashed owner's garbage index")
+    check(rows == ROWS + 5 and access.plan.mode == "private_copy", f"{rows} {access.plan}")
+    return {"rows": rows, "mode": access.plan.mode}
+
+
+@scenario
+def owner_crashes_between_look_and_open(base: Path) -> Result:
+    folder = base / "app"
+    folder.mkdir()
+    db = folder / "app.db"
+    create(db)
+    app = Owner(db)
+    app.ok("open wal")
+    app.ok("exec INSERT INTO t(v) VALUES ('extra')")
+    age(db, sidecar(db, "-wal"), sidecar(db, "-shm"))
+    original = sqlite_access._read_through_log
+    seen: dict[str, Any] = {}
+
+    def owner_crashes_first(*args: Any, **kwargs: Any) -> Any:
+        # The look chose a read through the log while the owner was alive; it is killed
+        # before the read connects, leaving its log and index as a crash does.
+        if "before" not in seen:
+            app.kill()
+            seen["before"] = listing(folder)
+        return original(*args, **kwargs)
+
+    sqlite_access._read_through_log = owner_crashes_first
+    try:
+        rows, access = read_count(db, scratch_folder(base))
+    finally:
+        sqlite_access._read_through_log = original
+        if app.process.poll() is None:
+            app.kill()
+    unchanged(seen["before"], listing(folder), "an owner that crashed after the look")
+    check(rows == ROWS + 1 and access.plan.mode == "private_copy", f"{rows} {access.plan}")
+    check(access.attempts >= 2, f"{access.attempts}")
+    return {"rows": rows, "mode": access.plan.mode}
 
 
 def _rewritten(base: Path, db: Path) -> int:
@@ -437,9 +491,9 @@ def symlink_in_another_folder(base: Path) -> Result:
     link.symlink_to(db)
     with owner(db) as app:
         app.ok("exec INSERT INTO t(v) VALUES ('extra')")
-        before = listing(folder), listing(elsewhere)
+        before = listing(folder, live=True), listing(elsewhere)
         rows, access = read_count(link, scratch_folder(base))
-        after = listing(folder), listing(elsewhere)
+        after = listing(folder, live=True), listing(elsewhere)
         app.ok("close")
         app.stop()
     unchanged(before[0], after[0], "the database's folder")
@@ -536,6 +590,28 @@ def generation_follows_commits(base: Path) -> Result:
         app.ok("query PRAGMA wal_checkpoint(TRUNCATE)")
         app.ok("exec INSERT INTO t(v) VALUES ('c')")
         # The restarted log has the size it had after 'b'; its salts differ.
+        seen.append(sqlite_generation(db))
+        # A long log, checkpointed: the next commit restarts it from its first frame, and
+        # the one after overwrites the frame after that in place, so the log keeps its
+        # size and salts. Within one tick of the file clock only the wal-index header
+        # tells the two commits apart.
+        app.ok(
+            "exec WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<500) "
+            "INSERT INTO t(v) SELECT printf('long %d', i) FROM n"
+        )
+        app.ok("query PRAGMA wal_checkpoint(PASSIVE)")
+        app.ok("exec INSERT INTO t(v) VALUES ('d')")
+        wal = sidecar(db, "-wal")
+        restarted = wal.stat()
+        salts = wal.read_bytes()[12:24]
+        seen.append(sqlite_generation(db))
+        app.ok("exec INSERT INTO t(v) VALUES ('e')")
+        # As if 'e' landed in the same tick of the file clock as 'd'.
+        os.utime(wal, ns=(restarted.st_atime_ns, restarted.st_mtime_ns))
+        check(
+            (wal.stat().st_size, wal.read_bytes()[12:24]) == (restarted.st_size, salts),
+            "the commit did not overwrite the log in place",
+        )
         seen.append(sqlite_generation(db))
         app.ok("close")
         app.stop()

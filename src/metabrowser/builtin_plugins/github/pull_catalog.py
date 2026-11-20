@@ -278,6 +278,12 @@ def _key(info: os.stat_result) -> tuple[int, int]:
     return info.st_dev, info.st_ino
 
 
+def _close_handle(fd: int) -> None:
+    """Close *fd*, a handle on the catalog itself, through
+    :data:`~metabrowser.sqlite_access.PROCESS_HANDLES`."""
+    PROCESS_HANDLES.close(fd, _key(os.fstat(fd)))
+
+
 def _admit(home: Path, relative: str, *, write: bool) -> tuple[int, os.stat_result]:
     """Open the catalog, check its header, and return the handle and its stat.
 
@@ -291,12 +297,17 @@ def _admit(home: Path, relative: str, *, write: bool) -> tuple[int, os.stat_resu
     directory, _, name = relative.rpartition("/")
     # One verification of the directory covers the catalog and its journal files.
     with private_directory(home, directory, shared="refuse") as entries:
-        fd = entries.open(name, flags)
+        # A refused open closes its descriptor through the same deferral.
+        fd = entries.open(name, flags, close=_close_handle)
         held = os.fstat(fd)
+
+        def close_sidecar(sidecar_fd: int) -> None:
+            PROCESS_HANDLES.close(sidecar_fd, _key(held))
+
         try:
             for suffix in _SIDECARS:
                 try:
-                    PROCESS_HANDLES.close(entries.open(name + suffix, flags), _key(held))
+                    close_sidecar(entries.open(name + suffix, flags, close=close_sidecar))
                 except FileNotFoundError:
                     continue
         except BaseException:

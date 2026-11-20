@@ -11,7 +11,8 @@ view says about the file; only a path with nothing readable there is 404.
 On a served folder the reader opens the file's real path. On a Git pin the blob is
 written once to a private file named by its object id, under
 :data:`~metabrowser.sqlite_readers.BLOB_MAX_BYTES`, and read with ``immutable=1``: a
-committed write-ahead-log database is shown without its log.
+committed write-ahead-log database is shown without its log. A blob already written is
+not read from Git again.
 """
 
 from __future__ import annotations
@@ -48,7 +49,12 @@ def _subject_key() -> str:
 
 
 async def _blob_file(ref: ContentRef) -> Path:
-    """The pinned blob *ref* as a private file, written once."""
+    """The pinned blob *ref* as a private file, written once and read from Git only when
+    it is not written yet."""
+    pool = reader_pool()
+    written = await run_in_threadpool(pool.written_blob, ref.fingerprint)
+    if written is not None:
+        return written
     if ref.stored_size is not None and ref.stored_size > BLOB_MAX_BYTES:
         raise SqliteAccessError(
             "unreadable",
@@ -60,7 +66,7 @@ async def _blob_file(ref: ContentRef) -> Path:
             "unreadable",
             f"This database is larger than the {BLOB_MAX_BYTES:,} bytes read from a revision.",
         )
-    return await run_in_threadpool(reader_pool().blob, ref.fingerprint, lambda: window.data)
+    return await run_in_threadpool(pool.blob, ref.fingerprint, lambda: window.data)
 
 
 def _info(path: Path, *, deadline: float, subject: str, immutable: bool) -> dict[str, Any]:

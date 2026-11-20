@@ -11,11 +11,13 @@
 - **Another application’s database is read without changing it.** Every connection runs
   in a separate reader process, never in the server, and opens the database by what it
   finds beside it: a rollback-journal database and an idle write-ahead-log one with no
-  lock, validated against a commit; a live log through its index; a log with no index,
-  or a file with a second name, through a private copy.
-  Metabrowser never writes to the database or its log, never creates or removes a file
-  beside it, never rolls back another process’s journal, and never takes a lock that
-  could refuse the owner’s commit; while the owner is writing, the view says so.
+  lock, validated against a commit; a log an application has open through its index; a
+  log with no index, one no application has open (an owner that crashed, a copied
+  folder), or a file with a second name, through a private copy.
+  Metabrowser never writes to the database, its log, or an index no application holds,
+  never creates or removes a file beside it, never rolls back another process’s journal,
+  and never takes a lock that could refuse the owner’s commit; while the owner is
+  writing, the view says so.
   See
   [Reading SQLite Databases](docs/project/architecture/arch-plugin-system.md#reading-sqlite-databases).
 
