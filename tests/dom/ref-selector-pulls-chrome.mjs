@@ -348,7 +348,7 @@ try {
   // the refill takes the list out of the page and puts it back, which empties its scroll
   // position, and the list is put back where it is, not where its rows were last drawn.
   // Both here in one task, so no frame comes between them, as one comes between them in a
-  // loaded page at a time nothing controls (mb-tjbm).
+  // loaded page at a time nothing controls (mb-tay7).
   result.carried = await chrome.evaluate(`(async () => {
     const list = ${LIST};
     list.scrollTop = 5000;

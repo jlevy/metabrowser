@@ -208,7 +208,7 @@ def test_rows_with_a_pull_request_are_placed_by_their_own_height_in_chrome(
     assert middle["drawn"] <= in_view + 2 * overscan + 2
 
     # A refill of the Files toolbar between a scroll and its scroll event leaves the list
-    # where the scroll put it, with the rows there drawn (mb-tjbm).
+    # where the scroll put it, with the rows there drawn (mb-tay7).
     carried = result["carried"]
     assert carried["scrollTop"] == 5000, carried
     assert carried["centerIndex"] is not None and carried["drawn"] > 0, carried

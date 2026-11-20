@@ -1692,7 +1692,7 @@
    * of view (mb-y1k0). So *restore* puts the list back where its rows were drawn for, which
    * the toolbar says just before the refill (`source-ref-selector:carry`, which records the
    * list's scroll position then, since a scroll's own event, which records it otherwise,
-   * comes a frame later and a refill can come first; mb-tjbm), and
+   * comes a frame later and a refill can come first; mb-tay7), and
    * the control that had focus gets it back, unless the reader has since put focus
    * somewhere else: elsewhere by a key, or anywhere by a press outside the selector.
    * Focus events do not fire in a page that is not focused, a background window's or a
