@@ -466,8 +466,12 @@ opened by URL, a GitHub link sent to the app or a URL entered in Open URL… amo
   none of the objects the checkout already has, and **open the checkout instead**, which
   opens that folder. A checkout is known when an open folder window is one; recent
   folders join when an entry records its repository.
-  If the mirror already has a window, the window switches to the branch or pull request
-  the URL selects, and it never shows another revision silently.
+  A repository has one mirror, served from the repository itself, never from the URL
+  that first opened it, by the owner’s word on 2026-11-19. If the mirror already has a
+  window, that window and its server open the URL: the mirror refreshes, a pull request
+  or a commit opens at its page, and a branch, folder, or file switches the window to
+  the revision the URL selects, so it never shows another revision silently
+  (`POST /api/source/link`). A link sent to the app does the same.
   If it has none but a window shows a checkout of the same repository, the mirror’s
   window opens as a tab of that one, by the owner’s word on 2026-11-18: the mirror still
   serves the URL, and the checkout keeps its own tab
@@ -577,7 +581,7 @@ A pull request that builds a part updates its row.
 | History only at a repository’s root | Built; stays as the gate for a folder served exactly | [The Exact-Root Gate](arch-git.md#discovery-and-the-exact-root-gate) |
 | The resolver: a path to its repository’s root, the guards, `--exact-root`, and the root in the `Serving` line | Not built | `mb-2wfk` |
 | `metab TARGET --present`, whose dry run answers a resolution | Partly built: `--present` and its dry run, on the path named; answering a resolution waits on the resolver | [#540](https://github.com/jlevy/metabrowser/pull/540), `mb-d9tu`; `mb-2wfk` |
-| GitHub links opened in the app, and `SessionRoot` | Built | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0` |
+| GitHub links opened in the app, and `SessionRoot` | Built: one mirror per repository, which opens every link into it in its running server | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0`; `mb-30xb` |
 | A repository folder’s revision views, its chooser, and their command line, with the two revision requirements above | Built | [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout); [#559](https://github.com/jlevy/metabrowser/pull/559), `mb-8ob8` |
 | Pulls on a folder’s revision; View on branch and Browse code to the head as a revision | Not built | Follows `mb-8ob8` |
 | Recent targets kept by `metab`, behind File > Open Recent | Built; a mirror’s `target` waits for `ProviderUrlReducer.web_url` (`mb-8bds`), and the resolved root for the resolver | [Recent Targets](arch-recent-targets.md), `mb-40k4` |

@@ -44,6 +44,7 @@ registered, any other status, and a golden that never runs the route.
 | `/api/source/status` | covered | `--api` | `cli-api-shell.tryscript.md`, `cli-api-source.tryscript.md`, `cli-checkout-overlay.tryscript.md`, `cli-checkout-overlay.txt` |
 | `/api/source/refresh` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md` |
 | `/api/source/pin` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-source-checkout.txt`, `cli-api-shell.tryscript.md`, `cli-api-diff-view-file.tryscript.md` |
+| `/api/source/link` | covered | `--api --data` | `cli-api-source-link.txt`, `app-contract.txt` |
 | `/api/source/refs` | covered | `--api` | `cli-api-source.tryscript.md`, `cli-api-source-checkout.txt`, `cli-api-shell.tryscript.md` |
 | `/api/git/repo` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/refs` | covered | `--api` | `cli-api-git.tryscript.md` |
