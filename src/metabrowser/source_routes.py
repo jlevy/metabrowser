@@ -168,6 +168,7 @@ class SourceStatus(TypedDict):
     borrows: str | None
     shallow: bool
     refreshable: bool
+    follows: bool
     latest: str | None
     # False when the origin deleted the ref. None for a pin by commit ID, a ref not yet
     # observed, or one the store swept (``cache/lender.py``) until a fetch names it again.

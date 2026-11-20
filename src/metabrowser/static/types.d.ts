@@ -3466,6 +3466,8 @@ declare global {
     origin: string | null;
     location: string | null;
     refreshable: boolean;
+    /** Whether the pin moves with its ref: a branch or tag, not a commit or pull request. */
+    follows: boolean;
     latest: string | null;
     ref_on_origin: boolean | null;
     last_fetch_at: string | null;
@@ -3532,7 +3534,12 @@ declare global {
     error: string | null;
     /** The attended pull request's page, when there is one. */
     pull: { href: string; text: string } | null;
+    /** The branch or tag the page goes with to a new commit, which the controller does. */
+    follow: MetabrowserSourceFollow | null;
   };
+
+  /** A ref the page follows, and the commit it is at now. */
+  type MetabrowserSourceFollow = { ref: string; commit: string };
 
   /**
    * What the commit view says about a commit the mirror lacks: being fetched, not
@@ -3587,6 +3594,8 @@ declare global {
     render(model: MetabrowserSourceFreshnessModel): void;
     reload(): void;
     navigate(href: string): void;
+    /** The page's own `/view/` address, or null on any other page. */
+    address(): string | null;
   };
 
   type MetabrowserSourceFreshnessController = Readonly<{

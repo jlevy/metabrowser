@@ -91,8 +91,10 @@ The switch lasts until the server stops.
 
 The foot of the navigation pane says when the mirror was last fetched from its origin;
 click it to fetch now.
-A fetch never moves the page under you: when it moves the served branch, the foot offers
-the new commit, and **Switch** serves it.
+A branch or tag is shown as the mirror last fetched it, as github.com shows a branch:
+when a fetch moves the served branch, the page follows it to the new commit by itself,
+on the same file or folder when the new commit has it, or at the root when it does not.
+A commit you opened by its ID stays put.
 
 ## Branches and Tags of a Local Checkout
 

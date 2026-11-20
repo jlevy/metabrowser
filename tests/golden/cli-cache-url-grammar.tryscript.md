@@ -164,6 +164,7 @@ status: 200
   "borrows": null,
   "shallow": false,
   "refreshable": false,
+  "follows": false,
   "latest": null,
   "ref_on_origin": null,
   "last_fetch_at": null,
