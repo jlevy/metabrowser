@@ -111,10 +111,9 @@ function headerHtml(mb, column, sorting) {
   }
   const active = sorting.sort === column.sort;
   const aria = active ? (sorting.order === "asc" ? "ascending" : "descending") : "none";
-  const arrow = active ? (sorting.order === "asc" ? " ↑" : " ↓") : "";
   return (
     `<th scope="col" class="agents-col-${column.id}${numeric}" aria-sort="${aria}">` +
-    `<button type="button" class="agents-sort" data-agents-sort="${column.sort}">${label}${arrow}</button>` +
+    `<button type="button" class="agents-sort" data-agents-sort="${column.sort}">${label}</button>` +
     "</th>"
   );
 }

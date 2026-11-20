@@ -239,6 +239,15 @@
   color: var(--text);
 }
 
+/* The sorted column's direction, drawn after its label; the cell's aria-sort says it too. */
+th[aria-sort="ascending"] .agents-sort::after {
+  content: " \2191";
+}
+
+th[aria-sort="descending"] .agents-sort::after {
+  content: " \2193";
+}
+
 .agents-no-file {
   color: var(--muted);
 }

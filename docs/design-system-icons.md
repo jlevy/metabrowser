@@ -198,6 +198,8 @@ The state’s word beside the row’s title carries the meaning without the colo
 | `→` | Text | From one to the other: a rename, a mode or type change, and a merge’s source and target | `builtin_plugins/diff/diff-model.js`, `static/git-panel.js`, `static/plugin-sdk-views.js` | The text’s | The text’s |
 | `→` | Text | An agent log’s tool call, going out, in an event’s kind | `builtin_plugins/agents/index.js` | The kind badge’s | The text’s |
 | `←` | Text | An agent log’s tool result, coming back, in an event’s kind | `builtin_plugins/agents/index.js` | The kind badge’s | The text’s |
+| `↑` | Text | A session table’s sorted column, ascending, after its header’s label | `builtin_plugins/agents/agents-views.css` | The header’s | The header’s |
+| `↓` | Text | A session table’s sorted column, descending, after its header’s label | `builtin_plugins/agents/agents-views.css` | The header’s | The header’s |
 | `→` | Text | The Metabrowser menu title’s link to the project on GitHub, shown on hover | `server.py` | The title’s | The text’s |
 | `⏎` | Text | A line with no newline at its end, in a diff | `builtin_plugins/diff/diff-view.js` | `--muted` | The text’s |
 | `‹` | Text | Opens the hex code the binary view shows for a byte that is not printable ASCII, such as `‹FF›` | `builtin_plugins/binary/byte-format.js` | `--muted`, the code’s | `--mono-block-font-size`, the code block’s |

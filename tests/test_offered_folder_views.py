@@ -39,7 +39,9 @@ def _raises(_folder: Path) -> bool:
 def offered(monkeypatch: pytest.MonkeyPatch) -> None:
     folder_views = [*server._PLUGIN_VIEWS_BY_KIND.get("folder", []), _HOME_VIEW]
     monkeypatch.setitem(server._PLUGIN_VIEWS_BY_KIND, "folder", folder_views)
-    monkeypatch.setattr(server, "_FOLDER_OFFERS", {"agent-home": _is_marked})
+    monkeypatch.setattr(
+        server, "_FOLDER_OFFERS", {**server._FOLDER_OFFERS, "agent-home": _is_marked}
+    )
 
 
 def _ids_and_default(views: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
@@ -80,7 +82,7 @@ def test_a_failing_offer_leaves_its_view_out_and_the_page_up(
 ) -> None:
     folder_views = [*server._PLUGIN_VIEWS_BY_KIND.get("folder", []), _HOME_VIEW]
     monkeypatch.setitem(server._PLUGIN_VIEWS_BY_KIND, "folder", folder_views)
-    monkeypatch.setattr(server, "_FOLDER_OFFERS", {"agent-home": _raises})
+    monkeypatch.setattr(server, "_FOLDER_OFFERS", {**server._FOLDER_OFFERS, "agent-home": _raises})
 
     with caplog.at_level(logging.ERROR, logger=server.LOG.name):
         ids, defaults = _ids_and_default(server._views_for_kind("folder", target=tmp_path))
