@@ -101,7 +101,7 @@ for (const relative of [
   "src/metabrowser/static/plugin-sdk.js",
   "src/metabrowser/static/filter-controls.js",
   "src/metabrowser/static/icons.js",
-  "src/metabrowser/builtin_plugins/agent_log/index.js",
+  "src/metabrowser/builtin_plugins/agents/index.js",
 ]) {
   const filename = path.join(repoRoot, relative);
   const source = fs.readFileSync(filename, "utf8");

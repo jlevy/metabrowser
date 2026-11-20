@@ -208,13 +208,13 @@ def test_an_error_notice_is_an_alert() -> None:
 
 # -- Agent-log kind hues -------------------------------------------------------------------
 
-AGENT_LOG_CSS = PLUGINS_DIR / "agent_log" / "styles.css"
+AGENT_LOG_CSS = PLUGINS_DIR / "agents" / "styles.css"
 CHARTS_PY = REPO_ROOT / "src" / "metabrowser" / "charts.py"
 # How far apart two hues of one kind may sit, in degrees: the chart's tool result is a
 # lighter step of the badge's amber, not the same value.
 HUE_TOLERANCE = 20
 NEUTRAL_CHROMA = 0.04
-# Each chart kind's badge: the Log's ink variable for it, per agent_log/styles.css.
+# Each chart kind's badge: the Log's ink variable for it, per agents/styles.css.
 BADGE_INK = {
     "tool_call": "--agent-log-kind-tool-text",
     "tool_result": "--agent-log-kind-tool-text",
@@ -239,7 +239,7 @@ def _oklch(block: str, name: str) -> tuple[float, float]:
     """(chroma, hue) of an oklch() custom property."""
     pattern = rf"{re.escape(name)}:\s*oklch\(([\d.]+)%\s+([\d.]+)\s+([\d.]+)\)"
     match = re.search(pattern, block)
-    assert match, f"{name} is not an oklch() value in agent_log/styles.css"
+    assert match, f"{name} is not an oklch() value in agents/styles.css"
     return float(match.group(2)), float(match.group(3))
 
 
@@ -271,7 +271,7 @@ def test_agent_log_kind_has_one_hue_in_the_log_and_its_chart() -> None:
 
 
 def test_agent_log_badges_use_the_shared_badge_primitive() -> None:
-    source = (PLUGINS_DIR / "agent_log" / "index.js").read_text()
+    source = (PLUGINS_DIR / "agents" / "index.js").read_text()
     assert 'class="file-header-badge log-event-kind' in source
     css = AGENT_LOG_CSS.read_text()
     rule = re.search(r"\.log-event-kind\s*\{(.*?)\}", css, re.DOTALL)

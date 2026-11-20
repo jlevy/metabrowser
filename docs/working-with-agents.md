@@ -202,7 +202,7 @@ The same parse is available without a browser:
 ```shell
 metab ./runs --show .logs/session.jsonl
 metab ./runs --api '/api/file?path=.logs/session.jsonl' --format json
-metab ./runs --api '/api/plugin/agent-log/charts?path=.logs/session.jsonl' --format json
+metab ./runs --api '/api/plugin/agents/charts?path=.logs/session.jsonl' --format json
 ```
 
 The `/api/file` envelope carries the events and a summary: the agent, event, tool-call,

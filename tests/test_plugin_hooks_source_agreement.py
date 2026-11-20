@@ -203,7 +203,7 @@ def test_a_byte_bound_below_zero_answers_the_same_on_both(
 
 
 def test_agent_log_charts_report_the_same_tallies(tmp_path: Path) -> None:
-    folder, pinned = _both(tmp_path, "/api/plugin/agent-log/charts", "session.jsonl")
+    folder, pinned = _both(tmp_path, "/api/plugin/agents/charts", "session.jsonl")
     assert folder["summary"]["metadata"]["adapter"] == "claude"
     # The charts payload carries no address fields at all, so it matches whole.
     assert folder == pinned

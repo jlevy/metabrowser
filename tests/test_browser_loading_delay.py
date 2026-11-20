@@ -30,7 +30,7 @@ def test_every_fast_renderer_uses_the_delayed_loading_utility() -> None:
         "Markdown": PLUGIN_ROOT / "markdown" / "rendered.js",
         "folder Overview": PLUGIN_ROOT / "folder" / "overview.js",
         "Treemap": PLUGIN_ROOT / "folder" / "treemap.js",
-        "agent-log charts": PLUGIN_ROOT / "agent_log" / "index.js",
+        "agent-log charts": PLUGIN_ROOT / "agents" / "index.js",
         # A pull request's changed files: the spinner on the loading line an expanded tree
         # shows until its first rows come.
         "Pulls changed-files tree": PLUGIN_ROOT / "github" / "pull-files-view.js",
@@ -106,7 +106,7 @@ def test_spinners_carry_no_visible_loading_label() -> None:
         "shell": STATIC_ROOT / "app.js",
         "server shell": REPO_ROOT / "src" / "metabrowser" / "server.py",
         "Markdown": PLUGIN_ROOT / "markdown" / "rendered.js",
-        "agent-log charts": PLUGIN_ROOT / "agent_log" / "index.js",
+        "agent-log charts": PLUGIN_ROOT / "agents" / "index.js",
         "folder totals": PLUGIN_ROOT / "folder" / "folder-totals.js",
         "Treemap": PLUGIN_ROOT / "folder" / "treemap.js",
         "file types": PLUGIN_ROOT / "folder" / "distribution-view.js",

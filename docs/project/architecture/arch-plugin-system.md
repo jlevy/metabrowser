@@ -51,6 +51,14 @@ the trust boundary it enforces.
   hook for a plugin discovered from `--plugins-dir`, and logs that it ignored them.
   Python runs only from a built-in or an installed distribution, which already belongs
   to the environment.
+- **Register modules:** a manifest’s optional `[plugin] register` names a Python module
+  that discovery imports once, as it loads a built-in or entry-point plugin, so the
+  plugin can register extensions such as log adapters.
+  An import failure becomes an error string like any other load error and the plugin is
+  skipped. For an operator-directory plugin the field is ignored with a logged warning,
+  as data hooks are, and `metab --doctor` reports it.
+  Discovery runs at server start and in the plugin-inspection modes, not on `--version`
+  or `--present --dry-run`, so those do not import a register module.
 
 ## Manifests
 
@@ -272,9 +280,9 @@ Each is optional except the kind and one view.
    Git pin alike and bounds every read.
 4. **Parse a JSONL stream,** when the format is one.
    `register_log_adapter` adds a detector and parser for the JSONL view, and a rule with
-   `match = { ext = ".jsonl", adapter = "<name>" }` claims those files, as the
-   `agent-log` built-in does for Metabrowser’s own adapters, which register the same
-   way.
+   `match = { ext = ".jsonl", adapter = "<name>" }` claims those files, as the `agents`
+   built-in does for the Claude Code, Codex, Pi, and Gemini adapters, which register
+   from its manifest’s `register` module.
 5. **Make it a container,** when its parts are worth navigating, with
    `container = { children = "<route>" }`.
 6. **Give it a type family,** so the Files filter, Overview’s type breakdown, the

@@ -1,8 +1,9 @@
 [plugin]
-name = "agent-log"
-display_name = "Agent log (Claude / Codex / Gemini / Pi)"
+name = "agents"
+display_name = "Agents (Claude Code, Codex, Gemini, Pi logs)"
 version = "0.0.1"
 sdk_version = "0.7"
+register = "metabrowser.builtin_plugins.agents.adapters"
 
 # Coding-agent JSONL session logs from Claude Code, Codex, Gemini, or Pi CLI.
 # Each adapter gets its own [[kind]] entry that resolves to the same kind id.
@@ -37,7 +38,7 @@ priority = 0
 
 [[data_hook]]
 route = "charts"
-sidekick = "metabrowser.builtin_plugins.agent_log.sidekick:charts_handler"
+sidekick = "metabrowser.builtin_plugins.agents.sidekick:charts_handler"
 methods = ["GET"]
 
 [[view]]

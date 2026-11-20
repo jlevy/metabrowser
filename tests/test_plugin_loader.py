@@ -384,6 +384,116 @@ match = { ext = ".entrypoint" }
     assert discovered[0].source == "entry-point:entrypoint-plugin"
 
 
+def _entry_point_plugin(
+    make_plugin_dir, monkeypatch: pytest.MonkeyPatch, register: str
+) -> list[LoadedPlugin | str]:
+    plugin_dir = make_plugin_dir(
+        "register-plugin",
+        f"""
+[plugin]
+name = "register-plugin"
+sdk_version = "0.7"
+register = "{register}"
+
+[[kind]]
+id = "register-kind"
+match = {{ ext = ".registerkind" }}
+""",
+    )
+    module_name = "metabrowser_test_register_entrypoint"
+    module = ModuleType(module_name)
+    cast(Any, module).plugin_dir = lambda: plugin_dir
+    monkeypatch.setitem(sys.modules, module_name, module)
+    entry_point = importlib.metadata.EntryPoint(
+        name="register-plugin", value=f"{module_name}:plugin_dir", group="metabrowser.plugins"
+    )
+    monkeypatch.setattr(importlib.metadata, "entry_points", lambda **_kwargs: [entry_point])
+    return _discover_entry_point_plugins()
+
+
+def test_register_module_is_imported_once_at_discovery(
+    make_plugin_dir, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    register = "metabrowser_test_register_module"
+    module = ModuleType(register)
+    cast(Any, module).imports = 0
+    monkeypatch.setitem(sys.modules, register, module)
+    imported: list[str] = []
+    real_import = importlib.import_module
+
+    def counting_import(name: str, package: str | None = None) -> ModuleType:
+        if name == register:
+            imported.append(name)
+        return real_import(name, package)
+
+    monkeypatch.setattr(importlib, "import_module", counting_import)
+
+    discovered = _entry_point_plugin(make_plugin_dir, monkeypatch, register)
+
+    assert [p.name for p in discovered if isinstance(p, LoadedPlugin)] == ["register-plugin"]
+    assert imported == [register]
+
+
+def test_register_module_import_failure_is_a_load_error(
+    make_plugin_dir, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    discovered = _entry_point_plugin(
+        make_plugin_dir, monkeypatch, "metabrowser_test_register_module_missing"
+    )
+
+    assert len(discovered) == 1
+    assert isinstance(discovered[0], str)
+    assert "metabrowser_test_register_module_missing" in discovered[0]
+    assert "failed to import" in discovered[0]
+
+
+def test_register_module_is_ignored_for_an_operator_directory_plugin(
+    make_plugin_dir, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    extra = tmp_path / "extra"
+    extra.mkdir()
+    plugin_dir = extra / "localplug"
+    plugin_dir.mkdir()
+    (plugin_dir / "manifest.toml").write_text(
+        """
+[plugin]
+name = "localplug"
+sdk_version = "0.7"
+register = "metabrowser_test_register_never_imported"
+
+[[kind]]
+id = "local-kind"
+match = { ext = ".localkind" }
+"""
+    )
+    (plugin_dir / "index.js").write_text("// ok\n")
+
+    with caplog.at_level("WARNING"):
+        result = discover_plugins(extra_dirs=[extra])
+
+    assert "localplug" in [p.name for p in result.plugins]
+    assert not [e for e in result.errors if "localplug" in e]
+    assert "JavaScript-only" in caplog.text
+
+
+def test_manifest_rejects_a_register_value_that_is_not_a_module_name(make_plugin_dir) -> None:
+    plugin_dir = make_plugin_dir(
+        "badregister",
+        """
+[plugin]
+name = "badregister"
+sdk_version = "0.7"
+register = "not a module"
+
+[[kind]]
+id = "k"
+match = { ext = ".k" }
+""",
+    )
+    with pytest.raises(ValidationError):
+        load_manifest(plugin_dir / "manifest.toml")
+
+
 def test_entry_point_reports_directory_without_manifest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

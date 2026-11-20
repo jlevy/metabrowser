@@ -278,7 +278,7 @@ def _agent_chart_specs(events: list[LogEvent]) -> list[dict[str, Any]]:
     # Group events into bins by kind. Colors are CSS-var sentinels —
     # app.js resolveColor() substitutes computed values before Chart.js
     # consumes the spec (canvas can't resolve var() itself).
-    # The hues are the Log view's kind badges' (agent_log/styles.css), so a kind is one
+    # The hues are the Log view's kind badges' (agents/styles.css), so a kind is one
     # colour in the badge, the filter, and this chart; tests/test_plugin_design_consistency.py
     # pins it. A tool call and its result share the badge's amber, the result lighter.
     kind_colors = {

@@ -554,7 +554,7 @@ status: 200
       "kind": "api"
     },
     {
-      "path": "/api/plugin/agent-log/charts",
+      "path": "/api/plugin/agents/charts",
       "methods": [
         "GET",
         "HEAD"

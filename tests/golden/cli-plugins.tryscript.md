@@ -29,7 +29,7 @@ The setup checks that end the report depend on the host, so they are elided here
 $ metab --plugins
 NAME           SOURCE   KINDS             VIEWS  HOOKS
 -------------  -------  ----------------  -----  ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-agent-log      builtin  agent-log         3      charts
+agents         builtin  agent-log         3      charts
 binary         builtin  -                 1      chunk
 diff           builtin  diff              1      document,children,comparison
 folder         builtin  -                 2      -
@@ -50,11 +50,11 @@ $ metab --plugins --json
 {
   "plugins": [
     {
-      "name": "agent-log",
-      "display_name": "Agent log (Claude / Codex / Gemini / Pi)",
+      "name": "agents",
+      "display_name": "Agents (Claude Code, Codex, Gemini, Pi logs)",
       "version": "0.0.1",
       "source": "builtin",
-      "static_root": "[BUILTIN]/agent_log",
+      "static_root": "[BUILTIN]/agents",
       "kinds": [
         "agent-log"
       ],

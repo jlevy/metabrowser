@@ -448,7 +448,7 @@
     // work, so begin them together rather than putting one waterfall behind
     // the other. Resolves immediately once the bundle has been loaded.
     const [chartData] = await Promise.all([
-      mb.fetchPluginData("agent-log", "charts", { path: ctx.path }),
+      mb.fetchPluginData("agents", "charts", { path: ctx.path }),
       mb.ensureAsset("chart"),
     ]);
     if (generation !== chartsRenderGenerations.get(container)) {

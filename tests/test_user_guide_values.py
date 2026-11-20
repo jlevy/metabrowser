@@ -63,7 +63,7 @@ from metabrowser.settings import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC = REPO_ROOT / "src" / "metabrowser"
 APP_SOURCES = REPO_ROOT / "apps" / "macos" / "Sources" / "ShellCore"
-AGENT_LOG_MANIFEST = SRC / "builtin_plugins" / "agent_log" / "manifest.toml"
+AGENT_LOG_MANIFEST = SRC / "builtin_plugins" / "agents" / "manifest.toml"
 
 # What a guide calls each JSONL adapter. A new adapter fails here until it has a name, so
 # that the guides can be told about it. Codex's two formats share a name.

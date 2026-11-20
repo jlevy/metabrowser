@@ -354,6 +354,12 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
 
     # Per-plugin: sidekick imports resolve.
     for p in result.plugins:
+        if p.source.startswith("local:") and p.manifest.plugin.register_module:
+            problems.append(
+                f"plugin '{p.name}' declares a Python register module, but operator-directory "
+                "plugins are JavaScript-only; package the plugin behind an installed "
+                "metabrowser.plugins entry point"
+            )
         if p.source.startswith("local:") and p.manifest.data_hook:
             problems.append(
                 f"plugin '{p.name}' declares Python data hooks, but operator-directory "

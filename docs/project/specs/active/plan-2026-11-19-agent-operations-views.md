@@ -598,8 +598,8 @@ in the `agents` package before it is a plugin; the plugin manifest with the adap
 moved into it; the catalog and its routes; and the views, with the kind colors.
 
 - [x] Land the Phase 2 SDK additions.
-- [ ] Create the `agents` plugin package and its import-boundary test.
-- [ ] Move the five adapters (Phase 1 adds `codex-rollout`) and the `agent-log` views
+- [x] Create the `agents` plugin package and its import-boundary test.
+- [x] Move the five adapters (Phase 1 adds `codex-rollout`) and the `agent-log` views
   into the plugin.
 - [x] Define the shared model, the event kinds, and each provider’s mapping table, with
   their goldens.

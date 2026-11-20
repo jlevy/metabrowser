@@ -41,7 +41,7 @@ def test_generated_html_handlers_keep_their_global_names() -> None:
     app = _browser_app_js()
     sdk = _browser_asset("static/plugin-sdk.js")
     sdk_views = _browser_asset("static/plugin-sdk-views.js")
-    agent_log = _browser_asset("builtin_plugins/agent_log/index.js")
+    agent_log = _browser_asset("builtin_plugins/agents/index.js")
 
     # The Load more control moved into the SDK's partial-content notice, so the
     # delegated listener there calls a global that still lives in app.js. That split

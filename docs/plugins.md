@@ -960,12 +960,32 @@ Ensure the wheel includes the manifest, JavaScript, CSS, and any extra assets, a
 the built wheel in an isolated environment, since an editable checkout can conceal
 missing package data.
 
+### Python Registration Module
+
+A built-in or installed entry-point plugin that registers Python-side extensions, such
+as a JSONL adapter, names the module that does it in its manifest:
+
+```toml
+[plugin]
+name = "example-plugin"
+register = "example_plugin.adapters"
+```
+
+Discovery imports that module once, when it finds the plugin, so the module’s top-level
+calls (`register_log_adapter` and the like) run before the server mounts anything.
+A module that fails to import is a plugin load error, reported as the others are: the
+plugin is skipped and `metab --doctor` exits nonzero.
+An operator-directory plugin is JavaScript-only, so its `register` is ignored with a
+warning, and `metab --doctor` reports it.
+The module should import from `metabrowser.plugin_api` and do nothing but register.
+
 ### Plugin-Owned JSONL Adapters
 
 Plugins that recognize an additional JSONL event format can register a detector and
-parser factory when their entry-point module loads.
-Metabrowser’s own adapters register the same way, so `registered_log_adapters()` lists
-every name in detection order:
+parser factory when their `register` module loads
+([Python Registration Module](#python-registration-module)). The built-in `agents`
+plugin registers its Claude Code, Codex, Pi, and Gemini adapters the same way, so
+`registered_log_adapters()` lists every name in detection order:
 
 ```python
 from typing import Any
@@ -998,12 +1018,14 @@ The detector receives parsed objects from the beginning of the stream; keep it f
 deterministic, and free of filesystem or network work.
 A format whose stream opens with plain text can also pass `line_detector`, which
 receives each opening line that is not a JSON object.
-Detection asks each line’s detectors in registration order, Metabrowser’s first, so a
-detector should recognize only its own format.
+Detection asks each line’s detectors in registration order, the built-in `agents`
+plugin’s first, so a detector should recognize only its own format.
 A detector failure is logged and skipped, so one adapter cannot break detection for
 every JSONL file. Registering the same callables again is idempotent; claiming a name
-already registered, Metabrowser’s or another plugin’s, raises an error.
-The factory returns a fresh parser for each file or live stream.
+already registered, the built-in plugin’s or another plugin’s, raises an error.
+A log that no registered adapter recognizes gets the `unknown` adapter, whose parser
+turns each JSON object into an event of its `type`. The factory returns a fresh parser
+for each file or live stream.
 A `[[kind]]` rule with `match = { ext = ".jsonl", adapter = "example" }` then claims the
 files the detector recognizes.
 
@@ -1033,6 +1055,8 @@ which a CLI integration can catch to keep a command’s message and exit code, a
   malformed data from size and time limits.
 - **JSONL:** `LogEvent`, `LogParser`, `detect_adapter(lines)`, `register_log_adapter`,
   and `registered_log_adapters()` are the adapter contract above.
+  Built-in `agents` imports these from `metabrowser.plugin_api`, and
+  `tests/test_agents_import_boundary.py` holds it to that.
   `jsonl_parse_max_bytes()` is the parser’s decompressed input limit, so a hook reads at
   most that many bytes of a log.
   `extract_agent_charts_cached(path)` reuses the agent-log chart projection, returning

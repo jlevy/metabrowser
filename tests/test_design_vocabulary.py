@@ -1578,7 +1578,7 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".chip-clear"): "a chip's control",
     ("styles.css", ".file-header-badge"): "a badge",
     ("styles.css", ".tree-container-badge"): "a tree row's leading letter, its slot's glyph",
-    ("agent_log/styles.css", ".log-event-kind"): "a badge",
+    ("agents/styles.css", ".log-event-kind"): "a badge",
     (
         "diff/styles.css",
         ".metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary",
@@ -1714,7 +1714,7 @@ _TOGGLE_SOURCES: dict[str, str] = {
     "app.js": ".menu-seg's checked mark and the drawer's .icon-btn toggle",
     "server.py": ".menu-seg in the shell's menu",
     "source-ref-selector.js": "marks a chip of its groupHtml in place",
-    "agent_log/index.js": "marks a chip of its groupHtml in place",
+    "agents/index.js": "marks a chip of its groupHtml in place",
     "folder/treemap.js": "marks a chip of its groupHtml in place",
     "github/pulls-panel.js": "marks a chip of its groupHtml in place",
     "shell-keymap.js": "reads a filter menu's checked row to focus it, and renders none",
@@ -1951,7 +1951,7 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     ),
     # The View on GitHub button's chevron, which opens its menu.
     "plugin-sdk-views.js": ('"chip chip-menu-trigger counterpart-more disclosure-toggle"',),
-    "agent_log/index.js": ('class="log-event-header disclosure-toggle"',),
+    "agents/index.js": ('class="log-event-header disclosure-toggle"',),
     "structured/tree.js": ('" srow-container disclosure-toggle"',),
     "markdown/inert-toc.js": ('"kpress-toc-toggle disclosure-toggle"',),
     "markdown/rendered.js": ('class="section-disclosure-trigger disclosure-toggle">Diagnostics',),
@@ -2017,7 +2017,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
             '"chip chip-menu-trigger counterpart-more disclosure-toggle"',
         ),
     ),
-    "agent_log/index.js": (("mb.icons.toggle +", 'class="log-event-header disclosure-toggle"'),),
+    "agents/index.js": (("mb.icons.toggle +", 'class="log-event-header disclosure-toggle"'),),
     "structured/tree.js": (('srow-chevron"', '" srow-container disclosure-toggle"'),),
     "markdown/rendered.js": (
         ("<summary", 'class="section-disclosure-trigger disclosure-toggle">Diagnostics'),

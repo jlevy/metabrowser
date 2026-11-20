@@ -57,7 +57,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | `text` | Text files | Source | File envelope |
 | `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Source `S` | File envelope and the `structured/parsed` hook |
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
-| `agent-log` | `.jsonl` sniffed as an agent log | Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agent-log/charts` hook |
+| `agent-log` | `.jsonl` sniffed as an agent log | Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agents/charts` hook |
 | `unknown-jsonl` | Other `.jsonl` | Log `V`, Raw JSON `S` | File envelope |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | The `binary/chunk` hook’s bounded byte windows |
@@ -216,8 +216,8 @@ counts is missing here; the asset routes are not counted.
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, and
 `diff/comparison` ([Diff Pipeline](arch-diff-pipeline.md)); `binary/chunk`,
-`structured/parsed`, and `agent-log/charts` ([Plugin System](arch-plugin-system.md));
-and `github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
+`structured/parsed`, and `agents/charts` ([Plugin System](arch-plugin-system.md)); and
+`github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
 `github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff`,
 `github/pull-timeline`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`,
 `github/pulls-prefetch`, `github/pull-files`, `github/pull-files-refresh`,

@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CORE_CSS = ROOT / "src" / "metabrowser" / "static" / "styles.css"
-PLUGIN_CSS = ROOT / "src" / "metabrowser" / "builtin_plugins" / "agent_log" / "styles.css"
+PLUGIN_CSS = ROOT / "src" / "metabrowser" / "builtin_plugins" / "agents" / "styles.css"
 
 MINIMUM_TEXT_CONTRAST = 4.5
 PALETTE_PAIRS = (

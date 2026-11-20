@@ -356,6 +356,18 @@ class PluginInfo(BaseModel):
             "compatibility path for older SDKs."
         ),
     )
+    register_module: str | None = Field(
+        alias="register",
+        default=None,
+        description=(
+            "Dotted Python module imported once when the plugin is discovered, for "
+            "registrations such as ``register_log_adapter``. Built-in and entry-point "
+            "plugins only: an operator-directory plugin is JavaScript-only, so the "
+            "field is ignored there with a warning. An import failure is a plugin "
+            "load error."
+        ),
+        pattern=r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$",
+    )
     extra_scripts: list[str] = Field(
         default_factory=list,
         description=(

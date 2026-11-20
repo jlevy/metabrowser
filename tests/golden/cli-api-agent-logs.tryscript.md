@@ -49,8 +49,8 @@ model: jsonl envelope; size=6611
 Records without conversation count as `system`; each content block counts once.
 
 ```console
-$ metab root --api '/api/plugin/agent-log/charts?path=claude-transcript.jsonl'
-api: /api/plugin/agent-log/charts?path=claude-transcript.jsonl
+$ metab root --api '/api/plugin/agents/charts?path=claude-transcript.jsonl'
+api: /api/plugin/agents/charts?path=claude-transcript.jsonl
 status: 200
 {
   "summary": {
@@ -136,8 +136,8 @@ status: 200
 Commands run inside Codex’s `exec` tool count as tool calls of their own.
 
 ```console
-$ metab root --api '/api/plugin/agent-log/charts?path=codex-rollout.jsonl'
-api: /api/plugin/agent-log/charts?path=codex-rollout.jsonl
+$ metab root --api '/api/plugin/agents/charts?path=codex-rollout.jsonl'
+api: /api/plugin/agents/charts?path=codex-rollout.jsonl
 status: 200
 {
   "summary": {

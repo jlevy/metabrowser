@@ -1,4 +1,4 @@
-"""Server-side data hooks for the built-in agent-log plugin.
+"""Server-side data hooks for the built-in agents plugin.
 
 One handler for every source kind: the content reader answers an attached
 folder and a pinned revision through the same bounded calls, so nothing here

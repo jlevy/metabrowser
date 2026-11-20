@@ -354,9 +354,11 @@ _PRESENT_LOCAL_EXTRA = frozenset(
     }
 )
 # The property-list reader, for a bundle's Info.plist, and the XML parser it uses; and
-# what the preference's reader adds.
+# what the preference's reader adds; and `unicodedata`, which `cli.present` imports for
+# its own use and which `--version` used to load already, through `prettyfmt`, until the
+# agent-log parsers moved out of core with their import of it.
 _PRESENT_STDLIB_EXTRA = frozenset(
-    {"_hmac", "ctypes", "hmac", "plistlib", "pyexpat", "secrets", "xml"}
+    {"_hmac", "ctypes", "hmac", "plistlib", "pyexpat", "secrets", "unicodedata", "xml"}
 )
 # A link adds the URL grammar, each provider's reducer without its provider, and the path
 # encoding and revision grammar a page is spelled with.
@@ -526,11 +528,11 @@ def test_the_jsonl_parse_limit_is_read_when_asked(monkeypatch: pytest.MonkeyPatc
     assert plugin_api.jsonl_parse_max_bytes() == 64
 
 
-def test_the_agent_log_sidekick_imports_only_the_public_plugin_api() -> None:
+def test_the_agents_sidekick_imports_only_the_public_plugin_api() -> None:
     """A built-in sidekick is held to the contract a third-party one gets."""
     import ast
 
-    import metabrowser.builtin_plugins.agent_log.sidekick as sidekick
+    import metabrowser.builtin_plugins.agents.sidekick as sidekick
 
     tree = ast.parse(Path(sidekick.__file__).read_text(encoding="utf-8"))
     imported = {
