@@ -406,7 +406,8 @@ def _entries_layout(home: Path) -> CacheLayout | None:
             {
                 "error": (
                     f"This application home uses format {layout.format}, which this release "
-                    f"migrates to {FORMAT_HISTORY[-1]} before it reads cache entries."
+                    f"migrates to {FORMAT_HISTORY[-1]} before it reads cache entries. Opening "
+                    "any repository with metab migrates the cache."
                 ),
                 "code": "migration_pending",
             },

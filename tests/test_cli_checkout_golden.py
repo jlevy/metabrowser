@@ -25,7 +25,7 @@ from typing import Any
 import pytest
 
 from metabrowser.cache import pull_refs
-from metabrowser.cache.identity import repository_store_id, source_identity, store_key
+from metabrowser.cache.identity import repository_store_id, source_identity, store_key_candidates
 from metabrowser.cache.paths import store_directory
 from metabrowser.cache.urls import GitSource
 from tests.checkout_replica import (
@@ -92,7 +92,7 @@ class _Session:
     @property
     def store(self) -> Path:
         identity = repository_store_id(source_identity("https", CANONICAL), "sha1")
-        key = store_key("https", CANONICAL, identity)
+        key = store_key_candidates("https", CANONICAL, identity)[0]
         return self.home / store_directory(key) / "repository.git"
 
     def _labelled(self, text: str) -> str:

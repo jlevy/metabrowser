@@ -19,7 +19,6 @@ from metabrowser.cache.identity import (
     cache_store_key,
     identity_digest,
     is_store_key,
-    store_key,
     store_key_candidates,
     store_key_matches_identity,
 )
@@ -30,7 +29,10 @@ OTHER = "sha256:589d51b16fd8f1a2ffffffffffffffffffffffffffffffffffffffffffffffff
 
 
 def test_a_key_is_the_repository_and_a_prefix_of_the_identity() -> None:
-    assert store_key("https", ADDRESS, STORE) == "github-com--jlevy--markform--589d51b16fd8f1a2"
+    assert (
+        store_key_candidates("https", ADDRESS, STORE)[0]
+        == "github-com--jlevy--markform--589d51b16fd8f1a2"
+    )
     assert store_key_candidates("https", ADDRESS, STORE) == (
         "github-com--jlevy--markform--589d51b16fd8f1a2",
         "github-com--jlevy--markform--589d51b16fd8f1a2e54f3b4a",
@@ -122,8 +124,9 @@ def test_the_first_width_is_the_shortest_that_meets_the_stated_collision_target(
 
 
 def test_an_unclaimed_store_takes_its_first_key() -> None:
-    assert cache_store_key("https", ADDRESS, STORE, store_owner=lambda _key: None) == store_key(
-        "https", ADDRESS, STORE
+    assert (
+        cache_store_key("https", ADDRESS, STORE, store_owner=lambda _key: None)
+        == store_key_candidates("https", ADDRESS, STORE)[0]
     )
 
 

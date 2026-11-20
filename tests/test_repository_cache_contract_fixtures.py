@@ -140,7 +140,9 @@ def test_source_identity_and_slugs_are_reproducible() -> None:
         for object_format, store in record["generic_stores"].items():
             store_id = identity.repository_store_id(source, object_format)
             assert store["store_id"] == store_id
-            key = identity.store_key(record["transport"], record["normalized"], store_id)
+            key = identity.store_key_candidates(
+                record["transport"], record["normalized"], store_id
+            )[0]
             assert store["store_key"] == key
             assert identity.is_store_key(key)
             assert identity.store_key_matches_identity(key, store_id)

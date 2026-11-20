@@ -78,7 +78,12 @@ from metabrowser import mirror_refresh
 from metabrowser.builtin_plugins.github.gh_status import forget_github_status
 from metabrowser.cache import records
 from metabrowser.cache.acquire import PublishedSource
-from metabrowser.cache.identity import cache_slug, repository_store_id, source_identity, store_key
+from metabrowser.cache.identity import (
+    cache_slug,
+    repository_store_id,
+    source_identity,
+    store_key_candidates,
+)
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource, classify_root_argument
@@ -380,7 +385,7 @@ def origin_identity(url: str) -> OriginIdentity:
         path=classified.normalized.removeprefix("file://"),
         source_id=source_id,
         store_id=store_id,
-        store_key=store_key(classified.transport, classified.normalized, store_id),
+        store_key=store_key_candidates(classified.transport, classified.normalized, store_id)[0],
         slug=slug,
     )
 

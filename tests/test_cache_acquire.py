@@ -749,6 +749,55 @@ def test_a_store_never_shares_a_name_another_store_holds(
 
 
 @posix_only
+def test_an_alias_whose_store_is_at_no_key_is_a_miss_and_the_next_open_publishes_the_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A clone an older release finishes after the migration is named by its whole digest.
+
+    Its alias names the store, and no key holds it. That used to refuse every open of the
+    repository with "the aliased store is missing", with nothing to repair it but editing
+    the cache. It is a miss now, as a source with no store is: the open that follows
+    fetches the repository again, publishes it under its key beside the old directory,
+    and leaves the alias as it is.
+    """
+
+    _allow_installed_git(monkeypatch)
+    source = _file_source(_origin(tmp_path))
+    home = tmp_path / "home"
+    first = asyncio.run(acquire_source(source, home=home))
+    digest = first.store_id.removeprefix("sha256:")
+    stores = home / "repository-stores"
+    (stores / first.store_key).rename(stores / digest)
+    alias = home / source_record(first.slug, "store-alias.yml")
+    alias_before = alias.read_bytes()
+
+    assert cached_source(source, home) is None
+    again = asyncio.run(acquire_source(source, home=home))
+
+    assert again.fetched
+    assert (again.store_key, again.store_id) == (first.store_key, first.store_id)
+    assert (stores / again.store_key / "repository.git").is_dir()
+    assert (stores / digest).is_dir(), "the older release's directory is left for its owner"
+    assert alias.read_bytes() == alias_before
+    found = cached_source(source, home)
+    assert found is not None and found.store_key == first.store_key
+
+
+@posix_only
+def test_an_aliased_store_that_lost_its_state_record_is_still_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    source = _file_source(_origin(tmp_path))
+    home = tmp_path / "home"
+    first = asyncio.run(acquire_source(source, home=home))
+    (home / store_record(first.store_key, "state.yml")).unlink()
+
+    with pytest.raises(ValidationFailedError, match="no state.yml"):
+        cached_source(source, home)
+
+
+@posix_only
 def test_a_store_directory_that_records_no_store_is_damage_and_not_a_free_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

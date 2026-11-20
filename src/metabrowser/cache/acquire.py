@@ -710,7 +710,8 @@ def _claim_store_key(home: Path, source: GitSource, store_id: str) -> tuple[str,
             source.transport,
             source.normalized,
             store_id,
-            store_owner=lambda candidate: _store_id_at(home, candidate),
+            # Before the lock nothing here may change the home: the read under it does.
+            store_owner=lambda candidate: _store_id_at(home, candidate, shared="keep"),
         )
         lock = repository_store_lock(home, key)
         try:
@@ -1005,15 +1006,25 @@ def _find_published(source: GitSource, home: Path) -> PublishedSource | None:
         store = read_record(
             home, store_record(key, "store.yml"), REPOSITORY_STORE_CONTRACT_ID, shared="keep"
         )
+    except FileNotFoundError:
+        # No candidate key holds the store, so the alias names a store that is not there:
+        # a miss, and the acquisition that follows publishes the store under its key and
+        # leaves the alias as it is. This was "the aliased store is missing" and a refusal
+        # of every open, which no one could repair but by editing the cache. It is how an
+        # older release's clone, published under a whole-digest name after the migration,
+        # is cloned again and no longer in the way; ``/api/cache/sources`` still lists
+        # such a source ``dangling`` until then.
+        return None
+    try:
         state = read_record(
             home, store_record(key, "state.yml"), REPOSITORY_STORE_STATE_CONTRACT_ID, shared="keep"
         )
     except FileNotFoundError as exc:
-        raise ValidationFailedError("the aliased store is missing") from exc
+        raise ValidationFailedError("the aliased store has no state.yml") from exc
     # A name no store held when it was read may hold one now: a store that records another
     # identity is never opened for this source, whatever its directory is called.
     if isinstance(store, RepositoryStore) and store.id != alias.store_id:
-        raise ValidationFailedError("the aliased store is missing")
+        return None
     if not isinstance(store, RepositoryStore) or not isinstance(state, RepositoryStoreState):
         raise ValidationFailedError("the published store did not validate")
     if state.default_remote_ref is None or state.default_revision is None:

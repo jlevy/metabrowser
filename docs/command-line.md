@@ -964,8 +964,11 @@ replacing it: move it aside and start again.
 A newer format asks you to upgrade Metabrowser.
 A cache an older release wrote is migrated the first time a repository in it is opened:
 each mirror’s directory is renamed to a readable name, and nothing is cloned again.
-Deleting the cache directory, with no server running, removes every mirror and record;
-the next run clones again.
+That first open writes to the cache, so it needs a cache you can write once; a read-only
+copy is not migrated.
+Stop running `metab` servers first: one of an older release cannot read its mirrors once
+they are renamed. Deleting the cache directory, with no server running, removes every
+mirror and record; the next run clones again.
 [The repository cache](project/architecture/arch-repository-cache.md) describes the
 layout, and the repair for each refusal that concerns it.
 

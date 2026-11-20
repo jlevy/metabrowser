@@ -132,11 +132,36 @@ older release is still a hit, and no clone is repeated.
 A rename was chosen over leaving the old names because a store can hold a repository of
 gigabytes and nothing in the cache deletes one: orphaned, every store would be cloned
 again and the old copies would stay, listed by nothing.
-A store no alias names takes the readable part `unattached`, so it is listed as
-unreferenced and kept, as it always was; a directory whose `store.yml` does not record
-the identity its name spells was damaged already and is left as it is.
-A running Metabrowser of the older release keeps reading the old directory names until
-it is restarted, and refuses the migrated home as a newer format.
+The repository a store holds is read from the source whose alias names it, or whose
+identity derives it in either object format, so a store that an interrupted acquisition
+left unreferenced keeps its repository’s name, and the next acquisition of that source
+reuses it. A store no source names takes the readable part `unattached`, so it is listed
+as unreferenced and kept, as it always was.
+A directory whose `store.yml` does not record the identity its name spells was damaged
+already and is left as it is, and an entry the migration cannot read, such as a record
+with a second hard link or a file where a store belongs, is named in a warning and
+skipped, so that one entry cannot stop every open.
+
+The migration is the first write to the home after an upgrade, so that first open needs
+a writable cache, and a home read before it answers `migration_pending`, which says that
+opening any repository with `metab` migrates the cache.
+The macOS app reads `/api/cache/sources` to know whether a repository is cached and
+takes `migration_pending` for “not cached”, so it asks its clone question once for a
+repository it already holds.
+
+Migrating while a process of the older release runs is unsupported, and the changelog
+says to stop them first (the app restarts its own).
+Such a process refuses the migrated home as a newer format when it next opens the cache,
+and fails to read its mirrors until it is restarted, since the directories it reads have
+moved. One that has a clone in flight publishes its store under the whole-digest name
+after the migration, and its alias then names a store that no key holds.
+That is a miss and not damage: the next open fetches the repository again, publishes it
+under its key, and leaves the alias as it is, where `_find_published` used to refuse
+every open of it with “the aliased store is missing”.
+`/api/cache/sources` lists such a source `dangling` until then, and the directory under
+the old name stays, counted among the stores route’s unrecognized entries.
+Renaming it to the key its store would have been given, before that open, keeps the
+clone; clearing the cache removes it.
 
 ## Identity
 

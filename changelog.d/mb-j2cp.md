@@ -13,12 +13,27 @@
   `mirror in ~/.cache/metabrowser/repository-stores/<name>`, without the
   `/repository.git` every mirror ends in; its tooltip and `/api/source/status` still
   give the whole location, where `git -C <location> log --all` works.
-  The cache layout is now `f02`, and the first `metab` that opens a repository in an
-  older cache renames each mirror where it stands, so nothing is cloned again, and keeps
-  one that no source names as `unattached--<16 digits>`. A `metab` of an earlier release
-  refuses a migrated cache and asks for an upgrade, and a server of one that is still
-  running reads the old directory names until it is restarted.
   `/api/cache/stores` says each store’s `key`, is paged by it (`after` and `next_after`
   are keys, where they were identities), and reports `id` as `null` for a store whose
   record cannot be read.
   See [Store Keys](docs/project/architecture/arch-repository-cache.md#store-keys).
+
+- Upgrading to the `f02` cache layout, which names mirrors as above: the first `metab`
+  that opens a repository in an older cache renames each mirror where it stands, so
+  nothing is cloned again.
+  A mirror no source names is kept as `unattached--<16 digits>`, and an entry the rename
+  cannot read is named in a warning and left as it is.
+  That first open writes to the cache, so the cache must be writable once; a read-only
+  copy is not migrated.
+  Until then `/api/cache/*` answers `migration_pending`, and the macOS app, which reads
+  that route to know whether a repository is cached, asks its clone question once for a
+  repository it already holds; opening the repository migrates the cache.
+  A `metab` of an earlier release refuses a migrated cache and asks for an upgrade.
+  Stop running `metab` servers before the first new `metab` opens a repository (the
+  macOS app restarts its own).
+  A server of an earlier release that is still running fails to read its mirrors until
+  it is restarted, and a clone it has in flight during the upgrade is published under
+  the old name, so that repository’s alias names a mirror no name holds.
+  The next open of that repository clones it again and publishes it under its name, and
+  the directory under the old name stays: rename it to its name first to keep that
+  clone, or clear the cache.

@@ -87,7 +87,7 @@ exit: 1
 api: /api/cache/stores
 status: 409
 {
-  "error": "This application home uses format f01, which this release migrates to f02 before it reads cache entries.",
+  "error": "This application home uses format f01, which this release migrates to f02 before it reads cache entries. Opening any repository with metab migrates the cache.",
   "code": "migration_pending"
 }
 --- stderr ---

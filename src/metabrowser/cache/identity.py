@@ -289,12 +289,6 @@ def store_key_candidates(
     return store_key_candidates_for(slug_readable_part(transport, normalized_address), store_id)
 
 
-def store_key(transport: GitTransport, normalized_address: str, store_id: str) -> str:
-    """Return the key *store_id* has when no other store holds it: the shortest candidate."""
-
-    return store_key_candidates(transport, normalized_address, store_id)[0]
-
-
 def cache_store_key(
     transport: GitTransport,
     normalized_address: str,
@@ -366,7 +360,6 @@ __all__ = [
     "slug_readable_part",
     "slug_tokens",
     "source_identity",
-    "store_key",
     "store_key_candidates",
     "store_key_candidates_for",
     "store_key_matches_identity",

@@ -27,7 +27,7 @@ from metabrowser.cache.identity import (
     identity_digest,
     repository_store_id,
     source_identity,
-    store_key,
+    store_key_candidates,
 )
 from metabrowser.cache.layout import migrate_layout
 from metabrowser.cache.locks import (
@@ -110,7 +110,7 @@ class FixtureStore:
 
     @property
     def key(self) -> str:
-        return store_key(self.source.transport, self.source.address, self.id)
+        return store_key_candidates(self.source.transport, self.source.address, self.id)[0]
 
 
 @dataclass(frozen=True, slots=True)

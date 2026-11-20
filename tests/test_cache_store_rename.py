@@ -12,11 +12,14 @@ import asyncio
 import logging
 import os
 import shutil
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
 from metabrowser.cache import acquire as acquire_module
+from metabrowser.cache import projection
 from metabrowser.cache.acquire import acquire_source, cached_source
 from metabrowser.cache.atomic import read_record, write_record_atomic
 from metabrowser.cache.identity import (
@@ -26,18 +29,27 @@ from metabrowser.cache.identity import (
     store_key_matches_identity,
 )
 from metabrowser.cache.layout import migrate_layout, open_cache, read_layout
-from metabrowser.cache.paths import REPOSITORY_STORES, store_directory
+from metabrowser.cache.paths import (
+    REPOSITORY_STORES,
+    source_directory,
+    source_record,
+    store_directory,
+)
 from metabrowser.cache.records import (
     REPOSITORY_STORE_CONTRACT_ID,
     CacheLayout,
     RepositoryStore,
 )
 from metabrowser.cache.store_rename import (
+    DERIVED_OBJECT_FORMATS,
+    MAX_MIGRATED_ENTRIES,
     UNATTACHED_READABLE,
     is_legacy_store_key,
     rename_legacy_stores,
 )
+from metabrowser.git.process import OBJECT_FORMATS
 from tests.cache_home_fixture import (
+    CLICK,
     FLASK_HTTPS,
     FLASK_STORE,
     ORPHAN_STORE,
@@ -83,12 +95,12 @@ def test_an_f01_home_has_its_stores_renamed_where_they_stand(tmp_path: Path) -> 
     assert flask.stat().st_ino == inodes[old[FLASK_STORE.key]]
     assert not any(is_legacy_store_key(name) for name in _names(home))
     assert all(is_store_key(name) for name in _names(home))
-    assert not (home / "locks/stores" / f"{old[FLASK_STORE.key]}.lock").exists()
-    assert not (home / "locks/stores" / f"{old[FLASK_STORE.key]}.fetch.lock").exists()
+    # Its lock files are left: an older process may hold one, and an empty file costs nothing.
+    assert (home / "locks/stores" / f"{old[FLASK_STORE.key]}.lock").exists()
 
 
 @posix_only
-def test_a_store_a_readable_alias_names_takes_that_repository_and_the_rest_are_unattached(
+def test_a_store_keeps_the_name_of_the_repository_of_a_source_that_names_or_derives_it(
     tmp_path: Path,
 ) -> None:
     home = tmp_path / "home"
@@ -98,11 +110,83 @@ def test_a_store_a_readable_alias_names_takes_that_repository_and_the_rest_are_u
     open_cache(home, version="0.13.0")
 
     # flask's alias names its store, so the key says flask. click's source was published
-    # without one, which is the crash a store is left unreferenced by.
-    assert FLASK_STORE.key in _names(home)
+    # with no alias, which is the crash a store is left unreferenced by, and its identity
+    # derives the store: it keeps click's name, so click's next acquisition reuses it.
+    assert _names(home) == {FLASK_STORE.key, ORPHAN_STORE.key}
+    assert ORPHAN_STORE.key.startswith("github-com--pallets--click--")
+
+
+@posix_only
+def test_a_store_no_source_names_is_unattached(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    build_populated_home(home)
+    rewrite_as_f01(home)
+    shutil.rmtree(home / source_directory(CLICK.slug))
+
+    open_cache(home, version="0.13.0")
+
     (orphan,) = _names(home) - {FLASK_STORE.key}
     assert orphan == f"{UNATTACHED_READABLE}--{identity_digest(ORPHAN_STORE.id)[:16]}"
     assert is_store_key(orphan) and store_key_matches_identity(orphan, ORPHAN_STORE.id)
+
+
+@posix_only
+def test_an_entry_the_migration_cannot_read_is_named_and_skipped(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """One entry that cannot be read must not stop the rest, or every open with it."""
+
+    home = tmp_path / "home"
+    build_populated_home(home)
+    old = rewrite_as_f01(home)
+    # A second name for an alias is one a private read refuses; a file where a store's
+    # directory belongs has no record to read.
+    os.link(home / source_record(CLICK.slug, "source.yml"), tmp_path / "second-name-of-a-record")
+    os.link(home / source_record(FLASK_HTTPS.slug, "store-alias.yml"), tmp_path / "second-alias")
+    stray = "c" * 64
+    (home / REPOSITORY_STORES / stray).write_text("")
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.cache.store_rename"):
+        outcome = migrate_layout(home, version="0.13.0")
+
+    assert outcome.layout.format == "f02"
+    assert FLASK_STORE.key in _names(home)
+    assert stray in _names(home) and (home / REPOSITORY_STORES / stray).is_file()
+    assert f"could not read: {CLICK.slug}" in caplog.text
+    assert f"could not read: {FLASK_HTTPS.slug}" in caplog.text
+    assert f"could not read: {stray}" in caplog.text
+    assert str(home) not in caplog.text
+    # click's source cannot say what its store holds, so that store is unattached.
+    assert old[ORPHAN_STORE.key] not in _names(home)
+    assert any(name.startswith(f"{UNATTACHED_READABLE}--") for name in _names(home))
+
+
+@posix_only
+def test_two_opens_of_a_released_home_at_once_migrate_it_once(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    build_populated_home(home)
+    old = rewrite_as_f01(home)
+    inode = (home / REPOSITORY_STORES / old[FLASK_STORE.key]).stat().st_ino
+    barrier = threading.Barrier(2)
+
+    def open_together(_index: int) -> str:
+        barrier.wait()
+        return open_cache(home, version="0.13.0").layout.format
+
+    with ThreadPoolExecutor(2) as pool:
+        formats = list(pool.map(open_together, range(2)))
+
+    assert formats == ["f02", "f02"]
+    assert _names(home) == {FLASK_STORE.key, ORPHAN_STORE.key}
+    assert (home / store_directory(FLASK_STORE.key)).stat().st_ino == inode
+
+
+def test_the_migration_derives_a_store_in_every_object_format() -> None:
+    assert set(DERIVED_OBJECT_FORMATS) == OBJECT_FORMATS
+
+
+def test_the_migration_lists_no_more_entries_than_the_cache_routes_do() -> None:
+    assert MAX_MIGRATED_ENTRIES == projection.MAX_DIRECTORY_ENTRIES
 
 
 @posix_only
