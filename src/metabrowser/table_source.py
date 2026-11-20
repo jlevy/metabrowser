@@ -101,7 +101,9 @@ TABLE_TOKEN_MAX_CHARS = 1024
 # what a delimited file can cost within it is measured beside that source's bounds.
 TABLE_REQUEST_DEADLINE_SECONDS = SLOW_OPERATION_LOG_SECONDS
 
-# Fields a hover card shows besides its label: a summary, not the record.
+# Fields a hover card shows besides its label: a summary, not the record. It is set by
+# what a card shows, not by cost: a card's cells are previewed as a page's are, so one
+# card costs no more than one row of a page seven fields wide.
 TABLE_CARD_MAX_FIELDS = 6
 
 # The largest integer a browser number holds exactly; a larger one travels as
@@ -916,10 +918,16 @@ def card_wire(path: str, table: str, card: TableCard) -> dict[str, Any]:
 
 
 def error_wire(path: str, exc: TableSourceError) -> dict[str, Any]:
-    """A refusal: its details, under the envelope's own keys, which a detail of the same
-    name cannot replace."""
+    """A refusal: the envelope's own keys, then its details, which cannot replace them."""
 
-    return {**exc.details, "type": "table_error", "path": path, "code": exc.code, "error": str(exc)}
+    wire: dict[str, Any] = {
+        "type": "table_error",
+        "path": path,
+        "code": exc.code,
+        "error": str(exc),
+    }
+    wire.update((name, value) for name, value in exc.details.items() if name not in wire)
+    return wire
 
 
 def table_address(path: str, table: str) -> str:

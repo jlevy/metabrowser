@@ -428,9 +428,19 @@ routes, and `builtin_plugins/delimited/source.py` is a complete source.
 - Name a keyless row by its position with `position_key(n)`, counting from 1, and a
   keyed one with `encode_key(values)`; mint cursors with `encode_cursor`, falling back
   to `positional_cursor` past `TABLE_TOKEN_MAX_CHARS`. Every token is deterministic.
+  Put the query’s sort and order in a cursor and refuse one minted for another, and
+  check every part of a token before using it: a client can send any text.
 - Raise a `TableSourceError` subclass, such as `RecordNotFoundError`, to refuse; the
   route answers its `code` and status.
-  Stop a scan when `budget.expired()` and answer `complete=False` with the reason.
+  A `TableQueryError` refuses a malformed parameter or token with `bad_query`.
+- Answer rows in the order the query asked for.
+  Stop a scan when `budget.expired()` and answer `complete=False` with the reason
+  `budget` and the rows found so far; a sort cannot be returned in part, so a sort the
+  budget cannot finish answers no rows, the reason `sort_budget`, and `sort_refused`
+  naming the field.
+- Carry at most `page_row_limit(query.limit, cells_per_row)` rows in a page, so a page
+  of wide rows stays within `TABLE_PAGE_CELLS_MAX` cells, and return that number as the
+  page’s `limit`.
 
 ## Browser SDK
 

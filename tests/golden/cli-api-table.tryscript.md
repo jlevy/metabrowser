@@ -185,11 +185,14 @@ status: 200
 
 Each cell keeps what a plain JSON value would lose: an infinite real is `{real}`, a
 short row’s missing cells are absent (Dee has no `note`), and a long row’s extra cells
-are a list. The next page continues from `next_after`, a cursor naming a position.
+are a list. `cols` names one field per parameter, in page order, since a name may hold a
+comma.
+The next page continues from `next_after`, a cursor naming a position and the sort
+and order it was made for, and `limit` is the number of rows the page allowed.
 
 ```console
-$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&cols=name,score,note,extra&limit=4'
-api: /api/plugin/table/rows?path=people.csv&cols=name,score,note,extra&limit=4
+$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&cols=name&cols=score&cols=note&cols=extra&limit=4'
+api: /api/plugin/table/rows?path=people.csv&cols=name&cols=score&cols=note&cols=extra&limit=4
 status: 200
 {
   "type": "table_rows",
@@ -237,7 +240,7 @@ status: 200
       }
     }
   ],
-  "next_after": "c.WzRd",
+  "next_after": "c.W251bGwsImFzYyIsNF0",
   "complete": true,
   "truncated": false,
   "reason": null,
@@ -246,13 +249,15 @@ status: 200
   "estimate": null,
   "skipped": 0,
   "examined": null,
-  "searched": null
+  "searched": null,
+  "sort_refused": null,
+  "limit": 4
 }
 ? 0
 ```
 
 ```console
-$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&cols=name,extra&after=c.WzRd' > page.txt
+$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&cols=name&cols=extra&after=c.W251bGwsImFzYyIsNF0' > page.txt
 ? 0
 ```
 
@@ -282,7 +287,7 @@ A filter compares typed values (`f.<field>=<op>:<value>`), and a search reads te
 fields only and names them.
 
 ```console
-$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&sort=score&cols=name,score' > sorted.txt
+$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&sort=score&cols=name&cols=score' > sorted.txt
 ? 0
 ```
 
@@ -315,7 +320,7 @@ $ metab tableroot --api '/api/plugin/table/rows?path=people.csv&sort=score&order
 $ grep -E '"(key|next_after)"' descending.txt
       "key": "@3",
       "key": "@5",
-  "next_after": "c.WzEsMy4wLDVd",
+  "next_after": "c.WyJzY29yZSIsImRlc2MiLDEsMy4wLDVd",
 ? 0
 ```
 
@@ -443,6 +448,42 @@ status: 404
 }
 Error: /api/plugin/table/record?path=people.csv&key=@9 returned HTTP 404
 ? 1
+```
+
+A cursor made for one sort is refused under another, by name, rather than read as a
+position it does not name.
+
+```console
+$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&sort=score&after=c.W251bGwsImFzYyIsNF0'
+api: /api/plugin/table/rows?path=people.csv&sort=score&after=c.W251bGwsImFzYyIsNF0
+status: 400
+{
+  "type": "table_error",
+  "path": "people.csv",
+  "code": "bad_query",
+  "error": "after is not a cursor for this query: it was made for sort=null order=\"asc\"",
+  "param": "after"
+}
+Error: /api/plugin/table/rows?path=people.csv&sort=score&after=c.W251bGwsImFzYyIsNF0 returned HTTP 400
+? 1
+```
+
+A cursor past the token bound names the rows already served under one generation, so
+under another it continues nowhere: the page has no rows and says why.
+
+```console
+$ metab tableroot --api '/api/plugin/table/rows?path=people.csv&sort=score&after=@2.0000' > expired.txt
+? 0
+```
+
+```console
+$ grep -E '"(rows|next_after|complete|reason|count)"' expired.txt
+  "rows": [],
+  "next_after": null,
+  "complete": false,
+  "reason": "cursor_expired",
+  "count": 5,
+? 0
 ```
 
 ```console

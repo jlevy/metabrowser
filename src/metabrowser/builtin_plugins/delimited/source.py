@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import operator
 import re
 import threading
@@ -901,7 +902,8 @@ def _cursor_point(
         raise _bad_cursor("it has too few parts")
     sort, order, *point = values
     if sort != query.sort or order != query.order:
-        raise _bad_cursor(f"it was made for sort={sort!r} order={order!r}")
+        made_for = f"sort={json.dumps(sort)} order={json.dumps(order)}"
+        raise _bad_cursor(f"it was made for {made_for}")
     if sorted_by is None:
         if len(point) != 1:
             raise _bad_cursor("it is not a position")

@@ -502,7 +502,7 @@ def test_a_cursor_from_another_sort_is_refused_by_name(client: TestClient, typed
     by_date = _rows(client, typed, sort="d", limit="1")
     status, body = _get(client, "rows", typed, sort="n", after=by_date["next_after"])
     assert (status, body["code"], body["param"]) == (400, "bad_query", "after")
-    assert "made for sort='d' order='asc'" in body["error"]
+    assert 'made for sort="d" order="asc"' in body["error"]
     status, body = _get(client, "rows", typed, sort="d", order="desc", after=by_date["next_after"])
     assert (status, body["code"]) == (400, "bad_query")
 

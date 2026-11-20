@@ -226,13 +226,21 @@ cell and token helpers, and bounds, but not the registry or the routes’ wire f
 | --- | --- |
 | `/api/plugin/table/tables?path=` | The source’s tables, each with its group, whether its rows have a key, an estimate where the source has one, and its address |
 | `/api/plugin/table/schema?path=` | Field descriptors, key fields, default columns, and references in both directions |
-| `/api/plugin/table/rows?path=&…` | One page in the collection envelope, for `sort`, `order`, `q`, `f.<field>=<op>:<value>`, `ref`, `cols`, `after`, and `limit` |
+| `/api/plugin/table/rows?path=&…` | One page in the collection envelope, for `sort`, `order`, `q`, `f.<field>=<op>:<value>`, `ref=<table>:<key>` (split at its last colon), `cols` (one field per parameter, repeated), `after`, and `limit` |
 | `/api/plugin/table/record?path=&key=` | One record, each value previewed past the record bound, and whether the generation the key was read under has moved |
 | `/api/plugin/table/card?path=&key=` | A hover card: a label and a few fields |
 
+A page’s rows come in the order its query asked for.
+Its `reason` says why it is not complete (`PageReason` in `table_source.py`): a scan
+that ran out of the request’s budget answers what it found, a sort that could not be
+done in the budget answers no rows and names the field in `sort_refused`, and a source
+that read only part of its content or a cursor from another generation says so.
+`limit` is the rows the page allowed, fewer than asked for when its rows are wide.
+
 `tests/test_table_source.py` checks the protocol, and `tests/test_delimited_source.py`
-the delimited source through these routes; `tests/golden/cli-api-table.tryscript.md`
-pins each route’s answers and refusals.
+the delimited source through these routes, on a served folder and on a Git pin, with the
+registry and the doctor’s checks; `tests/golden/cli-api-table.tryscript.md` pins each
+route’s answers and refusals.
 A file that is its own single table, such as a CSV file, is addressed by its own path;
 tables inside one file, such as a database’s, are planned as container children in
 [Tabular Data Browsing and Live SQLite](../specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md).
