@@ -408,7 +408,11 @@ $ node tests/dom/source-ref-selector-session.js
     "10001 rows 28 px tall, scrolled 279708 px in 320 px, Tab on row 10000: rows 9969 to 10001",
     "3 rows 28 px tall, scrolled 0 px in 320 px, Tab on row 1: rows 0 to 3",
     "10001 rows 0 px tall, scrolled 0 px in 0 px, Tab on row 0: rows 0 to 40",
-    "0 rows 28 px tall, scrolled 0 px in 320 px, Tab on row 0: rows 0 to 0"
+    "0 rows 28 px tall, scrolled 0 px in 320 px, Tab on row 0: rows 0 to 0",
+    "10001 rows 28 px tall (every 4th 46 px), scrolled 0 px in 320 px, Tab on row 0: rows 0 to 30",
+    "10001 rows 28 px tall (every 4th 46 px), scrolled 115264 px in 320 px, Tab on row 0: rows 3526 to 3577 and row 0",
+    "10001 rows 28 px tall (every 4th 46 px), scrolled 324726 px in 320 px, Tab on row 10000: rows 9971 to 10001",
+    "10001 rows 28 px tall (every 10,001st 46 px), scrolled 0 px in 320 px, Tab on row 0: rows 0 to 31"
   ],
   "checkout": {
     "steps": [

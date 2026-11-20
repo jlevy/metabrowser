@@ -3010,7 +3010,9 @@ one color seen against two backgrounds: the hue is GitHub’s and the same in bo
 The shapes differ. In the list, the icon’s accessible name gives the state.
 On the page, the same glyph sits beside the title and the text badge below names the
 state. Everything goes through `pullStateIcon` and `displayState` in
-`builtin_plugins/github/pull-state.js`, so a row and its page cannot disagree.
+`builtin_plugins/github/pull-state.js`, so a row and its page cannot disagree: the ref
+selector’s rows, in the shell, draw the same icon through the plugin’s
+`mb.builtins.github.pullStateIcon` ([The Ref Selector](#the-ref-selector)).
 `test_pull_state_colors_keep_their_hue_and_read_on_both_grounds` holds the hue and a
 4.5:1 contrast on both grounds, because a badge sets its word in that color.
 
@@ -3028,6 +3030,7 @@ that shows a number takes it:
 | A stack menu’s member | `.github-pull-stack-member-number` |
 | A Quick Search result | `.search-palette-pull-number` |
 | The ref selector, on a pull request’s head | `.source-ref-selector-pull-number`, after “Pull request:” |
+| The ref selector, on a branch’s row | `.source-ref-selector-pull-number`, after the state icon |
 
 The GitHub plugin’s three are one rule.
 A number in prose, a commit subject, or a tooltip is text, and keeps its line’s weight.
@@ -3075,6 +3078,7 @@ tooltip that gives the whole of a title cut short all work on all of it.
 | A stack menu’s member | `.github-pull-stack-member-title` | Bold |
 | A Conversation commit | `.github-pull-commit-subject` | Bold |
 | A Quick Search pull request | `.search-palette-label` | Bold; a match in the prefix is marked bold, as a match in a path is |
+| A branch’s pull request in the ref selector | `.source-ref-selector-pull-title` | Bold |
 | A Commits tab row | `.git-graph-subject` | Bold, as every title is; the row keeps its 22 px, and a long subject is cut short a little sooner |
 | A commit’s page | `.git-commit-subject.page-heading` | Bold |
 | A commit’s tooltip | `.git-commit-summary-compact .git-commit-subject` | Bold |
@@ -5553,19 +5557,60 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   the owner found them clutter.
   A pin with no mirror has no selector, so its heading is its ref and its short commit.
 
+- **A branch that is a pull request’s head shows the pull request, on a second line.**
+  The row’s own line, the chip, its badge, its commit, and its age, is every row’s;
+  under it goes the pull request: its [state’s icon](#a-pull-requests-state) in the
+  Pulls tab’s shape and hue, its [number](#pull-request-numbers), and its
+  [title](#titles), bold in normal text ink and cut at the line’s end, with the whole
+  title and any other pull request of the branch in the row’s tooltip.
+  A branch with several shows the open ones first and then the newest, and counts the
+  rest, “+1”, in the muted ink; the row lists the first `REF_PULLS_PER_ROW` of them and
+  says how many there are, so a branch with dozens is no larger a row, and the others
+  are named for assistive technology in the row’s description as well as its tooltip.
+  Only a pull request from the repository’s own branch is its branch’s: a fork’s branch
+  of the same name is another branch.
+  A tag, which no pull request has for its head, never has the line, and a pull
+  request’s `refs/pull/<n>/head` is not listed as a ref of its own: it is the branch’s
+  pull request, and a page served on one says “Pull request: #7” on the button.
+  The pull requests are what the repository’s provider has cached, so the list never
+  waits for GitHub: a list opened before they are cached shows none, asks again every
+  `PULLS_POLL_MS` while the server fills them, and its rows gain the line as the pages
+  arrive. The filter box then says “Filter branches or pull requests” and finds a branch
+  by its pull request’s number, `#` and the start of one, or by every word of its title,
+  as well as by its name; “#” alone lists the branches that have one.
+  While the server has cached only some of the pull requests, the list says under a
+  filter’s finds that a number or a title may match more branches.
+  What arrives while the list is open changes what the reader sees as little as it can:
+  an ask that finds the listing unchanged draws nothing, so focus, a tooltip, and a
+  press in progress stay where they are, and one that finds pull requests for rows the
+  list has patches them into those rows.
+  The rows above the view grow when they gain a line, so the list is scrolled to keep
+  the row at the top of its view where it was, a list at its foot at its foot, and a
+  focused row in view (`anchoredScroll`). The icon is the GitHub plugin’s, which the
+  list loads on demand and draws the rows with once it has; the slot is the icon’s width
+  from the first frame, so nothing moves.
+
 - **The list holds every ref, newest first, and draws only the rows near its view.** It
   reads by the age its rows show, after the mirror’s default branch or the checkout’s
   checked-out one, and states no count, since it leaves nothing out.
-  Each row is placed by its index at one row’s height over a box as tall as the whole
-  list (`ROWS_OVERSCAN` and `drawWindow` in `static/source-ref-selector.js`), so nothing
-  in a row may make it taller than the rest: the badge’s border reaches into the row’s
-  padding. The row that takes Tab stays drawn however far the list scrolls from it, so
-  focus on it is never lost, and a list that holds the served ref opens scrolled to its
-  row. The `ul` says `role="list"`, which WebKit drops from a list drawn without markers.
+  Each row is placed by its offset over a box as tall as the whole list (`rowOffsets`,
+  `ROWS_OVERSCAN` and `drawWindow` in `static/source-ref-selector.js`), and a row has
+  one of two heights, with a pull request or without, each measured by a row drawn out
+  of sight, so nothing else in a row may make it taller than the rest of its kind: the
+  badge’s border reaches into the row’s padding, and the pull request’s line is one line
+  of `--nav-metadata-line-height`, however tall the glyphs of its title are: an emoji or
+  a Japanese title falls back to a font whose `normal` line is taller, which made the
+  row 2 to 3 px taller than the list places it.
+  A row with no pull request is as tall as every row was before the line existed.
+  The row that takes Tab stays drawn however far the list scrolls from it, so focus on
+  it is never lost, and a list that holds the served ref opens scrolled to its row.
+  The `ul` says `role="list"`, which WebKit drops from a list drawn without markers.
   `tests/test_ref_selector_long_list_chrome.py` measures in headless Chrome over
   thousands of branches that the rows are one height and abut, that a scroll and End
   draw the rows they bring into view, that a focused row keeps focus, and that the
-  filter narrows the list.
+  filter narrows the list; `tests/test_ref_selector_pulls_chrome.py` does the same over
+  branches that are pull requests’ heads, with the two heights, each row where the rows
+  before it put it, the pull request’s icon, number, and title, and the filter’s finds.
 
 A checkout adds three things, and each uses a primitive the control already had:
 

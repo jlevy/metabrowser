@@ -22,6 +22,7 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
+      "pull_requests": null,
       "refs": [
         {
           "name": "topic",
@@ -72,6 +73,7 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
+      "pull_requests": null,
       "refs": [
         {
           "name": "local-tag",
@@ -113,6 +115,7 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
+      "pull_requests": null,
       "refs": [
         {
           "name": "origin/feature",
@@ -221,6 +224,7 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
+      "pull_requests": null,
       "refs": [
         {
           "name": "topic",

@@ -1334,6 +1334,16 @@ type TextBuiltins = {
   renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
 
+/** What the GitHub plugin publishes for the shell, once its assets have loaded. */
+type GithubBuiltins = {
+  /** A pull request's state as the Pulls tab draws it: its icon, named for assistive
+   * technology unless `named` is false. */
+  pullStateIcon: (
+    state: "open" | "draft" | "merged" | "closed",
+    options?: { named?: boolean },
+  ) => HTMLElement;
+};
+
 type MarkdownBuiltins = {
   mountRendered: (
     container: HTMLElement,
@@ -1366,6 +1376,7 @@ type MarkdownBuiltins = {
 
 type MetabrowserBuiltins = {
   agentLog?: AgentLogBuiltins;
+  github?: GithubBuiltins;
   markdown?: MarkdownBuiltins;
   structured?: StructuredBuiltins;
   text?: TextBuiltins;
@@ -3734,6 +3745,27 @@ declare global {
     /** The branch a checkout's `HEAD` is on; false on a mirror. */
     checked_out: boolean;
     current: boolean;
+    /** The pull requests the branch is the head of, open first and then newest first;
+     * absent when it is the head of none. */
+    pulls?: MetabrowserSourceRefPull[];
+    /** How many pull requests the branch heads, of which `pulls` lists the first few. */
+    pulls_total?: number;
+  };
+
+  /** A pull request as the ref list shows it: its state as the Pulls tab does. */
+  type MetabrowserSourceRefPull = {
+    number: number;
+    title: string;
+    state: "open" | "draft" | "merged" | "closed";
+  };
+
+  /** What a listing says of its rows' pull requests: whether the server has cached them. */
+  type MetabrowserSourceRefPullRequests = {
+    state: "absent" | "ready";
+    /** Whether the cache holds every pull request, so a branch with none has none. */
+    complete: boolean;
+    /** Whether a job is filling it, so the list is worth asking for again. */
+    refreshing: boolean;
   };
 
   /** One answer of `GET /api/source/refs`: every matching ref, the default or
@@ -3755,6 +3787,8 @@ declare global {
       name: string;
       location: string;
     } | null;
+    /** Null where no provider has pull requests for the subject, and for tags. */
+    pull_requests: MetabrowserSourceRefPullRequests | null;
     refs: MetabrowserSourceRef[];
   };
 
@@ -3790,6 +3824,11 @@ declare global {
     /** The lists offered: a checkout's remote-tracking branches are a third. */
     kinds: MetabrowserSourceRefKind[];
     query: string;
+    /** What the filter box says and is named: it finds pull requests too once the server
+     * has them. */
+    filterLabel: string;
+    /** What the listing says of its pull requests; null with none. */
+    pullRequests: MetabrowserSourceRefPullRequests | null;
     loading: boolean;
     switching: boolean;
     /** A checkout's working-tree row: whether it is what the server serves, and the
@@ -3810,6 +3849,10 @@ declare global {
       current: boolean;
       /** The chip a row's name is drawn as. */
       chip: "local" | "remote" | "tag";
+      /** The pull requests the branch is the head of, the first of which the row shows. */
+      pulls: MetabrowserSourceRefPull[];
+      /** How many it heads, of which `pulls` lists the first few. */
+      pullsTotal: number;
     }>;
     note: string;
     error: string | null;
@@ -3839,6 +3882,8 @@ declare global {
   /** The elements the ref selector paints into. */
   type MetabrowserSourceRefSelectorParts = {
     releaseCopies?: () => void;
+    /** Set when the selector is disposed, so a late load draws nothing. */
+    disposed?: boolean;
     root: HTMLElement;
     /** The button's own box, which a ref chip's copy control is placed against. */
     buttonHost: HTMLElement;
@@ -3865,12 +3910,19 @@ declare global {
   };
 
   /** The windowed list's state: every row the model shows, the drawn ones by index, the
-   * row that takes Tab, and one row's height, measured. Browser only. */
+   * row that takes Tab, and where each row sits, from the heights measured. Browser only. */
   type MetabrowserSourceRefSelectorRows = {
     shown: MetabrowserSourceRefSelectorModel["rows"];
     drawn: Map<number, HTMLLIElement>;
     roving: number;
-    rowHeight: number;
+    /** Each row's top and the last row's foot: one more entry than there are rows. */
+    offsets: number[];
+    /** The model the rows were last drawn from, for drawing them again. */
+    model: MetabrowserSourceRefSelectorModel | null;
+    /** Whether the GitHub plugin, which draws a pull request's state, was asked for. */
+    iconsAsked: boolean;
+    /** Set when every row is to be drawn again, though its refs are the same. */
+    rebuild: boolean;
     /** The list's scroll position the drawn rows were drawn for, which a toolbar refill takes. */
     drawnAt: number;
     /** The list and filter the rows are of, so a new one starts at its top. */
@@ -3914,10 +3966,35 @@ declare global {
     /** The selector this page mounted, for the branch or tag key; null until it mounts. */
     mounted(): MetabrowserSourceRefSelectorMount | null;
     moveRow(key: string, index: number, count: number): number | null;
+    /** How often an open list asks again while the server fills its pull requests, in ms. */
+    PULLS_POLL_MS: number;
     ROWS_OVERSCAN: number;
+    /** Where a list scrolls to when its rows are laid out again, keeping the reader's place. */
+    anchoredScroll(
+      before: { refs: readonly string[]; offsets: readonly number[] },
+      after: { refs: readonly string[]; offsets: readonly number[] },
+      top: number,
+      view: number,
+      focused: string | null,
+    ): number;
+    /** Whether two answers of the refs route say the same. */
+    sameListing(
+      a: MetabrowserSourceRefListing | null,
+      b: MetabrowserSourceRefListing | null,
+    ): boolean;
+    /** Whether two lists of rows are the same refs drawn the same way, whatever their pulls. */
+    sameRefLines(
+      a: ReadonlyArray<MetabrowserSourceRefSelectorModel["rows"][number]>,
+      b: ReadonlyArray<MetabrowserSourceRefSelectorModel["rows"][number]>,
+    ): boolean;
+    /** Where each row sits, and where the last ends: one more entry than there are rows. */
+    rowOffsets(
+      rows: ReadonlyArray<{ pulls: ReadonlyArray<unknown> }>,
+      plain: number,
+      tall: number,
+    ): number[];
     rowWindow(
-      count: number,
-      rowHeight: number,
+      offsets: readonly number[],
       scrollTop: number,
       viewHeight: number,
       roving: number,

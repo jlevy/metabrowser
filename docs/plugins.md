@@ -450,8 +450,10 @@ private storage.
 ### Render-Time-Only Namespace Rule
 
 A built-in plugin may publish helpers for others on `mb.builtins.<name>`, as Markdown
-publishes `mb.builtins.markdown` and structured data `mb.builtins.structured`. Read
-another plugin’s namespace only at render time, inside `render` or a handler, never
+publishes `mb.builtins.markdown` and structured data `mb.builtins.structured`, and the
+GitHub plugin `mb.builtins.github.pullStateIcon`, which the ref selector’s rows draw a
+branch’s pull request with.
+Read another plugin’s namespace only at render time, inside `render` or a handler, never
 while your `index.js` evaluates: plugins load on demand, so the other plugin may not
 have run yet. Await `ensureKindAssets(kind)` for that plugin’s kind first.
 `tests/test_plugin_e2e_render.py` fails when a plugin reads a missing namespace at load

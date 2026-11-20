@@ -449,14 +449,18 @@ Strict mode is off on a developer machine, which can add these:
   the checkout with what it was; `tests/test_ref_selector_long_list_chrome.py`, which
   serves a checkout of thousands of branches and reads which of the branch chooser’s
   rows are drawn, and where, when it opens, scrolls, takes End and Home, has the Files
-  toolbar drawn again around it, and is filtered; `tests/test_control_chords_chrome.py`,
-  which presses Control-N and Control-P through Chrome’s input under a navigator
-  overridden to name a Mac and then Linux, on every host, and reads that only the Mac’s
-  binds them; `tests/test_overview_label_column_chrome.py`, which serves a folder of
-  eleven file-type families and reads, at five window widths in both font sets, where
-  every File Overview row’s label column ends and its bar starts, with Details closed
-  and open and Files and Bytes, whether the labels the column is sized for fit it, what
-  a longer label does to the bars, and how the legend’s ten entries wrap;
+  toolbar drawn again around it, and is filtered;
+  `tests/test_ref_selector_pulls_chrome.py`, which serves a checkout whose branches are
+  the heads of cached pull requests and reads the two heights of the chooser’s rows,
+  that each sits where the rows before it put it, a pull request’s icon, number, and
+  title, and what its filter finds; `tests/test_control_chords_chrome.py`, which presses
+  Control-N and Control-P through Chrome’s input under a navigator overridden to name a
+  Mac and then Linux, on every host, and reads that only the Mac’s binds them;
+  `tests/test_overview_label_column_chrome.py`, which serves a folder of eleven
+  file-type families and reads, at five window widths in both font sets, where every
+  File Overview row’s label column ends and its bar starts, with Details closed and open
+  and Files and Bytes, whether the labels the column is sized for fit it, what a longer
+  label does to the bars, and how the legend’s ten entries wrap;
   `tests/test_overview_legend_hover_chrome.py`, which moves Chrome’s pointer onto a File
   Overview legend entry and a bar segment and reads which bars and entry are marked,
   what they compute to, where the tooltip lands, and that nothing moves;
