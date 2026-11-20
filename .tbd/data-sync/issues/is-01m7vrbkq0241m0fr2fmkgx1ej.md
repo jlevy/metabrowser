@@ -5,29 +5,25 @@ title: Repository store paths use a 64-hex sha256 directory name; make them shor
 kind: task
 status: closed
 priority: 2
-version: 8
+version: 10
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/647
     at: 2026-11-20T17:04:49.120Z
 delegate: claude-code@spud10.local
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m7x1jaewjm2pnxm8dnmnqdtq
 hold: null
 hold_until: null
 created_at: 2026-11-20T05:55:04.031Z
-updated_at: 2026-11-20T18:02:09.642Z
+updated_at: 2026-11-20T19:16:01.657Z
 started_at: 2026-11-20T05:55:54.198Z
 closed_at: 2026-11-20T08:41:32.356Z
 close_reason: "Merged in PR 647: store keys <readable>--<16 hex>, collision-checked; f01->f02 rename-in-place migration."
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: e9b261cd-c8ef-445b-a090-1695443cc246
-    linked_at: 2026-11-20T18:02:09.639Z
+extensions: {}
 ---
 Owner, 2026-11-20: '~/.cache/metabrowser/repository-stores/589d51b16fd8f1a20aaa68a5893f815052de0db43f00b84b9f79b8c97d18b306/repository.git ... is ridiculously long, why do we need a hash that long? We should reliably figure out the right number of bits for these IDs to avoid collisions, but keep them readable.' Choose an ID with a readable part (host/owner/repo slug) plus a short hash sized by a stated birthday-bound calculation, with collision detection rather than assumption.
 

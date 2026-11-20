@@ -5,7 +5,7 @@ title: "PR #3 review D: extend the strict Content Security Policy to the default
 kind: task
 status: open
 priority: 3
-version: 9
+version: 10
 spec_path: TODO.md
 labels:
   - pr-review
@@ -13,11 +13,8 @@ labels:
 dependencies: []
 parent_id: is-01kxnx985gd2k5epmcswersqdk
 created_at: 2026-07-16T16:21:19.936Z
-updated_at: 2026-11-14T18:44:53.825Z
-extensions:
-  linear:
-    id: 4adbc1fb-afe9-4f50-9f55-e8ff34227388
-    linked_at: 2026-08-16T08:05:50.437Z
+updated_at: 2026-11-20T19:15:56.695Z
+extensions: {}
 ---
 Owner review SEC-1 from https://github.com/jlevy/metabrowser/pull/3#issuecomment-4994096399. Since 0.12.0 the application page sends a strict Content-Security-Policy under the untrusted profile (--untrusted / --no-active-content): capabilities.untrusted_shell_csp, applied in server.py with a per-response nonce on the shell's inline scripts. No inline event handler remains in the shell or the built-in plugins. The default trusted profile still sends no CSP. Remaining: choose and apply a policy for the default profile that keeps the HTML preview frame and active content working, with tests for both profiles. Defense in depth; the reviewed XSS sink is fixed.
 

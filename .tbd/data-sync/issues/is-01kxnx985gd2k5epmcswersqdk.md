@@ -5,10 +5,12 @@ title: Post-v0.1 MetaBrowser core roadmap
 kind: epic
 status: open
 priority: 2
-version: 32
+version: 34
 spec_path: TODO.md
 labels:
   - roadmap
+  - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01kxnx9vtb13p6z8mewgsm2t75
@@ -40,7 +42,7 @@ child_order_hints:
   - is-01m7ckp6950rtaehpvzv0cg2wd
   - is-01m7p9mbrvcda53samf39e6xq0
 created_at: 2026-07-16T16:48:44.719Z
-updated_at: 2026-11-20T17:27:29.374Z
+updated_at: 2026-11-20T19:15:00.604Z
 extensions:
   linear:
     id: 4bf23327-faca-40ed-b28b-0b3870993e50

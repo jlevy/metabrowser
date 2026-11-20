@@ -5,9 +5,30 @@ title: Folder views and treemap overview
 kind: epic
 status: closed
 priority: 1
-version: 72
+version: 75
 spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
-labels: []
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/516
+    at: 2026-11-20T19:14:58.337Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/517
+    at: 2026-11-20T19:14:58.338Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/543
+    at: 2026-11-20T19:14:58.338Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/545
+    at: 2026-11-20T19:14:58.338Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/547
+    at: 2026-11-20T19:14:58.338Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/650
+    at: 2026-11-20T19:14:58.338Z
+labels:
+  - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01kxz2zqk2cppsyx60bn6cn3y3
@@ -77,7 +98,7 @@ child_order_hints:
   - is-01m7n30vypg674csbm2dm1h1zq
   - is-01m7p2hak5ppedr8m3z9zdmk1y
 created_at: 2026-07-20T06:21:20.085Z
-updated_at: 2026-11-20T19:12:22.380Z
+updated_at: 2026-11-20T19:15:00.680Z
 closed_at: 2026-11-04T17:21:02.435Z
 close_reason: Scoped folder framework, rollup data plane and Treemap delivered; all nine0 descendants are closed, source and done plan verified. Completed against actual final main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9; final independent integration review and all nine main CI jobs passed. Original evidence retains its execution pins; genuine future and release scope remains separate.
 resolution: null

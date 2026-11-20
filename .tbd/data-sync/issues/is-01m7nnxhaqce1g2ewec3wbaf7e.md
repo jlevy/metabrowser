@@ -5,10 +5,48 @@ title: Open anything from the CLI, the skill, and the macOS app (owner asked 202
 kind: epic
 status: open
 priority: 1
-version: 37
+version: 40
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/534
+    at: 2026-11-20T19:14:56.411Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/539
+    at: 2026-11-20T19:14:56.412Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/540
+    at: 2026-11-20T19:14:56.412Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/541
+    at: 2026-11-20T19:14:56.412Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/558
+    at: 2026-11-20T19:14:56.412Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/560
+    at: 2026-11-20T19:14:56.412Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/562
+    at: 2026-11-20T19:14:56.412Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/571
+    at: 2026-11-20T19:14:56.412Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/574
+    at: 2026-11-20T19:14:56.412Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/581
+    at: 2026-11-20T19:14:56.412Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/582
+    at: 2026-11-20T19:14:56.412Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/612
+    at: 2026-11-20T19:14:56.412Z
 labels:
   - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m7nnxjg24xah0m43frr8qhrj
@@ -45,7 +83,7 @@ child_order_hints:
   - is-01m7wya71p80050bqxj40r1y9c
   - is-01m7pk99cegx2xz0sc5wwddsdj
 created_at: 2026-11-17T21:16:59.095Z
-updated_at: 2026-11-20T19:12:40.333Z
+updated_at: 2026-11-20T19:15:00.592Z
 extensions:
   linear:
     id: 5499d118-7011-4615-b052-982dc46ae0f6

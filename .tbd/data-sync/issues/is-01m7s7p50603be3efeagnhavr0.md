@@ -5,29 +5,25 @@ title: Commit message bodies render as Markdown, as pull request descriptions do
 kind: task
 status: closed
 priority: 2
-version: 10
+version: 12
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/603
     at: 2026-11-20T17:02:03.351Z
 delegate: claude-code@spud10.local
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m7wys8y3epj61gncgjakhsd0
 hold: null
 hold_until: null
 created_at: 2026-11-19T06:25:14.746Z
-updated_at: 2026-11-20T19:11:39.470Z
+updated_at: 2026-11-20T19:16:01.080Z
 started_at: 2026-11-19T06:25:33.935Z
 closed_at: 2026-11-19T07:35:35.736Z
 close_reason: "PR #603 merged"
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: fc1988c2-e3d6-4be8-a03c-86c08db92001
-    linked_at: 2026-11-20T18:01:29.736Z
+extensions: {}
 ---
 Owner, 2026-11-18, verbatim: "can we format git commit message long descriptoins robustly as markdown, just like PR reqeust descriptoins?"
 

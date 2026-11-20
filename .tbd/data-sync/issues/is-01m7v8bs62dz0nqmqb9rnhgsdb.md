@@ -5,10 +5,18 @@ title: "Branches follow the repository: a view of a branch tracks it in mirror a
 kind: epic
 status: in_progress
 priority: 1
-version: 11
+version: 15
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/631
+    at: 2026-11-20T19:14:52.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/632
+    at: 2026-11-20T19:14:52.178Z
 delegate: claude-code@spud10.local
 labels:
   - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m7v8ctk4af96q7ykmb5psdd7
@@ -19,7 +27,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-20T01:15:32.417Z
-updated_at: 2026-11-20T18:02:02.537Z
+updated_at: 2026-11-20T19:15:56.129Z
 started_at: 2026-11-20T01:17:55.715Z
 extensions:
   linear:

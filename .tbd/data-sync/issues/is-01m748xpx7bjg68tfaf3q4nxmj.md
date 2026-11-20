@@ -3,11 +3,41 @@ type: is
 id: is-01m748xpx7bjg68tfaf3q4nxmj
 title: "Native macOS app: thin AppKit shell over metab"
 kind: epic
-status: open
+status: in_progress
 priority: 1
-version: 138
+version: 143
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
-labels: []
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/564
+    at: 2026-11-20T19:14:51.025Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/587
+    at: 2026-11-20T19:14:51.026Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/590
+    at: 2026-11-20T19:14:51.026Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/593
+    at: 2026-11-20T19:14:51.026Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/596
+    at: 2026-11-20T19:14:51.026Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/606
+    at: 2026-11-20T19:14:51.026Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/607
+    at: 2026-11-20T19:14:51.026Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/628
+    at: 2026-11-20T19:14:51.026Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/672
+    at: 2026-11-20T19:14:51.026Z
+labels:
+  - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m748xqaqfxbm3rczqhp869bn
@@ -146,7 +176,11 @@ child_order_hints:
   - is-01m7rmjmzgk91n9czy6g19qk75
   - is-01m7rj9pgz3qf89emdaz0rbenn
 created_at: 2026-11-11T03:02:47.974Z
-updated_at: 2026-11-20T19:12:34.513Z
+updated_at: 2026-11-20T19:16:37.597Z
+extensions:
+  linear:
+    id: 92793121-e71d-4d48-964f-9c3f40100392
+    linked_at: 2026-11-20T19:16:37.593Z
 ---
 Plan: docs/project/specs/active/plan-2026-11-10-native-macos-app.md. Research: research-2026-11-08-macos-app-packaging.md, research-2026-11-10-native-app-server-topology.md, and research-2026-11-11-uv-and-macos-app-install.md. The app is apps/macos on main: the spike (jlevy/metabrowser#341) and the v1 stack (#359, #361, #362, #363, #377) merged on 2026-11-13, with title-bar follow-ups in #384, #388, #391, #398, and #403. Core metab changes and native app changes land on main through their own pull requests.
 

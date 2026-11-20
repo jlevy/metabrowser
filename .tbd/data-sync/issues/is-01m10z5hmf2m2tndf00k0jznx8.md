@@ -5,9 +5,11 @@ title: Git status and dirty working-tree browsing
 kind: epic
 status: open
 priority: 1
-version: 8
+version: 11
 spec_path: docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md
-labels: []
+labels:
+  - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m10z5s3nhwmdyp1dcbwfwc33
@@ -16,7 +18,11 @@ child_order_hints:
   - is-01m1389tccq35y5z8ya6dpycwn
   - is-01m12w4tz60cps1t8d6z1v4zet
 created_at: 2026-08-27T06:40:24.718Z
-updated_at: 2026-11-20T17:17:06.555Z
+updated_at: 2026-11-20T19:16:28.178Z
+extensions:
+  linear:
+    id: 683e9f19-6168-40a4-966e-feca8893b8ed
+    linked_at: 2026-11-20T19:16:28.177Z
 ---
 Add a read-only Git status surface and one-file working-tree diffs through File Diff Format, following the linked phased plan.
 

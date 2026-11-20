@@ -5,8 +5,23 @@ title: Branch chooser and ref selection
 kind: epic
 status: open
 priority: 2
-version: 11
-labels: []
+version: 15
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/559
+    at: 2026-11-20T19:14:51.789Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/577
+    at: 2026-11-20T19:14:51.790Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/614
+    at: 2026-11-20T19:14:51.790Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/651
+    at: 2026-11-20T19:14:51.790Z
+labels:
+  - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m7ra9drhbxds0947wdp596ks
@@ -20,7 +35,11 @@ child_order_hints:
   - is-01m7r4k134fe1bs8n8z7p8030a
   - is-01m7pf8zxej09pn6zygh242t14
 created_at: 2026-11-20T17:06:34.659Z
-updated_at: 2026-11-20T19:11:46.997Z
+updated_at: 2026-11-20T19:16:46.068Z
+extensions:
+  linear:
+    id: e6f489b4-f2f3-4437-9129-fb08702ab54a
+    linked_at: 2026-11-20T19:16:46.063Z
 ---
 The Files toolbar's chooser switches a view between branches, tags, commits and pull request heads, in a mirror or beside a checkout's working tree. Landed: the chooser in the toolbar (#577), a local checkout's branch and tag chooser (#559), every ref newest first (#614), scroll kept across refills (#625), and a branch that heads a pull request shown with it (#651).
 

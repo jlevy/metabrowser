@@ -5,25 +5,21 @@ title: Remove the npm audit exception for GHSA-fc5q-39xc-vjpf (picomatch ReDoS v
 kind: task
 status: closed
 priority: 2
-version: 10
+version: 12
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/538
     at: 2026-11-20T17:01:29.022Z
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
 created_at: 2026-11-17T18:05:46.135Z
-updated_at: 2026-11-20T19:13:20.919Z
+updated_at: 2026-11-20T19:16:00.050Z
 closed_at: 2026-11-18T00:36:49.258Z
 close_reason: "Done in jlevy/metabrowser#538 (merged b537e30db): tryscript 0.4.0 removes picomatch; the #523 exception is deleted"
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: c0961dc8-5ba6-4326-899c-8fee04ac2da4
-    linked_at: 2026-11-20T18:00:04.307Z
+extensions: {}
 ---
 The npm audit gate tolerates exactly one advisory, GHSA-fc5q-39xc-vjpf (high, picomatch ReDoS through single-branch repeated extglobs, affects picomatch <= 4.0.7, no patched release when the exception was taken on 2026-11-17). The owner approved the narrow exception on 2026-11-17; mb-3ncz is the CI failure it resolves.
 

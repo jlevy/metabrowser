@@ -5,29 +5,25 @@ title: Pulls list never reveals a pull request newer than the catalog once a pol
 kind: bug
 status: closed
 priority: 3
-version: 10
+version: 12
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/615
     at: 2026-11-20T17:01:13.127Z
 delegate: claude-code@macbookpro
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m7wys8y3epj61gncgjakhsd0
 hold: null
 hold_until: null
 created_at: 2026-11-19T17:41:46.817Z
-updated_at: 2026-11-20T19:11:32.690Z
+updated_at: 2026-11-20T19:16:01.276Z
 started_at: 2026-11-19T19:07:25.518Z
 closed_at: 2026-11-19T19:51:15.457Z
 close_reason: "PR #615 merged"
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: 56ba6452-013e-4883-a637-2b700b7745af
-    linked_at: 2026-11-20T18:01:42.443Z
+extensions: {}
 ---
 From review A on #611 (L7, predates it): a pull request created after the last refresh, named by a navigation, gets 'not in this list'; when a later poll brings its row in, the note goes but the row is not revealed, because only a list's first poll reveals and the chase looks only at older numbers (pulls-panel.js createPullsController).
 

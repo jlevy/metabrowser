@@ -5,7 +5,7 @@ title: "Research: operational visibility into ~/.claude and ~/.codex as an agent
 kind: task
 status: closed
 priority: 2
-version: 7
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-19-agent-operations-views.md
 refs:
   - kind: pr
@@ -15,22 +15,18 @@ refs:
     url: https://github.com/jlevy/metabrowser/pull/623
     at: 2026-11-20T17:05:48.389Z
 delegate: claude-code@spud10.local
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m7wysc4mfcdyek4vgsexz8y9
 hold: null
 hold_until: null
 created_at: 2026-11-19T21:46:18.105Z
-updated_at: 2026-11-20T19:13:15.120Z
+updated_at: 2026-11-20T19:16:01.375Z
 started_at: 2026-11-19T21:46:23.462Z
 closed_at: 2026-11-20T17:00:19.940Z
 close_reason: "Delivered: the research brief docs/project/research/research-2026-11-19-agent-home-visibility.md merged in PR #619, and the plan in PR #623"
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: 90c8bf32-efda-43ff-9381-0c4aff37d581
-    linked_at: 2026-11-20T18:01:48.314Z
+extensions: {}
 ---
 Survey every file format under ~/.claude and ~/.codex, map today's agent-log coverage, and propose a plugin (built in, but structured like an installed one) that gives full operational visibility into Claude Code and Codex, extensible to other agents. Deliverable: docs/project/research/research-2026-11-19-agent-home-visibility.md.

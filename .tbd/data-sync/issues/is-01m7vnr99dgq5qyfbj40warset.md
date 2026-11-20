@@ -5,29 +5,25 @@ title: "Main red: source-freshness golden pins /api/event-logs to a stale commit
 kind: bug
 status: closed
 priority: 0
-version: 9
+version: 11
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/638
     at: 2026-11-20T17:01:19.406Z
 delegate: claude-code@spud10.local
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 hold: null
 hold_until: null
 created_at: 2026-11-20T05:09:33.612Z
-updated_at: 2026-11-20T19:13:04.949Z
+updated_at: 2026-11-20T19:16:01.608Z
 started_at: 2026-11-20T05:09:36.454Z
 closed_at: 2026-11-20T05:27:39.182Z
 close_reason: "Merged in PR 638: golden line stale after a clean semantic merge of 629 and 632."
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: 4e39b6e5-a09e-485d-a032-50c129dcb1c1
-    linked_at: 2026-11-20T18:02:06.645Z
+extensions: {}
 ---
 Main run 44676764477 (merge of #632 at f61159ade) fails tests/golden/cli-ui-source-freshness.tryscript.md on all four "goldens and serial" jobs.
 

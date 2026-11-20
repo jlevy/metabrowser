@@ -5,20 +5,17 @@ title: "Text preview: measure whether content-visibility helps past 16 MiB"
 kind: task
 status: closed
 priority: 3
-version: 3
+version: 4
 spec_path: docs/large-content-rendering.md
 labels: []
 dependencies: []
 created_at: 2026-08-15T18:28:06.149Z
-updated_at: 2026-11-14T18:41:59.261Z
+updated_at: 2026-11-20T19:15:58.963Z
 closed_at: 2026-11-14T18:41:59.260Z
 close_reason: "Duplicate of mb-1bh1 (H99): content-visibility chunks for long source views, measured with find-in-page checked; its measurements are superseded by docs/large-content-rendering.md's 2026-11-12 runs."
 resolution: duplicate
 duplicate_of: is-01m774rb30k3bd8ehwy6exbwq4
-extensions:
-  linear:
-    id: 53578099-acf6-4206-90ba-36f3434b1448
-    linked_at: 2026-08-16T08:05:43.503Z
+extensions: {}
 ---
 The source view now opens at 2 MiB and grows to 8 MiB per click, appending
 rather than re-rendering. Measured on a 16 MiB source file: loads to

@@ -5,20 +5,17 @@ title: Files section lacks the pending skeleton that File Breakdown shows
 kind: bug
 status: closed
 priority: 2
-version: 3
+version: 4
 labels: []
 dependencies: []
 parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
 created_at: 2026-08-16T01:08:52.554Z
-updated_at: 2026-11-14T18:45:06.158Z
+updated_at: 2026-11-20T19:15:59.094Z
 closed_at: 2026-11-14T18:45:06.157Z
 close_reason: "Fixed: pending totals no longer read as a zero table (801b8d99, PR #59), and the Files totals show their skeleton beside File Breakdown's throughout a scan (e758292b), pinned by cli-ui-file-overview.tryscript.md."
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: 77699871-6531-4807-bf2b-7ab3f8625ff0
-    linked_at: 2026-08-16T08:05:43.547Z
+extensions: {}
 ---
 Reported 2026-08-15: while a large folder loads slowly, the File Breakdown panel shows its pulsing skeleton bars but the Files panel above it does not, so the top of the Overview reads as empty or as settled numbers while the section below is visibly still working.
 

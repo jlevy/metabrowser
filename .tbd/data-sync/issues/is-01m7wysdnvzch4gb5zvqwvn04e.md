@@ -5,8 +5,35 @@ title: "Markdown and structured-text rendering: front matter, diagrams, untruste
 kind: epic
 status: open
 priority: 2
-version: 34
-labels: []
+version: 38
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/511
+    at: 2026-11-20T19:14:52.926Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/527
+    at: 2026-11-20T19:14:52.927Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/542
+    at: 2026-11-20T19:14:52.927Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/597
+    at: 2026-11-20T19:14:52.927Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/616
+    at: 2026-11-20T19:14:52.927Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/622
+    at: 2026-11-20T19:14:52.927Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/626
+    at: 2026-11-20T19:14:52.927Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/644
+    at: 2026-11-20T19:14:52.927Z
+labels:
+  - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m7wyspfffhwcfcze4mke8jjp
@@ -43,7 +70,11 @@ child_order_hints:
   - is-01m7v62n9f3y3qh0qxe9m6ap2y
   - is-01m7tnaxethq70h5dxyhfdzz8r
 created_at: 2026-11-20T17:06:42.489Z
-updated_at: 2026-11-20T19:12:44.621Z
+updated_at: 2026-11-20T19:16:51.775Z
+extensions:
+  linear:
+    id: c23452d1-8d76-491e-86d9-3278c87bdb31
+    linked_at: 2026-11-20T19:16:51.773Z
 ---
 Rendered Markdown (KPress), wiki links and transclusion, front matter, the structured YAML and JSON views, and Mermaid diagrams, in the trusted and the inert (untrusted) profiles. Landed: Mermaid in Markdown (#597) and in pull request text (#616), GitHub's layout attributes (#626), bounded front matter parsed off the event loop (#542), untrusted Markdown rendered in an inert child under a deadline (#527), and the remote-image policy (#644).
 

@@ -3,11 +3,41 @@ type: is
 id: is-01m0r7eg6f4a4xee33ryv8sjfs
 title: Implement the pluggable inventory engine
 kind: feature
-status: open
+status: in_progress
 priority: 1
-version: 24
+version: 29
 spec_path: docs/project/specs/active/plan-2026-08-23-pluggable-inventory-engine.md
-labels: []
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/498
+    at: 2026-11-20T19:14:53.712Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/501
+    at: 2026-11-20T19:14:53.713Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/502
+    at: 2026-11-20T19:14:53.713Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/503
+    at: 2026-11-20T19:14:53.713Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/507
+    at: 2026-11-20T19:14:53.713Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/508
+    at: 2026-11-20T19:14:53.713Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/518
+    at: 2026-11-20T19:14:53.713Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/519
+    at: 2026-11-20T19:14:53.713Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/520
+    at: 2026-11-20T19:14:53.713Z
+labels:
+  - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m0r8ym1vvhwdmnx4xq48vk78
@@ -28,7 +58,11 @@ child_order_hints:
   - is-01m1mva118h2a2j3b8swefvk8y
   - is-01m7rwjtqep1zqb91jyq9pnxc9
 created_at: 2026-08-23T21:11:56.857Z
-updated_at: 2026-11-20T17:15:37.781Z
+updated_at: 2026-11-20T19:16:27.157Z
+extensions:
+  linear:
+    id: e8ad825b-dd2e-48f1-9eda-b392dc667ebf
+    linked_at: 2026-11-20T19:16:27.156Z
 ---
 Parent for the pluggable inventory engine (docs/project/specs/active/plan-2026-08-23-pluggable-inventory-engine.md; implementation plan in plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md). Phase 1, the Python reference provider behind the sealed provider contract, shipped in v0.10.0 through #74, #99, and #101 (mb-lsgg, closed). Phase 2, the fdu provider and its adoption gates, is mb-hej8.
 

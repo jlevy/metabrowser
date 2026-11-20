@@ -5,8 +5,65 @@ title: Pulls tab, pull request page, and commit page
 kind: epic
 status: open
 priority: 2
-version: 36
-labels: []
+version: 40
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/506
+    at: 2026-11-20T19:14:53.328Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/522
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/524
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/525
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/526
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/528
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/529
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/530
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/532
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/533
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/536
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/584
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/589
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/603
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/611
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/615
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/627
+    at: 2026-11-20T19:14:53.333Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/646
+    at: 2026-11-20T19:14:53.333Z
+labels:
+  - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m7gf9b7eveb6p7pv6m4erz04
@@ -45,7 +102,11 @@ child_order_hints:
   - is-01m7s7p50603be3efeagnhavr0
   - is-01m7v6edc1nqgwd7ef1r7tt0zb
 created_at: 2026-11-20T17:06:37.632Z
-updated_at: 2026-11-20T19:11:40.985Z
+updated_at: 2026-11-20T19:16:48.331Z
+extensions:
+  linear:
+    id: 4ac6525a-dabe-49c8-aad1-d542e247da5a
+    linked_at: 2026-11-20T19:16:48.329Z
 ---
 The Pulls tab, the pull request page (Conversation, Changes, the Diff summary, stacks) and the commit page, for mirrors and local checkouts. The feature set shipped through the 0.12 line and the 2026-11 UI rounds (#444-#481, #506, #529, #584, #611, #615, #627).
 

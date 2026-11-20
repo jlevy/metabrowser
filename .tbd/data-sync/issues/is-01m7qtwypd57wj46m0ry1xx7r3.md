@@ -5,29 +5,25 @@ title: "Flake: macOS PageRevealWebKitTests and PagePrintTests time out waiting f
 kind: bug
 status: closed
 priority: 2
-version: 8
+version: 10
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/576
     at: 2026-11-20T17:02:44.797Z
 delegate: claude-code@spud10
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 hold: null
 hold_until: null
 created_at: 2026-11-18T17:22:31.755Z
-updated_at: 2026-11-20T19:12:47.488Z
+updated_at: 2026-11-20T19:16:00.570Z
 started_at: 2026-11-18T21:02:21.019Z
 closed_at: 2026-11-18T22:35:26.167Z
 close_reason: "Root cause fixed in #576 (6d7aae3ae): an early WKDownload cancel ended WebKit's network process"
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: e0029fdc-d954-4f80-9cb6-c80da494958f
-    linked_at: 2026-11-20T18:00:56.701Z
+extensions: {}
 ---
 #546's 'macOS 26, Xcode 26.6' job at 9a6679abd (run 44355710866) failed many PageRevealWebKitTests (commits/failures never arrive within 'eventually') and PagePrintTests (watcher.loaded never true; then a WKErrorDomain Code=4 TypeError). The same tree's predecessor b15cd93d3 passed, and #539 at c173d2eee, which contains the same main, passed. An agent saw PageRevealWebKitTests time out locally at load average ~70 and pass on rerun. Find the wait bound in 'eventually' for these tests and whether WebKit loads are slow under load or stuck; fix the wait, not the assertion.
 

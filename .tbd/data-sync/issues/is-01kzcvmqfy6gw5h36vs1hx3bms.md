@@ -5,7 +5,7 @@ title: "HTML P2: capability set, --untrusted profile, and client publication"
 kind: task
 status: closed
 priority: 1
-version: 18
+version: 19
 spec_path: docs/project/specs/done/plan-2026-08-06-html-rendering-and-trust-model.md
 delegate: unknown@cursor
 labels:
@@ -27,16 +27,13 @@ parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 hold: null
 hold_until: null
 created_at: 2026-08-07T00:58:17.469Z
-updated_at: 2026-11-04T17:14:19.317Z
+updated_at: 2026-11-20T19:15:58.136Z
 started_at: 2026-09-18T04:14:57.485Z
 closed_at: 2026-09-20T05:50:32.685Z
 close_reason: "Implemented on survivor draft #209 https://github.com/jlevy/metabrowser/pull/209 (parallel to stack #218). Publication review remains mb-d658. Nothing merged to main."
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: 799c6e7a-191e-4d81-86b5-0a581e9e54c1
-    linked_at: 2026-08-16T08:05:43.354Z
+extensions: {}
 ---
 Resolve an immutable capability object before app construction. Add --no-active-content / METAB_ACTIVE_CONTENT=0 and the --untrusted / METAB_UNTRUSTED=1 profile, with individual flags overriding the profile. Publish through client_settings_dict() as CAPABILITIES and via GET /api/capabilities. When active_content is off, drop allow-scripts from the raw sandbox directive (NOT a text/plain downgrade — that reintroduces the type enumeration the unconditional header removed and breaks innocent styled pages). Document the flags in SECURITY.md and the README warning block in the same change. Generalizes the mechanism the file-actions plan defines for mutations rather than adding a parallel one.
 

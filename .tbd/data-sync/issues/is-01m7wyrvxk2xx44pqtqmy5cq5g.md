@@ -3,10 +3,16 @@ type: is
 id: is-01m7wyrvxk2xx44pqtqmy5cq5g
 title: "Source and checkout kinds: one mode and one icon for a cloud mirror, a Git checkout, and a plain folder"
 kind: epic
-status: open
+status: in_progress
 priority: 1
-version: 5
-labels: []
+version: 10
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/667
+    at: 2026-11-20T19:14:58.719Z
+labels:
+  - linear
+  - Improvement
 dependencies: []
 child_order_hints:
   - is-01m7wxbwfxt3m6b3nbs2wy4v44
@@ -14,7 +20,11 @@ child_order_hints:
   - is-01m7pn8n0nyp1y7mj41d1b38wm
   - is-01m7pn8nk5a2cfd92t8fen4gv4
 created_at: 2026-11-20T17:06:24.306Z
-updated_at: 2026-11-20T17:08:44.534Z
+updated_at: 2026-11-20T19:16:44.114Z
+extensions:
+  linear:
+    id: 74de802a-b5dd-4672-8169-c0ba864abbc5
+    linked_at: 2026-11-20T19:16:44.113Z
 ---
 What a reader has open is one of three kinds: a cloud mirror of a GitHub repository, a local folder inside a Git checkout (folder mode), or a plain folder with no Git. The model is settled in docs/project/architecture/arch-open-modes.md (#558), and the macOS app's title bar, Open Recent and Dock menus already carry the shared marks (#564, #575).
 

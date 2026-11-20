@@ -3,10 +3,22 @@ type: is
 id: is-01m7x1jaewjm2pnxm8dnmnqdtq
 title: "Cache layout and contract: repos/ and sources/ with short readable names, one vocabulary, a stated deletion guarantee, sizes and pruning"
 kind: epic
-status: open
+status: in_progress
 priority: 1
-version: 5
-labels: []
+version: 10
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/551
+    at: 2026-11-20T19:14:55.644Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/647
+    at: 2026-11-20T19:14:55.645Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/666
+    at: 2026-11-20T19:14:55.645Z
+labels:
+  - linear
+  - Improvement
 dependencies: []
 child_order_hints:
   - is-01m7wxxan4v3hedteasg82q02s
@@ -14,6 +26,10 @@ child_order_hints:
   - is-01m7vrbkq0241m0fr2fmkgx1ej
   - is-01m7m9v3mwpg9rgacw38xp0376
 created_at: 2026-11-20T17:55:15.547Z
-updated_at: 2026-11-20T19:13:18.012Z
+updated_at: 2026-11-20T19:16:56.533Z
+extensions:
+  linear:
+    id: 1910be4b-70e6-4d39-ad72-341b9d3c22ce
+    linked_at: 2026-11-20T19:16:56.532Z
 ---
 Owner decisions 2026-11-20 on attic/cache-layout-research/report.txt: repos/ (rename from repository-stores/) and source slugs respelled with single dashes and base36 digests in one f03 step (mb-dwq7); recents move to the state directory and the deletion guarantee is 'whenever no metab is running' (mb-pml0); later, removal and pruning on the open-repo plan's store lease.

@@ -5,10 +5,11 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: open
 priority: 1
-version: 117
+version: 119
 delegate: codex@spud10
 labels:
   - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m6f3n8s7enn9mcye32ks6jrd
@@ -97,7 +98,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-20T17:59:07.835Z
+updated_at: 2026-11-20T19:15:00.574Z
 started_at: 2026-11-07T05:39:51.585Z
 extensions:
   linear:

@@ -5,7 +5,7 @@ title: "Diff: context expansion, whitespace controls, and measured virtualizatio
 kind: feature
 status: open
 priority: 2
-version: 17
+version: 18
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -20,11 +20,8 @@ child_order_hints:
   - is-01m0y5h1kk1waq5baqsvmqcx6k
   - is-01m0y74n2yd54hyz6kqn93xsw4
 created_at: 2026-07-18T01:38:59.628Z
-updated_at: 2026-11-14T18:45:07.188Z
-extensions:
-  linear:
-    id: be7a39d5-c9b6-4a86-8008-0af0fff8de65
-    linked_at: 2026-08-16T08:06:29.441Z
+updated_at: 2026-11-20T19:15:57.624Z
+extensions: {}
 ---
 Bounded context expansion through content references, whitespace controls, and measured row virtualization or worker evaluation for the diff plugin's renderer (builtin_plugins/diff/diff-view.js). Already on main: intraline refinement (Phase 4, #81, diff-intraline.js), unified and split layouts with bounded syntax (mb-sj1s, #76), and folded runs that mount only their visible prefix (Phase 5). PR #76 finding 76-6 still defers a hunk-boundary lexical-confidence cue until full-source tokenization or context expansion can replace the per-hunk reset.
 

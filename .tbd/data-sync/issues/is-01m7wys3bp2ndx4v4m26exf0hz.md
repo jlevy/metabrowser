@@ -5,8 +5,26 @@ title: File ages, recency, and Files-tab grouping
 kind: epic
 status: open
 priority: 2
-version: 16
-labels: []
+version: 20
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/546
+    at: 2026-11-20T19:14:57.944Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/572
+    at: 2026-11-20T19:14:57.946Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/601
+    at: 2026-11-20T19:14:57.946Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/643
+    at: 2026-11-20T19:14:57.946Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/652
+    at: 2026-11-20T19:14:57.946Z
+labels:
+  - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m7w8mt96mxaz0py8ke8acx3n
@@ -25,7 +43,11 @@ child_order_hints:
   - is-01m7s7apxe55ek1pds3fa2475v
   - is-01m7p8c8jxvvb9qgs08wea9nk3
 created_at: 2026-11-20T17:06:31.923Z
-updated_at: 2026-11-20T19:12:15.010Z
+updated_at: 2026-11-20T19:16:45.070Z
+extensions:
+  linear:
+    id: 1e4ba3ec-be2e-4e6a-87f7-f71f8406875c
+    linked_at: 2026-11-20T19:16:45.065Z
 ---
 The Files tab groups, filters and dates what it lists: Group by (By age, By file type), Modified within, Recent, and each entry's age. On a folder the ages come from the inventory; on a Git revision they come from each file's last commit (git last-modified), which landed in #643 and #652.
 

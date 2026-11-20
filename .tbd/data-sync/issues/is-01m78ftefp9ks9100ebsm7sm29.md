@@ -5,9 +5,11 @@ title: Plugin sources and out-of-process plugin environments
 kind: epic
 status: open
 priority: 1
-version: 19
+version: 22
 spec_path: docs/project/specs/active/plan-2026-11-12-plugin-sources.md
-labels: []
+labels:
+  - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m78fvwszg5ctcvezzfg5tnnp
@@ -27,7 +29,11 @@ child_order_hints:
   - is-01m78fwdh6mt5frdg94thadjkh
   - is-01m78gmwnk00rz776w8w8k7g9j
 created_at: 2026-11-12T18:20:18.805Z
-updated_at: 2026-11-20T17:16:11.198Z
+updated_at: 2026-11-20T19:16:39.798Z
+extensions:
+  linear:
+    id: 2c899caa-16c3-454c-acd8-d66b8a42baf7
+    linked_at: 2026-11-20T19:16:39.797Z
 ---
 A system-installed Metabrowser (the metab uv tool and the macOS app) uses new plugins without being reinstalled, and picks up a repository's checked-in and library-shipped plugins after one consent per clone. Plugin Python runs in workers on its own environment's interpreter, with a runtime the host injects as metabrowser; one registry with scoped sources lives in a state home; one plugin API version under a caret gate; the app's settings run metab-plugins. Design, Key Decisions awaiting the owner, and phases: docs/project/specs/active/plan-2026-11-12-plugin-sources.md; evidence: docs/project/research/research-2026-11-12-plugin-sources.md.
 

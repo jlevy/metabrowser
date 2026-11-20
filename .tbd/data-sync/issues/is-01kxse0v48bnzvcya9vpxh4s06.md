@@ -5,7 +5,7 @@ title: "Diff P0: golden Git fixture repos, adapter contract harness, and baselin
 kind: task
 status: closed
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -14,13 +14,10 @@ dependencies:
     target: is-01kxse0vfwwkcq1a6mfdx6v9ad
 parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 created_at: 2026-07-18T01:38:58.312Z
-updated_at: 2026-08-19T16:19:41.281Z
+updated_at: 2026-11-20T19:15:57.500Z
 closed_at: 2026-08-19T16:19:41.280Z
 close_reason: "Landed: deterministic fixture repos (pinned identity + dates), materialize_tree, and the apply oracle passing against git's own trees — also runnable from the CLI as --diff-check and pinned in the tryscript golden."
-extensions:
-  linear:
-    id: 30aeb3d3-bb47-459b-bc77-4d3a3a47f3eb
-    linked_at: 2026-08-16T08:06:25.050Z
+extensions: {}
 ---
 Fixture matrix per the plan: modified/added/deleted/renamed/mode-change/binary/untracked/partial-staging/unborn/detached/linked-worktree/non-UTF-8 path/CRLF/no-final-newline plus one pathological generated file. Differential tests vs installed git; record baselines, then set budgets.
 

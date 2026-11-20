@@ -5,7 +5,7 @@ title: "P2: complete filter hide mode across nav and folder views"
 kind: task
 status: closed
 priority: 2
-version: 13
+version: 14
 spec_path: null
 labels: []
 dependencies:
@@ -13,15 +13,12 @@ dependencies:
     target: is-01ky071dz7zqcfxgxf97pc9vfn
 parent_id: is-01ky070wk6z56ghjc9wyhf0sye
 created_at: 2026-07-20T16:51:38.175Z
-updated_at: 2026-11-04T17:14:27.048Z
+updated_at: 2026-11-20T19:15:57.813Z
 closed_at: 2026-11-01T16:21:21.927Z
 close_reason: filter-state.js on main states there is no dim/hide switch, and /api/filter/tree was never built; TreeFilter on /api/tree replaced this.
 resolution: canceled
 duplicate_of: null
-extensions:
-  linear:
-    id: a686753d-cd6a-468c-b561-ea7336b89acd
-    linked_at: 2026-08-16T08:06:37.590Z
+extensions: {}
 ---
 Phase 2 delivers complete server-backed hide mode. Normalize logical extensions across inventory and browser classification; add filtered InventoryIndex.rollup accumulators and /api/rollup validation; add a dedicated /api/filter/tree hierarchy with public revision and scoped-safe invalidation; remeasure adversarial budgets; bind treemap hide-mode relayout and nav hide behavior; and add missing DOM coverage. Do not reuse flat filename or full-text search endpoints for filter projection.
 

@@ -5,20 +5,16 @@ title: Parse untrusted front matter in the inert child under a deadline (#542 A5
 kind: task
 status: open
 priority: 2
-version: 5
+version: 7
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/542
     at: 2026-11-20T17:02:00.188Z
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m7wysdnvzch4gb5zvqwvn04e
 created_at: 2026-11-18T03:36:33.695Z
-updated_at: 2026-11-20T18:00:49.762Z
-extensions:
-  linear:
-    id: cd521673-fa4d-40af-b789-2acd15bc526f
-    linked_at: 2026-11-20T18:00:49.760Z
+updated_at: 2026-11-20T19:16:00.419Z
+extensions: {}
 ---
 Off the event loop is not off the GIL: a plain /api/file took 0.7 ms alone and 206 ms beside a 2.3 s load at FRONTMATTER_MAX_BYTES. Move untrusted front-matter parsing into #527's Markdown child under its deadline; lowering the byte bound would refuse real front matter.

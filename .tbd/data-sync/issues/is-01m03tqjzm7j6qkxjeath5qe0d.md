@@ -5,8 +5,20 @@ title: "[epic] Minor cleanups"
 kind: epic
 status: open
 priority: 2
-version: 35
-labels: []
+version: 38
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/492
+    at: 2026-11-20T19:14:55.264Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/523
+    at: 2026-11-20T19:14:55.265Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/538
+    at: 2026-11-20T19:14:55.265Z
+labels:
+  - linear
+  - Improvement
 dependencies: []
 child_order_hints:
   - is-01m03tr0ax4k74sn0sg588htrf
@@ -40,7 +52,7 @@ child_order_hints:
   - is-01m7wy8xj9qgbxvfpcxhjebdps
   - is-01kzz4b2aah8jbhe3tndbcb26s
 created_at: 2026-08-15T23:04:54.515Z
-updated_at: 2026-11-20T19:13:23.799Z
+updated_at: 2026-11-20T19:15:01.104Z
 extensions:
   linear:
     id: da29ec9a-dfad-45c8-96a5-c5866a6ac816

@@ -3,11 +3,41 @@ type: is
 id: is-01m7wysgm9rg3fdch55nst1wrn
 title: "CI speed: finish the Fast CI plan and verify its phases"
 kind: epic
-status: open
+status: in_progress
 priority: 2
-version: 12
+version: 17
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
-labels: []
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/496
+    at: 2026-11-20T19:14:52.551Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/499
+    at: 2026-11-20T19:14:52.552Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/504
+    at: 2026-11-20T19:14:52.552Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/513
+    at: 2026-11-20T19:14:52.552Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/514
+    at: 2026-11-20T19:14:52.552Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/515
+    at: 2026-11-20T19:14:52.552Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/554
+    at: 2026-11-20T19:14:52.552Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/585
+    at: 2026-11-20T19:14:52.552Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/669
+    at: 2026-11-20T19:14:52.552Z
+labels:
+  - linear
+  - Improvement
 dependencies: []
 child_order_hints:
   - is-01m7m3rn4x4ttt604xrtj32vff
@@ -22,7 +52,11 @@ child_order_hints:
   - is-01m7x3dt9bhf2vxgyng4cssa41
   - is-01m7pq9dk5hbfvrq38zv4v53zb
 created_at: 2026-11-20T17:06:45.512Z
-updated_at: 2026-11-20T19:13:12.272Z
+updated_at: 2026-11-20T19:16:55.199Z
+extensions:
+  linear:
+    id: 1ece55fe-0ac1-49d4-bf60-5ea298d7306c
+    linked_at: 2026-11-20T19:16:55.198Z
 ---
 The owner asked on 2026-11-16 for a pull request's gate in 3 to 5 minutes at the same coverage. The assessment and plan merged in #496 (docs/project/specs/active/plan-2026-11-16-fast-ci.md); Phase 1 (#499, four processors) and Phase 2 (#504, parallel jobs with one ci-ok verdict) are merged, and the first measured pull requests took 4.7 to 5.5 minutes.
 

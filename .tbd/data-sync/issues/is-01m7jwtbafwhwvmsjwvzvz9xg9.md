@@ -5,14 +5,13 @@ title: "The brief change line '10 A, 5 D, 4 M · +1,234 −567' is one component
 kind: feature
 status: closed
 priority: 1
-version: 28
+version: 30
 spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/484
     at: 2026-11-20T17:01:30.404Z
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 child_order_hints:
@@ -39,14 +38,11 @@ child_order_hints:
   - is-01m7kfte0m3g6k2npawtja05ha
   - is-01m7kftf3s1vj6a9ssenmpht89
 created_at: 2026-11-16T19:19:51.374Z
-updated_at: 2026-11-20T17:59:12.986Z
+updated_at: 2026-11-20T19:15:59.230Z
 closed_at: 2026-11-17T02:31:35.727Z
 close_reason: "Stack headings' change line merged in #484 (accumulation of member PRs)"
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: 01f4963d-8d25-4c5b-8b31-5dd734e8255a
-    linked_at: 2026-11-20T17:59:12.983Z
+extensions: {}
 ---
 Owner, 2026-11-16: "in addition the brief line summary \"10 A, 5 D, 4 M · +1,234 −567\" should be a component of its own and reused also in the stack headings in the Pulls nav column, next to \"Stack #xxx\"". Part 1 (the component) goes into #479's fix round with its one painter; part 2 (stack headings) is layer 29 on #479.

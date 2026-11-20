@@ -5,17 +5,14 @@ title: "P2: add complete server filename search provider"
 kind: task
 status: deferred
 priority: 2
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
 labels: []
 dependencies: []
 parent_id: is-01kxnx9waq2h69ey9kb0mcg5hq
 created_at: 2026-08-01T05:57:10.681Z
-updated_at: 2026-11-14T18:42:34.245Z
-extensions:
-  linear:
-    id: 9ec87dfa-bdb5-4285-94a6-3f1d4e7b62d9
-    linked_at: 2026-08-16T08:06:42.091Z
+updated_at: 2026-11-20T19:15:57.959Z
+extensions: {}
 ---
 DEFERRED. Premise superseded by the mb-ci04 decision (2026-08-06): Quick Search is client-complete over non-gitignored filenames through a minimal bulk feed (mb-hj78), so there is no per-query server filename search on the default path.
 

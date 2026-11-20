@@ -3,11 +3,53 @@ type: is
 id: is-01m2gb3gpn7vcsw0as4xa243tg
 title: Stabilize the test suite under machine load
 kind: epic
-status: open
+status: in_progress
 priority: 2
-version: 41
+version: 46
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/495
+    at: 2026-11-20T19:14:51.403Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/521
+    at: 2026-11-20T19:14:51.404Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/563
+    at: 2026-11-20T19:14:51.404Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/567
+    at: 2026-11-20T19:14:51.404Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/569
+    at: 2026-11-20T19:14:51.404Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/576
+    at: 2026-11-20T19:14:51.404Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/594
+    at: 2026-11-20T19:14:51.404Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/598
+    at: 2026-11-20T19:14:51.404Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/610
+    at: 2026-11-20T19:14:51.404Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/625
+    at: 2026-11-20T19:14:51.404Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/630
+    at: 2026-11-20T19:14:51.404Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/638
+    at: 2026-11-20T19:14:51.404Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/670
+    at: 2026-11-20T19:14:51.404Z
 labels:
   - testing
+  - linear
+  - Bug
 dependencies: []
 child_order_hints:
   - is-01m2gb3pfd368gdf1ragzqezbg
@@ -45,7 +87,11 @@ child_order_hints:
   - is-01m7vnr99dgq5qyfbj40warset
   - is-01m7wy9g6g33jfjygf98zg5gem
 created_at: 2026-09-14T16:13:19.443Z
-updated_at: 2026-11-20T19:13:06.419Z
+updated_at: 2026-11-20T19:16:32.893Z
+extensions:
+  linear:
+    id: 0ec06507-cca1-4389-a123-11079aee3f0d
+    linked_at: 2026-11-20T19:16:32.889Z
 ---
 Sweep the full pytest suite and tryscript goldens under heavy machine load (load average 7-50 from an unrelated workload, or CPU burners on a quiet host). Classify each failure as a load or timing flake, a real bug, or an order dependence, and fix flakes by asserting the product guarantee with deterministic coordination rather than wall-clock thresholds. The starting flake, tests/test_serve_open_race.py (mb-0mu9), is fixed. CI flakes found since are tracked as children of this bead.
 

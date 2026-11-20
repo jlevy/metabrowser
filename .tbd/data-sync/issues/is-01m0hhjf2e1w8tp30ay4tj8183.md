@@ -5,8 +5,9 @@ title: "Nav panel filtering: correct rollups, no empty folders, stable expansion
 kind: epic
 status: closed
 priority: 1
-version: 17
-labels: []
+version: 18
+labels:
+  - linear
 dependencies: []
 child_order_hints:
   - is-01m0hj1jhk2tmycmj7rj5sjnkh
@@ -23,7 +24,7 @@ child_order_hints:
   - is-01m26d2kxsnpj6wjp8zeq09s9t
   - is-01m26qpgdzgr9mptjprzzgqbfk
 created_at: 2026-08-21T06:54:11.533Z
-updated_at: 2026-11-01T16:21:19.494Z
+updated_at: 2026-11-20T19:15:00.047Z
 closed_at: 2026-11-01T16:21:19.493Z
 close_reason: All 13 children are closed; tree_filter.py and cli-walk-filter are on main (audit 2026-11-01, checked).
 resolution: null

@@ -5,30 +5,26 @@ title: CHANGELOG.md conflicts on every merge to main serialize landing
 kind: task
 status: closed
 priority: 2
-version: 11
+version: 13
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/585
     at: 2026-11-20T17:01:15.434Z
 delegate: claude-code@spud10
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m7wysgm9rg3fdch55nst1wrn
 hold: null
 hold_until: null
 created_at: 2026-11-18T07:00:11.492Z
-updated_at: 2026-11-20T19:13:12.261Z
+updated_at: 2026-11-20T19:16:00.519Z
 started_at: 2026-11-18T22:09:13.346Z
 closed_at: 2026-11-18T23:32:24.969Z
 close_reason: "Merged in #585"
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: bba7e3df-b9d9-400b-a7eb-fbb09b374ac9
-    linked_at: 2026-11-20T18:00:54.162Z
+extensions: {}
 ---
 Overnight 2026-11-18 every merge to main made each open PR with an Unreleased entry conflict in CHANGELOG.md (both sides add at the top of Unreleased), forcing a merge-up and a fresh ~35-job CI run per PR per landing. Options: (a) .gitattributes 'CHANGELOG.md merge=union' (built-in driver; verify GitHub's mergeability check and merge honor it, and that union keeps entries separated by a blank line); (b) changelog fragments (one file per change under changelog.d/, assembled at release). Measure which GitHub honors before choosing.
 

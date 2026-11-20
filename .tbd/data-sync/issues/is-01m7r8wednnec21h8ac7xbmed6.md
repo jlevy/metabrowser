@@ -5,22 +5,18 @@ title: "App: use the GitHub status check to tell sign-in, scope, and access fail
 kind: feature
 status: open
 priority: 3
-version: 4
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/571
     at: 2026-11-20T17:05:45.247Z
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 created_at: 2026-11-18T21:26:55.155Z
-updated_at: 2026-11-20T18:01:10.430Z
-extensions:
-  linear:
-    id: 4e45c967-9dcc-4714-8ea9-7e490105f18e
-    linked_at: 2026-11-20T18:01:10.427Z
+updated_at: 2026-11-20T19:16:00.691Z
+extensions: {}
 ---
 Follow-up to mb-m0ry, which built the app's GitHub failure states without depending on mb-si2g.
 

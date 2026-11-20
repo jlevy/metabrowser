@@ -5,9 +5,11 @@ title: "API envelope contract: a generated schema the CLI can show"
 kind: epic
 status: open
 priority: 2
-version: 10
+version: 13
 spec_path: docs/project/specs/active/plan-2026-08-30-api-schema-and-contract.md
-labels: []
+labels:
+  - linear
+  - Improvement
 dependencies: []
 child_order_hints:
   - is-01m1b5n06x1efn3vrrg79q5ge0
@@ -18,7 +20,11 @@ child_order_hints:
   - is-01m1cda2sjv8sg4699t9g9yvs7
   - is-01m1cda35c0ppjyfe07hteh2pq
 created_at: 2026-08-31T05:46:06.201Z
-updated_at: 2026-11-20T17:16:56.022Z
+updated_at: 2026-11-20T19:16:29.263Z
+extensions:
+  linear:
+    id: deb20028-0e7e-4533-a9ac-d3390d1da4e3
+    linked_at: 2026-11-20T19:16:29.260Z
 ---
 The /api/ envelopes are declared as TypedDicts in wire_models.py and git/wire.py, with validate_* functions for the tree, rollup, and Git families, and in cache/wire.py, source_routes.py, root_identity.py, and the GitHub plugin's route modules. That contract is invisible outside Python and unreachable from the CLI built to make every model inspectable, and the map document describes each envelope in prose that nothing checks. Generate JSON Schema from the TypedDicts, validate the goldens against it, and serve it. The gating decision is closed (mb-d7ne): /api/ stays an internal contract, described but not published. Plan: docs/project/specs/active/plan-2026-08-30-api-schema-and-contract.md.
 

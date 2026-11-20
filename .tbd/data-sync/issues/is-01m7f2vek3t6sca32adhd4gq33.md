@@ -3,11 +3,20 @@ type: is
 id: is-01m7f2vek3t6sca32adhd4gq33
 title: "Object data model and views: plan and decisions"
 kind: epic
-status: open
+status: in_progress
 priority: 2
-version: 20
+version: 25
 spec_path: docs/project/specs/active/plan-2026-11-14-object-data-model-and-views.md
-labels: []
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/453
+    at: 2026-11-20T19:14:54.878Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/570
+    at: 2026-11-20T19:14:54.879Z
+labels:
+  - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m7kchtj4fw8xr6cqrjxen0ba
@@ -28,7 +37,11 @@ child_order_hints:
   - is-01m7r76k6f8m2een1fvgt1a1ea
   - is-01m7wy7nzthzeq8efj0p7qckbd
 created_at: 2026-11-15T07:48:21.218Z
-updated_at: 2026-11-20T19:13:16.589Z
+updated_at: 2026-11-20T19:16:41.923Z
+extensions:
+  linear:
+    id: 57820908-dc29-41e5-bba7-21e54f4df749
+    linked_at: 2026-11-20T19:16:41.922Z
 ---
 Design (not yet implementation) of one object data model with multiple views, a view state agents can read and change, and the Recent tab. Six plan specs, all decisions taken 2026-11-18 (PR #570): the object data model and views (docs/project/specs/active/plan-2026-11-14-object-data-model-and-views.md, Decisions 1 to 23), the view model and view state (VM-1 to VM-10), the Recent tab (RT-1 to RT-7), the agent interface (AI-1 to AI-6; the CLI is the complete agent surface), plugin authoring (PS-1 to PS-7), and the implementation map (Ordering 2: groundwork, then working-tree changes, with the view slice and the /pulls stack in parallel). Implementation lands on separate stacks after #570 merges.
 

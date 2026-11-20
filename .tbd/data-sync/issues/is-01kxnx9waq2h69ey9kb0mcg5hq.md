@@ -5,7 +5,7 @@ title: Quick file finder and search providers
 kind: feature
 status: open
 priority: 2
-version: 15
+version: 16
 spec_path: docs/project/specs/active/plan-2026-07-17-scalable-file-search.md
 labels:
   - search
@@ -18,11 +18,8 @@ child_order_hints:
   - is-01kyxybvqnw3fmmzhs3hnqhtxr
   - is-01kzmnyznydb254wv11evz3r79
 created_at: 2026-07-16T16:49:05.366Z
-updated_at: 2026-11-14T18:46:41.609Z
-extensions:
-  linear:
-    id: d2579248-d47f-40b5-b4d8-79ff0a9d7dcb
-    linked_at: 2026-08-16T08:05:59.413Z
+updated_at: 2026-11-20T19:15:56.919Z
+extensions: {}
 ---
 Provider-based search surface, in phases (plan-2026-07-17-scalable-file-search.md). Phase 1, a T or / Quick Search palette that fuzzy-matches a client file catalog without a search request, and Phase 2, a client-complete catalog over non-gitignored filenames (/api/catalog plus catalog.change, decision mb-ci04), shipped in v0.3.0. Repository PR completions joined it with #309 and #314.
 

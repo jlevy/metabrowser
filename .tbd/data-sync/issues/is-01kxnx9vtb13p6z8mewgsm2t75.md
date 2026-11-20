@@ -5,7 +5,7 @@ title: Modularize the browser shell and reader assets
 kind: epic
 status: open
 priority: 2
-version: 6
+version: 7
 spec_path: TODO.md
 labels:
   - browser
@@ -16,11 +16,8 @@ child_order_hints:
   - is-01kxshfx0fhzyccg1wwtdv7c6b
   - is-01kxsvxrrzqt4c60d15em6jrqe
 created_at: 2026-07-16T16:49:04.842Z
-updated_at: 2026-11-20T17:18:11.721Z
-extensions:
-  linear:
-    id: fb70400d-cf16-4be7-b0c6-8ff45c3730da
-    linked_at: 2026-08-16T08:05:56.704Z
+updated_at: 2026-11-20T19:15:56.877Z
+extensions: {}
 ---
 Split the remaining large classic shell and reader scripts into cohesive core, tree, preview, live-update, and view modules; split corresponding CSS by responsibility; preserve behavior and asset budgets; centralize shared copy/icon helpers; remove redundant legacy host styles; and use the work to retire measured TypeScript/Biome compatibility exceptions.
 

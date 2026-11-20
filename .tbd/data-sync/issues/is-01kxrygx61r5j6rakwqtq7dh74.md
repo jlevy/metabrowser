@@ -5,7 +5,7 @@ title: Build VS Code extension host
 kind: feature
 status: open
 priority: 3
-version: 10
+version: 11
 spec_path: docs/project/research/archive/research-2026-07-17-vscode-extension-host.md
 labels:
   - editor
@@ -13,11 +13,8 @@ labels:
 dependencies: []
 parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 created_at: 2026-07-17T21:08:07.489Z
-updated_at: 2026-11-19T16:49:36.608Z
-extensions:
-  linear:
-    id: eafd0be0-c2a0-416c-b4e5-b5f56d593db2
-    linked_at: 2026-08-16T08:06:21.773Z
+updated_at: 2026-11-20T19:15:57.459Z
+extensions: {}
 ---
 Build the native tree, embedded content panel, supervised authenticated Metabrowser server, verified uv installation, and packaged workbench test coverage described by the maintained architecture document.
 

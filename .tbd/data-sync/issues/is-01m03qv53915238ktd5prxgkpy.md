@@ -5,17 +5,14 @@ title: Implement the reserved _mb_ query namespace in the URL codec
 kind: feature
 status: open
 priority: 3
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md
 labels: []
 dependencies: []
 parent_id: is-01kxnx985gd2k5epmcswersqdk
 created_at: 2026-08-15T22:14:25.639Z
-updated_at: 2026-11-20T17:27:15.140Z
-extensions:
-  linear:
-    id: 04c8ca32-f221-440d-b4cc-8b2ca23ea4be
-    linked_at: 2026-08-16T08:05:43.510Z
+updated_at: 2026-11-20T19:15:58.865Z
+extensions: {}
 ---
 The browser URL grammar (docs/architecture.md#browser-url-grammar) reserves query keys beginning with _mb_ for Metabrowser presentation parameters, leaving every other key to the document. Reserved keys are snake_case, matching this server's existing query parameters such as include_ignored and every key on the JSON wire. The grammar is documented and the seam is pinned by codec tests (tests/dom/navigation-route-behavior.js, cli-ui-navigation.tryscript.md), but query is still carried verbatim and uninterpreted.
 

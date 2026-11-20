@@ -5,7 +5,7 @@ title: HTML rendering and an explicit content-trust model
 kind: epic
 status: closed
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/done/plan-2026-08-06-html-rendering-and-trust-model.md
 labels:
   - security
@@ -18,15 +18,12 @@ child_order_hints:
   - is-01kzcvmr0d1eyegyds8zpbffbz
   - is-01m2zx3hf12cnhqt02pzcj2ymq
 created_at: 2026-08-07T00:57:59.957Z
-updated_at: 2026-11-04T17:14:18.743Z
+updated_at: 2026-11-20T19:15:58.171Z
 closed_at: 2026-11-01T16:21:19.848Z
 close_reason: "PR #209 merged 2026-09-20 and all 5 children are closed (audit 2026-11-01, checked)."
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: efc46703-5aa2-49d6-8195-546330186e9c
-    linked_at: 2026-08-16T08:05:43.342Z
+extensions: {}
 ---
 Render full-page static HTML in an opaque-origin sandbox, and introduce the explicit trust model that makes it safe by default. Governing invariant: content viewed through Metabrowser gets exactly the privilege a browser would give the same file opened directly (file:// parity), and never Metabrowser's server-side API. Also closes two existing holes: /raw executes in-root HTML/SVG on the app origin, and /api accepts cross-site fire-and-forget requests (POST /api/kpress/export writes under the root today). SECURITY.md 'Content Trust Model' section documents current truth; the spec owns the deltas. See the spec for design and phasing.
 

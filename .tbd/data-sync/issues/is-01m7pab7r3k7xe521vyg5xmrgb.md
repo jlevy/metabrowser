@@ -5,7 +5,7 @@ title: "View header: move the size, file count and age (e.g. '379.2 MB · 18,344
 kind: task
 status: closed
 priority: 2
-version: 14
+version: 16
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/550
@@ -14,8 +14,7 @@ refs:
     url: https://github.com/jlevy/metabrowser/pull/552
     at: 2026-11-20T17:04:31.475Z
 delegate: claude-code@spud10
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m7wysf407hkpj5n35r533gzc
 child_order_hints:
@@ -25,16 +24,13 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-18T03:13:59.554Z
-updated_at: 2026-11-20T19:11:51.357Z
+updated_at: 2026-11-20T19:16:00.468Z
 started_at: 2026-11-18T03:15:32.079Z
 closed_at: 2026-11-18T22:04:05.426Z
 close_reason: Landed in jlevy/metabrowser#550 (f105941bc)
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: c7609f98-8b30-477f-b181-7cf1dc920166
-    linked_at: 2026-11-20T18:00:48.480Z
+extensions: {}
 ---
 Owner, 2026-11-18 in chat: 'let's remove the file size on the top right of the upper view bar as well and instead put the file age and file size next to the filename with a small gap, trying to fit in with other design styles we already have, much like the nav bar. these numbers 379.2 MB / 18,344 files / 11m ago should all be next to the folder itself. after these changes the upper right will be empty.' Then the upper right holds a small toggle (separate bead).
 

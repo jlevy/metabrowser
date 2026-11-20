@@ -5,29 +5,25 @@ title: "Main red after #608: nav-collapse Chrome test says a press in Up does no
 kind: bug
 status: closed
 priority: 0
-version: 8
+version: 10
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/610
     at: 2026-11-20T17:05:22.346Z
 delegate: claude-code@spud10
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
 hold: null
 hold_until: null
 created_at: 2026-11-19T16:55:23.307Z
-updated_at: 2026-11-20T19:12:58.768Z
+updated_at: 2026-11-20T19:16:01.190Z
 started_at: 2026-11-19T16:56:06.769Z
 closed_at: 2026-11-19T17:18:13.290Z
 close_reason: "PR #610 merged (test-only: wait for the committed view; sample layout after two frames)"
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: b8788dc0-3cfa-4d57-8a2e-f461d80da7da
-    linked_at: 2026-11-20T18:01:35.235Z
+extensions: {}
 ---
 Run 44492287878 on main 169496f05 (and #602's merge-up): tests/test_nav_collapse_chrome.py fails 'the chevron and Up are each a 24 px target, neither over the other, and a press anywhere in either lands on it' with owns {button:true, up:false}, up at left 328 right 352 top 4.5; chrome 3.12 4/4 and 3.14 3/4. Passed on #608's own CI. Introduced by #608 review-A A4 (mb-igva).
 

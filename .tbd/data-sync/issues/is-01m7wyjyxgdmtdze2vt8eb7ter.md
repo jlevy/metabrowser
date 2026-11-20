@@ -3,18 +3,19 @@ type: is
 id: is-01m7wyjyxgdmtdze2vt8eb7ter
 title: Map merged pull requests and stacks to Linear issues through a linear label
 kind: feature
-status: open
+status: in_progress
 priority: 2
-version: 3
+version: 6
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/659
     at: 2026-11-20T17:06:05.982Z
 labels:
   - linear
+  - Improvement
 dependencies: []
 created_at: 2026-11-20T17:03:10.767Z
-updated_at: 2026-11-20T17:54:32.058Z
+updated_at: 2026-11-20T19:15:55.735Z
 extensions:
   linear:
     id: 1a9c016a-4690-4473-b101-b89dbdb3b2dd

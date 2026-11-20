@@ -5,7 +5,7 @@ title: "Spec: switch folders in a macOS app window"
 kind: epic
 status: open
 priority: 2
-version: 24
+version: 26
 spec_path: docs/project/specs/active/plan-2026-11-18-macos-folder-switching.md
 refs:
   - kind: pr
@@ -26,6 +26,7 @@ refs:
 delegate: claude-code@spud10
 labels:
   - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m7r5cnfs2h2yhkcgj238s73w
@@ -47,7 +48,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-18T20:25:51.840Z
-updated_at: 2026-11-20T18:00:59.325Z
+updated_at: 2026-11-20T19:15:00.625Z
 started_at: 2026-11-18T20:58:34.140Z
 extensions:
   linear:

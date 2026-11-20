@@ -5,9 +5,11 @@ title: "End-to-end load time: assets, time to first row, server and CLI"
 kind: epic
 status: open
 priority: 0
-version: 82
+version: 85
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
-labels: []
+labels:
+  - linear
+  - Improvement
 dependencies: []
 child_order_hints:
   - is-01m0k4p13yqdg3yp2c78rawbhz
@@ -90,7 +92,11 @@ child_order_hints:
   - is-01m7pkgzth175ysqyfpp41brk9
   - is-01m7cmptva96jf076a85g0kabx
 created_at: 2026-08-21T22:08:27.377Z
-updated_at: 2026-11-20T17:24:38.624Z
+updated_at: 2026-11-20T19:16:24.041Z
+extensions:
+  linear:
+    id: c5f1e322-b8de-4351-8877-3b910724f569
+    linked_at: 2026-11-20T19:16:24.040Z
 ---
 Front-to-back performance pass. Measured on this machine, synthetic corpora, Chromium 141.
 

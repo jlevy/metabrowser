@@ -5,25 +5,21 @@ title: "macOS app: an outline folder symbol beside the mirror's cloud in the men
 kind: feature
 status: closed
 priority: 2
-version: 5
+version: 7
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/564
     at: 2026-11-20T17:05:58.502Z
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 created_at: 2026-11-18T20:23:03.000Z
-updated_at: 2026-11-20T19:12:26.947Z
+updated_at: 2026-11-20T19:16:01.785Z
 closed_at: 2026-11-18T21:02:16.000Z
 close_reason: "Merged in #564"
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: 8d6d6781-7110-401b-b9ca-b4964222605b
-    linked_at: 2026-11-20T18:02:18.124Z
+extensions: {}
 ---
 In the macOS app's menus, a folder gets an outline folder symbol beside a mirror's cloud. Created on 2026-11-20 after the fact, so that every merged pull request maps to a bead and a Linear issue; the pull request named no bead.

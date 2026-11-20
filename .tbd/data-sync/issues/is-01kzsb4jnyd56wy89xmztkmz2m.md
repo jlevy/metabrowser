@@ -5,7 +5,7 @@ title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (n
 kind: task
 status: closed
 priority: 1
-version: 66
+version: 67
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -43,16 +43,13 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-23T06:18:31.721Z
+updated_at: 2026-11-20T19:15:58.630Z
 started_at: 2026-09-16T21:10:44.811Z
 closed_at: 2026-09-23T06:18:31.720Z
 close_reason: "Phase 1B-a acceptance is complete: every checklist item is ticked, with evidence in the spec. Lazy-fetch policy on every read path (mb-pkho), runtime proof on real Git 2.43.7 and 2.50.1 (mb-d1za, mb-oueh), backport decision (mb-e32d), process-group kill (mb-lp89), goldens (mb-dg00). The stall bound moved to Phase 2A (mb-rati under mb-s1lt). HTTPS and SSH stay mb-bi2c. PR #226 (codex/v012-foundation-stabilization, head f68c3045f40ee28aa3eb37b010511cf8923ccc0d, all nine checks green: https://github.com/jlevy/metabrowser/actions/runs/35825617023)"
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: 0ffb0ef8-e09f-4e96-8736-01e0592ab450
-    linked_at: 2026-08-16T08:05:43.419Z
+extensions: {}
 ---
 Extend the one Git runner with core-constructed trusted command targets, version detection, stdin isolation, non-interactive environment, and bounded acquisition/background policies. Acquire into an isolated worktree-free staging repository; record source, closed non-secret FetchAuthorizationContext kind, fetch-policy version, exact refspec, expected OID, object format, and base generation; validate before importing objects and CAS-publishing only Metabrowser-owned refs. Unknown SSH or credential-helper principals receive fresh unshareable contexts. Publish the validated immutable store first and the source alias as the sole visibility commit, with source-alias locking and crash reclamation for orphaned stores. Define deterministic provider-identity store derivation without a mutable provider-to-store pointer, but keep GitHub metadata, immutable tree serving, shared origins, checkouts, and indexes out of this bead.
 

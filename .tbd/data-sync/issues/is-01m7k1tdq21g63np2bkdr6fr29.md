@@ -5,13 +5,12 @@ title: "The commit page's and the pull request page's headers share one design: 
 kind: feature
 status: closed
 priority: 1
-version: 19
+version: 21
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/487
     at: 2026-11-20T17:06:00.373Z
-labels:
-  - linear
+labels: []
 dependencies:
   - type: blocks
     target: is-01m7k2ap7d78zj4qae07h5daaw
@@ -31,14 +30,11 @@ child_order_hints:
   - is-01m7kbsrh0j72tyze0brmcr691
   - is-01m7kbss0kd4h8j8sgzfn70yh0
 created_at: 2026-11-16T20:47:16.705Z
-updated_at: 2026-11-20T17:59:20.085Z
+updated_at: 2026-11-20T19:15:59.265Z
 closed_at: 2026-11-17T00:30:22.598Z
 close_reason: "Header parity merged in #487 (6579c0d41); commit-author GitHub avatars continue as mb-rlp4 under mb-s3g8"
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: 953bb697-c2ae-45d0-b850-f2e0c4ef1a08
-    linked_at: 2026-11-20T17:59:20.083Z
+extensions: {}
 ---
 Owner, 2026-11-16: 'title and metadata on the lines following the title on commit page and PR page should have similar design system and structure. all text should be the same regular font size, including the diff summary, which currently is smaller on both. also the author and other elements on the commit page that are the same as the pull request page should be formatted the same, including having profile icon for the author etc. they should have same layout where it makes sense and diverge in areas where the commit is different from a pull request.' One stacked layer on #446.

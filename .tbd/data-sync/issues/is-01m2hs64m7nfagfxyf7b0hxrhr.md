@@ -5,10 +5,12 @@ title: "[epic] Pay down the flat-tree delivery cost carried since v0.10.0"
 kind: epic
 status: open
 priority: 1
-version: 13
+version: 16
 spec_path: docs/project/specs/active/plan-2026-09-15-flat-tree-delivery-cost.md
 labels:
   - performance
+  - linear
+  - Improvement
 dependencies: []
 child_order_hints:
   - is-01m2gv1af5w404zxdq8vxedm86
@@ -20,7 +22,11 @@ child_order_hints:
   - is-01m2h6bz9ehf0pba4zs1ehjvmw
   - is-01m1dt40nmqvb9k1dpewnyk06m
 created_at: 2026-09-15T05:38:39.879Z
-updated_at: 2026-11-20T17:16:51.404Z
+updated_at: 2026-11-20T19:16:33.913Z
+extensions:
+  linear:
+    id: 4f128317-9c92-41b8-9ef6-d4fb131f66c6
+    linked_at: 2026-11-20T19:16:33.912Z
 ---
 v0.10.0 shipped a known regression on flat mega-trees (exp-035; the known-limitations entry in CHANGELOG.md's 0.10.0 section), and docs/project/specs/active/plan-2026-09-15-flat-tree-delivery-cost.md is the plan for paying it down. No 0.10.1 patch was released: tier 1's catalog content hash (mb-wpqq part 2) landed in #129 and shipped in 0.11.0, and the flat-stress budget check (mb-ma3x) is closed. Open: the walker emit batch, still 256 in settings.py (mb-nuhb); the 300k re-measurement the plan owes 0.11.0's evidence; and the structural tier-2 work, not building a per-entry contract object for entries the store already admitted (mb-kicj). The acceptance rows are mb-qvw4 (attached walk), mb-qtgj (catalog read) and mb-zc3p (Long Tasks). Done when the flat-shape walk under an attached browser is at parity with v0.9.1 or better over five back-to-back pairs on a quiet host, and the flat-stress ratchet is lowered to match.
 

@@ -5,8 +5,68 @@ title: "Design system: icon catalog, shared view header, and visual consistency"
 kind: epic
 status: open
 priority: 2
-version: 34
-labels: []
+version: 38
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/489
+    at: 2026-11-20T19:14:57.176Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/544
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/549
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/550
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/552
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/573
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/580
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/583
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/586
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/591
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/592
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/595
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/600
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/604
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/605
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/608
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/609
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/613
+    at: 2026-11-20T19:14:57.177Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/642
+    at: 2026-11-20T19:14:57.177Z
+labels:
+  - linear
+  - Improvement
 dependencies: []
 child_order_hints:
   - is-01m7raatxaeyxam9feb76y6w11
@@ -43,7 +103,11 @@ child_order_hints:
   - is-01m7tdygg4z9pkdpff2h98jrgw
   - is-01m7rfjvq8xafvwfrw85ex2mwj
 created_at: 2026-11-20T17:06:43.967Z
-updated_at: 2026-11-20T19:12:09.181Z
+updated_at: 2026-11-20T19:16:52.890Z
+extensions:
+  linear:
+    id: 011c03c5-06d7-4b08-aaf2-fe9aa920e54d
+    linked_at: 2026-11-20T19:16:52.889Z
 ---
 docs/design-system.md and the checks that hold the code to it: the icon catalog (#580), one view header for files and folders (#550, #592, #608), controls, badges and messages that follow one system (#622), and one type scale.
 

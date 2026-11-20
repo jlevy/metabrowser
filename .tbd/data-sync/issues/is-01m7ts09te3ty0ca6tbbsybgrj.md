@@ -5,7 +5,7 @@ title: Structured JSON event log with latency for every request and background j
 kind: feature
 status: closed
 priority: 1
-version: 11
+version: 13
 spec_path: docs/project/specs/active/plan-2026-11-19-structured-event-log.md
 refs:
   - kind: pr
@@ -15,8 +15,7 @@ refs:
     url: https://github.com/jlevy/metabrowser/pull/620
     at: 2026-11-20T17:02:19.538Z
 delegate: claude-code@spud10
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m7wysap12x9d1xp4zz3m4sds
 child_order_hints:
@@ -25,16 +24,13 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-19T20:47:07.583Z
-updated_at: 2026-11-20T17:11:56.645Z
+updated_at: 2026-11-20T19:16:01.356Z
 started_at: 2026-11-19T22:16:19.211Z
 closed_at: 2026-11-20T00:32:07.750Z
 close_reason: "Phase 1 server side landed: #618 (f527f0801) JSONL event log + /api/event-log; #620 (1d85c491c) cause-first GitHub failure messages, network probe, /api/event-log/failures. Browser beacon and page link: mb-9zp5; in-app log UI: mb-4rr7."
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: 7a959ae7-521e-4d9b-a46a-7c3f14deb025
-    linked_at: 2026-11-20T16:52:58.156Z
+extensions: {}
 ---
 Owner, 2026-11-19, verbatim: "also I'm seeing cases where data like the PR diff summary are not loading after many seconds, is latency like this captured in our logs correctl so we can debug and identify when it happens always" and "that's another important requirement, you can file a bead for it and make sure we have a new subagent working on that too. the goal would be to have a clean json log that we can browse in metabrowser itself in different ways, wiht a full ui based on the logs of metabrowser, but initially it's okay if it's an internal log to facilitate debugging. itshould be both." Today (docs/realtime-debugging.md): Server-Timing headers; a stderr text warning for requests slower than METABROWSER_SLOW_SERVER_MS; METABROWSER_REQUEST_LOG=verbose; browser perf.js console messages. Background work the page waits on (GitHub fetches, PR diff summaries) is not timed as a request.
 

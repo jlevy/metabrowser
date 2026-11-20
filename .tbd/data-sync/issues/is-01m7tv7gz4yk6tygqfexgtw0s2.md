@@ -3,12 +3,26 @@ type: is
 id: is-01m7tv7gz4yk6tygqfexgtw0s2
 title: Tabular data browsing and live SQLite
 kind: epic
-status: open
+status: in_progress
 priority: 2
-version: 18
+version: 22
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/617
+    at: 2026-11-20T19:14:56.794Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/649
+    at: 2026-11-20T19:14:56.795Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/656
+    at: 2026-11-20T19:14:56.795Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/668
+    at: 2026-11-20T19:14:56.795Z
 labels:
   - linear
+  - Feature
 dependencies: []
 child_order_hints:
   - is-01m7tv7hddd6gkc23q2592jdad
@@ -26,7 +40,7 @@ child_order_hints:
   - is-01m7vtd571483vj430fqd5tw4y
   - is-01m7v9mwy0ye52geq4eqdxwz5a
 created_at: 2026-11-19T21:26:01.444Z
-updated_at: 2026-11-20T18:01:45.676Z
+updated_at: 2026-11-20T19:15:51.928Z
 extensions:
   linear:
     id: da4dab2f-0682-4c31-8c9a-29da1bda661e

@@ -5,21 +5,18 @@ title: "PR #24: human visual validation pass of the Git graph"
 kind: task
 status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/done/plan-2026-08-06-git-graph-view.md
 labels: []
 dependencies: []
 parent_id: is-01kzctqt5s7te6w75jm5pvg6g7
 created_at: 2026-08-11T21:30:40.323Z
-updated_at: 2026-11-04T17:14:17.845Z
+updated_at: 2026-11-20T19:15:58.587Z
 closed_at: 2026-11-01T16:21:21.235Z
 close_reason: "PR #24 closed as consolidated into #58 and the Git panel has shipped since, so the PR-title goal no longer exists. No human sign-off of graph lanes was ever recorded; if one is wanted it belongs in the release walkthrough."
 resolution: canceled
 duplicate_of: null
-extensions:
-  linear:
-    id: 76eb6a23-1ca4-4b82-b473-18f5a660afd6
-    linked_at: 2026-08-16T08:05:43.447Z
+extensions: {}
 ---
 The last engineering gap on the Git graph branch. Everything else is automated-green; graph *proportions* have never had a human sign-off, which is why the PR is still titled a spike.
 

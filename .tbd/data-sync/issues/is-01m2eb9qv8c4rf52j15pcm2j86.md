@@ -5,14 +5,20 @@ title: Simplify catalog, feed, file preview, and Markdown engines per release re
 kind: epic
 status: open
 priority: 3
-version: 4
+version: 7
 labels:
   - simplification
+  - linear
+  - Improvement
 dependencies: []
 child_order_hints:
   - is-01m2h3tmn24f6ghdrzd28ywjs3
 created_at: 2026-09-13T21:38:14.503Z
-updated_at: 2026-11-20T17:18:00.385Z
+updated_at: 2026-11-20T19:16:32.058Z
+extensions:
+  linear:
+    id: 353d0532-56c6-4498-b4db-7536f2e14510
+    linked_at: 2026-11-20T19:16:32.057Z
 ---
 Simplifications proposed by the release senior reviews. Each would remove a class of bugs found in release review, but each is a refactor that needs its own measured change and should not ride on a release:
 

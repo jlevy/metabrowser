@@ -5,10 +5,9 @@ title: "Design system: a systematic icon catalog (file formats, categories, chro
 kind: feature
 status: closed
 priority: 2
-version: 11
+version: 13
 delegate: claude-code@spud10
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m7wysf407hkpj5n35r533gzc
 child_order_hints:
@@ -20,15 +19,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-18T21:21:28.704Z
-updated_at: 2026-11-20T18:01:08.755Z
+updated_at: 2026-11-20T19:16:00.791Z
 started_at: 2026-11-18T21:23:08.714Z
 closed_at: 2026-11-18T23:24:53.393Z
 close_reason: "Merged in #580 (b383f25e0)"
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: 94816d6e-4749-491e-bc9a-5bf6f0b5af40
-    linked_at: 2026-11-20T18:01:08.751Z
+extensions: {}
 ---
 Owner, 2026-11-18: Make sure all icons are systematically cataloged in our design system as well, so we use them consistently. Some are file types, some are categories, some are Chrome icons like PR icons of different kinds, and so on. They should all be systematically organized, and make sure we use them consistently.

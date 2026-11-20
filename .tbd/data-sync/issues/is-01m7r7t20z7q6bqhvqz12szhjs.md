@@ -5,29 +5,25 @@ title: "Pulls nav: one outer hover/selection zone for a pull request's three lin
 kind: feature
 status: closed
 priority: 2
-version: 9
+version: 11
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/584
     at: 2026-11-20T17:02:09.083Z
 delegate: claude-code@spud10
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m7wys8y3epj61gncgjakhsd0
 hold: null
 hold_until: null
 created_at: 2026-11-18T21:08:08.349Z
-updated_at: 2026-11-20T19:11:27.787Z
+updated_at: 2026-11-20T19:16:00.667Z
 started_at: 2026-11-18T21:09:11.984Z
 closed_at: 2026-11-19T00:25:21.003Z
 close_reason: "Landed in #584 (db33e16d2)"
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: 37653cb4-a3c5-4d3c-826a-30a511416e96
-    linked_at: 2026-11-20T18:01:05.428Z
+extensions: {}
 ---
 Owner, 2026-11-18: In the PR view nav column, we currently make the first two lines and the third line (with the diff summary toggle) different sections for the purposes of nav and clicking. Change this so all three lines are the same hover zone by default as the outer hover zone, and then there is an inner one that expands if you click on just the diff summary line. By default we would only be doing the outer zone of all three at once, so arrow keys and the space key work as expected. Space would toggle the diff summary whenever the PR item (all 3 lines) was selected. But click would not expand by default unless you click the summary expand line, the part of the line with the toggle.
 

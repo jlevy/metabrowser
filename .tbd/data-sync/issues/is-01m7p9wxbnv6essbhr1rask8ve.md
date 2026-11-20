@@ -5,29 +5,25 @@ title: "Print: drop the top bar's print icon; show a print control only on rende
 kind: task
 status: closed
 priority: 2
-version: 8
+version: 10
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/549
     at: 2026-11-20T17:04:52.518Z
 delegate: claude-code@spud10
-labels:
-  - linear
+labels: []
 dependencies: []
 parent_id: is-01m7wysf407hkpj5n35r533gzc
 hold: null
 hold_until: null
 created_at: 2026-11-18T03:06:10.164Z
-updated_at: 2026-11-20T19:12:06.265Z
+updated_at: 2026-11-20T19:16:00.393Z
 started_at: 2026-11-18T03:13:08.743Z
 closed_at: 2026-11-18T03:47:29.941Z
 close_reason: "Implemented in PR #549 (head 7ae2a8d7e); KPress follow-up mb-jue2."
 resolution: null
 duplicate_of: null
-extensions:
-  linear:
-    id: adf47909-27c1-47f2-88e0-54b966cff832
-    linked_at: 2026-11-20T18:00:47.239Z
+extensions: {}
 ---
 Owner, 2026-11-18 in chat: 'let's drop the print icon on the top bar altogether. it should only appear on the document rendering of a document where we have good print capabilties, so like the upper right corner of the drop shadow box on a markdown render. This will work then for a document view like a mardkown doc or for a rendered readme within the overview page consistently. If necessary, we can update this support to be part of KPress as an optional print indicator. It should not always be there if not desired, but Command-P should always work.'
 
