@@ -532,32 +532,105 @@ def _authorizer(
     return sqlite3.SQLITE_DENY
 
 
-def configure(connection: sqlite3.Connection, *, deadline: float, opcodes: int) -> None:
-    """Apply the guest connection settings, the work budget, and the authorizer.
-
-    Every setting runs before the first statement reads the schema, so a crafted schema
-    is parsed under `trusted_schema=OFF` and `DEFENSIVE`.
-    """
-    connection.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, VALUE_MAX_BYTES)
+def apply_settings(
+    connection: sqlite3.Connection,
+    *,
+    value_max_bytes: int = VALUE_MAX_BYTES,
+    cache_kib: int = CACHE_KIB,
+) -> None:
+    """The settings every connection the product makes runs under, its own databases'
+    included: the named limits, `DEFENSIVE`, `trusted_schema=OFF`, `cell_size_check`,
+    no memory map, and a small cache. They run before the first statement reads the
+    schema, so a crafted schema is parsed under them."""
+    connection.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, value_max_bytes)
     connection.setlimit(sqlite3.SQLITE_LIMIT_SQL_LENGTH, SQL_MAX_BYTES)
     connection.setlimit(sqlite3.SQLITE_LIMIT_COLUMN, COLUMN_LIMIT)
     connection.setlimit(sqlite3.SQLITE_LIMIT_EXPR_DEPTH, EXPR_DEPTH_LIMIT)
     connection.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, ATTACHED_LIMIT)
     connection.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, True)
     connection.execute("PRAGMA trusted_schema=OFF")
-    connection.execute("PRAGMA query_only=ON")
     connection.execute("PRAGMA cell_size_check=ON")
     connection.execute("PRAGMA mmap_size=0")
-    connection.execute(f"PRAGMA cache_size=-{CACHE_KIB}")
+    connection.execute(f"PRAGMA cache_size=-{cache_kib}")
+
+
+def bound_work(connection: sqlite3.Connection, *, opcodes: int, deadline: float | None) -> None:
+    """Stop a statement past *opcodes* virtual-machine steps or the *deadline*
+    (``time.monotonic()``), through the progress handler."""
     steps = 0
 
     def bounded() -> int:
         nonlocal steps
         steps += PROGRESS_OPCODES
-        return int(steps > opcodes or time.monotonic() >= deadline)
+        late = deadline is not None and time.monotonic() >= deadline
+        return int(steps > opcodes or late)
 
     connection.set_progress_handler(bounded, PROGRESS_OPCODES)
+
+
+def configure(connection: sqlite3.Connection, *, deadline: float, opcodes: int) -> None:
+    """Apply the guest connection settings, `query_only`, the work budget, and the
+    reads-only authorizer."""
+    apply_settings(connection)
+    connection.execute("PRAGMA query_only=ON")
+    bound_work(connection, opcodes=opcodes, deadline=deadline)
     connection.set_authorizer(_authorizer)
+
+
+def is_database_header(header: bytes) -> bool:
+    """Whether *header*, a file's first bytes, is a whole SQLite database header."""
+    return len(header) >= HEADER_BYTES and header.startswith(SQLITE_MAGIC)
+
+
+# ── The product's own databases ────────────────────────────────
+
+
+class _ProcessHandles:
+    """Handles this process opened on a database it also has connections to.
+
+    A POSIX lock belongs to a process and a file, so closing any handle on a database
+    drops every lock any connection in the process holds there (the exploration's
+    Access record). A database the product owns is read and written in the server
+    process, where one thread's handle may close while another thread's connection
+    holds a lock; this defers that close until the last connection in the process to
+    the same file has closed, as SQLite defers its own.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._open: dict[tuple[int, int], int] = {}
+        self._deferred: dict[tuple[int, int], list[int]] = {}
+
+    @contextlib.contextmanager
+    def connected(self, key: tuple[int, int]) -> Generator[None]:
+        """Mark a connection to the file *key* (device, inode) open for the block."""
+        with self._lock:
+            self._open[key] = self._open.get(key, 0) + 1
+        try:
+            yield
+        finally:
+            with self._lock:
+                left = self._open[key] - 1
+                if left:
+                    self._open[key] = left
+                    closing: list[int] = []
+                else:
+                    del self._open[key]
+                    closing = self._deferred.pop(key, [])
+                for fd in closing:
+                    os.close(fd)
+
+    def close(self, fd: int, key: tuple[int, int]) -> None:
+        """Close *fd*, a handle on the file *key* or one of its sidecars, now or, while a
+        connection in this process is open on that file, after the last one closes."""
+        with self._lock:
+            if self._open.get(key):
+                self._deferred.setdefault(key, []).append(fd)
+                return
+            os.close(fd)
+
+
+PROCESS_HANDLES: Final = _ProcessHandles()
 
 
 @contextlib.contextmanager
@@ -948,12 +1021,39 @@ def _handle(request: dict[str, Any]) -> dict[str, Any]:
         }
 
 
+def _load_worker_modules(modules: list[list[str]]) -> None:
+    """Load each registered worker module (``sqlite_readers.register_worker_module``)
+    under its import name. Its parent packages are empty stand-ins, so the module
+    reaches nothing of the package but this file and the modules loaded before it."""
+    import importlib.util
+    import types
+
+    for name, path in modules:
+        parts = name.split(".")
+        for depth in range(1, len(parts)):
+            parent = ".".join(parts[:depth])
+            if parent not in sys.modules:
+                package = types.ModuleType(parent)
+                package.__path__ = []
+                sys.modules[parent] = package
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot load worker module {name} from {path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+        if len(parts) > 1:
+            setattr(sys.modules[".".join(parts[:-1])], parts[-1], module)
+
+
 def serve() -> None:
     """A reader process's loop: one JSON request per line on stdin, one answer per line
     on stdout, one at a time, until stdin closes, which is how the parent stops it and
     how a worker whose parent died exits."""
     if len(sys.argv) > 2:
         _limit_address_space(int(sys.argv[2]))
+    if len(sys.argv) > 3:
+        _load_worker_modules(json.loads(sys.argv[3]))
     stdin = sys.stdin.buffer
     stdout = sys.stdout.buffer
     for line in stdin:
