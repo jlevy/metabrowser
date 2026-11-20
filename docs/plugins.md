@@ -391,6 +391,8 @@ async def summary_handler(request):
 - `resolve_content_container(identity, suffixes=(".patch",))` resolves a
   `<content>/<inner>` address for a container kind, scoped to the suffixes the hook
   claims, with the server’s own depth bound, `MAX_CONTAINER_INNER_DEPTH`.
+  `suffixes=None` claims any name, for a kind matched by its bytes whose hook checks the
+  content itself, as the SQLite plugin does.
 - Every failure is a `ContentReadError` with a stable `code` and the `http_status`
   Metabrowser’s own routes answer with, so one `except` covers a missing object, an
   oversized blob, an unreadable compressed stream, a timeout, and a subject that cannot
@@ -437,8 +439,20 @@ routes, and `builtin_plugins/delimited/source.py` is a complete source.
   pinned blob’s object id.
   Key anything you cache by it.
 - A cell is a scalar or one of the envelopes `integer_cell`, `real_cell`, `text_cell`,
-  and `stored_cell` build, so a large integer keeps its digits, a long value says its
-  length, and a value whose stored type differs from its field’s says so.
+  `blob_cell`, and `stored_cell` build, so a large integer keeps its digits, a long
+  value says its length, bytes are hex with their size, and a value whose stored type
+  differs from its field’s says so.
+  A text the source read only in part, whose length in characters it cannot know, is
+  `{text, bytes}`, the whole value’s size in bytes; one it could not preview is
+  `{length, preview: false}`. A reference is `{ref: {table, key, label}}`, and a value
+  naming a record that is not there is
+  `{ref: {table, key: null, label, missing: true}}`, drawn as its value marked missing.
+- A file of several tables is a navigation container whose children are its tables:
+  `<file>/<table>` reaches the source with `table` set to the inner path, so a source’s
+  table ids are its address segments, and its kind declares a `children` hook that lists
+  them
+  ([Navigation Containers](project/architecture/arch-plugin-system.md#navigation-containers)).
+  The SQLite source (`builtin_plugins/sqlite/`) is one.
 - Name a keyless row by its position with `position_key(n)`, counting from 1, and a
   keyed one with `encode_key(values)`; mint cursors with `encode_cursor`, falling back
   to `positional_cursor` past `TABLE_TOKEN_MAX_CHARS`. Every token is deterministic.

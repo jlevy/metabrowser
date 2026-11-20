@@ -1087,10 +1087,60 @@ Accepted from `metab` through the Info view, before any table is drawn.
 
 ### Phase 5: SQLite Tables
 
-- [ ] SQLite source as a container with its `children` hook and overview: tables, keys,
+- [x] SQLite source as a container with its `children` hook and overview: tables, keys,
   typed cells, references and back-references, keyset paging in both directions,
   sortability, capped counts, size-guarded values, the generation
-- [ ] Schema view, goldens, parity rows, map updates, changelog fragment
+- [x] Schema view, goldens, parity rows, map updates, changelog fragment
+
+As built, where this plan left a choice open:
+
+- **The SQL runs in the reader.** `builtin_plugins/sqlite/reader.py` is a worker module
+  (`register_worker_module`) holding every statement; `source.py` in the server turns
+  what it answers into descriptors, cells, keys, and cursors with the protocol’s
+  helpers, so a value crosses the pipe in a small encoding of its own (`_wire`) and
+  every token and cell rule stays in `table_source.py`.
+- **A table’s id is its address segment**, the escaped name, so a reference, a `ref=`
+  filter, and the view’s sibling addresses need no mapping; its label is the name.
+  A name starting with `g1-`, a Git path segment’s prefix, is escaped too.
+- **`open_table_source` resolves `<file>/<table>`** through
+  `resolve_content_container(path, suffixes=None)`, which now claims any extension, so a
+  database with no extension has addressable tables; every route but `tables` answers at
+  the table’s address.
+  Every `sqlite` route takes a table’s address and answers for its database.
+- **One Table view, two pages.** The `sqlite` kind’s Table view is the overview at the
+  database’s address and `mountTable` at a table’s, since a container’s children share
+  its kind and views; Table is the default, and Info keeps its key.
+- **Keys.** A rowid table without an integer primary key is keyed by a hidden `rowid`
+  field (`_rowid_` or `oid` when a column takes the name); a table whose columns take
+  all three is keyless.
+  A key too long for a token is named by its position in key order, found by a count; a
+  cursor too long is the positional one, carrying the rows served.
+  A keyless object is ordered by `row_number() OVER ()` whenever a page sorts, filters,
+  searches, or reads descending, and read by `OFFSET` otherwise.
+- **Cursors** are `[sort, order, region, value, key, served]`; every row knows its
+  region from its sort value’s type, so a positional cursor continues into the right
+  one.
+- **Sortability** is decided per object by a capped count up to
+  `SORT_UNINDEXED_MAX_ROWS` at describe time; past it the key, the first column of a
+  `WITHOUT ROWID` key, and every column that leads a full (not partial) index sort.
+- **Counts** read as `sum` over at most `COUNT_CAP` + 1 rows: with a filter or search it
+  counts matches and skipped values among the rows read, so a sparse filter on a huge
+  table is a lower bound rather than a scan.
+  A match in a select list is a `CASE WHEN` condition, since only a condition
+  short-circuits past a value over the length limit.
+- **Values.** A text read only in part is `{text, bytes}`, its size in bytes, since its
+  length in characters is unknown; a blob is `{blob: true, length, hex}` (`blob_cell`).
+  A JSON column’s text is `{json, preview}` only when it parses and fits the preview.
+  A `BOOLEAN` value other than 0 or 1 is shown as stored, and an order filter (`lt`,
+  `le`, `gt`, `ge`) compares only values of its own kind, since SQLite orders every text
+  after every number.
+- **References** are resolved in SQL, joining the page’s values to the target table, so
+  the target column’s affinity and collation decide a match; a missing target is
+  `{ref: {key: null, missing: true}}`, which the table view draws as its value marked
+  missing. A reference’s label is the referencing value.
+- **The authorizer** also admits `data_version`, which FTS5 reads on every query, and
+  the functions `sum`, `substr`, `like`, and `row_number`. Virtual tables are read where
+  the folder is trusted and never on a pin.
 
 ### Phase 6: Live Tables
 

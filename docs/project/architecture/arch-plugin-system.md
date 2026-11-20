@@ -254,9 +254,16 @@ that read only part of its content or a cursor from another generation says so.
 the delimited source through these routes, on a served folder and on a Git pin, with the
 registry and the doctor’s checks; `tests/golden/cli-api-table.tryscript.md` pins each
 route’s answers and refusals.
-A file that is its own single table, such as a CSV file, is addressed by its own path;
-tables inside one file, such as a database’s, are planned as container children in
-[Tabular Data Browsing and Live SQLite](../specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md).
+A file that is its own single table, such as a CSV file, is addressed by its own path.
+Tables inside one file, such as a database’s, are its container children
+([Navigation Containers](#navigation-containers)): `open_table_source` resolves
+`<file>/<table>` through `resolve_content_container` with any extension, classifies the
+file, and hands its source the inner path as the table, so a source’s table ids are its
+address segments and every route but `tables` answers at the table’s address.
+The SQLite source (`builtin_plugins/sqlite/source.py`) answers through reader processes
+([Tabular Data Browsing and Live SQLite](../specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md),
+The SQLite Source); `tests/test_sqlite_tables.py` checks it, and
+`tests/golden/cli-api-sqlite-tables.tryscript.md` pins its answers.
 
 **The view.** The table plugin’s `index.js` exports `mountTable(container, {path})`, the
 table view, which a source plugin registers as its kind’s Table view through
@@ -298,6 +305,7 @@ usually answered by what a directory already does.
 | --- | --- | --- | --- | --- |
 | Directory | Files and folders | Folder Overview | The file’s views | Built |
 | Patch or diff file | One entry per changed path | The whole change set | That path’s diff | Built |
+| SQLite database | Its tables, views, and virtual tables, at `<database>/<segment>` | An overview of its tables | That table, drawn by the table plugin | Built |
 | Commit, `/commit/<rev>` | The commit’s changed files | The commit’s diff | That file’s diff | The child route parses; the panel restores the commit, not the file |
 | Archive, such as `.zip` | The archive’s members | A listing or summary | The member’s own views | Proposed; no plan yet |
 

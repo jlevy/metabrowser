@@ -341,6 +341,11 @@ this standard. Paths are under `src/metabrowser/`.
 | `DELIMITED_MAX_COLUMNS` | `builtin_plugins/delimited/source.py` | The cells of one row of a delimited file read, the header’s among them; past it the table says it was cut |
 | `DELIMITED_TYPE_SAMPLE_ROWS` | `builtin_plugins/delimited/source.py` | Rows of a delimited file whose values decide each column’s type |
 | `DELIMITED_CACHE_MAX_ENTRIES`, `DELIMITED_CACHE_MAX_BYTES` | `builtin_plugins/delimited/source.py` | Server memory for parsed delimited files and their sort indexes, estimated from each file’s rows, cells, and text |
+| `SORT_UNINDEXED_MAX_ROWS` | `builtin_plugins/sqlite/reader.py` | The rows of a SQLite table or view past which only its key and the fields an index leads with sort; the rest say why in `sort_note` |
+| `COUNT_CAP` | `builtin_plugins/sqlite/reader.py` | The rows a SQLite page’s count reads; past it the count is a lower bound, drawn as “at least” |
+| `REFS_PER_PAGE` | `builtin_plugins/sqlite/reader.py` | Referenced rows one SQLite page resolves; a value past it is shown without its reference |
+| `PAGE_INLINE_BYTES` | `builtin_plugins/sqlite/reader.py` | A SQLite text or blob a page reads whole; a longer one is previewed from its stored bytes, or shown as its size where it has no rowid |
+| `DESCRIPTION_CACHE_ENTRIES` | `builtin_plugins/sqlite/database.py` | Server memory for SQLite catalogs and table descriptions, by database and generation |
 | `WHOLE_TABLE_MAX_ROWS` | `builtin_plugins/table/table-view.js` | The rows a table may hold and still be drawn whole, keeping the browser’s find, select all, copy, and print; a larger one is a window with Search, row selection that copies as tab-separated values, and print of the rows held in their place |
 | `FIRST_PAGE_ROWS`, `NEXT_PAGE_ROWS`, `ROWS_OVERSCAN`, `ROW_HEIGHT_ESTIMATE_PX` | `builtin_plugins/table/table-view.js` | The rows the table view’s first and later requests ask for, which a page of wide rows may answer with fewer, the rows its window draws past the view, and a row’s height before one is measured |
 | `SUMMARY_ROWS_OVERSCAN` | `builtin_plugins/diff/diff-summary.js` | Diff summary rows mounted on either side of the window’s view of its tree, which has no scroll of its own and no length bound beyond `MAX_MANIFEST_FILES` |

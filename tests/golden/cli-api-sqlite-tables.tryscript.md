@@ -212,8 +212,8 @@ $ grep -E '"(label|group)"' answer-2.txt
 ```
 
 The tree’s rows for the container are the same tables, each at its address; internal
-tables are muted and views badged. A file the kind’s extensions name that is not a
-database has none.
+tables are muted and views badged.
+A file the kind’s extensions name that is not a database has none.
 
 ```console
 $ metab dbroot --api '/api/plugin/sqlite/children?path=app.db'
@@ -580,8 +580,8 @@ Error: /api/plugin/table/rows?path=big.db/events&sort=kind returned HTTP 400
 
 Every value is shown as stored: an integer past 2⁵³ keeps its digits, text in an integer
 column says it is text, a boolean is `true` or `false`, JSON text is parsed, a blob is
-hex with its size, text that is not valid UTF-8 is marked, and a value longer than a page
-reads whole is previewed from its stored bytes with its size.
+hex with its size, text that is not valid UTF-8 is marked, and a value longer than a
+page reads whole is previewed from its stored bytes with its size.
 
 ```console
 $ metab dbroot --api '/api/plugin/table/rows?path=app.db/users&cols=id&cols=age&cols=active&cols=prefs&cols=avatar&cols=bio' > answer-7.txt

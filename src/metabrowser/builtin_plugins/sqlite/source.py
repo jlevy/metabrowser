@@ -135,7 +135,8 @@ def affinity(declared: str) -> Affinity:
         return "text"
     if "BLOB" in upper or not upper.strip():
         return "blob"
-    if any(part in upper for part in ("REAL", "FLOA", "DOUB")):
+    # SQLite's rule matches the first four letters of each; the names in use spell them out.
+    if any(part in upper for part in ("REAL", "FLOAT", "DOUBLE")):
         return "real"
     return "numeric"
 

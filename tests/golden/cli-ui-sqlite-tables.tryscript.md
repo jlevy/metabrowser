@@ -7,19 +7,19 @@ env:
 # Golden test: the SQLite overview, Schema view, and table cells
 
 A SQLite database is a navigation container whose children are its tables, each at
-`<database>/<segment>`.
-Its Table view at the database’s own address is an overview of its tables, views,
-virtual tables, and internal tables, each a link to its address with the catalog’s
-estimate of its rows; at a table’s address it is the table plugin’s view of that table,
-loaded on demand.
+`<database>/<segment>`. Its Table view at the database’s own address is an overview of
+its tables, views, virtual tables, and internal tables, each a link to its address with
+the catalog’s estimate of its rows; at a table’s address it is the table plugin’s view
+of that table, loaded on demand.
 Its Schema view lists each object’s DDL with its indexes and triggers, and each table’s
 foreign keys, for the database or for the table its address names.
-The routes each reads are pinned by `metab --api` in `cli-api-sqlite-tables.tryscript.md`;
-this session pins what the pages do with the answers.
+The routes each reads are pinned by `metab --api` in
+`cli-api-sqlite-tables.tryscript.md`; this session pins what the pages do with the
+answers.
 
-It loads the sqlite plugin’s production modules, `tables-model.js` and
-`tables-view.js`, and the table plugin’s `table-model.js`, and draws each view from
-the answers recorded in `tests/fixtures/sqlite-tables-responses.json` by
+It loads the sqlite plugin’s production modules, `tables-model.js` and `tables-view.js`,
+and the table plugin’s `table-model.js`, and draws each view from the answers recorded
+in `tests/fixtures/sqlite-tables-responses.json` by
 `tests/test_sqlite_tables_session.py` over the databases built from
 `tests/fixtures/sqlite-tables/`. A plain click on an overview link opens the table in
 place, and a Command-click is left to the browser.
@@ -27,7 +27,8 @@ Every cell of four recorded pages is presented as the table view draws it: a ref
 to a row that is not there is its value marked missing, a value too long for a page is
 cut with its size in characters or, where only the stored bytes were read, in bytes, a
 blob is its hex with its size, and a value stored as another type than its column’s says
-so. A request that fails is said in place of the overview, and a view disposed before its
+so.
+A request that fails is said in place of the overview, and a view disposed before its
 answer draws nothing.
 
 ## Test: the session

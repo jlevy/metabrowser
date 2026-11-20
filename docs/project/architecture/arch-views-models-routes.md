@@ -58,6 +58,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Source `S` | File envelope and the `structured/parsed` hook |
 | `delimited` | `.csv`, `.tsv` | Table `V`, Source `S` | File envelope; one table through the `table/*` hooks, which the table plugin’s view draws ([Table Sources](arch-plugin-system.md#table-sources)) |
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
+| `sqlite` | Any file that would otherwise be binary and starts with SQLite’s magic number, whatever its name (`magic`); `.sqlite`, `.sqlite3`, `.db`, `.db3`, and `.s3db` give the tree its chevron | Table `V`, Schema `S`, Info `I` | A container: the `sqlite/children` hook lists its tables, each at `<database>/<segment>`. Table is the overview at the database’s address, from `table/tables`, and the table plugin’s view at a table’s, through the `table/*` hooks ([Table Sources](arch-plugin-system.md#table-sources)); Schema reads `sqlite/schema` and Info `sqlite/info`, each read in a reader process |
 | `agent-log` | `.jsonl` sniffed as an agent log | Session `E`, Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agents/charts` hook; Session reads `agents/session` and `agents/records` |
 | `agent-thread` | A compressed Codex rollout, `sessions/**/rollout-*.jsonl.zst`, claimed by its path | Session `E`, Log `V` | `agents/session` and `agents/records`, by the file’s path; the thread’s history store stands in for the unreadable rollout |
 | `unknown-jsonl` | Other `.jsonl` | Log `V`, Raw JSON `S` | File envelope |
@@ -86,9 +87,10 @@ plugin declares a `[[table_source]]` for, and the table view, which a source plu
 mounts for its kind’s Table view through `mb.plugins.load("table")`
 ([Table Sources](arch-plugin-system.md#table-sources)).
 
-Two kinds are also **containers**, folder-like entries whose children are addressable
+Three kinds are also **containers**, folder-like entries whose children are addressable
 ([Plugin System](arch-plugin-system.md)): `folder`, whose children are files and
-folders, and `diff`, whose children are the files a patch changes.
+folders, `diff`, whose children are the files a patch changes, and `sqlite`, whose
+children are a database’s tables, views, and virtual tables.
 A kind declares one with `container = { children = "<data_hook route>" }`.
 
 ### Shared Source Rendering
@@ -234,14 +236,18 @@ Plugin hooks currently registered: `diff/document`, `diff/children`, and
 `agents/sessions`, `agents/session`, `agents/records`, and `agents/live`, the catalog of
 Claude Code and Codex sessions under a served folder ([Agent Catalog](#agent-catalog));
 `table/tables`, `table/schema`, `table/rows`, `table/record`, and `table/card`
-([Table Sources](arch-plugin-system.md#table-sources)); and `github/pull`,
-`github/pull-refresh`, `github/pull-cores-prepare`, `github/pull-comparison`,
-`github/pull-image`, `github/pull-rendered-diff`, `github/pull-size`,
-`github/pull-timeline`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`,
-`github/pulls-prefetch`, `github/pull-files`, `github/pull-files-refresh`,
-`github/pull-files-summary`, `github/stacks`, `github/stacks-refresh`,
-`github/stack-change`, `github/labels`, `github/labels-refresh`, `github/cache-clear`,
-and `github/status` ([GitHub Pull Requests](arch-github-pull-requests.md)).
+([Table Sources](arch-plugin-system.md#table-sources)); `sqlite/info`, `sqlite/schema`,
+and `sqlite/children`, a SQLite database’s Info and Schema views and its tables as
+container children
+([Navigation Containers](arch-plugin-system.md#navigation-containers)); and
+`github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
+`github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff`,
+`github/pull-size`, `github/pull-timeline`, `github/pull-markdown`, `github/pulls`,
+`github/pulls-refresh`, `github/pulls-prefetch`, `github/pull-files`,
+`github/pull-files-refresh`, `github/pull-files-summary`, `github/stacks`,
+`github/stacks-refresh`, `github/stack-change`, `github/labels`,
+`github/labels-refresh`, `github/cache-clear`, and `github/status`
+([GitHub Pull Requests](arch-github-pull-requests.md)).
 
 ## Agent Catalog
 
