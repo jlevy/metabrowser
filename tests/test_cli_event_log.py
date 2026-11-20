@@ -6,10 +6,12 @@ cannot run in a transcript, so what serving is handed is checked here.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
 import pytest
+from click import unstyle
 from typer.testing import CliRunner
 
 from metabrowser.cli.event_log_cli import event_log_directory, newest_segment
@@ -17,6 +19,17 @@ from metabrowser.cli.main import _app
 from metabrowser.errors import CLIError
 
 runner = CliRunner()
+
+
+def _plain(output: str) -> str:
+    """What a person reads of a usage error: no styling, no panel borders, one line of words.
+
+    CI forces a terminal, so Rich styles and boxes the error as it would on one.
+    """
+
+    return " ".join(re.sub(r"[│╭╮╰╯─]", " ", unstyle(output)).split())
+
+
 OLD = "events-20261118T090000Z-p17-000.jsonl"
 NEW = "events-20261119T210201Z-p4242-000.jsonl"
 
@@ -76,7 +89,7 @@ def test_a_path_the_command_names_is_kept(state: Path, monkeypatch: pytest.Monke
 def test_a_root_beside_the_flag_is_refused(state: Path) -> None:
     result = runner.invoke(_app, ["--event-log", str(state)])
     assert result.exit_code == 2
-    assert "ROOT is not used with it" in result.output.replace("\n", " ")
+    assert "ROOT is not used with it" in _plain(result.output)
 
 
 @pytest.mark.parametrize("flag", ["--diff", "--no-serve", "--doctor", "--present", "--recent"])
@@ -84,9 +97,9 @@ def test_a_mode_with_no_folder_refuses_the_flag(state: Path, flag: str) -> None:
     arguments = ["--event-log", flag] + (["HEAD"] if flag == "--diff" else [])
     result = runner.invoke(_app, arguments)
     assert result.exit_code == 2, result.output
-    assert "--event-log" in result.output
+    assert "--event-log" in _plain(result.output)
 
 
 def test_the_flag_is_in_the_helps_shared_options() -> None:
     result = runner.invoke(_app, ["--help"], env={"COLUMNS": "200"})
-    assert "--event-log" in result.output
+    assert "--event-log" in _plain(result.output)
