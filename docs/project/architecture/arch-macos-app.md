@@ -32,7 +32,7 @@ Paths are under `apps/macos/`.
 | `Sources/ShellCore/Setup/` | The version floor and how a `metab` was installed, the first-run steps, the doctor’s report for Check Setup…, file watches, the restart offer after an upgrade, and the launch notice |
 | `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links, their failures, and File > Open URL…, tab placement, and the saved session; the navigation policy, web view configuration, tab discards, reloads, downloads, and the web panes’ sites, policy, state, popover layout, and data store |
 | `Sources/ShellCore/App/` | Which build is running (`AppIdentity`), and the title-bar mark |
-| `Sources/ShellViews/` | `DropAwareWebView` and `WebContainerView`, a library of their own so that the WebKit gate’s driver builds the same views |
+| `Sources/ShellViews/` | `DropAwareWebView` and `WebContainerView`, a library of their own so that the WebKit gate’s driver builds the same views, and `TitleLineMenuItem`, the chooser’s menu item, which the tests reach here because `ShellCore` imports no AppKit |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views |
 | `webkit-gate/` | The WebKit measurement gate and its driver, which no product ships |
 
@@ -840,14 +840,31 @@ mark in a trailing one (`TitleBarMarkController`).
   AppKit centers a menu item’s image on its title and subtitle together, so
   `NSMenuItem.setMark`, which sets an item’s mark and subtitle together, gives such an
   item the mark at the top of a taller image (`RootMark.TitleLineLayout`, whose comment
-  holds the measurement), and the item stays a native one, its highlight, check mark,
-  alternates, and accessibility AppKit’s; the panel centers its mark on the title’s
-  label. AppKit wraps a subtitle at about 300 points, or the title’s width where that is
-  wider, which would put the mark between lines again, so `setMark` cuts a subtitle that
-  would wrap in the middle (`FolderChooser.oneLine`), measured by `NSMenu` itself, and
-  puts the whole of it in the item’s tooltip.
-  The check mark stays AppKit’s, centered on the row: a custom `onStateImage` would drop
-  the item’s `AXMenuItemMarkChar`, so VoiceOver would no longer hear it as checked.
+  holds the measurement), and the item stays a native one, its highlight, alternates,
+  and keys AppKit’s; the panel centers its mark on the title’s label.
+  AppKit wraps a subtitle at about 300 points, or the title’s width where that is wider,
+  which would put the mark between lines again, so `setMark` cuts a subtitle that would
+  wrap in the middle (`FolderChooser.oneLine`), measured by `NSMenu` itself, and puts
+  the whole of it in the item’s tooltip.
+- **The check mark.** AppKit also centers an item’s check mark on both lines, so the
+  chooser’s rows are `TitleLineMenuItem`s, which give a row with a subtitle a check
+  raised as the mark is: AppKit’s own `checkmark` symbol, drawn at the size and column
+  width of AppKit’s check, at the top of a taller image (`TitleLineMenuItem.CheckMark`;
+  its [icon catalog](../../design-system-icons.md#ui-chrome-and-actions) row is the
+  second `checkmark`). A custom `onStateImage` costs a stock item its
+  `AXMenuItemMarkChar`, the “✓” VoiceOver hears as “checked”, so the item answers that
+  attribute itself, with what a stock item in the same state answers.
+  `TitleLineCheckTests` holds the check’s position, size, and slot, and that the item is
+  reported checked as a stock one is.
+  Three other ways were tried on macOS 26.5 and dropped:
+  `NSMenu.showsStateColumn = false` still draws the check; an `NSMenuItem.view` draws
+  the whole row itself, so the highlight and the tint are the view’s to redo, and never
+  becomes its Option alternate; and the check is no part of the title, so no paragraph
+  or baseline setting reaches it.
+  The accessibility answer rests on the legacy `accessibilityAttributeValue(_:)`, which
+  Swift marks deprecated, since the `NSAccessibility` protocol has no mark character;
+  the override is marked so as well.
+  What reads it, VoiceOver, is hand-checked (step 17 of the hand checks).
 - **The mark.** The partial M and the B, drawn as paths from the icon masters’ glyph
   group, which `AppIcon/make-glyphs.swift` copies into `AppIconMarkGeometry.swift`; a
   test checks the copy against both masters.

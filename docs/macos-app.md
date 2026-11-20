@@ -192,8 +192,8 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   title for its path menu.
 - **Switching folders:** click a window’s title, marked by the small chevron after it,
   for the folder chooser.
-  It lists the open folders, in the order you opened them, with a check mark on the
-  window’s own, then the recent folders that are not open.
+  It lists the open folders, in the order you opened them, with a check mark beside the
+  name of the window’s own, then the recent folders that are not open.
   Each row’s mark stands beside the name: a cloud for a GitHub repository, a folder with
   Git’s branch for a Git checkout, and a folder with a dot for any other folder, the
   same marks as at the top of the page’s navigation column, and the row’s location, or

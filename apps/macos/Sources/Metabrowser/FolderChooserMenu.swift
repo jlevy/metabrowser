@@ -1,5 +1,6 @@
 import AppKit
 import ShellCore
+import ShellViews
 
 /// The folder chooser a window's title opens: the open folders, `metab`'s recent targets
 /// that are not open, and the commands that open or close folders.
@@ -7,7 +8,8 @@ import ShellCore
 /// It is native chrome (an `NSMenu`, with section headers, check marks, subtitles, and
 /// Option alternates); its rows and what each choice does are `FolderChooser`'s, tested
 /// in `ShellCore`. Each root's mark is the page's own glyph (`RootMark`), on the line of
-/// the root's name, with the subtitle under the name, on one line (`NSMenuItem.setMark`).
+/// the root's name, with the subtitle under the name, on one line (`NSMenuItem.setMark`),
+/// and the window's own folder's check mark stands on that line too (`TitleLineMenuItem`).
 /// The menu is built each time it opens, from the folders open then and the recent list's
 /// last answer, which it asks `metab` to refresh for next time, as File > Open Recent does.
 final class FolderChooserMenu: NSObject {
@@ -75,7 +77,8 @@ final class FolderChooserMenu: NSObject {
 
     /// A row, and its Option alternate, which opens it in a new window.
     private func add(_ row: FolderChooser.Row, to menu: NSMenu, window: BrowserWindowController) {
-        let item = NSMenuItem(title: row.title, action: #selector(chose(_:)), keyEquivalent: "")
+        // A title-line item, so the check stands on the name's line, beside the mark.
+        let item = TitleLineMenuItem(title: row.title, action: #selector(chose(_:)), keyEquivalent: "")
         item.state = row.isChecked ? .on : .off
         let alternate = MainMenu.item("Open \(row.title) in New Window", #selector(choseNewWindow(_:)), "", .option)
         alternate.isAlternate = true
