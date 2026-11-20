@@ -5,8 +5,12 @@ title: "CI speed: under xdist a worker of test (3.12) crashed and the job then h
 kind: bug
 status: closed
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/514
+    at: 2026-11-20T17:02:12.941Z
 delegate: claude-code@vm
 labels:
   - linear
@@ -17,7 +21,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T07:45:34.269Z
-updated_at: 2026-11-20T17:00:13.665Z
+updated_at: 2026-11-20T17:02:12.943Z
 started_at: 2026-11-17T08:39:11.696Z
 closed_at: 2026-11-17T16:41:29.815Z
 close_reason: "Fixed by #514, merged to main at 4eb299fd1 (2026-11-17)."

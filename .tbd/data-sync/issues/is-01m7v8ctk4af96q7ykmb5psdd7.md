@@ -5,7 +5,11 @@ title: "Mirror: a pin on a branch follows the branch when a refresh moves it; Re
 kind: feature
 status: closed
 priority: 1
-version: 4
+version: 5
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/632
+    at: 2026-11-20T17:02:34.236Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -14,7 +18,7 @@ parent_id: is-01m7v8bs62dz0nqmqb9rnhgsdb
 hold: null
 hold_until: null
 created_at: 2026-11-20T01:16:06.627Z
-updated_at: 2026-11-20T17:00:13.688Z
+updated_at: 2026-11-20T17:02:34.237Z
 started_at: 2026-11-20T01:17:55.294Z
 closed_at: 2026-11-20T04:47:51.363Z
 close_reason: "Merged in PR #632 (f61159ade): branch and tag pins in a mirror follow their ref on refresh; the page follows. PR heads stay an offer pending mb-qp3s."

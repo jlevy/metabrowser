@@ -5,12 +5,16 @@ title: Record github-merge as autonomous in the policy block
 kind: chore
 status: closed
 priority: 2
-version: 2
+version: 3
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/492
+    at: 2026-11-20T17:02:46.979Z
 labels:
   - linear
 dependencies: []
 created_at: 2026-11-16T23:53:08.000Z
-updated_at: 2026-11-20T16:57:48.103Z
+updated_at: 2026-11-20T17:02:46.980Z
 closed_at: 2026-11-17T00:18:32.000Z
 close_reason: "Merged in #492"
 resolution: null

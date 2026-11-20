@@ -5,7 +5,11 @@ title: "Checkout branch chooser: a folder that is a repository's root shows the 
 kind: feature
 status: closed
 priority: 1
-version: 10
+version: 11
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/559
+    at: 2026-11-20T17:04:03.881Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -16,7 +20,7 @@ parent_id: is-01m7ksbn803jhw15qjc6beg7qf
 hold: null
 hold_until: null
 created_at: 2026-11-18T04:40:08.878Z
-updated_at: 2026-11-20T17:00:12.707Z
+updated_at: 2026-11-20T17:04:03.882Z
 started_at: 2026-11-18T04:41:02.677Z
 closed_at: 2026-11-18T18:38:40.832Z
 close_reason: "Merged in #559 (aa7808b80) after reviews A-C."

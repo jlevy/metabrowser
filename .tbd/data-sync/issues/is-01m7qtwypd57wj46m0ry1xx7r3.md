@@ -5,7 +5,11 @@ title: "Flake: macOS PageRevealWebKitTests and PagePrintTests time out waiting f
 kind: bug
 status: closed
 priority: 2
-version: 5
+version: 6
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/576
+    at: 2026-11-20T17:02:44.797Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T17:22:31.755Z
-updated_at: 2026-11-20T17:00:12.128Z
+updated_at: 2026-11-20T17:02:44.805Z
 started_at: 2026-11-18T21:02:21.019Z
 closed_at: 2026-11-18T22:35:26.167Z
 close_reason: "Root cause fixed in #576 (6d7aae3ae): an early WKDownload cancel ended WebKit's network process"

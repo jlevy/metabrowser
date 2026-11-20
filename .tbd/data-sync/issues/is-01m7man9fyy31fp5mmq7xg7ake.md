@@ -5,8 +5,12 @@ title: "CI speed: test_selected_full_wait_returns_the_settled_conditional_read[s
 kind: bug
 status: closed
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/515
+    at: 2026-11-20T17:02:21.339Z
 delegate: claude-code@vm
 labels:
   - linear
@@ -17,7 +21,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T08:41:00.158Z
-updated_at: 2026-11-20T17:00:14.379Z
+updated_at: 2026-11-20T17:02:21.363Z
 started_at: 2026-11-17T08:43:14.756Z
 closed_at: 2026-11-17T22:23:17.290Z
 close_reason: "Fixed by #515 (reviewed, dispositioned, green), merged to main at e3689d6f7 on 2026-11-17."

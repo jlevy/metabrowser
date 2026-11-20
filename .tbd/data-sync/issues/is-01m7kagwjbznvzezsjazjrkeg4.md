@@ -5,7 +5,11 @@ title: "Font sizes follow one type scale by role: secondary metadata (ages, 'Upd
 kind: task
 status: closed
 priority: 1
-version: 30
+version: 31
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/493
+    at: 2026-11-20T17:02:56.339Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -37,7 +41,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T23:19:21.413Z
-updated_at: 2026-11-20T17:00:12.845Z
+updated_at: 2026-11-20T17:02:56.341Z
 started_at: 2026-11-16T23:20:08.996Z
 closed_at: 2026-11-17T05:46:06.772Z
 close_reason: "PR #493 merged at 9fe713bb5 after Review A (senior) and Review B (follow-up, Fable), every finding dispositioned; CI green at 28b12d6f8."

@@ -5,7 +5,11 @@ title: "File header: size and age sit right of the filename, not on their own li
 kind: task
 status: closed
 priority: 2
-version: 4
+version: 5
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/592
+    at: 2026-11-20T17:02:14.976Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T00:48:28.211Z
-updated_at: 2026-11-20T17:00:14.180Z
+updated_at: 2026-11-20T17:02:14.977Z
 started_at: 2026-11-19T00:49:08.160Z
 closed_at: 2026-11-19T01:30:35.249Z
 close_reason: "Landed in #592"

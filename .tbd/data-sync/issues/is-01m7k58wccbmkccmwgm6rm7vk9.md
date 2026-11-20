@@ -5,7 +5,11 @@ title: "Pulls keyboard: Up and Down walk pull requests without expanding their f
 kind: feature
 status: closed
 priority: 1
-version: 4
+version: 5
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/491
+    at: 2026-11-20T17:04:07.231Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -14,7 +18,7 @@ parent_id: is-01m7k58sxt39xnf5cfd3ct05p8
 hold: null
 hold_until: null
 created_at: 2026-11-16T21:47:36.200Z
-updated_at: 2026-11-20T17:00:12.148Z
+updated_at: 2026-11-20T17:04:07.260Z
 started_at: 2026-11-16T23:32:55.940Z
 closed_at: 2026-11-17T03:06:15.131Z
 close_reason: "Merged in #491 (ae554dda8)"

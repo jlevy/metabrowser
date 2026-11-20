@@ -5,7 +5,11 @@ title: "PR Conversation comment boxes: more horizontal padding around the text, 
 kind: task
 status: closed
 priority: 2
-version: 5
+version: 6
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/646
+    at: 2026-11-20T17:02:05.988Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T06:53:45.831Z
-updated_at: 2026-11-20T17:00:14.521Z
+updated_at: 2026-11-20T17:02:06.001Z
 started_at: 2026-11-20T06:54:25.483Z
 closed_at: 2026-11-20T07:32:22.830Z
 close_reason: "Merged in PR 646: --boxed-prose-padding-inline (16px, as github.com) for PR text and commit message boxes; design-system Boxed Prose section."

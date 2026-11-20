@@ -5,7 +5,11 @@ title: "One declared contract between the macOS app and metab: a declaration, a 
 kind: feature
 status: closed
 priority: 1
-version: 8
+version: 9
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/593
+    at: 2026-11-20T17:02:40.711Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -14,7 +18,7 @@ parent_id: is-01m7rj9pgz3qf89emdaz0rbenn
 hold: null
 hold_until: null
 created_at: 2026-11-19T00:51:17.102Z
-updated_at: 2026-11-20T17:00:12.650Z
+updated_at: 2026-11-20T17:02:40.718Z
 started_at: 2026-11-19T00:51:25.272Z
 closed_at: 2026-11-19T03:39:30.449Z
 close_reason: "Landed in #593"

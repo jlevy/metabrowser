@@ -5,12 +5,16 @@ title: Put a pin's freshness line above the keyboard shortcut strip
 kind: task
 status: closed
 priority: 2
-version: 2
+version: 3
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/642
+    at: 2026-11-20T17:02:30.754Z
 labels:
   - linear
 dependencies: []
 created_at: 2026-11-20T06:52:58.000Z
-updated_at: 2026-11-20T16:59:08.697Z
+updated_at: 2026-11-20T17:02:30.755Z
 closed_at: 2026-11-20T07:01:12.000Z
 close_reason: "Merged in #642"
 resolution: null

@@ -5,7 +5,11 @@ title: "Recent folders: persist them in Metabrowser's own configuration, shared 
 kind: feature
 status: closed
 priority: 1
-version: 8
+version: 9
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/546
+    at: 2026-11-20T17:02:23.273Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -14,7 +18,7 @@ parent_id: is-01m7ksbn803jhw15qjc6beg7qf
 hold: null
 hold_until: null
 created_at: 2026-11-18T02:39:36.028Z
-updated_at: 2026-11-20T17:00:12.362Z
+updated_at: 2026-11-20T17:02:23.279Z
 started_at: 2026-11-18T02:50:57.554Z
 closed_at: 2026-11-18T18:02:30.400Z
 close_reason: "Merged in #546 (4e7759c51); owner hand checks 2, 11 and 18 pending on the rebuilt app."

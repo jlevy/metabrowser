@@ -5,7 +5,11 @@ title: "Flaky: test_e2e_filesystem_to_sse.py:216 counts more events than expecte
 kind: bug
 status: closed
 priority: 2
-version: 4
+version: 5
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/598
+    at: 2026-11-20T17:03:56.768Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T02:07:56.598Z
-updated_at: 2026-11-20T17:00:12.347Z
+updated_at: 2026-11-20T17:03:56.769Z
 started_at: 2026-11-19T02:08:25.656Z
 closed_at: 2026-11-19T03:11:11.436Z
 close_reason: "Landed in #598"

@@ -5,8 +5,12 @@ title: "Event log: browser reports of slow and never-completed waits, and a link
 kind: feature
 status: closed
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-11-19-structured-event-log.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/629
+    at: 2026-11-20T17:03:12.320Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -15,7 +19,7 @@ parent_id: is-01m7ts09te3ty0ca6tbbsybgrj
 hold: null
 hold_until: null
 created_at: 2026-11-19T22:17:10.526Z
-updated_at: 2026-11-20T17:00:12.754Z
+updated_at: 2026-11-20T17:03:12.338Z
 started_at: 2026-11-20T00:35:23.719Z
 closed_at: 2026-11-20T02:51:21.974Z
 close_reason: "Merged in PR 629. Follow-ups: mb-nhf2 (A7), mb-fqy1 (A10)."
