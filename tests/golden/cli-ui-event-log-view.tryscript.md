@@ -232,7 +232,7 @@ $ node tests/dom/event-log-view-session.js
   },
   "a slow row opens to where it ran": {
     "requests": [],
-    "path": "in GET /api/plugin/github/pull-comparison › comparison_cache.manifest",
+    "path": "in GET /api/plugin/github/pull-comparison > comparison_cache.manifest",
     "facts": "Span7007:46Clientk3v9q2zx-90Began+3 min 20 sOpen records2"
   },
   "Latency, filtered to processes": {
@@ -330,9 +330,9 @@ $ node tests/dom/event-log-view-session.js
         "mirror_refresh.MirrorSession._pull_job 1 · gh api 1 · probe api.github.com:443 1",
         "First 22:01:00.016 · last 22:01:02.051 UTC",
         [
-          "probe probe api.github.com:443 — failed after 2.03 s (in POST /api/plugin/github/pull-refresh › mirror_refresh.MirrorSession._pull_job)",
+          "probe probe api.github.com:443 — failed after 2.03 s (in POST /api/plugin/github/pull-refresh > mirror_refresh.MirrorSession._pull_job)",
           "job mirror_refresh.MirrorSession._pull_job — failed after 32.0 s (in POST /api/plugin/github/pull-refresh)",
-          "subprocess gh api — failed after 30.0 s (in POST /api/plugin/github/pull-refresh › mirror_refresh.MirrorSession._pull_job)"
+          "subprocess gh api — failed after 30.0 s (in POST /api/plugin/github/pull-refresh > mirror_refresh.MirrorSession._pull_job)"
         ]
       ],
       [
@@ -342,7 +342,7 @@ $ node tests/dom/event-log-view-session.js
         "First 22:02:01.328 · last 22:02:01.331 UTC",
         [
           "job pull_files_refresh.refresh_files — failed after 1.33 s (in POST /api/plugin/github/pull-refresh)",
-          "subprocess gh api — failed after 689 ms (in POST /api/plugin/github/pull-refresh › pull_files_refresh.refresh_files)"
+          "subprocess gh api — failed after 689 ms (in POST /api/plugin/github/pull-refresh > pull_files_refresh.refresh_files)"
         ]
       ]
     ],

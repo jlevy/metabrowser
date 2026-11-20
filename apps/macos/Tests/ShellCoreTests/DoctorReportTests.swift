@@ -44,7 +44,7 @@ private func report(_ output: [String], code: Int32 = 0) throws -> DoctorReport 
         #expect(report.hasChecks)
         #expect(report.rows.map(\.id) == ["plugins", "open_in", "metab", "git", "config", "cache", "github"])
         #expect(report.rows.allSatisfy { $0.state == .ok })
-        #expect(report.rows[0].summary == "11 plugins and the packaged cache record contracts check out")
+        #expect(report.rows[0].summary == "12 plugins and the packaged cache record contracts check out")
         #expect(report.rows[1].title == "Opening from a terminal")
         let git = try #require(report.rows.first { $0.id == "git" })
         #expect(git.title == "Git")

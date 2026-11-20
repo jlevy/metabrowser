@@ -300,7 +300,7 @@ function pathLine(row) {
   if (above.length === 0) {
     return null;
   }
-  return make("div", "event-log-path", [`in ${above.map((span) => span.name).join(" › ")}`]);
+  return make("div", "event-log-path", [`in ${above.map((span) => span.name).join(" > ")}`]);
 }
 
 /**
@@ -842,7 +842,7 @@ export function mountEventLogView(container, ctx, mb, view) {
           items.append(
             make("li", "", [
               `${text(example.kind)} ${text(example.name)} — ${text(example.outcome)} after ${formatDuration(figure(example.dur_ms))}` +
-                (above.length > 0 ? ` (in ${above.join(" › ")})` : ""),
+                (above.length > 0 ? ` (in ${above.join(" > ")})` : ""),
             ]),
           );
         }
