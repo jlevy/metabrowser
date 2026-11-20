@@ -35,10 +35,12 @@ delimited      builtin  delimited         table       2      -
 diff           builtin  diff              structured  1      document,children,comparison
 event-log      builtin  event-log         agent-log   5      timeline,slowest,kinds,errors
 folder         builtin  -                 markdown    2      -
+fsqlite        builtin  sqlite-store      sqlite      1      info,children
 github         builtin  -                 markdown    2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-size,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
 html           builtin  html              -           2      -
 image          builtin  -                 -           1      -
 markdown       builtin  markdown,mermaid  -           4      -
+sqlite         builtin  sqlite            -           1      info
 structured     builtin  structured        -           2      parsed
 table          builtin  -                 -           0      tables,schema,rows,record,card
 text           builtin  -                 -           1      -
@@ -182,6 +184,28 @@ $ metab --plugins --json
       "disabled_data_hooks": []
     },
     {
+      "name": "fsqlite",
+      "display_name": "fsqlite",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/fsqlite",
+      "kinds": [
+        "sqlite-store"
+      ],
+      "requires": [
+        "sqlite"
+      ],
+      "views": [
+        "info"
+      ],
+      "view_count": 1,
+      "data_hooks": [
+        "info",
+        "children"
+      ],
+      "disabled_data_hooks": []
+    },
+    {
       "name": "github",
       "display_name": "GitHub",
       "version": "0.0.1",
@@ -274,6 +298,25 @@ $ metab --plugins --json
       ],
       "view_count": 4,
       "data_hooks": [],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "sqlite",
+      "display_name": "SQLite",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/sqlite",
+      "kinds": [
+        "sqlite"
+      ],
+      "requires": [],
+      "views": [
+        "info"
+      ],
+      "view_count": 1,
+      "data_hooks": [
+        "info"
+      ],
       "disabled_data_hooks": []
     },
     {
@@ -540,13 +583,14 @@ recorded on its own: the answer is on stdout, and stderr is empty.
 ```console
 $ metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 14 plugin(s) OK
+metab --doctor: 16 plugin(s) OK
 plugin requirements:
   agent-log: requires structured
   delimited: requires table
   diff: requires structured
   event-log: requires agent-log
   folder: requires markdown
+  fsqlite: requires sqlite
   github: requires markdown
   unknown-jsonl: requires agent-log
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
@@ -570,7 +614,7 @@ $ metab --doctor >/dev/null
 $ metab --doctor --json 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 14,
+  "plugin_count": 16,
   "problems": [],
   "open_in": {
     "value": "browser",

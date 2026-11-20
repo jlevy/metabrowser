@@ -57,6 +57,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | `text` | Text files | Source | File envelope |
 | `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Source `S` | File envelope and the `structured/parsed` hook |
 | `delimited` | `.csv`, `.tsv` | Table `V`, Source `S` | File envelope; one table through the `table/*` hooks, which the table plugin’s view draws ([Table Sources](arch-plugin-system.md#table-sources)) |
+| `sqlite-store` | An `fsqlite.json` whose `format` is `fsqlite`: an [fsqlite](https://github.com/jlevy/fsqlite) store’s marker, whose folder the tree badges (`folder_marker`) | Info | The `fsqlite/info` hook: the store’s marker, the version its `current` pointer names, its pending transaction envelopes, and that snapshot as the `sqlite/info` hook models a database, read as a guest (`builtin_plugins/fsqlite/store.py`) |
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
 | `agent-log` | `.jsonl` sniffed as an agent log | Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agent-log/charts` hook |
 | `unknown-jsonl` | Other `.jsonl` | Log `V`, Raw JSON `S` | File envelope |
@@ -85,10 +86,12 @@ plugin declares a `[[table_source]]` for, and the table view, which a source plu
 mounts for its kind’s Table view through `mb.plugins.load("table")`
 ([Table Sources](arch-plugin-system.md#table-sources)).
 
-Two kinds are also **containers**, folder-like entries whose children are addressable
+Some kinds are also **containers**, folder-like entries whose children are addressable
 ([Plugin System](arch-plugin-system.md)): `folder`, whose children are files and
-folders, and `diff`, whose children are the files a patch changes.
-A kind declares one with `container = { children = "<data_hook route>" }`.
+folders, `diff`, whose children are the files a patch changes, and `sqlite-store`, whose
+children are the tables of the snapshot its `current` names (the `fsqlite/children`
+hook, through `builtin_plugins/fsqlite/source.py`). A kind declares one with
+`container = { children = "<data_hook route>" }`.
 
 ### Shared Source Rendering
 
@@ -224,9 +227,10 @@ counts is missing here; the asset routes are not counted.
 | `/api/plugin/<plugin>/<route>` | A plugin’s `[[data_hook]]` | [Plugin System](arch-plugin-system.md) |
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, and
-`diff/comparison` ([Diff Pipeline](arch-diff-pipeline.md)); `binary/chunk`,
-`structured/parsed`, and `agent-log/charts` ([Plugin System](arch-plugin-system.md));
-`event-log/timeline`, `event-log/slowest`, `event-log/kinds`, and `event-log/errors`
+`diff/comparison` ([Diff Pipeline](arch-diff-pipeline.md)); `fsqlite/info` and
+`fsqlite/children` (an fsqlite store, above); `binary/chunk`, `structured/parsed`, and
+`agent-log/charts` ([Plugin System](arch-plugin-system.md)); `event-log/timeline`,
+`event-log/slowest`, `event-log/kinds`, and `event-log/errors`
 ([Real-Time Debugging](../../realtime-debugging.md#browsing-the-log)); `table/tables`,
 `table/schema`, `table/rows`, `table/record`, and `table/card`
 ([Table Sources](arch-plugin-system.md#table-sources)); and `github/pull`,

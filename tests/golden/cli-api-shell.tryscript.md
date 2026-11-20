@@ -634,6 +634,22 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/fsqlite/children",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/fsqlite/info",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/cache-clear",
       "methods": [
         "POST"
@@ -798,6 +814,14 @@ status: 200
       "path": "/api/plugin/github/status",
       "methods": [
         "POST"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/sqlite/info",
+      "methods": [
+        "GET",
+        "HEAD"
       ],
       "kind": "api"
     },
@@ -1020,7 +1044,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 85
+  "count": 88
 }
 ? 0
 ```

@@ -1071,6 +1071,35 @@ Accepted from `metab` through the Info view, before any table is drawn.
 
 - [ ] The `sqlite-store` kind, its `children` hook, snapshot reads, generation, goldens
 
+As built, where this plan left a choice open:
+
+- **Recognition** is the marker alone, as the fsqlite specification requires (M2): a
+  folder holding `current` and `snapshots/` without `fsqlite.json` is a folder.
+  The marker is parsed strictly once the kind is chosen: malformed or naming another
+  format is `invalid`, and a format version or required feature this reader does not
+  know (`SUPPORTED_FORMAT_VERSIONS`, `SUPPORTED_FEATURES` in
+  `builtin_plugins/fsqlite/store.py`) is `unsupported`, never `corrupt`.
+- **The pointer and the snapshot.** A pointer that is not trimmed ASCII digits within
+  its bounds, is missing, or names a snapshot missing at both of two reads is `corrupt`;
+  a snapshot whose `application_id` is not fsqlite’s is `corrupt` and still shown.
+  The snapshot read through the reader pool goes back to the pointer when the reader
+  finds the file gone (`unreadable` with nothing at the path), as when the lookup does.
+- **Generation** is `<version>-<hash>`: the version, so a reader sees which head a table
+  shows, and a hash of the identity, size, and time of `fsqlite.json` and `current`.
+  Pending envelopes change no snapshot and are not in it.
+- **Pending envelopes** are counted as committed (holding `COMMITTED`) and uncommitted,
+  by one stat each, and the scan stops at `PENDING_SCAN_MAX` entries.
+- **The Info view** is the store’s section above the snapshot’s, drawn with the SQLite
+  plugin’s model and drawing, which that plugin now exports to a plugin that requires
+  it.
+- **On a Git pin** the store’s routes answer `unsupported_for_subject`: its files are
+  resolved beside the marker by path, which a pin’s identities do not offer a hook.
+- **Tables.** The store is a container whose `children` hook has its full shape and
+  reads the snapshot; its tables come from Phase 5’s SQLite source through
+  `snapshot_children` in `builtin_plugins/fsqlite/source.py`, which answers none until
+  that source is in the stack, and the store’s `[[table_source]]` arrives with it.
+  `group_reserved` there groups `applied_tx` and `fsqlite_meta` as internal.
+
 ## Testing Strategy
 
 - **Goldens.** Each source has `--api` goldens over every table route and a `--show`
