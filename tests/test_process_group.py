@@ -315,6 +315,7 @@ def _no_table(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pg, "_processes", unread)
 
 
+@pytest.mark.macos_tier
 @pytest.mark.skipif(sys.platform != "darwin", reason="Linux answers a zombie like a live process")
 def test_a_live_group_is_stopped_without_reading_the_process_table(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

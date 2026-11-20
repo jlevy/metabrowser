@@ -367,7 +367,8 @@ or the test fails:
 - macOS tier: a test with the `macos_tier` marker.
   Its reasons are `extended ACLs are inspected only on macOS`,
   `the file system is case-sensitive`, `the store's filesystem tells letter case apart`,
-  and `Apple's git shim is macOS's, and needs Xcode or its Command Line Tools`;
+  `Apple's git shim is macOS's, and needs Xcode or its Command Line Tools`, and
+  `Linux answers a zombie like a live process`;
 - Live GitHub tier: a test with the `live_github` marker, with
   `set METABROWSER_LIVE_GITHUB=1 to run`;
 - Admitted-Git tier: `needs a Git the acquisition floor admits`, where the runner’s own
