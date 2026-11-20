@@ -466,6 +466,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/git/commit-size/{revision}",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/git/commit/{revision}",
       "methods": [
         "GET",
@@ -678,6 +686,14 @@ status: 200
     },
     {
       "path": "/api/plugin/github/pull-rendered-diff",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/github/pull-size",
       "methods": [
         "GET",
         "HEAD"
@@ -917,7 +933,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 72
+  "count": 74
 }
 ? 0
 ```

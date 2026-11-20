@@ -222,7 +222,7 @@ _BUILD_STATE: Final = re.compile(r"  \[dev build: [^\]]*\]")
 def normalize_pull_comparison_scopes(text: str) -> str:
     """Keep a PR comparison's endpoints while labeling build and sandbox-store identity.
 
-    The same for the image and rendered-Markdown routes of that comparison, which
+    The same for the image, rendered-Markdown, and size routes of that comparison, which
     name the store too.
     """
     text = re.sub(
@@ -233,7 +233,7 @@ def normalize_pull_comparison_scopes(text: str) -> str:
         text,
     )
     return re.sub(
-        r"(/api/plugin/github/pull-(?:image|rendered-diff)\?number=\d+"
+        r"(/api/plugin/github/pull-(?:image|rendered-diff|size)\?number=\d+"
         r"&left=[0-9a-f]{40}(?:[0-9a-f]{24})?"
         r"&right=[0-9a-f]{40}(?:[0-9a-f]{24})?&store=)[0-9a-f]{16}",
         r"\1<STORE>",
@@ -485,6 +485,20 @@ def cache_hit_stderr(url: str, home: Path) -> str:
 
     age = r"(?:less than a minute|\d+ (?:minute|hour|day)s?) ago"
     return re.escape(f"using the clone of {url} cached in {home}, fetched ") + age + r"\n"
+
+
+_PUSHED_BYTES = re.compile(r'"pushed_bytes": \d+')
+
+
+def mask_pushed_bytes(text: str) -> str:
+    """*text* with every change's pushed size as ``<PUSHED>``.
+
+    The pushed size is zlib's output, which can differ by a few bytes between zlib builds
+    (``metabrowser.git.change_size``); ``tests/test_git_change_size.py`` checks it against
+    the pack Git writes. The patch's size and the commits are Git's text and stay.
+    """
+
+    return _PUSHED_BYTES.sub('"pushed_bytes": <PUSHED>', text)
 
 
 def label_home(text: str, home: Path, label: str = HOME_LABEL) -> str:

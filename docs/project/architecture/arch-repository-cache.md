@@ -99,6 +99,7 @@ lock, and refuses only new ones.
     store.yml
     state.yml
     github-pull-manifests/      provider records
+    change-sizes/               measured change sizes
     github-pull-manifest-<slot>.epoch
 ```
 
@@ -221,6 +222,13 @@ Nothing in the cache enumerates them, so the layout, probe, sweep, and `/api/cac
 projections leave them alone.
 [GitHub Pull Requests](arch-github-pull-requests.md#files-beside-a-source) lists them
 and how each is written.
+
+A store’s `change-sizes/` holds the sizes of changes measured in it, by the head
+commit’s first two hexadecimal digits, one file each
+([Change Sizes](arch-git.md#change-sizes)). It is not a SoftSchema contract either: a
+file that cannot be read, was written for other measuring options, or does not validate
+is a miss, measured again; each file is bounded by `MAX_BANK_FILE_BYTES` and
+`MAX_BANK_FILE_ENTRIES` in `git/change_size.py`.
 
 ## Repository Stores
 

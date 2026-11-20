@@ -204,7 +204,7 @@ counts is missing here; the asset routes are not counted.
 | `/api/diagnostics/pending-tallies` | `POST`: a client’s pending-tally warning, matched with server state | [Live Delivery](arch-live-delivery.md) |
 | `/api/event-log` | Where the structured event log is, its segments, and its records filtered by kind, outcome, cause, span, and duration, with the spans this process has open (`event_log_route.py`) | [Real-Time Debugging](../../realtime-debugging.md#event-log) |
 | `/api/event-log/failures` | The failures in the event log since a moment, an hour ago by default, grouped by cause, with the addresses that failed, the latest message, links to their records, and the latest failed connectivity probe (`event_log_route.py`) | [Real-Time Debugging](../../realtime-debugging.md#github-failures) |
-| `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>`, `/api/git/commit-markdown/<rev>` | Read-only history for the Commits tab: a repository folder’s own, and a mirror’s default branch’s, whichever revision the Files tab shows | [Git](arch-git.md), [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout) |
+| `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>`, `/api/git/commit-markdown/<rev>`, `/api/git/commit-size/<rev>` | Read-only history for the Commits tab: a repository folder’s own, and a mirror’s default branch’s, whichever revision the Files tab shows; a commit’s size as Git pushes it and as a patch (`git/change_size.py`) | [Git](arch-git.md), [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout) |
 | `/api/source/status`, `/api/source/refs`, `/api/source/pin` | What the server serves; the served root’s branches and tags, a mirror’s or a repository folder’s, with a checkout’s remote-tracking branches, each with its commit’s full ID and committer date, and a checkout’s working tree by its folder; and switching its view: a mirror’s pin, or a checkout between a revision and its working tree. `metab PATH --ref NAME` starts a checkout on a revision, so every route that answers a pin answers a checkout’s revision from a terminal | [Source Sessions and Pins](arch-source-sessions-and-pins.md), [Open Modes](arch-open-modes.md) |
 | `/api/identity` | What the served subject is called, for a window’s title, and the GitHub repository it belongs to (`root_identity.py`) | [Source Sessions and Pins](arch-source-sessions-and-pins.md) |
 | `/api/counterpart` | The github.com page that shows what a page shows, for its View on GitHub control, or why there is none (`counterpart.py`) | [Design System: View on GitHub](../../design-system.md#view-on-github) |
@@ -217,11 +217,12 @@ Plugin hooks currently registered: `diff/document`, `diff/children`, and
 `structured/parsed`, and `agent-log/charts` ([Plugin System](arch-plugin-system.md));
 and `github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
 `github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff`,
-`github/pull-timeline`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`,
-`github/pulls-prefetch`, `github/pull-files`, `github/pull-files-refresh`,
-`github/pull-files-summary`, `github/stacks`, `github/stacks-refresh`,
-`github/stack-change`, `github/labels`, `github/labels-refresh`, `github/cache-clear`,
-and `github/status` ([GitHub Pull Requests](arch-github-pull-requests.md)).
+`github/pull-size`, `github/pull-timeline`, `github/pull-markdown`, `github/pulls`,
+`github/pulls-refresh`, `github/pulls-prefetch`, `github/pull-files`,
+`github/pull-files-refresh`, `github/pull-files-summary`, `github/stacks`,
+`github/stacks-refresh`, `github/stack-change`, `github/labels`,
+`github/labels-refresh`, `github/cache-clear`, and `github/status`
+([GitHub Pull Requests](arch-github-pull-requests.md)).
 
 ## Adding Something
 
