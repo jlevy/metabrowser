@@ -911,10 +911,6 @@ def install_table_sources(
     _REGISTRY.adapters = {}
 
 
-def table_source_declarations() -> tuple[TableSourceDeclaration, ...]:
-    return tuple(_REGISTRY.declarations.values())
-
-
 def load_adapter(declaration: TableSourceDeclaration) -> TableSourceAdapter:
     """Import a declaration's adapter once; an import failure propagates to the caller."""
 
@@ -946,8 +942,8 @@ async def open_table_source(path: str) -> OpenedTableSource:
     and that kind's adapter applied to a handle on it.
 
     Raises :class:`TablePathNotFoundError` when nothing readable is there and
-    :class:`NoTableSourceError` when its kind has no source, and lets a :class:`~metabrowser.content_errors.ContentReadError` from the
-    read propagate.
+    :class:`NoTableSourceError` when its kind has no source, and lets a content read's
+    :class:`~metabrowser.content_errors.ContentReadError` propagate.
     """
 
     ref = await resolve_content(path)

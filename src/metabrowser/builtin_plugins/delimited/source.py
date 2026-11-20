@@ -15,7 +15,9 @@ The file parses with the standard library's ``csv`` under these rules:
   cell. An empty value is null in a column of any type but text, where it is the empty
   string.
 - Rows have no key; a row is named by its 1-based position in the file, so a name
-  survives any change of sort or filter.
+  survives any change of sort or filter. A sort breaks ties by that position, and a
+  cursor names a sort value and a position, so a page under a new generation continues
+  from the same place in the order; a row inserted above another in the file moves it.
 - The generation is the file's identity, size, and modification time.
 
 A file is parsed whole, up to ``DELIMITED_PARSE_MAX_BYTES``, and held in a cache keyed
