@@ -3897,6 +3897,40 @@ box, `--actor-avatar-size`, and not `--icon-glyph`: at the glyph size it would s
 smaller than the avatar it replaces, and the box and the name after it would differ with
 and without an avatar.
 
+### Source Kind Marks
+
+**The root’s name at the top of the navigation leads with a mark for what is open: a
+cloud for a mirror, a folder with Git’s branch for a Git checkout, and a folder with its
+root node for a plain folder.** The three are the source kinds of the
+[Icon Catalog](design-system-icons.md#source-kinds), which says what each means, how the
+kind is decided, and where else each is drawn.
+The rules for the page are:
+
+- **A mark is a root’s and never an ordinary folder’s.** A source-kind glyph differs
+  from the ordinary `folder`, which a subfolder’s view header draws, so the root of a
+  window and any folder inside it never wear the same icon.
+- **The server writes the kind, its glyph, and its sentence.** The shell puts `kind` and
+  `kind_tip` of `GET /api/identity`, and the one glyph for the kind, into its first
+  paint, `.header-root-kind`, from `static/source-kind-glyphs.json`, so the mark is
+  there with no script and no request, in a box that is there from the markup.
+  The glyphs are not in the icon registry, which every page fetches before its first
+  tree under a gated budget, and the page draws one of three.
+- **A glyph-only mark names itself.** Its tooltip, `data-tip-text`, is its accessible
+  name too: the kind and what it is of, “Cloud mirror of owner/repo”, “Local Git
+  checkout (GitHub: owner/repo)”, or “Local folder”
+  ([Tooltips Add Information](#tooltips-add-information), for a glyph-only mark).
+  It is no control, and takes no focus.
+- **It stands outside the name’s link.** The name is [Home](#home), with its own hover
+  surface, focus ring, and tooltip, and the mark’s tooltip is the mark’s.
+- **It is drawn at `--icon-glyph` in `--muted`**, so the bold name stays the heading,
+  like a folder’s glyph in a view header, and it shortens nothing: the name still ends
+  in an ellipsis where the column is narrow.
+
+`tests/test_root_identity.py` holds the page’s mark to the route for each kind,
+`tests/test_icon_catalog.py` holds the three glyphs, the ordinary folder’s, and where
+each is drawn to the catalog, and `tests/test_root_kind_mark_chrome.py` draws a folder,
+a checkout, and a mirror’s page in Chrome.
+
 ### Every Icon-Only Control Is the Same Control
 
 An icon-only button is one primitive, `.icon-btn`, documented in the
@@ -4781,8 +4815,10 @@ Home keeps what a fresh load would only fetch again, or keeps itself:
 The name reads as a link home.
 Its box is the name’s own, and it takes a folder crumb’s treatment: the hover surface
 under the name and the link-colored ring on keyboard focus.
-Its accessible name is “Home:” and the name it shows, read from its own content, so the
-ref and commit that head a pin with no mirror are in it too.
+The mark before it, for the kind of root, is outside the link
+([Source Kind Marks](#source-kind-marks)). Its accessible name is “Home:” and the name
+it shows, read from its own content, so the ref and commit that head a pin with no
+mirror are in it too.
 It stays a link to `/view/`, so a modified or middle click and its context menu do what
 they do on any link.
 A plain click, or Enter on it, stays in the page.

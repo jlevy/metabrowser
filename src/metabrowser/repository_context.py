@@ -71,6 +71,22 @@ def discover_repository_context(served_root: Path) -> RepositoryContext | None:
     )
 
 
+def is_checkout_root(root: Path) -> bool:
+    """Whether *root* holds a ``.git`` entry: the cheap test that it is a checkout's root.
+
+    Git's own answer is not asked, so a ``.git`` that Git refuses, a repository another user
+    owns for one, still counts: this is what the folder is on disk, the test the Commits tab
+    is drawn by and the kind ``GET /api/identity`` gives a folder (``git`` or ``folder``).
+    A checkout's subfolder is not one, and neither is a folder with no ``.git`` of its own,
+    however deep in a repository.
+    """
+
+    try:
+        return (root / ".git").exists()
+    except OSError:
+        return False
+
+
 def find_git_root(start: Path) -> Path | None:
     for candidate in (start, *start.parents):
         if (candidate / ".git").exists():

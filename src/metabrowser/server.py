@@ -208,8 +208,8 @@ from metabrowser.recent import (
     WindowKey,
     recent_result_from_projection,
 )
-from metabrowser.repository_context import discover_repository_context
-from metabrowser.root_identity import IDENTITY_ROUTES, root_identity
+from metabrowser.repository_context import discover_repository_context, is_checkout_root
+from metabrowser.root_identity import IDENTITY_ROUTES, identity_kind_tip, root_identity
 from metabrowser.settings import (
     DOC_MAX_CHARS_DEFAULT,
     FOLDER_DISCOVERY_MAX_ENTRIES,
@@ -247,6 +247,7 @@ from metabrowser.source import (
     session_filesystem_root,
     unsupported_source_payload,
 )
+from metabrowser.source_kind_marks import source_kind_svg
 from metabrowser.source_routes import (
     SOURCE_ROUTES,
     SourcePinGuard,
@@ -1672,7 +1673,8 @@ async def index(
     # The tab's title, and a native window's: what the served subject is called, from the
     # model `/api/identity` answers, so the two cannot disagree. A page changes subject
     # only by loading again, so the title written here stays current.
-    page_title = html_escape(root_identity(mirror, checkout)["title"])
+    identity = root_identity(mirror, checkout)
+    page_title = html_escape(identity["title"])
     if pin is not None:
         # Imported where a pin is served, like every other Git import below: the
         # modules behind a pinned revision are start-up work a folder never uses.
@@ -1704,6 +1706,15 @@ async def index(
         repository_context = await asyncio.to_thread(
             discover_repository_context, _shell_folder(folder_root)
         )
+    # The mark before the root's name names which of the three kinds of root the page shows,
+    # a plain folder, a Git checkout, or a cloud mirror (docs/design-system-icons.md,
+    # "Source Kinds"). The server writes the kind, the glyph for it, and the sentence, the
+    # same one `/api/identity` answers as `kind_tip`. The glyph is not in the icon registry:
+    # the registry is a startup script every page pays for under a gated budget, and a page
+    # draws one of the three, which only the server knows (source_kind_marks.py).
+    root_kind = identity["kind"]
+    root_kind_svg = source_kind_svg(root_kind)
+    root_kind_tip = html_escape(identity_kind_tip(identity, repository_context), quote=True)
     version_line = html_escape(display_version_line("metab", __version__))
     styles_url = _static_asset_url("styles.css")
     asset_loader_url = _static_asset_url("asset-loader.js")
@@ -1834,7 +1845,7 @@ async def index(
     # discovery removes it in the rare case Git does not agree. It comes after Pulls, in the
     # main tabs' order (static/main-tabs.js, MAIN_TABS).
     commits_tab = git_pin or await asyncio.to_thread(
-        lambda: (_shell_folder(folder_root).resolve() / ".git").exists()
+        lambda: is_checkout_root(_shell_folder(folder_root).resolve())
     )
     # A commit's address lands on Commits, so it is drawn in front, with its toolbar and its
     # panel's container, and the landing never shows Files and then swaps it. The neutral Git
@@ -2424,6 +2435,12 @@ async def index(
              content, so a pin with no mirror's ref and commit, which stand as its name,
              stay in it. The header anchors the key's badge, which sits beside the name
              because the name clips. -->
+        <!-- Which kind of root this is: a glyph-only mark, so its sentence is its tooltip and
+             its accessible name, and it is no control. Its glyph is the server's, one of
+             three (source_kind_marks.py), so the mark is there from the first paint. -->
+        <span class="header-root-kind" id="header-root-kind" role="img"
+              data-root-kind="{root_kind}" data-tip-text="{root_kind_tip}"
+              aria-label="{root_kind_tip}">{root_kind_svg}</span>
         <a href="{VIEW_ROUTE_PREFIX}" class="header-path" id="header-home"
            aria-labelledby="header-home-label header-home"
            data-served-root="{initial_root}"{mirror_attrs}>{initial_path}</a>

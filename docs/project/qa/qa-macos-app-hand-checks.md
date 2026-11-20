@@ -473,9 +473,11 @@ window of its own. Each step starts where the one before it ends.
 3. **The chooser.** In `a`’s window it lists Open (`a` checked, then `b` subtitled “In
    another window”), Recent (starting with `d`, then `c`, subtitled with their paths),
    Open Folder…, Open URL…, Switch Folder… (Shift-Command-O), and Close Background
-   Folders, disabled. Each folder shows the page’s folder glyph, and a GitHub repository
-   among the recent ones the cloud mark; File > Open Recent and the Dock icon’s menu
-   show the same marks on their rows.
+   Folders, disabled. Each folder shows its kind’s mark, the page’s: a plain folder the
+   folder with a dot, a Git checkout the folder with Git’s branch, and a GitHub
+   repository among the recent ones the cloud; File > Open Recent and the Dock icon’s
+   menu show the same marks on their rows, and the title’s path menu shows the folder’s
+   own mark on its first row and the plain folder outline on each folder above it.
    Each row’s mark sits on the line of its name, centered on that line as on Open
    Recent’s one-line rows, never between the name and the subtitle, and the subtitle
    starts under the name, not under the mark: in light and dark mode, on the highlighted

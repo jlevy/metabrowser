@@ -1,6 +1,7 @@
 import Foundation
 
-/// One entry of `metab --recent --json`: a root, and the mode it was opened in.
+/// One entry of `metab --recent --json`: a root, the mode it was opened in, and whether a
+/// folder was a Git checkout.
 ///
 /// `metab` keeps the list (`src/metabrowser/recent_targets.py`): every server records
 /// its root as it starts, whoever started it, so the app, a `metab` run in Terminal, and
@@ -24,17 +25,34 @@ public nonisolated struct RecentTarget: Codable, Equatable, Sendable {
     public var root: String
     /// When it was last opened, `2026-11-18T03:14:15Z`.
     public var openedAt: String
+    /// Whether a folder was a Git checkout when it was last opened: it held a `.git` entry,
+    /// which is the `git` kind `GET /api/identity` gives it. The app draws the Git
+    /// checkout's mark for it (`RootMark`) without looking at the folder, which could raise
+    /// a privacy prompt, so a folder that became a checkout since reads as a plain one until
+    /// it is opened again. Always false for a mirror.
+    public var git: Bool
 
-    public init(mode: Mode, root: String, openedAt: String) {
+    public init(mode: Mode, root: String, openedAt: String, git: Bool = false) {
         self.mode = mode
         self.root = root
         self.openedAt = openedAt
+        self.git = git
     }
 
     enum CodingKeys: String, CodingKey {
         case mode
         case root
         case openedAt = "opened_at"
+        case git
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        mode = try values.decode(Mode.self, forKey: .mode)
+        root = try values.decode(String.self, forKey: .root)
+        openedAt = try values.decode(String.self, forKey: .openedAt)
+        // The list writes the flag only for a checkout, so a missing one is false, not an error.
+        git = try values.decodeIfPresent(Bool.self, forKey: .git) ?? false
     }
 
     /// What the app is asked to open for this entry, as a folder dropped on it or a link
@@ -61,11 +79,11 @@ public nonisolated struct RecentTarget: Codable, Equatable, Sendable {
     public func identity(home: String = FileChecks.canonicalPath(NSHomeDirectory())) -> FolderIdentity {
         switch mode {
         case .folder:
-            return .localFolder(URL(filePath: root, directoryHint: .isDirectory), home: home)
+            return .localFolder(URL(filePath: root, directoryHint: .isDirectory), git: git, home: home)
         case .mirror:
             guard let url = URL(string: root) else {
                 return FolderIdentity(
-                    shortName: root, fullName: root, kind: .mirror, kindLabel: "Cached mirror",
+                    shortName: root, fullName: root, kind: .mirror, kindLabel: "Cloud mirror",
                     title: FolderIdentity.title(for: root))
             }
             return .repository(url)

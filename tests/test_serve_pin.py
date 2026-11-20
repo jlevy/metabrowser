@@ -659,13 +659,18 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
             "short_name": "origin",
             "full_name": "~/git/origin.git@topic",
             "kind": "mirror",
-            "kind_label": "Cached mirror",
+            "kind_label": "Cloud mirror",
             "title": "origin \u2022 Metabrowser",
+            # A mirror no provider knows names no repository: its origin is said only where
+            # `remainder` below allows it.
+            "kind_tip": "Cloud mirror",
             # A file:// origin is on no host the macOS app opens links of.
             "repository": None,
         }
 
         page = client.get(f"/view/{_wire('README.md')}")
+        # The mark beside its name says the same: the route's kind and its sentence.
+        assert 'data-root-kind="mirror" data-tip-text="Cloud mirror"' in page.text
         assert (
             f'data-served-root="origin" data-mirror-location="{location}" '
             f'data-mirror-tip="{tip(origin.second)}">'

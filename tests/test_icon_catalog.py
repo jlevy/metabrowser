@@ -16,7 +16,11 @@ the keyboard table to the keys the app binds:
   its definition's comment names;
 - the type registry's shapes are cataloged and named for the categories and formats that
   take them, and its schema permits exactly those shapes;
-- each token a row's ink or size names is declared by a shipped stylesheet.
+- each token a row's ink or size names is declared by a shipped stylesheet;
+- the source kinds, the three marks for a kind of root, are the identity route's kinds, each
+  with a glyph in the server's glyph file that is a different drawing from the others' and
+  from the ordinary folder's, no script holds a copy of one, and the macOS app's marks are
+  the same glyphs and words.
 
 Each failure names the icon, so the fix is to catalog it, or to draw what the catalog
 already has instead.
@@ -31,8 +35,10 @@ import re
 import tomllib
 from collections.abc import Iterator
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, get_args
 from urllib.parse import unquote
+
+from metabrowser.root_identity import KIND_LABELS, IdentityKind
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE = REPO_ROOT / "src" / "metabrowser"
@@ -40,6 +46,7 @@ STATIC = PACKAGE / "static"
 BUILTIN_PLUGINS = PACKAGE / "builtin_plugins"
 CATALOG = REPO_ROOT / "docs" / "design-system-icons.md"
 REGISTRY = STATIC / "icons.js"
+SOURCE_KIND_GLYPHS = STATIC / "source-kind-glyphs.json"
 TYPE_REGISTRY = PACKAGE / "data" / "file-rollup-format" / "recommended-file-types.toml"
 TYPE_SCHEMA = PACKAGE / "data" / "file-rollup-format" / "file-type-registry.schema.json"
 MACOS_SOURCES = REPO_ROOT / "apps" / "macos" / "Sources"
@@ -47,7 +54,9 @@ MACOS_SOURCES = REPO_ROOT / "apps" / "macos" / "Sources"
 HEADER = ("Icon", "Source", "Meaning", "Defined in", "Ink", "Size")
 # The sources a row may name, by what defines its drawing.
 DRAWN = ("Registry", "Plugin", "View bundle")
-SOURCES = frozenset({*DRAWN, "CSS mask", "Text", "Letter", "SF Symbol", "App glyph", "App mark"})
+SOURCES = frozenset(
+    {*DRAWN, "CSS mask", "Shell", "Text", "Letter", "SF Symbol", "App glyph", "App mark"}
+)
 
 # What the registry's callers write: a property of the registry, by its global's name or the
 # `ICONS` and `ICON_SVG` aliases the shell's scripts give it, or of the SDK's proxy of it,
@@ -327,7 +336,14 @@ def test_every_row_is_well_formed() -> None:
         assert row.defined_in, f"{row.icon} names no file"
         for path in row.defined_in:
             _resolve(path)
-        drawn_once = row.source in {*DRAWN, "CSS mask", "SF Symbol", "App glyph", "App mark"}
+        drawn_once = row.source in {
+            *DRAWN,
+            "CSS mask",
+            "Shell",
+            "SF Symbol",
+            "App glyph",
+            "App mark",
+        }
         assert not drawn_once or len(row.defined_in) == 1, f"{row.icon} is defined in one place"
     drawn = [(row.icon, row.defined_in) for row in rows if row.source != "Text"]
     assert len(drawn) == len(set(drawn)), "a drawn icon has one row per place it is defined"
@@ -514,3 +530,97 @@ def test_the_check_reads_escapes_and_skips_what_no_reader_sees() -> None:
     assert [match[1] for match in _REGISTRY_USE.finditer(calls)] == ["toggle", "copy"]
     masks = "url('data:image/svg+xml,%3Csvg%3E%3C/svg%3E') url(data:image/svg+xml;base64,AA==)"
     assert len(_SVG_DATA_URI.findall(masks)) == 2
+
+
+# ── Source kinds ────────────────────────────────────────────────────
+
+# The one place the ordinary folder is drawn by a script: a folder's view header. A surface that
+# draws it for a root fails; one that draws it for another ordinary folder is added here and to
+# "The Ordinary Folder" in the catalog together.
+ORDINARY_FOLDER_CALLERS = {"static/view-header.js"}
+ROOT_MARK_SWIFT = MACOS_SOURCES / "ShellCore" / "Folders" / "RootMark.swift"
+# What RootMark names each case of the app's marks: the page's `kind` of root for a root's.
+ROOT_MARK_KINDS = {"plainFolder": "folder", "gitCheckout": "git", "mirror": "mirror"}
+
+
+def _kind_glyphs() -> dict[str, dict[str, str]]:
+    """The glyph file's entries, by the `kind` of root each is for."""
+    return json.loads(SOURCE_KIND_GLYPHS.read_text(encoding="utf-8"))
+
+
+def _swift_cases(source: str, start: str, end: str) -> dict[str, str]:
+    """The `case .name: "value"` lines of the Swift property from `var start` to `var end`."""
+    body = source[source.index(f"var {start}") : source.index(f"var {end}")]
+    return dict(re.findall(r'case \.(\w+): "([^"]+)"', body))
+
+
+def test_the_source_kinds_are_the_identity_routes_kinds_each_with_its_own_glyph() -> None:
+    """A root's `kind` has one glyph in the glyph file and one catalog row, and the three
+    glyphs and the ordinary folder's are four different drawings."""
+    glyphs = _kind_glyphs()
+    assert sorted(glyphs) == sorted(get_args(IdentityKind.__value__)), (
+        "the glyph file draws each kind of root `/api/identity` says, and no other"
+    )
+    assert set(KIND_LABELS) == set(glyphs), "every kind of root has its words"
+    rows = [row for row in _catalog() if row.kind == "Source Kinds" and row.source == "Shell"]
+    assert sorted(row.upstream or "" for row in rows) == sorted(
+        g["lucide"] for g in glyphs.values()
+    ), "the catalog's Shell rows are the glyph file's glyphs, each under its Lucide id"
+    for kind, glyph in glyphs.items():
+        (row,) = (row for row in rows if row.upstream == glyph["lucide"])
+        assert row.defined_in == ("static/source-kind-glyphs.json",)
+        assert f"`{kind}` kind" in row.meaning, f"{row.icon}'s row names the {kind} kind"
+    registry = _svg_definitions(REGISTRY.read_text(encoding="utf-8"))
+    drawings = {kind: _drawing(glyph["elements"]) for kind, glyph in glyphs.items()}
+    drawings["ordinary folder"] = _drawing(registry["folder"][0])
+    assert len(set(drawings.values())) == len(drawings), (
+        "a source-kind glyph is a different drawing from each other kind's and from `folder`"
+    )
+
+
+def test_the_page_draws_a_root_with_its_server_written_glyph_and_no_script_draws_one() -> None:
+    """A root is never drawn as an ordinary folder, and the glyphs are one copy, in the file.
+
+    The server writes the kind's glyph into the page (`tests/test_root_identity.py`), so no
+    browser script or stylesheet holds a second copy of one, and the ordinary folder's callers
+    are the ones the catalog says.
+    """
+    callers: dict[str, set[str]] = {}
+    for path in _browser_scripts():
+        if path == REGISTRY:
+            continue
+        for match in _REGISTRY_USE.finditer(_script_code(path)):
+            callers.setdefault(match[1] or match[2], set()).add(_relative(path))
+    assert callers.get("folder", set()) == ORDINARY_FOLDER_CALLERS
+    for kind, glyph in _kind_glyphs().items():
+        for path in (*_browser_scripts(), *_stylesheets()):
+            assert glyph["elements"] not in path.read_text(encoding="utf-8"), (
+                f"{_relative(path)} holds a copy of the {kind} glyph"
+            )
+    assert "source_kind_svg" in (PACKAGE / "server.py").read_text(encoding="utf-8")
+
+
+def test_the_apps_root_marks_are_the_same_glyphs_and_words_as_the_page() -> None:
+    """`RootMark` pairs each kind with the page's glyph and says it in the page's words."""
+    swift = ROOT_MARK_SWIFT.read_text(encoding="utf-8")
+    glyphs = _kind_glyphs()
+    ids = _swift_cases(swift, "lucideID", "label")
+    assert {
+        ROOT_MARK_KINDS[case]: lucide for case, lucide in ids.items() if case in ROOT_MARK_KINDS
+    } == {kind: glyph["lucide"] for kind, glyph in glyphs.items()}, (
+        "RootMark.lucideID is the page's glyph for each kind"
+    )
+    assert ids["folder"] == "folder", "the app's ordinary folder is the registry's `folder`"
+    # The app's marks are the catalog's App glyph rows, one for each, the ordinary folder included.
+    app_rows = _rows("App glyph")
+    assert sorted(row.upstream or "" for row in app_rows) == sorted(
+        ["folder", *(glyph["lucide"] for glyph in glyphs.values())]
+    )
+    assert {row.defined_in for row in app_rows} == {
+        ("apps/macos/Sources/ShellCore/Folders/RootMark.swift",)
+    }
+    # The words a mark says are `KIND_LABELS`'.
+    labels = _swift_cases(swift, "label", "markup")
+    assert {
+        ROOT_MARK_KINDS[case]: label for case, label in labels.items() if case in ROOT_MARK_KINDS
+    } == (dict(KIND_LABELS))

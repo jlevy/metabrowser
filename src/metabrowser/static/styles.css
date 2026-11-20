@@ -1782,6 +1782,29 @@ body {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
 }
+/* The mark before the name for the kind of root the page shows: a cloud for a mirror, a
+   folder with Git's branch for a checkout, a folder with a dot for a plain folder
+   (docs/design-system-icons.md, "Source Kinds"). The server writes its glyph into the
+   markup (source_kind_marks.py), so it is there from the first paint with no script. It is a
+   glyph-only mark, not a control: its sentence is its tooltip and its accessible name, and
+   it sits outside the name's link, so the name's hover surface, focus ring, and tooltip
+   stay the name's own. The glyph size is --icon-glyph and its ink the muted one a folder's
+   header glyph takes, so the name stays the heading. The end margin takes 2px from the row's
+   gap, which the name's own padding adds to: the name starts 6px after the glyph. */
+.header-root-kind {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+  margin-inline-end: -2px;
+  color: var(--muted);
+}
+.header-root-kind > svg {
+  width: 100%;
+  height: 100%;
+}
 .app-header > .settings-toggle {
   margin-left: auto;
 }

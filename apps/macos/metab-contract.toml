@@ -83,11 +83,11 @@ note = "What a GitHub link opens, for a link sent to the app and for File > Open
 id = "recent-list"
 argv = ["--recent", "--json"]
 source = "Sources/ShellCore/Folders/RecentTargets.swift"
-json = ["targets[].mode", "targets[].root", "targets[].opened_at", "problem"]
+json = ["targets[].mode", "targets[].root", "targets[].opened_at", "targets[].git", "problem"]
 values = { "targets[].mode" = ["folder", "mirror"] }
 shown = ["problem"]
 opaque = ["targets[].opened_at"]
-note = "File > Open Recent and the Dock menu."
+note = "File > Open Recent and the Dock menu. `targets[].git` says a folder was a Git checkout when it was opened, which picks its mark (`RootMark`) without a look at the folder."
 
 [[command]]
 id = "recent-add"
@@ -191,8 +191,8 @@ route = "/api/identity"
 literal = "api/identity"
 source = "Sources/ShellCore/Folders/FolderIdentity.swift"
 json = ["short_name", "full_name", "kind", "kind_label", "title", "repository"]
-values = { kind = ["folder", "mirror"] }
-note = "Names each window. Status 200, or the window keeps the name it derived. `repository` puts a link's new mirror window beside an open checkout of the same GitHub repository (`CheckoutWindow`)."
+values = { kind = ["folder", "git", "mirror"] }
+note = "Names each window, and which of the three kinds of root it shows, which picks its mark (`RootMark`). Status 200, or the window keeps the name it derived. `repository` puts a link's new mirror window beside an open checkout of the same GitHub repository (`CheckoutWindow`)."
 
 [[route]]
 id = "source-status"

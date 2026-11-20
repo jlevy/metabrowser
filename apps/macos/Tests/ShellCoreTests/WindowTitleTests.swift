@@ -16,10 +16,33 @@ nonisolated private func json(_ text: String) -> Data { Data(text.utf8) }
             title: "fdu • Metabrowser")))
     }
 
+    @Test func decodesACheckoutAndIgnoresItsTipAndRepository() {
+        let body = json("""
+            {"short_name": "tbd", "full_name": "~/src/tbd", "kind": "git", "kind_label": "Local Git checkout",
+             "title": "tbd • Metabrowser", "kind_tip": "Local Git checkout (GitHub: jlevy/tbd)",
+             "repository": "https://github.com/jlevy/tbd"}
+            """)
+        guard case .identity(let identity) = IdentityClient.answer(status: 200, body: body) else {
+            Issue.record("expected an identity")
+            return
+        }
+        #expect(identity.kind == .git)
+        #expect(identity.kindLabel == "Local Git checkout")
+        #expect(RootMark(identity.kind) == .gitCheckout)
+    }
+
+    @Test func aFolderWithNoServerYetIsAPlainFolderUnlessItsListEntryIsACheckout() {
+        let url = URL(filePath: "/Volumes/Home/src/tbd")
+        #expect(FolderIdentity.localFolder(url, home: "/Volumes/Home").kind == .folder)
+        let checkout = FolderIdentity.localFolder(url, git: true, home: "/Volumes/Home")
+        #expect((checkout.kind, checkout.kindLabel) == (.git, "Local Git checkout"))
+        #expect(checkout.shortName == "tbd" && checkout.fullName == "~/src/tbd")
+    }
+
     @Test func decodesAMirrorAndIgnoresFieldsItDoesNotUse() {
         let body = json("""
             {"short_name": "metabrowser", "full_name": "github.com/jlevy/metabrowser@main", "kind": "mirror",
-             "kind_label": "Cached mirror", "title": "metabrowser • Metabrowser", "added_later": [1, 2]}
+             "kind_label": "Cloud mirror", "title": "metabrowser • Metabrowser", "added_later": [1, 2]}
             """)
         guard case .identity(let identity) = IdentityClient.answer(status: 200, body: body) else {
             Issue.record("expected an identity")
@@ -144,17 +167,23 @@ nonisolated private func json(_ text: String) -> Data { Data(text.utf8) }
         #expect(WindowTitle.windowTitles([]) == [])
         // A mirror sharing a local folder's short name is told apart the same way.
         let mirror = WindowTitle(FolderIdentity(
-            shortName: "fdu", fullName: "github.com/jlevy/fdu@main", kind: .mirror, kindLabel: "Cached mirror",
+            shortName: "fdu", fullName: "github.com/jlevy/fdu@main", kind: .mirror, kindLabel: "Cloud mirror",
             title: "fdu • Metabrowser"))
         #expect(WindowTitle.windowTitles([titles[1], mirror]) == ["~/fdu", "github.com/jlevy/fdu@main"])
+    }
+
+    @Test func aCheckoutHasAPathMenuAsAPlainFolderDoes() {
+        let checkout = WindowTitle(.localFolder(URL(filePath: "/Volumes/Home/src/tbd"), git: true, home: "/Volumes/Home"))
+        #expect(checkout.hasPathMenu)
+        #expect(checkout.subtitle == "~/src/tbd · Local Git checkout")
     }
 
     @Test func aMirrorHasNoPathMenu() {
         let mirror = WindowTitle(FolderIdentity(
             shortName: "metabrowser", fullName: "github.com/jlevy/metabrowser@main", kind: .mirror,
-            kindLabel: "Cached mirror", title: "metabrowser • Metabrowser"))
+            kindLabel: "Cloud mirror", title: "metabrowser • Metabrowser"))
         #expect(!mirror.hasPathMenu)
-        #expect(mirror.subtitle == "github.com/jlevy/metabrowser@main · Cached mirror")
+        #expect(mirror.subtitle == "github.com/jlevy/metabrowser@main · Cloud mirror")
     }
 
     @Test func thePathMenuListsTheFolderThenEachContainingFolder() {

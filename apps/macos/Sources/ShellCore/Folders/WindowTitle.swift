@@ -23,10 +23,10 @@ public nonisolated struct WindowTitle: Equatable, Sendable {
     public var tabTitle: String { identity.shortName }
     /// The tab's tooltip.
     public var tabToolTip: String { identity.fullName }
-    /// "~/wrk/github/fdu · Local folder": the title's tooltip and `window.subtitle`.
+    /// "~/wrk/github/fdu · Local Git checkout": the title's tooltip and `window.subtitle`.
     public var subtitle: String { "\(identity.fullName) · \(identity.kindLabel)" }
-    /// Only a local folder has a file URL, and so a path menu.
-    public var hasPathMenu: Bool { identity.kind == .folder }
+    /// Only a local folder, a plain one or a checkout, has a file URL, and so a path menu.
+    public var hasPathMenu: Bool { identity.kind.isLocal }
 
     /// `window.title` for each of `titles`, the open folders', in order: its short name,
     /// or its full name where another open folder shares the short name, so the Window
