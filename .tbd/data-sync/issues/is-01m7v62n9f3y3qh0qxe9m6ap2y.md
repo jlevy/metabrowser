@@ -5,18 +5,18 @@ title: "Markdown: honor GitHub's allowed HTML attributes (align, width, height) 
 kind: bug
 status: in_progress
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T00:35:36.365Z
-updated_at: 2026-11-20T01:14:16.511Z
+updated_at: 2026-11-20T01:49:33.725Z
 started_at: 2026-11-20T00:36:08.335Z
 ---
 Owner, 2026-11-19, verbatim: "the metabrowser README.md has the main image, the metabrowser icon, at the top of the readme and it's nicely small and centered on GitHub.com and github renders it nicely. But in our rendering, it's large and left-aligned. We should have the same rendering by default as GitHub's own web browser." README.md line 1: <p align="center"><img src="images/metabrowser-icon.png" alt="Metabrowser app icon" width="192"></p>, then <h1 align="center">.
 
 ## Notes
 
-PR #626 (claude/markdown-github-attributes, head 3c897c64b). Cause: the inert allowlist (inert_html.py, static/inert-html.js) dropped align except on td/th and all width/height, so every untrusted render drew the icon at 512 px against the left edge. KPress 0.3.5 (bundled in 0.12.1 installs) also dropped p/h align; the pinned KPress 5a8e9ae keeps it. KPress CSS (height:auto, cell text-align, border-box) overrode the hints; shell CSS in styles.css restores them. Allowlist source: html-pipeline SanitizationFilter DEFAULT_CONFIG, the subset KPress also keeps. KPress follow-ups not fixed: its sanitizer drops valign/hspace/vspace/clear/nowrap/dir/li value/details open; GFM pipe-table column alignment lost; tables min-width:100% so table align/width have no effect; 1rem margin-block raises inline badges. Overlaps mb-4cwy (its allowlist half).
+PR #626 (claude/markdown-github-attributes, head 691c70028; CI 34 pass, 1 skipped (stack-integration), 2026-11-20). Cause: the inert allowlist (inert_html.py, static/inert-html.js) dropped align except on td/th and all width/height, so every untrusted render drew the icon at 512 px against the left edge. KPress 0.3.5 (bundled in 0.12.1 installs) also dropped p/h align; the pinned KPress 5a8e9ae keeps it. KPress CSS (height:auto, cell text-align, border-box) overrode the hints; shell CSS in styles.css restores them. Allowlist source: html-pipeline SanitizationFilter DEFAULT_CONFIG, the subset KPress also keeps. KPress follow-ups not fixed: its sanitizer drops valign/hspace/vspace/clear/nowrap/dir/li value/details open; GFM pipe-table column alignment lost; tables min-width:100% so table align/width have no effect; 1rem margin-block raises inline badges. Overlaps mb-4cwy (its allowlist half).
