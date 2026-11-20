@@ -5,15 +5,16 @@ title: "Print: drop the top bar's print icon; show a print control only on rende
 kind: task
 status: closed
 priority: 2
-version: 4
+version: 5
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7ksbn803jhw15qjc6beg7qf
 hold: null
 hold_until: null
 created_at: 2026-11-18T03:06:10.164Z
-updated_at: 2026-11-18T03:47:29.942Z
+updated_at: 2026-11-20T17:00:12.058Z
 started_at: 2026-11-18T03:13:08.743Z
 closed_at: 2026-11-18T03:47:29.941Z
 close_reason: "Implemented in PR #549 (head 7ae2a8d7e); KPress follow-up mb-jue2."

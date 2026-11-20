@@ -5,10 +5,11 @@ title: "Event log Phase 2: browse Metabrowser's own event log in Metabrowser"
 kind: feature
 status: closed
 priority: 2
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-11-19-structured-event-log.md
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7ts09te3ty0ca6tbbsybgrj
 child_order_hints:
@@ -17,7 +18,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-19T22:17:11.751Z
-updated_at: 2026-11-20T16:52:59.721Z
+updated_at: 2026-11-20T17:00:12.408Z
 started_at: 2026-11-20T02:55:08.942Z
 closed_at: 2026-11-20T07:25:02.836Z
 close_reason: "Merged in PRs 633 and 634. Follow-ups: mb-9n0x, mb-7uqr."

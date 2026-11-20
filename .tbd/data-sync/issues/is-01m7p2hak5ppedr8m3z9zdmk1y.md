@@ -5,16 +5,17 @@ title: "Address review A on #517: Overview README TOC follow-up"
 kind: task
 status: closed
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@spud10.local
 labels:
   - toc
   - files
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T00:57:30.468Z
-updated_at: 2026-11-18T01:15:08.322Z
+updated_at: 2026-11-20T17:00:13.069Z
 started_at: 2026-11-18T00:57:34.593Z
 closed_at: 2026-11-18T01:15:08.321Z
 close_reason: "Done in jlevy/metabrowser#543 (claude/overview-toc-review-a), not yet merged: A2, A3, A4, A5, A6 comments, A8 fixed; A1 deferred to mb-hpoq, A6 removal to mb-2nqa, A9 to mb-4el3; A7 declined with reason."

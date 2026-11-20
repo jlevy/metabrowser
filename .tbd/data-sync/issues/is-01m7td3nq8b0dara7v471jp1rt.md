@@ -5,14 +5,15 @@ title: "Branch chooser: list every branch, most recently committed first (no 100
 kind: task
 status: closed
 priority: 2
-version: 5
+version: 6
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T17:19:15.166Z
-updated_at: 2026-11-19T19:40:24.347Z
+updated_at: 2026-11-20T17:00:12.880Z
 started_at: 2026-11-19T17:55:57.990Z
 closed_at: 2026-11-19T19:40:24.345Z
 close_reason: "Landed in #614 (ab68526e9): the ref chooser lists every ref, checked-out/default first then newest commit first, windowed rows, memoized below MAX_ENTRY_BYTES/MAX_REF_ENTRIES, listing work off the event loop."

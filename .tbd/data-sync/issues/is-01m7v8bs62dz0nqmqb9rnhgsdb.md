@@ -5,9 +5,10 @@ title: "Branches follow the repository: a view of a branch tracks it in mirror a
 kind: epic
 status: in_progress
 priority: 1
-version: 8
+version: 9
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 child_order_hints:
   - is-01m7v8ctk4af96q7ykmb5psdd7
@@ -18,7 +19,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-20T01:15:32.417Z
-updated_at: 2026-11-20T01:21:55.511Z
+updated_at: 2026-11-20T17:00:14.737Z
 started_at: 2026-11-20T01:17:55.715Z
 ---
 Owner, 2026-11-19 in chat, after the macOS app's mirror of jlevy/metabrowser showed "main is now at 1d85c49 · Switch" at the foot of the nav pane:

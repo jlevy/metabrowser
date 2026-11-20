@@ -5,14 +5,15 @@ title: Main page's focus ring is covered by a pull request's tab bar
 kind: bug
 status: closed
 priority: 2
-version: 4
+version: 5
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T16:56:01.486Z
-updated_at: 2026-11-19T18:07:02.892Z
+updated_at: 2026-11-20T17:00:12.105Z
 started_at: 2026-11-19T16:56:32.898Z
 closed_at: 2026-11-19T18:07:02.880Z
 close_reason: "PR #609 merged"

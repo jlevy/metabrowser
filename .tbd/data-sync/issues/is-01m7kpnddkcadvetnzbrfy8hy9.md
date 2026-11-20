@@ -5,16 +5,17 @@ title: "Chrome flake: 'Chrome wrote no DevTools port' from launchChrome in tests
 kind: bug
 status: closed
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7kh4k0qtd75277xcq14dt1b
 hold: null
 hold_until: null
 created_at: 2026-11-17T02:51:32.658Z
-updated_at: 2026-11-18T07:16:11.880Z
+updated_at: 2026-11-20T17:00:13.636Z
 started_at: 2026-11-18T03:46:45.922Z
 closed_at: 2026-11-18T07:16:11.879Z
 close_reason: "Fixed by #554 (merged fb3e4809d): Chrome warm-up before the run; A11 follow-up in mb-bl54."

@@ -5,15 +5,16 @@ title: "Mirror: a pin on a branch follows the branch when a refresh moves it; Re
 kind: feature
 status: closed
 priority: 1
-version: 3
+version: 4
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7v8bs62dz0nqmqb9rnhgsdb
 hold: null
 hold_until: null
 created_at: 2026-11-20T01:16:06.627Z
-updated_at: 2026-11-20T04:47:51.370Z
+updated_at: 2026-11-20T17:00:13.688Z
 started_at: 2026-11-20T01:17:55.294Z
 closed_at: 2026-11-20T04:47:51.363Z
 close_reason: "Merged in PR #632 (f61159ade): branch and tag pins in a mirror follow their ref on refresh; the page follows. PR heads stay an offer pending mb-qp3s."

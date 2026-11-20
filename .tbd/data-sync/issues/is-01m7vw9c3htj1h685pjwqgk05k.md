@@ -5,14 +5,15 @@ title: "Branch chooser: a branch with an open pull request shows the pull reques
 kind: feature
 status: closed
 priority: 2
-version: 4
+version: 5
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T07:03:44.991Z
-updated_at: 2026-11-20T16:53:03.282Z
+updated_at: 2026-11-20T17:00:14.252Z
 started_at: 2026-11-20T07:05:04.264Z
 closed_at: 2026-11-20T09:35:02.824Z
 close_reason: "Landed in #651: the branch chooser shows each branch's pull requests"

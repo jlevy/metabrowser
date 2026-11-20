@@ -5,19 +5,20 @@ title: "One canonical design for open modes: docs/project/architecture/arch-open
 kind: task
 status: closed
 priority: 1
-version: 7
+version: 8
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/558
     at: 2026-11-18T06:18:20.473Z
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7ksbn803jhw15qjc6beg7qf
 hold: null
 hold_until: null
 created_at: 2026-11-18T05:50:12.878Z
-updated_at: 2026-11-18T07:55:06.342Z
+updated_at: 2026-11-20T17:00:13.466Z
 started_at: 2026-11-18T05:54:45.389Z
 closed_at: 2026-11-18T07:55:06.341Z
 close_reason: "Merged in #558 (cc7b1b008): docs/project/architecture/arch-open-modes.md, reviews A and B addressed."

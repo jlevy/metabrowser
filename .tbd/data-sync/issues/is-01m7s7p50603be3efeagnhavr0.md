@@ -5,14 +5,15 @@ title: Commit message bodies render as Markdown, as pull request descriptions do
 kind: task
 status: closed
 priority: 2
-version: 6
+version: 7
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T06:25:14.746Z
-updated_at: 2026-11-19T07:35:35.742Z
+updated_at: 2026-11-20T17:00:12.924Z
 started_at: 2026-11-19T06:25:33.935Z
 closed_at: 2026-11-19T07:35:35.736Z
 close_reason: "PR #603 merged"

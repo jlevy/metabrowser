@@ -5,15 +5,16 @@ title: "One declared contract between the macOS app and metab: a declaration, a 
 kind: feature
 status: closed
 priority: 1
-version: 7
+version: 8
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7rj9pgz3qf89emdaz0rbenn
 hold: null
 hold_until: null
 created_at: 2026-11-19T00:51:17.102Z
-updated_at: 2026-11-19T03:39:30.461Z
+updated_at: 2026-11-20T17:00:12.650Z
 started_at: 2026-11-19T00:51:25.272Z
 closed_at: 2026-11-19T03:39:30.449Z
 close_reason: "Landed in #593"

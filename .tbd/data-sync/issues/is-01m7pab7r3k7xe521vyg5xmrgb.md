@@ -5,9 +5,10 @@ title: "View header: move the size, file count and age (e.g. '379.2 MB · 18,344
 kind: task
 status: closed
 priority: 2
-version: 10
+version: 11
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7ksbn803jhw15qjc6beg7qf
 child_order_hints:
@@ -17,7 +18,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-18T03:13:59.554Z
-updated_at: 2026-11-18T22:04:05.431Z
+updated_at: 2026-11-20T17:00:12.599Z
 started_at: 2026-11-18T03:15:32.079Z
 closed_at: 2026-11-18T22:04:05.426Z
 close_reason: Landed in jlevy/metabrowser#550 (f105941bc)

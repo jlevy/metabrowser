@@ -5,14 +5,15 @@ title: "PR Conversation comment boxes: more horizontal padding around the text, 
 kind: task
 status: closed
 priority: 2
-version: 4
+version: 5
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T06:53:45.831Z
-updated_at: 2026-11-20T07:32:22.831Z
+updated_at: 2026-11-20T17:00:14.521Z
 started_at: 2026-11-20T06:54:25.483Z
 closed_at: 2026-11-20T07:32:22.830Z
 close_reason: "Merged in PR 646: --boxed-prose-padding-inline (16px, as github.com) for PR text and commit message boxes; design-system Boxed Prose section."

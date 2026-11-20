@@ -5,10 +5,11 @@ title: "Front matter: YAML aliases expanded on the event loop freeze the server 
 kind: bug
 status: closed
 priority: 1
-version: 6
+version: 7
 labels:
   - security
   - alpha
+  - linear
 dependencies: []
 child_order_hints:
   - is-01m7p7s75fpxmkw7z647aaqap2
@@ -16,7 +17,7 @@ child_order_hints:
   - is-01m7pbmjraba81fxxr4j11wa7r
   - is-01m7pbmk965r11qkqa2af36b25
 created_at: 2026-11-18T00:00:33.419Z
-updated_at: 2026-11-18T17:04:22.066Z
+updated_at: 2026-11-20T17:00:14.877Z
 closed_at: 2026-11-18T17:04:22.065Z
 close_reason: "Fixed by #542 (merged 3af860113): bounded YAML loader; deferrals tracked in their own beads."
 resolution: null

@@ -5,14 +5,15 @@ title: "Files view: the border under the file tally stops short of the full widt
 kind: bug
 status: closed
 priority: 2
-version: 7
+version: 8
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T21:04:19.094Z
-updated_at: 2026-11-19T00:25:04.755Z
+updated_at: 2026-11-20T17:00:14.289Z
 started_at: 2026-11-18T21:06:44.438Z
 closed_at: 2026-11-19T00:25:04.754Z
 close_reason: "Landed in #573 (1a2cabe60)"

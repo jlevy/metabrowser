@@ -3,9 +3,9 @@ type: is
 id: is-01m7ksbn803jhw15qjc6beg7qf
 title: "Coordinate landing the open PRs, Fast CI Phases 1-2, plan currency and 0.13 prep per PR #497 handoff (2026-11-17)"
 kind: epic
-status: in_progress
+status: closed
 priority: 1
-version: 47
+version: 48
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -49,8 +49,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T03:38:38.720Z
-updated_at: 2026-11-18T20:11:52.290Z
+updated_at: 2026-11-20T17:00:26.767Z
 started_at: 2026-11-17T03:38:54.763Z
+closed_at: 2026-11-20T17:00:26.758Z
+close_reason: "Landing coordination complete: every PR its notes list is merged (#499, #504, #506, #509-#511, #513-#517, #521-#530, #532, #533, #536, #538-#547, #549-#552, #554); #555 was closed on the owner's decision. Its live follow-ups moved to feature epics"
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes

@@ -5,14 +5,15 @@ title: "Chevron that hides the navigation pane: transparent plate, 1px from the 
 kind: bug
 status: closed
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T06:21:12.283Z
-updated_at: 2026-11-19T06:32:31.589Z
+updated_at: 2026-11-20T17:00:12.939Z
 started_at: 2026-11-19T06:21:20.661Z
 closed_at: 2026-11-19T06:32:31.587Z
 close_reason: "Merged in #600 as c2c4d9958."

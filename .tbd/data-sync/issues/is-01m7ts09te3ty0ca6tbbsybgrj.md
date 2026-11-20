@@ -5,9 +5,10 @@ title: Structured JSON event log with latency for every request and background j
 kind: feature
 status: closed
 priority: 1
-version: 8
+version: 9
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 child_order_hints:
   - is-01m7ty5641esbwep3vxsjr43d1
@@ -15,7 +16,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-19T20:47:07.583Z
-updated_at: 2026-11-20T16:52:58.158Z
+updated_at: 2026-11-20T17:00:14.301Z
 started_at: 2026-11-19T22:16:19.211Z
 closed_at: 2026-11-20T00:32:07.750Z
 close_reason: "Phase 1 server side landed: #618 (f527f0801) JSONL event log + /api/event-log; #620 (1d85c491c) cause-first GitHub failure messages, network probe, /api/event-log/failures. Browser beacon and page link: mb-9zp5; in-app log UI: mb-4rr7."

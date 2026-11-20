@@ -5,14 +5,15 @@ title: "File header: size and age sit right of the filename, not on their own li
 kind: task
 status: closed
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T00:48:28.211Z
-updated_at: 2026-11-19T01:30:35.256Z
+updated_at: 2026-11-20T17:00:14.180Z
 started_at: 2026-11-19T00:49:08.160Z
 closed_at: 2026-11-19T01:30:35.249Z
 close_reason: "Landed in #592"

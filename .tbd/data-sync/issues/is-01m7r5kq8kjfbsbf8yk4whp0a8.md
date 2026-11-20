@@ -5,14 +5,15 @@ title: "Flake: test_recent_targets concurrent writers hit the 2 s lock wait on l
 kind: bug
 status: closed
 priority: 3
-version: 4
+version: 5
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T20:29:43.551Z
-updated_at: 2026-11-18T22:17:17.267Z
+updated_at: 2026-11-20T17:00:12.898Z
 started_at: 2026-11-18T21:02:22.944Z
 closed_at: 2026-11-18T22:17:17.266Z
 close_reason: null

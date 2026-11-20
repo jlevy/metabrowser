@@ -5,13 +5,14 @@ title: "metab TARGET --present: resolve (--dry-run --json) and hand a target to 
 kind: feature
 status: closed
 priority: 1
-version: 2
+version: 3
 labels:
   - skill
   - alpha
+  - linear
 dependencies: []
 created_at: 2026-11-17T23:45:57.914Z
-updated_at: 2026-11-18T17:04:22.837Z
+updated_at: 2026-11-20T17:00:12.870Z
 closed_at: 2026-11-18T17:04:22.836Z
 close_reason: "Done in #540 (merged e769513d9): metab --present with dry-run JSON and handoff to the app."
 resolution: null

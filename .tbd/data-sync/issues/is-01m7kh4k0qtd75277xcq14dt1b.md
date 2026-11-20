@@ -3,11 +3,12 @@ type: is
 id: is-01m7kh4k0qtd75277xcq14dt1b
 title: CI takes ~20-25 minutes per push; assess end to end and design how to get the PR gate to 3-5 minutes with the same coverage
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 37
+version: 40
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 child_order_hints:
   - is-01m7kpmdd2sqmd8xdkp7nmef7k
@@ -38,11 +39,16 @@ child_order_hints:
   - is-01m7mby7m1z850mwaf34qn4xfx
   - is-01m7pj8gve71bkvxyw96nqa4yn
   - is-01m7pjrkn0aprh3pz0m4ba5ff6
+  - is-01m7wybwgt2zk3z9wgw4ge1kyg
 hold: null
 hold_until: null
 created_at: 2026-11-17T01:14:58.454Z
-updated_at: 2026-11-18T05:41:06.331Z
+updated_at: 2026-11-20T17:00:28.357Z
 started_at: 2026-11-17T01:15:52.976Z
+closed_at: 2026-11-20T17:00:28.355Z
+close_reason: "Per its own note (close when Phase 2 merges): the assessment and plan merged in PR #496, Phase 1 in #499 and Phase 2 in #504 (pull requests measured at 4.7 to 5.5 minutes). The remaining Fast CI work continues under the CI speed epic"
+resolution: null
+duplicate_of: null
 ---
 Owner, 2026-11-16: 'investigate why CI is taking so long. This is unacceptably slow for CI. CI should be something like 3 to 5 minutes, or else we should figure out ways to avoid extraneous checks except when they're appropriate. ... properly assess this end-to-end and what the proper engineering solution is to maintain the same levels of coverage but speed up our development velocity.' Deliverable: a research brief and plan PR with implementation beads; workflow-file changes need the owner's OK (no grant covers workflow files).
 

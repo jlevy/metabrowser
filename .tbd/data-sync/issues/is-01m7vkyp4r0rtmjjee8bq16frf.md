@@ -5,14 +5,15 @@ title: "Phase 1: recognize current Claude Code transcripts and Codex rollouts"
 kind: task
 status: closed
 priority: 1
-version: 3
+version: 4
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T04:38:06.231Z
-updated_at: 2026-11-20T05:35:55.199Z
+updated_at: 2026-11-20T17:00:12.736Z
 started_at: 2026-11-20T04:38:09.939Z
 closed_at: 2026-11-20T05:35:55.193Z
 close_reason: "Phase 1 merged in #636 (cfa3ca760)."

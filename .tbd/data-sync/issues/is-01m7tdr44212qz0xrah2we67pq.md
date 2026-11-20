@@ -5,14 +5,15 @@ title: "Open URL: correct an obvious missing https:// instead of refusing it"
 kind: bug
 status: closed
 priority: 2
-version: 5
+version: 6
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T17:30:25.279Z
-updated_at: 2026-11-19T18:22:06.101Z
+updated_at: 2026-11-20T17:00:13.595Z
 started_at: 2026-11-19T17:31:02.481Z
 closed_at: 2026-11-19T18:22:06.093Z
 close_reason: "Landed in #612 (5055819d2): Open URL… adds https:// to a GitHub host typed without a scheme and upgrades http://; the CLI completes a scheme-less GitHub URL that names nothing on disk. owner/repo shorthand dropped per the owner's recorded answer."

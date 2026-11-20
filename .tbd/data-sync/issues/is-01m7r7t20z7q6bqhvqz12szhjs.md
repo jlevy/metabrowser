@@ -5,14 +5,15 @@ title: "Pulls nav: one outer hover/selection zone for a pull request's three lin
 kind: feature
 status: closed
 priority: 2
-version: 5
+version: 6
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T21:08:08.349Z
-updated_at: 2026-11-19T00:25:21.004Z
+updated_at: 2026-11-20T17:00:12.166Z
 started_at: 2026-11-18T21:09:11.984Z
 closed_at: 2026-11-19T00:25:21.003Z
 close_reason: "Landed in #584 (db33e16d2)"

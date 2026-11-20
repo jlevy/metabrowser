@@ -5,16 +5,17 @@ title: "File type categories: one representative gray icon per category (e.g. Do
 kind: feature
 status: closed
 priority: 2
-version: 6
+version: 7
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies:
   - type: blocks
     target: is-01m7raatxaeyxam9feb76y6w11
 hold: null
 hold_until: null
 created_at: 2026-11-18T21:13:06.273Z
-updated_at: 2026-11-18T23:34:31.052Z
+updated_at: 2026-11-20T17:00:12.990Z
 started_at: 2026-11-18T21:13:58.451Z
 closed_at: 2026-11-18T23:34:31.041Z
 close_reason: "Merged in #583 (729b67553)"

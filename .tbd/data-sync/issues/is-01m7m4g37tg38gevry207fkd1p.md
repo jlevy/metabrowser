@@ -5,16 +5,17 @@ title: "Pulls tab: rows flush left unless stacked; chevron sits left of the chan
 kind: feature
 status: closed
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@spud10.local
 labels:
   - ui
   - pulls
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-17T06:53:18.445Z
-updated_at: 2026-11-17T07:36:29.926Z
+updated_at: 2026-11-20T17:00:12.355Z
 started_at: 2026-11-17T06:53:22.815Z
 closed_at: 2026-11-17T07:36:29.916Z
 close_reason: Done in jlevy/metabrowser#506 (claude/pulls-row-indent)

@@ -5,10 +5,11 @@ title: "CI speed: under xdist a worker of test (3.12) crashed and the job then h
 kind: bug
 status: closed
 priority: 1
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 delegate: claude-code@vm
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7kh4k0qtd75277xcq14dt1b
 child_order_hints:
@@ -16,7 +17,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T07:45:34.269Z
-updated_at: 2026-11-17T16:41:29.817Z
+updated_at: 2026-11-20T17:00:13.665Z
 started_at: 2026-11-17T08:39:11.696Z
 closed_at: 2026-11-17T16:41:29.815Z
 close_reason: "Fixed by #514, merged to main at 4eb299fd1 (2026-11-17)."

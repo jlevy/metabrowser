@@ -5,14 +5,15 @@ title: Load remote images in cloud-repo Markdown by default, like GitHub; a priv
 kind: bug
 status: closed
 priority: 1
-version: 5
+version: 6
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T05:55:02.515Z
-updated_at: 2026-11-20T08:57:57.242Z
+updated_at: 2026-11-20T17:00:12.221Z
 started_at: 2026-11-20T05:56:00.070Z
 closed_at: 2026-11-20T08:57:57.241Z
 close_reason: "Landed in #644: remote images on by default with a Block remote images setting, sandboxed shell, no-referrer"

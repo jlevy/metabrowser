@@ -5,14 +5,15 @@ title: "Flake: macOS PageRevealWebKitTests and PagePrintTests time out waiting f
 kind: bug
 status: closed
 priority: 2
-version: 4
+version: 5
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T17:22:31.755Z
-updated_at: 2026-11-18T22:35:26.168Z
+updated_at: 2026-11-20T17:00:12.128Z
 started_at: 2026-11-18T21:02:21.019Z
 closed_at: 2026-11-18T22:35:26.167Z
 close_reason: "Root cause fixed in #576 (6d7aae3ae): an early WKDownload cancel ended WebKit's network process"

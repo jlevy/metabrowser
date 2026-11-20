@@ -5,14 +5,15 @@ title: "Main red after #608: nav-collapse Chrome test says a press in Up does no
 kind: bug
 status: closed
 priority: 0
-version: 4
+version: 5
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T16:55:23.307Z
-updated_at: 2026-11-19T17:18:13.291Z
+updated_at: 2026-11-20T17:00:13.006Z
 started_at: 2026-11-19T16:56:06.769Z
 closed_at: 2026-11-19T17:18:13.290Z
 close_reason: "PR #610 merged (test-only: wait for the committed view; sample layout after two frames)"

@@ -5,14 +5,15 @@ title: "View on GitHub: one split button, upper right, on every page with a gith
 kind: feature
 status: closed
 priority: 1
-version: 3
+version: 4
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T23:24:01.127Z
-updated_at: 2026-11-19T02:36:37.523Z
+updated_at: 2026-11-20T17:00:12.440Z
 started_at: 2026-11-18T23:25:43.020Z
 closed_at: 2026-11-19T02:36:37.522Z
 close_reason: "Landed in #595 (b304e6ca3)"

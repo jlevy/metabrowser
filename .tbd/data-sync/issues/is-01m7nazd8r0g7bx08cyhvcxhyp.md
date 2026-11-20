@@ -5,11 +5,12 @@ title: Remove the npm audit exception for GHSA-fc5q-39xc-vjpf (picomatch ReDoS v
 kind: task
 status: closed
 priority: 2
-version: 6
-labels: []
+version: 7
+labels:
+  - linear
 dependencies: []
 created_at: 2026-11-17T18:05:46.135Z
-updated_at: 2026-11-18T00:36:49.259Z
+updated_at: 2026-11-20T17:00:13.645Z
 closed_at: 2026-11-18T00:36:49.258Z
 close_reason: "Done in jlevy/metabrowser#538 (merged b537e30db): tryscript 0.4.0 removes picomatch; the #523 exception is deleted"
 resolution: null

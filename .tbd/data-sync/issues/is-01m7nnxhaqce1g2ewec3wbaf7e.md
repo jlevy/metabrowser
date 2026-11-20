@@ -5,9 +5,10 @@ title: Open anything from the CLI, the skill, and the macOS app (owner asked 202
 kind: epic
 status: open
 priority: 1
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
-labels: []
+labels:
+  - linear
 dependencies: []
 child_order_hints:
   - is-01m7nnxjg24xah0m43frr8qhrj
@@ -26,6 +27,6 @@ child_order_hints:
   - is-01m7raej2pvscj726pn3nsh2cy
   - is-01m7rd4zsg2sdmwtz7z1w2z9ws
 created_at: 2026-11-17T21:16:59.095Z
-updated_at: 2026-11-18T22:41:29.390Z
+updated_at: 2026-11-20T17:00:14.684Z
 ---
 One invocation, metab TARGET --present, opens any folder, file, or GitHub URL in the native app when installed and preferred, else a browser, and reports what it did. GitHub URLs and File > Open Location in the app, GitHub sign-in checks, and (Phase 2) named UI commands. Owner decisions: the spec's Open Questions.

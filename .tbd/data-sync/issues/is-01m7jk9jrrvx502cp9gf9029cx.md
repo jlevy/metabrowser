@@ -5,15 +5,16 @@ title: "Stack plan currency: Stack Order rows and phases for layers 23 to 28, st
 kind: task
 status: closed
 priority: 1
-version: 4
+version: 5
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
 hold: null
 hold_until: null
 created_at: 2026-11-16T16:33:24.758Z
-updated_at: 2026-11-17T06:45:50.076Z
+updated_at: 2026-11-20T17:00:13.654Z
 started_at: 2026-11-16T21:06:43.696Z
 closed_at: 2026-11-17T06:45:50.076Z
 close_reason: "PR #500 merged at e442ed10d: plan-2026-11-15 moved to specs/done with Phases 29-31 ticked, Stack Order and references current; Review A dispositioned; CI green at 895cbb20c."

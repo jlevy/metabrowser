@@ -5,15 +5,16 @@ title: "PR view and Pulls: every drawn element is persisted on disk and painted 
 kind: task
 status: closed
 priority: 1
-version: 3
+version: 4
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7n6v8n050erzeb13c5tasar
 hold: null
 hold_until: null
 created_at: 2026-11-17T17:19:32.763Z
-updated_at: 2026-11-18T04:44:14.089Z
+updated_at: 2026-11-20T17:00:12.919Z
 started_at: 2026-11-17T17:21:41.824Z
 closed_at: 2026-11-18T04:44:14.087Z
 close_reason: "Landed in #528 (1c06d4635). Gap 3 is fixed by #530 and gap 2 by #533, both queued with the coordinator. Gap 1 (avatars) is left for the owner and stays a strict xfail."

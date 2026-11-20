@@ -5,14 +5,15 @@ title: "Markdown: honor GitHub's allowed HTML attributes (align, width, height) 
 kind: bug
 status: closed
 priority: 2
-version: 6
+version: 7
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T00:35:36.365Z
-updated_at: 2026-11-20T02:31:43.311Z
+updated_at: 2026-11-20T17:00:12.558Z
 started_at: 2026-11-20T00:36:08.335Z
 closed_at: 2026-11-20T02:31:43.309Z
 close_reason: Merged in PR 626

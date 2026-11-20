@@ -5,14 +5,15 @@ title: "Files toolbar: move Show ignored into the filter drawer"
 kind: task
 status: closed
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T06:18:59.883Z
-updated_at: 2026-11-19T06:41:45.583Z
+updated_at: 2026-11-20T17:00:12.889Z
 started_at: 2026-11-19T06:19:03.926Z
 closed_at: 2026-11-19T06:41:45.582Z
 close_reason: "PR #601 merged"

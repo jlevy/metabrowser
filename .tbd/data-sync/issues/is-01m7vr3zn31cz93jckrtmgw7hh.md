@@ -5,8 +5,9 @@ title: "Agent operations Phase 2: basic views"
 kind: epic
 status: closed
 priority: 1
-version: 8
-labels: []
+version: 9
+labels:
+  - linear
 dependencies: []
 child_order_hints:
   - is-01m7vr4448r7931hqrsp5b41ax
@@ -15,7 +16,7 @@ child_order_hints:
   - is-01m7vr45rqhdjbqk3bnhwajc6b
   - is-01m7vr46rebr2dvrg54t7sfqsj
 created_at: 2026-11-20T05:50:54.106Z
-updated_at: 2026-11-20T16:53:01.074Z
+updated_at: 2026-11-20T17:00:13.544Z
 closed_at: 2026-11-20T16:33:13.134Z
 close_reason: "Phase 2 merged: the stack #639-#655 landed as ab64b5c"
 resolution: null

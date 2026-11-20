@@ -5,10 +5,11 @@ title: "CI speed: test_selected_full_wait_returns_the_settled_conditional_read[s
 kind: bug
 status: closed
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 delegate: claude-code@vm
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7kh4k0qtd75277xcq14dt1b
 child_order_hints:
@@ -16,7 +17,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T08:41:00.158Z
-updated_at: 2026-11-17T22:23:17.290Z
+updated_at: 2026-11-20T17:00:14.379Z
 started_at: 2026-11-17T08:43:14.756Z
 closed_at: 2026-11-17T22:23:17.290Z
 close_reason: "Fixed by #515 (reviewed, dispositioned, green), merged to main at e3689d6f7 on 2026-11-17."

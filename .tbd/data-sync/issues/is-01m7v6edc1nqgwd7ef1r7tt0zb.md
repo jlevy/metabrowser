@@ -5,14 +5,15 @@ title: Show pushed (compressed) size of commits and pull requests, with uncompre
 kind: feature
 status: closed
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@vm
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T00:42:01.473Z
-updated_at: 2026-11-20T04:48:00.271Z
+updated_at: 2026-11-20T17:00:12.607Z
 started_at: 2026-11-20T00:42:04.553Z
 closed_at: 2026-11-20T04:48:00.270Z
 close_reason: "Implemented in jlevy/metabrowser#627: commit and pull request sizes as Git pushes them, kept beside the store, shown on a size line above the Diff summary."

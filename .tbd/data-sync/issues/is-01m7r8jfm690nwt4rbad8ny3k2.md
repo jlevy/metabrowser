@@ -5,9 +5,10 @@ title: "Design system: a systematic icon catalog (file formats, categories, chro
 kind: feature
 status: closed
 priority: 2
-version: 8
+version: 9
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 child_order_hints:
   - is-01m7raatxaeyxam9feb76y6w11
@@ -18,7 +19,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-18T21:21:28.704Z
-updated_at: 2026-11-18T23:24:53.394Z
+updated_at: 2026-11-20T17:00:14.867Z
 started_at: 2026-11-18T21:23:08.714Z
 closed_at: 2026-11-18T23:24:53.393Z
 close_reason: "Merged in #580 (b383f25e0)"

@@ -5,14 +5,15 @@ title: Concurrent private-file writers can unlink each other's new temporary
 kind: bug
 status: closed
 priority: 1
-version: 4
+version: 5
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-17T08:26:42.203Z
-updated_at: 2026-11-18T04:04:08.197Z
+updated_at: 2026-11-20T17:00:12.484Z
 started_at: 2026-11-18T03:33:47.227Z
 closed_at: 2026-11-18T04:04:08.196Z
 close_reason: "Fixed on claude/private-writer-race: a writer creates and locks its temporary under a shared flock on the directory, and a sweep judges other temporaries only under the exclusive one (src/metabrowser/home.py). Deterministic regression and thread/process stress tests in tests/test_cache_atomic.py."

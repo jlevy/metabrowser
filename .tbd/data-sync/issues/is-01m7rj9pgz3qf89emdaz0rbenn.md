@@ -5,16 +5,17 @@ title: "One rule for the app's command-line dependencies (metab, gh, future tool
 kind: feature
 status: closed
 priority: 1
-version: 10
+version: 11
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 child_order_hints:
   - is-01m7rmjmzgk91n9czy6g19qk75
 hold: null
 hold_until: null
 created_at: 2026-11-19T00:11:26.622Z
-updated_at: 2026-11-19T04:11:15.458Z
+updated_at: 2026-11-20T17:00:12.819Z
 started_at: 2026-11-19T00:12:06.859Z
 closed_at: 2026-11-19T04:11:15.457Z
 close_reason: "Phases 1-3 landed: #590 (minimum release and versioning rule), #596 (metab --doctor checks, gh minimum, Help > Check Setup..., contract entries). Review B Lows tracked separately."

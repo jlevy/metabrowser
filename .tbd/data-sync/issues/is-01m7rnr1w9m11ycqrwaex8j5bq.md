@@ -5,14 +5,15 @@ title: "Flaky: test_present real-server test binds the default port 8411 and col
 kind: bug
 status: closed
 priority: 1
-version: 3
+version: 4
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T01:11:42.728Z
-updated_at: 2026-11-19T01:33:31.675Z
+updated_at: 2026-11-20T17:00:12.215Z
 started_at: 2026-11-19T01:12:06.136Z
 closed_at: 2026-11-19T01:33:31.674Z
 close_reason: "Landed in #594"

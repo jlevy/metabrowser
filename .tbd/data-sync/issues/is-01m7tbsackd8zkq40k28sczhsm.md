@@ -5,14 +5,15 @@ title: Pulls tab says '#N is not listed under Closed' instead of listing it
 kind: bug
 status: closed
 priority: 2
-version: 6
+version: 7
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T16:56:07.314Z
-updated_at: 2026-11-19T19:07:01.471Z
+updated_at: 2026-11-20T17:00:12.308Z
 started_at: 2026-11-19T16:56:37.177Z
 closed_at: 2026-11-19T19:07:01.469Z
 close_reason: "PR #611 merged"

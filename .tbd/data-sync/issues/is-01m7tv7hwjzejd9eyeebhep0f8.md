@@ -5,15 +5,16 @@ title: "Phase 1: table plugin, plugin dependencies, live open files, CSV and rec
 kind: feature
 status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
-labels: []
+labels:
+  - linear
 dependencies:
   - type: blocks
     target: is-01m7tv7jb1aytm2d0dydd2yec7
 parent_id: is-01m7tv7gz4yk6tygqfexgtw0s2
 created_at: 2026-11-19T21:26:02.385Z
-updated_at: 2026-11-20T06:30:45.778Z
+updated_at: 2026-11-20T17:00:12.800Z
 closed_at: 2026-11-20T06:30:45.778Z
 close_reason: "Superseded: the plan now has eight phases; re-cut as new phase beads"
 resolution: null

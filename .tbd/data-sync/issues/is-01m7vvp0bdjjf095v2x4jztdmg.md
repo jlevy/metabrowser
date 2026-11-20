@@ -5,14 +5,15 @@ title: "Files overview: less, uniform bar indent; legend names up to 9 file type
 kind: task
 status: closed
 priority: 2
-version: 4
+version: 5
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T06:53:10.379Z
-updated_at: 2026-11-20T16:53:02.243Z
+updated_at: 2026-11-20T17:00:12.586Z
 started_at: 2026-11-20T06:53:46.204Z
 closed_at: 2026-11-20T07:59:52.725Z
 close_reason: "Merged in PR 650: legend names up to 9 families at >= 1% plus Other; overview label column 130px measured."

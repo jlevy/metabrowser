@@ -5,10 +5,11 @@ title: "Spec: switch folders in a macOS app window"
 kind: epic
 status: in_progress
 priority: 2
-version: 17
+version: 18
 spec_path: docs/project/specs/active/plan-2026-11-18-macos-folder-switching.md
 delegate: claude-code@spud10
-labels: []
+labels:
+  - linear
 dependencies: []
 child_order_hints:
   - is-01m7r5cnfs2h2yhkcgj238s73w
@@ -29,7 +30,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-18T20:25:51.840Z
-updated_at: 2026-11-18T23:10:19.683Z
+updated_at: 2026-11-20T17:00:12.253Z
 started_at: 2026-11-18T20:58:34.140Z
 ---
 A window shows any open folder in place; folders a window switches away from stay open in the background; the title is a native chooser of open and recent folders with an always-shown chevron and a hover surface; a native switcher panel; marks shared with the page. Native chrome, design-system content. Draft awaiting the owner's answers to Q1-Q5.

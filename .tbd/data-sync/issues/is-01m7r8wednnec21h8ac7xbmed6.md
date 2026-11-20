@@ -5,13 +5,14 @@ title: "App: use the GitHub status check to tell sign-in, scope, and access fail
 kind: feature
 status: open
 priority: 3
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 created_at: 2026-11-18T21:26:55.155Z
-updated_at: 2026-11-18T21:26:55.155Z
+updated_at: 2026-11-20T17:00:12.157Z
 ---
 Follow-up to mb-m0ry, which built the app's GitHub failure states without depending on mb-si2g.
 

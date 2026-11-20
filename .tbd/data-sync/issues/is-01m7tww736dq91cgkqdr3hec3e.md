@@ -5,10 +5,11 @@ title: "Markdown transclusion loading state: a delayed skeleton, not a visible s
 kind: task
 status: open
 priority: 3
-version: 1
-labels: []
+version: 2
+labels:
+  - linear
 dependencies: []
 created_at: 2026-11-19T21:54:48.037Z
-updated_at: 2026-11-19T21:54:48.037Z
+updated_at: 2026-11-20T17:00:12.742Z
 ---
 Deferred from the 2026-11-19 design-system consistency audit (mb-yiti); see that bead's PR for the finding.

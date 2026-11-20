@@ -5,14 +5,15 @@ title: "Title folder menu: the cloud or folder icon sits on the name's line, not
 kind: bug
 status: closed
 priority: 2
-version: 5
+version: 6
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T01:10:01.003Z
-updated_at: 2026-11-20T02:39:54.467Z
+updated_at: 2026-11-20T17:00:14.416Z
 started_at: 2026-11-20T01:12:38.418Z
 closed_at: 2026-11-20T02:39:54.466Z
 close_reason: "Merged in PR 628. Check mark stays centered on two-line rows: a custom onStateImage loses AXMenuItemMarkChar (accessibility checked state), so the accessible native check was kept."

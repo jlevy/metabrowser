@@ -5,8 +5,9 @@ title: Each Pulls row has a third line, its brief change line ('21 A, 15 M, 7 D 
 kind: feature
 status: closed
 priority: 1
-version: 19
-labels: []
+version: 20
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 child_order_hints:
@@ -27,7 +28,7 @@ child_order_hints:
   - is-01m7ke9rg45z8ngbqmdcc4dbbm
   - is-01m7ke9s0nfjbdz4jz7w3e1r6k
 created_at: 2026-11-16T21:47:33.689Z
-updated_at: 2026-11-17T03:06:15.568Z
+updated_at: 2026-11-20T17:00:14.849Z
 closed_at: 2026-11-17T03:06:15.567Z
 close_reason: "Merged in #491 (ae554dda8)"
 resolution: null

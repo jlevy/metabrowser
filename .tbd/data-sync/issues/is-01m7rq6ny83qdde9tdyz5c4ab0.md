@@ -5,16 +5,17 @@ title: Pass diagrams=mermaid to KPress once a release draws svg fences as code
 kind: task
 status: closed
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md
 labels:
   - blocked-upstream
+  - linear
 dependencies: []
 parent_id: is-01m0k3nbmdvy9x8g3r8t9ckzjt
 hold: null
 hold_until: null
 created_at: 2026-11-19T01:37:10.598Z
-updated_at: 2026-11-19T07:21:13.407Z
+updated_at: 2026-11-20T17:00:12.140Z
 closed_at: 2026-11-19T07:21:13.402Z
 close_reason: 'Done in #597 with jlevy/kpress#80: KPressRenderRequest.diagrams exists on the KPress branch; kpress_adapter passes diagrams="mermaid"; cli-api-untrusted-markdown pins the svg fence as code, trusted and inert.'
 resolution: null

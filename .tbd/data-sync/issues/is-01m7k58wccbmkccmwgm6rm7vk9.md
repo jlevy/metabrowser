@@ -5,15 +5,16 @@ title: "Pulls keyboard: Up and Down walk pull requests without expanding their f
 kind: feature
 status: closed
 priority: 1
-version: 3
+version: 4
 delegate: claude-code@spud10.local
-labels: []
+labels:
+  - linear
 dependencies: []
 parent_id: is-01m7k58sxt39xnf5cfd3ct05p8
 hold: null
 hold_until: null
 created_at: 2026-11-16T21:47:36.200Z
-updated_at: 2026-11-17T03:06:15.132Z
+updated_at: 2026-11-20T17:00:12.148Z
 started_at: 2026-11-16T23:32:55.940Z
 closed_at: 2026-11-17T03:06:15.131Z
 close_reason: "Merged in #491 (ae554dda8)"

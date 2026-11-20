@@ -5,16 +5,17 @@ title: "Folder overview: the language legend's entries show the bar's tooltip an
 kind: feature
 status: closed
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@spud10.local
 labels:
   - ui
   - files
+  - linear
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-17T15:46:45.836Z
-updated_at: 2026-11-17T16:14:57.892Z
+updated_at: 2026-11-20T17:00:14.542Z
 started_at: 2026-11-17T15:47:52.321Z
 closed_at: 2026-11-17T16:14:57.891Z
 close_reason: Done in jlevy/metabrowser#516 (claude/overview-legend-hover)
