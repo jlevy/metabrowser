@@ -80,6 +80,7 @@ LONG: list[tuple[str, Params]] = [
     ("rows", {"after": AFTER, "limit": "1000"}),
     ("rows", {"sort": "n", "order": "asc", "limit": "200"}),
     ("rows", {"sort": "n", "order": "desc", "limit": "200"}),
+    ("record", {"key": "@151", "generation": GENERATION}),
 ]
 
 

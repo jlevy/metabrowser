@@ -16,9 +16,16 @@
 // not the page, scrolls; that columns the reader chose keep their first column in place
 // as they scroll sideways, and default columns too many for the pane hide from the right
 // with a note; and that null is drawn in the muted ink, a number right-aligned in tabular
-// numerals, and a date in the monospaced face. Which rows, columns, and cells exist, what
-// a key does, and what the address holds run browserlessly in
-// tests/dom/table-view-session.js.
+// numerals, and a date in the monospaced face; that a windowed table's print says which
+// rows it printed; and the browser's own history: that a run of key presses past Chrome's
+// bound on history calls (200 in 10 seconds) still lets Enter push the record's address,
+// whose Back link returns to the grid where the keys left it, and that a reload returns
+// there too. Which rows, columns, and cells exist, what a key does, and what the address
+// holds run browserlessly in tests/dom/table-view-session.js.
+
+// Key presses in a run: past the 200 history calls Chrome allows in 10 seconds.
+const PRESSES = 260;
+
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -191,8 +198,25 @@ async function main() {
     await shot("2-two-lines");
     phase("two-lines");
 
-    // A long table: the grid's own box scrolls, and its header stays at the box's top.
+    // A long table, printed before it has read past its first page: the page says which
+    // rows it printed, and the toolbar, with the count, is not printed.
     await open("many.csv", 20);
+    await chrome.send("Emulation.setEmulatedMedia", { media: "print" });
+    measured.print = await chrome.evaluate(`(() => {
+      window.dispatchEvent(new Event("beforeprint"));
+      const note = __t().q(".table-print-note");
+      const shown = {
+        note: note.textContent,
+        noteShown: getComputedStyle(note).display !== "none",
+        toolbarShown: getComputedStyle(__t().q(".table-toolbar")).display !== "none",
+        rows: __t().qa("tbody tr:not(.table-spacer)").length,
+      };
+      window.dispatchEvent(new Event("afterprint"));
+      return shown;
+    })()`);
+    await chrome.send("Emulation.setEmulatedMedia", { media: "" });
+
+    // A long table: the grid's own box scrolls, and its header stays at the box's top.
     measured.sticky = await chrome.evaluate(`(async () => {
       const scroll = __t().scroll;
       const head = __t().q("thead th");
@@ -213,6 +237,71 @@ async function main() {
     })()`);
     await shot("3-sticky");
     phase("sticky");
+
+    // A run of key presses, then Enter: the view writes its place once the keys stop, not
+    // a press each, so Chrome still takes the record's push; the Back link returns to the
+    // grid at the row and scroll the keys left, and so does a reload.
+    await open("many.csv", 20);
+    measured.history = await chrome.evaluate(`(async () => {
+      const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const until = async (test) => {
+        for (let wait = 0; wait < 200 && !test(); wait++) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        return test();
+      };
+      const calls = { pushState: 0, replaceState: 0 };
+      for (const name of Object.keys(calls)) {
+        const original = history[name].bind(history);
+        history[name] = (...args) => {
+          calls[name] += 1;
+          return original(...args);
+        };
+      }
+      const press = (key) =>
+        document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+      __t().q("tbody tr:not(.table-spacer)").focus();
+      for (let index = 0; index < ${PRESSES}; index++) {
+        press("ArrowDown");
+        if (index % 20 === 19) {
+          await frames();
+        }
+      }
+      const whilePressing = { ...calls };
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const afterPause = { ...calls };
+      const row = Number(document.activeElement.dataset.index);
+      press("Enter");
+      const opened = await until(() => __t().q(".table-record-title")?.textContent);
+      const recordAddress = location.search;
+      const scrollBefore = __t().scroll.scrollTop;
+      __t().q(".table-back").click();
+      await until(() => __t().q(".table-record").hidden);
+      await frames();
+      return {
+        whilePressing,
+        afterPause,
+        row,
+        opened,
+        recordAddress,
+        backAddress: location.search,
+        gridShown: !__t().scroll.hidden && __t().q(".table-record").hidden,
+        tabStop: __t().q("tbody tr[tabindex='0']")?.dataset.index ?? null,
+        scrollTop: __t().scroll.scrollTop,
+      };
+    })()`);
+    await chrome.evaluate("window.__beforeReload = true");
+    await chrome.send("Page.reload", {});
+    await chrome.waitFor(
+      `(() => { try { ${VIEW}; return !window.__beforeReload && __t().qa("tbody tr:not(.table-spacer)").length >= 20; } catch { return false; } })()`,
+    );
+    await chrome.evaluate(VIEW);
+    await sleep(500);
+    measured.reload = await chrome.evaluate(`({
+      scrollTop: __t().scroll.scrollTop,
+      tabStop: __t().q("tbody tr[tabindex='0']")?.dataset.index ?? null,
+    })`);
+    phase("history");
 
     // Default columns too many for the pane hide from the right, with a note; columns the
     // reader chose all show, and the first stays in place as they scroll sideways.

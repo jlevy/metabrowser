@@ -11,7 +11,16 @@ shell's own page, and measures what no browserless DOM computes:
 - the grid's own box scrolls, not the page, and its header stays at the box's top;
 - default columns too many for the pane hide from the right with a note saying how many;
   columns the reader chose all show, and the first stays in place as they scroll
-  sideways.
+  sideways;
+- each row height the view estimates before it measures (``ROW_HEIGHT_ESTIMATE_PX``) is
+  within half a pixel of the height Chrome lays out, the threshold past which the view
+  draws its first window again;
+- a windowed table printed before its last page was read says on the page which rows it
+  printed, and the toolbar is not printed;
+- the browser's own history: a run of key presses past Chrome's bound on history calls
+  (200 in 10 seconds) writes the place once, after the keys stop, so Enter still pushes
+  the record's address; its Back link returns to the grid at the row and scroll the keys
+  left; and a reload returns there too.
 
 What the address holds, which rows and cells exist, and what a key does run browserless
 in ``tests/dom/table-view-session.js``. Without Chrome this skips (``require_chrome`` in
@@ -23,6 +32,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import sys
 from pathlib import Path
@@ -34,7 +44,11 @@ from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_gro
 from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "table-view-chrome.mjs"
-# A server start, one Chrome, and five tables, as the event-log views' session is bounded:
+VIEW = (
+    Path(__file__).resolve().parent.parent / "src/metabrowser/builtin_plugins/table/table-view.js"
+)
+# A server start, one Chrome, and seven opens and a reload, as the event-log views'
+# session is bounded:
 # a cold Chrome start in CI has taken 28.2 s (the Overview alignment test, 2026-11-14),
 # and the server's own start is bounded at 30 s inside the session.
 SESSION_TIMEOUT_S = 90
@@ -160,6 +174,49 @@ def _check_columns_fit_and_chosen_ones_pin_the_first(measured: dict[str, Any]) -
     assert pinned["secondMoved"] > 100
 
 
+def _row_height_estimates() -> dict[int, float]:
+    source = VIEW.read_text(encoding="utf-8")
+    match = re.search(
+        r"ROW_HEIGHT_ESTIMATE_PX = Object\.freeze\(\{ 1: ([\d.]+), 2: ([\d.]+) \}\)", source
+    )
+    assert match, "ROW_HEIGHT_ESTIMATE_PX is where the check reads it"
+    return {1: float(match.group(1)), 2: float(match.group(2))}
+
+
+def _check_the_row_height_estimates_are_what_chrome_lays_out(measured: dict[str, Any]) -> None:
+    estimates = _row_height_estimates()
+    for name, lines in (("short", 1), ("twoLines", 2)):
+        (height,) = measured[name]["heights"]
+        assert abs(height - estimates[lines]) <= 0.5, (lines, height, estimates[lines])
+
+
+def _check_print_says_which_rows_it_printed(measured: dict[str, Any]) -> None:
+    printed = measured["print"]
+    assert printed["rows"] == 200, "every row held, and only those"
+    assert printed["note"] == (
+        "Rows 1 to 200 of 700. The rows after them were not read, so they are not printed."
+    )
+    assert printed["noteShown"] is True
+    assert printed["toolbarShown"] is False
+
+
+def _check_history_survives_a_run_of_keys(measured: dict[str, Any]) -> None:
+    history = measured["history"]
+    assert history["whilePressing"] == {"pushState": 0, "replaceState": 0}
+    assert history["afterPause"] == {"pushState": 0, "replaceState": 1}
+    row = history["row"]
+    assert row > 0
+    assert history["opened"] == f"Row {row + 1}"
+    assert history["recordAddress"] == f"?record=%40{row + 1}"
+    assert history["backAddress"] == ""
+    assert history["gridShown"] is True
+    assert history["tabStop"] == str(row)
+    assert history["scrollTop"] > 0
+    reload = measured["reload"]
+    assert reload["tabStop"] == str(row)
+    assert abs(reload["scrollTop"] - history["scrollTop"]) < 1
+
+
 def test_the_table_view_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
     measured = _measure(tmp_path, chrome_profile)
     assert measured["exceptions"] == []
@@ -168,3 +225,6 @@ def test_the_table_view_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
     _check_two_line_rows_are_one_height_and_clamp(measured)
     _check_the_header_stays_at_the_top_of_the_grids_own_box(measured)
     _check_columns_fit_and_chosen_ones_pin_the_first(measured)
+    _check_the_row_height_estimates_are_what_chrome_lays_out(measured)
+    _check_print_says_which_rows_it_printed(measured)
+    _check_history_survives_a_run_of_keys(measured)
