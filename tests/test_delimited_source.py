@@ -294,9 +294,6 @@ def test_an_exhausted_budget_returns_what_it_found_in_key_order(
     (tmp_path / "a.csv").write_text("n\n" + "".join(f"{n}\n" for n in range(rows)))
     _rows(client, "a.csv")  # parse first, outside the budget below
     monkeypatch.setattr(delimited.Budget, "start", classmethod(lambda cls, seconds=0: Budget(0)))
-    from metabrowser.builtin_plugins.table import routes
-
-    monkeypatch.setattr(routes, "Budget", delimited.Budget)
     body = _rows(client, "a.csv", sort="n", order="desc", **{"f.n": "ge:0"}, limit="3")
     assert (body["complete"], body["reason"], body["next_after"]) == (False, "budget", None)
     assert body["examined"] == delimited._BUDGET_CHECK_ROWS

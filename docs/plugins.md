@@ -145,7 +145,7 @@ The `[plugin]` table supports:
 | `sdk_version` | no | Strongly recommended. It must equal `PLUGIN_SDK_VERSION`; an omitted value targets the original SDK, not the host’s current one, and is refused. |
 | `extra_scripts` | no | Plain JavaScript filenames loaded before `index.js`. |
 | `extra_styles` | no | Plain CSS filenames loaded before the plugin’s selected-kind renderer mounts. |
-| `requires` | no | Names of the plugins whose exports this plugin loads with `mb.plugins.load`; see [Declared Dependencies](#declared-dependencies). |
+| `requires` | no | Names of the plugins whose exports this plugin loads with `mb.plugins.load`, and `table` for a plugin with a `[[table_source]]`; see [Declared Dependencies](#declared-dependencies). |
 
 Extra asset entries may not contain slashes, traversal segments, or a leading dot.
 
