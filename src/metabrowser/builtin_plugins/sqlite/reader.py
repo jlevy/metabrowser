@@ -59,35 +59,37 @@ from metabrowser import sqlite_access
 
 # ── Bounds ─────────────────────────────────────────────────────
 #
-# Measured with `uv run python devtools/bench_sqlite_tables.py` (a shared 4-processor
-# Linux container, Python 3.13, SQLite 3.53, 2026-11-20); rerun it for the current
-# numbers. The cost of a statement is in opcodes as well as time, since the work budget
-# (`sqlite_access.READ_OPCODE_BUDGET`) counts opcodes.
+# Measured with `uv run python -m devtools.bench_sqlite_tables` (a shared 4-processor
+# Linux container, Python 3.13, SQLite 3.53, 2026-11-20) over a 12-column shape; rerun it
+# for the current numbers. A statement's cost is in opcodes as well as time, since the
+# work budget (`sqlite_access.READ_OPCODE_BUDGET`) counts opcodes.
 
-# The rows past which an object's fields sort only where an index leads with them (or
-# they are its key). An unindexed sort reads every row and sorts them before the first
-# is returned, so it cannot stop part-way with a useful answer. At this many rows of the
-# bench's 12-column shape an unindexed first page cost about 1.0 million opcodes and
-# 40 ms, a tenth of the opcode budget; at a million rows it cost 9.6 million and 450 ms,
-# at the edge of the budget. A tenth leaves room for a filter in the same statement.
+# The rows past which an object's fields sort only where an index leads with them, or
+# they are its key. An unindexed sort reads and sorts every row before it returns the
+# first, so it cannot stop part-way with a useful answer. At this many rows an unindexed
+# first page of 100 rows ran 1.25 million opcodes in 19 ms, an eighth of the budget,
+# which leaves a filter in the same statement room; at a million rows it ran 12 million,
+# past the budget, so the sort would be refused part-way anyway. A page in key order ran
+# 12,700 opcodes in under a millisecond at every size.
 SORT_UNINDEXED_MAX_ROWS: Final = 100_000
 
 # The most rows a count reads: a count up to this is exact, and past it the page says
-# "at least" this many (Decision 6). A capped count of a million rows ran 7 million
-# opcodes in 25 ms (the exploration's Budget record), within the opcode budget a count
-# gets of its own, as it is read apart from the page.
+# "at least" this many (Decision 6). A capped count at this cap ran 7.0 million opcodes
+# in 54 ms, within the budget a count has of its own, as it is read apart from the page.
 COUNT_CAP: Final = 1_000_000
 
 # Distinct referenced rows one page resolves, across its references: a page's most rows
 # (`TABLE_PAGE_ROWS_MAX`). Resolving that many by the referenced table's key, in one
-# statement per reference, cost about 30,000 opcodes and 4 ms.
+# statement per reference, added 8 ms to a 1,000-row page that took 2 ms without them.
 REFS_PER_PAGE: Final = 1000
 
 # Bytes of a text or blob read whole into a page; a longer one is previewed through
 # `blobopen`. A page's text cell shows `TABLE_CELL_PREVIEW_CHARS` characters, at most four
 # bytes each in UTF-8 or UTF-16, so a value up to this size is read whole and its length
-# in characters is exact. A page of 1,000 rows of 12 values at this size read in 60 ms;
-# the same page previewed through `blobopen` in 90 ms, whatever the values' size.
+# in characters is exact. The page cells bound (`TABLE_PAGE_CELLS_MAX`) admits 12,000
+# values: read whole at this size they took 155 ms, and previewed through `blobopen`,
+# whatever their size, 627 ms, 52 µs a value. Reading whole up to this size keeps the
+# dearer preview to values whose whole read would cost more still.
 PAGE_INLINE_BYTES: Final = 4096
 
 # The name a keyless object's row position takes in the statements below; a column of

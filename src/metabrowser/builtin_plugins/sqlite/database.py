@@ -39,8 +39,11 @@ register_worker_module(READER_MODULE, Path(__file__).with_name("reader.py"))
 
 # What one server process keeps of databases' catalogs and descriptions, keyed by the
 # database and its generation, so the schema a page is checked against, and its
-# references' targets, cost no request after the first. Each entry is one object's
-# columns, keys, and indexes: a few KiB, so the bound is in entries.
+# references' targets, cost no request after the first. A description is one object's
+# columns, keys, foreign keys, and indexes: the nine-column `users` table of the test
+# fixtures (tests/fixtures/sqlite-tables/app.sql) is 1.5 KB of JSON and a table of 200
+# columns 21 KB, so a full cache of the widest tables a reader is likely to meet holds a
+# few megabytes. The bound is in entries; a catalog is one entry, a list of names.
 DESCRIPTION_CACHE_ENTRIES: Final = 256
 
 _SAFE_SEGMENT: Final = re.compile(r"[A-Za-z0-9_.-]+")

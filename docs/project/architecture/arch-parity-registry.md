@@ -92,11 +92,14 @@ registered, any other status, and a golden that never runs the route.
 | `/api/plugin/github/cache-clear` | covered | `--api --data` | `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |
 | `/api/plugin/github/status` | covered | `--api --data` | `cli-github-status.tryscript.md` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
-| `/api/plugin/table/tables` | covered | `--api` | `cli-api-table.tryscript.md` |
-| `/api/plugin/table/schema` | covered | `--api` | `cli-api-table.tryscript.md` |
-| `/api/plugin/table/rows` | covered | `--api` | `cli-api-table.tryscript.md` |
-| `/api/plugin/table/record` | covered | `--api` | `cli-api-table.tryscript.md` |
-| `/api/plugin/table/card` | covered | `--api` | `cli-api-table.tryscript.md` |
+| `/api/plugin/table/tables` | covered | `--api` | `cli-api-table.tryscript.md`, `cli-api-sqlite-tables.tryscript.md` |
+| `/api/plugin/table/schema` | covered | `--api` | `cli-api-table.tryscript.md`, `cli-api-sqlite-tables.tryscript.md` |
+| `/api/plugin/table/rows` | covered | `--api` | `cli-api-table.tryscript.md`, `cli-api-sqlite-tables.tryscript.md` |
+| `/api/plugin/table/record` | covered | `--api` | `cli-api-table.tryscript.md`, `cli-api-sqlite-tables.tryscript.md` |
+| `/api/plugin/table/card` | covered | `--api` | `cli-api-table.tryscript.md`, `cli-api-sqlite-tables.tryscript.md` |
+| `/api/plugin/sqlite/children` | covered | `--api` | `cli-api-sqlite-tables.tryscript.md` |
+| `/api/plugin/sqlite/info` | covered | `--api` | `cli-api-sqlite-tables.tryscript.md` |
+| `/api/plugin/sqlite/schema` | covered | `--api` | `cli-api-sqlite-tables.tryscript.md` |
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
 | `/pull` | covered | `--show /pull/<n>[/files[/<path>] or /checks]` | `cli-github-pull.tryscript.md`, `cli-github-pull-files.tryscript.md` |
@@ -126,6 +129,13 @@ interaction session and fails when a named function did not execute.
 | `table.delimited-schema` | data | `/api/plugin/table/schema` | `owned-route` | `metab tableroot --api '/api/plugin/table/schema?path=cities.tsv'` | `cli-api-table.tryscript.md` |
 | `table.rows-page-cells` | data | `/api/plugin/table/rows` | `owned-route` | `metab tableroot --api '/api/plugin/table/rows?path=people.csv&cols=name&cols=score&cols=note&cols=extra&limit=4'` | `cli-api-table.tryscript.md` |
 | `table.record-by-position` | data | `/api/plugin/table/record` | `owned-route` | `metab tableroot --api '/api/plugin/table/record?path=people.csv&key=@4&generation=stale'` | `cli-api-table.tryscript.md` |
+| `sqlite.container-children` | data | `/api/plugin/sqlite/children` | `owned-route` | `metab dbroot --api '/api/plugin/sqlite/children?path=app.db'` | `cli-api-sqlite-tables.tryscript.md` |
+| `sqlite.table-schema` | data | `/api/plugin/table/schema` | `owned-route` | `metab dbroot --api '/api/plugin/table/schema?path=app.db/grants'` | `cli-api-sqlite-tables.tryscript.md` |
+| `sqlite.rows-keyset-paging` | data | `/api/plugin/table/rows` | `owned-route` | `metab dbroot --api '/api/plugin/table/rows?path=app.db/users&sort=email&order=desc&cols=email&limit=3'` | `cli-api-sqlite-tables.tryscript.md` |
+| `sqlite.rows-references` | data | `/api/plugin/table/rows` | `owned-route` | `metab dbroot --api '/api/plugin/table/rows?path=app.db/orders'` | `cli-api-sqlite-tables.tryscript.md` |
+| `sqlite.record-back-references` | data | `/api/plugin/table/record` | `owned-route` | `metab dbroot --api '/api/plugin/table/record?path=app.db/users&key=k.WzFd'` | `cli-api-sqlite-tables.tryscript.md` |
+| `sqlite.schema-ddl` | data | `/api/plugin/sqlite/schema` | `owned-route` | `metab dbroot --api '/api/plugin/sqlite/schema?path=app.db/grants'` | `cli-api-sqlite-tables.tryscript.md` |
+| `sqlite.overview-and-schema-view` | interaction | `builtin_plugins/sqlite/tables-model.js#overviewModel`, `builtin_plugins/sqlite/tables-model.js#schemaModel`, `builtin_plugins/sqlite/tables-view.js#mountOverview`, `builtin_plugins/sqlite/tables-view.js#mountSchema`, `builtin_plugins/sqlite/tables-view.js#mountTableView`, `builtin_plugins/table/table-model.js#presentCell` | `/api/plugin/table/tables`, `/api/plugin/sqlite/schema`, `/api/plugin/table/rows`, `/api/plugin/table/schema` | `node tests/dom/sqlite-tables-session.js` | `cli-ui-sqlite-tables.tryscript.md` |
 | `table.view-state` | interaction | `builtin_plugins/table/table-model.js#parseState`, `builtin_plugins/table/table-model.js#stateQuery`, `builtin_plugins/table/table-model.js#rowsParams`, `builtin_plugins/table/table-model.js#sameRows`, `builtin_plugins/table/table-model.js#withSort`, `builtin_plugins/table/table-model.js#withFilter`, `builtin_plugins/table/table-model.js#withoutFilter`, `builtin_plugins/table/table-model.js#withSearch`, `builtin_plugins/table/table-model.js#withColumns`, `builtin_plugins/table/table-model.js#reconcileState`, `builtin_plugins/table/table-view.js#mountTable` | `/api/plugin/table/schema`, `/api/plugin/table/rows` | `node tests/dom/table-view-session.js` | `cli-ui-table-view.tryscript.md` |
 | `table.cells` | interaction | `builtin_plugins/table/table-model.js#presentCell`, `builtin_plugins/table/table-model.js#columnWidths`, `builtin_plugins/table/table-model.js#countText`, `builtin_plugins/table/table-model.js#pageNotes`, `builtin_plugins/table/table-model.js#sortRefused`, `builtin_plugins/table/table-model.js#filterLabel` | `/api/plugin/table/schema`, `/api/plugin/table/rows` | `node tests/dom/table-view-session.js` | `cli-ui-table-view.tryscript.md` |
 | `table.window` | interaction | `builtin_plugins/table/table-model.js#windowRange`, `builtin_plugins/table/table-model.js#wantsMore`, `builtin_plugins/table/table-model.js#fitColumns`, `builtin_plugins/table/table-view.js#mountTable` | `/api/plugin/table/rows` | `node tests/dom/table-view-session.js` | `cli-ui-table-view.tryscript.md` |

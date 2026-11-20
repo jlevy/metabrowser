@@ -216,26 +216,101 @@ tables are muted and views badged. A file the kind’s extensions name that is n
 database has none.
 
 ```console
-$ metab dbroot --api '/api/plugin/sqlite/children?path=app.db' > answer-3.txt
-? 0
-```
-
-```console
-$ grep -E -A3 '"name": "(users|shouting|notes_idx)"' answer-3.txt
+$ metab dbroot --api '/api/plugin/sqlite/children?path=app.db'
+api: /api/plugin/sqlite/children?path=app.db
+status: 200
+{
+  "children": [
+    {
+      "name": "blobs",
+      "path": "app.db/blobs"
+    },
+    {
+      "name": "counters",
+      "path": "app.db/counters"
+    },
+    {
+      "name": "g1-like",
+      "path": "app.db/~67312d6c696b65"
+    },
+    {
+      "name": "grants",
+      "path": "app.db/grants"
+    },
+    {
+      "name": "huge",
+      "path": "app.db/huge"
+    },
+    {
+      "name": "notes",
+      "path": "app.db/notes",
+      "badge": "VT"
+    },
+    {
+      "name": "notes_config",
+      "path": "app.db/notes_config",
+      "muted": true
+    },
+    {
+      "name": "notes_content",
+      "path": "app.db/notes_content",
+      "muted": true
+    },
+    {
+      "name": "notes_data",
+      "path": "app.db/notes_data",
+      "muted": true
+    },
+    {
+      "name": "notes_docsize",
+      "path": "app.db/notes_docsize",
+      "muted": true
+    },
+    {
       "name": "notes_idx",
       "path": "app.db/notes_idx",
       "muted": true
     },
---
+    {
+      "name": "order items",
+      "path": "app.db/~6f72646572206974656d73"
+    },
+    {
+      "name": "orders",
+      "path": "app.db/orders"
+    },
+    {
+      "name": "prices",
+      "path": "app.db/prices"
+    },
+    {
+      "name": "shadows",
+      "path": "app.db/shadows"
+    },
+    {
       "name": "shouting",
       "path": "app.db/shouting",
       "badge": "V"
     },
---
+    {
+      "name": "sqlite_sequence",
+      "path": "app.db/sqlite_sequence",
+      "muted": true
+    },
+    {
+      "name": "tags",
+      "path": "app.db/tags"
+    },
+    {
       "name": "users",
       "path": "app.db/users"
     },
     {
+      "name": "~tilde",
+      "path": "app.db/~7e74696c6465"
+    }
+  ]
+}
 ? 0
 ```
 
@@ -353,12 +428,98 @@ $ grep -E -A10 '^  "key"' answer-4.txt
 ```
 
 ```console
-$ metab dbroot --api '/api/plugin/table/schema?path=app.db/grants' > answer-5.txt
-? 0
-```
-
-```console
-$ grep -A12 '^  "references"' answer-5.txt
+$ metab dbroot --api '/api/plugin/table/schema?path=app.db/grants'
+api: /api/plugin/table/schema?path=app.db/grants
+status: 200
+{
+  "type": "table_schema",
+  "path": "app.db/grants",
+  "table": "grants",
+  "generation": "[..]",
+  "key": [
+    "id"
+  ],
+  "default_columns": [
+    "id",
+    "owner",
+    "tag"
+  ],
+  "fields": [
+    {
+      "name": "id",
+      "title": null,
+      "type": "integer",
+      "declared_type": "INTEGER",
+      "nullable": false,
+      "key": true,
+      "hidden": false,
+      "generated": false,
+      "list": false,
+      "enum": null,
+      "format": null,
+      "ref": null,
+      "sortable": true,
+      "sort_note": null,
+      "filterable": true,
+      "numeric": true
+    },
+    {
+      "name": "owner",
+      "title": null,
+      "type": "integer",
+      "declared_type": "INTEGER",
+      "nullable": true,
+      "key": false,
+      "hidden": false,
+      "generated": false,
+      "list": false,
+      "enum": null,
+      "format": null,
+      "ref": {
+        "table": "tags",
+        "fields": [
+          "owner",
+          "tag"
+        ],
+        "to": [
+          "owner",
+          "tag"
+        ]
+      },
+      "sortable": true,
+      "sort_note": null,
+      "filterable": true,
+      "numeric": true
+    },
+    {
+      "name": "tag",
+      "title": null,
+      "type": "text",
+      "declared_type": "TEXT",
+      "nullable": true,
+      "key": false,
+      "hidden": false,
+      "generated": false,
+      "list": false,
+      "enum": null,
+      "format": null,
+      "ref": {
+        "table": "tags",
+        "fields": [
+          "owner",
+          "tag"
+        ],
+        "to": [
+          "owner",
+          "tag"
+        ]
+      },
+      "sortable": true,
+      "sort_note": null,
+      "filterable": true,
+      "numeric": false
+    }
+  ],
   "references": [
     {
       "table": "tags",
@@ -372,6 +533,8 @@ $ grep -A12 '^  "references"' answer-5.txt
       ]
     }
   ],
+  "referenced_by": []
+}
 ? 0
 ```
 
@@ -688,17 +851,50 @@ $ grep -E '"(email|next_after|count)"' answer-8.txt
 ```
 
 ```console
-$ metab dbroot --api '/api/plugin/table/rows?path=app.db/users&sort=email&order=desc&cols=email&limit=3' > answer-9.txt
-? 0
-```
-
-```console
-$ grep -E '"(email|next_after)"' answer-9.txt
+$ metab dbroot --api '/api/plugin/table/rows?path=app.db/users&sort=email&order=desc&cols=email&limit=3'
+api: /api/plugin/table/rows?path=app.db/users&sort=email&order=desc&cols=email&limit=3
+status: 200
+{
+  "type": "table_rows",
+  "path": "app.db/users",
+  "table": "users",
+  "generation": "[..]",
+  "columns": [
     "email"
+  ],
+  "rows": [
+    {
+      "key": "k.WzNd",
+      "cells": {
         "email": "cy@example.com"
+      }
+    },
+    {
+      "key": "k.WzFd",
+      "cells": {
         "email": "ada@example.com"
+      }
+    },
+    {
+      "key": "k.WzVd",
+      "cells": {
         "email": "EVE@example.com"
+      }
+    }
+  ],
   "next_after": "c.WyJlbWFpbCIsImRlc2MiLCJ2IiwiRVZFQGV4YW1wbGUuY29tIixbNV0sM10",
+  "complete": true,
+  "truncated": false,
+  "reason": null,
+  "count": 6,
+  "count_complete": true,
+  "estimate": 6,
+  "skipped": 0,
+  "examined": null,
+  "searched": null,
+  "sort_refused": null,
+  "limit": 3
+}
 ? 0
 ```
 
@@ -1016,6 +1212,24 @@ status: 404
 }
 Error: /api/plugin/sqlite/schema?path=app.db/nothing returned HTTP 404
 ? 1
+```
+
+## Test: the Info view at a table’s address
+
+Every route of the plugin takes a table’s address and answers for its database.
+
+```console
+$ metab dbroot --api '/api/plugin/sqlite/info?path=app.db/users' > info.txt
+? 0
+```
+
+```console
+$ grep -E -A3 '"access"' info.txt
+  "access": {
+    "mode": "immutable",
+    "state": "current",
+    "reason": "a rollback-journal database is read without a lock, validated against a commit",
+? 0
 ```
 
 <!-- This document follows common-doc-guidelines.md.
