@@ -212,6 +212,7 @@ counts is missing here; the asset routes are not counted.
 | `/api/tree`, `/api/index/progress`, `/api/capabilities` on a pinned revision | A node’s `mtime` and the `ages` state of getting it, and `file_ages` in what the source supports | [File Ages](arch-git.md#file-ages) |
 | `/api/tree` with `recency` or `group_by=age`, `/api/recent`, and `/api/file` on a pinned revision | Modified within, By age with its Undated group, the newest files of a window, and a file’s `mtime` from the answer that is there, from the same times | [File Ages](arch-git.md#file-ages) |
 | `/api/events` | The server-sent inventory snapshot and changes | [Live Delivery](arch-live-delivery.md) |
+| `/api/events/watch` | A file watch registered on one `/api/events` connection, whose changes arrive there as `file.changed` | [Live Delivery](arch-live-delivery.md#file-watches) |
 | `/api/stream`, `/api/activity` | The live tail of a JSONL file, and the files being written now | [Live Delivery](arch-live-delivery.md) |
 | `/api/diagnostics/pending-tallies` | `POST`: a client’s pending-tally warning, matched with server state | [Live Delivery](arch-live-delivery.md) |
 | `/api/event-log` | Where the structured event log is, its segments, and its records filtered by kind, outcome, cause, span, client (a request’s, or a page’s and every request it sent), and duration, with the spans this process has open (`event_log_route.py`) | [Real-Time Debugging](../../realtime-debugging.md#event-log) |
