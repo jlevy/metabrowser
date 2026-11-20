@@ -114,8 +114,8 @@ status: 200
     "complete": true
   },
   "freshness": {
-    "fast_pass_at": 1800000000.0,
-    "summary_pass_at": 1800000000.0,
+    "fast_pass_at": [..],
+    "summary_pass_at": [..],
     "passes": 2
   }
 }
@@ -239,8 +239,8 @@ status: 200
     "complete": true
   },
   "freshness": {
-    "fast_pass_at": 1800000000.0,
-    "summary_pass_at": 1800000000.0,
+    "fast_pass_at": [..],
+    "summary_pass_at": [..],
     "passes": 2
   }
 }
@@ -303,8 +303,8 @@ status: 200
     "complete": true
   },
   "freshness": {
-    "fast_pass_at": 1800000000.0,
-    "summary_pass_at": 1800000000.0,
+    "fast_pass_at": [..],
+    "summary_pass_at": [..],
     "passes": 1
   }
 }
@@ -402,8 +402,8 @@ status: 200
     "complete": true
   },
   "freshness": {
-    "fast_pass_at": 1800000000.0,
-    "summary_pass_at": 1800000000.0,
+    "fast_pass_at": [..],
+    "summary_pass_at": [..],
     "passes": 2
   }
 }
@@ -430,7 +430,7 @@ status: 200
   },
   "cursor": 0,
   "limit": 200,
-  "scanned": 24,
+  "examined": 24,
   "next_cursor": null,
   "events": [
     {
@@ -497,7 +497,7 @@ status: 200
   },
   "cursor": 0,
   "limit": 200,
-  "scanned": 24,
+  "examined": 24,
   "next_cursor": null,
   "events": [
     {
@@ -551,7 +551,7 @@ status: 200
   },
   "cursor": 0,
   "limit": 3,
-  "scanned": 3,
+  "examined": 3,
   "next_cursor": 3,
   "events": [
     {
@@ -616,7 +616,7 @@ status: 200
   },
   "cursor": 3,
   "limit": 3,
-  "scanned": 3,
+  "examined": 6,
   "next_cursor": 6,
   "events": [
     {
@@ -683,7 +683,7 @@ status: 200
   },
   "cursor": 0,
   "limit": 200,
-  "scanned": 24,
+  "examined": 24,
   "next_cursor": null,
   "events": [
     {

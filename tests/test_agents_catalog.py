@@ -23,7 +23,12 @@ from starlette.responses import JSONResponse
 
 from metabrowser import server
 from metabrowser.builtin_plugins.agents import catalog, claude, codex, routes, store
-from metabrowser.builtin_plugins.agents.model import Home
+from metabrowser.builtin_plugins.agents.model import (
+    DriftCollector,
+    DriftSummary,
+    Home,
+    SessionSummary,
+)
 from metabrowser.plugin_api import PluginCacheUnavailableError
 from tests import agents_synthetic_home as syn
 
@@ -201,7 +206,7 @@ def test_requests_during_a_pass_share_it(
     assert snapshot.state == "scanning"
     assert snapshot.total == 0  # a request does not wait for the pass
     release.set()
-    assert home.complete(NOW, timeout=30)
+    assert home.complete(timeout=30)
     assert len(calls) == 1 + 1  # the shared pass, and the pass `complete` asked for
     assert home.snapshot().total == 5
 
@@ -222,7 +227,7 @@ def test_a_request_never_waits_for_a_pass(
     assert progress["state"] == "scanning"
     assert progress["total"] == 0
     release.set()
-    catalog.catalog_for(served.claude).complete(NOW, timeout=30)
+    catalog.catalog_for(served.claude).complete(timeout=30)
 
 
 def test_a_root_change_drops_every_catalog_and_stops_its_worker(
@@ -235,7 +240,7 @@ def test_a_root_change_drops_every_catalog_and_stops_its_worker(
     elsewhere.mkdir()
     server._set_root_dir(elsewhere)  # pyright: ignore[reportPrivateUsage]
     assert catalog.catalog_for(served.claude) is not old
-    assert not old.complete(NOW, timeout=1)  # cancelled: it refuses new passes
+    assert not old.complete(timeout=1)  # cancelled: it refuses new passes
     status, body = call(routes.catalog_handler)
     assert (status, body["code"]) == (404, "no_agent_homes")
 
@@ -252,7 +257,7 @@ def test_a_pass_stops_at_its_byte_budget_and_the_next_continues(
     partial = home.snapshot()
     assert partial.pending_budget
     assert 0 < partial.summarized < partial.total
-    assert home.complete(NOW, timeout=30)  # passes follow until nothing is pending
+    assert home.complete(timeout=30)  # passes follow until nothing is pending
     assert home.snapshot().summarized == 5
 
 
@@ -321,7 +326,11 @@ def test_catalog_reports_homes_totals_histogram_and_days(served: syn.SyntheticHo
     assert buckets[0] == {"lower": 0, "upper": 1024, "count": 11}  # pyright: ignore[reportUnknownVariableType]
     assert buckets[-1]["upper"] is None  # pyright: ignore[reportUnknownVariableType]
     assert body["engines"] == {"session": "builtin", "drift": "builtin"}
-    assert body["freshness"] == {"fast_pass_at": NOW, "summary_pass_at": NOW, "passes": 2}
+    freshness = body["freshness"]
+    assert isinstance(freshness, dict)
+    assert freshness["passes"] == 2  # pyright: ignore[reportUnknownMemberType]
+    # Passes stamp with the clock, never with the request's `now`.
+    assert freshness["fast_pass_at"] != NOW  # pyright: ignore[reportUnknownMemberType]
 
 
 def test_catalog_of_one_home_folder(served: syn.SyntheticHomes) -> None:
@@ -555,7 +564,7 @@ def test_records_stream_the_whole_session_in_cursor_pages(served: syn.SyntheticH
 def test_records_filter_by_kind_tool_and_locator(served: syn.SyntheticHomes) -> None:
     prompts = ok(routes.records_handler, agent="claude", id=syn.S1, kind="prompt")
     assert {e["kind"] for e in _events(prompts)} == {"prompt"}
-    assert prompts["scanned"] == len(list(claude.stream(served.claude, syn.S1)))
+    assert prompts["examined"] == len(list(claude.stream(served.claude, syn.S1)))
 
     streamed = list(claude.stream(served.claude, syn.S1))
     tool = next(e.tool_name for e in streamed if e.tool_name)
@@ -572,7 +581,7 @@ def test_records_scan_is_bounded_and_resumable(
 ) -> None:
     monkeypatch.setattr(routes, "RECORDS_SCAN_MAX", 5)
     page = ok(routes.records_handler, agent="claude", id=syn.S1, kind="error")
-    assert page["scanned"] == 5
+    assert page["examined"] == 5
     assert page["next_cursor"] == 5
 
 
@@ -682,5 +691,271 @@ def test_a_request_does_not_start_a_pass_inside_the_duty_interval(
     home.refresh(0.0)  # inside the interval: no second pass
     time.sleep(0.2)
     assert home.snapshot().passes == 1
-    assert home.complete(NOW, timeout=30)  # a synchronous request always runs one
+    assert home.complete(timeout=30)  # a synchronous request always runs one
     assert home.snapshot().passes == 2
+
+
+# -- review findings -----------------------------------------------------------------------
+
+
+def test_a_second_sync_request_answers_at_once_while_one_waits(
+    served: syn.SyntheticHomes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    release = threading.Event()
+    real = claude.discover
+    monkeypatch.setattr(claude, "discover", lambda h: (release.wait(30), real(h))[1])
+    first: list[tuple[int, dict[str, object]]] = []
+    waiter = threading.Thread(
+        target=lambda: first.append(call(routes.catalog_handler, folder=".claude", sync=1))
+    )
+    waiter.start()
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if catalog.SYNC_SLOT.acquire(blocking=False):
+            catalog.SYNC_SLOT.release()  # the waiter has not taken the slot yet
+            time.sleep(0.01)
+        else:
+            break
+    started = time.monotonic()
+    status, body = call(routes.catalog_handler, folder=".claude", sync=1)
+    assert status == 200
+    assert time.monotonic() - started < 5
+    progress = body["progress"]
+    assert isinstance(progress, dict)
+    assert progress["complete"] is False
+    release.set()
+    waiter.join(30)
+    assert first[0][0] == 200
+
+
+def test_sync_never_stores_the_requests_now(served: syn.SyntheticHomes) -> None:
+    call(routes.catalog_handler, sync=1, now=123)
+    for home in (served.claude, served.codex):
+        fast_at = catalog.catalog_for(home).snapshot().fast_at
+        assert fast_at is not None
+        assert fast_at > 1_000_000_000
+    assert not hasattr(catalog.HomeCatalog, "_now_override")
+
+
+def test_sync_waits_share_one_deadline(
+    served: syn.SyntheticHomes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    waits: list[float] = []
+    real = catalog.HomeCatalog.complete
+
+    def recording(self: catalog.HomeCatalog, timeout: float = 0.0) -> bool:
+        waits.append(timeout)
+        return real(self, timeout)
+
+    monkeypatch.setattr(catalog.HomeCatalog, "complete", recording)
+    ok(routes.catalog_handler)
+    assert len(waits) == 2
+    assert waits[1] <= waits[0] <= catalog.SYNC_TIMEOUT_SECONDS
+
+
+def test_the_live_cache_is_timed_on_the_monotonic_clock(served: syn.SyntheticHomes) -> None:
+    home = catalog.catalog_for(served.codex)
+    first = home.live(NOW)
+    assert home.live(NOW + 10_000) is first  # a different `now` neither defeats the reuse
+    home._live = (time.monotonic() - 10, first)  # pyright: ignore[reportPrivateUsage]
+    assert home.live(NOW) is not first  # an old entry is refreshed whatever `now` says
+
+
+def test_records_never_rescan_the_home(
+    served: syn.SyntheticHomes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ok(routes.catalog_handler)
+
+    def fail(_home: Home, _session_id: str) -> list[object]:
+        raise AssertionError("records rescanned the home")
+
+    monkeypatch.setattr(claude, "_find", fail)
+    body = ok(routes.records_handler, agent="claude", id=syn.S1)
+    assert _events(body)
+    by_path = ok(routes.records_handler, path=f".claude/projects/-work-alpha/{syn.S1}.jsonl")
+    assert _events(by_path) == _events(body)
+    assert _events(ok(routes.records_handler, agent="claude", id=syn.AGENT_A))
+
+
+def test_records_count_skipped_events_toward_one_scan_bound(
+    served: syn.SyntheticHomes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(routes, "RECORDS_SCAN_MAX", 8)
+    first = ok(routes.records_handler, agent="claude", id=syn.S1, limit=100)
+    assert first["examined"] == 8
+    assert first["next_cursor"] == 8
+    second = ok(routes.records_handler, agent="claude", id=syn.S1, limit=100, cursor=5)
+    assert second["examined"] == 8  # the five skipped count: at most 8 in all
+    assert len(_events(second)) == 3
+    status, body = call(routes.records_handler, agent="claude", id=syn.S1, cursor=9, sync=1)
+    assert (status, body["param"]) == (400, "cursor")
+
+
+def test_a_path_request_streams_the_file_it_named_when_ids_collide(
+    served: syn.SyntheticHomes,
+) -> None:
+    ok(routes.catalog_handler)
+    twin = served.claude.path / "projects" / "-work-beta" / f"{syn.S1}.jsonl"
+    twin.parent.mkdir(parents=True, exist_ok=True)
+    twin.write_text(
+        json.dumps({"type": "system", "subtype": "info", "timestamp": syn.iso(NOW)}) + "\n",
+        encoding="utf-8",
+    )
+    body = ok(routes.records_handler, path=f".claude/projects/-work-beta/{syn.S1}.jsonl")
+    assert len(_events(body)) == 1
+    original = ok(routes.records_handler, path=f".claude/projects/-work-alpha/{syn.S1}.jsonl")
+    assert len(_events(original)) > 1
+
+
+def test_live_text_from_a_pid_file_is_clipped_and_redacted(served: syn.SyntheticHomes) -> None:
+    pid_file = served.claude.path / "sessions" / f"{syn.PID_LIVE}.json"
+    data = json.loads(pid_file.read_text(encoding="utf-8"))
+    data["name"] = "token=abcdefghijklmnop " + "n" * 5000
+    data["cwd"] = "/work/" + "d" * 5000
+    pid_file.write_text(json.dumps(data), encoding="utf-8")
+    body = ok(routes.live_handler)
+    row = next(r for r in rows(body) if r["agent"] == "claude")
+    for field in ("name", "project"):
+        assert len(str(row[field])) <= routes.LIVE_TEXT_MAX_CHARS
+    assert "abcdefghijklmnop" not in str(row["name"])
+
+
+def test_pid_files_read_are_capped(
+    served: syn.SyntheticHomes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(claude, "MAX_PID_FILES", 1)
+    reads: list[int] = []
+
+    def probe(pid: int, _start: str | None) -> bool:
+        reads.append(pid)
+        return False
+
+    claude.live(served.claude, NOW, probe)
+    assert len(reads) <= 1
+
+
+def test_saves_of_one_key_use_unique_temporary_names(served: syn.SyntheticHomes) -> None:
+    session = next(s for s in claude.discover(served.claude) if s.session_id == syn.S1)
+    summary, drift = claude.summarize(served.claude, session)
+    directory = served.root / "store"
+    directory.mkdir()
+    first = store.SummaryStore(directory, served.claude.path)
+    second = store.SummaryStore(directory, served.claude.path)
+    key = "a" * 32
+    names: list[str] = []
+    real_open = os.open
+
+    def recording(path: str, flags: int, mode: int = 0o777) -> int:
+        names.append(str(path))
+        return real_open(path, flags, mode)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(os, "open", recording)
+        assert first.save(key, summary, drift)
+        assert second.save(key, summary, drift)
+    temporaries = [n for n in names if ".tmp-" in n]
+    assert len(set(temporaries)) == 2
+    assert first.load(key) is not None
+    assert [p.name for p in directory.iterdir()] == [f"{key}.json"]
+
+
+def test_a_failed_save_removes_only_its_own_temporary_file(served: syn.SyntheticHomes) -> None:
+    session = next(s for s in claude.discover(served.claude) if s.session_id == syn.S1)
+    summary, drift = claude.summarize(served.claude, session)
+    directory = served.root / "store"
+    directory.mkdir()
+    bystander = directory / f"{'b' * 32}.json.tmp-other"
+    bystander.write_text("in progress", encoding="utf-8")
+    mine = store.SummaryStore(directory, served.claude.path)
+
+    def refuse(*_args: object) -> None:
+        raise PermissionError("no")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(os, "replace", refuse)
+        assert not mine.save("b" * 32, summary, drift)
+    assert bystander.exists()
+    assert [p.name for p in directory.iterdir()] == [bystander.name]
+
+
+def test_an_empty_scan_after_a_full_one_does_not_prune_the_cache(
+    served: syn.SyntheticHomes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ok(routes.catalog_handler, folder=".claude")
+    cache = Path(os.environ["METABROWSER_CACHE_DIR"]) / "plugins" / "agents"
+    before = sorted(p.name for p in cache.rglob("*.json") if p.parent.name.startswith("claude"))
+    assert len(before) == 5
+    monkeypatch.setattr(claude, "discover", lambda _h: [])
+    home = catalog.catalog_for(served.claude)
+    assert home.complete(timeout=30)
+    assert home.snapshot().total == 0
+    after = sorted(p.name for p in cache.rglob("*.json") if p.parent.name.startswith("claude"))
+    assert after == before
+
+
+def test_a_scan_that_reported_read_errors_does_not_prune(
+    served: syn.SyntheticHomes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ok(routes.catalog_handler, folder=".codex")
+    cache = Path(os.environ["METABROWSER_CACHE_DIR"]) / "plugins" / "agents"
+    before = sorted(p.name for p in cache.rglob("*.json") if p.parent.name.startswith("codex"))
+    real = codex.discover
+
+    def partial(home: Home, limit: int, drift: DriftCollector) -> list[SessionSummary]:
+        found = real(home, limit, drift)
+        drift.read_error("state.threads")
+        return found[:2]
+
+    monkeypatch.setattr(codex, "discover", partial)
+    assert catalog.catalog_for(served.codex).complete(timeout=30)
+    after = sorted(p.name for p in cache.rglob("*.json") if p.parent.name.startswith("codex"))
+    assert after == before
+
+
+def test_a_cancelled_worker_does_not_prune(
+    served: syn.SyntheticHomes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ok(routes.catalog_handler, folder=".claude")
+    pruned: list[int] = []
+
+    def record(self: store.SummaryStore, keep: object) -> int:
+        pruned.append(1)
+        return 0
+
+    monkeypatch.setattr(store.SummaryStore, "prune", record)
+    home = catalog.catalog_for(served.claude)
+    home.cancel()
+    home._summarize(NOW)  # pyright: ignore[reportPrivateUsage]
+    assert pruned == []
+
+
+def test_a_stale_generation_registers_nothing(served: syn.SyntheticHomes, tmp_path: Path) -> None:
+    generation = catalog.generation()
+    other = tmp_path / "other"
+    other.mkdir()
+    server._set_root_dir(other)  # pyright: ignore[reportPrivateUsage]
+    assert catalog.generation() == generation + 1
+    stale = catalog.catalog_for(served.claude, generation)
+    assert not stale.complete(timeout=1)  # cancelled
+    assert catalog.catalog_for(served.claude, catalog.generation()) is not stale
+    assert catalog._registry[("claude", str(served.claude.path))] is not stale  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_failed_read_waits_for_its_key_to_change_or_several_passes(
+    served: syn.SyntheticHomes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = claude.summarize
+    attempts: list[str] = []
+
+    def flaky(home: Home, summary: SessionSummary) -> tuple[SessionSummary, DriftSummary]:
+        attempts.append(summary.session_id)
+        if summary.session_id == syn.S2:
+            raise OSError("locked")
+        return real(home, summary)
+
+    monkeypatch.setattr(claude, "summarize", flaky)
+    home = catalog.catalog_for(served.claude)
+    for _ in range(3):
+        assert home.complete(timeout=30)
+    assert attempts.count(syn.S2) == 1  # not retried while its key held
+    assert home.snapshot().failed == 1

@@ -24,7 +24,8 @@ asserted literally.
 
 A request normally answers from what the background worker has summarized so far.
 These commands pass `sync=1`, which waits until the catalog is fully summarized, and
-`now=1800000000`, which fixes the clock the passes and the liveness checks read.
+`now=1800000000`, which fixes the clock the liveness checks read; the passes stamp their
+own real times, so those two fields are elided.
 Each command names its cache directory with `METABROWSER_CACHE_DIR`, since each runs a
 fresh server process: the first fills the cache and the later ones load from it.
 No response names an absolute path.
@@ -175,8 +176,8 @@ status: 200
     "complete": true
   },
   "freshness": {
-    "fast_pass_at": 1800000000.0,
-    "summary_pass_at": 1800000000.0,
+    "fast_pass_at": [..],
+    "summary_pass_at": [..],
     "passes": 2
   },
   "cache": {
@@ -280,8 +281,8 @@ status: 200
     "complete": true
   },
   "freshness": {
-    "fast_pass_at": 1800000000.0,
-    "summary_pass_at": 1800000000.0,
+    "fast_pass_at": [..],
+    "summary_pass_at": [..],
     "passes": 2
   },
   "cache": {
@@ -446,8 +447,8 @@ status: 200
     "complete": true
   },
   "freshness": {
-    "fast_pass_at": 1800000000.0,
-    "summary_pass_at": 1800000000.0,
+    "fast_pass_at": [..],
+    "summary_pass_at": [..],
     "passes": 1
   },
   "cache": {
@@ -551,8 +552,8 @@ status: 200
     "complete": true
   },
   "freshness": {
-    "fast_pass_at": 1800000000.0,
-    "summary_pass_at": 1800000000.0,
+    "fast_pass_at": [..],
+    "summary_pass_at": [..],
     "passes": 2
   },
   "cache": {
@@ -694,8 +695,8 @@ status: 200
     "complete": true
   },
   "freshness": {
-    "fast_pass_at": 1800000000.0,
-    "summary_pass_at": 1800000000.0,
+    "fast_pass_at": [..],
+    "summary_pass_at": [..],
     "passes": 2
   },
   "cache": {
@@ -829,8 +830,8 @@ status: 200
     "complete": true
   },
   "freshness": {
-    "fast_pass_at": 1800000000.0,
-    "summary_pass_at": 1800000000.0,
+    "fast_pass_at": [..],
+    "summary_pass_at": [..],
     "passes": 2
   },
   "cache": {
@@ -969,8 +970,8 @@ status: 200
     "complete": true
   },
   "freshness": {
-    "fast_pass_at": 1800000000.0,
-    "summary_pass_at": 1800000000.0,
+    "fast_pass_at": [..],
+    "summary_pass_at": [..],
     "passes": 2
   },
   "cache": {
@@ -1108,8 +1109,8 @@ status: 200
     "complete": true
   },
   "freshness": {
-    "fast_pass_at": 1800000000.0,
-    "summary_pass_at": 1800000000.0,
+    "fast_pass_at": [..],
+    "summary_pass_at": [..],
     "passes": 2
   },
   "cache": {
@@ -1221,8 +1222,8 @@ status: 200
     "complete": true
   },
   "freshness": {
-    "fast_pass_at": 1800000000.0,
-    "summary_pass_at": 1800000000.0,
+    "fast_pass_at": [..],
+    "summary_pass_at": [..],
     "passes": 2
   },
   "cache": {

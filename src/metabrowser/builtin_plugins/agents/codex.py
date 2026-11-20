@@ -826,6 +826,12 @@ def stream(home: Home, session_id: str) -> Iterator[Event]:
         if rows:
             files = _rollout_files(as_str(rows[0][0]), session_id, {})
             paths = tuple(str(f) for f in files)
+    yield from stream_paths(home, session_id, paths)
+
+
+def stream_paths(home: Home, session_id: str, paths: tuple[str, ...]) -> Iterator[Event]:
+    """Yield a thread's events given its rollout files, as the catalog already holds them."""
+
     yield from _events(home, session_id, paths, None)
 
 

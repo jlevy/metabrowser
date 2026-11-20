@@ -253,8 +253,11 @@ home directory as `~`. A refusal is `{"error", "code", "param"}` with status 400
 A request answers from what the worker has summarized so far and reports `progress` and
 `freshness`; it starts a pass when the last is old, and never waits for a full one.
 `sync=1` waits until the catalog is fully summarized, which is how `metab --api`, tests,
-and goldens get a complete answer, and `now` (Unix seconds) replaces the clock the
-passes and liveness checks read.
+and goldens get a complete answer.
+One such request waits at a time, for one deadline shared by its homes
+(`SYNC_TIMEOUT_SECONDS`); another answers at once with the progress so far.
+`now` (Unix seconds) replaces the clock of the response and its liveness checks, never
+the catalog’s own pass times.
 Each summary is cached in `plugin_cache_directory("agents")`, keyed by the session’s
 source files, sizes, modification times, and measure-family versions (`session_key`), so
 a change re-reads only that session.

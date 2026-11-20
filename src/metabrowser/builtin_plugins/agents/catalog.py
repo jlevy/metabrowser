@@ -99,12 +99,21 @@ REFRESH_MIN_INTERVAL_SECONDS: Final = 5.0
 # complete; the measured homes took seconds, so a view shows progress and polls.
 FIRST_PASS_WAIT_SECONDS: Final = 0.25
 
-# How long a synchronous request (`sync=1`) waits for the catalog to be fully summarized,
-# across as many passes as that takes, before it answers with what it has and
-# `progress.complete` false. The measured Claude Code home took 199 s to summarize in
-# full, so this covers it with room; a Codex store of 22,000 threads does not finish
-# inside it on a loaded machine, and the caller sees the partial progress.
-SYNC_TIMEOUT_SECONDS: Final = 600.0
+# How long one synchronous request (`sync=1`) waits, in all, for the catalog to be fully
+# summarized, across every home and as many passes as that takes, before it answers with
+# what it has and `progress.complete` false. It is about what a person waits at a command
+# line. The measured Claude Code home took 199 s to summarize cold, so only a warm cache
+# or a small home completes inside it; the goldens rely on the synthetic homes (13
+# sessions) completing well within it.
+SYNC_TIMEOUT_SECONDS: Final = 60.0
+
+# How many passes a failed read waits before it is tried again with the same key.
+FAILED_RETRY_PASSES: Final = 5
+
+# One synchronous request waits at a time: a request holds this for its whole wait, and
+# one that cannot take it answers at once with the progress so far. Handlers share a
+# threadpool with every other route, so unbounded waiters would starve the server.
+SYNC_SLOT: Final = threading.Semaphore(1)
 
 # How many bytes of transcripts one summary pass reads before it ends. Sessions loaded
 # from the cache do not count. A pass that ends here continues at once while a request is
@@ -143,6 +152,7 @@ class CatalogEntry:
     key: str
     summarized: bool = False
     failed: bool = False
+    failed_pass: int = 0
     drift: DriftSummary = field(default_factory=DriftSummary)
 
 
@@ -183,7 +193,7 @@ class HomeCatalog:
         self._started = 0
         self._completed = 0
         self._last_start: float | None = None
-        self._now_override: float | None = None
+        self._prune_ok = True
         self._state: CatalogState = "idle"
         self._cache: CacheState = "unknown"
         self._store: SummaryStore | None = None
@@ -240,24 +250,20 @@ class HomeCatalog:
         if not self._fast_ready.is_set() and first_pass_wait > 0:
             self._fast_ready.wait(first_pass_wait)
 
-    def complete(self, now: float | None = None, timeout: float = SYNC_TIMEOUT_SECONDS) -> bool:
+    def complete(self, timeout: float = SYNC_TIMEOUT_SECONDS) -> bool:
         """Run passes until every session is summarized or *timeout* passes.
 
         Returns True when the catalog is fully summarized. The first pass this starts is
-        newer than the call, so a change made before the call is seen. *now* stamps the
-        passes (a golden fixes it); it defaults to the clock.
+        newer than the call, so a change made before the call is seen. A request's own
+        ``now`` is never given to the catalog: passes stamp with :data:`CLOCK`.
         """
 
         deadline = time.monotonic() + timeout
-        first = True
         while True:
             with self._cond:
                 if self._cancelled:
                     return False
                 self._watched = True
-                if first:
-                    self._now_override = now
-                    first = False
                 if self._thread is None:
                     self._spawn()
                 else:
@@ -276,18 +282,22 @@ class HomeCatalog:
                     return False
 
     def live(self, now: float) -> list[LiveSession]:
-        """Sessions something vouches for at *now*; reused for :data:`LIVE_TTL_SECONDS`."""
+        """Sessions something vouches for at *now*, reused for :data:`LIVE_TTL_SECONDS`.
+
+        The reuse is timed on the monotonic clock, so a request's own *now* neither
+        defeats nor poisons it.
+        """
 
         with self._lock:
             cached = self._live
-        if cached is not None and abs(now - cached[0]) < LIVE_TTL_SECONDS:
+        if cached is not None and time.monotonic() - cached[0] < LIVE_TTL_SECONDS:
             return cached[1]
         if self.home.agent == "claude":
             found = claude.live(self.home, now, PROBE)
         else:
             found = codex.live(self.home, now)
         with self._lock:
-            self._live = (now, found)
+            self._live = (time.monotonic(), found)
         return found
 
     def cancel(self) -> None:
@@ -352,8 +362,7 @@ class HomeCatalog:
 
     def _pass(self) -> None:
         with self._lock:
-            stamp = self._now_override if self._now_override is not None else CLOCK()
-            self._now_override = None
+            stamp = CLOCK()
             self._watched = False
         if self._store is None:
             self._store = SummaryStore.open(self.home.agent, self.home.path)
@@ -383,10 +392,15 @@ class HomeCatalog:
             for session, key in keyed:
                 old = previous.get(session.session_id)
                 if old is not None and old.key == key:
-                    # A read that failed is tried again.
-                    fresh[session.session_id] = replace(old, failed=False)
+                    # A read that failed waits FAILED_RETRY_PASSES passes before a retry;
+                    # a changed key is a new entry and is tried at once.
+                    retry = old.failed and self._started - old.failed_pass >= FAILED_RETRY_PASSES
+                    fresh[session.session_id] = replace(old, failed=False) if retry else old
                 else:
                     fresh[session.session_id] = CatalogEntry(session, key)
+            # A scan that found nothing where there was something, or that reported read
+            # errors, may be transient, so it must not delete what the cache holds.
+            self._prune_ok = not (previous and not fresh) and not drift.read_errors
             self._by_id = fresh
             self._fast_drift = drift
             self._fast_at = stamp
@@ -440,7 +454,9 @@ class HomeCatalog:
         if store is not None:
             with self._lock:
                 keep = [e.key for e in self._by_id.values()]
-            store.prune(keep)
+                prune = self._prune_ok and not self._cancelled
+            if prune:
+                store.prune(keep)
 
     def _record(
         self,
@@ -455,7 +471,7 @@ class HomeCatalog:
             if entry is None or entry.key != key:
                 return
             if summary is None:
-                self._by_id[session_id] = replace(entry, failed=True)
+                self._by_id[session_id] = replace(entry, failed=True, failed_pass=self._started)
                 self._failed += 1
                 return
             self._by_id[session_id] = replace(entry, summary=summary, drift=drift, summarized=True)
@@ -481,11 +497,29 @@ _registry: dict[tuple[str, str], HomeCatalog] = {}
 _registry_lock = threading.Lock()
 
 
-def catalog_for(home: Home) -> HomeCatalog:
-    """The one catalog of *home*, created on first use."""
+_generation = 0
+
+
+def generation() -> int:
+    """The registry's generation, which :func:`reset` advances; a request reads it once."""
+
+    with _registry_lock:
+        return _generation
+
+
+def catalog_for(home: Home, expected_generation: int | None = None) -> HomeCatalog:
+    """The one catalog of *home*, created on first use.
+
+    A request that read :func:`generation` and finds the root has changed since gets a
+    cancelled catalog that is not registered, so it cannot outlive the root it was for.
+    """
 
     key = (home.agent, str(home.path))
     with _registry_lock:
+        if expected_generation is not None and expected_generation != _generation:
+            stale = HomeCatalog(home)
+            stale.cancel()
+            return stale
         catalog = _registry.get(key)
         if catalog is None:
             catalog = HomeCatalog(home)
@@ -496,7 +530,9 @@ def catalog_for(home: Home) -> HomeCatalog:
 def reset() -> None:
     """Drop every catalog and stop its worker; the served root changed."""
 
+    global _generation
     with _registry_lock:
+        _generation += 1
         catalogs = list(_registry.values())
         _registry.clear()
     for catalog in catalogs:

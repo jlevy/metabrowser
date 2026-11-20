@@ -53,6 +53,11 @@ FAMILY_VERSIONS: Final = {"session": 1, "drift": 1}
 # The subagent id prefix, which is also the file stem prefix.
 _AGENT_PREFIX: Final = "agent-"
 
+# The most pid files `live` reads. A real home held 16 (a pid file is removed when its
+# session ends, so stale ones are few), and each read costs a `ps` probe, so this is 12
+# times the measured count.
+MAX_PID_FILES: Final = 200
+
 # `input` keys whose value best says what a tool call did, in order of preference.
 _TOOL_ARGUMENT_KEYS: Final = ("command", "file_path", "pattern", "url", "description", "prompt")
 
@@ -403,14 +408,24 @@ def _origin_of(path: Path, session_id: str) -> str:
 
 
 def stream(home: Home, session_id: str) -> Iterator[Event]:
-    """Yield a session's normalized events in file order; none for a compressed one."""
+    """Yield a session's normalized events in file order; none for a compressed one.
+
+    This finds the transcript by walking ``projects/``; a caller that already knows the
+    file uses :func:`stream_file`.
+    """
 
     item = _find(home, session_id)
-    if item is None or item.path.name.endswith(".zst"):
+    if item is None:
         return
-    for _, events, _ in _walk(
-        item.path, session_id, subagent=item.parent_sid is not None, drift=None
-    ):
+    yield from stream_file(item.path, session_id, subagent=item.parent_sid is not None)
+
+
+def stream_file(path: Path, session_id: str, *, subagent: bool) -> Iterator[Event]:
+    """Yield the normalized events of one transcript file; none for a compressed one."""
+
+    if path.name.endswith(".zst"):
+        return
+    for _, events, _ in _walk(path, session_id, subagent=subagent, drift=None):
         yield from events
 
 
@@ -425,7 +440,7 @@ def live(home: Home, now: float, probe: PidProbe = default_pid_probe) -> list[Li
     registry = home.path / "sessions"
     result: list[LiveSession] = []
     try:
-        names = sorted(n for n in os.listdir(registry) if n.endswith(".json"))
+        names = sorted(n for n in os.listdir(registry) if n.endswith(".json"))[:MAX_PID_FILES]
     except OSError:
         return result
     for name in names:

@@ -9,10 +9,14 @@ and starts a background pass when the last one is old.
 Parameters name a folder (``folder``, a served-root-relative directory that is or holds a
 home) and, for one session, either ``agent`` with ``id`` or ``path``, the session's source
 file. ``sync=1`` waits until the catalog is fully summarized, for the command line and
-tests; ``now`` (Unix seconds) replaces the clock, so a golden is deterministic.
+tests; ``now`` (Unix seconds) replaces the clock of the response and its liveness checks,
+never the catalog's own pass times. One ``sync=1`` request waits at a time, for one
+deadline across its homes; another answers at once with the progress so far.
 
-Every response is a JSON object with a fixed key order. Every path in it is relative to the
-served root, and a project is shown with the user's home directory as ``~``. A failure is
+Every response is a JSON object with a fixed key order. Every file path in it (``folder``,
+``home``, ``source_paths``) is relative to the served root. A ``project`` is the working
+directory the agent recorded, an absolute path on the machine that ran it, with the
+current user's home directory shown as ``~`` and no other user's. A failure is
 ``{"error", "code", "param"}`` with status 400 for a bad parameter and 404 for a folder or
 session that is not there.
 """
@@ -20,12 +24,12 @@ session that is not there.
 from __future__ import annotations
 
 import os
+import time
 from bisect import bisect_right
 from collections import Counter
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from itertools import islice
 from pathlib import Path
 from typing import Final
 
@@ -54,6 +58,7 @@ from .model import (
     merge_drift,
     parse_timestamp,
 )
+from .readers import clip
 
 # The limits below were set from the measurements recorded in :mod:`.catalog`.
 
@@ -72,6 +77,9 @@ RECORDS_SCAN_MAX: Final = 100_000
 # The most live sessions and children one response lists.
 LIVE_MAX: Final = 200
 CHILDREN_MAX: Final = 200
+
+# The most characters of a live session's name or project, which come from a pid file.
+LIVE_TEXT_MAX_CHARS: Final = 200
 
 # The projects a `sessions` response lists as a facet, most sessions first.
 PROJECT_FACET_MAX: Final = 50
@@ -206,6 +214,12 @@ def _relative(path: Path) -> str | None:
     return relative
 
 
+def _clipped(text: str | None) -> str | None:
+    """A free-text field from a file the agent wrote, as one redacted line."""
+
+    return clip(text, LIVE_TEXT_MAX_CHARS) if text else None
+
+
 def _project(cwd: str | None) -> str | None:
     """The working directory with the user's home directory shown as ``~``."""
 
@@ -288,16 +302,25 @@ def _scope(
     snapshots: list[catalogs.Snapshot] = []
     relative: dict[tuple[str, str], str] = {}
     live: list[tuple[Home, LiveSession]] = []
-    for home in homes:
-        catalog = catalogs.catalog_for(home)
-        if sync:
-            catalog.complete(now)
-        else:
-            catalog.refresh(catalogs.FIRST_PASS_WAIT_SECONDS if wait else 0.0)
-        snapshots.append(catalog.snapshot())
-        live.extend((home, item) for item in catalog.live(clock))
-        home_relative = _relative(home.path)
-        relative[(home.agent, str(home.path))] = "" if home_relative is None else home_relative
+    generation = catalogs.generation()
+    # One request waits at a time, for one deadline shared by all its homes; a request
+    # that cannot take the slot answers at once with the progress so far.
+    waiting = sync and catalogs.SYNC_SLOT.acquire(blocking=False)
+    deadline = time.monotonic() + catalogs.SYNC_TIMEOUT_SECONDS
+    try:
+        for home in homes:
+            catalog = catalogs.catalog_for(home, generation)
+            if waiting:
+                catalog.complete(max(0.0, deadline - time.monotonic()))
+            else:
+                catalog.refresh(catalogs.FIRST_PASS_WAIT_SECONDS if wait else 0.0)
+            snapshots.append(catalog.snapshot())
+            live.extend((home, item) for item in catalog.live(clock))
+            home_relative = _relative(home.path)
+            relative[(home.agent, str(home.path))] = "" if home_relative is None else home_relative
+    finally:
+        if waiting:
+            catalogs.SYNC_SLOT.release()
     return _Scope(folder, clock, snapshots, relative, live)
 
 
@@ -610,6 +633,7 @@ class _Located:
     session: SessionSummary
     summarized: bool
     drift: DriftSummary
+    source: Path | None = None  # the file a `path` request named
 
     @property
     def home(self) -> Home:
@@ -645,10 +669,17 @@ def _locate(request: Request) -> _Located:
         if home is None:
             raise _Refusal(404, "no_agent_homes", "This file is not inside an agent home", "path")
         scope = _scope(request, homes=[home], folder=_relative(home.path) or "")
+        stem = target.name.removesuffix(".zst").removesuffix(".jsonl")
         for snap in scope.snapshots:
             for entry in snap.entries:
                 if str(target) in entry.summary.source_paths:
-                    return _located(scope, snap, entry)
+                    return replace(_located(scope, snap, entry), source=target)
+        # Two files can carry one session id, and the catalog keeps one of them; the
+        # request still streams the file it named.
+        for snap in scope.snapshots:
+            for entry in snap.entries:
+                if snap.home.agent == "claude" and entry.summary.session_id == stem:
+                    return replace(_located(scope, snap, entry), source=target)
         raise _Refusal(404, "session_not_found", "No session in the catalog has that file", "path")
     agent = _choice(request, "agent", AGENTS)
     identifier = _text(request, "id")
@@ -696,9 +727,9 @@ def records_handler(request: Request) -> dict[str, object]:
     tool = _text(request, "tool")
     locator = _text(request, "locator")
     limit = _integer(request, "limit", RECORDS_DEFAULT, 1, RECORDS_MAX)
-    cursor = _integer(request, "cursor", 0, 0, 10**12)
+    cursor = _integer(request, "cursor", 0, 0, RECORDS_SCAN_MAX)
     found = _locate(request)
-    scope, home, session, relative = found.scope, found.home, found.session, found.relative
+    scope, session, relative = found.scope, found.session, found.relative
 
     def wanted(event: Event) -> bool:
         return (
@@ -707,17 +738,19 @@ def records_handler(request: Request) -> dict[str, object]:
             and (locator is None or event.locator == locator)
         )
 
-    stream = (claude if home.agent == "claude" else codex).stream(home, session.session_id)
+    stream = _open_stream(found)
     events: list[Event] = []
-    position = cursor
+    examined = 0
     exhausted = True
     try:
-        for event in islice(stream, cursor, None):
-            if position - cursor >= RECORDS_SCAN_MAX or len(events) >= limit:
+        # One request examines at most RECORDS_SCAN_MAX events in all, the ones before
+        # the cursor included, since a stream is re-read from its start each time.
+        for event in stream:
+            if examined >= RECORDS_SCAN_MAX or len(events) >= limit:
                 exhausted = False
                 break
-            position += 1
-            if wanted(event):
+            examined += 1
+            if examined > cursor and wanted(event):
                 events.append(event)
     finally:
         close = getattr(stream, "close", None)
@@ -729,10 +762,26 @@ def records_handler(request: Request) -> dict[str, object]:
         "filters": {"kind": kind, "tool": tool, "locator": locator},
         "cursor": cursor,
         "limit": limit,
-        "scanned": position - cursor,
-        "next_cursor": None if exhausted else position,
+        "examined": examined,
+        "next_cursor": None if exhausted else examined,
         "events": [event.to_json() for event in events],
     }
+
+
+def _open_stream(found: _Located) -> Iterator[Event]:
+    """The session's events from the file the catalog located, never a rescan of the home."""
+
+    session = found.session
+    if found.home.agent == "codex":
+        return codex.stream_paths(found.home, session.session_id, session.source_paths)
+    source = found.source
+    if source is None and session.source_paths:
+        source = Path(session.source_paths[0])
+    if source is None:
+        return iter(())
+    return claude.stream_file(
+        source, session.session_id, subagent=source.parent.name == "subagents"
+    )
 
 
 @_guarded
@@ -757,8 +806,8 @@ def live_handler(request: Request) -> dict[str, object]:
                 "home": relative,
                 "source": item.source,
                 "status": item.status,
-                "project": _project(item.cwd),
-                "name": item.name,
+                "project": _clipped(_project(item.cwd)),
+                "name": _clipped(item.name),
                 "title": session.title if session else None,
                 "models": list(session.models) if session else [],
                 "started_at": session.started_at if session else None,

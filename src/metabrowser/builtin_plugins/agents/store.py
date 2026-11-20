@@ -26,8 +26,8 @@ import contextlib
 import hashlib
 import json
 import os
-import threading
 import time
+import uuid
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Final
@@ -99,8 +99,6 @@ class SummaryStore:
         self.directory = directory
         self.home = home
         self.write_errors = 0
-        self._counter = 0
-        self._lock = threading.Lock()
 
     @classmethod
     def open(cls, agent: Agent, home: Path) -> SummaryStore | None:
@@ -151,12 +149,12 @@ class SummaryStore:
             {"format": ENTRY_FORMAT, "key": key, "summary": body, "drift": drift.to_json()},
             separators=(",", ":"),
         )
-        with self._lock:
-            self._counter += 1
-            temporary = self.directory / f"{key}.json.tmp-{os.getpid()}-{self._counter}"
+        temporary = self.directory / f"{key}.json.tmp-{uuid.uuid4().hex}"
         descriptor = -1
+        created = False
         try:
             descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, _PRIVATE_FILE)
+            created = True
             with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
                 descriptor = -1
                 handle.write(text)
@@ -164,8 +162,9 @@ class SummaryStore:
         except OSError:
             if descriptor >= 0:
                 os.close(descriptor)
-            with contextlib.suppress(OSError):
-                os.unlink(temporary)
+            if created:  # the name is unique, and only a file this call made is removed
+                with contextlib.suppress(OSError):
+                    os.unlink(temporary)
             self.write_errors += 1
             return False
         return True
