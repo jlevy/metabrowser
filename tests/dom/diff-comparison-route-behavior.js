@@ -103,16 +103,19 @@ async function main() {
     [["pull-comparison", undefined, undefined]],
     "a prefetch of a comparison asked for Markdown",
   );
-  // A tree in the first screen asks for the structured plugin's assets beside its
+  // A tree in the first screen asks for the structured plugin's exports beside its
   // projection, so Changes finds them loaded; Markdown alone asks for none (C1 of
   // mb-8274 review).
   const kinds = [];
-  window.metabrowser.ensureKindAssets = async (kind) => {
-    kinds.push(kind);
+  window.metabrowser.plugins = {
+    load: async (name) => {
+      kinds.push(name);
+      return {};
+    },
   };
   const page = new AbortController();
   await registered.prefetchMarkdown(pull, read, page.signal);
-  assert.deepEqual(kinds, [], "a first screen of Markdown asked for the tree's assets");
+  assert.deepEqual(kinds, [], "a first screen of Markdown asked for the tree's plugin");
   assert.deepEqual(
     requests.map(({ hook, params }) => [hook, params.file, params.prefetch]),
     [
@@ -136,7 +139,7 @@ async function main() {
   };
   const trees = { ...read, manifest: { ...read.manifest, files: [yaml, ...read.manifest.files] } };
   await registered.prefetchMarkdown(pull, trees, new AbortController().signal);
-  assert.deepEqual(kinds, ["structured"], "a first screen with a tree asks for its assets once");
+  assert.deepEqual(kinds, ["structured"], "a first screen with a tree asks for its plugin once");
   assert.equal(requests[0].params.file, "tree-file", "and for its projection first");
   requests.length = 0;
   // The route codec a page has loaded; View on branch's own behavior is its session's.

@@ -395,13 +395,12 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
     # (`cli/doctor.py`); imported here, as the registry is, so `--version` loads none of it.
     from metabrowser.cli.doctor import doctor_checks
 
-    requirements = requirement_details(result.plugins)
     checks = doctor_checks(
-        plugin_count=len(result.plugins),
-        plugin_problems=plugin_problems,
-        open_in=open_in,
-        plugin_requirements=requirements,
+        plugin_count=len(result.plugins), plugin_problems=plugin_problems, open_in=open_in
     )
+    # The text report's; `--plugins --json` carries each plugin's `requires`, and the
+    # JSON report's checks are the macOS app's contract (`tests/golden/app-contract.txt`).
+    requirements = requirement_details(result.plugins)
     # The plugins' problems are listed already; open_in's are its own, less any the config
     # check reports at their cause; the setup checks add one line each.
     open_in_check = checks[1]

@@ -129,22 +129,6 @@ $ metab --doctor --json
         {
           "name": "plugins",
           "value": "11"
-        },
-        {
-          "name": "agent-log",
-          "value": "requires structured"
-        },
-        {
-          "name": "diff",
-          "value": "requires structured"
-        },
-        {
-          "name": "folder",
-          "value": "requires markdown"
-        },
-        {
-          "name": "github",
-          "value": "requires markdown"
         }
       ],
       "remedy": null
@@ -449,22 +433,6 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doct
         {
           "name": "plugins",
           "value": "11"
-        },
-        {
-          "name": "agent-log",
-          "value": "requires structured"
-        },
-        {
-          "name": "diff",
-          "value": "requires structured"
-        },
-        {
-          "name": "folder",
-          "value": "requires markdown"
-        },
-        {
-          "name": "github",
-          "value": "requires markdown"
         }
       ],
       "remedy": null

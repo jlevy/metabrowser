@@ -7633,18 +7633,17 @@ function appendLiveEvents(path, batch) {
       }
       // Append to the currently-rendered log tab if it's visible. Charts are
       // not extended: they show the events there were when the file loaded.
-      var logPane = queryHtml('[data-tab-content="log"]');
+      const logPane = queryHtml('[data-tab-content="log"]');
       if (logPane && logPane.style.display !== "none") {
-        var pane = logPane;
         var startIdx = cached.events.length - batch.events.length;
         // The agent-log plugin, which drew this pane, exports renderLogEvent.
         window.metabrowser.plugins.load("agent-log").then(
           (agentLog) => {
             var tail = "";
             for (var j = 0; j < batch.events.length; j++) {
-              tail += agentLog.renderLogEvent(pane, batch.events[j], startIdx + j);
+              tail += agentLog.renderLogEvent(logPane, batch.events[j], startIdx + j);
             }
-            pane.insertAdjacentHTML("beforeend", tail);
+            logPane.insertAdjacentHTML("beforeend", tail);
           },
           () => {},
         );
