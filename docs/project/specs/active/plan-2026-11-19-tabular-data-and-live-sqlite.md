@@ -46,10 +46,10 @@ contract. The approach for reading live databases follows the SQLite research in
   says so, an integer past what a browser number holds keeps its digits, and long text
   and blobs are previewed in the table and shown in the record.
 - **Strictly nondestructive SQLite.** Opening a database never writes to it or its log,
-  never creates a file beside it, never rolls back another process’s journal, and takes
-  no lock where a lock-free read is valid; where one is not, a lock lasts at most a
-  short deadline. Reading through a live log’s wal-index updates its shared read marks,
-  as every SQLite reader does.
+  never creates a file beside it, never rolls back another process’s journal, and never
+  takes a lock that can refuse the owner’s commit: a rollback-journal database is read
+  without a lock, and a read through a live log holds a read mark for one short request,
+  updating the log’s shared read marks as every SQLite reader does.
   Two effects can be detected and reported but not prevented: an owner that exits
   between the reader’s check and its open, and a reader still open when the owner
   closes, which keeps the owner from deleting its `-wal` and `-shm`. Every connection
@@ -270,7 +270,7 @@ file. It answers:
 | `rows(table, query)` | One page in the collection envelope, with the table’s count |
 | `record(table, key)` | Every field’s value, previewed past the value bound, with references resolved |
 | `card(table, key)` | A short summary for a hover card: label, a few fields |
-| `generation()` | An opaque token that changes whenever the source’s content may have changed |
+| `generation()` | An opaque token that changes whenever the source’s content may have changed. It only stats files and reads bounded headers, never connects, and runs in the server process: the watch polls it, and every read samples it before connecting, so a change during a read costs one extra refetch, never a lost one |
 
 **Where it lives.** The protocol types and the wire contract are a core module
 (`metabrowser.table_source`), re-exported from `metabrowser.plugin_api`, and are SDK
@@ -289,13 +289,15 @@ adapter = "metabrowser.builtin_plugins.sqlite.source:adapter"
 The adapter is recorded as text and imported on first use.
 Only a built-in or an installed distribution can declare one, since operator-directory
 plugins run no Python.
-Adapters are synchronous and run on the route threadpool, as sidekicks do today.
+Adapters are synchronous and run on the route threadpool, as sidekicks do today; the
+SQLite adapter runs each call in a reader process
+([Decision 13](#decision-13-where-sqlite-connections-run)).
 
 **The handle.** An adapter reads through a `ContentRef`, as every hook does, plus an
 optional local-path capability: the resolved real path of a file on the served folder.
-SQLite needs the path for its sidecars; on a Git pin there is no path, and the SQLite
-source deserializes the blob instead.
-A text source needs only the bytes.
+SQLite needs the path for its sidecars; on a Git pin there is no path, so the blob is
+written once to a private folder keyed by its object id, under a size cap, and read
+there. A text source needs only the bytes.
 
 **Field descriptor.** One shape, adapted from paraverse’s:
 `{name, title, type, declared_type, nullable, key, hidden, generated, list, enum, format, ref, sortable, sort_note, filterable, numeric}`.
@@ -335,8 +337,13 @@ A token is bounded by a named constant.
 A row with no key (a view’s, a delimited file’s, a record list’s) and a row whose key
 would encode past the bound are named by position instead, `@<n>`, together with the
 generation it was read under.
-A position names a row only at that generation: when the generation moves, the record
-refetches the row at that position and says it may now be a different row.
+In a delimited file or a record list `n` counts in the file’s own order, so it survives
+a change of sort or filter; in a view or for an over-long key it counts in the stated
+query’s order, and holds only with that query.
+When the generation moves, the record refetches the row at that position and, if its
+cells differ, says it may now be a different row.
+An `after` past the bound is positional in the same way and valid for one generation;
+once the generation moves, the next page answers `complete: false` with the reason.
 
 **Query.** One wire shape for every source: `sort`, `order` (`asc` or `desc`), `q`
 (search), typed filters `f.<field>=<op>:<value>` (`eq`, `ne`, `lt`, `le`, `gt`, `ge`,
@@ -350,7 +357,8 @@ Search matches text fields only and says which fields it searched.
 `count_complete`, `estimate`, and `skipped`.
 
 - `after` is a cursor naming a position in sort order, not an offset, so one minted
-  under one generation stays valid under the next.
+  under one generation stays valid under the next; only the positional cursor above does
+  not.
 - A count is exact up to a cap and otherwise a lower bound, drawn as “at least
   1,000,000”. `estimate` is a cheap number a source may send beside or instead of a
   count, such as SQLite’s `sqlite_stat1` row count or largest rowid, drawn as
@@ -407,8 +415,9 @@ contract as it is built:
   every name SQLite allows has exactly one segment.
 - **The chevron.** The tree draws a chevron from the kind’s extensions, as it does for
   every container. Two costs follow, and the plan accepts both: a `.db` file that is not
-  SQLite shows a chevron that expands to nothing, and a database with no extension, such
-  as a browser’s `History`, has no chevron and is reached by opening it.
+  SQLite shows a chevron that expands to nothing (its `children` hook answers an empty
+  list, not an error), and a database with no extension, such as a browser’s `History`,
+  has no chevron and is reached by opening it.
 
 A single-table source (a CSV file, a record list) is its own table.
 Sort, filters, search, columns, and the open record (`record=<key>`) are query state on
@@ -427,9 +436,10 @@ Markdown, structured data, agent logs, the folder README panel, and the pull req
 page move to it in the same change, and the rule and its test change with them.
 
 **Binary kinds by magic number.** A `[[kind]]` match may name `magic` (an offset and the
-bytes expected there) with `exts` as a cheap pre-filter.
-A file with no extension is checked against every magic rule, so an extensionless
-database opens as one.
+bytes expected there).
+Every file that would otherwise be `binary` is checked against every magic rule,
+whatever its extension, so a database named `History` or `x.storedata` opens as one; a
+magic kind’s `exts` decide only the chevron.
 Every classification site checks it: `api_file` after images and before the binary
 fallback, reading only the sniff prefix it already reads; `classify_identity` for a Git
 blob, from the prefix the caller already holds; `_resolve_container_child`; and
@@ -452,21 +462,22 @@ connection and returns a disposer:
 - `POST /api/events/watch` with `{connection, path, generation}` registers the path and
   answers with its current generation, so a change between the page’s fetch and its
   registration is seen at once.
-  `DELETE` on the same route unregisters it.
-- The server resolves the real path and its sidecars, stat-polls the registered paths
-  the inventory does not already deliver (ignored or deeper than the stream’s scope) on
-  a bounded interval, and sends one `file.changed` event with the new generation,
-  coalescing bursts. Registered paths per connection are bounded by a named constant, set
-  from a measurement of the polling cost.
+  The same route with `watch: false` unregisters it, so both reach `metab --api`.
+- The server polls the registered paths the inventory does not already deliver (ignored
+  or deeper than the stream’s scope) on a bounded interval, through the kind’s source
+  `generation()`, or identity, size, and modification time for any other file, and sends
+  one `file.changed` event with the new generation, coalescing bursts.
+  Registered paths per connection are bounded by a named constant, set from a
+  measurement of the polling cost.
 - The shell’s page-connections owner (`shell.page-connections`) keeps the watches, so a
   page still holds one stream, and re-registers each with the generation it holds after
   a reconnect, an `fs.resync_required`, or a server restart, which answers an unknown
   connection id with a refusal.
 - On a Git pin the route answers `unsupported_for_subject`, as `/api/events` does; a
   pinned file cannot change, so there is nothing to watch.
-- Parity: the route is a JSON route with a golden (an unknown connection’s refusal, with
-  the path’s current generation), and the page-connections browserless session covers
-  registration and re-registration.
+- Parity: the route is a JSON route with goldens for registering and unregistering under
+  an unknown connection, each refused, and the page-connections browserless session
+  covers registration and re-registration.
 
 `/api/stream` stays the JSONL log tail; the two do not interact.
 
@@ -475,18 +486,29 @@ connection and returns a disposer:
 **Shared access helper.** `src/metabrowser/sqlite_access.py` holds the one way the
 product opens a database it does not own: header admission, the access choice below,
 connection settings, the work budget, and error classification.
-The GitHub catalog moves onto its admission and settings in the same change; its own
-opens of the catalog and its sidecars (`_admit`, `_database`) are checked then against
-the lock hazard below.
+The GitHub catalog moves onto its admission and settings in the same change, and its own
+opens (`_admit`, `_database`) are checked then against the lock hazard below.
 
 **Reader processes** ([Decision 13](#decision-13-where-sqlite-connections-run)). Every
-connection to a database the product does not own runs in a small pool of
-single-threaded reader processes, never in the server process.
-A worker opens a database’s files only before it connects or after it closes, so nothing
-in its own process drops its locks, while the server process stats, sniffs, and hashes
-files freely. The pool’s size and its queue are bounded by named constants.
-The parent kills a worker that passes a request’s hard deadline and starts another,
-which also keeps SQLite’s parser for untrusted files out of the server process.
+connection to a database the product does not own runs in a reader process from a pool
+whose size and queue are named constants, never in the server process.
+
+- **Start.** A worker is a fresh interpreter (`spawn`, never `fork`, which copies a
+  threaded server and its open connections) importing only `sqlite_access` and the
+  adapter, on macOS and Linux, as the repository cache is.
+- **Work.** One adapter call at a time, its request and answer bounded by the page and
+  preview bounds. A worker opens and closes a database’s files only outside a connection,
+  so nothing in its own process drops its locks.
+- **Deadlines.** A request’s deadline counts from when it is queued; at it a watchdog
+  thread in the worker calls `Connection.interrupt()`, since `count(*)` runs a handful
+  of opcodes and never reaches the progress handler.
+  At the later hard deadline the parent kills the worker.
+  A full queue or a kill answers the busy state, which keeps the last good rows.
+- **Lifecycle.** The parent creates and removes every private folder and sweeps
+  leftovers at start. A worker exits when its pipe closes; one that is killed or crashes
+  is replaced, and a crash answers the reader-stopped state with no automatic retry.
+  Under the untrusted profile a worker serves one subject.
+  A one-shot `metab --api` or `--show` starts one worker, so goldens run the same path.
 
 **Choosing how to open.** The worker resolves the path’s real file, stats it and its
 sidecars beside that file, and reads the 100-byte header, then decides before SQLite
@@ -495,55 +517,50 @@ touches anything:
 | Header and sidecars at the real path | Open | Shown as |
 | --- | --- | --- |
 | Any journal mode, more than one hard link | As a missing `-shm` below, through a private copy | **Another name**, never Current: “this file has N names; a journal or log kept beside another name is not shown” |
-| Rollback journal, no live `-journal` | `immutable=1`, validated | Current |
-| Rollback journal, a live `-journal` | Waited out; past the lock deadline, `mode=ro` for the key-ordered page alone, where `SQLITE_READONLY_ROLLBACK` or a refused lock is the state **writer busy or interrupted** | Current, or Busy |
+| Rollback journal | `immutable=1`, validated, never locked ([Decision 10](#decision-10-reading-a-rollback-journal-database)) | Current, or **writer busy** |
 | Write-ahead log, no `-wal` or a zero-byte one | `immutable=1`, validated | Current |
 | Write-ahead log, `-wal` with frames, `-shm` present | `mode=ro`, with the race check | Current |
 | Write-ahead log, `-wal` with frames, no `-shm` | Under the copy cap, a private copy of the main file and its `-wal`, validated, read `mode=ro`; past the cap, or after a copy fails validation twice, the main file with `immutable=1` | Current; past the cap, “without its N-byte log, which may be inconsistent” |
-| Immutable content: a Git revision, an fsqlite snapshot | `immutable=1`, or deserialized into memory under a size cap with header bytes 18 and 19 set to rollback mode | Current; a committed write-ahead-log database is shown without its log |
+| Immutable content: a Git revision, an fsqlite snapshot | `immutable=1` | Current; a committed write-ahead-log database is shown without its log |
 
 - **A live journal** holds bytes and a header that is not zeroed;
   `journal_mode=PERSIST`’s idle journal and a zero-byte one count as none.
-- **Validated** means the main file’s identity, size, modification time, and header
-  change counter, and the `-wal` file’s size and header where one exists, match before
-  and after the read, and no live journal or log frames appeared.
-  A **private copy** is validated the same way across the copy, both files, and lives in
-  a private temporary folder for one request, so nothing is written beside the owner’s
-  files.
+- **Validated** means no live journal or log frames appeared, and the main file’s
+  identity, size, modification time, and header change counter, and the `-wal` file’s
+  size, modification time, and header, match before and after the read.
+  A write-ahead-log checkpoint leaves the change counter as it was, so a file modified
+  within a named timestamp granularity of the first stat counts as changing, as Git
+  treats a racy index entry.
+  A **private copy**, in a private folder, takes the main file before its `-wal`, so a
+  checkpoint during the copy moves only pages the log still holds, and is validated the
+  same way across the copy.
 - **Waiting out.** A live journal or a failed validation is retried with backoff, each
-  retry re-running the choice from the top, until the request’s lock deadline.
-  Then a rollback-journal database takes the lock for its key-ordered page with no sort
-  and no count, and sends `estimate`; any other is reported as changing.
-  An error from a read that failed validation is reported as changing, never as damaged;
-  past the copy cap, a corruption error is the labeled state, not damage.
+  retry re-running the choice from the top, until the request’s deadline; then a
+  rollback-journal database is writer busy and any other is changing.
+  An error from a read that failed validation is changing, never damaged, and in the
+  another-name and past-the-cap states a corruption error is that state, not damage.
 - **The race check.** Before connecting, the worker opens the `-shm` it saw, read-only,
   and holds it until after the connection closes; after connecting, it compares that
   file’s identity with the path’s, as `pull_catalog._database` already does for the main
   file. If the owner exited in between and the open created sidecars, the Info view says
   so.
-- **fsqlite transients** (`.build-*`, `.direct-*`, `.work-*`) are live rollback-journal
-  builds; they never take the `mode=ro` fallback.
 
-**Every request is short.** Each route call opens a fresh connection, reads inside one
-short transaction, and closes it; no connection or transaction outlives a request.
-A watchdog thread in the worker calls `Connection.interrupt()` at the request’s
-deadline, beside the progress-handler budget, since `count(*)` runs a handful of opcodes
-and never reaches a progress handler; the parent’s kill is the hard stop behind it.
+**Every request is short:** it samples the generation, opens a fresh connection, reads
+in one short transaction, and closes it.
 
 - **Counts** run as `SELECT count(*) FROM (SELECT 1 FROM t LIMIT :cap + 1)`, which the
   budget can stop and which yields “at least cap” directly.
-  A count runs only with a table’s rows, never for a list of tables, and never under a
-  lock: a locked read sends `estimate` instead.
+  A count runs only with a table’s rows, validated apart from the page as one further
+  read with no wait; when that fails, the envelope sends `estimate`.
 - **Paging** is keyset by the sort value and the row key, ascending or descending.
   It is an index seek only in key order (the rowid or primary key) or on a column that
   leads an index; past the measured row count, `schema()` marks every other field
   unsortable and says why.
   Nulls sort first ascending and last descending, and a row-value comparison with null
-  is unknown, so a sorted column pages in two regions, each by its own seek: the null
-  rows by key (`s IS NULL AND id > ?`, or `id < ?` descending) and the other rows by row
-  value (`(s, id) > (?, ?)`, or `<` descending).
-  The cursor names its region, and a page that reaches the end of one region continues
-  into the next. One predicate spanning both regions is a scan.
+  is unknown, so a sorted column pages its null rows by key (`s IS NULL AND id > ?`) and
+  the rest by row value (`(s, id) > (?, ?)`), each by its own seek and mirrored
+  descending; the cursor names its region and continues into the next, since one
+  predicate spanning both is a scan.
 - **Filters and search** are scans by nature and return partial results under the budget
   as the envelope describes.
 
@@ -551,18 +568,13 @@ and never reaches a progress handler; the parent’s kill is the hard stop behin
 expression over a value is guarded by its size.
 A select reads `CASE WHEN octet_length(v) <= :limit THEN v END` with `octet_length` and
 `typeof` beside it; a filter or search adds `octet_length(v) <= :limit` and counts what
-it skipped; a sort that fails on a value past the limit is refused with a `sort_note`.
-`length` and `substr` load the whole value; `octet_length` and `typeof` do not.
-A value over the measured preview threshold is previewed through `Connection.blobopen`,
+it skipped; a sort that fails on a value past the limit is refused with a `sort_note`. A
+value over the measured preview threshold is previewed through `Connection.blobopen`,
 which reads part of a text or blob in a rowid table; in a `WITHOUT ROWID` table or a
 view, where `blobopen` is unavailable, the cell shows the size alone.
 `blobopen` returns the stored bytes, so previews are decoded by the database’s
-`PRAGMA encoding`, which may be UTF-16. `octet_length` needs SQLite 3.43, and the
-library-version table states that minimum.
-Below it, sizes come from `blobopen`’s length in a rowid table and from `length` for a
-blob, neither of which loads the value; text in a view or a `WITHOUT ROWID` table is
-read under the length limit, and a page that meets one past it shows that page’s error
-with the limit named.
+`PRAGMA encoding`, which may be UTF-16. `octet_length` needs SQLite 3.43, the reader’s
+minimum: under an older library a database opens to its Info view, which says so.
 The record route applies the same rules.
 
 **Connection settings,** each a named constant: `query_only`, `trusted_schema=OFF`,
@@ -597,22 +609,21 @@ Extension loading stays off.
   while a log holds frames: page size and count, encoding, journal mode, `user_version`,
   `application_id` (named when known, such as fsqlite’s `FSQL`), freelist size, the
   sidecars and the log’s size, the access mode chosen and why, and the SQLite library
-  version read against a table in code of library versions, the minimum the reader
-  supports among them, and what each means for a reader.
+  version against a table in code of versions and what each means for a reader, the
+  reader’s minimum among them.
 
-**Generation.** For a rollback database, the main file’s identity, size, and
-modification time plus the header’s change counter; for a write-ahead-log database, the
-same plus the `-wal` file’s size, modification time, and header checkpoint sequence and
-salts (bytes 12 to 24), which change every time the log restarts even when its size
-repeats. The watch reports the database with `-wal` and `-journal` as its sidecars.
+**Generation,** from stats and headers alone: the main file’s identity, size,
+modification time, and change counter, plus in write-ahead-log mode the `-wal` file’s
+size, modification time, and header checkpoint sequence and salts (bytes 12 to 24),
+which change every time the log restarts even when its size repeats.
 
 **fsqlite stores.** The store’s `fsqlite.json` is the `sqlite-store` kind:
 `folder_marker = "fsqlite.json"` with `json_has_key = "format"` and
 `json_value_prefix = "fsqlite"`, so the folder gets its badge and opening the marker
 opens the store, with no core change.
 It reads the snapshot `current` names, `immutable=1`, retrying when garbage collection
-removes it between the two reads, shows the generation number, and watches `current`.
-Pending transaction envelopes are counted in its Info view.
+removes it between the two reads, and shows the generation number, which `current` gives
+its `generation()`. Pending transaction envelopes are counted in its Info view.
 It is a thin source over the SQLite adapter and a container like any database, with its
 own `children` hook.
 
@@ -730,17 +741,21 @@ same.
 Database content is untrusted input, and a crafted database reaches SQLite’s parser and
 every compiled-in virtual-table module through tables it controls.
 That parser runs only in reader processes, never in the server.
+A reader process isolates a crash and allows a hard stop, but it is not a sandbox: it
+has the server’s privileges.
+An address-space limit set in the worker (`resource.setrlimit`, a named constant) bounds
+a crafted file’s memory where the platform enforces one.
 The connection settings above are the defense: `trusted_schema=OFF` refuses functions
 and virtual tables not marked innocuous inside views and triggers, `DEFENSIVE` and
 `cell_size_check` guard against a corrupt file, the authorizer admits only reads, a read
 fires no triggers, and the budget, deadline, and kill stop an expensive view or
 recursive query. Virtual tables are listed but never queried under the untrusted profile
-(repository mirrors), where immutable content is read through `immutable=1` or
-deserialization. Text is rendered as text, never as HTML.
+(repository mirrors), where immutable content is read through `immutable=1`. Text is
+rendered as text, never as HTML.
 
-The SQLite phase gets two dedicated reviews: a security review, and a correctness review
-of `sqlite_access.py` and the reader processes against the access table and the lock
-hazard. The table routes and the watch get a performance review.
+The SQLite access phase gets two dedicated reviews: a security review, and a correctness
+review of `sqlite_access.py` and the reader processes against the access table and the
+lock hazard. The table routes and the watch get a performance review.
 
 ## Key Decisions
 
@@ -852,22 +867,25 @@ inventory pass.
 
 ### Decision 10: Reading a Rollback-Journal Database
 
-- **A. Lock-free first:** a validated `immutable=1` read, waiting out a live journal or
-  a failed validation until the lock deadline, and only then a locked read of the
+- **A. Never lock:** a validated `immutable=1` read of the page, waiting out a live
+  journal or a failed validation until the request’s deadline and then answering writer
+  busy; the count validated apart with no wait, else `estimate`.
+- **B. Lock-free first, then lock:** as A, but past the wait a locked read of the
   key-ordered page alone.
-- **B. `mode=ro` always,** with each read’s lock bounded by the deadline and refreshes
-  spaced by their cost.
+- **C. `mode=ro` always,** with each read’s lock bounded by the deadline.
 
 **Recommendation: A.** A reader’s shared lock refuses an owner’s commit when the owner
-sets no busy timeout, a live journal means the owner is committing at that moment, and
-live refresh reads exactly when the owner is writing.
-Run as the plan states it in the
-[contention record](../../../../explorations/sqlite-guest-reads/README.md#contention), A
-refused no commits from an owner writing every 5 or 50 ms and almost none from one
-writing back to back, where reads that locked at once refused dozens.
-Against a back-to-back writer most of A’s reads end as writer busy, which keeps the last
-good rows on screen.
-The contention test asserts a bound for each owner pace.
+sets no busy timeout, and live refresh reads exactly when the owner is writing.
+In the
+[contention record](../../../../explorations/sqlite-guest-reads/README.md#contention) A
+refused no commit at any pace, by construction, and its key-ordered page was valid on
+every read, even against a back-to-back writer.
+B locked on most reads at 5 ms, since validating the page with its count fails whenever
+the count outlasts the gap between commits, and its locked page ignores the request’s
+sort, filter, and cursor.
+A’s cost: a first open during a long owner transaction shows writer busy with no rows,
+where B would show the key-ordered page; a hot journal is refused either way.
+The contention test asserts that no commit is refused.
 
 ### Decision 11: Windowing the Grid
 
@@ -898,8 +916,8 @@ classifier’s byte bounds, would miss exactly the large files that most need a 
 
 ### Decision 13: Where SQLite Connections Run
 
-- **A. A small pool of single-threaded reader processes,** which open a database’s files
-  only outside a connection’s lifetime.
+- **A. A small pool of reader processes,** each serving one request at a time, which
+  open a database’s files only outside a connection’s lifetime.
 - **B. The server process, trusting no lock:** identity and size from `os.stat`, which
   opens nothing; every `mode=ro` read validated as the lock-free reads are; an error
   from a read that failed validation shown as changing; and no handle on the main file
@@ -913,12 +931,14 @@ B can detect a broken read but not prevent one, so against a busy owner its lock
 reads keep failing validation.
 A also gives a hard deadline, by killing the worker, and keeps SQLite’s parser for
 untrusted files out of the server.
-Its cost is a pool to manage and results serialized across a pipe, both bounded by named
-constants.
+The [process record](../../../../explorations/sqlite-guest-reads/README.md#process)
+shows the race check’s held handle keeping the reader’s locks, a killed reader leaving
+the owner nothing to clean up, and the cost: a spawned worker answers first in tens of
+milliseconds, and a warm page’s round trip costs about three times the read in process.
 
 ## Implementation Plan
 
-Seven phases, each one stack and each accepted on its own, so live SQLite does not wait
+Eight phases, each one stack and each accepted on its own, so live SQLite does not wait
 on everything else. Each source brings its generation token in the phase that adds it.
 
 ### Phase 1: Declared Plugin Dependencies
@@ -950,21 +970,27 @@ Accepted from the CLI, before any browser view.
   deleted
 - [ ] The browserless table session, parity rows, changelog fragment
 
-### Phase 4: Static SQLite
+### Phase 4: SQLite Access
 
-- [ ] `magic` kind matching at every classification site, extensionless files included;
-  file-type registry move and revision
+Accepted from `metab` through the Info view, before any table is drawn.
+
+- [ ] `magic` kind matching at every classification site; file-type registry move and
+  revision
 - [ ] Reader processes; `sqlite_access.py`: admission, the access table, private copies,
-  the race check, connection settings, authorizer, budget, deadline, and kill, error
-  states; the GitHub catalog moved onto it
+  Git blobs written once under a cap, the race check, connection settings, authorizer,
+  budget, deadlines, and kill, error states; the GitHub catalog moved onto it
+- [ ] The Info view
+- [ ] Nondestructive access, lock hazard, and contention tests, goldens, parity rows,
+  changelog fragment; dedicated security and correctness reviews
+
+### Phase 5: SQLite Tables
+
 - [ ] SQLite source as a container with its `children` hook and overview: tables, keys,
   typed cells, references and back-references, keyset paging in both directions,
   sortability, capped counts, size-guarded values, the generation
-- [ ] Schema and Info views; Git-revision databases through deserialization under a cap
-- [ ] Nondestructive access tests, the contention test, goldens, parity rows, map
-  updates, changelog fragment; dedicated security and correctness reviews
+- [ ] Schema view, goldens, parity rows, map updates, changelog fragment
 
-### Phase 5: Live Tables
+### Phase 6: Live Tables
 
 - [ ] File watches on `/api/events`: connection id, the registration route,
   `file.changed`, `mb.watchFile`, bounded paths, re-registration under
@@ -972,12 +998,12 @@ Accepted from the CLI, before any browser view.
 - [ ] The table’s live behavior; container children refreshed on change; performance
   review
 
-### Phase 6: Record Lists
+### Phase 7: Record Lists
 
 - [ ] The Table view of the `structured` kind as Decision 12 settles it, with its
   generation, goldens, and parity
 
-### Phase 7: fsqlite Stores
+### Phase 8: fsqlite Stores
 
 - [ ] The `sqlite-store` kind, its `children` hook, snapshot reads, generation, goldens
 
@@ -991,8 +1017,8 @@ Accepted from the CLI, before any browser view.
   nulls in a sorted column in both directions, mixed stored types, integers past 2⁵³,
   infinite reals, invalid UTF-8 text, a UTF-16 database, blobs, long text, a value past
   the length limit, JSON text, hidden and generated columns, a `STRICT` table, table
-  names that need the escaped segment, an extensionless database, and an fsqlite-marked
-  database.
+  names that need the escaped segment, a database with no extension and one with an
+  unlisted extension, and an fsqlite-marked database.
 - **Nondestructive access tests**, grown from the
   [exploration’s cases](../../../../explorations/sqlite-guest-reads/README.md#access),
   each with a real owner in a second process and a directory listing before and after:
@@ -1001,16 +1027,19 @@ Accepted from the CLI, before any browser view.
   killed part-way reads through its log; an owner’s new table not yet checkpointed
   shows; an owner that exits between the stat and the open is reported; a symlink in
   another folder reads the right state; a second hard link, to a write-ahead-log
-  database and to one with a hot journal, is never shown as current; a hot journal
-  yields the busy state and leaves the journal untouched; a reader’s requests never stop
-  a `wal_checkpoint(TRUNCATE)`; a commit changes the generation; an owner starting
-  during a validated read causes a retry.
+  database, to one with a hot journal, and to one whose checkpoint was killed, is shown
+  as another name, never as current or damaged; a hot journal yields the busy state and
+  leaves the journal untouched; a reader’s requests never stop a
+  `wal_checkpoint(TRUNCATE)`; a commit changes the generation, and one that lands during
+  a `mode=ro` read is followed by a `file.changed`; an owner starting during a validated
+  read causes a retry.
 - **The lock hazard.** A `mode=ro` read in a reader process, while the server process
   opens and closes the database and its `-shm` and the owner commits and checkpoints:
   the owner stays refused and the read stays intact.
+  A worker killed inside a read leaves the owner free to commit and checkpoint.
 - **Contention.** An owner committing with `busy_timeout=0` at the record’s paces while
-  the viewer refreshes through the access table’s policy; the test asserts the record’s
-  bound on refused commits for each pace.
+  the viewer refreshes through the access table’s policy; no commit is refused at any
+  pace.
 - **Browserless sessions** under `tests/dom/` drive the production table module through
   sort in both directions, filter, paging, opening a record, a position-named record
   after a change, a live change that adds rows above and below the viewport, a removed
@@ -1027,9 +1056,9 @@ Accepted from the CLI, before any browser view.
 ## Rollout Plan
 
 Every phase ships in the single artifact.
-Phase 3 changes what `.csv` and `.tsv` files open as by default, Phase 4 what `.sqlite`,
-SQLite `.db`, and extensionless SQLite files open as, and Phase 6 adds a Table tab to
-JSON and YAML files as Decision 12 settles it; each changelog fragment says so.
+Phase 3 changes what `.csv` and `.tsv` files open as by default, Phase 4 what SQLite
+files open as, whatever their extension, and Phase 7 adds a Table tab to JSON and YAML
+files as Decision 12 settles it; each changelog fragment says so.
 The SDK version bump in Phase 1 is a hard gate for installed plugins, as intended.
 
 ## Open Questions
