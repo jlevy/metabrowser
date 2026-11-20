@@ -190,7 +190,7 @@ public nonisolated enum FolderChooser {
             let location = item.target.identity(home: home).fullName
             return Row(
                 section: .recent, title: item.title, subtitle: location, location: location,
-                mark: RootMark(item.target.mode), isChecked: false, target: .recent(item.url))
+                mark: RootMark(item.target), isChecked: false, target: .recent(item.url))
         }
     }
 }

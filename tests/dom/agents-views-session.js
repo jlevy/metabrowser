@@ -434,6 +434,12 @@ async function main() {
     formatSize,
     formatTimestamp: (seconds) => `t${seconds}`,
     navigation: { href: ({ path: target }) => `/view/${target}` },
+    // The shell's count painter, as the dot between a line's groups: muted, hidden from
+    // assistive technology (docs/design-system.md, "Count Summaries Bold Their Numbers").
+    countPartsNodes: (parts) =>
+      parts.map((part) => ({
+        outerHTML: `<span class="summary-punctuation" aria-hidden="true">${part.separator}</span>`,
+      })),
   };
   const row = (overrides) => ({
     agent: "claude",
@@ -462,7 +468,67 @@ async function main() {
       empty: "none",
     },
   );
+  const items = rows.sessionRowsHtml(
+    mb,
+    [
+      {
+        agent: "claude",
+        session_id: "s1",
+        title: "A <b>title</b>",
+        path: ".claude/projects/p/s1.jsonl",
+        age: "30 s ago",
+        project: "~/work/alpha",
+        models: ["m1", "m2"],
+        status: "running",
+      },
+      {
+        agent: "codex",
+        session_id: "s2",
+        title: "No file",
+        path: null,
+        age: "2 min ago",
+        project: null,
+        models: [],
+        status: null,
+      },
+    ],
+    { label: "Running now" },
+  );
+  // Every value a row shows comes from a session's own files, so each is escaped.
+  const hostile = rows.sessionRowsHtml(
+    mb,
+    [
+      {
+        agent: "claude",
+        session_id: "<i>id</i>",
+        title: "",
+        path: null,
+        age: "<i>age</i>",
+        project: "~/<i>project</i>",
+        models: ["<i>model</i>"],
+        status: "<i>status</i>",
+      },
+    ],
+    { label: "<i>label</i>" },
+  );
   const markup = {
+    "no value a session holds reaches the row as markup": !hostile.includes("<i>"),
+    "a session row's first line holds the agent, the title link, and the age last":
+      /agents-row-line"><span class="agents-agent">Claude Code<\/span><a class="agents-session-link agents-row-title"[^>]*>A &lt;b&gt;title&lt;\/b&gt;<\/a><span class="agents-row-age">30 s ago<\/span><\/div>/.test(
+        items,
+      ),
+    "its second line is the status, the project, and the model, parted by the design's separator":
+      items.includes(
+        '<div class="agents-row-meta agents-muted"><span class="file-header-badge badge-running">running</span><span class="agents-row-project" data-tip-text="~/work/alpha">~/work/alpha</span> <span class="summary-punctuation" aria-hidden="true">·</span> <span class="agents-row-model" data-tip-text="m1, m2">m1, m2</span>',
+      ),
+    "a row with neither leaves the line empty and no stray separator":
+      /agents-row-meta agents-muted"><\/div><\/li>/.test(items),
+    "a title with no file is plain text in the row": items.includes(
+      '<span class="agents-session-link agents-row-title agents-no-file">No file</span>',
+    ),
+    "the list names itself": items.startsWith(
+      '<ul class="agents-session-rows" aria-label="Running now">',
+    ),
     "the sorted column says so": /aria-sort="descending"/.test(table),
     "an unsorted column offers its sort": /aria-sort="none"/.test(table),
     "a title is escaped": table.includes("A &lt;b&gt;title&lt;/b&gt;") && !table.includes("<b>"),

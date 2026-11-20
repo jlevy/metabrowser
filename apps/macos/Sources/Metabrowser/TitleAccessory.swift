@@ -442,6 +442,9 @@ final class TitleBarTitleView: NSView {
     private func showPathMenu() {
         guard let url else { return }
         let folders = WindowTitle.pathMenuFolders(for: url.path(percentEncoded: false))
+        // The first row is the root, so it carries its kind's mark; each row above it is an
+        // ordinary folder, which is no root's mark.
+        let rootMark = RootMark(title?.identity.kind ?? .folder)
         let menu = NSMenu()
         for (index, path) in folders.enumerated() {
             let item = NSMenuItem(
@@ -449,9 +452,9 @@ final class TitleBarTitleView: NSView {
                 keyEquivalent: "")
             item.target = self
             item.representedObject = index == 0 ? [path] : [path, folders[index - 1]]
-            // Every row is a folder: the shared folder mark Open Recent and the chooser
-            // draw (`RootMark`), not Finder's colored icon for that path.
-            item.setMark(.folder)
+            // The marks Open Recent and the chooser draw (`RootMark`), not Finder's colored
+            // icon for that path: the root's own kind, then the ordinary folder.
+            item.setMark(index == 0 ? rootMark : .folder)
             menu.addItem(item)
         }
         let anchor = NSPoint(x: label.frame.minX - 10, y: label.frame.maxY + 4)

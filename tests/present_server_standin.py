@@ -8,7 +8,8 @@ loopback port, prints the line with that port, and answers the route for ROOT as
 server of ROOT does (``root_identity.py``):
 
 - a local folder, or a file's folder, by its absolute path, with the home folder as
-  ``~``, and ``kind`` ``folder``;
+  ``~``, and ``kind`` ``git`` for a folder that holds a ``.git`` entry, as a checkout is,
+  and ``folder`` for any other;
 - a GitHub URL by its repository without the scheme, then ``#<n>`` for a pull request
   and ``@main`` otherwise, and ``kind`` ``mirror``.
 
@@ -55,7 +56,7 @@ def identity(root: str) -> dict[str, str]:
         name = f"~/{folder.relative_to(home)}"
     else:
         name = str(folder)
-    return {"kind": "folder", "full_name": name}
+    return {"kind": "git" if (folder / ".git").exists() else "folder", "full_name": name}
 
 
 class _Identity(http.server.BaseHTTPRequestHandler):
