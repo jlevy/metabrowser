@@ -75,10 +75,10 @@ class UnexpectedTime(ValueError):
 FIXUPS: list[tuple[str, str]] = [
     # PR comparison addresses name the editable build and sandbox store, neither pinned.
     (r"(&build=)[0-9a-f]{12}(&store=)[0-9a-f]{16}", r"\1[BUILD]\2[STORE]"),
-    # Its image and rendered-Markdown addresses name the sandbox store after the
+    # Its image, rendered-Markdown, and size addresses name the sandbox store after the
     # endpoints.
     (
-        r"(/api/plugin/github/pull-(?:image|rendered-diff)\?number=\d+"
+        r"(/api/plugin/github/pull-(?:image|rendered-diff|size)\?number=\d+"
         r"&left=[0-9a-f]{40,64}&right=[0-9a-f]{40,64}&store=)[0-9a-f]{16}",
         r"\1[STORE]",
     ),
@@ -111,7 +111,7 @@ FIXUPS: list[tuple[str, str]] = [
     # pin it. A hosted origin's key is the same on every machine and stays literal.
     (
         r'("origin": "file://\[CWD\][^"\n]*",\n\s*"location": "[^"\n]*/repository-stores/)'
-        r'[0-9a-f]{64}(/repository\.git")',
+        r'[a-z0-9-]+--[0-9a-f]{16}(/repository\.git")',
         r"\1[STORE_KEY]\2",
     ),
     (r"/\S*/builtin_plugins", "[BUILTIN]"),

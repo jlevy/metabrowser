@@ -906,8 +906,9 @@ def test_projected_blocks_join_to_kpress_parse_markdown(
 
 
 def _snapshot_violations(html: str) -> list[str]:
-    """What a block keeps that is not an image of the head on its route, a link to a file of
-    the head at its `/view/` address, an anchor of its own, or an outside link."""
+    """What a block keeps that is not an image of the head on its route or one from the web
+    over https, a link to a file of the head at its `/view/` address, an anchor of its own,
+    or an outside link."""
 
     from html.parser import HTMLParser
 
@@ -929,7 +930,7 @@ def _snapshot_violations(html: str) -> list[str]:
                     (head, "#user-content-", "https://", "http://")
                 ):
                     found.append(f"{tag}[href={value}]")
-                if name == "src" and not value.startswith(image):
+                if name == "src" and not value.startswith((image, "https://")):
                     found.append(f"{tag}[src={value}]")
 
     checker = _Check()

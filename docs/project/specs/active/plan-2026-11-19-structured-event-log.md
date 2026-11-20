@@ -277,6 +277,35 @@ The event log’s routes are about the server, not the served revision, so the s
 guard lets them through, as it does `/api/source/`: a page left behind by a switch still
 reports and reads its Details.
 
+### Browsing the Log
+
+The `event-log` built-in plugin reads a segment as spans (`event_log_views.py`): a
+span’s `start`, `open`, and `end` records are one item, nested under the span that
+started it (`parent`, with the process’s ID, since a copy of several segments can hold
+two spans of one number), and a span with no `end` is *unfinished*, aged to the log’s
+last record.
+The file’s name picks the kind (`events-*.jsonl`, a filesystem `path_glob`),
+so a segment is an event log wherever it is served or copied, and each view is a route
+of the plugin that reads the file through the content reader, which is the same bounded
+read for every source.
+The kind is picked only for a file of an attached folder, since a `path_glob` is a
+filesystem match: the same name in a pinned revision is a generic JSONL file, with no
+event-log views. The routes are `timeline` (a page of the roots, or the children of a
+`parent`, in time order), `slowest`, `kinds`, and `errors`. They take `/api/event-log`’s
+filters (`kind`, `outcome`, `name`, `client`, `cause`, `min_ms`); a filtered timeline
+keeps the spans that match and the spans above them.
+Errors is the failures route’s grouping (`event_log_route.FailureTally`) over one file,
+plus the unfinished work.
+A segment is read whole up to `MAX_VIEW_BYTES`, the size the writer rolls at, and the
+table built from it is kept by the content’s fingerprint; each constant records its
+measurement beside it.
+A server whose folder is the events directory, or inside it, opens no log of its own,
+since its requests for the files on screen would change one of them, and says why: as a
+warning, in Details, and in `metab --doctor`. A server whose folder only holds the
+directory (`metab ~`) logs as usual and records no request whose target resolves inside
+it (`event_log.quiet_request`), which is what breaks the loop without losing the rest of
+that server’s latency.
+
 ## Implementation Plan
 
 ### Phase 1: An Internal Debugging Log
@@ -300,10 +329,14 @@ One stack of pull requests.
 
 ### Phase 2: Metabrowser Browses Its Own Log
 
-- [ ] A log view for the event schema, beside the agent-log and JSONL views, that the
-  file kinds pick for an `events-*.jsonl` file.
-- [ ] Views: by latency, by kind, slowest, errors, and a timeline that nests spans under
-  their parents.
+- [x] A log view for the event schema, beside the agent-log and JSONL views, that the
+  file kinds pick for an `events-*.jsonl` file: the `event-log` plugin
+  (`builtin_plugins/event_log/`), a filesystem `path_glob` match.
+- [x] Views: Timeline, which nests spans under their parents; Latency, the slowest and
+  the distribution of times; By kind; and Errors, by cause with the page’s reports apart
+  and the work that never ended.
+  Each is a route (`event_log_views.py`) that `metab` reads, with filters of
+  `/api/event-log`’s.
 - [ ] A way to open the log from the app and the shell (a menu command or a link from
   the failure line), and a `metab` equivalent for each view’s query, with goldens.
 
@@ -330,6 +363,15 @@ that the route accepts every body it sends and that the Details read from a refr
 that never ends show it running and the page’s wait never completed.
 `tests/dom/github-pull-page-mount-behavior.js` pins the pull request page’s late line
 and Details, and `tests/dom/event-log-details-chrome.mjs` the same in Chrome.
+`tests/test_event_log_views.py` holds the spans: where one starts, what is unfinished,
+nesting and what a hand-edited file may not do, filters, the distribution, percentiles,
+and the failures’ grouping.
+`cli-api-event-log-views.tryscript.md` pins each view’s route on a segment that tells
+the stuck-page story; `tests/dom/event-log-view-session.js` runs the views without a
+browser on the routes’ recorded answers (`cli-ui-event-log-view.tryscript.md`), and
+`tests/dom/event-log-view-chrome.mjs` lays them out in Chrome
+(`tests/test_event_log_view_chrome.py`). `tests/test_plugin_hooks_source_agreement.py`
+holds the routes to the same answer for a folder and a pin.
 
 ## Open Questions
 

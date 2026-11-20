@@ -99,6 +99,7 @@ WHEEL_SMOKE_SCRIPT = dedent(
         "agents",
         "binary",
         "diff",
+        "event-log",
         "folder",
         "github",
         "html",

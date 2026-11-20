@@ -48,6 +48,9 @@ LOG = logging.getLogger(__name__)
 # 0.7s on a three-thousand-file tree and grows with it, so making every route
 # pay for it made the cheap ones -- route discovery, one file's kind, a Git log
 # -- several times slower than the work they do.
+# The routes that print a Git revision's file ages, which a command waits for the background
+# read of (`wait_for_index`), beside the index.
+_AGES_DEPENDENT: tuple[str, ...] = ("/api/tree", "/api/index/progress")
 _INDEX_DEPENDENT: tuple[str, ...] = (
     "/api/tree",
     "/api/rollup",
@@ -118,7 +121,11 @@ async def _issue(
     index_detail = "skipped"
     async with InProcessClient(app, label="api", logger=LOG) as client:
         if route.startswith(_INDEX_DEPENDENT):
-            result = await _wait_for_index(client, timeout_s=index_timeout_s)
+            result = await _wait_for_index(
+                client,
+                timeout_s=index_timeout_s,
+                ages=route.startswith(_AGES_DEPENDENT),
+            )
             index_detail = result.detail if result.completed else f"incomplete: {result.detail}"
         if body:
             response = await client.post(route, body=body)

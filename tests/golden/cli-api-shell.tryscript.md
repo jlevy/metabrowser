@@ -474,6 +474,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/git/commit-size/{revision}",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/git/commit/{revision}",
       "methods": [
         "GET",
@@ -554,7 +562,47 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/agents/catalog",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/agents/charts",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/agents/live",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/agents/records",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/agents/session",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/agents/sessions",
       "methods": [
         "GET",
         "HEAD"
@@ -587,6 +635,38 @@ status: 200
     },
     {
       "path": "/api/plugin/diff/document",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/event-log/errors",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/event-log/kinds",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/event-log/slowest",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/event-log/timeline",
       "methods": [
         "GET",
         "HEAD"
@@ -686,6 +766,14 @@ status: 200
     },
     {
       "path": "/api/plugin/github/pull-rendered-diff",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/github/pull-size",
       "methods": [
         "GET",
         "HEAD"
@@ -932,7 +1020,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 74
+  "count": 85
 }
 ? 0
 ```

@@ -117,6 +117,10 @@ class FakeElement extends HTMLElement {
       }
     }
   }
+  get classList() {
+    const names = (this.getAttribute("class") || "").split(/\s+/);
+    return { contains: (name) => names.includes(name) };
+  }
   getAttribute(name) {
     return this.attributes.has(name) ? this.attributes.get(name) : null;
   }

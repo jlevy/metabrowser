@@ -39,6 +39,7 @@ def _render_index_html() -> str:
         def __init__(self) -> None:
             self.query_params = _FakeQuery()
             self.headers: dict[str, str] = {}
+            self.cookies: dict[str, str] = {}
 
     resp = asyncio.run(proc_browser.index(cast(Any, _FakeReq())))
     return resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else str(resp.body)

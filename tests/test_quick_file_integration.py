@@ -39,6 +39,7 @@ def _render_index_html() -> str:
         def __init__(self) -> None:
             self.query_params = _FakeQuery()
             self.headers: dict[str, str] = {}
+            self.cookies: dict[str, str] = {}
 
     response = asyncio.run(proc_browser.index(cast(Any, _FakeReq())))
     return (
@@ -303,6 +304,9 @@ def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> 
     ]
     # The palette's view wins; otherwise an anchored address asks for the Source view.
     assert "await selectFile(path, context.viewId || preferredView || " in apply_navigation
+    # The file already shown takes the view a caller names too: the event log's Show in
+    # timeline goes from its Errors view to its Timeline without leaving the file.
+    assert "showPreviewTab(path, context.viewId || shownView)" in apply_navigation
 
     init_block = _function_source(js, "initQuickFileFinder")
     assert "fileNeedsRevalidate.add(path)" in init_block

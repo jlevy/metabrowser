@@ -317,7 +317,9 @@ struct LiveMetabTests {
             return
         }
         #expect(report.hasChecks)
-        #expect(report.rows.map(\.id) == ["plugins", "open_in", "metab", "git", "config", "cache", "github"])
+        #expect(
+            report.rows.map(\.id)
+                == ["plugins", "open_in", "metab", "git", "config", "cache", "event_log", "github"])
         #expect(!report.rows.contains { $0.state == .other("unreadable") })
     }
 

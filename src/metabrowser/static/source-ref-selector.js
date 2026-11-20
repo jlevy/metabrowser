@@ -32,6 +32,15 @@
 // does, Git's short ID in the commit-ID face, and the commit's age by the shared
 // formatter (docs/design-system.md, "Age").
 //
+// A branch that is the head of a pull request shows it on a second line: its state's
+// icon, its number, and its title, from the listing's `pulls`, which the server reads from
+// what the repository's provider has cached and never fetches. The filter finds a branch
+// by its pull request's number or title too, which the server does, so the list the page
+// shows is the server's. While the provider is still filling its cache the listing says
+// so, and an open list asks again (`PULLS_POLL_MS`) until it is full. A row with a pull
+// request is taller than one without, so the window is placed by each row's own offset
+// (`rowOffsets`), not by one height.
+//
 // Every decision lives here without a DOM: `describe` turns the selector's state into
 // what it shows, and `createSelector` owns loading, filtering, stale answers, and the
 // switch through injected dependencies. `mount` is the browser glue that supplies real
@@ -53,6 +62,18 @@
   // Typing narrows the list through the server, which reads the mirror's refs once per
   // request; waiting for a short pause in typing asks once per word, not per key.
   const FILTER_DELAY_MS = 150;
+  // While the server says it is still filling its cache of pull requests, an open list asks
+  // again at this interval: the answer is kept under the cache's revision, so each ask
+  // reads one small file and runs no Git, and the rows gain their pull requests as the
+  // pages arrive. It stops when the list closes or the server says the cache is full.
+  const PULLS_POLL_MS = 3000;
+  // A pull request's title is cut to what one line holds; the row's tooltip carries the
+  // rest, and when more than one pull request names a branch, the others.
+  const PULL_MORE_LIMIT = 5;
+  // What the list says beside a filter's finds while the server has cached only some of the
+  // repository's pull requests: a number or a title may match more branches than it lists.
+  const PULLS_INCOMPLETE =
+    "Pull requests are not all cached yet, so a number or title may match more branches.";
   // Rows drawn beyond the list's view on either side, so a scroll or a key finds the next
   // rows drawn already. The list draws the rows in its view and these, whatever the
   // listing holds, and places each by its index over a box as tall as all of them
@@ -162,6 +183,13 @@
             checkedOut: row.checked_out === true,
             current: row.current,
             chip,
+            pulls: (row.pulls ?? []).map((pull) => ({
+              number: pull.number,
+              title: pull.title,
+              state: pull.state,
+            })),
+            // How many the branch heads, of which the row lists the first few.
+            pullsTotal: row.pulls_total ?? row.pulls?.length ?? 0,
           }));
     let note = "";
     if (state.loading && listing === null) {
@@ -191,6 +219,14 @@
           directory: location.slice(0, cut),
           base: location.slice(cut),
         };
+    // The filter finds a branch by its pull request's number or title once the server has
+    // them; a tag has none.
+    const pullsReady = listing?.pull_requests?.state === "ready";
+    // A filter finds only the pull requests the server has cached, so while it has some of
+    // them it says so, beside what the filter found (mb-tjbm review A8).
+    if (pullsReady && listing?.pull_requests?.complete === false && state.query !== "") {
+      note = note === "" ? PULLS_INCOMPLETE : `${note} ${PULLS_INCOMPLETE}`;
+    }
     return {
       button: label.name === "" ? label.kind : `${label.kind}: ${label.name}`,
       // A pull request's number, which the button sets in its own weight
@@ -215,6 +251,8 @@
       kind: state.kind,
       kinds: [...(listing?.kinds ?? (checkout ? CHECKOUT_KINDS : MIRROR_KINDS))],
       query: state.query,
+      filterLabel: pullsReady ? `Filter ${plural} or pull requests` : `Filter ${plural}`,
+      pullRequests: listing?.pull_requests ?? null,
       loading: state.loading,
       switching: state.switching,
       workingTree,
@@ -266,35 +304,219 @@
   }
 
   /**
-   * Which of *count* rows, each *rowHeight* tall, a list scrolled to *scrollTop* draws in
-   * a view *viewHeight* tall: those in view and ROWS_OVERSCAN more on either side, as the
-   * range from *start* up to *end*, and the row at *roving*, the one that takes Tab, as
-   * *also* when the range leaves it out, else -1. That row may have focus, and Tab from
-   * the filter box goes to it, so it stays drawn however far the list scrolls from it.
-   * Until a row has been measured, *rowHeight* is 0 and the first rows are drawn, as many
-   * as the overscan on both sides. Pure.
+   * Where each of *rows* sits in the list, and where the last one ends. A row with a pull
+   * request is *tall* high and any other *plain*, so the answer has one more entry than
+   * there are rows: row *at* is from `offsets[at]` to `offsets[at + 1]`. Pure.
    *
-   * @param {number} count
-   * @param {number} rowHeight
+   * @param {ReadonlyArray<{pulls: ReadonlyArray<unknown>}>} rows
+   * @param {number} plain A row with no pull request.
+   * @param {number} tall A row with one.
+   * @returns {number[]}
+   */
+  function rowOffsets(rows, plain, tall) {
+    /** @type {number[]} */
+    const offsets = new Array(rows.length + 1);
+    let top = 0;
+    for (let at = 0; at < rows.length; at += 1) {
+      offsets[at] = top;
+      top += rows[at].pulls.length > 0 ? tall : plain;
+    }
+    offsets[rows.length] = top;
+    return offsets;
+  }
+
+  /**
+   * How many rows begin before *y*, or at it with *atIt*: the index of the first row that
+   * begins after it. Pure.
+   *
+   * @param {readonly number[]} offsets
+   * @param {number} y
+   * @param {boolean} [atIt]
+   * @returns {number}
+   */
+  function rowsBefore(offsets, y, atIt = false) {
+    let low = 0;
+    let high = offsets.length - 1;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (atIt ? offsets[middle] <= y : offsets[middle] < y) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    return low;
+  }
+
+  /**
+   * Which rows a list scrolled to *scrollTop* draws in a view *viewHeight* tall, over rows
+   * placed at *offsets* (`rowOffsets`): those in view and ROWS_OVERSCAN more on either
+   * side, as the range from *start* up to *end*, and the row at *roving*, the one that
+   * takes Tab, as *also* when the range leaves it out, else -1. That row may have focus,
+   * and Tab from the filter box goes to it, so it stays drawn however far the list scrolls
+   * from it. Until a row has been measured, every offset is 0 and the first rows are
+   * drawn, as many as the overscan on both sides. Pure.
+   *
+   * @param {readonly number[]} offsets
    * @param {number} scrollTop
    * @param {number} viewHeight
    * @param {number} roving
    * @returns {{start: number, end: number, also: number}}
    */
-  function rowWindow(count, rowHeight, scrollTop, viewHeight, roving) {
+  function rowWindow(offsets, scrollTop, viewHeight, roving) {
+    const count = offsets.length - 1;
     if (count <= 0) {
       return { start: 0, end: 0, also: -1 };
     }
     let start = 0;
     let end = Math.min(count, 2 * ROWS_OVERSCAN);
-    if (rowHeight > 0) {
-      const first = Math.floor(scrollTop / rowHeight) - ROWS_OVERSCAN;
-      const last = Math.ceil((scrollTop + viewHeight) / rowHeight) + ROWS_OVERSCAN;
-      start = Math.max(0, Math.min(count, first));
-      end = Math.max(start, Math.min(count, last));
+    if (offsets[count] > 0) {
+      // The row at the view's top is the last that begins at or before it, and the view's
+      // foot is in the last row that begins before it.
+      const first = rowsBefore(offsets, scrollTop, true) - 1;
+      const last = rowsBefore(offsets, scrollTop + viewHeight);
+      start = Math.max(0, Math.min(count, first - ROWS_OVERSCAN));
+      end = Math.max(start, Math.min(count, last + ROWS_OVERSCAN));
     }
     const outside = roving >= 0 && roving < count && (roving < start || roving >= end);
     return { start, end, also: outside ? roving : -1 };
+  }
+
+  /**
+   * Whether two answers of the refs route say the same, so an answer asked for again while
+   * the server fills its pull requests need not be drawn when nothing in it moved. Pure.
+   *
+   * @param {MetabrowserSourceRefListing | null} a
+   * @param {MetabrowserSourceRefListing | null} b
+   * @returns {boolean}
+   */
+  function sameListing(a, b) {
+    if (a === null || b === null) {
+      return a === b;
+    }
+    const pa = a.pull_requests;
+    const pb = b.pull_requests;
+    if (
+      a.kind !== b.kind ||
+      a.query !== b.query ||
+      a.pin !== b.pin ||
+      a.ref !== b.ref ||
+      a.refs.length !== b.refs.length ||
+      (pa?.state ?? null) !== (pb?.state ?? null) ||
+      pa?.complete !== pb?.complete ||
+      pa?.refreshing !== pb?.refreshing ||
+      JSON.stringify(a.working_tree) !== JSON.stringify(b.working_tree)
+    ) {
+      return false;
+    }
+    for (let at = 0; at < a.refs.length; at += 1) {
+      const x = a.refs[at];
+      const y = b.refs[at];
+      if (
+        x.ref !== y.ref ||
+        x.name !== y.name ||
+        x.commit !== y.commit ||
+        x.committed_at !== y.committed_at ||
+        x.default !== y.default ||
+        x.checked_out !== y.checked_out ||
+        x.current !== y.current ||
+        (x.pulls_total ?? 0) !== (y.pulls_total ?? 0) ||
+        pullsSignature(x.pulls ?? []) !== pullsSignature(y.pulls ?? [])
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * What a row's pull requests say, as one string to compare. Pure.
+   *
+   * @param {ReadonlyArray<{number: number, title: string, state: string}>} pulls
+   * @returns {string}
+   */
+  function pullsSignature(pulls) {
+    return pulls.map((pull) => `${pull.number}\0${pull.state}\0${pull.title}`).join("\n");
+  }
+
+  /**
+   * Whether two lists of model rows are the same refs drawn the same way, whatever pull
+   * requests they have: the rows a drawn list can keep as they are, and patch. Pure.
+   *
+   * @param {ReadonlyArray<MetabrowserSourceRefSelectorModel["rows"][number]>} a
+   * @param {ReadonlyArray<MetabrowserSourceRefSelectorModel["rows"][number]>} b
+   * @returns {boolean}
+   */
+  function sameRefLines(a, b) {
+    if (a.length !== b.length) {
+      return false;
+    }
+    for (let at = 0; at < a.length; at += 1) {
+      const x = a[at];
+      const y = b[at];
+      if (
+        x.ref !== y.ref ||
+        x.name !== y.name ||
+        x.commit !== y.commit ||
+        x.committedAt !== y.committedAt ||
+        x.default !== y.default ||
+        x.checkedOut !== y.checkedOut ||
+        x.current !== y.current ||
+        x.chip !== y.chip
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Where a list scrolls to when its rows are laid out again, as they are when pull
+   * requests arrive for rows above the view and make those rows taller. Pure.
+   *
+   * The reader keeps what they were looking at: the row at the top of the view stays
+   * where it was in the view, by its ref; a list scrolled to its foot, as End leaves it,
+   * stays at its foot; and a row that had focus and was in view is in view still.
+   *
+   * *before* and *after* are each the refs in order and where each sits
+   * (`rowOffsets`); *top* and *view* are the list's scroll position and its height;
+   * *focused* is the ref of the row that has focus, or null.
+   *
+   * @param {{refs: readonly string[], offsets: readonly number[]}} before
+   * @param {{refs: readonly string[], offsets: readonly number[]}} after
+   * @param {number} top
+   * @param {number} view
+   * @param {string | null} focused
+   * @returns {number}
+   */
+  function anchoredScroll(before, after, top, view, focused) {
+    const was = before.offsets[before.refs.length] ?? 0;
+    const now = after.offsets[after.refs.length] ?? 0;
+    const most = Math.max(0, now - view);
+    if (!(was > 0) || !(now > 0) || before.refs.length === 0) {
+      return Math.min(top, most);
+    }
+    if (top > 0 && top + view >= was - 0.5) {
+      return most;
+    }
+    const first = Math.max(0, rowsBefore(before.offsets, top, true) - 1);
+    const anchor = after.refs.indexOf(before.refs[first]);
+    let next = anchor < 0 ? top : after.offsets[anchor] + (top - before.offsets[first]);
+    if (focused !== null) {
+      const was_ = before.refs.indexOf(focused);
+      const is = after.refs.indexOf(focused);
+      const visible =
+        was_ >= 0 && before.offsets[was_ + 1] > top && before.offsets[was_] < top + view;
+      if (visible && is >= 0) {
+        if (after.offsets[is + 1] > next + view) {
+          next = after.offsets[is + 1] - view;
+        }
+        if (after.offsets[is] < next) {
+          next = after.offsets[is];
+        }
+      }
+    }
+    return Math.max(0, Math.min(next, most));
   }
 
   /**
@@ -353,6 +575,9 @@
     let inflight = null;
     /** @type {unknown} */
     let filterTimer = null;
+    /** The wait before the next ask for pull requests the server was still filling. */
+    /** @type {unknown} */
+    let pullsTimer = null;
     let disposed = false;
 
     function render() {
@@ -368,20 +593,58 @@
       }
     }
 
+    function clearPullsTimer() {
+      if (pullsTimer !== null) {
+        deps.cancel(pullsTimer);
+        pullsTimer = null;
+      }
+    }
+
     function abortInflight() {
       inflight?.abort();
       inflight = null;
     }
 
-    async function load() {
-      clearFilterTimer();
+    /** Ask again after PULLS_POLL_MS while the server fills its pull requests. */
+    function watchPulls() {
+      clearPullsTimer();
+      if (disposed || !state.open || state.listing?.pull_requests?.refreshing !== true) {
+        return;
+      }
+      pullsTimer = deps.schedule(() => {
+        pullsTimer = null;
+        void load(true);
+      }, PULLS_POLL_MS);
+    }
+
+    /**
+     * Ask for the list. *quiet* is the ask for pull requests the server was filling: it
+     * shows nothing while it waits, and a refusal leaves the rows as they are.
+     *
+     * @param {boolean} [quiet]
+     */
+    async function load(quiet = false) {
+      // A quiet ask never stands in for one the reader waits on: a filter still in its
+      // pause asks for itself, with what was typed, and a quiet ask that failed meanwhile
+      // would have dropped it (mb-tjbm review A9).
+      if (quiet && filterTimer !== null) {
+        watchPulls();
+        return;
+      }
+      if (!quiet) {
+        clearFilterTimer();
+      }
+      clearPullsTimer();
       abortInflight();
       requested += 1;
       const ticket = requested;
       const controller = new AbortController();
       inflight = controller;
-      state.loading = true;
-      render();
+      if (!quiet) {
+        state.loading = true;
+        render();
+      }
+      const asked = { kind: state.kind, query: state.query };
       const params = new URLSearchParams({ kind: state.kind });
       if (state.query !== "") {
         params.set("q", state.query);
@@ -421,6 +684,18 @@
         return;
       }
       inflight = null;
+      if (quiet) {
+        // A refusal, or an answer for a list the reader has since left, leaves the rows.
+        if (listing === null || asked.kind !== state.kind || asked.query !== state.query) {
+          return;
+        }
+        // Nothing moved, so nothing is drawn: the rows keep their focus, their tooltips,
+        // and a press in progress (mb-tjbm review A2).
+        if (sameListing(state.listing, listing)) {
+          watchPulls();
+          return;
+        }
+      }
       state.loading = false;
       state.listing = listing;
       state.error = error;
@@ -429,6 +704,7 @@
         state.removed = true;
       }
       render();
+      watchPulls();
     }
 
     function open() {
@@ -445,6 +721,7 @@
         return;
       }
       clearFilterTimer();
+      clearPullsTimer();
       // An answer still on its way belongs to a list nobody is looking at.
       abortInflight();
       requested += 1;
@@ -575,6 +852,7 @@
     function dispose() {
       disposed = true;
       clearFilterTimer();
+      clearPullsTimer();
       abortInflight();
     }
 
@@ -595,6 +873,17 @@
 
   // The group's key in the shared chip controls' markup and events.
   const KIND_GROUP = "source-ref-kind";
+  // The kind whose assets are the GitHub plugin's, which draws a pull request's state; the
+  // Pulls tab loads the plugin for the same kind (static/pulls-nav.js). The plugin is 15
+  // requests and about 240 KB transferred, of which the four icons are `pull-state.js`'s 3 KB,
+  // and nothing loads them alone. Measured 2026-11-20 in headless Chrome against this
+  // repository's mirror, 137 branches of which most head a pull request, with the cache off:
+  // a list opened at once, before the Pulls tab's idle prefetch has loaded the plugin
+  // (`PREFETCH_IDLE_TIMEOUT_MS`), draws its rows in 209 ms and its icons in 338 ms, so the
+  // load costs the icons 129 ms and the rows nothing, their slots being as wide as the
+  // icons; opened after 5 s the plugin is there and the icons come with the rows, in 93 ms;
+  // opened at once with the cache warm, rows 75 ms and icons 82 ms.
+  const PULL_ICON_KIND = "pull-request-list";
 
   /** The shared chip controls, which the shell loads before anything lazy. */
   function chipControls() {
@@ -676,8 +965,8 @@
         parts.workingTree.removeAttribute("aria-current");
       }
     }
-    parts.filter.placeholder = `Filter ${KIND_PLURAL[model.kind]}`;
-    parts.filter.setAttribute("aria-label", `Filter ${KIND_PLURAL[model.kind]}`);
+    parts.filter.placeholder = model.filterLabel;
+    parts.filter.setAttribute("aria-label", model.filterLabel);
     if (parts.filter.value !== model.query) {
       parts.filter.value = model.query;
     }
@@ -690,7 +979,133 @@
   }
 
   /**
-   * One row: its ref's chip, a badge, its commit, and its commit's age. Browser only.
+   * The state's icon, drawn by the GitHub plugin once it has loaded: the shapes and hues of
+   * a pull request's state are the plugin's, in one place, so a row here and a row of the
+   * Pulls tab cannot disagree (docs/design-system.md, "A Pull Request's State"). Until it
+   * has, the slot is as wide as the icon will be, so nothing moves when it arrives.
+   * Browser only.
+   *
+   * @param {"open" | "draft" | "merged" | "closed"} state
+   * @returns {HTMLElement}
+   */
+  function pullIcon(state) {
+    const slot = document.createElement("span");
+    slot.className = "source-ref-selector-pull-icon";
+    const draw = window.metabrowser?.builtins?.github?.pullStateIcon;
+    if (typeof draw === "function") {
+      slot.append(draw(state));
+    }
+    return slot;
+  }
+
+  /**
+   * A row's pull request line: the first pull request's state icon, its number, and its
+   * title, and a count of the others. Browser only.
+   *
+   * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
+   * @returns {HTMLElement}
+   */
+  function pullLine(row) {
+    const [first] = row.pulls;
+    const others = row.pullsTotal - 1;
+    const line = document.createElement("span");
+    line.className = "source-ref-selector-pull";
+    const number = document.createElement("span");
+    number.className = "source-ref-selector-pull-number";
+    number.textContent = `#${first.number}`;
+    // A conventional-commit prefix is regular and the rest of the title bold
+    // (docs/design-system.md, "Titles").
+    const title = document.createElement("span");
+    title.className = "source-ref-selector-pull-title";
+    title.append(...window.MetabrowserFormatters.titleNodes(document, first.title));
+    line.append(pullIcon(first.state), number, title);
+    if (others > 0) {
+      const more = document.createElement("span");
+      more.className = "source-ref-selector-pull-more";
+      more.textContent = `+${others}`;
+      more.setAttribute("aria-label", `and ${others} more pull request${others === 1 ? "" : "s"}`);
+      line.append(more);
+    }
+    return line;
+  }
+
+  /**
+   * The branch's other pull requests, named: the first PULL_MORE_LIMIT of those the row
+   * lists, and how many more there are. "" when it has one. Pure.
+   *
+   * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
+   * @returns {string}
+   */
+  function otherPulls(row) {
+    if (row.pullsTotal <= 1) {
+      return "";
+    }
+    const named = row.pulls
+      .slice(1, 1 + PULL_MORE_LIMIT)
+      .map((pull) => `#${pull.number} ${pull.title}`);
+    const rest = row.pullsTotal - 1 - named.length;
+    return `Also ${named.join(", ")}${rest > 0 ? `, and ${rest} more` : ""}`;
+  }
+
+  /**
+   * What the row's tooltip says of its pull requests: the first one's whole title when the
+   * line cuts it short, and the others, which the line shows only as a count. A tooltip
+   * is one run of text, so these join with a dot. Pure.
+   *
+   * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
+   * @param {boolean} cut Whether the first one's title is cut short.
+   * @returns {string}
+   */
+  function pullTip(row, cut) {
+    /** @type {string[]} */
+    const parts = cut ? [`#${row.pulls[0].number} ${row.pulls[0].title}`] : [];
+    const others = otherPulls(row);
+    if (others !== "") {
+      parts.push(others);
+    }
+    return parts.join(" · ");
+  }
+
+  /**
+   * What a row's pull request line is drawn from, to tell whether it needs drawing again.
+   * Pure.
+   *
+   * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
+   * @returns {string}
+   */
+  function pullKey(row) {
+    return `${row.pullsTotal}\n${pullsSignature(row.pulls)}`;
+  }
+
+  /**
+   * Draw, or draw again, a row's pull request line, and say the branch's others to
+   * assistive technology, which a tooltip does not reach (mb-tjbm review A11). Browser only.
+   *
+   * @param {HTMLLIElement} item
+   * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
+   */
+  function drawPulls(item, row) {
+    const button = /** @type {HTMLButtonElement} */ (item.firstElementChild);
+    item.dataset.pulls = pullKey(row);
+    button.querySelector(":scope > .source-ref-selector-pull")?.remove();
+    if (row.pulls.length > 0) {
+      button.append(pullLine(row));
+    }
+    const others = otherPulls(row);
+    if (others === "") {
+      button.removeAttribute("aria-description");
+    } else {
+      button.setAttribute("aria-description", others);
+    }
+  }
+
+  /**
+   * One row: its ref's chip, a badge, its commit, and its commit's age, and under them the
+   * pull request it is the head of, if it is. Browser only.
+   *
+   * What the handlers say is read from the list when they run, not kept from here, so a
+   * row whose pull requests arrive later is patched in place (`patchRow`) and keeps its
+   * element, its focus, and its tooltip.
    *
    * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
    * @param {number} at Its index among every row the list shows.
@@ -703,7 +1118,7 @@
     // Only the rows near the view are in the document, so each says where it stands.
     item.setAttribute("aria-posinset", String(at + 1));
     item.setAttribute("aria-setsize", String(rows.shown.length));
-    item.style.top = `${at * rows.rowHeight}px`;
+    item.style.top = `${rows.offsets[at] ?? 0}px`;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "menu-item source-ref-selector-row";
@@ -713,6 +1128,9 @@
     if (row.current) {
       button.setAttribute("aria-current", "true");
     }
+    // The ref's own line, which every row has; a pull request's line goes under it.
+    const main = document.createElement("span");
+    main.className = "source-ref-selector-main";
     const name = document.createElement("span");
     name.className = "source-ref-selector-name";
     // A mirror's branch is a remote chip and its tag a tag chip, as on the button; a
@@ -724,12 +1142,12 @@
     name.appendChild(
       window.metabrowser.refChip(row.ref, { label: row.name, kind: row.chip, copy: false }),
     );
-    button.append(name);
+    main.append(name);
     if (row.default || row.checkedOut) {
       const badge = document.createElement("span");
       badge.className = "source-ref-selector-badge";
       badge.textContent = row.default ? "default" : "checked out";
-      button.append(badge);
+      main.append(badge);
     }
     // The commit as every line names one, its short ID in the commit-ID face, then
     // its age, in the compact style of navigation, with the exact time as its tooltip
@@ -746,27 +1164,68 @@
     } else {
       age.className = "source-ref-selector-age";
     }
-    button.append(commit, age);
+    main.append(commit, age);
+    button.append(main);
+    item.append(button);
+    drawPulls(item, row);
     button.addEventListener("click", () => rows.choose(row.ref));
-    // The row's name is cut short with an ellipsis when it is wider than the list;
-    // the tooltip then carries the whole name. pointerenter comes before the
-    // mouseenter the shell's tooltip listens for.
+    // The row's name, or its pull request's title, is cut short with an ellipsis when it
+    // is wider than the list; the tooltip then carries the whole of it, and the other
+    // pull requests a branch is the head of. pointerenter comes before the mouseenter the
+    // shell's tooltip listens for.
     button.addEventListener("pointerenter", () => {
+      const now = rows.shown[at] ?? row;
+      const title = button.querySelector(".source-ref-selector-pull-title");
+      const cut = title instanceof HTMLElement && title.scrollWidth > title.clientWidth;
+      /** @type {string[]} */
+      const tips = [];
       if (name.scrollWidth > name.clientWidth) {
-        button.dataset.tipText = row.name;
+        tips.push(row.name);
+      }
+      if (now.pulls.length > 0) {
+        const tip = pullTip(now, cut);
+        if (tip !== "") {
+          tips.push(tip);
+        }
+      }
+      if (tips.length > 0) {
+        button.dataset.tipText = tips.join(" · ");
       } else {
         delete button.dataset.tipText;
       }
     });
-    item.append(button);
     return item;
+  }
+
+  /**
+   * Bring a drawn row up to date with its model row, where its ref's line is what it was:
+   * where it sits, whether it takes Tab, and its pull request line, drawn again only if
+   * the pull requests moved. The element stays, so focus, a tooltip, and a press survive.
+   * Browser only.
+   *
+   * @param {HTMLLIElement} item
+   * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
+   * @param {number} at
+   * @param {MetabrowserSourceRefSelectorRows} rows
+   */
+  function patchRow(item, row, at, rows) {
+    const top = `${rows.offsets[at] ?? 0}px`;
+    if (item.style.top !== top) {
+      item.style.top = top;
+    }
+    const button = /** @type {HTMLButtonElement} */ (item.firstElementChild);
+    button.disabled = rows.switching;
+    button.tabIndex = at === rows.roving ? 0 : -1;
+    if (item.dataset.pulls !== pullKey(row)) {
+      drawPulls(item, row);
+    }
   }
 
   /**
    * Draw the rows in the list's view, ROWS_OVERSCAN more on either side, and the row that
    * takes Tab, wherever it is; take the rest out. Browser only.
    *
-   * Each row is placed by its index over the sizer, which is as tall as every row, so the
+   * Each row is placed by its offset over the sizer, which is as tall as every row, so the
    * list scrolls over all of them and its scroll bar says how far through it is. A row
    * already drawn is kept, so a scroll draws only the rows it brings near, and the rows
    * stay in the document in their order.
@@ -776,11 +1235,10 @@
   function drawWindow(parts) {
     const rows = parts.rows;
     const count = rows.shown.length;
-    parts.sizer.style.height = `${count * rows.rowHeight}px`;
+    parts.sizer.style.height = `${rows.offsets[count] ?? 0}px`;
     rows.drawnAt = parts.list.scrollTop || 0;
     const { start, end, also } = rowWindow(
-      count,
-      rows.rowHeight,
+      rows.offsets,
       rows.drawnAt,
       parts.list.clientHeight || 0,
       rows.roving,
@@ -817,8 +1275,68 @@
   }
 
   /**
-   * The rows of a new model: drawn afresh, the window first measured by one of them.
-   * Browser only.
+   * How tall a row is with no pull request and with one, measured by a row of each drawn
+   * out of sight, as the list lays it out. Browser only.
+   *
+   * Every row is placed by its offset, so the two must be exact, and each is the same for
+   * every row of its kind (docs/design-system.md, "The Ref Selector"). A pull request's
+   * line has a height of its own, and one row measured in the document, as this once did,
+   * says nothing of a kind of row it is not. The tall row is measured only when a row of
+   * the list is one.
+   *
+   * @param {MetabrowserSourceRefSelectorParts} parts
+   * @param {boolean} annotated Whether any row of the list has a pull request.
+   * @returns {{plain: number, tall: number}}
+   */
+  function measureRows(parts, annotated) {
+    /** @type {HTMLElement[]} */
+    const probes = [];
+    /** @param {boolean} tall */
+    const probe = (tall) => {
+      const item = rowElement(
+        {
+          name: "probe",
+          ref: "refs/remotes/origin/probe",
+          commit: "0000000",
+          committedAt: null,
+          default: false,
+          checkedOut: false,
+          current: false,
+          chip: "remote",
+          pulls: tall ? [{ number: 1, title: "probe", state: "open" }] : [],
+          pullsTotal: tall ? 1 : 0,
+        },
+        0,
+        { ...parts.rows, shown: [], offsets: [0] },
+      );
+      item.style.visibility = "hidden";
+      item.setAttribute("aria-hidden", "true");
+      item.inert = true;
+      probes.push(item);
+      return item;
+    };
+    const plain = probe(false);
+    const tall = annotated ? probe(true) : null;
+    parts.list.append(...probes);
+    const measured = {
+      plain: plain.getBoundingClientRect().height,
+      tall: tall === null ? 0 : tall.getBoundingClientRect().height,
+    };
+    for (const item of probes) {
+      item.remove();
+    }
+    return measured;
+  }
+
+  /**
+   * The rows of a new model, the window first measured by a row of each kind. Browser only.
+   *
+   * A new list, or a new filter, is drawn afresh and starts at its top. The same list drawn
+   * again, as it is when the server's pull requests arrive, keeps what the reader sees:
+   * the rows that are the same refs stay as they are, patched (`patchRow`), so focus,
+   * a tooltip, and a press in progress survive, and the list scrolls so that the row at the
+   * top of its view stays where it was, the foot stays the foot, and a focused row stays
+   * in view, though the rows above have grown (`anchoredScroll`; mb-tjbm review A1, A2).
    *
    * The row that takes Tab is the one that had focus when this listing still has its
    * ref, else the served one, else the first; a row that had focus keeps it.
@@ -828,6 +1346,7 @@
    */
   function paintRows(parts, model) {
     const rows = parts.rows;
+    rows.model = model;
     const active = /** @type {HTMLElement | null} */ (document.activeElement);
     const hadFocus =
       active !== null && parts.list.contains(active) && active.dataset.index !== undefined
@@ -836,44 +1355,96 @@
     // A new list, or a new filter, starts at its top, its newest refs, unless it shows
     // the served ref: then at that ref's row, once its rows arrive (below).
     const shows = `${model.kind}\0${model.query}`;
-    if (rows.listing !== shows) {
+    const again = rows.listing === shows;
+    if (!again) {
       rows.listing = shows;
       rows.revealed = false;
       parts.list.scrollTop = 0;
     }
-    for (const item of rows.drawn.values()) {
-      item.remove();
+    // Where the rows were, for the reader to keep their place among them.
+    const before = again ? { refs: rows.shown.map((row) => row.ref), offsets: rows.offsets } : null;
+    const scrolled = parts.list.scrollTop;
+    const view = parts.list.clientHeight || 0;
+    const inPlace = again && !rows.rebuild && sameRefLines(rows.shown, model.rows);
+    rows.rebuild = false;
+    if (!inPlace) {
+      for (const item of rows.drawn.values()) {
+        item.remove();
+      }
+      rows.drawn.clear();
     }
-    rows.drawn.clear();
     rows.shown = model.rows;
     rows.switching = model.switching;
+    const annotated = model.rows.some((row) => row.pulls.length > 0);
+    // The icons of a pull request's state are the GitHub plugin's, which loads on demand
+    // and then draws the rows again (`drawIcons`).
+    if (annotated) {
+      drawIcons(parts);
+    }
+    // One height places every row of a kind; both are measured again on each new listing,
+    // so a change of font or density is followed.
+    const measured = measureRows(parts, annotated);
+    rows.offsets = rowOffsets(model.rows, measured.plain, measured.tall);
     const kept = hadFocus === undefined ? -1 : model.rows.findIndex((row) => row.ref === hadFocus);
     const current = model.rows.findIndex((row) => row.current);
     rows.roving = kept >= 0 ? kept : current >= 0 ? current : 0;
-    drawWindow(parts);
-    // One row's height places every row; it is measured again on each new listing, so a
-    // change of font or density is followed.
-    const first = rows.drawn.values().next().value;
-    const height = first === undefined ? 0 : first.getBoundingClientRect().height;
-    if (height > 0 && Math.abs(height - rows.rowHeight) > 0.01) {
-      rows.rowHeight = height;
-      for (const [at, item] of rows.drawn) {
-        item.style.top = `${at * height}px`;
-      }
-      drawWindow(parts);
+    // The box is as tall as the rows are now before the list is scrolled in it, or the
+    // browser holds the scroll to the old height.
+    parts.sizer.style.height = `${rows.offsets[model.rows.length] ?? 0}px`;
+    if (before !== null) {
+      parts.list.scrollTop = anchoredScroll(
+        before,
+        { refs: model.rows.map((row) => row.ref), offsets: rows.offsets },
+        scrolled,
+        view,
+        hadFocus ?? null,
+      );
     }
-    if (!rows.revealed && model.rows.length > 0 && rows.rowHeight > 0) {
+    if (inPlace) {
+      for (const [at, item] of rows.drawn) {
+        patchRow(item, model.rows[at], at, rows);
+      }
+    }
+    drawWindow(parts);
+    if (!rows.revealed && model.rows.length > 0 && rows.offsets[model.rows.length] > 0) {
       rows.revealed = true;
       if (current > 0 && kept < 0) {
         revealRow(parts, current);
         drawWindow(parts);
       }
     }
-    if (kept >= 0) {
+    if (kept >= 0 && !inPlace) {
       /** @type {HTMLElement | null | undefined} */ (
         rows.drawn.get(kept)?.firstElementChild
       )?.focus({ preventScroll: true });
     }
+  }
+
+  /**
+   * Load the GitHub plugin, which draws a pull request's state, once, and draw the rows
+   * again when it has: they were drawn with an empty slot where its icon goes, the slot's
+   * own width, so nothing moves. A plugin that cannot load leaves the slots empty, and
+   * each row's accessible text still says the number and title. Browser only.
+   *
+   * @param {MetabrowserSourceRefSelectorParts} parts
+   */
+  function drawIcons(parts) {
+    const rows = parts.rows;
+    const mb = window.metabrowser;
+    if (rows.iconsAsked || typeof mb?.builtins?.github?.pullStateIcon === "function") {
+      return;
+    }
+    rows.iconsAsked = true;
+    void mb.ensureKindAssets(PULL_ICON_KIND).then(
+      () => {
+        if (!parts.disposed && rows.model !== null) {
+          // Drawn with an empty slot where the icon goes, so every row is drawn again.
+          rows.rebuild = true;
+          paintRows(parts, rows.model);
+        }
+      },
+      () => {},
+    );
   }
 
   /**
@@ -885,14 +1456,15 @@
    */
   function revealRow(parts, at) {
     const { list, rows } = parts;
-    if (!(rows.rowHeight > 0)) {
+    const top = rows.offsets[at];
+    const foot = rows.offsets[at + 1];
+    if (!(foot > top)) {
       return;
     }
-    const top = at * rows.rowHeight;
     if (top < list.scrollTop) {
       list.scrollTop = top;
-    } else if (top + rows.rowHeight > list.scrollTop + list.clientHeight) {
-      list.scrollTop = top + rows.rowHeight - list.clientHeight;
+    } else if (foot > list.scrollTop + list.clientHeight) {
+      list.scrollTop = foot - list.clientHeight;
     }
   }
 
@@ -1094,7 +1666,10 @@
         shown: [],
         drawn: new Map(),
         roving: 0,
-        rowHeight: 0,
+        offsets: [0],
+        model: null,
+        iconsAsked: false,
+        rebuild: false,
         drawnAt: 0,
         listing: "",
         revealed: false,
@@ -1402,6 +1977,7 @@
         return opened;
       },
       dispose() {
+        parts.disposed = true;
         listening.abort();
         stopKeeping();
         unbindKinds();
@@ -1426,8 +2002,13 @@
     describe,
     mount,
     mounted: () => mountedSelector,
+    anchoredScroll,
     moveRow,
+    PULLS_POLL_MS,
+    rowOffsets,
     rowWindow,
+    sameListing,
+    sameRefLines,
     shownLabel,
   });
 })();

@@ -199,7 +199,7 @@ def served_checkout(app: Any) -> CheckoutRepository | None:
 def _cached_store(source: GitSource, home: Path) -> PublishedSource | None:
     from metabrowser.cache.acquire import AcquisitionError, cached_source
     from metabrowser.cache.atomic import RecordError
-    from metabrowser.cache.identity import SlugCollisionError
+    from metabrowser.cache.identity import SlugCollisionError, StoreKeyCollisionError
     from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
     from metabrowser.home import PrivateStorageError, StorageDirectoryError
 
@@ -209,6 +209,7 @@ def _cached_store(source: GitSource, home: Path) -> PublishedSource | None:
         AcquisitionError,
         RecordError,
         SlugCollisionError,
+        StoreKeyCollisionError,
         LayoutError,
         FutureLayoutFormatError,
         PrivateStorageError,
@@ -289,7 +290,7 @@ def _claim_source(repository: CheckoutRepository) -> CheckoutRepository:
     """Blocking publication only; held pull state belongs to the caller's event loop."""
     from metabrowser.cache.acquire import AcquisitionError, publish_unattached_source
     from metabrowser.cache.atomic import RecordError
-    from metabrowser.cache.identity import SlugCollisionError
+    from metabrowser.cache.identity import SlugCollisionError, StoreKeyCollisionError
     from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
     from metabrowser.cache.locks import LockBusyError
     from metabrowser.home import PrivateStorageError, StorageDirectoryError
@@ -305,6 +306,7 @@ def _claim_source(repository: CheckoutRepository) -> CheckoutRepository:
         RecordError,
         LockBusyError,
         SlugCollisionError,
+        StoreKeyCollisionError,
         AcquisitionError,
     ) as exc:
         # Each is the cache refusing the write, which is all a job can say of it.
@@ -494,7 +496,7 @@ async def _acquire_comparison(repository: CheckoutRepository) -> PublishedSource
         acquire_source,
     )
     from metabrowser.cache.atomic import RecordError
-    from metabrowser.cache.identity import SlugCollisionError
+    from metabrowser.cache.identity import SlugCollisionError, StoreKeyCollisionError
     from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
     from metabrowser.cache.lender import CheckoutRefusedError
     from metabrowser.cache.locks import LockBusyError
@@ -526,6 +528,7 @@ async def _acquire_comparison(repository: CheckoutRepository) -> PublishedSource
         AcquisitionError,
         RecordError,
         SlugCollisionError,
+        StoreKeyCollisionError,
         LayoutError,
         FutureLayoutFormatError,
         PrivateStorageError,
