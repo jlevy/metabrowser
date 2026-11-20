@@ -12,6 +12,9 @@ keys and clicks on the rows they wrote.
 Each header is a button with a tab stop and an expanded state.
 Enter and Space toggle it and keep the page from scrolling; other keys, a held key, and
 a key inside the open payload are left alone; and a click toggles it as it always did.
+An opened object payload is the structured plugin’s tree, drawn once that plugin loads
+and once however often the row is toggled meanwhile; a failed load leaves a flat JSON
+block and no empty wrapper, and a string payload is that block at once.
 
 ```console
 $ node tests/dom/log-event-row-session.js
@@ -106,6 +109,31 @@ $ node tests/dom/log-event-row-session.js
       "ariaExpanded": "true",
       "rawMounted": true,
       "defaultPrevented": false
+    }
+  },
+  "opened payloads": {
+    "an object payload is drawn as the tree once the load settles": {
+      "treesBeforeTheLoadSettled": 0,
+      "trees": 1,
+      "drawnInTheWrapper": true,
+      "payload": {
+        "tree": 1
+      },
+      "flatBlocks": 0
+    },
+    "a failed load leaves the flat block and no wrapper": {
+      "trees": 0,
+      "wrappers": 0,
+      "flatBlocks": 1
+    },
+    "a string payload is the flat block at once": {
+      "structuredLoads": 0,
+      "flatBlocks": 1
+    },
+    "closing and reopening while the load is in flight draws once": {
+      "expanded": true,
+      "trees": 1,
+      "wrappers": 1
     }
   }
 }
