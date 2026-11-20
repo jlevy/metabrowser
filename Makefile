@@ -365,7 +365,8 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_source_checkout_golden.py \
 	tests/test_cli_present_golden.py \
 	tests/test_app_contract_golden.py \
-	tests/test_diff_comparison_cache.py
+	tests/test_diff_comparison_cache.py \
+	tests/test_agents_mapping_golden.py
 
 golden-update:
 	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_RECORDERS)
