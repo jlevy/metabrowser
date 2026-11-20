@@ -593,15 +593,15 @@ Phase 2 carries them into the plugin unchanged.
 
 The served-root question took its proposed default (see
 [Open Questions](#open-questions)). Phase 2 lands as a stack of pull requests, in this
-order: the SDK additions; the plugin package with the adapters moved into it; the shared
-model, kinds, colors, and the synthetic homes; the catalog and its routes; and the
-views.
+order: the SDK additions; the shared model, kinds, providers, and the synthetic homes,
+in the `agents` package before it is a plugin; the plugin manifest with the adapters
+moved into it; the catalog and its routes; and the views, with the kind colors.
 
-- [ ] Land the Phase 2 SDK additions.
+- [x] Land the Phase 2 SDK additions.
 - [ ] Create the `agents` plugin package and its import-boundary test.
 - [ ] Move the five adapters (Phase 1 adds `codex-rollout`) and the `agent-log` views
   into the plugin.
-- [ ] Define the shared model, the event kinds, and each provider’s mapping table, with
+- [x] Define the shared model, the event kinds, and each provider’s mapping table, with
   their goldens.
 - [ ] Add the kind color tokens and their design checks, and use them in the Log and
   Charts views.
