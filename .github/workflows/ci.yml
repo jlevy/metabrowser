@@ -203,13 +203,11 @@ jobs:
         python-version: ["3.12", "3.13", "3.14", "3.14t"]
         shard: [1, 2]
     runs-on: ubuntu-latest
-    # Estimated, to be replaced by the measured 90th percentile of this PR's runs: one
-    # job ran both the goldens and the serial tier in 5.0 to 5.8 minutes at the 90th
-    # percentile (make ci-report, 2026-11-20), the 3.14t one of run 44788801411 cancelled
-    # at the old 6 minutes with the goldens 250 seconds and the serial tier 82. A part
-    # holds about half of each, so 0.5 minutes of setup, 133 seconds of goldens (the
-    # larger part's 53 percent of 958 file seconds, at that job's 3.8 files at a time),
-    # and 41 of serial tests is 3.4 minutes, which five minutes covers 1.5 times over.
+    # 2.7 to 3.3 minutes over the eight jobs of run 44795249295 (the longest the 3.14t
+    # second part's 200 seconds, the shortest the 3.13 first part's 161), against 5.0 to
+    # 5.8 at the 90th percentile (make ci-report, 2026-11-20) for the one job that ran
+    # both parts, which the 3.14t run 44788801411 hit the old 6 minutes with. A part
+    # holds about half the goldens by size and half the serial tests.
     timeout-minutes: 5
     steps:
       - name: Checkout
