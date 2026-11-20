@@ -54,7 +54,7 @@
   max-width: 28em;
   padding: 1px 2px 1px 8px;
   border: 1px solid var(--link);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: var(--ui-small-font-size);
 }
 .table-chip-label {
@@ -64,7 +64,7 @@
 }
 .table-chip-remove {
   padding: 0 5px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--muted);
   text-decoration: none;
 }
@@ -78,7 +78,6 @@
 }
 .table-status {
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
   font-variant-numeric: var(--tabular-numerals);
 }
 .table-fit-note {
@@ -97,7 +96,7 @@
 }
 .table-fit-note:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset-outset);
+  outline-offset: var(--focus-ring-offset);
 }
 .table-columns-button {
   margin-inline-start: auto;
@@ -201,7 +200,7 @@
 .table-sort:focus-visible,
 .table-head-menu:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset-outset);
+  outline-offset: var(--focus-ring-offset);
 }
 .table-sort-arrow {
   color: var(--link);
@@ -251,7 +250,6 @@
 }
 .table-position {
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
   font-variant-numeric: var(--tabular-numerals);
   text-decoration: none;
 }
@@ -273,7 +271,7 @@
   padding: 0 7px;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-chrome);
   color: var(--text);
   font-size: var(--ui-small-font-size);
   line-height: calc(var(--table-line-height) - 2px);
@@ -349,7 +347,7 @@
   font-weight: var(--weight-bold);
 }
 .table-back {
-  font-size: var(--ui-small-font-size);
+  white-space: nowrap;
 }
 .table-record-fields {
   display: grid;
@@ -367,7 +365,6 @@
 }
 .table-record-type {
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
   font-weight: var(--weight-normal);
 }
 .table-record-fields > dd {
@@ -384,7 +381,6 @@
 .table-record-note {
   margin: 4px 0 0;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
 }
 .table-record-backrefs {
   margin-top: 20px;

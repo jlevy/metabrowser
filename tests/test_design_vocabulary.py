@@ -573,6 +573,11 @@ def test_nav_like_row_sets_share_the_vertical_keyboard_contract() -> None:
     pull_files = pulls + (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-files-view.js").read_text(
         encoding="utf-8"
     )
+    # The table view: its model says where a key moves, and the view moves the tab stop.
+    table = "".join(
+        (REPO_ROOT / BUILTIN_PLUGINS / f"table/{name}").read_text(encoding="utf-8")
+        for name in ("table-model.js", "table-view.js")
+    )
 
     assert "### Navigational Row Collections" in design
     assert "test_nav_like_row_sets_share_the_vertical_keyboard_contract" in design
@@ -581,6 +586,7 @@ def test_nav_like_row_sets_share_the_vertical_keyboard_contract() -> None:
         (git, "moveCommitRowFocus"),
         (pulls, "nav.move("),
         (pull_files, "nav.moveFile("),
+        (table, "moveFocus("),
     ):
         assert movement_helper in source
         assert '"ArrowUp"' in source
@@ -1593,6 +1599,11 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("github/styles.css", ".github-pull-label"): "a label chip",
     ("github/styles.css", ".github-pull-stacks"): "the stack chip's slot",
     ("html/styles.css", ".metabrowser-html-host .file-html-preview-open"): "a control",
+    ("table/styles.css", ".table-chip"): "a filter chip",
+    ("table/styles.css", ".table-fit-note"): "a control: it opens the Columns menu",
+    ("table/styles.css", ".table-stored-mark"): "a badge",
+    ("table/styles.css", ".table-ref"): "a reference chip",
+    ("table/styles.css", ".table-menu-note"): "a menu's line",
 }
 # Who may set the micro size, a step under the controls': a mark, never running text.
 _MICRO_SIZE_ROLES: dict[tuple[str, str], str] = {
@@ -1999,6 +2010,7 @@ _NOT_TOGGLES: dict[str, str] = {
     "shell-keymap.js": "reads which filter dropdown is open, for its rows' letters",
     "nav-collapse.js": "reflects aria-expanded on the chevron server.py writes and app.js draws",
     "server.py": "the gear has no chevron; the navigation chevron is .disclosure-toggle",
+    "table/table-view.js": "the Columns button and a header's menu button open menus, not disclosures",
 }
 # Each chevron and `summary` a source builds, in source order, with the builder whose
 # element it goes into. Whitespace in a glyph is collapsed to one space.

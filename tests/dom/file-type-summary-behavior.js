@@ -329,8 +329,8 @@ function familyRow() {
   );
   check(
     "breakdown values use the selected metric emphasis",
-    handle.rows.get(".py").metricValue.className === "file-type-summary-value count count-large" &&
-      handle.rows.get(".md").metricValue.className === "file-type-summary-value count",
+    handle.rows.get(".py").metricValue.className === "file-type-summary-value data-num count count-large" &&
+      handle.rows.get(".md").metricValue.className === "file-type-summary-value data-num count",
   );
   check(
     "Files values have no unconditional bold override",
@@ -365,8 +365,8 @@ function familyRow() {
   check("row Files bar scaled", handle.rows.get(".py").metricFill.style.width === "75%");
   check(
     "live updates replace metric emphasis classes",
-    handle.rows.get(".md").metricValue.className === "file-type-summary-value count" &&
-      handle.rows.get(".py").metricValue.className === "file-type-summary-value count count-large",
+    handle.rows.get(".md").metricValue.className === "file-type-summary-value data-num count" &&
+      handle.rows.get(".py").metricValue.className === "file-type-summary-value data-num count count-large",
   );
   const filesColorClass = handle.rows.get(".py").metricFill.className;
   view.updateDistributionView(handle, {
@@ -379,7 +379,7 @@ function familyRow() {
     handle.rows.get(".py").metricFill === originalPyMetricFill &&
       handle.rows.get(".py").metricValue.textContent === "25 B" &&
       handle.rows.get(".py").metricFill.style.width === "25%" &&
-      handle.rows.get(".py").metricValue.className === "file-type-summary-value size" &&
+      handle.rows.get(".py").metricValue.className === "file-type-summary-value data-num size" &&
       handle.metricHeader.textContent === "Bytes" &&
       handle.rows.get(".py").metricFill.className === filesColorClass,
   );
