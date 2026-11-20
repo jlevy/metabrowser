@@ -295,23 +295,22 @@ def test_the_poll_loop_runs_on_a_nudge_and_spaces_its_polls() -> None:
 
     async def run() -> list[FileChanged]:
         sent: list[FileChanged] = []
-        watches = FileWatches(
-            send=lambda _c, event: sent.append(event),
-            generation_of=generation,
-            interval_s=60.0,
-            spacing_s=0.05,
-        )
+        arrived: asyncio.Queue[FileChanged] = asyncio.Queue()
+
+        def send(_connection: str, event: FileChanged) -> None:
+            sent.append(event)
+            arrived.put_nowait(event)
+
+        watches = FileWatches(send=send, generation_of=generation, interval_s=60.0, spacing_s=0.05)
         watches.open("c")
         await watches.register("c", "a.csv")
         task = asyncio.create_task(watches.run())
         try:
             async with asyncio.timeout(10):
                 watches.nudge(["a.csv"])
-                while len(polls) < 2:
-                    await asyncio.sleep(0.005)
+                await arrived.get()
                 watches.nudge(["a.csv-wal"])
-                while len(polls) < 3:
-                    await asyncio.sleep(0.005)
+                await arrived.get()
         finally:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
