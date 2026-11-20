@@ -25,7 +25,7 @@ from tests.required_tools import needs_git
 
 pytestmark = needs_git
 
-STORE_KEY = "ab" * 32
+STORE_KEY = "github-com--octo--demo--" + "ab" * 8
 
 
 @pytest.fixture(autouse=True)
