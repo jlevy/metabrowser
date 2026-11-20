@@ -591,7 +591,7 @@ def held(connection):
     pages = connection.execute("SELECT count(*) FROM t WHERE v IS NOT NULL").fetchone()[0]
     return first, second, pages
 
-value, used = access.read(Path(sys.argv[2]), held, deadline=time.monotonic() + 60, scratch=Path(sys.argv[3]))
+value, used = access.read(Path(sys.argv[2]), held, deadline=time.monotonic() + 30, scratch=Path(sys.argv[3]))
 print(json.dumps({"value": value, "mode": used.plan.mode, "attempts": used.attempts}), flush=True)
 """
 
