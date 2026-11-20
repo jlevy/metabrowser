@@ -1,0 +1,14 @@
+---
+type: is
+id: is-01m7x3hfmftg3fxg0eaxgdpam8
+title: test_a_listing_that_cannot_finish_is_refused_after_a_deadline_and_a_half took 4.97 s against 1.5-2.0 s on main
+kind: bug
+status: open
+priority: 1
+version: 1
+labels: []
+dependencies: []
+created_at: 2026-11-20T18:29:45.230Z
+updated_at: 2026-11-20T18:29:45.230Z
+---
+main run 44788094422 (3664d4145), unit (3.14, 2/2): tests/test_diff_one_run.py:495 AssertionError: refused after 4.97 s, against two deadlines of 1 s. The stalling git script execs sleep 30 for a diff; READ_POLICY timeout_s is patched to 1.0. Expected half a deadline for the one run plus a whole one for the listing. About 3.5 s extra is unexplained: find where (spawn, kill, reap, pipe drain, or the event loop) and fix by cause.
