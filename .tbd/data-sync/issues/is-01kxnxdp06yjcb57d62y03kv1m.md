@@ -5,13 +5,13 @@ title: Include directories in Recent results
 kind: feature
 status: open
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md
 labels: []
 dependencies: []
-parent_id: is-01kxnx985gd2k5epmcswersqdk
+parent_id: is-01m7wys3bp2ndx4v4m26exf0hz
 created_at: 2026-07-16T16:51:09.957Z
-updated_at: 2026-11-14T18:44:39.503Z
+updated_at: 2026-11-20T17:08:51.121Z
 extensions:
   linear:
     id: 036f4bb2-e240-412d-a8c6-fa6547a2c03c

@@ -5,11 +5,12 @@ title: Merge drawerFilterCount into filterState.activeCount now that both count 
 kind: task
 status: open
 priority: 4
-version: 2
+version: 3
 labels: []
 dependencies: []
+parent_id: is-01m7wys3bp2ndx4v4m26exf0hz
 created_at: 2026-11-19T06:35:41.234Z
-updated_at: 2026-11-19T07:50:04.219Z
+updated_at: 2026-11-20T17:09:21.811Z
 ---
 From PR #601 review A1: after Show ignored moved into the Files drawer (mb-ey0d), tree-filter-model.js drawerFilterCount(state) equals filterState.activeCount() for every valid state. One of them can go.
 

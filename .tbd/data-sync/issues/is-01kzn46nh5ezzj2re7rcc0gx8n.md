@@ -5,12 +5,12 @@ title: Reduce excess file-tree right-side spacing
 kind: task
 status: deferred
 priority: 2
-version: 4
+version: 5
 labels: []
 dependencies: []
-parent_id: is-01m03tqjzm7j6qkxjeath5qe0d
+parent_id: is-01m7wys3bp2ndx4v4m26exf0hz
 created_at: 2026-08-10T06:01:49.348Z
-updated_at: 2026-11-14T18:43:30.261Z
+updated_at: 2026-11-20T17:09:25.988Z
 extensions:
   linear:
     id: b916a0d3-2ce7-45e2-a67c-eede513ac824

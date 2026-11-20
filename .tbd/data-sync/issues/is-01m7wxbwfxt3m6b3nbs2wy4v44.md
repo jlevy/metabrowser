@@ -5,14 +5,15 @@ title: "Source kind icon: one icon per checkout kind (cloud mirror, local Git or
 kind: feature
 status: in_progress
 priority: 1
-version: 3
+version: 4
 delegate: claude-code@spud10
 labels: []
 dependencies: []
+parent_id: is-01m7wyrvxk2xx44pqtqmy5cq5g
 hold: null
 hold_until: null
 created_at: 2026-11-20T16:41:50.331Z
-updated_at: 2026-11-20T16:44:00.099Z
+updated_at: 2026-11-20T17:08:35.558Z
 started_at: 2026-11-20T16:44:00.015Z
 ---
 Owner request (2026-11-20, asked before and not tracked): the nav column's root name gets a leading icon for what is open, and it matches the macOS title bar folder menu's icon for the same thing. Tooltip says the kind (for example 'Cloud mirror of owner/repo', 'Local Git checkout', 'Local folder'). Three modes: cloud mirror; local folder that is a Git repository (GitHub or not, with the remote noted where it is GitHub); local plain folder. The same three icons are used everywhere a source appears (nav root, title-bar path menu, Open Recent, Dock menu, folder chooser rows), and the design system's icon catalog gets a Source kind section with a check. Related: mb-o7s8, mb-z822, mb-48rf.

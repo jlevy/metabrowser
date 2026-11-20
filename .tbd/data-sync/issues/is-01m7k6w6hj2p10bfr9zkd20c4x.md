@@ -5,12 +5,12 @@ title: The Files filter menus' counts read 0 while the navigation tallies are un
 kind: bug
 status: open
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
-parent_id: is-01m7k4tntv9my4ynk41w81g0sj
+parent_id: is-01m7wys3bp2ndx4v4m26exf0hz
 created_at: 2026-11-16T22:15:37.777Z
-updated_at: 2026-11-16T22:15:37.777Z
+updated_at: 2026-11-20T17:08:57.837Z
 ---
 Found by the mb-h3hc audit of the Files nav panel (2026-11-16), measured in headless Chrome 152 on this repository at 1280x900 in the default 300 px pane.
 

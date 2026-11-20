@@ -5,11 +5,16 @@ title: "Source and checkout kinds: one mode and one icon for a cloud mirror, a G
 kind: epic
 status: open
 priority: 1
-version: 1
+version: 5
 labels: []
 dependencies: []
+child_order_hints:
+  - is-01m7wxbwfxt3m6b3nbs2wy4v44
+  - is-01m7p8hjk6jd7ckmr0fnjmpqca
+  - is-01m7pn8n0nyp1y7mj41d1b38wm
+  - is-01m7pn8nk5a2cfd92t8fen4gv4
 created_at: 2026-11-20T17:06:24.306Z
-updated_at: 2026-11-20T17:06:24.306Z
+updated_at: 2026-11-20T17:08:44.534Z
 ---
 What a reader has open is one of three kinds: a cloud mirror of a GitHub repository, a local folder inside a Git checkout (folder mode), or a plain folder with no Git. The model is settled in docs/project/architecture/arch-open-modes.md (#558), and the macOS app's title bar, Open Recent and Dock menus already carry the shared marks (#564, #575).
 

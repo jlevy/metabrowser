@@ -5,10 +5,11 @@ title: "Commit page: check the empty band between the files-changed line and the
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
 labels: []
 dependencies: []
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 created_at: 2026-11-19T08:59:19.793Z
-updated_at: 2026-11-19T08:59:19.793Z
+updated_at: 2026-11-20T17:10:56.129Z
 ---
 Seen in #608's final-commit-1400-dark.png (fixture commit 'draft'): about 80 px of empty space between '1 file changed' and the Split/Unified control above the diff. Check whether main has it too and whether it is a reserved slot; fix or justify.

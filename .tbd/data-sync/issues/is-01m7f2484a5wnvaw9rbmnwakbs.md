@@ -5,12 +5,12 @@ title: "PR Conversation: commits that arrive late append after Review comments i
 kind: bug
 status: open
 priority: 3
-version: 1
+version: 2
 labels: []
 dependencies: []
-parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 created_at: 2026-11-15T07:35:40.937Z
-updated_at: 2026-11-15T07:35:40.937Z
+updated_at: 2026-11-20T17:10:05.876Z
 ---
 Found while building mb-g3ao (the Conversation timeline line, pull request 6 of the 2026-11-15 plan stack).
 

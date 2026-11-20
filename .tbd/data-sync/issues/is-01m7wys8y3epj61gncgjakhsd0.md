@@ -5,11 +5,38 @@ title: Pulls tab, pull request page, and commit page
 kind: epic
 status: open
 priority: 2
-version: 1
+version: 27
 labels: []
 dependencies: []
+child_order_hints:
+  - is-01m7gf9b7eveb6p7pv6m4erz04
+  - is-01m7ckmsbhyz17db61mp8mxg19
+  - is-01m7jk8ngsg04g1ebkeqgf38aq
+  - is-01m7f2484a5wnvaw9rbmnwakbs
+  - is-01m7hhq7nhskwg5f3hync4ytsc
+  - is-01m7hdmrsb8ktxbwbd8y3azhxx
+  - is-01m7hfn7p28nf9c2cswdkczx3g
+  - is-01m7k0hafhpyfyngxq3c2xnd4n
+  - is-01m7tg7y76e86bgjcdfh02cvg0
+  - is-01m7p852spqr7t08m46n9051eh
+  - is-01m7tww8343e2zg1qpxt3r140d
+  - is-01m7hektjqx84t2edyqg4jhp4z
+  - is-01m7ke42d71rkwxrpxkpnnz9d0
+  - is-01m7n6p8hqnd2yrvmd7yw79b53
+  - is-01m7hdx822xjs9gcp8a27j1tgy
+  - is-01m7sgg9bjnz3ck0we3v82snb6
+  - is-01m2fegx26vc441s1dzbwk9y6x
+  - is-01m7se8kby9ykajdat3tgm5vcr
+  - is-01m7sbpz9mdrvheykpf8de1wkh
+  - is-01m7k1tfbjprkhwep83e9xbzhh
+  - is-01m7k2ap7d78zj4qae07h5daaw
+  - is-01m7hgsqvv3wbq4szbxd21sw49
+  - is-01m7f6redchw2rrzg2jjzdw7c5
+  - is-01m7jfgj7wj9akkndrqfqsbj9p
+  - is-01m6f39t9zax1nbajkkasya6st
+  - is-01m7n6v8n050erzeb13c5tasar
 created_at: 2026-11-20T17:06:37.632Z
-updated_at: 2026-11-20T17:06:37.632Z
+updated_at: 2026-11-20T17:11:32.643Z
 ---
 The Pulls tab, the pull request page (Conversation, Changes, the Diff summary, stacks) and the commit page, for mirrors and local checkouts. The feature set shipped through the 0.12 line and the 2026-11 UI rounds (#444-#481, #506, #529, #584, #611, #615, #627).
 

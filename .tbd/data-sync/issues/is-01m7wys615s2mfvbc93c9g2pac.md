@@ -5,11 +5,18 @@ title: Branch chooser and ref selection
 kind: epic
 status: open
 priority: 2
-version: 1
+version: 7
 labels: []
 dependencies: []
+child_order_hints:
+  - is-01m7ra9drhbxds0947wdp596ks
+  - is-01m7w3mj2y6tpzktkmk8a4ft8k
+  - is-01m7vavjge1x571fxtswd8nbng
+  - is-01m7r9hj74xgq845rpe64ccp79
+  - is-01m7ckmr19etzb7y333astzn64
+  - is-01m6wpacpj9wtx02rt1g8kx49m
 created_at: 2026-11-20T17:06:34.659Z
-updated_at: 2026-11-20T17:06:34.659Z
+updated_at: 2026-11-20T17:09:50.423Z
 ---
 The Files toolbar's chooser switches a view between branches, tags, commits and pull request heads, in a mirror or beside a checkout's working tree. Landed: the chooser in the toolbar (#577), a local checkout's branch and tag chooser (#559), every ref newest first (#614), scroll kept across refills (#625), and a branch that heads a pull request shown with it (#651).
 

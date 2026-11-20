@@ -5,13 +5,13 @@ title: "Event log views: measure open-to-first-row end to end, and skip the gene
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-19-structured-event-log.md
 labels: []
 dependencies: []
-parent_id: is-01m7ty57a9b1d4gy8xcrhek4xq
+parent_id: is-01m7wysap12x9d1xp4zz3m4sds
 created_at: 2026-11-20T06:12:08.546Z
-updated_at: 2026-11-20T06:12:08.546Z
+updated_at: 2026-11-20T17:11:36.955Z
 ---
 From senior review A of #633 (A4, Low). Opening an events-*.jsonl segment fetches the generic JSONL file envelope (/api/file) as well as the plugin's route: for a 1.41 MB segment the envelope is 6.76 MB and takes 0.13 to 0.33 s, where the plugin route takes 83 ms cold. The cost measured in the PR (the table build and each view) is not the one a person waits for.
 

@@ -5,13 +5,13 @@ title: "Event log Timeline: name, client, and cause chips"
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-19-structured-event-log.md
 labels: []
 dependencies: []
-parent_id: is-01m7ty57a9b1d4gy8xcrhek4xq
+parent_id: is-01m7wysap12x9d1xp4zz3m4sds
 created_at: 2026-11-20T06:12:11.424Z
-updated_at: 2026-11-20T06:12:11.424Z
+updated_at: 2026-11-20T17:11:40.724Z
 ---
 From senior review A of #633 (A3, in part). The plugin's routes already take the name, client, and cause filters of /api/event-log (event_log_views.parse_filter), but the page's filter bar offers only kind, outcome, least time, and (new) order. A person who comes to the log for one page's requests (client) or one failure cause cannot narrow to it without the URL.
 

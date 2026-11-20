@@ -5,10 +5,11 @@ title: "Commit body trailers: a hyphenated closing prose line (e.g. 'Follow-up: 
 kind: task
 status: open
 priority: 4
-version: 1
+version: 2
 labels: []
 dependencies: []
+parent_id: is-01m7wys8y3epj61gncgjakhsd0
 created_at: 2026-11-19T07:35:35.987Z
-updated_at: 2026-11-19T07:35:35.987Z
+updated_at: 2026-11-20T17:11:06.442Z
 ---
 From #603's trailer rule (git/message.py _known_trailer): any hyphenated token counts as known, so a last paragraph that is a single 'Follow-up: we should ...' line renders muted pre-wrap instead of Markdown. Consider a known-hyphenated list (Signed-off-by, Co-Authored-By, Change-Id, Reviewed-by, Acked-by, Tested-by, Reported-by, Suggested-by, Claude-Session) or requiring a value shape (name <email>, URL, ID).

@@ -5,11 +5,11 @@ title: "Folder header: an age that changes width (just now -> 1m ago) moves the 
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
 labels: []
 dependencies: []
-parent_id: is-01m7ksbn803jhw15qjc6beg7qf
+parent_id: is-01m7wys3bp2ndx4v4m26exf0hz
 created_at: 2026-11-17T18:08:50.058Z
-updated_at: 2026-11-17T18:08:50.058Z
+updated_at: 2026-11-20T17:08:54.724Z
 ---
 Found by #521 (mb-j4ts): span.folder-header-summary refreshes one ROLLUP_WATCH_DEBOUNCE_MS after an inventory change; when the age text changes width the right-aligned summary shifts ~8 px. #521 fixed the test fixture only. Owner decision: hold a slot for the age (as the run badge does) or accept a value change moving its line.
