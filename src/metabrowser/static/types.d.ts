@@ -303,6 +303,24 @@ type MetabrowserDocumentWidthRuntime = Readonly<{
   readStored(readPreference: (key: string) => string | null): number;
 }>;
 
+type MetabrowserRemoteImagesRuntime = Readonly<{
+  INPUT_ID: string;
+  KEY: string;
+  choose(
+    blocked: boolean,
+    applied: boolean,
+    dependencies: { writePreference(key: string, value: string): void; reload(): void },
+  ): boolean;
+  mount(
+    doc: Pick<Document, "getElementById">,
+    dependencies: {
+      applied(): boolean;
+      writePreference(key: string, value: string): void;
+      reload(): void;
+    },
+  ): boolean;
+}>;
+
 type MetabrowserRepositoryContext = Readonly<{
   branch: string | null;
   /** Whether `origin` has the branch: in the context the server writes, not the SDK's copy. */
@@ -3517,6 +3535,9 @@ declare global {
     ANCHOR_PREFIX: string;
     DIMENSIONS: Readonly<Record<string, readonly string[]>>;
     DROPPED_WITH_CONTENT: readonly string[];
+    IMAGE_FALLBACK_CLASS: string;
+    IMAGE_REFERRER_POLICY: string;
+    blocksRemoteImages(): boolean;
     fragmentLink(href: string): string;
     headingSlug(text: string): string;
     allowedAttributes(
@@ -3533,6 +3554,7 @@ declare global {
     keepsImage(src: string | null, base: string | null): boolean;
     linkHref(href: string | null, base: string | null): { href: string; leaves: boolean } | null;
     outsideLink(href: string | null, base: string | null): string | null;
+    remoteImage(src: string | null, base: string | null): string | null;
     kpressProse(nodes: Node[], doc: Document): HTMLElement;
     sanitizeHtml(html: string, base: string | null): Node[];
     sanitizeNodes(
@@ -4444,6 +4466,7 @@ declare global {
     };
     MetabrowserCharts?: MetabrowserChartRuntime;
     MetabrowserDocumentWidth: MetabrowserDocumentWidthRuntime;
+    MetabrowserRemoteImages?: MetabrowserRemoteImagesRuntime;
     MetabrowserFileTypes?: {
       classFor(path: string): string;
       /** `style` carries the family colour as custom properties; "" when the
@@ -4637,6 +4660,11 @@ declare global {
         active_content: boolean;
         mutations: boolean;
       };
+      /**
+       * The reader's privacy preference the page was served under: an untrusted document's
+       * images from the web show as their alt text (static/remote-images.js).
+       */
+      BLOCK_REMOTE_IMAGES?: boolean;
       DOC_MAX_CHARS_DEFAULT?: number;
       /** Each family's distribution key with its color on each theme. */
       DISTRIBUTION_COLORS?: Array<{ key: string; light: string; dark: string }>;

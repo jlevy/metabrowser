@@ -486,11 +486,11 @@ Useful helpers include:
   address you vouch for, and the host’s person glyph without one or when the image
   fails, so nothing moves.
   The image is requested in anonymous CORS mode with no referrer, so its host must send
-  `Access-Control-Allow-Origin`, and a folder served untrusted loads images only from
-  GitHub’s avatar host; any other image shows the glyph.
-  `loading` is lazy unless the placement is built again on a repaint; `className` and
-  `nameClass` add classes; `placeholder: false` draws no box for a person with no
-  avatar, for a dense list row.
+  `Access-Control-Allow-Origin`, and a folder served untrusted whose reader has turned
+  on Block remote images loads images only from GitHub’s avatar host; any other image
+  shows the glyph. `loading` is lazy unless the placement is built again on a repaint;
+  `className` and `nameClass` add classes; `placeholder: false` draws no box for a
+  person with no avatar, for a dense list row.
   `actorIdentityHtml` writes the same markup, its box holding the glyph;
 - `mountCounterpart(corner, page)` and `counterpartButton(counterpart)` for a page’s
   [View on GitHub](design-system.md#view-on-github) button.

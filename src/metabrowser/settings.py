@@ -17,6 +17,7 @@ value, it reads it from ``window.METABROWSER_SETTINGS``.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from metabrowser.capabilities import Capabilities, get_capabilities
@@ -391,6 +392,23 @@ GIT_DETAIL_CACHE_SIZE = 200
 GIT_COMPARISON_CACHE_BYTES = 16 * 1024 * 1024
 
 
+# ── Remote images ────────────────────────────────────────────
+
+# The host-wide preference cookie that turns off the images of the web in untrusted
+# Markdown (static/remote-images.js, which has the same key). Off unless this cookie is
+# ``1``: a cookie, as the theme and reading width are, so one choice covers every server
+# on this host (each folder's lands on its own port). The shell reads it on the page
+# request, so the page's ``img-src`` and METABROWSER_SETTINGS agree with the reader's
+# choice from the first byte, and the browser enforces it; the page never needs to read it.
+BLOCK_REMOTE_IMAGES_COOKIE = "metabrowser.blockRemoteImages"
+
+
+def blocks_remote_images(cookies: Mapping[str, str]) -> bool:
+    """Whether the reader has turned off remote images: their cookie is exactly ``1``."""
+
+    return cookies.get(BLOCK_REMOTE_IMAGES_COOKIE) == "1"
+
+
 # ── Client settings export ───────────────────────────────────
 
 
@@ -398,6 +416,7 @@ def client_settings_dict(
     *,
     syntax_highlight_max_bytes: int = SYNTAX_HIGHLIGHT_MAX_BYTES,
     capabilities: Capabilities | None = None,
+    block_remote_images: bool = False,
 ) -> dict[str, Any]:
     """The subset of settings injected into the client via the
     index template. Reading from a single dict keeps the JS
@@ -450,6 +469,10 @@ def client_settings_dict(
         # The page's subject's block when its shell names one: a pin's is never the
         # process's (capabilities.capabilities_for).
         "CAPABILITIES": (capabilities or get_capabilities()).as_wire(),
+        # The reader's privacy preference, as the page was served under it: whether an
+        # untrusted document's images from the web are shown as text instead
+        # (inert_html.py and static/inert-html.js), and the page's ``img-src`` agrees.
+        "BLOCK_REMOTE_IMAGES": block_remote_images,
         # The plugin shortcut facade refuses these, as the manifest loader does.
         "RESERVED_SHELL_KEYS": serialize_reserved_shell_keys(),
     }
@@ -458,6 +481,7 @@ def client_settings_dict(
 __all__ = [
     "ACTIVE_TRACKER_INTERVAL_S",
     "ACTIVE_TRACKER_QUIET_POLLS",
+    "BLOCK_REMOTE_IMAGES_COOKIE",
     "DEFAULT_BROWSER_PORT",
     "DEFAULT_EXECUTOR_WORKERS",
     "DOC_MAX_CHARS_DEFAULT",
@@ -520,5 +544,6 @@ __all__ = [
     "TEXT_PREVIEW_MAX_CHUNK_BYTES",
     "TEXT_PREVIEW_REQUEST_MAX_BYTES",
     "TREE_AUTO_EXPAND_FALLBACK_ROWS",
+    "blocks_remote_images",
     "client_settings_dict",
 ]
