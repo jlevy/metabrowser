@@ -1469,14 +1469,27 @@
   }
 
   /**
-   * Scroll an open list back to where its rows were drawn for, when something other than
-   * a scroll has moved it: a refill of the toolbar (`keepAcrossRefills`). Browser only.
+   * Put an open list's rows right after a refill of the toolbar took the list out of the
+   * page and back (`keepAcrossRefills`). Browser only.
+   *
+   * The page reads where the list was scrolled to before it rebuilds the toolbar and sets
+   * it again after (`renderNavFilterBar` in app.js), so a scroll made a moment before,
+   * whose scroll event has not come, is where the list is: its rows are drawn for it now,
+   * and no position the last event named overrides it. A list at its top, which the
+   * browser leaves when it is put back with nothing said, goes back to where its rows
+   * were drawn for, whatever else took the list out (mb-y1k0, mb-tjbm).
    *
    * @param {MetabrowserSourceRefSelectorParts} parts
    */
   function keepScroll(parts) {
-    if (!parts.panel.hidden && parts.list.scrollTop !== parts.rows.drawnAt) {
-      parts.list.scrollTop = parts.rows.drawnAt;
+    const { list, rows } = parts;
+    if (parts.panel.hidden) {
+      return;
+    }
+    if (list.scrollTop === 0 && rows.drawnAt > 0) {
+      list.scrollTop = rows.drawnAt;
+    } else if (list.scrollTop !== rows.drawnAt) {
+      drawWindow(parts);
     }
   }
 
@@ -1967,6 +1980,20 @@
     );
     const handle = Object.freeze({
       ...mounted,
+      // Where the list is scrolled to now, and a function that sets it again: the page
+      // rebuilds the toolbar around the list (`renderNavFilterBar`), which takes it out of
+      // the page and puts it back at its top with no scroll event to say so, and a scroll
+      // made a moment before has not sent its event yet, so no position it named is that
+      // scroll's. Read before, set after, the scroll the page or the browser made wins.
+      holdScroll() {
+        const top = parts.list.scrollTop;
+        return () => {
+          if (top > 0 && !parts.panel.hidden) {
+            parts.list.scrollTop = top;
+            drawWindow(parts);
+          }
+        };
+      },
       // The control a key's badge marks, and what the key does: the button's path,
       // except that it opens the list rather than toggling it.
       button: parts.toggle,

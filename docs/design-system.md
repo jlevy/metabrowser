@@ -5659,10 +5659,15 @@ A checkout adds three things, and each uses a primitive the control already had:
   drawn again whenever a filter or a tally changes, and it carries the selector over
   rather than drawing it, so an open list keeps what was typed and where it was scrolled
   to, and the control that had focus keeps it.
-  `tests/test_checkout_ref_selector_chrome.py` records the selector’s height and the
-  first tree row’s place in every frame of the working tree’s page and of a revision’s,
-  and each has one value; `tests/test_files_totals_stable_chrome.py` holds the same for
-  every box of the Files navigation on a folder that holds a `.git`.
+  A box taken out of the page loses its scroll position, and a scroll made a moment
+  before has sent no event to say where, so the page reads each scrolled box’s position
+  before it rebuilds the bar and sets it again after: no scroll the page or the browser
+  makes is put back at the position the last event named (`renderNavFilterBar` in
+  `static/app.js`; `tests/test_ref_selector_long_list_chrome.py` scrolls and redraws in
+  one task). `tests/test_checkout_ref_selector_chrome.py` records the selector’s height
+  and the first tree row’s place in every frame of the working tree’s page and of a
+  revision’s, and each has one value; `tests/test_files_totals_stable_chrome.py` holds
+  the same for every box of the Files navigation on a folder that holds a `.git`.
 
 What each state shows is pinned by
 `tests/golden/cli-ui-source-ref-selector.tryscript.md`, and

@@ -5916,9 +5916,12 @@ function renderNavFilterBar() {
   // A page with the branch and tag chooser ships it leading the row, and its module owns
   // it: it is carried over, not drawn (static/source-ref-selector.js#keepAcrossRefills).
   var chooser = document.getElementById("source-ref-selector");
+  // The module puts back the scroll a moment's rebuild took (`keepScroll` there).
+  var keepScroll = chooser && window.MetabrowserSourceRefSelector?.mounted()?.holdScroll();
   bar.innerHTML = main + drawer;
   if (chooser) {
     bar.firstElementChild?.prepend(chooser);
+    keepScroll?.();
   }
   // An open menu is sized to its rows and the window now that it has geometry, before
   // the frame paints it.
