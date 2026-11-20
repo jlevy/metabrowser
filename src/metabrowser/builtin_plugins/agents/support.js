@@ -153,3 +153,44 @@ export function sessionLinkHtml(mb, title, path, className = "agents-session-lin
 export function titleOf(row) {
   return row.title?.trim() || row.session_id;
 }
+
+/**
+ * A count summary's parts as markup, painted by the shell's one painter: each number bold,
+ * the comma and the dot between groups muted, the dot hidden from assistive technology
+ * (docs/design-system.md, "Count Summaries Bold Their Numbers"). The nodes are the SDK's;
+ * this serializes them, since the views paint with `innerHTML`.
+ *
+ * @param {MetabrowserPublicSdk} mb
+ * @param {MetabrowserCountParts} parts
+ * @returns {string}
+ */
+export function countHtml(mb, parts) {
+  return mb
+    .countPartsNodes(parts)
+    .map((node) =>
+      typeof node === "string" ? mb.escapeHtml(node) : /** @type {Element} */ (node).outerHTML,
+    )
+    .join("");
+}
+
+/**
+ * The dot between a line's groups, with a space either side so a line that wraps breaks
+ * after it.
+ *
+ * @param {MetabrowserPublicSdk} mb
+ * @returns {string}
+ */
+export function separatorHtml(mb) {
+  return ` ${countHtml(mb, [{ separator: "·" }])} `;
+}
+
+/**
+ * Markup groups joined by the design's separator; an empty group is left out.
+ *
+ * @param {MetabrowserPublicSdk} mb
+ * @param {ReadonlyArray<string>} groups
+ * @returns {string}
+ */
+export function joinGroups(mb, groups) {
+  return groups.filter((group) => group !== "").join(separatorHtml(mb));
+}

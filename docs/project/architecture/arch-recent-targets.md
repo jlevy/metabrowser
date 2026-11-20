@@ -33,10 +33,12 @@ The words are those of [Open Modes](arch-open-modes.md#vocabulary).
   folder, or a repository’s address.
   A folder’s root is its **open root**, the folder a serve of the path named serves.
 - **Mode:** how a root was opened, `folder` or `mirror`. It is fixed while the root is
-  open and is the `kind` that `GET /api/identity` reports.
-  `folder` is either folder mode, a plain folder or a repository folder, which records
-  write as one value; `mirror` is a repository opened by its address and read from
-  Metabrowser’s own copy of it.
+  open. `folder` is either folder mode, a plain folder or a repository folder, which the
+  `mode` writes as one value and the entry’s `git` tells apart; `mirror` is a repository
+  opened by its address and read from Metabrowser’s own copy of it.
+  The three kinds of root that `kind` in `GET /api/identity` reports, and that a shell
+  draws a mark for ([Source Kinds](../../design-system-icons.md#source-kinds)), are the
+  mirror, a folder that was a checkout, and any other folder.
 - **View:** what a server shows at a given moment, a folder’s working tree or one
   revision. No entry records it.
 
@@ -51,6 +53,7 @@ pointed when that was not the root:
 | `root` | A folder’s open root, its absolute path with symbolic links resolved, or a repository’s credential-free address as the root grammar normalizes it (`GitSource.normalized`) |
 | `opened_at` | When it was last opened, in UTC to the second |
 | `target` | Optional, and not part of the key: the file or folder named inside a folder’s root, by its absolute path with symbolic links resolved. A mirror’s is to be its web URL. It is always inside the root |
+| `git` | Optional, and not part of the key: whether a folder’s root was a checkout when it was opened, that is, held a `.git` entry (`is_checkout_root` in `repository_context.py`), the `git` kind `GET /api/identity` reports for it. Written only when true and only for a folder, listed as `false` when absent. It is what a shell draws a root’s mark from, since a shell never looks at a listed folder ([Folders That Are Gone](#folders-that-are-gone)); an entry from before the field, or of a folder that became a checkout since, is a plain folder until it is opened again |
 
 - **A folder’s root** is the open root `metab` serves for the path named, which one
   function decides for both serving and `--recent-add`: `resolve_local_open` in
@@ -219,7 +222,7 @@ list.
 
 | Mode | Does |
 | --- | --- |
-| `metab --recent` | Lists the entries, most recent first; `--json` prints `{"limit", "targets", "problem"}`, each target with its `mode`, `root`, `opened_at`, and `target`, `null` when there is none |
+| `metab --recent` | Lists the entries, most recent first; `--json` prints `{"limit", "targets", "problem"}`, each target with its `mode`, `root`, `opened_at`, `target`, `null` when there is none, and `git` |
 | `metab TARGET --recent-add` | Records TARGET as opened, as a serve of it would, without serving: the same root and `target`, by the same `resolve_local_open` |
 | `metab TARGET --recent-forget` | Removes TARGET’s entry; a folder that no longer exists is matched by its path as given |
 | `metab --recent-clear` | Empties the list |
