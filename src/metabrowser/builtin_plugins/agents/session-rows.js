@@ -103,13 +103,12 @@ function cellHtml(mb, column, row, now) {
 /**
  * @param {MetabrowserPublicSdk} mb
  * @param {Column} column
- * @param {{sort: string, order: "asc" | "desc"} | null} sorting `null` for a table that
- *   cannot be re-sorted, as the home's.
+ * @param {{sort: string, order: "asc" | "desc"}} sorting
  */
 function headerHtml(mb, column, sorting) {
   const label = mb.escapeHtml(column.label);
   const numeric = column.numeric ? " agents-numeric" : "";
-  if (!sorting || !column.sort) {
+  if (!column.sort) {
     return `<th scope="col" class="agents-col-${column.id}${numeric}">${label}</th>`;
   }
   const active = sorting.sort === column.sort;
@@ -126,7 +125,7 @@ function headerHtml(mb, column, sorting) {
  *
  * @param {MetabrowserPublicSdk} mb
  * @param {ReadonlyArray<SessionRow>} rows
- * @param {{columns: ReadonlyArray<string>, now: number, sorting: {sort: string, order: "asc" | "desc"} | null, caption: string, empty: string}} options
+ * @param {{columns: ReadonlyArray<string>, now: number, sorting: {sort: string, order: "asc" | "desc"}, caption: string, empty: string}} options
  */
 export function sessionTableHtml(mb, rows, options) {
   if (rows.length === 0) {

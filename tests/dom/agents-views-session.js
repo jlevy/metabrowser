@@ -494,7 +494,25 @@ async function main() {
     ],
     { label: "Running now" },
   );
+  // Every value a row shows comes from a session's own files, so each is escaped.
+  const hostile = rows.sessionRowsHtml(
+    mb,
+    [
+      {
+        agent: "claude",
+        session_id: "<i>id</i>",
+        title: "",
+        path: null,
+        age: "<i>age</i>",
+        project: "~/<i>project</i>",
+        models: ["<i>model</i>"],
+        status: "<i>status</i>",
+      },
+    ],
+    { label: "<i>label</i>" },
+  );
   const markup = {
+    "no value a session holds reaches the row as markup": !hostile.includes("<i>"),
     "a session row's first line holds the agent, the title link, and the age last":
       /agents-row-line"><span class="agents-agent">Claude Code<\/span><a class="agents-session-link agents-row-title"[^>]*>A &lt;b&gt;title&lt;\/b&gt;<\/a><span class="agents-row-age">30 s ago<\/span><\/div>/.test(
         items,

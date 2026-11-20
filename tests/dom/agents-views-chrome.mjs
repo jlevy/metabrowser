@@ -394,6 +394,9 @@ try {
       paneFits: edge.right <= document.documentElement.clientWidth + 1,
     };
   })()`);
+  // Without the overflow, both ends are inside the wrap trivially and nothing here would
+  // have tested the scroll.
+  check("the list's table is wider than its wrap at this width", reach.overflowing, reach);
   check(
     "every column of the list is reachable by scrolling its wrap",
     reach.endsInside && reach.startsInside,

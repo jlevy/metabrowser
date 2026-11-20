@@ -282,6 +282,7 @@ $ node tests/dom/agents-views-session.js
     ]
   },
   "markup": {
+    "no value a session holds reaches the row as markup": true,
     "a session row's first line holds the agent, the title link, and the age last": true,
     "its second line is the status, the project, and the model, parted by the design's separator": true,
     "a row with neither leaves the line empty and no stray separator": true,

@@ -372,7 +372,6 @@ th[aria-sort="descending"] .agents-sort::after {
 .agents-session-head {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
 .agents-session-line {

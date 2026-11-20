@@ -1233,9 +1233,10 @@ A context that wants the link’s full treatment says so itself, as the
 underline on hover, and the [focus ring](#focus-ring) with its outset offset, since a
 bare inline link’s box is its text.
 A link that sets its own ink, a Pulls row’s title, sets it on the link itself.
-A context never patches the fallback with a rule of its own that colors its anchors
-`--link`; `test_a_link_no_rule_colors_is_the_link_color` holds the base and holds those
-rules gone, and `tests/dom/agents-views-chrome.mjs` reads in Chrome that a bare
+A new context does not add a rule of its own that only colors its anchors `--link`: the
+base already does. `test_a_link_no_rule_colors_is_the_link_color` holds the base and
+holds the three patches it replaced gone (older GitHub plugin rules that also set other
+properties remain), and `tests/dom/agents-views-chrome.mjs` reads in Chrome that a bare
 `<a href>` in a plugin view computes to `--link`, in both themes.
 
 ### Focus Ring
@@ -3184,8 +3185,9 @@ The second line is muted: a status badge where the list has one, the project, th
 model, parted by the design’s separator
 ([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)). The title
 and the project are cut short with an ellipsis, the project first, and the model keeps
-its words unless it alone runs past 45% of the line, so a long path never pushes the age
-onto a line of its own, and a row is two lines whatever it holds.
+its words unless it alone runs past its cap (`.agents-row-model`’s `max-inline-size` in
+`agents-views.css`), so a long path never pushes the age onto a line of its own, and a
+row is two lines whatever it holds.
 A row whose second line has nothing to say keeps the line’s height, so the rows of a
 list stand at one height.
 `tests/dom/agents-views-chrome.mjs` holds that the age stays at the end of the first
@@ -3206,13 +3208,14 @@ views render, in both themes.
 
 ### The Session List’s Table
 
-Its eleven columns are wider than the pane, so the table scrolls inside its own wrap, as
-a wide table does elsewhere ([Reading Width](#reading-width)), and the wrap is a
-keyboard stop (`tabindex="0"`, a region named “Sessions”) with the one focus ring, so a
-reader without a pointer reaches every column too.
-The cells that can run long, the title, the project, and the model, are capped and cut
-with an ellipsis, the whole value in a tooltip, so a long model list never pushes the
-columns after it out of reach.
+Its columns (`COLUMNS` in `session-rows.js`) are wider than a normal pane, so the table
+scrolls inside its own wrap, as a wide table does elsewhere
+([Reading Width](#reading-width)), and the wrap is a keyboard stop (`tabindex="0"`, a
+region named “Sessions”) with the one focus ring, so a reader without a pointer reaches
+every column too.
+The cells that can run long, the title, the project, and the model, are
+capped and cut with an ellipsis, the whole value in a tooltip, so a long model list
+never pushes the columns after it out of reach.
 
 ## Stacks
 
