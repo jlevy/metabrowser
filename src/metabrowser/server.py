@@ -95,7 +95,13 @@ from metabrowser.charts import clear_charts_cache
 from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.commit_ids import short_commit
-from metabrowser.content_sniff import ContentClass, sniff_artifact
+from metabrowser.content_sniff import (
+    SNIFF_PREFIX_BYTES,
+    ContentClass,
+    classify_prefix,
+    sniff_artifact,
+    sniff_artifact_prefix,
+)
 from metabrowser.counterpart import COUNTERPART_ROUTES
 from metabrowser.diff.markdown_projection_worker import (
     InertRender,
@@ -208,8 +214,13 @@ from metabrowser.recent import (
     WindowKey,
     recent_result_from_projection,
 )
-from metabrowser.repository_context import discover_repository_context
-from metabrowser.root_identity import IDENTITY_ROUTES, root_identity
+from metabrowser.repository_context import discover_repository_context, is_checkout_root
+from metabrowser.root_identity import (
+    IDENTITY_ROUTES,
+    identity_kind_tip,
+    root_identity,
+    served_repository_context,
+)
 from metabrowser.settings import (
     DOC_MAX_CHARS_DEFAULT,
     FOLDER_DISCOVERY_MAX_ENTRIES,
@@ -241,6 +252,7 @@ from metabrowser.source import (
     as_git_revision_subject,
     get_source_session,
     lifespan_subject,
+    read_content_window,
     require_filesystem_hooks,
     require_filter_capabilities,
     require_source_capability,
@@ -248,6 +260,7 @@ from metabrowser.source import (
     session_filesystem_root,
     unsupported_source_payload,
 )
+from metabrowser.source_kind_marks import source_kind_svg
 from metabrowser.source_routes import (
     SOURCE_ROUTES,
     SourcePinGuard,
@@ -689,6 +702,17 @@ def _prefers_text_body(target: Path) -> bool:
     where the byte view would answer a broken file with an empty dump.
     """
     return sniff_artifact(target) is not ContentClass.BINARY
+
+
+def _sniff_text_body(target: Path) -> tuple[bool, bytes | None]:
+    """:func:`_prefers_text_body`, with the bytes on disk the sniff read.
+
+    The bytes are the file's own leading bytes, which a ``magic`` kind rule is matched
+    against when the file falls to the ``binary`` fallback (:func:`_magic_kind`); they
+    are None for a compressed artifact, whose sniff read decompressed bytes.
+    """
+    content_class, prefix = sniff_artifact_prefix(target)
+    return content_class is not ContentClass.BINARY, prefix
 
 
 # Defaults live in settings.py, which is also what the client reads, so the
@@ -1674,7 +1698,8 @@ async def index(
     # The tab's title, and a native window's: what the served subject is called, from the
     # model `/api/identity` answers, so the two cannot disagree. A page changes subject
     # only by loading again, so the title written here stays current.
-    page_title = html_escape(root_identity(mirror, checkout)["title"])
+    identity = root_identity(mirror, checkout)
+    page_title = html_escape(identity["title"])
     if pin is not None:
         # Imported where a pin is served, like every other Git import below: the
         # modules behind a pinned revision are start-up work a folder never uses.
@@ -1706,6 +1731,22 @@ async def index(
         repository_context = await asyncio.to_thread(
             discover_repository_context, _shell_folder(folder_root)
         )
+    # The mark before the root's name names which of the three kinds of root the page shows,
+    # a plain folder, a Git checkout, or a cloud mirror (docs/design-system-icons.md,
+    # "Source Kinds"). The server writes the kind, the glyph for it, and the sentence, the
+    # same one `/api/identity` answers as `kind_tip`. The glyph is not in the icon registry:
+    # the registry is a startup script every page pays for under a gated budget, and a page
+    # draws one of the three, which only the server knows (source_kind_marks.py).
+    #
+    # The sentence's repository is the route's: `served_repository_context`. A revision of
+    # the served checkout has no mirror session, so the page's own `repository_context`
+    # above is empty for it, and the route still reads the checkout's `origin`.
+    tip_context = repository_context
+    if pin is not None and checkout is not None and checkout.serves(pin):
+        tip_context = await served_repository_context(mirror, checkout)
+    root_kind = identity["kind"]
+    root_kind_svg = source_kind_svg(root_kind)
+    root_kind_tip = html_escape(identity_kind_tip(identity, tip_context), quote=True)
     version_line = html_escape(display_version_line("metab", __version__))
     styles_url = _static_asset_url("styles.css")
     asset_loader_url = _static_asset_url("asset-loader.js")
@@ -1836,7 +1877,7 @@ async def index(
     # discovery removes it in the rare case Git does not agree. It comes after Pulls, in the
     # main tabs' order (static/main-tabs.js, MAIN_TABS).
     commits_tab = git_pin or await asyncio.to_thread(
-        lambda: (_shell_folder(folder_root).resolve() / ".git").exists()
+        lambda: is_checkout_root(_shell_folder(folder_root).resolve())
     )
     # A commit's address lands on Commits, so it is drawn in front, with its toolbar and its
     # panel's container, and the landing never shows Files and then swaps it. The neutral Git
@@ -2433,6 +2474,12 @@ async def index(
              content, so a pin with no mirror's ref and commit, which stand as its name,
              stay in it. The header anchors the key's badge, which sits beside the name
              because the name clips. -->
+        <!-- Which kind of root this is: a glyph-only mark, so its sentence is its tooltip and
+             its accessible name, and it is no control. Its glyph is the server's, one of
+             three (source_kind_marks.py), so the mark is there from the first paint. -->
+        <span class="header-root-kind" id="header-root-kind" role="img"
+              data-root-kind="{root_kind}" data-tip-text="{root_kind_tip}"
+              aria-label="{root_kind_tip}">{root_kind_svg}</span>
         <a href="{VIEW_ROUTE_PREFIX}" class="header-path" id="header-home"
            aria-labelledby="header-home-label header-home"
            data-served-root="{initial_root}"{mirror_attrs}>{initial_path}</a>
@@ -3938,8 +3985,12 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             headers=etag_headers,
         )
 
+    disk_prefix: bytes | None = None
     with server_timing.phase("read"):
-        text_body = ext in BROWSER_TEXT_EXTS or await asyncio.to_thread(_prefers_text_body, target)
+        if ext in BROWSER_TEXT_EXTS:
+            text_body = True
+        else:
+            text_body, disk_prefix = await asyncio.to_thread(_sniff_text_body, target)
     if text_body:
         try:
             content_has_more = False
@@ -4073,7 +4124,9 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         # document in the normal file response.
         return JSONResponse(result, headers=etag_headers)
 
-    binary_kind = _binary_kind(target, ext)
+    # A plugin kind that claims a binary format by its magic number, whatever the
+    # file's name, then a plugin's claim by path; the model stays the file's bytes.
+    binary_kind = _magic_kind(disk_prefix) or _binary_kind(target, ext)
     return JSONResponse(
         {
             "type": "binary",
@@ -4958,6 +5011,7 @@ async def raw_file(request: Request) -> Response:
 from metabrowser.plugin_loader.classify import (
     CompiledKindRule,
     build_classifier,
+    classify_magic,
     collect_folder_markers,
 )
 from metabrowser.plugin_loader.discovery import (
@@ -5057,6 +5111,30 @@ def _classify_with_plugins(
     return classify_file_kind(target, ext, adapter)
 
 
+def _magic_kind(disk_prefix: bytes | None) -> str | None:
+    """The plugin kind whose ``magic`` bytes a file's leading bytes on disk hold.
+
+    Checked only where a file would otherwise be ``binary``, from the sniff prefix the
+    caller already read; None for no prefix (a compressed artifact) or no match.
+    """
+    if disk_prefix is None:
+        return None
+    return classify_magic(_PLUGIN_KIND_RULES, disk_prefix)
+
+
+def _classify_content_kind(target: Path, ext: str) -> str:
+    """The kind ``/api/file`` gives a file on the served folder, for a caller with no
+    envelope of its own: an image extension, then text or JSONL through the plugin
+    classifier, then a ``magic`` kind, a ``binary = true`` claim, or ``binary`` for bytes that sniff as binary."""
+    if ext in BROWSER_IMAGE_EXTS:
+        return "image"
+    if ext != ".jsonl" and ext not in BROWSER_TEXT_EXTS:
+        text_body, disk_prefix = _sniff_text_body(target)
+        if not text_body:
+            return _magic_kind(disk_prefix) or _binary_kind(target, ext)
+    return _classify_with_plugins(target, ext)
+
+
 def _binary_kind(target: Path, ext: str) -> str:
     """The kind of a served file found to be binary: a plugin's binary claim, or ``binary``.
 
@@ -5140,7 +5218,7 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
             continue
         artifact = ArtifactPath(target)
         ext = artifact.logical_ext
-        kind = _classify_with_plugins(target, ext)
+        kind = _classify_content_kind(target, ext)
         info = kinds.get(kind)
         if info is None:
             return None
@@ -5199,7 +5277,7 @@ def _classify_served_file(ref: ContentRef) -> str | None:
     target = resolve_session_identity(ref.identity)
     if target is None or not target.is_file():
         return None
-    return _classify_with_plugins(target, ref.logical_ext)
+    return _classify_content_kind(target, ref.logical_ext)
 
 
 async def _table_content_kind(ref: ContentRef) -> str | None:
@@ -5212,9 +5290,18 @@ async def _table_content_kind(ref: ContentRef) -> str | None:
     if get_source_session().subject.filesystem_root is not None:
         # Resolving and statting the file runs off the event loop, with the classifier.
         return await asyncio.to_thread(_classify_served_file, ref)
-    from metabrowser.git.content_routes import plugin_kind_for_git_wire
+    from metabrowser.git.content_routes import plugin_kind_for_git_wire, plugin_magic_kind
 
-    return plugin_kind_for_git_wire(ref.identity) or classify_by_ext(ref.logical_ext)
+    kind = plugin_kind_for_git_wire(ref.identity)
+    if kind is not None or ref.logical_ext in BROWSER_IMAGE_EXTS:
+        return kind or "image"
+    head = await read_content_window(ref, max_bytes=SNIFF_PREFIX_BYTES)
+    content_class = classify_prefix(head.data)
+    if content_class is ContentClass.BINARY or (
+        ref.logical_ext not in BROWSER_TEXT_EXTS and content_class is not ContentClass.TEXT
+    ):
+        return plugin_magic_kind(head.data)
+    return classify_by_ext(ref.logical_ext)
 
 
 install_table_sources(_table_source_declarations(), _table_content_kind)

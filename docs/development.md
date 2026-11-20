@@ -569,6 +569,48 @@ the same tbd release into every Node version used here, at least the manager’s
 and the one `.node-version` pins: a stale copy can revert caches and documents the newer
 one wrote.
 
+### Linear
+
+Linear shows the project’s efforts, and tbd holds the work inside them.
+An effort is a top-level epic: a feature, a body of improvement, or a class of defects
+someone would ask about in a status meeting.
+The board should hold a few dozen of them; the hundreds of beads beneath them (tasks,
+bugs, review findings, single pull requests) stay in tbd.
+A per-pull-request mapping was tried first and left 205 linked issues on 2026-11-20, too
+many to read as a board.
+
+A bead reaches Linear only when it carries the `linear` label, open or closed
+(`integrations.linear.policy` in `.tbd/config.yml`). It also carries one type label,
+`Feature`, `Improvement`, or `Bug`, the names of the workspace’s Linear labels, so the
+board can be filtered by type.
+tbd does not copy the type label yet: give the Linear issue the same label by hand.
+`labels.mirror: verbatim` would copy it, but it also copies `linear` and every other
+bead label, which Linear does not have and tbd may not create, so every sync retries
+them all and goes over tbd’s 40-update guard (2026-11-20; jlevy/tbd#342 asks for a kind
+or label mapping).
+
+**Keep the structure as you work:**
+
+- **Every bead in an effort is a descendant of its epic.** Create a bead with
+  `--parent`, and move a stray one under the epic it belongs to.
+  A one-off fix that belongs to no effort may stay unparented; it has no Linear issue.
+- **A new effort is a new top-level epic** with `linear` and a type label, and, when it
+  has one, its plan spec (`--spec`). Give it an issue with
+  `tbd integration sync --push --bead <epic>`, then set the issue’s type label.
+- **Record each pull request or stack on its epic** as well as on its bead:
+  `tbd ref add <epic> <pr-url> --kind pr`. One epic can carry many pull requests and
+  stacks; a pull request need not map to exactly one issue.
+- **An epic is `in_progress` while anything under it is**: a claimed bead, an open pull
+  request, or a session working on it.
+  When you start work, set the epic’s status too
+  (`tbd update <epic> --status in_progress`); when its last active work lands, set it
+  back to `open`, or close it when the effort is done.
+- **Run `tbd sync`.** It reconciles linked issues in both directions
+  (`integrations.on_tbd_sync`), so status, titles, and descriptions follow the beads.
+
+Never run `tbd integration sync --push` without `--bead` for a bead that is already
+linked: it overwrites Linear-side edits that a full sync would merge.
+
 ## Shared Working Tree
 
 Several agents and worktrees often work this repository at once, so files can appear

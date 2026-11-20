@@ -119,6 +119,16 @@
               "render_runtime": null
             },
             {
+              "id": "table",
+              "label": "Table",
+              "key": "a",
+              "default": false,
+              "container_class": "content-body table-view-host",
+              "printable": true,
+              "print_profile": "table",
+              "render_runtime": "client"
+            },
+            {
               "id": "source",
               "label": "Source",
               "key": "s",

@@ -1,11 +1,12 @@
-// A table of session rows, as the home's recent sessions and the session list draw one.
+// Lists of sessions: the session list's table, and the two-line rows the home's Running now
+// and Recent sessions draw.
 //
 // The route's rows are the data (membership, order, counts); this paints them. A column
 // that can be sorted is a button in its header with `aria-sort`, so the table is operable
 // from the keyboard, and a row's title is an anchor to the session's file.
 
 import { ageText, durationText } from "./home-model.js";
-import { agentLabel, sessionFile, sessionLinkHtml, titleOf } from "./support.js";
+import { agentLabel, separatorHtml, sessionFile, sessionLinkHtml, titleOf } from "./support.js";
 
 /**
  * @typedef {object} SessionRow
@@ -28,7 +29,7 @@ import { agentLabel, sessionFile, sessionLinkHtml, titleOf } from "./support.js"
  * @typedef {{id: string, label: string, sort: string | null, numeric?: boolean}} Column
  */
 
-/** Every column the list offers, in order; the home's table takes a subset. */
+/** Every column the list offers, in order; a table takes the subset it names. */
 export const COLUMNS = /** @type {ReadonlyArray<Column>} */ (
   Object.freeze([
     { id: "agent", label: "Agent", sort: "agent" },
@@ -79,7 +80,9 @@ function cellHtml(mb, column, row, now) {
         ? `<span data-tip-text="${text(row.project)}">${text(row.project)}</span>`
         : "-";
     case "model":
-      return text(row.models.join(", ") || "-");
+      return row.models.length > 0
+        ? `<span data-tip-text="${text(row.models.join(", "))}">${text(row.models.join(", "))}</span>`
+        : "-";
     case "activity":
       return text(ageText(row.last_activity, now));
     case "start":
@@ -100,13 +103,12 @@ function cellHtml(mb, column, row, now) {
 /**
  * @param {MetabrowserPublicSdk} mb
  * @param {Column} column
- * @param {{sort: string, order: "asc" | "desc"} | null} sorting `null` for a table that
- *   cannot be re-sorted, as the home's.
+ * @param {{sort: string, order: "asc" | "desc"}} sorting
  */
 function headerHtml(mb, column, sorting) {
   const label = mb.escapeHtml(column.label);
   const numeric = column.numeric ? " agents-numeric" : "";
-  if (!sorting || !column.sort) {
+  if (!column.sort) {
     return `<th scope="col" class="agents-col-${column.id}${numeric}">${label}</th>`;
   }
   const active = sorting.sort === column.sort;
@@ -123,7 +125,7 @@ function headerHtml(mb, column, sorting) {
  *
  * @param {MetabrowserPublicSdk} mb
  * @param {ReadonlyArray<SessionRow>} rows
- * @param {{columns: ReadonlyArray<string>, now: number, sorting: {sort: string, order: "asc" | "desc"} | null, caption: string, empty: string}} options
+ * @param {{columns: ReadonlyArray<string>, now: number, sorting: {sort: string, order: "asc" | "desc"}, caption: string, empty: string}} options
  */
 export function sessionTableHtml(mb, rows, options) {
   if (rows.length === 0) {
@@ -146,4 +148,56 @@ export function sessionTableHtml(mb, rows, options) {
     `<table class="agents-table"><caption class="sr-only">${mb.escapeHtml(options.caption)}</caption>` +
     `<thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
   );
+}
+
+/**
+ * @typedef {object} RowItem One line of a list of sessions, whichever route it came from.
+ * @property {string} agent
+ * @property {string} session_id
+ * @property {string} title
+ * @property {string | null} path The session's file, or `null` for a title with no link.
+ * @property {string} age Said as `ageText` says it.
+ * @property {string | null} project
+ * @property {ReadonlyArray<string>} models
+ * @property {string | null} status Shown as a badge at the second line's start, or `null`.
+ */
+
+/**
+ * A session as a two-line row, as the home's Running now and Recent sessions list them.
+ * The first line is the agent, the title link, and the age at its end, which never wraps;
+ * the second, muted line is a status badge when there is one, the project, and the model,
+ * each cut short with an ellipsis rather than wrapped, so a long path never pushes the age
+ * onto a line of its own (docs/design-system.md, "Session Rows").
+ *
+ * @param {MetabrowserPublicSdk} mb
+ * @param {ReadonlyArray<RowItem>} items
+ * @param {{label: string}} options `label` names the list for assistive technology.
+ */
+export function sessionRowsHtml(mb, items, options) {
+  const text = (/** @type {string} */ value) => mb.escapeHtml(value);
+  const rows = items
+    .map((item) => {
+      const models = item.models.join(", ");
+      const project = item.project
+        ? `<span class="agents-row-project" data-tip-text="${text(item.project)}">${text(item.project)}</span>`
+        : "";
+      const model = models
+        ? `<span class="agents-row-model" data-tip-text="${text(models)}">${text(models)}</span>`
+        : "";
+      const badge = item.status
+        ? `<span class="file-header-badge ${statusBadge(item.status)}">${text(item.status)}</span>`
+        : "";
+      const meta =
+        badge + (project && model ? `${project}${separatorHtml(mb)}${model}` : project + model);
+      return (
+        `<li class="agents-session-row" data-agent="${text(item.agent)}" data-session="${text(item.session_id)}">` +
+        '<div class="agents-row-line">' +
+        `<span class="agents-agent">${text(agentLabel(item.agent))}</span>` +
+        sessionLinkHtml(mb, item.title, item.path, "agents-session-link agents-row-title") +
+        `<span class="agents-row-age">${text(item.age)}</span></div>` +
+        `<div class="agents-row-meta agents-muted">${meta}</div></li>`
+      );
+    })
+    .join("");
+  return `<ul class="agents-session-rows" aria-label="${text(options.label)}">${rows}</ul>`;
 }

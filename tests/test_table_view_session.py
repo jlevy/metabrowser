@@ -11,10 +11,12 @@ in part.
 ``tests/golden/cli-ui-table-view.tryscript.md`` pins its transcript. So that the
 conversation is the server's and not envelopes a test wrote by hand, the session plays
 the answers in ``tests/fixtures/table-view-responses.json``,
-``tests/fixtures/table-view-long-responses.json``, and
-``tests/fixtures/table-view-bounds-responses.json``: what the in-process application
+``tests/fixtures/table-view-long-responses.json``,
+``tests/fixtures/table-view-bounds-responses.json``, and
+``tests/fixtures/table-view-records-responses.json``: what the in-process application
 answered for each request the page makes, over the files in ``tests/fixtures/table-view/``
-and the files ``BOUNDED`` writes.
+and the files ``BOUNDED`` writes. The record-list recording is a JSON list of mappings,
+the structured kind's Table view, and a JSON mapping, which is not a list of records.
 
 A bound meets a file in a test only at a size no recording should hold, so the bounds
 recording lowers it, through the same names the server reads, for the one file that
@@ -81,7 +83,18 @@ LONG: list[tuple[str, Params]] = [
     ("rows", {"after": AFTER, "limit": "1000"}),
     ("rows", {"sort": "n", "order": "asc", "limit": "200"}),
     ("rows", {"sort": "n", "order": "desc", "limit": "200"}),
+    ("record", {"key": "@151", "generation": GENERATION}),
 ]
+
+
+# A JSON list of mappings, and a mapping, which is not one: the structured kind's Table.
+RECORDS: list[tuple[str, Params]] = [
+    ("schema", {}),
+    ("rows", {"limit": "200"}),
+    ("record", {"key": "@1", "generation": GENERATION}),
+    ("rows", {"sort": "age", "order": "asc", "limit": "200"}),
+]
+CONFIG: list[tuple[str, Params]] = [("schema", {})]
 
 
 # Pages bounded in cells: three fields, a comma in one's name, and a page of nine cells
@@ -260,7 +273,7 @@ def _record_file(
     is spent as it starts, after the file was parsed with a budget of its own."""
 
     answers: dict[str, Any] = {}
-    real = client.get(f"{HOOK}/schema", params={"path": file}).json()["generation"]
+    real = client.get(f"{HOOK}/schema", params={"path": file}).json().get("generation", "")
     after = ""
     for route, params in requests:
         spelled: Params = {"path": file, **params}
@@ -276,6 +289,13 @@ def _record_file(
             after = body.get("next_after") or ""
         answers[_key(route, spelled)] = {"status": response.status_code, "body": _normalize(body)}
     return answers
+
+
+def _record_lists(tmp_path: Path) -> dict[str, Any]:
+    with _serve(tmp_path) as client:
+        answers = _record_file(client, "records.json", RECORDS)
+        answers.update(_record_file(client, "config.json", CONFIG))
+        return {"answers": answers}
 
 
 def _record(tmp_path: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
@@ -454,6 +474,16 @@ def test_the_recorded_answers_are_what_the_routes_answer(tmp_path: Path) -> None
         check_recording_text(name, rendered, transcript=TRANSCRIPT)
 
 
+def test_the_record_list_recording_is_what_the_routes_answer(tmp_path: Path) -> None:
+    recorded = _record_lists(tmp_path)
+    check_recording("table-view-records-responses.json", recorded, transcript=TRANSCRIPT)
+    answers = recorded["answers"]
+    refused = answers[_key("schema", {"path": "config.json"})]
+    assert (refused["status"], refused["body"]["code"]) == (422, "source_unreadable")
+    record = answers[_key("record", {"path": "records.json", "key": "@1", "generation": "G"})]
+    assert record["body"]["cells"]["meta"] == {"json": {"born": 1815, "notes": {"first": True}}}
+
+
 def test_the_bounds_recording_shows_what_each_bound_answers(tmp_path: Path) -> None:
     # Each lowered bound, and the spent budget, answers what the session's steps say.
     _people, _long, bounded = _record(tmp_path)
@@ -507,12 +537,13 @@ def test_the_session_plays_the_recordings_and_asks_for_nothing_else() -> None:
         "table-view-responses.json",
         "table-view-long-responses.json",
         "table-view-bounds-responses.json",
+        "table-view-records-responses.json",
     ],
 )
-def test_every_recorded_answer_is_ok_but_the_refusal(name: str) -> None:
+def test_every_recorded_answer_is_ok_but_the_refusals(name: str) -> None:
     recording = json.loads((FIXTURES.parent / name).read_text(encoding="utf-8"))
     for key, answer in recording["answers"].items():
-        expected = 400 if "f.score=gt%3Ahigh" in key else 200
+        expected = 400 if "f.score=gt%3Ahigh" in key else 422 if "config.json" in key else 200
         assert answer["status"] == expected, key
 
 
@@ -670,21 +701,20 @@ def test_a_record_read_again_unchanged_is_left_as_drawn_and_can_pause(
     assert (paused["requests"], paused["record pill"]) == ([], "Paused · 1 change")
 
 
-def test_a_windowed_refresh_reads_the_pages_it_skipped_when_the_window_returns(
+def test_a_windowed_refresh_leaves_no_rows_above_the_window_as_last_read(
     session: dict[str, Any],
 ) -> None:
-    """Review A of #675, A4: a refresh reads from the page the window begins in, and the
-    pages above it, read before the change, are read again once the window enters them."""
+    """Review A of #675, A4: a live refresh asks the question again as refresh() does, from
+    the first page as far as the reader reached, so rows above the window are read too and
+    none stays as last read under a Live pill."""
 
     first = session[
-        "live window: rows 5 and 45 changed: read again from the window's page, row 45 drawn"
+        "live window: rows 5 and 45 changed: read again from the start as far as the reader reached"
     ]
-    assert first["requests"][0].startswith("rows?after=")
+    assert first["requests"][0] == "rows?limit=200&path=live-window.csv"
     assert first["rows changed"] == ["45 | 4500"]
     top = session[
-        "live window: back at the top, whose pages that read skipped: read again, row 5 drawn"
+        "live window: back at the top: row 5 as read with the rest, nothing stale to read again"
     ]
-    # The window arrives at rows as last read, and the next window reads them again.
-    assert top["rows changed as it arrives"] == []
-    assert top["requests"][0] == "rows?limit=200&path=live-window.csv"
-    assert top["rows changed"] == ["5 | 500"]
+    assert top["rows changed as it arrives"] == ["5 | 500"]
+    assert top["requests"] == []

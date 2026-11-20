@@ -1,0 +1,29 @@
+[plugin]
+name = "sqlite"
+display_name = "SQLite"
+version = "0.0.1"
+sdk_version = "0.8"
+
+# Any SQLite database, whatever its name: a file that would otherwise be binary and
+# starts with "SQLite format 3\0" (the hex below). The extensions decide only the tree's
+# container chevron, once a database lists its tables; a `.db` file that is not SQLite
+# stays binary. Every connection to it runs in a reader process
+# (metabrowser.sqlite_readers) through metabrowser.sqlite_access, which never writes to
+# it, creates or removes a file beside it, or takes a lock that can refuse its owner.
+[[kind]]
+id = "sqlite"
+match = { magic = { offset = 0, hex = "53514c69746520666f726d6174203300" }, exts = [".sqlite", ".sqlite3", ".db", ".db3", ".s3db"] }
+priority = 0
+
+[[view]]
+kind = "sqlite"
+id = "info"
+label = "Info"
+default = true
+container_class = "content-body sqlite-info-host"
+render_runtime = "client"
+
+[[data_hook]]
+route = "info"
+sidekick = "metabrowser.builtin_plugins.sqlite.sidekick:info_handler"
+methods = ["GET"]

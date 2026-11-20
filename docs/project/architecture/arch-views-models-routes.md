@@ -55,7 +55,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | `mermaid` | `.mmd`, `.mermaid` | Diagram `V`, Source `S` | The file’s text as one `mermaid` fence through `/api/kpress/render`, drawn as a document’s diagrams are |
 | `html` | `.html`, `.htm` | Preview `V`, Source `S` | File envelope; sandboxed raw document |
 | `text` | Text files | Source | File envelope |
-| `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Source `S` | File envelope and the `structured/parsed` hook |
+| `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Table `A`, Source `S` | File envelope and the `structured/parsed` hook; Table reads a top-level list of mappings as one table through the `table/*` hooks ([Table Sources](arch-plugin-system.md#table-sources)) |
 | `delimited` | `.csv`, `.tsv` | Table `V`, Source `S` | File envelope; one table through the `table/*` hooks, which the table plugin’s view draws ([Table Sources](arch-plugin-system.md#table-sources)) |
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
 | `agent-log` | `.jsonl` sniffed as an agent log | Session `E`, Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agents/charts` hook; Session reads `agents/session` and `agents/records` |
@@ -63,6 +63,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | `unknown-jsonl` | Other `.jsonl` | Log `V`, Raw JSON `S` | File envelope |
 | `event-log` | A `.jsonl` file named `events-*.jsonl`, in a served folder (`path_glob`; a Git blob of that name is generic JSONL) | Timeline `V`, Latency `L`, By kind `B`, Errors `E`, Raw JSON `S` | File envelope and the `event-log/timeline`, `event-log/slowest`, `event-log/kinds`, and `event-log/errors` hooks over one segment of [the event log](../../realtime-debugging.md#event-log) |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
+| `sqlite` | A file that would be `binary` and starts with `SQLite format 3\0` (a `magic` rule), whatever its name | Info | The `sqlite/info` hook: the database as a reader process read it ([Reading SQLite Databases](arch-plugin-system.md#reading-sqlite-databases)) |
 | `binary` | Non-text files | Bytes | The `binary/chunk` hook’s bounded byte windows |
 | `comparison` | No file; the Commits tab selects it for `/commit/<rev>[/<inner>]` | The `diff` kind’s views | `diff/comparison` document in File Diff Format |
 | `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>] or /checks]` | Pull request, which draws its own Conversation `C`, Changes `G`, and Checks `E` tabs | `github/pull` envelope and the hooks it names |
@@ -220,7 +221,7 @@ counts is missing here; the asset routes are not counted.
 | `/api/event-log/client` | `POST`: what a page saw, its slow and pending requests, frozen frames, and waits still running at the late threshold, checked, bounded, redacted, and written as `browser` records under the page’s client ID (`event_log_reports.py`, sent by `static/event-reports.js`) | [Real-Time Debugging](../../realtime-debugging.md#what-the-page-reports) |
 | `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>`, `/api/git/commit-markdown/<rev>`, `/api/git/commit-size/<rev>` | Read-only history for the Commits tab: a repository folder’s own, and a mirror’s default branch’s, whichever revision the Files tab shows; a commit’s size as Git pushes it and as a patch (`git/change_size.py`) | [Git](arch-git.md), [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout) |
 | `/api/source/status`, `/api/source/refs`, `/api/source/pin` | What the server serves; the served root’s branches and tags, a mirror’s or a repository folder’s, with a checkout’s remote-tracking branches, each with its commit’s full ID and committer date, and a checkout’s working tree by its folder, and the pull requests each branch is the head of, as its provider has cached them, which the filter finds a branch by too; and switching its view: a mirror’s pin, or a checkout between a revision and its working tree. `metab PATH --ref NAME` starts a checkout on a revision, so every route that answers a pin answers a checkout’s revision from a terminal | [Source Sessions and Pins](arch-source-sessions-and-pins.md), [Open Modes](arch-open-modes.md) |
-| `/api/identity` | What the served subject is called, for a window’s title, and the GitHub repository it belongs to (`root_identity.py`) | [Source Sessions and Pins](arch-source-sessions-and-pins.md) |
+| `/api/identity` | What the served subject is called, for a window’s title, which of three kinds of root it is (`folder`, `git`, or `mirror`) and the sentence for the mark that names it, and the GitHub repository it belongs to (`root_identity.py`) | [Source Sessions and Pins](arch-source-sessions-and-pins.md) |
 | `/api/counterpart` | The github.com page that shows what a page shows, for its View on GitHub control, or why there is none (`counterpart.py`) | [Design System: View on GitHub](../../design-system.md#view-on-github) |
 | `/api/source/refresh` | `POST`: start or join a background refresh of the served mirror | [Mirror Acquisition and Refresh](arch-mirror-acquisition-and-refresh.md) |
 | `/api/source/link` | `POST`: open a link into the served mirror’s repository: start a refresh, switch the pin to the revision a branch, folder, or file link names, and answer the page to go to, a pull request’s or a commit’s with no switch | [GitHub Links](arch-macos-app.md#github-links), [Source Sessions and Pins](arch-source-sessions-and-pins.md) |
@@ -235,14 +236,16 @@ Plugin hooks currently registered: `diff/document`, `diff/children`, and
 `agents/sessions`, `agents/session`, `agents/records`, and `agents/live`, the catalog of
 Claude Code and Codex sessions under a served folder ([Agent Catalog](#agent-catalog));
 `table/tables`, `table/schema`, `table/rows`, `table/record`, and `table/card`
-([Table Sources](arch-plugin-system.md#table-sources)); and `github/pull`,
-`github/pull-refresh`, `github/pull-cores-prepare`, `github/pull-comparison`,
-`github/pull-image`, `github/pull-rendered-diff`, `github/pull-size`,
-`github/pull-timeline`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`,
-`github/pulls-prefetch`, `github/pull-files`, `github/pull-files-refresh`,
-`github/pull-files-summary`, `github/stacks`, `github/stacks-refresh`,
-`github/stack-change`, `github/labels`, `github/labels-refresh`, `github/cache-clear`,
-and `github/status` ([GitHub Pull Requests](arch-github-pull-requests.md)).
+([Table Sources](arch-plugin-system.md#table-sources)); `sqlite/info`
+([Reading SQLite Databases](arch-plugin-system.md#reading-sqlite-databases)); and
+`github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
+`github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff`,
+`github/pull-size`, `github/pull-timeline`, `github/pull-markdown`, `github/pulls`,
+`github/pulls-refresh`, `github/pulls-prefetch`, `github/pull-files`,
+`github/pull-files-refresh`, `github/pull-files-summary`, `github/stacks`,
+`github/stacks-refresh`, `github/stack-change`, `github/labels`,
+`github/labels-refresh`, `github/cache-clear`, and `github/status`
+([GitHub Pull Requests](arch-github-pull-requests.md)).
 
 ## Agent Catalog
 

@@ -86,7 +86,7 @@ $ metab showroot --show data.json
 show: data.json
 route: /view/data.json
 kind: structured
-views: tree (default, key V), source (key S)
+views: tree (default, key V), table (key A), source (key S)
 model: text envelope; size=33 content_bytes=33 content_truncated=False
 ? 0
 ```

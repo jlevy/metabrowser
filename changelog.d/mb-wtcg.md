@@ -5,9 +5,8 @@
   position, focused row, open menus, and unsent filter text.
   A **Live** button pauses it and counts the changes held back, also from an open
   record, and a read that fails keeps the rows last read and says so
-  ([Live Updates](docs/browsing-files.md#live-updates)).
-  A table in a hidden tab reads nothing until it is shown, and a file that is slow to
-  read is read less often.
+  ([Live Updates](docs/browsing-files.md#live-updates)). A table in a hidden tab reads
+  nothing until it is shown, and a file that is slow to read is read less often.
 
 - A container in the tree, such as a patch file, reads its entries again when its file
   changes, at most once in a short window and without redrawing entries that are the

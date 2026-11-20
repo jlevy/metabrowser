@@ -1,0 +1,41 @@
+/* SQLite plugin: the Info view. Host tokens only; the notices are the shell's
+   `.notice` primitive and the sections are `.data-grid` tables, so this declares
+   layout alone. */
+
+.sqlite-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--content-padding-x);
+  max-width: 48rem;
+}
+
+.sqlite-info-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--panel-cell-padding);
+}
+
+.sqlite-info-heading {
+  margin: 0 0 4px;
+}
+
+.sqlite-info-table {
+  width: 100%;
+}
+
+.sqlite-info-label {
+  width: 12rem;
+  font-weight: normal;
+  color: var(--muted);
+  text-align: left;
+}
+
+.sqlite-info-number {
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.sqlite-info-muted,
+.sqlite-info-loading {
+  color: var(--muted);
+}

@@ -18,6 +18,7 @@ import { browserClock, createPoller, PROGRESS_POLL_MS, retrying } from "./poller
 import {
   agentLabel,
   ensureViewStyles,
+  joinGroups,
   openSessionLink,
   refusal,
   sessionFile,
@@ -180,11 +181,15 @@ function headerHtml(mb, session, family) {
         "</div>"
       : "");
   return (
-    '<header class="agents-session-head">' +
-    `<h2 class="agents-title">${esc(titleOf(session))}</h2>` +
-    `<p class="agents-session-line"><span class="agents-agent">${esc(agentLabel(session.agent))}</span> ` +
+    '<header class="agents-session-head page-header">' +
+    `<h2 class="agents-title page-heading">${esc(titleOf(session))}</h2>` +
+    `<p class="agents-session-line page-header-line"><span class="agents-agent">${esc(agentLabel(session.agent))}</span> ` +
     `<span class="file-header-badge ${status ?? "badge-pending"}">${esc(session.status)}</span> ` +
-    `<span class="agents-muted">${esc(session.origin)}${session.project ? ` · ${esc(session.project)}` : ""}${session.git_branch ? ` · ${esc(session.git_branch)}` : ""}</span></p>` +
+    `<span class="agents-muted">${joinGroups(mb, [
+      esc(session.origin),
+      session.project ? esc(session.project) : "",
+      session.git_branch ? esc(session.git_branch) : "",
+    ])}</span></p>` +
     '<div class="agents-stats">' +
     fact("Models", session.models.join(", ") || "-") +
     fact("Started", session.started_at === null ? "-" : mb.formatTimestamp(session.started_at)) +

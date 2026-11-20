@@ -28,6 +28,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from metabrowser.content_sniff import SNIFF_PREFIX_BYTES
 from metabrowser.keymap import view_key_error
 
 # SDK contract version
@@ -52,6 +53,44 @@ _IMPLICIT_PLUGIN_SDK_VERSION = "0.1"
 _PLUGIN_NAME = re.compile(r"^[a-z][a-z0-9_-]*$")
 
 # ── Match predicate ────────────────────────────────────────────
+
+# The furthest byte a `magic` rule may name: the sniff prefix every classification site
+# already holds when it falls back to `binary` (`SNIFF_PREFIX_BYTES` in
+# `metabrowser.content_sniff`), so a magic check never costs a read of its own.
+MAGIC_MAX_END = SNIFF_PREFIX_BYTES
+
+
+class MagicMatch(BaseModel):
+    """Bytes a binary format holds at a fixed offset, as ``magic = {offset, hex}``.
+
+    ``hex`` spells the bytes in hexadecimal, since a format's magic is often not text
+    (and a TOML string would encode a byte past 0x7f as two).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    offset: int = Field(default=0, ge=0, description="Where the bytes start in the file.")
+    hex: str = Field(..., description="The bytes expected there, in hexadecimal.")
+
+    @field_validator("hex")
+    @classmethod
+    def _hex_bytes(cls, value: str) -> str:
+        try:
+            raw = bytes.fromhex(value)
+        except ValueError:
+            raise ValueError(f"magic.hex {value!r} is not hexadecimal bytes") from None
+        if not raw:
+            raise ValueError("magic.hex names no bytes")
+        return raw.hex()
+
+    @property
+    def expected(self) -> bytes:
+        return bytes.fromhex(self.hex)
+
+    def matches(self, prefix: bytes) -> bool:
+        """Whether *prefix*, a file's leading bytes on disk, holds these bytes."""
+        expected = self.expected
+        return prefix[self.offset : self.offset + len(expected)] == expected
 
 
 class KindMatch(BaseModel):
@@ -130,6 +169,14 @@ class KindMatch(BaseModel):
             "Match files whose served-root-relative path matches this gitignore-style glob "
             "(e.g. `**/files/derived/**/*.md`). Backed by pathspec; combines with the other "
             "match.* fields by AND."
+        ),
+    )
+    magic: MagicMatch | None = Field(
+        default=None,
+        description=(
+            "Match a file that would otherwise be `binary` whose bytes on disk hold these "
+            "bytes at this offset, whatever its name. Only `ext` or `exts` may be set "
+            "beside it, and they decide only the tree's container chevron."
         ),
     )
 
@@ -518,6 +565,11 @@ class PluginManifest(BaseModel):
                     f"kind '{kr.id}' claims binary files but matches on content "
                     f"({', '.join(content)}); a binary rule matches by path only"
                 )
+            if kr.binary and kr.match.magic is not None:
+                problems.append(
+                    f"kind '{kr.id}' sets binary with match.magic; a magic rule already "
+                    "matches only binary files, by their bytes"
+                )
             if kr.binary and kr.container is not None:
                 problems.append(f"kind '{kr.id}' claims binary files and cannot be a container")
 
@@ -553,6 +605,23 @@ class PluginManifest(BaseModel):
                             f"kind '{kr.id}' match.exts entry {e!r} must be a string "
                             "starting with '.'"
                         )
+            if kr.match.magic is not None:
+                magic = kr.match.magic
+                if magic.offset + len(magic.expected) > MAGIC_MAX_END:
+                    problems.append(
+                        f"kind '{kr.id}' match.magic ends past byte {MAGIC_MAX_END}, "
+                        "the sniff prefix a classification site holds"
+                    )
+                beside = [
+                    name
+                    for name in type(kr.match).model_fields
+                    if name not in {"magic", "ext", "exts"} and getattr(kr.match, name) is not None
+                ]
+                if beside:
+                    problems.append(
+                        f"kind '{kr.id}' sets match.magic with {', '.join(beside)}; a magic "
+                        "rule takes only ext or exts, which decide the tree's chevron"
+                    )
             # yaml_value_prefix is only meaningful paired with yaml_has_key
             # (mirrors the json pair).
             if kr.match.yaml_value_prefix is not None and kr.match.yaml_has_key is None:

@@ -526,8 +526,8 @@ touches anything:
 | Any journal mode, more than one hard link | As a missing `-shm` below, through a private copy | **Another name**, never Current: “this file has N names; a journal or log kept beside another name is not shown” |
 | Rollback journal | `immutable=1`, validated, never locked ([Decision 10](#decision-10-reading-a-rollback-journal-database)) | Current, or **writer busy** |
 | Write-ahead log, no `-wal` or a zero-byte one | `immutable=1`, validated | Current |
-| Write-ahead log, `-wal` with frames, `-shm` present | `mode=ro`, with the race check | Current |
-| Write-ahead log, `-wal` with frames, no `-shm` | Under the copy cap, a private copy of the main file and its `-wal`, validated, read `mode=ro`; past the cap, or after a copy fails validation twice, the main file with `immutable=1` | Current; past the cap, “without its N-byte log, which may be inconsistent” |
+| Write-ahead log, `-wal` with frames, `-shm` a live connection holds | `mode=ro`, with the race check | Current |
+| Write-ahead log, `-wal` with frames, no `-shm`, or one no connection holds | Under the copy cap, a private copy of the main file and its `-wal`, validated, read `mode=ro`; past the cap, or after a copy fails validation twice, the main file with `immutable=1` | Current; past the cap, “without its N-byte log, which may be inconsistent” |
 | Immutable content: a Git revision, an fsqlite snapshot | `immutable=1` | Current; a committed write-ahead-log database is shown without its log |
 
 - **A live journal** holds bytes and a header that is not zeroed;
@@ -546,11 +546,18 @@ touches anything:
   rollback-journal database is writer busy and any other is changing.
   An error from a read that failed validation is changing, never damaged, and in the
   another-name and past-the-cap states a corruption error is that state, not damage.
+- **A live connection** holds a shared lock on byte 128 of `-shm` while it is open
+  (SQLite’s dead-man switch).
+  The worker asks with `F_GETLK` on a read-only handle, which takes no lock; with no
+  holder, a crashed owner or a copied folder, `mode=ro` would rebuild the index by
+  rewriting `-shm`, so the log is read through the copy.
 - **The race check.** Before connecting, the worker opens the `-shm` it saw, read-only,
-  and holds it until after the connection closes; after connecting, it compares that
-  file’s identity with the path’s, as `pull_catalog._database` already does for the main
-  file. If the owner exited in between and the open created sidecars, the Info view says
-  so.
+  and holds it until after the connection closes; it asks again on that handle whether a
+  live connection holds it, and looks again if none does; after connecting, it compares
+  that file’s identity with the path’s, as `pull_catalog._database` already does for the
+  main file. If the owner exited in between and the open created sidecars, the Info view
+  says so. An owner that crashes between that question and the connection is the one
+  window left in which a read rewrites `-shm`.
 
 **Every request is short:** it samples the generation, opens a fresh connection, reads
 in one short transaction, and closes it.
@@ -622,7 +629,10 @@ Extension loading stays off.
 **Generation,** from stats and headers alone: the main file’s identity, size,
 modification time, and change counter, plus in write-ahead-log mode the `-wal` file’s
 size, modification time, and header checkpoint sequence and salts (bytes 12 to 24),
-which change every time the log restarts even when its size repeats.
+which change every time the log restarts even when its size repeats, and the wal-index
+header at the start of `-shm`, read without a lock, whose change counter and frame count
+move on every commit, even one that overwrites a restarted log in place within one tick
+of the file clock.
 
 **fsqlite stores.** The store’s `fsqlite.json` is the `sqlite-store` kind:
 `folder_marker = "fsqlite.json"` with `json_has_key = "format"` and
@@ -657,7 +667,7 @@ own `children` hook.
 
 Views: Table (`v`, the default) and Source (`s`).
 
-**Record lists** are a Table view (`r`) of the structured plugin’s `structured` kind,
+**Record lists** are a Table view (`A`) of the structured plugin’s `structured` kind,
 beside Tree and Source, reading the `parsed` hook’s result under its existing bound
 ([Decision 12](#decision-12-where-a-record-list-gets-its-table)). The Table tab draws a
 top-level list of mappings and, for any other document, says it is not a list of
@@ -702,12 +712,13 @@ Columns the reader chose live only there.
 
 **Accessibility.**
 
-- A table drawn whole is a `<table>` with `scope="col"` headers and `aria-sort`. A
-  windowed grid has `role="grid"`, `aria-rowcount` (`-1` while the count is a lower
-  bound), `aria-rowindex` on each row, and `aria-sort` on the sorted header.
+- A table drawn whole or windowed is a multiselectable `role="grid"` with `scope="col"`
+  headers and `aria-sort` on the sorted header; a windowed grid adds `aria-rowcount`
+  (`-1` while the count is a lower bound) and `aria-rowindex` on each row.
 - One Tab stop with roving focus: Up and Down (or `j`/`k`) move between rows and Left
-  and Right between cells, so a reference chip or a filtering value is reachable.
-  Enter on a cell follows its link; Enter on the row opens the record.
+  and Right between cells, so a reference chip or a filtering value is reachable; Up
+  from the first row reaches the header’s sort and menu buttons, which Left and Right
+  cross. Enter on a cell follows its link; Enter on the row opens the record.
   A hover card also opens on focus.
   This joins the shared row keyboard contract.
 - “3 new rows”, Paused, and writer busy are announced through one polite live region.
@@ -1038,18 +1049,29 @@ As built, where this plan left a choice open:
   A cursor continues only the question it was made for; while a new question’s first
   page is on its way, the rows held for the last read no further.
 - **What a budget did.** A sort refused with `sort_budget` is a notice naming the field,
-  with a link to the file’s order, not an empty table; a search stopped with `budget`
-  shows the matches among the rows it read and says how many it read, and scrolling
-  reads on among them.
-  A page that says `truncated` with an exact count was cut in a row’s cells, and one
-  with a lower bound in its rows, and the notice says which.
-  `tests/test_table_view_session.py` records these answers with each bound lowered for
-  one small file, since a file that meets the real bound is too large to record.
+  with a link to the table’s own order and one to try again, not an empty table; a
+  search stopped with `budget` shows the matches among the rows it read and says how
+  many it read, scrolling reads on among them, and one that found none says “No matches
+  among the first N rows”.
+  A page that says `truncated` with an exact count holds every row but not every value
+  of them, and one with a lower bound only the leading rows, and the notice says which
+  without naming a file.
+  A question’s pages join in `joinPage` (`table-model.js`): the last page says whether
+  the question is complete and why, and a page from a table that changed under the
+  cursor ends it as `cursor_expired`. `tests/test_table_view_session.py` records these
+  answers with each bound lowered for one small file, since a file that meets the real
+  bound is too large to record.
 - **The open record** is `record=<key>` on the table’s address, which the view reads and
   the rows route ignores; a record opens in place of the grid, and Back, or its own Back
   link, returns the grid with the keyboard on the row.
   The scroll position and focused row are kept in the history entry’s state, not the
-  address.
+  address, written only before the view navigates, when the page hides, and a pause
+  after the last move or scroll, since browsers bound history writes; the record’s Back
+  link goes Back only when the browser’s address is the entry the view pushed, and
+  otherwise replaces it with the table’s address.
+- **A new answer to the same question** (`refresh()` on the view’s handle) keeps the
+  focused row, the row at the top of the view, and the selection by key, so the live
+  tables of Phase 6 redraw in place rather than as a new question.
 - **Hover cards** are the shared tooltip’s content, shown on hover and on keyboard focus
   of a reference chip, and nothing in a card is interactive, since a tooltip takes no
   interactive children; the chip itself opens the record.
@@ -1076,14 +1098,68 @@ As built, where this plan left a choice open:
 
 Accepted from `metab` through the Info view, before any table is drawn.
 
-- [ ] `magic` kind matching at every classification site; file-type registry move and
+- [x] `magic` kind matching at every classification site; file-type registry move and
   revision
-- [ ] Reader processes; `sqlite_access.py`: admission, the access table, private copies,
+- [x] Reader processes; `sqlite_access.py`: admission, the access table, private copies,
   Git blobs written once under a cap, the race check, connection settings, authorizer,
   budget, deadlines, and kill, error states; the GitHub catalog moved onto it
-- [ ] The Info view
-- [ ] Nondestructive access, lock hazard, and contention tests, goldens, parity rows,
+- [x] The Info view
+- [x] Nondestructive access, lock hazard, and contention tests, goldens, parity rows,
   changelog fragment; dedicated security and correctness reviews
+
+As built, where this plan left a choice open:
+
+- **The rule** is `match.magic = {offset, hex}`, the bytes in hexadecimal since a
+  format’s magic is often not text.
+  A magic rule takes only `ext` or `exts` beside it, and must end within the sniff
+  prefix, which every site already holds.
+- **A worker is started with `subprocess`**, `python -I` running a short bootstrap that
+  loads `sqlite_access.py` by its path under a stand-in `metabrowser` package: the exec
+  `multiprocessing`’s `spawn` uses, without `spawn` importing the parent’s `__main__`,
+  which for `metab` is the whole CLI. Requests and answers are one JSON line each over
+  the worker’s stdin and stdout.
+  A plugin’s standard-library module joins the worker through `register_worker_module`,
+  and its requests through `sqlite_access.OPS`.
+- **Private folders** are under the system’s temporary directory, one per process, held
+  by an advisory lock that the next pool’s sweep tests; they hold only copies a later
+  request recreates. A folder is made and locked under a name the sweep does not match
+  and renamed once locked, so no sweep removes a live pool’s folder, and one removed
+  from under a pool is made again.
+  Git blobs are kept to a measured total, the least recently used removed first, never
+  one a request is reading, and a blob already written is not read from Git again.
+- **Answers are bounded** at both ends: a worker answers `too_large` in place of an
+  answer past `ANSWER_MAX_BYTES`, and the parent stops a worker that sends more, reading
+  each chunk once.
+- **A caller that must not read some tables**, such as a virtual table where virtual
+  tables are refused, calls `deny_reads` inside its read, after reading the schema in
+  the same transaction, which composes the refusal with the authorizer; a view’s column
+  names are still computed without an authorizer, so a virtual table a view names is
+  still connected.
+- **A log holds frames** when it is longer than its 32-byte header; a journal is live
+  when any of its 28 header bytes is set.
+  The racy window applies to write-ahead-log databases only, since every complete
+  rollback-journal commit changes the change counter; a time further than the window
+  ahead of the clock is not racy, since any write moves it back to now.
+  A journal file is what marks a rollback-journal commit in progress, so an owner using
+  `journal_mode=MEMORY` or `OFF`, which keeps none, can be read mid-commit between its
+  page writes and the read validated: nothing lock-free can see that.
+  A private copy is read with `mode=ro`, which builds its index in the private folder.
+- **Errors.** Only SQLite’s codes for a damaged file are `damaged`; an authorizer’s
+  denial, which SQLite reports at prepare time as a plain error, is `refused`, and any
+  other error is `unreadable`. A worker killed at the hard deadline answers `busy`, one
+  that exits answers `reader_stopped`, and an answer past its bound `too_large`, which
+  asking again does not change.
+  A `mode=ro` read that meets `SQLITE_BUSY` or `SQLITE_CANTOPEN` looks again until the
+  deadline. The Info route answers 200 with the state for a database it could not read,
+  and 404 only for a path with nothing there.
+- **The catalog** was hit by the lock hazard (bead `mb-cggp`, reproduced in
+  `tests/test_github_pull_catalog_locks.py`): a reader thread’s close dropped a writer
+  thread’s lock, and a second process then locked mid-transaction.
+  It closes every handle through `sqlite_access.PROCESS_HANDLES`, which defers a close
+  while a connection in the process is open on the file, as SQLite defers its own.
+- **The SQLite kind has the Info view alone**; it no longer offers Bytes.
+- **Not here:** a commit during a `mode=ro` read followed by a `file.changed` waits for
+  file watches (Phase 6).
 
 ### Phase 5: SQLite Tables
 
@@ -1154,8 +1230,50 @@ As built, where this plan left a choice open:
 
 ### Phase 7: Record Lists
 
-- [ ] The Table view of the `structured` kind as Decision 12 settles it, with its
+- [x] The Table view of the `structured` kind as Decision 12 settles it, with its
   generation, goldens, and parity
+
+As built, where this plan left a choice open:
+
+- **The key is `A`.** The design said `r`, which is not a letter of “Table”, and the
+  design system gives a view a letter of its label; `t` is Quick Search’s, so the tab
+  takes `a`, the next.
+- **A list of records** is a top-level list whose every item is a mapping; one item of
+  another kind refuses the file, whatever the row bounds read, and the refusal names the
+  item. An empty list is an empty table.
+  A YAML stream of mappings, which the structured parse reads as a list, is one too.
+- **Fields** are the keys in the order each first appears.
+  A key that is not text is named by its JSON text, an empty one `field_<n>`, and a
+  repeated name gains `_<n>`, as a delimited header’s does.
+  A field’s type is the one its sampled values share (an integer counting as a real,
+  text that is all dates or datetimes being that, a nested value `json`); values that
+  disagree make it `unknown`, each value shown as its own type, sorted by storage class
+  (nulls, numbers and booleans, text, nested values) and filtered with a number as a
+  number. A later value that contradicts a known type is a `{value, stored}` cell.
+  A `json` field is not sortable.
+- **`{json}`** carries the nested value itself, and no `preview`, which the view writes
+  from it; past the bound the cell is read under it is the value’s JSON text, cut, a
+  `{text, length}` envelope in a `json` field.
+  A value JSON has no form for, such as a YAML date or binary value, is its text.
+- **The record’s tree.** The table plugin cannot load the structured plugin, which
+  requires it, so the structured kind’s view hands `mountTable` a `renderJson` that
+  draws the inline tree, and the view disposes of each tree with its record.
+- **The shared parse.** The source reads `load_structured_payload`, the Tree view’s
+  route’s cache, resolving the path again after sampling the generation, so a parse
+  looked up by fingerprint is never older than the generation it is labelled with.
+  A parse made for the table leaves out the Tree view’s YAML re-serialization, which is
+  most of a large file’s cost (26 s for 8 MiB of JSON records, where the parse took 0.14
+  s), and is not remembered for Tree; the table’s own cache holds what it built.
+- **The engine.** The delimited source’s scan, filters, search, sort indexes, cursors,
+  and cache moved to `builtin_plugins/table/memory.py`, which both sources answer
+  through, so the record lists share its paging and budget behavior rather than a copy.
+- **A refusal in the view.** A `source_unreadable` answer is the source’s words in place
+  of the table, with the toolbar hidden and no way back to a whole table, which is how
+  the Table tab says a document is not a list of records.
+- **What stays open.** A link that carries the table’s query opens the file in Tree, its
+  kind’s default, and the Table tab reads the query when it is shown; a
+  view-availability hook (Decision 12’s B) would let a record list open in its table.
+  SoftSchema typing stays an open question below.
 
 ### Phase 8: fsqlite Stores
 

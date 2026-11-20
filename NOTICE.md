@@ -74,6 +74,28 @@ independent of Metabrowser’s license.
   avatar shows in the same script uses `circle-user-round.svg`, all from release 1.17.0
   at upstream commit `896aba0d195a4fec38ad7c4a90d00cb3389ebfea`. Their copyright and
   license accompany the glyphs in the distributed script.
+  The three marks for a kind of root, in
+  `src/metabrowser/static/source-kind-glyphs.json` and the macOS app’s `RootMark.swift`,
+  are `cloud.svg`, `folder-git-2.svg`, and `folder-dot.svg` from the same release and
+  commit, and the ordinary folder’s `folder.svg` is in both the registry and
+  `RootMark.swift`. The notice that must accompany them is beside the glyph file
+  (`source-kind-glyphs.license.txt`) and above the glyphs in `RootMark.swift`, and is
+  this:
+
+  > ISC License
+  > 
+  > Copyright (c) 2026 Lucide Icons and Contributors
+  > 
+  > Permission to use, copy, modify, and/or distribute this software for any purpose
+  > with or without fee is hereby granted, provided that the above copyright notice and
+  > this permission notice appear in all copies.
+  > 
+  > THE SOFTWARE IS PROVIDED “AS IS” AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD
+  > TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN
+  > NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR
+  > CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR
+  > PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+  > ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ## Runtime Dependencies
 

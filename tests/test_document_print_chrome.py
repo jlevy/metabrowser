@@ -17,7 +17,9 @@ from __future__ import annotations
 import os
 import re
 import socket
+import struct
 import sys
+import zlib
 from pathlib import Path
 
 import pytest
@@ -49,6 +51,36 @@ README = (
     "# A Sample Project Whose Title Runs the Whole Width of the Card Before It Wraps\n\n"
     + "".join(f"## Section {n}\n\n{_SECTION}\n\n{_SECTION}\n\n" for n in range(1, 10))
 )
+# A document printed in KPress's print model (tests/dom/document-print-chrome.mjs,
+# `checkPrintModel`): a centred logo, a link, a code block, and, below the fold under its
+# heading, a screenshot KPress writes lazy.
+PRINTED = (
+    '<p align="center"><img src="logo.png" alt="Logo" width="64"></p>\n\n'
+    "# Printed\n\n"
+    "A paragraph with [a link](README.md) in it.\n\n"
+    "```python\nvalue = compute(1)\n```\n\n"
+    + "".join(f"## Part {n}\n\n{_SECTION}\n\n" for n in range(1, 8))
+    + "## Screenshot\n\n![Screenshot](shot.png)\n"
+)
+
+
+def _png(width: int, height: int) -> bytes:
+    """A gray PNG of *width* by *height*."""
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    rows = b"".join(b"\x00" + b"\x80" * width for _ in range(height))
+    header = struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(rows))
+        + chunk(b"IEND", b"")
+    )
+
+
 # A document that opens with a paragraph, and is too short for a table of contents.
 NOTE = (
     "A note that opens with a paragraph rather than a heading, long enough to run the "
@@ -70,6 +102,9 @@ def test_the_document_print_button_sits_in_the_card_corner_in_chrome(
     (root / "src").mkdir(parents=True)
     (root / "README.md").write_text(README, encoding="utf-8")
     (root / "note.md").write_text(NOTE, encoding="utf-8")
+    (root / "printed.md").write_text(PRINTED, encoding="utf-8")
+    (root / "logo.png").write_bytes(_png(64, 64))
+    (root / "shot.png").write_bytes(_png(160, 100))
     # Files of a few kinds, so File Overview above the README has rows to show.
     for n in range(1, 4):
         (root / "src" / f"module{n}.py").write_text(f"VALUE = {n}\n", encoding="utf-8")
