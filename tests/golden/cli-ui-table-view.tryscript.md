@@ -45,6 +45,20 @@ A file read in part says whether its rows or a row’s cells were cut.
 A cursor names the sort and order it was made for, so a new sort is a new question read
 from its first page.
 
+A table follows its file (`tests/fixtures/table-view-live-responses.json` records the
+answers at each version of `live.csv`).
+It watches the file with the generation it read, and a burst of changes is one read of
+the rows it holds, with the same question, once the window `LIVE_COALESCE_MS` ends.
+A row whose cells changed and a row that arrived flash once; a row that would land
+above the reader’s place is offered rather than drawn, and taking the offer draws it and
+goes to it; the focus stays on its row, by position where rows have no key, and an open
+menu keeps what was typed in it.
+An open record named by position is read again and says when another row is at its
+position. Pausing counts the changes held back and reads once on resuming.
+A column the address named that is gone is dropped from it with a notice, and a file
+that is gone keeps the rows last read and says so; disposing the view releases the
+watch.
+
 ```console
 $ node tests/dom/table-view-session.js
 {
@@ -1009,6 +1023,259 @@ $ node tests/dom/table-view-session.js
     },
     "record": null,
     "focus": null
+  },
+  "live: a table read, its file watched with the generation it read": {
+    "requests": [
+      "schema?path=live.csv",
+      "rows?limit=200&path=live.csv",
+      "watch live.csv at G1"
+    ],
+    "pill": "Live",
+    "offer": null,
+    "flashing": [],
+    "announced": "5 rows",
+    "status": "5 rows",
+    "notes": [],
+    "address": "",
+    "rows": [
+      "1 | a | 1 [num]",
+      "2 | b | 2 [num]",
+      "3 | c | 3 [num]",
+      "4 | d | 4 [num]",
+      "5 | e | 5 [num]"
+    ],
+    "focus": null
+  },
+  "live: three changes in a burst, one read again: a cell changed, a row arrived below": {
+    "requests before the window ends": [],
+    "requests": [
+      "schema?path=live.csv",
+      "rows?limit=200&path=live.csv"
+    ],
+    "pill": "Live",
+    "offer": null,
+    "flashing": [
+      "2",
+      "6"
+    ],
+    "announced": "5 rows",
+    "status": "6 rows",
+    "notes": [],
+    "address": "",
+    "rows": [
+      "1 | a | 1 [num]",
+      "2 | b | 20 [num]",
+      "3 | c | 3 [num]",
+      "4 | d | 4 [num]",
+      "5 | e | 5 [num]",
+      "6 | f | 6 [num]"
+    ],
+    "focus": null,
+    "menu open, its unsent filter kept": "4"
+  },
+  "live: the open record, named by position, read again: another row is there now": {
+    "requests": [
+      "record?key=%402&path=live.csv",
+      "schema?path=live.csv",
+      "rows?limit=200&path=live.csv"
+    ],
+    "record": {
+      "back": "← Back to the table",
+      "title": "Row 2",
+      "notes": [
+        "This row is named by its position in the file."
+      ],
+      "fields": [
+        "name (text): a",
+        "qty (integer): 1"
+      ]
+    },
+    "notices": [
+      "The file changed since this row was read, so the row at this position may be a different one."
+    ]
+  },
+  "live: back to the table, which was read again behind the record": {
+    "requests": [],
+    "pill": "Live",
+    "offer": null,
+    "flashing": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7"
+    ],
+    "announced": "5 rows",
+    "status": "7 rows",
+    "notes": [],
+    "address": "",
+    "rows": [
+      "1 | z | 9 [num]",
+      "2 | a | 1 [num]",
+      "3 | b | 20 [num]",
+      "4 | c | 3 [num]",
+      "5 | d | 4 [num]",
+      "6 | e | 5 [num]",
+      "7 | f | 6 [num]"
+    ],
+    "focus": {
+      "on": "tr",
+      "row": "1",
+      "text": "2a1",
+      "tabStops": 1
+    }
+  },
+  "live: sorted, scrolled two rows down, a row focused, and paused: changes counted, not read": {
+    "scrollTop": 66,
+    "requests": [],
+    "pill": "Paused · 2 changes",
+    "offer": null,
+    "flashing": [],
+    "announced": "Paused",
+    "status": "7 rows",
+    "notes": [],
+    "address": "sort=qty&order=desc",
+    "rows": [
+      "3 | b | 20 [num]",
+      "1 | z | 9 [num]",
+      "7 | f | 6 [num]",
+      "6 | e | 5 [num]",
+      "5 | d | 4 [num]",
+      "4 | c | 3 [num]",
+      "2 | a | 1 [num]"
+    ],
+    "focus": {
+      "on": "tr",
+      "row": "3",
+      "text": "6e5",
+      "tabStops": 1
+    }
+  },
+  "live: resumed: the row that sorts above the reader's place offered, the one below drawn, the focus kept": {
+    "scrollTop": 66,
+    "requests": [
+      "schema?path=live.csv",
+      "rows?limit=200&order=desc&path=live.csv&sort=qty"
+    ],
+    "pill": "Live",
+    "offer": "1 new row",
+    "flashing": [
+      "9"
+    ],
+    "announced": "1 new row",
+    "status": "9 rows",
+    "notes": [],
+    "address": "sort=qty&order=desc",
+    "rows": [
+      "3 | b | 20 [num]",
+      "1 | z | 9 [num]",
+      "7 | f | 6 [num]",
+      "6 | e | 5 [num]",
+      "5 | d | 4 [num]",
+      "4 | c | 3 [num]",
+      "2 | a | 1 [num]",
+      "9 | h | 0 [num]"
+    ],
+    "focus": {
+      "on": "tr",
+      "row": "3",
+      "text": "6e5",
+      "tabStops": 1
+    }
+  },
+  "live: the offer taken: the new row drawn, the view at it, and the focus on its row": {
+    "scrollTop": 0,
+    "requests": [
+      "schema?path=live.csv",
+      "rows?limit=200&order=desc&path=live.csv&sort=qty"
+    ],
+    "pill": "Live",
+    "offer": null,
+    "flashing": [
+      "8"
+    ],
+    "announced": "1 new row",
+    "status": "9 rows",
+    "notes": [],
+    "address": "sort=qty&order=desc",
+    "rows": [
+      "8 | g | 100 [num]",
+      "3 | b | 20 [num]",
+      "1 | z | 9 [num]",
+      "7 | f | 6 [num]",
+      "6 | e | 5 [num]",
+      "5 | d | 4 [num]",
+      "4 | c | 3 [num]",
+      "2 | a | 1 [num]",
+      "9 | h | 0 [num]"
+    ],
+    "focus": {
+      "on": "tr",
+      "row": "4",
+      "text": "6e5",
+      "tabStops": 1
+    }
+  },
+  "live: the sorted column removed: dropped from the address, with a notice": {
+    "requests": [
+      "schema?path=live.csv",
+      "rows?limit=200&path=live.csv"
+    ],
+    "pill": "Live",
+    "offer": null,
+    "flashing": [],
+    "announced": "9 rows",
+    "status": "9 rows",
+    "notes": [
+      "This table has no “qty” now, so the view no longer uses it."
+    ],
+    "address": "",
+    "rows": [
+      "1 | z",
+      "2 | a",
+      "3 | b",
+      "4 | c",
+      "5 | d",
+      "6 | e",
+      "7 | f",
+      "8 | g",
+      "9 | h"
+    ],
+    "focus": null
+  },
+  "live: the file removed: the rows last read kept, and said to be": {
+    "requests": [
+      "schema?path=live.csv"
+    ],
+    "pill": "Live",
+    "offer": null,
+    "flashing": [],
+    "announced": "This file is no longer there, so these are the rows last read.",
+    "status": "9 rows",
+    "notes": [
+      "This table has no “qty” now, so the view no longer uses it.",
+      "This file is no longer there, so these are the rows last read."
+    ],
+    "address": "",
+    "rows": [
+      "1 | z",
+      "2 | a",
+      "3 | b",
+      "4 | c",
+      "5 | d",
+      "6 | e",
+      "7 | f",
+      "8 | g",
+      "9 | h"
+    ],
+    "focus": null
+  },
+  "live: disposed: the watch released": {
+    "requests": [
+      "unwatch live.csv"
+    ]
   },
   "requests asked of the server": {
     "unrecorded": []

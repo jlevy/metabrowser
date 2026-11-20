@@ -32,6 +32,7 @@ checkouts, so a recording holds `G` for it: in the answers, and in a record requ
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from collections.abc import Generator
 from contextlib import ExitStack, contextmanager
@@ -135,6 +136,46 @@ BOUNDED: dict[str, tuple[str, list[tuple[str, Params]], list[tuple[Any, str, int
 }
 
 
+# The live table: one file at each version the session's steps change it to, with the
+# requests the view makes while that version is on disk. None is the file removed. A
+# generation is recorded as `G<version>`, the version the file was at, so the page can
+# tell one from the next as it would the real ones.
+LIVE_FILE = "live.csv"
+LIVE: list[tuple[str | None, list[tuple[str, Params]]]] = [
+    # The table as first read.
+    ("name,qty\na,1\nb,2\nc,3\nd,4\ne,5\n", [("schema", {}), ("rows", {"limit": "200"})]),
+    # One cell changed and one row added at the end; the second row opened by position.
+    (
+        "name,qty\na,1\nb,20\nc,3\nd,4\ne,5\nf,6\n",
+        [
+            ("schema", {}),
+            ("rows", {"limit": "200"}),
+            ("record", {"key": "@2", "generation": "G2"}),
+        ],
+    ),
+    # A row put first, so every position names the row before it; then sorted by qty.
+    (
+        "name,qty\nz,9\na,1\nb,20\nc,3\nd,4\ne,5\nf,6\n",
+        [
+            ("record", {"key": "@2"}),
+            ("schema", {}),
+            ("rows", {"limit": "200"}),
+            ("rows", {"sort": "qty", "order": "asc", "limit": "200"}),
+            ("rows", {"sort": "qty", "order": "desc", "limit": "200"}),
+        ],
+    ),
+    # Two rows added at the end of the file, one first and one last in the table's order.
+    (
+        "name,qty\nz,9\na,1\nb,20\nc,3\nd,4\ne,5\nf,6\ng,100\nh,0\n",
+        [("schema", {}), ("rows", {"sort": "qty", "order": "desc", "limit": "200"})],
+    ),
+    # The sorted column gone.
+    ("name\nz\na\nb\nc\nd\ne\nf\ng\nh\n", [("schema", {}), ("rows", {"limit": "200"})]),
+    # The file gone.
+    (None, [("schema", {})]),
+]
+
+
 def _key(route: str, params: Params) -> str:
     return f"{route}?{urlencode(sorted(params.items()), doseq=True)}"
 
@@ -213,6 +254,63 @@ def _record(tmp_path: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, A
             {"answers": _record_file(client, "long.csv", LONG)},
             {"answers": bounded},
         )
+
+
+def _record_live(tmp_path: Path) -> dict[str, Any]:
+    """The live file's answers at each version, as the page asks while it is on disk."""
+
+    versions: dict[str, Any] = {}
+    with _serve(tmp_path) as client:
+        target = tmp_path / "root" / LIVE_FILE
+        for number, (text, requests) in enumerate(LIVE, start=1):
+            label = f"G{number}"
+            if text is None:
+                target.unlink()
+            else:
+                target.write_text(text, encoding="utf-8")
+                # A second apart, so each version's generation differs from the last's
+                # however coarse the filesystem's clock.
+                os.utime(target, (1_700_000_000 + number, 1_700_000_000 + number))
+            real: dict[str, str] = {}
+            answers: dict[str, Any] = {}
+            for route, params in requests:
+                asked: Params = {"path": LIVE_FILE, **params}
+                if isinstance(asked.get("generation"), str):
+                    asked["generation"] = real[str(asked["generation"])]
+                response = client.get(f"{HOOK}/{route}", params=asked)
+                body = response.json()
+                if isinstance(body.get("generation"), str):
+                    real[label] = body["generation"]
+                answers[_key(route, {"path": LIVE_FILE, **params})] = {
+                    "status": response.status_code,
+                    "body": _relabel(body, label),
+                }
+            versions[label] = answers
+    return {"versions": versions}
+
+
+def _relabel(value: Any, label: str) -> Any:
+    if isinstance(value, dict):
+        return {
+            name: label if name == "generation" and isinstance(item, str) else _relabel(item, label)
+            for name, item in value.items()  # pyright: ignore[reportUnknownVariableType]
+        }
+    if isinstance(value, list):
+        return [_relabel(item, label) for item in value]  # pyright: ignore[reportUnknownVariableType]
+    return value
+
+
+def test_the_live_recording_is_what_the_routes_answer_at_each_version(tmp_path: Path) -> None:
+    check_recording("table-view-live-responses.json", _record_live(tmp_path), transcript=TRANSCRIPT)
+
+
+def test_each_live_version_changes_what_the_page_reads(tmp_path: Path) -> None:
+    versions = _record_live(tmp_path)["versions"]
+    rows = _key("rows", {"path": LIVE_FILE, "limit": "200"})
+    assert versions["G2"][rows]["body"]["count"] == versions["G1"][rows]["body"]["count"] + 1
+    schema = _key("schema", {"path": LIVE_FILE})
+    assert [field["name"] for field in versions["G5"][schema]["body"]["fields"]] == ["name"]
+    assert versions["G6"][schema]["status"] == 404
 
 
 def _rows_on_lines(recorded: dict[str, Any]) -> str:
@@ -309,3 +407,73 @@ def test_every_recorded_answer_is_ok_but_the_refusal(name: str) -> None:
     for key, answer in recording["answers"].items():
         expected = 400 if "f.score=gt%3Ahigh" in key else 200
         assert answer["status"] == expected, key
+
+
+@pytest.fixture(scope="module")
+def session() -> dict[str, Any]:
+    return run_session("table-view-session.js")
+
+
+def test_a_burst_of_changes_is_one_read_once_the_window_ends(session: dict[str, Any]) -> None:
+    burst = session[
+        "live: three changes in a burst, one read again: a cell changed, a row arrived below"
+    ]
+    assert burst["requests before the window ends"] == []
+    assert burst["requests"] == ["schema?path=live.csv", "rows?limit=200&path=live.csv"]
+    assert burst["flashing"] == ["2", "6"]
+    assert burst["menu open, its unsent filter kept"] == "4"
+
+
+def test_a_row_above_the_reader_is_offered_and_the_focus_follows_its_row(
+    session: dict[str, Any],
+) -> None:
+    paused = session[
+        "live: sorted, scrolled two rows down, a row focused, and paused: changes counted, not read"
+    ]
+    assert (paused["pill"], paused["requests"]) == ("Paused · 2 changes", [])
+    resumed = session[
+        "live: resumed: the row that sorts above the reader's place offered, the one below "
+        "drawn, the focus kept"
+    ]
+    assert (resumed["offer"], resumed["scrollTop"]) == ("1 new row", 66)
+    assert resumed["focus"] == paused["focus"]
+    taken = session[
+        "live: the offer taken: the new row drawn, the view at it, and the focus on its row"
+    ]
+    assert taken["rows"][0].startswith("8 | g")
+    assert taken["focus"]["text"] == paused["focus"]["text"]
+
+
+def test_a_position_named_record_says_when_another_row_is_there(session: dict[str, Any]) -> None:
+    record = session[
+        "live: the open record, named by position, read again: another row is there now"
+    ]
+    assert record["requests"][0] == "record?key=%402&path=live.csv"
+    assert any("may be a different one" in notice for notice in record["notices"])
+
+
+def test_a_gone_column_or_file_keeps_the_page_honest(session: dict[str, Any]) -> None:
+    dropped = session["live: the sorted column removed: dropped from the address, with a notice"]
+    assert dropped["address"] == ""
+    gone = session["live: the file removed: the rows last read kept, and said to be"]
+    assert gone["rows"] == dropped["rows"]
+    assert "This file is no longer there, so these are the rows last read." in gone["notes"]
+    assert session["live: disposed: the watch released"]["requests"] == ["unwatch live.csv"]
+
+
+def test_a_live_row_flashes_in_the_shared_live_row_color() -> None:
+    """The flash is the Files tree's arrival animation, in --row-flash-bg, and nearly
+    instant under reduced motion; what flashes is the session's."""
+
+    repo = Path(__file__).parent.parent
+    table_css = (repo / "src/metabrowser/builtin_plugins/table/styles.css").read_text("utf-8")
+    shell_css = (repo / "src/metabrowser/static/styles.css").read_text("utf-8")
+    view = (repo / "src/metabrowser/builtin_plugins/table/table-view.js").read_text("utf-8")
+    keyframes = shell_css.split("@keyframes tree-row-flash-in {", 1)[1].split("}\n}", 1)[0]
+    assert "var(--row-flash-bg)" in keyframes
+    flash = table_css.split(".data-grid tr.table-row-flash > * {", 1)[1].split("}", 1)[0]
+    assert "animation: tree-row-flash-in" in flash
+    duration = int(flash.split("tree-row-flash-in ")[1].split("ms")[0])
+    assert f"export const LIVE_FLASH_MS = {duration};" in view
+    reduced = table_css.split("@media (prefers-reduced-motion: reduce)", 1)[1]
+    assert "table-row-flash" in reduced.split("}\n}", 1)[0]

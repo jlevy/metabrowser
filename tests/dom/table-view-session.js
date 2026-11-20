@@ -41,6 +41,13 @@ for (const name of [
   );
 }
 
+// The live table's answers at each version of its file (tests/test_table_view_session.py
+// `LIVE`), and the version on disk now; a step that changes the file moves it.
+const liveVersions = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, "tests/fixtures/table-view-live-responses.json"), "utf8"),
+).versions;
+let liveVersion = "G1";
+
 // ── A DOM of just enough nodes ─────────────────────────────────
 
 /** The pulls DOM's element, with every listener of a type, a box, and form values. */
@@ -260,7 +267,7 @@ const sdk = {
       error.name = "AbortError";
       throw error;
     }
-    const answer = answers[key];
+    const answer = params.path === "live.csv" ? liveVersions[liveVersion][key] : answers[key];
     if (!answer) {
       unrecorded.push(key);
       throw Object.assign(new Error(`unrecorded ${key}`), { status: 599 });
@@ -409,6 +416,7 @@ function step(name, value) {
 
 let model;
 let mountTable;
+let LIVE_COALESCE;
 
 function mount(file, query = "") {
   entries.splice(0);
@@ -740,6 +748,202 @@ async function windowedTable() {
   view.container.remove();
 }
 
+// ── The live table ─────────────────────────────────────────────
+//
+// metabrowser.watchFile is the page's: here, a stand-in that records the watch and lets a
+// step say the file changed, as a `file.changed` on the page's event stream would.
+
+const fileWatches = [];
+function watchFile(file, options) {
+  const watch = { file, options, disposed: false };
+  fileWatches.push(watch);
+  requests.push(`watch ${file} at ${options.generation}`);
+  void Promise.resolve().then(() => options.onState?.("live", null));
+  return () => {
+    watch.disposed = true;
+    requests.push(`unwatch ${file}`);
+  };
+}
+
+/** The file moves to *version*, and its watch says so *times* times. */
+function fileChanges(version, times = 1) {
+  liveVersion = version;
+  for (let n = 0; n < times; n++) {
+    for (const watch of fileWatches.filter((item) => !item.disposed)) {
+      watch.options.onChange({ path: watch.file, generation: version });
+    }
+  }
+}
+
+function pill(view) {
+  const found = find(view.container, hasClass("table-live-pill"));
+  return found.hidden ? null : text(found);
+}
+
+function flashing(view) {
+  return rowsOf(view)
+    .filter((tr) => tr.classes.has("table-row-flash"))
+    .map((tr) => text(tr.firstChild));
+}
+
+function liveShown(view, extra = {}) {
+  const page = shown(view, { rows: 10 });
+  const offer = find(view.container, hasClass("table-offer"));
+  return {
+    requests: takeRequests(),
+    pill: pill(view),
+    offer: offer.hidden ? null : text(offer),
+    flashing: flashing(view),
+    announced: text(find(view.container, (node) => node.attributes.get("aria-live") === "polite")),
+    status: page.status,
+    notes: page.notes,
+    address: page.address,
+    rows: page.table === "hidden" ? "hidden" : page.table.rows,
+    focus: page.focus,
+    ...extra,
+  };
+}
+
+async function liveTable() {
+  sdk.watchFile = watchFile;
+  liveVersion = "G1";
+  const view = mount("live.csv");
+  await ready(view);
+  step("live: a table read, its file watched with the generation it read", liveShown(view));
+
+  // A filter half typed in the qty header's menu, not sent.
+  click(headerButton(view, "qty", "table-head-menu"));
+  find(find(view.container, hasClass("table-menu")), hasClass("table-filter-value")).value = "4";
+  fileChanges("G2", 3);
+  tick(100);
+  await settle();
+  const early = takeRequests();
+  tick(LIVE_COALESCE);
+  await settle();
+  const menu = find(view.container, hasClass("table-menu"));
+  step("live: three changes in a burst, one read again: a cell changed, a row arrived below", {
+    "requests before the window ends": early,
+    ...liveShown(view),
+    "menu open, its unsent filter kept": menu
+      ? find(menu, hasClass("table-filter-value")).value
+      : null,
+  });
+  key(find(menu, hasClass("table-filter-value")), "Escape");
+  tick(1000);
+  const first = rowsOf(view)[0];
+  first.focus();
+  key(first, "j");
+  key(documentStandIn.activeElement, "Enter");
+  await settle();
+  takeRequests();
+  fileChanges("G3");
+  tick(LIVE_COALESCE);
+  await settle();
+  const record = shown(view).record;
+  step("live: the open record, named by position, read again: another row is there now", {
+    requests: takeRequests(),
+    record,
+    notices: findAll(find(view.container, hasClass("table-record")), hasClass("table-notice")).map(
+      text,
+    ),
+  });
+  click(find(view.container, hasClass("table-back")));
+  await settle();
+  takeRequests();
+  step("live: back to the table, which was read again behind the record", liveShown(view));
+
+  click(headerButton(view, "qty"));
+  await settle();
+  click(headerButton(view, "qty"));
+  await settle();
+  takeRequests();
+  view.scroller.scrollTop = 2 * 33;
+  const top = rowsOf(view)[0];
+  top.focus();
+  for (let n = 0; n < 3; n++) {
+    key(documentStandIn.activeElement, "j");
+  }
+  click(find(view.container, hasClass("table-live-pill")));
+  fileChanges("G4", 2);
+  tick(LIVE_COALESCE);
+  await settle();
+  step(
+    "live: sorted, scrolled two rows down, a row focused, and paused: changes counted, not read",
+    {
+      scrollTop: view.scroller.scrollTop,
+      ...liveShown(view),
+    },
+  );
+  click(find(view.container, hasClass("table-live-pill")));
+  tick(LIVE_COALESCE);
+  await settle();
+  step(
+    "live: resumed: the row that sorts above the reader's place offered, the one below drawn, the focus kept",
+    { scrollTop: view.scroller.scrollTop, ...liveShown(view) },
+  );
+  click(find(view.container, hasClass("table-offer")));
+  await settle();
+  step("live: the offer taken: the new row drawn, the view at it, and the focus on its row", {
+    scrollTop: view.scroller.scrollTop,
+    ...liveShown(view),
+  });
+
+  fileChanges("G5");
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live: the sorted column removed: dropped from the address, with a notice", liveShown(view));
+
+  fileChanges("G6");
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live: the file removed: the rows last read kept, and said to be", liveShown(view));
+
+  view.handle.dispose();
+  step("live: disposed: the watch released", { requests: takeRequests() });
+  view.container.remove();
+  delete sdk.watchFile;
+}
+
+function liveInvariants() {
+  const row = (key, value) => ({ key, cells: { v: value } });
+  const before = [row("a", 1), row("b", 2), row("c", 3), row("d", 4)];
+  // A row before the reader's place arrives offered; one after it, drawn; a changed one flashes.
+  const merged = model.liveMerge({
+    before,
+    after: [row("n", 0), row("a", 1), row("b", 2), row("c", 30), row("m", 9), row("d", 4)],
+    anchor: 2,
+  });
+  assert.deepEqual(
+    merged.rows.map((item) => item.key),
+    ["a", "b", "c", "m", "d"],
+  );
+  assert.deepEqual([merged.changed, merged.arrived, merged.offered], [["c"], ["m"], 1]);
+  // At the top nothing is above the reader: every new row is drawn.
+  assert.equal(
+    model.liveMerge({ before, after: [row("n", 0), ...before], anchor: null }).offered,
+    0,
+  );
+  // The anchor row gone: the next row still there places "above".
+  const gone = model.liveMerge({
+    before,
+    after: [row("n", 0), row("a", 1), row("d", 4)],
+    anchor: 1,
+  });
+  assert.deepEqual([gone.offered, gone.removed], [1, 2]);
+  // Accepted, the offered rows are drawn.
+  assert.equal(
+    model.liveMerge({ before, after: [row("n", 0), ...before], anchor: 2, accept: true })
+      .arrived[0],
+    "n",
+  );
+  assert.equal(model.livePillText(false, 4), "Live");
+  assert.equal(model.livePillText(true, 0), "Paused");
+  assert.equal(model.livePillText(true, 1), "Paused · 1 change");
+  // A busy source's refusal keeps the rows and says why, as every other refusal does.
+  assert.match(model.liveFailure("busy"), /writer is busy/);
+  assert.match(model.liveFailure(null), /rows last read/);
+}
+
 function modelInvariants() {
   const state = model.parseState(
     "sort=score&order=desc&f.active=eq%3Atrue&q=x&cols=name&cols=a%2C+b&plain=1&record=%404",
@@ -883,12 +1087,16 @@ async function bounds() {
 
 async function main() {
   model = await import(pathToFileURL(path.join(plugin, "table-model.js")).href);
-  ({ mountTable } = await import(pathToFileURL(path.join(plugin, "table-view.js")).href));
+  ({ mountTable, LIVE_COALESCE_MS: LIVE_COALESCE } = await import(
+    pathToFileURL(path.join(plugin, "table-view.js")).href
+  ));
   modelInvariants();
+  liveInvariants();
   await wholeTable();
   await refusals();
   await windowedTable();
   await bounds();
+  await liveTable();
   step("requests asked of the server", { unrecorded });
   assert.deepEqual(unrecorded, [], "every request the page made is recorded");
   process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);

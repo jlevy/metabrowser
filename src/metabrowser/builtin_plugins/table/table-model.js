@@ -945,3 +945,119 @@ export function rowPosition(key) {
   const match = /^@(\d+)$/.exec(key);
   return match ? Number(match[1]) : null;
 }
+
+// ── Live ──────────────────────────────────────────────────────
+//
+// When its file changes, the view reads the rows it holds again with the same question
+// and merges the answer here: what changed, what arrived, what left, and which rows stay
+// out of the drawing because they would land above the reader's place.
+
+/**
+ * A row's cells as one comparable string.
+ *
+ * @param {TableRow} row
+ */
+function cellsOf(row) {
+  return JSON.stringify(row.cells);
+}
+
+/**
+ * Merge a live re-read into the rows held.
+ *
+ * *before* is the rows held over the range read again, *after* the rows the read
+ * answered over it, and *anchor* the index in *before* of the first row on screen, or
+ * null when the reader is at the top, where nothing is above them. A row is the same row
+ * when its key is: a source's key, or a keyless row's position in the file.
+ *
+ * New rows that would land above the anchor are offered, not drawn, so the rows under the
+ * reader stay where they are (docs/design-system.md, "Live Row Arrivals"); `accept`
+ * draws them. Every other new row is drawn and flashes, as does each row whose cells
+ * changed.
+ *
+ * @param {{
+ *   before: ReadonlyArray<TableRow>,
+ *   after: ReadonlyArray<TableRow>,
+ *   anchor: number | null,
+ *   accept?: boolean,
+ * }} input
+ * @returns {{
+ *   rows: TableRow[],
+ *   changed: string[],
+ *   arrived: string[],
+ *   offered: number,
+ *   removed: number,
+ * }}
+ */
+export function liveMerge(input) {
+  const { before, after, anchor } = input;
+  /** @type {Map<string, TableRow>} */
+  const held = new Map(before.map((row) => [row.key, row]));
+  const read = new Set(after.map((row) => row.key));
+  // The anchor row, or the first row after it still there, places "above".
+  let anchorKey = null;
+  if (anchor !== null) {
+    for (let index = anchor; index < before.length; index++) {
+      if (read.has(before[index].key)) {
+        anchorKey = before[index].key;
+        break;
+      }
+    }
+  }
+  const anchorAt = anchorKey === null ? (anchor === null ? 0 : after.length) : -1;
+  /** @type {TableRow[]} */
+  const rows = [];
+  const changed = [];
+  const arrived = [];
+  let offered = 0;
+  let above = anchor !== null;
+  for (const [index, row] of after.entries()) {
+    if (row.key === anchorKey || (anchorAt >= 0 && index >= anchorAt)) {
+      above = false;
+    }
+    const old = held.get(row.key);
+    if (old === undefined) {
+      if (above && !input.accept) {
+        offered += 1;
+        continue;
+      }
+      arrived.push(row.key);
+    } else if (cellsOf(old) !== cellsOf(row)) {
+      changed.push(row.key);
+    }
+    rows.push(row);
+  }
+  const removed = before.filter((row) => !read.has(row.key)).length;
+  return { rows, changed, arrived, offered, removed };
+}
+
+/**
+ * The Live/Paused pill's words: Live, or Paused with the changes it is holding back.
+ *
+ * @param {boolean} paused
+ * @param {number} held
+ */
+export function livePillText(paused, held) {
+  if (!paused) {
+    return "Live";
+  }
+  return held ? `Paused · ${formatCount(held)} ${held === 1 ? "change" : "changes"}` : "Paused";
+}
+
+/**
+ * What a failed live refresh says, keeping the rows on screen: a source that reports its
+ * writer busy, a file that is gone, a table no longer in its file, or any other refusal.
+ *
+ * @param {string | null} code the refusal's `code`, when the route sent one
+ */
+export function liveFailure(code) {
+  if (code === "busy") {
+    return "The file’s writer is busy, so these are the rows last read; the table refreshes once it can.";
+  }
+  if (code === "not_found") {
+    return "This file is no longer there, so these are the rows last read.";
+  }
+  if (code === "table_not_found") {
+    return "This table is no longer in its file, so these are the rows last read.";
+  }
+  return "The table could not be refreshed, so these are the rows last read.";
+}

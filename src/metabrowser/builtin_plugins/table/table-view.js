@@ -40,6 +40,9 @@ import {
   isFiltered,
   keyStep,
   literalField,
+  liveFailure,
+  liveMerge,
+  livePillText,
   pageNotes,
   parseState,
   presentCell,
@@ -122,6 +125,20 @@ export const SEARCH_DEBOUNCE_MS = 250;
 // after it leaves before the card is put away.
 export const CARD_DELAY_MS = 300;
 
+// How long the view gathers `file.changed` events before it reads its rows again. The
+// window is bounded, as createInventoryWatch's is (static/inventory-scope.js): the first
+// change starts it and later ones join it without extending it, so a writer that never
+// pauses still gets a refresh every window. The server polls a watched file at most
+// every FILE_WATCH_MIN_SPACING_S (metabrowser.file_watches), so two polls a window apart
+// make one read here; a refresh reads the rows held, which for a table drawn whole is up
+// to WHOLE_TABLE_MAX_ROWS rows in two requests.
+export const LIVE_COALESCE_MS = 300;
+
+// How long a changed or arrived row keeps its flash: the length of the shared
+// `tree-row-flash-in` animation in static/styles.css, after which a row drawn again by a
+// scroll is drawn plainly.
+export const LIVE_FLASH_MS = 900;
+
 /** The history state key under which the view keeps its scroll and focused row. */
 const PLACE_KEY = "metabrowserTablePlace";
 /** Links made and kept for reuse, a few dozen, the filter values of a drawing's columns. */
@@ -141,6 +158,7 @@ const CELL_PAD_PX = 20;
  *   tooltip?: Window["metabrowser"]["tooltip"],
  *   escapeHtml: Window["metabrowser"]["escapeHtml"],
  *   formatInteger?: Window["metabrowser"]["formatInteger"],
+ *   watchFile?: Window["metabrowser"]["watchFile"],
  * }} TableSdk
  */
 /**
@@ -223,6 +241,29 @@ export function mountTable(container, ctx, host = {}) {
   const hrefs = new Map();
   /** @type {string | null} */
   let recordTemplate = null;
+  /** Where each page read began: its first row's index, and the cursor it continued from. @type {Array<{index: number, after: string | null}>} */
+  let pageStarts = [{ index: 0, after: null }];
+
+  // Live: the file watch, and what a change does while it is on or paused.
+  /** @type {(() => void) | null} */
+  let unwatch = null;
+  let paused = false;
+  /** Changes held back while paused. */
+  let heldBack = 0;
+  /** @type {ReturnType<typeof setTimeout> | 0} */
+  let liveTimer = 0;
+  let refreshing = false;
+  let refreshAgain = false;
+  /** Keys of rows that flash when they are next drawn. @type {Set<string>} */
+  let flashing = new Set();
+  /** @type {ReturnType<typeof setTimeout> | 0} */
+  let flashTimer = 0;
+  /** A notice that outlives a redraw: a live refresh that failed, or a column the view dropped. @type {HTMLElement | null} */
+  let liveNotice = null;
+  /** @type {HTMLElement | null} */
+  let stateNotice = null;
+  /** The open record's cells as last drawn, and whether it may now be another row. */
+  let shownRecord = { key: "", cells: "", moved: false };
 
   // ── Markup ───────────────────────────────────────────────────
   const root = el("div", { class: "table-view" });
@@ -249,7 +290,16 @@ export function mountTable(container, ctx, host = {}) {
     },
     "Columns",
   );
-  toolbar.append(search, chips, status, fitNote, columnsButton);
+  // Shown once the file's watch is live; pressing it pauses the table, and again resumes it.
+  const livePill = el("button", {
+    type: "button",
+    class: "table-live-pill",
+    "aria-pressed": "false",
+    hidden: "",
+  });
+  // New rows that would land above the reader's place, offered rather than drawn.
+  const offer = el("button", { type: "button", class: "table-offer", hidden: "" });
+  toolbar.append(search, chips, status, offer, livePill, fitNote, columnsButton);
   const notes = el("div", { class: "table-notes" });
   const scroller = el("div", { class: "table-scroll" });
   const table = /** @type {HTMLTableElement} */ (el("table", { class: "data-grid" }));
@@ -340,6 +390,7 @@ export function mountTable(container, ctx, host = {}) {
   function apply(next) {
     const previous = state;
     state = next;
+    stateNotice = null;
     recordTemplate = null;
     if (doc.activeElement !== search) {
       search.value = state.q;
@@ -376,10 +427,11 @@ export function mountTable(container, ctx, host = {}) {
     if (reconciled.dropped.length) {
       state = reconciled.state;
       recordTemplate = null;
-      notice(
+      stateNotice = noticeBox(
         "warning",
         `This table has no ${reconciled.dropped.map((name) => `“${name}”`).join(", ")} now, so the view no longer uses it.`,
       );
+      notes.append(stateNotice);
       const query = stateQuery(state);
       void sdk.navigation
         .open(query ? { path, query } : { path }, { replace: true })
@@ -404,10 +456,12 @@ export function mountTable(container, ctx, host = {}) {
       );
       /** @type {TableRow[]} */
       const held = [...first.rows];
+      const starts = [{ index: 0, after: /** @type {string | null} */ (null) }];
       let last = first;
       const whole =
         first.count_complete && first.count !== null && first.count <= WHOLE_TABLE_MAX_ROWS;
       while (whole && last.next_after && held.length < WHOLE_TABLE_MAX_ROWS) {
+        starts.push({ index: held.length, after: last.next_after });
         last = /** @type {TablePage} */ (
           /** @type {unknown} */ (
             await ask(
@@ -423,10 +477,12 @@ export function mountTable(container, ctx, host = {}) {
         return;
       }
       rows = held;
+      pageStarts = starts;
       page = { ...first, next_after: last.next_after };
       answered = question;
       windowed = !whole || Boolean(last.next_after);
       drawTable();
+      watchFile();
     } catch (error) {
       if (seq === loadSeq && !disposed && !isAbort(error)) {
         failed(error);
@@ -464,6 +520,7 @@ export function mountTable(container, ctx, host = {}) {
       if (seq !== loadSeq || disposed) {
         return;
       }
+      pageStarts.push({ index: rows.length, after: page.next_after });
       rows.push(...next.rows);
       page = {
         ...page,
@@ -490,14 +547,259 @@ export function mountTable(container, ctx, host = {}) {
     }
   }
 
+  // ── Live ─────────────────────────────────────────────────────
+  //
+  // The view watches its file through the page's event stream (metabrowser.watchFile).
+  // A change, gathered for LIVE_COALESCE_MS, reads the rows held again with the same
+  // question: from the start for a table drawn whole, and from the page the window begins
+  // in for a windowed one, as far as the window and READ_AHEAD_ROWS, since a cursor names
+  // a place in sort order that holds across a change. table-model.js's liveMerge says
+  // what changed; the rows under the reader stay where they were, and the focus follows
+  // its row. A read that fails keeps the rows on screen and says so.
+
+  function watchFile() {
+    if (unwatch || disposed || typeof sdk.watchFile !== "function") {
+      return;
+    }
+    unwatch = sdk.watchFile(path, {
+      generation: page?.generation ?? null,
+      onChange: onFileChange,
+      onState: (watchState) => {
+        livePill.hidden = watchState !== "live" && !paused;
+        drawPill();
+      },
+    });
+  }
+
+  /** @param {{path: string, generation: string | null}} change */
+  function onFileChange(change) {
+    if (disposed || (page && change.generation === page.generation)) {
+      return;
+    }
+    if (paused) {
+      heldBack += 1;
+      drawPill();
+      return;
+    }
+    scheduleLive();
+  }
+
+  function scheduleLive() {
+    if (liveTimer || disposed) {
+      return;
+    }
+    liveTimer = win.setTimeout(() => {
+      liveTimer = 0;
+      void liveRefresh();
+    }, LIVE_COALESCE_MS);
+  }
+
+  function drawPill() {
+    livePill.textContent = livePillText(paused, heldBack);
+    livePill.setAttribute("aria-pressed", String(paused));
+    livePill.dataset.tipText = paused
+      ? "Changes to the file are held back; press to show them"
+      : "The table follows changes to its file; press to pause it";
+  }
+
+  function togglePaused() {
+    paused = !paused;
+    const held = heldBack;
+    if (!paused) {
+      heldBack = 0;
+      if (held) {
+        scheduleLive();
+      }
+    }
+    drawPill();
+    live.textContent = paused ? "Paused" : "Live";
+  }
+
+  /** The index of the first row on screen. */
+  function firstOnScreen() {
+    return Math.max(0, Math.min(rows.length - 1, Math.floor(scroller.scrollTop / rowHeight)));
+  }
+
+  /**
+   * Read the rows held again with the same question, and draw what changed. With
+   * *accept*, new rows above the reader's place are drawn too, and the view goes to the
+   * first of them.
+   *
+   * @param {boolean} [accept]
+   */
+  async function liveRefresh(accept = false) {
+    if (disposed || !page) {
+      return;
+    }
+    if (refreshing) {
+      refreshAgain = true;
+      return;
+    }
+    refreshing = true;
+    const seq = loadSeq;
+    const signal = loading?.signal ?? abort.signal;
+    try {
+      if (state.record && !recordPane.hidden) {
+        void showRecord(state.record, true);
+      }
+      await loadSchema();
+      if (seq !== loadSeq || disposed) {
+        return;
+      }
+      if (!sameRows(answered, state) || rows.length === 0) {
+        // The question changed (a column it named is gone), or there was nothing to keep
+        // a place in: read it afresh, keeping the place.
+        rememberPlace();
+        await loadRows();
+        return;
+      }
+      let from = 0;
+      if (windowed) {
+        while (from + 1 < pageStarts.length && pageStarts[from + 1].index <= drawn.start) {
+          from += 1;
+        }
+      }
+      const start = pageStarts[from];
+      const need = windowed
+        ? Math.max(drawn.end - start.index + READ_AHEAD_ROWS, FIRST_PAGE_ROWS)
+        : WHOLE_TABLE_MAX_ROWS;
+      /** @type {TableRow[]} */
+      const read = [];
+      const starts = [];
+      let after = start.after;
+      /** @type {TablePage | null} */
+      let first = null;
+      /** @type {TablePage | null} */
+      let last = null;
+      do {
+        starts.push({ index: start.index + read.length, after });
+        const limit = after === null ? FIRST_PAGE_ROWS : NEXT_PAGE_ROWS;
+        last = /** @type {TablePage} */ (
+          /** @type {unknown} */ (
+            await ask("rows", rowsParams(answered, after ? { after, limit } : { limit }), signal)
+          )
+        );
+        first ??= last;
+        read.push(...last.rows);
+        after = last.next_after;
+      } while (after && read.length < need);
+      if (seq !== loadSeq || disposed || !first || !last) {
+        return;
+      }
+      const grown =
+        !windowed &&
+        (Boolean(after) || !first.count_complete || (first.count ?? 0) > WHOLE_TABLE_MAX_ROWS);
+      if (grown || read.length === 0) {
+        // Past what a table drawn whole holds, or now empty: drawn afresh, in its place.
+        rememberPlace();
+        await loadRows();
+        return;
+      }
+      const top = firstOnScreen();
+      const atTop = scroller.scrollTop <= 0;
+      const offset = scroller.scrollTop - top * rowHeight;
+      const anchorKey = atTop ? null : rows[top]?.key;
+      const focusKey = rows[focus.row]?.key;
+      const merged = liveMerge({
+        before: rows.slice(start.index),
+        after: read,
+        anchor: atTop ? null : top - start.index,
+        accept,
+      });
+      rows = [...rows.slice(0, start.index), ...merged.rows];
+      pageStarts = [...pageStarts.slice(0, from), ...starts];
+      page = { ...first, next_after: last.next_after };
+      liveNotice = null;
+      flashing = new Set([...merged.changed, ...merged.arrived]);
+      win.clearTimeout(flashTimer);
+      flashTimer = win.setTimeout(() => {
+        flashTimer = 0;
+        flashing = new Set();
+      }, LIVE_FLASH_MS);
+      const index = (/** @type {string | undefined} */ key) =>
+        key === undefined ? -1 : rows.findIndex((row) => row.key === key);
+      const focusAt = index(focusKey);
+      focus = {
+        row: focusAt >= 0 ? focusAt : Math.max(0, Math.min(focus.row, rows.length - 1)),
+        col: focus.col,
+      };
+      selection = null;
+      status.textContent = countText(page, isFiltered(state));
+      drawOffer(merged.offered);
+      drawNotes();
+      const arrivedAt = accept ? index(merged.arrived[0]) : -1;
+      const anchorAt = index(anchorKey ?? undefined);
+      const place =
+        arrivedAt >= 0 ? arrivedAt * rowHeight : anchorAt >= 0 ? anchorAt * rowHeight + offset : 0;
+      // The keyboard stays on its row; a menu, and what is typed in it or in Search, stay
+      // as they are, since only the rows are drawn again while the columns hold.
+      const hadFocus = isWithin(doc.activeElement, tbody);
+      const target = atTop && arrivedAt < 0 ? 0 : place;
+      // A window draws from the scroll position, so it is set before and again after,
+      // once the rows drawn give the box its new height.
+      scroller.scrollTop = target;
+      if (page.columns.join("\n") !== columns.join("\n")) {
+        columns = [...page.columns];
+        widths = columnWidths(columns, rows.slice(0, FIRST_PAGE_ROWS), fields, widths).widths;
+        refit(true);
+      } else if (windowed) {
+        drawWindow(true);
+      } else {
+        drawAllRows();
+      }
+      if (scroller.scrollTop !== target) {
+        scroller.scrollTop = target;
+        drawWindow(true);
+      }
+      if (hadFocus) {
+        focusElement()?.focus({ preventScroll: true });
+      }
+    } catch (error) {
+      if (!disposed && !isAbort(error)) {
+        liveFailed(error);
+      }
+    } finally {
+      refreshing = false;
+      if (refreshAgain) {
+        refreshAgain = false;
+        scheduleLive();
+      }
+    }
+  }
+
+  /** @param {number} count */
+  function drawOffer(count) {
+    offer.hidden = count === 0;
+    offer.textContent = count ? `${formatCount(count)} new ${count === 1 ? "row" : "rows"}` : "";
+    if (count) {
+      offer.dataset.tipText = "Rows that arrived above this place; press to show them";
+      live.textContent = offer.textContent;
+    }
+  }
+
+  /**
+   * A live read failed: keep the rows on screen, and say why they may be old.
+   *
+   * @param {unknown} error
+   */
+  function liveFailed(error) {
+    const payload = /** @type {{payload?: {code?: unknown}}} */ (error)?.payload;
+    const code = typeof payload?.code === "string" ? payload.code : null;
+    liveNotice = noticeBox("warning", liveFailure(code));
+    drawNotes();
+    live.textContent = liveNotice.textContent ?? "";
+  }
+
   // ── Drawing the grid ─────────────────────────────────────────
 
   function drawTable() {
     if (!page) {
       return;
     }
-    // A new answer starts at its first row, unless Back restores a place below.
+    // A new answer starts at its first row, unless Back restores a place below, and
+    // nothing in it flashes: only a live read again says what changed.
     scroller.scrollTop = 0;
+    flashing = new Set();
     focus = { row: 0, col: -1 };
     const sample = rows.slice(0, FIRST_PAGE_ROWS);
     columns = [...page.columns];
@@ -822,6 +1124,9 @@ export function mountTable(container, ctx, host = {}) {
     if (windowed) {
       tr.setAttribute("aria-rowindex", String(index + 2));
     }
+    if (flashing.has(row.key)) {
+      tr.classList.add("table-row-flash");
+    }
     if (
       selection &&
       index >= Math.min(selection.anchor, selection.head) &&
@@ -963,6 +1268,11 @@ export function mountTable(container, ctx, host = {}) {
     notes.replaceChildren();
     for (const text of page ? pageNotes(page) : []) {
       notice("warning", text);
+    }
+    for (const kept of [stateNotice, liveNotice]) {
+      if (kept) {
+        notes.append(kept);
+      }
     }
   }
 
@@ -1586,8 +1896,11 @@ export function mountTable(container, ctx, host = {}) {
   }
 
   let recordSeq = 0;
-  /** @param {string} key */
-  async function showRecord(key) {
+  /**
+   * @param {string} key
+   * @param {boolean} [again] a live refresh of the record on screen
+   */
+  async function showRecord(key, again = false) {
     const seq = ++recordSeq;
     hideCard();
     closeMenu(false);
@@ -1598,7 +1911,7 @@ export function mountTable(container, ctx, host = {}) {
     recordPane.setAttribute("aria-busy", "true");
     /** @type {Record<string, string>} */
     const params = { key };
-    if (page?.generation && rowPosition(key) !== null) {
+    if (!again && page?.generation && rowPosition(key) !== null) {
       params.generation = page.generation;
     }
     try {
@@ -1611,7 +1924,16 @@ export function mountTable(container, ctx, host = {}) {
       if (fields.length === 0) {
         await schemaReady;
       }
-      drawRecord(record);
+      // A row named by position may be another row once its file changed: the server
+      // says so for a key read under an older generation, and the view when a live
+      // refresh finds other cells at the position.
+      const cells = JSON.stringify(record.cells);
+      if (shownRecord.key !== key) {
+        shownRecord = { key, cells, moved: false };
+      } else if (again && record.positional && cells !== shownRecord.cells) {
+        shownRecord = { key, cells, moved: true };
+      }
+      drawRecord(shownRecord.moved ? { ...record, generation_moved: true } : record);
     } catch (error) {
       if (seq !== recordSeq || disposed || isAbort(error)) {
         return;
@@ -1786,6 +2108,7 @@ export function mountTable(container, ctx, host = {}) {
 
   function showGrid() {
     recordSeq += 1;
+    shownRecord = { key: "", cells: "", moved: false };
     // The keyboard was in the record: it goes back to the row the record was opened from.
     const refocus = recordPane.contains(doc.activeElement);
     recordPane.hidden = true;
@@ -1990,6 +2313,11 @@ export function mountTable(container, ctx, host = {}) {
   win.addEventListener("popstate", onPopState);
   win.addEventListener("beforeprint", onBeforePrint);
   win.addEventListener("afterprint", onAfterPrint);
+  livePill.addEventListener("click", togglePaused);
+  offer.addEventListener("click", () => {
+    drawOffer(0);
+    void liveRefresh(true);
+  });
   scroller.setAttribute("tabindex", "-1");
   search.value = state.q;
   drawChips();
@@ -2027,6 +2355,10 @@ export function mountTable(container, ctx, host = {}) {
       }
       win.clearTimeout(searchTimer);
       win.clearTimeout(placeTimer);
+      win.clearTimeout(liveTimer);
+      win.clearTimeout(flashTimer);
+      unwatch?.();
+      unwatch = null;
       hideCard();
       sdk.tooltip?.hide(root);
       closeMenu(false);
