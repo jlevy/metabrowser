@@ -257,10 +257,11 @@ def test_a_scan_reads_its_rows_outside_the_transaction_so_a_page_write_is_not_he
     )
     scan.start()
     assert processing.wait(20), "the scan never reached its rows"
-    began = time.monotonic()
     # The job's next page, through the production publisher, while the scan makes its rows.
+    # A page held off for the writer's 0.25 s raises "database is locked" out of the
+    # publisher, which is what a scan inside its transaction made it do; how long the seven
+    # pages take on a slow machine says nothing, so no time is asserted.
     _seed(repository, [head_item(n, f"b-{n}", f"Pull {n}") for n in range(1, 702)])
-    assert time.monotonic() - began < 0.25
     scan.join(30)
     assert found == [600]
 
