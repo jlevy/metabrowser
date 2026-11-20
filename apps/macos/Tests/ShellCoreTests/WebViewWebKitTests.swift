@@ -48,7 +48,7 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
 
 /// View on GitHub's store and the button's script in a real `WKWebView` (mb-4wqh). Runs in
 /// a process of its own, with the other WebKit suites; see `ignoreSIGPIPELikeTheApp`.
-@Suite struct GitHubViewWebKitTests {
+@Suite struct WebViewWebKitTests {
     init() { ignoreSIGPIPELikeTheApp() }
 
     private let origin = URL(string: "http://127.0.0.1:8411/view/")!
@@ -66,9 +66,9 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
         """
         <body style="margin:0">
         <div data-view-on-github style="position:absolute;left:300px;top:20px">
-          <a id="open" data-view-on-github="open" target="_blank" rel="noopener" href="\(href)"
+          <a id="open" data-web-view="open" target="_blank" rel="noopener" href="\(href)"
             style="display:block;width:200px;height:100px"><span id="mark">View on GitHub</span></a>
-          <a id="external" data-view-on-github="external" target="_blank" rel="noopener" href="\(readme)"
+          <a id="external" data-web-view="external" target="_blank" rel="noopener" href="\(readme)"
             style="display:block;width:200px;height:100px">Open in Browser</a>
         </div>
         <a id="plain" target="_blank" href="\(readme)"
@@ -78,9 +78,9 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
     }
 
     private func load(
-        _ html: String, requests: GitHubViewRequests, in frame: NSRect = .zero
+        _ html: String, requests: WebViewRequests, in frame: NSRect = .zero
     ) async -> (WKWebView, PageWatcher) {
-        let configuration = WebConfiguration.make(gitHubViews: requests)
+        let configuration = WebConfiguration.make(webViews: requests)
         configuration.websiteDataStore = .nonPersistent()  // tests leave no cookies behind
         let webView = WKWebView(frame: frame, configuration: configuration)
         let watcher = PageWatcher()
@@ -95,24 +95,24 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     /// Every popover's web view is built on the one persistent store, never a fresh or an
     /// ephemeral one, so a sign-in holds in every tab and window and after a relaunch.
-    @Test func everyGitHubViewSharesOnePersistentStore() {
-        let first = WebConfiguration.makeGitHub().websiteDataStore
-        let second = WebConfiguration.makeGitHub().websiteDataStore
-        let view = WebConfiguration.makeGitHubWebView(isInspectable: false).configuration.websiteDataStore
+    @Test func everyWebPaneSharesOnePersistentStore() {
+        let first = WebConfiguration.makeWebPane().websiteDataStore
+        let second = WebConfiguration.makeWebPane().websiteDataStore
+        let view = WebConfiguration.makeWebPaneView(isInspectable: false).configuration.websiteDataStore
         #expect(first === second && second === view)
-        #expect(first === GitHubDataStore.shared)
+        #expect(first === WebDataStore.shared)
         #expect(first.isPersistent && second.isPersistent && view.isPersistent)
-        #expect(first.identifier == GitHubDataStore.identifier)
-        #expect(GitHubDataStore.identifier.uuidString == "5DE648DD-D5B9-4F54-8403-7DAF088E158C")
+        #expect(first.identifier == WebDataStore.identifier)
+        #expect(WebDataStore.identifier.uuidString == "5DE648DD-D5B9-4F54-8403-7DAF088E158C")
     }
 
     /// The popover's web view is a plain `WKWebView`, with no file-drop handler of the app's
     /// (`DropAwareWebView.onFileDrop`), so a file dropped on github.com's comment box
     /// reaches github.com; and its zoom is its own, never the pages' remembered one.
-    @Test func theGitHubViewTakesItsOwnDropsAndZoom() {
+    @Test func theWebPaneTakesItsOwnDropsAndZoom() {
         UserDefaults.standard.set(1.5, forKey: "pageZoom")
         defer { UserDefaults.standard.removeObject(forKey: "pageZoom") }
-        let view = WebConfiguration.makeGitHubWebView(isInspectable: false)
+        let view = WebConfiguration.makeWebPaneView(isInspectable: false)
         #expect(type(of: view) == WKWebView.self)
         #expect(view.pageZoom == 1)
     }
@@ -122,46 +122,77 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
         let pages = WebConfiguration.make().websiteDataStore
         #expect(pages === WKWebsiteDataStore.default())
         #expect(pages.isPersistent)
-        #expect(pages !== GitHubDataStore.shared)
+        #expect(pages !== WebDataStore.shared)
         #expect(pages.identifier == nil)
     }
 
     /// A cookie one popover's web view keeps is every popover's, and never a page's.
-    @Test func aCookieInOneGitHubViewIsInEveryOtherAndNotInThePages() async throws {
+    @Test func aCookieInOneWebPaneIsInEveryOtherAndNotInThePages() async throws {
         let name = "mb-4wqh-test-\(UUID().uuidString)"
         let cookie = try #require(HTTPCookie(properties: [
             .domain: "github-view-test.invalid", .path: "/", .name: name, .value: "signed-in",
             .expires: Date().addingTimeInterval(3600),
         ]))
-        let first = WebConfiguration.makeGitHubWebView(isInspectable: false).configuration.websiteDataStore
+        let first = WebConfiguration.makeWebPaneView(isInspectable: false).configuration.websiteDataStore
         await first.httpCookieStore.setCookie(cookie)
-        let second = WebConfiguration.makeGitHubWebView(isInspectable: false).configuration.websiteDataStore
+        let second = WebConfiguration.makeWebPaneView(isInspectable: false).configuration.websiteDataStore
         #expect(await second.httpCookieStore.allCookies().contains { $0.name == name })
         #expect(await !WebConfiguration.make().websiteDataStore.httpCookieStore.allCookies().contains { $0.name == name })
         await second.httpCookieStore.deleteCookie(cookie)
         #expect(await !first.httpCookieStore.allCookies().contains { $0.name == name })
     }
 
+    /// Clear Website Data… for one site removes what that site stored and nothing else's, and
+    /// for all of them removes everything. It runs on a throwaway store of its own, so
+    /// clearing all never touches the shared store other tests use at the same time.
+    @Test func clearingOneSiteLeavesTheOthersAndAllLeavesNothing() async throws {
+        let identifier = UUID()
+        let left = try await clearing(identifier)
+        #expect(left == ["kept-site-test.invalid"])
+        try await WKWebsiteDataStore.remove(forIdentifier: identifier)
+    }
+
+    /// The store, with cookies for two sites, cleared of one and then of all: the domains
+    /// left after the first.
+    private func clearing(_ identifier: UUID) async throws -> [String] {
+        let store = WKWebsiteDataStore(forIdentifier: identifier)
+        let cookies = store.httpCookieStore
+        for domain in ["kept-site-test.invalid", "cleared-site-test.invalid"] {
+            await cookies.setCookie(try #require(HTTPCookie(properties: [
+                .domain: domain, .path: "/", .name: "mb-730z-test", .value: "signed-in",
+                .expires: Date().addingTimeInterval(3600),
+            ])))
+        }
+        let sites = await WebDataStore.sites(in: store)
+        #expect(sites == ["cleared-site-test.invalid", "kept-site-test.invalid"])
+        await WebDataStore.clear(.sites(["cleared-site-test.invalid"]), in: store)
+        let left = await cookies.allCookies().map(\.domain)
+        await WebDataStore.clear(.all, in: store)
+        #expect(await cookies.allCookies().isEmpty)
+        #expect(await WebDataStore.sites(in: store).isEmpty)
+        return left
+    }
+
     // MARK: - The button
 
     /// The handler lives in the app's own content world: the page's scripts cannot see it.
     @Test func thePageCannotReachTheHandler() async throws {
-        let requests = GitHubViewRequests { _, _, _ in }
+        let requests = WebViewRequests { _, _, _ in }
         let (webView, _) = await load(page, requests: requests)
         let fromPage = try await webView.evaluateJavaScript(
-            "typeof window.webkit?.messageHandlers?.\(GitHubViewRequests.handlerName)")
+            "typeof window.webkit?.messageHandlers?.\(WebViewRequests.handlerName)")
         #expect(fromPage as? String == "undefined")
         let fromApp = try await webView.evaluateJavaScript(
-            "typeof window.webkit.messageHandlers.\(GitHubViewRequests.handlerName)", in: nil,
-            contentWorld: GitHubViewRequests.world)
+            "typeof window.webkit.messageHandlers.\(WebViewRequests.handlerName)", in: nil,
+            contentWorld: WebViewRequests.world)
         #expect(fromApp as? String == "object")
     }
 
     /// A click a script dispatches is not the user's: it reaches no handler, and the link
     /// does what it would without the app.
     @Test func aScriptedClickIsLeftToTheLink() async throws {
-        let requests = Recorder<GitHubViewRequests.Request>()
-        let (webView, watcher) = await load(page, requests: GitHubViewRequests { _, _, request in
+        let requests = Recorder<WebViewRequests.Request>()
+        let (webView, watcher) = await load(page, requests: WebViewRequests { _, _, request in
             requests.append(request)
         })
         _ = try await webView.evaluateJavaScript("document.getElementById('mark').click()")
@@ -179,8 +210,8 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// link to the same page are each left to the link: the marker, not the address, picks
     /// the button.
     @Test func theUsersClickOnTheButtonReachesTheAppAlone() async throws {
-        let requests = Recorder<GitHubViewRequests.Request>()
-        let gitHubViews = GitHubViewRequests { _, frame, request in
+        let requests = Recorder<WebViewRequests.Request>()
+        let gitHubViews = WebViewRequests { _, frame, request in
             if frame.isMainFrame { requests.append(request) }
         }
         let window = NSWindow(
@@ -199,11 +230,11 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
         click(webView, at: onOpen, in: window)
         #expect(await eventually(within: .seconds(10)) { requests.count == 1 })
         let request = try #require(requests.all.first)
-        #expect(request.page.absoluteString == readme)
+        #expect(request.page.url.absoluteString == readme)
         #expect(request.link == CGRect(x: 300, y: 20, width: 200, height: 100))
         #expect(request.viewportWidth == 600)
         // Where the popover points: the button, wherever WebKit puts its origin.
-        let anchor = GitHubPopoverLayout.anchor(
+        let anchor = WebPopoverLayout.anchor(
             request.link, viewportWidth: request.viewportWidth, in: webView.bounds, flipped: webView.isFlipped)
         #expect(webView.convert(anchor, to: nil) == NSRect(x: 300, y: 400 - 120, width: 200, height: 100))
         #expect(watcher.departures.isEmpty && watcher.windows == 0)
@@ -225,8 +256,8 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// on the menu's Open in Browser does, rather than cancelled for a request the window
     /// would drop.
     @Test func aLinkTheAppWouldNotOpenIsLeftToTheLink() async throws {
-        let requests = Recorder<GitHubViewRequests.Request>()
-        let gitHubViews = GitHubViewRequests { _, _, request in requests.append(request) }
+        let requests = Recorder<WebViewRequests.Request>()
+        let gitHubViews = WebViewRequests { _, _, request in requests.append(request) }
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered,
             defer: false)
@@ -244,12 +275,12 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
     }
 
     /// Each link the script takes is one the window opens, at the same address: the script's
-    /// test (`GitHubViewRequests.opensHere`) passes only an `href`, as WebKit serializes it,
-    /// that `GitHubView.page` accepts unchanged. One that test leaves to the link, which
+    /// test (`WebViewRequests.opensHere`) passes only an `href`, as WebKit serializes it,
+    /// that `WebSite.page` accepts unchanged. One that test leaves to the link, which
     /// opens in the default browser: over the length, another host or scheme, a user name,
     /// or a character Foundation would encode again (`|`, `^`, `[`, a second `#`).
     @Test func everyLinkTheScriptTakesIsOneTheWindowOpens() async throws {
-        let (webView, _) = await load(page, requests: GitHubViewRequests { _, _, _ in })
+        let (webView, _) = await load(page, requests: WebViewRequests { _, _, _ in })
         let longest = "https://github.com/" + String(repeating: "a", count: GitHubLink.maximumLength - 19)
         let cases: [(href: String, taken: Bool)] = [
             (readme, true), ("https://GitHub.com:443/octo/demo/tree/main", true),
@@ -267,13 +298,13 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
                 """
                 const link = document.createElement("a");
                 link.href = href;
-                return [link.href, (\(GitHubViewRequests.opensHere))(link.href)];
+                return [link.href, (\(WebViewRequests.opensHere))(link.href)];
                 """, arguments: ["href": href], in: nil, contentWorld: .page)
             let pair = try #require(result as? [Any])
             let serialized = try #require(pair.first as? String)
             let takes = try #require(pair.last as? Bool)
             #expect(takes == taken, "\(href.prefix(80))")
-            if takes { #expect(GitHubView.page(serialized)?.absoluteString == serialized, "\(href.prefix(80))") }
+            if takes { #expect(WebSite.page(serialized)?.url.absoluteString == serialized, "\(href.prefix(80))") }
         }
     }
 
@@ -281,8 +312,8 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     /// A GitHub view, as the popover makes it but with a store that leaves nothing behind,
     /// with `ui` as its UI delegate, on `html`.
-    private func gitHubView(_ html: String, ui: GitHubViewUI) async -> (WKWebView, PageWatcher) {
-        let configuration = WebConfiguration.makeGitHub()
+    private func webPane(_ html: String, ui: WebViewUI) async -> (WKWebView, PageWatcher) {
+        let configuration = WebConfiguration.makeWebPane()
         configuration.websiteDataStore = .nonPersistent()
         let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), configuration: configuration)
         let watcher = PageWatcher()
@@ -295,9 +326,9 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     /// github.com's `alert`, `confirm`, and `prompt` reach the app, which answers them;
     /// without a delegate WebKit would answer `confirm` and `prompt` with Cancel.
-    @Test func theGitHubViewsDialogsAreTheApps() async throws {
-        let asked = Recorder<GitHubViewUI.Request>()
-        let ui = GitHubViewUI(
+    @Test func theWebPanesDialogsAreTheApps() async throws {
+        let asked = Recorder<WebViewUI.Request>()
+        let ui = WebViewUI(policy: { WebViewPolicy(site: .gitHub) }, 
             present: { request, answer in
                 asked.append(request)
                 switch request {
@@ -307,7 +338,7 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
                 case .openFiles: answer(.files(nil))
                 }
             }, openExternally: { _ in })
-        let (webView, _) = await gitHubView("<p>A comment</p>", ui: ui)
+        let (webView, _) = await webPane("<p>A comment</p>", ui: ui)
         #expect(try await webView.evaluateJavaScript("confirm('Discard your changes?')") as? Bool == true)
         #expect(try await webView.evaluateJavaScript("prompt('Name?', 'octo')") as? String == "typed")
         _ = try await webView.evaluateJavaScript("alert('Saved'); 1")
@@ -318,8 +349,8 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     /// Cancel, or an answer of another kind, is Cancel to the page.
     @Test func cancelIsCancel() async throws {
-        let ui = GitHubViewUI(present: { _, answer in answer(.dismissed) }, openExternally: { _ in })
-        let (webView, _) = await gitHubView("<p>A comment</p>", ui: ui)
+        let ui = WebViewUI(policy: { WebViewPolicy(site: .gitHub) }, present: { _, answer in answer(.dismissed) }, openExternally: { _ in })
+        let (webView, _) = await webPane("<p>A comment</p>", ui: ui)
         #expect(try await webView.evaluateJavaScript("confirm('Discard your changes?')") as? Bool == false)
         #expect(try await webView.evaluateJavaScript("prompt('Name?') === null") as? Bool == true)
     }
@@ -330,13 +361,13 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
         let file = FileManager.default.temporaryDirectory.appending(path: "mb-4wqh-\(UUID().uuidString).txt")
         try Data("attached".utf8).write(to: file)
         defer { try? FileManager.default.removeItem(at: file) }
-        let asked = Recorder<GitHubViewUI.Request>()
-        let ui = GitHubViewUI(
+        let asked = Recorder<WebViewUI.Request>()
+        let ui = WebViewUI(policy: { WebViewPolicy(site: .gitHub) }, 
             present: { request, answer in
                 asked.append(request)
                 answer(.files([file]))
             }, openExternally: { _ in })
-        let (webView, _) = await gitHubView("<input id='files' type='file' multiple>", ui: ui)
+        let (webView, _) = await webPane("<input id='files' type='file' multiple>", ui: ui)
         _ = try await webView.evaluateJavaScript("document.getElementById('files').click()")
         #expect(await eventually(within: .seconds(10)) { asked.count == 1 })
         #expect(asked.all == [.openFiles(multiple: true, directories: false)])
@@ -353,8 +384,8 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// default browser.
     @Test func aNewWindowLoadsHereOrOpensTheBrowser() async throws {
         let opened = Recorder<URL>()
-        let ui = GitHubViewUI(present: { _, answer in answer(.dismissed) }, openExternally: { opened.append($0) })
-        let (webView, watcher) = await gitHubView("<p>A comment</p>", ui: ui)
+        let ui = WebViewUI(policy: { WebViewPolicy(site: .gitHub) }, present: { _, answer in answer(.dismissed) }, openExternally: { opened.append($0) })
+        let (webView, watcher) = await webPane("<p>A comment</p>", ui: ui)
         _ = try await webView.evaluateJavaScript("window.open('https://example.com/docs'); 1")
         #expect(await eventually(within: .seconds(10)) { opened.count == 1 })
         #expect(opened.all.map(\.absoluteString) == ["https://example.com/docs"])
@@ -366,15 +397,15 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// Text the user typed and has not sent keeps a closed popover's web view; what the page
     /// put in a field, and a password, do not.
     @Test func theProbeFindsTextNotYetSent() async throws {
-        let ui = GitHubViewUI(present: { _, answer in answer(.dismissed) }, openExternally: { _ in })
-        let (webView, _) = await gitHubView(
+        let ui = WebViewUI(policy: { WebViewPolicy(site: .gitHub) }, present: { _, answer in answer(.dismissed) }, openExternally: { _ in })
+        let (webView, _) = await webPane(
             """
             <textarea id="comment"></textarea><input id="title" value="Fix"><input id="secret" type="password">
             <input id="flag" type="checkbox">
             """, ui: ui)
         func unsent() async throws -> Bool? {
             try await webView.evaluateJavaScript(
-                GitHubPopoverState.unsentTextProbe, in: nil, contentWorld: .defaultClient) as? Bool
+                WebPaneState.unsentTextProbe, in: nil, contentWorld: .defaultClient) as? Bool
         }
         #expect(try await unsent() == false)
         _ = try await webView.evaluateJavaScript("document.getElementById('comment').value = 'A draft'; 1")
