@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:45edd094384ad05cd939b1ce3baa7f7c502ec5b98aeefe10c73c9d3c2358650d
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: Render untrusted Markdown in the projection child under a wall-clock deadline, no
+    size cap, visible fallback to Source
+bead_id: is-01m75fzpspek15x7d5dqhnc2yw
+external_id: dd29b58a-44ef-4ab6-8b84-3da53df41085
+external_key: OS-481
+external_url: https://linear.app/finterm-ai/issue/OS-481/render-untrusted-markdown-in-the-projection-child-under-a-wall-clock
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:18.171Z
+state: linked
+synced_at: 2026-11-20T18:29:18.345Z
+type: lk

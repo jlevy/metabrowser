@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:e08f5c8bfb70c8a920878d292ce1f9695d85083832d7f02d1d2a9e51c05c1f15
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "GitHub URL gaps: /pull/N/files#diff-<hash> to a file, commit URL opens
+    /commit/<sha>"
+bead_id: is-01m7nnxpjnxgxsexg208sjz3qz
+external_id: f081d1cb-4e66-4864-b12a-4cd6e89141ec
+external_key: OS-517
+external_url: https://linear.app/finterm-ai/issue/OS-517/github-url-gaps-pullnfilesdiff-hash-to-a-file-commit-url-opens
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:52.959Z
+state: linked
+synced_at: 2026-11-20T18:29:53.089Z
+type: lk

@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:5ba89f23f9e80bdc785ed84acb938f04ac3594171e60fb4f02eb4f9a3c556ee2
+  labels:
+    - linear
+  priority: 1
+  slot: backlog
+  status: open
+  title: Pull request diff summaries load slowly in the Pulls rows and on the PR page
+bead_id: is-01m7n6v8n050erzeb13c5tasar
+external_id: 1f080fc8-e3a8-4afb-8aab-c5c2986df69f
+external_key: OS-507
+external_url: https://linear.app/finterm-ai/issue/OS-507/pull-request-diff-summaries-load-slowly-in-the-pulls-rows-and-on-the
+refinement_slot: backlog
+refinement_state_id: 30434c7c-0bd1-48d7-9b9e-1d658e48c852
+remote_updated_at: 2026-11-20T18:29:43.698Z
+state: linked
+synced_at: 2026-11-20T18:29:43.833Z
+type: lk

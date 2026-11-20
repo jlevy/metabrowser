@@ -1,0 +1,21 @@
+base:
+  assignee: null
+  description_hash: sha256v7:fea425e33bf4e06e5235bff80d9f23eca221491d13aea80b9ca81194cb50da42
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "Pulls nav: one outer hover/selection zone for a pull request's three lines;
+    Space toggles its diff summary; only a click on the summary line's toggle expands
+    it"
+bead_id: is-01m7r7t20z7q6bqhvqz12szhjs
+external_id: 37653cb4-a3c5-4d3c-826a-30a511416e96
+external_key: OS-540
+external_url: https://linear.app/finterm-ai/issue/OS-540/pulls-nav-one-outer-hoverselection-zone-for-a-pull-requests-three
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:22.641Z
+state: linked
+synced_at: 2026-11-20T18:30:22.792Z
+type: lk

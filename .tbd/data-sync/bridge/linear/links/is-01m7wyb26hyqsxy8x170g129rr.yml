@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:9432e832dfc4dca7a7a14bfb1acce1be03349ff833bdf23a568230ed971c770b
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: Hide the navigation pane with a chevron and the backslash key
+bead_id: is-01m7wyb26hyqsxy8x170g129rr
+external_id: 1ef49a45-9420-465e-b4e3-77bcac03391f
+external_key: OS-596
+external_url: https://linear.app/finterm-ai/issue/OS-596/hide-the-navigation-pane-with-a-chevron-and-the-backslash-key
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:31:32.642Z
+state: linked
+synced_at: 2026-11-20T18:31:32.820Z
+type: lk

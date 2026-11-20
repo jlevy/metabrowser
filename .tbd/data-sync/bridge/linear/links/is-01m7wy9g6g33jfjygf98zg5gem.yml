@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:6139177cf35d54a5cb4853944d07bc5e93397cbb71d0386600395cfb11ac20f8
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: Regenerate the stack-lines golden for bold status counts
+bead_id: is-01m7wy9g6g33jfjygf98zg5gem
+external_id: c03b07d5-decc-4e20-9635-1d8730f0f9cc
+external_key: OS-592
+external_url: https://linear.app/finterm-ai/issue/OS-592/regenerate-the-stack-lines-golden-for-bold-status-counts
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:31:27.703Z
+state: linked
+synced_at: 2026-11-20T18:31:27.852Z
+type: lk

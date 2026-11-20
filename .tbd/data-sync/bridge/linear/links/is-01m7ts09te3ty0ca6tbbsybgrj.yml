@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:2abfc07ee3a101e9c340c6e354b33513981d95173e1e4f03ad114b82aac14001
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: Structured JSON event log with latency for every request and background job,
+    browsable in Metabrowser
+bead_id: is-01m7ts09te3ty0ca6tbbsybgrj
+external_id: 7a959ae7-521e-4d9b-a46a-7c3f14deb025
+external_key: OS-473
+external_url: https://linear.app/finterm-ai/issue/OS-473/structured-json-event-log-with-latency-for-every-request-and
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:53.432Z
+state: linked
+synced_at: 2026-11-20T18:30:53.557Z
+type: lk

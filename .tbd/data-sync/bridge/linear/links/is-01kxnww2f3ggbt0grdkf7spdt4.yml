@@ -1,18 +1,21 @@
 base:
   assignee: null
-  description_hash: sha256v7:41d5d55575f961b3326efbe05e6ff37f8cddf1278f576397c5506816b71b7e5d
+  description_hash: sha256v7:5c5d6c411a6725c85b8c61e1e116220619ebc92f9c2c5778541f6aef7d2adc46
   labels:
     - tooling
     - typescript
     - ratchet
   priority: 3
+  slot: todo
   status: open
   title: Ratchet legacy browser JavaScript to noImplicitAny
 bead_id: is-01kxnww2f3ggbt0grdkf7spdt4
 external_id: 5169c336-d301-4100-9653-ce96dd092cec
 external_key: OS-263
 external_url: https://linear.app/finterm-ai/issue/OS-263/ratchet-legacy-browser-javascript-to-noimplicitany
-remote_updated_at: 2026-08-16T08:28:11.458Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:27:53.802Z
 state: linked
-synced_at: 2026-08-16T08:28:56.216Z
+synced_at: 2026-11-20T18:27:53.986Z
 type: lk

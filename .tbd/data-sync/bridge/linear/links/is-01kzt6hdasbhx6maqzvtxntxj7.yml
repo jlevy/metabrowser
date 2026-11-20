@@ -1,15 +1,18 @@
 base:
   assignee: null
-  description_hash: sha256v7:38213133bfe4e964de4f4e2de00ab4c83a2cb2e4f47d496c29e8da0430318391
+  description_hash: sha256v7:849c5267390eceaadef7f389a7a4c5560afab49fb0265035d8b0dfc9dc6d701e
   labels: []
   priority: 3
+  slot: todo
   status: open
-  title: "Repo cache Phase 2: large-repo mode via shallow clone plus progressive deepening"
+  title: "Repository library Phase 8: measured large-repository acquisition"
 bead_id: is-01kzt6hdasbhx6maqzvtxntxj7
 external_id: 7766c0ab-8af4-4ee0-a3c5-d984d20cb1db
 external_key: OS-321
 external_url: https://linear.app/finterm-ai/issue/OS-321/repo-cache-phase-2-large-repo-mode-via-shallow-clone-plus-progressive
-remote_updated_at: 2026-08-16T21:18:42.071Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:28:59.594Z
 state: linked
-synced_at: 2026-08-16T21:18:42.240Z
+synced_at: 2026-11-20T18:28:59.678Z
 type: lk

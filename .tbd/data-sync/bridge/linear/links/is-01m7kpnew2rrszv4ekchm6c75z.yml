@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:d7e01d05f719426c16dd30202bad568559255893dbe6ac2f5c04c339b8438efd
+  labels:
+    - linear
+  priority: 3
+  slot: todo
+  status: open
+  title: "CI speed 3.1: cut the serial tier's fixed waits, starting with the three
+    pull-header cases at 10.2 s each and the 124 s of test_transitions_instrument.py"
+bead_id: is-01m7kpnew2rrszv4ekchm6c75z
+external_id: beca509c-a555-41ea-8857-3f4e8a976737
+external_key: OS-497
+external_url: https://linear.app/finterm-ai/issue/OS-497/ci-speed-31-cut-the-serial-tiers-fixed-waits-starting-with-the-three
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:29:32.588Z
+state: linked
+synced_at: 2026-11-20T18:29:33.422Z
+type: lk

@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:1bfc817164fc7899edda5ab7bde32a2ce0d57413c00cd34cfc2f623682b41b62
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: npm audit fails on GHSA-fc5q-39xc-vjpf (picomatch ReDoS) via tryscript
+bead_id: is-01m7n8yxeyv43vdked3pxpcveg
+external_id: 03ac59c1-ce3a-43e0-9d38-7eb7ac3198b8
+external_key: OS-512
+external_url: https://linear.app/finterm-ai/issue/OS-512/npm-audit-fails-on-ghsa-fc5q-39xc-vjpf-picomatch-redos-via-tryscript
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:48.330Z
+state: linked
+synced_at: 2026-11-20T18:29:48.544Z
+type: lk

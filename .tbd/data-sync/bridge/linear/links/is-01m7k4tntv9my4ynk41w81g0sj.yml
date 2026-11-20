@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:d8ba91680aa9091280d2f95b5e0fa8f53697c771101b83c5319b6592b83f71e5
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: The Files nav panel's '+ N ignored' summary line is laid out from first paint,
+    holding the pending placeholder while its count fills in, so nothing below it moves
+bead_id: is-01m7k4tntv9my4ynk41w81g0sj
+external_id: 114fbfc0-d6da-4e93-84ba-0aa5be71842e
+external_key: OS-489
+external_url: https://linear.app/finterm-ai/issue/OS-489/the-files-nav-panels-n-ignored-summary-line-is-laid-out-from-first
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:25.007Z
+state: linked
+synced_at: 2026-11-20T18:29:25.217Z
+type: lk

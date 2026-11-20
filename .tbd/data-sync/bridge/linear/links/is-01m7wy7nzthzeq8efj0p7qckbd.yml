@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:0924a7d9c5e6b6a3cc9baa2d0fa13e09e917475f97e441d4821b0c3f85fa6195
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "Plan: one object data model with several views"
+bead_id: is-01m7wy7nzthzeq8efj0p7qckbd
+external_id: 11952447-99b2-4a99-8ba8-9fe496e3986d
+external_key: OS-590
+external_url: https://linear.app/finterm-ai/issue/OS-590/plan-one-object-data-model-with-several-views
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:31:26.120Z
+state: linked
+synced_at: 2026-11-20T18:31:26.235Z
+type: lk

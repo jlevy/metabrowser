@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:deb68b9f9398293c6132d3396c9f9fb6764cacf344cf3c22b3c822e3698eeb65
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "Mirror: a pin on a branch follows the branch when a refresh moves it; Refresh
+    replaces the Switch offer"
+bead_id: is-01m7v8ctk4af96q7ykmb5psdd7
+external_id: 999dc19a-8b42-428d-89e5-7593411e3c85
+external_key: OS-582
+external_url: https://linear.app/finterm-ai/issue/OS-582/mirror-a-pin-on-a-branch-follows-the-branch-when-a-refresh-moves-it
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:31:10.862Z
+state: linked
+synced_at: 2026-11-20T18:31:11.049Z
+type: lk

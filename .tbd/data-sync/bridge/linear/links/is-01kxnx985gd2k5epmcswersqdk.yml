@@ -4,13 +4,16 @@ base:
   labels:
     - roadmap
   priority: 2
+  slot: todo
   status: open
   title: Post-v0.1 MetaBrowser core roadmap
 bead_id: is-01kxnx985gd2k5epmcswersqdk
 external_id: 4bf23327-faca-40ed-b28b-0b3870993e50
 external_key: OS-257
 external_url: https://linear.app/finterm-ai/issue/OS-257/post-v01-metabrowser-core-roadmap
-remote_updated_at: 2026-08-16T21:17:24.698Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:27:55.122Z
 state: linked
-synced_at: 2026-08-16T21:18:19.750Z
+synced_at: 2026-11-20T18:27:55.839Z
 type: lk

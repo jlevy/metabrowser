@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:74251923730a5f1b515fe6c2c4a88d31cff550e6db389d07ecff9bb2ee2cc63b
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "Flaky: test_present real-server test binds the default port 8411 and collides
+    with parallel workers"
+bead_id: is-01m7rnr1w9m11ycqrwaex8j5bq
+external_id: e188c8d3-9a74-4d21-a76e-45fbac36157d
+external_key: OS-552
+external_url: https://linear.app/finterm-ai/issue/OS-552/flaky-test-present-real-server-test-binds-the-default-port-8411-and
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:35.589Z
+state: linked
+synced_at: 2026-11-20T18:30:35.741Z
+type: lk

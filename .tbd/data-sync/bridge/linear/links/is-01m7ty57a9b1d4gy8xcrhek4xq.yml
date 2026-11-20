@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:62d0c8f3b6d323a3ca220f54c5939e60906d18a42aa45142a32c2905d1c957c8
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "Event log Phase 2: browse Metabrowser's own event log in Metabrowser"
+bead_id: is-01m7ty57a9b1d4gy8xcrhek4xq
+external_id: d2d5883d-bf82-43cd-90f1-a91383bd4cfa
+external_key: OS-474
+external_url: https://linear.app/finterm-ai/issue/OS-474/event-log-phase-2-browse-metabrowsers-own-event-log-in-metabrowser
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:31:03.080Z
+state: linked
+synced_at: 2026-11-20T18:31:03.250Z
+type: lk

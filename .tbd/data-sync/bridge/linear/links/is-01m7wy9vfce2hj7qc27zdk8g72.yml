@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:bddbc21b55e56ebddfc6d024b1a204e53a42452829fed825cc957adda869d4ab
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: Pulls rows lead with the title; statuses whole or not at all
+bead_id: is-01m7wy9vfce2hj7qc27zdk8g72
+external_id: 3dfc67a8-615f-4e77-a115-d4d5fad23f47
+external_key: OS-593
+external_url: https://linear.app/finterm-ai/issue/OS-593/pulls-rows-lead-with-the-title-statuses-whole-or-not-at-all
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:31:29.474Z
+state: linked
+synced_at: 2026-11-20T18:31:30.078Z
+type: lk

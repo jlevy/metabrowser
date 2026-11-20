@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:853ce463dfb14185ed537234b5b0ebe46957f6dd4eb8ebe0ce90fc293404bd06
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "Files overview: less, uniform bar indent; legend names up to 9 file types at >=
+    1% plus Other"
+bead_id: is-01m7vvp0bdjjf095v2x4jztdmg
+external_id: e27a0dd6-6f9c-4836-a87e-7ae786f6e0c2
+external_key: OS-476
+external_url: https://linear.app/finterm-ai/issue/OS-476/files-overview-less-uniform-bar-indent-legend-names-up-to-9-file-types
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:31:21.171Z
+state: linked
+synced_at: 2026-11-20T18:31:21.468Z
+type: lk

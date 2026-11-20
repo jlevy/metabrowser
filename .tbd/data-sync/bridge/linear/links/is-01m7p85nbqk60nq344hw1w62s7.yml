@@ -1,0 +1,21 @@
+base:
+  assignee: null
+  description_hash: sha256v7:8ac02fa00507ebb29508facc2a69fa1408e56480d88498466a8b90a643bf549c
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "File Overview: a legend entry's hover highlights its segment in every visible
+    bar (Total, Ignored, open Details rows), darker and wider, with a smooth eased
+    transition and a gentle hover shimmer akin to (not the same as) the progress blocks"
+bead_id: is-01m7p85nbqk60nq344hw1w62s7
+external_id: 1e087cd0-cae0-46cc-8d46-0d8209abb485
+external_key: OS-524
+external_url: https://linear.app/finterm-ai/issue/OS-524/file-overview-a-legend-entrys-hover-highlights-its-segment-in-every
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:59.572Z
+state: linked
+synced_at: 2026-11-20T18:29:59.793Z
+type: lk

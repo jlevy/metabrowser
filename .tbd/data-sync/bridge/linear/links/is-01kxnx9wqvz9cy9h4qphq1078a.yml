@@ -5,13 +5,16 @@ base:
     - indexing
     - plugins
   priority: 2
+  slot: todo
   status: open
   title: Add a generic writer event-log backend
 bead_id: is-01kxnx9wqvz9cy9h4qphq1078a
 external_id: 9bb812dc-1b93-47da-aa5b-1b140f267b4c
 external_key: OS-269
 external_url: https://linear.app/finterm-ai/issue/OS-269/add-a-generic-writer-event-log-backend
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
 remote_updated_at: 2026-08-16T08:28:16.566Z
 state: linked
-synced_at: 2026-08-16T08:28:58.659Z
+synced_at: 2026-11-20T18:27:58.691Z
 type: lk

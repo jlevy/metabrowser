@@ -3,13 +3,16 @@ base:
   description_hash: sha256v7:fbe99a4bba506590f0d6a472ec465dc55791fb2e0ea39bb527322c8315f4d059
   labels: []
   priority: 2
-  status: open
+  slot: canceled
+  status: closed
   title: "Platform A6: expose MtimeCache (or generation-keyed cache) through plugin_api"
 bead_id: is-01kxry3234hgx9hgphz1xsqsmk
 external_id: 206e5eb6-d6d6-4397-8bcd-99383c4fb52c
 external_key: OS-279
 external_url: https://linear.app/finterm-ai/issue/OS-279/platform-a6-expose-mtimecache-or-generation-keyed-cache-through-plugin
-remote_updated_at: 2026-08-16T08:06:20.438Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:28:12.245Z
 state: linked
-synced_at: 2026-08-16T08:06:21.383Z
+synced_at: 2026-11-20T18:28:12.384Z
 type: lk

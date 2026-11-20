@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:9cdff014ca340188b4e5ac4d95325b024225f84f70e97a12ab13b9becb02c742
+  labels:
+    - linear
+  priority: 3
+  slot: todo
+  status: open
+  title: "Markdown transclusion loading state: a delayed skeleton, not a visible sentence"
+bead_id: is-01m7tww736dq91cgkqdr3hec3e
+external_id: d0414a4a-6747-494e-948b-0ec6c28bde45
+external_key: OS-575
+external_url: https://linear.app/finterm-ai/issue/OS-575/markdown-transclusion-loading-state-a-delayed-skeleton-not-a-visible
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:31:00.988Z
+state: linked
+synced_at: 2026-11-20T18:31:01.172Z
+type: lk

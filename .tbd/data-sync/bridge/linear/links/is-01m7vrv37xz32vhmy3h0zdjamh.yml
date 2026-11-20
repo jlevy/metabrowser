@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:c011a8f0fac0f2324481ee572f792492e5bb7d224ad02f4fee6af59aea51d38c
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: A Git revision's files get their age from the last commit that changed them, so
+    By age and file ages work on cloud mirrors and pinned revisions
+bead_id: is-01m7vrv37xz32vhmy3h0zdjamh
+external_id: ae6d766f-71cf-4732-b621-fc4cae2e2edb
+external_key: OS-588
+external_url: https://linear.app/finterm-ai/issue/OS-588/a-git-revisions-files-get-their-age-from-the-last-commit-that-changed
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:31:20.353Z
+state: linked
+synced_at: 2026-11-20T18:31:20.548Z
+type: lk

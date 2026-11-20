@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:bfd54bba47031c675671a1aa9b4ec572731c44602ebaf38fa0ac1289b6db3ac2
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: Put a pin's freshness line above the keyboard shortcut strip
+bead_id: is-01m7wybeed2wbaee2vkfzj0awa
+external_id: 9ff8dfea-6098-4041-8164-3c8f95775ac8
+external_key: OS-597
+external_url: https://linear.app/finterm-ai/issue/OS-597/put-a-pins-freshness-line-above-the-keyboard-shortcut-strip
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:31:33.439Z
+state: linked
+synced_at: 2026-11-20T18:31:33.579Z
+type: lk

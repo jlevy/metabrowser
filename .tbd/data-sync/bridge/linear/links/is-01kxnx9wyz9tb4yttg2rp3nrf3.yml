@@ -1,17 +1,20 @@
 base:
   assignee: null
-  description_hash: sha256v7:99e155eaf0418a457df0147ad1d21c5b65864c0f67e6f63775b6afecb5eb9692
+  description_hash: sha256v7:6fc5d8c65e9b5da882244bf5db71ced84c442eab05b6da078a9f4bd4a2fe2008
   labels:
     - performance
     - scalability
   priority: 2
+  slot: todo
   status: open
   title: Prove large-directory startup and interaction budgets
 bead_id: is-01kxnx9wyz9tb4yttg2rp3nrf3
 external_id: a8292724-e972-46d8-aee7-80efaa83ebb4
 external_key: OS-270
 external_url: https://linear.app/finterm-ai/issue/OS-270/prove-large-directory-startup-and-interaction-budgets
-remote_updated_at: 2026-08-16T08:28:17.217Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:27:59.384Z
 state: linked
-synced_at: 2026-08-16T08:28:58.867Z
+synced_at: 2026-11-20T18:27:59.508Z
 type: lk

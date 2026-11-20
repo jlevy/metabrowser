@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:34b6ad1c2323b0e4c95af74b12bce029f55ac44d14979c6eeaf41486e33c00e6
+  labels:
+    - linear
+  priority: 1
+  slot: todo
+  status: open
+  title: "Release 0.13: prepare the PyPI package and macOS app release (owner asked
+    2026-11-15)"
+bead_id: is-01m7hgpc9550w78kmwqsvv64xh
+external_id: a18aa3cd-0329-4c1c-bca3-17921fe6703e
+external_key: OS-483
+external_url: https://linear.app/finterm-ai/issue/OS-483/release-013-prepare-the-pypi-package-and-macos-app-release-owner-asked
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:29:19.758Z
+state: linked
+synced_at: 2026-11-20T18:29:19.892Z
+type: lk

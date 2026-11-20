@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:9db8293c778127309649ea2cfe6eb480d438506de6015ca9d3ac16825e821654
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: Pull request view shows raw Markdown for 3-4 s before it renders
+bead_id: is-01m7rc08e8rhfapch9mtg42aft
+external_id: 76ca2fe3-69d7-468a-b896-5c811ad92be4
+external_key: OS-546
+external_url: https://linear.app/finterm-ai/issue/OS-546/pull-request-view-shows-raw-markdown-for-3-4-s-before-it-renders
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:28.908Z
+state: linked
+synced_at: 2026-11-20T18:30:29.075Z
+type: lk

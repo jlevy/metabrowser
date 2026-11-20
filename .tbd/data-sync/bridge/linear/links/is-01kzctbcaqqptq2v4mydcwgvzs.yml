@@ -1,8 +1,9 @@
 base:
   assignee: null
-  description_hash: sha256v7:115fea6930f5259bb0eee0f33d0a36156e2aef8744e5172af14054341c2846fb
+  description_hash: sha256v7:52045e4bd204084eb2f64ab0fe7e1319e244f5f2a09c22136560fbbe718142e9
   labels: []
   priority: 1
+  slot: todo
   status: open
   title: "Menu and overlay primitives: anchored placement, action menu, action registry,
     inline edit"
@@ -10,7 +11,9 @@ bead_id: is-01kzctbcaqqptq2v4mydcwgvzs
 external_id: 01ac05ee-899f-410e-9948-efa3e2753f08
 external_key: OS-299
 external_url: https://linear.app/finterm-ai/issue/OS-299/menu-and-overlay-primitives-anchored-placement-action-menu-action
-remote_updated_at: 2026-08-16T08:28:34.792Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:28:36.096Z
 state: linked
-synced_at: 2026-08-16T08:29:07.836Z
+synced_at: 2026-11-20T18:28:38.173Z
 type: lk

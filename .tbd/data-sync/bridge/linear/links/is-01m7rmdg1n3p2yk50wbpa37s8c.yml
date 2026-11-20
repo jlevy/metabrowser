@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:f03e1dc4486893089d5eeca748c1da86b03dea34365e465f7db693d4241c60f9
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "File header: size and age sit right of the filename, not on their own line"
+bead_id: is-01m7rmdg1n3p2yk50wbpa37s8c
+external_id: 0736d819-44b8-41d5-9f8d-78db715cf381
+external_key: OS-550
+external_url: https://linear.app/finterm-ai/issue/OS-550/file-header-size-and-age-sit-right-of-the-filename-not-on-their-own
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:32.730Z
+state: linked
+synced_at: 2026-11-20T18:30:34.028Z
+type: lk

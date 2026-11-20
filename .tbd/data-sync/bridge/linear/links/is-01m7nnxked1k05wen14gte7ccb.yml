@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:64723b1b9e783180b63d5bfb7ac30398e734e5a2dc296e77ddcb20fd8cb4d75f
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "open_in preference: config.yml, METABROWSER_OPEN_IN, --open-in, reported by
+    --doctor"
+bead_id: is-01m7nnxked1k05wen14gte7ccb
+external_id: b5801e34-98a7-40e1-9947-d139ab835900
+external_key: OS-515
+external_url: https://linear.app/finterm-ai/issue/OS-515/open-in-preference-configyml-metabrowser-open-in-open-in-reported-by
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:51.026Z
+state: linked
+synced_at: 2026-11-20T18:29:51.198Z
+type: lk

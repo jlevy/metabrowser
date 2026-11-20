@@ -1,0 +1,21 @@
+base:
+  assignee: null
+  description_hash: sha256v7:4fc9f53e84b998b5509e237d34a1f7470d3be6d47aa858db87e50a97f5f5cd36
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "Chrome flake: 'Chrome wrote no DevTools port' from launchChrome in
+    tests/dom/chrome-session.mjs failed tests/test_changed_file_rows_chrome.py twice and
+    passed on a rerun of the same commit"
+bead_id: is-01m7kpnddkcadvetnzbrfy8hy9
+external_id: 2266ab94-8d2f-46d6-a78f-aa763d88259f
+external_key: OS-496
+external_url: https://linear.app/finterm-ai/issue/OS-496/chrome-flake-chrome-wrote-no-devtools-port-from-launchchrome-in
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:31.712Z
+state: linked
+synced_at: 2026-11-20T18:29:31.866Z
+type: lk

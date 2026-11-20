@@ -1,0 +1,23 @@
+base:
+  assignee: null
+  description_hash: sha256v7:02decb2d2180f6cdc95959e992f59c0193dc4d158a7912d3376808121a5dc042
+  labels:
+    - ui
+    - files
+    - toc
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "Folder overview: a long README's table of contents fades in when scrolled back
+    to the top, as on the README itself"
+bead_id: is-01m7n30vypg674csbm2dm1h1zq
+external_id: ddcb38b8-1023-4dc7-85b0-e34193ef64eb
+external_key: OS-504
+external_url: https://linear.app/finterm-ai/issue/OS-504/folder-overview-a-long-readmes-table-of-contents-fades-in-when
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:39.457Z
+state: linked
+synced_at: 2026-11-20T18:29:39.620Z
+type: lk

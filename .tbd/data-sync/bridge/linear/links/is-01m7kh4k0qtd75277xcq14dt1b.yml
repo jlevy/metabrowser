@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:f6ad10d545abf91fc92506d170166cab0a2daed39fd79ea7454f22a144bf9251
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: CI takes ~20-25 minutes per push; assess end to end and design how to get the PR
+    gate to 3-5 minutes with the same coverage
+bead_id: is-01m7kh4k0qtd75277xcq14dt1b
+external_id: 604029f5-10f2-4510-a11e-f4fecb1e5969
+external_key: OS-495
+external_url: https://linear.app/finterm-ai/issue/OS-495/ci-takes-20-25-minutes-per-push-assess-end-to-end-and-design-how-to
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:30.869Z
+state: linked
+synced_at: 2026-11-20T18:29:30.995Z
+type: lk

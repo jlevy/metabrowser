@@ -1,18 +1,21 @@
 base:
   assignee: null
-  description_hash: sha256v7:0c1edc422b250596037c671366cd3258ad9eecbf343cceeeceb0bab4d11d81a9
+  description_hash: sha256v7:d5cff886daa45d533d498f518306f44b3ca83cd4262b7dfd929f5ecee889f5f5
   labels:
     - tooling
     - types
     - ratchet
   priority: 3
+  slot: todo
   status: open
   title: Ratchet remaining Python strict-type debt
 bead_id: is-01kxnww26n70vegt5rxxnn2kca
 external_id: 8fc405b1-c150-4848-aa57-4bf7f1046655
 external_key: OS-262
 external_url: https://linear.app/finterm-ai/issue/OS-262/ratchet-remaining-python-strict-type-debt
-remote_updated_at: 2026-08-16T08:28:10.095Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:27:52.991Z
 state: linked
-synced_at: 2026-08-16T08:28:56.066Z
+synced_at: 2026-11-20T18:27:53.119Z
 type: lk

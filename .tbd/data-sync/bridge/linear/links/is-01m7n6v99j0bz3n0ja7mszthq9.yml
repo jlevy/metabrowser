@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:6072496ef4a0b25d21280a5c689cb25fe70480f3aff16f3b9394a7ba5b4fdcf8
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "Diff summaries: prefetch eagerly and answer from the last persisted cache file
+    first"
+bead_id: is-01m7n6v99j0bz3n0ja7mszthq9
+external_id: 9a22b5eb-7b45-451f-8404-e60cf0bf3f92
+external_key: OS-508
+external_url: https://linear.app/finterm-ai/issue/OS-508/diff-summaries-prefetch-eagerly-and-answer-from-the-last-persisted
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:44.947Z
+state: linked
+synced_at: 2026-11-20T18:29:45.075Z
+type: lk

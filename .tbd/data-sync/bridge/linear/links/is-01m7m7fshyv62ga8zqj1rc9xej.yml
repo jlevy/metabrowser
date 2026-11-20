@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:42440df1c9f3d196e8cb0fbe68d222d9f2080b851e713cf65e5bd79ab5873e30
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "CI speed: under xdist a worker of test (3.12) crashed and the job then hung 30
+    minutes (run 44033895259 attempt 2); name the test and the hang"
+bead_id: is-01m7m7fshyv62ga8zqj1rc9xej
+external_id: fa99dcae-1e9e-4338-a198-5e5a8c5442fc
+external_key: OS-500
+external_url: https://linear.app/finterm-ai/issue/OS-500/ci-speed-under-xdist-a-worker-of-test-312-crashed-and-the-job-then
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:35.331Z
+state: linked
+synced_at: 2026-11-20T18:29:35.572Z
+type: lk

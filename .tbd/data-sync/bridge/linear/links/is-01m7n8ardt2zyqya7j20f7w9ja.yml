@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:a9915b0627099f13c7ed2b7aee6214f5b568715d378ca77dafcaeba817fa6031
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "PR view and Pulls: hunt a performance regression against v0.12.0 and recent main"
+bead_id: is-01m7n8ardt2zyqya7j20f7w9ja
+external_id: d252d34b-ac08-4acb-bacf-1416b134aa51
+external_key: OS-510
+external_url: https://linear.app/finterm-ai/issue/OS-510/pr-view-and-pulls-hunt-a-performance-regression-against-v0120-and
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:46.511Z
+state: linked
+synced_at: 2026-11-20T18:29:46.619Z
+type: lk

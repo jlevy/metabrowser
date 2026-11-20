@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "macOS app: Command-F found nothing on Metabrowser pages; use WebKit's public find"
+bead_id: is-01m7sabvh4ny49k80xtqvcdxrf
+external_id: d0d14250-917b-4601-bbc4-c1743d226430
+external_key: OS-561
+external_url: https://linear.app/finterm-ai/issue/OS-561/macos-app-command-f-found-nothing-on-metabrowser-pages-use-webkits
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:01:33.461Z
+state: linked
+synced_at: 2026-11-20T18:30:41.712Z
+type: lk

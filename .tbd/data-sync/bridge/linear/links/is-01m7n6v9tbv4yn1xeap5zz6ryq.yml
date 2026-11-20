@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:9867cc3685dc9564562a37f0c9b677f6df6884ff6d3aacf178906e11921e34d0
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "Diff summaries: measure route and git/gh timings and fix the dominant cost"
+bead_id: is-01m7n6v9tbv4yn1xeap5zz6ryq
+external_id: 5628bbd1-dc89-4669-ac6f-07a0527f703f
+external_key: OS-509
+external_url: https://linear.app/finterm-ai/issue/OS-509/diff-summaries-measure-route-and-gitgh-timings-and-fix-the-dominant
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:45.697Z
+state: linked
+synced_at: 2026-11-20T18:29:45.809Z
+type: lk

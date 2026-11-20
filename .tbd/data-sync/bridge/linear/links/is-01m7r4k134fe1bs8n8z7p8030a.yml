@@ -1,0 +1,21 @@
+base:
+  assignee: null
+  description_hash: sha256v7:355c04d325fb781481f377819458b85af22d8c5a68049d82a3607b5300d4b50b
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "Revision chooser: move it into the Files tab's toolbar beside the grouping
+    control; Commits tab independent of the chosen ref; working-tree row names the
+    folder; short monospace commit IDs and ages on every branch, tag, and commit row"
+bead_id: is-01m7r4k134fe1bs8n8z7p8030a
+external_id: 70555e7e-2fe2-48c1-a2d3-eca0647d320a
+external_key: OS-535
+external_url: https://linear.app/finterm-ai/issue/OS-535/revision-chooser-move-it-into-the-files-tabs-toolbar-beside-the
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:17.406Z
+state: linked
+synced_at: 2026-11-20T18:30:17.610Z
+type: lk

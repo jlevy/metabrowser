@@ -5,13 +5,16 @@ base:
     - editor
     - integration
   priority: 3
+  slot: backlog
   status: open
   title: Build VS Code extension host
 bead_id: is-01kxrygx61r5j6rakwqtq7dh74
 external_id: eafd0be0-c2a0-416c-b4e5-b5f56d593db2
 external_key: OS-280
 external_url: https://linear.app/finterm-ai/issue/OS-280/build-vs-code-extension-host
-remote_updated_at: 2026-08-16T08:28:23.442Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:28:12.782Z
 state: linked
-synced_at: 2026-08-16T08:29:02.053Z
+synced_at: 2026-11-20T18:28:12.955Z
 type: lk

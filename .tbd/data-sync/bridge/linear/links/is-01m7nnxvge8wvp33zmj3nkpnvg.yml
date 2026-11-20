@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:27f6d1e540d64bc680f6903051140efedea8ad1df6b3923bec2fb67f1be6aaba
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "Skill and docs: use --present, document sandbox settings"
+bead_id: is-01m7nnxvge8wvp33zmj3nkpnvg
+external_id: e714e01f-d3bc-4f80-a68c-55836f366476
+external_key: OS-518
+external_url: https://linear.app/finterm-ai/issue/OS-518/skill-and-docs-use-present-document-sandbox-settings
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:53.879Z
+state: linked
+synced_at: 2026-11-20T18:29:54.108Z
+type: lk

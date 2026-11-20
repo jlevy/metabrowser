@@ -3,13 +3,16 @@ base:
   description_hash: sha256v7:0a9461f7ed9539dd9dec41dde5ddfd2e0fd082b73d5c414743cce8df92f81072
   labels: []
   priority: 2
+  slot: todo
   status: open
   title: Support transparent bounded Zstandard artifacts
 bead_id: is-01kxj67pctmr4k4mdmvd45cnq5
 external_id: ee3b3ac9-0c58-436c-847c-6749ae00c491
 external_key: OS-258
 external_url: https://linear.app/finterm-ai/issue/OS-258/support-transparent-bounded-zstandard-artifacts
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
 remote_updated_at: 2026-08-16T08:28:06.935Z
 state: linked
-synced_at: 2026-08-16T08:28:55.474Z
+synced_at: 2026-11-20T18:27:50.573Z
 type: lk

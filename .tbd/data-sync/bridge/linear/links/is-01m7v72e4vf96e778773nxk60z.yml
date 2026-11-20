@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:31ef9b5a0d0697b1ebde02864c9be1b795363a79062d2678f55d27337b40e732
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "Flake on main: test_the_snapshot_sees_an_index_rewritten_with_the_same_entries
+    assumes git status always rewrites the index"
+bead_id: is-01m7v72e4vf96e778773nxk60z
+external_id: e4eea424-17ad-4165-bb8d-70dd79ddacd8
+external_key: OS-579
+external_url: https://linear.app/finterm-ai/issue/OS-579/flake-on-main-test-the-snapshot-sees-an-index-rewritten-with-the-same
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:31:07.451Z
+state: linked
+synced_at: 2026-11-20T18:31:07.583Z
+type: lk

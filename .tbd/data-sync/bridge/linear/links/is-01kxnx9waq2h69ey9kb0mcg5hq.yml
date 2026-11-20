@@ -1,17 +1,20 @@
 base:
   assignee: null
-  description_hash: sha256v7:50ed5b2d56a24f025e23e0fc5d3a53f831f4f03f44a8ca4c02baa57d727a8c1f
+  description_hash: sha256v7:ce0a9ae9d4e9b9ccf875dd81a1f75cb72fc3300d09733118bd6c53089b2a33b5
   labels:
     - search
     - scalability
   priority: 2
+  slot: todo
   status: open
   title: Quick file finder and search providers
 bead_id: is-01kxnx9waq2h69ey9kb0mcg5hq
 external_id: d2579248-d47f-40b5-b4d8-79ff0a9d7dcb
 external_key: OS-267
 external_url: https://linear.app/finterm-ai/issue/OS-267/quick-file-finder-and-search-providers
-remote_updated_at: 2026-08-16T08:28:14.403Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:27:58.151Z
 state: linked
-synced_at: 2026-08-16T08:28:58.378Z
+synced_at: 2026-11-20T18:27:58.323Z
 type: lk

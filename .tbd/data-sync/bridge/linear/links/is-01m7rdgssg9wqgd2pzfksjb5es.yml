@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: File > Open Folder… shows hidden folders such as ~/.claude
+bead_id: is-01m7rdgssg9wqgd2pzfksjb5es
+external_id: 6ae38ea8-1ae2-43e1-88be-2b9f4a2ab6a9
+external_key: OS-547
+external_url: https://linear.app/finterm-ai/issue/OS-547/file-open-folder-shows-hidden-folders-such-as-claude
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:01:15.825Z
+state: linked
+synced_at: 2026-11-20T18:30:29.377Z
+type: lk

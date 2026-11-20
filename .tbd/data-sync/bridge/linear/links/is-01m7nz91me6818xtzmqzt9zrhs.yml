@@ -1,0 +1,22 @@
+base:
+  assignee: null
+  description_hash: sha256v7:eb7b01fca7b3b68ef68eff7d27ca1d46cd1b610a8885dfffda80f43d7b30e572
+  labels:
+    - security
+    - alpha
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "Front matter: YAML aliases expanded on the event loop freeze the server (alias
+    bomb in an untrusted file)"
+bead_id: is-01m7nz91me6818xtzmqzt9zrhs
+external_id: ba2393ac-62c4-445c-8667-d80c9086b0d7
+external_key: OS-522
+external_url: https://linear.app/finterm-ai/issue/OS-522/front-matter-yaml-aliases-expanded-on-the-event-loop-freeze-the-server
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:57.796Z
+state: linked
+synced_at: 2026-11-20T18:29:57.944Z
+type: lk

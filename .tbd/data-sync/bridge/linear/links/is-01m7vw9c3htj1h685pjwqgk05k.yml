@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:cd46303d7cd452b659dade523a20549deeb46ca06cc9080110a3a72ddf50f909
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "Branch chooser: a branch with an open pull request shows the pull request
+    (number, title, state) in the menu"
+bead_id: is-01m7vw9c3htj1h685pjwqgk05k
+external_id: 35cbbe3f-eaba-49eb-9063-f5c2ae58ac96
+external_key: OS-477
+external_url: https://linear.app/finterm-ai/issue/OS-477/branch-chooser-a-branch-with-an-open-pull-request-shows-the-pull
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:31:23.379Z
+state: linked
+synced_at: 2026-11-20T18:31:23.638Z
+type: lk

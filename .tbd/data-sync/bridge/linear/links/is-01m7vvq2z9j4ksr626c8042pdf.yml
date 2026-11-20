@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:f606b86335a13364f0c5c38626b45d0daa116a5e1d0c1874bdedc7da3f2b0a6a
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "PR Conversation comment boxes: more horizontal padding around the text, as a
+    design-system rule"
+bead_id: is-01m7vvq2z9j4ksr626c8042pdf
+external_id: ae8b3954-f82b-4589-9fee-20f886b544e1
+external_key: OS-589
+external_url: https://linear.app/finterm-ai/issue/OS-589/pr-conversation-comment-boxes-more-horizontal-padding-around-the-text
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:31:22.092Z
+state: linked
+synced_at: 2026-11-20T18:31:22.292Z
+type: lk

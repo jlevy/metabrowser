@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:4c22baf476190e58e3d8b33c937d0b8af501bdbf818523bcb6dcba651cd80df3
+  labels:
+    - linear
+  priority: 0
+  slot: done
+  status: closed
+  title: "Main red after #608: nav-collapse Chrome test says a press in Up does not land
+    on Up"
+bead_id: is-01m7tbqzdjk3vty046954g84by
+external_id: b8788dc0-3cfa-4d57-8a2e-f461d80da7da
+external_key: OS-563
+external_url: https://linear.app/finterm-ai/issue/OS-563/main-red-after-608-nav-collapse-chrome-test-says-a-press-in-up-does
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:44.213Z
+state: linked
+synced_at: 2026-11-20T18:30:44.379Z
+type: lk

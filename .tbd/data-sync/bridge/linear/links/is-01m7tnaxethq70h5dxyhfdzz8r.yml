@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:8425575b3624ae476061bf49318675289557e9af856380dbc229781d94d86651
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: Draw Mermaid in pull-request text beside a trusted checkout, laid out in a frame
+    whose policy loads nothing
+bead_id: is-01m7tnaxethq70h5dxyhfdzz8r
+external_id: c84f7267-a01b-4b19-af1d-feadaeb5ba63
+external_key: OS-571
+external_url: https://linear.app/finterm-ai/issue/OS-571/draw-mermaid-in-pull-request-text-beside-a-trusted-checkout-laid-out
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:51.969Z
+state: linked
+synced_at: 2026-11-20T18:30:52.359Z
+type: lk

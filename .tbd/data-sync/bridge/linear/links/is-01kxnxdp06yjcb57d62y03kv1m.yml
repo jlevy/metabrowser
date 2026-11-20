@@ -1,15 +1,18 @@
 base:
   assignee: null
-  description_hash: sha256v7:13a325b3e0cbee4a87ddeaa7be0b90a5cedc319fbd96ba486034b6dce6fd8285
+  description_hash: sha256v7:4d8b7a911d3e7b76bdf4d5b3befbda7aaa6ea9f88ae71bf8c4352353ccec5891
   labels: []
   priority: 2
+  slot: todo
   status: open
-  title: Expose scan progress and recent directories
+  title: Include directories in Recent results
 bead_id: is-01kxnxdp06yjcb57d62y03kv1m
 external_id: 036f4bb2-e240-412d-a8c6-fa6547a2c03c
 external_key: OS-273
 external_url: https://linear.app/finterm-ai/issue/OS-273/expose-scan-progress-and-recent-directories
-remote_updated_at: 2026-08-16T08:28:19.800Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:28:01.032Z
 state: linked
-synced_at: 2026-08-16T08:28:59.600Z
+synced_at: 2026-11-20T18:28:01.417Z
 type: lk

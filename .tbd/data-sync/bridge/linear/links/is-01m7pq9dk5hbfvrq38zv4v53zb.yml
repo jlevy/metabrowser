@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:720c65cd5fcb3b5f7d3250e73e14dadbcbd97033f1b8c1c5aa8cda03d742f286
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: CHANGELOG.md conflicts on every merge to main serialize landing
+bead_id: is-01m7pq9dk5hbfvrq38zv4v53zb
+external_id: bba7e3df-b9d9-400b-a7eb-fbb09b374ac9
+external_key: OS-532
+external_url: https://linear.app/finterm-ai/issue/OS-532/changelogmd-conflicts-on-every-merge-to-main-serialize-landing
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:08.544Z
+state: linked
+synced_at: 2026-11-20T18:30:08.789Z
+type: lk

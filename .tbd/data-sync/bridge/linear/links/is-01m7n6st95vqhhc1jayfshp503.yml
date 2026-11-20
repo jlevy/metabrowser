@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:e8e71af63f29f92d73df561503ccc073303a33117c1844958487dbb93761d396
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "test_files_totals_stable_chrome: 'none unknown slow 180px dark' layout shift
+    2e-05 on 3.14t (run 44052069066, #509)"
+bead_id: is-01m7n6st95vqhhc1jayfshp503
+external_id: 17a9e255-7d3a-4ca9-8248-aa483a214138
+external_key: OS-506
+external_url: https://linear.app/finterm-ai/issue/OS-506/test-files-totals-stable-chrome-none-unknown-slow-180px-dark-layout
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:41.554Z
+state: linked
+synced_at: 2026-11-20T18:29:41.687Z
+type: lk

@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:2451986866a0ae8df5b212d5a125b2be6b80922bb4543f687f6370bfe2043d8b
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "PR view and Pulls: every drawn element is persisted on disk and painted from it
+    first"
+bead_id: is-01m7n8arwwxqq83hsf7mm7m403
+external_id: fe805e98-e407-4c26-9474-d8541f63774e
+external_key: OS-511
+external_url: https://linear.app/finterm-ai/issue/OS-511/pr-view-and-pulls-every-drawn-element-is-persisted-on-disk-and-painted
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:47.379Z
+state: linked
+synced_at: 2026-11-20T18:29:47.543Z
+type: lk

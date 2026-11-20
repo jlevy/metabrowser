@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:fc081d9c8d781b993b0bd9813093a3ade529d5719ff0bf4b8721b003b0cd2bfd
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "Files toolbar: move Show ignored into the filter drawer"
+bead_id: is-01m7s7apxe55ek1pds3fa2475v
+external_id: ed44669b-2448-40f6-8eac-dcbdadb6d14d
+external_key: OS-555
+external_url: https://linear.app/finterm-ai/issue/OS-555/files-toolbar-move-show-ignored-into-the-filter-drawer
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:38.139Z
+state: linked
+synced_at: 2026-11-20T18:30:38.283Z
+type: lk

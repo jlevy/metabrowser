@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:2acd59ed65834edeefe2b64fceac47b1d5a49118041f25f9a990be887c695f45
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "The brief change line '10 A, 5 D, 4 M · +1,234 −567' is one component, reused in
+    each Pulls stack heading beside 'Stack #N'"
+bead_id: is-01m7jwtbafwhwvmsjwvzvz9xg9
+external_id: 01f4963d-8d25-4c5b-8b31-5dd734e8255a
+external_key: OS-485
+external_url: https://linear.app/finterm-ai/issue/OS-485/the-brief-change-line-10-a-5-d-4-m-1234-567-is-one-component-reused-in
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:21.599Z
+state: linked
+synced_at: 2026-11-20T18:29:21.723Z
+type: lk

@@ -3,13 +3,16 @@ base:
   description_hash: sha256v7:b8320f48a62516ae5c43d4da2be0aea4c533df90c5578ae6b111dd5c947da83f
   labels: []
   priority: 1
-  status: open
+  slot: done
+  status: closed
   title: Git graph nav panel and Git API
 bead_id: is-01kzctqt5s7te6w75jm5pvg6g7
 external_id: 4d050c3e-9bbe-48bb-9342-75daa56bd295
 external_key: OS-301
 external_url: https://linear.app/finterm-ai/issue/OS-301/git-graph-nav-panel-and-git-api
-remote_updated_at: 2026-08-16T21:17:42.062Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:28:39.808Z
 state: linked
-synced_at: 2026-08-16T21:18:27.713Z
+synced_at: 2026-11-20T18:28:39.986Z
 type: lk

@@ -4,13 +4,16 @@ base:
   labels:
     - diff
   priority: 1
-  status: open
+  slot: done
+  status: closed
   title: "Diff P0: golden Git fixture repos, adapter contract harness, and baselines"
 bead_id: is-01kxse0v48bnzvcya9vpxh4s06
 external_id: 30aeb3d3-bb47-459b-bc77-4d3a3a47f3eb
 external_key: OS-282
 external_url: https://linear.app/finterm-ai/issue/OS-282/diff-p0-golden-git-fixture-repos-adapter-contract-harness-and
-remote_updated_at: 2026-08-16T08:06:25.566Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:28:15.061Z
 state: linked
-synced_at: 2026-08-16T08:06:25.751Z
+synced_at: 2026-11-20T18:28:15.192Z
 type: lk

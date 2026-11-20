@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:6b7eadd39047ba6ff8c72cd42d2bbd260901adbe3fbb9014d89c5ae7b9aaaf35
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "Open URL: correct an obvious missing https:// instead of refusing it"
+bead_id: is-01m7tdr44212qz0xrah2we67pq
+external_id: b5fc8c83-3e70-456d-9e11-713ba32ea8e1
+external_key: OS-567
+external_url: https://linear.app/finterm-ai/issue/OS-567/open-url-correct-an-obvious-missing-https-instead-of-refusing-it
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:48.090Z
+state: linked
+synced_at: 2026-11-20T18:30:48.302Z
+type: lk

@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:4e63fb57a5d1be38c0c236b0eec747421f705b3f9c9c0a6e9ac85e5d595bb2b0
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: Each Pulls row has a third line, its brief change line ('21 A, 15 M, 7 D · +1,234
+    −567'), which carries the chevron for its changed files, collapsed by default
+bead_id: is-01m7k58sxt39xnf5cfd3ct05p8
+external_id: 18423de7-9963-48ec-a813-9fa32209e60c
+external_key: OS-490
+external_url: https://linear.app/finterm-ai/issue/OS-490/each-pulls-row-has-a-third-line-its-brief-change-line-21-a-15-m-7-d
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:25.844Z
+state: linked
+synced_at: 2026-11-20T18:29:25.994Z
+type: lk

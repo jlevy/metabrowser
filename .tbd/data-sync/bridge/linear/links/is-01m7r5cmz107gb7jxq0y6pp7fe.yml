@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:b1a493fd2001cba60bcd8b1ee594f97eeef66e618f96ebec627edb4e8f96a73b
+  labels:
+    - linear
+  priority: 2
+  slot: backlog
+  status: open
+  title: "Spec: switch folders in a macOS app window"
+bead_id: is-01m7r5cmz107gb7jxq0y6pp7fe
+external_id: a5bc7383-f482-43be-b175-4c736bc3650d
+external_key: OS-536
+external_url: https://linear.app/finterm-ai/issue/OS-536/spec-switch-folders-in-a-macos-app-window
+refinement_slot: backlog
+refinement_state_id: 30434c7c-0bd1-48d7-9b9e-1d658e48c852
+remote_updated_at: 2026-11-20T18:30:18.646Z
+state: linked
+synced_at: 2026-11-20T18:30:18.827Z
+type: lk

@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:b4e7aecaa2fff7d44a32dc186a9164334023b782736de933dc6a912eb83168a1
+  labels:
+    - linear
+  priority: 3
+  slot: done
+  status: closed
+  title: "Flake: test_recent_targets concurrent writers hit the 2 s lock wait on loaded CI"
+bead_id: is-01m7r5kq8kjfbsbf8yk4whp0a8
+external_id: aabaaa19-99fc-4212-9a56-c5163cdd9ad7
+external_key: OS-538
+external_url: https://linear.app/finterm-ai/issue/OS-538/flake-test-recent-targets-concurrent-writers-hit-the-2-s-lock-wait-on
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:20.640Z
+state: linked
+synced_at: 2026-11-20T18:30:20.942Z
+type: lk

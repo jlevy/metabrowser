@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:e03ea1ea9487e7d3640e1c5aa88d4c50df394e403b666b107981ec72ae8f3659
+  labels:
+    - linear
+  priority: 1
+  slot: todo
+  status: open
+  title: Open anything from the CLI, the skill, and the macOS app (owner asked 2026-11-17)
+bead_id: is-01m7nnxhaqce1g2ewec3wbaf7e
+external_id: 5499d118-7011-4615-b052-982dc46ae0f6
+external_key: OS-514
+external_url: https://linear.app/finterm-ai/issue/OS-514/open-anything-from-the-cli-the-skill-and-the-macos-app-owner-asked
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:29:50.186Z
+state: linked
+synced_at: 2026-11-20T18:29:50.323Z
+type: lk

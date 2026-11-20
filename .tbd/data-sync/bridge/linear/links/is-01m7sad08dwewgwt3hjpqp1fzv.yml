@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:4797105e11bb4a5c0c4f0c110f75a75bd69e8b79cad8395365ee367b175d06ac
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "macOS app: a GitHub link opens its mirror as a tab of an open checkout of that
+    repository"
+bead_id: is-01m7sad08dwewgwt3hjpqp1fzv
+external_id: f14666d3-a447-4f78-8123-4b197a198203
+external_key: OS-562
+external_url: https://linear.app/finterm-ai/issue/OS-562/macos-app-a-github-link-opens-its-mirror-as-a-tab-of-an-open-checkout
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:43.421Z
+state: linked
+synced_at: 2026-11-20T18:30:43.597Z
+type: lk

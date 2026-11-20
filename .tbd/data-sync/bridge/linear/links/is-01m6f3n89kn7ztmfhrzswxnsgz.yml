@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:ac1cd01634de459f713e74884f3bc69a31b6d5a1ec2b8a55e256ed9f17d347e4
+  labels:
+    - linear
+  priority: 1
+  slot: backlog
+  status: open
+  title: "Review pull requests well on large repositories: fresh mirror and existing checkout"
+bead_id: is-01m6f3n89kn7ztmfhrzswxnsgz
+external_id: 8ab234b3-0c78-4c45-931a-d9a9944c1c15
+external_key: OS-480
+external_url: https://linear.app/finterm-ai/issue/OS-480/review-pull-requests-well-on-large-repositories-fresh-mirror-and
+refinement_slot: backlog
+refinement_state_id: 30434c7c-0bd1-48d7-9b9e-1d658e48c852
+remote_updated_at: 2026-11-20T18:29:17.159Z
+state: linked
+synced_at: 2026-11-20T18:29:17.321Z
+type: lk

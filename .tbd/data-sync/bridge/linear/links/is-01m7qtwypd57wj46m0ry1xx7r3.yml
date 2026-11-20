@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:24187a06003460fc3c5671aed829852eb41464c873e134ab61292135226a7da1
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "Flake: macOS PageRevealWebKitTests and PagePrintTests time out waiting for loads
+    (CI and loaded machines)"
+bead_id: is-01m7qtwypd57wj46m0ry1xx7r3
+external_id: e0029fdc-d954-4f80-9cb6-c80da494958f
+external_key: OS-534
+external_url: https://linear.app/finterm-ai/issue/OS-534/flake-macos-pagerevealwebkittests-and-pageprinttests-time-out-waiting
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:13.195Z
+state: linked
+synced_at: 2026-11-20T18:30:13.376Z
+type: lk

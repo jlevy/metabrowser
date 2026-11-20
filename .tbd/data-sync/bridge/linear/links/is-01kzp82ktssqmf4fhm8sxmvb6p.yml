@@ -5,13 +5,16 @@ base:
     - ui
     - filters
   priority: 1
-  status: open
+  slot: done
+  status: closed
   title: Nav filter controls and fine-grained filtering
 bead_id: is-01kzp82ktssqmf4fhm8sxmvb6p
 external_id: acf60561-e724-4f66-85e2-3a8e6de21eec
 external_key: OS-312
 external_url: https://linear.app/finterm-ai/issue/OS-312/nav-filter-controls-and-fine-grained-filtering
-remote_updated_at: 2026-08-16T21:18:35.234Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:28:48.535Z
 state: linked
-synced_at: 2026-08-16T21:18:35.482Z
+synced_at: 2026-11-20T18:28:48.683Z
 type: lk

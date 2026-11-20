@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:93c8ac3f0bf3d6964aaef450d80503b8591c2b212b8e96beab53c6f58fc1b611
+  labels:
+    - linear
+  priority: 2
+  slot: todo
+  status: open
+  title: Parse untrusted front matter in the inert child under a deadline (#542 A5 follow-up)
+bead_id: is-01m7pbmj503na98d3a3a4jqc3b
+external_id: cd521673-fa4d-40af-b789-2acd15bc526f
+external_key: OS-529
+external_url: https://linear.app/finterm-ai/issue/OS-529/parse-untrusted-front-matter-in-the-inert-child-under-a-deadline-542
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:30:04.931Z
+state: linked
+synced_at: 2026-11-20T18:30:05.087Z
+type: lk

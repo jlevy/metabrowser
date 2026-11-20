@@ -3,14 +3,18 @@ base:
   description_hash: sha256v7:db18d900813b570811dd0d5ea2ad685d74114e0c3d6e5aaa4d7c05131b640c40
   labels:
     - security
+    - release:v0.11.0
   priority: 1
-  status: open
+  slot: done
+  status: closed
   title: "HTML P1: sandbox /raw responses and require same-origin proof on /api"
 bead_id: is-01kzcvmq7ry46jxy4gcde7x4cq
 external_id: aa27e880-f003-4490-80ca-7e9c75b72c12
 external_key: OS-305
 external_url: https://linear.app/finterm-ai/issue/OS-305/html-p1-sandbox-raw-responses-and-require-same-origin-proof-on-api
-remote_updated_at: 2026-08-16T21:18:29.191Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:28:41.846Z
 state: linked
-synced_at: 2026-08-16T21:18:29.410Z
+synced_at: 2026-11-20T18:28:41.974Z
 type: lk

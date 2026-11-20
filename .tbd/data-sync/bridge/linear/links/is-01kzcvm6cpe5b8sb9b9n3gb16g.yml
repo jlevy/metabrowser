@@ -4,13 +4,16 @@ base:
   labels:
     - security
   priority: 1
-  status: open
+  slot: done
+  status: closed
   title: HTML rendering and an explicit content-trust model
 bead_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 external_id: efc46703-5aa2-49d6-8195-546330186e9c
 external_key: OS-304
 external_url: https://linear.app/finterm-ai/issue/OS-304/html-rendering-and-an-explicit-content-trust-model
-remote_updated_at: 2026-08-16T21:18:28.482Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:28:40.904Z
 state: linked
-synced_at: 2026-08-16T21:18:28.660Z
+synced_at: 2026-11-20T18:28:41.024Z
 type: lk

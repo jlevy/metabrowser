@@ -1,0 +1,18 @@
+base:
+  assignee: null
+  description_hash: sha256v7:60569ab52d1ad171d518154f30979cb2e29eabc443fdbdd1f3f06f845ae91799
+  labels: []
+  priority: 1
+  slot: done
+  status: closed
+  title: "CLI parity: every model reachable from metab, every one pinned by a golden"
+bead_id: is-01m0jsvvcqw7knvxbaq4sn6ddj
+external_id: 21c3ee1a-cf78-4125-9ff3-6e9a4ff80b80
+external_key: OS-366
+external_url: https://linear.app/finterm-ai/issue/OS-366/cli-parity-every-model-reachable-from-metab-every-one-pinned-by-a
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:29:15.392Z
+state: linked
+synced_at: 2026-11-20T18:29:15.525Z
+type: lk

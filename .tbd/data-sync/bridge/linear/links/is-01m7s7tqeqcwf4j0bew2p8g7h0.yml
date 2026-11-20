@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:da977c83b2346cde7a8ce27d8a3a57f0d0b66e56ba562b798e3cca18609da6dc
+  labels:
+    - linear
+  priority: 3
+  slot: done
+  status: closed
+  title: "Nav root row: vertical padding matches the tabs below it"
+bead_id: is-01m7s7tqeqcwf4j0bew2p8g7h0
+external_id: 5c0a017a-86dd-4d83-aea9-9346206b19d2
+external_key: OS-559
+external_url: https://linear.app/finterm-ai/issue/OS-559/nav-root-row-vertical-padding-matches-the-tabs-below-it
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:41.030Z
+state: linked
+synced_at: 2026-11-20T18:30:41.396Z
+type: lk

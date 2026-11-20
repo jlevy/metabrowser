@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:b14e7689d35e5d0a2e95bcf72c0cdeff1e4ce808210390b1f233d0a5fbc33157
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "Chrome flake: tests/test_nav_reveal_chrome.py:217 'a long folder's fifth page by
+    its address: the row is in view' fails with inView:false"
+bead_id: is-01m7kf0t56psry2ybyejpna2b4
+external_id: 3686d2ea-19ae-460e-a433-366579f938f8
+external_key: OS-494
+external_url: https://linear.app/finterm-ai/issue/OS-494/chrome-flake-teststest-nav-reveal-chromepy217-a-long-folders-fifth
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:30.067Z
+state: linked
+synced_at: 2026-11-20T18:29:30.232Z
+type: lk

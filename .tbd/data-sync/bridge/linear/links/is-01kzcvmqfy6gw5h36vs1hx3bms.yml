@@ -1,15 +1,19 @@
 base:
   assignee: null
   description_hash: sha256v7:1c714df968d7876a8d89707b78c364adc488d77a240296cfac6e425b7d513851
-  labels: []
+  labels:
+    - release:v0.11.0
   priority: 1
-  status: open
+  slot: done
+  status: closed
   title: "HTML P2: capability set, --untrusted profile, and client publication"
 bead_id: is-01kzcvmqfy6gw5h36vs1hx3bms
 external_id: 799c6e7a-191e-4d81-86b5-0a581e9e54c1
 external_key: OS-306
 external_url: https://linear.app/finterm-ai/issue/OS-306/html-p2-capability-set-untrusted-profile-and-client-publication
-remote_updated_at: 2026-08-16T21:18:29.754Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:28:42.838Z
 state: linked
-synced_at: 2026-08-16T21:18:29.932Z
+synced_at: 2026-11-20T18:28:43.052Z
 type: lk

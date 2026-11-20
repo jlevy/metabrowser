@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:0b7c7b07b0523346e5ef47792920b198f1ed54fb08466f91d6f1bd9fda134499
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "View on GitHub: one split button, upper right, on every page with a github.com
+    counterpart"
+bead_id: is-01m7rfjvq8xafvwfrw85ex2mwj
+external_id: 461ea437-c283-4cc2-a473-011a16866c6f
+external_key: OS-548
+external_url: https://linear.app/finterm-ai/issue/OS-548/view-on-github-one-split-button-upper-right-on-every-page-with-a
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:30.234Z
+state: linked
+synced_at: 2026-11-20T18:30:30.639Z
+type: lk

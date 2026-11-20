@@ -1,0 +1,21 @@
+base:
+  assignee: null
+  description_hash: sha256v7:87adfb199603ffa22c4cf09ab7c59eed6e7d823a336b9aa8e577ec075aef65fa
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: Design the macOS app's publishing setup (signing, notarization, DMG, install
+    checks) to a current best-practice standard, adapting a sibling Electron app's
+    proven setup
+bead_id: is-01m7k1vctj6d370jg7hqdps4hk
+external_id: 7a71af50-83c2-431e-854c-b204b1adb18e
+external_key: OS-487
+external_url: https://linear.app/finterm-ai/issue/OS-487/design-the-macos-apps-publishing-setup-signing-notarization-dmg
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:23.463Z
+state: linked
+synced_at: 2026-11-20T18:29:23.595Z
+type: lk

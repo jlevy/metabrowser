@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "Filter row: drop the chevron's count badge so Clear and the chevron stay on one
+    line"
+bead_id: is-01m7sabtxbpsj2ak4ak4v9ezk1
+external_id: c351e3e4-6c2b-489c-b82b-7a127b2cf468
+external_key: OS-560
+external_url: https://linear.app/finterm-ai/issue/OS-560/filter-row-drop-the-chevrons-count-badge-so-clear-and-the-chevron-stay
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:01:32.450Z
+state: linked
+synced_at: 2026-11-20T18:30:41.557Z
+type: lk

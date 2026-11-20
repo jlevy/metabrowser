@@ -1,15 +1,18 @@
 base:
   assignee: null
-  description_hash: sha256v7:0302e1837215f299f4f35249507f3195d51c0edebc89a60cfd9a53d9095cdd5a
+  description_hash: sha256v7:3385681c640804154853b5e63e0bd62471b904149396071976e82723ee4604cb
   labels: []
-  priority: 2
+  priority: 3
+  slot: todo
   status: open
   title: Implement the reserved _mb_ query namespace in the URL codec
 bead_id: is-01m03qv53915238ktd5prxgkpy
 external_id: 04c8ca32-f221-440d-b4cc-8b2ca23ea4be
 external_key: OS-329
 external_url: https://linear.app/finterm-ai/issue/OS-329/implement-the-reserved-mb-query-namespace-in-the-url-codec
-remote_updated_at: 2026-08-16T21:18:49.184Z
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
+remote_updated_at: 2026-11-20T18:29:07.146Z
 state: linked
-synced_at: 2026-08-16T21:19:19.833Z
+synced_at: 2026-11-20T18:29:07.447Z
 type: lk

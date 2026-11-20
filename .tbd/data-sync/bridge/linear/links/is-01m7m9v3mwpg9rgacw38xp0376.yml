@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:f2cd62399fa9ca05386cb9bd22f1cee4b538cab43f6a0f0d8f18307a1e7d4586
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: Concurrent private-file writers can unlink each other's new temporary
+bead_id: is-01m7m9v3mwpg9rgacw38xp0376
+external_id: 063f7f8f-ff4a-405e-ad8a-5af7664257e5
+external_key: OS-502
+external_url: https://linear.app/finterm-ai/issue/OS-502/concurrent-private-file-writers-can-unlink-each-others-new-temporary
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:37.251Z
+state: linked
+synced_at: 2026-11-20T18:29:37.378Z
+type: lk

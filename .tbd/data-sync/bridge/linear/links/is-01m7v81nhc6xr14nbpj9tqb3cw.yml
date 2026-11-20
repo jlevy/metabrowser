@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:194bd1e79eec6ac8adb4b45fb90b8fb5e0282b182babb415ecaf1cdd6b59af9c
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "Title folder menu: the cloud or folder icon sits on the name's line, not
+    centered across the two-line row"
+bead_id: is-01m7v81nhc6xr14nbpj9tqb3cw
+external_id: 47c26953-6e60-4744-8762-4c7f2f2c25b5
+external_key: OS-580
+external_url: https://linear.app/finterm-ai/issue/OS-580/title-folder-menu-the-cloud-or-folder-icon-sits-on-the-names-line-not
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:31:08.546Z
+state: linked
+synced_at: 2026-11-20T18:31:08.842Z
+type: lk

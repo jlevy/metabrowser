@@ -1,0 +1,20 @@
+base:
+  assignee: null
+  description_hash: sha256v7:13ebdf549e6f444e5270c38d57a9d7bcbe9d5b73c348b1cb67925de98db37fe9
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "Phase 1: table plugin, plugin dependencies, live open files, CSV and record-list
+    sources"
+bead_id: is-01m7tv7hwjzejd9eyeebhep0f8
+external_id: 607ed329-36dd-45dd-92c7-d84646f85a6c
+external_key: OS-573
+external_url: https://linear.app/finterm-ai/issue/OS-573/phase-1-table-plugin-plugin-dependencies-live-open-files-csv-and
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:55.979Z
+state: linked
+synced_at: 2026-11-20T18:30:56.124Z
+type: lk

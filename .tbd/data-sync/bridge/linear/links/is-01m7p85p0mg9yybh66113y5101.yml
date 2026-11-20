@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:1ac3da1271ed90abbc58a18b92d605a3fe138e0d57ef960a894dc62547a83f43
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "Help bar: list [Shift] Reveal keys first, before ? for help"
+bead_id: is-01m7p85p0mg9yybh66113y5101
+external_id: 2d72c08d-e029-474c-9132-69cb98aff345
+external_key: OS-525
+external_url: https://linear.app/finterm-ai/issue/OS-525/help-bar-list-shift-reveal-keys-first-before-for-help
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:00.515Z
+state: linked
+synced_at: 2026-11-20T18:30:00.743Z
+type: lk

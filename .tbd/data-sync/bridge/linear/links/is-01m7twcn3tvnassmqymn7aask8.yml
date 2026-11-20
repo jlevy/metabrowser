@@ -1,0 +1,19 @@
+base:
+  assignee: null
+  description_hash: sha256v7:be3cbebb1a77fad5015baca8e78765c9f7455ef9aeb2058dcd77b9d1bad73fce
+  labels:
+    - linear
+  priority: 2
+  slot: done
+  status: closed
+  title: "Research: operational visibility into ~/.claude and ~/.codex as an agent plugin"
+bead_id: is-01m7twcn3tvnassmqymn7aask8
+external_id: 90c8bf32-efda-43ff-9381-0c4aff37d581
+external_key: OS-574
+external_url: https://linear.app/finterm-ai/issue/OS-574/research-operational-visibility-into-claude-and-codex-as-an-agent
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:30:56.802Z
+state: linked
+synced_at: 2026-11-20T18:30:56.952Z
+type: lk

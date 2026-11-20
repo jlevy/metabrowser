@@ -5,13 +5,16 @@ base:
     - plugins
     - editing
   priority: 3
+  slot: todo
   status: open
   title: Design editor-capable plugin lifecycle extensions
 bead_id: is-01kxnx9xbpjegdatwmrn71gv1y
 external_id: 01b1281b-3420-41bd-9c26-15187f664191
 external_key: OS-271
 external_url: https://linear.app/finterm-ai/issue/OS-271/design-editor-capable-plugin-lifecycle-extensions
+refinement_slot: todo
+refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
 remote_updated_at: 2026-08-16T08:28:18.356Z
 state: linked
-synced_at: 2026-08-16T08:28:59.051Z
+synced_at: 2026-11-20T18:27:59.691Z
 type: lk

@@ -1,0 +1,21 @@
+base:
+  assignee: null
+  description_hash: sha256v7:1e4623505106fe16d55832daeaeac4f21a6d2756f2a5807484d94bab7a25efd4
+  labels:
+    - linear
+  priority: 1
+  slot: done
+  status: closed
+  title: "CI speed:
+    test_selected_full_wait_returns_the_settled_conditional_read[switch_pin] hung to its
+    60 s budget on 3.14t under xdist (run 44046980214)"
+bead_id: is-01m7man9fyy31fp5mmq7xg7ake
+external_id: af5192c0-7f69-41fd-ae60-3e3f99cb02ec
+external_key: OS-503
+external_url: https://linear.app/finterm-ai/issue/OS-503/ci-speed-test-selected-full-wait-returns-the-settled-conditional
+refinement_slot: done
+refinement_state_id: 21955228-e94e-4d99-8441-c2649de18c54
+remote_updated_at: 2026-11-20T18:29:38.445Z
+state: linked
+synced_at: 2026-11-20T18:29:38.693Z
+type: lk
