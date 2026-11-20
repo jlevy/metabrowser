@@ -4,10 +4,12 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft. A design for review: the items under [Key Decisions](#key-decisions)
-carry recommendations and are open until the owner approves them.
-Nothing here is built.
-Epic `mb-lra6` tracks the work; `mb-nv9k` is the owner’s review of the decisions.
+**Status:** Approved and in progress.
+On 2026-11-20 the owner directed implementation, adopting each Key Decision’s
+recommendation as written;
+[Decision 12](#decision-12-where-a-record-list-gets-its-table) may be revisited before
+Phase 7. Implementation proceeds as a stack of one pull request per phase under epic
+`mb-lra6`.
 
 ## Overview
 
