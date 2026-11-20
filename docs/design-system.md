@@ -1037,13 +1037,15 @@ shows its last answer at once and replaces it only when the server’s new one d
 Another place that shows a page can hold the same button by giving it a corner.
 
 **The macOS app** shows a counterpart in a native popover of its own rather than leaving
-the app. The web page does nothing for it; the app reads three hooks in the button’s
-markup, which are a contract between the two: the root carries `data-view-on-github`,
-the link is `<a data-view-on-github="open" href="…" target="_blank" rel="noopener">`,
+the app. The web page does nothing for it.
+The root carries `data-view-on-<provider>`, as `data-view-on-github`, which names the
+button, and the app reads two hooks on its links, a contract between the two that names
+no site: the link is `<a data-web-view="open" href="…" target="_blank" rel="noopener">`,
 and Open in Browser is
-`<a data-view-on-github="external" href="…" target="_blank" rel="noopener">`. The app
-takes a trusted primary click on the link for its popover; Open in Browser, a modified
-click, and Copy Link do what they do in a browser.
+`<a data-web-view="external" href="…" target="_blank" rel="noopener">`. The app takes a
+trusted primary click on the link for its web pane, when the `href` is on a site it
+knows; Open in Browser, a modified click, and Copy Link do what they do in a browser.
+Any other control may mark a link `data-web-view="open"` the same way.
 
 ### Where It Appears
 
@@ -5668,10 +5670,15 @@ A checkout adds three things, and each uses a primitive the control already had:
   drawn again whenever a filter or a tally changes, and it carries the selector over
   rather than drawing it, so an open list keeps what was typed and where it was scrolled
   to, and the control that had focus keeps it.
-  `tests/test_checkout_ref_selector_chrome.py` records the selector’s height and the
-  first tree row’s place in every frame of the working tree’s page and of a revision’s,
-  and each has one value; `tests/test_files_totals_stable_chrome.py` holds the same for
-  every box of the Files navigation on a folder that holds a `.git`.
+  A box taken out of the page loses its scroll position, and a scroll made a moment
+  before has sent no event to say where, so the page reads each scrolled box’s position
+  before it rebuilds the bar and sets it again after: no scroll the page or the browser
+  makes is put back at the position the last event named (`renderNavFilterBar` in
+  `static/app.js`; `tests/test_ref_selector_long_list_chrome.py` scrolls and redraws in
+  one task). `tests/test_checkout_ref_selector_chrome.py` records the selector’s height
+  and the first tree row’s place in every frame of the working tree’s page and of a
+  revision’s, and each has one value; `tests/test_files_totals_stable_chrome.py` holds
+  the same for every box of the Files navigation on a folder that holds a `.git`.
 
 What each state shows is pinned by
 `tests/golden/cli-ui-source-ref-selector.tryscript.md`, and

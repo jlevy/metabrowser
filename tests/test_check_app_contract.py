@@ -627,7 +627,7 @@ def test_a_copied_value_and_a_behavior_are_part_of_the_contract(tmp_path: Path) 
     assert len(problems) == 1 and "declares a different surface" in problems[0]
 
     # So is the text a pin file must hold: it is the page's marker that the app looks for.
-    marker = 'holds = \'"data-view-on-github": "open"\''
+    marker = 'holds = \'"data-web-view": "open"\''
     assert marker in declaration
     renamed = declaration.replace(marker, marker.replace('"open"', '"main"'))
     _write(root, {DECLARATION: renamed})
