@@ -440,6 +440,9 @@ export function reconcileState(state, fields) {
  * - `tip`: what the shared tooltip adds, the whole text of a value the clamp may hide, or
  *   what a marker means;
  * - `cut`: the whole value's length in characters, when the page holds a preview;
+ * - `size`: the whole value's size in bytes, when the page holds a preview and the source
+ *   knows only that (a SQLite text read in part);
+ * - `missing`: a reference no row of the referenced table holds, drawn as its value;
  * - `stored`: the stored type of a value whose type differs from its column's;
  * - `invalid`: the text was not valid UTF-8 and was decoded with replacement characters;
  * - `literal`: drawn in the monospaced face, as a key, timestamp, hex, or JSON is;
@@ -451,6 +454,8 @@ export function reconcileState(state, fields) {
  *   text: string,
  *   tip: string | null,
  *   cut: number | null,
+ *   size: number | null,
+ *   missing: boolean,
  *   stored: string | null,
  *   invalid: boolean,
  *   literal: boolean,
@@ -492,6 +497,8 @@ export function presentCell(cell, field) {
     text: "",
     tip: null,
     cut: null,
+    size: null,
+    missing: false,
     stored: null,
     invalid: false,
     literal: literalField(field),
@@ -544,16 +551,19 @@ export function presentCell(cell, field) {
   }
   if (typeof cell.text === "string") {
     const length = typeof cell.length === "number" ? cell.length : null;
+    const size = typeof cell.bytes === "number" ? cell.bytes : null;
     const invalid = cell.invalid_utf8 === true;
     const notes = [
       length !== null ? `${formatCount(length)} characters; the record shows more` : null,
+      size !== null ? `${formatCount(size)} bytes; the record shows more` : null,
       invalid ? "Not valid UTF-8: unreadable bytes are shown as �" : null,
     ];
     return {
       ...view,
-      kind: cell.text === "" && length === null ? "empty" : "text",
+      kind: cell.text === "" && length === null && size === null ? "empty" : "text",
       text: cell.text,
       cut: length,
+      size,
       invalid,
       tip: joinTips(cell.text, ...notes),
     };
@@ -577,6 +587,20 @@ export function presentCell(cell, field) {
   if (isEnvelope(cell.ref)) {
     const ref = cell.ref;
     const label = ref.label === null || ref.label === undefined ? String(ref.key) : ref.label;
+    if (ref.missing === true) {
+      // A value no row of the referenced table holds: shown as itself, marked, with no
+      // record to open.
+      const text = presentCell(label, undefined).text;
+      return {
+        ...view,
+        text,
+        missing: true,
+        tip: joinTips(
+          text,
+          `No row of ${String(ref.table ?? "the referenced table")} has this value`,
+        ),
+      };
+    }
     return {
       ...view,
       kind: "ref",

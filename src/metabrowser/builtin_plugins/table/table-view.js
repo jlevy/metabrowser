@@ -889,8 +889,11 @@ export function mountTable(container, ctx, host = {}) {
     } else {
       box.append(view.kind === "absent" ? "—" : view.text);
     }
-    if (view.cut !== null && view.kind === "text") {
+    if ((view.cut !== null || view.size !== null) && view.kind === "text") {
       box.append(el("span", { class: "table-cut", "aria-hidden": "true" }, "…"));
+    }
+    if (view.missing) {
+      box.append(el("span", { class: "table-stored-mark", "aria-label": "missing" }, "missing"));
     }
     if (view.stored) {
       box.append(
@@ -1714,6 +1717,20 @@ export function mountTable(container, ctx, host = {}) {
             { class: "table-record-note" },
             `Showing the first ${formatCount(view.text.length)} of ${formatCount(view.cut)} characters.`,
           ),
+        );
+      }
+      if (view.size !== null && view.kind === "text") {
+        dd.append(
+          el(
+            "p",
+            { class: "table-record-note" },
+            `Showing the first ${formatCount(view.text.length)} characters of ${formatCount(view.size)} bytes.`,
+          ),
+        );
+      }
+      if (view.missing) {
+        dd.append(
+          el("p", { class: "table-record-note" }, "No row of the referenced table has this value."),
         );
       }
       if (view.stored) {

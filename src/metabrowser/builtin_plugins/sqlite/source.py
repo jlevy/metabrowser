@@ -182,7 +182,9 @@ def _held(declared: str, kind: FieldType) -> frozenset[str]:
     if kind in ("date", "datetime", "json"):
         return frozenset({"text", "integer", "real"})
     if kind == "boolean":
-        return frozenset({"integer"})
+        # 0 and 1 are drawn as false and true before this is asked; any other value is
+        # not a boolean, whatever its type.
+        return frozenset()
     if declared.strip().upper() == "ANY":
         return _HELD["blob"]
     return _HELD[affinity(declared)]
