@@ -851,8 +851,20 @@ def test_a_served_pin_has_its_routes_before_its_first_request(
     # folder's start. A served pin imports them as it starts, so its first request does
     # not import them on the event loop. This process has long since imported them, so
     # the module is forgotten for the length of the test.
+    #
+    # Importing it again also rebinds ``metabrowser.git.content_routes``, the attribute
+    # ``from metabrowser.git import content_routes`` reads, to the new module, and undoing
+    # the ``sys.modules`` entry does not undo that. The server's lazy imports read
+    # ``sys.modules``, so a later test patching the module through the package patched a
+    # module the server never ran (mb-3m45: ``_request_instant`` read the real clock in
+    # ``test_golden_pin_age_groups``, on whichever xdist worker ran this test first).
+    # Patching the attribute here restores it with the entry.
     _home(tmp_path, monkeypatch)
     origin = _origin(tmp_path)
+    import metabrowser.git as git_package
+    from metabrowser.git import content_routes
+
+    monkeypatch.setattr(git_package, "content_routes", content_routes)
     monkeypatch.delitem(sys.modules, "metabrowser.git.content_routes", raising=False)
 
     result = _serve(origin.url)
