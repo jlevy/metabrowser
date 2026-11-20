@@ -197,8 +197,8 @@ The state’s word beside the row’s title carries the meaning without the colo
 | `↑` | Text | The parent folder, in the parent navigation button | `static/view-header.js`, `builtin_plugins/folder/treemap.js` | `--muted` | `--ui-small-font-size` |
 | `✓` | Text | A chosen value in a filter chip’s menu, and the current member in a stack’s menu | `static/filter-controls.js`, `builtin_plugins/github/pull-page.js` | `--link`, in `.chip-menu-check` | The text’s, in a fixed column |
 | `→` | Text | From one to the other: a rename, a mode or type change, and a merge’s source and target | `builtin_plugins/diff/diff-model.js`, `static/git-panel.js`, `static/plugin-sdk-views.js` | The text’s | The text’s |
-| `→` | Text | An agent log’s tool call, going out, in an event’s kind | `builtin_plugins/agents/index.js` | The kind badge’s | The text’s |
-| `←` | Text | An agent log’s tool result, coming back, in an event’s kind | `builtin_plugins/agents/index.js` | The kind badge’s | The text’s |
+| `→` | Text | An agent log’s tool call, going out, in an event’s kind | `builtin_plugins/agents/agent-log.js` | The kind badge’s | The text’s |
+| `←` | Text | An agent log’s tool result, coming back, in an event’s kind | `builtin_plugins/agents/agent-log.js` | The kind badge’s | The text’s |
 | `↑` | Text | A session table’s sorted column, ascending, after its header’s label | `builtin_plugins/agents/agents-views.css` | The header’s | The header’s |
 | `↓` | Text | A session table’s sorted column, descending, after its header’s label | `builtin_plugins/agents/agents-views.css` | The header’s | The header’s |
 | `→` | Text | The Metabrowser menu title’s link to the project on GitHub, shown on hover | `server.py` | The title’s | The text’s |

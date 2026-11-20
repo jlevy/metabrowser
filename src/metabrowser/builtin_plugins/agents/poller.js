@@ -60,6 +60,54 @@ export const PROGRESS_POLL_MS = 3000;
  * @property {() => {running: boolean, inFlight: boolean, failures: number, waitMs: number}} state
  */
 
+/**
+ * Whether asking again can help: a failure with no HTTP status (the network), a server
+ * error, a timeout, or a rate limit. Any other refusal is the route's answer to this
+ * request, and the same request gets it again.
+ *
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isRetryable(error) {
+  const status = /** @type {{status?: unknown}} */ (error)?.status;
+  return typeof status !== "number" || status >= 500 || status === 408 || status === 429;
+}
+
+/**
+ * A tick for a view that keeps asking until its answer settles. `attempt` answers `true`
+ * to ask again and `false` when settled, and throws on a failure, which the poller
+ * counts so it backs off; a failure asking again cannot cure ends the poll instead.
+ *
+ * @param {(signal: AbortSignal) => Promise<boolean>} attempt
+ * @returns {(signal: AbortSignal) => Promise<boolean>}
+ */
+export function retrying(attempt) {
+  return async (signal) => {
+    try {
+      return await attempt(signal);
+    } catch (error) {
+      if (!isRetryable(error)) {
+        return false;
+      }
+      throw error;
+    }
+  };
+}
+
+/**
+ * A tick that reloads a view's data while its summary is incomplete. `load` answers the
+ * data, `null` when a newer load replaced it (the poll goes on, and ends when its own
+ * view is disposed), and throws on a failure.
+ *
+ * @param {(signal: AbortSignal) => Promise<{progress: {complete: boolean}} | null>} load
+ */
+export function progressRun(load) {
+  return retrying(async (signal) => {
+    const latest = await load(signal);
+    return latest ? !latest.progress.complete : true;
+  });
+}
+
 /** @param {PollerOptions} options @returns {Poller} */
 export function createPoller(options) {
   const { run, intervalMs, isVisible, subscribeVisibility, setTimer, clearTimer, now } = options;

@@ -168,6 +168,31 @@ $ node tests/dom/agents-views-session.js
       "calls": 3,
       "running": false,
       "timers": 0
+    },
+    "a retried ask backs off on a failure, resets on an answer, and ends on a refusal": {
+      "asked": [
+        "down",
+        "again",
+        "refused"
+      ],
+      "running": false,
+      "failures": 0
+    },
+    "which failures are worth asking again": [
+      true,
+      true,
+      true,
+      false,
+      false
+    ],
+    "a summary poll backs off on a failed load and ends when the summary is complete": {
+      "afterFirst": 0,
+      "afterFailure": {
+        "failures": 1,
+        "waitMs": 2000
+      },
+      "unasked": 0,
+      "running": false
     }
   },
   "home": {
@@ -212,6 +237,33 @@ $ node tests/dom/agents-views-session.js
       "phase": "complete",
       "text": "All sessions are summarized.",
       "fraction": 1
+    },
+    "the session page while the catalog's first pass runs": [
+      "Reading the session catalog…",
+      "Looking for sessions…",
+      "Summarizing sessions: 0 of 12"
+    ],
+    "what the events say": {
+      "none match, the scan reached the end": {
+        "notice": "No events match.",
+        "note": ""
+      },
+      "none matched yet, more to scan": {
+        "notice": "No events matched yet.",
+        "note": ""
+      },
+      "none matched, the bound stopped the scan": {
+        "notice": "No events matched in the part of the session that could be searched.",
+        "note": ""
+      },
+      "some, the scan went on": {
+        "notice": "",
+        "note": ""
+      },
+      "some, the bound stopped the scan": {
+        "notice": "",
+        "note": "Showing the first events the scan reached; the rest of this session is not searched."
+      }
     },
     "ages": [
       "just now",

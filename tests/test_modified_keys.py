@@ -162,7 +162,7 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             "the interaction probe, which only counts inputs", None, via=("recordInteractionInput",)
         ),
     ),
-    "builtin_plugins/agents/index.js": (
+    "builtin_plugins/agents/agent-log.js": (
         Listener(
             "an event row's Enter and Space toggle",
             "const plain = !(event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);",

@@ -589,6 +589,7 @@ status: 200
   "limit": 4,
   "examined": 4,
   "next_cursor": 4,
+  "truncated": false,
   "events": [
     {
       "session_id": "00000000-0000-4000-8000-000000000001",

@@ -248,12 +248,14 @@ current on a worker thread, `store.py` caches each summary, and `routes.py` serv
 | `catalog` | `folder` | Homes, totals, size-histogram buckets, sessions per day, progress, freshness, cache state, drift, and engines |
 | `sessions` | `folder`; filters `agent`, `origin`, `status`, `project`, `model`, `since`, `until`; `sort`, `order`, `limit`, `offset` | Matching rows, `total`, `next_offset`, and facets over the whole folder |
 | `session` | `agent` and `id`, or `path`, the session’s source file | One row, its parent, its children, and its drift |
-| `records` | the session as above; `kind`, `tool`, `locator`, `limit`, `cursor` | One page of the session’s normalized events, with `next_cursor` |
+| `records` | the session as above; `kind`, `tool`, `locator`, `limit`, `cursor` | One page of the session’s normalized events, with `next_cursor`, which is null at the end and where the scan bound stopped (`truncated`) |
 | `live` | `folder` | Sessions a pid file, an active turn, or a recent update vouches for |
 
 Paths in `folder` and `path` are served-root-relative and resolve through `plugin_api`;
 every path in a response is relative to the served root, and a project shows the user’s
-home directory as `~`. A refusal is `{"error", "code", "param"}` with status 400 or 404.
+home directory as `~`. A refusal is `{"error", "code", "param"}` with status 400 or 404,
+or 503 `catalog_incomplete` (with `progress`) for a session that the first pass of a
+home has not listed yet, which a page asks for again.
 
 A request answers from what the worker has summarized so far and reports `progress` and
 `freshness`; it starts a pass when the last is old, and never waits for a full one.

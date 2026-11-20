@@ -17,7 +17,14 @@
 // module the first time a home is shown.
 
 import { activityBars, ageText, progressView, sizeBars } from "./home-model.js";
-import { browserClock, createPoller, LIVE_POLL_MS, PROGRESS_POLL_MS } from "./poller.js";
+import {
+  browserClock,
+  createPoller,
+  isRetryable,
+  LIVE_POLL_MS,
+  PROGRESS_POLL_MS,
+  progressRun,
+} from "./poller.js";
 import { sessionTableHtml } from "./session-rows.js";
 import {
   agentLabel,
@@ -333,10 +340,15 @@ export function mountHome(container, ctx, mb) {
     isVisible: visible,
     subscribeVisibility: subscribe,
     intervalMs: PROGRESS_POLL_MS,
-    run: async (signal) => {
+    // Also the retry of a first load that failed: a failed tick backs off, and the first
+    // answer to arrive starts the live strip the failure held back.
+    run: progressRun(async (signal) => {
       const answer = await loadCatalog(signal);
-      return answer ? !answer.progress.complete : false;
-    },
+      if (answer) {
+        startLiveOnce();
+      }
+      return answer;
+    }),
   });
   const livePoll = createPoller({
     ...clock,
@@ -362,6 +374,14 @@ export function mountHome(container, ctx, mb) {
     }
   }
 
+  let liveStarted = false;
+  function startLiveOnce() {
+    if (!liveStarted && !disposed) {
+      liveStarted = true;
+      void startLive();
+    }
+  }
+
   const ready = (async () => {
     await ensureViewStyles();
     try {
@@ -371,9 +391,12 @@ export function mountHome(container, ctx, mb) {
       }
     } catch (error) {
       paintError(error);
+      if (isRetryable(error)) {
+        progressPoll.start();
+      }
       return;
     }
-    void startLive();
+    startLiveOnce();
   })();
 
   /** @param {MouseEvent} event */

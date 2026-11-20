@@ -33,40 +33,73 @@ export function sessionFile(row) {
  * The sentence a failed route answers with, or a plain one when it answered with none.
  *
  * @param {unknown} error
- * @returns {{message: string, code: string | null}}
+ * @returns {{message: string, code: string | null, progress: import("./home-model.js").Progress | null}}
  */
 export function refusal(error) {
-  const payload = /** @type {{payload?: {error?: unknown, code?: unknown}}} */ (error)?.payload;
+  const payload = /** @type {{payload?: {error?: unknown, code?: unknown, progress?: unknown}}} */ (
+    error
+  )?.payload;
   const message = typeof payload?.error === "string" ? payload.error : null;
+  const progress = payload?.progress;
   return {
     message: message ?? "The agents data could not be read.",
     code: typeof payload?.code === "string" ? payload.code : null,
+    progress:
+      progress && typeof progress === "object"
+        ? /** @type {import("./home-model.js").Progress} */ (progress)
+        : null,
   };
 }
 
-/** @type {Promise<void> | null} */
-let stylesheet = null;
+/** @type {Map<string, Promise<void>>} */
+const sheets = new Map();
 
 /**
- * Load the views' stylesheet once, when the first of them mounts. It is not the plugin's
- * `styles.css`, which every folder page and every agent log loads: the home, the list, and
- * the session page are used far less than a folder is opened, so their rules are fetched
- * only when one of them is shown. Resolves when the sheet has loaded or failed; a view
- * that cannot fetch it still reads.
+ * Load one of the plugin's stylesheets once. The plugin has no `styles.css`, which the
+ * shell would load with every folder page (the plugin offers views of that kind), so each
+ * view's rules are fetched when the first view that uses them is shown. Resolves when the
+ * sheet has loaded or failed; a view that cannot fetch it still reads.
+ *
+ * @param {string} name The file's name beside this module.
+ * @param {Document} doc
+ * @returns {Promise<void>}
+ */
+function ensureSheet(name, doc) {
+  let loading = sheets.get(name);
+  if (!loading) {
+    loading = new Promise((resolve) => {
+      const link = doc.createElement("link");
+      link.rel = "stylesheet";
+      link.href = new URL(`./${name}`, import.meta.url).href;
+      link.addEventListener("load", () => resolve(), { once: true });
+      link.addEventListener("error", () => resolve(), { once: true });
+      doc.head.append(link);
+    });
+    sheets.set(name, loading);
+  }
+  return loading;
+}
+
+/**
+ * The Log, Charts, and Raw views' rules and the event kinds' and tool families' color
+ * tokens (`agent-log.css`).
+ *
+ * @param {Document} [doc]
+ * @returns {Promise<void>}
+ */
+export function ensureLogStyles(doc = document) {
+  return ensureSheet("agent-log.css", doc);
+}
+
+/**
+ * The home's, the list's, and the session page's rules (`agents-views.css`), and the color
+ * tokens their event badges and tallies use (`agent-log.css`).
  *
  * @param {Document} [doc]
  * @returns {Promise<void>}
  */
 export function ensureViewStyles(doc = document) {
-  stylesheet ??= new Promise((resolve) => {
-    const link = doc.createElement("link");
-    link.rel = "stylesheet";
-    link.href = new URL("./agents-views.css", import.meta.url).href;
-    link.addEventListener("load", () => resolve(), { once: true });
-    link.addEventListener("error", () => resolve(), { once: true });
-    doc.head.append(link);
-  });
-  return stylesheet;
+  return Promise.all([ensureSheet("agents-views.css", doc), ensureLogStyles(doc)]).then(() => {});
 }
 
 /**

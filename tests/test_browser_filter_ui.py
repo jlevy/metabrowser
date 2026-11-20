@@ -1370,8 +1370,8 @@ def test_agent_log_uses_the_shared_additive_chip_family() -> None:
 
     css = _read("styles.css")
     plugin_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "agents"
-    plugin = (plugin_root / "index.js").read_text()
-    plugin_css = (plugin_root / "styles.css").read_text()
+    plugin = (plugin_root / "agent-log.js").read_text()
+    plugin_css = (plugin_root / "agent-log.css").read_text()
 
     assert ".nav-filter-bar {" in css
     assert "mb.filterControls" in plugin

@@ -280,8 +280,8 @@ def _agent_chart_specs(events: list[LogEvent]) -> list[dict[str, Any]]:
     # consumes the spec (canvas can't resolve var() itself).
     # A parsed log's kinds are the adapters' (tool_call, init, ...). Each is drawn in the fill
     # of the event kind it is, so a kind is one colour in the Log's badge, its filter, and this
-    # chart: the plugin's `--agent-kind-<kind>-fill` tokens (agents/styles.css). The same
-    # table is in agents/index.js, and tests/test_agent_kind_palette.py pins the two together.
+    # chart: the plugin's `--agent-kind-<kind>-fill` tokens (agents/agent-log.css). The same
+    # table is in agents/agent-log.js, and tests/test_agent_kind_palette.py pins the two together.
     kind_colors = {
         "tool_call": "var(--agent-kind-tool-call-fill)",
         "tool_result": "var(--agent-kind-tool-result-fill)",

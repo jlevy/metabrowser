@@ -8,7 +8,7 @@ pins what a reader needs of it: every token exists in both themes; each ``-text`
 its ``-bg``; a token keeps its hue between themes; and no two ``-fill`` colors in one theme
 sit closer than ``MIN_FILL_DISTANCE``. The Log, the Charts view, and the Session view each
 draw a kind from these tokens, and the adapters' own kind names map onto them in one table
-that ``charts.py`` and ``agents/index.js`` both state.
+that ``charts.py`` and ``agents/agent-log.js`` both state.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from tests.test_agent_log_theme import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-PLUGIN_JS = PLUGIN_CSS.with_name("index.js")
+PLUGIN_JS = PLUGIN_CSS.with_name("agent-log.js")
 CHARTS_PY = ROOT / "src" / "metabrowser" / "charts.py"
 
 # The least Euclidean distance in OKLab between two fills of one theme. Measured on the

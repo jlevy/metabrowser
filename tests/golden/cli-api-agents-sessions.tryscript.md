@@ -432,6 +432,7 @@ status: 200
   "limit": 200,
   "examined": 24,
   "next_cursor": null,
+  "truncated": false,
   "events": [
     {
       "session_id": "11111111-1111-4111-8111-111111111111",
@@ -499,6 +500,7 @@ status: 200
   "limit": 200,
   "examined": 24,
   "next_cursor": null,
+  "truncated": false,
   "events": [
     {
       "session_id": "11111111-1111-4111-8111-111111111111",
@@ -553,6 +555,7 @@ status: 200
   "limit": 3,
   "examined": 3,
   "next_cursor": 3,
+  "truncated": false,
   "events": [
     {
       "session_id": "00000000-0000-4000-8000-000000000001",
@@ -618,6 +621,7 @@ status: 200
   "limit": 3,
   "examined": 6,
   "next_cursor": 6,
+  "truncated": false,
   "events": [
     {
       "session_id": "00000000-0000-4000-8000-000000000001",
@@ -685,6 +689,7 @@ status: 200
   "limit": 200,
   "examined": 24,
   "next_cursor": null,
+  "truncated": false,
   "events": [
     {
       "session_id": "11111111-1111-4111-8111-111111111111",

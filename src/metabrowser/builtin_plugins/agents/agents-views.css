@@ -1,6 +1,6 @@
 /* The agents home, the session list, and the Session view. Loaded on demand by
-   support.js#ensureViewStyles, the first time one of them mounts; the kind colors and the
-   Log's own rules are in styles.css. Color is the event kind or the tool family, nothing
+   support.js#ensureViewStyles, the first time one of them mounts, with agent-log.css, which
+   holds the kind colors and the Log's own rules. Color is the event kind or the tool family, nothing
    else: an agent is a label, and a status uses the shell's badges. */
 
 .agents-home,

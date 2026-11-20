@@ -1298,6 +1298,7 @@ type StructuredBuiltins = {
 };
 
 type AgentLogBuiltins = {
+  disposeCharts: (container?: HTMLElement) => void;
   disposeLog: (container?: HTMLElement) => void;
   renderCharts: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
   renderLog: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;

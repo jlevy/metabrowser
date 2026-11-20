@@ -105,6 +105,16 @@ try {
     !plainAssets.some(([name]) => /^(home|session|session-list|session-rows)\.js/.test(name)),
     plainAssets,
   );
+  check(
+    "nor are the Log, Charts, and Raw renderers or the sheet they and the kind colors live in",
+    !plainAssets.some(([name]) => /^agent-log\./.test(name)),
+    plainAssets,
+  );
+  check(
+    "the plugin's one eager asset is its registration stub",
+    plainAssets.map(([name]) => name.replace(/\?.*$/, "")).join() === "index.js",
+    plainAssets,
+  );
   measure("a plain folder's agents plugin assets (name, encoded bytes)", plainAssets);
   step("plain folder");
 
@@ -351,6 +361,18 @@ try {
       "and shows the Log it always had",
       await until(chrome, `Boolean(${SHOWN}?.view.querySelector(".log-event"))`),
     );
+    const logAssets = await chrome.evaluate(
+      `${RESOURCES}.filter((e) => e.name.includes("/plugin-static/agents/") && /agent-log\\.(js|css)/.test(e.name)).map((e) => [e.name.split("/").pop().replace(/\\?.*$/, ""), e.encodedBodySize])`,
+    );
+    check(
+      "the Log's renderers and sheet load when the Log is shown, once each",
+      logAssets
+        .map(([name]) => name)
+        .sort()
+        .join() === "agent-log.css,agent-log.js",
+      logAssets,
+    );
+    measure("the Log's agents assets (name, encoded bytes)", logAssets);
     step("outside a home");
   }
 

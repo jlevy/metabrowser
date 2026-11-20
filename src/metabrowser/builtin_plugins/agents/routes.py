@@ -119,17 +119,26 @@ ENGINES: Final = {"session": "builtin", "drift": "builtin"}
 class _Refusal(Exception):
     """A request the route turns into a typed JSON error."""
 
-    def __init__(self, status: int, code: str, message: str, param: str | None = None) -> None:
+    def __init__(
+        self,
+        status: int,
+        code: str,
+        message: str,
+        param: str | None = None,
+        progress: dict[str, object] | None = None,
+    ) -> None:
         super().__init__(message)
         self.status = status
         self.code = code
         self.message = message
         self.param = param
+        self.progress = progress
 
     def response(self) -> JSONResponse:
-        return JSONResponse(
-            {"error": self.message, "code": self.code, "param": self.param}, status_code=self.status
-        )
+        body: dict[str, object] = {"error": self.message, "code": self.code, "param": self.param}
+        if self.progress is not None:
+            body["progress"] = self.progress
+        return JSONResponse(body, status_code=self.status)
 
 
 def _bad(param: str, message: str) -> _Refusal:
@@ -660,6 +669,26 @@ def _located(scope: _Scope, snap: catalogs.Snapshot, entry: catalogs.CatalogEntr
     return _Located(scope, snap, session, entry.summarized, entry.drift)
 
 
+def _not_found(scope: _Scope, message: str, param: str) -> _Refusal:
+    """The refusal for a session the catalog does not hold.
+
+    While a home's first pass has not listed its sessions, an absent session may only be
+    one not listed yet, so the answer is the retryable ``catalog_incomplete`` (with the
+    progress, so a page can show it), not a ``session_not_found`` that a page reads as
+    "not in an agent home".
+    """
+
+    if any(snap.fast_at is None for snap in scope.snapshots):
+        return _Refusal(
+            503,
+            "catalog_incomplete",
+            "The session catalog is still being read; ask again",
+            param,
+            _progress(scope),
+        )
+    return _Refusal(404, "session_not_found", message, param)
+
+
 def _locate(request: Request) -> _Located:
     """The session a request names, by ``path`` or by ``agent`` and ``id``."""
 
@@ -694,7 +723,7 @@ def _locate(request: Request) -> _Located:
                     return replace(_located(scope, snap, entry), source=target)
                 if snap.home.agent == "codex" and entry.summary.session_id == thread:
                     return replace(_located(scope, snap, entry), source=target)
-        raise _Refusal(404, "session_not_found", "No session in the catalog has that file", "path")
+        raise _not_found(scope, "No session in the catalog has that file", "path")
     agent = _choice(request, "agent", AGENTS)
     identifier = _text(request, "id")
     if agent is None or identifier is None:
@@ -706,7 +735,7 @@ def _locate(request: Request) -> _Located:
         for entry in snap.entries:
             if entry.summary.session_id == identifier:
                 return _located(scope, snap, entry)
-    raise _Refusal(404, "session_not_found", "No such session", "id")
+    raise _not_found(scope, "No such session", "id")
 
 
 @_guarded
@@ -756,12 +785,16 @@ def records_handler(request: Request) -> dict[str, object]:
     events: list[Event] = []
     examined = 0
     exhausted = True
+    truncated = False
     try:
         # One request examines at most RECORDS_SCAN_MAX events in all, the ones before
-        # the cursor included, since a stream is re-read from its start each time.
+        # the cursor included, since a stream is re-read from its start each time. A
+        # scan the bound stopped has no next cursor: the next request would examine the
+        # same events and stop at the same place.
         for event in stream:
             if examined >= RECORDS_SCAN_MAX or len(events) >= limit:
                 exhausted = False
+                truncated = examined >= RECORDS_SCAN_MAX
                 break
             examined += 1
             if examined > cursor and wanted(event):
@@ -777,7 +810,8 @@ def records_handler(request: Request) -> dict[str, object]:
         "cursor": cursor,
         "limit": limit,
         "examined": examined,
-        "next_cursor": None if exhausted else examined,
+        "next_cursor": None if exhausted or truncated else examined,
+        "truncated": truncated,
         "events": [event.to_json() for event in events],
     }
 

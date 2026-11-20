@@ -7,7 +7,7 @@
 // navigation.
 
 import { progressView } from "./home-model.js";
-import { browserClock, createPoller, PROGRESS_POLL_MS } from "./poller.js";
+import { browserClock, createPoller, PROGRESS_POLL_MS, progressRun } from "./poller.js";
 import {
   initialState,
   ORIGINS,
@@ -247,7 +247,10 @@ export function mountSessionList(container, ctx, mb) {
     root.querySelector(".agents-loading")?.remove();
   }
 
-  /** Load the page `state` names; a newer request replaces one still in flight. */
+  /**
+   * Load the page `state` names; a newer request replaces one still in flight, and the
+   * replaced one answers `null`. A failure is shown and thrown, for the poll to back off.
+   */
   async function load() {
     flight?.abort();
     const mine = new AbortController();
@@ -265,6 +268,7 @@ export function mountSessionList(container, ctx, mb) {
       }
       answer = /** @type {ListAnswer} */ (/** @type {unknown} */ (fetched));
       failure = null;
+      failureEl.hidden = true;
       paintFilters();
       paintRows();
       return answer;
@@ -274,7 +278,7 @@ export function mountSessionList(container, ctx, mb) {
       }
       failure = refusal(error).message;
       paintFailure();
-      return null;
+      throw error;
     }
   }
 
@@ -284,7 +288,32 @@ export function mountSessionList(container, ctx, mb) {
       return;
     }
     state = next;
-    void load();
+    // A failed load is on screen; the poll below retries it, and a person's next change
+    // asks again.
+    void settle(load());
+  }
+
+  /**
+   * Start the poll for what a load left unsettled: a failure, or a summary not complete.
+   *
+   * @param {Promise<ListAnswer | null>} loading
+   */
+  async function settle(loading) {
+    try {
+      const loaded = await loading;
+      if (loaded && !loaded.progress.complete) {
+        startRetry();
+      }
+    } catch (_error) {
+      startRetry();
+    }
+  }
+
+  /** Keep asking, with backing off. */
+  function startRetry() {
+    if (!disposed && !progressPoll.state().running) {
+      progressPoll.start();
+    }
   }
 
   const progressPoll = createPoller({
@@ -299,10 +328,7 @@ export function mountSessionList(container, ctx, mb) {
       };
     },
     intervalMs: PROGRESS_POLL_MS,
-    run: async () => {
-      const latest = await load();
-      return latest ? !latest.progress.complete : true;
-    },
+    run: progressRun(() => load()),
   });
 
   /** @param {MouseEvent} event */
@@ -327,10 +353,8 @@ export function mountSessionList(container, ctx, mb) {
   const ready = (async () => {
     await ensureViewStyles();
     paintFilters();
-    const first = await load();
-    if (first && !first.progress.complete) {
-      progressPoll.start();
-    }
+    // A first load that fails has its error on screen and is asked again by the poll.
+    await settle(load());
   })();
 
   return Object.freeze({

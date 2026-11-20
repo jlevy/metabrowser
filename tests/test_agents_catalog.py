@@ -576,13 +576,16 @@ def test_records_filter_by_kind_tool_and_locator(served: syn.SyntheticHomes) -> 
     assert [e["locator"] for e in _events(one)] == [wanted.locator]
 
 
-def test_records_scan_is_bounded_and_resumable(
+def test_a_sparse_filter_that_reaches_the_scan_bound_ends_there(
     served: syn.SyntheticHomes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(routes, "RECORDS_SCAN_MAX", 5)
     page = ok(routes.records_handler, agent="claude", id=syn.S1, kind="error")
     assert page["examined"] == 5
-    assert page["next_cursor"] == 5
+    # Resuming at 5 would examine the same five events and stop at the same place.
+    assert page["next_cursor"] is None
+    assert page["truncated"] is True
+    assert _events(page) == []
 
 
 def test_records_of_a_codex_thread_come_from_its_history(served: syn.SyntheticHomes) -> None:
@@ -783,12 +786,76 @@ def test_records_count_skipped_events_toward_one_scan_bound(
     monkeypatch.setattr(routes, "RECORDS_SCAN_MAX", 8)
     first = ok(routes.records_handler, agent="claude", id=syn.S1, limit=100)
     assert first["examined"] == 8
-    assert first["next_cursor"] == 8
+    # The bound stopped the scan, so there is nothing further to ask for: a next cursor
+    # would re-examine the same eight events and stop at the same place.
+    assert first["next_cursor"] is None
+    assert first["truncated"] is True
     second = ok(routes.records_handler, agent="claude", id=syn.S1, limit=100, cursor=5)
     assert second["examined"] == 8  # the five skipped count: at most 8 in all
     assert len(_events(second)) == 3
     status, body = call(routes.records_handler, agent="claude", id=syn.S1, cursor=9, sync=1)
     assert (status, body["param"]) == (400, "cursor")
+
+
+def test_a_scan_that_ends_short_of_the_bound_is_not_truncated(
+    served: syn.SyntheticHomes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = ok(routes.records_handler, agent="claude", id=syn.S1, limit=2)
+    assert body["truncated"] is False
+    assert body["next_cursor"] == 2  # more events follow, and the bound is not near
+    monkeypatch.setattr(routes, "RECORDS_SCAN_MAX", 2)
+    capped = ok(routes.records_handler, agent="claude", id=syn.S1, limit=2)
+    assert capped["truncated"] is True  # the page filled exactly at the bound
+    assert capped["next_cursor"] is None
+
+
+def test_a_session_not_listed_yet_is_retryable_not_missing(
+    served: syn.SyntheticHomes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """While the first pass is incomplete, an absent session may only be unlisted so far."""
+
+    rollout = next(iter(_codex_rollouts(served)))
+    with monkeypatch.context() as held:
+        # A first pass that has not run: no request starts or waits for one.
+        held.setattr(catalog.HomeCatalog, "refresh", lambda *_args, **_kwargs: None)
+        for handler in (routes.session_handler, routes.records_handler):
+            for params in (
+                {"path": f".claude/projects/-work-alpha/{syn.S1}.jsonl"},
+                {"path": rollout},
+                {"agent": "claude", "id": syn.S1},
+            ):
+                status, body = call(handler, **params)
+                assert status == 503, (handler.__name__, params, body)
+                assert body["code"] == "catalog_incomplete"
+                progress = body["progress"]
+                assert isinstance(progress, dict)
+                assert progress["state"] == "scanning"  # pyright: ignore[reportUnknownMemberType]
+                assert progress["complete"] is False  # pyright: ignore[reportUnknownMemberType]
+    # Once the first pass has listed the home, a session it does not hold is missing.
+    assert call(routes.session_handler, agent="claude", id="nope", sync=1, now=NOW)[0] == 404
+    assert ok(routes.session_handler, agent="claude", id=syn.S1)["session"]
+
+
+def test_a_codex_rollout_is_found_by_its_thread_id_when_its_path_is_spelled_differently(
+    served: syn.SyntheticHomes,
+) -> None:
+    """The fallback runs: the catalog holds the rollout's path as Codex wrote it."""
+
+    ok(routes.catalog_handler)
+    original = served.root / next(iter(_codex_rollouts(served)))
+    moved = served.codex.path / "sessions" / "moved" / original.name
+    moved.parent.mkdir(parents=True)
+    moved.write_bytes(original.read_bytes())
+    by_original = ok(routes.session_handler, path=original.relative_to(served.root).as_posix())
+    by_moved = ok(routes.session_handler, path=moved.relative_to(served.root).as_posix())
+    session = by_moved["session"]
+    assert isinstance(session, dict)
+    assert session["session_id"] == by_original["session"]["session_id"]  # pyright: ignore[reportIndexIssue, reportUnknownVariableType]
+    source_paths = session["source_paths"]
+    assert isinstance(source_paths, list)
+    assert moved.relative_to(served.root).as_posix() not in source_paths  # pyright: ignore[reportUnknownMemberType]
+    records = ok(routes.records_handler, path=moved.relative_to(served.root).as_posix())
+    assert _events(records)
 
 
 def test_a_path_request_streams_the_file_it_named_when_ids_collide(

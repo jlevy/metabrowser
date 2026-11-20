@@ -18,3 +18,9 @@
   ([Color and Theming](docs/design-system.md#color-and-theming)).
 - The `sessions` route of the `agents` plugin lists a `model` facet, and the `live`
   route names each running session’s source files.
+- A session opened while its home is still being listed for the first time shows the
+  catalog’s progress and appears when listing finishes, instead of falling back to the
+  plain Log or saying the file is in no agent home.
+  A session with more events than one request can scan says so, rather than offering
+  “Load more events” forever, and the agents plugin’s Log, Charts, and Raw JSON code and
+  styles load only when one of those views is shown, not with every folder page.

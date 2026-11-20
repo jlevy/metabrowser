@@ -265,6 +265,89 @@ async function main() {
     assert(calls === 3 && !poll.state().running, "the poll stops on false");
     poll.dispose();
   }
+  {
+    // A view that asks until its answer settles (`retrying`): the session page waiting for
+    // the catalog's first pass, and the home and the list retrying a first load that failed.
+    const clock = createClock();
+    let next = "down";
+    const seen = [];
+    const poll = poller.createPoller({
+      ...clock,
+      intervalMs: 1000,
+      run: poller.retrying(async () => {
+        seen.push(next);
+        if (next === "down") {
+          throw new Error("down");
+        }
+        if (next === "refused") {
+          throw Object.assign(new Error("refused"), { status: 404 });
+        }
+        return next === "again";
+      }),
+    });
+    poll.start();
+    await clock.advance(1000);
+    assert(poll.state().failures === 1 && poll.state().running, "a failure backs off and goes on");
+    assert(poll.state().waitMs === 2000, "the wait doubles");
+    next = "again";
+    await clock.advance(2000);
+    assert(poll.state().failures === 0 && poll.state().waitMs === 1000, "an answer resets it");
+    next = "refused";
+    await clock.advance(1000);
+    polling["a retried ask backs off on a failure, resets on an answer, and ends on a refusal"] = {
+      asked: [...seen],
+      running: poll.state().running,
+      failures: poll.state().failures,
+    };
+    assert(!poll.state().running, "a refusal asking again cannot cure ends the poll");
+    assert(clock.pendingTimers() === 0, "an ended poll leaves no timer");
+    polling["which failures are worth asking again"] = [
+      new Error("no status"),
+      { status: 503 },
+      { status: 429 },
+      { status: 404 },
+      { status: 400 },
+    ].map((error) => poller.isRetryable(error));
+    poll.dispose();
+  }
+  {
+    // The summary poll of the home and the list (`progressRun`): it goes on while the
+    // summary is incomplete, ends when it is complete, and backs off on a failed load.
+    const clock = createClock();
+    const answers = [
+      { progress: { complete: false } },
+      "fail",
+      null,
+      { progress: { complete: false } },
+      { progress: { complete: true } },
+    ];
+    const poll = poller.createPoller({
+      ...clock,
+      intervalMs: 1000,
+      run: poller.progressRun(async () => {
+        const answer = answers.shift();
+        if (answer === "fail") {
+          throw new Error("down");
+        }
+        return answer ?? null;
+      }),
+    });
+    poll.start();
+    await clock.advance(1000);
+    const afterFirst = poll.state().failures;
+    await clock.advance(1000);
+    const afterFailure = { failures: poll.state().failures, waitMs: poll.state().waitMs };
+    await clock.advance(30_000);
+    polling["a summary poll backs off on a failed load and ends when the summary is complete"] = {
+      afterFirst,
+      afterFailure,
+      unasked: answers.length,
+      running: poll.state().running,
+    };
+    assert(afterFailure.failures === 1, "a failed load is counted, not swallowed");
+    assert(answers.length === 0 && !poll.state().running, "it ends on a complete summary");
+    poll.dispose();
+  }
   transcript.poll = polling;
 
   // -- what the home derives -------------------------------------------------------------
@@ -312,6 +395,28 @@ async function main() {
     { state: "idle", total: 10, summarized: 10, failed: 0, complete: true },
     formatInteger,
   );
+  derived["the session page while the catalog's first pass runs"] = [
+    session.waitingText(null, formatInteger),
+    session.waitingText(
+      { state: "scanning", total: 0, summarized: 0, failed: 0, complete: false },
+      formatInteger,
+    ),
+    session.waitingText(
+      { state: "scanning", total: 12, summarized: 0, failed: 0, complete: false },
+      formatInteger,
+    ),
+  ];
+  const said = (shown, nextCursor, truncated) =>
+    session.eventsSaid({ shown, nextCursor, truncated });
+  derived["what the events say"] = {
+    "none match, the scan reached the end": said(0, null, false),
+    "none matched yet, more to scan": said(0, 40, false),
+    "none matched, the bound stopped the scan": said(0, null, true),
+    "some, the scan went on": said(5, 40, false),
+    "some, the bound stopped the scan": said(5, null, true),
+  };
+  assert(said(0, 40, false).notice !== "No events match.", "none match only at the scan's end");
+  assert(said(5, null, true).note !== "", "a truncated scan says so beside rows");
   derived.ages = [3, 40, 600, 7300, 400_000].map((seconds) => model.ageText(NOW - seconds, NOW));
   derived.durations = [31, 252, 7500].map((seconds) => model.durationText(seconds));
   transcript.home = derived;

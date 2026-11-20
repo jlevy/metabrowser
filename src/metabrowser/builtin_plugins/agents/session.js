@@ -8,8 +8,13 @@
 //
 // A file that is in no agent home (an exported transcript, or one from a Git revision) has
 // no session in the catalog. The page then falls back to the plain Log the file always had.
+// While a home's first pass has not listed its sessions, the routes answer
+// `catalog_incomplete` instead, since the file may only be unlisted so far: the page then
+// shows the catalog's progress and asks again, through `createPoller`, until the answer is
+// a session or a refusal that says the file is none.
 
-import { ageText, durationText } from "./home-model.js";
+import { ageText, durationText, progressView } from "./home-model.js";
+import { browserClock, createPoller, PROGRESS_POLL_MS, retrying } from "./poller.js";
 import {
   agentLabel,
   ensureViewStyles,
@@ -39,6 +44,51 @@ export const KINDS = Object.freeze([
  * `RECORDS_MAX`; a page that adds rows on request needs no more than the default.
  */
 export const EVENTS_PAGE = 200;
+
+/** The route's refusal that means the catalog has not listed its sessions yet: ask again. */
+export const CATALOG_INCOMPLETE = "catalog_incomplete";
+
+/**
+ * What the page says while it waits for the catalog's first pass.
+ *
+ * @param {import("./home-model.js").Progress | null} progress
+ * @param {(value: number) => string} formatInteger
+ * @returns {string}
+ */
+export function waitingText(progress, formatInteger) {
+  return progress ? progressView(progress, formatInteger).text : "Reading the session catalog…";
+}
+
+/**
+ * What the page says about the events it showed, which is a sentence only when there is
+ * something to say: that none match (said only when the scan reached the session's end),
+ * that none matched yet, or that the scan's bound stopped it. An empty string says
+ * nothing.
+ *
+ * @param {{shown: number, nextCursor: number | null, truncated: boolean}} page
+ * @returns {{notice: string, note: string}} `notice` stands for an empty list; `note`
+ *   follows a list that has rows.
+ */
+export function eventsSaid(page) {
+  if (page.shown === 0) {
+    if (page.truncated) {
+      return {
+        notice: "No events matched in the part of the session that could be searched.",
+        note: "",
+      };
+    }
+    return {
+      notice: page.nextCursor === null ? "No events match." : "No events matched yet.",
+      note: "",
+    };
+  }
+  return {
+    notice: "",
+    note: page.truncated
+      ? "Showing the first events the scan reached; the rest of this session is not searched."
+      : "",
+  };
+}
 
 /** The route's refusals that mean the file is simply not a catalogued session. */
 const NOT_A_SESSION = Object.freeze([
@@ -185,6 +235,7 @@ export function mountSession(container, ctx, mb, withHeader) {
     '<div class="agents-loading mb-delayed-loading" aria-hidden="true"></div>' +
     '<p class="agents-empty" role="status" hidden></p>' +
     '<ol class="agents-events"></ol>' +
+    '<p class="agents-muted agents-events-note" role="status" hidden></p>' +
     '<div class="agents-more" hidden><button type="button" class="btn" data-agents-more>Load more events</button></div>';
   container.append(root);
   const headerEl = /** @type {HTMLElement} */ (root.querySelector(".agents-session-header"));
@@ -193,6 +244,8 @@ export function mountSession(container, ctx, mb, withHeader) {
   const list = /** @type {HTMLElement} */ (root.querySelector(".agents-events"));
   const more = /** @type {HTMLElement} */ (root.querySelector(".agents-more"));
 
+  const noteEl = /** @type {HTMLElement} */ (root.querySelector(".agents-events-note"));
+
   /** A failed read, as the shell shows one: a notice with a severity, announced. @param {string} message */
   function showFailure(message) {
     root.querySelector(".agents-loading")?.remove();
@@ -200,6 +253,22 @@ export function mountSession(container, ctx, mb, withHeader) {
     notice.className = "notice";
     notice.setAttribute("data-severity", "error");
     notice.setAttribute("role", "alert");
+    notice.textContent = message;
+  }
+
+  /**
+   * A plain sentence in the same element a failure uses, which it must leave as it
+   * found it: no severity and no alert role, or "No events match." would be announced as
+   * an error.
+   *
+   * @param {string} message
+   */
+  function showMessage(message) {
+    root.querySelector(".agents-loading")?.remove();
+    notice.hidden = message === "";
+    notice.className = "agents-empty";
+    notice.removeAttribute("data-severity");
+    notice.setAttribute("role", "status");
     notice.textContent = message;
   }
 
@@ -237,37 +306,56 @@ export function mountSession(container, ctx, mb, withHeader) {
     restore();
   }
 
-  /** Load the events from `cursor` on, adding them to the list. */
+  /**
+   * Load the events from `cursor` on, adding them to the list.
+   *
+   * @returns {Promise<boolean>} True when the catalog has not listed the session yet, so
+   *   the caller asks again.
+   */
   async function loadEvents() {
     const token = ++generation;
     const mine = controller.signal;
     try {
-      const answer = /** @type {{events: ReadonlyArray<EventRow>, next_cursor: number | null}} */ (
-        /** @type {unknown} */ (
-          await mb.fetchPluginData(
-            "agents",
-            "records",
-            { path, limit: EVENTS_PAGE, cursor, ...(kind ? { kind } : {}) },
-            { signal: mine },
+      const answer =
+        /** @type {{events: ReadonlyArray<EventRow>, next_cursor: number | null, truncated: boolean}} */ (
+          /** @type {unknown} */ (
+            await mb.fetchPluginData(
+              "agents",
+              "records",
+              { path, limit: EVENTS_PAGE, cursor, ...(kind ? { kind } : {}) },
+              { signal: mine },
+            )
           )
-        )
-      );
+        );
       if (disposed || token !== generation) {
-        return;
+        return false;
       }
       root.querySelector(".agents-loading")?.remove();
       list.insertAdjacentHTML("beforeend", answer.events.map((e) => eventHtml(mb, e)).join(""));
       cursor = answer.next_cursor ?? cursor;
+      // A scan the route's bound stopped has no next cursor: no button, and a sentence.
       more.hidden = answer.next_cursor === null;
-      const none = list.childElementCount === 0;
-      notice.hidden = !none;
-      notice.textContent = none ? "No events match." : "";
+      const said = eventsSaid({
+        shown: list.childElementCount,
+        nextCursor: answer.next_cursor,
+        truncated: answer.truncated === true,
+      });
+      showMessage(said.notice);
+      noteEl.hidden = said.note === "";
+      noteEl.textContent = said.note;
+      return false;
     } catch (error) {
       if (disposed || mine.aborted || token !== generation) {
-        return;
+        return false;
+      }
+      const failed = refusal(error);
+      if (failed.code === CATALOG_INCOMPLETE) {
+        showMessage(waitingText(failed.progress, mb.formatInteger));
+        return true;
       }
       root.querySelector(".agents-loading")?.remove();
-      showFailure(refusal(error).message);
+      showFailure(failed.message);
+      return false;
     }
   }
 
@@ -276,22 +364,27 @@ export function mountSession(container, ctx, mb, withHeader) {
    *
    * @param {string} message
    */
-  function fallback(message) {
-    const builtin = /** @type {any} */ (mb.builtins)?.agentLog;
-    if (ctx.kind === "agent-log" && builtin?.renderLog) {
+  async function fallback(message) {
+    const view = ctx.kind === "agent-log" ? mb.getRegisteredView("agent-log", "log") : null;
+    if (view) {
       container.replaceChildren();
-      builtin.renderLog(container, ctx);
-      fallbackDispose = () => builtin.disposeLog?.(container);
+      fallbackDispose = () => view.dispose?.(container);
+      await view.render(container, ctx);
       return;
     }
-    root.querySelector(".agents-loading")?.remove();
-    notice.hidden = false;
-    notice.textContent = message;
+    showMessage(message);
   }
 
-  const ready = (async () => {
-    await ensureViewStyles();
-    if (withHeader) {
+  let headerShown = false;
+
+  /**
+   * One attempt to show the session: its header, then its first events.
+   *
+   * @returns {Promise<boolean>} True while the catalog has not listed the file's session,
+   *   so the poll below asks again.
+   */
+  async function begin() {
+    if (withHeader && !headerShown) {
       try {
         const answer =
           /** @type {{session: SessionDetail, parent: SessionDetail | null, children: ReadonlyArray<SessionDetail>, children_total: number, now: number}} */ (
@@ -300,26 +393,50 @@ export function mountSession(container, ctx, mb, withHeader) {
             )
           );
         if (disposed) {
-          return;
+          return false;
         }
         headerEl.innerHTML = headerHtml(mb, answer.session, answer);
+        headerShown = true;
       } catch (error) {
         if (disposed || controller.signal.aborted) {
-          return;
+          return false;
         }
         const failed = refusal(error);
+        if (failed.code === CATALOG_INCOMPLETE) {
+          showMessage(waitingText(failed.progress, mb.formatInteger));
+          return true;
+        }
         if (failed.code && NOT_A_SESSION.includes(failed.code)) {
-          fallback(
+          await fallback(
             "This file is not in a Claude Code or Codex home, so there is no session to show.",
           );
         } else {
           showFailure(failed.message);
         }
-        return;
+        return false;
       }
     }
-    paintFilter();
-    await loadEvents();
+    if (!filterPainted) {
+      filterPainted = true;
+      paintFilter();
+    }
+    return loadEvents();
+  }
+
+  let filterPainted = false;
+  // The catalog's first pass has not listed the file's session yet: ask again, backing off
+  // on a failure, until the answer is a session or a refusal that says there is none.
+  const catalogWait = createPoller({
+    ...browserClock(),
+    intervalMs: PROGRESS_POLL_MS,
+    run: retrying(begin),
+  });
+
+  const ready = (async () => {
+    await ensureViewStyles();
+    if (await begin()) {
+      catalogWait.start();
+    }
   })();
 
   /** @param {MouseEvent} event */
@@ -342,6 +459,7 @@ export function mountSession(container, ctx, mb, withHeader) {
       }
       disposed = true;
       controller.abort();
+      catalogWait.dispose();
       unbindFilter?.();
       fallbackDispose?.();
       container.removeEventListener("click", onClick);
