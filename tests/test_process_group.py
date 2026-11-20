@@ -306,7 +306,7 @@ def _no_table(monkeypatch: pytest.MonkeyPatch) -> None:
     wait on one. Only macOS answers signal 0 to a group of zombies with an error; elsewhere
     the table tells them from live processes, so it is read."""
 
-    if os.uname().sysname != "Darwin":
+    if sys.platform != "darwin":
         return
 
     def unread(deadline: float) -> list[pg._Process]:
@@ -616,9 +616,14 @@ def test_chrome_keeps_its_processes_in_the_launched_group(chrome_profile: Path) 
 STOP_CHROME = """
 import { spawn } from "node:child_process";
 import { stopChrome } from %s;
-// A browser that ignores SIGTERM, and a helper in its group that holds its stderr pipe
-// after it is gone, as Chrome's helpers do.
-const stubborn = "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);";
+// A browser that ignores SIGTERM, and a helper in its group that inherits its stderr
+// pipe and outlives it, as Chrome's helpers do: only destroying the pipe at the close
+// lets this process exit while the helper still holds the other end.
+const helper = "setTimeout(() => {}, 30000);";
+const stubborn = `process.on('SIGTERM', () => {});
+require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(helper)}],
+  { stdio: ['ignore', 'ignore', 'inherit'] });
+setInterval(() => {}, 1000);`;
 const chrome = spawn(process.execPath, ["-e", stubborn], { stdio: ["ignore", "ignore", "pipe"] });
 chrome.stderr.on("data", () => {});
 const exited = new Promise((resolve) => chrome.once("exit", resolve));
