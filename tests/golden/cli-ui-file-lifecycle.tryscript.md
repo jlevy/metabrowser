@@ -860,7 +860,7 @@ $ node tests/dom/preview-pane-state-session.js
           "owner": "file",
           "path": "broken.md",
           "phase": "error",
-          "shows": "preview-empty preview-error: Could not open this file. The request failed (HTTP 500)."
+          "shows": "preview-empty preview-error: Could not open this file. The server could not complete the request."
         }
       },
       "reopenedContent": {

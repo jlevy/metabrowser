@@ -12,10 +12,8 @@
   font-family: var(--font-sans);
 }
 
-.metabrowser-wiki-transclusion[data-metabrowser-transclusion-status="error"] {
-  border-inline-start-color: var(--status-error);
-  color: var(--text);
-  font-family: var(--font-sans);
+.metabrowser-transclusion-notice {
+  margin-block: 1rem;
 }
 
 .metabrowser-wiki-transclusion > .kpress {

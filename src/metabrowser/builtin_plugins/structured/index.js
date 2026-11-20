@@ -65,7 +65,7 @@
         }
         console.warn("structured data load failed", err);
         container.innerHTML =
-          '<div class="preview-empty" role="alert">Could not load structured data. Refresh the page to try again.</div>';
+          '<div class="notice" data-severity="error" role="alert">Could not load structured data. Refresh the page to try again.</div>';
         return;
       }
       if (!container.isConnected) {
@@ -84,7 +84,7 @@
       const wrapper = window.document.createElement("div");
       wrapper.className = "content-copy-wrap";
       const copyBtn = window.document.createElement("button");
-      copyBtn.className = "content-copy-btn";
+      copyBtn.className = "icon-btn icon-btn-reveal icon-btn-overlay content-copy-btn";
       copyBtn.type = "button";
       // The SDK's delegated copy listener runs it; it reads the hidden <code> below.
       copyBtn.setAttribute("data-mb-copy", "wrap");

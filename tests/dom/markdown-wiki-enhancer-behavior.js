@@ -303,6 +303,12 @@ async function loadModule() {
     "image embed dimensions",
     renderedImage.getAttribute("width") === "640" && renderedImage.getAttribute("height") === "480",
   );
+  // static/styles.css keeps a wiki embed's proportions by this attribute, where a
+  // README's `<img width height>` takes both sizes (tests/dom/markdown-github-layout-chrome.mjs).
+  check(
+    "image embed marked as a wiki embed",
+    renderedImage.getAttribute("data-metabrowser-link-syntax") === "wiki-embed",
+  );
   check("image accessible label", renderedImage.getAttribute("alt") === "Diagram");
   const noteTransclusion = container.elements[5];
   check("note transclusion region", noteTransclusion.tagName === "ASIDE");

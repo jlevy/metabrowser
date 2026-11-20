@@ -81,12 +81,12 @@ $ node tests/dom/file-overview-session.js
   },
   "a failed index says so": {
     "totals": "nothing",
-    "distribution": "Indexing failed; no file summary is available.",
+    "distribution": "Could not scan this folder; no file summary is available.",
     "retry": false
   },
   "a capped index says its summary is partial": {
     "totals": "Files 2 files Ignored 1 files Total 3 files",
-    "distribution": "Python 100% Details Summary is partial: 3 files indexed at the 3-file cap.",
+    "distribution": "Python 100% Details Only the first 3 files were scanned; percentages cover those files.",
     "caption": "Share of Total (3 files)",
     "retry": false
   },

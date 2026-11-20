@@ -691,7 +691,10 @@ class _BusyMirror:
     async def default_tip(self) -> str | None:
         return None
 
-    async def list_refs(self, kind: RefKind) -> tuple[MirrorRef, ...]:
+    async def default_ref(self) -> str | None:
+        return None
+
+    async def list_refs(self, kind: RefKind, *, default_ref: str | None) -> tuple[MirrorRef, ...]:
         raise AssertionError("not reached")
 
     async def refresh_running_elsewhere(self) -> bool:

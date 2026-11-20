@@ -235,7 +235,7 @@ status: 200
 {
   "host": "github.com",
   "state": "network_error",
-  "message": "gh is signed in as octo-reader but could not check its token: gh could not reach api.github.com.",
+  "message": "gh is signed in as octo-reader but could not check its token: GitHub could not be reached because api.github.com did not resolve (DNS).",
   "fix": null,
   "remedy": null,
   "gh_path": "[FAKE_GH]",
@@ -369,7 +369,7 @@ $ FAKE_GH_STATUS=offline metab --doctor --json 2>/dev/null
   "github": {
     "host": "github.com",
     "state": "network_error",
-    "message": "gh is signed in as octo-reader but could not check its token: gh could not reach api.github.com.",
+    "message": "gh is signed in as octo-reader but could not check its token: GitHub could not be reached because api.github.com did not resolve (DNS).",
     "fix": null,
     "remedy": null,
     "gh_path": "[FAKE_GH]",

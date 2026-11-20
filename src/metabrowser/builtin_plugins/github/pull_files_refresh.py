@@ -40,6 +40,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
+from metabrowser import event_log
 from metabrowser.builtin_plugins.github import pull_list
 from metabrowser.builtin_plugins.github.checkout import claim_source
 from metabrowser.builtin_plugins.github.gh_lists import (
@@ -456,6 +457,8 @@ async def refresh_pull_files(
             reader = f"gh:{login}"
             listed = await _from_github(repository, number, login, slot, generation, known_head)
     except PullDataError as exc:
+        # The job that runs this records the failure as its own (metabrowser.event_log).
+        event_log.current().note_failure(exc.state, str(exc))
         if held is not None and exc.state == "rate_limited":
             # This attempt stopped at the already saved hold, before any provider request.
             raise

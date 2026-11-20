@@ -150,11 +150,12 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
         ("Tags", False),
         ("Remotes", False),
     ]
-    # The checked-out branch is badged, lists first, and is not the served row.
+    # The checked-out branch is badged, lists first, and is not the served row; the rest
+    # are newest first, local-work committed in the checkout after feature (mb-dcp2).
     assert _rows(panel) == [
         f"topic checked out {TOPIC}",
-        f"feature {FEATURE_SHORT}",
         f"local-work {LOCAL_WORK}",
+        f"feature {FEATURE_SHORT}",
     ]
     assert not any(row["current"] for row in panel["rows"])
     assert {row["chip"] for row in panel["rows"]} == {"local"}

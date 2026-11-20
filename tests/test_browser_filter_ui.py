@@ -114,7 +114,7 @@ def test_folder_rollups_use_coordinated_totals_and_breakdown_sections() -> None:
     assert 'label: "File Overview"' in overview_panel
     assert "defaultExpanded: true" in overview_panel
     assert '"folder.file-overview"' in index
-    assert '<h2 class="tm-totals-heading">Files</h2>' in treemap
+    assert '<h2 class="section-heading tm-totals-heading">Files</h2>' in treemap
     assert "mountFolderTotalsView" in file_totals
     assert "mountFolderTotalsView" not in file_types
     # The bodies stay separate modules and the section composes them, so the

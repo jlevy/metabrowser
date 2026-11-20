@@ -192,8 +192,8 @@ the browser pays for when a block scrolls in:
 It is flat at any size, 33 ms from 1 MiB through 8 GiB with 132 nodes, and the only
 option past a few tens of MB. It gives up find-in-page and select-all over the file,
 needs scrollbar downscaling past the height clamp, and is substantially more code.
-The source and binary views do not virtualize their loaded text; the Pulls panel and the
-Git history virtualize their rows.
+The source and binary views do not virtualize their loaded text; the Pulls panel, the
+Git history, and the branch and tag chooser virtualize their rows.
 For file content, reach for virtualization when the view must open files larger than
 memory allows, and say in the plan what replaces the native behaviors.
 
@@ -326,6 +326,7 @@ this standard. Paths are under `src/metabrowser/`.
 | `WINDOW_ROWS`, `DISPLAY_ROWS`, `PULL_ROWS_OVERSCAN` | `builtin_plugins/github/pulls-panel.js` | Pulls rows per cached-page request, read at first, and mounted beyond the viewport |
 | `INERT_RENDER_DEADLINE_MS` | `diff/markdown_projection_worker.py` | One untrusted Markdown document’s render in the server’s Markdown child; past it the child is stopped and the page shows the document’s source |
 | `_MAX_RENDERS` | `diff/markdown_projection_worker.py` | Distinct untrusted Markdown renders in flight at once, the one in the Markdown child among them; past it a render is answered `503` with the code `renderer_busy`, which is not kept |
+| `ROWS_OVERSCAN` | `static/source-ref-selector.js` | Rows the branch and tag chooser draws beyond its list’s view; the list holds every ref, so the window, not the repository, bounds the rows drawn |
 | `SUMMARY_ROWS_OVERSCAN` | `builtin_plugins/diff/diff-summary.js` | Diff summary rows mounted on either side of the window’s view of its tree, which has no scroll of its own and no length bound beyond `MAX_MANIFEST_FILES` |
 
 ## References

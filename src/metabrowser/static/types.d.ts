@@ -3324,9 +3324,11 @@ declare global {
   /** What the freshness label says and offers; see static/source-freshness.js. */
   /** static/inert-html.js: untrusted Markdown reduced to an allowlist. */
   type MetabrowserInertHtmlRuntime = Readonly<{
+    ALIGN_VALUES: Readonly<Record<string, readonly string[]>>;
     ALLOWED_ATTRIBUTES: Readonly<Record<string, readonly string[]>>;
     ALLOWED_TAGS: readonly string[];
     ANCHOR_PREFIX: string;
+    DIMENSIONS: Readonly<Record<string, readonly string[]>>;
     DROPPED_WITH_CONTENT: readonly string[];
     fragmentLink(href: string): string;
     headingSlug(text: string): string;
@@ -3491,11 +3493,11 @@ declare global {
     current: boolean;
   };
 
-  /** One answer of `GET /api/source/refs`. */
+  /** One answer of `GET /api/source/refs`: every matching ref, the default or
+   * checked-out branch first and then newest first. */
   type MetabrowserSourceRefListing = {
     kind: MetabrowserSourceRefKind;
     query: string;
-    limit: number;
     /** The served commit and ref; both null while a checkout's working tree is served. */
     pin: string | null;
     ref: string | null;
@@ -3510,8 +3512,6 @@ declare global {
       name: string;
       location: string;
     } | null;
-    total: number;
-    truncated: boolean;
     refs: MetabrowserSourceRef[];
   };
 
@@ -3611,9 +3611,31 @@ declare global {
     kinds: HTMLElement;
     tabs: Record<MetabrowserSourceRefKind, HTMLButtonElement>;
     filter: HTMLInputElement;
+    /** The list's scrolling box, whose rows are only those in its view (`drawWindow`). */
     list: HTMLElement;
+    /** As tall as every row together, so the list scrolls over all of them. */
+    sizer: HTMLElement;
     note: HTMLElement;
     error: HTMLElement;
+    /** The rows the list shows now and which of them are drawn; see `drawWindow`. */
+    rows: MetabrowserSourceRefSelectorRows;
+  };
+
+  /** The windowed list's state: every row the model shows, the drawn ones by index, the
+   * row that takes Tab, and one row's height, measured. Browser only. */
+  type MetabrowserSourceRefSelectorRows = {
+    shown: MetabrowserSourceRefSelectorModel["rows"];
+    drawn: Map<number, HTMLLIElement>;
+    roving: number;
+    rowHeight: number;
+    /** The list's scroll position the drawn rows were drawn for, which a toolbar refill takes. */
+    drawnAt: number;
+    /** The list and filter the rows are of, so a new one starts at its top. */
+    listing: string;
+    /** Whether this listing has been scrolled to the served ref's row, which it is once. */
+    revealed: boolean;
+    switching: boolean;
+    choose: (ref: string) => void;
   };
 
   type MetabrowserSourceRefSelector = Readonly<{
@@ -3649,6 +3671,14 @@ declare global {
     /** The selector this page mounted, for the branch or tag key; null until it mounts. */
     mounted(): MetabrowserSourceRefSelectorMount | null;
     moveRow(key: string, index: number, count: number): number | null;
+    ROWS_OVERSCAN: number;
+    rowWindow(
+      count: number,
+      rowHeight: number,
+      scrollTop: number,
+      viewHeight: number,
+      roving: number,
+    ): { start: number; end: number; also: number };
     shownLabel(
       shown: MetabrowserSourcePage | null,
       checkout?: boolean,

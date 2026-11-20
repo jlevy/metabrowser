@@ -215,17 +215,14 @@ def test_a_readers_place_is_kept_in_the_entry_and_disposed_with_the_page() -> No
 
 
 def test_a_hunks_tints_are_the_diff_views() -> None:
-    """The diff plugin's stylesheet loads only with Files changed, so its tints are restated
-    for the conversation's hunks; a change to one that misses the other fails here."""
+    """A conversation hunk reads the diff view's row tints, which the shell holds on `:root`
+    so they exist without the diff plugin's stylesheet, which loads only with Files changed."""
 
     rules = _style_rules()
-    diff_css = (PAGE_JS.parent.parent / "diff" / "styles.css").read_text(encoding="utf-8")
+    shell_css = (PAGE_JS.parent.parent.parent / "static" / "styles.css").read_text(encoding="utf-8")
     for kind, token in (("add", "--diff-add-row-bg"), ("del", "--diff-del-row-bg")):
-        tint = re.search(rf"{token}:\s*([^;]+);", diff_css)
-        assert tint is not None, token
-        assert (
-            f"background: {tint.group(1)};" in rules[f'.github-pull-hunk-line[data-kind="{kind}"]']
-        )
+        assert re.search(rf"{token}:", shell_css) is not None, token
+        assert f"background: var({token});" in rules[f'.github-pull-hunk-line[data-kind="{kind}"]']
 
 
 def test_a_hunk_is_painted_as_text_in_a_native_disclosure() -> None:

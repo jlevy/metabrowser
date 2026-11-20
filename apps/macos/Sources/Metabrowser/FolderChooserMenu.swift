@@ -6,9 +6,10 @@ import ShellCore
 ///
 /// It is native chrome (an `NSMenu`, with section headers, check marks, subtitles, and
 /// Option alternates); its rows and what each choice does are `FolderChooser`'s, tested
-/// in `ShellCore`. Each root's mark is the page's own glyph (`RootMark`). The menu is built
-/// each time it opens, from the folders open then and the recent list's last answer, which
-/// it asks `metab` to refresh for next time, as File > Open Recent does.
+/// in `ShellCore`. Each root's mark is the page's own glyph (`RootMark`), on the line of
+/// the root's name, with the subtitle under the name, on one line (`NSMenuItem.setMark`).
+/// The menu is built each time it opens, from the folders open then and the recent list's
+/// last answer, which it asks `metab` to refresh for next time, as File > Open Recent does.
 final class FolderChooserMenu: NSObject {
     /// What a row's item carries: the row's target and the window it was opened from,
     /// which a choice acts on, held weakly so an open menu keeps no closed window.
@@ -75,14 +76,13 @@ final class FolderChooserMenu: NSObject {
     /// A row, and its Option alternate, which opens it in a new window.
     private func add(_ row: FolderChooser.Row, to menu: NSMenu, window: BrowserWindowController) {
         let item = NSMenuItem(title: row.title, action: #selector(chose(_:)), keyEquivalent: "")
-        item.subtitle = row.subtitle
         item.state = row.isChecked ? .on : .off
         let alternate = MainMenu.item("Open \(row.title) in New Window", #selector(choseNewWindow(_:)), "", .option)
-        alternate.subtitle = row.subtitle
         alternate.isAlternate = true
         for each in [item, alternate] {
             each.target = self
-            each.image = row.mark.image
+            // Fitted under the row's own title, so the alternate shows the same subtitle.
+            each.setMark(row.mark, subtitle: row.subtitle, fittedUnder: row.title)
             each.representedObject = Carried(row.target, window: window)
             menu.addItem(each)
         }

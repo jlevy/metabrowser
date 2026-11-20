@@ -41,6 +41,7 @@
 // chip group and icons.
 
 import { createComparisonWarmer, diffComparisonLoader } from "./comparison-prefetch.js";
+import { OUTCOME_FALLBACK, rateLimitText, refreshRefusedText, unavailableText } from "./copy.js";
 import { createRowExpansion } from "./pull-files-tree.js";
 import { mountFileTree } from "./pull-files-view.js";
 import {
@@ -206,7 +207,7 @@ const NO_GITHUB = "This server serves no GitHub repository.";
 // A checkout's tab is drawn for an `origin` on github.com that the plugin's grammar may still
 // refuse, which the route answers as `not_github`.
 const CHECKOUT_NOT_LISTED =
-  "This checkout's origin is not a GitHub repository Metabrowser can list.";
+  "This checkout’s origin is not a GitHub repository Metabrowser can list.";
 
 /**
  * @typedef {{outcome: string, message: string | null, reset_at: string | null, at: string}} LastRefresh
@@ -338,9 +339,10 @@ export function describeRow(row) {
  * How many pull requests that is, in the words a count is said with everywhere.
  *
  * @param {number} count
+ * @param {(count: number) => string} formatCount
  */
-function pullsCount(count) {
-  return `${new Intl.NumberFormat("en-US").format(count)} pull request${count === 1 ? "" : "s"}`;
+function pullsCount(count, formatCount) {
+  return `${formatCount(count)} pull request${count === 1 ? "" : "s"}`;
 }
 
 /**
@@ -362,13 +364,10 @@ export function refreshFailure(envelope, formatTime, { includeWhileRefreshing = 
   }
   if (last.outcome === "rate_limited") {
     return {
-      text:
-        last.reset_at === null
-          ? "GitHub rate limit reached."
-          : `GitHub rate limit reached. Next attempt after ${formatTime(last.reset_at)}.`,
+      text: rateLimitText(last.reset_at === null ? null : formatTime(last.reset_at)),
     };
   }
-  const said = FAILURES[last.outcome] ?? last.message ?? last.outcome.replaceAll("_", " ");
+  const said = FAILURES[last.outcome] ?? last.message ?? OUTCOME_FALLBACK;
   const sentence = `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
   const help =
     last.outcome === "gh_missing"
@@ -423,6 +422,7 @@ function watchPaused(envelope) {
  *   filterTotals?: PullFilterTotals | null,
  *   nowMs: number,
  *   formatTime: (iso: string) => string,
+ *   formatCount: (count: number) => string,
  *   more: boolean,
  *   error: string | null,
  *   checkout?: boolean,
@@ -481,12 +481,14 @@ export function describePulls(envelope, page) {
   model.repository = repository;
   const repositoryTotal = model.filterTotals?.all ?? envelope.repository_total;
   if (repositoryTotal !== null && repository !== null) {
-    model.countNumber = new Intl.NumberFormat("en-US").format(repositoryTotal);
+    model.countNumber = page.formatCount(repositoryTotal);
     model.countSuffix = repositoryTotal === 1 ? " PR on " : " PRs on ";
   }
   const name = repository === null ? "Pull requests" : `Pull requests of ${repository}`;
   const known = envelope.state === "current" || envelope.state === "stale";
-  model.listName = known ? `${name}: ${pullsCount(envelope.total ?? envelope.fetched)}` : name;
+  model.listName = known
+    ? `${name}: ${pullsCount(envelope.total ?? envelope.fetched, page.formatCount)}`
+    : name;
   if (known && (envelope.total === 0 || (envelope.fetched === 0 && envelope.complete))) {
     model.empty = page.filter === "all" ? "No pull requests." : `No ${page.filter} pull requests.`;
   }
@@ -546,7 +548,7 @@ export function describePulls(envelope, page) {
     // As the nav's scan says "~N files scanned": a count only once one is known.
     model.progress =
       crawling && envelope.fetched > 0
-        ? `~${new Intl.NumberFormat("en-US").format(envelope.fetched)} pull requests fetched`
+        ? `~${page.formatCount(envelope.fetched)} pull requests fetched`
         : FETCHING;
   }
   return model;
@@ -587,6 +589,21 @@ export function outsideText(number, catalogued) {
 }
 
 /**
+ * The catalog as a list's envelope describes it: its epoch, which a new reader or source
+ * starts again, and how many pull requests it has read, which only grows within an epoch,
+ * as it does when one is opened. Every list's envelope carries both.
+ *
+ * @param {PullsEnvelope | null} envelope
+ * @returns {{epoch: string, fetched: number} | null}
+ */
+function catalogMark(envelope) {
+  if (envelope === null) {
+    return null;
+  }
+  return { epoch: envelope.generation?.split(":")[0] ?? "", fetched: envelope.catalog_fetched };
+}
+
+/**
  * Whether *response* is the pin guard's refusal of a page whose pin moved. The guard answers it
  * by reloading the page onto the commit now served, so the list says nothing of its own for it,
  * whatever order the events arrive in: a page Back restores polls before the guard's check, and
@@ -619,6 +636,7 @@ function pinChanged(response) {
  *   isVisible(): boolean,
  *   isOnline?(): boolean,
  *   formatTime(iso: string): string,
+ *   formatCount(count: number): string,
  *   render(model: PullsModel, identity: import("./pull-stacks.js").StackIdentity | null, arrivals: number[]): void,
  *   markCurrent(previous: number | null, next: number | null): void,
  *   markAnchor(previous: number | null, next: number | null, focus: boolean): void,
@@ -730,13 +748,15 @@ export function createPullsController(deps, options = {}) {
   /**
    * Whether *sought* is still to be placed (`placeSought`): until the list holds its row,
    * or the catalog has said where it is and the list has moved there or stays. Meanwhile
-   * the list says nothing of it.
+   * the list says nothing of it, except that the catalog lacks it: a pull request opened
+   * since the catalog's last read is placed once the catalog reads it.
    */
   let placing = sought !== null;
   /**
    * Where the catalog has *sought* (`readSought`): its state, and whether All's drawn rows
-   * reach it; "absent" once the whole catalog lacks it; null until a read says.
-   * @type {{state: "open" | "closed", reach: boolean} | {state: "absent"} | null}
+   * reach it; "absent" while the whole catalog lacks it, with the catalog as the read that
+   * lacked it saw it (`catalogMark`); null until a read says.
+   * @type {{state: "open" | "closed", reach: boolean} | {state: "absent", mark: {epoch: string, fetched: number} | null} | null}
    */
   let soughtFound = null;
   /** The read of *sought*'s place in flight. @type {AbortController | null} */
@@ -1535,6 +1555,7 @@ export function createPullsController(deps, options = {}) {
       filterTotals,
       nowMs: deps.now(),
       formatTime: deps.formatTime,
+      formatCount: deps.formatCount,
       more: list.more,
       error: list.error,
       checkout,
@@ -1807,7 +1828,8 @@ export function createPullsController(deps, options = {}) {
    *
    * @param {boolean} [mayRead] Whether this may ask the catalog: at a navigation and after a
    *   poll, so a place still unknown, as a catalog being read from GitHub leaves it, is asked
-   *   for once a poll, and not at every window the list pages in.
+   *   for once a poll, and not at every window the list pages in; and one the catalog lacked
+   *   is asked for again after a poll whose list says the catalog has read more since.
    */
   function placeSought(mayRead = false) {
     if (!placing || sought === null || sought !== current) {
@@ -1818,16 +1840,22 @@ export function createPullsController(deps, options = {}) {
       placing = false;
       return false;
     }
-    if (soughtFound === null) {
-      if (mayRead) {
+    const now = catalogMark(list.envelope);
+    if (soughtFound?.state === "absent" && now !== null && soughtFound.mark?.epoch !== now.epoch) {
+      // A catalog started again, for a new reader or source, has not said yet what the old
+      // one lacked: the list says nothing until it does.
+      soughtFound = null;
+      noteOutside();
+    }
+    if (soughtFound === null || soughtFound.state === "absent") {
+      // A catalog that lacked it is asked again once it has read more pull requests, as it
+      // does when one is opened, so an unchanged catalog is not asked at every poll.
+      if (mayRead && (soughtFound === null || soughtFound.mark?.fetched !== now?.fetched)) {
         void readSought();
       }
       return false;
     }
     placing = false;
-    if (soughtFound.state === "absent") {
-      return false;
-    }
     const target = filter === soughtFound.state || !soughtFound.reach ? soughtFound.state : "all";
     if (target === filter) {
       return false;
@@ -1845,8 +1873,8 @@ export function createPullsController(deps, options = {}) {
    * gh. A number past the largest a pull request may have is refused from the first read:
    * then the newest row says, since no pull request is newer, and the catalog lacks any
    * other number the route refuses. A read that fails otherwise, or a number the catalog
-   * lacks while it is still being read from GitHub, leaves the place unknown, and the next
-   * poll asks again (`placeSought`).
+   * lacks while it is still being read from GitHub, leaves the place as it was, and the
+   * next poll asks again (`placeSought`).
    */
   async function readSought() {
     if (sought === null || soughtRead !== null) {
@@ -1880,7 +1908,9 @@ export function createPullsController(deps, options = {}) {
             (lists.get("all")?.displayLimit ?? DISPLAY_ROWS),
         };
       } else if (from === null || (from.complete && from.reason === null)) {
-        soughtFound = { state: "absent" };
+        // The catalog as the read that lacked it saw it: the window and its envelope are read
+        // together, and the newest row's read may have seen a pull request read in since.
+        soughtFound = { state: "absent", mark: catalogMark(from ?? top.body) };
       } else {
         return;
       }
@@ -1902,7 +1932,9 @@ export function createPullsController(deps, options = {}) {
    * Say so when a pull request a navigation named is in no row the list can draw, rather
    * than leave the reader looking for it: the catalog lacks it, or it is in this list
    * further down than the list draws. Only once its place is known and the list stays,
-   * and not while the list is still reading toward it. A pull request the reader's own
+   * and not while the list is still filling its rows toward it; once said, a page the
+   * reader asks for at the list's end keeps it until a page brings the row, rather than
+   * take it back for the page's read and say it again. A pull request the reader's own
    * filter leaves out is not noted.
    */
   function noteOutside() {
@@ -1911,12 +1943,13 @@ export function createPullsController(deps, options = {}) {
     if (
       current !== null &&
       current === sought &&
-      !placing &&
       soughtFound !== null &&
+      (!placing || soughtFound.state === "absent") &&
       list.envelope !== null &&
       list.error === null &&
       !list.keys.has(current)
     ) {
+      const further = outsideText(current, true);
       if (soughtFound.state === "absent") {
         next = outsideText(current, false);
       } else if (
@@ -1924,9 +1957,9 @@ export function createPullsController(deps, options = {}) {
         // The rows are newest first, and *nextAfter* is where the next window starts.
         list.nextAfter !== null &&
         current < list.nextAfter &&
-        list.rows.length >= list.displayLimit
+        (list.rows.length >= list.displayLimit || outside === further)
       ) {
-        next = outsideText(current, true);
+        next = further;
       }
     }
     if (next !== outside) {
@@ -2165,7 +2198,7 @@ export function createPullsController(deps, options = {}) {
       } else {
         arrivalBaseline = null;
         if (!pinChanged(response)) {
-          list.error = `The list is unavailable (HTTP ${response.status}).`;
+          list.error = unavailableText("The list");
         }
       }
     } catch {
@@ -2338,7 +2371,7 @@ export function createPullsController(deps, options = {}) {
       } else if (reader) {
         const said = answer !== null && typeof answer.error === "string" ? answer.error : null;
         if (!pinChanged(response)) {
-          list.error = `The refresh was refused (${said ?? `HTTP ${response.status}`}).`;
+          list.error = refreshRefusedText("The refresh", said);
         }
         list.more = false;
       }
@@ -2788,7 +2821,7 @@ export function createPullsController(deps, options = {}) {
           list.more = false;
         }
       } else if (!pinChanged(response)) {
-        list.error = `The list is unavailable (HTTP ${response.status}).`;
+        list.error = unavailableText("The list");
         list.more = false;
       }
     } catch {
@@ -4946,12 +4979,16 @@ export function mountPullsPanel(container, ctx, mb) {
         (model.connection?.state === "working" || model.connection?.refreshing === true);
       tally.classList.toggle("tally-pending", pending);
       tally.classList.toggle("tally-pending-narrow", pending);
-      const text = count === null ? (pending ? "" : "—") : count.toLocaleString("en-US");
+      const text = count === null ? (pending ? "" : "—") : mb.formatInteger(count);
       if (tally.textContent !== text) {
         tally.textContent = text;
       }
       const description =
-        count === null ? (pending ? "count pending" : "count unavailable") : pullsCount(count);
+        count === null
+          ? pending
+            ? "count pending"
+            : "count unavailable"
+          : pullsCount(count, mb.formatInteger);
       const label = `${LIST_LABELS[value]}, ${description}`;
       if (chip.getAttribute("aria-label") !== label) {
         chip.setAttribute("aria-label", label);
@@ -5102,6 +5139,7 @@ export function mountPullsPanel(container, ctx, mb) {
       isVisible: () => document.visibilityState === "visible",
       isOnline: () => window.navigator?.onLine !== false,
       formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
+      formatCount: (count) => mb.formatInteger(count),
       render(model, identity, arrivals) {
         stackIdentity = identity;
         mb.perf.measure("githubPulls:render", () => paint(model, arrivals), {

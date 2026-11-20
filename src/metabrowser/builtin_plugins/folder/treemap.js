@@ -191,10 +191,10 @@ export function registerTreemap(mb, palette, rollupControls) {
       return "";
     }
     if (envelope.index_status === "failed") {
-      return "Indexing failed; the treemap is unavailable.";
+      return "Could not scan this folder; the treemap is unavailable.";
     }
     if (envelope.truncated) {
-      return `Index capped at ${mb.formatFileCount(envelope.max_files)}; the treemap covers the indexed files.`;
+      return `Only the first ${mb.formatFileCount(envelope.max_files)} were scanned; the treemap covers those files.`;
     }
     return "";
   }
@@ -262,7 +262,7 @@ export function registerTreemap(mb, palette, rollupControls) {
     const statement = notIndexedStatement(ctx.raw);
     if (statement) {
       container.innerHTML =
-        '<h2 class="tm-totals-heading">Files</h2>' +
+        '<h2 class="section-heading tm-totals-heading">Files</h2>' +
         parentControlHtml +
         `<div class="preview-empty">${mb.escapeHtml(statement)}</div>`;
       const parentControl = parent
@@ -288,7 +288,7 @@ export function registerTreemap(mb, palette, rollupControls) {
     /** @type {TreemapState} */
     let state = rollupControls.get();
     container.innerHTML =
-      '<h2 class="tm-totals-heading">Files</h2>' +
+      '<h2 class="section-heading tm-totals-heading">Files</h2>' +
       // One row for both halves, above the bars they govern — the same
       // arrangement as the Overview's File Overview. They used to sit apart,
       // the measure above the tally bars and the gitignore switch below them,
@@ -302,7 +302,7 @@ export function registerTreemap(mb, palette, rollupControls) {
       '<div class="tm-legend-row"><ul class="file-type-summary-legend tm-legend" hidden></ul></div>' +
       parentControlHtml +
       '<div class="tm-viewport" role="application" aria-label="Folder treemap"></div>' +
-      '<div class="tm-status" role="status"></div>';
+      '<div class="notice tm-status" data-severity="warning" role="status"></div>';
     const totalsContainer = /** @type {HTMLElement} */ (container.querySelector(".tm-totals"));
     const rollupControlsHost = /** @type {HTMLElement} */ (
       container.querySelector(".tm-rollup-controls")
@@ -498,6 +498,9 @@ export function registerTreemap(mb, palette, rollupControls) {
       const node = envelope ? envelope.node : null;
       status.textContent = statusHtml(envelope);
       status.hidden = status.textContent === "";
+      const failed = envelope?.index_status === "failed";
+      status.dataset.severity = failed ? "error" : "warning";
+      status.setAttribute("role", failed ? "alert" : "status");
       const terminal = isCompleteSnapshot(envelope);
       if (!terminal || !node || rect.width < 10 || rect.height < 10) {
         // The index has finished without this folder, stopped at its cap before
@@ -522,7 +525,8 @@ export function registerTreemap(mb, palette, rollupControls) {
       );
       const html = cells.map((cell, i) => cellHtml(cell, state, i)).join("");
       viewport.innerHTML =
-        html || '<div class="preview-empty">Empty folder — nothing to draw yet</div>';
+        html ||
+        '<div class="preview-empty">This folder is empty, so there is nothing to draw yet.</div>';
       // Roving tabindex over actionable cells only (dir/file); ext and
       // rest cells are descriptive groups outside the focus order.
       actionableIndexes = [];

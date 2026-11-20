@@ -405,11 +405,11 @@ Error: /api/source/pin returned HTTP 400
 ? 1
 ```
 
-## Test: the ref selector lists branches, the default first
+## Test: the ref selector lists every branch, the default first, then newest first
 
-`/api/source/refs` reads the mirror alone.
-Branches list by name after the default branch; `current` marks the ref the server
-serves.
+`/api/source/refs` reads the mirror alone and lists every ref, with no page and no
+count. The default branch lists first, then the rest newest first by their commits’
+dates, the dates each row shows as an age; `current` marks the ref the server serves.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/refs
@@ -418,7 +418,6 @@ status: 200
 {
   "kind": "branch",
   "query": "",
-  "limit": 100,
   "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref": "refs/remotes/origin/topic",
   "kinds": [
@@ -426,8 +425,6 @@ status: 200
     "tag"
   ],
   "working_tree": null,
-  "total": 2,
-  "truncated": false,
   "refs": [
     {
       "name": "topic",
@@ -461,7 +458,6 @@ status: 200
 {
   "kind": "tag",
   "query": "",
-  "limit": 100,
   "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref": "refs/remotes/origin/topic",
   "kinds": [
@@ -469,8 +465,6 @@ status: 200
     "tag"
   ],
   "working_tree": null,
-  "total": 1,
-  "truncated": false,
   "refs": [
     {
       "name": "v1",
@@ -486,18 +480,17 @@ status: 200
 ? 0
 ```
 
-## Test: the filter is a case-insensitive name fragment, and a page can stop short
+## Test: the filter is a case-insensitive name fragment
 
-Both branches contain a `t`; the page holds one of them, so `truncated` is true.
+`FEAT` matches `feature` alone.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api "/api/source/refs?q=T&limit=1"
-api: /api/source/refs?q=T&limit=1
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api "/api/source/refs?q=FEAT"
+api: /api/source/refs?q=FEAT
 status: 200
 {
   "kind": "branch",
-  "query": "T",
-  "limit": 1,
+  "query": "FEAT",
   "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref": "refs/remotes/origin/topic",
   "kinds": [
@@ -505,17 +498,15 @@ status: 200
     "tag"
   ],
   "working_tree": null,
-  "total": 2,
-  "truncated": true,
   "refs": [
     {
-      "name": "topic",
-      "ref": "refs/remotes/origin/topic",
-      "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-      "committed_at": 1767229200.0,
-      "default": true,
+      "name": "feature",
+      "ref": "refs/remotes/origin/feature",
+      "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "committed_at": 1767232800.0,
+      "default": false,
       "checked_out": false,
-      "current": true
+      "current": false
     }
   ]
 }

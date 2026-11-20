@@ -9,6 +9,9 @@
   --agent-log-kind-init-text: oklch(42.26% 0.181 265.65);
   --agent-log-kind-tool-bg: oklch(96.2% 0.057 95.6);
   --agent-log-kind-tool-text: oklch(46.97% 0.1224 46.71);
+  /* The Event Activity chart draws a tool call and its result as two bars of one amber, so
+     the lighter one is the same hue as the badge ink (tests/test_plugin_design_consistency.py). */
+  --agent-log-kind-tool-result-fill: oklch(66% 0.12 55);
   --agent-log-kind-thinking-bg: oklch(93.7% 0.031 294.2);
   --agent-log-kind-thinking-text: oklch(43% 0.209 292.4);
   --agent-log-kind-result-bg: oklch(95% 0.051 162.8);
@@ -25,6 +28,7 @@
   --agent-log-kind-init-text: oklch(79.8% 0.094 255.4);
   --agent-log-kind-tool-bg: oklch(36.25% 0.056 79.08);
   --agent-log-kind-tool-text: oklch(88.88% 0.1215 91.38);
+  --agent-log-kind-tool-result-fill: oklch(72% 0.1 85);
   --agent-log-kind-thinking-bg: oklch(29.8% 0.064 293.6);
   --agent-log-kind-thinking-text: oklch(79.48% 0.0983 297.9);
   --agent-log-kind-result-bg: oklch(33.4% 0.048 160.5);
@@ -95,17 +99,13 @@
 
 /* Inside its box: `.log-event` clips what overflows its rounded corners. */
 .log-event-header:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
+/* The badge is the shared .file-header-badge (size, weight, padding, cap trim); only the hue
+   is the log's. */
 .log-event-kind {
-  font-size: var(--ui-small-font-size);
-  font-weight: var(--weight-bold);
-  padding: 1px 6px;
-  border-radius: var(--radius-chrome);
-  flex-shrink: 0;
-  white-space: nowrap;
   background: var(--agent-log-kind-neutral-bg);
   color: var(--agent-log-kind-muted-text);
 }

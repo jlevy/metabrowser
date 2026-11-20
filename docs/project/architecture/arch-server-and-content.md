@@ -230,6 +230,13 @@ The Markdown view then shows the document’s source under one line saying why
 
 The allowlist keeps paragraphs, headings, emphasis, code, quotes, lists, tables,
 details, and links and images inside the served tree.
+It keeps the layout attributes github.com keeps and KPress keeps too, each value a
+keyword or a number (`ALIGN_VALUES` and `DIMENSIONS` in `inert_html.py`): `align` on a
+block, a heading, an image, or a table part, and `width` and `height` on an image or a
+table cell, so a README such as Metabrowser’s own, a `width="192"` logo in a
+`<p align="center">`, is laid out as on github.com.
+The shell’s stylesheet gives those attributes back where KPress’s rules outrank them, in
+every render (`static/styles.css`, “GitHub’s layout attributes in rendered Markdown”).
 It drops every class, `id`, `name`, `data-*`, style, and event attribute, and all SVG,
 MathML, media, stylesheets, frames, forms, and scripts.
 An outside image becomes a link to it.
