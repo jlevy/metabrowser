@@ -119,7 +119,7 @@ function normalizeBreakdown(raw) {
     }
     return Object.freeze({
       key: `${label}:others`,
-      label: "Others",
+      label: "Other",
       omittedDistinctValues: /** @type {number} */ (others.omitted_distinct_values),
       ...normalizePopulationMetrics(others.metrics, `${label} Others`),
     });
@@ -898,6 +898,13 @@ export function buildFileTypeSummaryModel(
     indexFailed: envelope.indexStatus === "failed",
     indexedFiles: envelope.indexedFiles,
     maxFiles: envelope.maxFiles,
+    // The scan's progress count is blank until one has arrived: a literal "~0 files scanned"
+    // reads as a stuck scan.
+    indexedFilesText:
+      typeof envelope.indexedFiles === "number" && envelope.indexedFiles > 0
+        ? formatters.formatInteger(envelope.indexedFiles)
+        : "",
+    maxFilesText: formatters.formatFileCount(envelope.maxFiles ?? 0),
   };
   if (population.files === 0) {
     if (!showIgnored && population.allFiles > 0) {

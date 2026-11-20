@@ -641,7 +641,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "refreshing",
         "detail": "Fetching from the origin. The mirror was last fetched 5 min ago.",
         "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
-        "error": "The server did not answer"
+        "error": "The server did not answer."
       },
       "commit": {
         "repaints": 1,
@@ -696,7 +696,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "quiet",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
         "offer": "topic is now at 66f65bf [Switch] → refs/remotes/origin/topic",
-        "error": "Could not switch (selection_not_found)"
+        "error": "Could not switch to that commit."
       }
     },
     {
@@ -780,7 +780,7 @@ $ node tests/dom/source-freshness-session.js
         "tone": "stale",
         "detail": "The mirror was last fetched from its origin 5 min ago.",
         "offer": "topic is now at 92b31b0 [Switch] → refs/remotes/origin/topic",
-        "error": "Refresh refused: too many pull requests are being fetched; try again when one has finished"
+        "error": "Refresh refused: too many pull requests are being fetched; try again when one has finished."
       }
     }
   ],

@@ -521,10 +521,7 @@ def test_a_tree_opens_once_and_never_grows_without_input() -> None:
         "offerKeepsNotices": {
             "stopped": {
                 "line": "200 files so far, 2 of 3 pages",
-                "notice": (
-                    "GitHub's rate limit lifts at 2026-09-23T16:46:00Z. "
-                    "No automatic attempt runs before then."
-                ),
+                "notice": ("GitHub rate limit reached. Next attempt after 2026-09-23T16:46:00Z."),
                 "offer": "Show 5 more files",
             },
             "failedPoll": {

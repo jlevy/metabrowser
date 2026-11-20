@@ -43,6 +43,10 @@ USE_SITE_CLASSES = (
     "metabrowser-source-anchor-notice",
     "github-pull-notice",
     "tree-truncation-note",
+    "folder-overview-panel-error",
+    "tm-status",
+    "diff-notice",
+    "metabrowser-transclusion-notice",
 )
 
 # The notice's visual identity. A use site that sets one of these has forked
@@ -201,10 +205,12 @@ def test_plugin_views_carry_the_primitive_and_declare_a_severity() -> None:
         for cls in USE_SITE_CLASSES:
             if f'class="{cls}' in source or f' {cls}"' in source:
                 where = source_js.relative_to(REPO_ROOT)
-                # In markup, or as an attribute object.
-                assert 'class="notice ' in source or 'class: "notice ' in source, (
-                    f"{where} draws a notice without .notice"
-                )
+                # In markup, as an attribute object, or as a className string.
+                assert (
+                    'class="notice ' in source
+                    or 'class: "notice ' in source
+                    or '"notice ' in source
+                ), f"{where} draws a notice without .notice"
                 assert "data-severity" in source, f"{where} draws a notice without a severity"
         if "partial-notice" in source and "partialNoticeHtml" not in source:
             raise AssertionError(

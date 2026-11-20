@@ -207,6 +207,14 @@
     return html;
   }
 
+  // The registry's chevron (the SDK's `mb.icons.toggle`), the one every disclosure in
+  // the product wears. A module driven without the shell has no SDK, so no chevron; the
+  // shell always ships it, and the icon catalog (docs/design-system-icons.md) lists every
+  // typed glyph, so a stand-in character is not added here.
+  function disclosureIcon() {
+    return global.metabrowser?.icons.toggle || "";
+  }
+
   function renderRowHtml(row, indentChars) {
     var indentStyle = pv.calculateIndentStyle(row.level, indentChars);
     var stylePart = ` style="padding-left:${indentStyle.paddingLeft};"`;
@@ -215,7 +223,7 @@
     if (row.kind === "open") {
       rowClass += " srow-container disclosure-toggle";
       rowClass += row.expanded ? " srow-expanded" : " srow-collapsed";
-      chevronHtml = '<span class="srow-chevron" aria-hidden="true">▸</span>';
+      chevronHtml = `<span class="srow-chevron" aria-hidden="true">${disclosureIcon()}</span>`;
     } else if (row.kind === "empty") {
       rowClass += " srow-empty";
       chevronHtml = '<span class="srow-chevron srow-chevron-empty"></span>';
