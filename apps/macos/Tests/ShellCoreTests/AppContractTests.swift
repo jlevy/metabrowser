@@ -140,7 +140,7 @@ nonisolated enum ContractGolden {
         "recent-list/empty", "recent-list/after-an-open", "recent-list/listed", "recent-list/problem",
         "recent-add/repository", "recent-forget/folder", "recent-clear",
         "identity/folder", "identity/under-home", "identity/checkout", "identity/mirror",
-        "source-status/folder", "source-status/mirror",
+        "source-status/folder", "source-status/mirror", "source-link/repository", "source-link/elsewhere",
         "present-dry-run/repository", "present-dry-run/pull-request", "present-dry-run/commit",
         "present-dry-run/tree", "present-dry-run/file", "present-dry-run/refused",
         "cache-sources/none", "cache-sources/held", "cache-sources/first-page", "cache-sources/next-page",
@@ -329,12 +329,27 @@ nonisolated enum ContractGolden {
         #expect(mirror.title == FolderIdentity.title(for: mirror.shortName))
     }
 
-    @Test func aSourceWithNothingToFetchHasNothingToSay() throws {
+    @Test func aStatusSaysWhetherARefreshRuns() throws {
         for scenario in ["source-status/folder", "source-status/mirror"] {
             let block = try block(scenario)
-            #expect(Array(block.words.dropFirst()) == ["--api", "/" + LinkSelection.route])
+            #expect(Array(block.words.dropFirst()) == ["--api", "/" + SourceLink.statusRoute])
             let status = try #require(block.httpStatus)
-            #expect(LinkSelection.read(status: status, body: block.json) == .settled(.shown))
+            #expect(SourceLink.refreshing(status: status, body: block.json) == false)
+        }
+    }
+
+    /// A link into the repository a mirror serves opens at the page the server names; one
+    /// into another repository is refused, which leaves the window where it was.
+    @Test func aLinkOpensInTheMirrorOfItsRepository() throws {
+        let opened = try block("source-link/repository")
+        #expect(Array(opened.words.dropFirst().prefix(2)) == ["--api", "/" + SourceLink.route])
+        #expect(opened.words.dropFirst(3).first == "--data")
+        #expect(SourceLink.read(status: try #require(opened.httpStatus), body: opened.json)
+            == .page(PageAddress(reference: "/view/")!))
+        let refused = try block("source-link/elsewhere")
+        guard case .failed = SourceLink.read(status: try #require(refused.httpStatus), body: refused.json) else {
+            Issue.record("a link into another repository was not refused")
+            return
         }
     }
 
