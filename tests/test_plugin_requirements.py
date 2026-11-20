@@ -193,11 +193,13 @@ def test_every_builtin_loads_exactly_the_providers_it_declares() -> None:
 def test_no_browser_code_reads_the_retired_builtins_namespace() -> None:
     """``mb.builtins`` was the informal, render-time-only way to share a plugin's helpers;
     a provider's exports now come from ``mb.plugins.load``."""
+    sessions = Path(__file__).resolve().parent / "dom"
     readers = [
-        str(path.relative_to(SOURCE))
-        for root in (SOURCE / "static", BUILTIN)
-        for path in sorted(root.rglob("*.js"))
-        if re.search(r"\bbuiltins\b", path.read_text(encoding="utf-8"))
+        path.name
+        for root in (SOURCE / "static", BUILTIN, sessions)
+        for path in sorted([*root.rglob("*.js"), *root.rglob("*.mjs")])
+        if "vendor" not in path.parts
+        and re.search(r"\.builtins\b", path.read_text(encoding="utf-8"))
     ]
     assert readers == []
 

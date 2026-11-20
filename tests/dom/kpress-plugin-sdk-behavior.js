@@ -864,7 +864,7 @@ async function check_plugins_load_returns_exports() {
     return { ok: false, detail: "metabrowser.plugins.load is not public and fixed" };
   }
   if ("builtins" in sandbox.metabrowser) {
-    return { ok: false, detail: "the retired metabrowser.builtins namespace is still public" };
+    return { ok: false, detail: "the retired builtins namespace is still public" };
   }
   sandbox.MetabrowserPluginHost.configureAssets({
     plugins: {

@@ -70,6 +70,11 @@ The problem is on stderr.
 $ metab --doctor --plugins-dir pair >/dev/null
 metab --doctor: 1 problem(s):
   • plugin 'beta': view 'more' of kind 'myk' declares key 'm', but view 'main' (plugin 'alpha') already holds it; the view is served without a key
+plugin requirements:
+  agent-log: requires structured
+  diff: requires structured
+  folder: requires markdown
+  github: requires markdown
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -271,6 +276,11 @@ The problem names the built-in `markdown` plugin, whose Source lost the key, and
 $ metab --doctor --plugins-dir override >/dev/null
 metab --doctor: 1 problem(s):
   • plugin 'markdown': view 'source' of kind 'markdown' declares key 's', but view 'rendered' (plugin 'steal') already holds it; the view is served without a key
+plugin requirements:
+  agent-log: requires structured
+  diff: requires structured
+  folder: requires markdown
+  github: requires markdown
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
