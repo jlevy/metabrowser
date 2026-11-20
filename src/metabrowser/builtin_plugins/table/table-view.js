@@ -202,6 +202,8 @@ export function mountTable(container, ctx, host = {}) {
   /** @type {AbortController | null} */
   let loading = null;
   let readingMore = false;
+  /** Whether reading the next page failed, so scrolling does not ask again. */
+  let moreFailed = false;
   let printing = false;
   /** Whether this view pushed the open record's history entry, so Back returns. */
   let recordOpenedHere = false;
@@ -383,7 +385,7 @@ export function mountTable(container, ctx, host = {}) {
     loading?.abort();
     const controller = new AbortController();
     loading = controller;
-    abort.signal.addEventListener("abort", () => controller.abort(), { once: true });
+    moreFailed = false;
     const question = state;
     root.setAttribute("aria-busy", "true");
     try {
@@ -429,7 +431,7 @@ export function mountTable(container, ctx, host = {}) {
 
   /** Read the next page of a windowed table, once the window nears the last row held. */
   async function readMore() {
-    if (readingMore || !page?.next_after || !windowed) {
+    if (readingMore || moreFailed || !page?.next_after || !windowed) {
       return;
     }
     readingMore = true;
@@ -454,6 +456,8 @@ export function mountTable(container, ctx, host = {}) {
       drawWindow(true);
     } catch (error) {
       if (seq === loadSeq && !disposed && !isAbort(error)) {
+        // Said once; the next question, or a reload, asks again.
+        moreFailed = true;
         notice("error", `The next rows could not be read. ${errorText(error)}`);
       }
     } finally {
@@ -1232,7 +1236,13 @@ export function mountTable(container, ctx, host = {}) {
   function activateLink(link) {
     if (link.classList.contains("table-value-filter")) {
       const field = link.dataset.filterField ?? "";
-      go(withFilter(state, { field, op: "eq", value: link.dataset.filterValue ?? "" }));
+      // From a record too: the filter shows the table it narrows.
+      const filter = {
+        field,
+        op: /** @type {const} */ ("eq"),
+        value: link.dataset.filterValue ?? "",
+      };
+      go(withRecord(withFilter(state, filter), null));
     } else if (link.classList.contains("table-chip-remove")) {
       const name = link.dataset.chip ?? "";
       go(name === "ref" ? withRef(state, null) : withoutFilter(state, name));
@@ -1247,14 +1257,29 @@ export function mountTable(container, ctx, host = {}) {
       openRecord(rows[index].key);
     } else if (link.classList.contains("table-ref")) {
       const ref = { table: link.dataset.refTable ?? "", key: link.dataset.refKey ?? "" };
-      void sdk.navigation.open(referenceTarget(ref)).catch(() => {});
+      openAddress(referenceTarget(ref));
     } else if (link.classList.contains("table-back")) {
       closeRecord();
     } else if (link.classList.contains("table-open-ref")) {
-      void sdk.navigation
-        .open({ path: link.dataset.path ?? path, query: link.dataset.query ?? "" })
-        .catch(() => {});
+      openAddress({ path: link.dataset.path ?? path, query: link.dataset.query ?? "" });
     }
+  }
+
+  /**
+   * Open another table's address, or this table's in another state. The shell keeps the
+   * view of the file it shows when only the query changes, so this table's own address is
+   * applied here.
+   *
+   * @param {{path: string, query: string}} target
+   */
+  function openAddress(target) {
+    if (normalPath(target.path) === normalPath(path)) {
+      go(parseState(target.query));
+      return;
+    }
+    void sdk.navigation.open(target).catch((/** @type {unknown} */ error) => {
+      console.warn("metabrowser table: could not open the table", error);
+    });
   }
 
   /** @param {Event} event */
