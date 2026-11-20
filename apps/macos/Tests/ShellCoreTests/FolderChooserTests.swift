@@ -47,6 +47,18 @@ import Testing
         #expect(RootMark(SessionRoot.repository(URL(string: "https://github.com/o/r")!)) == .repository)
         #expect(RootMark.folder.svg.hasPrefix("<svg") && RootMark.folder.svg.hasSuffix("</svg>"))
     }
+
+    @Test func aSubtitledItemsMarkIsRaisedToItsTitlesLine() {
+        let layout = RootMark.TitleLineLayout(mark: CGSize(width: 16, height: 16))
+        #expect(RootMark.TitleLineLayout.rise == 7)
+        // A 30-point image with the mark at its top, so the mark's middle is 7 points above
+        // the image's, which AppKit centers on the item.
+        #expect(layout.size == CGSize(width: 16, height: 30))
+        #expect(layout.mark == CGRect(x: 0, y: 14, width: 16, height: 16))
+        #expect(layout.mark.midY - layout.size.height / 2 == RootMark.TitleLineLayout.rise)
+        // A whole point up, so the mark lands on whole pixels at 1x and 2x.
+        #expect(layout.mark.minY == layout.mark.minY.rounded())
+    }
 }
 
 @Suite struct FolderChooserTests {

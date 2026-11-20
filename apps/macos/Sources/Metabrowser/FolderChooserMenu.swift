@@ -6,9 +6,10 @@ import ShellCore
 ///
 /// It is native chrome (an `NSMenu`, with section headers, check marks, subtitles, and
 /// Option alternates); its rows and what each choice does are `FolderChooser`'s, tested
-/// in `ShellCore`. Each root's mark is the page's own glyph (`RootMark`). The menu is built
-/// each time it opens, from the folders open then and the recent list's last answer, which
-/// it asks `metab` to refresh for next time, as File > Open Recent does.
+/// in `ShellCore`. Each root's mark is the page's own glyph (`RootMark`), on the line of
+/// the root's name, with the subtitle under the name (`RootMark.image(for:)`). The menu is
+/// built each time it opens, from the folders open then and the recent list's last answer,
+/// which it asks `metab` to refresh for next time, as File > Open Recent does.
 final class FolderChooserMenu: NSObject {
     /// What a row's item carries: the row's target and the window it was opened from,
     /// which a choice acts on, held weakly so an open menu keeps no closed window.
@@ -82,7 +83,7 @@ final class FolderChooserMenu: NSObject {
         alternate.isAlternate = true
         for each in [item, alternate] {
             each.target = self
-            each.image = row.mark.image
+            each.image = row.mark.image(for: each)
             each.representedObject = Carried(row.target, window: window)
             menu.addItem(each)
         }

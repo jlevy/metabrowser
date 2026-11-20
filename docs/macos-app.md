@@ -191,6 +191,8 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   for the folder chooser.
   It lists the open folders, in the order you opened them, with a check mark on the
   window’s own, then the recent folders that are not open.
+  Each row’s mark, a folder or, for a GitHub repository, a cloud, stands beside the
+  name, and the row’s location, or “In another window”, is the line below the name.
   Choosing a folder shows it in this window, and the folder the window showed stays open
   in the background, its page kept, so switching back is instant; a folder another
   window shows brings that window forward instead.

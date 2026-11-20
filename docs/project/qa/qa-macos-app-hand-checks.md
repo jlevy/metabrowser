@@ -474,8 +474,12 @@ Each step starts where the one before it ends.
    Folders, disabled. Each folder shows the page’s folder glyph, and a GitHub repository
    among the recent ones the cloud mark; File > Open Recent and the Dock icon’s menu
    show the same marks on their rows.
-   Holding Option turns each row into “Open … in New Window”.
-   Escape closes it.
+   Each row’s mark sits on the line of its name, centered on that line as on Open
+   Recent’s one-line rows, never between the name and the subtitle, and the subtitle
+   starts under the name, not under the mark: in light and dark mode, on the highlighted
+   row as white as its text, and on the checked row, whose check mark stays centered on
+   the row. Holding Option turns each row into “Open … in New Window”, its mark still on
+   the name’s line. Escape closes it.
 4. **A folder another window shows.** Choosing `b` in `a`’s chooser brings `b`’s window
    forward and changes nothing in `a`’s.
 5. **A recent folder, in place.** In `a`’s window choose `c`: the same window, at the
@@ -513,8 +517,9 @@ Each step starts where the one before it ends.
     with an empty field that has the focus.
     It lists `a` first and selected, then `b` subtitled “In another window”, then the
     recent folders, and last `c`, checked.
-    Each row shows the page’s folder glyph, the selected row is drawn in the accent
-    color, and the check mark sits at the row’s trailing edge.
+    Each row shows the page’s folder glyph on the line of its name, as the chooser does,
+    the selected row is drawn in the accent color, and the check mark sits at the row’s
+    trailing edge, centered on the row.
     Return shows `a` in the window at once, as in step 6; Shift-Command-O, then Return,
     shows `c` again.
 12. **The panel’s keys.** In `c`’s window press Shift-Command-O, then:
