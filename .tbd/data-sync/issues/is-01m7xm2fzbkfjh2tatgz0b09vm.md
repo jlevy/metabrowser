@@ -3,14 +3,18 @@ type: is
 id: is-01m7xm2fzbkfjh2tatgz0b09vm
 title: Nested pytest-timeout probe loses its test frame from the stack dump under CI load
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
+delegate: codex@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m2gb3gpn7vcsw0as4xa243tg
+hold: null
+hold_until: null
 created_at: 2026-11-20T23:18:39.851Z
-updated_at: 2026-11-20T23:18:39.851Z
+updated_at: 2026-11-20T23:23:02.735Z
+started_at: 2026-11-20T23:23:02.734Z
 ---
 Observed on Metabrowser #680 at a2f3d70c, Linux CPython 3.13.14, CI run 44834917928 job 136628751079. In tests/test_suite_workers.py:96, test_a_budget_the_run_gives_is_read_as_pytest_timeout_reads_it[PYTEST_TIMEOUT] saw exactly one expected 2-second diagnostic, but its captured stack did not show probe_a_test_that_nears_a_run_budget. The nested pytest returned zero. The assertion truncated the captured stack, so the phase that emitted the dump is unknown. The outer test took 12.29 s. The worker regression file passed on that job and the previously failing Markdown golden passed separately.
 
