@@ -184,7 +184,8 @@
               "title": "Start the topic",
               "state": "merged"
             }
-          ]
+          ],
+          "pulls_total": 1
         },
         {
           "name": "feature",
@@ -200,9 +201,68 @@
               "title": "Try the first design",
               "state": "closed"
             }
-          ]
+          ],
+          "pulls_total": 1
         }
       ]
+    }
+  },
+  "filling_by_title": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "try",
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "kinds": [
+        "branch",
+        "tag"
+      ],
+      "working_tree": null,
+      "pull_requests": {
+        "state": "ready",
+        "complete": false,
+        "refreshing": true
+      },
+      "refs": [
+        {
+          "name": "feature",
+          "ref": "refs/remotes/origin/feature",
+          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "committed_at": 1767232800.0,
+          "default": false,
+          "checked_out": false,
+          "current": false,
+          "pulls": [
+            {
+              "number": 18,
+              "title": "Try the first design",
+              "state": "closed"
+            }
+          ],
+          "pulls_total": 1
+        }
+      ]
+    }
+  },
+  "filling_nothing": {
+    "status": 200,
+    "body": {
+      "kind": "branch",
+      "query": "zzz",
+      "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "ref": "refs/remotes/origin/topic",
+      "kinds": [
+        "branch",
+        "tag"
+      ],
+      "working_tree": null,
+      "pull_requests": {
+        "state": "ready",
+        "complete": false,
+        "refreshing": true
+      },
+      "refs": []
     }
   },
   "annotated": {
@@ -237,7 +297,8 @@
               "title": "Start the topic",
               "state": "merged"
             }
-          ]
+          ],
+          "pulls_total": 1
         },
         {
           "name": "feature",
@@ -258,7 +319,8 @@
               "title": "Try the first design",
               "state": "closed"
             }
-          ]
+          ],
+          "pulls_total": 2
         }
       ]
     }
@@ -295,7 +357,8 @@
               "title": "Start the topic",
               "state": "merged"
             }
-          ]
+          ],
+          "pulls_total": 1
         },
         {
           "name": "feature",
@@ -316,7 +379,8 @@
               "title": "feat(ref): choose among branches",
               "state": "open"
             }
-          ]
+          ],
+          "pulls_total": 2
         }
       ]
     }
@@ -353,7 +417,8 @@
               "title": "Start the topic",
               "state": "merged"
             }
-          ]
+          ],
+          "pulls_total": 1
         }
       ]
     }

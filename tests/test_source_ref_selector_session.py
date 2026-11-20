@@ -4,7 +4,9 @@
 opening, the filter's pause, aborted requests, the branch and tag lists, switching,
 and where arrow keys move focus --
 through a scripted conversation, and
-``tests/golden/cli-ui-source-ref-selector.tryscript.md`` pins its transcript. So that the
+``tests/golden/cli-ui-source-ref-selector.tryscript.md`` pins its transcript, and
+``tests/dom/source-ref-selector-pulls-session.js`` (``cli-ui-source-ref-selector-pulls.tryscript.md``)
+the pull requests a branch heads, on the same recording. So that the
 conversation is the real server's and not envelopes a test wrote by hand, its responses
 come from ``tests/fixtures/source-ref-selector-responses.json``: what the in-process
 application answered for the listings and the switches the session plays. The first
@@ -111,6 +113,9 @@ def _record_pull_requests(
     ]
     seed_catalog(repository, items[:2], complete=False, fetched_at="2026-10-01T12:00:00Z")
     recorded["filling"] = listing(kind="branch")
+    # A filter while the catalog is half full finds only what is cached, and says so.
+    recorded["filling_by_title"] = listing(kind="branch", q="try")
+    recorded["filling_nothing"] = listing(kind="branch", q="zzz")
     held["refreshing"] = False
     seed_catalog(repository, items, fetched_at="2026-10-01T12:00:00Z")
     recorded["annotated"] = listing(kind="branch")
@@ -407,7 +412,7 @@ def test_the_session_runs_on_the_recording() -> None:
 
 def test_the_session_lists_a_branchs_pull_requests_and_asks_while_the_server_fills_them() -> None:
     by_name = {
-        step["step"]: step for step in run_session("source-ref-selector-session.js")["steps"]
+        step["step"]: step for step in run_session("source-ref-selector-pulls-session.js")["steps"]
     }
     branches = "GET /api/source/refs?kind=branch"
     pending = by_name[
@@ -447,3 +452,42 @@ def test_the_session_lists_a_branchs_pull_requests_and_asks_while_the_server_fil
     assert "pullRequests" not in tags["paint"] and "filter" not in tags["paint"]
     # Closing the list cancels the wait.
     assert "pullsPending" not in by_name["closing stops asking for pull requests"]
+
+
+def test_the_session_draws_only_what_an_ask_for_pull_requests_moved() -> None:
+    session = run_session("source-ref-selector-pulls-session.js")
+    by_name = {step["step"]: step for step in session["steps"]}
+    # An ask that finds the same listing draws nothing, so the rows keep their focus, their
+    # tooltips, and a press in progress, and it asks again while the server fills (mb-tjbm
+    # review A2).
+    unchanged = by_name["an ask that finds the listing unchanged draws nothing"]
+    assert unchanged["rendered"] == 0 and unchanged["pullsPending"] is True
+    # An ask that comes due while a filter is typed asks nothing, and is made again: the
+    # filter is asked for with what was typed, as it was, not lost to it (review A9).
+    waiting = by_name["an ask that comes due while a filter is typed waits for it"]
+    assert waiting["requests"] == [] and waiting["filterPending"] and waiting["pullsPending"]
+    found = by_name["the filter finds what is cached, and the list says it may find more"]
+    assert found["requests"] == ["GET /api/source/refs?kind=branch&q=try"]
+    assert found["paint"]["note"].startswith("Pull requests are not all cached yet")
+    # What a filter finds in a catalog still filling is said not to be all of it (review A8).
+    nothing = by_name["a filter that finds nothing says so, and that it may find more later"]
+    assert nothing["paint"]["note"].startswith("No branches match. Pull requests are not all")
+    # Where the list scrolls to when its rows move: the top row stays where it was, the foot
+    # stays the foot, and a focused row stays in view (review A1).
+    anchors = {line.split(":")[0]: line for line in session["anchors"]}
+    top = anchors["the top row stays where it was while rows above it grow"]
+    assert "570 -> 660 px" in top and "(its top 560 -> 650)" in top
+    assert "2688 -> 2778 px" in anchors["the foot stays the foot, as End left it"]
+    assert "560 -> 946 px" in anchors["a focused row in view stays in view"]
+    assert "1680 -> 2130 px" in anchors["a focused row out of view is left where it is"]
+    assert session["same"] == [
+        "the same answer: same",
+        "a pull request's title changed: different",
+        "the server began filling its pull requests: different",
+        "no answer and an answer: different",
+        "a row fewer: different",
+        # The rows a drawn list keeps and patches: the same refs, whatever pull requests.
+        "the same refs with other pull requests: same",
+        "a ref's commit moved: different",
+        "a row fewer: different",
+    ]

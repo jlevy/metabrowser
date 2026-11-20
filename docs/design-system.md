@@ -5526,7 +5526,9 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   [title](#titles), bold in normal text ink and cut at the line’s end, with the whole
   title and any other pull request of the branch in the row’s tooltip.
   A branch with several shows the open ones first and then the newest, and counts the
-  rest, “+1”, in the muted ink.
+  rest, “+1”, in the muted ink; the row lists the first `REF_PULLS_PER_ROW` of them and
+  says how many there are, so a branch with dozens is no larger a row, and the others
+  are named for assistive technology in the row’s description as well as its tooltip.
   Only a pull request from the repository’s own branch is its branch’s: a fork’s branch
   of the same name is another branch.
   A tag, which no pull request has for its head, never has the line, and a pull
@@ -5538,8 +5540,17 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   arrive. The filter box then says “Filter branches or pull requests” and finds a branch
   by its pull request’s number, `#` and the start of one, or by every word of its title,
   as well as by its name; “#” alone lists the branches that have one.
-  The icon is the GitHub plugin’s, which the list loads on demand and draws the rows
-  with once it has; the slot is the icon’s width from the first frame, so nothing moves.
+  While the server has cached only some of the pull requests, the list says under a
+  filter’s finds that a number or a title may match more branches.
+  What arrives while the list is open changes what the reader sees as little as it can:
+  an ask that finds the listing unchanged draws nothing, so focus, a tooltip, and a
+  press in progress stay where they are, and one that finds pull requests for rows the
+  list has patches them into those rows.
+  The rows above the view grow when they gain a line, so the list is scrolled to keep
+  the row at the top of its view where it was, a list at its foot at its foot, and a
+  focused row in view (`anchoredScroll`). The icon is the GitHub plugin’s, which the
+  list loads on demand and draws the rows with once it has; the slot is the icon’s width
+  from the first frame, so nothing moves.
 
 - **The list holds every ref, newest first, and draws only the rows near its view.** It
   reads by the age its rows show, after the mirror’s default branch or the checkout’s
@@ -5549,7 +5560,9 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   one of two heights, with a pull request or without, each measured by a row drawn out
   of sight, so nothing else in a row may make it taller than the rest of its kind: the
   badge’s border reaches into the row’s padding, and the pull request’s line is one line
-  whatever its title says.
+  of `--nav-metadata-line-height`, however tall the glyphs of its title are: an emoji or
+  a Japanese title falls back to a font whose `normal` line is taller, which made the
+  row 2 to 3 px taller than the list places it.
   A row with no pull request is as tall as every row was before the line existed.
   The row that takes Tab stays drawn however far the list scrolls from it, so focus on
   it is never lost, and a list that holds the served ref opens scrolled to its row.

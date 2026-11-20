@@ -57,6 +57,8 @@ _METAB = Path(sys.executable).with_name("metab")
 # placed them at one height, would show.
 BRANCHES: Final = 600
 SESSION_TIMEOUT_S = 150
+# Loose on purpose: here to catch a step that waits on something, not to rank machines.
+STEP_BOUND_MS = 5000
 LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 pytestmark = [
     pytest.mark.timeout(LIFECYCLE_S + 10),
@@ -65,6 +67,15 @@ pytestmark = [
 ]
 _STATES: Final = ("open", "draft", "merged", "closed")
 _NEEDLE: Final = "needlework"
+# Titles whose glyphs fall back to other fonts, or stack above and below the line: an emoji
+# and a joined sequence, Japanese, and combining marks. A row's height is the same with any
+# of them (mb-tjbm review A4). Branch ``b-0598``, the newest, keeps a plain title, which the
+# test measures the height of a row with a pull request by.
+_ODD_TITLES: Final = {
+    596: "\U0001f525 Fix the crash \U0001f680 \U0001f469\u200d\U0001f4bb",
+    594: "\u4fee\u590d\uff1a\u65e5\u672c\u8a9e\u306e\u30bf\u30a4\u30c8\u30eb\u3067\u3059\u6f22\u5b57",
+    592: "Zalgo t\u0337\u0353\u0301e\u0336\u0319\u030as\u0335\u0317\u0308t\u0336\u033b with \u0301\u0301\u0301 marks",
+}
 # A title that goes past the end of any line the list has.
 _LONG: Final = " and then a good deal more, past any line a list has, " * 3
 
@@ -91,6 +102,7 @@ def _pull_requests(branches: int) -> list[dict[str, Any]]:
             title += _LONG
         if at in (100, 300):
             title = f"Tidy the {_NEEDLE}"
+        title = _ODD_TITLES.get(at, title)
         items.append(
             head_item(
                 at + 1,
@@ -208,3 +220,46 @@ def test_rows_with_a_pull_request_are_placed_by_their_own_height_in_chrome(
     assert result["byNumber"]["setSize"] == len(by_number) > 0
     # A word of a title that no branch's name has.
     assert result["byTitle"]["names"] == _newest_first([_branch(100), _branch(300)])
+
+    # A title of emoji, CJK, or combining marks makes a row no taller: every row with a pull
+    # request drawn at the top of the list is one height, which the plain-titled newest row
+    # set (``tallHeights`` of the first screen), and the rows abut (review A4).
+    odd = [line["text"] for line in opened["lines"] if not line["text"].isascii()]
+    assert len(odd) >= 3, opened["lines"]
+    assert opened["tallHeights"] == [heights["tall"]]
+
+    # Opening: when the rows and the icons were there, and whether the Pulls tab's prefetch had
+    # loaded the plugin that draws them first (review A6). Printed with a failure.
+    print("open:", result["rowsMs"], result["iconsMs"], result["pluginLoadedAtOpen"])
+    assert result["iconsMs"] < STEP_BOUND_MS
+
+    # Pull requests arriving for rows above a list scrolled to its middle (review A1, A2).
+    scrolled = result["scrolled"]
+    assert scrolled["focusedInView"] and scrolled["sameFocus"] is True
+    unchanged = result["unchanged"]
+    # An ask that found nothing new changed nothing in the list's document, so the focused
+    # element is the same one, and no tooltip or press is orphaned.
+    assert unchanged["asks"] > scrolled["asks"]
+    assert unchanged["mutations"] == 0, unchanged
+    assert unchanged["sameFocus"] is True and unchanged["scrollTop"] == scrolled["scrollTop"]
+    arrived = result["arrived"]
+    assert arrived["asks"] > unchanged["asks"]
+    # The rows above grew, so the list is taller, and the row at the top of the view is the
+    # one that was, at the offset it was; the focused element is the same one, in view.
+    assert arrived["scrollHeight"] > unchanged["scrollHeight"] + 1000
+    assert arrived["top"]["index"] == unchanged["top"]["index"], (unchanged["top"], arrived["top"])
+    assert abs(arrived["top"]["offset"] - unchanged["top"]["offset"]) <= 1, arrived
+    assert arrived["sameFocus"] is True and arrived["focusedInView"] is True
+    assert arrived["scrollTop"] > unchanged["scrollTop"]
+
+    # The same at the foot, where End left the list: it is still there, its last row focused
+    # and in view, with the same element.
+    before, after = result["footBefore"], result["footAfter"]
+    assert before["focusedIndex"] == BRANCHES + 1 and before["sameFocus"] is True
+    assert after["scrollHeight"] > before["scrollHeight"] + 1000
+    assert abs(after["scrollTop"] + after["clientHeight"] - after["scrollHeight"]) <= 1, after
+    assert (after["focusedIndex"], after["focusedInView"], after["sameFocus"]) == (
+        BRANCHES + 1,
+        True,
+        True,
+    )

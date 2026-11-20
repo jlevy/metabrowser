@@ -2967,12 +2967,17 @@ html.theme-anim .menu {
 }
 /* The pull request's icon (the GitHub plugin's, drawn once it loads into a slot as wide as
    itself), its number (--pull-number-weight), and its title: bold in normal ink, cut at
-   the line's end; a count of the branch's other pull requests follows, muted. */
+   the line's end; a count of the branch's other pull requests follows, muted. The line is
+   one height whatever its title holds: a title's emoji or CJK fall back to a font whose
+   `normal` line is taller, which made the row 2 to 3 px taller than the list places it. */
 .source-ref-selector-pull {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  height: calc(var(--nav-metadata-line-height) * 1em);
+  overflow: hidden;
+  line-height: var(--nav-metadata-line-height);
 }
 .source-ref-selector-pull-icon {
   display: inline-flex;

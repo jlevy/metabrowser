@@ -721,7 +721,12 @@ def catalog_heads(
                 ).fetchone()
                 if cutoff is not None:
                     oldest = cutoff[0]
-            rows = db.execute(
+            # Every row is fetched here and read after the connection is closed: a read
+            # transaction holds off the writer's commit, and a writer waits only 0.25 s
+            # (`_database`), so a Python loop over the rows inside it, which grows with them,
+            # is time the job's page write could fail for ("database is locked", 2 of 207
+            # commits at 100,000 rows against a scan that never paused, mb-tjbm review A3).
+            found = db.execute(
                 "SELECT number, state, json_extract(body, '$.draft'), "
                 "json_extract(body, '$.merged_at') IS NOT NULL, "
                 "json_extract(body, '$.title'), json_extract(body, '$.head_ref') "
@@ -729,24 +734,24 @@ def catalog_heads(
                 "AND json_extract(body, '$.head_repository') = ? COLLATE NOCASE "
                 "ORDER BY number DESC",
                 (oldest, name),
-            )
-            pulls: list[HeadPull] = []
-            for number, status, draft, merged, title, head_ref in rows:
-                if (
-                    not isinstance(number, int)
-                    or status not in ("open", "closed")
-                    or not isinstance(title, str)
-                    or not isinstance(head_ref, str)
-                    or not head_ref
-                ):
-                    continue
-                shown: Literal["open", "draft", "merged", "closed"] = (
-                    "merged" if merged else "draft" if status == "open" and draft else status
-                )
-                pulls.append(HeadPull(number, title, shown, head_ref))
-            return CatalogHeads(state, tuple(pulls), limited)
+            ).fetchall()
     except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
         return absent
+    pulls: list[HeadPull] = []
+    for number, status, draft, merged, title, head_ref in found:
+        if (
+            not isinstance(number, int)
+            or status not in ("open", "closed")
+            or not isinstance(title, str)
+            or not isinstance(head_ref, str)
+            or not head_ref
+        ):
+            continue
+        shown: Literal["open", "draft", "merged", "closed"] = (
+            "merged" if merged else "draft" if status == "open" and draft else status
+        )
+        pulls.append(HeadPull(number, title, shown, head_ref))
+    return CatalogHeads(state, tuple(pulls), limited)
 
 
 @dataclass(frozen=True, slots=True)

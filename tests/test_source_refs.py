@@ -412,6 +412,23 @@ def test_a_provider_with_pull_requests_is_asked_for_a_listing_that_follows_its_t
     assert served.get("/api/source/refs").json()["pull_requests"]["refreshing"] is True
 
 
+def test_a_provider_that_fails_shows_no_pull_requests_and_the_branches_still_list(
+    served: TestClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The pull requests are an addition: a provider that cannot read its cache costs the
+    list nothing but them, and the server says why in its log (mb-tjbm review A10)."""
+
+    async def broken(app: object) -> None:
+        raise RuntimeError("the catalog is on fire")
+
+    monkeypatch.setattr("metabrowser.cache.providers.ref_pulls_for", broken)
+    with caplog.at_level("WARNING", logger="metabrowser.source_routes"):
+        listing = _refs(served)
+    assert listing["pull_requests"] is None
+    assert listing["refs"][0]["name"] == "topic"
+    assert "the catalog is on fire" in caplog.text
+
+
 def test_a_provider_with_nothing_cached_says_so(
     served: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

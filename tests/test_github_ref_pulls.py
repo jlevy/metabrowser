@@ -9,6 +9,8 @@ alone and kept until the catalog moves.
 
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +24,7 @@ from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.ref_pulls import ref_pulls_of
 from metabrowser.cache.providers import RefPull
 from metabrowser.mirror_refresh import MirrorRef
-from metabrowser.source_routes import SourceRef, source_refs
+from metabrowser.source_routes import REF_PULLS_PER_ROW, SourceRef, source_refs
 from tests.cache_home_fixture import (  # pyright: ignore[reportPrivateUsage]
     FixtureSource,
     _stage_and_publish_source,
@@ -60,6 +62,12 @@ def _pulls_of(row: SourceRef) -> list[RefPull]:
     """A row's pull requests; the key is absent from a row that has none."""
 
     return row.get("pulls", [])
+
+
+def _total_of(row: SourceRef) -> int:
+    """How many pull requests a row's branch heads; the key is absent from a row with none."""
+
+    return row.get("pulls_total", 0)
 
 
 def test_a_catalog_not_yet_cached_answers_as_absent_and_is_not_ready(
@@ -132,6 +140,25 @@ def test_a_forks_branch_is_not_the_repositorys_branch(repository: ListedReposito
     assert found.matching("fork") == frozenset()
 
 
+def test_a_repository_renamed_since_its_pull_requests_were_cached_shows_them_as_a_forks(
+    repository: ListedRepository,
+) -> None:
+    """The repository's own pull requests are told from a fork's by the name the catalog
+    recorded for the head repository, which the served repository's address is compared
+    with. One recorded before a rename or a transfer names the old repository, so it reads as
+    a fork's and its branch shows none until the catalog records the new name. This pins that
+    known limit; mb-n3hm tracks comparing the repository's id instead."""
+
+    _seed(
+        repository,
+        [
+            head_item(5, "feature", "Cached under the old name", head_repository="octo/demo-old"),
+            head_item(6, "feature", "Cached since the rename"),
+        ],
+    )
+    assert _numbers(ref_pulls_of(repository).pulls("feature")) == [6]
+
+
 def test_a_filter_matches_a_number_by_its_start_and_a_title_by_every_word(
     repository: ListedRepository,
 ) -> None:
@@ -201,6 +228,70 @@ def test_the_answer_is_kept_until_the_catalog_moves(
     assert reads == [True, False, True]
     # Whether a job is filling the catalog is part of what the answer is kept under.
     assert ref_pulls_of(repository, refreshing=True).token != moved.token
+
+
+def test_a_scan_reads_its_rows_outside_the_transaction_so_a_page_write_is_not_held_off(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A read transaction holds off the writer's commit, which waits 0.25 s, so what a scan
+    does with its rows takes place after its connection is closed (mb-tjbm review A3).
+
+    The rows are made into pull requests slowly, 600 of them at 1 ms; a scan that did that
+    inside its transaction would hold the catalog for 0.6 s, and the page the job writes
+    meanwhile would fail with ``database is locked``.
+    """
+
+    _seed(repository, [head_item(n, f"b-{n}", f"Pull {n}") for n in range(1, 601)])
+    processing = threading.Event()
+    real = pull_catalog.HeadPull
+
+    def slow(*args: Any) -> Any:
+        processing.set()
+        time.sleep(0.001)
+        return real(*args)
+
+    monkeypatch.setattr(pull_catalog, "HeadPull", slow)
+    found: list[int] = []
+    scan = threading.Thread(
+        target=lambda: found.append(len(catalog_heads(repository).pulls or ())), daemon=True
+    )
+    scan.start()
+    assert processing.wait(20), "the scan never reached its rows"
+    began = time.monotonic()
+    # The job's next page, through the production publisher, while the scan makes its rows.
+    _seed(repository, [head_item(n, f"b-{n}", f"Pull {n}") for n in range(1, 702)])
+    assert time.monotonic() - began < 0.25
+    scan.join(30)
+    assert found == [600]
+
+
+def test_a_catalog_being_filled_is_scanned_again_only_once_in_the_interval(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every page a job writes moves the catalog's revision, and a scan holds off the next
+    page's write, so while it fills the answer held is served for ``RESCAN_WHILE_FILLING_S``
+    (mb-tjbm review A3)."""
+
+    clock = [1000.0]
+    monkeypatch.setattr(ref_pulls, "_now", lambda: clock[0])
+    _seed(repository, [head_item(3, "feature", "First")])
+    first = ref_pulls_of(repository, refreshing=True)
+    # A page lands, and the job is still running: what is held is served, not scanned for.
+    _seed(repository, [head_item(3, "feature", "First"), head_item(4, "feature", "Second")])
+    clock[0] += ref_pulls.RESCAN_WHILE_FILLING_S - 0.5
+    held = ref_pulls_of(repository, refreshing=True)
+    assert held.token == first.token and _numbers(held.pulls("feature")) == [3]
+    # Once the interval has passed it is read again.
+    clock[0] += 1
+    moved = ref_pulls_of(repository, refreshing=True)
+    assert moved.token != first.token and _numbers(moved.pulls("feature")) == [4, 3]
+    # A job that has ended is read at once, however recently it was read.
+    _seed(repository, [head_item(5, "feature", "Third")])
+    ended = ref_pulls_of(repository, refreshing=False)
+    assert _numbers(ended.pulls("feature")) == [5, 4, 3]
+    # And a first answer is never held back: nothing is held for a catalog not yet cached.
+    other = ListedRepository(repository.home, repository.slug, "octo", "other")
+    assert not ref_pulls_of(other, refreshing=True).ready
 
 
 def test_a_catalog_still_filling_is_not_complete(repository: ListedRepository) -> None:
@@ -280,6 +371,32 @@ def test_a_listing_names_a_branchs_pull_requests_and_lets_the_filter_find_it(
     assert [row["name"] for row in by_title["refs"]] == ["topic"]
     nothing = source_refs(listed, None, kind="branch", query="zzz", pulls=found)
     assert nothing["refs"] == []
+
+
+def test_a_row_lists_the_first_few_pull_requests_and_how_many_there_are(
+    repository: ListedRepository,
+) -> None:
+    """A branch with dozens is no larger a row than one with a few (mb-tjbm review A5)."""
+
+    cap = REF_PULLS_PER_ROW
+    _seed(
+        repository,
+        [head_item(number, "busy", f"Attempt {number}") for number in range(1, cap + 5)]
+        + [head_item(100, "calm", "One")],
+    )
+    found = ref_pulls_of(repository)
+    listed = (_ref("busy"), _ref("calm"))
+    rows = {
+        row["name"]: row
+        for row in source_refs(listed, None, kind="branch", query="", pulls=found)["refs"]
+    }
+    assert _numbers(_pulls_of(rows["busy"])) == list(range(cap + 4, 4, -1))
+    assert _total_of(rows["busy"]) == cap + 4
+    assert (_numbers(_pulls_of(rows["calm"])), _total_of(rows["calm"])) == ([100], 1)
+    # With a filter the pull request that matched is among the listed, and the total is of all.
+    by_title = source_refs(listed, None, kind="branch", query="attempt 1", pulls=found)
+    busy = next(row for row in by_title["refs"] if row["name"] == "busy")
+    assert _numbers(_pulls_of(busy))[0] == 10 and _total_of(busy) == cap + 4
 
 
 def test_a_checkouts_remote_branches_are_origins_alone(repository: ListedRepository) -> None:

@@ -662,7 +662,8 @@ status: 200
           "title": "WIP: draft the next page",
           "state": "draft"
         }
-      ]
+      ],
+      "pulls_total": 1
     }
   ]
 }
@@ -707,7 +708,8 @@ status: 200
           "title": "WIP: draft the next page",
           "state": "draft"
         }
-      ]
+      ],
+      "pulls_total": 1
     }
   ]
 }
@@ -748,7 +750,8 @@ status: 200
           "title": "WIP: draft the next page",
           "state": "draft"
         }
-      ]
+      ],
+      "pulls_total": 1
     }
   ]
 }

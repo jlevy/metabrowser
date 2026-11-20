@@ -82,7 +82,8 @@ status: 200
           "title": "Start the topic",
           "state": "merged"
         }
-      ]
+      ],
+      "pulls_total": 1
     },
     {
       "name": "wip",
@@ -103,7 +104,8 @@ status: 200
           "title": "An earlier try at the page",
           "state": "closed"
         }
-      ]
+      ],
+      "pulls_total": 2
     }
   ]
 }
@@ -150,7 +152,8 @@ status: 200
           "title": "WIP: draft the next page",
           "state": "draft"
         }
-      ]
+      ],
+      "pulls_total": 2
     }
   ]
 }
@@ -191,7 +194,8 @@ status: 200
           "title": "Start the topic",
           "state": "merged"
         }
-      ]
+      ],
+      "pulls_total": 1
     }
   ]
 }

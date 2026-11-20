@@ -20,7 +20,15 @@
 //      and Home;
 //   4. types `#12`, which finds branches by their pull requests' numbers, and a word of
 //      a title that no branch's name has;
-//   5. reads the same list with the Files toolbar drawn again around it.
+//   5. reads the same list with the Files toolbar drawn again around it;
+//   6. loads the page again with the server saying it is still filling its pull requests,
+//      and none yet for the first 300 rows, scrolls to the middle and focuses a row, and
+//      reads that an ask that finds nothing new changes nothing in the document (no
+//      mutation, the same focused element), and that when the pull requests arrive for the
+//      rows above, which makes them taller, the row at the top of the view stays where it
+//      was, the focused element is the same one and still in view (mb-tjbm review A1, A2);
+//   7. the same, with the list at its foot after End: it is at its foot after, with its last
+//      row focused and in view.
 //
 // Usage: node ref-selector-pulls-chrome.mjs METAB CHECKOUT PORT STATE, with CHROME_BIN set
 // and CHROME_PROFILES naming where Chrome's profile goes (tests/dom/chrome-session.mjs).
@@ -178,6 +186,73 @@ const listedScript = (heights) => `(() => {
   };
 })()`;
 
+// The refs route as a server still filling its pull requests answers it: `phase` is "bare"
+// while the first ABOVE rows have none, and "arrived" once they have them and the server is
+// done. Each ask is counted. Installed in the page, over its own `fetch`.
+const ABOVE = 300;
+const OVERRIDE = `(() => {
+  const real = window.fetch.bind(window);
+  window.__phase = "bare";
+  window.__asks = 0;
+  window.fetch = async (input, init) => {
+    const response = await real(input, init);
+    const url = typeof input === "string" ? input : input.url;
+    if (!url.includes("/api/source/refs") || window.__phase === "real") {
+      return response;
+    }
+    window.__asks += 1;
+    const body = await response.clone().json();
+    if (window.__phase === "bare") {
+      body.refs.slice(0, ${ABOVE}).forEach((row) => {
+        delete row.pulls;
+        delete row.pulls_total;
+      });
+      body.pull_requests = { state: "ready", complete: false, refreshing: true };
+    }
+    return new Response(JSON.stringify(body), { status: 200, headers: response.headers });
+  };
+  return true;
+})()`;
+// The index and offset in the list's view of the row at its top: the first row that ends
+// below the view's top edge.
+const TOP_ROW = `(() => {
+  const list = ${LIST};
+  const edge = list.getBoundingClientRect().top + list.clientTop;
+  const item = [...list.querySelectorAll(".source-ref-selector-item")].find(
+    (row) => row.getBoundingClientRect().bottom > edge + 0.5,
+  );
+  return item ? {
+    index: Number(item.getAttribute("aria-posinset")),
+    offset: Math.round((item.getBoundingClientRect().top - edge) * 10) / 10,
+  } : null;
+})()`;
+const VIEW_STATE = `(() => {
+  const list = ${LIST};
+  const box = list.getBoundingClientRect();
+  const focused = document.activeElement;
+  const mine = list.contains(focused);
+  const row = mine ? focused.getBoundingClientRect() : null;
+  return {
+    top: ${TOP_ROW},
+    scrollTop: list.scrollTop,
+    scrollHeight: list.scrollHeight,
+    clientHeight: list.clientHeight,
+    sameFocus: mine && focused === window.__focused && focused.isConnected,
+    focusedInView: row !== null && row.top >= box.top - 0.5 && row.bottom <= box.bottom + 0.5,
+    focusedIndex: mine ? Number(focused.parentElement.getAttribute("aria-posinset")) : null,
+    withPulls: ${LIST}.querySelectorAll(".source-ref-selector-pull").length,
+    asks: window.__asks,
+    mutations: window.__mutations,
+  };
+})()`;
+const WATCH = `(() => {
+  window.__mutations = 0;
+  window.__watcher?.disconnect();
+  window.__watcher = new MutationObserver((records) => { window.__mutations += records.length; });
+  window.__watcher.observe(${LIST}, { subtree: true, childList: true, attributes: true, characterData: true });
+  return true;
+})()`;
+
 const server = await serve(checkout, Number(port), state);
 const chrome = await launchChrome(process.env.CHROME_BIN, { profiles });
 
@@ -208,9 +283,21 @@ try {
     overscan: await chrome.evaluate("window.MetabrowserSourceRefSelector.ROWS_OVERSCAN"),
   };
 
-  // 1. Open, and wait for the pull requests and their icons.
-  await chrome.evaluate(`${ROOT}.querySelector(".source-ref-selector-toggle").click(); true`);
-  await chrome.waitFor(`${SETTLED} && ${DRAWN}`);
+  // 1. Open, and wait for the pull requests and their icons. The list's rows are drawn
+  // when its answer is, and the icons when the GitHub plugin has loaded, which the Pulls
+  // tab's idle prefetch has usually done: `coldOpen` says whether the click came first,
+  // and how long each took (mb-tjbm review A6).
+  await chrome.evaluate(`(() => {
+    const t = performance.now();
+    window.__opened = { at: t, plugin: typeof window.metabrowser.builtins?.github?.pullStateIcon === "function" };
+    ${ROOT}.querySelector(".source-ref-selector-toggle").click();
+    return true;
+  })()`);
+  await chrome.waitFor(`${SETTLED}`);
+  result.rowsMs = await chrome.evaluate(`Math.round(performance.now() - window.__opened.at)`);
+  await chrome.waitFor(`${DRAWN}`);
+  result.iconsMs = await chrome.evaluate(`Math.round(performance.now() - window.__opened.at)`);
+  result.pluginLoadedAtOpen = await chrome.evaluate(`window.__opened.plugin`);
   await chrome.evaluate(FRAMES);
   // The two heights, read from the first row of each kind.
   const heights = await chrome.evaluate(`(() => {
@@ -289,6 +376,69 @@ try {
     await chrome.evaluate(FRAMES);
     result[name] = await listed(heights);
   }
+  // 6. Pull requests that arrive for rows above a list scrolled to its middle.
+  /** Load the page again, and open the list with the server still filling its pull requests. */
+  const openFilling = async () => {
+    await chrome.send("Page.navigate", { url: `${server.base}/view/` });
+    await chrome.waitFor(
+      `${MOUNTED} && document.querySelectorAll("#tree-content .tree-item").length > 0`,
+    );
+    await chrome.evaluate(OVERRIDE);
+    await chrome.evaluate(`${ROOT}.querySelector(".source-ref-selector-toggle").click(); true`);
+    await chrome.waitFor(
+      `${SETTLED} && window.MetabrowserSourceRefSelector.mounted().snapshot().listing?.pull_requests?.refreshing === true`,
+    );
+    await chrome.evaluate(FRAMES);
+  };
+  /** Wait for the list to ask again once more, and for what it draws to settle. */
+  const nextAsk = async () => {
+    const asks = await chrome.evaluate("window.__asks");
+    await chrome.waitFor(`window.__asks > ${asks} && ${SETTLED}`, 15000);
+    await chrome.evaluate(FRAMES);
+  };
+  // A headless page is not focused, so it fires no focus events, and the Files toolbar's
+  // own redraws, which take the selector out of the page and put it back
+  // (`keepAcrossRefills`), would not know which control to give focus back to.
+  await chrome.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+  await openFilling();
+  result.fillingBefore = await chrome.evaluate(VIEW_STATE);
+  await chrome.evaluate(`(async () => {
+    const list = ${LIST};
+    const rows = [...list.querySelectorAll(".source-ref-selector-item")];
+    list.scrollTop = ${ABOVE} * ${heights.plain} + 100;
+    await ${FRAMES};
+    const row = [...list.querySelectorAll("button")].find((button) => {
+      const box = button.getBoundingClientRect();
+      const edge = list.getBoundingClientRect();
+      return box.top >= edge.top + 60 && box.bottom <= edge.bottom - 60;
+    });
+    row.focus();
+    window.__focused = document.activeElement;
+    return rows.length;
+  })()`);
+  await chrome.evaluate(WATCH);
+  result.scrolled = await chrome.evaluate(VIEW_STATE);
+  // An ask that finds nothing new: nothing in the list's document changes.
+  await nextAsk();
+  result.unchanged = await chrome.evaluate(VIEW_STATE);
+  // The pull requests arrive for the rows above the view, and the server is done.
+  await chrome.evaluate(`window.__phase = "arrived"; true`);
+  await nextAsk();
+  result.arrived = await chrome.evaluate(VIEW_STATE);
+
+  // 7. The same at the foot, where End left the list.
+  await openFilling();
+  await chrome.evaluate(`(async () => {
+    ${LIST}.querySelector("button").focus();
+    return true;
+  })()`);
+  await press("End", "End", 35);
+  await chrome.evaluate(`window.__focused = document.activeElement; true`);
+  await chrome.evaluate(WATCH);
+  result.footBefore = await chrome.evaluate(VIEW_STATE);
+  await chrome.evaluate(`window.__phase = "arrived"; true`);
+  await nextAsk();
+  result.footAfter = await chrome.evaluate(VIEW_STATE);
   console.log(JSON.stringify(result));
 } finally {
   await chrome.close();

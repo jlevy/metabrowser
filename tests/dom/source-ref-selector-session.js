@@ -23,47 +23,23 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const repoRoot = path.resolve(__dirname, "../..");
-const staticDir = path.join(repoRoot, "src/metabrowser/static");
-const recorded = JSON.parse(
-  fs.readFileSync(path.join(repoRoot, "tests/fixtures/source-ref-selector-responses.json"), "utf8"),
-);
+const {
+  assert,
+  createPage,
+  emptyState,
+  recorded,
+  repoRoot,
+  selectorRuntime,
+  settle,
+  staticDir,
+} = require("./source-ref-selector-harness.js");
+
 const recordedCheckout = JSON.parse(
   fs.readFileSync(
     path.join(repoRoot, "tests/fixtures/source-ref-selector-checkout-responses.json"),
     "utf8",
   ),
 );
-
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
-function loadProductionModule() {
-  const context = {
-    window: {},
-    AbortController,
-    console,
-    JSON,
-    Object,
-    Promise,
-    URLSearchParams,
-  };
-  context.window.window = context.window;
-  vm.createContext(context);
-  // formatters.js names each commit as every line does, as the shell's startup scripts
-  // load it first.
-  for (const name of ["formatters.js", "source-ref-selector.js"]) {
-    const file = path.join(staticDir, name);
-    vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
-  }
-  return context.window.MetabrowserSourceRefSelector;
-}
-
-const selectorRuntime = loadProductionModule();
-assert(selectorRuntime, "the production module did not install its runtime");
 
 // The pin guard, which a checkout's working-tree page takes with the selector's bundle.
 // Its window here has no `fetch`, so it defines its functions and guards nothing.
@@ -74,169 +50,6 @@ function loadPinGuard() {
   const file = path.join(staticDir, "source-pin-guard.js");
   vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
   return context.window.MetabrowserSourcePinGuard;
-}
-
-async function settle() {
-  for (let turn = 0; turn < 20; turn += 1) {
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-}
-
-/**
- * Injected browser facilities for one page: requests wait for the step to answer them.
- *
- * @param {{view: string | null}} page The page's pathname.
- */
-function createPage(page) {
-  const log = [];
-  const waiting = [];
-  const timers = new Map();
-  let nextTimer = 1;
-  const navigated = [];
-  let model = null;
-
-  const deps = {
-    request(method, route, body, signal) {
-      const line =
-        body === undefined ? `${method} ${route}` : `${method} ${route} ${JSON.stringify(body)}`;
-      log.push(line);
-      return new Promise((resolve, reject) => {
-        const request = { route, resolve };
-        waiting.push(request);
-        // As fetch does: an aborted request settles at once with an AbortError.
-        signal?.addEventListener("abort", () => {
-          const at = waiting.indexOf(request);
-          if (at >= 0) {
-            waiting.splice(at, 1);
-            log.push(`aborted ${line}`);
-            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
-          }
-        });
-      });
-    },
-    schedule(callback, delayMs) {
-      const handle = nextTimer;
-      nextTimer += 1;
-      timers.set(handle, { callback, delayMs });
-      return handle;
-    },
-    cancel(handle) {
-      timers.delete(handle);
-    },
-    render(next) {
-      model = next;
-    },
-    navigate(href) {
-      navigated.push(href);
-    },
-    currentView: () => page.view,
-  };
-
-  return {
-    deps,
-    /** Answer the oldest waiting request (or the one at *index*) with a recorded answer. */
-    async answer(recording, index = 0) {
-      assert(waiting.length > index, "no request is waiting for an answer");
-      const [request] = waiting.splice(index, 1);
-      request.resolve({ status: recording.status, etag: null, body: recording.body });
-      await settle();
-    },
-    async fireTimer(delayMs = selectorRuntime.FILTER_DELAY_MS) {
-      const pending = [...timers.entries()];
-      assert(pending.length === 1, `expected one pending timer, found ${pending.length}`);
-      const [handle, timer] = pending[0];
-      assert(timer.delayMs === delayMs, `the pause is ${delayMs} ms, not ${timer.delayMs}`);
-      timers.delete(handle);
-      timer.callback();
-      await settle();
-    },
-    observe(step) {
-      const delays = [...timers.values()].map((timer) => timer.delayMs);
-      const observed = {
-        step,
-        requests: log.splice(0),
-        filterPending: delays.includes(selectorRuntime.FILTER_DELAY_MS),
-        paint: paintOf(model),
-      };
-      // The wait before an open list asks again for the pull requests the server is filling.
-      if (delays.includes(selectorRuntime.PULLS_POLL_MS)) {
-        observed.pullsPending = true;
-      }
-      if (navigated.length > 0) {
-        observed.navigated = navigated.splice(0);
-      }
-      return observed;
-    },
-  };
-}
-
-// When a row's commit was made, as the model holds it. The page shows it as an age, which
-// depends on the clock, so the transcript prints the time itself.
-function committedOf(seconds) {
-  return seconds === null
-    ? "(no date)"
-    : new Date(seconds * 1000).toISOString().replace(".000Z", "Z");
-}
-
-// What the selector would show, one line per row, so a transcript reads as the page does:
-// a row's name, its commit's short ID, and when the commit was made. A checkout's selector
-// adds what a mirror's has none of: the lists it offers, its working-tree row, named by
-// the folder's path, the checked-out branch's badge, each row's chip, and its offer to
-// reload.
-function paintOf(model) {
-  if (model === null) {
-    return null;
-  }
-  const checkout = model.workingTree !== null;
-  const stale = model.stale === null ? {} : { stale: `${model.stale} [Reload]` };
-  if (model.removed) {
-    return { removed: true };
-  }
-  if (!model.open) {
-    return { button: model.button, open: false, ...stale };
-  }
-  return {
-    button: model.button,
-    open: true,
-    // What the filter box says, once the server has pull requests for it to find.
-    ...(model.pullRequests?.state === "ready" ? { filter: model.filterLabel } : {}),
-    ...(model.pullRequests === null ? {} : { pullRequests: pullRequestsOf(model.pullRequests) }),
-    ...(checkout
-      ? {
-          workingTree: `Working tree${model.workingTree.location === "" ? "" : `: ${model.workingTree.location} (kept whole: ${model.workingTree.base})`}${model.workingTree.current ? " [current]" : ""}`,
-          lists: model.kinds,
-        }
-      : {}),
-    kind: model.kind,
-    query: model.query,
-    loading: model.loading,
-    switching: model.switching,
-    rows: model.rows.map(
-      (row) =>
-        `${row.name} ${row.commit} ${committedOf(row.committedAt)}${row.default ? " [default]" : ""}${row.checkedOut ? " [checked out]" : ""}${row.current ? " [current]" : ""}${checkout ? ` (${row.chip} chip)` : ""}${pullsOf(row.pulls)}`,
-    ),
-    note: model.note,
-    error: model.error,
-    ...stale,
-  };
-}
-
-// A row's pull requests, as the row's second line shows the first and counts the rest:
-// "| #21 open feat(ref): choose among branches +1".
-function pullsOf(pulls) {
-  if (pulls.length === 0) {
-    return "";
-  }
-  const [first, ...others] = pulls;
-  return ` | #${first.number} ${first.state} ${first.title}${others.length > 0 ? ` +${others.length}` : ""}`;
-}
-
-// What the listing says of the server's pull requests, as the list shows it: nothing while
-// the server has none cached and nothing fills them, and a wait while it does.
-function pullRequestsOf(status) {
-  const cached =
-    status.state === "ready" ? (status.complete ? "cached" : "partly cached") : "none cached";
-  return `${cached}${status.refreshing ? ", filling" : ""}`;
 }
 
 function shownOf(switched) {
@@ -365,61 +178,6 @@ async function run() {
   await page.answer(recorded.switch_no_view);
   await offView;
   steps.push(page.observe("a page off /view/ names no address and opens at the root"));
-  selector.dispose();
-
-  // A branch that is the head of a pull request lists it on its row: the server reads the
-  // pull requests from what its provider has cached and never fetches, so a list opened
-  // before they are cached shows none and asks again, quietly, while the server fills
-  // them. The listings are the ones the application gave for a mirror whose repository's
-  // catalog was empty, then half full and still being filled, then whole.
-  page = createPage(onNotes);
-  selector = selectorRuntime.createSelector(page.deps, { shown: topicPage });
-  const waiting = selector.open();
-  await page.answer(recorded.pending);
-  await waiting;
-  steps.push(
-    page.observe("pull requests not cached yet: the rows show none, and the list will ask again"),
-  );
-  await page.fireTimer(selectorRuntime.PULLS_POLL_MS);
-  steps.push(page.observe("asking again shows nothing while it waits"));
-  await page.answer(recorded.filling);
-  steps.push(
-    page.observe(
-      "a branch shows the pull requests the server has, and it asks again until it has all",
-    ),
-  );
-  await page.fireTimer(selectorRuntime.PULLS_POLL_MS);
-  await page.answer({ status: 500, body: null });
-  steps.push(page.observe("an ask that is refused leaves the rows as they are and asks no more"));
-  selector.close();
-  const reopenedForPulls = selector.open();
-  await page.answer(recorded.annotated);
-  await reopenedForPulls;
-  steps.push(
-    page.observe("a full cache lists each branch's pull requests, open first, and asks no more"),
-  );
-  selector.setQuery("#1");
-  await page.fireTimer();
-  await page.answer(recorded.by_number);
-  steps.push(page.observe("the filter finds a branch by its pull request's number"));
-  selector.setQuery("start the");
-  await page.fireTimer();
-  await page.answer(recorded.by_title);
-  steps.push(page.observe("and by the words of its title, whatever its name says"));
-  const pullTags = selector.setKind("tag");
-  await page.answer(recorded.tags_with_pulls);
-  await pullTags;
-  steps.push(page.observe("a list of tags has no pull requests, and the filter finds tags"));
-  selector.dispose();
-
-  // Closing the list stops the asking, so nothing is left running for a list nobody sees.
-  page = createPage(onNotes);
-  selector = selectorRuntime.createSelector(page.deps, { shown: topicPage });
-  const closing = selector.open();
-  await page.answer(recorded.pending);
-  await closing;
-  selector.close();
-  steps.push(page.observe("closing stops asking for pull requests"));
   selector.dispose();
 
   const labels = [
@@ -866,19 +624,6 @@ async function runHold(recording, onReadme, options) {
   spendBounds();
   selector.dispose();
   return observed;
-}
-
-function emptyState() {
-  return {
-    shown: null,
-    open: false,
-    kind: "branch",
-    query: "",
-    listing: null,
-    loading: false,
-    switching: false,
-    error: null,
-  };
 }
 
 run()

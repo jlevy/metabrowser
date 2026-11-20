@@ -12,8 +12,8 @@ rendered from the same :func:`source_status`, so the label and
 selector, filtered by name, the default branch first and then newest first, with the
 served ref marked. It reads the mirror alone, never the network. An answer the Git
 routes' memo can keep is kept under the refs' state, so asking again while no ref moved
-runs no Git; past about 9,000 branches, or past ``MAX_REF_ENTRIES`` loose refs, every
-listing runs Git.
+runs no Git; past about 9,000 branches, fewer where branches list pull requests
+(:data:`REF_PULLS_PER_ROW`), or past ``MAX_REF_ENTRIES`` loose refs, every listing runs Git.
 
 A branch that is the head of a pull request lists that pull request on its row, and the
 filter finds a branch by its pull request's number or title too. The pull requests are
@@ -135,6 +135,13 @@ MAX_SOURCE_REQUEST_BYTES: Final = 4 * 1024
 # ``MAX_ENTRY_BYTES``, about 9,000 branches, from a repository with no more loose refs than
 # ``MAX_REF_ENTRIES``. Neither 10,001-branch case above is kept, so each listing there
 # costs what the table says.
+#
+# A branch that is a pull request's head makes its row larger. Measured 2026-11-20 on a
+# branch name of 36 characters: 245 bytes with none, 403 with one pull request titled with
+# 90 characters, 1,063 with six, so the memo keeps about 8,500 branches with none, 5,200
+# with one apiece, and 2,000 with six. A row lists at most this many pull requests, and
+# says how many there are (``pulls_total``): a branch with dozens is no larger a row.
+REF_PULLS_PER_ROW: Final = 6
 # The filter is a name fragment; a ref name longer than this is not one a reader types.
 REFS_MAX_QUERY_CHARS: Final = 256
 # The lists a mirror has, and the ones a checkout has: its remote-tracking branches too.
@@ -291,8 +298,9 @@ class SourceRef(TypedDict):
     shows its age; ``None`` when Git printed none. The page shows ``commit`` as every line
     names a commit (``shortCommit`` in static/formatters.js). ``pulls`` are the pull
     requests the branch is the head of, open first and then newest first, and a filter's
-    matches before the rest; a row with none has no ``pulls``, so a list of thousands
-    of branches pays nothing for them.
+    matches before the rest, the first :data:`REF_PULLS_PER_ROW` of them, and ``pulls_total``
+    how many there are; a row with none has neither, so a list of thousands of branches
+    pays nothing for them.
     """
 
     name: str
@@ -303,6 +311,7 @@ class SourceRef(TypedDict):
     checked_out: bool
     current: bool
     pulls: NotRequired[list[RefPull]]
+    pulls_total: NotRequired[int]
 
 
 class RefPullsStatus(TypedDict):
@@ -414,7 +423,8 @@ def source_refs(
             current=served_ref is not None and entry.ref == served_ref,
         )
         if pulls is not None and head is not None and (shown := pulls.pulls(head, query)):
-            row["pulls"] = list(shown)
+            row["pulls"] = list(shown[:REF_PULLS_PER_ROW])
+            row["pulls_total"] = len(shown)
         rows.append(row)
     return SourceRefs(
         kind=kind,
@@ -514,7 +524,8 @@ async def api_source_refs(request: Request) -> Response:
     asked again while no ref moved runs no Git. Measured 2026-11-19 at a load average of
     13: naming the state took 20 ms over 1,301 loose branches and 0.4 ms packed, against
     the 77 and 29 ms a listing takes. The memo keeps only what it can: a body over its
-    ``MAX_ENTRY_BYTES``, past about 9,000 branches, is served and not kept, and a
+    ``MAX_ENTRY_BYTES``, past about 9,000 branches (about 5,200 where each is the head of a
+    pull request), is served and not kept, and a
     repository with more loose refs than ``MAX_REF_ENTRIES`` has no state to key on, so
     every listing of either runs Git. Both 10,001-branch checkouts measured beside
     ``REFS_MAX_QUERY_CHARS`` are such, the packed one by its body and the loose one by
@@ -543,7 +554,15 @@ async def api_source_refs(request: Request) -> Response:
     # the providers (tests/test_plugin_public_api.py).
     from metabrowser.cache.providers import ref_pulls_for
 
-    pulls = await ref_pulls_for(request.app) if kind != "tag" else None
+    pulls: RefPulls | None = None
+    if kind != "tag":
+        try:
+            pulls = await ref_pulls_for(request.app)
+        except Exception as exc:
+            # The pull requests are an addition the listing can do without: a provider
+            # that fails to read its cache shows none, and logs why, rather than fail the
+            # list of branches the reader came to choose from (mb-tjbm review A10).
+            log.warning("the pull requests of the refs could not be read: %s", exc)
     working_tree: WorkingTree | None = None
     try:
         if isinstance(source, CheckoutRevisions):

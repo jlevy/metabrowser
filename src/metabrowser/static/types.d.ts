@@ -3699,6 +3699,8 @@ declare global {
     /** The pull requests the branch is the head of, open first and then newest first;
      * absent when it is the head of none. */
     pulls?: MetabrowserSourceRefPull[];
+    /** How many pull requests the branch heads, of which `pulls` lists the first few. */
+    pulls_total?: number;
   };
 
   /** A pull request as the ref list shows it: its state as the Pulls tab does. */
@@ -3800,6 +3802,8 @@ declare global {
       chip: "local" | "remote" | "tag";
       /** The pull requests the branch is the head of, the first of which the row shows. */
       pulls: MetabrowserSourceRefPull[];
+      /** How many it heads, of which `pulls` lists the first few. */
+      pullsTotal: number;
     }>;
     note: string;
     error: string | null;
@@ -3868,6 +3872,8 @@ declare global {
     model: MetabrowserSourceRefSelectorModel | null;
     /** Whether the GitHub plugin, which draws a pull request's state, was asked for. */
     iconsAsked: boolean;
+    /** Set when every row is to be drawn again, though its refs are the same. */
+    rebuild: boolean;
     /** The list's scroll position the drawn rows were drawn for, which a toolbar refill takes. */
     drawnAt: number;
     /** The list and filter the rows are of, so a new one starts at its top. */
@@ -3914,6 +3920,24 @@ declare global {
     /** How often an open list asks again while the server fills its pull requests, in ms. */
     PULLS_POLL_MS: number;
     ROWS_OVERSCAN: number;
+    /** Where a list scrolls to when its rows are laid out again, keeping the reader's place. */
+    anchoredScroll(
+      before: { refs: readonly string[]; offsets: readonly number[] },
+      after: { refs: readonly string[]; offsets: readonly number[] },
+      top: number,
+      view: number,
+      focused: string | null,
+    ): number;
+    /** Whether two answers of the refs route say the same. */
+    sameListing(
+      a: MetabrowserSourceRefListing | null,
+      b: MetabrowserSourceRefListing | null,
+    ): boolean;
+    /** Whether two lists of rows are the same refs drawn the same way, whatever their pulls. */
+    sameRefLines(
+      a: ReadonlyArray<MetabrowserSourceRefSelectorModel["rows"][number]>,
+      b: ReadonlyArray<MetabrowserSourceRefSelectorModel["rows"][number]>,
+    ): boolean;
     /** Where each row sits, and where the last ends: one more entry than there are rows. */
     rowOffsets(
       rows: ReadonlyArray<{ pulls: ReadonlyArray<unknown> }>,

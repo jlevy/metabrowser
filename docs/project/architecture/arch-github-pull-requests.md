@@ -315,9 +315,17 @@ provider, and `ref_pulls.py` answers from the catalog alone: `catalog_heads` rea
 cached rows whose `head_repository` is the repository itself, a fork’s or a deleted
 fork’s never, within the newest `_HEADS_SCAN_ROWS`, and the answer is kept for each
 `(epoch, revision)` of the catalog, so a chooser that asks on every keystroke reads no
-row. A branch several pull requests name lists the open ones first and then the newest
-first. A catalog not yet cached answers as absent, with whether a job is filling it,
-which the chooser asks again while it is; nothing here starts a job or reaches GitHub.
+row. While a job is filling the catalog each page it writes moves the revision, and a
+scan holds off the next page’s write, so the answer is read again at most once in
+`RESCAN_WHILE_FILLING_S`, and a scan reads its rows inside the transaction and makes
+them pull requests after it; the measurements are beside the constants.
+A branch several pull requests name lists the open ones first and then the newest first.
+The repository’s own are told from a fork’s by the head repository’s name the catalog
+recorded, compared, ignoring case, with the name in the served repository’s address, so
+a repository renamed or transferred since its rows were cached reads as a fork’s until
+the catalog records its new name (`mb-n3hm`: compare the repository’s id).
+A catalog not yet cached answers as absent, with whether a job is filling it, which the
+chooser asks again while it is; nothing here starts a job or reaches GitHub.
 A checkout’s local branches and its `origin/` remote branches are named as the
 repository names them.
 A checkout served at one of its own revisions is not the folder the plugin resolves, and
