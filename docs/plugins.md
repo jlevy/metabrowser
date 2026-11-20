@@ -541,6 +541,13 @@ Useful helpers include:
   `label` in words; `changeLineNodes` paints it as the nodes of one `span.change-line`,
   with `{spoken: ", "}` on a line whose name does not say it in words
   ([Brief Change Line](design-system.md#brief-change-line));
+- `changeSizeLine(change)` and `changeSizeLineNodes(line)` for a change set’s size line,
+  “77 commits · 83 files changed · 2.3 MB compressed (14.0 MB raw diff)”:
+  `changeSizeLine` builds it from `{commits?, files, pushedBytes?, diffBytes?}`, a count
+  `null` where it is not known and left out where `undefined`, and the size group there
+  once `pushedBytes` is known, and returns its parts, `text`, `label`, and the size’s
+  `tooltip`; `changeSizeLineNodes` paints it as the nodes of one `span.change-size-line`
+  ([Change Size Line](design-system.md#change-size-line));
 - `countClass(value)` and `sizeClass(value)` for the magnitude-driven emphasis classes
   of core numeric readouts;
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and

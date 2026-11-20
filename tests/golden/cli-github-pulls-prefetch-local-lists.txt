@@ -203,7 +203,16 @@ status: 200
           "status": "modified",
           "count": 1
         }
-      ]
+      ],
+      "size": {
+        "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+        "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "state": "measured",
+        "reason": null,
+        "commits": 2,
+        "pushed_bytes": <PUSHED>,
+        "diff_bytes": 265
+      }
     },
     {
       "number": 10,
@@ -224,7 +233,16 @@ status: 200
           "status": "added",
           "count": 1
         }
-      ]
+      ],
+      "size": {
+        "base": "c691256511d05858850bc7684ae062fea0d41132",
+        "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "state": "measured",
+        "reason": null,
+        "commits": 1,
+        "pushed_bytes": <PUSHED>,
+        "diff_bytes": 144
+      }
     }
   ]
 }

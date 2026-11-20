@@ -2046,6 +2046,9 @@ async function headerShape(page) {
           "title meta branches opened",
           ...(labelled ? ["labels"] : []),
           ...(name in STATUS ? ["status"] : []),
+          // The size line, then the Diff summary under it (docs/design-system.md, "Change
+          // Size Line").
+          "size",
           "summary",
         ].join(" "),
         `${name} ${tab}: the header's rows`,
@@ -2056,10 +2059,10 @@ async function headerShape(page) {
   assert.deepEqual(
     new Set(Object.values(shapes)),
     new Set([
-      "title meta branches opened labels summary",
-      "title meta branches opened summary",
-      "title meta branches opened labels status summary",
-      "title meta branches opened status summary",
+      "title meta branches opened labels size summary",
+      "title meta branches opened size summary",
+      "title meta branches opened labels status size summary",
+      "title meta branches opened status size summary",
     ]),
     JSON.stringify(shapes, null, 2),
   );

@@ -602,6 +602,10 @@ _STORE_READ_COMMANDS: Final = frozenset(
         "log",
         "ls-tree",
         "merge-base",
+        # Only as ``--stdout``, which writes the pack to the reader and nothing to the
+        # store: a change's pushed size (metabrowser.git.change_size). It runs no program
+        # its configuration names, and lazy fetch is off at every store spawn.
+        "pack-objects",
         "rev-list",
         "rev-parse",
         "show",
@@ -672,6 +676,9 @@ def _configured_program_refusal(args: Sequence[str], policy: GitProcessPolicy) -
         after = after[: after.index("--")]
     if policy.name != ACQUISITION_POLICY.name and command not in _STORE_READ_COMMANDS:
         return f"git {command} is not a read of a repository store"
+    if command == "pack-objects" and "--stdout" not in after:
+        # Without it, pack-objects writes a pack file into the store.
+        return "git pack-objects at a repository store must pass --stdout"
     if command in _DIFF_COMMANDS:
         if not all(option in after for option in GIT_NO_DRIVER_ARGS):
             return f"git {command} at a repository store must pass {' '.join(GIT_NO_DRIVER_ARGS)}"

@@ -38,6 +38,7 @@ from starlette.routing import Route
 
 from metabrowser import server_timing
 from metabrowser.content_errors import ContentUnavailableError
+from metabrowser.git.change_size import commit_size
 from metabrowser.git.detail import read_commit_detail
 from metabrowser.git.history import (
     HISTORY_SESSIONS,
@@ -404,6 +405,43 @@ async def api_git_commit_markdown(request: Request) -> JSONResponse:
     return JSONResponse(payload, status_code=status)
 
 
+async def api_git_commit_size(request: Request) -> JSONResponse:
+    """``GET /api/git/commit-size/{revision}`` -- a commit's size as Git pushes it.
+
+    Apart from ``/api/git/commit/{revision}``, which a hover card asks for on every row,
+    because the first measure of a large commit takes a pack's time
+    (:mod:`metabrowser.git.change_size`). Once measured it is kept, so a commit is
+    measured once; a size that cannot be known answers ``unknown`` with its reason, at
+    200, as an ordinary state of the repository.
+    """
+    revision = request.path_params.get("revision", "")
+    if not isinstance(revision, str) or not is_full_revision(revision):
+        # Not echoed back, as the commit route does not echo it.
+        return JSONResponse(
+            {
+                "error": "revision must be a full 40- or 64-character object id",
+                "code": "revision_not_full",
+            },
+            status_code=400,
+        )
+
+    location = session_git_location()
+    context, info = await _resolve(location)
+    if context is None:
+        return JSONResponse(_negative_payload(info))
+
+    try:
+        size = await commit_size(context.command_location(), revision)
+    except GitError as exc:
+        log.warning("git commit size failed for %s: %s", revision, failure_detail(exc))
+        return _git_failure_response(exc)
+    if size is None:
+        return JSONResponse(
+            {"error": "unknown revision", "code": "commit_not_found"}, status_code=404
+        )
+    return JSONResponse({"is_repo": True, "size": dict(size)})
+
+
 def _clamped_limit(raw: str) -> int:
     """Parse and clamp a ``limit`` query parameter."""
     try:
@@ -423,6 +461,7 @@ GIT_ROUTES: list[Route] = [
     Route("/api/git/log", api_git_log),
     Route("/api/git/commit/{revision}", api_git_commit),
     Route("/api/git/commit-markdown/{revision}", api_git_commit_markdown),
+    Route("/api/git/commit-size/{revision}", api_git_commit_size),
 ]
 
 
@@ -430,6 +469,7 @@ __all__ = [
     "GIT_ROUTES",
     "api_git_commit",
     "api_git_commit_markdown",
+    "api_git_commit_size",
     "api_git_log",
     "api_git_refs",
     "api_git_repo",
