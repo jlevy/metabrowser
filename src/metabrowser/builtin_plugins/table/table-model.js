@@ -833,16 +833,18 @@ export function wantsMore(range, held, ahead) {
  * Up and Down, and `k` and `j`, move a row; Left and Right move between the row and its
  * cells; Home and End go to the first and last row held; Page Up and Page Down move a
  * page of *pageRows*. Enter on the row opens its record, and on a cell follows its link,
- * if it has one, or else opens the record. Shift with Up or Down extends the selection.
+ * if it has one, or else opens the record. Shift with Up, Down, Home, or End extends the
+ * selection, so Home and then Shift-End selects every row held. A key held with Command,
+ * Control, or Option is the browser's (tests/test_modified_keys.py).
  *
  * @param {GridFocus} focus
  * @param {{key: string, shiftKey?: boolean, ctrlKey?: boolean, metaKey?: boolean, altKey?: boolean}} event
  * @param {{rows: number, cols: number, pageRows: number}} bounds
- * @returns {{action: "move" | "extend" | "open" | "follow" | "select-all" | "none", focus: GridFocus}}
+ * @returns {{action: "move" | "extend" | "open" | "follow" | "none", focus: GridFocus}}
  */
 export function keyStep(focus, event, bounds) {
   const none = { action: /** @type {const} */ ("none"), focus };
-  if (event.altKey || bounds.rows === 0) {
+  if (event.altKey || event.ctrlKey || event.metaKey || bounds.rows === 0) {
     return none;
   }
   const lastRow = bounds.rows - 1;
@@ -851,19 +853,16 @@ export function keyStep(focus, event, bounds) {
     action: /** @type {const} */ ("move"),
     focus: { row: clampRow(row), col },
   });
-  const command = event.ctrlKey || event.metaKey;
-  if (command) {
-    return event.key.toLowerCase() === "a" ? { action: "select-all", focus } : none;
-  }
+  /** Move to *row*, or with Shift, extend the selection to it. @param {number} row */
+  const moveOrExtend = (row) =>
+    event.shiftKey
+      ? { action: /** @type {const} */ ("extend"), focus: { row: clampRow(row), col: focus.col } }
+      : move(row);
   switch (event.key) {
     case "ArrowDown":
-      return event.shiftKey
-        ? { action: "extend", focus: { row: clampRow(focus.row + 1), col: focus.col } }
-        : move(focus.row + 1);
+      return moveOrExtend(focus.row + 1);
     case "ArrowUp":
-      return event.shiftKey
-        ? { action: "extend", focus: { row: clampRow(focus.row - 1), col: focus.col } }
-        : move(focus.row - 1);
+      return moveOrExtend(focus.row - 1);
     case "j":
     case "J":
       return move(focus.row + 1);
@@ -875,9 +874,9 @@ export function keyStep(focus, event, bounds) {
     case "ArrowLeft":
       return move(focus.row, Math.max(-1, focus.col - 1));
     case "Home":
-      return move(0);
+      return moveOrExtend(0);
     case "End":
-      return move(lastRow);
+      return moveOrExtend(lastRow);
     case "PageDown":
       return move(focus.row + Math.max(1, bounds.pageRows));
     case "PageUp":

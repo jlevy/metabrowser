@@ -19,9 +19,10 @@
 // is read whole and drawn as a plain <table>, so find in page, select all, copy, and print
 // are the browser's. A larger one is a role="grid" whose body draws only the rows near the
 // view over two spacers, at one fixed row height, reading the next page as the reader
-// nears the last row held. There, Search stands in for find in page, Shift with Up or Down
-// and Control-A or Command-A select rows that copy as tab-separated values, and print
-// draws every row held, as docs/large-content-rendering.md asks of a windowed view.
+// nears the last row held. There, Search stands in for find in page, Shift with Up, Down,
+// Home, or End selects rows that copy as tab-separated values (a chord such as Command-A
+// stays the browser's), and print draws every row held, as docs/large-content-rendering.md
+// asks of a windowed view.
 //
 // The keyboard. The grid is one Tab stop with roving focus: Up and Down, or `k` and `j`,
 // move a row; Left and Right move from the row to its cells, so a link in a cell is
@@ -471,6 +472,9 @@ export function mountTable(container, ctx, host = {}) {
     if (!page) {
       return;
     }
+    // A new answer starts at its first row, unless Back restores a place below.
+    scroller.scrollTop = 0;
+    focus = { row: 0, col: -1 };
     const sample = rows.slice(0, FIRST_PAGE_ROWS);
     columns = [...page.columns];
     // Widths hold for the table's life, from the first rows that showed each column.
@@ -481,7 +485,6 @@ export function mountTable(container, ctx, host = {}) {
     }
     rowHeight = ROW_HEIGHT_ESTIMATE_PX[rowLines];
     rowHeightMeasured = false;
-    focus = { row: Math.min(focus.row, Math.max(0, rows.length - 1)), col: -1 };
     selection = null;
     status.textContent = countText(page, isFiltered(state));
     live.textContent = status.textContent;
@@ -930,6 +933,17 @@ export function mountTable(container, ctx, host = {}) {
    * @param {HTMLElement} [extra]
    */
   function notice(severity, text, extra) {
+    notes.append(noticeBox(severity, text, extra));
+  }
+
+  /**
+   * The host's notice: an error is an alert, a warning a status.
+   *
+   * @param {"warning" | "error"} severity
+   * @param {string} text
+   * @param {HTMLElement} [extra]
+   */
+  function noticeBox(severity, text, extra) {
     const box = el(
       "div",
       {
@@ -942,7 +956,7 @@ export function mountTable(container, ctx, host = {}) {
     if (extra) {
       box.append(" ", extra);
     }
-    notes.append(box);
+    return box;
   }
 
   /** @param {unknown} error */
@@ -1105,6 +1119,10 @@ export function mountTable(container, ctx, host = {}) {
 
   /** @param {KeyboardEvent} event */
   function onKeyDown(event) {
+    // A chord is the browser's: Command-R reloads, Command-A selects (tests/test_modified_keys.py).
+    if (event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
     if (openMenu && event.key === "Escape") {
       closeMenu(true);
       event.preventDefault();
@@ -1128,10 +1146,6 @@ export function mountTable(container, ctx, host = {}) {
     if (step.action === "none") {
       return;
     }
-    if (step.action === "select-all" && !windowed) {
-      // A table drawn whole keeps the browser's own select all.
-      return;
-    }
     event.preventDefault();
     switch (step.action) {
       case "move":
@@ -1141,9 +1155,6 @@ export function mountTable(container, ctx, host = {}) {
       case "extend":
         select({ anchor: selection?.anchor ?? focus.row, head: step.focus.row });
         moveFocus({ row: step.focus.row, col: -1 });
-        break;
-      case "select-all":
-        select({ anchor: 0, head: rows.length - 1 });
         break;
       case "open":
         openRecord(rows[focus.row].key);
@@ -1566,11 +1577,7 @@ export function mountTable(container, ctx, host = {}) {
       }
       recordPane.replaceChildren(
         backLink(),
-        el(
-          "div",
-          { class: "notice table-notice", "data-severity": "error", role: "alert" },
-          `This record could not be read. ${errorText(error)}`,
-        ),
+        noticeBox("error", `This record could not be read. ${errorText(error)}`),
       );
     } finally {
       if (seq === recordSeq) {
@@ -1607,9 +1614,8 @@ export function mountTable(container, ctx, host = {}) {
     }
     if (record.generation_moved) {
       parts.push(
-        el(
-          "div",
-          { class: "notice table-notice", "data-severity": "warning", role: "status" },
+        noticeBox(
+          "warning",
           "The file changed since this row was read, so the row at this position may be a different one.",
         ),
       );

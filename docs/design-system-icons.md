@@ -203,6 +203,11 @@ The state’s word beside the row’s title carries the meaning without the colo
 | `‹` | Text | Opens the hex code the binary view shows for a byte that is not printable ASCII, such as `‹FF›` | `builtin_plugins/binary/byte-format.js` | `--muted`, the code’s | `--mono-block-font-size`, the code block’s |
 | `›` | Text | Closes a byte’s hex code in the binary view | `builtin_plugins/binary/byte-format.js` | `--muted`, the code’s | `--mono-block-font-size`, the code block’s |
 | `☰` | Text | The table of contents toggle in an untrusted document’s render | `builtin_plugins/markdown/inert-toc.js` | KPress’s muted document ink | The text’s |
+| `↑` | Text | A table column sorted ascending, after its header’s label | `builtin_plugins/table/table-view.js` | `--link` | The header’s |
+| `↓` | Text | A table column sorted descending, after its header’s label | `builtin_plugins/table/table-view.js` | `--link` | The header’s |
+| `▾` | Text | A table column’s menu, to sort, filter, or hide it, after its header’s label | `builtin_plugins/table/table-view.js` | The header’s, `--text` on hover | The header’s |
+| `×` | Text | Removes a table’s filter, at the end of its chip | `builtin_plugins/table/table-view.js` | `--muted`, `--text` on hover | The chip’s |
+| `←` | Text | Back to the table, before a record’s link | `builtin_plugins/table/table-view.js` | The link’s | The link’s |
 
 ### Keyboard Hints
 

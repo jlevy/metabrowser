@@ -30,6 +30,7 @@ before its answers arrive draws nothing from them.
 A table past the whole-table bound is a grid that draws only a window of its rows over
 two spacers, reads the next page as the window nears the last row held, selects rows
 that copy as tab-separated values, and draws every row held to print.
+A key held with Command, Control, or Option is the browser’s.
 
 ```console
 $ node tests/dom/table-view-session.js
@@ -715,13 +716,23 @@ $ node tests/dom/table-view-session.js
       "value": "n\tword\teven\n1\tbravo 1\tfalse\n2\tcharlie 2\ttrue\n3\tdelta 3\tfalse\n"
     }
   },
-  "Control-A in a windowed grid selects every row held": {
+  "a key held with Command, Control, or Option is the browser's: none moves or is taken": {
+    "taken": 0,
+    "focus kept": true
+  },
+  "Home, then Shift-End: every row held selected, the window at the last": {
     "handled": true,
-    "drawnSelected": 24
+    "drawnSelected": 23,
+    "focus": {
+      "on": "tr",
+      "row": "599",
+      "text": "600600alpha 600true",
+      "tabStops": 1
+    }
   },
   "print draws every row held, and the window again after": {
     "rows while printing": 600,
-    "rows after": 24
+    "rows after": 23
   },
   "sorted descending: the grid's first rows, its sort said in the header": {
     "requests": [

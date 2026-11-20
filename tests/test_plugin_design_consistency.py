@@ -41,6 +41,10 @@ BUTTON_CLASS_ALLOWLIST = {
     "github-pull-text-action": "the pull page's text action, a link-like action in a line of chrome",
     # The file bar is itself the .disclosure-toggle row; this button is its labelled hit area.
     "diff-file-toggle": "the label of a diff file bar, which carries .disclosure-toggle",
+    # A table's header: its label sorts, and its ▾ opens the column's menu, in the header's
+    # label type (docs/design-system.md, "Data Tables").
+    "table-sort": "a sortable column's header label, which sorts it",
+    "table-head-menu": "a column header's menu trigger",
 }
 
 _QUOTED = re.compile(r"""(["'\x60])((?:\\.|(?!\1).)*)\1""", re.DOTALL)

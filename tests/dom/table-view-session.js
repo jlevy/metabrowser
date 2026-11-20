@@ -684,13 +684,26 @@ async function windowedTable() {
     "copy handled": copy.prevented,
     copied,
   });
-  const all = key(documentStandIn.activeElement, "a", { ctrlKey: true });
-  step("Control-A in a windowed grid selects every row held", {
+  const before = describeFocus(view);
+  const chords = ["j", "a", "ArrowDown", "End", "Enter", "Escape"].flatMap((name) =>
+    [{ metaKey: true }, { ctrlKey: true }, { altKey: true }].map(
+      (held) => key(documentStandIn.activeElement, name, held).prevented,
+    ),
+  );
+  step("a key held with Command, Control, or Option is the browser's: none moves or is taken", {
+    taken: chords.filter(Boolean).length,
+    "focus kept": JSON.stringify(describeFocus(view)) === JSON.stringify(before),
+  });
+  key(documentStandIn.activeElement, "Home");
+  const all = key(documentStandIn.activeElement, "End", { shiftKey: true });
+  await settle();
+  step("Home, then Shift-End: every row held selected, the window at the last", {
     handled: all.prevented,
     drawnSelected: findAll(
       view.container,
       (node) => node.attributes.get("aria-selected") === "true",
     ).length,
+    focus: describeFocus(view),
   });
 
   emit("beforeprint");

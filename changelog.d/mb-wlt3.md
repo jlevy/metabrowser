@@ -8,8 +8,8 @@
   tooltip. The sort, filters, search, columns, and open record are in the page’s address,
   so a link reproduces the view and Back returns to it.
   A table past a few hundred rows draws only the rows near the view; there Search stands
-  in for find in page, Shift with Up or Down and Control-A or Command-A select rows that
-  copy as tab-separated values, and printing prints every row read
+  in for find in page, Shift with Up, Down, Home, or End selects rows that copy as
+  tab-separated values, and printing prints every row read
   ([Data Tables](docs/design-system.md#data-tables)).
 
 - **Plugin SDK:** the `table` plugin exports `mountTable(container, {path})`, the table

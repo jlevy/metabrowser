@@ -5879,9 +5879,9 @@ Arrows do not open a row here, because a record replaces the grid the reader is 
 `scope="col"` headers and `aria-sort`, and keeps the browser’s find, select all, copy,
 and print. A larger one is `role="grid"` with `aria-rowcount` and `aria-rowindex`, and
 draws only the rows near the view at one fixed row height; there, Search stands in for
-find in page, Shift with Up or Down and Control-A or Command-A select rows that copy as
-tab-separated values, and print draws every row held
-([Rendering Large Content](large-content-rendering.md)).
+find in page, Shift with Up, Down, Home, or End selects rows that copy as tab-separated
+values, since a chord such as Command-A stays the browser’s, and print draws every row
+held ([Rendering Large Content](large-content-rendering.md)).
 
 `tests/dom/table-view-session.js` runs the view’s behavior from the command line, and
 `tests/test_table_view_chrome.py` checks in Chrome what only layout shows: one row
