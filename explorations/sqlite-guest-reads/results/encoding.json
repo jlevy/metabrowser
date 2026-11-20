@@ -1,0 +1,76 @@
+{
+  "environment": {
+    "machine": "x86_64",
+    "python": "3.13.18",
+    "sqlite": "3.53.1",
+    "system": "Linux 6.18.44-fc-v653",
+    "uid_is_superuser": false
+  },
+  "results": {
+    "deserialize": {
+      "as_committed": {
+        "error": "SQLITE_CANTOPEN"
+      },
+      "header_bytes_18_19": "0202",
+      "header_patched_to_rollback": {
+        "rows": 3
+      }
+    },
+    "infinite_real": "json refuses: Out of range float values are not JSON compliant: inf",
+    "integer_past_2_53": {
+      "as_a_browser_number": "13390000000000000",
+      "stored": "13390000000000001"
+    },
+    "invalid_utf8_text": "default text factory raises: Could not decode to UTF-8 column 'v'",
+    "keyset": {
+      "BLOB": {
+        "row_value_predicate": false,
+        "row_value_with_null_branch": true
+      },
+      "INTEGER": {
+        "row_value_predicate": false,
+        "row_value_with_null_branch": true
+      },
+      "NUMERIC": {
+        "row_value_predicate": false,
+        "row_value_with_null_branch": true
+      },
+      "REAL": {
+        "row_value_predicate": false,
+        "row_value_with_null_branch": true
+      },
+      "TEXT": {
+        "row_value_predicate": false,
+        "row_value_with_null_branch": true
+      },
+      "TEXT COLLATE NOCASE": {
+        "row_value_predicate": false,
+        "row_value_with_null_branch": true
+      },
+      "no type": {
+        "row_value_predicate": false,
+        "row_value_with_null_branch": true
+      }
+    },
+    "untrusted_schema": {
+      "python_exposes_defensive": true,
+      "trusted_schema_default": 1,
+      "virtual_table_modules": [
+        "DBSTAT_VTAB",
+        "FTS3",
+        "FTS4",
+        "FTS5",
+        "GEOPOLY",
+        "RTREE"
+      ],
+      "with_trusted_schema_off": {
+        "SELECT * FROM f": "1 rows",
+        "SELECT * FROM f_config": "1 rows",
+        "SELECT * FROM f_data": "3 rows",
+        "SELECT * FROM v": "refused: unsafe use of MATCH()"
+      }
+    }
+  },
+  "seconds": 1,
+  "suite": "encoding"
+}

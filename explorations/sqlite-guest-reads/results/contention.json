@@ -1,0 +1,89 @@
+{
+  "environment": {
+    "machine": "x86_64",
+    "python": "3.13.18",
+    "sqlite": "3.53.1",
+    "system": "Linux 6.18.44-fc-v653",
+    "uid_is_superuser": false
+  },
+  "results": {
+    "back_to_back": {
+      "count": {
+        "busy": 197,
+        "commits": 4680,
+        "viewer_reads": 11,
+        "viewer_reads_failed_or_rejected": 2
+      },
+      "key_ordered_page": {
+        "busy": 9,
+        "commits": 4584,
+        "viewer_reads": 11,
+        "viewer_reads_failed_or_rejected": 3
+      },
+      "none": {
+        "busy": 0,
+        "commits": 4573,
+        "viewer_reads": 0,
+        "viewer_reads_failed_or_rejected": 0
+      },
+      "unindexed_sort_page": {
+        "busy": 1371,
+        "commits": 4015,
+        "viewer_reads": 12,
+        "viewer_reads_failed_or_rejected": 2
+      },
+      "validated_immutable_key_ordered_page": {
+        "busy": 0,
+        "commits": 4640,
+        "viewer_reads": 16,
+        "viewer_reads_failed_or_rejected": 14
+      },
+      "validated_immutable_unindexed_sort": {
+        "busy": 0,
+        "commits": 4416,
+        "viewer_reads": 16,
+        "viewer_reads_failed_or_rejected": 16
+      }
+    },
+    "every_50_ms": {
+      "count": {
+        "busy": 1,
+        "commits": 75,
+        "viewer_reads": 16,
+        "viewer_reads_failed_or_rejected": 0
+      },
+      "key_ordered_page": {
+        "busy": 0,
+        "commits": 76,
+        "viewer_reads": 16,
+        "viewer_reads_failed_or_rejected": 0
+      },
+      "none": {
+        "busy": 0,
+        "commits": 76,
+        "viewer_reads": 0,
+        "viewer_reads_failed_or_rejected": 0
+      },
+      "unindexed_sort_page": {
+        "busy": 2,
+        "commits": 74,
+        "viewer_reads": 15,
+        "viewer_reads_failed_or_rejected": 0
+      },
+      "validated_immutable_key_ordered_page": {
+        "busy": 0,
+        "commits": 76,
+        "viewer_reads": 16,
+        "viewer_reads_failed_or_rejected": 2
+      },
+      "validated_immutable_unindexed_sort": {
+        "busy": 0,
+        "commits": 76,
+        "viewer_reads": 16,
+        "viewer_reads_failed_or_rejected": 14
+      }
+    }
+  },
+  "seconds": 50,
+  "suite": "contention"
+}

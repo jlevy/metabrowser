@@ -1,0 +1,260 @@
+{
+  "environment": {
+    "machine": "x86_64",
+    "python": "3.13.18",
+    "sqlite": "3.53.1",
+    "system": "Linux 6.18.44-fc-v653",
+    "uid_is_superuser": false
+  },
+  "results": {
+    "crashed_owner_wal_and_shm_read_only_folder": {
+      "before": {
+        "app.db": 8192,
+        "app.db-shm": 32768,
+        "app.db-wal": 20632
+      },
+      "immutable": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 20632
+        },
+        "rows": 100
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 20632
+        },
+        "rows": 105
+      },
+      "shm_rewritten_by_mode_ro": false
+    },
+    "crashed_owner_wal_and_shm_writable_folder": {
+      "before": {
+        "app.db": 8192,
+        "app.db-shm": 32768,
+        "app.db-wal": 20632
+      },
+      "immutable": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 20632
+        },
+        "rows": 100
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 20632
+        },
+        "rows": 105
+      },
+      "shm_rewritten_by_mode_ro": true
+    },
+    "hard_link_to_live_database": {
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 4152,
+          "hard.db": 8192,
+          "hard.db-shm": 32768,
+          "hard.db-wal": 0
+        },
+        "rows": 100
+      },
+      "nlink": 2
+    },
+    "held_read_starves_checkpoint": {
+      "after_release": {
+        "busy": 0,
+        "wal_bytes": 0
+      },
+      "while_held": {
+        "busy": 1,
+        "wal_bytes": 3712152
+      }
+    },
+    "owner_exits_between_stat_and_open": {
+      "at_open": {
+        "app.db": 8192
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 0
+        },
+        "rows": 101
+      },
+      "stat_saw": {
+        "app.db": 8192,
+        "app.db-shm": 32768,
+        "app.db-wal": 4152
+      }
+    },
+    "reader_closes_last": {
+      "with_reader": {
+        "app.db": 8192,
+        "app.db-shm": 32768,
+        "app.db-wal": 12392
+      },
+      "without_reader": {
+        "app.db": 8192
+      }
+    },
+    "rollback_hot_journal": {
+      "before": {
+        "app.db": 450560,
+        "app.db-journal": 372232
+      },
+      "immutable_changed_rows_of_20000": {
+        "rows": 14585
+      },
+      "journal_untouched": true,
+      "mode_ro": {
+        "after": {
+          "app.db": 450560,
+          "app.db-journal": 372232
+        },
+        "error": "SQLITE_READONLY_ROLLBACK",
+        "message": "attempt to write a readonly database"
+      }
+    },
+    "symlink_in_another_folder": {
+      "beside_link": [
+        "app.db"
+      ],
+      "immutable": {
+        "rows": 100
+      },
+      "mode_ro": {
+        "rows": 101
+      }
+    },
+    "wal_commit_leaves_main_file": {
+      "main_file_unchanged": true,
+      "wal_bytes": [
+        4152,
+        8272
+      ]
+    },
+    "wal_idle_read_only_folder": {
+      "immutable": {
+        "after": {
+          "app.db": 8192
+        },
+        "rows": 100
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192
+        },
+        "error": "SQLITE_READONLY_DIRECTORY",
+        "message": "attempt to write a readonly database"
+      }
+    },
+    "wal_idle_writable_folder": {
+      "before": {
+        "app.db": 8192
+      },
+      "immutable": {
+        "after": {
+          "app.db": 8192
+        },
+        "rows": 100
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 0
+        },
+        "rows": 100
+      }
+    },
+    "wal_live_owner": {
+      "before": {
+        "app.db": 8192,
+        "app.db-shm": 32768,
+        "app.db-wal": 20632
+      },
+      "immutable": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 20632
+        },
+        "rows": 100
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 20632
+        },
+        "rows": 105
+      }
+    },
+    "wal_live_schema_not_checkpointed": {
+      "immutable": {
+        "error": "SQLITE_ERROR",
+        "message": "no such table: t"
+      },
+      "mode_ro": {
+        "rows": 1
+      }
+    },
+    "wal_with_frames_no_shm_read_only_folder": {
+      "before": {
+        "app.db": 8192,
+        "app.db-wal": 20632
+      },
+      "immutable": {
+        "after": {
+          "app.db": 8192,
+          "app.db-wal": 20632
+        },
+        "rows": 100
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-wal": 20632
+        },
+        "error": "SQLITE_CANTOPEN",
+        "message": "unable to open database file"
+      },
+      "shm_rewritten_by_mode_ro": false
+    },
+    "wal_with_frames_no_shm_writable_folder": {
+      "before": {
+        "app.db": 8192,
+        "app.db-wal": 20632
+      },
+      "immutable": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 20632
+        },
+        "rows": 100
+      },
+      "mode_ro": {
+        "after": {
+          "app.db": 8192,
+          "app.db-shm": 32768,
+          "app.db-wal": 20632
+        },
+        "rows": 105
+      },
+      "shm_rewritten_by_mode_ro": false
+    }
+  },
+  "seconds": 7,
+  "suite": "access"
+}
