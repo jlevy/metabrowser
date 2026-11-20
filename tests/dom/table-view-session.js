@@ -884,7 +884,7 @@ async function bounds() {
 }
 
 // The structured kind's Table view: a JSON list of mappings, whose record draws each nested
-// value with the renderer its view hands the table (record-table.js passes the
+// value with the renderer its view hands the table (structured/index.js passes the
 // structured plugin's inline tree; this stand-in writes the value it was given), and a
 // JSON mapping, which is not a list of records.
 async function recordLists() {

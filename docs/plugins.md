@@ -465,9 +465,8 @@ at `path` and returns a handle with `ready` and `dispose()`.
 `renderJson(element, value)`, optional, draws a JSON value (a `{json}` cell) into a
 record’s element and returns a handle with `dispose()`, which the view calls when the
 record goes; without it the value is its JSON text.
-The structured kind’s Table view passes the structured plugin’s inline tree
-(`builtin_plugins/structured/record-table.js`). Give your kind a Table view that mounts
-it:
+The structured kind’s Table view passes the structured plugin’s inline tree (in
+`builtin_plugins/structured/index.js`). Give your kind a Table view that mounts it:
 
 ```toml
 [[view]]

@@ -282,9 +282,15 @@ registers as its kind’s Table view through `mb.plugins.load("table")`, as
 `builtin_plugins/delimited/index.js` does; the plugin has no kind, so it registers no
 view of its own. `renderJson`, the context’s other member, draws a JSON value in a
 record: the table plugin requires no other plugin, and the structured plugin requires
-it, so the structured kind’s Table view (`builtin_plugins/structured/record-table.js`)
-hands the table its inline tree rather than the table loading the structured plugin,
-which would be a cycle discovery refuses.
+it, so the structured kind’s Table view (in `builtin_plugins/structured/index.js`) hands
+the table its inline tree rather than the table loading the structured plugin, which
+would be a cycle discovery refuses.
+That requirement makes the table plugin a root of the built-in plugin graph: `agents`
+and `diff` require `structured`, and `event_log` and `unknown_jsonl` require `agents`,
+so a table plugin that discovery refused would refuse all of them, and the JSON Tree
+view with them. A replacement table plugin that discovery refuses gives the built-in
+back, as above, so this widens what one plugin’s refusal would take down without adding
+a way for it to be refused.
 `table-model.js` holds what the view decides, pure functions of the address, the schema,
 and the rows held, and `table-view.js` draws it
 ([Data Tables](../../design-system.md#data-tables)). `tests/dom/table-view-session.js`
