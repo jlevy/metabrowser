@@ -55,8 +55,8 @@ next, so the transcripts elide it.
 ## Test: the generation a watch compares
 
 With no connection, nothing is registered: the answer is the generation the watch’s
-polls would compare. A delimited file’s is its table source’s, the one every table read
-samples.
+polls would compare.
+A delimited file’s is its table source’s, the one every table read samples.
 
 ```console
 $ metab watchroot --api /api/events/watch --data table.json
@@ -73,7 +73,12 @@ status: 200
 ```
 
 ```console
-$ metab watchroot --api '/api/plugin/table/rows?path=people.csv' | grep '"generation"'
+$ metab watchroot --api '/api/plugin/table/rows?path=people.csv' > rows.txt
+? 0
+```
+
+```console
+$ grep '"generation"' rows.txt
   "generation": "[..]",
 ? 0
 ```

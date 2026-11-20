@@ -342,6 +342,7 @@ this standard. Paths are under `src/metabrowser/`.
 | `DELIMITED_TYPE_SAMPLE_ROWS` | `builtin_plugins/delimited/source.py` | Rows of a delimited file whose values decide each column’s type |
 | `DELIMITED_CACHE_MAX_ENTRIES`, `DELIMITED_CACHE_MAX_BYTES` | `builtin_plugins/delimited/source.py` | Server memory for parsed delimited files and their sort indexes, estimated from each file’s rows, cells, and text |
 | `WHOLE_TABLE_MAX_ROWS` | `builtin_plugins/table/table-view.js` | The rows a table may hold and still be drawn whole, keeping the browser’s find, select all, copy, and print; a larger one is a window with Search, row selection that copies as tab-separated values, and print of the rows held in their place |
+| `FILE_WATCH_MAX_PATHS` | `file_watches.py` | Files one page may watch on its event stream, which every poll reads the generation of; a watch past it is refused and its view is not live |
 | `FIRST_PAGE_ROWS`, `NEXT_PAGE_ROWS`, `ROWS_OVERSCAN`, `ROW_HEIGHT_ESTIMATE_PX` | `builtin_plugins/table/table-view.js` | The rows the table view’s first and later requests ask for, which a page of wide rows may answer with fewer, the rows its window draws past the view, and a row’s height before one is measured |
 | `SUMMARY_ROWS_OVERSCAN` | `builtin_plugins/diff/diff-summary.js` | Diff summary rows mounted on either side of the window’s view of its tree, which has no scroll of its own and no length bound beyond `MAX_MANIFEST_FILES` |
 

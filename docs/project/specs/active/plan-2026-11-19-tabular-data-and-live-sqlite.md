@@ -1094,11 +1094,63 @@ Accepted from `metab` through the Info view, before any table is drawn.
 
 ### Phase 6: Live Tables
 
-- [ ] File watches on `/api/events`: connection id, the registration route,
+- [x] File watches on `/api/events`: connection id, the registration route,
   `file.changed`, `mb.watchFile`, bounded paths, re-registration under
   `shell.page-connections`
-- [ ] The table’s live behavior; container children refreshed on change; performance
+- [x] The table’s live behavior; container children refreshed on change; performance
   review
+
+As built, where this plan left a choice open:
+
+- **The connection id is the snapshot’s first key**, so the browser compares a new
+  snapshot with the last without it and a reconnect to an unchanged tree still skips its
+  repaint.
+- **One route, three forms.** `POST /api/events/watch` registers with a connection and
+  unregisters with `watch: false`; with no connection it registers nothing and answers
+  the generation a watch would compare, which is the form `metab --api` reaches, since a
+  one-shot command holds no stream.
+  A connection the process does not hold is refused with `unknown_connection` and one at
+  the bound with `too_many_watches`, both 409.
+- **Every watched path is polled**, not only those the inventory misses: which paths the
+  inventory covers depends on its ignore rules, its watcher’s state, and a source’s
+  sidecars, none of which the bus can read cheaply, and a poll costs about a third of a
+  millisecond a path. An inventory change at a watched path, an ancestor, or a `-suffix`
+  sidecar polls sooner, never within `FILE_WATCH_MIN_SPACING_S` of the last.
+  `FILE_WATCH_MAX_PATHS`, `FILE_WATCH_POLL_INTERVAL_S`, and the measurement that set
+  them are in `file_watches.py`, and `devtools/measure_file_watch_poll.py` reruns it.
+- **The page’s watches are an on-demand bundle** (`static/file-watches.js`), loaded at a
+  view’s first `metabrowser.watchFile`; `app.js` keeps the stream’s connection and
+  forwards `file.changed`, since the startup-script budget had no room for more.
+  A path’s requests reach the server in the order they were made, so an unregistration
+  cannot land after the registration that follows it.
+- **What a live table reads again.** A table drawn whole is read again from its start; a
+  windowed one from the page its window begins in, as far as the window and
+  `READ_AHEAD_ROWS`, since a cursor names a place in sort order that holds across a
+  change; rows held above that page are not read again until the reader returns to them
+  and a later change arrives.
+  A table drawn whole that grows past `WHOLE_TABLE_MAX_ROWS` is read afresh as a window,
+  in its place.
+- **“Above the viewport”** is above the first row on screen; a reader at the top has
+  nothing above them, so a new first row is drawn and flashes.
+  A row whose cells changed flashes as an arrived one does, and only a live read again
+  flashes anything.
+- **A record named by position** is read again on a change and says it may be another
+  row when its cells differ from those drawn; the server’s `generation_moved` still
+  answers a record opened under an older generation.
+- **A refresh that fails** keeps the rows and says why: the code `busy` is the writer
+  busy state SQLite will send, `not_found` a file gone, `table_not_found` a table gone.
+- **Containers** are watched once their children are first read, read again at once
+  while open and at the next expansion while closed, and stop watching once their row is
+  gone.
+- **For SQLite (Phases 4 and 5)** nothing more is needed for the generation: a watch on
+  a database, or on a table’s address inside it, answers its table source’s
+  `generation()`, and a change to its `-wal` or `-journal` polls it sooner.
+  What Phase 5 wires: that a table gone from its database drops the table from the
+  address (the view says so now and keeps its rows), and the `busy` refusal code.
+- **Performance review.** A poll at the bound costs about 10 ms, 3 ms of it on the event
+  loop, once a second; a burst of writes is one `file.changed` per poll and one read of
+  the rows held per `LIVE_COALESCE_MS`, which for a table drawn whole is at most two
+  requests.
 
 ### Phase 7: Record Lists
 

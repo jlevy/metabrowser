@@ -46,13 +46,13 @@ A cursor names the sort and order it was made for, so a new sort is a new questi
 from its first page.
 
 A table follows its file (`tests/fixtures/table-view-live-responses.json` records the
-answers at each version of `live.csv`).
-It watches the file with the generation it read, and a burst of changes is one read of
-the rows it holds, with the same question, once the window `LIVE_COALESCE_MS` ends.
-A row whose cells changed and a row that arrived flash once; a row that would land
-above the reader’s place is offered rather than drawn, and taking the offer draws it and
-goes to it; the focus stays on its row, by position where rows have no key, and an open
-menu keeps what was typed in it.
+answers at each version of `live.csv`). It watches the file with the generation it read,
+and a burst of changes is one read of the rows it holds, with the same question, once
+the window `LIVE_COALESCE_MS` ends.
+A row whose cells changed and a row that arrived flash once; a row that would land above
+the reader’s place is offered rather than drawn, and taking the offer draws it and goes
+to it; the focus stays on its row, by position where rows have no key, and an open menu
+keeps what was typed in it.
 An open record named by position is read again and says when another row is at its
 position. Pausing counts the changes held back and reads once on resuming.
 A column the address named that is gone is dropped from it with a notice, and a file

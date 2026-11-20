@@ -327,6 +327,11 @@ Three behaviors follow, and no other machinery:
   a kind matched by content still resolves as a container but shows no chevron.
   The ARIA synchronizer and the arrow-key handlers ask whether a row owns a child group,
   never whether it is a folder.
+  Once read, a container’s children follow its file: the tree watches it
+  (`metabrowser.watchFile`, [File Watches](arch-live-delivery.md#file-watches)) and
+  reads the children again when its generation moves, at once while the container is
+  open and on its next expansion while it is closed, keeping the rows drawn until the
+  new ones arrive. A database whose owner creates a table is the case this is for.
 - **The server** resolves `<container file>/<inner>` in `_resolve_container_child` by
   walking the path’s ancestors through the safe-path gate.
   The nearest existing file whose kind is a container claims everything beneath it, up

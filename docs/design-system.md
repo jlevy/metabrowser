@@ -5989,6 +5989,21 @@ find in page, Shift with Up, Down, Home, or End selects rows that copy as tab-se
 values, since a chord such as Command-A stays the browser’s, and print draws every row
 held ([Rendering Large Content](large-content-rendering.md)).
 
+**A live table moves nothing under the reader.** When its file changes, the table reads
+the rows it holds again with the same question, gathering a burst of changes for
+`LIVE_COALESCE_MS` (`builtin_plugins/table/table-view.js`). A row whose cells changed,
+and a row that arrived where the reader is, flash once in `--row-flash-bg`, as
+[Live Row Arrivals](#live-row-arrivals) do; a row that would land above the first row on
+screen is offered as a “3 new rows” pill in the toolbar rather than drawn, and taking it
+draws the rows and goes to the first.
+The scroll position, the focused row (by key, or by position where rows have none), an
+open menu, and what is typed but not sent stay as they were.
+A **Live** pill, in the pill radius and muted until pressed, pauses the table and then
+reads **Paused · 2 changes**; pressing it again reads once.
+A read that fails keeps the rows on screen with a notice saying they are the last read,
+and a column the address named that is gone is dropped from the address with a notice.
+The offer, Paused, and a failure are announced in the view’s one polite live region.
+
 `tests/dom/table-view-session.js` runs the view’s behavior from the command line, and
 `tests/test_table_view_chrome.py` checks in Chrome what only layout shows: one row
 height, cutting and its tooltip, the inks and faces, the header that stays put, and the
@@ -6158,8 +6173,9 @@ rule’s animation and uses the near-instant reduced-motion treatment.
 The highlight leaves the row’s size and controls in place.
 
 Initial snapshots, older rows revealed by paging, and edits to existing rows use their
-regular presentation.
-Each data source decides which rows arrived.
+regular presentation, except in a [data table](#data-tables), which flashes a row whose
+cells a live refresh changed as it flashes one that arrived (`.table-row-flash`). Each
+data source decides which rows arrived.
 A live list fed by another provider can apply the same treatment when it inserts a new
 item.
 

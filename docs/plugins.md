@@ -919,6 +919,19 @@ Folder aggregate views can use these bounded inventory helpers:
   It passes `null` when anything may have changed: the stream reconnected or
   resynchronized, or the first crawl finished.
   A host with no inventory stream never calls it.
+- `watchFile(path, {generation, onChange, onState})` watches one file through the page’s
+  event stream, whether or not the inventory reports it (an ignored file, a deep one, a
+  database whose owner writes through its log), and returns a disposer.
+  Pass the `generation` your read answered, such as a table page’s, so a change before
+  the watch is registered still reaches you; `onChange({path, generation})` is called
+  once for each change the server polls, with `generation` null when the file is gone.
+  `onState(state, reason)` says whether the watch is `waiting` for a connection, `live`,
+  or `refused`, as past the per-page bound `FILE_WATCH_MAX_PATHS`
+  (`src/metabrowser/file_watches.py`). A page with no stream, such as a pinned
+  revision’s, never calls either.
+  Call the disposer when the view goes; the shell registers every watch again on each
+  new connection
+  ([File Watches](project/architecture/arch-live-delivery.md#file-watches)).
 - Each `ext_tallies` row is
   `[extension, all_files, all_bytes, unignored_files, unignored_bytes]`. The empty
   extension is the aggregate **Other** tail; `(none)` is the extensionless category.
