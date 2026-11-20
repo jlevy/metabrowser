@@ -1746,12 +1746,14 @@ address.
    `"${QA_PR}/fake-gh-scenario.json"` (rebuild that entry with the fixture’s `ok()`, so
    its entity tag changes), and serve 7 again with the browser’s network panel open.
    Once the freshness row’s refresh brings it, scroll to the comment.
-   It shows as plain paragraphs, links, and text only: **build badge** is a link to the
-   image, `x` a link, and `video`, `copy`, `fake dialog`, and `styled` plain text; no
-   dialog covers the page; and the network panel shows no document-origin image request,
-   no `/kpress-static/` script, and no iframe.
-   Application-owned author avatars may request the fixed
-   `avatars.githubusercontent.com` host.
+   It shows as plain paragraphs, links, and text only: **build badge** is an image from
+   the web, shown as on github.com, `x` a link, and `video`, `copy`, `fake dialog`, and
+   `styled` plain text; no dialog covers the page; and the network panel shows no
+   document-origin image request, no `/kpress-static/` script, and no iframe.
+   An image from the web is requested over `https` with no `Referer`; with **Block
+   remote images** ticked in the Metabrowser menu, **build badge** is a chip with its
+   alt text, and the only image requests are application-owned author avatars from the
+   fixed `avatars.githubusercontent.com` host.
 10. A record cached before label colors.
     Stop the server, and in pull request 7’s record, `sources/*/pulls/7.json` in the
     home under `"${QA_PR}"`, set `projection_version` to `1` and `pull.labels` to
@@ -1913,10 +1915,12 @@ Retain screenshots, provider traces and errors with the artifact pin.
 These are focused functional observations; a historical catalog profile does not measure
 this layer.
 
-### 5.8 A hostile README on a mirror (no network)
+### 5.8 A hostile README on a mirror
 
 Serve a `file://` origin whose README carries every payload of the hostile corpus,
-`tests/fixtures/untrusted-markdown`, with the browser’s network panel open:
+`tests/fixtures/untrusted-markdown`, with the browser’s network panel open.
+The README’s images from the web are the only requests that leave the machine, and only
+while **Block remote images** is off, which it is until step 7 ticks it:
 
 ```shell
 QA_README="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-readme.XXXXXX")"
@@ -1929,15 +1933,22 @@ uv --config-file uv.toml run --frozen metab "file://${QA_README}/origin.git" --n
 ```
 
 1. Open `http://127.0.0.1:8479/view/`. The folder Overview’s README shows **Hostile
-   readme** as plain paragraphs, links, and text: **build badge** and **tracker** are
-   links to their images, `video`, `copy`, `fake dialog`, and `styled` are plain text,
-   and the repository image `docs/diagram.png` shows.
-2. The network panel shows no request to any origin but `127.0.0.1`, no
-   `/kpress-static/` script (its stylesheets and fonts load), and no iframe; no dialog
-   covers the page.
+   readme** as plain paragraphs, links, and text: `video`, `copy`, `fake dialog`, and
+   `styled` are plain text, and the repository image `docs/diagram.png` shows.
+   Its images from the web over `https` show as images, as on github.com: **build
+   badge**, **tracker**, and the badge row, where **Follow @ojoshe on X** goes to
+   `https://x.com/ojoshe` and **CI** to its workflow, whatever its image does, and no
+   badge leaves an empty link before it or a link to its image inside it.
+   **insecure**, over `http`, is a small chip with an image mark, inside a link to its
+   image; hovering it shows the image’s address.
+   A link around nothing but an image has no GitHub mark after it.
+2. The network panel shows requests to the README’s image hosts (`example.com`,
+   `img.shields.io`, `github.com`), each an image with no `Referer` header; none over
+   `http`; no other origin but `127.0.0.1`; no `/kpress-static/` script (its stylesheets
+   and fonts load); and no iframe; no dialog covers the page.
 3. The page’s response carries `Content-Security-Policy` with
-   `script-src 'self' 'nonce-…'`. In the console,
-   `document.body.append(Object.assign(document.createElement("img"), {src: "https://example.com/x.png"}))`
+   `script-src 'self' 'nonce-…'` and `img-src 'self' data: https:`. In the console,
+   `document.body.append(Object.assign(document.createElement("img"), {src: "http://example.com/x.png"}))`
    is refused by `img-src`, and no other policy violation is reported.
 4. Open `README.md` itself, then **Guide**: the relative link opens `docs/guide.md` at
    the pin.
@@ -1947,12 +1958,23 @@ uv --config-file uv.toml run --frozen metab "file://${QA_README}/origin.git" --n
    Wiki links and embeds in a mirrored document show as plain text.
 6. Serve the same folder as a trusted local folder (`metab "${QA_README}/work"`): the
    README renders with KPress’s full styling, and the response carries no policy.
+7. Back on the mirror, open the Metabrowser menu and tick **Block remote images**. The
+   page loads again and the box is ticked.
+   Every image of the README from the web is a chip with its alt text, inside the link
+   it was in: **Follow @ojoshe on X** still goes to `https://x.com/ojoshe`, and
+   **tracker** is a link to its image; `docs/diagram.png` still shows.
+   The network panel, cleared before the reload, shows no request to any origin but
+   `127.0.0.1`. The response’s `Content-Security-Policy` now has
+   `img-src 'self' data: https://avatars.githubusercontent.com`, and in the console the
+   probe of step 3 with `https://example.com/x.png` is refused by `img-src`. Untick the
+   box: the page loads again and the images are back.
 
 **Pass:** every step as described.
 
-**Fail:** any request to another origin, a KPress script loaded for the mirror’s README,
-an iframe, a dialog over the page, a policy violation from the application itself, or a
-trusted folder that renders plainly.
+**Fail:** any request to another origin while the box is ticked, a request with a
+`Referer`, one over `http`, a KPress script loaded for the mirror’s README, an iframe, a
+dialog over the page, a policy violation from the application itself, an empty link or a
+link inside another around a badge, or a trusted folder that renders plainly.
 
 ### 5.9 Heading anchors and the table of contents on a mirror (no network)
 

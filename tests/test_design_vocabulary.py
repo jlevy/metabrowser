@@ -1577,6 +1577,10 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".filter-check"): "a filter",
     ("styles.css", ".chip-clear"): "a chip's control",
     ("styles.css", ".file-header-badge"): "a badge",
+    (
+        "styles.css",
+        ".mb-image-fallback",
+    ): "the stand-in for a badge: an image the page does not load",
     ("styles.css", ".tree-container-badge"): "a tree row's leading letter, its slot's glyph",
     ("agent_log/styles.css", ".log-event-kind"): "a badge",
     (

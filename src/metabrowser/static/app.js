@@ -731,6 +731,7 @@ function initSettingsControl() {
     };
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
+      void window.MetabrowserAssets?.ensureAsset("remote-images");
       setOpen(!isOpen());
     });
     // Dismiss on outside click or Escape.

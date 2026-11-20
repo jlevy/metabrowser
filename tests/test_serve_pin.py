@@ -757,13 +757,15 @@ def test_repository_content_cannot_read_where_the_mirror_is_kept(
             "<link",
             "<iframe",
             "style=",
-            "class=",
             "data-mirror",
             "onmouseover",
             "evil.example",
             "/api/source/status",
         ):
             assert gone not in html, gone
+        # No class the document wrote survives: the only one is the image fallback's own,
+        # which stands where the document's image of the application's route was.
+        assert set(re.findall(r'class="([^"]*)"', html)) <= {"mb-image-fallback"}
         # What is left is the document's words.
         assert "hover" in html and "status" in html
         loads = {asset["loading"] for asset in rendered["assets"]["assets"]}

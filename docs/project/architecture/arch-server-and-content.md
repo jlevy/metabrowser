@@ -229,19 +229,42 @@ The Markdown view then shows the document’s source under one line saying why
 (`builtin_plugins/markdown/render-refusal.js`).
 
 The allowlist keeps paragraphs, headings, emphasis, code, quotes, lists, tables,
-details, and links and images inside the served tree.
-It keeps the layout attributes github.com keeps and KPress keeps too, each value a
-keyword or a number (`ALIGN_VALUES` and `DIMENSIONS` in `inert_html.py`): `align` on a
-block, a heading, an image, or a table part, and `width` and `height` on an image or a
-table cell, so a README such as Metabrowser’s own, a `width="192"` logo in a
+details, links, images inside the served tree, and images from the web over `https`. It
+keeps the layout attributes github.com keeps and KPress keeps too, each value a keyword
+or a number (`ALIGN_VALUES` and `DIMENSIONS` in `inert_html.py`): `align` on a block, a
+heading, an image, or a table part, and `width` and `height` on an image or a table
+cell, so a README such as Metabrowser’s own, a `width="192"` logo in a
 `<p align="center">`, is laid out as on github.com.
 The shell’s stylesheet gives those attributes back where KPress’s rules outrank them, in
 every render (`static/styles.css`, “GitHub’s layout attributes in rendered Markdown”).
 It drops every class, `id`, `name`, `data-*`, style, and event attribute, and all SVG,
 MathML, media, stylesheets, frames, forms, and scripts.
-An outside image becomes a link to it.
+An image from the web is kept when the document writes its address in full over `https`
+(`remote_image` in `inert_html.py`), as github.com shows a README’s, with no referrer
+sent (`referrerpolicy="no-referrer"`) and no credentials: a browser sends none with an
+image to another site, and an address with a user name in it is not loaded.
+Any other image, one over `http` or one with no address of its own, is not loaded: it is
+its alt text in a small chip (`mb-image-fallback`), inside the link it was in, so a
+badge keeps its destination, and otherwise inside a link to the image, with the image’s
+address in the chip’s tooltip.
 A link keeps only an `http`, `https`, or in-document address and opens outside the page
 with no opener or referrer.
+A link that holds only an image, or the chip, takes no external-link mark.
+
+The reader can turn the images of the web off, in the Metabrowser menu (**Block remote
+images**, off unless they tick it).
+Every image from the web is then its chip.
+The choice is a host-wide preference cookie (`metabrowser.blockRemoteImages`, read by
+`static/remote-images.js`), which the server reads from the page request
+(`settings.blocks_remote_images`): the page’s `img-src` narrows to this origin and the
+avatar host, so the browser refuses an image from the web whatever the page’s code does,
+and the page carries `BLOCK_REMOTE_IMAGES` in `METABROWSER_SETTINGS`, which
+`static/inert-html.js` reads when it rebuilds a render.
+Ticking the box writes the cookie and loads the page again, so the policy follows it.
+It applies to an untrusted render: a mirrored repository’s documents, a pull request’s
+and a commit’s text, a Markdown diff, and a folder served with `--untrusted`. A trusted
+folder’s own Markdown and files are the reader’s, and its page has no policy to narrow,
+so it shows its images as it always did.
 No KPress script loads for such a document.
 
 In an inert render, an address that points at the application rather than the tree, a
@@ -261,8 +284,12 @@ every response; no inline event handler runs, and the application writes none.
 The one KPress script source is the set of modules that draw Mermaid diagrams as images,
 `kpress_adapter.DIAGRAM_MODULES`, each admitted by its exact stamped path.
 The browsed tree’s files under `/raw` are never script sources.
-Images admit this origin, `data:` images the stylesheet draws, and the exact avatar host
-for application-owned author portraits, whose URLs provider and browser code validate.
+Images admit this origin, `data:` images the stylesheet draws, and any `https:` image,
+as github.com shows a README’s: the allowlist above keeps a document’s images to `https`
+addresses written in full, and an image runs no script whatever its address.
+With the reader’s Block remote images on, the policy admits this origin, those `data:`
+images, and the exact avatar host for application-owned author portraits, whose URLs
+provider and browser code validate.
 The page frames no URL, since the untrusted profile removes the HTML preview, its only
 framed address; its one frame is the diagram frame
 (`builtin_plugins/markdown/diagram-frame.js`), an `about:srcdoc` document that

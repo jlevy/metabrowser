@@ -2426,6 +2426,20 @@ summary {
   font-weight: var(--weight-medium);
   text-align: right;
 }
+/* A labelled checkbox row, as Show ignored is in the filter bar: the label states what
+   ticking does, so the polarity is legible. The label is the click target. */
+.menu-row:has(.menu-check) {
+  cursor: pointer;
+}
+.menu-check {
+  accent-color: var(--link);
+  cursor: pointer;
+  margin: 0;
+}
+.menu-row:has(.menu-check:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
 
 /* Theme crossfade. Scoped to the large structural surfaces (and the
    prose/code content panels) so the page background and panes glide
@@ -5463,6 +5477,63 @@ a.tab-btn {
 }
 .metabrowser-kpress-host .kpress details > summary:hover {
   color: var(--text);
+}
+
+/* ── An image the page does not load ──────────────────────────────
+   A document from an untrusted source shows its images from the web unless the reader
+   has turned that off (Block remote images, in the Metabrowser menu), and an `http`
+   image, or one the document gives no address, is never loaded. Each becomes this chip
+   (inert_html.py, IMAGE_FALLBACK_CLASS): an image glyph and the alt text, inside the
+   link the image was in, or inside a link to the image. It is a badge's size, one
+   line of `--ui-small-font-size` and its border, so a row of them lies on one line as
+   a row of badges does, and it reads as a thing that is not there rather than as text:
+   the glyph and the border. Where the image's address is known the page's tooltip shows
+   it (`data-tip-text`). A chip never wraps its text; one wider than its line is cut
+   with an ellipsis, and the tooltip has the rest. */
+.mb-image-fallback {
+  background: var(--viz-surface);
+  border: var(--chip-border) solid var(--viz-border);
+  border-radius: var(--radius-tag);
+  box-sizing: border-box;
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: var(--ui-small-font-size);
+  line-height: 1.5;
+  max-inline-size: 100%;
+  overflow: hidden;
+  padding-inline: 0.5em;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  /* On the baseline, as an image is: an inline block that clips its overflow rests its
+     foot there, so a chip and a badge beside it, both 20 pixels, have one top and one foot. */
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+.mb-image-fallback::before {
+  background-color: currentcolor;
+  content: "";
+  display: inline-block;
+  height: 1.1em;
+  margin-inline-end: 0.4em;
+  mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  vertical-align: -0.2em;
+  width: 1.1em;
+}
+.kpress-prose a:hover > .mb-image-fallback {
+  background: var(--hover-bg);
+}
+
+/* KPress gives every image `margin-block: 1rem`, which lifts a badge a rem above the chip
+   that stands for it, and above its row's words, and made a row of badges two rems taller
+   than github.com draws it. github.com gives an image no margin. An image in a link, which
+   a badge is, takes none, nor does any image in a paragraph that holds one, or a chip, so
+   the images and chips of one row share a line. An image alone in its paragraph keeps
+   KPress's room, as the rules below leave it. */
+.kpress-prose a > img,
+.kpress-prose p:is(:has(a > img), :has(.mb-image-fallback)) img {
+  margin-block: 0;
 }
 
 /* ── GitHub's layout attributes in rendered Markdown ─────────────

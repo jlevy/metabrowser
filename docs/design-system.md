@@ -1093,6 +1093,33 @@ markup; document sanitization keeps its allowlist.
 Rendered Markdown retains its existing enhancement budget; links beyond the admitted
 prefix keep their authored form.
 
+A link whose whole content is images, a badge, or the chip an image the page does not
+load becomes ([Images the Page Does Not Load](#images-the-page-does-not-load)), takes no
+mark: github.com draws none on one, and the mark wrapped onto a line of its own under a
+row of badges. A link with words of its own is marked as before.
+`decorateExternalLink` decides this from the link’s content (`holdsImagesOnly`), so
+every caller, a trusted render and an untrusted one alike, gets it.
+
+### Images the Page Does Not Load
+
+A document from an untrusted source shows its images from the web over `https`, as
+github.com does, with no referrer sent, unless the reader ticks **Block remote images**
+in the Metabrowser menu.
+Any image the page does not load, one over `http`, one with no address of its own, and
+every image from the web with that box ticked, is its alt text in a small chip:
+`.mb-image-fallback`, one line of `--ui-small-font-size` in a `--viz-border` box with
+`--radius-tag` corners, an image mark before the text
+([Icon Catalog](design-system-icons.md#ui-chrome-and-actions)), and the address the
+image would have loaded in its tooltip (`data-tip-text`, as every tooltip is).
+The chip is the content of the link the image was in, so a badge keeps its destination,
+and an image that was in no link is in a link to the image, in the same chip.
+It is a badge’s height, so a row of chips lies on one line as a row of badges does, and
+it never wraps its text: one wider than its line is cut with an ellipsis, and the
+tooltip has the rest.
+`inert_html.py` and `static/inert-html.js` write it, and nothing in a document can give
+an element the class.
+`tests/test_markdown_badges_chrome.py` measures the row in Chrome.
+
 ### Choosing Among Values
 
 A control that offers two or more values, or one value on or off, is one of these.
@@ -1107,6 +1134,7 @@ state looks like.
 | One of a long list, named by its trigger | `.chip-menu-trigger` over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns, the source ref selector of a mirror and of a checkout |
 | A boolean whose polarity has to be legible | `.filter-check` | A real checkbox | Show ignored |
 | A boolean with no room for a word | `.icon-btn[aria-pressed]` | A button with an accessible action name | The filter drawer |
+| A boolean in the Metabrowser menu | `.menu-row` holding a real checkbox, `.menu-check` | A real checkbox, its label the row’s | Block remote images |
 
 The chip group and the menu segment are two forms of one exclusive choice, because a
 word and a glyph need different boxes.

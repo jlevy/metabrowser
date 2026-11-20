@@ -174,7 +174,13 @@ def raw_sandbox_csp(*, active_content: bool) -> str:
     )
 
 
-def untrusted_shell_csp(nonce: str, origin: str, kpress_scripts: tuple[str, ...]) -> str:
+def untrusted_shell_csp(
+    nonce: str,
+    origin: str,
+    kpress_scripts: tuple[str, ...],
+    *,
+    remote_images: bool = True,
+) -> str:
     """The Content-Security-Policy of the application page when active content is off.
 
     Rendered Markdown is already reduced to an allowlist before it reaches the page
@@ -188,9 +194,15 @@ def untrusted_shell_csp(nonce: str, origin: str, kpress_scripts: tuple[str, ...]
     installed KPress package's own code, served as ``/static/`` is, and admitted by full
     path, so no other KPress script runs over an untrusted document. Stylesheets come from those
     paths and ``/kpress-static/``; the Markdown worker from ``/plugin-static/``. Fonts
-    and requests stay on this origin. Images also admit ``data:`` ones the stylesheet
-    draws and GitHub's exact avatar host for application-owned author portraits;
-    document images remain restricted by the markup allowlist. The page frames no URL
+    and requests stay on this origin. Images admit ``data:`` ones the stylesheet draws
+    and, with *remote_images*, any ``https:`` one, as github.com shows a README's: a
+    document's images are still reduced by the markup allowlist
+    (:mod:`metabrowser.inert_html`) to ``https`` addresses, written with no referrer, and
+    an image is only an image, which runs no script, whatever its address. Without
+    *remote_images*, the reader's privacy setting, the policy is narrow: this origin, and
+    GitHub's exact avatar host for application-owned author portraits, so a page that
+    meant to load a remote image is refused by the browser and not only by the allowlist.
+    The page frames no URL
     -- the untrusted profile removes the HTML preview, its only framed address; its one
     frame is the ``about:srcdoc`` diagram frame, under a stricter policy of its own as
     well as this one, which admits its stylesheet from ``/plugin-static/``
@@ -222,7 +234,9 @@ def untrusted_shell_csp(nonce: str, origin: str, kpress_scripts: tuple[str, ...]
             ),
             f"style-src {static} {plugins} {kpress}",
             "style-src-attr 'unsafe-inline'",
-            "img-src 'self' data: https://avatars.githubusercontent.com",
+            "img-src 'self' data: https:"
+            if remote_images
+            else "img-src 'self' data: https://avatars.githubusercontent.com",
             "font-src 'self'",
             "connect-src 'self'",
             f"worker-src {plugins}",
