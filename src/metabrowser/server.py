@@ -1747,6 +1747,7 @@ async def index(
     git_graph_url = _static_asset_url("git-graph.js")
     git_history_window_url = _static_asset_url("git-history-window.js")
     git_panel_url = _static_asset_url("git-panel.js")
+    event_reports_url = _static_asset_url("event-reports.js")
     source_freshness_url = _static_asset_url("source-freshness.js")
     source_ref_selector_url = _static_asset_url("source-ref-selector.js")
     app_url = _static_asset_url("app.js")
@@ -2129,17 +2130,21 @@ async def index(
             {"src": git_panel_url},
             # Only a shell that drew the Pulls tab has it, so a folder fetches nothing new.
             *([{"src": _static_asset_url("pulls-nav.js")}] if pulls_tab else []),
+            # The event log's reporter, last: nothing here waits on it (`event-reports`).
+            {"src": event_reports_url},
         ],
         # The compositor is needed only once file navigation begins, after the
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
         # What the page reports to the event log, and the Details a failure or a late
-        # wait offers (static/event-reports.js). Asked for beside `shell-tools`, after the
-        # first usable tree, and by a page that waits on something before then; a report
-        # of what came earlier reads the browser's Resource Timing. Not a startup script:
-        # the startup budget had 99 bytes left when it was written (2026-11-19).
-        "event-reports": [{"src": _static_asset_url("event-reports.js")}],
+        # wait offers (static/event-reports.js). It is the last script of `shell-tools`,
+        # so it loads after the first usable tree, and a page that waits on something
+        # before then asks for it by this name; the loader runs a script once whichever
+        # bundle asks. A report of what came earlier reads the browser's Resource Timing.
+        # Not a startup script, nor a call in app.js: the startup budget had 99 bytes left
+        # when it was written, and #622's changes left 2 after such a call (2026-11-19).
+        "event-reports": [{"src": event_reports_url}],
         # Mermaid 12.3.0's ESM entry (static/vendor/mermaid/), imported by the Markdown
         # plugin's diagram renderer only when a mounted view holds a diagram. The entry
         # imports the chunks of each diagram type it draws by relative specifiers, so a

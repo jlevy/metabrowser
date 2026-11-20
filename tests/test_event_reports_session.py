@@ -143,6 +143,6 @@ def test_a_refresh_job_that_never_ends_is_in_the_details_with_the_wait_it_left_u
     )
     # The page's wait is a failure in the window, and the page's own unfinished work.
     assert "never completed: 1 in the window" in lines
-    mine = lines["This page's slow or unfinished work"]
+    mine = lines["This page’s slow or unfinished work"]
     assert mine[0].startswith("wait githubPull:diffSummary · never_completed · 61.2 s")
     assert any(item.startswith("gh api · timeout · connect timeout") for item in mine)

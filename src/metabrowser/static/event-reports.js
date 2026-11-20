@@ -21,11 +21,12 @@
 // (`METABROWSER_SETTINGS.EVENT_REPORTS`, from event_log_reports.browser_settings), and a
 // server that writes no log gets no header and no report; a late wait still says so.
 //
-// It is the `event-reports` on-demand bundle, asked for with the shell's tools after the
-// first usable tree, and by a page that waits before then. A request answered before it
-// loaded is read from Resource Timing. The fast path costs a header and two Map writes per
-// request; reports are batched for `flush_ms` and sent with `keepalive`, so the last ones
-// leave with the page (sendBeacon cannot send the JSON type the same-origin guard requires).
+// It is the `event-reports` on-demand bundle and the last script of `shell-tools`, so it
+// loads after the first usable tree; a page that waits before then asks for it by name.
+// A request answered before it loaded is read from Resource Timing. The fast path costs a
+// header and two Map writes per request; reports are batched for `flush_ms` and sent with
+// `keepalive`, so the last ones leave with the page (sendBeacon cannot send the JSON type
+// the same-origin guard requires).
 //
 // `describeDetails` turns the log routes' answers into what the Details panel says, and
 // `showDetails` paints it; tests/dom/event-reports-session.js runs both, and the reporter,
@@ -766,7 +767,7 @@
     }
     if (details.mine.length > 0) {
       parts.push({
-        heading: "This page's slow or unfinished work",
+        heading: "This page’s slow or unfinished work",
         items: details.mine.map((event) =>
           joined([
             event.name,
@@ -841,7 +842,7 @@
     };
     const links = element("p", "event-log-details-links", [
       link(routes.failures, "Failures as JSON"),
-      ...(query.client ? [" · ", link(routes.page, "This page's records as JSON")] : []),
+      ...(query.client ? [" · ", link(routes.page, "This page’s records as JSON")] : []),
     ]);
     panel.replaceChildren(...sections, links);
   }

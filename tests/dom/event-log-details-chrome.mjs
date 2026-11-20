@@ -384,7 +384,7 @@ try {
   );
   check(
     "and the page's own late wait",
-    open.panel?.headings.includes("This page's slow or unfinished work") &&
+    open.panel?.headings.includes("This page’s slow or unfinished work") &&
       open.panel.items.some((item) =>
         item.startsWith("wait githubPull:diffSummary · still running"),
       ),

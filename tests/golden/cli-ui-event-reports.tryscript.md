@@ -462,7 +462,7 @@ $ node tests/dom/event-reports-session.js
         ]
       },
       {
-        "heading": "This page's slow or unfinished work",
+        "heading": "This page’s slow or unfinished work",
         "items": [
           "wait githubPull:diffSummary · never_completed · 61.2 s · <time>",
           "checkout._pull_job · still running · 32.0 s · <time>",
@@ -524,11 +524,11 @@ $ node tests/dom/event-reports-session.js
         "  gh api · timeout · 15.0 s · <time>",
         "Probe of api.github.com:443: connect timeout",
         "  20.172.24.160 · timeout · 2.0 s",
-        "This page's slow or unfinished work",
+        "This page’s slow or unfinished work",
         "  wait githubPull:diffSummary · never_completed · 61.2 s · <time>",
         "  checkout._pull_job · still running · 32.0 s · <time>",
         "  gh api · timeout · connect timeout · 15.0 s · <time>",
-        "links: Failures as JSON -> /api/event-log/failures?since=2026-11-19T21%3A00%3A00Z (_blank, noopener); This page's records as JSON -> /api/event-log?client=k3v9q2zx&limit=200 (_blank, noopener)"
+        "links: Failures as JSON -> /api/event-log/failures?since=2026-11-19T21%3A00%3A00Z (_blank, noopener); This page’s records as JSON -> /api/event-log?client=k3v9q2zx&limit=200 (_blank, noopener)"
       ],
       "closed before the answers": [
         "event-log-details-note: Reading the event log…"

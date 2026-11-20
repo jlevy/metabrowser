@@ -825,7 +825,39 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "the diff plugin's assets not loading: The switch request failed.; asked nothing",
             "the switch module not loading: The switch request failed.; asked nothing",
         ],
+        # The Diff summary's wait, which the event log hears of only if it runs late: at the
+        # late threshold the placeholder says how long it has waited and offers Details, whose
+        # panel reads this page's records; leaving ends the wait never_completed, a summary
+        # that arrives ends it ok and closes the panel, and a failed refresh's Details read the
+        # failures around when it ended (mb-9zp5).
+        "eventLogDetails": _event_log_details_steps(),
     }
+
+
+def _event_log_details_steps() -> list[str]:
+    wait = 'githubPull:diffSummary {"number":7} timed from its start'
+    late = 'the late line "The summary of changes has not arrived after 10 s. Details"'
+    asked = 'Details asked for {"client":"k3v9q2zx"}, abortable true'
+    return [
+        f"mounted, the comparison not yet read: the pending placeholder; {wait} running",
+        f"still waiting at the late threshold: {late}; {wait} running",
+        asked,
+        "Details opened: expanded true; the panel says "
+        '"Still running: checkout._pull_job for 61.0 s"',
+        "Details closed: expanded false; panel in the header false",
+        asked,
+        f"the page left: panel in the header false; expanded false; {wait} ended never_completed",
+        f"another page, late: {late}; {wait} running",
+        asked,
+        f"its comparison read, its Details open: the summary; {wait} ended ok",
+        "the late line's Details: expanded false; panel in the header false",
+        f"a page whose comparison is read at once: the summary; {wait} ended ok",
+        'a failed refresh, ended 2026-09-17T12:30:00Z: "The last refresh failed: GitHub could '
+        'not be reached because the connection to api.github.com timed outDetails"',
+        'Details asked for {"client":"k3v9q2zx","since":"2026-09-17T11:30:00Z",'
+        '"until":"2026-09-17T12:31:00Z"}, abortable true',
+        'no reporter: "The event log is not available here."',
+    ]
 
 
 def test_idle_comparison_is_route_owned_and_promotes_on_changes() -> None:
