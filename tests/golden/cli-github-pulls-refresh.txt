@@ -1108,6 +1108,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": {
     "source": "https://github.com/octo/demo",
@@ -1189,6 +1190,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": {
     "source": "https://github.com/octo/demo",

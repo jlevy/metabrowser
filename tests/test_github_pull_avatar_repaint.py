@@ -52,7 +52,9 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 # they give way before Browse code's span, which this record has none of (B4 of
                 # review B on #506). The View on GitHub button's corner is an empty span here:
                 # the SDK draws the button (mb-4wqh), and this page has none to draw it with.
-                "built": 52,
+                # The size line's row, its placeholder, and the placeholder's block are three
+                # (docs/design-system.md, "Change Size Line").
+                "built": 55,
                 "detached": 0,
                 "created": {"header": 1, "conversation": 6},
                 "shown": 7,

@@ -541,6 +541,13 @@ Useful helpers include:
   `label` in words; `changeLineNodes` paints it as the nodes of one `span.change-line`,
   with `{spoken: ", "}` on a line whose name does not say it in words
   ([Brief Change Line](design-system.md#brief-change-line));
+- `changeSizeLine(change)` and `changeSizeLineNodes(line)` for a change set’s size line,
+  “77 commits · 83 files changed · 2.3 MB compressed (14.0 MB raw diff)”:
+  `changeSizeLine` builds it from `{commits?, files, pushedBytes?, diffBytes?}`, a count
+  `null` where it is not known and left out where `undefined`, and the size group there
+  once `pushedBytes` is known, and returns its parts, `text`, `label`, and the size’s
+  `tooltip`; `changeSizeLineNodes` paints it as the nodes of one `span.change-size-line`
+  ([Change Size Line](design-system.md#change-size-line));
 - `countClass(value)` and `sizeClass(value)` for the magnitude-driven emphasis classes
   of core numeric readouts;
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and
@@ -695,7 +702,9 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   separators and no leading slash; the empty path selects the served root.
 - `navigation.open(target, options?)` performs normal user navigation and returns a
   promise. `{ viewId }` prefers a view the destination declares, falling back to its
-  default, without changing the URL.
+  default, without changing the URL. When the destination is the file already shown, it
+  selects that view of it, as its tab does, which is how a view takes a person to
+  another view of the same file.
 - `navigation.current()` returns the current target, or `null` on the landing URL.
 - `fileCatalog.snapshot()` returns an immutable view of the files the shell knows, as
   canonical logical-file paths ordered by UTF-16 code units, with no global path-length

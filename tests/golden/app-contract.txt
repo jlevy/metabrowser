@@ -425,6 +425,33 @@ exit: 0
 --- stderr ---
 --- contract ---
 cache-sources/next-page
+# METABROWSER_STATE_DIR=<ROOT>/events-state metab <ROOT>/support --api '/api/event-log?limit=1' --format json
+exit: 0
+--- stdout ---
+{
+  "directory": "<ROOT>/events-state/events",
+  "files": [
+    {
+      "name": "events-20261119T210201Z-p4242-000.jsonl"
+    },
+    {
+      "name": "events-20261118T090000Z-p17-000.jsonl"
+    }
+  ]
+}
+--- stderr ---
+--- contract ---
+event-log/found
+# METABROWSER_STATE_DIR=<ROOT>/quiet-state metab <ROOT>/support --api '/api/event-log?limit=1' --format json
+exit: 0
+--- stdout ---
+{
+  "directory": "<ROOT>/quiet-state/events",
+  "files": []
+}
+--- stderr ---
+--- contract ---
+event-log/empty
 # metab --doctor --json
 exit: 0
 --- stdout ---
@@ -535,6 +562,27 @@ exit: 0
     },
     {
       "id": "cache",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "event_log",
       "title": "<text>",
       "state": "ok",
       "summary": "<text>",
@@ -696,6 +744,27 @@ exit: 1
       "state": "problem",
       "summary": "<text>",
       "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "event_log",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
         {
           "name": "<text>",
           "value": "<text>"

@@ -1254,9 +1254,14 @@ class _SlowRequestLogMiddleware:
         # the application runs, so a job the request starts names it as its parent, and
         # carries the page's ID for it, which a page's reports name too.
         method = scope.get("method", "")
+        # A request for something inside the events directory is not recorded, when this
+        # server's folder holds the directory (event_log.quiet_request says why).
         request_span = (
             event_log.begin("request", f"{method} {path}", client=_request_client(scope))
             if event_log.enabled()
+            and not event_log.quiet_request(
+                path, (scope.get("query_string") or b"").decode("latin-1")
+            )
             else event_log.NULL_SPAN
         )
 
@@ -1775,6 +1780,8 @@ async def index(
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
     # A pin's freshness row, filled by static/source-freshness.js. A folder has none.
+    # It sits above the keyboard shortcut strip, so the strip stays the pane's last row
+    # (owner, 2026-11-20).
     source_freshness_row = (
         '\n      <div class="source-freshness" id="source-freshness" hidden></div>'
         if git_pin
@@ -2462,7 +2469,7 @@ async def index(
           <div class="loading mb-delayed-loading"><div class="spinner"></div><span
             class="sr-only">Loading files…</span></div>
         </div>{git_container}{pulls_container}
-      </div>
+      </div>{source_freshness_row}
       <!-- role="group" carries the accessible name: ARIA forbids naming a
            generic element, so a bare div would drop the label and announce
            the hints and their controls with no grouping context. Not a live
@@ -2473,7 +2480,7 @@ async def index(
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
         <span class="index-progress-spinner" aria-hidden="true"></span>
         <span class="index-progress-text">Scanning…</span>
-      </div>{source_freshness_row}
+      </div>
     </div>
     <div class="resize-handle" id="tree-resize"></div>
     <!-- Every route that serves this shell selects something: /view/ names a
