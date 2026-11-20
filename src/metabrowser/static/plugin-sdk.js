@@ -977,6 +977,32 @@
     };
   }
 
+  // Hear when *path* changes, through the page's one event stream (static/file-watches.js,
+  // fetched on first use); returns a disposer. A pin's page has no stream: never called.
+  function watchFile(path, options) {
+    let dispose = null;
+    let disposed = false;
+    if (global.METABROWSER_SOURCE_KIND !== "git_revision") {
+      ensureAsset("file-watches").then(
+        () => {
+          if (!disposed) {
+            dispose = global.MetabrowserFileWatches.shared().watch(
+              path,
+              options,
+              options.generation,
+            );
+          }
+        },
+        (error) => console.warn("metabrowser.watchFile:", error),
+      );
+    }
+    return () => {
+      disposed = true;
+      dispose?.();
+      dispose = null;
+    };
+  }
+
   // Plugins can observe directory totals but cannot mutate the host-owned
   // inventory projection. The fallback keeps partial SDK harnesses usable
   // without weakening the production ownership boundary.
@@ -1773,6 +1799,7 @@
     fetchRollup: fetchRollup,
     watchRollup: watchRollup,
     onInventoryChange: onInventoryChange,
+    watchFile: watchFile,
     errors: global.MetabrowserRequestErrors,
     folderContext: folderContext,
     directoryTotals: directoryTotals,

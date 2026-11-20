@@ -2201,6 +2201,13 @@ async def index(
         "view-header": [
             {"src": _static_asset_url("view-header.js"), "provides": "MetabrowserViewHeader"}
         ],
+        # The page's file watches on its event stream (static/file-watches.js), fetched
+        # the first time a view calls metabrowser.watchFile: a table, or a container
+        # whose children the tree shows. Most pages watch nothing, so it is no startup
+        # script; app.js only hands it each snapshot's connection and each change.
+        "file-watches": [
+            {"src": _static_asset_url("file-watches.js"), "provides": "MetabrowserFileWatches"}
+        ],
         # What a view's renderer calls: the line-number gutter with its `#L` anchors,
         # and the SDK helpers a renderer builds its markup with (the Source surface,
         # the copy wrapper, the partial-content notice, the syntax service). Nothing

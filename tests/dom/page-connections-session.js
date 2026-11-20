@@ -182,6 +182,9 @@ function createPage(sourceKind) {
   const listeners = new Map();
   let nextTimer = 0;
   let catalogRequests = 0;
+  // The server's side of file watches: the connections it holds, and each file's
+  // generation now. A restart forgets the connections.
+  const server = { connections: new Set(), generations: new Map() };
 
   class RecordingEventSource {
     constructor(url) {
@@ -244,6 +247,25 @@ function createPage(sourceKind) {
     },
     console,
     encodeURIComponent,
+    // Only file-watches.js fetches through the global: POST /api/events/watch.
+    async fetch(url, init) {
+      did.push(`request: POST ${url} ${init.body}`);
+      const body = JSON.parse(init.body);
+      const answer = (status, payload) => ({ status, json: async () => payload });
+      if (!server.connections.has(body.connection)) {
+        return answer(409, { type: "watch_error", code: "unknown_connection" });
+      }
+      if (body.watch === false) {
+        return answer(200, { type: "file_watch", watching: false });
+      }
+      const generation = server.generations.get(body.path) ?? null;
+      return answer(200, {
+        type: "file_watch",
+        watching: true,
+        generation,
+        changed: "generation" in body ? generation !== body.generation : null,
+      });
+    },
     setTimeout(callback, delayMs) {
       nextTimer += 1;
       timers.set(nextTimer, { callback, delayMs });
@@ -312,11 +334,42 @@ function createPage(sourceKind) {
           streams: streams.filter((item) => !item.closed).map((item) => item.url),
           timers: [...timers.values()].map((timer) => `${timer.delayMs} ms`),
           parked: run("pageConnections.parked()"),
+          // Once a view has asked for file watches: each as the page holds it.
+          ...(sandbox.MetabrowserFileWatches
+            ? { watches: sandbox.MetabrowserFileWatches.shared().describe() }
+            : {}),
         },
       });
     },
     run,
+    server,
     start: () => run("startInventoryEventStream()"),
+    /** Load file-watches.js, as metabrowser.watchFile does on its first call. */
+    loadFileWatches() {
+      const absolute = path.join(staticDir, "file-watches.js");
+      vm.runInContext(fs.readFileSync(absolute, "utf8"), sandbox, { filename: absolute });
+      return sandbox.MetabrowserFileWatches.shared();
+    },
+    /** A view's listener on a watch: what it is told, recorded as the page's. */
+    listener(name) {
+      return {
+        onChange: (change) => did.push(`${name}: ${change.path} is now ${change.generation}`),
+        onState: (state, reason) =>
+          did.push(`${name}: watch ${state}${reason ? ` (${reason})` : ""}`),
+      };
+    },
+    /** Let the pending timer of *delayMs* fire. */
+    elapse(delayMs) {
+      for (const [handle, timer] of timers) {
+        if (timer.delayMs === delayMs) {
+          timers.delete(handle);
+          did.push(`timer ${handle}: fired`);
+          timer.callback();
+          return;
+        }
+      }
+      throw new Error(`no timer of ${delayMs} ms is pending`);
+    },
     opens(id) {
       const target = stream(id);
       if (target) {
@@ -357,7 +410,7 @@ async function folderRestored() {
   await page.step("the page starts", () => page.start());
   await page.step("stream 1 opens and sends its snapshot", () => {
     page.opens(1);
-    page.delivers(1, "fs.snapshot", SNAPSHOT);
+    page.delivers(1, "fs.snapshot", snapshotOf(page, "c1"));
   });
   await page.step("pagehide, kept for Back", () => page.dispatch("pagehide", true));
   await page.step("a duplicate pagehide preserves the parked connections", () =>
@@ -367,7 +420,7 @@ async function folderRestored() {
   await page.step("pageshow, restored", () => page.dispatch("pageshow", true));
   await page.step("stream 2 opens and sends its snapshot", () => {
     page.opens(2);
-    page.delivers(2, "fs.snapshot", SNAPSHOT);
+    page.delivers(2, "fs.snapshot", snapshotOf(page, "c2"));
   });
   await page.step("a file changes", () => {
     page.delivers(2, "fs.change", { ops: [{ op: "upsert", entry: { path: "b.md" } }] });
@@ -379,7 +432,7 @@ async function folderRestored() {
   await page.step("pageshow, restored again", () => page.dispatch("pageshow", true));
   await page.step("stream 3 sends the original snapshot after a change was undone", () => {
     page.opens(3);
-    page.delivers(3, "fs.snapshot", SNAPSHOT);
+    page.delivers(3, "fs.snapshot", snapshotOf(page, "c3"));
   });
   return { scenario: "a folder's page is kept for Back and restored", steps: page.steps };
 }
@@ -476,6 +529,76 @@ async function delayedInitialStreams() {
   return { scenario: "initial streams become ready while the page is parked", steps: page.steps };
 }
 
+/** The snapshot of the connection *id*: the server opens it as it sends it. */
+function snapshotOf(page, id) {
+  page.server.connections.add(id);
+  return { connection: id, ...SNAPSHOT };
+}
+
+async function fileWatches() {
+  const page = createPage("filesystem");
+  page.server.generations.set("people.csv", "g1");
+  page.server.generations.set("deep/notes.txt", "n1");
+  await page.step("the page starts, and stream 1 sends the snapshot of connection c1", () => {
+    page.start();
+    page.opens(1);
+    page.delivers(1, "fs.snapshot", snapshotOf(page, "c1"));
+  });
+  let disposeTable = null;
+  await page.step("a table read at g1 watches its file: registered on c1", () => {
+    const watches = page.loadFileWatches();
+    disposeTable = watches.watch("people.csv", page.listener("table"), "g1");
+  });
+  await page.step("the file changes: file.changed on stream 1 tells the table once", () => {
+    page.server.generations.set("people.csv", "g2");
+    page.delivers(1, "file.changed", { path: "people.csv", generation: "g2" });
+    page.delivers(1, "file.changed", { path: "people.csv", generation: "g2" });
+  });
+  await page.step("a resync: stream 1 ends and the page waits to reconnect", () => {
+    page.delivers(1, "fs.resync_required", { reason: "connection_queue_overflow" });
+  });
+  await page.step("the file changes while no stream is open", () => {
+    page.server.generations.set("people.csv", "g3");
+  });
+  await page.step(
+    "stream 2 sends the same tree for c2: the watch registers again with g2, and hears g3",
+    () => {
+      page.elapse(2000);
+      page.opens(2);
+      page.delivers(2, "fs.snapshot", snapshotOf(page, "c2"));
+    },
+  );
+  await page.step("the server restarts: it holds no connection", () => {
+    page.server.connections.clear();
+    page.fails(2, true);
+  });
+  await page.step("a tree's container watches a deep file: c2 is refused, so it waits", () => {
+    page.run(`MetabrowserFileWatches.shared().watch("deep/notes.txt", {
+      onChange: (change) => __did("tree: " + change.path + " is now " + change.generation),
+      onState: (state, reason) => __did("tree: watch " + state + (reason ? " (" + reason + ")" : "")),
+    }, "n1")`);
+  });
+  await page.step("the reconnected stream 3 sends c3: both watches register on it", () => {
+    for (let failure = 0; failure < 4; failure += 1) {
+      page.fails(2);
+    }
+    page.elapse(4000);
+    page.opens(3);
+    page.delivers(3, "fs.snapshot", snapshotOf(page, "c3"));
+  });
+  await page.step("pagehide, kept for Back", () => page.dispatch("pagehide", true));
+  await page.step("pageshow, restored: stream 4 sends c4, and the watches move to it", () => {
+    page.dispatch("pageshow", true);
+    page.opens(4);
+    page.delivers(4, "fs.snapshot", snapshotOf(page, "c4"));
+  });
+  await page.step("the table is disposed: its file is unregistered", () => disposeTable());
+  return {
+    scenario: "a page's file watches follow its event stream's connection",
+    steps: page.steps,
+  };
+}
+
 async function main() {
   const transcript = [
     await folderRestored(),
@@ -485,6 +608,7 @@ async function main() {
     await unloaded(),
     await connectingRestored(),
     await delayedInitialStreams(),
+    await fileWatches(),
   ];
   console.log(JSON.stringify(transcript, null, 2));
 }

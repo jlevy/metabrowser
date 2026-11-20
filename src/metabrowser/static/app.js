@@ -8851,13 +8851,18 @@ function _createInventoryEventSource() {
   }
   inventoryEventSource.addEventListener("fs.snapshot", (e) => {
     try {
+      // The connection leads the frame; file watches register on it (file-watches.js).
+      var named = /^\{"connection":(?:"([^"]*)"|null),/.exec(e.data);
+      var body = named ? e.data.slice(named[0].length) : e.data;
+      window.metabrowserEventConnection = named?.[1] ?? null;
+      window.MetabrowserFileWatches?.connected(window.metabrowserEventConnection);
       // Equality of this scoped snapshot avoids parsing and repainting it.
       // It cannot prove deep files unchanged: retain the normal revalidation
       // and Recent repair boundary even when the shallow tree is identical.
-      if (lastInventorySnapshot !== e.data) {
+      if (lastInventorySnapshot !== body) {
         var data = JSON.parse(e.data);
         fileStoreApplySnapshot(data.scope, data.entries || []);
-        lastInventorySnapshot = e.data;
+        lastInventorySnapshot = body;
         if (data.complete === true) {
           inventoryChangeHighlightingActive = true;
         }
@@ -8891,6 +8896,13 @@ function _createInventoryEventSource() {
       var data = JSON.parse(e.data);
       fileStoreApplyChange(data.ops || []);
       _scheduleRecentRecompute();
+    } catch (_e) {
+      /* ignore */
+    }
+  });
+  inventoryEventSource.addEventListener("file.changed", (e) => {
+    try {
+      window.MetabrowserFileWatches?.changed(JSON.parse(e.data));
     } catch (_e) {
       /* ignore */
     }
@@ -8945,17 +8957,11 @@ function _createInventoryEventSource() {
   });
   inventoryEventSource.addEventListener("fs.resync_required", (_e) => {
     lastInventorySnapshot = null;
-    // A resync marks a gap in the ordered delta stream. Clear derived state,
-    // then replace this connection so the server sends an authoritative
-    // snapshot before live updates resume.
+    // A gap: clear derived state, keep FileStore and its rows as the baseline, and
+    // reconnect for a snapshot (arch-live-delivery.md, "Recovery", says why).
     recentRecompute.cancel();
     scheduleRecentAuthoritativeRefetch();
     knownFileCatalog?.clear();
-    // Keep FileStore and its rendered rows as the baseline. The reconnect
-    // snapshot retires only rows that are really gone and patches the rest in
-    // place; emptying the store here would collapse the tree for the whole
-    // reconnect backoff and lose expanded folders. The server sends this on
-    // queue overflow, which is exactly when changes are arriving in bursts.
     notifyFileStoreSubscribers({ kind: "resync" });
     startIndexProgressPolling();
     quickFileCatalogFeed?.onResync();
