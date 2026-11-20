@@ -207,8 +207,11 @@ RETRY_MAX_SECONDS: Final = 0.1
 RACY_MTIME_SECONDS: Final = 1.0
 # A private copy of a database and its log (a log with no `-shm`, or a file with more
 # than one name) is made per request, so it is bounded by what one request can afford to
-# copy. Measured with `uv run python devtools/bench_sqlite_access.py`: see
-# `explorations/sqlite-guest-reads/README.md#private-copies`.
+# copy. `uv run python -m devtools.bench_sqlite_access` (2026-11-20, 4 CPUs at a load of
+# 4, the temporary folder on the container's disk): copying the pair took a median 6 ms
+# at 8 MiB, 18 ms at 32 MiB, and 60 ms at 129 MiB, and an Info read through the copy,
+# which rebuilds the log's index, 12 ms at 8 MiB and 41 ms at 32 MiB. At this cap a read
+# through a copy costs about 80 ms, a twenty-fifth of a request's deadline.
 COPY_MAX_BYTES: Final = 64 * 1024 * 1024
 # A copy that fails validation this many times gives way to the main file read alone.
 COPY_ATTEMPTS: Final = 2

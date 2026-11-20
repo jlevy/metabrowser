@@ -1,0 +1,412 @@
+{
+  "answers": {
+    "app.db": {
+      "status": 200,
+      "body": {
+        "type": "sqlite_info",
+        "path": "app.db",
+        "generation": "G",
+        "access": {
+          "mode": "immutable",
+          "state": "current",
+          "reason": "a rollback-journal database is read without a lock, validated against a commit",
+          "attempts": 1,
+          "notices": []
+        },
+        "journal_mode": "rollback",
+        "links": 1,
+        "size": 12288,
+        "sidecars": [],
+        "database": {
+          "page_size": 4096,
+          "page_count": 3,
+          "encoding": "UTF-8",
+          "user_version": 7,
+          "application_id": 1179865420,
+          "application_name": "fsqlite snapshot",
+          "freelist_count": 0,
+          "objects": {
+            "index": 1,
+            "table": 1,
+            "trigger": 1,
+            "view": 1
+          }
+        },
+        "library": {
+          "version": "L",
+          "minimum": "3.43.0",
+          "meets_minimum": true,
+          "versions": [
+            {
+              "version": "3.7.0",
+              "meaning": "write-ahead-log databases",
+              "available": true
+            },
+            {
+              "version": "3.8.2",
+              "meaning": "WITHOUT ROWID tables",
+              "available": true
+            },
+            {
+              "version": "3.26.0",
+              "meaning": "SQLITE_DBCONFIG_DEFENSIVE and PRAGMA table_xinfo",
+              "available": true
+            },
+            {
+              "version": "3.31.0",
+              "meaning": "PRAGMA trusted_schema and generated columns",
+              "available": true
+            },
+            {
+              "version": "3.37.0",
+              "meaning": "STRICT tables",
+              "available": true
+            },
+            {
+              "version": "3.43.0",
+              "meaning": "octet_length(), the reader's minimum for reading tables",
+              "available": true
+            },
+            {
+              "version": "3.45.0",
+              "meaning": "JSONB values",
+              "available": true
+            }
+          ]
+        }
+      }
+    },
+    "History": {
+      "status": 200,
+      "body": {
+        "type": "sqlite_info",
+        "path": "History",
+        "generation": "G",
+        "access": {
+          "mode": "immutable",
+          "state": "current",
+          "reason": "the write-ahead log holds no frames, so the main file is read without a lock, validated against a new frame or checkpoint",
+          "attempts": 1,
+          "notices": []
+        },
+        "journal_mode": "wal",
+        "links": 1,
+        "size": 8192,
+        "sidecars": [],
+        "database": {
+          "page_size": 4096,
+          "page_count": 2,
+          "encoding": "UTF-8",
+          "user_version": 0,
+          "application_id": 0,
+          "application_name": null,
+          "freelist_count": 0,
+          "objects": {
+            "table": 1
+          }
+        },
+        "library": {
+          "version": "L",
+          "minimum": "3.43.0",
+          "meets_minimum": true,
+          "versions": [
+            {
+              "version": "3.7.0",
+              "meaning": "write-ahead-log databases",
+              "available": true
+            },
+            {
+              "version": "3.8.2",
+              "meaning": "WITHOUT ROWID tables",
+              "available": true
+            },
+            {
+              "version": "3.26.0",
+              "meaning": "SQLITE_DBCONFIG_DEFENSIVE and PRAGMA table_xinfo",
+              "available": true
+            },
+            {
+              "version": "3.31.0",
+              "meaning": "PRAGMA trusted_schema and generated columns",
+              "available": true
+            },
+            {
+              "version": "3.37.0",
+              "meaning": "STRICT tables",
+              "available": true
+            },
+            {
+              "version": "3.43.0",
+              "meaning": "octet_length(), the reader's minimum for reading tables",
+              "available": true
+            },
+            {
+              "version": "3.45.0",
+              "meaning": "JSONB values",
+              "available": true
+            }
+          ]
+        }
+      }
+    },
+    "live.db": {
+      "status": 200,
+      "body": {
+        "type": "sqlite_info",
+        "path": "live.db",
+        "generation": "G",
+        "access": {
+          "mode": "read_only",
+          "state": "current",
+          "reason": "the write-ahead log holds frames and its index is present, so it is read through them as every reader does",
+          "attempts": 1,
+          "notices": []
+        },
+        "journal_mode": "wal",
+        "links": 1,
+        "size": 8192,
+        "sidecars": [
+          {
+            "name": "-wal",
+            "size": 20632,
+            "frames": 5
+          },
+          {
+            "name": "-shm",
+            "size": 32768
+          }
+        ],
+        "database": {
+          "page_size": 4096,
+          "page_count": 2,
+          "encoding": "UTF-8",
+          "user_version": 0,
+          "application_id": 0,
+          "application_name": null,
+          "freelist_count": 0,
+          "objects": {
+            "table": 1
+          }
+        },
+        "library": {
+          "version": "L",
+          "minimum": "3.43.0",
+          "meets_minimum": true,
+          "versions": [
+            {
+              "version": "3.7.0",
+              "meaning": "write-ahead-log databases",
+              "available": true
+            },
+            {
+              "version": "3.8.2",
+              "meaning": "WITHOUT ROWID tables",
+              "available": true
+            },
+            {
+              "version": "3.26.0",
+              "meaning": "SQLITE_DBCONFIG_DEFENSIVE and PRAGMA table_xinfo",
+              "available": true
+            },
+            {
+              "version": "3.31.0",
+              "meaning": "PRAGMA trusted_schema and generated columns",
+              "available": true
+            },
+            {
+              "version": "3.37.0",
+              "meaning": "STRICT tables",
+              "available": true
+            },
+            {
+              "version": "3.43.0",
+              "meaning": "octet_length(), the reader's minimum for reading tables",
+              "available": true
+            },
+            {
+              "version": "3.45.0",
+              "meaning": "JSONB values",
+              "available": true
+            }
+          ]
+        }
+      }
+    },
+    "noshm.db": {
+      "status": 200,
+      "body": {
+        "type": "sqlite_info",
+        "path": "noshm.db",
+        "generation": "G",
+        "access": {
+          "mode": "private_copy",
+          "state": "current",
+          "reason": "the write-ahead log holds frames and has no index beside it, so the database and its log are read through a private copy",
+          "attempts": 1,
+          "notices": []
+        },
+        "journal_mode": "wal",
+        "links": 1,
+        "size": 8192,
+        "sidecars": [
+          {
+            "name": "-wal",
+            "size": 20632,
+            "frames": 5
+          }
+        ],
+        "database": {
+          "page_size": 4096,
+          "page_count": 2,
+          "encoding": "UTF-8",
+          "user_version": 0,
+          "application_id": 0,
+          "application_name": null,
+          "freelist_count": 0,
+          "objects": {
+            "table": 1
+          }
+        },
+        "library": {
+          "version": "L",
+          "minimum": "3.43.0",
+          "meets_minimum": true,
+          "versions": [
+            {
+              "version": "3.7.0",
+              "meaning": "write-ahead-log databases",
+              "available": true
+            },
+            {
+              "version": "3.8.2",
+              "meaning": "WITHOUT ROWID tables",
+              "available": true
+            },
+            {
+              "version": "3.26.0",
+              "meaning": "SQLITE_DBCONFIG_DEFENSIVE and PRAGMA table_xinfo",
+              "available": true
+            },
+            {
+              "version": "3.31.0",
+              "meaning": "PRAGMA trusted_schema and generated columns",
+              "available": true
+            },
+            {
+              "version": "3.37.0",
+              "meaning": "STRICT tables",
+              "available": true
+            },
+            {
+              "version": "3.43.0",
+              "meaning": "octet_length(), the reader's minimum for reading tables",
+              "available": true
+            },
+            {
+              "version": "3.45.0",
+              "meaning": "JSONB values",
+              "available": true
+            }
+          ]
+        }
+      }
+    },
+    "linked.db": {
+      "status": 200,
+      "body": {
+        "type": "sqlite_info",
+        "path": "linked.db",
+        "generation": "G",
+        "access": {
+          "mode": "private_copy",
+          "state": "another_name",
+          "reason": "this file has 2 names; a journal or log kept beside another name is not shown",
+          "attempts": 1,
+          "notices": []
+        },
+        "journal_mode": "wal",
+        "links": 2,
+        "size": 8192,
+        "sidecars": [],
+        "database": {
+          "page_size": 4096,
+          "page_count": 2,
+          "encoding": "UTF-8",
+          "user_version": 0,
+          "application_id": 0,
+          "application_name": null,
+          "freelist_count": 0,
+          "objects": {
+            "table": 1
+          }
+        },
+        "library": {
+          "version": "L",
+          "minimum": "3.43.0",
+          "meets_minimum": true,
+          "versions": [
+            {
+              "version": "3.7.0",
+              "meaning": "write-ahead-log databases",
+              "available": true
+            },
+            {
+              "version": "3.8.2",
+              "meaning": "WITHOUT ROWID tables",
+              "available": true
+            },
+            {
+              "version": "3.26.0",
+              "meaning": "SQLITE_DBCONFIG_DEFENSIVE and PRAGMA table_xinfo",
+              "available": true
+            },
+            {
+              "version": "3.31.0",
+              "meaning": "PRAGMA trusted_schema and generated columns",
+              "available": true
+            },
+            {
+              "version": "3.37.0",
+              "meaning": "STRICT tables",
+              "available": true
+            },
+            {
+              "version": "3.43.0",
+              "meaning": "octet_length(), the reader's minimum for reading tables",
+              "available": true
+            },
+            {
+              "version": "3.45.0",
+              "meaning": "JSONB values",
+              "available": true
+            }
+          ]
+        }
+      }
+    },
+    "busy.db": {
+      "status": 200,
+      "body": {
+        "type": "sqlite_info",
+        "path": "busy.db",
+        "generation": "G",
+        "error": {
+          "state": "writer_busy",
+          "message": "The application that owns this database is writing to it."
+        }
+      }
+    },
+    "fake.db": {
+      "status": 200,
+      "body": {
+        "type": "sqlite_info",
+        "path": "fake.db",
+        "generation": "G",
+        "error": {
+          "state": "not_sqlite",
+          "message": "This file is not a SQLite database."
+        }
+      }
+    }
+  }
+}
