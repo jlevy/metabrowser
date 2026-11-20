@@ -162,6 +162,12 @@ def _check_columns_fit_and_chosen_ones_pin_the_first(measured: dict[str, Any]) -
 
 def test_the_table_view_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
     measured = _measure(tmp_path, chrome_profile)
+    # Review A of #675, A11: the Live pill and the offer sit between the fit note and
+    # Columns, and a hidden one keeps its slot, so neither moves those or the toolbar's
+    # height, and with it the grid (Columns, then the fit note, then the toolbar height).
+    toolbar = measured["toolbar"]
+    assert toolbar["pillLive"] is True, toolbar
+    assert toolbar["live"] == toolbar["waiting"] == toolbar["offered"] == toolbar["taken"], toolbar
     assert measured["exceptions"] == []
     _check_rows_are_one_line_and_a_long_value_is_cut_with_its_tooltip(measured)
     _check_null_numbers_and_literals_are_painted_apart(measured)

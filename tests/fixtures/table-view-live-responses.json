@@ -119,60 +119,6 @@
       }
     },
     "G2": {
-      "schema?path=live.csv": {
-        "status": 200,
-        "body": {
-          "type": "table_schema",
-          "path": "live.csv",
-          "table": "",
-          "generation": "G2",
-          "key": [],
-          "default_columns": [
-            "name",
-            "qty"
-          ],
-          "fields": [
-            {
-              "name": "name",
-              "title": null,
-              "type": "text",
-              "declared_type": null,
-              "nullable": null,
-              "key": false,
-              "hidden": null,
-              "generated": null,
-              "list": false,
-              "enum": null,
-              "format": null,
-              "ref": null,
-              "sortable": true,
-              "sort_note": null,
-              "filterable": true,
-              "numeric": false
-            },
-            {
-              "name": "qty",
-              "title": null,
-              "type": "integer",
-              "declared_type": null,
-              "nullable": null,
-              "key": false,
-              "hidden": null,
-              "generated": null,
-              "list": false,
-              "enum": null,
-              "format": null,
-              "ref": null,
-              "sortable": true,
-              "sort_note": null,
-              "filterable": true,
-              "numeric": true
-            }
-          ],
-          "references": [],
-          "referenced_by": []
-        }
-      },
       "rows?limit=200&path=live.csv": {
         "status": 200,
         "body": {
@@ -275,60 +221,6 @@
             "name": "a",
             "qty": 1
           },
-          "referenced_by": []
-        }
-      },
-      "schema?path=live.csv": {
-        "status": 200,
-        "body": {
-          "type": "table_schema",
-          "path": "live.csv",
-          "table": "",
-          "generation": "G3",
-          "key": [],
-          "default_columns": [
-            "name",
-            "qty"
-          ],
-          "fields": [
-            {
-              "name": "name",
-              "title": null,
-              "type": "text",
-              "declared_type": null,
-              "nullable": null,
-              "key": false,
-              "hidden": null,
-              "generated": null,
-              "list": false,
-              "enum": null,
-              "format": null,
-              "ref": null,
-              "sortable": true,
-              "sort_note": null,
-              "filterable": true,
-              "numeric": false
-            },
-            {
-              "name": "qty",
-              "title": null,
-              "type": "integer",
-              "declared_type": null,
-              "nullable": null,
-              "key": false,
-              "hidden": null,
-              "generated": null,
-              "list": false,
-              "enum": null,
-              "format": null,
-              "ref": null,
-              "sortable": true,
-              "sort_note": null,
-              "filterable": true,
-              "numeric": true
-            }
-          ],
-          "references": [],
           "referenced_by": []
         }
       },
@@ -562,60 +454,6 @@
       }
     },
     "G4": {
-      "schema?path=live.csv": {
-        "status": 200,
-        "body": {
-          "type": "table_schema",
-          "path": "live.csv",
-          "table": "",
-          "generation": "G4",
-          "key": [],
-          "default_columns": [
-            "name",
-            "qty"
-          ],
-          "fields": [
-            {
-              "name": "name",
-              "title": null,
-              "type": "text",
-              "declared_type": null,
-              "nullable": null,
-              "key": false,
-              "hidden": null,
-              "generated": null,
-              "list": false,
-              "enum": null,
-              "format": null,
-              "ref": null,
-              "sortable": true,
-              "sort_note": null,
-              "filterable": true,
-              "numeric": false
-            },
-            {
-              "name": "qty",
-              "title": null,
-              "type": "integer",
-              "declared_type": null,
-              "nullable": null,
-              "key": false,
-              "hidden": null,
-              "generated": null,
-              "list": false,
-              "enum": null,
-              "format": null,
-              "ref": null,
-              "sortable": true,
-              "sort_note": null,
-              "filterable": true,
-              "numeric": true
-            }
-          ],
-          "references": [],
-          "referenced_by": []
-        }
-      },
       "rows?limit=200&order=desc&path=live.csv&sort=qty": {
         "status": 200,
         "body": {
@@ -708,13 +546,627 @@
       }
     },
     "G5": {
+      "rows?limit=200&order=desc&path=live.csv&sort=qty": {
+        "status": 200,
+        "body": {
+          "type": "table_rows",
+          "path": "live.csv",
+          "table": "",
+          "generation": "G5",
+          "columns": [
+            "name",
+            "qty"
+          ],
+          "rows": [
+            {
+              "key": "@8",
+              "cells": {
+                "name": "g",
+                "qty": 100
+              }
+            },
+            {
+              "key": "@3",
+              "cells": {
+                "name": "b",
+                "qty": 20
+              }
+            },
+            {
+              "key": "@1",
+              "cells": {
+                "name": "z",
+                "qty": 9
+              }
+            },
+            {
+              "key": "@7",
+              "cells": {
+                "name": "f",
+                "qty": 6
+              }
+            },
+            {
+              "key": "@6",
+              "cells": {
+                "name": "e",
+                "qty": 5
+              }
+            },
+            {
+              "key": "@5",
+              "cells": {
+                "name": "d",
+                "qty": 4
+              }
+            },
+            {
+              "key": "@4",
+              "cells": {
+                "name": "c",
+                "qty": 3
+              }
+            },
+            {
+              "key": "@2",
+              "cells": {
+                "name": "a",
+                "qty": 1
+              }
+            },
+            {
+              "key": "@9",
+              "cells": {
+                "name": "h",
+                "qty": 0
+              }
+            }
+          ],
+          "next_after": null,
+          "complete": true,
+          "truncated": false,
+          "reason": null,
+          "count": 9,
+          "count_complete": true,
+          "estimate": null,
+          "skipped": 0,
+          "examined": null,
+          "searched": null,
+          "sort_refused": null,
+          "limit": 200
+        }
+      }
+    },
+    "G6": {
+      "rows?limit=200&order=desc&path=live.csv&sort=qty": {
+        "status": 200,
+        "body": {
+          "type": "table_rows",
+          "path": "live.csv",
+          "table": "",
+          "generation": "G6",
+          "columns": [
+            "name",
+            "qty"
+          ],
+          "rows": [
+            {
+              "key": "@8",
+              "cells": {
+                "name": "g",
+                "qty": 100
+              }
+            },
+            {
+              "key": "@3",
+              "cells": {
+                "name": "b",
+                "qty": 21
+              }
+            },
+            {
+              "key": "@1",
+              "cells": {
+                "name": "z",
+                "qty": 9
+              }
+            },
+            {
+              "key": "@7",
+              "cells": {
+                "name": "f",
+                "qty": 6
+              }
+            },
+            {
+              "key": "@6",
+              "cells": {
+                "name": "e",
+                "qty": 5
+              }
+            },
+            {
+              "key": "@5",
+              "cells": {
+                "name": "d",
+                "qty": 4
+              }
+            },
+            {
+              "key": "@4",
+              "cells": {
+                "name": "c",
+                "qty": 3
+              }
+            },
+            {
+              "key": "@2",
+              "cells": {
+                "name": "a",
+                "qty": 1
+              }
+            },
+            {
+              "key": "@9",
+              "cells": {
+                "name": "h",
+                "qty": 0
+              }
+            }
+          ],
+          "next_after": null,
+          "complete": true,
+          "truncated": false,
+          "reason": null,
+          "count": 9,
+          "count_complete": true,
+          "estimate": null,
+          "skipped": 0,
+          "examined": null,
+          "searched": null,
+          "sort_refused": null,
+          "limit": 200
+        }
+      }
+    },
+    "G7": {
+      "rows?limit=200&order=desc&path=live.csv&sort=qty": {
+        "status": 200,
+        "body": {
+          "type": "table_rows",
+          "path": "live.csv",
+          "table": "",
+          "generation": "G7",
+          "columns": [
+            "name",
+            "qty"
+          ],
+          "rows": [
+            {
+              "key": "@8",
+              "cells": {
+                "name": "g",
+                "qty": 100
+              }
+            },
+            {
+              "key": "@4",
+              "cells": {
+                "name": "c",
+                "qty": 30
+              }
+            },
+            {
+              "key": "@3",
+              "cells": {
+                "name": "b",
+                "qty": 21
+              }
+            },
+            {
+              "key": "@1",
+              "cells": {
+                "name": "z",
+                "qty": 9
+              }
+            },
+            {
+              "key": "@7",
+              "cells": {
+                "name": "f",
+                "qty": 6
+              }
+            },
+            {
+              "key": "@6",
+              "cells": {
+                "name": "e",
+                "qty": 5
+              }
+            },
+            {
+              "key": "@5",
+              "cells": {
+                "name": "d",
+                "qty": 4
+              }
+            },
+            {
+              "key": "@2",
+              "cells": {
+                "name": "a",
+                "qty": 1
+              }
+            },
+            {
+              "key": "@9",
+              "cells": {
+                "name": "h",
+                "qty": 0
+              }
+            }
+          ],
+          "next_after": null,
+          "complete": true,
+          "truncated": false,
+          "reason": null,
+          "count": 9,
+          "count_complete": true,
+          "estimate": null,
+          "skipped": 0,
+          "examined": null,
+          "searched": null,
+          "sort_refused": null,
+          "limit": 200
+        }
+      }
+    },
+    "G8": {
+      "rows?limit=200&order=desc&path=live.csv&sort=qty": {
+        "status": 200,
+        "body": {
+          "type": "table_rows",
+          "path": "live.csv",
+          "table": "",
+          "generation": "G8",
+          "columns": [
+            "name",
+            "qty"
+          ],
+          "rows": [
+            {
+              "key": "@8",
+              "cells": {
+                "name": "g",
+                "qty": 100
+              }
+            },
+            {
+              "key": "@5",
+              "cells": {
+                "name": "d",
+                "qty": 40
+              }
+            },
+            {
+              "key": "@4",
+              "cells": {
+                "name": "c",
+                "qty": 30
+              }
+            },
+            {
+              "key": "@3",
+              "cells": {
+                "name": "b",
+                "qty": 21
+              }
+            },
+            {
+              "key": "@1",
+              "cells": {
+                "name": "z",
+                "qty": 9
+              }
+            },
+            {
+              "key": "@7",
+              "cells": {
+                "name": "f",
+                "qty": 6
+              }
+            },
+            {
+              "key": "@6",
+              "cells": {
+                "name": "e",
+                "qty": 5
+              }
+            },
+            {
+              "key": "@2",
+              "cells": {
+                "name": "a",
+                "qty": 1
+              }
+            },
+            {
+              "key": "@9",
+              "cells": {
+                "name": "h",
+                "qty": 0
+              }
+            }
+          ],
+          "next_after": null,
+          "complete": true,
+          "truncated": false,
+          "reason": null,
+          "count": 9,
+          "count_complete": true,
+          "estimate": null,
+          "skipped": 0,
+          "examined": null,
+          "searched": null,
+          "sort_refused": null,
+          "limit": 200
+        }
+      },
+      "record?generation=G8&key=%403&path=live.csv": {
+        "status": 200,
+        "body": {
+          "type": "table_record",
+          "path": "live.csv",
+          "table": "",
+          "key": "@3",
+          "positional": true,
+          "generation": "G8",
+          "generation_moved": false,
+          "cells": {
+            "name": "b",
+            "qty": 21
+          },
+          "referenced_by": []
+        }
+      }
+    },
+    "G9": {
+      "record?key=%403&path=live.csv": {
+        "status": 200,
+        "body": {
+          "type": "table_record",
+          "path": "live.csv",
+          "table": "",
+          "key": "@3",
+          "positional": true,
+          "generation": "G9",
+          "generation_moved": null,
+          "cells": {
+            "name": "b",
+            "qty": 21
+          },
+          "referenced_by": []
+        }
+      },
+      "rows?limit=200&order=desc&path=live.csv&sort=qty": {
+        "status": 200,
+        "body": {
+          "type": "table_rows",
+          "path": "live.csv",
+          "table": "",
+          "generation": "G9",
+          "columns": [
+            "name",
+            "qty"
+          ],
+          "rows": [
+            {
+              "key": "@8",
+              "cells": {
+                "name": "g",
+                "qty": 100
+              }
+            },
+            {
+              "key": "@6",
+              "cells": {
+                "name": "e",
+                "qty": 50
+              }
+            },
+            {
+              "key": "@5",
+              "cells": {
+                "name": "d",
+                "qty": 40
+              }
+            },
+            {
+              "key": "@4",
+              "cells": {
+                "name": "c",
+                "qty": 30
+              }
+            },
+            {
+              "key": "@3",
+              "cells": {
+                "name": "b",
+                "qty": 21
+              }
+            },
+            {
+              "key": "@1",
+              "cells": {
+                "name": "z",
+                "qty": 9
+              }
+            },
+            {
+              "key": "@7",
+              "cells": {
+                "name": "f",
+                "qty": 6
+              }
+            },
+            {
+              "key": "@2",
+              "cells": {
+                "name": "a",
+                "qty": 1
+              }
+            },
+            {
+              "key": "@9",
+              "cells": {
+                "name": "h",
+                "qty": 0
+              }
+            }
+          ],
+          "next_after": null,
+          "complete": true,
+          "truncated": false,
+          "reason": null,
+          "count": 9,
+          "count_complete": true,
+          "estimate": null,
+          "skipped": 0,
+          "examined": null,
+          "searched": null,
+          "sort_refused": null,
+          "limit": 200
+        }
+      }
+    },
+    "G10": {
+      "record?key=%403&path=live.csv": {
+        "status": 200,
+        "body": {
+          "type": "table_record",
+          "path": "live.csv",
+          "table": "",
+          "key": "@3",
+          "positional": true,
+          "generation": "G10",
+          "generation_moved": null,
+          "cells": {
+            "name": "b",
+            "qty": 21
+          },
+          "referenced_by": []
+        }
+      },
+      "rows?limit=200&order=desc&path=live.csv&sort=qty": {
+        "status": 200,
+        "body": {
+          "type": "table_rows",
+          "path": "live.csv",
+          "table": "",
+          "generation": "G10",
+          "columns": [
+            "name",
+            "qty"
+          ],
+          "rows": [
+            {
+              "key": "@8",
+              "cells": {
+                "name": "g",
+                "qty": 100
+              }
+            },
+            {
+              "key": "@7",
+              "cells": {
+                "name": "f",
+                "qty": 60
+              }
+            },
+            {
+              "key": "@6",
+              "cells": {
+                "name": "e",
+                "qty": 50
+              }
+            },
+            {
+              "key": "@5",
+              "cells": {
+                "name": "d",
+                "qty": 40
+              }
+            },
+            {
+              "key": "@4",
+              "cells": {
+                "name": "c",
+                "qty": 30
+              }
+            },
+            {
+              "key": "@3",
+              "cells": {
+                "name": "b",
+                "qty": 21
+              }
+            },
+            {
+              "key": "@1",
+              "cells": {
+                "name": "z",
+                "qty": 9
+              }
+            },
+            {
+              "key": "@2",
+              "cells": {
+                "name": "a",
+                "qty": 1
+              }
+            },
+            {
+              "key": "@9",
+              "cells": {
+                "name": "h",
+                "qty": 0
+              }
+            }
+          ],
+          "next_after": null,
+          "complete": true,
+          "truncated": false,
+          "reason": null,
+          "count": 9,
+          "count_complete": true,
+          "estimate": null,
+          "skipped": 0,
+          "examined": null,
+          "searched": null,
+          "sort_refused": null,
+          "limit": 200
+        }
+      }
+    },
+    "G11": {
+      "rows?limit=200&order=desc&path=live.csv&sort=qty": {
+        "status": 400,
+        "body": {
+          "type": "table_error",
+          "path": "live.csv",
+          "code": "bad_query",
+          "error": "no field named 'qty'",
+          "param": "sort",
+          "field": "qty"
+        }
+      },
       "schema?path=live.csv": {
         "status": 200,
         "body": {
           "type": "table_schema",
           "path": "live.csv",
           "table": "",
-          "generation": "G5",
+          "generation": "G11",
           "key": [],
           "default_columns": [
             "name"
@@ -749,7 +1201,7 @@
           "type": "table_rows",
           "path": "live.csv",
           "table": "",
-          "generation": "G5",
+          "generation": "G11",
           "columns": [
             "name"
           ],
@@ -824,7 +1276,36 @@
         }
       }
     },
-    "G6": {
+    "G12": {
+      "rows?limit=200&path=live.csv": {
+        "status": 404,
+        "body": {
+          "type": "table_error",
+          "path": "live.csv",
+          "code": "not_found",
+          "error": "Not found"
+        }
+      },
+      "schema?path=live.csv": {
+        "status": 404,
+        "body": {
+          "type": "table_error",
+          "path": "live.csv",
+          "code": "not_found",
+          "error": "Not found"
+        }
+      }
+    },
+    "G13": {
+      "rows?limit=200&path=live.csv": {
+        "status": 404,
+        "body": {
+          "type": "table_error",
+          "path": "live.csv",
+          "code": "not_found",
+          "error": "Not found"
+        }
+      },
       "schema?path=live.csv": {
         "status": 404,
         "body": {

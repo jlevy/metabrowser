@@ -222,6 +222,41 @@ async function main() {
       note: __t().q(".table-fit-note").hidden ? null : __t().q(".table-fit-note").textContent,
       overflows: __t().scroll.scrollWidth > __t().scroll.clientWidth + 1,
     })`);
+    // The toolbar keeps its box as the Live pill and the new-rows offer come and go: the
+    // controls before them stay put, and once shown each keeps its slot while hidden.
+    measured.toolbar = await chrome.evaluate(`(async () => {
+      const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const pill = __t().q(".table-live-pill");
+      const offer = __t().q(".table-offer");
+      const columns = __t().q(".table-columns-button");
+      const note = __t().q(".table-fit-note");
+      const bar = __t().q(".table-toolbar");
+      const box = () => {
+        const at = columns.getBoundingClientRect();
+        const noteAt = note.getBoundingClientRect();
+        return [at.left, at.top, noteAt.left, noteAt.top, bar.getBoundingClientRect().height].map(Math.round).join(",");
+      };
+      for (let tries = 0; tries < 100 && pill.hidden; tries += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      const pillLive = !pill.hidden;
+      const live = box();
+      // The watch drops to waiting, as on a reconnect: the pill hides in its slot.
+      pill.hidden = true;
+      await frame();
+      const waiting = box();
+      pill.hidden = false;
+      // Rows arrive above the reader's place, and the offer is taken.
+      offer.textContent = "1,234 new rows";
+      offer.dataset.slot = "";
+      offer.hidden = false;
+      await frame();
+      const offered = box();
+      offer.hidden = true;
+      await frame();
+      const taken = box();
+      return { pillLive, live, waiting, offered, taken };
+    })()`);
     await shot("4-fit");
     const all = Array.from({ length: 24 }, (_, i) => `column_name_${i + 1}`).join(",");
     await open(`wide.csv?cols=${all}`, 2);

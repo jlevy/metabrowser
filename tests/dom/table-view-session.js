@@ -47,6 +47,16 @@ const liveVersions = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/table-view-live-responses.json"), "utf8"),
 ).versions;
 let liveVersion = "G1";
+// The windowed live table's answers at each version (`LIVE_WINDOW`), and the one on disk.
+const windowVersions = JSON.parse(
+  fs.readFileSync(
+    path.join(repoRoot, "tests/fixtures/table-view-live-window-responses.json"),
+    "utf8",
+  ),
+).versions;
+let windowVersion = "W1";
+/** How long each read of the live file takes; a step makes it slow. */
+let liveReadMs = 0;
 
 // ── A DOM of just enough nodes ─────────────────────────────────
 
@@ -82,11 +92,30 @@ class Element extends FakeElement {
   }
 }
 
+const documentListeners = new Map();
 const documentStandIn = {
   createElement: (tag) => new Element(tag),
   body: new Element("body"),
   activeElement: null,
+  // A step hides and shows the page as a browser's visibilitychange does.
+  visibilityState: "visible",
+  addEventListener(type, listener) {
+    documentListeners.set(type, [...(documentListeners.get(type) ?? []), listener]);
+  },
+  removeEventListener(type, listener) {
+    documentListeners.set(
+      type,
+      (documentListeners.get(type) ?? []).filter((item) => item !== listener),
+    );
+  },
 };
+/** The page becomes *state*, "hidden" or "visible". */
+function visibility(state) {
+  documentStandIn.visibilityState = state;
+  for (const listener of documentListeners.get("visibilitychange") ?? []) {
+    listener({ type: "visibilitychange" });
+  }
+}
 globalThis.document = documentStandIn;
 
 /** Every element under *node*, in document order. */
@@ -179,6 +208,8 @@ const pageWindow = {
     pageWindow.clearTimeout(timer);
   },
   getSelection: () => ({ isCollapsed: true, toString: () => "" }),
+  // The session's clock, which a live read's cost advances.
+  performance: { now: () => clock },
 };
 
 function emit(type) {
@@ -267,7 +298,16 @@ const sdk = {
       error.name = "AbortError";
       throw error;
     }
-    const answer = params.path === "live.csv" ? liveVersions[liveVersion][key] : answers[key];
+    if (params.path === "live.csv") {
+      // What a read of the live file costs the server, in the session's clock.
+      clock += liveReadMs;
+    }
+    const answer =
+      params.path === "live.csv"
+        ? liveVersions[liveVersion][key]
+        : params.path === "live-window.csv"
+          ? windowVersions[windowVersion].answers[key]
+          : answers[key];
     if (!answer) {
       unrecorded.push(key);
       throw Object.assign(new Error(`unrecorded ${key}`), { status: 599 });
@@ -883,23 +923,201 @@ async function liveTable() {
   );
   click(find(view.container, hasClass("table-offer")));
   await settle();
-  step("live: the offer taken: the new row drawn, the view at it, and the focus on its row", {
+  step("live: the offer taken: the new row drawn, the view at it, and the keyboard on it", {
     scrollTop: view.scroller.scrollTop,
     ...liveShown(view),
   });
 
+  // Every write to the live region, so a step can say what was announced and how often.
+  const announcements = [];
+  const region = find(view.container, (node) => node.attributes.get("aria-live") === "polite");
+  let owner = Object.getPrototypeOf(region);
+  while (owner && !Object.getOwnPropertyDescriptor(owner, "textContent")) {
+    owner = Object.getPrototypeOf(owner);
+  }
+  const regionText = Object.getOwnPropertyDescriptor(owner, "textContent");
+  Object.defineProperty(region, "textContent", {
+    get: () => regionText.get.call(region),
+    set: (value) => {
+      announcements.push(value);
+      regionText.set.call(region, value);
+    },
+  });
+
+  // Two rows selected, and a row element marked, so a step can tell it was not drawn again.
+  key(documentStandIn.activeElement, "ArrowDown", { shiftKey: true });
+  rowsOf(view)[0].kept = true;
   fileChanges("G5");
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live: the file touched, its rows as they were: nothing drawn again, the selection kept", {
+    requests: takeRequests(),
+    flashing: flashing(view),
+    focus: shown(view).focus,
+    selected: rowsOf(view)
+      .filter((tr) => tr.attributes.get("aria-selected") === "true")
+      .map((tr) => text(tr.firstChild)),
+    "first row element kept": Boolean(rowsOf(view)[0].kept),
+  });
+
+  liveReadMs = 400;
+  fileChanges("G6");
+  tick(LIVE_COALESCE);
+  await settle();
+  liveReadMs = 0;
+  step("live: a cell changed under the selection, read slowly: the selection stays on its rows", {
+    requests: takeRequests(),
+    flashing: flashing(view),
+    focus: shown(view).focus,
+    selected: rowsOf(view)
+      .filter((tr) => tr.attributes.get("aria-selected") === "true")
+      .map((tr) => text(tr.firstChild)),
+  });
+
+  fileChanges("G7");
+  tick(LIVE_COALESCE);
+  await settle();
+  const early7 = takeRequests();
+  tick(2 * 400 - LIVE_COALESCE);
+  await settle();
+  step("live: after a read that took 400 ms, the next waits twice that, not the window", {
+    "requests once the window ends": early7,
+    "requests at twice the last read": takeRequests(),
+  });
+
+  visibility("hidden");
+  fileChanges("G8");
+  tick(10 * LIVE_COALESCE);
+  await settle();
+  const whileHidden = takeRequests();
+  visibility("visible");
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live: a change while the page is hidden: nothing read until it is shown, then once", {
+    "requests while hidden": whileHidden,
+    requests: takeRequests(),
+    flashing: flashing(view),
+  });
+
+  for (const watch of fileWatches.filter((item) => !item.disposed)) {
+    watch.options.onState("refused", "too_many_watches");
+  }
+  const refusedNotes = shown(view).notes;
+  for (const watch of fileWatches.filter((item) => !item.disposed)) {
+    watch.options.onState("live", null);
+  }
+  step("live: a watch refused says the table is not following its file, until it is live again", {
+    "notes while refused": refusedNotes,
+    "notes once live": shown(view).notes,
+    pill: pill(view),
+  });
+
+  // The focused row's record, open with the keyboard on its own Live control.
+  key(documentStandIn.activeElement, "Enter");
+  await settle();
+  takeRequests();
+  const recordPill = find(
+    find(view.container, hasClass("table-record")),
+    hasClass("table-live-pill"),
+  );
+  recordPill.focus();
+  const recordBody = find(view.container, hasClass("table-record-fields"));
+  fileChanges("G9");
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live: a record read again unchanged: not drawn again, the keyboard on its Live control", {
+    requests: takeRequests(),
+    "record pane drawn again": find(view.container, hasClass("table-record-fields")) !== recordBody,
+    focus: documentStandIn.activeElement === recordPill ? "the record's Live control" : "elsewhere",
+    "record pill": recordPill.hidden ? null : text(recordPill),
+  });
+  click(recordPill);
+  fileChanges("G10");
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live: the record's Live control pressed: paused there, a change held back", {
+    requests: takeRequests(),
+    "record pill": text(recordPill),
+  });
+  click(recordPill);
+  tick(LIVE_COALESCE);
+  await settle();
+  click(find(view.container, hasClass("table-back")));
+  await settle();
+  takeRequests();
+
+  fileChanges("G11");
   tick(LIVE_COALESCE);
   await settle();
   step("live: the sorted column removed: dropped from the address, with a notice", liveShown(view));
 
-  fileChanges("G6");
+  announcements.splice(0);
+  fileChanges("G12");
   tick(LIVE_COALESCE);
   await settle();
-  step("live: the file removed: the rows last read kept, and said to be", liveShown(view));
+  fileChanges("G13");
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live: the file removed: the rows last read kept, and said to be", {
+    ...liveShown(view),
+    "announced, each time": [...announcements],
+  });
 
   view.handle.dispose();
   step("live: disposed: the watch released", { requests: takeRequests() });
+  view.container.remove();
+  delete sdk.watchFile;
+}
+
+/** The windowed table's first row drawn, and each drawn whose value is not its position. */
+function windowShown(view) {
+  const drawn = rowsOf(view).map((tr) => tr.childNodes.map((cell) => text(cell)));
+  return {
+    first: drawn[0]?.join(" | ") ?? null,
+    "rows changed": drawn.filter(([at, value]) => at !== value).map((cells) => cells.join(" | ")),
+  };
+}
+
+async function liveWindowTable() {
+  sdk.watchFile = watchFile;
+  windowVersion = "W1";
+  const view = mount("live-window.csv");
+  await ready(view);
+  const scrollTo = async (row) => {
+    view.scroller.scrollTop = row * 33;
+    dispatch(view.scroller, "scroll");
+    tick(16);
+    await settle();
+    tick(16);
+    await settle();
+  };
+  await scrollTo(40);
+  step("live window: sixty rows read in pages of ten, scrolled to row 40", {
+    requests: takeRequests().length,
+    ...windowShown(view),
+  });
+  windowVersion = "W2";
+  for (const watch of fileWatches.filter((item) => !item.disposed)) {
+    watch.options.onChange({ path: watch.file, generation: "W2" });
+  }
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live window: rows 5 and 45 changed: read again from the window's page, row 45 drawn", {
+    requests: takeRequests(),
+    ...windowShown(view),
+  });
+  await scrollTo(0);
+  const scrolledUp = { requests: takeRequests(), ...windowShown(view) };
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live window: back at the top, whose pages that read skipped: read again, row 5 drawn", {
+    "requests as the window arrives": scrolledUp.requests,
+    "rows changed as it arrives": scrolledUp["rows changed"],
+    requests: takeRequests(),
+    ...windowShown(view),
+  });
+  view.handle.dispose();
+  takeRequests();
   view.container.remove();
   delete sdk.watchFile;
 }
@@ -1097,9 +1315,16 @@ async function main() {
   await windowedTable();
   await bounds();
   await liveTable();
+  await liveWindowTable();
   step("requests asked of the server", { unrecorded });
   assert.deepEqual(unrecorded, [], "every request the page made is recorded");
-  process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
+  // Every scenario runs either way; the transcript prints the live table's steps as a
+  // command of their own (`live`), and the rest without an argument.
+  const live = process.argv[2] === "live";
+  const printed = Object.fromEntries(
+    Object.entries(transcript).filter(([name]) => name.startsWith("live") === live),
+  );
+  process.stdout.write(`${JSON.stringify(printed, null, 2)}\n`);
 }
 
 main().catch((error) => {

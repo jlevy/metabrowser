@@ -134,6 +134,16 @@ export const CARD_DELAY_MS = 300;
 // to WHOLE_TABLE_MAX_ROWS rows in two requests.
 export const LIVE_COALESCE_MS = 300;
 
+// How far apart two live refreshes are, in multiples of what the last one took: the next
+// starts no sooner than this many times the last's duration after a change, nor sooner
+// than LIVE_COALESCE_MS. A refresh's cost is the server's, and for a delimited file it is
+// a parse of the whole file at each new generation (the parse cache is keyed by it):
+// measured for review A of #675 on a shared 4-core container at a load near 8, the read
+// after one line appended to a 15 MB, 199,096-row CSV took 0.47 to 0.66 s, and to a 1 MB
+// one 0.05 s. At twice the duration a writer that never pauses keeps the server reading
+// for a tab at most a third of the time, and a cheap file still refreshes every window.
+export const LIVE_COST_SPACING = 2;
+
 // How long a changed or arrived row keeps its flash: the length of the shared
 // `tree-row-flash-in` animation in static/styles.css, after which a row drawn again by a
 // scroll is drawn plainly.
@@ -164,7 +174,7 @@ const CELL_PAD_PX = 20;
 /**
  * @typedef {{
  *   sdk?: TableSdk,
- *   window?: Pick<Window, "addEventListener" | "removeEventListener" | "requestAnimationFrame" | "cancelAnimationFrame" | "setTimeout" | "clearTimeout" | "getSelection">,
+ *   window?: Pick<Window, "addEventListener" | "removeEventListener" | "requestAnimationFrame" | "cancelAnimationFrame" | "setTimeout" | "clearTimeout" | "getSelection"> & {performance?: Pick<Performance, "now">},
  *   history?: Pick<History, "back" | "replaceState" | "state">,
  *   document?: Document,
  * }} TableHost
@@ -264,6 +274,19 @@ export function mountTable(container, ctx, host = {}) {
   let stateNotice = null;
   /** The open record's cells as last drawn, and whether it may now be another row. */
   let shownRecord = { key: "", cells: "", moved: false };
+  /** How long the last live refresh took, in ms: the next is spaced by it. */
+  let liveCost = 0;
+  /** A change arrived while the page was hidden: one refresh when it is shown. */
+  let hiddenHeld = false;
+  /** Rows before this index were not read again by the last windowed refresh. */
+  let staleBelow = 0;
+  /** What the live region last said of the offer and of a failed refresh, so neither repeats. */
+  let offerAnnounced = false;
+  let failureAnnounced = false;
+  /** A notice that the file's watch was refused, so the table does not follow it. @type {HTMLElement | null} */
+  let watchNotice = null;
+  /** The open record's controls by a name that survives a redraw, to put focus back on. @type {Map<string, HTMLElement>} */
+  let recordControls = new Map();
 
   // ── Markup ───────────────────────────────────────────────────
   const root = el("div", { class: "table-view" });
@@ -291,11 +314,16 @@ export function mountTable(container, ctx, host = {}) {
     "Columns",
   );
   // Shown once the file's watch is live; pressing it pauses the table, and again resumes
-  // it. Its label is its state, and its accessible name the action.
+  // it. Its label is its state, and its accessible name the action. The record pane has
+  // its own, since the toolbar is hidden while a record shows.
   const livePill = el("button", { type: "button", class: "btn table-live-pill", hidden: "" });
+  const recordPill = el("button", { type: "button", class: "btn table-live-pill", hidden: "" });
   // New rows that would land above the reader's place, offered rather than drawn.
   const offer = el("button", { type: "button", class: "btn table-offer", hidden: "" });
-  toolbar.append(search, chips, status, offer, livePill, fitNote, columnsButton);
+  // After the fit note, and before Columns, which its own margin holds at the toolbar's
+  // end, so neither moves as these come and go; once shown, each keeps its slot while
+  // hidden (styles.css).
+  toolbar.append(search, chips, status, fitNote, offer, livePill, columnsButton);
   const notes = el("div", { class: "table-notes" });
   const scroller = el("div", { class: "table-scroll" });
   const table = /** @type {HTMLTableElement} */ (el("table", { class: "data-grid" }));
@@ -560,9 +588,24 @@ export function mountTable(container, ctx, host = {}) {
     unwatch = sdk.watchFile(path, {
       generation: page?.generation ?? null,
       onChange: onFileChange,
-      onState: (watchState) => {
-        livePill.hidden = watchState !== "live" && !paused;
+      onState: (watchState, reason) => {
+        const shown = watchState === "live" || paused;
+        for (const pill of [livePill, recordPill]) {
+          pill.hidden = !shown;
+          if (shown) {
+            pill.dataset.slot = "";
+          }
+        }
         drawPill();
+        // A refused watch is asked again when the page's other watches make room.
+        watchNotice =
+          watchState === "refused"
+            ? noticeBox(
+                "warning",
+                `This table is not following changes to its file now${reason === "too_many_watches" ? ": this page watches as many files as it may" : ""}.`,
+              )
+            : null;
+        drawNotes();
       },
     });
   }
@@ -580,25 +623,56 @@ export function mountTable(container, ctx, host = {}) {
     scheduleLive();
   }
 
+  /** Whether the page is hidden, when nothing reads a refresh. */
+  function pageHidden() {
+    return doc.visibilityState === "hidden";
+  }
+
   function scheduleLive() {
-    if (liveTimer || disposed) {
+    if (liveTimer || disposed || paused) {
       return;
     }
-    liveTimer = win.setTimeout(() => {
-      liveTimer = 0;
-      void liveRefresh();
-    }, LIVE_COALESCE_MS);
+    if (pageHidden()) {
+      hiddenHeld = true;
+      return;
+    }
+    liveTimer = win.setTimeout(
+      () => {
+        liveTimer = 0;
+        if (pageHidden()) {
+          hiddenHeld = true;
+        } else {
+          void liveRefresh();
+        }
+      },
+      Math.max(LIVE_COALESCE_MS, LIVE_COST_SPACING * liveCost),
+    );
+  }
+
+  /** The page was shown: one refresh for whatever changed while it was hidden. */
+  function onVisibility() {
+    if (!pageHidden() && hiddenHeld) {
+      hiddenHeld = false;
+      scheduleLive();
+    }
+  }
+
+  /** @returns {number} */
+  function now() {
+    return win.performance?.now() ?? Date.now();
   }
 
   function drawPill() {
-    livePill.textContent = livePillText(paused, heldBack);
-    livePill.setAttribute(
-      "aria-label",
-      `${livePill.textContent}: ${paused ? "resume live updates" : "pause live updates"}`,
-    );
-    livePill.dataset.tipText = paused
-      ? "Changes to the file are held back; press to show them"
-      : "The table follows changes to its file; press to pause it";
+    for (const pill of [livePill, recordPill]) {
+      pill.textContent = livePillText(paused, heldBack);
+      pill.setAttribute(
+        "aria-label",
+        `${pill.textContent}: ${paused ? "resume live updates" : "pause live updates"}`,
+      );
+      pill.dataset.tipText = paused
+        ? "Changes to the file are held back; press to show them"
+        : "The table follows changes to its file; press to pause it";
+    }
   }
 
   function togglePaused() {
@@ -635,22 +709,12 @@ export function mountTable(container, ctx, host = {}) {
       return;
     }
     refreshing = true;
+    const began = now();
     const seq = loadSeq;
     const signal = loading?.signal ?? abort.signal;
     try {
       if (state.record && !recordPane.hidden) {
         void showRecord(state.record, true);
-      }
-      await loadSchema();
-      if (seq !== loadSeq || disposed) {
-        return;
-      }
-      if (!sameRows(answered, state) || rows.length === 0) {
-        // The question changed (a column it named is gone), or there was nothing to keep
-        // a place in: read it afresh, keeping the place.
-        rememberPlace();
-        await loadRows();
-        return;
       }
       let from = 0;
       if (windowed) {
@@ -673,11 +737,28 @@ export function mountTable(container, ctx, host = {}) {
       do {
         starts.push({ index: start.index + read.length, after });
         const limit = after === null ? FIRST_PAGE_ROWS : NEXT_PAGE_ROWS;
-        last = /** @type {TablePage} */ (
-          /** @type {unknown} */ (
-            await ask("rows", rowsParams(answered, after ? { after, limit } : { limit }), signal)
-          )
+        const asking = ask(
+          "rows",
+          rowsParams(answered, after ? { after, limit } : { limit }),
+          signal,
         );
+        if (first === null) {
+          // The rows first, and the schema only when they say the columns moved or the
+          // question cannot be asked now: a column it names may be gone.
+          try {
+            last = /** @type {TablePage} */ (/** @type {unknown} */ (await asking));
+          } catch (error) {
+            if (isAbort(error) || !(await questionMoved(seq))) {
+              throw error;
+            }
+            return;
+          }
+          if (last.columns.join("\n") !== columns.join("\n") && (await questionMoved(seq))) {
+            return;
+          }
+        } else {
+          last = /** @type {TablePage} */ (/** @type {unknown} */ (await asking));
+        }
         first ??= last;
         read.push(...last.rows);
         after = last.next_after;
@@ -688,8 +769,9 @@ export function mountTable(container, ctx, host = {}) {
       const grown =
         !windowed &&
         (Boolean(after) || !first.count_complete || (first.count ?? 0) > WHOLE_TABLE_MAX_ROWS);
-      if (grown || read.length === 0) {
-        // Past what a table drawn whole holds, or now empty: drawn afresh, in its place.
+      if (grown || read.length === 0 || rows.length === 0) {
+        // Past what a table drawn whole holds, now empty, or empty before: drawn afresh, in
+        // its place.
         rememberPlace();
         await loadRows();
         return;
@@ -699,16 +781,40 @@ export function mountTable(container, ctx, host = {}) {
       const offset = scroller.scrollTop - top * rowHeight;
       const anchorKey = atTop ? null : rows[top]?.key;
       const focusKey = rows[focus.row]?.key;
+      const selected = selection
+        ? { anchor: rows[selection.anchor]?.key, head: rows[selection.head]?.key }
+        : null;
+      const before = rows.slice(start.index);
       const merged = liveMerge({
-        before: rows.slice(start.index),
+        before,
         after: read,
         anchor: atTop ? null : top - start.index,
         accept,
       });
+      const columnsHold = first.columns.join("\n") === columns.join("\n");
+      const same =
+        columnsHold &&
+        merged.changed.length === 0 &&
+        merged.arrived.length === 0 &&
+        merged.offered === 0 &&
+        merged.rows.length === before.length &&
+        merged.rows.every((row, index) => row.key === before[index].key);
       rows = [...rows.slice(0, start.index), ...merged.rows];
       pageStarts = [...pageStarts.slice(0, from), ...starts];
+      // The pages before the one read again hold rows as last read: read again when the
+      // window comes back to them.
+      staleBelow = windowed ? start.index : 0;
       page = { ...first, next_after: last.next_after };
       liveNotice = null;
+      failureAnnounced = false;
+      status.textContent = countText(page, isFiltered(state));
+      drawOffer(merged.offered);
+      if (same) {
+        // Nothing the grid shows changed (a touched file, or a change outside the
+        // question): the rows, the selection, and any text selected in them stay drawn.
+        drawNotes();
+        return;
+      }
       flashing = new Set([...merged.changed, ...merged.arrived]);
       win.clearTimeout(flashTimer);
       flashTimer = win.setTimeout(() => {
@@ -718,26 +824,36 @@ export function mountTable(container, ctx, host = {}) {
       const index = (/** @type {string | undefined} */ key) =>
         key === undefined ? -1 : rows.findIndex((row) => row.key === key);
       const focusAt = index(focusKey);
+      const arrivedAt = accept ? index(merged.arrived[0]) : -1;
       focus = {
-        row: focusAt >= 0 ? focusAt : Math.max(0, Math.min(focus.row, rows.length - 1)),
+        row:
+          arrivedAt >= 0
+            ? arrivedAt
+            : focusAt >= 0
+              ? focusAt
+              : Math.max(0, Math.min(focus.row, rows.length - 1)),
         col: focus.col,
       };
-      selection = null;
-      status.textContent = countText(page, isFiltered(state));
-      drawOffer(merged.offered);
+      // The selection stays on its rows, as the focus does, while both ends are still here.
+      const anchorAtSelected = index(selected?.anchor);
+      const headAtSelected = index(selected?.head);
+      selection =
+        anchorAtSelected >= 0 && headAtSelected >= 0
+          ? { anchor: anchorAtSelected, head: headAtSelected }
+          : null;
       drawNotes();
-      const arrivedAt = accept ? index(merged.arrived[0]) : -1;
       const anchorAt = index(anchorKey ?? undefined);
       const place =
         arrivedAt >= 0 ? arrivedAt * rowHeight : anchorAt >= 0 ? anchorAt * rowHeight + offset : 0;
       // The keyboard stays on its row; a menu, and what is typed in it or in Search, stay
-      // as they are, since only the rows are drawn again while the columns hold.
-      const hadFocus = Boolean(doc.activeElement && tbody.contains(doc.activeElement));
+      // as they are, since only the rows are drawn again while the columns hold. An offer
+      // taken puts the keyboard on the first row it drew.
+      const hadFocus = accept || Boolean(doc.activeElement && tbody.contains(doc.activeElement));
       const target = atTop && arrivedAt < 0 ? 0 : place;
       // A window draws from the scroll position, so it is set before and again after,
       // once the rows drawn give the box its new height.
       scroller.scrollTop = target;
-      if (page.columns.join("\n") !== columns.join("\n")) {
+      if (!columnsHold) {
         columns = [...page.columns];
         widths = columnWidths(columns, rows.slice(0, FIRST_PAGE_ROWS), fields, widths).widths;
         refit(true);
@@ -759,6 +875,7 @@ export function mountTable(container, ctx, host = {}) {
       }
     } finally {
       refreshing = false;
+      liveCost = now() - began;
       if (refreshAgain) {
         refreshAgain = false;
         scheduleLive();
@@ -766,14 +883,39 @@ export function mountTable(container, ctx, host = {}) {
     }
   }
 
+  /**
+   * Read the schema again: whether the question the rows answer moved, as when a column
+   * it named is gone, in which case its rows are read afresh, keeping the place.
+   *
+   * @param {number} seq the load the refresh began in
+   */
+  async function questionMoved(seq) {
+    await loadSchema();
+    if (seq !== loadSeq || disposed) {
+      return true;
+    }
+    if (sameRows(answered, state)) {
+      return false;
+    }
+    rememberPlace();
+    await loadRows();
+    return true;
+  }
+
   /** @param {number} count */
   function drawOffer(count) {
     offer.hidden = count === 0;
-    offer.textContent = count ? `${formatCount(count)} new ${count === 1 ? "row" : "rows"}` : "";
+    // Hidden, it keeps its last words, so its slot keeps their width.
     if (count) {
+      offer.textContent = `${formatCount(count)} new ${count === 1 ? "row" : "rows"}`;
+      offer.dataset.slot = "";
       offer.dataset.tipText = "Rows that arrived above this place; press to show them";
-      live.textContent = offer.textContent;
+      // Said when the offer appears, not again as its count grows while rows arrive.
+      if (!offerAnnounced) {
+        live.textContent = offer.textContent;
+      }
     }
+    offerAnnounced = count > 0;
   }
 
   /**
@@ -786,7 +928,11 @@ export function mountTable(container, ctx, host = {}) {
     const code = typeof payload?.code === "string" ? payload.code : null;
     liveNotice = noticeBox("warning", liveFailure(code));
     drawNotes();
-    live.textContent = liveNotice.textContent ?? "";
+    // Said once, until a refresh reads the file again.
+    if (!failureAnnounced) {
+      failureAnnounced = true;
+      live.textContent = liveNotice.textContent ?? "";
+    }
   }
 
   // ── Drawing the grid ─────────────────────────────────────────
@@ -799,6 +945,7 @@ export function mountTable(container, ctx, host = {}) {
     // nothing in it flashes: only a live read again says what changed.
     scroller.scrollTop = 0;
     flashing = new Set();
+    staleBelow = 0;
     focus = { row: 0, col: -1 };
     const sample = rows.slice(0, FIRST_PAGE_ROWS);
     columns = [...page.columns];
@@ -1044,6 +1191,10 @@ export function mountTable(container, ctx, host = {}) {
       maybeReadMore(range);
       return;
     }
+    if (range.start < staleBelow) {
+      // The window entered rows the last live refresh did not read again.
+      scheduleLive();
+    }
     const hadFocus = root.contains(doc.activeElement) && doc.activeElement !== search;
     drawn = range;
     rowElements.clear();
@@ -1268,7 +1419,7 @@ export function mountTable(container, ctx, host = {}) {
     for (const text of page ? pageNotes(page) : []) {
       notice("warning", text);
     }
-    for (const kept of [stateNotice, liveNotice]) {
+    for (const kept of [stateNotice, liveNotice, watchNotice]) {
       if (kept) {
         notes.append(kept);
       }
@@ -1901,13 +2052,15 @@ export function mountTable(container, ctx, host = {}) {
    */
   async function showRecord(key, again = false) {
     const seq = ++recordSeq;
-    hideCard();
-    closeMenu(false);
-    toolbar.hidden = true;
-    notes.hidden = true;
-    scroller.hidden = true;
-    recordPane.hidden = false;
-    recordPane.setAttribute("aria-busy", "true");
+    if (!again) {
+      hideCard();
+      closeMenu(false);
+      toolbar.hidden = true;
+      notes.hidden = true;
+      scroller.hidden = true;
+      recordPane.hidden = false;
+      recordPane.setAttribute("aria-busy", "true");
+    }
     /** @type {Record<string, string>} */
     const params = { key };
     if (!again && page?.generation && rowPosition(key) !== null) {
@@ -1927,12 +2080,25 @@ export function mountTable(container, ctx, host = {}) {
       // says so for a key read under an older generation, and the view when a live
       // refresh finds other cells at the position.
       const cells = JSON.stringify(record.cells);
+      const shown = shownRecord;
       if (shownRecord.key !== key) {
         shownRecord = { key, cells, moved: false };
       } else if (again && record.positional && cells !== shownRecord.cells) {
         shownRecord = { key, cells, moved: true };
+      } else if (again) {
+        shownRecord = { ...shownRecord, cells };
       }
-      drawRecord(shownRecord.moved ? { ...record, generation_moved: true } : record);
+      if (
+        again &&
+        shown.key === key &&
+        shown.cells === cells &&
+        shown.moved === shownRecord.moved
+      ) {
+        // Read again and the same: the pane, its focus, its scroll, and any text selected
+        // in it stay as they are.
+        return;
+      }
+      drawRecord(shownRecord.moved ? { ...record, generation_moved: true } : record, again);
     } catch (error) {
       if (seq !== recordSeq || disposed || isAbort(error)) {
         return;
@@ -1958,8 +2124,17 @@ export function mountTable(container, ctx, host = {}) {
    * }} RecordAnswer
    */
 
-  /** @param {RecordAnswer} record */
-  function drawRecord(record) {
+  /**
+   * @param {RecordAnswer} record
+   * @param {boolean} [again] a live redraw, which keeps the focus on its control and the
+   *   pane's scroll, where a record opened puts the focus on Back
+   */
+  function drawRecord(record, again = false) {
+    const focused = again
+      ? [...recordControls].find(([, control]) => control === doc.activeElement)?.[0]
+      : undefined;
+    const scrolled = recordPane.scrollTop;
+    recordControls = new Map();
     const position = rowPosition(record.key);
     const heading = el(
       "h2",
@@ -1967,7 +2142,9 @@ export function mountTable(container, ctx, host = {}) {
       position !== null ? `Row ${formatCount(position)}` : recordLabel(record),
     );
     const back = backLink();
-    const head = el("div", { class: "table-record-head" }, back, heading);
+    recordControls.set("back", back);
+    recordControls.set("live", recordPill);
+    const head = el("div", { class: "table-record-head" }, back, heading, recordPill);
     const parts = [head];
     if (record.positional) {
       parts.push(
@@ -1997,31 +2174,31 @@ export function mountTable(container, ctx, host = {}) {
         class: `table-record-value table-cell-${view.kind}${view.literal ? " data-literal" : ""}${field.numeric ? " data-num-value" : ""}`,
       });
       if (view.kind === "ref" && view.ref) {
-        value.append(
-          el(
-            "a",
-            {
-              class: "table-ref",
-              href: sdk.navigation.href(referenceTarget(view.ref)),
-              "data-ref-table": view.ref.table,
-              "data-ref-key": view.ref.key,
-            },
-            view.text,
-          ),
+        const link = el(
+          "a",
+          {
+            class: "table-ref",
+            href: sdk.navigation.href(referenceTarget(view.ref)),
+            "data-ref-table": view.ref.table,
+            "data-ref-key": view.ref.key,
+          },
+          view.text,
         );
+        recordControls.set(`field:${field.name}`, link);
+        value.append(link);
       } else if (view.filter) {
-        value.append(
-          el(
-            "a",
-            {
-              class: "table-value-filter",
-              href: href(withRecord(withFilter(state, view.filter), null)),
-              "data-filter-field": view.filter.field,
-              "data-filter-value": view.filter.value ?? "",
-            },
-            view.text,
-          ),
+        const link = el(
+          "a",
+          {
+            class: "table-value-filter",
+            href: href(withRecord(withFilter(state, view.filter), null)),
+            "data-filter-field": view.filter.field,
+            "data-filter-value": view.filter.value ?? "",
+          },
+          view.text,
         );
+        recordControls.set(`field:${field.name}`, link);
+        value.append(link);
       } else {
         value.append(
           view.kind === "absent" ? "No value: this row is shorter than the header." : view.text,
@@ -2066,28 +2243,37 @@ export function mountTable(container, ctx, host = {}) {
           path: referenceAddress(path, tableOf(), ref.table),
           query: stateQuery(withRef(EMPTY_STATE, `${tableOf()}:${record.key}`)),
         };
+        const open = el(
+          "a",
+          {
+            class: "table-open-ref",
+            href: sdk.navigation.href(target),
+            "data-path": target.path,
+            "data-query": target.query,
+          },
+          "Open as table",
+        );
+        recordControls.set(`referenced:${ref.table}:${ref.fields.join(",")}`, open);
         section.append(
           el(
             "p",
             { class: "table-record-backref" },
             `${ref.table} (${ref.fields.join(", ")}): ${count} `,
-            el(
-              "a",
-              {
-                class: "table-open-ref",
-                href: sdk.navigation.href(target),
-                "data-path": target.path,
-                "data-query": target.query,
-              },
-              "Open as table",
-            ),
+            open,
           ),
         );
       }
       parts.push(section);
     }
     recordPane.replaceChildren(...parts);
-    back.focus({ preventScroll: true });
+    if (!again) {
+      back.focus({ preventScroll: true });
+      return;
+    }
+    recordPane.scrollTop = scrolled;
+    if (focused !== undefined) {
+      (recordControls.get(focused) ?? back).focus({ preventScroll: true });
+    }
   }
 
   /** @param {RecordAnswer} record */
@@ -2313,10 +2499,12 @@ export function mountTable(container, ctx, host = {}) {
   win.addEventListener("beforeprint", onBeforePrint);
   win.addEventListener("afterprint", onAfterPrint);
   livePill.addEventListener("click", togglePaused);
+  recordPill.addEventListener("click", togglePaused);
   offer.addEventListener("click", () => {
     drawOffer(0);
     void liveRefresh(true);
   });
+  doc.addEventListener?.("visibilitychange", onVisibility);
   scroller.setAttribute("tabindex", "-1");
   search.value = state.q;
   drawChips();
@@ -2364,6 +2552,7 @@ export function mountTable(container, ctx, host = {}) {
       win.removeEventListener("popstate", onPopState);
       win.removeEventListener("beforeprint", onBeforePrint);
       win.removeEventListener("afterprint", onAfterPrint);
+      doc.removeEventListener?.("visibilitychange", onVisibility);
       rowElements.clear();
     },
   };

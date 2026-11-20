@@ -45,20 +45,6 @@ A file read in part says whether its rows or a row’s cells were cut.
 A cursor names the sort and order it was made for, so a new sort is a new question read
 from its first page.
 
-A table follows its file (`tests/fixtures/table-view-live-responses.json` records the
-answers at each version of `live.csv`). It watches the file with the generation it read,
-and a burst of changes is one read of the rows it holds, with the same question, once
-the window `LIVE_COALESCE_MS` ends.
-A row whose cells changed and a row that arrived flash once; a row that would land above
-the reader’s place is offered rather than drawn, and taking the offer draws it and goes
-to it; the focus stays on its row, by position where rows have no key, and an open menu
-keeps what was typed in it.
-An open record named by position is read again and says when another row is at its
-position. Pausing counts the changes held back and reads once on resuming.
-A column the address named that is gone is dropped from it with a notice, and a file
-that is gone keeps the rows last read and says so; disposing the view releases the
-watch.
-
 ```console
 $ node tests/dom/table-view-session.js
 {
@@ -1024,6 +1010,40 @@ $ node tests/dom/table-view-session.js
     "record": null,
     "focus": null
   },
+  "requests asked of the server": {
+    "unrecorded": []
+  }
+}
+? 0
+```
+
+With `live`, the session prints the steps of a table that follows its file
+(`tests/fixtures/table-view-live-responses.json` records the answers at each version of
+`live.csv`). It watches the file with the generation it read, and a burst of changes is
+one read of the rows it holds, with the same question, once the window
+`LIVE_COALESCE_MS` ends; the schema is read again only when the rows say a column may
+have moved. A refresh after a slow one waits `LIVE_COST_SPACING` times as long as that
+one took, and a change while the page is hidden is read once, when it is shown.
+A row whose cells changed and a row that arrived flash once; a row that would land above
+the reader’s place is offered rather than drawn, said once in the live region, and
+taking the offer draws it, goes to it, and puts the keyboard on it; the focus and the
+selection stay on their rows, by position where rows have no key, an open menu keeps
+what was typed in it, and a refresh whose rows read the same draws nothing.
+A watch refused says the table is not following its file.
+A table drawn as a window reads again from the page the window begins in, and the pages
+above it, as last read, are read again once the window returns to them
+(`tests/fixtures/table-view-live-window-responses.json`, sixty rows read in part in
+pages of ten). An open record named by position is read again and says when another row
+is at its position; read again unchanged it is not drawn again, and the record pane has
+its own Live control.
+Pausing counts the changes held back and reads once on resuming.
+A column the address named that is gone is dropped from it with a notice, and a file
+that is gone keeps the rows last read and says so, once however often it is read again;
+disposing the view releases the watch.
+
+```console
+$ node tests/dom/table-view-session.js live
+{
   "live: a table read, its file watched with the generation it read": {
     "requests": [
       "schema?path=live.csv",
@@ -1049,7 +1069,6 @@ $ node tests/dom/table-view-session.js
   "live: three changes in a burst, one read again: a cell changed, a row arrived below": {
     "requests before the window ends": [],
     "requests": [
-      "schema?path=live.csv",
       "rows?limit=200&path=live.csv"
     ],
     "pill": "Live",
@@ -1076,7 +1095,6 @@ $ node tests/dom/table-view-session.js
   "live: the open record, named by position, read again: another row is there now": {
     "requests": [
       "record?key=%402&path=live.csv",
-      "schema?path=live.csv",
       "rows?limit=200&path=live.csv"
     ],
     "record": {
@@ -1156,7 +1174,6 @@ $ node tests/dom/table-view-session.js
   "live: resumed: the row that sorts above the reader's place offered, the one below drawn, the focus kept": {
     "scrollTop": 66,
     "requests": [
-      "schema?path=live.csv",
       "rows?limit=200&order=desc&path=live.csv&sort=qty"
     ],
     "pill": "Live",
@@ -1185,10 +1202,9 @@ $ node tests/dom/table-view-session.js
       "tabStops": 1
     }
   },
-  "live: the offer taken: the new row drawn, the view at it, and the focus on its row": {
+  "live: the offer taken: the new row drawn, the view at it, and the keyboard on it": {
     "scrollTop": 0,
     "requests": [
-      "schema?path=live.csv",
       "rows?limit=200&order=desc&path=live.csv&sort=qty"
     ],
     "pill": "Live",
@@ -1213,13 +1229,86 @@ $ node tests/dom/table-view-session.js
     ],
     "focus": {
       "on": "tr",
-      "row": "4",
-      "text": "6e5",
+      "row": "0",
+      "text": "8g100",
       "tabStops": 1
     }
   },
+  "live: the file touched, its rows as they were: nothing drawn again, the selection kept": {
+    "requests": [
+      "rows?limit=200&order=desc&path=live.csv&sort=qty"
+    ],
+    "flashing": [
+      "8"
+    ],
+    "focus": {
+      "on": "tr",
+      "row": "1",
+      "text": "3b20",
+      "tabStops": 1
+    },
+    "selected": [
+      "8",
+      "3"
+    ],
+    "first row element kept": true
+  },
+  "live: a cell changed under the selection, read slowly: the selection stays on its rows": {
+    "requests": [
+      "rows?limit=200&order=desc&path=live.csv&sort=qty"
+    ],
+    "flashing": [
+      "3"
+    ],
+    "focus": {
+      "on": "tr",
+      "row": "1",
+      "text": "3b21",
+      "tabStops": 1
+    },
+    "selected": [
+      "8",
+      "3"
+    ]
+  },
+  "live: after a read that took 400 ms, the next waits twice that, not the window": {
+    "requests once the window ends": [],
+    "requests at twice the last read": [
+      "rows?limit=200&order=desc&path=live.csv&sort=qty"
+    ]
+  },
+  "live: a change while the page is hidden: nothing read until it is shown, then once": {
+    "requests while hidden": [],
+    "requests": [
+      "rows?limit=200&order=desc&path=live.csv&sort=qty"
+    ],
+    "flashing": [
+      "5"
+    ]
+  },
+  "live: a watch refused says the table is not following its file, until it is live again": {
+    "notes while refused": [
+      "This table is not following changes to its file now: this page watches as many files as it may."
+    ],
+    "notes once live": [],
+    "pill": "Live"
+  },
+  "live: a record read again unchanged: not drawn again, the keyboard on its Live control": {
+    "requests": [
+      "record?key=%403&path=live.csv",
+      "rows?limit=200&order=desc&path=live.csv&sort=qty"
+    ],
+    "record pane drawn again": false,
+    "focus": "the record's Live control",
+    "record pill": "Live"
+  },
+  "live: the record's Live control pressed: paused there, a change held back": {
+    "requests": [],
+    "record pill": "Paused · 1 change"
+  },
   "live: the sorted column removed: dropped from the address, with a notice": {
     "requests": [
+      "rows?limit=200&order=desc&path=live.csv&sort=qty",
       "schema?path=live.csv",
       "rows?limit=200&path=live.csv"
     ],
@@ -1247,6 +1336,9 @@ $ node tests/dom/table-view-session.js
   },
   "live: the file removed: the rows last read kept, and said to be": {
     "requests": [
+      "rows?limit=200&path=live.csv",
+      "schema?path=live.csv",
+      "rows?limit=200&path=live.csv",
       "schema?path=live.csv"
     ],
     "pill": "Live",
@@ -1270,15 +1362,48 @@ $ node tests/dom/table-view-session.js
       "8 | g",
       "9 | h"
     ],
-    "focus": null
+    "focus": null,
+    "announced, each time": [
+      "This file is no longer there, so these are the rows last read."
+    ]
   },
   "live: disposed: the watch released": {
     "requests": [
       "unwatch live.csv"
     ]
   },
-  "requests asked of the server": {
-    "unrecorded": []
+  "live window: sixty rows read in pages of ten, scrolled to row 40": {
+    "requests": 8,
+    "first": "29 | 29",
+    "rows changed": []
+  },
+  "live window: rows 5 and 45 changed: read again from the window's page, row 45 drawn": {
+    "requests": [
+      "rows?after=c.W251bGwsImFzYyIsMjBd&limit=1000&path=live-window.csv",
+      "rows?after=c.W251bGwsImFzYyIsMzBd&limit=1000&path=live-window.csv",
+      "rows?after=c.W251bGwsImFzYyIsNDBd&limit=1000&path=live-window.csv",
+      "rows?after=c.W251bGwsImFzYyIsNTBd&limit=1000&path=live-window.csv"
+    ],
+    "first": "29 | 29",
+    "rows changed": [
+      "45 | 4500"
+    ]
+  },
+  "live window: back at the top, whose pages that read skipped: read again, row 5 drawn": {
+    "requests as the window arrives": [],
+    "rows changed as it arrives": [],
+    "requests": [
+      "rows?limit=200&path=live-window.csv",
+      "rows?after=c.W251bGwsImFzYyIsMTBd&limit=1000&path=live-window.csv",
+      "rows?after=c.W251bGwsImFzYyIsMjBd&limit=1000&path=live-window.csv",
+      "rows?after=c.W251bGwsImFzYyIsMzBd&limit=1000&path=live-window.csv",
+      "rows?after=c.W251bGwsImFzYyIsNDBd&limit=1000&path=live-window.csv",
+      "rows?after=c.W251bGwsImFzYyIsNTBd&limit=1000&path=live-window.csv"
+    ],
+    "first": "1 | 1",
+    "rows changed": [
+      "5 | 500"
+    ]
   }
 }
 ? 0

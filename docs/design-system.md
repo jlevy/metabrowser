@@ -5995,15 +5995,24 @@ the rows it holds again with the same question, gathering a burst of changes for
 and a row that arrived where the reader is, flash once in `--row-flash-bg`, as
 [Live Row Arrivals](#live-row-arrivals) do; a row that would land above the first row on
 screen is offered as a “3 new rows” `.btn` in the toolbar rather than drawn, and taking
-it draws the rows and goes to the first.
-The scroll position, the focused row (by key, or by position where rows have none), an
-open menu, and what is typed but not sent stay as they were.
+it draws the rows, goes to the first, and puts the keyboard on it.
+The scroll position, the focused row and the selected rows (by key, or by position where
+rows have none), an open menu, and what is typed but not sent stay as they were, and a
+read whose rows are the same draws nothing.
 A **Live** `.btn` beside it, whose label is its state and whose accessible name is the
 action, pauses the table and then reads **Paused · 2 changes**; pressing it again reads
-once. A read that fails keeps the rows on screen with a notice saying they are the last
-read, and a column the address named that is gone is dropped from the address with a
-notice. The offer, Paused, and a failure are announced in the view’s one polite live
-region.
+once. An open record has its own, since the toolbar is hidden while it shows, and is
+drawn again only when its cells change, keeping the keyboard on its control.
+Both the offer and the Live control sit between the fit note and Columns, and once shown
+keep their slot while hidden, so the toolbar keeps its box
+([Regions Keep Their Boxes](#regions-keep-their-boxes)). A read is spaced from the last
+by `LIVE_COST_SPACING` times what that one took, and none is made while the page is
+hidden; it reads once when shown.
+A read that fails keeps the rows on screen with a notice saying they are the last read,
+a watch the page could not register says the table is not following its file, and a
+column the address named that is gone is dropped from the address with a notice.
+The offer when it appears, Paused, and a failure until a read succeeds are each
+announced once in the view’s one polite live region.
 
 `tests/dom/table-view-session.js` runs the view’s behavior from the command line, and
 `tests/test_table_view_chrome.py` checks in Chrome what only layout shows: one row
