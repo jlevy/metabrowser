@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
-from metabrowser import server
+from metabrowser import server, table_source
 from metabrowser.builtin_plugins.sqlite import reader, source
 from metabrowser.builtin_plugins.sqlite.database import segment_name, table_segment
 from metabrowser.source import reset_source_session
@@ -451,3 +451,25 @@ def test_a_pinned_database_lists_and_reads_its_tables(tmp_path: Path) -> None:
     assert listed["tables"][2]["path"] == "g1-YXBwLmRi/items"
     assert rows["rows"][0]["cells"] == {"id": 1, "name": "kept"}
     assert children["children"][2]["path"] == "g1-YXBwLmRi/items"
+
+
+@pytest.mark.parametrize("order", ["asc", "desc"])
+def test_tokens_past_the_bound_are_positions(
+    client: TestClient, root: Path, monkeypatch: pytest.MonkeyPatch, order: str
+) -> None:
+    """With no key or cursor short enough for a token, rows are named by their position in
+    key order and pages continue from the rows served, under one generation."""
+    monkeypatch.setattr(table_source, "TABLE_TOKEN_MAX_CHARS", 4)
+    rows = _walk(client, "app.db/users", sort="email", order=order, limit=2, cols="email")
+    direction = " DESC" if order == "desc" else ""
+    expected = _direct(root, f"SELECT id FROM users ORDER BY email{direction}, id{direction}")
+    assert [row["key"] for row in rows] == [f"@{key}" for key in expected]
+    record = _get(client, "record", path="app.db/users", key="@3")
+    assert record["cells"]["name"] == "Cy" and record["positional"] is True
+    view = _walk(client, "app.db/shouting", order=order, limit=4)
+    positions = [f"@{n}" for n in range(1, 7)]
+    assert [row["key"] for row in view] == (positions if order == "asc" else positions[::-1])
+    page = _get(client, "rows", path="app.db/users", limit=2)
+    stale = _get(client, "rows", path="app.db/users", limit=2, after="@2.stale")
+    assert page["next_after"].startswith("@2.")
+    assert (stale["reason"], stale["rows"]) == ("cursor_expired", [])

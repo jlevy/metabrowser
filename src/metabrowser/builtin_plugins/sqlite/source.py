@@ -306,7 +306,9 @@ class SqliteSource:
         searched: tuple[str, ...] | None = None
         if query.q is not None:
             fields = [
-                item.name for item in schema.fields if item.type == "text" and not item.hidden
+                item.name
+                for item in schema.fields
+                if item.type in ("text", "unknown") and not item.hidden
             ]
             searched = tuple(fields)
             spec["search"] = {

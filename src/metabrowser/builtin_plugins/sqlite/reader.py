@@ -805,8 +805,13 @@ def _page(connection: sqlite3.Connection, spec: dict[str, Any], deadline: float)
             # A cursor past the token bound: the rows already served, in one statement in
             # the query's order, which is the regions' order concatenated.
             sql, values = _offset_sql(spec, select, where, params, positioned)
-            rows, stopped = _fetch(connection, sql, [*values, limit, int(after["offset"])])
+            start = int(after["offset"])
+            rows, stopped = _fetch(connection, sql, [*values, limit, start])
             found = [_split(row, spec, positioned, columns) for row in rows]
+            if keyless and not positioned:
+                # Read in the object's own order, so its position is the offset's.
+                for index, row in enumerate(found):
+                    row["key"] = [start + index + 1]
         elif fast:
             start = int(after["key"][0]) if after is not None else 0
             sql = f"SELECT {select} FROM {quote(str(spec['table']))} LIMIT ? OFFSET ?"
