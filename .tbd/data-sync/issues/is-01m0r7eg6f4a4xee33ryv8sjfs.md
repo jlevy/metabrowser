@@ -5,7 +5,7 @@ title: Implement the pluggable inventory engine
 kind: feature
 status: in_progress
 priority: 1
-version: 29
+version: 30
 spec_path: docs/project/specs/active/plan-2026-08-23-pluggable-inventory-engine.md
 refs:
   - kind: pr
@@ -35,6 +35,10 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/520
     at: 2026-11-20T19:14:53.713Z
+  - kind: other
+    url: https://api.github.com/repos/jlevy/metabrowser/stacks/682
+    title: "GitHub stack #682"
+    at: 2026-11-20T23:48:44.474Z
 labels:
   - linear
   - Feature
@@ -58,7 +62,7 @@ child_order_hints:
   - is-01m1mva118h2a2j3b8swefvk8y
   - is-01m7rwjtqep1zqb91jyq9pnxc9
 created_at: 2026-08-23T21:11:56.857Z
-updated_at: 2026-11-20T19:16:27.157Z
+updated_at: 2026-11-20T23:48:44.475Z
 extensions:
   linear:
     id: e8ad825b-dd2e-48f1-9eda-b392dc667ebf
