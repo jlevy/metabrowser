@@ -52,7 +52,7 @@
         "rows": [
           {"key": "@4", "cells": {"name": "Dee", "city, state": "Denver, CO", "n": 4}},
           {"key": "@5", "cells": {"name": "Eve", "city, state": "Eugene, OR", "n": 5}},
-          {"key": "@6", "cells": {"name": "Flo", "city, state": "Fargo, ND", "n": 6}}
+          {"key": "@6", "cells": {"name": "Flo", "city, state": "Flint, MI", "n": 6}}
         ],
         "next_after": "c.W251bGwsImFzYyIsNl0",
         "complete": true,
@@ -132,7 +132,7 @@
         "columns": ["name", "city, state"],
         "rows": [
           {"key": "@5", "cells": {"name": "Eve", "city, state": "Eugene, OR"}},
-          {"key": "@6", "cells": {"name": "Flo", "city, state": "Fargo, ND"}},
+          {"key": "@6", "cells": {"name": "Flo", "city, state": "Flint, MI"}},
           {"key": "@7", "cells": {"name": "Gus", "city, state": "Gary, IN"}},
           {"key": "@8", "cells": {"name": "Hal", "city, state": "Helena, MT"}}
         ],

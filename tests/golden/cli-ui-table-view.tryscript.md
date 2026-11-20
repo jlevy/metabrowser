@@ -816,7 +816,7 @@ $ node tests/dom/table-view-session.js
         "3 | Cy | Chicago, IL | 3 [num]",
         "4 | Dee | Denver, CO | 4 [num]",
         "5 | Eve | Eugene, OR | 5 [num]",
-        "6 | Flo | Fargo, ND | 6 [num]",
+        "6 | Flo | Flint, MI | 6 [num]",
         "7 | Gus | Gary, IN | 7 [num]",
         "8 | Hal | Helena, MT | 8 [num]"
       ]

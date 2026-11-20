@@ -1025,9 +1025,26 @@ As built, where this plan left a choice open:
   `WHOLE_TABLE_MAX_ROWS`, measured in Chrome (`tests/dom/table-view-measure.mjs`); a
   windowed grid reads the next page as the window nears the last row held, so its scroll
   height grows with what it has read rather than standing for the count.
-- **One filter per field in the view.** `fetchPluginData` sends one value per parameter,
-  so the header menu and the value links keep one filter per field, and a new one
-  replaces it; the route takes more, and a range waits for a reader who needs it.
+- **One filter per field in the view.** The header menu and the value links keep one
+  filter per field, and a new one replaces it; the route takes more, and a range waits
+  for a reader who needs it.
+- **Repeated parameters.** `fetchPluginData` sends an array value as its parameter
+  repeated, one value each, so `cols` names one field a parameter in the request and in
+  the address alike, and a field whose name holds a comma is one column.
+- **Pages the server bounds.** The view asks for `FIRST_PAGE_ROWS` and then
+  `NEXT_PAGE_ROWS`, and counts the rows that came: a page of wide rows carries fewer
+  (its `limit` says how many), so a table small enough to draw whole is read until its
+  `next_after` ends, and a window reads its next page as soon as the last is drawn.
+  A cursor continues only the question it was made for; while a new question’s first
+  page is on its way, the rows held for the last read no further.
+- **What a budget did.** A sort refused with `sort_budget` is a notice naming the field,
+  with a link to the file’s order, not an empty table; a search stopped with `budget`
+  shows the matches among the rows it read and says how many it read, and scrolling
+  reads on among them.
+  A page that says `truncated` with an exact count was cut in a row’s cells, and one
+  with a lower bound in its rows, and the notice says which.
+  `tests/test_table_view_session.py` records these answers with each bound lowered for
+  one small file, since a file that meets the real bound is too large to record.
 - **The open record** is `record=<key>` on the table’s address, which the view reads and
   the rows route ignores; a record opens in place of the grid, and Back, or its own Back
   link, returns the grid with the keyboard on the row.

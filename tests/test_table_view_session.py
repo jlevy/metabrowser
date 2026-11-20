@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import json
 import shutil
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import Any
@@ -85,8 +85,8 @@ LONG: list[tuple[str, Params]] = [
 
 # Pages bounded in cells: three fields, a comma in one's name, and a page of nine cells
 # carries three rows. The view reads a table it may draw whole until `next_after` ends.
-PAGED_CSV = "name,\"city, state\",n\n" + "".join(
-    f"{name},\"{city}, {state}\",{n}\n"
+PAGED_CSV = 'name,"city, state",n\n' + "".join(
+    f'{name},"{city}, {state}",{n}\n'
     for n, (name, city, state) in enumerate(
         [
             ("Ada", "Austin", "TX"),
@@ -94,7 +94,7 @@ PAGED_CSV = "name,\"city, state\",n\n" + "".join(
             ("Cy", "Chicago", "IL"),
             ("Dee", "Denver", "CO"),
             ("Eve", "Eugene", "OR"),
-            ("Flo", "Fargo", "ND"),
+            ("Flo", "Flint", "MI"),
             ("Gus", "Gary", "IN"),
             ("Hal", "Helena", "MT"),
         ],
@@ -140,7 +140,7 @@ def _key(route: str, params: Params) -> str:
 
 
 @contextmanager
-def _spent_budgets() -> Iterator[None]:
+def _spent_budgets() -> Generator[None]:
     """Every request's time budget spent as it starts."""
 
     def spent(cls: type[Budget], seconds: float = 0.0) -> Budget:
@@ -207,9 +207,7 @@ def _record(tmp_path: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, A
             with ExitStack() as lowered:
                 for module, constant, value in bounds:
                     lowered.enter_context(mock.patch.object(module, constant, value))
-                bounded.update(
-                    _record_file(client, name, requests, spent=name == "numbers.csv")
-                )
+                bounded.update(_record_file(client, name, requests, spent=name == "numbers.csv"))
         return (
             {"answers": _record_file(client, "people.csv", PEOPLE)},
             {"answers": _record_file(client, "long.csv", LONG)},
@@ -264,7 +262,9 @@ def test_the_bounds_recording_shows_what_each_bound_answers(tmp_path: Path) -> N
         200,
     )
     assert searched["next_after"]
-    refused = answers[_key("rows", {"path": "numbers.csv", "sort": "n", "order": "asc", "limit": "200"})]
+    refused = answers[
+        _key("rows", {"path": "numbers.csv", "sort": "n", "order": "asc", "limit": "200"})
+    ]
     assert (refused["rows"], refused["reason"], refused["sort_refused"]) == ([], "sort_budget", "n")
     cut = answers[_key("rows", {"path": "cut.csv", "limit": "200"})]
     assert (cut["truncated"], cut["count_complete"], cut["columns"]) == (True, True, ["a", "b"])

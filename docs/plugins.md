@@ -483,7 +483,11 @@ mb.registerView("example-table", "table", {
 ```
 
 The view keeps its sort, filters, search, columns, and open record in the address’s
-query, in the rows route’s own names, so a link reproduces it.
+query, in the rows route’s own names (`cols` repeated, one field each), so a link
+reproduces it. It draws what a source answers as the route defines it: a page shorter
+than asked is read on from `next_after`, a `sort_budget` page is a notice naming the
+field rather than an empty table, and `budget`, `source_truncated`, and `truncated` are
+notices above the rows.
 A plugin whose files always open in the Table view starts the load when its own module
 is evaluated, as above, so the table plugin’s module is on its way while the shell
 prepares the pane; one that shows it only sometimes asks for it in `render`.
