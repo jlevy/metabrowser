@@ -288,9 +288,9 @@ def test_a_branch_is_shown_from_its_commit_not_from_the_working_tree(
     assert readme["content"] == "# Mirror\n"
     raw = served.get("/raw", params={"path": _wire("FEATURE.md")})
     assert raw.text == "Only on feature.\n"
-    # The mode is still how the root was opened.
+    # The kind is still how the root was opened: a checkout, whichever revision it shows.
     identity = served.get("/api/identity").json()
-    assert (identity["kind"], identity["short_name"]) == ("folder", "checkout")
+    assert (identity["kind"], identity["short_name"]) == ("git", "checkout")
     assert identity["full_name"].endswith("/checkout@feature")
     assert _refs(served)["working_tree"]["current"] is False
     assert [row["name"] for row in _refs(served)["refs"] if row["current"]] == ["feature"]

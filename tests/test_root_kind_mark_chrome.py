@@ -23,7 +23,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -31,7 +30,7 @@ from pathlib import Path
 import pytest
 
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
-from tests.required_tools import needs_git, require_chrome, require_node
+from tests.required_tools import needs_git, require_chrome, require_git, require_node
 from tests.test_nav_metadata_chrome import (
     _BANNER_BUDGET_S,
     _SERVER_STOP_S,
@@ -114,9 +113,7 @@ def test_each_kind_of_root_draws_its_mark_before_its_name_in_chrome(
     # and which the suite's own stand-in would count as a call a test made.
     tools = tmp_path / "tools"
     tools.mkdir()
-    git = shutil.which("git")
-    assert git is not None
-    (tools / "git").symlink_to(git)
+    (tools / "git").symlink_to(require_git())
     (tools / "gh").write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
     (tools / "gh").chmod(0o755)
     base_env["PATH"] = str(tools)

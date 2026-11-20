@@ -136,6 +136,7 @@ CHROME_TESTS = (
     "tests.test_raw_profile_cache_chrome",
     "tests.test_ref_selector_long_list_chrome",
     "tests.test_ref_selector_pulls_chrome",
+    "tests.test_root_kind_mark_chrome",
     "tests.test_shortcut_strip_chrome",
     "tests.test_staged_fonts_chrome",
     "tests.test_title_prefix_chrome",

@@ -79,6 +79,8 @@ values = { kind = ["repository", "pull_request", "commit", "tree", "file"] }
 shown = ["refusal.message"]
 note = "What a GitHub link opens, for a link sent to the app and for File > Open URL…. Exit 0 with a plan; a refusal exits nonzero and still prints the object."
 
+# `targets[].git` says a folder was a Git checkout when it was opened, which picks its mark
+# (`RootMark`) without a look at the folder, which can raise a privacy prompt.
 [[command]]
 id = "recent-list"
 argv = ["--recent", "--json"]
@@ -87,7 +89,7 @@ json = ["targets[].mode", "targets[].root", "targets[].opened_at", "targets[].gi
 values = { "targets[].mode" = ["folder", "mirror"] }
 shown = ["problem"]
 opaque = ["targets[].opened_at"]
-note = "File > Open Recent and the Dock menu. `targets[].git` says a folder was a Git checkout when it was opened, which picks its mark (`RootMark`) without a look at the folder."
+note = "File > Open Recent and the Dock menu."
 
 [[command]]
 id = "recent-add"
