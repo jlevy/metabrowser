@@ -271,7 +271,7 @@ The server watches the served folder and streams changes to the page.
   changes, whether or not the file is ignored or deep in the folder: changed rows flash
   once, new rows above where you are reading are offered rather than pushed in, and your
   scroll position, focused row, open menus, and unsent filter text stay.
-  The **Live** pill above the table pauses it, and counts the changes it holds back.
+  The **Live** button above the table pauses it, and counts the changes it holds back.
 - **A container’s entries**, such as a patch file’s changed paths, are read again when
   the file changes.
 - **Any other open file** shows its new content the next time you open it, or when you

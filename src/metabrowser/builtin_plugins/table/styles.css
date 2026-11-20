@@ -411,29 +411,11 @@
   }
 }
 
-/* Live. The pill says whether the table follows its file; the offer holds rows that
-   arrived above the reader's place (table-view.js, "Live"). */
-.table-live-pill,
-.table-offer {
-  padding: 1px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: var(--ui-small-font-size);
-  cursor: pointer;
-}
+/* Live. The pill says whether the table follows its file, and the offer holds rows that
+   arrived above the reader's place (table-view.js, "Live"); both are `.btn`s. */
 .table-live-pill[hidden],
 .table-offer[hidden] {
   display: none;
-}
-.table-live-pill[aria-pressed="true"] {
-  color: var(--text);
-}
-.table-offer {
-  border-color: var(--link);
-  color: var(--link);
 }
 /* A changed or arrived row flashes once in the live-row color, as the Files tree's
    arriving rows do (docs/design-system.md, "Live Row Arrivals"); the reduced-motion rule

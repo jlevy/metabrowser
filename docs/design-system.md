@@ -5994,15 +5994,16 @@ the rows it holds again with the same question, gathering a burst of changes for
 `LIVE_COALESCE_MS` (`builtin_plugins/table/table-view.js`). A row whose cells changed,
 and a row that arrived where the reader is, flash once in `--row-flash-bg`, as
 [Live Row Arrivals](#live-row-arrivals) do; a row that would land above the first row on
-screen is offered as a “3 new rows” pill in the toolbar rather than drawn, and taking it
-draws the rows and goes to the first.
+screen is offered as a “3 new rows” `.btn` in the toolbar rather than drawn, and taking
+it draws the rows and goes to the first.
 The scroll position, the focused row (by key, or by position where rows have none), an
 open menu, and what is typed but not sent stay as they were.
-A **Live** pill, in the pill radius and muted until pressed, pauses the table and then
-reads **Paused · 2 changes**; pressing it again reads once.
-A read that fails keeps the rows on screen with a notice saying they are the last read,
-and a column the address named that is gone is dropped from the address with a notice.
-The offer, Paused, and a failure are announced in the view’s one polite live region.
+A **Live** `.btn` beside it, whose label is its state and whose accessible name is the
+action, pauses the table and then reads **Paused · 2 changes**; pressing it again reads
+once. A read that fails keeps the rows on screen with a notice saying they are the last
+read, and a column the address named that is gone is dropped from the address with a
+notice. The offer, Paused, and a failure are announced in the view’s one polite live
+region.
 
 `tests/dom/table-view-session.js` runs the view’s behavior from the command line, and
 `tests/test_table_view_chrome.py` checks in Chrome what only layout shows: one row

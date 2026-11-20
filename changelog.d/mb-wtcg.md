@@ -3,7 +3,7 @@
   and search, flashes the rows that changed or arrived, offers rows that would land
   above where you are reading instead of pushing the page down, and keeps your scroll
   position, focused row, open menus, and unsent filter text.
-  A **Live** pill pauses it and counts the changes held back, and a read that fails
+  A **Live** button pauses it and counts the changes held back, and a read that fails
   keeps the rows last read and says so
   ([Live Updates](docs/browsing-files.md#live-updates)).
 

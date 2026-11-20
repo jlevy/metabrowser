@@ -290,15 +290,11 @@ export function mountTable(container, ctx, host = {}) {
     },
     "Columns",
   );
-  // Shown once the file's watch is live; pressing it pauses the table, and again resumes it.
-  const livePill = el("button", {
-    type: "button",
-    class: "table-live-pill",
-    "aria-pressed": "false",
-    hidden: "",
-  });
+  // Shown once the file's watch is live; pressing it pauses the table, and again resumes
+  // it. Its label is its state, and its accessible name the action.
+  const livePill = el("button", { type: "button", class: "btn table-live-pill", hidden: "" });
   // New rows that would land above the reader's place, offered rather than drawn.
-  const offer = el("button", { type: "button", class: "table-offer", hidden: "" });
+  const offer = el("button", { type: "button", class: "btn table-offer", hidden: "" });
   toolbar.append(search, chips, status, offer, livePill, fitNote, columnsButton);
   const notes = el("div", { class: "table-notes" });
   const scroller = el("div", { class: "table-scroll" });
@@ -596,7 +592,10 @@ export function mountTable(container, ctx, host = {}) {
 
   function drawPill() {
     livePill.textContent = livePillText(paused, heldBack);
-    livePill.setAttribute("aria-pressed", String(paused));
+    livePill.setAttribute(
+      "aria-label",
+      `${livePill.textContent}: ${paused ? "resume live updates" : "pause live updates"}`,
+    );
     livePill.dataset.tipText = paused
       ? "Changes to the file are held back; press to show them"
       : "The table follows changes to its file; press to pause it";
