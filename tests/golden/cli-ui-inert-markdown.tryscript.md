@@ -24,6 +24,8 @@ outside images into links.
 `prose` is what `kpressProse` builds for a page to set those nodes in: KPress’s two
 wrappers dropped, and a code block and a table given the classes KPress’s stylesheets
 hang their type on, chosen by element and never from the document.
+`alignedProse` is a document whose one block is its own `<div align="center">`: the
+unwrapping stops at a `<div>` with an attribute, so the document keeps its alignment.
 Its headings get the anchors github.com gives them (`user-content-` and the slug of the
 heading’s text, as `hostile-readme`), and its fragment links reach them (`#readme`
 becomes `#user-content-readme`). A pull-request comment makes every reference absolute
@@ -62,6 +64,17 @@ $ node tests/dom/inert-html-session.js
         "div.kpress-table-wrap": [
           {
             "table.kpress-table": []
+          }
+        ]
+      }
+    ]
+  },
+  "alignedProse": {
+    "div.kpress-prose": [
+      {
+        "div[align=center]": [
+          {
+            "h1": []
           }
         ]
       }

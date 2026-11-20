@@ -77,8 +77,12 @@ function proseElement(tag) {
     nodeType: 1,
     tagName: tag.toUpperCase(),
     className: "",
+    attributes: [],
     childNodes: [],
     parentElement: null,
+    setAttribute(name, value) {
+      element.attributes.push({ name, value: String(value) });
+    },
     append(...nodes) {
       for (const node of nodes) {
         node.parentElement = element;
@@ -105,18 +109,25 @@ function proseElement(tag) {
 }
 
 function proseTree(element) {
-  return element.nodeType === 1
-    ? {
-        [element.className
-          ? `${element.tagName.toLowerCase()}.${element.className}`
-          : element.tagName.toLowerCase()]: element.childNodes.map(proseTree),
-      }
-    : element.textContent;
+  if (element.nodeType !== 1) {
+    return element.textContent;
+  }
+  const label = element.className
+    ? `${element.tagName.toLowerCase()}.${element.className}`
+    : element.tagName.toLowerCase();
+  const attributes = element.attributes.map(({ name, value }) => `[${name}=${value}]`).join("");
+  return { [`${label}${attributes}`]: element.childNodes.map(proseTree) };
 }
 
 function renderShaped(tag, ...children) {
   const element = proseElement(tag);
   element.append(...children);
+  return element;
+}
+
+// A document's own `<div align>`, the one attribute a kept `<div>` can carry.
+function aligned(element, align) {
+  element.setAttribute("align", align);
   return element;
 }
 
@@ -191,6 +202,15 @@ async function main() {
                 ),
               ),
             ],
+            { createElement: proseElement },
+          ),
+        ),
+        // A document whose one block is its own `<div align>`, here inside one wrapper: the
+        // unwrapping stops at a `<div>` with an attribute, which is the document's and keeps
+        // its align.
+        alignedProse: proseTree(
+          inert.kpressProse(
+            [renderShaped("div", aligned(renderShaped("div", renderShaped("h1")), "center"))],
             { createElement: proseElement },
           ),
         ),
