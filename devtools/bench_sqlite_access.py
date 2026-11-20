@@ -62,8 +62,11 @@ def main() -> None:
         db = base / "app.db"
         _database(db, MIB)
         starts: list[float] = []
-        for _ in range(5):
-            pool = ReaderPool(size=1, temporary_root=base)
+        pool = ReaderPool(size=1, temporary_root=base)
+        for index in range(5):
+            if index:
+                pool.close()
+                pool = ReaderPool(size=1, temporary_root=base)
             started = time.perf_counter()
             with pool.scratch() as scratch:
                 pool.call(
@@ -73,8 +76,6 @@ def main() -> None:
                     subject="s",
                 )
             starts.append(time.perf_counter() - started)
-            if len(starts) < 5:
-                pool.close()
         trips: list[float] = []
         for _ in range(50):
             started = time.perf_counter()
@@ -113,6 +114,7 @@ def main() -> None:
             source.with_name("app.db-shm").unlink()
             pool = ReaderPool(size=1, temporary_root=base)
             reads: list[float] = []
+            mode = ""
             try:
                 for _ in range(5):
                     started = time.perf_counter()
@@ -124,11 +126,12 @@ def main() -> None:
                             subject="s",
                         )
                     reads.append(time.perf_counter() - started)
+                    mode = answer["access"]["mode"]
             finally:
                 pool.close()
             print(
                 f"copy of {total / MIB:.0f} MiB (main and log): median {statistics.median(copies) * 1000:.0f} ms; "
-                f"Info through it ({answer['access']['mode']}): median {statistics.median(reads) * 1000:.0f} ms"
+                f"Info through it ({mode}): median {statistics.median(reads) * 1000:.0f} ms"
             )
             owner.close()
             shutil.rmtree(folder)

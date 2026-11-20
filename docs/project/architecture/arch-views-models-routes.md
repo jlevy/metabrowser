@@ -62,6 +62,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | `unknown-jsonl` | Other `.jsonl` | Log `V`, Raw JSON `S` | File envelope |
 | `event-log` | A `.jsonl` file named `events-*.jsonl`, in a served folder (`path_glob`; a Git blob of that name is generic JSONL) | Timeline `V`, Latency `L`, By kind `B`, Errors `E`, Raw JSON `S` | File envelope and the `event-log/timeline`, `event-log/slowest`, `event-log/kinds`, and `event-log/errors` hooks over one segment of [the event log](../../realtime-debugging.md#event-log) |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
+| `sqlite` | A file that would be `binary` and starts with `SQLite format 3\0` (a `magic` rule), whatever its name | Info | The `sqlite/info` hook: the database as a reader process read it ([Reading SQLite Databases](arch-plugin-system.md#reading-sqlite-databases)) |
 | `binary` | Non-text files | Bytes | The `binary/chunk` hook’s bounded byte windows |
 | `comparison` | No file; the Commits tab selects it for `/commit/<rev>[/<inner>]` | The `diff` kind’s views | `diff/comparison` document in File Diff Format |
 | `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>] or /checks]` | Pull request, which draws its own Conversation `C`, Changes `G`, and Checks `E` tabs | `github/pull` envelope and the hooks it names |
@@ -229,7 +230,8 @@ Plugin hooks currently registered: `diff/document`, `diff/children`, and
 `event-log/timeline`, `event-log/slowest`, `event-log/kinds`, and `event-log/errors`
 ([Real-Time Debugging](../../realtime-debugging.md#browsing-the-log)); `table/tables`,
 `table/schema`, `table/rows`, `table/record`, and `table/card`
-([Table Sources](arch-plugin-system.md#table-sources)); and `github/pull`,
+([Table Sources](arch-plugin-system.md#table-sources)); `sqlite/info`
+([Reading SQLite Databases](arch-plugin-system.md#reading-sqlite-databases)); and `github/pull`,
 `github/pull-refresh`, `github/pull-cores-prepare`, `github/pull-comparison`,
 `github/pull-image`, `github/pull-rendered-diff`, `github/pull-size`,
 `github/pull-timeline`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`,

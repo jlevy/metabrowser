@@ -42,6 +42,7 @@ import json
 import os
 import select
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -244,7 +245,7 @@ def _sweep(root: Path) -> None:
     for folder in candidates:
         try:
             info = folder.lstat()
-            if not folder.is_dir() or info.st_uid != os.getuid():
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
                 continue
             fd = os.open(folder / _OWNER_LOCK, os.O_RDONLY | os.O_NOFOLLOW)
         except OSError:

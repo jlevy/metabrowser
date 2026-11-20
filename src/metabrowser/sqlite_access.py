@@ -683,7 +683,8 @@ def _copy_file(source: Path, target: Path, limit: int) -> int:
     """Copy at most *limit* bytes; the copy opens and closes the source with no
     connection open in this process."""
     copied = 0
-    with open(source, "rb") as reader, open(target, "xb") as writer:
+    source_fd = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    with os.fdopen(source_fd, "rb") as reader, open(target, "xb") as writer:
         while copied <= limit:
             chunk = reader.read(min(_COPY_CHUNK, limit + 1 - copied))
             if not chunk:
@@ -879,6 +880,10 @@ def _read_through_log[T](
         # Gone since the look: the owner closed, and opening now would create the log
         # and its index.
         raise _LookAgain from exc
+    except OSError as exc:
+        raise SqliteAccessError(
+            "unreadable", f"This database's log index cannot be read: {exc.strerror}"
+        ) from exc
     try:
         held_state = FileState.of(os.fstat(held))
         if obs.shm is None or (held_state.dev, held_state.ino) != (obs.shm.dev, obs.shm.ino):

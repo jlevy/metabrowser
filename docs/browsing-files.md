@@ -129,9 +129,14 @@ tabs, and `V` and `S` switch to the rendered view and the source wherever both e
 | Images | Image |
 | HTML | Preview, in a sandboxed frame, and Source |
 | Patches (`.patch`, `.diff`) | Diff, the same view commits and pull requests use |
+| SQLite databases, whatever their name | Info: how the database was read and why, its pages, encoding, journal or log, and the SQLite library |
 | Other binary files | Bytes, a view of the file’s bytes |
 
 A patch file also expands in the tree like a folder, with one row per changed file.
+A SQLite database is read as a guest, in a separate reader process: Metabrowser never
+writes to it, never leaves a file beside it, and never takes a lock that could make the
+application that owns it fail to save. When it cannot read one at a given moment, as
+when its owner is in the middle of writing, the Info view says so.
 A compressed copy of a supported file, whose name ends in `.gz` or `.zlib`, opens as the
 file it holds. A large source file opens with its beginning and a **Load more** button.
 Plugins add views for other formats ([plugin authoring](plugins.md)).

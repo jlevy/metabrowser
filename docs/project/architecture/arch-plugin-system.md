@@ -128,10 +128,21 @@ gives the reasons.
 5. A file read as text, because its extension is in `BROWSER_TEXT_EXTS` or because
    `content_sniff` finds text, runs the plugin classifier, then the fallback chain
    `FILE_KIND_DETECTORS` in `file_kinds.py`, then defaults to `text`.
-6. Anything else is `binary`.
+6. Anything else is checked against every `magic` rule, whatever its name, from the
+   sniff prefix step 5 already read, on the bytes on disk; the first match is its kind.
+7. Anything left is `binary`.
 
-`[[kind]]` rules therefore see text and JSONL files only.
-A plugin cannot claim a binary format by kind; it can add a view to the `binary` kind.
+`[[kind]]` rules therefore see text and JSONL files only, except a `magic` rule, which
+sees only files that would otherwise be `binary`: `match.magic = {offset, hex}` names
+bytes at an offset within `MAGIC_MAX_END` (`plugin_loader/manifest.py`, the sniff
+prefix), and `classify_magic` in `plugin_loader/classify.py` checks it by priority, then
+discovery order. A magic rule takes only `ext` or `exts` beside it, which decide the
+tree’s container chevron and nothing else, so a `.db` file that is not SQLite stays
+binary and a database named `History` is SQLite. A compressed file is checked on its
+compressed bytes, so `x.sqlite.gz` stays binary. Every classification site applies it:
+`api_file`, the container walk (`_classify_content_kind`), the table routes’ kind on a
+served folder and on a pin, and a Git blob (`plugin_magic_kind` in
+`git/content_routes.py`), which a stored blob’s own bytes decide.
 
 `build_classifier` sorts every loaded rule by descending `priority`, then discovery
 index, and returns the first match.
@@ -247,6 +258,43 @@ and the rows held, and `table-view.js` draws it
 runs both over the routes’ recorded answers, and
 `tests/golden/cli-ui-table-view.tryscript.md` pins what it shows.
 
+## Reading SQLite Databases
+
+The built-in `sqlite` plugin claims any SQLite database by a `magic` rule and reads it
+as a guest: never writing to it or its log, never creating or removing a file beside it,
+never rolling back another process’s journal, and never taking a lock that can refuse
+its owner’s commit. The rules are the plan’s
+([Tabular Data Browsing and Live SQLite](../specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md#the-sqlite-source))
+and the measurements behind them are
+[Reading Another Application’s SQLite Database](../../../explorations/sqlite-guest-reads/README.md).
+
+- **One helper.** `src/metabrowser/sqlite_access.py` is the one way the product opens a
+  database it does not own, and imports only the standard library. `observe` stats the
+  real file and its sidecars and reads their headers; `choose` is the access table;
+  `read` runs one short read transaction under it, validating a lock-free read against
+  a second look and waiting out a live journal or a failed validation until the
+  deadline, or for at most the attempts its caller names. `apply_settings`,
+  `bound_work`, and the reads-only authorizer are the connection settings, each a named
+  constant there. Its errors carry the state the view shows (`ERROR_STATES`).
+- **Reader processes.** Every connection runs in a worker of
+  `src/metabrowser/sqlite_readers.py`, never in the server, since a handle the server
+  closes on a database drops every lock its process holds there. A worker is a fresh
+  interpreter that loads only `sqlite_access.py` and the modules registered with
+  `register_worker_module`, under a stand-in `metabrowser` package; it answers the
+  requests in `sqlite_access.OPS`, one at a time. The pool’s size, queue, kill grace,
+  and address-space limit are named constants there, with what set them; it creates,
+  removes, and sweeps the private folders where copies and Git blobs go.
+- **The product’s own databases.** The GitHub plugin’s pull request catalog runs in the
+  server process, since it is written there. It takes `apply_settings` and
+  `is_database_header` from the helper, and closes every handle it opens on the catalog
+  through `PROCESS_HANDLES`, which defers a close until the last connection in the
+  process to that file has closed.
+- **Evidence.** `tests/test_sqlite_guest_access.py` runs each case of
+  `tests/sqlite_guest_scenarios.py` with a real owner in another process, as an
+  unprivileged user, and compares the folder before and after;
+  `tests/test_sqlite_access.py` checks the access table, settings, authorizer, and pool;
+  `tests/test_github_pull_catalog_locks.py` shows the catalog keeps its locks.
+
 ## Navigation Containers
 
 ### Item-Like and Folder-Like
@@ -359,7 +407,8 @@ Each is optional except the kind and one view.
 1. **Claim the kind.** Add a `[[kind]]` rule to a plugin manifest.
    An extension or basename is cheapest; a content predicate is for a format that shares
    an extension, at a priority above the built-in rule it narrows.
-   The format must reach step 5 of [Classification](#classification), so a binary format
+   The format must reach step 5 of [Classification](#classification), or, for a binary
+   format with a magic number, step 6 through a `magic` rule; any other binary format
    needs a view on `binary` instead.
    Check the result with `metab . --plugins-dir <dir> --show <file>`, which prints the
    kind and its views.

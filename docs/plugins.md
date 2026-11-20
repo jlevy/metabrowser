@@ -199,6 +199,7 @@ Multiple rules may share an ID; they act as alternatives for the same kind.
 | `yaml_value_prefix` | Prefix required in the selected YAML value. |
 | `folder_marker` | Exact marker filename that also decorates its parent directory. |
 | `path_glob` | Gitignore-style pattern for the served-root-relative path. |
+| `magic` | `{offset, hex}`: bytes a binary format holds at an offset, in hexadecimal. |
 
 Fields within one rule combine with AND. Rules with the same kind ID combine with OR. At
 least one match field is required, and `ext` and `exts` are exclusive.
@@ -206,8 +207,24 @@ Built-ins normally use priority `0`; a specialized plugin can use a higher prior
 claim a narrower format.
 
 Kind rules apply to files Metabrowser reads as text and to JSONL streams.
-A file whose bytes sniff as binary, or whose extension is an image extension, keeps the
-built-in `binary` or `image` kind; a plugin can add a view to that kind instead.
+A file whose extension is an image extension keeps the built-in `image` kind, and one
+whose bytes sniff as binary keeps the built-in `binary` kind unless a `magic` rule
+claims it; a plugin can add a view to either instead.
+
+A `magic` rule claims a binary format by the bytes it starts with, whatever the file is
+called: every file that would otherwise be `binary` is checked against every magic
+rule, so a SQLite database named `History` is SQLite. It takes only `ext` or `exts`
+beside it, which decide the tree’s container chevron and do not narrow the match, and
+its bytes must end within the sniff prefix (`MAGIC_MAX_END` in
+`src/metabrowser/plugin_loader/manifest.py`). It is checked on the bytes on disk, so a
+compressed file keeps its kind:
+
+```toml
+[[kind]]
+id = "sqlite"
+match = { magic = { offset = 0, hex = "53514c69746520666f726d6174203300" }, exts = [".db"] }
+```
+
 A format whose reader needs a native library belongs in an installed plugin, so the
 dependency is never Metabrowser’s.
 
