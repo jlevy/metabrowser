@@ -5,14 +5,14 @@ title: "Main red: source-freshness golden pins /api/event-logs to a stale commit
 kind: bug
 status: in_progress
 priority: 0
-version: 3
+version: 4
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T05:09:33.612Z
-updated_at: 2026-11-20T05:12:16.129Z
+updated_at: 2026-11-20T05:21:01.559Z
 started_at: 2026-11-20T05:09:36.454Z
 ---
 Main run 44676764477 (merge of #632 at f61159ade) fails tests/golden/cli-ui-source-freshness.tryscript.md on all four "goldens and serial" jobs.
@@ -23,4 +23,4 @@ Fix: the code is right (the guard names the page's pin on /api/event-logs; tests
 
 ## Notes
 
-PR #638 (head 1fb9caf33): one golden line, /api/event-logs pin 42382ea -> 66f65bf. Awaiting CI.
+PR #638 (head 1fb9caf33): one golden line, /api/event-logs pin 42382ea -> 66f65bf. All four goldens-and-serial jobs pass; other jobs pending at last check.
