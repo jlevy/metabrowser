@@ -141,22 +141,27 @@ function createPage(page) {
       request.resolve({ status: recording.status, etag: null, body: recording.body });
       await settle();
     },
-    async fireTimer() {
+    async fireTimer(delayMs = selectorRuntime.FILTER_DELAY_MS) {
       const pending = [...timers.entries()];
       assert(pending.length === 1, `expected one pending timer, found ${pending.length}`);
       const [handle, timer] = pending[0];
-      assert(timer.delayMs === selectorRuntime.FILTER_DELAY_MS, "the pause is the filter delay");
+      assert(timer.delayMs === delayMs, `the pause is ${delayMs} ms, not ${timer.delayMs}`);
       timers.delete(handle);
       timer.callback();
       await settle();
     },
     observe(step) {
+      const delays = [...timers.values()].map((timer) => timer.delayMs);
       const observed = {
         step,
         requests: log.splice(0),
-        filterPending: timers.size > 0,
+        filterPending: delays.includes(selectorRuntime.FILTER_DELAY_MS),
         paint: paintOf(model),
       };
+      // The wait before an open list asks again for the pull requests the server is filling.
+      if (delays.includes(selectorRuntime.PULLS_POLL_MS)) {
+        observed.pullsPending = true;
+      }
       if (navigated.length > 0) {
         observed.navigated = navigated.splice(0);
       }
@@ -193,6 +198,9 @@ function paintOf(model) {
   return {
     button: model.button,
     open: true,
+    // What the filter box says, once the server has pull requests for it to find.
+    ...(model.pullRequests?.state === "ready" ? { filter: model.filterLabel } : {}),
+    ...(model.pullRequests === null ? {} : { pullRequests: pullRequestsOf(model.pullRequests) }),
     ...(checkout
       ? {
           workingTree: `Working tree${model.workingTree.location === "" ? "" : `: ${model.workingTree.location} (kept whole: ${model.workingTree.base})`}${model.workingTree.current ? " [current]" : ""}`,
@@ -205,12 +213,30 @@ function paintOf(model) {
     switching: model.switching,
     rows: model.rows.map(
       (row) =>
-        `${row.name} ${row.commit} ${committedOf(row.committedAt)}${row.default ? " [default]" : ""}${row.checkedOut ? " [checked out]" : ""}${row.current ? " [current]" : ""}${checkout ? ` (${row.chip} chip)` : ""}`,
+        `${row.name} ${row.commit} ${committedOf(row.committedAt)}${row.default ? " [default]" : ""}${row.checkedOut ? " [checked out]" : ""}${row.current ? " [current]" : ""}${checkout ? ` (${row.chip} chip)` : ""}${pullsOf(row.pulls)}`,
     ),
     note: model.note,
     error: model.error,
     ...stale,
   };
+}
+
+// A row's pull requests, as the row's second line shows the first and counts the rest:
+// "| #21 open feat(ref): choose among branches +1".
+function pullsOf(pulls) {
+  if (pulls.length === 0) {
+    return "";
+  }
+  const [first, ...others] = pulls;
+  return ` | #${first.number} ${first.state} ${first.title}${others.length > 0 ? ` +${others.length}` : ""}`;
+}
+
+// What the listing says of the server's pull requests, as the list shows it: nothing while
+// the server has none cached and nothing fills them, and a wait while it does.
+function pullRequestsOf(status) {
+  const cached =
+    status.state === "ready" ? (status.complete ? "cached" : "partly cached") : "none cached";
+  return `${cached}${status.refreshing ? ", filling" : ""}`;
 }
 
 function shownOf(switched) {
@@ -341,6 +367,61 @@ async function run() {
   steps.push(page.observe("a page off /view/ names no address and opens at the root"));
   selector.dispose();
 
+  // A branch that is the head of a pull request lists it on its row: the server reads the
+  // pull requests from what its provider has cached and never fetches, so a list opened
+  // before they are cached shows none and asks again, quietly, while the server fills
+  // them. The listings are the ones the application gave for a mirror whose repository's
+  // catalog was empty, then half full and still being filled, then whole.
+  page = createPage(onNotes);
+  selector = selectorRuntime.createSelector(page.deps, { shown: topicPage });
+  const waiting = selector.open();
+  await page.answer(recorded.pending);
+  await waiting;
+  steps.push(
+    page.observe("pull requests not cached yet: the rows show none, and the list will ask again"),
+  );
+  await page.fireTimer(selectorRuntime.PULLS_POLL_MS);
+  steps.push(page.observe("asking again shows nothing while it waits"));
+  await page.answer(recorded.filling);
+  steps.push(
+    page.observe(
+      "a branch shows the pull requests the server has, and it asks again until it has all",
+    ),
+  );
+  await page.fireTimer(selectorRuntime.PULLS_POLL_MS);
+  await page.answer({ status: 500, body: null });
+  steps.push(page.observe("an ask that is refused leaves the rows as they are and asks no more"));
+  selector.close();
+  const reopenedForPulls = selector.open();
+  await page.answer(recorded.annotated);
+  await reopenedForPulls;
+  steps.push(
+    page.observe("a full cache lists each branch's pull requests, open first, and asks no more"),
+  );
+  selector.setQuery("#1");
+  await page.fireTimer();
+  await page.answer(recorded.by_number);
+  steps.push(page.observe("the filter finds a branch by its pull request's number"));
+  selector.setQuery("start the");
+  await page.fireTimer();
+  await page.answer(recorded.by_title);
+  steps.push(page.observe("and by the words of its title, whatever its name says"));
+  const pullTags = selector.setKind("tag");
+  await page.answer(recorded.tags_with_pulls);
+  await pullTags;
+  steps.push(page.observe("a list of tags has no pull requests, and the filter finds tags"));
+  selector.dispose();
+
+  // Closing the list stops the asking, so nothing is left running for a list nobody sees.
+  page = createPage(onNotes);
+  selector = selectorRuntime.createSelector(page.deps, { shown: topicPage });
+  const closing = selector.open();
+  await page.answer(recorded.pending);
+  await closing;
+  selector.close();
+  steps.push(page.observe("closing stops asking for pull requests"));
+  selector.dispose();
+
   const labels = [
     { pin: branches.pin, ref: "refs/tags/v1" },
     { pin: branches.pin, ref: "refs/pull/7/head" },
@@ -400,39 +481,58 @@ async function run() {
   // the end of 10,001 rows, with that row in the window or far from it; a short list;
   // and a list whose rows have not been measured.
   const overscan = selectorRuntime.ROWS_OVERSCAN;
+  // Rows with a pull request are taller than the rest, so a row sits at its own offset:
+  // *every* is how often a row has one (0 for none).
+  const rowsOf = (count, every) =>
+    Array.from({ length: count }, (_, at) => ({
+      pulls: every > 0 && at % every === 0 ? [{ number: at + 1 }] : [],
+    }));
   const windows = [
-    [10001, 28, 0, 320, 0],
-    [10001, 28, 0, 320, 9000],
-    [10001, 28, 28 * 5000 + 10, 320, 0],
-    [10001, 28, 28 * 5000 + 10, 320, 5003],
-    [10001, 28, 28 * 10001 - 320, 320, 10000],
-    [3, 28, 0, 320, 1],
-    [10001, 0, 0, 0, 0],
-    [0, 28, 0, 320, 0],
-  ].map(([count, rowHeight, scrollTop, viewHeight, roving]) => {
-    const { start, end, also } = selectorRuntime.rowWindow(
-      count,
-      rowHeight,
-      scrollTop,
-      viewHeight,
-      roving,
-    );
-    const inView =
-      rowHeight > 0
-        ? Math.min(count, Math.ceil((scrollTop + viewHeight) / rowHeight)) -
-          Math.floor(scrollTop / rowHeight)
-        : 0;
-    assert(
-      end - start <= Math.max(inView, 0) + 2 * overscan + 1,
-      "a window is its view and the overscan",
-    );
+    [10001, 28, 28, 0, 0, 320, 0],
+    [10001, 28, 28, 0, 0, 320, 9000],
+    [10001, 28, 28, 0, 28 * 5000 + 10, 320, 0],
+    [10001, 28, 28, 0, 28 * 5000 + 10, 320, 5003],
+    [10001, 28, 28, 0, 28 * 10001 - 320, 320, 10000],
+    [3, 28, 28, 0, 0, 320, 1],
+    [10001, 0, 0, 0, 0, 0, 0],
+    [0, 28, 28, 0, 0, 320, 0],
+    // Every fourth row has a pull request and is 46 px tall: 10,001 rows are 340,034 px.
+    [10001, 28, 46, 4, 0, 320, 0],
+    [10001, 28, 46, 4, 46 * 2500 + 9 * 28 + 12, 320, 0],
+    [10001, 28, 46, 4, 28 * 10001 + 18 * 2501 - 320, 320, 10000],
+    // A list whose only row with a pull request is the first.
+    [10001, 28, 46, 10001, 0, 320, 0],
+  ].map(([count, plain, tall, every, scrollTop, viewHeight, roving]) => {
+    const rows = rowsOf(count, every);
+    const offsets = selectorRuntime.rowOffsets(rows, plain, tall);
+    const { start, end, also } = selectorRuntime.rowWindow(offsets, scrollTop, viewHeight, roving);
+    // The window is the rows that touch the view and the overscan on either side, found
+    // here by looking at every row.
+    if (offsets[count] > 0) {
+      let first = count;
+      let last = -1;
+      for (let at = 0; at < count; at += 1) {
+        if (offsets[at + 1] > scrollTop && at < first) {
+          first = at;
+        }
+        if (offsets[at] < scrollTop + viewHeight) {
+          last = at;
+        }
+      }
+      assert(
+        start === Math.max(0, first - overscan) && end === Math.min(count, last + 1 + overscan),
+        "a window is its view and the overscan",
+      );
+    }
     assert(start >= 0 && end <= count && start <= end, "a window is inside the list");
     assert(
       count === 0 || (start <= roving && roving < end ? also === -1 : also === roving),
       "the row that takes Tab is drawn, in the window or as well as it",
     );
     const beside = also >= 0 ? ` and row ${also}` : "";
-    return `${count} rows ${rowHeight} px tall, scrolled ${scrollTop} px in ${viewHeight} px, Tab on row ${roving}: rows ${start} to ${end}${beside}`;
+    const tallRows =
+      every > 0 ? ` (every ${every === 10001 ? "10,001st" : `${every}th`} ${tall} px)` : "";
+    return `${count} rows ${plain} px tall${tallRows}, scrolled ${scrollTop} px in ${viewHeight} px, Tab on row ${roving}: rows ${start} to ${end}${beside}`;
   });
 
   return { steps, labels, copies, keys, overscan, windows, checkout: await runCheckout() };

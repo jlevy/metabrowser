@@ -34,12 +34,15 @@ import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import server
+from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+from metabrowser.builtin_plugins.github.ref_pulls import GithubRefPulls, ref_pulls_of
 from metabrowser.cache.acquire import acquire_source
 from metabrowser.cache.records import StoreOperation
 from metabrowser.commit_ids import short_commit
 from metabrowser.git.process import UnsupportedGitVersionError
 from metabrowser.git.tree_source import GitPath
 from metabrowser.mirror_refresh import serve_mirror
+from tests.github_pull_fixture import head_item, seed_catalog
 from tests.golden_harness import (
     JSON_BODY,
     answer,
@@ -74,6 +77,49 @@ def _view(display: str) -> str:
     return "/view/" + GitPath.from_display(display).to_wire()
 
 
+def _record_pull_requests(
+    client: TestClient, repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> dict[str, Any]:
+    """The listings of a mirror whose repository's pull requests the provider has cached.
+
+    The mirror's origin is a ``file://`` one, which no provider owns, so the route is given
+    what the GitHub provider answers for a catalog (``ref_pulls_of``) seeded with real
+    publications: the pull requests are the production code's, and so is the envelope. The
+    catalog is empty and a job is filling it, then half full and still being filled, then
+    whole.
+    """
+
+    held: dict[str, Any] = {"refreshing": True}
+
+    async def provided(app: object) -> GithubRefPulls:
+        return await asyncio.to_thread(ref_pulls_of, repository, refreshing=held["refreshing"])
+
+    monkeypatch.setattr("metabrowser.source_routes.ref_pulls_for", provided)
+
+    def listing(**params: str) -> dict[str, Any]:
+        return answer(client.get("/api/source/refs", params=params))
+
+    recorded: dict[str, Any] = {"pending": listing(kind="branch")}
+    # `topic`, the default, is the head of a merged pull request; `feature` of an open one
+    # and an earlier closed one, and of one from a fork, which is another branch of the
+    # same name and is not listed.
+    items = [
+        head_item(12, "topic", "Start the topic", state="closed", merged=True),
+        head_item(18, "feature", "Try the first design", state="closed"),
+        head_item(21, "feature", "feat(ref): choose among branches"),
+        head_item(30, "feature", "From a fork", head_repository="forker/demo"),
+    ]
+    seed_catalog(repository, items[:2], complete=False, fetched_at="2026-10-01T12:00:00Z")
+    recorded["filling"] = listing(kind="branch")
+    held["refreshing"] = False
+    seed_catalog(repository, items, fetched_at="2026-10-01T12:00:00Z")
+    recorded["annotated"] = listing(kind="branch")
+    recorded["by_number"] = listing(kind="branch", q="#1")
+    recorded["by_title"] = listing(kind="branch", q="start the")
+    recorded["tags_with_pulls"] = listing(kind="tag")
+    return recorded
+
+
 def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setenv("METABROWSER_CACHE_DIR", str(tmp_path / "home"))
     _allow_installed_git(monkeypatch)
@@ -98,6 +144,11 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["filtered"] = listing(kind="branch", q="feat")
             recorded["nothing"] = listing(kind="branch", q="zzz")
             recorded["refused"] = listing(kind="commit")
+            recorded |= _record_pull_requests(
+                client,
+                ListedRepository(published.home, published.slug, "octo", "demo"),
+                monkeypatch,
+            )
             # NOTES.md is only on topic, so a page on it goes to the root on feature.
             recorded["switch_away"] = switch({"ref": FEATURE, "view": _view("NOTES.md")})
             recorded["switch_keep"] = switch({"ref": TOPIC, "view": _view("README.md")})
@@ -352,3 +403,47 @@ def test_the_session_runs_on_the_recording() -> None:
     assert aborted["paint"]["query"] == "feat" and aborted["paint"]["error"] is None
     closed = by_name["closing aborts the request on its way"]
     assert closed["requests"][-1].startswith("aborted GET") and closed["paint"]["open"] is False
+
+
+def test_the_session_lists_a_branchs_pull_requests_and_asks_while_the_server_fills_them() -> None:
+    by_name = {
+        step["step"]: step for step in run_session("source-ref-selector-session.js")["steps"]
+    }
+    branches = "GET /api/source/refs?kind=branch"
+    pending = by_name[
+        "pull requests not cached yet: the rows show none, and the list will ask again"
+    ]
+    # Nothing is cached, and a job fills it: no row has a pull request, the filter says
+    # only what it always did, and the list waits to ask again.
+    assert pending["requests"] == [branches] and pending["pullsPending"] is True
+    assert pending["paint"]["pullRequests"] == "none cached, filling"
+    assert "filter" not in pending["paint"]
+    assert not any("|" in row for row in pending["paint"]["rows"])
+    # Asking again is quiet: nothing is loading, and the rows stay as they were.
+    quiet = by_name["asking again shows nothing while it waits"]
+    assert quiet["requests"] == [branches] and quiet["paint"]["loading"] is False
+    assert "pullsPending" not in quiet
+    filling = by_name[
+        "a branch shows the pull requests the server has, and it asks again until it has all"
+    ]
+    assert filling["paint"]["filter"] == "Filter branches or pull requests"
+    assert filling["paint"]["pullRequests"] == "partly cached, filling"
+    assert filling["paint"]["rows"][1].endswith("| #18 closed Try the first design")
+    assert filling["pullsPending"] is True
+    # A refusal leaves the rows and stops the asking.
+    refused = by_name["an ask that is refused leaves the rows as they are and asks no more"]
+    assert refused["paint"]["rows"] == filling["paint"]["rows"] and "pullsPending" not in refused
+    # The whole cache: the open pull request first, the other counted, and no more asking.
+    full = by_name["a full cache lists each branch's pull requests, open first, and asks no more"]
+    assert full["paint"]["pullRequests"] == "cached" and "pullsPending" not in full
+    assert full["paint"]["rows"][1].endswith("| #21 open feat(ref): choose among branches +1")
+    # The server finds a branch by its pull request, and the list shows what it answers.
+    number = by_name["the filter finds a branch by its pull request's number"]
+    assert number["requests"] == [f"{branches}&q=%231"]
+    assert number["paint"]["rows"][1].endswith("| #18 closed Try the first design +1")
+    title = by_name["and by the words of its title, whatever its name says"]
+    assert [row.split()[0] for row in title["paint"]["rows"]] == ["topic"]
+    tags = by_name["a list of tags has no pull requests, and the filter finds tags"]
+    assert "pullRequests" not in tags["paint"] and "filter" not in tags["paint"]
+    # Closing the list cancels the wait.
+    assert "pullsPending" not in by_name["closing stops asking for pull requests"]

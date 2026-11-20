@@ -87,6 +87,11 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "pull_requests": {
+    "state": "absent",
+    "complete": false,
+    "refreshing": false
+  },
   "refs": [
     {
       "name": "trunk",

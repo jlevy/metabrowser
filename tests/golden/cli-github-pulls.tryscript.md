@@ -608,6 +608,202 @@ Error: /api/plugin/github/pulls-refresh returned HTTP 409
 ? 1
 ```
 
+## Test: a branch that is a pull request’s head shows it in the ref list
+
+The ref chooser lists the mirror’s branches (`/api/source/refs`), and a branch that is
+the head of a pull request in this catalog lists it on its row, with the state the Pulls
+tab shows.
+Only a pull request from the repository’s own branch is a branch’s: #7 is from
+a fork and #9’s fork is gone, so neither names a branch, and `wip`, #10’s head, is a
+draft. `topic`, the default, is the head of none, so its row has no `pulls`. The listing
+reads the cache alone: `gh` here fails every command, and `pull_requests` says the
+catalog is cached, so a page that sees it does not ask again.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/source/refs?kind=branch'
+api: /api/source/refs?kind=branch
+status: 200
+{
+  "kind": "branch",
+  "query": "",
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "ref": "refs/remotes/origin/topic",
+  "kinds": [
+    "branch",
+    "tag"
+  ],
+  "working_tree": null,
+  "pull_requests": {
+    "state": "ready",
+    "complete": true,
+    "refreshing": false
+  },
+  "refs": [
+    {
+      "name": "topic",
+      "ref": "refs/remotes/origin/topic",
+      "commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "committed_at": 1788021600.0,
+      "default": true,
+      "checked_out": false,
+      "current": true
+    },
+    {
+      "name": "wip",
+      "ref": "refs/remotes/origin/wip",
+      "commit": "7a7d6596e515735d244dc1d942463c95851e139c",
+      "committed_at": 1788032400.0,
+      "default": false,
+      "checked_out": false,
+      "current": false,
+      "pulls": [
+        {
+          "number": 10,
+          "title": "WIP: draft the next page",
+          "state": "draft"
+        }
+      ]
+    }
+  ]
+}
+? 0
+```
+
+The filter finds a branch by its pull request as well as by its name: `#` and the start
+of a number, or every word of a title, in any case.
+`#` alone is every pull request, so it lists the branches that have one.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/source/refs?kind=branch&q=%231'
+api: /api/source/refs?kind=branch&q=%231
+status: 200
+{
+  "kind": "branch",
+  "query": "#1",
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "ref": "refs/remotes/origin/topic",
+  "kinds": [
+    "branch",
+    "tag"
+  ],
+  "working_tree": null,
+  "pull_requests": {
+    "state": "ready",
+    "complete": true,
+    "refreshing": false
+  },
+  "refs": [
+    {
+      "name": "wip",
+      "ref": "refs/remotes/origin/wip",
+      "commit": "7a7d6596e515735d244dc1d942463c95851e139c",
+      "committed_at": 1788032400.0,
+      "default": false,
+      "checked_out": false,
+      "current": false,
+      "pulls": [
+        {
+          "number": 10,
+          "title": "WIP: draft the next page",
+          "state": "draft"
+        }
+      ]
+    }
+  ]
+}
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/source/refs?kind=branch&q=NEXT+page'
+api: /api/source/refs?kind=branch&q=NEXT+page
+status: 200
+{
+  "kind": "branch",
+  "query": "NEXT page",
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "ref": "refs/remotes/origin/topic",
+  "kinds": [
+    "branch",
+    "tag"
+  ],
+  "working_tree": null,
+  "pull_requests": {
+    "state": "ready",
+    "complete": true,
+    "refreshing": false
+  },
+  "refs": [
+    {
+      "name": "wip",
+      "ref": "refs/remotes/origin/wip",
+      "commit": "7a7d6596e515735d244dc1d942463c95851e139c",
+      "committed_at": 1788032400.0,
+      "default": false,
+      "checked_out": false,
+      "current": false,
+      "pulls": [
+        {
+          "number": 10,
+          "title": "WIP: draft the next page",
+          "state": "draft"
+        }
+      ]
+    }
+  ]
+}
+? 0
+```
+
+A pull request whose branch the mirror does not hold lists nothing: #8’s title says
+“guide”, and `guide-more`, its head, is merged and gone, so no row is its.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/source/refs?kind=branch&q=guide'
+api: /api/source/refs?kind=branch&q=guide
+status: 200
+{
+  "kind": "branch",
+  "query": "guide",
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "ref": "refs/remotes/origin/topic",
+  "kinds": [
+    "branch",
+    "tag"
+  ],
+  "working_tree": null,
+  "pull_requests": {
+    "state": "ready",
+    "complete": true,
+    "refreshing": false
+  },
+  "refs": []
+}
+? 0
+```
+
+A tag is no pull request’s head, so its list says it has no pull requests.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/source/refs?kind=tag'
+api: /api/source/refs?kind=tag
+status: 200
+{
+  "kind": "tag",
+  "query": "",
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "ref": "refs/remotes/origin/topic",
+  "kinds": [
+    "branch",
+    "tag"
+  ],
+  "working_tree": null,
+  "pull_requests": null,
+  "refs": []
+}
+? 0
+```
+
 ## Test: the list’s address reports its kind and its state
 
 `/pulls` is the list with no pull request selected, and `?state=` names its filter.

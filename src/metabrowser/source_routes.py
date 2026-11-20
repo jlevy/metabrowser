@@ -15,6 +15,12 @@ routes' memo can keep is kept under the refs' state, so asking again while no re
 runs no Git; past about 9,000 branches, or past ``MAX_REF_ENTRIES`` loose refs, every
 listing runs Git.
 
+A branch that is the head of a pull request lists that pull request on its row, and the
+filter finds a branch by its pull request's number or title too. The pull requests are
+what the repository's provider has cached (:func:`~metabrowser.cache.providers.ref_pulls_for`):
+the route never waits for the provider's own service, and says whether the cache is
+filled, so the page asks again while it is.
+
 A folder that is a repository's root answers the same two routes for its own checkout
 (:mod:`metabrowser.checkout_revisions`): the refs route lists its branches, tags, and
 remote-tracking branches from its own Git directory, and the pin route serves one of them
@@ -40,7 +46,9 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Final,
+    Literal,
     NamedTuple,
+    NotRequired,
     Protocol,
     TypedDict,
     cast,
@@ -51,6 +59,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
+from metabrowser.cache.providers import RefPull, RefPulls, ref_pulls_for
 from metabrowser.checkout_revisions import (
     CheckoutGitUnsupportedError,
     CheckoutRevisions,
@@ -131,6 +140,8 @@ REFS_MAX_QUERY_CHARS: Final = 256
 # The lists a mirror has, and the ones a checkout has: its remote-tracking branches too.
 _MIRROR_REF_KINDS: Final[tuple[RefKind, ...]] = ("branch", "tag")
 _CHECKOUT_REF_KINDS: Final[tuple[RefKind, ...]] = ("branch", "tag", "remote")
+# The remote a checkout's pull requests are of: its repository is the one ``origin`` names.
+_ORIGIN_REMOTE: Final = "origin/"
 # What a listing of a kind the subject has no list of is told, by whether a checkout answers.
 _KIND_REFUSAL: Final = {
     False: '"kind" is "branch" or "tag"',
@@ -278,7 +289,10 @@ class SourceRef(TypedDict):
     checkout's ``HEAD`` is on; each lists first, and the other is false.
     ``committed_at`` is the commit's committer date in epoch seconds, from which a row
     shows its age; ``None`` when Git printed none. The page shows ``commit`` as every line
-    names a commit (``shortCommit`` in static/formatters.js).
+    names a commit (``shortCommit`` in static/formatters.js). ``pulls`` are the pull
+    requests the branch is the head of, open first and then newest first, and a filter's
+    matches before the rest; a row with none has no ``pulls``, so a list of thousands
+    of branches pays nothing for them.
     """
 
     name: str
@@ -288,6 +302,21 @@ class SourceRef(TypedDict):
     default: bool
     checked_out: bool
     current: bool
+    pulls: NotRequired[list[RefPull]]
+
+
+class RefPullsStatus(TypedDict):
+    """What a listing says of its rows' pull requests: whether the cache has them.
+
+    ``state`` is ``ready`` once the repository's catalog of pull requests is cached, and
+    ``absent`` before. ``complete`` says it holds every pull request, so a branch with no
+    ``pulls`` has none, and ``refreshing`` that a job is filling it, so the listing is
+    worth asking for again.
+    """
+
+    state: Literal["absent", "ready"]
+    complete: bool
+    refreshing: bool
 
 
 class WorkingTree(TypedDict):
@@ -317,7 +346,9 @@ class SourceRefs(TypedDict):
     selector marks the served ref even when the page was rendered for another; both are
     ``None`` while a checkout's working tree is served. ``kinds`` are the lists the subject has: a
     checkout's remote-tracking branches are a third. ``working_tree`` is ``None`` for a
-    mirror, which has none.
+    mirror, which has none. ``pull_requests`` is ``None`` where no provider has pull
+    requests for the subject, and for a list of tags, which no pull request has as its
+    head.
     """
 
     kind: RefKind
@@ -326,7 +357,24 @@ class SourceRefs(TypedDict):
     ref: str | None
     kinds: list[RefKind]
     working_tree: WorkingTree | None
+    pull_requests: RefPullsStatus | None
     refs: list[SourceRef]
+
+
+def _head_name(kind: RefKind, name: str) -> str | None:
+    """The name a pull request knows the branch listed as *name* by, or ``None`` for none.
+
+    A mirror's branches and a checkout's own are named as the repository names them. A
+    checkout's remote-tracking branch is under its remote, and only ``origin``'s are the
+    repository's, as the checkout's repository is the one its ``origin`` names. A tag is
+    nothing's head.
+    """
+
+    if kind == "branch":
+        return name
+    if kind == "remote" and name.startswith(_ORIGIN_REMOTE):
+        return name[len(_ORIGIN_REMOTE) :]
+    return None
 
 
 def source_refs(
@@ -336,18 +384,38 @@ def source_refs(
     kind: RefKind,
     query: str,
     working_tree: WorkingTree | None = None,
+    pulls: RefPulls | None = None,
 ) -> SourceRefs:
     """Every ref of *listed* that matches *query*, a case-insensitive name fragment.
 
     *subject* is the served revision, ``None`` on a checkout's working tree, and
     *working_tree* is given for a checkout, whose first-listed branch is the one checked
-    out where a mirror's is its default.
+    out where a mirror's is its default. *pulls* are the pull requests the provider has
+    cached by head branch: a row lists the ones of its branch, and a branch whose pull
+    request matches *query* is listed whether or not its name does.
     """
 
     needle = query.casefold()
-    matches = [entry for entry in listed if needle in entry.name.casefold()]
     of_checkout = working_tree is not None
     served_ref = subject.ref if subject is not None else None
+    found = pulls.matching(query) if pulls is not None and needle else frozenset[str]()
+    rows: list[SourceRef] = []
+    for entry in listed:
+        head = _head_name(kind, entry.name) if pulls is not None else None
+        if needle not in entry.name.casefold() and (head is None or head not in found):
+            continue
+        row = SourceRef(
+            name=entry.name,
+            ref=entry.ref,
+            commit=entry.commit,
+            committed_at=entry.committed_at,
+            default=entry.default and not of_checkout,
+            checked_out=entry.default and of_checkout,
+            current=served_ref is not None and entry.ref == served_ref,
+        )
+        if pulls is not None and head is not None and (shown := pulls.pulls(head, query)):
+            row["pulls"] = list(shown)
+        rows.append(row)
     return SourceRefs(
         kind=kind,
         query=query,
@@ -355,18 +423,14 @@ def source_refs(
         ref=served_ref,
         kinds=list(_CHECKOUT_REF_KINDS if of_checkout else _MIRROR_REF_KINDS),
         working_tree=working_tree,
-        refs=[
-            SourceRef(
-                name=entry.name,
-                ref=entry.ref,
-                commit=entry.commit,
-                committed_at=entry.committed_at,
-                default=entry.default and not of_checkout,
-                checked_out=entry.default and of_checkout,
-                current=served_ref is not None and entry.ref == served_ref,
-            )
-            for entry in matches
-        ],
+        pull_requests=RefPullsStatus(
+            state="ready" if pulls.ready else "absent",
+            complete=pulls.complete,
+            refreshing=pulls.refreshing,
+        )
+        if pulls is not None
+        else None,
+        refs=rows,
     )
 
 
@@ -377,13 +441,15 @@ async def _refs_answer_key(
     query: str,
     subject: GitRevisionSubject | None,
     first_ref: str | None,
+    pulls: RefPulls | None,
 ) -> tuple[str, ...] | None:
     """What a listing is kept under in the Git routes' memo, or ``None`` to keep nothing.
 
     Everything the answer reads: the repository's refs, whose state
     :func:`~metabrowser.git.ref_state.ref_state` names; the list and the filter; what is
-    served, which marks a row and says whether the working tree is; and *first_ref*, the
-    branch listed first and marked. That is a mirror's default branch, which its store
+    served, which marks a row and says whether the working tree is; the pull requests'
+    ``token``, which names what the provider has cached and whether it is filling it; and
+    *first_ref*, the branch listed first and marked. That is a mirror's default branch, which its store
     records outside its refs, or the branch a checkout's ``HEAD`` is on as
     :func:`~metabrowser.git.repo.repo_info` names it, which ``working_tree`` reports too.
     ``repo_info`` keeps ``HEAD`` for ``GIT_REPO_INFO_TTL_S``, so the state alone, which
@@ -406,6 +472,7 @@ async def _refs_answer_key(
         subject.commit_oid if subject is not None else "",
         (subject.ref or "") if subject is not None else "",
         first_ref or "",
+        pulls.token if pulls is not None else "",
         state,
     )
 
@@ -417,6 +484,7 @@ def _encoded_refs(
     kind: RefKind,
     query: str,
     working_tree: WorkingTree | None,
+    pulls: RefPulls | None,
 ) -> bytes:
     """The listing's body, as :func:`keep_body` keeps it, filtered and encoded.
 
@@ -425,7 +493,9 @@ def _encoded_refs(
     10,001 refs took 7 ms and encoding them 13 ms.
     """
 
-    page = source_refs(listed, subject, kind=kind, query=query, working_tree=working_tree)
+    page = source_refs(
+        listed, subject, kind=kind, query=query, working_tree=working_tree, pulls=pulls
+    )
     return bytes(JSONResponse(dict(page)).body)
 
 
@@ -468,6 +538,8 @@ async def api_source_refs(request: Request) -> Response:
         return _error(_KIND_REFUSAL[of_checkout], "invalid_request", 400)
     kind = cast(RefKind, kind)
     subject = as_git_revision_subject(get_source_session().subject)
+    # What the provider has cached: never fetched here. A tag is no pull request's head.
+    pulls = await ref_pulls_for(request.app) if kind != "tag" else None
     working_tree: WorkingTree | None = None
     try:
         if isinstance(source, CheckoutRevisions):
@@ -480,6 +552,7 @@ async def api_source_refs(request: Request) -> Response:
                 query=query,
                 subject=subject,
                 first_ref=head_ref,
+                pulls=pulls,
             )
             kept = kept_answer(request, key)
             if kept is not None:
@@ -506,6 +579,7 @@ async def api_source_refs(request: Request) -> Response:
                 query=query,
                 subject=pin,
                 first_ref=default_ref,
+                pulls=pulls,
             )
             kept = kept_answer(request, key)
             if kept is not None:
@@ -523,7 +597,13 @@ async def api_source_refs(request: Request) -> Response:
         where = "checkout" if isinstance(source, CheckoutRevisions) else "mirror"
         return _error(f"the {where}'s refs could not be listed", exc.code, exc.http_status)
     body = await asyncio.to_thread(
-        _encoded_refs, listed, subject, kind=kind, query=query, working_tree=working_tree
+        _encoded_refs,
+        listed,
+        subject,
+        kind=kind,
+        query=query,
+        working_tree=working_tree,
+        pulls=pulls,
     )
     return keep_body(request, key, body)
 

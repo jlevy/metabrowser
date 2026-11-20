@@ -2945,6 +2945,52 @@ html.theme-anim .menu {
 .source-ref-selector-working-tree[aria-current="true"] {
   font-weight: var(--weight-medium);
 }
+/* A row is the ref's own line and, under it, the pull request its branch heads. The ref's line
+   is a row with none, as tall as before; the list places each row by its own height
+   (`rowOffsets`; docs/design-system.md, "The Ref Selector"). */
+.source-ref-selector-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+.source-ref-selector-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* The pull request's icon (the GitHub plugin's, drawn once it loads into a slot as wide as
+   itself), its number (--pull-number-weight), and its title: bold in normal ink, cut at
+   the line's end; a count of the branch's other pull requests follows, muted. */
+.source-ref-selector-pull {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.source-ref-selector-pull-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--tree-icon-slot);
+}
+.source-ref-selector-pull > .source-ref-selector-pull-number {
+  flex: none;
+}
+.source-ref-selector-pull-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: var(--weight-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-ref-selector-pull-more {
+  flex: none;
+  color: var(--muted);
+}
 .source-ref-selector-name {
   flex: 1 1 auto;
   min-width: 0;

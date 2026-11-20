@@ -841,6 +841,38 @@ def generated_item(number: int) -> dict[str, Any]:
     )
 
 
+def head_item(
+    number: int,
+    head: str,
+    title: str,
+    *,
+    state: str = "open",
+    draft: bool = False,
+    merged: bool = False,
+    head_repository: str | None = "octo/demo",
+) -> dict[str, Any]:
+    """A pull request from branch *head* of *head_repository*, as the ref chooser lists it.
+
+    Its repository is the demo's own by default, so its branch is the repository's; a fork
+    names another, and a deleted fork none.
+    """
+
+    item = generated_item(number)
+    item["title"] = title
+    item["state"] = state
+    item["draft"] = draft
+    item["head"] = {
+        "ref": head,
+        "sha": "0" * 40,
+        "repo": {"full_name": head_repository} if head_repository is not None else None,
+    }
+    if state == "closed":
+        item["closed_at"] = item["updated_at"]
+    if merged:
+        item["merged_at"] = item["updated_at"]
+    return item
+
+
 def list_entries(origin: Origin) -> dict[str, Any]:
     """Every ``gh api`` path of the repository's lists and its answer."""
 
