@@ -67,7 +67,7 @@ from metabrowser.cache.records import (
     StoreLender,
     StoreOperation,
 )
-from metabrowser.cache.store_rename import LEGACY_REPOSITORY_STORES
+from metabrowser.cache.store_rename import LEGACY_REPOSITORY_STORES, LEGACY_SOURCE_CONTRACT_ID
 from metabrowser.home import ensure_home, ensure_private_directory, write_private_file_atomic
 
 FIXTURE_VERSION: Final = "0.11.0"
@@ -384,8 +384,8 @@ def legacy_slug(source: FixtureSource) -> str:
 def _rewrite_sources_as_f02(home: Path) -> None:
     """Name every source as ``f01`` and ``f02`` did: words joined by ``--`` and 12 digits.
 
-    The record says so too. It is written as the text it was, because the record of this
-    release no longer validates a slug spelled that way.
+    The record says so too, under the contract those releases wrote it with. It is written
+    as the text it was, because this release no longer validates a slug spelled that way.
     """
 
     sources = home / SOURCES
@@ -398,11 +398,14 @@ def _rewrite_sources_as_f02(home: Path) -> None:
         path = home / SOURCES / entry.name / "source.yml"
         text = path.read_text(encoding="utf-8")
         assert f"slug: {entry.name}\n" in text
-        write_private_file_atomic(
-            home,
-            f"{SOURCES}/{entry.name}/source.yml",
-            text.replace(f"slug: {entry.name}\n", f"slug: {old}\n", 1).encode(),
+        assert f"contract: {REPOSITORY_SOURCE_CONTRACT_ID}\n" in text
+        text = text.replace(f"slug: {entry.name}\n", f"slug: {old}\n", 1)
+        text = text.replace(
+            f"contract: {REPOSITORY_SOURCE_CONTRACT_ID}\n",
+            f"contract: {LEGACY_SOURCE_CONTRACT_ID}\n",
+            1,
         )
+        write_private_file_atomic(home, f"{SOURCES}/{entry.name}/source.yml", text.encode())
         entry.rename(sources / old)
 
 

@@ -147,19 +147,24 @@ does before it looks for a hit, so a store cached by an older release is still a
 and no clone is repeated.
 A home that is `f01` is renamed once, straight to its `f03` names, and the step from
 `f02` that follows finds nothing left to rename.
-Each entry is renamed where it stands, and a store is moved into `repos/` by the same
-atomic, no-replace rename that respells its key; the skeleton has made `repos/` already,
-so the parent is not renamed in one step.
+The two have different consumers.
+`f01` is released data, since v0.12.0 wrote it.
+`f02` was never released: it exists only in the homes of development builds, so the code
+that recognises its store keys is deleted before the release that carries `f03`
+(`mb-t7wx`). Each entry is renamed where it stands, and a store is moved into `repos/`
+by the same atomic, no-replace rename that respells its key; the skeleton has made
+`repos/` already, so the parent is not renamed in one step.
 Sources go first: `source.yml` records its slug and validates it against the identity,
-so its record is rewritten with the new slug in the old directory, and the directory is
-renamed after, which leaves an interrupted migration an entry under its old name to
-finish and never a directory whose record disagrees with its name.
-A rename was chosen over leaving the old names because a store can hold a repository of
-gigabytes and nothing in the cache deletes one: orphaned, every store would be cloned
-again and the old copies would stay, listed by nothing.
+and `f03` spells a slug in a way a `RepositorySource/v1` record cannot hold, so the
+record is a new contract, `/v2`. The migration reads the old record as the YAML it is
+and writes the `/v2` record with the new slug in the old directory, and then renames the
+directory, which leaves an interrupted migration an entry under its old name to finish
+and never a directory whose record disagrees with its name.
+Nothing else reads `/v1`. A rename was chosen over leaving the old names because a store
+can hold a repository of gigabytes and nothing in the cache deletes one: orphaned, every
+store would be cloned again and the old copies would stay, listed by nothing.
 The renames are planned first and applied by `apply_renames`, which takes paths relative
-to the home and moves each entry to the first target nothing holds, so a later step that
-moves other directories is another plan and not another mechanism.
+to the home and moves each entry to the first target nothing holds.
 The repository a store holds is read from the source whose alias names it, or whose
 identity derives it in either object format, so a store that an interrupted acquisition
 left unreferenced keeps its repository’s name, and the next acquisition of that source
@@ -167,12 +172,20 @@ reuses it. A store no source names keeps the words an `f02` name had, and an `f0
 which had none, takes the readable part `unattached`, so it is listed as unreferenced
 and kept, as it always was.
 A directory whose `store.yml` or `source.yml` does not record the identity its name
-spells was damaged already and is left as it is, and an entry the migration cannot read,
-such as a record with a second hard link or a file where a store belongs, is named in a
-warning and skipped, so that one entry cannot stop every open.
-A skipped or damaged store is moved into `repos/` under the name it had, with the other
-entries no route recognises, and the old parent is removed once it is empty; a source
-left under its old name stays in `sources/`, listed among its unrecognised entries.
+spells was damaged already and is left as it is.
+An entry whose record cannot be read, such as a record with a second hard link or a file
+where a store belongs, or that cannot be moved, because every name it may take is held
+or its directory refuses the rename, is named in a warning and skipped, so that one
+entry cannot stop every open.
+A directory of more than `MAX_MIGRATED_ENTRIES` entries is refused, as the routes refuse
+it (`mb-kire`). A skipped or damaged store is moved into `repos/` under the name it had,
+with the other entries no route recognises, and the old parent is removed once it is
+empty; a source left under its old name stays in `sources/`, listed among its
+unrecognised entries.
+A pull request’s file list is computed again the first time it is opened after the move,
+because a kept pull request manifest names its store by absolute path and no longer
+matches; `change-sizes/` and a source’s `pulls/` records hold no path and are kept
+(`mb-u0n3`).
 
 The migration is the first write to the home after an upgrade, so that first open needs
 a writable cache, and a home read before it answers `migration_pending`, which says that
@@ -183,17 +196,21 @@ repository it already holds.
 
 Migrating while a process of the older release runs is unsupported, and the changelog
 says to stop them first (the app restarts its own).
-Such a process refuses the migrated home as a newer format when it next opens the cache,
-and fails to read its mirrors until it is restarted, since the directories it reads have
-moved. One that has a clone in flight publishes its store under its old name after the
-migration, and its alias then names a store that no key holds.
-That is a miss and not damage: the next open fetches the repository again, publishes it
-under its key, and leaves the alias as it is, where `_find_published` used to refuse
-every open of it with “the aliased store is missing”.
-`/api/cache/sources` lists such a source `dangling` until then, and the directory under
-the old name stays, counted among the stores route’s unrecognized entries.
-Renaming it to the key its store would have been given, before that open, keeps the
-clone; clearing the cache removes it.
+The migration does refuse while one is fetching: it tries the `.fetch.lock` of each old
+store before it renames anything, and a held lock ends the open with a message that says
+to stop that `metab` and open again, the layout left as it was
+(`legacy_store_fetch_busy` in `cache/locks.py`). A process that is only running is not
+stopped by that. It refuses the migrated home as a newer format when it next opens the
+cache, and fails to read its mirrors until it is restarted, since the directories it
+reads have moved. One that starts a clone after the migration publishes its store in a
+recreated `repository-stores/`, under its old name, and its alias then names a store
+that no key holds. That is a miss and not damage: the next open fetches the repository
+again, publishes it under its key, and leaves the alias as it is, where
+`_find_published` used to refuse every open of it with “the aliased store is missing”.
+`/api/cache/sources` lists such a source `dangling` until then.
+The store left in `repository-stores/` is not read by this release, and no route lists
+it: delete it. The key its store would have been given is a base-36 fraction of a digest
+that cannot be worked out by hand, so there is no rename to offer.
 
 ## Identity
 
@@ -232,6 +249,12 @@ and a lookup or a listing checks it.
   and `tests/test_cache_store_keys.py` recomputes it.
   Two stores can take one first name only when they agree on that many bits of digest
   and on the readable part, and the sizing does not even count the readable part.
+  The target is under one chance in a billion at 10,000 entries, which is what the
+  routes list and the migration accepts and not a limit on how many a home holds, and a
+  collision costs a longer name and nothing else.
+  A `file://` source reads as `local-<last path segment>`, so every local clone of a
+  directory called `origin.git` shares its readable part; its suffix still tells it
+  apart.
 - **The suffix is the last token, whatever the words before it look like.** A repository
   named like a suffix, `abcdefghijk`, gives `github-com-jlevy-abcdefghijk-<suffix>`, and
   the suffix is what follows the last dash.
@@ -265,9 +288,9 @@ name is a slug only of the source whose identity it ends in.
 one of its identity’s, so the record, its packaged schema, and the directory move
 together.
 A source is claimed under the source-alias lock (`cache_slug`), takes the first
-slug no other source holds, and is never renamed once published.
-The same sizing holds as for stores, since the cache routes list at most the same number
-of sources, and the same widths: 11, 19, 25, then 50 characters.
+slug no other source holds, and is not renamed once published, except by a layout
+migration. The same sizing holds as for stores, since the cache routes list at most the
+same number of sources, and the same widths: 11, 19, 25, then 50 characters.
 
 ## Records
 
@@ -291,11 +314,16 @@ conformance corpus, and deterministic round trip; the distribution check runs th
 inventory against isolated wheel and source installs.
 `config.yml` is user-owned and validated permissively, so it is not in the table;
 `check_packaged_schemas` compiles it with the others.
+`RepositorySource/v1` is what `f01` and `f02` wrote, with a slug spelled by `--` and
+hexadecimal digits.
+`f03` spells it differently, which a `/v1` reader would refuse, so it
+is `/v2` with its own schema file, and no `/v1` schema or reader is kept: the layout
+migration reads the old record as plain YAML and rewrites it.
 
 | Contract ID | Artifact profile | Envelope | Producers | Consumers | Corpus |
 | --- | --- | --- | --- | --- | --- |
 | `metabrowser.cache:CacheLayout/v1` | `pure-yaml` | `layout` | `repository-cache` | `repository-cache` | `cache-records-conformance[layout]` |
-| `metabrowser.cache:RepositorySource/v1` | `pure-yaml` | `source` | `repository-cache` | `repository-cache` | `cache-records-conformance[source,scp_source]` |
+| `metabrowser.cache:RepositorySource/v2` | `pure-yaml` | `source` | `repository-cache` | `repository-cache` | `cache-records-conformance[source,scp_source]` |
 | `metabrowser.cache:RepositorySourceState/v1` | `pure-yaml` | `state` | `repository-cache` | `repository-cache` | `cache-records-conformance[source_state]` |
 | `metabrowser.cache:RepositoryStore/v1` | `pure-yaml` | `store` | `repository-cache` | `repository-cache` | `cache-records-conformance[store]` |
 | `metabrowser.cache:RepositoryStoreAlias/v1` | `pure-yaml` | `alias` | `repository-cache` | `repository-cache` | `cache-records-conformance[store_alias]` |
@@ -455,7 +483,7 @@ holding the lock every writer of that path takes, using the platform’s no-repl
 only visibility commit; acquisition holds the alias lock and then the store lock from
 the store’s rename through the alias write, which `tests/test_cache_publish.py` checks.
 
-Nothing deletes or moves a published store or source.
+Nothing deletes or moves a published store or source, except a layout migration.
 A store that no alias names, which a crash between the two renames leaves, stays until
 the next acquisition of its source reuses it (`cli-cache-orphan-kept.txt`). The only
 deletion is the startup sweep in `cache/reclaim.py`: under the home lock it lists the
@@ -470,9 +498,9 @@ The GitHub plugin removes its own records on request
 `/api/cache/layout`, `/api/cache/sources`, `/api/cache/source/<slug>`, and
 `/api/cache/stores` make the cache inspectable through `metab --api`, so it needs no
 inspection command of its own.
-A store row carries its `key`, the directory name below `repository-stores`, which is
-also what a page continues after, and the `id` its `store.yml` records, which is `null`
-when that record cannot be read.
+A store row carries its `key`, the directory name below `repos`, which is also what a
+page continues after, and the `id` its `store.yml` records, which is `null` when that
+record cannot be read.
 `cache/projection.py` builds them:
 
 - each request resolves the roots and never creates them; a missing root is `absent`;

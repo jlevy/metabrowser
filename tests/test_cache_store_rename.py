@@ -11,6 +11,7 @@ is judged against the shapes the writers of those releases left.
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import logging
 import os
 import shutil
@@ -26,8 +27,6 @@ from metabrowser.cache import projection
 from metabrowser.cache.acquire import acquire_source, cached_source
 from metabrowser.cache.atomic import read_record, write_record_atomic
 from metabrowser.cache.identity import (
-    SlugCollisionError,
-    StoreKeyCollisionError,
     is_slug,
     is_store_key,
     name_suffixes,
@@ -35,13 +34,15 @@ from metabrowser.cache.identity import (
     store_key_candidates,
     store_key_matches_identity,
 )
-from metabrowser.cache.layout import migrate_layout, open_cache, read_layout
+from metabrowser.cache.layout import LayoutError, migrate_layout, open_cache, read_layout
+from metabrowser.cache.lender import read_alternates
 from metabrowser.cache.paths import (
     REPOSITORY_STORES,
     SOURCES,
     source_directory,
     source_record,
     store_directory,
+    store_git_directory,
 )
 from metabrowser.cache.records import (
     REPOSITORY_SOURCE_CONTRACT_ID,
@@ -55,6 +56,7 @@ from metabrowser.cache.store_rename import (
     F02_KEY_SUFFIX_HEX_DIGITS,
     F02_SLUG_SUFFIX_HEX_DIGITS,
     LEGACY_REPOSITORY_STORES,
+    LEGACY_SOURCE_CONTRACT_ID,
     MAX_MIGRATED_ENTRIES,
     UNATTACHED_READABLE,
     NoFreeTargetError,
@@ -74,8 +76,12 @@ from tests.cache_home_fixture import (
     FLASK_HTTPS,
     FLASK_SSH,
     FLASK_STORE,
+    ITSDANGEROUS,
+    JINJA,
+    MARKUPSAFE,
     ORPHAN_STORE,
     FixtureSource,
+    build_overlay_home,
     build_populated_home,
     legacy_slug,
     rewrite_as_f01,
@@ -475,6 +481,150 @@ def test_a_source_whose_record_does_not_name_its_directory_is_left_alone(
 
 
 @posix_only
+def test_a_source_directory_with_no_record_is_named_and_left(
+    tmp_path: Path, old_format: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    home, _old = _old_home(tmp_path, old_format)
+    (home / SOURCES / legacy_slug(CLICK) / "source.yml").unlink()
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.cache.store_rename"):
+        open_cache(home, version="0.13.0")
+
+    assert legacy_slug(CLICK) in _source_names(home)
+    assert f"with no record: {legacy_slug(CLICK)}" in caplog.text
+    assert FLASK_HTTPS.slug in _source_names(home)
+
+
+@posix_only
+def test_a_source_record_of_another_contract_is_not_read_as_an_old_one(
+    tmp_path: Path, old_format: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    home, _old = _old_home(tmp_path, old_format)
+    path = home / SOURCES / legacy_slug(CLICK) / "source.yml"
+    path.write_text(
+        path.read_text().replace(LEGACY_SOURCE_CONTRACT_ID, "metabrowser.cache:RepositorySource/v9")
+    )
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.cache.store_rename"):
+        open_cache(home, version="0.13.0")
+
+    assert legacy_slug(CLICK) in _source_names(home)
+    assert f"could not read: {legacy_slug(CLICK)}" in caplog.text
+
+
+@posix_only
+def test_the_records_the_migration_writes_name_the_current_contract(
+    tmp_path: Path, old_format: str
+) -> None:
+    home, _old = _old_home(tmp_path, old_format)
+    old = (home / SOURCES / legacy_slug(FLASK_HTTPS) / "source.yml").read_text()
+    assert f"contract: {LEGACY_SOURCE_CONTRACT_ID}\n" in old
+
+    open_cache(home, version="0.13.0")
+
+    new = (home / source_record(FLASK_HTTPS.slug, "source.yml")).read_text()
+    assert f"contract: {REPOSITORY_SOURCE_CONTRACT_ID}\n" in new
+    assert LEGACY_SOURCE_CONTRACT_ID not in new
+    assert REPOSITORY_SOURCE_CONTRACT_ID.endswith("/v2")
+
+
+@posix_only
+def test_a_migration_waits_while_an_earlier_release_fetches_into_a_store(
+    tmp_path: Path, old_format: str
+) -> None:
+    """An older process holds absolute paths into the directory that is about to move."""
+
+    home, old = _old_home(tmp_path, old_format)
+    name = old[FLASK_STORE.key]
+    fetching = os.open(home / "locks/stores" / f"{name}.fetch.lock", os.O_RDWR)
+    fcntl.flock(fetching, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        with pytest.raises(LayoutError, match="earlier release of Metabrowser is fetching"):
+            migrate_layout(home, version="0.13.0")
+        # Nothing moved, and the layout still names the old format, so the next open retries.
+        layout = read_layout(home)
+        assert layout is not None and layout.format == old_format
+        assert _old_names(home) == set(old.values())
+        assert _source_names(home) == {legacy_slug(source) for source in SOURCES_OF_THE_HOME}
+    finally:
+        os.close(fetching)
+
+    outcome = migrate_layout(home, version="0.13.0")
+
+    assert outcome.layout.format == "f03"
+    assert _names(home) == {FLASK_STORE.key, ORPHAN_STORE.key}
+
+
+@posix_only
+def test_an_old_lock_file_nobody_holds_does_not_stop_the_migration(
+    tmp_path: Path, old_format: str
+) -> None:
+    home, _old = _old_home(tmp_path, old_format)
+
+    outcome = migrate_layout(home, version="0.13.0")
+
+    assert outcome.layout.format == "f03"
+
+
+@posix_only
+def test_a_store_that_never_fetched_has_no_lock_file_made_for_it(
+    tmp_path: Path, old_format: str
+) -> None:
+    home, old = _old_home(tmp_path, old_format)
+    name = old[ORPHAN_STORE.key]
+    (home / "locks/stores" / f"{name}.fetch.lock").unlink()
+
+    migrate_layout(home, version="0.13.0")
+
+    assert not (home / "locks/stores" / f"{name}.fetch.lock").exists()
+
+
+@posix_only
+def test_an_overlay_store_keeps_its_borrowed_objects_through_the_move(
+    tmp_path: Path, old_format: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A store that borrows from a checkout still borrows from it, in the same directory."""
+
+    home = tmp_path / "home"
+    build_overlay_home(home, tmp_path / "checkouts")
+    stores = [JINJA.store(), MARKUPSAFE.store(), ITSDANGEROUS.store()]
+    before = {
+        store: (
+            (home / store_git_directory(store.key)).stat().st_ino,
+            read_alternates(home / store_git_directory(store.key)),
+            (home / store_directory(store.key) / "store.yml").read_bytes(),
+        )
+        for store in stores
+    }
+    assert all(alternates for _inode, alternates, _record in before.values())
+    if old_format == "f01":
+        rewrite_as_f01(home)
+    else:
+        rewrite_as_f02(home, stores)
+
+    open_cache(home, version="0.13.0")
+
+    for store in stores:
+        inode, alternates, record = before[store]
+        git_dir = home / store_git_directory(store.key)
+        assert git_dir.stat().st_ino == inode
+        assert read_alternates(git_dir) == alternates
+        assert (home / store_directory(store.key) / "store.yml").read_bytes() == record
+    # The borrowed objects are where the record says, outside the cache, and are not touched.
+    borrowed = read_alternates(home / store_git_directory(JINJA.store().key))
+    assert borrowed is not None and Path(borrowed).is_dir()
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
+    status, body = projection.stores_response(limit=10, after=None)
+    assert status == 200 and "stores" in body
+    rows = {row["key"]: row for row in body["stores"]}
+    assert rows[JINJA.store().key]["mode"] == "overlay"
+    assert rows[JINJA.store().key]["lender"] == "present"
+    assert rows[MARKUPSAFE.store().key]["lender"] == "lender_missing"
+    assert {row["publication"] for row in rows.values()} <= {"published", "damaged"}
+    assert not (home / LEGACY_REPOSITORY_STORES).exists()
+
+
+@posix_only
 def test_a_name_another_store_holds_is_skipped_and_never_shared(
     tmp_path: Path, old_format: str
 ) -> None:
@@ -513,22 +663,25 @@ def test_a_name_another_source_holds_is_skipped_and_never_shared(
 
 
 @posix_only
-def test_a_source_holding_every_name_of_another_is_a_typed_collision(
-    tmp_path: Path, old_format: str
+def test_a_source_every_name_of_which_another_holds_is_left_and_the_rest_migrate(
+    tmp_path: Path, old_format: str, caplog: pytest.LogCaptureFixture
 ) -> None:
     home, _old = _old_home(tmp_path, old_format)
     for slug in slug_candidates("https", FLASK_HTTPS.address, FLASK_HTTPS.id):
         (home / SOURCES / slug).mkdir()
 
-    with pytest.raises(SlugCollisionError):
-        migrate_layout(home, version="0.13.0")
+    with caplog.at_level(logging.WARNING, logger="metabrowser.cache.store_rename"):
+        outcome = migrate_layout(home, version="0.13.0")
 
+    assert outcome.layout.format == "f03"
     assert (home / SOURCES / legacy_slug(FLASK_HTTPS)).is_dir()
+    assert f"every slug of which another source holds: {legacy_slug(FLASK_HTTPS)}" in caplog.text
+    assert {FLASK_SSH.slug, CLICK.slug} <= _source_names(home)
 
 
 @posix_only
-def test_a_store_holding_every_name_of_another_is_a_typed_collision(
-    tmp_path: Path, old_format: str
+def test_a_store_every_key_of_which_another_holds_is_left_and_the_rest_migrate(
+    tmp_path: Path, old_format: str, caplog: pytest.LogCaptureFixture
 ) -> None:
     home = tmp_path / "home"
     build_populated_home(home)
@@ -538,10 +691,43 @@ def test_a_store_holding_every_name_of_another_is_a_typed_collision(
     for key in candidates:
         occupy(home, key, store_id="sha256:" + "f" * 64)
 
-    with pytest.raises(StoreKeyCollisionError):
+    with caplog.at_level(logging.WARNING, logger="metabrowser.cache.store_rename"):
         rename_legacy_names(home)
 
+    # flask's store stays where it was, so that it is not lost, and the other moves.
     assert (home / LEGACY_REPOSITORY_STORES / old[FLASK_STORE.key]).is_dir()
+    assert ORPHAN_STORE.key in _names(home)
+    assert f"every key of which another store holds: {old[FLASK_STORE.key]}" in caplog.text
+
+
+@posix_only
+def test_an_entry_the_filesystem_refuses_to_move_is_left_and_the_rest_migrate(
+    tmp_path: Path,
+    old_format: str,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from metabrowser.cache import store_rename
+    from metabrowser.home import rename_without_replacing as real
+
+    home, old = _old_home(tmp_path, old_format)
+    refused = old[FLASK_STORE.key]
+
+    def rename(source: Path, target: Path) -> bool:
+        if source.name == refused:
+            raise PermissionError(13, "Permission denied")
+        return real(source, target)
+
+    monkeypatch.setattr(store_rename, "rename_without_replacing", rename)
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.cache.store_rename"):
+        outcome = migrate_layout(home, version="0.13.0")
+
+    assert outcome.layout.format == "f03"
+    assert (home / LEGACY_REPOSITORY_STORES / refused).is_dir()
+    assert ORPHAN_STORE.key in _names(home)
+    assert f"could not move: {refused}" in caplog.text
+    assert str(home) not in caplog.text
 
 
 @posix_only

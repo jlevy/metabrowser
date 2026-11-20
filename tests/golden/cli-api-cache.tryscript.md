@@ -468,7 +468,7 @@ status: 200
         {
           "record": "source.yml",
           "code": "invalid",
-          "message": "the record does not satisfy metabrowser.cache:RepositorySource/v1: record: Value error, source id does not match its transport and clone URL"
+          "message": "the record does not satisfy metabrowser.cache:RepositorySource/v2: record: Value error, source id does not match its transport and clone URL"
         }
       ]
     },

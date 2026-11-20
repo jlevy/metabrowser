@@ -42,7 +42,11 @@ from metabrowser.open_in import OpenInChoice
 
 CONFIG_CONTRACT_ID: Final = "metabrowser.config:ApplicationConfig/v1"
 CACHE_LAYOUT_CONTRACT_ID: Final = "metabrowser.cache:CacheLayout/v1"
-REPOSITORY_SOURCE_CONTRACT_ID: Final = "metabrowser.cache:RepositorySource/v1"
+# `v1` is what `f01` and `f02` wrote: a slug of words joined by `--` and hexadecimal digits.
+# `f03` spells it with single dashes and a base-36 suffix, which a `v1` reader would
+# reject, so it is a new contract and the migration rewrites each record
+# (``store_rename.LEGACY_SOURCE_CONTRACT_ID``). No `v1` reader is kept.
+REPOSITORY_SOURCE_CONTRACT_ID: Final = "metabrowser.cache:RepositorySource/v2"
 REPOSITORY_SOURCE_STATE_CONTRACT_ID: Final = "metabrowser.cache:RepositorySourceState/v1"
 REPOSITORY_STORE_ALIAS_CONTRACT_ID: Final = "metabrowser.cache:RepositoryStoreAlias/v1"
 REPOSITORY_STORE_CONTRACT_ID: Final = "metabrowser.cache:RepositoryStore/v1"

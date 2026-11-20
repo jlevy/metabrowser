@@ -582,7 +582,7 @@ Cache clearing and cache-layout changes preserve configuration.
 The `f01` marker and SoftSchema contract versions solve different problems:
 
 - `f01` names application-home directory semantics and migration order.
-- A contract such as `metabrowser.cache:RepositorySource/v1` names one YAML payload
+- A contract such as `metabrowser.cache:RepositorySource/v2` names one YAML payload
   shape.
 - A provider-record change does not force an application-home migration when the old
   provider cache can be retained, converted under a released-data obligation, or
@@ -751,8 +751,12 @@ The cache key is a SHA-256 digest of a credential-free source identity.
 The directory combines a readable slug with a short digest:
 
 ```text
-github-com--pallets--flask--e7b7fe0ffe8a
+github-com-pallets-flask-wl2qiw4376x
 ```
+
+(`f01` and `f02` spelled it `github-com--pallets--flask--e7b7fe0ffe8a`; `f03` joins the
+words with single dashes and writes the digest in base 36. See
+[Slugs](../../architecture/arch-repository-cache.md#slugs).)
 
 The full digest in `source.yml` is authoritative.
 If a path already contains a different digest, derivation extends the suffix
@@ -795,12 +799,12 @@ open or refresh:
 
 ```yaml
 softschema:
-  contract: metabrowser.cache:RepositorySource/v1
+  contract: metabrowser.cache:RepositorySource/v2
   envelope: source
   status: enforced
 source:
   id: sha256:<full-source-identity-digest>
-  slug: github-com--pallets--flask--7d5c1a2e4b90
+  slug: github-com-pallets-flask-wl2qiw4376x
   display_url: https://github.com/pallets/flask
   clone_url: https://github.com/pallets/flask
   transport: https

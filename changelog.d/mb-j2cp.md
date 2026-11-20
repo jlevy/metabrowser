@@ -27,20 +27,24 @@
   first `metab` that opens a repository in an older cache renames each source and mirror
   where it stands and moves each mirror into `repos/`, so nothing is cloned again, and
   removes `repository-stores/` once it is empty.
-  A mirror no source names keeps the words its old name had, or, when it had none, is
-  kept as `unattached-<11 characters>`, and an entry the rename cannot read is named in
-  a warning and left as it is: a source under its old name in `sources/`, and any other
-  entry under its old name in `repos/`. That first open writes to the cache, so the
-  cache must be writable once; a read-only copy is not migrated.
+  A source’s `source.yml` is rewritten as `RepositorySource/v2`, the contract that holds
+  the new slug. A mirror no source names keeps the words its old name had, or, when it
+  had none, is kept as `unattached-<11 characters>`, and an entry the rename cannot read
+  or move is named in a warning and left as it is: a source under its old name in
+  `sources/`, and any other entry under its old name in `repos/`. A pull request’s list
+  of changed files is worked out again the first time the pull request is opened
+  afterwards, since the saved list names its mirror by path.
+  That first open writes to the cache, so the cache must be writable once; a read-only
+  copy is not migrated.
   Until then `/api/cache/*` answers `migration_pending`, and the macOS app, which reads
   that route to know whether a repository is cached, asks its clone question once for a
   repository it already holds; opening the repository migrates the cache.
   A `metab` of an earlier release refuses a migrated cache and asks for an upgrade.
   Stop running `metab` servers before the first new `metab` opens a repository (the
   macOS app restarts its own).
+  The upgrade refuses, and changes nothing, while a `metab` of an earlier release is
+  fetching into a mirror: stop it and open the repository again.
   A server of an earlier release that is still running fails to read its mirrors until
-  it is restarted, and a clone it has in flight during the upgrade is published under
-  the old name in `repository-stores/`, so that repository’s alias names a mirror no
-  name holds. The next open of that repository clones it again and publishes it under its
-  name, and the directory under the old name stays: move it to `repos/` under its name
-  first to keep that clone, or clear the cache.
+  it is restarted, and a clone it starts afterwards is published in a new
+  `repository-stores/` that this release does not read and no command lists.
+  The next open of that repository clones it again; delete that directory.

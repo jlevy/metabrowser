@@ -51,7 +51,11 @@ from metabrowser.cache.records import (
     ApplicationConfig,
     CacheLayout,
 )
-from metabrowser.cache.store_rename import LEGACY_REPOSITORY_STORES, rename_legacy_names
+from metabrowser.cache.store_rename import (
+    LEGACY_REPOSITORY_STORES,
+    OlderReleaseBusyError,
+    rename_legacy_names,
+)
 from metabrowser.home import (
     SharedEntryPolicy,
     application_cache,
@@ -412,7 +416,11 @@ def migrate_layout(
             migration = migrations.get(source)
             if migration is None:
                 raise RuntimeError(f"no migration from layout format {source} to {target}")
-            migration(home)
+            try:
+                migration(home)
+            except OlderReleaseBusyError as error:
+                # Nothing was renamed and the layout is as it was, so the next open retries.
+                raise LayoutError(str(error), home / "locks/stores") from error
             layout = CacheLayout(format=target, created_by=layout.created_by)
             write_record_atomic(home, LAYOUT_RECORD, layout, CACHE_LAYOUT_CONTRACT_ID)
             migrated.append(target)

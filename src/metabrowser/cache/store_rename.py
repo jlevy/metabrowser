@@ -23,10 +23,14 @@ in one step and fetches nothing. A home that is ``f01`` is renamed once, straigh
 spellings are kept here only to recognise them, never to write them again.
 
 Sources go first, so that the stores can name the repository they hold. A source's
-``source.yml`` records its slug and is validated against its identity, so the record is
-rewritten with the new slug in the old directory, and the directory is renamed after:
-a migration interrupted between the two leaves an entry under its old name that the next
-run finishes, and never a directory whose record disagrees with its name.
+``source.yml`` records its slug and is validated against its identity, and ``f03`` spells
+that slug in a way a ``RepositorySource/v1`` record of ``f01`` or ``f02`` cannot hold, so
+it is a new contract, ``/v2``. The migration reads the old record as the YAML mapping it is
+(:data:`LEGACY_SOURCE_CONTRACT_ID` is the only place the old contract is named, and nothing
+else reads it), writes the ``/v2`` record with the new slug in the old directory, and then
+renames the directory: a migration interrupted between the two leaves an entry under its
+old name that the next run finishes, and never a directory whose record disagrees with its
+name.
 
 The repository a store holds is read from the source whose alias names it, or, for a
 store no alias names, whose identity derives it (an acquisition interrupted between its
@@ -36,8 +40,18 @@ store. A store no source names keeps the readable part its ``f02`` name had, and
 ``f01`` one, which had none, takes :data:`UNATTACHED_READABLE`: it is listed as
 unreferenced, which says what it is, and is kept, as such a store always was. A directory
 whose ``store.yml`` or ``source.yml`` does not record the identity its name spells is
-damaged already and is left as it is, and an entry the migration cannot read is skipped
-and named in a warning, so one cannot stop the rest.
+damaged already and is left as it is. An entry whose record cannot be read, or that cannot
+be moved (a name every width of which another entry holds, a parent that refuses the
+rename), is skipped and named in a warning, so one cannot stop the rest. Past
+:data:`MAX_MIGRATED_ENTRIES` entries in one directory the migration refuses, as the cache
+routes do (mb-kire).
+
+An older release that is fetching into a store holds absolute paths into the directory the
+migration is about to move, which its Git would fail to finalize, so the migration first
+tries each old store's ``.fetch.lock`` and refuses, with the layout left as it was, while
+one is held (:class:`OlderReleaseBusyError`). An older process that is merely running is
+not stopped by this, and reads nothing once the stores have moved; the changelog says to
+stop such processes first.
 
 ``f03`` also moves the stores' parent from ``repository-stores`` to ``repos``. ``open_cache``
 makes the skeleton before it migrates, so ``repos/`` exists and is empty, which rules out
@@ -46,8 +60,7 @@ no-replace rename that respells its key. An entry the migration skips is moved t
 its old name, which leaves it with the other entries no route recognises, and the old
 parent is removed once it is empty. The renames are planned and then applied by
 :func:`apply_renames`, which takes paths relative to the home and moves each entry to the
-first target nothing holds, so a later step that moves other directories is another plan
-and not another mechanism.
+first target nothing holds.
 
 Lock files named for a renamed entry are left where they are: an older process may still
 hold one, and an empty file costs nothing.
@@ -55,8 +68,13 @@ hold one, and an empty file costs nothing.
 The caller holds the application-home lock, and each rename is atomic and refuses to
 replace, so an interrupted migration is resumed by running it again: the entries it
 renamed are not legacy names any more. Nothing is read or written outside the home.
-This runs once for a home written by a release that spelled names as ``f01`` or ``f02``
-does, which is the released data it exists for.
+
+The consumers are two. ``f01`` is released data: v0.12.0 wrote it, so its whole-digest store
+names, its ``repository-stores`` directory and its ``--`` slugs and ``RepositorySource/v1``
+records are read here for as long as such a home can exist. ``f02`` was never released: it
+exists only in the homes of development builds between #647 and this layout, and the
+store-key spelling it added (``f02_key_parts`` and the words it kept) is deleted before the
+release that carries ``f03`` (mb-t7wx).
 """
 
 from __future__ import annotations
@@ -84,8 +102,6 @@ from metabrowser.cache.identity import (
     TRANSPORTS,
     GitTransport,
     ObjectFormat,
-    SlugCollisionError,
-    StoreKeyCollisionError,
     identity_digest,
     is_identity,
     is_slug,
@@ -96,6 +112,7 @@ from metabrowser.cache.identity import (
     store_key_candidates_for,
 )
 from metabrowser.cache.listing import list_private_directory
+from metabrowser.cache.locks import legacy_store_fetch_busy
 from metabrowser.cache.paths import REPOSITORY_STORES, SOURCES, source_record
 from metabrowser.cache.records import (
     REPOSITORY_SOURCE_CONTRACT_ID,
@@ -116,6 +133,9 @@ log = logging.getLogger(__name__)
 # What ``f01`` and ``f02`` called the directory of the stores, which ``f03`` calls
 # :data:`~metabrowser.cache.paths.REPOSITORY_STORES`.
 LEGACY_REPOSITORY_STORES: Final = "repository-stores"
+# The contract of the ``source.yml`` that ``f01`` and ``f02`` wrote, whose slug was words
+# joined by ``--`` and hexadecimal digits. It is read here and nowhere else.
+LEGACY_SOURCE_CONTRACT_ID: Final = "metabrowser.cache:RepositorySource/v1"
 # The readable part of the key of a store no source names and whose old name said nothing:
 # nothing says which repository it holds, so the key says only that nothing is attached.
 UNATTACHED_READABLE: Final = "unattached"
@@ -158,6 +178,10 @@ class Rename:
 
 class NoFreeTargetError(FileExistsError):
     """Something already holds every target of a rename."""
+
+
+class OlderReleaseBusyError(Exception):
+    """A process of an earlier release holds the fetch lock of a store about to move."""
 
 
 def apply_renames(home: Path, renames: Sequence[Rename]) -> list[str]:
@@ -266,24 +290,31 @@ def _legacy_source_values(home: Path, name: str) -> dict[str, Any] | None:
 
     Under ``f03`` a record whose slug is spelled as ``f02`` spells it no longer validates,
     so an old record is read as the YAML mapping it is and checked by hand
-    (:func:`_source_target`). ``None`` when there is none, or it cannot be read, which is
-    named.
+    (:func:`_source_slugs`). Its header must name the old contract, or the current one, which
+    an interrupted migration leaves. ``None`` when there is none or it cannot be read, which
+    is named.
     """
 
     try:
         payload = read_bytes_bounded(home, f"{SOURCES}/{name}/source.yml", shared="keep")
     except FileNotFoundError:
+        log.warning("Left a cache source with no record: %s", name)
         return None
     except (OSError, PrivateStorageError, RecordError, ValueError):
         _skipped(name)
         return None
     try:
-        document = parse_yaml_text(payload.decode("utf-8").removeprefix("﻿"))
+        document = parse_yaml_text(payload.decode("utf-8").removeprefix("\ufeff"))
     except (UnicodeDecodeError, ValueError):
         _skipped(name)
         return None
     values = document.get("source") if isinstance(document, dict) else None
-    if not isinstance(values, dict):
+    header = document.get("softschema") if isinstance(document, dict) else None
+    contract = header.get("contract") if isinstance(header, dict) else None
+    if not isinstance(values, dict) or contract not in (
+        LEGACY_SOURCE_CONTRACT_ID,
+        REPOSITORY_SOURCE_CONTRACT_ID,
+    ):
         _skipped(name)
         return None
     return values
@@ -344,16 +375,21 @@ def _rename_legacy_sources(home: Path) -> int:
         ordered = (recorded, *candidates) if recorded in candidates else candidates
         free = next((slug for slug in ordered if not os.path.lexists(home / SOURCES / slug)), None)
         if free is None:
-            raise SlugCollisionError("every slug suffix width is claimed by a different source")
+            log.warning("Left a cache source every slug of which another source holds: %s", name)
+            continue
         try:
             record = RepositorySource.model_validate({**values, "slug": free})
         except ValidationError:
             _skipped(name)
             continue
-        write_record_atomic(
-            home, f"{SOURCES}/{name}/source.yml", record, REPOSITORY_SOURCE_CONTRACT_ID
-        )
-        apply_renames(home, [Rename(f"{SOURCES}/{name}", (f"{SOURCES}/{free}",))])
+        try:
+            write_record_atomic(
+                home, f"{SOURCES}/{name}/source.yml", record, REPOSITORY_SOURCE_CONTRACT_ID
+            )
+            apply_renames(home, [Rename(f"{SOURCES}/{name}", (f"{SOURCES}/{free}",))])
+        except (OSError, PrivateStorageError):
+            log.warning("Left a cache source the migration could not move: %s", name)
+            continue
         renamed += 1
     return renamed
 
@@ -469,15 +505,10 @@ def _move_stores(home: Path) -> int:
     """Move every store into ``repos``; return how many; remove the old parent if empty."""
 
     plan = plan_store_renames(home)
-    try:
-        if plan:
-            # `open_cache` has made `repos/` already; a migration run alone has not.
-            ensure_private_directory(home, REPOSITORY_STORES)
-        taken = _apply_store_renames(home, plan)
-    except NoFreeTargetError as error:
-        raise StoreKeyCollisionError(
-            "every store key suffix width is claimed by a different store"
-        ) from error
+    if plan:
+        # `open_cache` has made `repos/` already; a migration run alone has not.
+        ensure_private_directory(home, REPOSITORY_STORES)
+    taken = _apply_store_renames(home, plan)
     try:
         os.rmdir(home / LEGACY_REPOSITORY_STORES)
     except FileNotFoundError:
@@ -490,33 +521,68 @@ def _move_stores(home: Path) -> int:
 
 
 def _apply_store_renames(home: Path, plan: list[Rename]) -> list[str]:
-    """Apply *plan*, but let an entry that cannot take its old name stay where it is.
+    """Apply *plan*, leaving in the old directory any entry that cannot be moved.
 
-    A store must take a key, and finding none free is an error. An entry moved under its old
-    name is not worth refusing the open for, so one that something already holds in ``repos``
-    is left in the old directory, named in a warning, and keeps it from being removed.
+    An entry that cannot move is not worth refusing every open for: a store whose every key
+    another store holds, an entry whose old name something in ``repos`` already holds, or a
+    directory that refuses the rename is named in a warning and left where it is, and keeps
+    the old directory from being removed.
     """
 
     taken: list[str] = []
     for rename in plan:
+        name = rename.source.rpartition("/")[2]
         if len(rename.targets) == 1 and os.path.lexists(home / rename.targets[0]):
-            log.warning(
-                "Left a cache entry whose name another entry holds: %s",
-                rename.source.rpartition("/")[2],
-            )
+            log.warning("Left a cache entry whose name another entry holds: %s", name)
             continue
-        taken.extend(apply_renames(home, [rename]))
+        try:
+            taken.extend(apply_renames(home, [rename]))
+        except NoFreeTargetError:
+            log.warning("Left a cache store every key of which another store holds: %s", name)
+        except OSError:
+            log.warning("Left a cache entry the migration could not move: %s", name)
     return taken
+
+
+def _refuse_while_an_older_release_fetches(home: Path) -> None:
+    """Raise :class:`OlderReleaseBusyError` if a process holds an old store's fetch lock.
+
+    A store named as ``f01`` or ``f02`` named it took its fetch lock under that name, which
+    an older process holds across its network work. The lock is only tried, never kept, and
+    a lock file that is missing means no fetch, so none is created.
+    """
+
+    try:
+        names = list_private_directory(
+            home, LEGACY_REPOSITORY_STORES, max_entries=MAX_MIGRATED_ENTRIES, shared="keep"
+        )
+    except FileNotFoundError:
+        return
+    for name in names:
+        if not (is_legacy_store_key(name) or is_f02_store_key(name)):
+            continue
+        try:
+            busy = legacy_store_fetch_busy(home, name)
+        except (OSError, PrivateStorageError):
+            log.warning("Could not tell whether an earlier release is fetching into: %s", name)
+            continue
+        if busy:
+            raise OlderReleaseBusyError(
+                "An earlier release of Metabrowser is fetching into this cache, so it cannot be "
+                "upgraded yet. Stop that metab or wait for it to finish, then open the "
+                "repository again."
+            )
 
 
 def rename_legacy_names(home: Path) -> None:
     """Give every source and store of *home* its ``f03`` name, and move the stores to ``repos``.
 
-    Raises :class:`~metabrowser.cache.identity.SlugCollisionError` or
-    :class:`~metabrowser.cache.identity.StoreKeyCollisionError` if every name an entry may
-    have is held by another, which only an entry's own digest can fill.
+    Raises :class:`OlderReleaseBusyError`, before anything is renamed, while an earlier
+    release is fetching into a store. An entry that cannot be renamed or moved is left as it
+    is and named in a warning.
     """
 
+    _refuse_while_an_older_release_fetches(home)
     sources = _rename_legacy_sources(home)
     stores = _move_stores(home)
     if sources or stores:
@@ -531,7 +597,9 @@ __all__ = [
     "LEGACY_REPOSITORY_STORES",
     "MAX_MIGRATED_ENTRIES",
     "UNATTACHED_READABLE",
+    "LEGACY_SOURCE_CONTRACT_ID",
     "NoFreeTargetError",
+    "OlderReleaseBusyError",
     "Rename",
     "apply_renames",
     "f02_key_parts",

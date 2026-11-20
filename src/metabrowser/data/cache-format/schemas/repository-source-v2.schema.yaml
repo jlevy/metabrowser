@@ -47,5 +47,5 @@ required:
 title: RepositorySource
 type: object
 x-softschema:
-  contract: metabrowser.cache:RepositorySource/v1
-  schema_sha256: 2b9d55613f37a629892026266a08db2d6a413fbbfefa1edbeb7e4231ab32ddfa
+  contract: metabrowser.cache:RepositorySource/v2
+  schema_sha256: ba07839909809ca839f6e994c659bd0601eca4d77d89b8ce4ea797d32f8080bf

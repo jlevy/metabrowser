@@ -27,8 +27,6 @@ from collections.abc import Callable
 from typing import Final, Literal
 from urllib.parse import unquote_to_bytes
 
-from strif import base36_encode
-
 from metabrowser.git.process import OBJECT_FORMATS, ObjectFormat
 
 type GitTransport = Literal["https", "ssh", "file"]
@@ -70,15 +68,24 @@ NAME_SEPARATOR: Final = "-"
 #   11 chars (56.9 bits): n = 10^4 -> 3.8e-10, n = 10^5 -> 3.8e-8
 #   10 chars (51.7 bits): n = 10^4 -> 1.4e-8,  n = 10^5 -> 1.4e-6
 #
-# The target is under 1e-9 at 10^4 entries with the readable part ignored: the cache routes
-# list at most MAX_DIRECTORY_ENTRIES = 10,000 sources or stores and refuse a home past it,
-# so that is the most a home can hold and still be read, and 11 characters are the shortest that meet
-# it. (The first sizing, under 1e-9 at 10^5, took 64 bits, which is 13 characters, and
-# left a key longer than a person reading it wants.) With the readable part counted, the
-# figure is far lower: entries share one only as other spellings of one repository (its
-# transport, a trailing `.git`, path case) and its two object formats, so groups hold a
-# handful, and for groups of 8 the 11 characters give 2.7e-13 at 10^4 entries and 2.7e-12 at
-# 10^5.
+# The target is under 1e-9 at 10^4 entries with every readable part taken to be the same,
+# and 11 characters are the shortest that meet it. 10^4 is what the cache routes list
+# (MAX_DIRECTORY_ENTRIES) and the layout migration accepts, which is not a cap on entries:
+# acquisition finds an entry by name and lists nothing, so a larger home works, and a very
+# large one gets 3.8e-8 at 10^5 in the worst case above. The sizing can be that loose
+# because a collision costs a longer name and nothing else: a claim skips a name another
+# identity holds and a lookup finds its own at any width, and the identity recorded in
+# `source.yml` or `store.yml` is read before a name is trusted. (The first sizing, under
+# 1e-9 at 10^5, took 64 bits, which is 13 characters, and left a key longer than a person
+# reading it wants.)
+#
+# With the readable part counted the figure is lower, but not by as much as a handful of
+# spellings would give. Entries share a readable part as other spellings of one repository
+# (its transport, a trailing `.git`, path case) and its two object formats, and for groups
+# of 8 the 11 characters give 2.7e-13 at 10^4 entries and 2.7e-12 at 10^5. A `file://`
+# source is the exception: its readable part is `local-<last path segment>`, so every local
+# clone whose directory is called `origin.git` shares one. They are told apart by their
+# suffix all the same, and a collision among them costs the same longer name.
 #
 # The bound prices a second name, not correctness. A claim reads the identity recorded in
 # any entry already at a candidate and takes the next width instead of sharing it, a
@@ -90,6 +97,8 @@ NAME_SUFFIX_CHARS: Final = (11, 19, 25, 50)
 NAME_MAX_BYTES: Final = READABLE_MAX_BYTES + len(NAME_SEPARATOR) + NAME_SUFFIX_CHARS[-1]
 
 TRANSPORTS: Final[frozenset[str]] = frozenset({"https", "ssh", "file"})
+
+_BASE36_DIGITS: Final = "0123456789abcdefghijklmnopqrstuvwxyz"
 
 _IDENTITY_RE: Final = re.compile(r"^sha256:[0-9a-f]{64}$")
 # Single-dash tokens, at least two: the readable part's words, and the suffix.
@@ -293,7 +302,13 @@ def _base36_prefix(digest: str, characters: int) -> str:
     """
 
     scaled = (int(digest, 16) * 36**characters) >> (4 * len(digest))
-    return base36_encode(scaled).rjust(characters, "0")
+    # The digits are written here, four lines, because they are the name of a directory on
+    # disk and no library's spelling of base 36 should be able to change one.
+    digits: list[str] = []
+    for _ in range(characters):
+        scaled, digit = divmod(scaled, 36)
+        digits.append(_BASE36_DIGITS[digit])
+    return "".join(reversed(digits))
 
 
 def name_suffixes(identity: str) -> tuple[str, ...]:
