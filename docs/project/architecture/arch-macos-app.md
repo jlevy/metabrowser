@@ -136,7 +136,7 @@ fetches nothing, and the app acts on the answer (`PresentAnswer`):
 
 | Answer | What the app does |
 | --- | --- |
-| Exit 0 with `kind`, `root`, and `handoff` | Opens `root`’s session on `handoff` |
+| Exit 0 with `kind`, `root`, and `handoff` | Opens `handoff` in `root`’s session |
 | A nonzero exit with a `refusal` | Shows `refusal.message`, which names the fix |
 | Anything else | Shows the reason and the command’s last lines |
 
@@ -154,9 +154,40 @@ and the server, which resolves the link against its mirror, announces the right 
 - **Which session.** The repository’s canonical URL keys its session
   (`SessionRoot.repository`), never the pin, which a page can switch while the server
   runs, as [Open Modes](arch-open-modes.md#what-keys-on-the-root) has it.
-  A new session starts `metab HANDOFF`, so `metab` pins what the link selects and reads
-  a pull request it names, and its window loads the entry page the server announces;
-  Retry and Restart Server run the session’s latest link again.
+  One mirror serves a repository, as the owner decided on 2026-11-19: its server is
+  started on the repository itself, `metab ROOT`, never on a link, so a window shows the
+  repository and not the pull request or branch it was first opened for.
+  Retry and Restart Server start it on the root again.
+- **Every link opens in that server.** Once the server is ready, the app sends the link
+  to `POST /api/source/link` (`SourceLink`), the first link of a new session and every
+  later one alike, and the front window goes to the `href` it answers
+  (`FolderSession.open(link:)`). The route starts a refresh of the mirror, so a link
+  always brings the repository up to date, and then reads the link as `metab LINK` reads
+  it, against the mirror, which alone knows where a ref that holds a `/` ends: a pull
+  request opens at `/pull/<n>` on the tab it names and a commit at `/commit/<id>`, and
+  neither switches the pin; a branch, a folder, a file, or the repository serves the
+  revision the link names, under its ref, and opens at its `/view/` address.
+  So a second pull request of a repository opens in the window and server already
+  showing the first, and a window never shows a link’s page at another revision than the
+  link’s
+  ([Switching the Pin](arch-source-sessions-and-pins.md#switching-the-pin-and-the-pin-guard)).
+  What a link does to the session is `RepositoryLinks`: a ready server opens it at once;
+  during a start, such as a first clone, or a restart waiting at the launch gate, it
+  waits for the server to be ready, the newest link winning; a failed or stopped server
+  starts again, and the link opens once it is ready.
+  A restart of a ready server waits for the launch gate before it stops anything
+  (`ServerSupervisor.restart`), so while another repository’s first clone holds the gate
+  the repository’s other tabs go on with the old server, and the window that asked for
+  the restart says it waits instead of showing the old revision (`RestartWait`): the
+  window File > Restart Server was chosen in, or the front window for an upgrade’s
+  restart. The supervisor reports only its first waiter (`onGateWait`), so a restart
+  asked for while another waits shows its window at once.
+- **A selection the mirror lacks.** A ref or commit the mirror does not have yet answers
+  `202 selection_pending` while the refresh the link started runs.
+  The app asks `/api/source/status` until `refreshing` is false, at most
+  `SourceLink.attempts` times, and then the link route once more with `"fetch": false`,
+  which opens the page or answers `404`. A link the mirror still lacks is said in the
+  burst’s alert (`LinkAlert.linkNotFound`), and the window stays where it was.
 - **Beside an open checkout.** A new session’s window joins the window of an open
   checkout of the same repository as a tab (`CheckoutWindow`,
   `FolderWindows.place(_:besides:)`), whatever the placement preference says, since the
@@ -169,39 +200,6 @@ and the server, which resolves the link against its mirror, announces the right 
   A checkout with no window on screen, or no answer yet, is passed over.
   The checkout’s `.git/config` can name any repository, so a planted one can at most
   choose which window a mirror’s tab joins; what the tab serves is still the mirror.
-- **A link into an open repository.** The window may show another branch, commit, or
-  pull request’s head than the link names, and the app cannot tell, since the dry run
-  reports no ref, so it never only navigates: `FolderSession.open(link:)` starts the
-  server again on the link, and the front window loads the new entry page
-  (`NextPage.requestEntry`), as the owner decided on 2026-11-17 and
-  [Open Modes](arch-open-modes.md#the-file-menu) states for Open URL…. What a link does
-  to the session is `RepositoryLinks`, a table of the link, the server’s state, and the
-  link it starts on: a start under way runs to its end first, so a first clone is not
-  thrown away, and the newest link sent meanwhile waits for it; the link that start
-  already runs on joins it, so sending a link twice during its first clone clones once
-  and does not restart, and the window still loads that start’s entry page, the link’s,
-  whoever began the start (Retry, Restart Server, and an upgrade’s restart run on the
-  same link); a failed or stopped server starts again at once.
-  A restart of a ready server waits for the launch gate before it stops anything
-  (`ServerSupervisor.restart`), so while another repository’s first clone holds the gate
-  the repository’s other tabs go on with the old server, and the window that asked for
-  the restart says it waits instead of showing the old revision (`RestartWait`): the
-  window a link brought forward, the one File > Restart Server was chosen in, or the
-  front window for an upgrade’s restart.
-  The supervisor reports only its first waiter (`onGateWait`), so a restart asked for
-  while another waits shows its window at once.
-  The pin switch View on branch makes (`POST /api/source/pin`) would keep the port and
-  the server, but it takes a ref or a commit, which the app does not have for a link
-  whose ref holds a `/`.
-- **A selection the mirror lacks.** `metab` serves a link whose branch, tag, or commit
-  its mirror does not have yet from the default branch, and fetches once; the page goes
-  to the link’s address by itself if the fetch finds it.
-  So the windows can show the default branch for as long as that fetch runs, which the
-  page’s fetch chip says.
-  After each start of a repository’s server the app asks `/api/source/status` while its
-  `selection_state` is `pending` (`LinkSelection`), and says in an alert when the fetch
-  did not find the link’s selection (`not_found`) or could not run (`fetch_failed`),
-  naming the revision the windows show instead.
 - **Asking before a clone.** A link that would start a new session asks first unless
   `metab`’s cache holds the repository (`RepositoryCache`), which the app learns from
   `metab FOLDER --api /api/cache/sources --format json`, page by page, run in the app’s

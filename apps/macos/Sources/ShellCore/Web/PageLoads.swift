@@ -23,7 +23,6 @@ public nonisolated struct PageLoads: Equatable, Sendable {
     }
 
     public mutating func request(_ page: PageAddress) { next.request(page) }
-    public mutating func requestEntry() { next.requestEntry() }
     public mutating func remember(shown page: PageAddress) { next.remember(shown: page) }
     public func saved(showing current: PageAddress?) -> PageAddress? { next.saved(showing: current) }
 

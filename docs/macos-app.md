@@ -134,20 +134,22 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   After Cancel, links into that repository sent in the same burst are not opened, and
   the app says how many; a link sent later asks again.
   A repository the cache holds opens without asking.
-- **One window per repository:** a link into a repository that has a window brings that
-  window forward, on the branch, commit, or pull request the link names and at its page.
-  Its server starts again on the link, which takes a few seconds, its other tabs reload
-  on that revision, and what pages kept in local storage starts fresh, since the server
-  comes back on a new port.
-  A start under way, such as a first clone or a File > Restart Server, finishes first,
-  and sending the same link again meanwhile starts nothing more: the window still comes
-  to the link’s page once that start ends.
+- **One window per repository:** a repository opens in one window, on its default
+  branch, whatever link opened it, and every link into the repository opens in that
+  window: a second pull request goes to its page in the same window, and a link to a
+  branch, a commit, a folder, or a file goes to its page at the revision it names.
+  Each link also refreshes the repository from GitHub, so what it shows is current.
+  The window’s server keeps running, so this takes a moment, not a restart; when a link
+  names another branch or commit than the window shows, the window switches to it, and
+  its other tabs offer to reload on it.
+  A start under way, such as a first clone, finishes first, and the newest link sent
+  meanwhile opens then.
   Without a window, a new one opens, and its server clones the repository, or uses the
   clone the cache has.
 - **A branch or commit the copy lacks:** a link to a branch, tag, or commit pushed since
-  the copy was last fetched opens the default branch while `metab` fetches it, then goes
-  to the link’s page. If GitHub does not have it either, or the fetch fails, the windows
-  stay on the default branch and the app says so.
+  the copy was last fetched waits for the refresh the link starts, then goes to the
+  link’s page. If GitHub does not have it either, the window stays where it was and the
+  app says so.
 - **A first clone** of a large repository can take minutes.
   The window says it is starting meanwhile, with the clone’s progress under it, as
   `metab` reports it in Terminal: how far the clone has got, how fast, and for how long,

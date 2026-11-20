@@ -165,8 +165,7 @@ exit: 0
 --- stdout ---
 status: 200
 {
-  "ref_name": null,
-  "selection_state": null
+  "refreshing": false
 }
 --- stderr ---
 --- contract ---
@@ -208,12 +207,33 @@ exit: 0
 --- stdout ---
 status: 200
 {
-  "ref_name": "<text>",
-  "selection_state": null
+  "refreshing": false
 }
 --- stderr ---
 --- contract ---
 source-status/mirror
+# metab file://<ROOT>/origin.git --api /api/source/link --data <ROOT>/link.json
+exit: 0
+--- stdout ---
+status: 200
+{
+  "href": "/view/",
+  "code": null
+}
+--- stderr ---
+--- contract ---
+source-link/repository
+# metab file://<ROOT>/origin.git --api /api/source/link --data <ROOT>/elsewhere.json
+exit: 1
+--- stdout ---
+status: 409
+{
+  "href": null,
+  "code": "<other>"
+}
+--- stderr ---
+--- contract ---
+source-link/elsewhere
 # metab file://<ROOT>/origin.git --no-serve
 exit: 0
 --- stdout ---
