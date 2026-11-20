@@ -14,16 +14,17 @@ own `fsqlite/schema` route, which answers as `sqlite/schema` does.
 This browserless session mounts the production views over the answers the routes gave,
 recorded in `tests/fixtures/fsqlite-tables-responses.json` by
 `tests/test_fsqlite_tables_session.py`, which fails when a route answers differently.
-The table plugin is a stand-in. The transcript pins these behaviors:
+The table plugin is a stand-in.
+The transcript pins these behaviors:
 
 - The overview groups the format’s `applied_tx` and `fsqlite_meta` as internal tables,
   each a link to its address under the marker.
 - At a table’s address the Table view loads the table plugin and draws its view.
 - The Schema view shows the snapshot’s DDL, or one table’s at its address.
 - A store the routes refuse says why, in the routes’ words.
-- A view disposed before the SQLite plugin loads mounts nothing and asks for nothing; one
-  disposed once drawn disposes the SQLite view, aborting its request; and a SQLite plugin
-  that failed to load is said, never a blank page.
+- A view disposed before the SQLite plugin loads mounts nothing and asks for nothing;
+  one disposed once drawn disposes the SQLite view, aborting its request; and a SQLite
+  plugin that failed to load is said, never a blank page.
 
 ```console
 $ node tests/dom/fsqlite-tables-session.js

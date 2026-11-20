@@ -452,7 +452,8 @@ routes, and `builtin_plugins/delimited/source.py` is a complete source.
   table ids are its address segments, and its kind declares a `children` hook that lists
   them
   ([Navigation Containers](project/architecture/arch-plugin-system.md#navigation-containers)).
-  The SQLite source (`builtin_plugins/sqlite/`) is one.
+  The SQLite source (`builtin_plugins/sqlite/`) is one, and the fsqlite store’s
+  (`builtin_plugins/fsqlite/`), whose file is a marker naming the database it reads.
 - Name a keyless row by its position with `position_key(n)`, counting from 1, and a
   keyed one with `encode_key(values)`; mint cursors with `encode_cursor`, falling back
   to `positional_cursor` past `TABLE_TOKEN_MAX_CHARS`. Every token is deterministic.

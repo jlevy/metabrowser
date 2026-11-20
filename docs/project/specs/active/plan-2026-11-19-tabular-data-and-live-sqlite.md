@@ -1157,7 +1157,9 @@ As built, where this plan left a choice open:
 
 ### Phase 8: fsqlite Stores
 
-- [ ] The `sqlite-store` kind, its `children` hook, snapshot reads, generation, goldens
+- [x] The `sqlite-store` kind, its `children` hook, snapshot reads, generation, goldens
+- [x] Its tables through the SQLite source over the snapshot, its Table and Schema
+  views, goldens, parity rows, map updates, changelog fragment
 
 As built, where this plan left a choice open:
 
@@ -1182,11 +1184,26 @@ As built, where this plan left a choice open:
   it.
 - **On a Git pin** the store’s routes answer `unsupported_for_subject`: its files are
   resolved beside the marker by path, which a pin’s identities do not offer a hook.
-- **Tables.** The store is a container whose `children` hook has its full shape and
-  reads the snapshot; its tables come from Phase 5’s SQLite source through
-  `snapshot_children` in `builtin_plugins/fsqlite/source.py`, which answers none until
-  that source is in the stack, and the store’s `[[table_source]]` arrives with it.
-  `group_reserved` there groups `applied_tx` and `fsqlite_meta` as internal.
+- **Tables.** The store’s `[[table_source]]` (`builtin_plugins/fsqlite/source.py`) is
+  Phase 5’s `SqliteSource` with an opener: the database is the snapshot `current` names,
+  read with `immutable_content` under the store’s generation, and its `tables()` pass
+  through `group_reserved`, which groups `applied_tx` and `fsqlite_meta` as internal.
+  The SQLite reader already groups them so in any snapshot carrying fsqlite’s
+  `application_id`, so a snapshot opened by itself as the `sqlite` kind shows them
+  internal too, and `group_reserved` keeps them so in a store whose snapshot lacks it.
+  A table is `<marker>/<segment>` with the SQLite plugin’s segment escaping; the
+  `table/*` routes reach it as `<file>/<table>`, since the marker is the file.
+- **One open, every route.** The children and schema hooks and the table source each
+  open the snapshot through `open_store`, which reads the snapshot’s catalog inside the
+  pointer retry, so a snapshot garbage collection removed before a reader opened it
+  sends every route back to the pointer once.
+  A later read in the same request that finds it gone answers as the reader refused it.
+  An `invalid`, `unsupported`, or `corrupt` store is `source_unreadable` (422) on the
+  table routes, naming its state.
+- **Views.** The kind’s views are the `sqlite` kind’s, Table (the default) and Schema,
+  then Info, drawn by the SQLite plugin’s `mountTableView` and `mountSchema`, which it
+  now exports; Schema reads `fsqlite/schema`, which answers as `sqlite/schema` does, and
+  Info and Schema answer at a table’s address for its store.
 
 ## Testing Strategy
 

@@ -264,6 +264,10 @@ The SQLite source (`builtin_plugins/sqlite/source.py`) answers through reader pr
 ([Tabular Data Browsing and Live SQLite](../specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md),
 The SQLite Source); `tests/test_sqlite_tables.py` checks it, and
 `tests/golden/cli-api-sqlite-tables.tryscript.md` pins its answers.
+The fsqlite store’s source (`builtin_plugins/fsqlite/source.py`) is that source with an
+opener: its file is the store’s marker, and the database it reads is the snapshot the
+store’s `current` names, under the store’s generation; `tests/test_fsqlite_store.py`
+checks it, and `tests/golden/cli-api-fsqlite.tryscript.md` pins its answers.
 
 **The view.** The table plugin’s `index.js` exports `mountTable(container, {path})`, the
 table view, which a source plugin registers as its kind’s Table view through
