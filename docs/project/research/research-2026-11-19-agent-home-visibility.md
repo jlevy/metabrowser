@@ -74,6 +74,8 @@ message content, paths, or secrets.
   the hits; the counts are quoted where they matter.
 - **Liveness** was checked by comparing sizes, inodes, row counts, and
   `PRAGMA data_version` across snapshots taken seconds apart while sessions ran.
+- **Counts** such as file totals and “40 of the 40 newest” describe one working machine
+  on the survey date; they show proportions and scale, not constants.
 - **Today’s coverage** was checked with `metab PATH --show FILE` on a current Claude
   session log and on Codex rollout files.
 
@@ -102,13 +104,16 @@ Coverage is narrower than it looks, and two gaps hit the two agents this brief i
   `codex exec --json` stream (`thread.started`, `turn.*`, `item.*`), not the rollout
   files Codex keeps in `~/.codex/sessions`, whose records are `session_meta`,
   `response_item`, `event_msg`, `turn_context`, and others.
+  Even that stream gets no agent-log views: the plugin’s manifest has `[[kind]]` rules
+  for the `claude`, `gemini`, and `pi` adapters only, so no plugin claims a file the
+  `codex` adapter detects.
   A small rollout opens as `unknown-jsonl`; a 97 MB one exceeds `_JSONL_PARSE_MAX_BYTES`
   and opens as an error.
 - **Compressed logs do not open.** Codex compresses idle rollouts to `.jsonl.zst`, and
   some Claude logs are `.jsonl.zst` too.
-  Metabrowser’s compressed-artifact support reads gzip only, and Python’s standard
-  library has zstd only from 3.14 (`compression.zstd`), while the supported range starts
-  at 3.12.
+  Metabrowser’s compressed-artifact support reads gzip and zlib only, and Python’s
+  standard library has zstd only from 3.14 (`compression.zstd`), while the supported
+  range starts at 3.12.
 - **Nothing but session logs has a view.** SQLite databases open as `binary`; there is
   no session list, no live-session view, no cost rollup, no subagent tree, no
   file-history view, no hook or permission view, and no view of scheduled tasks,
@@ -485,8 +490,13 @@ same wheel.
 - **Parsers move out of core.** The Claude, Codex, Gemini, and Pi adapters in
   `logutil/parsing.py` move into the plugin and register through `register_log_adapter`,
   and the existing `agent-log` views move with them.
+  Core still consumes them today, so the move changes core too: `jsonl_view.py` and
+  `charts.py` call `detect_adapter` and `create_parser`, `detect_adapter` hard-codes the
+  four sniffers, and `register_log_adapter` rejects their names as reserved
+  (`_BUILTIN_ADAPTERS`). Detection must become registry-driven, with the reserved set
+  removed, before a plugin can own those names.
   Every consumer ships in one artifact, so this needs no compatibility layer, only a
-  changelog fragment.
+  changelog fragment for plugin authors who call `detect_adapter`.
 - **Object types:** sessions, threads, subagents, and scheduled tasks are natural
   plugin-declared objects under the
   [object data model plan](../specs/active/plan-2026-11-14-object-data-model-and-views.md),
@@ -510,11 +520,12 @@ Codex `fileChange` diff can be handed to the diff plugin’s renderer.
 | Need | Today | Proposed addition |
 | --- | --- | --- |
 | Claim a SQLite file | `[[kind]]` rules see text and JSONL only; a plugin can only add a view to `binary` | A binary kind rule matched by extension, basename, or magic prefix |
-| A dashboard for one folder | `registerView("folder")` adds a tab to every folder; Overview panels can opt out by returning null | A folder kind claimed by a marker, with its own views |
+| A dashboard for one folder | `registerView("folder")` adds a tab to every folder; Overview panels can opt out by returning null; a `folder_marker` kind rule classifies the marker file and badges its parent in the tree, but gives the folder no kind or views | A folder kind claimed by a marker, with its own views |
 | A cross-session catalog | No plugin cache location or persistence API | A plugin cache directory and lifecycle in `plugin_api` |
 | Live updates | `/api/stream` tails one JSONL file; plugins cannot subscribe to inventory events | A plugin-visible change subscription, or polling data hooks |
-| Read zstd | gzip only | zstd through `ArtifactPath`, which needs either Python 3.14 or a vetted dependency under the supply-chain rules |
+| Read zstd | gzip and zlib only | zstd through `ArtifactPath`, which needs either Python 3.14 or a vetted dependency under the supply-chain rules |
 | Pages not tied to a file, such as “everything running now” | No plugin route-backed kinds; the GitHub plugin uses an internal seam | Route-backed kinds for plugins, as the object data model plan proposes |
+| Parse a large log under the core limit | `agent_log/sidekick.py` reads the private `jsonl_view._JSONL_PARSE_MAX_BYTES`, which the boundary test would reject | Export the JSONL parse limit, or a bounded-read helper, from `plugin_api` |
 | Files outside the served root | Safe-path confines reads to the root | An explicit, user-granted list of companion paths, or serving `~` |
 
 ### Evidence and Parity
@@ -529,9 +540,10 @@ pinned too.
 ### Phasing
 
 1. **Fix today’s two gaps** in the existing path: detect current Claude Code transcripts
-   beyond line 20 (or by the first record’s shape), and add a Codex rollout adapter.
-2. **Create the plugin skeleton** with the boundary test, and move the four adapters and
-   the `agent-log` views into it.
+   beyond line 20 (or by the first record’s shape), add a Codex rollout adapter, and
+   give `agent-log` a `[[kind]]` rule for the `codex` adapter.
+2. **Create the plugin skeleton** with the boundary test, make adapter detection
+   registry-driven, and move the four adapters and the `agent-log` views into it.
 3. **Add the Claude Code provider:** the incremental session catalog, live sessions, and
    the session page’s subagent, file-history, hook, and permission sections.
 4. **Add the Codex provider:** the catalog over `state_5`, timelines from
@@ -548,8 +560,11 @@ pinned too.
 2. **Companion paths:** may the plugin read `~/.claude.json`, the Claude desktop app’s
    store, and the temporary task directories, which sit outside both homes?
    They hold the live-session and schedule data a full view needs.
-3. **Packaging:** a separate top-level package in the same wheel through the entry point
-   (recommended), or a directory under `builtin_plugins` with the import-boundary test?
+3. **Packaging:** confirm the recommended separate top-level package in the same wheel,
+   registered through the entry point.
+   A directory under `builtin_plugins` is the alternative; it keeps Option B’s boundary
+   test but sits beside core’s own plugins, which makes the public-contract claim easier
+   to erode.
 4. **Secrets:** mask known secret fields in the plugin’s views and its `--api` answers,
    knowing that the raw file stays readable through the ordinary file views?
 5. **zstd:** wait for Python 3.14 as the floor, or vet a zstd package now?
