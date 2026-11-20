@@ -65,6 +65,9 @@ SNAPSHOT_READ_ATTEMPTS: Final = 2
 # Entries of `tx/pending/` examined to count envelopes. An envelope is one directory
 # per captured write until the next reconcile folds it in; past this many entries the
 # count says it stopped (`complete: false`) rather than holding a request on a listing.
+# Counting 10,000 envelopes, half committed, took 21 to 23 ms warm on a shared
+# 4-processor Linux container (Python 3.13, ext4 under overlayfs, 2026-11-20): about 1%
+# of the request's deadline (`SQLITE_REQUEST_DEADLINE_SECONDS`), shared with the read.
 PENDING_SCAN_MAX: Final = 10_000
 
 _FORMAT_VERSION = re.compile(r"f(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
