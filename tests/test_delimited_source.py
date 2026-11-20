@@ -61,7 +61,14 @@ def test_a_csv_is_one_untyped_keyless_table(client: TestClient, tmp_path: Path) 
     status, body = _get(client, "tables", "a.csv")
     assert status == 200
     assert body["tables"] == [
-        {"id": "", "label": "a.csv", "group": "tables", "keyed": False, "estimate": None, "path": "a.csv"}
+        {
+            "id": "",
+            "label": "a.csv",
+            "group": "tables",
+            "keyed": False,
+            "estimate": None,
+            "path": "a.csv",
+        }
     ]
     status, schema = _get(client, "schema", "a.csv")
     assert status == 200
@@ -122,7 +129,9 @@ def test_short_rows_are_absent_long_rows_go_to_extra(client: TestClient, tmp_pat
 def test_types_are_inferred_and_contradictions_shown(client: TestClient, tmp_path: Path) -> None:
     sample = delimited.DELIMITED_TYPE_SAMPLE_ROWS
     lines = ["i,r,b,d,t,z,big"]
-    lines += [f"{n},{n}.5,true,2020-01-0{n % 9 + 1},2020-01-01T10:00:00Z,007,1" for n in range(sample)]
+    lines += [
+        f"{n},{n}.5,true,2020-01-0{n % 9 + 1},2020-01-01T10:00:00Z,007,1" for n in range(sample)
+    ]
     lines.append("x,1e999,maybe,2020-02-30,later,8,99999999999999999999")
     (tmp_path / "a.csv").write_text("\n".join(lines) + "\n")
     status, schema = _get(client, "schema", "a.csv")
@@ -155,12 +164,16 @@ def _b64(values: list[Any]) -> str:
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
-def test_empty_is_null_in_a_typed_column_and_empty_in_text(client: TestClient, tmp_path: Path) -> None:
+def test_empty_is_null_in_a_typed_column_and_empty_in_text(
+    client: TestClient, tmp_path: Path
+) -> None:
     (tmp_path / "a.csv").write_text("n,t\n1,a\n,\n")
     assert _cells(_rows(client, "a.csv")) == [{"n": 1, "t": "a"}, {"n": None, "t": ""}]
 
 
-def test_long_text_is_previewed_in_rows_and_whole_in_the_record(client: TestClient, tmp_path: Path) -> None:
+def test_long_text_is_previewed_in_rows_and_whole_in_the_record(
+    client: TestClient, tmp_path: Path
+) -> None:
     long = "é" * (TABLE_CELL_PREVIEW_CHARS + 5)
     (tmp_path / "a.csv").write_text(f"t\n{long}\n")
     assert _cells(_rows(client, "a.csv")) == [
@@ -184,7 +197,11 @@ def test_a_file_past_the_parse_cap_shows_its_leading_rows(
     body = _rows(client, "a.csv")
     # 20 bytes end with the ninth row, which the read cannot know is whole, so it goes.
     assert _cells(body) == [{"n": n} for n in range(1, 9)]
-    assert (body["complete"], body["truncated"], body["reason"]) == (False, True, "source_truncated")
+    assert (body["complete"], body["truncated"], body["reason"]) == (
+        False,
+        True,
+        "source_truncated",
+    )
     assert (body["count"], body["count_complete"]) == (8, False)
 
 
@@ -204,7 +221,9 @@ def scores(tmp_path: Path) -> str:
     return "s.csv"
 
 
-def test_sort_puts_nulls_first_ascending_and_last_descending(client: TestClient, scores: str) -> None:
+def test_sort_puts_nulls_first_ascending_and_last_descending(
+    client: TestClient, scores: str
+) -> None:
     assert _keys(_rows(client, scores, sort="n")) == ["@2", "@3", "@5", "@4", "@1"]
     assert _keys(_rows(client, scores, sort="n", order="desc")) == ["@1", "@4", "@5", "@3", "@2"]
 
@@ -241,7 +260,9 @@ def test_a_cursor_stays_a_sort_position_across_generations(
     assert after["generation"] != first["generation"]
 
 
-def test_a_sort_value_past_the_token_bound_pages_by_position(client: TestClient, tmp_path: Path) -> None:
+def test_a_sort_value_past_the_token_bound_pages_by_position(
+    client: TestClient, tmp_path: Path
+) -> None:
     long = "x" * TABLE_TOKEN_MAX_CHARS
     (tmp_path / "a.csv").write_text(f"t\n{long}a\n{long}b\n{long}c\n")
     first = _rows(client, "a.csv", sort="t", limit="1")
@@ -305,13 +326,19 @@ def test_a_query_the_table_cannot_serve_is_refused(
 def test_a_record_is_named_by_position(client: TestClient, scores: str) -> None:
     status, record = _get(client, "record", scores, key="@3")
     assert status == 200
-    assert (record["key"], record["positional"], record["cells"]) == ("@3", True, {"name": "b", "n": 5})
+    assert (record["key"], record["positional"], record["cells"]) == (
+        "@3",
+        True,
+        {"name": "b", "n": 5},
+    )
     assert record["generation_moved"] is None
     status, moved = _get(client, "record", scores, key="@3", generation=record["generation"])
     assert moved["generation_moved"] is False
 
 
-def test_a_record_reports_a_moved_generation(client: TestClient, scores: str, tmp_path: Path) -> None:
+def test_a_record_reports_a_moved_generation(
+    client: TestClient, scores: str, tmp_path: Path
+) -> None:
     status, before = _get(client, "record", scores, key="@1")
     target = tmp_path / scores
     target.write_text("name,n\nnew,1\n")
