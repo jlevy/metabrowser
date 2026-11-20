@@ -498,7 +498,7 @@ What this plan adds to the design:
   - **Words.** The icon carries `aria-label` “Folder” or “Mirror”, and its tooltip is
     the mode’s name and then what the heading’s tooltip already says.
     `KIND_LABELS` in `root_identity.py` keeps the app’s longer “Local folder” and
-    “Cached mirror”.
+    “Cached mirror” (now “Cloud mirror”).
   - **Contrast and parity.** Both icons are drawn in `currentColor` from a text token
     and the ring in the ground token, and a real-browser check measures the ink against
     the header in light and dark.
