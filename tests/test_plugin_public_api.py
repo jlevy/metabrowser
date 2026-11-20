@@ -59,6 +59,13 @@ PLUGIN_API_EXPORTS = {
     "source_capabilities",
     "stat_content",
     "MAX_CONTAINER_INNER_DEPTH",
+    "PluginCacheUnavailableError",
+    "extract_agent_charts_bytes",
+    "jsonl_parse_max_bytes",
+    "lookup_agent_charts",
+    "plugin_cache_directory",
+    "registered_log_adapters",
+    "remember_agent_charts",
 }
 
 
@@ -350,9 +357,11 @@ _PRESENT_LOCAL_EXTRA = frozenset(
     }
 )
 # The property-list reader, for a bundle's Info.plist, and the XML parser it uses; and
-# what the preference's reader adds.
+# what the preference's reader adds; and `unicodedata`, which `cli.present` imports for
+# its own use and which `--version` used to load already, through `prettyfmt`, until the
+# agent-log parsers moved out of core with their import of it.
 _PRESENT_STDLIB_EXTRA = frozenset(
-    {"_hmac", "ctypes", "hmac", "plistlib", "pyexpat", "secrets", "xml"}
+    {"_hmac", "ctypes", "hmac", "plistlib", "pyexpat", "secrets", "unicodedata", "xml"}
 )
 # A link adds the URL grammar, each provider's reducer without its provider, and the path
 # encoding and revision grammar a page is spelled with.
@@ -457,3 +466,89 @@ def test_present_dry_run_loads_little_beyond_version(
     if local:
         # A local target needs not even the Git tree source a URL's page is spelled with.
         assert _git_source_modules_in(loaded) == []
+
+
+def test_plugin_cache_directory_is_owner_only_and_named_by_the_plugin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = tmp_path / "cache"
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(cache))
+
+    directory = plugin_api.plugin_cache_directory("agents")
+
+    assert directory == cache / "plugins" / "agents"
+    assert directory.is_dir()
+    assert directory.stat().st_mode & 0o077 == 0
+    # A second call verifies the directory it made instead of failing on it.
+    assert plugin_api.plugin_cache_directory("agents") == directory
+
+
+@pytest.mark.parametrize("name", ["", "../agents", "Agents", "a/b", "9agents"])
+def test_plugin_cache_directory_refuses_a_name_that_is_not_a_plugin_name(
+    name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(tmp_path / "cache"))
+    with pytest.raises(ValueError, match="not a plugin name"):
+        plugin_api.plugin_cache_directory(name)
+    assert not (tmp_path / "cache").exists()
+
+
+def test_plugin_cache_directory_reports_an_unusable_root_without_its_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shared = tmp_path / "shared"
+    shared.mkdir(mode=0o777)
+    shared.chmod(0o777)
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(shared))
+
+    with pytest.raises(plugin_api.PluginCacheUnavailableError) as raised:
+        plugin_api.plugin_cache_directory("agents")
+    assert str(tmp_path) not in str(raised.value)
+
+
+def test_a_plugin_cache_directory_does_not_block_the_repository_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``open_cache`` refuses a root holding unknown durable entries and no layout.
+
+    A plugin may make its directory before anything acquires a repository, so the
+    repository cache must still adopt that root.
+    """
+    from metabrowser.cache.layout import open_cache
+
+    cache = tmp_path / "cache"
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(cache))
+    monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(tmp_path / "config"))
+    plugin_api.plugin_cache_directory("agents")
+
+    assert open_cache().home == cache
+
+
+def test_the_jsonl_parse_limit_is_read_when_asked(monkeypatch: pytest.MonkeyPatch) -> None:
+    from metabrowser import jsonl_view
+
+    monkeypatch.setattr(jsonl_view, "_JSONL_PARSE_MAX_BYTES", 64)
+    assert plugin_api.jsonl_parse_max_bytes() == 64
+
+
+def test_the_agents_sidekick_imports_only_the_public_plugin_api() -> None:
+    """A built-in sidekick is held to the contract a third-party one gets."""
+    import ast
+
+    import metabrowser.builtin_plugins.agents.sidekick as sidekick
+
+    tree = ast.parse(Path(sidekick.__file__).read_text(encoding="utf-8"))
+    imported = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module is not None
+        and node.module.startswith("metabrowser")
+    } | {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+        if alias.name.startswith("metabrowser")
+    }
+    assert imported == {"metabrowser.plugin_api"}

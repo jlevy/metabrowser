@@ -277,7 +277,7 @@ status: 200
     {
       "kind": "unknown",
       "summary": "[unknown] {'e': 1}",
-      "adapter": "claude",
+      "adapter": "unknown",
       "provider": null,
       "timestamp": null,
       "is_error": false,
@@ -292,7 +292,7 @@ status: 200
     {
       "kind": "unknown",
       "summary": "[unknown] {'e': 2}",
-      "adapter": "claude",
+      "adapter": "unknown",
       "provider": null,
       "timestamp": null,
       "is_error": false,

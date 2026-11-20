@@ -52,7 +52,7 @@ def test_plugin_messages_use_product_language() -> None:
     markdown = _read(BUILTINS / "markdown" / "index.js") + _read(
         BUILTINS / "markdown" / "rendered.js"
     )
-    agent_log = _read(BUILTINS / "agent_log" / "index.js")
+    agent_log = _read(BUILTINS / "agents" / "agent-log.js")
     charts = _read(STATIC / "charts.js")
 
     assert "mb.renderSourceView(container, raw)" in structured

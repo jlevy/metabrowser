@@ -205,6 +205,11 @@ claim a narrower format.
 Kind rules apply to files Metabrowser reads as text and to JSONL streams.
 A file whose bytes sniff as binary, or whose extension is an image extension, keeps the
 built-in `binary` or `image` kind; a plugin can add a view to that kind instead.
+A rule with `binary = true` is the exception: it is asked only about a served file
+already found to be binary, and claims it by path, so a compressed format Metabrowser
+cannot read reaches the plugin’s views.
+It may use only `ext`, `exts`, `basename`, `folder_marker`, and `path_glob`, cannot be a
+container, and never matches a text file or a Git blob.
 A format whose reader needs a native library belongs in an installed plugin, so the
 dependency is never Metabrowser’s.
 
@@ -255,6 +260,15 @@ At most one view per kind may set `default = true`. A plugin may register a view
 kind declared by another plugin, which is useful for composing generic renderers.
 `render_runtime` documents whether the client or KPress renders the view, and a
 printable view declares a `print_profile` suited to documents or source code.
+
+A view of the `folder` kind may set `offer = "module:function"`, a Python predicate that
+receives the folder’s path.
+The view is served only on folders where it returns true, and an offered view with
+`default = true` is then the folder’s only default, so the page opens on it.
+The predicate runs for every folder page, off the event loop, and should read no more
+than a few directory entries; one that raises is logged and its view left out.
+A Git revision’s folders never offer a view, and an operator directory’s JavaScript-only
+plugin cannot declare one.
 
 `key` is an optional one-letter key for the view’s tab.
 A kind with more than one view should give each view one: `v` for a rendered view, `s`
@@ -957,10 +971,32 @@ Ensure the wheel includes the manifest, JavaScript, CSS, and any extra assets, a
 the built wheel in an isolated environment, since an editable checkout can conceal
 missing package data.
 
+### Python Registration Module
+
+A built-in or installed entry-point plugin that registers Python-side extensions, such
+as a JSONL adapter, names the module that does it in its manifest:
+
+```toml
+[plugin]
+name = "example-plugin"
+register = "example_plugin.adapters"
+```
+
+Discovery imports that module once, when it finds the plugin, so the module’s top-level
+calls (`register_log_adapter` and the like) run before the server mounts anything.
+A module that fails to import is a plugin load error, reported as the others are: the
+plugin is skipped and `metab --doctor` exits nonzero.
+An operator-directory plugin is JavaScript-only, so its `register` is ignored with a
+warning, and `metab --doctor` reports it.
+The module should import from `metabrowser.plugin_api` and do nothing but register.
+
 ### Plugin-Owned JSONL Adapters
 
 Plugins that recognize an additional JSONL event format can register a detector and
-parser factory when their entry-point module loads:
+parser factory when their `register` module loads
+([Python Registration Module](#python-registration-module)). The built-in `agents`
+plugin registers its Claude Code, Codex, Pi, and Gemini adapters the same way, so
+`registered_log_adapters()` lists every name in detection order:
 
 ```python
 from typing import Any
@@ -991,11 +1027,18 @@ register_log_adapter(
 
 The detector receives parsed objects from the beginning of the stream; keep it fast,
 deterministic, and free of filesystem or network work.
+A format whose stream opens with plain text can also pass `line_detector`, which
+receives each opening line that is not a JSON object.
+Detection asks each line’s detectors in registration order, the built-in `agents`
+plugin’s first, so a detector should recognize only its own format.
 A detector failure is logged and skipped, so one adapter cannot break detection for
-every JSONL file.
-Registering the same detector and factory again is idempotent; claiming
-another plugin’s adapter name raises an error, and built-in names cannot be replaced.
-The factory returns a fresh parser for each file or live stream.
+every JSONL file. Registering the same callables again is idempotent; claiming a name
+already registered, the built-in plugin’s or another plugin’s, raises an error.
+Adapters register when plugins are discovered, which the server does at startup, so a
+script that calls `detect_adapter` without starting the server sees only the adapters it
+registered itself. A log that no registered adapter recognizes gets the `unknown`
+adapter, whose parser turns each JSON object into an event of its `type`. The factory
+returns a fresh parser for each file or live stream.
 A `[[kind]]` rule with `match = { ext = ".jsonl", adapter = "example" }` then claims the
 files the detector recognizes.
 
@@ -1023,11 +1066,22 @@ which a CLI integration can catch to keep a command’s message and exit code, a
   transparently, within decompression limits, and raises `ArtifactCompressionError`,
   `ArtifactDecompressionLimitError`, or `ArtifactDecompressionTimeoutError` to separate
   malformed data from size and time limits.
-- **JSONL:** `LogEvent`, `LogParser`, `detect_adapter(lines)`, and
-  `register_log_adapter` are the adapter contract above.
+- **JSONL:** `LogEvent`, `LogParser`, `detect_adapter(lines)`, `register_log_adapter`,
+  and `registered_log_adapters()` are the adapter contract above.
+  Built-in `agents` imports these from `metabrowser.plugin_api`, and
+  `tests/test_agents_import_boundary.py` holds it to that.
+  `jsonl_parse_max_bytes()` is the parser’s decompressed input limit, so a hook reads at
+  most that many bytes of a log.
   `extract_agent_charts_cached(path)` reuses the agent-log chart projection, returning
   `None` for an absent file and raising `JsonlParseLimitError` past the parser’s input
-  limit.
+  limit. `extract_agent_charts_bytes(data)` projects bytes already read, and
+  `lookup_agent_charts` and `remember_agent_charts` memoize a projection by a content
+  reference’s identity and fingerprint.
+- **Cache:** `plugin_cache_directory(name)` creates or verifies the plugin’s owner-only
+  directory under the application cache root and returns it.
+  It is a cache: a user may delete it at any time, so key what it holds by what it was
+  computed from. It raises `PluginCacheUnavailableError` when no private cache root can
+  be made.
 - **Lifecycle:** `register_root_callback(callback)` invalidates plugin caches when the
   served root changes.
   Do not cache the resolved root, or import underscored helpers from

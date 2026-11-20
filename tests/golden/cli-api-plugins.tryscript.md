@@ -233,8 +233,8 @@ Error: /api/plugin/binary/chunk?path=blob.bin&offset=2 returned HTTP 404
 ## Test: agent-log charts
 
 ```console
-$ metab hookroot --api '/api/plugin/agent-log/charts?path=session.jsonl'
-api: /api/plugin/agent-log/charts?path=session.jsonl
+$ metab hookroot --api '/api/plugin/agents/charts?path=session.jsonl'
+api: /api/plugin/agents/charts?path=session.jsonl
 status: 200
 {
   "summary": {

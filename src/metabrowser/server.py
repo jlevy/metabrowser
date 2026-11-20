@@ -3648,7 +3648,11 @@ async def _api_folder_envelope(
         "kind": "folder",
         "path": subpath,
         "name": target.name,
-        "views": _views_for_kind("folder"),
+        "views": (
+            await asyncio.to_thread(_views_for_kind, "folder", target=target)
+            if _FOLDER_OFFERS
+            else _views_for_kind("folder")
+        ),
         "dir": {
             "total_files": total_files,
             "total_size": total_size,
@@ -4060,11 +4064,12 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         # document in the normal file response.
         return JSONResponse(result, headers=etag_headers)
 
+    binary_kind = _binary_kind(target, ext)
     return JSONResponse(
         {
             "type": "binary",
-            "kind": "binary",
-            "views": _views_for_kind("binary"),
+            "kind": binary_kind,
+            "views": _views_for_kind(binary_kind),
             "path": subpath,
             "size": disk_size,
             **_mtime_field(file_mtime),
@@ -4954,9 +4959,11 @@ from metabrowser.plugin_loader.manifest import (
     view_entry,
 )
 from metabrowser.plugin_loader.static_assets import (
+    FolderOffer,
     build_plugin_routes,
     plugin_asset_prefix,
     plugin_asset_trees,
+    resolve_folder_offers,
 )
 from metabrowser.tree import (
     set_folder_markers,
@@ -4994,21 +5001,28 @@ _PLUGIN_ASSET_TREES = plugin_asset_trees(_LOADED_PLUGINS)
 # Pre-compile plugin kind rules and view bindings for fast lookup at
 # request time. Higher priority wins; within a priority, the plugin
 # discovered first wins (``CompiledKindRule.sort_key``).
+# A ``binary = true`` rule is asked only about a file already found to be binary, so it
+# sits in its own list and no text classifier sees it.
 _PLUGIN_KIND_RULES: list[CompiledKindRule] = []
+_PLUGIN_BINARY_KIND_RULES: list[CompiledKindRule] = []
 _PLUGIN_VIEWS_BY_KIND: dict[str, list[dict[str, Any]]] = {}
 for _idx, _plugin in enumerate(_LOADED_PLUGINS):
     for _kr in _plugin.manifest.kind:
-        _PLUGIN_KIND_RULES.append(
+        (_PLUGIN_BINARY_KIND_RULES if _kr.binary else _PLUGIN_KIND_RULES).append(
             CompiledKindRule(rule=_kr, plugin_name=_plugin.name, discovery_index=_idx)
         )
     for _view in _plugin.manifest.view:
         _PLUGIN_VIEWS_BY_KIND.setdefault(_view.kind, []).append(view_entry(_view))
 
+# Folder views a plugin offers only where its predicate accepts the folder, by view id.
+_FOLDER_OFFERS: dict[str, FolderOffer | None] = resolve_folder_offers(_LOADED_PLUGINS)
+
 _PLUGIN_CLASSIFY = build_classifier(_PLUGIN_KIND_RULES)
+_PLUGIN_CLASSIFY_BINARY = build_classifier(_PLUGIN_BINARY_KIND_RULES)
 # Hand the tree renderer the folder-marker set so directories whose direct
 # children include a known marker get a ``marker_basename`` field on their
 # row. This is the only piece of plugin state that ``tree.py`` needs.
-set_folder_markers(collect_folder_markers(_PLUGIN_KIND_RULES))
+set_folder_markers(collect_folder_markers(_PLUGIN_KIND_RULES + _PLUGIN_BINARY_KIND_RULES))
 
 
 def _classify_with_plugins(
@@ -5032,6 +5046,20 @@ def _classify_with_plugins(
     if plugin_kind is not None:
         return plugin_kind
     return classify_file_kind(target, ext, adapter)
+
+
+def _binary_kind(target: Path, ext: str) -> str:
+    """The kind of a served file found to be binary: a plugin's binary claim, or ``binary``.
+
+    Path predicates only, so this reads nothing; ``_classify_with_plugins`` is never
+    asked about a binary file, whose content its predicates would misread. A claim by a
+    kind no loaded plugin gives a view keeps ``binary``, so the file keeps its Bytes view
+    rather than reaching a page with nothing to show.
+    """
+    if not _PLUGIN_BINARY_KIND_RULES:
+        return "binary"
+    claimed = _PLUGIN_CLASSIFY_BINARY(FileContext(target, ext, None))
+    return claimed if claimed is not None and _PLUGIN_VIEWS_BY_KIND.get(claimed) else "binary"
 
 
 def _container_kinds() -> dict[str, dict[str, str]]:
@@ -5150,14 +5178,56 @@ def _views_for_kind(
     dropped when active content is off, and a bounded sniff may move the
     default tab to Source. *target* is the file being classified; omit it
     only when no file is in hand.
+
+    For the folder kind *target* is the folder, and :func:`_offered_folder_views`
+    keeps a plugin's offered view only where its predicate accepts the folder; with
+    no folder in hand no offered view is kept. The predicates touch the disk, so a
+    caller on the event loop runs this in a thread when :data:`_FOLDER_OFFERS` is
+    not empty.
     """
     merged = merge_views(VIEW_REGISTRY.get(kind, []), _PLUGIN_VIEWS_BY_KIND.get(kind, []))
     out = check_view_keys(kind, merged).views
+    if kind == "folder" and _FOLDER_OFFERS:
+        out = _offered_folder_views(out, target)
     if kind == "html":
         out = _html_kind_views(out, target, active_content=active_content)
     elif out and not any(v.get("default") for v in out):
         out[0] = {**out[0], "default": True}
     return live_view_keys(out)
+
+
+def _offered_folder_views(views: list[dict[str, Any]], target: Path | None) -> list[dict[str, Any]]:
+    """Keep each offered folder view only where its predicate accepts *target*.
+
+    A predicate that raises is logged and its view left out, so one plugin cannot take
+    every folder page down. An offered view that is a default becomes the only
+    default, the first such one if several are offered: the folder is the plugin's
+    subject, so its page opens there rather than on the Overview.
+    """
+
+    kept: list[dict[str, Any]] = []
+    offered_default: str | None = None
+    for view in views:
+        view_id = view["id"]
+        if view_id not in _FOLDER_OFFERS:
+            kept.append(view)
+            continue
+        predicate = _FOLDER_OFFERS[view_id]
+        if target is None or predicate is None:
+            continue
+        try:
+            offered = bool(predicate(target))
+        except Exception:
+            LOG.exception("folder view %s offer failed; leaving the view out", view_id)
+            continue
+        if not offered:
+            continue
+        kept.append(view)
+        if offered_default is None and view.get("default"):
+            offered_default = view_id
+    if offered_default is not None:
+        kept = [{**view, "default": view["id"] == offered_default} for view in kept]
+    return kept
 
 
 def _html_kind_views(

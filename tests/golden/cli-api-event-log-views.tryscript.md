@@ -63,7 +63,7 @@ $ metab root --show session.jsonl
 show: session.jsonl
 route: /view/session.jsonl
 kind: agent-log
-views: log (default, key V), charts (key C), raw (key S)
+views: session (default, key E), log (key V), charts (key C), raw (key S)
 model: jsonl envelope; size=66
 ? 0
 ```
@@ -150,7 +150,7 @@ status: 200
     {
       "kind": "unknown",
       "summary": "[unknown] {'v': 1, 'ts': '2026-11-19T23:00:00.000Z', 'event': 'mark', 'kind': 'lifecycle', 'name': 'server.start', 'pid': 9}",
-      "adapter": "claude",
+      "adapter": "unknown",
       "provider": null,
       "timestamp": null,
       "is_error": false,
