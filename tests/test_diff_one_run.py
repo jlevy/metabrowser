@@ -9,6 +9,7 @@ same answer, or the same refusal, byte for byte; the process counts are what cha
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import json
 import logging
@@ -1300,3 +1301,116 @@ def test_the_route_answers_a_commit_alike_in_two_processes(
     assert one_run == today
     assert 'desc="2 processes"' in one_run_timing
     assert 'desc="4 processes"' in today_timing
+
+
+# ---- TEMPORARY PROBE for mb-ffyw (do not merge) ----
+_PROBE: list[dict[str, Any]] = []
+
+
+def _holders(inodes: set[str]) -> list[str]:
+    out: list[str] = []
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            for fd in os.listdir(f"/proc/{pid}/fd"):
+                try:
+                    link = os.readlink(f"/proc/{pid}/fd/{fd}")
+                except OSError:
+                    continue
+                if link in inodes:
+                    try:
+                        with open(f"/proc/{pid}/cmdline", "rb") as fh:
+                            cmd = fh.read()[:80]
+                    except OSError:
+                        cmd = b"?"
+                    out.append(f"pid={pid} fd={fd} {link} cmd={cmd!r}")
+        except OSError:
+            continue
+    return out
+
+
+@pytest.mark.parametrize("n", range(60))
+def test_probe_mb_ffyw(
+    n: int, repo: tuple[Path, str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, _base, target = repo
+    _warm(root)
+    source = GitDiffSource(root, patch_with_listing=True)
+    resolved = asyncio.run(source.resolve({"revision": target}))
+    stalling = _stalling_git(tmp_path, '*" diff "*')
+    monkeypatch.setattr(git_process, "git_executable", lambda: stalling)
+    _deadline(monkeypatch, 1.0)
+    t0 = time.monotonic()
+    rec: dict[str, Any] = {"n": n, "ev": []}
+
+    def mark(name: str) -> None:
+        rec["ev"].append((name, round(time.monotonic() - t0, 3)))
+
+    real_spawn = git_process.spawn_git_process
+
+    async def spawn(*a: Any, **k: Any) -> Any:
+        mark("spawn-begin")
+        p = await real_spawn(*a, **k)
+        mark("spawn-end")
+        return p
+
+    monkeypatch.setattr(git_process, "spawn_git_process", spawn)
+    real_term = git_process.terminate_git_process
+
+    async def term(p: Any) -> None:
+        mark("kill-begin")
+        pid = p.pid
+        tr = p._transport
+        inodes = set()
+        for fdn in (1, 2):
+            pipe = tr._pipes.get(fdn)
+            if pipe is not None:
+                with contextlib.suppress(Exception):
+                    inodes.add(os.readlink(f"/proc/self/fd/{pipe.pipe.fileno()}"))
+
+        def watch_exit() -> None:
+            try:
+                os.waitid(os.P_PID, pid, os.WEXITED | os.WNOWAIT)
+                mark("child-exited")
+            except Exception as exc:
+                mark(f"waitid-err-{exc!r}")
+
+        threading.Thread(target=watch_exit, name="probe-exit", daemon=True).start()
+
+        async def watch_eof() -> None:
+            while not (p.stdout.at_eof() and p.stderr.at_eof()):  # noqa: ASYNC110
+                await asyncio.sleep(0.005)
+            mark("pipes-eof")
+
+        eof = asyncio.ensure_future(watch_eof())
+        done = asyncio.ensure_future(real_term(p))
+        try:
+            await asyncio.wait_for(asyncio.shield(done), 0.75)
+        except TimeoutError:
+            rec["holders"] = _holders(inodes)
+            rec["threads"] = [t.name for t in threading.enumerate()]
+            mark("slow-snapshot")
+        await done
+        mark("reaped")
+        eof.cancel()
+
+    monkeypatch.setattr(git_process, "terminate_git_process", term)
+
+    async def main() -> None:
+        try:
+            await source.manifest(resolved)
+        except Exception:
+            mark("raised")
+
+    asyncio.run(main())
+    mark("run-returned")
+    rec["total"] = rec["ev"][-1][1]
+    _PROBE.append(rec)
+
+
+def test_zz_probe_report() -> None:
+    worst = sorted(_PROBE, key=lambda r: -r["total"])
+    lines = [f"{len(_PROBE)} runs; totals sorted: {[r['total'] for r in worst]}"]
+    lines.extend(repr(r) for r in worst[:3])
+    pytest.fail("\n".join(lines))
