@@ -196,19 +196,35 @@ function tick(ms) {
   }
 }
 
-/** The address's history: the shell's navigation as a plugin sees it. */
+/**
+ * The address's history: the shell's navigation as a plugin sees it, and the browser's
+ * address. `writes` counts the view's own history writes (its place). A push the browser
+ * drops, as Chrome drops every history call past 200 in 10 seconds, is `dropPushes`: the
+ * shell's target moves (`shellTarget`), and the browser's entries and address do not.
+ */
 const entries = [];
 let position = -1;
+let writes = 0;
+let dropPushes = 0;
+let shellTarget = null;
 const history = {
   state: null,
   back() {
     position -= 1;
+    shellTarget = null;
     history.state = entries[position].state;
     emit("popstate");
   },
   replaceState(state) {
+    writes += 1;
     history.state = state;
     entries[position].state = state;
+  },
+};
+const location = {
+  get search() {
+    const query = entries[position]?.target.query ?? "";
+    return query ? `?${query}` : "";
   },
 };
 
@@ -236,10 +252,16 @@ const sdk = {
     hide: (within) => tooltips.push({ hide: within?.className ?? null }),
   },
   navigation: {
-    current: () => (position >= 0 ? entries[position].target : null),
+    current: () => shellTarget ?? (position >= 0 ? entries[position].target : null),
     href: (target) => `/view/${target.path}${target.query ? `?${target.query}` : ""}`,
     async open(target, how = {}) {
       const entry = { target: { path: target.path, query: target.query ?? "" }, state: null };
+      shellTarget = null;
+      if (!how.replace && dropPushes > 0) {
+        dropPushes -= 1;
+        shellTarget = entry.target;
+        return;
+      }
       if (how.replace && position >= 0) {
         entries[position] = { ...entry, state: entries[position].state };
       } else {
@@ -411,6 +433,7 @@ function step(name, value) {
 
 let model;
 let mountTable;
+let placeSaveMs;
 
 function mount(file, query = "", context = {}) {
   entries.splice(0);
@@ -425,6 +448,7 @@ function mount(file, query = "", context = {}) {
       sdk,
       window: pageWindow,
       history,
+      location,
       document: documentStandIn,
     },
   );
@@ -529,10 +553,52 @@ async function wholeTable() {
     ...shown(view, { rows: 0 }),
   });
 
+  // The header is in the grid's one Tab stop: Up from the first row, across its controls
+  // with Right, and Down to the first row's cell in the column left.
+  key(documentStandIn.activeElement, "k");
+  key(documentStandIn.activeElement, "k");
+  const onHeader = describeFocus(view);
+  key(documentStandIn.activeElement, "ArrowRight");
+  const onMenu = describeFocus(view);
+  key(documentStandIn.activeElement, "ArrowRight");
+  const onNext = describeFocus(view);
+  key(documentStandIn.activeElement, "ArrowDown");
+  step("the header: k from the first row, Right across its controls, Down to the row", {
+    "after k, k": onHeader,
+    "after Right": onMenu,
+    "after Right again": onNext,
+    "after Down": describeFocus(view),
+    "header controls out of the Tab order": findAll(
+      view.container,
+      (node) => node.localName === "button" && node.attributes.get("tabindex") === "-1",
+    ).length,
+  });
+  key(documentStandIn.activeElement, "ArrowLeft");
+  key(documentStandIn.activeElement, "ArrowLeft");
+
+  // A header's menu is a dialog: the focus leaving it closes it, and Escape returns the
+  // focus to its button.
+  click(headerButton(view, "name", "table-head-menu"));
+  const dialog = find(view.container, hasClass("table-menu"));
+  dispatch(find(dialog, hasClass("menu-item")), "focusout", {
+    relatedTarget: find(view.container, hasClass("table-search")),
+  });
+  const closedOnLeave = find(view.container, hasClass("table-menu")) === null;
+  click(headerButton(view, "name", "table-head-menu"));
+  key(documentStandIn.activeElement, "Escape");
+  step("a header's menu: closed when the focus leaves it, and by Escape, to its button", {
+    role: dialog.attributes.get("role"),
+    label: dialog.attributes.get("aria-label"),
+    "closed when the focus left": closedOnLeave,
+    "open after Escape": find(view.container, hasClass("table-menu")) !== null,
+    focus: describeFocus(view),
+  });
+
   // The header menu: a filter typed into its form, and a column hidden.
   click(headerButton(view, "age", "table-head-menu"));
   const menu = find(view.container, hasClass("table-menu"));
   const items = findAll(menu, hasClass("menu-item")).map(text);
+  const menuRole = menu.attributes.get("role");
   const form = find(menu, hasClass("table-filter-form"));
   const ops = find(form, hasClass("table-filter-op"));
   ops.value = "contains";
@@ -540,6 +606,7 @@ async function wholeTable() {
   dispatch(form, "submit");
   await settle();
   step("the age header's menu, and a filter from its form", {
+    role: menuRole,
     "menu items": items,
     operators: ops.options.map((option) => option.attributes.get("value")),
     requests: takeRequests(),
@@ -659,7 +726,7 @@ async function windowedTable() {
     requests: takeRequests(),
     ...shown(view, { rows: 2 }),
   });
-  view.scroller.scrollTop = 150 * 33;
+  view.scroller.scrollTop = 150 * 32;
   dispatch(view.scroller, "scroll");
   tick(16);
   await settle();
@@ -742,6 +809,105 @@ async function windowedTable() {
   view.container.remove();
 }
 
+async function placeAndHistory() {
+  // The place is written once a pause after the keys stop, never a key press each, so a
+  // held key cannot use up the browser's history writes and make it drop the record's
+  // push (Chrome ignores history calls past 200 in 10 seconds, WebKit throws past 100 in
+  // 30); tests/test_table_view_chrome.py presses on past Chrome's bound.
+  const view = mount("long.csv");
+  view.scroller.clientHeight = 363;
+  await ready(view);
+  takeRequests();
+  rowsOf(view)[0].focus();
+  writes = 0;
+  for (let press = 0; press < 150; press++) {
+    key(documentStandIn.activeElement, "j");
+  }
+  await settle();
+  const during = writes;
+  tick(placeSaveMs - 1);
+  const before = writes;
+  tick(1);
+  step("150 presses of j: no history write while the keys come, one a pause after", {
+    "writes while pressing": during,
+    "writes just before the pause ends": before,
+    "writes after it": writes,
+    requests: takeRequests(),
+    focus: describeFocus(view),
+  });
+  const added = entries.length;
+  key(documentStandIn.activeElement, "Enter");
+  await settle();
+  const opened = shown(view, { rows: 0 });
+  step("Enter after them: the record's entry pushed, its address the record's", {
+    "entries added": entries.length - added,
+    "browser's address": location.search,
+    title: opened.record?.title,
+    requests: takeRequests(),
+  });
+  const at = position;
+  click(find(view.container, hasClass("table-back")));
+  await settle();
+  const back = shown(view, { rows: 0 });
+  step("its Back link: Back, to the grid at the place the keys left", {
+    "went back": position === at - 1,
+    "browser's address": location.search,
+    record: back.record,
+    scrollTop: view.scroller.scrollTop,
+    focus: back.focus,
+  });
+
+  // A push the browser dropped anyway: the record is drawn, and its Back link replaces the
+  // table's address rather than going Back, which would leave the table.
+  dropPushes = 1;
+  key(documentStandIn.activeElement, "Enter");
+  await settle();
+  const dropped = shown(view, { rows: 0 });
+  step("a push the browser dropped: the record drawn, the browser's address unchanged", {
+    "shell's address": sdk.navigation.current()?.query,
+    "browser's address": location.search,
+    title: dropped.record?.title,
+    requests: takeRequests(),
+  });
+  const before2 = { position, entries: entries.length };
+  click(find(view.container, hasClass("table-back")));
+  await settle();
+  const replaced = shown(view, { rows: 0 });
+  step("its Back link: the table's address replaces the entry, and Back is not taken", {
+    "went back": position !== before2.position,
+    "entries added": entries.length - before2.entries,
+    "browser's address": location.search,
+    record: replaced.record,
+    focus: replaced.focus,
+  });
+
+  // A new answer to the same question keeps the reader's place by key.
+  view.scroller.scrollTop = 100 * 32 + 5;
+  dispatch(view.scroller, "scroll");
+  tick(16);
+  key(documentStandIn.activeElement, "ArrowDown", { shiftKey: true });
+  const kept = {
+    scrollTop: view.scroller.scrollTop,
+    focus: describeFocus(view),
+    selected: findAll(view.container, (node) => node.attributes.get("aria-selected") === "true")
+      .length,
+  };
+  await view.handle.refresh();
+  await settle();
+  step("refresh: the question asked again, its answer drawn with the place kept by key", {
+    requests: takeRequests(),
+    before: kept,
+    after: {
+      scrollTop: view.scroller.scrollTop,
+      focus: describeFocus(view),
+      selected: findAll(view.container, (node) => node.attributes.get("aria-selected") === "true")
+        .length,
+    },
+  });
+  view.handle.dispose();
+  view.container.remove();
+}
+
 function modelInvariants() {
   const state = model.parseState(
     "sort=score&order=desc&f.active=eq%3Atrue&q=x&cols=name&cols=a%2C+b&plain=1&record=%404",
@@ -780,6 +946,63 @@ function modelInvariants() {
     chosen: true,
   });
   assert.equal(model.stateQuery(model.parseState(roundTrip)), roundTrip);
+  // A question's later pages: the last one says whether it is complete and why, and a
+  // page from a table that changed under the cursor ends it as `cursor_expired`.
+  const firstPage = {
+    rows: [{ key: "@1", cells: {} }],
+    columns: ["a"],
+    next_after: "c1",
+    complete: true,
+    truncated: false,
+    reason: null,
+    count: 3,
+    count_complete: true,
+    generation: "g1",
+  };
+  const joined = model.joinPage(
+    { ...firstPage, rows: [...firstPage.rows] },
+    {
+      ...firstPage,
+      rows: [{ key: "@2", cells: {} }],
+      next_after: null,
+      complete: false,
+      reason: "budget",
+      examined: 9,
+    },
+  );
+  assert.deepEqual(
+    [joined.rows.length, joined.next_after, joined.complete, joined.reason, joined.examined],
+    [2, null, false, "budget", 9],
+  );
+  const expired = model.joinPage(
+    { ...firstPage, rows: [...firstPage.rows] },
+    { ...firstPage, rows: [{ key: "@2", cells: {} }], generation: "g2" },
+  );
+  assert.deepEqual(
+    [expired.rows.length, expired.next_after, expired.complete, expired.reason],
+    [1, null, false, "cursor_expired"],
+  );
+  // The header is part of the grid's roving focus: k from the first row onto the focused
+  // column's first control, Right across controls, Down to that column's cell.
+  const head = { rows: 5, cols: 3, pageRows: 4, heads: 5, headStarts: [0, 2, 4] };
+  assert.deepEqual(model.keyStep({ row: 0, col: 1 }, { key: "k" }, head).focus, {
+    row: -1,
+    col: 2,
+  });
+  assert.deepEqual(
+    model.keyStep({ row: 0, col: -1 }, { key: "ArrowUp", shiftKey: true }, head).action,
+    "extend",
+  );
+  assert.deepEqual(model.keyStep({ row: -1, col: 3 }, { key: "ArrowDown" }, head).focus, {
+    row: 0,
+    col: 1,
+  });
+  assert.deepEqual(model.keyStep({ row: -1, col: 4 }, { key: "ArrowRight" }, head).focus, {
+    row: -1,
+    col: 4,
+  });
+  assert.equal(model.keyStep({ row: -1, col: 0 }, { key: "Enter" }, head).action, "none");
+  assert.equal(model.keyStep({ row: 1, col: -1 }, { key: "k" }, head).focus.row, 0);
   assert.deepEqual(fit.hidden, ["c"]);
   assert.equal(chosen.pinned, true);
   step("the model: an address round trip, cells a delimited file cannot hold, and column fit", {
@@ -791,6 +1014,14 @@ function modelInvariants() {
     "stored type": { text: stored.text, stored: stored.stored, tip: stored.tip },
     "default columns in 210 px": fit,
     "chosen columns in 210 px": chosen,
+    "a later page: the question's end, and a changed table's": {
+      joined: { rows: joined.rows.length, complete: joined.complete, reason: joined.reason },
+      expired: { rows: expired.rows.length, complete: expired.complete, reason: expired.reason },
+    },
+    "no rows match, said of a scan the budget stopped": [
+      model.noMatchText({ ...firstPage, reason: null }),
+      model.noMatchText({ ...firstPage, reason: "budget", examined: 4096 }),
+    ],
     "window at 1,000 px of 31 px rows": model.windowRange({
       scrollTop: 1000,
       viewport: 310,
@@ -808,7 +1039,9 @@ async function bounds() {
   await ready(paged);
   const whole = shown(paged, { rows: 8 });
   assert.equal(whole.table.drawn, 8);
-  assert.equal(whole.table.role, "table");
+  // Drawn whole: every row, no spacers, and no row count for rows not drawn.
+  assert.deepEqual(whole.table.spacers, []);
+  assert.equal(whole.table.rowcount, null);
   step("pages shorter than asked: read on from each cursor, the table drawn whole", {
     requests: takeRequests(),
     ...whole,
@@ -837,7 +1070,7 @@ async function bounds() {
     requests: takeRequests(),
     ...shown(searched, { rows: 2 }),
   });
-  searched.scroller.scrollTop = 150 * 33;
+  searched.scroller.scrollTop = 150 * 32;
   dispatch(searched.scroller, "scroll");
   tick(16);
   await settle();
@@ -884,7 +1117,7 @@ async function bounds() {
 }
 
 // The structured kind's Table view: a JSON list of mappings, whose record draws each nested
-// value with the renderer its view hands the table (record-table.js passes the
+// value with the renderer its view hands the table (structured/index.js passes the
 // structured plugin's inline tree; this stand-in writes the value it was given), and a
 // JSON mapping, which is not a list of records.
 async function recordLists() {
@@ -950,11 +1183,14 @@ async function recordLists() {
 
 async function main() {
   model = await import(pathToFileURL(path.join(plugin, "table-model.js")).href);
-  ({ mountTable } = await import(pathToFileURL(path.join(plugin, "table-view.js")).href));
+  const view = await import(pathToFileURL(path.join(plugin, "table-view.js")).href);
+  ({ mountTable } = view);
+  placeSaveMs = view.PLACE_SAVE_MS;
   modelInvariants();
   await wholeTable();
   await refusals();
   await windowedTable();
+  await placeAndHistory();
   await bounds();
   await recordLists();
   step("requests asked of the server", { unrecorded });

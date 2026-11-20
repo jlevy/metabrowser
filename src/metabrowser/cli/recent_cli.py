@@ -32,6 +32,7 @@ from metabrowser.errors import CLIError
 from metabrowser.invisible_chars import display_segment
 from metabrowser.paths_safe import tilde_path
 from metabrowser.recent_targets import RecentTarget, RecentTargetsError, TargetMode
+from metabrowser.repository_context import is_checkout_root
 
 if TYPE_CHECKING:
     from metabrowser.cache.urls import GitSource
@@ -61,8 +62,9 @@ def list_recent(*, as_json: bool) -> None:
     """Print the recent targets, most recently opened first.
 
     ``--json`` prints one object: ``limit``, how many the list keeps; ``targets``, each
-    with its ``mode``, ``root``, ``opened_at``, and ``target``, which is ``null`` when the
-    open pointed at the root itself; and ``problem``, ``null`` or the
+    with its ``mode``, ``root``, ``opened_at``, ``target``, which is ``null`` when the
+    open pointed at the root itself, and ``git``, whether a folder was a checkout when it
+    was opened (always false for a mirror); and ``problem``, ``null`` or the
     sentence that says why a damaged or newer file lists as empty. A problem is part of
     the answer, with exit status 0, so a shell that reads standard output and standard
     error together still finds one object.
@@ -112,16 +114,18 @@ def add_recent(target: Path | GitSource) -> None:
         return
     mode: TargetMode
     place: str | None = None
+    git = False
     if isinstance(target, Path):
         # The root a serve of the path would open, by the rule a serve asks.
         opened = resolve_local_open(target)
         mode, root = "folder", recent_targets.recorded_path(opened.root)
+        git = is_checkout_root(opened.root)
         if opened.place is not None:
             place = recent_targets.recorded_path(opened.place)
     else:
         mode, root = "mirror", _mirror_root(target)
     try:
-        recent_targets.record(mode, root, target=place)
+        recent_targets.record(mode, root, target=place, git=git)
     except (RecentTargetsError, recent_targets.UnrecordableRootError) as error:
         raise CLIError(f"not recorded: {error}") from error
 

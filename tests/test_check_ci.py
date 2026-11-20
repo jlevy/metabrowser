@@ -98,12 +98,8 @@ def test_a_matrix_short_of_an_interpreter_fails(
 
 @pytest.mark.parametrize("target", ["test-serial", "test-goldens", "test-parallel"])
 def test_a_tier_no_job_runs_fails(tmp_path: Path, target: str) -> None:
-    old = (
-        f"make {target} SHARD=${{{{ matrix.shard }}}}/2"
-        if target == "test-parallel"
-        else f"make {target}\n"
-    )
-    errors = _errors(tmp_path, old, "make build\n" if old.endswith("\n") else "make build")
+    old = f"make {target} SHARD=${{{{ matrix.shard }}}}/2"
+    errors = _errors(tmp_path, old, "make build", occurrence=1)
 
     assert f"ci.yml runs no `make {target}`" in errors
 
@@ -382,7 +378,7 @@ DROPS = {
     ),
     "a tier whose failure make ignores": (
         CI_TEXT.replace("run: make test-goldens", "run: make -i test-goldens"),
-        "ci.yml job goldens runs `make -i test-goldens`; a make step's words are make,",
+        "ci.yml job goldens runs `make -i test-goldens SHARD=${{ matrix.shard }}/2`; a make step's words are make,",
     ),
     "a tier make only prints": (
         CI_TEXT.replace(
@@ -393,7 +389,7 @@ DROPS = {
     ),
     "a tier whose pytest a make variable replaces": (
         CI_TEXT.replace("run: make test-serial", "run: make test-serial PYTEST=true"),
-        "ci.yml job goldens runs `make test-serial PYTEST=true`; a make step's words are",
+        "ci.yml job goldens runs `make test-serial PYTEST=true SHARD=${{ matrix.shard }}/2`; a make step's words are",
     ),
     "a stack part make only prints": (
         CI_TEXT.replace(

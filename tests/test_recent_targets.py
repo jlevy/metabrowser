@@ -520,8 +520,9 @@ def test_a_field_this_release_does_not_know_is_kept_until_its_entry_is_opened_ag
             "root": "https://github.com/jlevy/tbd",
             "opened_at": _STAMP,
             "target": "https://github.com/jlevy/tbd/pull/12",
+            "git": False,
         },
-        {"mode": "folder", "root": "/work/a", "opened_at": _STAMP, "target": None},
+        {"mode": "folder", "root": "/work/a", "opened_at": _STAMP, "target": None, "git": False},
     ]
     assert listing.targets[0].extra == later
 
@@ -570,6 +571,90 @@ def test_an_entry_keeps_where_its_open_pointed_and_the_next_open_replaces_it(
     ]
     record("folder", "/work/a", target="/work/a", directory=home)
     assert read(home).targets[0].target is None, "a target that is the root is none"
+
+
+# ── Whether a folder was a checkout ────────────────────────────────
+
+
+def test_an_entry_keeps_whether_its_folder_was_a_checkout_and_the_next_open_replaces_it(
+    home: Path,
+) -> None:
+    """``git`` is not part of the key: it is the latest open's, written only when true.
+
+    A shell draws the list without looking at a listed folder, so what the list holds is
+    the answer from the last time the folder was opened.
+    """
+
+    record("folder", "/work/a", git=True, directory=home)
+    record("folder", "/work/b", directory=home)
+
+    assert [(entry.root, entry.git) for entry in read(home).targets] == [
+        ("/work/b", False),
+        ("/work/a", True),
+    ]
+    stored = yaml.safe_load((home / STORE_FILE).read_text(encoding="utf-8"))["targets"]
+    assert "git" not in stored[0], "an entry that is not a checkout writes no flag"
+    assert stored[1]["git"] is True
+    assert [entry.as_json()["git"] for entry in read(home).targets] == [False, True]
+
+    # The folder stopped being a checkout, or was a checkout all along: the next open says.
+    record("folder", "/work/a", directory=home)
+    assert [(entry.root, entry.git) for entry in read(home).targets] == [
+        ("/work/a", False),
+        ("/work/b", False),
+    ]
+    record("folder", "/work/a", git=True, directory=home)
+    assert read(home).targets[0].git is True
+    assert len(read(home).targets) == 2, "the flag is no part of the key"
+
+
+def test_a_mirror_is_never_recorded_as_a_checkout(home: Path) -> None:
+    entry = record("mirror", "https://github.com/jlevy/tbd", git=True, directory=home)
+
+    assert entry.git is False
+    assert (
+        "git" not in yaml.safe_load((home / STORE_FILE).read_text(encoding="utf-8"))["targets"][0]
+    )
+
+
+def test_an_entry_from_before_the_flag_is_a_plain_folder_until_it_is_opened_again(
+    home: Path,
+) -> None:
+    """The flag is a new field of an entry, which the format allows without a new number."""
+
+    _store(home, "format: mf01\ntargets:\n" + _ENTRY)
+
+    assert [(entry.root, entry.git) for entry in read(home).targets] == [("/work/a", False)]
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "- mode: folder\n  root: /work/a\n  opened_at: '{stamp}'\n  git: 'false'\n",
+        "- mode: folder\n  root: /work/a\n  opened_at: '{stamp}'\n  git: 'yes'\n",
+        "- mode: mirror\n  root: https://github.com/jlevy/tbd\n  opened_at: '{stamp}'\n  git: true\n",
+    ],
+    ids=["false-is-never-written", "not-a-boolean", "a-mirror-is-never-a-checkout"],
+)
+def test_a_flag_this_release_does_not_write_is_damage(home: Path, entry: str) -> None:
+    """A file that holds one was not written by this release, so it is damaged."""
+
+    _store(home, "format: mf01\ntargets:\n" + entry.format(stamp=_STAMP))
+
+    listing = read(home)
+    assert listing.targets == ()
+    assert listing.problem is not None and "git flag" in listing.problem
+
+
+def test_a_checkout_flag_survives_a_rewrite_by_another_entrys_open(home: Path) -> None:
+    _store(home, "format: mf01\ntargets:\n" + _ENTRY + "  git: true\n")
+
+    assert read(home).targets[0].git is True
+    record("folder", "/work/b", directory=home)
+    assert [(entry.root, entry.git) for entry in read(home).targets] == [
+        ("/work/b", False),
+        ("/work/a", True),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -640,6 +725,31 @@ def test_recent_add_of_a_file_records_its_folder_and_the_file(
     )
     listed = runner.invoke(_app, ["--recent", "--json"])
     assert '"target": ' + json.dumps(recorded_path(folder / "notes.md")) in listed.output
+
+
+def test_recent_add_records_whether_the_folder_is_a_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The flag is the ``.git`` entry's test the identity route gives the ``git`` kind by."""
+
+    monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(tmp_path / "config"))
+    plain, checkout = tmp_path / "plain", tmp_path / "checkout"
+    (checkout / ".git").mkdir(parents=True)
+    plain.mkdir()
+    runner = CliRunner()
+
+    for folder in (plain, checkout):
+        assert runner.invoke(_app, [str(folder), "--recent-add"]).exit_code == 0
+
+    assert [(entry.root, entry.git) for entry in read().targets] == [
+        (recorded_path(checkout), True),
+        (recorded_path(plain), False),
+    ]
+    listed = json.loads(runner.invoke(_app, ["--recent", "--json"]).output)
+    assert [(entry["root"], entry["git"]) for entry in listed["targets"]] == [
+        (recorded_path(checkout), True),
+        (recorded_path(plain), False),
+    ]
 
 
 def test_the_open_root_of_a_path_is_the_folder_or_a_files_folder(tmp_path: Path) -> None:
@@ -916,6 +1026,8 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
     served = tmp_path / "served"
     served.mkdir()
     (served / "a.txt").write_text("a")
+    # Served as a checkout, which the entry says too (the `git` kind of the identity route).
+    (served / ".git").mkdir()
     console_script = Path(sys.executable).with_name("metab")
     process = subprocess.Popen(
         [
@@ -936,11 +1048,14 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
     try:
         line = read_line(process)
         assert line.startswith("Serving "), line
-        assert [(entry.mode, entry.root, entry.target) for entry in read(config).targets] == [
+        assert [
+            (entry.mode, entry.root, entry.target, entry.git) for entry in read(config).targets
+        ] == [
             (
                 "folder",
                 recorded_path(served),
                 recorded_path(served / "a.txt") if root_is_file else None,
+                True,
             )
         ]
         # A server of another folder that is not an open, as one the macOS app restores

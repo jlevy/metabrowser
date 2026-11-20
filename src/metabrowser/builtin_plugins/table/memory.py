@@ -60,8 +60,10 @@ from metabrowser.plugin_api import (
     real_cell,
 )
 
-# How often a scan checks its budget, in rows: often enough to stop within a few
-# milliseconds, rarely enough to cost nothing measurable.
+# How often a scan of a table whose rows cost at most their bytes checks its budget, in
+# rows: often enough to stop within a few milliseconds, rarely enough to cost nothing
+# measurable. A table whose rows can cost more says its own spacing
+# (`MemoryTable.budget_check_rows`).
 BUDGET_CHECK_ROWS = 4096
 
 SortKey = tuple[Any, ...]
@@ -104,7 +106,17 @@ class MemoryTable(Protocol):
     @property
     def lock(self) -> threading.Lock: ...
 
+    @property
+    def budget_check_rows(self) -> int:
+        """How often a scan, and a sort index's build, check the budget, in rows."""
+        ...
+
     def schema(self) -> TableSchema: ...
+
+    def is_null(self, index: int, column: int) -> bool:
+        """Whether one value is null or absent, which a `null` filter asks without the
+        cost of its sort key."""
+        ...
 
     def sort_key(self, index: int, column: int) -> SortKey:
         """The sort key of one value, by row index and column number."""
@@ -139,6 +151,13 @@ class MemoryTable(Protocol):
         """One row's cells for the fields *names*; an absent value has no entry."""
         ...
 
+    def page_cells(
+        self, indexes: Sequence[int], names: Sequence[str], *, max_chars: int
+    ) -> list[dict[str, Cell]]:
+        """A page's rows' cells, as :meth:`cells` gives each, so a source can share work
+        across the rows of one page."""
+        ...
+
 
 def column_number(table: MemoryTable, name: str, param: str) -> int:
     """The column a query names, refused as a bad query when there is none, so a source
@@ -152,7 +171,7 @@ def column_number(table: MemoryTable, name: str, param: str) -> int:
 
 def sort_index(table: MemoryTable, column: int, budget: Budget) -> array[int] | None:
     """Row indexes in ascending order of one column, ties by position, or None when the
-    index is not built yet and the budget has run out."""
+    index is not built yet and the budget runs out before it is."""
 
     name = table.columns[column].name
     with table.lock:
@@ -161,7 +180,15 @@ def sort_index(table: MemoryTable, column: int, budget: Budget) -> array[int] | 
             if budget.expired():
                 return None
             total = table.row_count
-            keys = [table.sort_key(index, column) for index in range(total)]
+            check = table.budget_check_rows
+            keys: list[SortKey] = []
+            for start in range(0, total, check):
+                if start and budget.expired():
+                    return None
+                keys.extend(
+                    table.sort_key(index, column)
+                    for index in range(start, min(start + check, total))
+                )
             order = sorted(range(total), key=lambda index: (keys[index], index))
             del keys
             found = array("I", order)
@@ -192,9 +219,9 @@ def _filter_test(table: MemoryTable, item: Filter) -> RowTest:
     number = column_number(table, item.field, f"f.{item.field}")
 
     if item.op == "null":
-        return lambda index: table.sort_key(index, number) == NULL_KEY
+        return lambda index: table.is_null(index, number)
     if item.op == "notnull":
-        return lambda index: table.sort_key(index, number) != NULL_KEY
+        return lambda index: not table.is_null(index, number)
     value = item.value or ""
     if item.op == "contains":
         needle = value.casefold()
@@ -250,8 +277,9 @@ def scan(table: MemoryTable, tests: Sequence[RowTest], budget: Budget, *, descen
     if not tests:
         return Scan(matches=visit, complete=True, examined=total)
     matches: list[int] = []
+    check = table.budget_check_rows
     for count, index in enumerate(visit):
-        if count % BUDGET_CHECK_ROWS == 0 and count and budget.expired():
+        if count % check == 0 and count and budget.expired():
             return Scan(matches=matches, complete=False, examined=count)
         if all(test(index) for test in tests):
             matches.append(index)
@@ -405,10 +433,13 @@ def _next_after(
     if end >= len(ordered):
         return None
     last = ordered[end - 1]
-    if sorted_by is None:
-        token = encode_cursor([None, query.order, last + 1])
-    else:
-        token = encode_cursor(_sort_cursor(query, table.sort_key(last, sorted_by), last))
+    try:
+        if sorted_by is None:
+            token = encode_cursor([None, query.order, last + 1])
+        else:
+            token = encode_cursor(_sort_cursor(query, table.sort_key(last, sorted_by), last))
+    except UnicodeEncodeError:  # a sort value with a lone surrogate, which UTF-8 cannot carry
+        token = None
     return token if token is not None else positional_cursor(end, table.generation)
 
 
@@ -463,12 +494,14 @@ def page(table: MemoryTable, query: TableQuery, budget: Budget) -> TablePage:
             limit=limit,
         )
     end = min(start + limit, len(ordered))
+    shown = ordered[start:end]
     rows = tuple(
-        TableRow(
-            key=position_key(index + 1),
-            cells=table.cells(index, columns, max_chars=TABLE_CELL_PREVIEW_CHARS),
+        TableRow(key=position_key(index + 1), cells=cells)
+        for index, cells in zip(
+            shown,
+            table.page_cells(shown, columns, max_chars=TABLE_CELL_PREVIEW_CHARS),
+            strict=True,
         )
-        for index in ordered[start:end]
     )
     reason: PageReason | None = None
     if not found.complete:

@@ -29,9 +29,11 @@ other, and builds one table from the parse:
   generation is the file's identity, size, and modification time, as for delimited text.
 
 The table answers through the table plugin's memory engine
-(``metabrowser.builtin_plugins.table.memory``), and a built table is held in a cache
-keyed by the generation, bounded in entries and in the bytes the parse is estimated to
-hold. Past ``RECORDS_MAX_ROWS`` rows, ``RECORDS_MAX_CELLS`` values, or
+(``metabrowser.builtin_plugins.table.memory``), and a built table, or the refusal that
+is a file's answer, is held in a cache keyed by the generation, bounded in entries and
+in the bytes the parse is estimated to hold. A nested value is counted and written only
+as far as the bound it is read under, so what a query costs follows its bounds and the
+file's bytes, not how far YAML aliases expand the document. Past ``RECORDS_MAX_ROWS`` rows, ``RECORDS_MAX_CELLS`` values, or
 ``RECORDS_MAX_FIELDS`` fields, the rest is not read, and the count, sort, and filter say
 they cover only what was (``complete: false``, ``truncated: true``).
 """
@@ -41,11 +43,13 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import re
 import threading
 from array import array
-from collections.abc import Hashable, Mapping, Sequence
+from collections.abc import Hashable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from json.encoder import encode_basestring
 from typing import Any
 
 from metabrowser.builtin_plugins.structured import load_structured_payload
@@ -93,7 +97,9 @@ from metabrowser.plugin_api import (
 # which follows its rows and values, not its bytes. Measured with
 # `devtools/bench_record_lists.py` over JSON lists at that byte bound, 8 MiB, on a
 # shared 4-processor Linux container at a load average of 3 to 9 (Python 3.13,
-# 2026-11-20); rerun it for the current numbers.
+# 2026-11-20). Under that load they are upper figures, wider and slower than a quiet
+# machine gives, so the bounds they set are safe but not tight; rerun it on a quiet
+# machine for figures to tighten them by.
 #
 # The parse the table reads costs 0.07 to 0.29 s for 8 MiB of JSON, without the Tree
 # view's YAML, which took 26 s for the 12-field shape and which the table never writes
@@ -119,6 +125,28 @@ RECORDS_MAX_CELLS = 2_000_000
 # in 2 ms as 0.42 MB of JSON, and a page carried 11 rows (`TABLE_PAGE_CELLS_MAX`).
 RECORDS_MAX_FIELDS = 1024
 
+# How much of a nested value's JSON text a filter, a search, and a sort read, in
+# characters: as much as a record carries of it (`TABLE_RECORD_VALUE_BYTES`), so a filter
+# matches what the record can show; a longer value is compared by its start. Its text is
+# written only this far (`_json_text`), so what reading it costs is bounded here and not
+# by the value, which YAML aliases can make far larger than the file. Writing this far
+# into a list of 50,000 integers (about 290,000 characters) took 5 ms, as writing the
+# whole list with `json.dumps` took 4.3 ms. Over 3,000 records that each alias that list,
+# a `contains` filter read about 350 of them in its 2 s budget and said so
+# (`complete: false`), where before it read the whole list in each and answered after
+# 5.6 s as if complete (at a load average of 2 to 4, 2026-11-20).
+RECORDS_NESTED_READ_CHARS = TABLE_RECORD_VALUE_BYTES
+
+# How often a scan of a record list, and the build of its sort index, read the request's
+# budget, in rows. A delimited cell costs at most its bytes, so that source reads it every
+# `memory.BUDGET_CHECK_ROWS` rows; a record's values cost up to
+# `RECORDS_NESTED_READ_CHARS` of text each, whatever the file's size, so this one reads
+# it every few, which past its budget a scan overruns by at most this many rows'
+# reading, 90 ms at the 5 ms per row above. Reading it is a clock read: a `notnull`
+# filter over 500,000 records took 0.18 to 0.20 s at this spacing and at the delimited
+# one alike, and 0.23 s reading it every row.
+RECORDS_BUDGET_CHECK_ROWS = 16
+
 # Rows whose values decide each field's type, as `DELIMITED_TYPE_SAMPLE_ROWS`; a later
 # value that contradicts the type is shown as stored. Its dearest case is in the
 # measurement above.
@@ -140,7 +168,8 @@ _DATE_SORT_NOTE = (
     "that mix separators or offsets sort by their spelling"
 )
 _UNKNOWN_SORT_NOTE = (
-    "values of several types: nulls first, then numbers, then text, then nested values"
+    "values of several types: nulls first, then numbers, then text, then nested values;"
+    " a filter value that reads as a number matches numbers only"
 )
 _JSON_SORT_NOTE = "a nested mapping or list has no order"
 
@@ -206,10 +235,12 @@ def _infer_type(values: Sequence[Any]) -> FieldType:
         return "unknown"
     (only,) = types
     if only == "text":
+        # A binary value or a set is text too, and none is a date: over no text at all,
+        # `all` would be true.
         texts = [value for value in values if isinstance(value, str)]
-        if all(_is_date_text(value) for value in texts):
+        if texts and all(_is_date_text(value) for value in texts):
             return "date"
-        if all(_is_datetime_text(value) for value in texts):
+        if texts and all(_is_datetime_text(value) for value in texts):
             return "datetime"
     return only
 
@@ -235,28 +266,214 @@ def _conforms(field_type: FieldType, value: Any) -> bool:
     return False
 
 
+_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+
+
+def _valid_text(text: str) -> str:
+    """*text* with each lone surrogate, which a JSON escape can write and UTF-8 cannot
+    carry, as U+FFFD, so its length is unchanged; *text* itself when it has none."""
+
+    if text.isascii():
+        return text
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return _LONE_SURROGATE.sub("\ufffd", text)
+    return text
+
+
 def _json_safe(value: Any) -> Any:
     """A parsed value with only what JSON can carry: a value JSON has no form for (a YAML
-    date, a binary value, a non-finite number) is its text, and every key is text."""
+    date, a binary value, a non-finite number) is its text, every key is text, and a lone
+    surrogate is U+FFFD. It is written whole, so it is asked only of a value whose JSON
+    text fits a cell's bound."""
 
-    if value is None or isinstance(value, (bool, int, str)):
+    if value is None or isinstance(value, (bool, int)):
         return value
+    if isinstance(value, str):
+        return _valid_text(value)
     if isinstance(value, float):
         return value if math.isfinite(value) else _text_of(value)
     if isinstance(value, Mapping):
         mapping: Mapping[Any, Any] = value  # pyright: ignore[reportUnknownVariableType]
-        return {
-            key if isinstance(key, str) else _key_text(key): _json_safe(item)
-            for key, item in mapping.items()
-        }
+        return {_valid_text(_key_text(key)): _json_safe(item) for key, item in mapping.items()}
     if isinstance(value, list):
         items: list[Any] = value  # pyright: ignore[reportUnknownVariableType]
         return [_json_safe(item) for item in items]
-    return _text_of(value)
+    return _valid_text(_text_of(value))
 
 
-def _compact(value: Any) -> str:
-    return json.dumps(_json_safe(value), ensure_ascii=False, separators=(",", ":"))
+# ── A nested value's JSON text, written and counted within bounds ──
+#
+# A nested value's JSON text is written a member at a time, so writing can stop at a
+# bound, and counted without being written, each mapping, list, and long text once
+# however many times YAML aliases repeat it. Both read the text as
+# `json.dumps(_json_safe(value), ensure_ascii=False, separators=(",", ":"))` writes it,
+# and both walk the value with their own stack, so its depth costs no recursion. The
+# parse is a tree: a document that refers to itself is refused before it reaches a table
+# (`_TOO_DEEP`), so neither walk meets a cycle.
+
+_CONTAINERS = (Mapping, list)
+_END: Any = object()
+
+# Text longer than this many characters is counted once per object, as a mapping or list
+# is; shorter text costs less to count again than to remember.
+_COUNTED_ONCE_CHARS = 64
+
+
+def _json_string(text: str, limit: int | None = None) -> str:
+    """Text as a JSON string; past *limit* characters, the string of its first
+    `limit + 1`, whose text up to its closing quote begins the whole string's."""
+
+    return encode_basestring(text if limit is None else text[: limit + 1])
+
+
+def _scalar_json(value: Any, limit: int | None = None) -> str:
+    """A value that is not a mapping or list as JSON text, cut as `_json_string` cuts."""
+
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return int.__repr__(value)
+    if isinstance(value, float) and math.isfinite(value):
+        return float.__repr__(value)
+    if isinstance(value, str):
+        return _json_string(value, limit)
+    return _json_string(_text_of(value), limit)
+
+
+def _json_text(value: Any, limit: int) -> str:
+    """A value's JSON text, written only until it passes *limit* characters: the whole
+    text when it fits, and otherwise its first `limit + 1`, so a caller can tell it was
+    cut. What it costs follows *limit*, not the value."""
+
+    parts: list[str] = []
+    written = 0
+    # The containers being written, innermost last: each one's members, whether it is a
+    # mapping, whether its next member is its first, and its closing bracket.
+    members: list[Iterator[Any]] = []
+    mappings: list[bool] = []
+    firsts: list[bool] = []
+    closes: list[str] = []
+    item = value
+    while True:
+        if isinstance(item, Mapping):
+            mapping: Mapping[Any, Any] = item  # pyright: ignore[reportUnknownVariableType]
+            members.append(iter(mapping.items()))
+            mappings.append(True)
+            firsts.append(True)
+            closes.append("}")
+            piece = "{"
+        elif isinstance(item, list):
+            items: list[Any] = item  # pyright: ignore[reportUnknownVariableType]
+            members.append(iter(items))
+            mappings.append(False)
+            firsts.append(True)
+            closes.append("]")
+            piece = "["
+        else:
+            piece = _scalar_json(item, max(limit - written, 0))
+        parts.append(piece)
+        written += len(piece)
+        # The next member to write, closing each container whose members are written.
+        while members:
+            if written > limit:
+                return "".join(parts)[: limit + 1]
+            member = next(members[-1], _END)
+            if member is _END:
+                members.pop()
+                mappings.pop()
+                firsts.pop()
+                parts.append(closes.pop())
+                written += 1
+                continue
+            before = "" if firsts[-1] else ","
+            firsts[-1] = False
+            if mappings[-1]:
+                key, item = member
+                before += _json_string(_key_text(key), limit) + ":"
+            else:
+                item = member
+            if before:
+                parts.append(before)
+                written += len(before)
+            break
+        else:
+            return "".join(parts)[: limit + 1]
+
+
+def _scalar_length(value: Any, known: dict[int, int]) -> int:
+    if isinstance(value, (bytes, bytearray)):
+        return 2 * len(value) + 2  # pyright: ignore[reportUnknownArgumentType]
+    if isinstance(value, str) and len(value) > _COUNTED_ONCE_CHARS:
+        found = known.get(id(value))
+        if found is None:
+            found = known[id(value)] = len(_json_string(value))
+        return found
+    return len(_scalar_json(value))
+
+
+def _json_length(value: Any, known: dict[int, int]) -> int:
+    """The length of a value's JSON text, counted without writing it. *known* holds the
+    lengths counted so far by object, so a value that aliases repeat is counted once
+    while the objects are alive; the caller keeps it for as long as that holds."""
+
+    if not isinstance(value, _CONTAINERS):
+        return _scalar_length(value, known)
+    found = known.get(id(value))
+    if found is not None:
+        return found
+    # The containers being counted, innermost last, with their members, whether each is
+    # a mapping, and its count so far.
+    nodes: list[Any] = []
+    members: list[Iterator[Any]] = []
+    mappings: list[bool] = []
+    totals: list[int] = []
+    item = value
+    while True:
+        container: Mapping[Any, Any] | list[Any] = item
+        nodes.append(container)
+        if isinstance(container, Mapping):
+            members.append(iter(container.items()))
+            mappings.append(True)
+        else:
+            members.append(iter(container))
+            mappings.append(False)
+        totals.append(2 + max(len(container) - 1, 0))  # its brackets and commas
+        # The next container not counted yet, closing each whose members are counted.
+        while True:
+            member = next(members[-1], _END)
+            if member is _END:
+                node = nodes.pop()
+                members.pop()
+                mappings.pop()
+                total = totals.pop()
+                known[id(node)] = total
+                if not nodes:
+                    return total
+                totals[-1] += total
+                continue
+            if mappings[-1]:
+                key, child = member
+                totals[-1] += len(_json_string(_key_text(key))) + 1
+            else:
+                child = member
+            if not isinstance(child, _CONTAINERS):
+                totals[-1] += _scalar_length(child, known)
+                continue
+            found = known.get(id(child))
+            if found is None:
+                item = child
+                break
+            totals[-1] += found
+
+
+def _nested_text(value: Any) -> str:
+    """What a filter, a search, and a sort read of a nested value."""
+
+    return _json_text(value, RECORDS_NESTED_READ_CHARS)[:RECORDS_NESTED_READ_CHARS]
 
 
 def _text_of(value: Any) -> str:
@@ -278,9 +495,11 @@ def _text_of(value: Any) -> str:
     if isinstance(value, (date, datetime)):
         return value.isoformat()
     if isinstance(value, (bytes, bytearray)):
-        return bytes(value).hex()  # pyright: ignore[reportUnknownArgumentType]
-    if isinstance(value, (Mapping, list)):
-        return _compact(value)
+        # As much of it as a filter reads of a nested value; a cell counts the rest.
+        start = value[: RECORDS_NESTED_READ_CHARS // 2]  # pyright: ignore[reportUnknownVariableType]
+        return bytes(start).hex()  # pyright: ignore[reportUnknownArgumentType]
+    if isinstance(value, _CONTAINERS):
+        return _nested_text(value)
     return str(value)
 
 
@@ -302,8 +521,8 @@ def _sort_key(value: Any) -> SortKey:
         return NULL_KEY
     if isinstance(value, (bool, int, float)):
         return (1, value)
-    if isinstance(value, (Mapping, list)):
-        return (3, _compact(value))
+    if isinstance(value, _CONTAINERS):
+        return (3, _nested_text(value))
     return (2, _text_of(value))
 
 
@@ -362,6 +581,14 @@ class _Records:
             self._schema = _schema(self)
         return self._schema
 
+    @property
+    def budget_check_rows(self) -> int:
+        return RECORDS_BUDGET_CHECK_ROWS
+
+    def is_null(self, index: int, column: int) -> bool:
+        value = self.raw(index, column)
+        return value is _ABSENT or value is None or _is_nan(value)
+
     def sort_key(self, index: int, column: int) -> SortKey:
         value = self.raw(index, column)
         return NULL_KEY if value is _ABSENT else _sort_key(value)
@@ -407,7 +634,12 @@ class _Records:
         *,
         max_chars: int | None = None,
         max_bytes: int | None = None,
+        known: dict[int, int] | None = None,
     ) -> dict[str, Cell]:
+        """One row's cells. *known* holds the nested values' lengths counted so far, so a
+        page counts a value that aliases repeat across its rows once."""
+
+        known = {} if known is None else known
         cells: dict[str, Cell] = {}
         for name in names:
             number = self.position(name)
@@ -417,9 +649,19 @@ class _Records:
             if value is _ABSENT:
                 continue
             cells[name] = _cell(
-                self.columns[number].type, value, max_chars=max_chars, max_bytes=max_bytes
+                self.columns[number].type,
+                value,
+                max_chars=max_chars,
+                max_bytes=max_bytes,
+                known=known,
             )
         return cells
+
+    def page_cells(
+        self, indexes: Sequence[int], names: Sequence[str], *, max_chars: int
+    ) -> list[dict[str, Cell]]:
+        known: dict[int, int] = {}
+        return [self.cells(index, names, max_chars=max_chars, known=known) for index in indexes]
 
 
 def _number(raw: str) -> int | float | None:
@@ -434,7 +676,62 @@ def _number(raw: str) -> int | float | None:
     return number if math.isfinite(number) else None
 
 
-def _value_cell(value: Any, *, max_chars: int | None, max_bytes: int | None) -> Cell:
+def _bound(max_chars: int | None, max_bytes: int | None) -> int | None:
+    """The characters a cell's bound can hold at most: a UTF-8 byte holds at most one."""
+
+    bounds = [bound for bound in (max_chars, max_bytes) if bound is not None]
+    return min(bounds) if bounds else None
+
+
+def _shown(
+    text: str, *, max_chars: int | None, max_bytes: int | None, length: int | None = None
+) -> Cell:
+    """Text as a cell, cut at the bound, where *text* may be only the start of a value
+    *length* characters long. A lone surrogate is shown as U+FFFD and the cell marked
+    `invalid_utf8`, as text that does not decode is."""
+
+    whole = len(text) if length is None else length
+    bound = _bound(max_chars, max_bytes)
+    start = text if bound is None else text[: bound + 1]
+    valid = _valid_text(start)
+    cell = text_cell(valid, max_chars=max_chars, max_bytes=max_bytes)
+    shown: str = cell if isinstance(cell, str) else cell["text"]
+    if valid is start and len(shown) == whole:
+        return shown
+    envelope: dict[str, Any] = {"text": shown}
+    if len(shown) != whole:
+        envelope["length"] = whole
+    if valid is not start:
+        envelope["invalid_utf8"] = True
+    return envelope
+
+
+def _nested_cell(
+    value: Any, *, max_chars: int | None, max_bytes: int | None, known: dict[int, int]
+) -> Cell:
+    """A mapping or list as `{json}` when its JSON text fits the cell's bound, and as that
+    text cut there otherwise. It is counted, not written, to learn whether it fits, and
+    written only as far as the bound."""
+
+    length = _json_length(value, known)
+    bound = _bound(max_chars, max_bytes)
+    fits = bound is None or length <= bound
+    if fits and max_bytes is not None and 4 * length > max_bytes:
+        text = _json_text(value, length)
+        fits = len(text.encode("utf-8", errors="surrogatepass")) <= max_bytes
+    if fits:
+        return {"json": _json_safe(value)}
+    return _shown(
+        _json_text(value, bound if bound is not None else length),
+        max_chars=max_chars,
+        max_bytes=max_bytes,
+        length=length,
+    )
+
+
+def _value_cell(
+    value: Any, *, max_chars: int | None, max_bytes: int | None, known: dict[int, int]
+) -> Cell:
     """One non-null value as a cell of its own type."""
 
     if isinstance(value, bool):
@@ -443,23 +740,31 @@ def _value_cell(value: Any, *, max_chars: int | None, max_bytes: int | None) -> 
         return integer_cell(value)
     if isinstance(value, float):
         return real_cell(value)
-    if isinstance(value, (Mapping, list)):
-        compact = _compact(value)
-        fits = (max_chars is None or len(compact) <= max_chars) and (
-            max_bytes is None or len(compact.encode("utf-8", errors="surrogatepass")) <= max_bytes
+    if isinstance(value, _CONTAINERS):
+        return _nested_cell(value, max_chars=max_chars, max_bytes=max_bytes, known=known)
+    if isinstance(value, (bytes, bytearray)):
+        bound = _bound(max_chars, max_bytes)
+        start = value if bound is None else value[: bound // 2 + 1]  # pyright: ignore[reportUnknownVariableType]
+        return _shown(
+            bytes(start).hex(),  # pyright: ignore[reportUnknownArgumentType]
+            max_chars=max_chars,
+            max_bytes=max_bytes,
+            length=2 * len(value),  # pyright: ignore[reportUnknownArgumentType]
         )
-        if fits:
-            return {"json": _json_safe(value)}
-        return text_cell(compact, max_chars=max_chars, max_bytes=max_bytes)
-    return text_cell(_text_of(value), max_chars=max_chars, max_bytes=max_bytes)
+    return _shown(_text_of(value), max_chars=max_chars, max_bytes=max_bytes)
 
 
 def _cell(
-    field_type: FieldType, value: Any, *, max_chars: int | None, max_bytes: int | None
+    field_type: FieldType,
+    value: Any,
+    *,
+    max_chars: int | None,
+    max_bytes: int | None,
+    known: dict[int, int],
 ) -> Cell:
     if value is None:
         return None
-    cell = _value_cell(value, max_chars=max_chars, max_bytes=max_bytes)
+    cell = _value_cell(value, max_chars=max_chars, max_bytes=max_bytes, known=known)
     if _conforms(field_type, value):
         return cell
     stored = _value_type(value)
@@ -474,7 +779,7 @@ def _field_names(keys: Sequence[Hashable]) -> list[str]:
     taken: set[str] = set()
     next_use: dict[str, int] = {}
     for number, key in enumerate(keys, start=1):
-        base = _key_text(key) or f"field_{number}"
+        base = _valid_text(_key_text(key)) or f"field_{number}"
         name = base
         if name in taken:
             uses = next_use.get(base, 2)
@@ -486,6 +791,12 @@ def _field_names(keys: Sequence[Hashable]) -> list[str]:
         taken.add(name)
         names.append(name)
     return names
+
+
+# Why a parse that recursed past the interpreter's limit is refused: the structured
+# plugin's walk of the parse (`parser._count_nodes_and_depth`) recurses, so a document
+# nested thousands deep, or a YAML anchor that refers to itself, fails there.
+_TOO_DEEP = "This document is nested too deeply or refers to itself, so its records are not read."
 
 
 def _not_records(reason: str) -> SourceUnreadableError:
@@ -565,8 +876,10 @@ def build_records(payload: StructuredPayload, generation: str) -> _Records:
         rows=rows,
         rows_cut=rows_cut,
         fields_cut=fields_cut,
+        # The parse's walk counts a node once per alias to it, but each object it holds
+        # took at least one of the file's bytes.
         parsed_bytes=payload.source_bytes * _HELD_BYTES_PER_SOURCE_BYTE
-        + payload.node_count * _HELD_BYTES_PER_NODE,
+        + min(payload.node_count, payload.source_bytes) * _HELD_BYTES_PER_NODE,
     )
 
 
@@ -600,7 +913,21 @@ def _schema(records: _Records) -> TableSchema:
 
 # ── The source ─────────────────────────────────────────────────
 
-RECORDS_CACHE: MemoryCache[_Records] = MemoryCache(
+
+@dataclass(frozen=True, slots=True)
+class _Refusal:
+    """A generation of a file that is not a list of records, and why, kept so that the
+    Table tab's every request on it costs a cache lookup and not a parse."""
+
+    generation: str
+    reason: str
+
+    @property
+    def held_bytes(self) -> int:
+        return len(self.reason)
+
+
+RECORDS_CACHE: MemoryCache[_Records | _Refusal] = MemoryCache(
     max_entries=lambda: RECORDS_CACHE_MAX_ENTRIES, max_bytes=lambda: RECORDS_CACHE_MAX_BYTES
 )
 
@@ -640,13 +967,27 @@ class RecordListSource:
             raise RuntimeError("RecordListSource reads block; call them off the event loop")
         return asyncio.run_coroutine_threadsafe(load(), self._handle.loop).result()
 
+    def _build(self, generation: str) -> _Records | _Refusal:
+        """The table of the file's parse, or the refusal that is its answer for this
+        generation. A file that cannot be read now is not an answer to remember."""
+
+        try:
+            payload = self._payload()
+        except RecursionError:
+            return _Refusal(generation=generation, reason=_TOO_DEEP)
+        try:
+            return build_records(payload, generation)
+        except SourceUnreadableError as exc:
+            return _Refusal(generation=generation, reason=str(exc))
+
     def _records(self) -> _Records:
         generation = self.generation()
-        return RECORDS_CACHE.load(
-            self._handle.ref.identity,
-            generation,
-            lambda: build_records(self._payload(), generation),
+        found = RECORDS_CACHE.load(
+            self._handle.ref.identity, generation, lambda: self._build(generation)
         )
+        if isinstance(found, _Refusal):
+            raise SourceUnreadableError(found.reason)
+        return found
 
     @staticmethod
     def _require_table(table: str) -> None:

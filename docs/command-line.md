@@ -884,6 +884,10 @@ metab --recent-clear                # empty the list
   `--no-serve`) record nothing.
 - **Each entry’s mode:** `folder` for your own files as they are on disk, or `mirror`
   for Metabrowser’s cached copy of a repository.
+  `--recent --json` also gives each entry’s `git`, true for a folder that held a `.git`
+  entry, a checkout, when it was last opened, so a menu can draw its Git checkout mark
+  without looking at the folder, and false for any other folder and for a mirror.
+  A folder opened before this field existed lists it as false until it is opened again.
   No entry records which branch or commit was shown, so a folder reopens on its files as
   they are on disk.
 - **Order and length:** opening something again moves its one entry to the front, and

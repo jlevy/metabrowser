@@ -24,6 +24,8 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_git, require_node
 
@@ -37,9 +39,10 @@ SERVER_START_TIMEOUT_S = 20
 # The server stops on SIGTERM well inside this, and is killed after it.
 SERVER_TERM_S = 5
 SERVER_KILL_S = 2
-# The longest the test can take; tests/test_process_group.py holds it under the suite's
-# 60 s per-test timeout, which ends the whole run when it fires.
+# The longest the test can take; tests/test_process_group.py holds it under its timeout,
+# which ends the whole run when it fires.
 LIFECYCLE_S = RUN_BUDGET_S + GROUP_STOP_S + SERVER_TERM_S + SERVER_KILL_S + PROFILE_TEARDOWN_S
+pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 _METAB = Path(sys.executable).with_name("metab")
 # The session's checks, pinned so a probe or a pass that stops running is seen. Each of its
 # four passes, a reading font and a font set, checks <html> on each of its 3 pages, the

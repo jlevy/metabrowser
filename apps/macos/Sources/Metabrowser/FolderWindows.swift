@@ -280,8 +280,8 @@ final class FolderWindows {
                 session.pages.contains { $0.host === controller } ? .here
                 : session.isInBackground ? .background : .inAnotherWindow
             return FolderChooser.OpenFolder(
-                key: key, title: session.windowTitle, location: session.location, mark: RootMark(session.served),
-                shown: shown)
+                key: key, title: session.windowTitle, location: session.location,
+                mark: RootMark(session.title.identity.kind), shown: shown)
         }
     }
 

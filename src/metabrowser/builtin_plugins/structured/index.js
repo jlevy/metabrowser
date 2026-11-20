@@ -3,7 +3,7 @@
 // Owns kind "structured" (declared in manifest.toml for the three
 // extensions .json / .yaml / .yml at priority 0). Three views:
 //   ("structured", "tree")   — virtualized YAML-styled tree (default)
-//   ("structured", "table")  — a list of mappings as a table (record-table.js)
+//   ("structured", "table")  — a list of mappings as a table (recordTableView below)
 //   ("structured", "source") — raw text via mb.renderSourceView
 //
 // Exports the renderer + helpers from this module so other plugins
@@ -12,8 +12,6 @@
 // `requires = ["structured"]` reads them with
 // `await mb.plugins.load("structured")` (docs/plugins.md,
 // "Declared Dependencies").
-import { recordTableView } from "./record-table.js";
-
 const mb = window.metabrowser;
 if (!mb) {
   throw new Error("metabrowser structured plugin: window.metabrowser missing — SDK not loaded");
@@ -127,11 +125,55 @@ export const generateStructuredPreview = preview.generateStructuredPreview;
 export const calculateOptimalExpansion = preview.calculateOptimalExpansion;
 export { expansion, renderInlineTree, renderSourceFallback as renderSource, renderTree };
 
+// ── The Table view ─────────────────────────────────────────────
+//
+// A JSON or YAML list of mappings as a table (plan Decision 12). Every structured file
+// has the tab. The table plugin draws it from its routes, which ask this plugin's
+// record-list source (records.py), and a document that is not a list of records is the
+// source's refusal, which the view says in place of a table. Tree stays the kind's
+// default, so the table plugin's module is asked for when the tab is first shown, not
+// when the file opens; the view is a few lines here rather than a module of its own,
+// which every file of this kind would fetch for a tab it rarely opens.
+//
+// The table plugin needs no other plugin, so it cannot draw a JSON value as a tree
+// itself; this view hands it the inline tree for a record's nested values.
+
+/**
+ * @typedef {{
+ *   mountTable: typeof import("../table/table-view.js").mountTable,
+ * }} TableExports
+ */
+
+/** @type {Promise<TableExports> | null} */
+let table = null;
+
+mb.registerView("structured", "table", {
+  /** @param {HTMLElement} container @param {{path?: string}} ctx */
+  async render(container, ctx) {
+    table ??= /** @type {Promise<TableExports>} */ (mb.plugins.load("table"));
+    const { mountTable } = await table;
+    return mountTable(container, {
+      path: ctx.path ?? "",
+      // A record's value is at most TABLE_RECORD_VALUE_BYTES of JSON, and its tree is
+      // drawn whole, not virtualized. Its first draw opens a flat list whole: in headless
+      // Chrome a record holding a list of 12,750 integers (65,391 bytes of JSON, the
+      // largest the bound passes) drew 12,751 rows in 0.64 s, where a list of 50 took
+      // 0.03 s, and expanding it again after a collapse took 0.5 s (load average 2.5,
+      // 2026-11-20).
+      renderJson: (host, value) => {
+        const mount = host.ownerDocument.createElement("div");
+        mount.className = "structured-tree-mount";
+        host.append(mount);
+        return renderInlineTree(mount, value, { virtualize: false });
+      },
+    });
+  },
+});
+
 mb.registerView("structured", "tree", {
   render: renderTree,
   dispose: disposeTree,
 });
-mb.registerView("structured", "table", recordTableView(renderInlineTree));
 mb.registerView("structured", "source", {
   render: renderSourceFallback,
 });

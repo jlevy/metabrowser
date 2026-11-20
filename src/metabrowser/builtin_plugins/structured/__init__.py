@@ -39,6 +39,7 @@ from metabrowser.builtin_plugins.structured.parser import (
     lookup_structured_payload,
     parse_structured_bytes,
     remember_structured_payload,
+    serialize_structured_payload,
     truncated_payload,
 )
 from metabrowser.http_caching import build_scoped_etag
@@ -120,20 +121,23 @@ async def load_structured_payload(ref: ContentRef, *, serialize: bool = True) ->
     """The parse of *ref*'s content, from the cache when its fingerprint has not changed.
 
     The Tree view's route and the record-list table source (records.py) both read a
-    file through this, so the table reads the parse the Tree view made. The table asks
-    with ``serialize=False``: it never draws the canonical YAML, and writing it is most
-    of a large file's cost (``devtools/bench_record_lists.py`` measured 16 to 80 s for
-    8 MiB of JSON records under load, where the parse took about a tenth of a second),
-    so a parse made for the table leaves it out and is not remembered for the Tree view,
-    which parses once more and writes it when it is first shown.
+    file through this, so whichever view opens a file first, the other reads its parse.
+    The table asks with ``serialize=False``: it never draws the canonical YAML, and
+    writing it is most of a large file's cost (``devtools/bench_record_lists.py``
+    measured 16 to 80 s for 8 MiB of JSON records under load, where the parse took about
+    a tenth of a second), so a parse made for the table is kept without it, and the Tree
+    view writes it from that parse when it is first shown.
     """
 
     ext = ref.logical_ext
     payload = lookup_structured_payload(ref.identity, ext, ref.fingerprint)
     if payload is None:
         payload = await _parse(ref, ext, serialize=serialize)
-        if serialize:
-            remember_structured_payload(ref.identity, ext, ref.fingerprint, payload)
+    elif serialize and not payload.serialized:
+        payload = await asyncio.to_thread(serialize_structured_payload, payload)
+    else:
+        return payload
+    remember_structured_payload(ref.identity, ext, ref.fingerprint, payload)
     return payload
 
 
