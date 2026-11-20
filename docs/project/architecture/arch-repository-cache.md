@@ -1,7 +1,7 @@
 # Repository Cache
 
-**Status:** Built: the cache and configuration roots, the `f01` layout and its
-migration, source and store identity, the SoftSchema record contracts, owner-only
+**Status:** Built: the cache and configuration roots, the `f02` layout and its migration
+from `f01`, source and store identity, the SoftSchema record contracts, owner-only
 storage, the lock hierarchy and side locks, the runtime probe, the startup sweep of
 staging, and the read-only `/api/cache/` routes.
 Planned: size accounting and a purge command for repository stores, which the
@@ -123,6 +123,20 @@ Migration holds the home lock and publishes the layout after each step, so an
 interrupted chain resumes where it stopped.
 A newer format is refused with `FutureLayoutFormatError`, which asks for an upgrade.
 
+`f02` is the format in which a store directory is named by a [key](#store-keys) and not
+by the whole digest of its identity, as `f01` named it.
+`cache/store_rename.py` migrates a home between them by renaming each store where it
+stands, which `acquire_source` does before it looks for a hit, so a store cached by an
+older release is still a hit, and no clone is repeated.
+A rename was chosen over leaving the old names because a store can hold a repository of
+gigabytes and nothing in the cache deletes one: orphaned, every store would be cloned
+again and the old copies would stay, listed by nothing.
+A store no alias names takes the readable part `unattached`, so it is listed as
+unreferenced and kept, as it always was; a directory whose `store.yml` does not record
+the identity its name spells was damaged already and is left as it is.
+A running Metabrowser of the older release keeps reading the old directory names until
+it is restarted, and refuses the migrated home as a newer format.
+
 ## Identity
 
 `cache/identity.py` holds the rules, frozen in
@@ -134,7 +148,7 @@ A newer format is refused with `FutureLayoutFormatError`, which asks for an upgr
   provider reducer maps both to one address.
 - **Store identity** digests the source identity and the object format observed during
   acquisition, so two concurrent acquisitions of one source converge on one store.
-  The **store key** is all of its hexadecimal digits.
+  The **store key** is the name of its directory; see [Store Keys](#store-keys).
 - **Slug** is a readable lowercase prefix plus the shortest digest suffix no other
   source has claimed, recorded in `source.yml` at creation and never recomputed.
 
@@ -142,6 +156,35 @@ Spellings converge only through the grammar and the provider reducers.
 The GitHub reducer lowercases owner and repository, so every spelling of a GitHub URL
 shares one source, and a GitHub mirror is named in lowercase.
 Two stores are never merged because their owner and name text match.
+
+### Store Keys
+
+A store directory is named `<readable>--<prefix>`, such as
+`github-com--jlevy--markform--589d51b16fd8f1a2`, where it was once the whole digest of
+the store identity. The readable part is the one a slug of the same address has, and the
+prefix is the first `STORE_KEY_SUFFIX_HEX_DIGITS[0]` digits of the identity’s digest.
+So the key is a name and the identity is the record: `store.yml` holds the whole `id`,
+and a lookup or a listing checks it.
+
+- **The width is sized, and never relied on.** `STORE_KEY_SUFFIX_HEX_DIGITS` in
+  `cache/identity.py` carries the birthday-bound arithmetic that picked the first width,
+  and `tests/test_cache_store_keys.py` recomputes it.
+  Two stores can take one first name only when they agree on that many bits of digest
+  and on the readable part, and the sizing does not even count the readable part.
+- **A name another store holds is never shared.** The claim reads the identity recorded
+  at each candidate, takes the first no other store holds, and does it under the store’s
+  lock (`_claim_store_key` in `cache/acquire.py`). A lookup finds the store at the
+  candidate that records its identity, however far down the list it is, so a store that
+  took a longer name is not published twice when the shorter one is freed.
+  Beating the odds therefore costs a longer name and nothing else, and
+  `tests/test_cache_acquire.py` forces it.
+- **A directory with no readable `store.yml` is damage and not a free name.** A claim
+  never publishes beside it, and a lookup refuses it instead of reading it as another
+  store’s.
+- **A source’s reservation keeps the whole digest.** `locks/stores/<key>.lock` takes the
+  key, but `locks/sources/<source digest>.acquire.lock` reserves a source’s cold load
+  before any slug exists.
+  Only the message of a wait that timed out shows it.
 
 ## Records
 
@@ -337,6 +380,9 @@ The GitHub plugin removes its own records on request
 `/api/cache/layout`, `/api/cache/sources`, `/api/cache/source/<slug>`, and
 `/api/cache/stores` make the cache inspectable through `metab --api`, so it needs no
 inspection command of its own.
+A store row carries its `key`, the directory name below `repository-stores`, which is
+also what a page continues after, and the `id` its `store.yml` records, which is `null`
+when that record cannot be read.
 `cache/projection.py` builds them:
 
 - each request resolves the roots and never creates them; a missing root is `absent`;

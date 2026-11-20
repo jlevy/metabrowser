@@ -658,7 +658,7 @@ status: 200
   "ref_name": "topic",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "<HOME>/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "<HOME>/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
@@ -1119,7 +1119,7 @@ api: /api/cache/source/github-com--octo--demo--46386669dc01
 status: 200
 {
   "home": "present",
-  "layout_format": "f01",
+  "layout_format": "f02",
   "source": {
     "slug": "github-com--octo--demo--46386669dc01",
     "publication": "published",
@@ -1140,6 +1140,7 @@ status: 200
     },
     "problems": [],
     "store": {
+      "key": "github-com--octo--demo--65157fba6c20ff90",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "published",
       "mode": "full",

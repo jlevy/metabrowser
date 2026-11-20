@@ -546,7 +546,11 @@ async function main() {
   }
   for (const page of [mirror, hostile]) {
     const { name, origin, location, pin, ref_name: ref } = page.status;
-    const where = `mirror in ${location}`;
+    // The note names the store's directory; the tooltip and the status keep the bare
+    // repository inside it, where `git -C` works.
+    assert(location.endsWith("/repository.git"), `${page.subject}: the location is ${location}`);
+    const directory = location.slice(0, -"/repository.git".length);
+    const where = `mirror in ${directory}`;
     const sentence = `Mirror of ${origin} at ${pin}, stored in ${location}: a bare Git repository, with no checked-out files.`;
     const { root, file } = page.mainHeading;
 
@@ -565,7 +569,7 @@ async function main() {
     // The address is the name and the path under it: no commit, and no directory.
     const address = file.text.slice(0, file.text.indexOf(where));
     assert(!address.includes(shortCommit(pin)), `${page.subject}: the address names the commit`);
-    assert(!address.includes(location), `${page.subject}: the address names the cache`);
+    assert(!address.includes(directory), `${page.subject}: the address names the cache`);
     // The note follows the last crumb; it is not the address's prefix.
     for (const html of [page.raw.root, file.html]) {
       assert(
@@ -623,8 +627,14 @@ async function main() {
       location: [hostile.raw.root, hostile.raw.file, hostile.raw.tipAfter, hostile.raw.tipNote],
     }[key];
     for (const html of written) {
-      assert(html.includes(escaped(value)), `the hostile ${key} is missing from ${html}`);
-      assert(!html.includes(value), `the hostile ${key} was written as markup: ${html}`);
+      // The heading's note names the store's directory and the tooltips the bare
+      // repository inside it, so each stands where it is written, escaped.
+      const text =
+        key === "location" && (html === hostile.raw.root || html === hostile.raw.file)
+          ? value.slice(0, -"/repository.git".length)
+          : value;
+      assert(html.includes(escaped(text)), `the hostile ${key} is missing from ${html}`);
+      assert(!html.includes(text), `the hostile ${key} was written as markup: ${html}`);
     }
   }
   assert(

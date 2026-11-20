@@ -10,8 +10,10 @@ the URL classifier's job, not this module's.
   spelling of one hosted repository are two sources.
 - A store identity digests the source identity and the object format observed during
   acquisition, so two concurrent acquisitions of one source converge on one store.
-- A store key is all 64 hexadecimal digits of its identity, so store directories cannot
-  collide.
+- A store key is a readable prefix, the same one a slug has, plus a prefix of the store
+  identity's digest, so a store directory reads as the repository it holds. The prefix is
+  the shortest of a few widths that no store with a different identity holds: a claim
+  under the store lock never shares a name, and takes the next width instead.
 - A slug is a readable, lowercase ASCII prefix plus the shortest digest suffix no other
   source has claimed. It is recorded in ``source.yml`` at creation and never recomputed.
 """
@@ -31,7 +33,6 @@ type GitTransport = Literal["https", "ssh", "file"]
 SOURCE_IDENTITY_DOMAIN: Final = "metabrowser.repository-source.v1"
 STORE_IDENTITY_DOMAIN: Final = "metabrowser.repository-store.v1"
 IDENTITY_PREFIX: Final = "sha256:"
-STORE_KEY_HEX_DIGITS: Final = 64
 
 # The bound the record and its packaged schema hold `display_url` and `clone_url` to.
 # Deriving an identity from an address no record could carry would publish an entry that
@@ -45,16 +46,51 @@ SLUG_SUFFIX_HEX_DIGITS: Final = (12, 16, 24, 32, 64)
 # The readable part, its separator, and the widest suffix.
 SLUG_MAX_BYTES: Final = SLUG_READABLE_MAX_BYTES + len(SLUG_TOKEN_SEPARATOR) + 64
 
+# The hexadecimal digits of a store identity's digest that end a store key, shortest first.
+# A key is `<readable>--<digest prefix>`: the first width names the store, and each later
+# one is the name it takes when a store with a different identity already holds the
+# shorter name. The widest is the whole digest, which only the same identity can share.
+#
+# Sizing, by the birthday bound. Two stores can claim one first-choice name only if their
+# digests agree on its first b = 4 x 16 = 64 bits (and, further, share a readable part).
+# Among n stores the chance that any two agree is at most n(n - 1) / 2^(b + 1), taking every
+# readable part to be the same, which no real cache does:
+#
+#   16 digits (64 bits): n = 10^4 -> 2.7e-12, n = 10^5 -> 2.7e-10
+#   14 digits (56 bits): n = 10^4 -> 6.9e-10, n = 10^5 -> 6.9e-8
+#   12 digits (48 bits): n = 10^4 -> 1.8e-7,  n = 10^5 -> 1.8e-5
+#
+# The target is under 1e-9 at 10^5 stores, far past any one machine's clones, and only 16
+# digits meet it with the readable part ignored. With it counted the true figure is lower
+# again: stores share a readable part only as other spellings of one repository (its
+# transport, a trailing `.git`, path case) and its two object formats, so groups hold a
+# handful, and 12 digits already gives 1.2e-10 at 10^4 for groups of 8. 16 digits are
+# chosen so that the claim needs neither: the name is 4 characters longer than the
+# slug's and never leans on the readable part.
+#
+# The bound prices a second name, not correctness. A claim reads the identity recorded in
+# any store already at a candidate and takes the next width instead of sharing it, a
+# lookup does the same, and the identity recorded in `store.yml` is checked whenever a
+# store is looked up or listed (`cache.acquire`, `cache.projection`). Someone who chooses
+# addresses can grind 2^64 digests to occupy a name and force a longer one; that is all
+# they can force.
+STORE_KEY_SUFFIX_HEX_DIGITS: Final = (16, 24, 32, 64)
+STORE_KEY_MAX_BYTES: Final = SLUG_READABLE_MAX_BYTES + len(SLUG_TOKEN_SEPARATOR) + 64
+
 TRANSPORTS: Final[frozenset[str]] = frozenset({"https", "ssh", "file"})
 
 _IDENTITY_RE: Final = re.compile(r"^sha256:[0-9a-f]{64}$")
-_STORE_KEY_RE: Final = re.compile(r"^[0-9a-f]{64}$")
+_DIGEST_PREFIX_RE: Final = re.compile(r"^[0-9a-f]+$")
 _SLUG_RE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*(?:--[a-z0-9]+(?:-[a-z0-9]+)*)*$")
 _FOLD_RE: Final = re.compile(r"[^a-z0-9]+")
 
 
 class SlugCollisionError(RuntimeError):
     """Every permitted slug suffix is already claimed by a different source."""
+
+
+class StoreKeyCollisionError(RuntimeError):
+    """Every permitted store key suffix is already claimed by a different store."""
 
 
 def _digest(material: str) -> str:
@@ -90,9 +126,21 @@ def is_identity(value: str) -> bool:
 
 
 def is_store_key(value: str) -> bool:
-    """Whether *value* spells a store directory key."""
+    """Whether *value* spells a store directory key: a slug whose last token is a digest prefix.
 
-    return _STORE_KEY_RE.fullmatch(value) is not None
+    A bare run of digits is no key, so a name an older release gave a store, which was the
+    whole digest, is told from a key.
+    """
+
+    if not is_slug(value):
+        return False
+    readable, separator, suffix = value.rpartition(SLUG_TOKEN_SEPARATOR)
+    return (
+        bool(separator)
+        and bool(readable)
+        and len(suffix) in STORE_KEY_SUFFIX_HEX_DIGITS
+        and _DIGEST_PREFIX_RE.fullmatch(suffix) is not None
+    )
 
 
 def is_slug(value: str) -> bool:
@@ -118,12 +166,12 @@ def repository_store_id(source_id: str, object_format: ObjectFormat) -> str:
     return _digest(f"{STORE_IDENTITY_DOMAIN}\0source\0{source_id}\0{object_format}")
 
 
-def store_key(store_id: str) -> str:
-    """Return the directory key for *store_id*: all of its hexadecimal digits."""
+def identity_digest(identity: str) -> str:
+    """Return the 64 hexadecimal digits of a ``sha256:`` identity."""
 
-    if not is_identity(store_id):
-        raise ValueError("a store identity is sha256:<64 lowercase hex digits>")
-    return store_id.removeprefix(IDENTITY_PREFIX)[:STORE_KEY_HEX_DIGITS]
+    if not is_identity(identity):
+        raise ValueError("an identity is sha256:<64 lowercase hex digits>")
+    return identity.removeprefix(IDENTITY_PREFIX)
 
 
 def _fold(token: str) -> str:
@@ -219,6 +267,76 @@ def slug_matches_identity(slug: str, source_id: str) -> bool:
     )
 
 
+def store_key_candidates_for(readable: str, store_id: str) -> tuple[str, ...]:
+    """Return the keys a store may have under the readable part *readable*, first choice first."""
+
+    digest = identity_digest(store_id)
+    return tuple(
+        f"{readable}{SLUG_TOKEN_SEPARATOR}{digest[:width]}" for width in STORE_KEY_SUFFIX_HEX_DIGITS
+    )
+
+
+def store_key_candidates(
+    transport: GitTransport, normalized_address: str, store_id: str
+) -> tuple[str, ...]:
+    """Return the keys a store of the source at *normalized_address* may have, first choice first.
+
+    The readable part is the one a slug of the address has, and the suffixes are the
+    digest prefixes of :data:`STORE_KEY_SUFFIX_HEX_DIGITS`. A store has the first key no
+    other store holds.
+    """
+
+    return store_key_candidates_for(slug_readable_part(transport, normalized_address), store_id)
+
+
+def store_key(transport: GitTransport, normalized_address: str, store_id: str) -> str:
+    """Return the key *store_id* has when no other store holds it: the shortest candidate."""
+
+    return store_key_candidates(transport, normalized_address, store_id)[0]
+
+
+def cache_store_key(
+    transport: GitTransport,
+    normalized_address: str,
+    store_id: str,
+    *,
+    store_owner: Callable[[str], str | None],
+) -> str:
+    """Return the key of *store_id*: where it is published, or where it would be.
+
+    *store_owner* reports the store identity recorded at a candidate key, or ``None`` when
+    nothing is published there. A key already held by *store_id* is that store's, found
+    however long it is, so a lookup and a repeated claim agree. Otherwise the result is
+    the first candidate nobody holds, and a name held by a different store is skipped,
+    never shared. The caller claims the result under the store lock and reads it again
+    there.
+    """
+
+    free: str | None = None
+    for candidate in store_key_candidates(transport, normalized_address, store_id):
+        owner = store_owner(candidate)
+        if owner == store_id:
+            return candidate
+        if owner is None and free is None:
+            free = candidate
+    if free is None:
+        raise StoreKeyCollisionError("every store key suffix width is claimed by a different store")
+    return free
+
+
+def store_key_matches_identity(key: str, store_id: str) -> bool:
+    """Whether *key* ends in a permitted digest prefix of *store_id*.
+
+    The readable part is not recomputed, as for :func:`slug_matches_identity`: it says
+    which repository, and the digest says which store.
+    """
+
+    if not is_store_key(key) or not is_identity(store_id):
+        return False
+    suffix = key.rpartition(SLUG_TOKEN_SEPARATOR)[2]
+    return identity_digest(store_id).startswith(suffix)
+
+
 __all__ = [
     "IDENTITY_PREFIX",
     "OBJECT_FORMATS",
@@ -230,12 +348,16 @@ __all__ = [
     "SOURCE_ADDRESS_MAX_BYTES",
     "SOURCE_IDENTITY_DOMAIN",
     "STORE_IDENTITY_DOMAIN",
-    "STORE_KEY_HEX_DIGITS",
+    "STORE_KEY_MAX_BYTES",
+    "STORE_KEY_SUFFIX_HEX_DIGITS",
     "TRANSPORTS",
     "GitTransport",
     "ObjectFormat",
     "SlugCollisionError",
+    "StoreKeyCollisionError",
     "cache_slug",
+    "cache_store_key",
+    "identity_digest",
     "is_identity",
     "is_slug",
     "is_store_key",
@@ -245,4 +367,7 @@ __all__ = [
     "slug_tokens",
     "source_identity",
     "store_key",
+    "store_key_candidates",
+    "store_key_candidates_for",
+    "store_key_matches_identity",
 ]

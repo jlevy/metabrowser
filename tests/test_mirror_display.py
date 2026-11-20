@@ -26,7 +26,7 @@ from metabrowser.cache.served_mirror import (
 )
 from metabrowser.cache.urls import GitSource
 
-_STORE_KEY = "ab" * 32
+_STORE_KEY = "github-com--jlevy--squares--abababababababab"
 
 
 @pytest.mark.parametrize(
@@ -108,7 +108,7 @@ def _mirror(home: Path, address: str = "https://github.com/jlevy/squares") -> St
     return StoreMirror(
         home=home,
         store_key=_STORE_KEY,
-        store_id=f"sha256:{_STORE_KEY}",
+        store_id="sha256:" + "ab" * 32,
         source=GitSource(transport="https", form="url", normalized=address),
         slug="squares-0000",
     )

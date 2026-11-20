@@ -93,7 +93,8 @@ class _Stand:
     @property
     def store(self) -> Path:
         identity = repository_store_id(source_identity("https", CANONICAL), "sha1")
-        return self.home / store_directory(store_key(identity)) / "repository.git"
+        key = store_key("https", CANONICAL, identity)
+        return self.home / store_directory(key) / "repository.git"
 
     def store_git(self, *args: str) -> str:
         return pinned_git(self.store, *args)

@@ -260,12 +260,12 @@ def _cache(home: Path) -> None:
 
     build_empty_home(home)
     for store, sources in ((HELD, (HELD, HELD_BY_SSH)), (ANOTHER, (ANOTHER,))):
-        _stage_and_publish_store(home, store.store_key(), with_revision=True)
+        _stage_and_publish_store(home, store.store(), with_revision=True)
         for source in sources:
             _stage_and_publish_source(home, source, opened=False)
-            _attach(home, source, store.store_key(), generation=1, at=ALIASED_AT)
+            _attach(home, source, store.store(), generation=1, at=ALIASED_AT)
     # Acquired, and never attached to its store: the route lists it as not published.
-    _stage_and_publish_store(home, LISTED_ONLY.store_key(), with_revision=False)
+    _stage_and_publish_store(home, LISTED_ONLY.store(), with_revision=False)
     _stage_and_publish_source(home, LISTED_ONLY, opened=False)
 
 

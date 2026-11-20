@@ -936,6 +936,8 @@ Metabrowser keeps the keys and comments you add, and refuses keys that look like
 credentials. If the file cannot be parsed, Metabrowser names it and exits without
 replacing it: move it aside and start again.
 A newer format asks you to upgrade Metabrowser.
+A cache an older release wrote is migrated the first time a repository in it is opened:
+each mirror’s directory is renamed to a readable name, and nothing is cloned again.
 Deleting the cache directory, with no server running, removes every mirror and record;
 the next run clones again.
 [The repository cache](project/architecture/arch-repository-cache.md) describes the

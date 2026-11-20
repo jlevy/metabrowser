@@ -683,7 +683,7 @@ def test_the_api_mode_prints_where_the_mirror_is_kept(
 
     home = _home(tmp_path, monkeypatch)
     origin = _origin(tmp_path)
-    store_key = origin_identity(origin.url).store_id.removeprefix("sha256:")
+    store_key = origin_identity(origin.url).store_key
     location = str(home / "repository-stores" / store_key / "repository.git")
 
     status = ok([origin.url, "--api", "/api/source/status"])
@@ -1148,7 +1148,7 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
     # The served store's bare repository, from the origin's address alone. The home is
     # not under the user's home directory here, so the location is absolute and the
     # sweep below would find the home in any answer that named it.
-    store_key = origin_identity(origin.url).store_id.removeprefix("sha256:")
+    store_key = origin_identity(origin.url).store_key
     location = str(home / "repository-stores" / store_key / "repository.git")
     assert Path(location, "HEAD").is_file()
     mirror = _ServedMirror(

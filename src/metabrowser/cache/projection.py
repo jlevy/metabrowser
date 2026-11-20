@@ -1,4 +1,4 @@
-"""Logical projections of the ``f01`` cache for the read-only ``/api/cache/`` routes.
+"""Logical projections of the ``f02`` cache for the read-only ``/api/cache/`` routes.
 
 Each projection resolves the application home per request and never creates it: a
 missing home is the ``absent`` state, not an error. Nothing here changes the home either:
@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -36,7 +36,14 @@ from pydantic import BaseModel
 
 from metabrowser import home as home_module
 from metabrowser.cache.atomic import RecordError, read_record
-from metabrowser.cache.identity import IDENTITY_PREFIX, is_identity, is_slug, is_store_key
+from metabrowser.cache.identity import (
+    SLUG_TOKEN_SEPARATOR,
+    STORE_KEY_SUFFIX_HEX_DIGITS,
+    identity_digest,
+    is_slug,
+    is_store_key,
+    store_key_matches_identity,
+)
 from metabrowser.cache.layout import (
     FORMAT_HISTORY,
     FutureLayoutFormatError,
@@ -153,7 +160,7 @@ type CacheAnswer[T] = tuple[int, T | CacheError]
 # per-row `not_private` problem for a record and a typed 409 for a directory.
 _READ_ONLY: Final[SharedEntryPolicy] = "refuse"
 
-# The locations a refusal may name: fixed f01 spellings, none of which carries a slug, a
+# The locations a refusal may name: fixed f02 spellings, none of which carries a slug, a
 # store key, or a staging entry name.
 _FIXED_LAYOUT_PATHS: Final[frozenset[str]] = frozenset(
     {
@@ -227,7 +234,7 @@ def source_response(slug: str) -> CacheAnswer[CacheSourceResponse]:
 
 
 def stores_response(*, limit: int, after: str | None) -> CacheAnswer[CacheStoresResponse]:
-    """``/api/cache/stores``: one page of stores in identity order, with references."""
+    """``/api/cache/stores``: one page of stores in key order, with references."""
 
     return _answer(lambda: _stores(limit, after))
 
@@ -330,7 +337,7 @@ def _read_config() -> ApplicationConfig | None:
 def _not_private(error: PrivateStorageError, home: Path) -> _Refusal:
     """Refuse a read of the home, naming the fixed layout location that failed.
 
-    A fixed ``f01`` location is not a secret — ``layout_unreadable`` already names
+    A fixed ``f02`` location is not a secret — ``layout_unreadable`` already names
     ``layout.yml`` — and without it a refusal leaves the user to guess which
     directory to fix. Anything else, a slug, a store key, or a path outside the home, is
     left out.
@@ -527,7 +534,7 @@ def _source_alias(alias: RepositoryStoreAlias) -> SourceAlias:
 
 
 def _source_row(
-    home: Path, slug: str, store_keys: frozenset[str]
+    home: Path, slug: str, stores: _StoreNames
 ) -> tuple[SourceRow, RepositoryStoreAlias | None] | None:
     """One source's three records, with ``publication`` decided after all of them.
 
@@ -588,7 +595,7 @@ def _source_row(
         publication = "damaged"
     elif alias is None:
         publication = "unattached"
-    elif alias.store_id.removeprefix(IDENTITY_PREFIX) not in store_keys:
+    elif not stores.named_for(alias.store_id):
         publication = "dangling"
     else:
         publication = "published"
@@ -603,8 +610,39 @@ def _source_row(
     return row, alias
 
 
-def _store_keys(home: Path) -> frozenset[str]:
-    return frozenset(key for key in _names(home, REPOSITORY_STORES) if is_store_key(key))
+@dataclass(frozen=True, slots=True)
+class _StoreNames:
+    """The store keys a request lists, indexed by the digest prefix each one ends in.
+
+    A key does not spell its store's identity, only a prefix of it, so which directory an
+    alias names is answered from the prefixes: the keys that end in a prefix of its
+    ``store_id``. Names alone decide it, and the store's own record says whether the
+    directory is its (:func:`_store_records`), so the answer costs no read.
+    """
+
+    by_suffix: Mapping[str, tuple[str, ...]]
+
+    @classmethod
+    def of(cls, names: Sequence[str]) -> _StoreNames:
+        grouped: dict[str, list[str]] = {}
+        for key in names:
+            if is_store_key(key):
+                grouped.setdefault(key.rpartition(SLUG_TOKEN_SEPARATOR)[2], []).append(key)
+        return cls({suffix: tuple(found) for suffix, found in grouped.items()})
+
+    def named_for(self, store_id: str) -> tuple[str, ...]:
+        """The listed keys that end in a digest prefix of *store_id*, shortest suffix first."""
+
+        digest = identity_digest(store_id)
+        return tuple(
+            key
+            for width in STORE_KEY_SUFFIX_HEX_DIGITS
+            for key in self.by_suffix.get(digest[:width], ())
+        )
+
+
+def _store_names(home: Path) -> _StoreNames:
+    return _StoreNames.of(_names(home, REPOSITORY_STORES))
 
 
 def _invalid_parameter(message: str) -> _Refusal:
@@ -627,7 +665,7 @@ def _sources(limit: int, after: str | None) -> CacheSourcesResponse:
         }
     names = _names(home, SOURCES)
     slugs = [name for name in names if is_slug(name)]
-    store_keys = _store_keys(home)
+    stores = _store_names(home)
     candidates = [slug for slug in slugs if after is None or slug > after]
     budget = _Budget(MAX_RECORDS_PER_REQUEST)
     rows: list[SourceRow] = []
@@ -636,7 +674,7 @@ def _sources(limit: int, after: str | None) -> CacheSourcesResponse:
         if not budget.reserve(_SOURCE_ROW_RECORDS):
             break
         read_through = slug
-        read = _source_row(home, slug, store_keys)
+        read = _source_row(home, slug, stores)
         if read is not None:
             rows.append(read[0])
     delivered = 0 if read_through is None else candidates.index(read_through) + 1
@@ -658,16 +696,14 @@ def _source(slug: str) -> CacheSourceResponse:
     layout = None if home is None else _entries_layout(home)
     if home is None or layout is None or slug not in _names(home, SOURCES):
         raise not_found
-    store_keys = _store_keys(home)
-    read = _source_row(home, slug, store_keys)
+    stores = _store_names(home)
+    read = _source_row(home, slug, stores)
     if read is None:
         raise not_found
     row, alias = read
     store = None
     if alias is not None and row["publication"] == "published":
-        key = alias.store_id.removeprefix(IDENTITY_PREFIX)
-        if key in store_keys:
-            store = _store_records(home, key)
+        store = _aliased_store(home, alias.store_id, stores)
     detail: SourceDetail = {
         "slug": row["slug"],
         "publication": row["publication"],
@@ -737,8 +773,7 @@ def _store_records(home: Path, key: str) -> StoreRecords | None:
         problems,
         required=True,
     )
-    store_id = f"{IDENTITY_PREFIX}{key}"
-    if store is not None and store.id != store_id:
+    if store is not None and not store_key_matches_identity(key, store.id):
         problems.append(
             {
                 "record": "store.yml",
@@ -767,7 +802,8 @@ def _store_records(home: Path, key: str) -> StoreRecords | None:
         if store.lender is not None:
             lender = "present" if lender_present(store.lender) else "lender_missing"
     return {
-        "id": store_id,
+        "key": key,
+        "id": None if store is None else store.id,
         "publication": publication,
         "mode": mode,
         "lender": lender,
@@ -775,6 +811,26 @@ def _store_records(home: Path, key: str) -> StoreRecords | None:
         "state": None if state is None else _store_state(state),
         "problems": problems,
     }
+
+
+def _aliased_store(home: Path, store_id: str, stores: _StoreNames) -> StoreRecords | None:
+    """The records of the store *store_id* names, among the directories its key may be.
+
+    A store whose own record names *store_id* is the one. A directory whose record cannot
+    be read is shown when none does, since it may be the store, and its problems say why
+    it cannot be said. A directory that records another identity is that store's.
+    """
+
+    unreadable: StoreRecords | None = None
+    for key in stores.named_for(store_id):
+        records = _store_records(home, key)
+        if records is None:
+            continue
+        if records["id"] == store_id:
+            return records
+        if records["id"] is None and unreadable is None:
+            unreadable = records
+    return unreadable
 
 
 def _references(home: Path, budget: _Budget) -> tuple[dict[str, list[StoreReference]], bool]:
@@ -817,9 +873,30 @@ def _references(home: Path, budget: _Budget) -> tuple[dict[str, list[StoreRefere
     return references, complete
 
 
+def _referenced_by(
+    references: Mapping[str, list[StoreReference]], records: StoreRecords
+) -> list[StoreReference]:
+    """The aliases that name a store: by its recorded identity, or by its key's prefix.
+
+    A store whose record cannot be read has no identity to match, so an alias is taken to
+    name it when its store's digest begins with the prefix the key ends in, which can
+    over-report a store that shares the prefix and never under-reports.
+    """
+
+    store_id = records["id"]
+    if store_id is not None:
+        return references.get(store_id, [])
+    return [
+        reference
+        for named, found in references.items()
+        if store_key_matches_identity(records["key"], named)
+        for reference in found
+    ]
+
+
 def _stores(limit: int, after: str | None) -> CacheStoresResponse:
-    if after is not None and not is_identity(after):
-        raise _invalid_parameter("after must be a repository store identity.")
+    if after is not None and not is_store_key(after):
+        raise _invalid_parameter("after must be a repository store key.")
     home = _resolve_home()
     layout = None if home is None else _entries_layout(home)
     if home is None or layout is None:
@@ -833,8 +910,7 @@ def _stores(limit: int, after: str | None) -> CacheStoresResponse:
         }
     names = _names(home, REPOSITORY_STORES)
     keys = [name for name in names if is_store_key(name)]
-    after_key = None if after is None else after.removeprefix(IDENTITY_PREFIX)
-    candidates = [key for key in keys if after_key is None or key > after_key]
+    candidates = [key for key in keys if after is None or key > after]
     # The page is what the caller asked for, so it draws from the budget before the
     # references do; what is left decides how much of the alias scan runs.
     budget = _Budget(MAX_RECORDS_PER_REQUEST)
@@ -849,7 +925,7 @@ def _stores(limit: int, after: str | None) -> CacheStoresResponse:
         records = _store_records(home, key)
         if records is None:
             continue
-        referenced_by = references.get(records["id"], [])
+        referenced_by = _referenced_by(references, records)
         reference_state: ReferenceState
         if referenced_by:
             reference_state = "referenced"
@@ -859,6 +935,7 @@ def _stores(limit: int, after: str | None) -> CacheStoresResponse:
             reference_state = "unknown"
         rows.append(
             {
+                "key": records["key"],
                 "id": records["id"],
                 "publication": records["publication"],
                 "mode": records["mode"],
@@ -876,9 +953,7 @@ def _stores(limit: int, after: str | None) -> CacheStoresResponse:
         "stores": rows,
         "unrecognized_entries": len(names) - len(keys),
         "limit": limit,
-        "next_after": (
-            f"{IDENTITY_PREFIX}{page[-1]}" if page and len(candidates) > len(page) else None
-        ),
+        "next_after": page[-1] if page and len(candidates) > len(page) else None,
     }
 
 

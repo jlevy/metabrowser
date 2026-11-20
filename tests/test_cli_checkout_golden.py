@@ -92,7 +92,8 @@ class _Session:
     @property
     def store(self) -> Path:
         identity = repository_store_id(source_identity("https", CANONICAL), "sha1")
-        return self.home / store_directory(store_key(identity)) / "repository.git"
+        key = store_key("https", CANONICAL, identity)
+        return self.home / store_directory(key) / "repository.git"
 
     def _labelled(self, text: str) -> str:
         text = label_home(text, self.home)
