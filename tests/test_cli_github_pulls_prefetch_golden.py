@@ -55,6 +55,7 @@ from tests.golden_harness import (
     check_golden,
     isolate_cli,
     label_home,
+    mask_pushed_bytes,
     normalize_pull_comparison_scopes,
     origin_identity,
     quoted,
@@ -482,4 +483,4 @@ def test_golden_open_pull_requests_are_listed_from_one_head_fetch(
         label_home(session.labels.apply("".join(session.blocks)), session.home)
     )
     assert str(tmp_path) not in rendered and "file://" not in rendered
-    check_golden("cli-github-pulls-prefetch-local-lists.txt", rendered)
+    check_golden("cli-github-pulls-prefetch-local-lists.txt", mask_pushed_bytes(rendered))

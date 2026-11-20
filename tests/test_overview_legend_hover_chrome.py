@@ -5,7 +5,7 @@ handle on itself (docs/design-system.md, "Aggregate Distributions"). Which marks
 names, the tooltip it shows, and when the hover is put away run browserlessly in
 ``tests/dom/file-overview-session.js`` (``cli-ui-file-overview.tryscript.md``). What only a
 browser can say is held here: ``tests/dom/overview-legend-hover-chrome.mjs`` serves a folder
-of seven file-type families, three of them partly ignored, so the legend names five and
+of eleven file-type families, three of them partly ignored, so the legend names nine and
 Other and each tally row has segments, and moves Chrome's pointer onto an entry's name and
 then its dot, off the legend, onto a segment itself, and onto Other, opens and closes
 Details under the entry, and reads the entry again on the dark page and under reduced
@@ -69,9 +69,21 @@ LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 _METAB = Path(sys.executable).with_name("metab")
 
-# Seven families, so the legend names the five largest and Other holds the last two, and an
+# Eleven families, so the legend names the nine largest and Other holds the last two, and an
 # ignored build directory holding three of them, so the Ignored row has segments too.
-_FAMILIES = {"md": 8, "py": 4, "json": 3, "yaml": 2, "ts": 2, "css": 1, "rs": 1}
+_FAMILIES = {
+    "md": 8,
+    "py": 4,
+    "json": 3,
+    "yaml": 2,
+    "ts": 2,
+    "css": 1,
+    "rs": 1,
+    "go": 1,
+    "html": 1,
+    "sh": 1,
+    "toml": 1,
+}
 _IGNORED = {"py": 2, "json": 3, "md": 1}
 
 
@@ -181,11 +193,21 @@ def test_a_legend_entry_hovers_its_familys_marks_in_chrome(
     print(result.stdout, result.stderr)
     measured: dict[str, Any] = json.loads(result.stdout.strip().splitlines()[-1])
 
-    # JSON and Python tie on files and bytes, and TypeScript and YAML too, so the family ID
-    # orders each pair (file_type_legend.py).
-    assert measured["legend"] == ["Markdown", "JSON", "Python", "TypeScript", "YAML", "Other"], (
-        measured["legend"]
-    )
+    # JSON and Python tie on files and bytes, TypeScript and YAML too, and the six families
+    # of one file each, so the family ID orders each tie (file_type_legend.py): CSS, Go,
+    # HTML, and Rust are named, which is nine, and Shell and TOML are in Other.
+    assert measured["legend"] == [
+        "Markdown",
+        "JSON",
+        "Python",
+        "TypeScript",
+        "YAML",
+        "CSS",
+        "Go",
+        "HTML",
+        "Rust",
+        "Other",
+    ], measured["legend"]
     rest = measured["atRest"]
     _nothing(rest, "at rest")
 

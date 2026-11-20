@@ -96,7 +96,7 @@ $ metab --doctor --plugins-dir pair 2>/dev/null
 $ metab --doctor --json --plugins-dir pair 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 13,
+  "plugin_count": 14,
   "problems": [
     "plugin 'beta': view 'more' of kind 'myk' declares key 'm', but view 'main' (plugin 'alpha') already holds it; the view is served without a key"
   ],
@@ -138,7 +138,7 @@ so `N` alone is free in every kind, a pull request’s included, and the plugin 
 $ metab --doctor --json --plugins-dir stack 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 12,
+  "plugin_count": 13,
   "problems": [],
   "open_in": {
     "value": "browser",
@@ -178,7 +178,7 @@ refuses a view that takes it, a Preview included.
 $ metab --doctor --json --plugins-dir pulls 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 11,
+  "plugin_count": 12,
   "problems": [
     "[CWD]/pulls/pullkey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'P' is reserved for the shell's Pulls tab [type=value_error, input_value='P', input_type=str]\n    For further information visit [PYDANTIC_URL]"
   ],
@@ -213,13 +213,13 @@ $ metab --doctor --json --plugins-dir pulls 2>/dev/null
 
 ## Test: a key the shell reserves everywhere is refused at load
 
-The plugin is not loaded, so `plugin_count` is the eleven built-in plugins alone.
+The plugin is not loaded, so `plugin_count` is the twelve built-in plugins alone.
 
 ```console
 $ metab --doctor --json --plugins-dir reserved 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 11,
+  "plugin_count": 12,
   "problems": [
     "[CWD]/reserved/reskey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'T' is reserved for the shell's Quick Search [type=value_error, input_value='T', input_type=str]\n    For further information visit [PYDANTIC_URL]"
   ],

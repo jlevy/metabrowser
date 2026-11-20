@@ -301,6 +301,14 @@ async def pull_rendered_diff_handler(request: Request) -> Response:
     return await rendered(request)
 
 
+async def pull_size_handler(request: Request) -> Response:
+    """The size an admitted comparison of a pull request pushes; see :mod:`.pull_size`."""
+
+    from metabrowser.builtin_plugins.github.pull_size import pull_size_handler as sized
+
+    return await sized(request)
+
+
 async def pull_comparison_handler(request: Request) -> Response:
     """Read a checkout's pinned PR comparison from its store; never acquire on GET."""
 
@@ -1029,7 +1037,11 @@ async def pull_files_summary_handler(request: Request) -> Response:
         return _invalid_request(str(exc))
     await _resolve(request)
     listing = listing_numbers(request.app, numbers)
-    envelope = await files_summary(served_repository(request.app), listing, numbers)
+    from metabrowser.builtin_plugins.github.pull_route import pull_host
+
+    host = pull_host(request.app)
+    store = host.pulls.git_dir if host is not None else None
+    envelope = await files_summary(served_repository(request.app), listing, numbers, store)
     etag = envelope_etag(envelope)
     headers = {**_NO_STORE, "etag": etag}
     if matches_if_none_match(request, etag):
@@ -1109,6 +1121,7 @@ __all__ = [
     "pull_refresh_handler",
     "pull_comparison_handler",
     "pull_rendered_diff_handler",
+    "pull_size_handler",
     "pulls_handler",
     "pulls_prefetch_handler",
     "stack_change_handler",

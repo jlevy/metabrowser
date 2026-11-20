@@ -1652,6 +1652,15 @@ type MetabrowserSdk = {
     line: MetabrowserChangeLine,
     options?: MetabrowserChangeLineOptions,
   ): Array<Node | string>;
+  /** A change set's size line, "77 commits · 83 files changed · 2.3 MB compressed (14.0 MB raw
+   *  diff)", in the shell's number and size formats: the one component for one
+   *  (docs/design-system.md, "Change Size Line"). */
+  changeSizeLine(change: MetabrowserChangeSizeInput): MetabrowserChangeSizeLine;
+  /** A change set's size line as nodes for its element: its one `span.change-size-line`, the
+   *  size in `span.change-size-line-size` with a tooltip saying what each size is. */
+  changeSizeLineNodes(line: MetabrowserChangeSizeLine): Array<Node | string>;
+  /** A change set's size line as markup, for a view that writes markup as text. */
+  changeSizeLineHtml(line: MetabrowserChangeSizeLine): string;
   prefs: {
     get<T>(name: string, fallback: T): T;
     set(name: string, value: unknown): boolean;
@@ -3064,6 +3073,8 @@ declare global {
   type MetabrowserEventReportSettings = {
     /** Whether the server writes an event log; without one nothing is tagged or sent. */
     log: boolean;
+    /** When `log` is false, the server's own words for why, which Details shows. */
+    off_reason?: string | null;
     route: string;
     header: string;
     slow_ms: number;
@@ -3074,6 +3085,10 @@ declare global {
     per_minute: number;
     long_lived: string[];
     failure_window_s: number;
+    /** The command that opens the whole log in Metabrowser, which Details names. */
+    open_command: string;
+    /** The macOS app's menu item for it, which Details names instead when the app started the server. */
+    open_menu: string | null;
   };
 
   type MetabrowserEventOutcome = "ok" | "failed" | "cancelled" | "never_completed";
@@ -3176,6 +3191,8 @@ declare global {
   type MetabrowserEventDetails = {
     /** `off`: this server writes no log, so whatever an older one wrote is not shown. */
     log: "present" | "absent" | "unreadable" | "off";
+    /** With `off`, why this server writes no log, in its own words. */
+    reason?: string | null;
     running: Array<{ kind: string; name: string; age_ms: number; mine: boolean }>;
     causes: Array<{
       cause: string;
@@ -3904,6 +3921,18 @@ declare global {
     deletions: number | null;
   };
 
+  /** A change's size, as `GET /api/git/commit-size/<rev>` answers it (git/wire.py,
+   *  `GitChangeSize`): what Git pushes for it and its patch, uncompressed. */
+  type MetabrowserGitChangeSize = {
+    base: string | null;
+    head: string;
+    state: "measured" | "unknown";
+    reason: string | null;
+    commits: number | null;
+    pushed_bytes: number | null;
+    diff_bytes: number | null;
+  };
+
   type MetabrowserGitCommitDetail = {
     is_repo: boolean;
     commit: MetabrowserGitCommit;
@@ -4247,6 +4276,32 @@ declare global {
     label: string;
   };
 
+  /**
+   * What a change set's size line is built from (plugin-sdk-views.js, `changeSizeLine`): each count
+   * null where not known and left out where `undefined`, and the sizes a change's size answer
+   * gives (`pushed_bytes`, `diff_bytes`), the size group there once the pushed size is known.
+   */
+  type MetabrowserChangeSizeInput = {
+    commits?: number | null;
+    files: number | null;
+    pushedBytes?: number | null;
+    diffBytes?: number | null;
+  };
+
+  /** A change set's size line (docs/design-system.md, "Change Size Line"). */
+  type MetabrowserChangeSizeLine = {
+    /** The whole line in a count summary's parts. */
+    parts: MetabrowserCountParts;
+    /** "2.3 MB compressed (14.0 MB raw diff)", the last parts; none before the size is known. */
+    sizeParts: MetabrowserCountParts;
+    /** "77 commits · 83 files changed · 2.3 MB compressed (14.0 MB raw diff)". */
+    text: string;
+    /** "77 commits, 83 files changed, 2.3 MB compressed, 14.0 MB raw diff". */
+    label: string;
+    /** What each size is, for the size's tooltip; null before the size is known. */
+    tooltip: string | null;
+  };
+
   /** How a brief change line is painted where it stands. */
   type MetabrowserChangeLineOptions = {
     /** What a screen reader is told in the hidden dot's place, on a line with no name in words. */
@@ -4484,7 +4539,13 @@ declare global {
       showDetails(
         panel: HTMLElement,
         query: MetabrowserEventDetailsQuery,
-        options?: { fetch?: typeof fetch; signal?: AbortSignal; slowMs?: number; log?: boolean },
+        options?: {
+          fetch?: typeof fetch;
+          signal?: AbortSignal;
+          slowMs?: number;
+          log?: boolean;
+          offReason?: string | null;
+        },
       ): Promise<void>;
       serverMs(raw: string | null | undefined): number | null;
     }>;

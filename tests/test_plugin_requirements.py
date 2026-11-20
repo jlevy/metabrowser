@@ -179,6 +179,7 @@ def test_every_builtin_loads_exactly_the_providers_it_declares() -> None:
         "agent_log": {"structured"},
         "binary": set(),
         "diff": {"structured"},
+        "event_log": set(),
         "folder": {"markdown"},
         "github": {"markdown"},
         "html": set(),

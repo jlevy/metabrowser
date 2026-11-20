@@ -1472,6 +1472,25 @@ function summaryFiles(parts, paint, separator) {
 }
 
 /**
+ * A summary's words without its file count, "2 A · +1 −1 (2 listed)" and "2 added; 1 line
+ * added, 1 deleted; 2 listed", for a header whose page says the count on its size line
+ * (docs/design-system.md, "Change Size Line"): the notes after the totals stay.
+ *
+ * @param {{filesParts: MetabrowserCountParts, text: string, label: string}} said
+ * @returns {{text: string, label: string}}
+ */
+function withoutFileCount(said) {
+  const files = said.filesParts
+    .map((part) => (typeof part === "string" ? part : "number" in part ? part.number : ""))
+    .join("");
+  const text = said.text.startsWith(`${files} · `) ? said.text.slice(files.length + 3) : said.text;
+  const label = said.label.startsWith(files)
+    ? said.label.slice(files.length).replace(/^[:;] /, "")
+    : said.label;
+  return { text, label };
+}
+
+/**
  * The note of a list cut short at its bound, "(2,000 listed)": its figure a bold number,
  * muted with the note, as a count summary's numbers are (docs/design-system.md, "Count
  * Summaries Bold Their Numbers").
@@ -1496,6 +1515,9 @@ function listedNote(listed, paint) {
  * @property {boolean} disposed
  * @property {MetabrowserChangedFilesTree | null} changedFiles
  * @property {(path: string) => void} jump
+ * @property {boolean} countsFiles Whether the header says the file count. A page header
+ *   says it on its size line above the summary (docs/design-system.md, "Change Size Line"),
+ *   so a summary drawn there is its statuses and line totals alone.
  */
 
 /**
@@ -1509,11 +1531,13 @@ function listedNote(listed, paint) {
  * A diff's view as its Diff summary reads it.
  *
  * @param {MountedDiffState} view
+ * @param {boolean} [countsFiles]
  * @returns {SummaryOwner}
  */
-function summaryOwnerOf(view) {
+function summaryOwnerOf(view, countsFiles = true) {
   return {
     api: view.api,
+    countsFiles,
     get disposed() {
       return view.disposed;
     },
@@ -1560,11 +1584,15 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
   const named = rows.length > 0;
   /** @type {Array<Node | string>} */
   const parts = [
-    summaryFiles(
-      said.filesParts,
-      paint.countPartsNodes,
-      named ? SUMMARY_SEPARATOR : LINE_SEPARATOR,
-    ),
+    ...(view.countsFiles
+      ? [
+          summaryFiles(
+            said.filesParts,
+            paint.countPartsNodes,
+            named ? SUMMARY_SEPARATOR : LINE_SEPARATOR,
+          ),
+        ]
+      : []),
     ...paint.changeLineNodes(said.line, named ? {} : { spoken: ", " }),
   ];
   if (said.estimated) {
@@ -1581,7 +1609,8 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
   const toggle = el("button", "diff-summary diff-summary-toggle disclosure-toggle collapsed");
   toggle.setAttribute("type", "button");
   toggle.setAttribute("aria-expanded", "false");
-  toggle.setAttribute("aria-label", said.label);
+  const words = view.countsFiles ? said : withoutFileCount(said);
+  toggle.setAttribute("aria-label", words.label);
   const chevron = el("span", "diff-summary-chevron");
   chevron.setAttribute("aria-hidden", "true");
   const chevronSvg = shellIcon("toggle");
@@ -1621,7 +1650,7 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
       }
       const statuses = toggle.querySelector(".change-line-statuses");
       if (statuses !== null && statuses.scrollWidth > statuses.clientWidth) {
-        toggle.dataset.tipText = said.text;
+        toggle.dataset.tipText = words.text;
       } else {
         delete toggle.dataset.tipText;
       }
@@ -1723,7 +1752,9 @@ function summaryOrTotals(totals, files, view, whole = null) {
   const said = plainTotals(whole ?? totals, formatCount);
   const line = el("div", "diff-summary");
   line.append(
-    summaryFiles(said.filesParts, paint.countPartsNodes, LINE_SEPARATOR),
+    ...(view.countsFiles
+      ? [summaryFiles(said.filesParts, paint.countPartsNodes, LINE_SEPARATOR)]
+      : []),
     ...paint.changeLineNodes(paint.changeLine(said.change), { spoken: ", " }),
   );
   if (said.estimated) {
@@ -1785,7 +1816,14 @@ function renderDiffToolbar(totals, files, view, showSummary, summaryHost = null,
   /** @type {(() => void) | null} */
   let disposeSummary = null;
   if (showSummary && (summaryHost !== null || Number(totals.files) !== 1)) {
-    const summary = summaryOrTotals(totals, files, summaryOwnerOf(view), whole);
+    // A page that places the summary at its own top says its file count on the size line
+    // above it.
+    const summary = summaryOrTotals(
+      totals,
+      files,
+      summaryOwnerOf(view, summaryHost === null),
+      whole,
+    );
     disposeSummary = summary.dispose;
     if (summaryHost !== null) {
       summaryHost.replaceChildren(summary.element);
@@ -3081,6 +3119,8 @@ export function mountDiffSummary(slot, document_, api, options) {
     disposed: false,
     changedFiles: options.changedFiles,
     jump: options.openFile,
+    // The page's header says the file count on its size line, above the summary.
+    countsFiles: false,
   };
   const summary = summaryOrTotals(manifest.totals, manifest.files, owner);
   slot.replaceChildren(summary.element);

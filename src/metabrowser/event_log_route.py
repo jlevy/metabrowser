@@ -45,6 +45,7 @@ from __future__ import annotations
 import asyncio
 import math
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -131,7 +132,7 @@ class Query:
         return True
 
 
-def _choices(raw: str | None, allowed: tuple[str, ...], field: str) -> tuple[str, ...]:
+def choices(raw: str | None, allowed: tuple[str, ...], field: str) -> tuple[str, ...]:
     if raw is None or not raw.strip():
         return ()
     chosen = tuple(dict.fromkeys(part.strip() for part in raw.split(",") if part.strip()))
@@ -186,9 +187,9 @@ def parse_query(params: dict[str, str]) -> Query:
     limit = _integer(params.get("limit"), "limit", low=1, high=MAX_LIMIT)
     return Query(
         file=file,
-        kinds=_choices(params.get("kind"), event_log.KINDS, "kind"),
-        outcomes=_choices(params.get("outcome"), event_log.OUTCOMES, "outcome"),
-        events=_choices(params.get("event"), event_log.EVENT_TYPES, "event"),
+        kinds=choices(params.get("kind"), event_log.KINDS, "kind"),
+        outcomes=choices(params.get("outcome"), event_log.OUTCOMES, "outcome"),
+        events=choices(params.get("event"), event_log.EVENT_TYPES, "event"),
         name=name,
         client=client,
         cause=cause,
@@ -374,6 +375,191 @@ def _failure_text(attrs: dict[str, Any]) -> str | None:
     return None
 
 
+class FailureTally:
+    """Failures counted by cause, one record at a time.
+
+    ``/api/event-log/failures`` counts a window across the directory's segments, and the
+    event log view's Errors counts one file whole; both group, rank, and set apart the
+    page's reports the same way, so a failure reads alike in Details and in the view.
+    A record's group is its ``cause`` (:mod:`metabrowser.network_cause`'s vocabulary),
+    else the ``failure`` state its work noted, else its outcome. *link* says where a
+    reader finds one record, or is ``None`` for a reader with no such place.
+    """
+
+    def __init__(
+        self,
+        *,
+        kinds: tuple[str, ...] = (),
+        link: Callable[[str, dict[str, Any]], str] | None = _record_link,
+    ) -> None:
+        self._kinds = kinds
+        self._link = link
+        self._groups: dict[str, dict[str, Any]] = {}
+        # What the pages saw: listed apart from the causes (the module's docstring says why).
+        self._page_outcomes: dict[str, int] = {}
+        self._page_names: dict[str, int] = {}
+        self._page_examples: list[dict[str, Any]] = []
+        # For each group, the rank and time of the record its message came from.
+        self._said_at: dict[str, tuple[int, str]] = {}
+        self._total = 0
+        self._probe: dict[str, Any] | None = None
+
+    @property
+    def total(self) -> int:
+        return self._total
+
+    @property
+    def probe(self) -> dict[str, Any] | None:
+        """The latest probe that failed, whatever the kind filter."""
+
+        return self._probe
+
+    def _where(self, file: str | None, record: dict[str, Any]) -> dict[str, Any]:
+        if self._link is None or file is None:
+            return {}
+        return {"details": self._link(file, record)}
+
+    def add(self, record: dict[str, Any], *, file: str | None, origin: str | None = None) -> None:
+        """Count *record* if it is a failure: the end of work that failed or gave up.
+
+        *file* names the segment it came from, which the records kept for it say; ``None``
+        for a reader that reads one file and has nothing to name. *origin* is a reader's own
+        name for the record, which an example it keeps carries as ``key``: the views of one
+        file name each span ``pid:span``, so an example can be opened where it happened.
+        """
+
+        where: dict[str, Any] = {} if file is None else {"file": file}
+        if origin is not None:
+            where["key"] = origin
+
+        if record.get("event") != "end" or record.get("outcome") not in FAILURE_OUTCOMES:
+            return
+        kind = str(record.get("kind", ""))
+        attrs = record.get("attrs")
+        attrs = attrs if isinstance(attrs, dict) else {}
+        if kind == "probe" and (
+            self._probe is None or str(record.get("ts")) > str(self._probe["ts"])
+        ):
+            self._probe = {
+                "ts": record.get("ts"),
+                **where,
+                "span": record.get("span"),
+                **attrs,
+            }
+        if self._kinds and kind not in self._kinds:
+            return
+        if kind == "browser":
+            # A page's never_completed wait for a refresh and the gh call that timed out
+            # under it are one failure, seen from two sides, and a slow 5xx the page
+            # reports is a request the server recorded as failed: counting the page's
+            # side would count it twice and could rank it above the cause.
+            outcome = str(record.get("outcome"))
+            name = str(record.get("name", ""))
+            self._page_outcomes[outcome] = self._page_outcomes.get(outcome, 0) + 1
+            self._page_names[name] = self._page_names.get(name, 0) + 1
+            seen: dict[str, Any] = {
+                "ts": str(record.get("ts")),
+                **where,
+                "pid": record.get("pid"),
+                "client": record.get("client"),
+                "name": name,
+                "outcome": outcome,
+                "dur_ms": record.get("dur_ms"),
+                "status": attrs.get("status"),
+                "path": attrs.get("path"),
+                **self._where(file, record),
+            }
+            self._page_examples = sorted([*self._page_examples, seen], key=lambda e: str(e["ts"]))[
+                -_EXAMPLES:
+            ]
+            return
+        self._total += 1
+        cause, source = (
+            (attrs["cause"], "cause")
+            if isinstance(attrs.get("cause"), str)
+            else (attrs["failure"], "state")
+            if isinstance(attrs.get("failure"), str)
+            else (str(record.get("outcome")), "outcome")
+        )
+        group = self._groups.setdefault(
+            cause,
+            {
+                "cause": cause,
+                "source": source,
+                "count": 0,
+                "kinds": {},
+                "names": {},
+                "first": record.get("ts"),
+                "last": record.get("ts"),
+                "message": None,
+                "addresses": [],
+                "examples": [],
+            },
+        )
+        # The addresses a connection failed to: gh names one, a probe each it tried.
+        # DNS can answer a GitHub name with different addresses from one lookup to the
+        # next, and a network can reach some and not others.
+        failed_to = [attrs.get("address")]
+        tried = attrs.get("addresses")
+        if isinstance(tried, list):
+            failed_to += [
+                a.get("address")
+                for a in tried  # pyright: ignore[reportUnknownVariableType]
+                if isinstance(a, dict) and a.get("result") != "connected"  # pyright: ignore[reportUnknownMemberType]
+            ]
+        for address in failed_to:
+            if isinstance(address, str) and address not in group["addresses"]:
+                group["addresses"].append(address)
+        group["count"] += 1
+        group["kinds"][kind] = group["kinds"].get(kind, 0) + 1
+        name = str(record.get("name", ""))
+        group["names"][name] = group["names"].get(name, 0) + 1
+        stamp = str(record.get("ts"))
+        group["first"] = min(str(group["first"]), stamp)
+        group["last"] = max(str(group["last"]), stamp)
+        # The message a reader saw, from the job or probe that reported it, outranks
+        # a process's raw error text; among equals, the latest wins.
+        text = _failure_text(attrs)
+        rank = 1 if kind == "subprocess" else 0
+        said = self._said_at.get(cause)
+        if text is not None and (
+            said is None or rank < said[0] or (rank == said[0] and stamp >= said[1])
+        ):
+            self._said_at[cause] = (rank, stamp)
+            group["message"] = text
+        example: dict[str, Any] = {
+            "ts": stamp,
+            **where,
+            "pid": record.get("pid"),
+            "span": record.get("span"),
+            "kind": kind,
+            "name": name,
+            "outcome": record.get("outcome"),
+            "dur_ms": record.get("dur_ms"),
+            "address": attrs.get("address"),
+            **self._where(file, record),
+        }
+        group["examples"] = sorted([*group["examples"], example], key=lambda e: str(e["ts"]))[
+            -_EXAMPLES:
+        ]
+
+    def causes(self) -> list[dict[str, Any]]:
+        """The groups, most frequent first, each with its newest examples first."""
+
+        ranked = sorted(self._groups.values(), key=lambda g: (g["count"], g["last"]), reverse=True)
+        return [{**group, "examples": list(reversed(group["examples"]))} for group in ranked]
+
+    def page_reports(self) -> dict[str, Any]:
+        """What the pages reported failing, apart from the causes."""
+
+        return {
+            "count": sum(self._page_outcomes.values()),
+            "outcomes": self._page_outcomes,
+            "names": self._page_names,
+            "examples": list(reversed(self._page_examples)),
+        }
+
+
 def summarize_failures(
     *, state: Path, directory: Path, since: datetime, until: datetime | None, kinds: tuple[str, ...]
 ) -> dict[str, Any]:
@@ -385,17 +571,9 @@ def summarize_failures(
 
     from metabrowser import home
 
-    groups: dict[str, dict[str, Any]] = {}
-    # What the pages saw: listed apart from the causes (the module's docstring says why).
-    page_outcomes: dict[str, int] = {}
-    page_names: dict[str, int] = {}
-    page_examples: list[dict[str, Any]] = []
-    # For each group, the rank and time of the record its message came from.
-    said_at: dict[str, tuple[int, str]] = {}
+    tally = FailureTally(kinds=kinds)
     read: list[str] = []
     scanned = 0
-    total = 0
-    probe: dict[str, Any] | None = None
     for f in event_log.list_files(directory)[:_MAX_SEGMENTS]:
         if datetime.fromtimestamp(f.modified, UTC) < since:
             continue  # Written to last before the window opened.
@@ -419,116 +597,7 @@ def summarize_failures(
             moment = _record_time(record)
             if moment is None or moment < since or (until is not None and moment > until):
                 continue
-            if record.get("event") != "end" or record.get("outcome") not in FAILURE_OUTCOMES:
-                continue
-            kind = str(record.get("kind", ""))
-            attrs = record.get("attrs")
-            attrs = attrs if isinstance(attrs, dict) else {}
-            if kind == "probe" and (probe is None or str(record.get("ts")) > str(probe["ts"])):
-                probe = {
-                    "ts": record.get("ts"),
-                    "file": f.name,
-                    "span": record.get("span"),
-                    **attrs,
-                }
-            if kinds and kind not in kinds:
-                continue
-            if kind == "browser":
-                # A page's never_completed wait for a refresh and the gh call that timed out
-                # under it are one failure, seen from two sides, and a slow 5xx the page
-                # reports is a request the server recorded as failed: counting the page's
-                # side would count it twice and could rank it above the cause.
-                outcome = str(record.get("outcome"))
-                name = str(record.get("name", ""))
-                page_outcomes[outcome] = page_outcomes.get(outcome, 0) + 1
-                page_names[name] = page_names.get(name, 0) + 1
-                seen: dict[str, Any] = {
-                    "ts": str(record.get("ts")),
-                    "file": f.name,
-                    "client": record.get("client"),
-                    "name": name,
-                    "outcome": outcome,
-                    "dur_ms": record.get("dur_ms"),
-                    "status": attrs.get("status"),
-                    "path": attrs.get("path"),
-                    "details": _record_link(f.name, record),
-                }
-                page_examples = sorted([*page_examples, seen], key=lambda e: str(e["ts"]))[
-                    -_EXAMPLES:
-                ]
-                continue
-            total += 1
-            cause, source = (
-                (attrs["cause"], "cause")
-                if isinstance(attrs.get("cause"), str)
-                else (attrs["failure"], "state")
-                if isinstance(attrs.get("failure"), str)
-                else (str(record.get("outcome")), "outcome")
-            )
-            group = groups.setdefault(
-                cause,
-                {
-                    "cause": cause,
-                    "source": source,
-                    "count": 0,
-                    "kinds": {},
-                    "names": {},
-                    "first": record.get("ts"),
-                    "last": record.get("ts"),
-                    "message": None,
-                    "addresses": [],
-                    "examples": [],
-                },
-            )
-            # The addresses a connection failed to: gh names one, a probe each it tried.
-            # DNS can answer a GitHub name with different addresses from one lookup to the
-            # next, and a network can reach some and not others.
-            failed_to = [attrs.get("address")]
-            tried = attrs.get("addresses")
-            if isinstance(tried, list):
-                failed_to += [
-                    a.get("address")
-                    for a in tried  # pyright: ignore[reportUnknownVariableType]
-                    if isinstance(a, dict) and a.get("result") != "connected"  # pyright: ignore[reportUnknownMemberType]
-                ]
-            for address in failed_to:
-                if isinstance(address, str) and address not in group["addresses"]:
-                    group["addresses"].append(address)
-            group["count"] += 1
-            group["kinds"][kind] = group["kinds"].get(kind, 0) + 1
-            name = str(record.get("name", ""))
-            group["names"][name] = group["names"].get(name, 0) + 1
-            stamp = str(record.get("ts"))
-            group["first"] = min(str(group["first"]), stamp)
-            group["last"] = max(str(group["last"]), stamp)
-            # The message a reader saw, from the job or probe that reported it, outranks
-            # a process's raw error text; among equals, the latest wins.
-            text = _failure_text(attrs)
-            rank = 1 if kind == "subprocess" else 0
-            said = said_at.get(cause)
-            if text is not None and (
-                said is None or rank < said[0] or (rank == said[0] and stamp >= said[1])
-            ):
-                said_at[cause] = (rank, stamp)
-                group["message"] = text
-            example: dict[str, Any] = {
-                "ts": stamp,
-                "file": f.name,
-                "span": record.get("span"),
-                "kind": kind,
-                "name": name,
-                "outcome": record.get("outcome"),
-                "dur_ms": record.get("dur_ms"),
-                "address": attrs.get("address"),
-                "details": _record_link(f.name, record),
-            }
-            group["examples"] = sorted([*group["examples"], example], key=lambda e: str(e["ts"]))[
-                -_EXAMPLES:
-            ]
-    causes = sorted(groups.values(), key=lambda g: (g["count"], g["last"]), reverse=True)
-    for group in causes:
-        group["examples"].reverse()
-    page_examples.reverse()
+            tally.add(record, file=f.name)
     return {
         "schema_version": event_log.SCHEMA_VERSION,
         "directory": str(directory),
@@ -538,15 +607,10 @@ def summarize_failures(
         "kinds": list(kinds),
         "files": read,
         "scanned": scanned,
-        "failures": total,
-        "causes": causes,
-        "probe": probe,
-        "page_reports": {
-            "count": sum(page_outcomes.values()),
-            "outcomes": page_outcomes,
-            "names": page_names,
-            "examples": page_examples,
-        },
+        "failures": tally.total,
+        "causes": tally.causes(),
+        "probe": tally.probe,
+        "page_reports": tally.page_reports(),
     }
 
 
@@ -560,7 +624,7 @@ async def api_event_log_failures(request: Request) -> JSONResponse:
             raise QueryError(f"unknown parameter {', '.join(unknown)}")
         since = _moment(params.get("since"), "since")
         until = _moment(params.get("until"), "until")
-        kinds = _choices(params.get("kind"), event_log.KINDS, "kind")
+        kinds = choices(params.get("kind"), event_log.KINDS, "kind")
     except QueryError as exc:
         return JSONResponse({"error": str(exc), "code": "invalid_query"}, status_code=400)
     if since is None:
@@ -590,8 +654,10 @@ __all__ = [
     "EVENT_LOG_ROUTES",
     "FAILURE_OUTCOMES",
     "MAX_LIMIT",
+    "FailureTally",
     "Query",
     "QueryError",
+    "choices",
     "api_event_log",
     "api_event_log_failures",
     "parse_query",
