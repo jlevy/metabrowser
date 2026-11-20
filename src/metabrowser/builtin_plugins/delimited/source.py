@@ -458,7 +458,6 @@ def _schema(parsed: _Parsed) -> TableSchema:
             TableField(
                 name=_extra_name(parsed),
                 type="text",
-                title="Extra cells",
                 list=True,
                 sort_note="the cells of rows longer than the header, as a list",
             )
