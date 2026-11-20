@@ -1,0 +1,16 @@
+---
+type: is
+id: is-01m7wyrvxk2xx44pqtqmy5cq5g
+title: "Source and checkout kinds: one mode and one icon for a cloud mirror, a Git checkout, and a plain folder"
+kind: epic
+status: open
+priority: 1
+version: 1
+labels: []
+dependencies: []
+created_at: 2026-11-20T17:06:24.306Z
+updated_at: 2026-11-20T17:06:24.306Z
+---
+What a reader has open is one of three kinds: a cloud mirror of a GitHub repository, a local folder inside a Git checkout (folder mode), or a plain folder with no Git. The model is settled in docs/project/architecture/arch-open-modes.md (#558), and the macOS app's title bar, Open Recent and Dock menus already carry the shared marks (#564, #575).
+
+What remains: the kind icon and tooltip beside the root name at the top of the nav, and a Source kind section with a check in the design system's icon catalog (mb-4s2y, in progress); the shared local-open resolver (mb-2wfk) with its vocabulary test and shared fixture (mb-ajxe); and the owner's request that every view say plainly which mode it is in (mb-wup3), whose indicator mb-4s2y overlaps. How a branch behaves in each kind is the epic mb-2uut.
