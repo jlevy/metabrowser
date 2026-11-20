@@ -9,8 +9,10 @@ env:
   METABROWSER_LOG_LEVEL: "WARNING"
 before: >-
   cp -R "$TRYSCRIPT_TEST_DIR/../fixtures/untrusted-markdown" hostile &&
+  cp -R "$TRYSCRIPT_TEST_DIR/../fixtures/github-layout" layout &&
   mkdir slow && (printf '[%.0s' $(seq 1 100); head -c 61440 /dev/zero | tr '\0' '%')
-  > slow/slow.md
+  > slow/slow.md &&
+  mkdir diagrams && printf '# Diagrams\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n```svg\n<svg viewBox="0 0 1 1"></svg>\n```\n' > diagrams/README.md
 ---
 # Golden Test: Markdown From an Untrusted Source
 
@@ -137,6 +139,29 @@ $ grep -E '^        "(id|loading)":' inert.txt
         "loading": "resource"
         "id": "fonts/planetaire-mono-text-latin-700-italic.woff2",
         "loading": "resource"
+? 0
+```
+
+## Test: an untrusted README keeps GitHub’s layout attributes
+
+`tests/fixtures/github-layout/README.md` lays itself out with the HTML attributes
+github.com keeps: Metabrowser’s own README opening, a `width="192"` image in a
+`<p align="center">` above an `<h1 align="center">`, then images floated or sized by
+`align`, `width`, and `height`, and a table whose cells and rows say how they align.
+The inert render keeps each, with its value checked (`ALIGN_VALUES` and `DIMENSIONS` in
+`src/metabrowser/inert_html.py`), as KPress’s trusted render keeps it, so the page lays
+the document out as github.com does; `tests/test_markdown_github_layout_chrome.py`
+measures that in Chrome.
+A value that is not a keyword or a number is dropped (`tests/test_inert_html.py`).
+
+```console
+$ metab layout --untrusted --api '/api/kpress/render?path=README.md&view=document' > layout.txt
+? 0
+```
+
+```console
+$ grep -E '^  "html":' layout.txt
+  "html": "\n<div><div><p align=\"center\"><img loading=\"lazy\" src=\"icon.png\" alt=\"Centered icon\" width=\"192\"></p>\n<h1 id=\"user-content-github-layout\" align=\"center\">GitHub Layout</h1>\n<p align=\"center\">A centered paragraph with a badge <img loading=\"lazy\" src=\"icon.png\" alt=\"Badge\" height=\"20\"> in its text.</p>\n<h2 id=\"user-content-a-right-aligned-image\">A Right-Aligned Image</h2>\n<img loading=\"lazy\" src=\"icon.png\" alt=\"Right icon\" align=\"right\" width=\"120\">\n<p>This paragraph wraps beside an image floated to the right by its <code>align</code> attribute, as\nGitHub draws one, with twenty pixels of room between the image and the text.\nA README puts a project's logo or a screenshot here, beside its introduction, and the\ntext runs down the left side of it until it is past the image's foot.</p>\n<h2 id=\"user-content-a-left-aligned-image\">A Left-Aligned Image</h2>\n<img loading=\"lazy\" src=\"icon.png\" alt=\"Left icon\" align=\"left\" width=\"96\">\n<p>This paragraph wraps beside an image floated to the left, which keeps its room on the\nright, between the image and the text.</p>\n<h2 id=\"user-content-sized-images\">Sized Images</h2>\n<p><img loading=\"lazy\" src=\"icon.png\" alt=\"By width\" width=\"64\"> <img loading=\"lazy\" src=\"icon.png\" alt=\"By height\" height=\"48\"> <img loading=\"lazy\" src=\"icon.png\" alt=\"By both\" width=\"80\" height=\"40\"></p>\n<h2 id=\"user-content-a-table-with-aligned-cells\">A Table With Aligned Cells</h2>\n<div><table>\n  <tbody><tr><th align=\"left\">Left</th><th>Header</th><th align=\"right\">Right</th></tr>\n  <tr><td align=\"center\">Centered</td><td>Default</td><td align=\"right\">Right</td></tr>\n  <tr align=\"right\"><td>Row right</td><td align=\"left\">Cell left</td><td>Row right</td></tr>\n</tbody></table></div>\n<div align=\"right\">A block aligned right.</div>\n<h2 id=\"user-content-a-float-that-ends-the-document\">A Float That Ends the Document</h2>\n<img loading=\"lazy\" src=\"icon.png\" alt=\"Last icon\" align=\"right\" width=\"160\">\n<p>A short last paragraph, beside an image that ends below it.</p></div></div>",
 ? 0
 ```
 
@@ -268,5 +293,38 @@ $ grep -E '^        "(id|loading)":' rich.txt
         "loading": "resource"
         "id": "fonts/planetaire-mono-text-latin-700-italic.woff2",
         "loading": "resource"
+? 0
+```
+
+## Test: a Mermaid diagram survives the allowlist as GitHub’s fallback markup
+
+KPress wraps a `mermaid` fence in a figure whose class and `data-*` the allowlist drops.
+The block keeps one attribute instead, `lang="mermaid"`, as GitHub’s own fallback spells
+it, so the page draws it, as an image (`builtin_plugins/markdown/diagrams.js`). An `svg`
+fence stays code, as GitHub shows it: Metabrowser asks KPress for `diagrams="mermaid"`
+(`kpress_adapter.render_kpress_view`).
+
+```console
+$ metab diagrams --untrusted --api '/api/kpress/render?path=README.md&view=document' > diagrams-inert.txt
+? 0
+```
+
+```console
+$ grep -E '^  "html":' diagrams-inert.txt
+  "html": "\n\n<div><div><h1 id=\"user-content-diagrams\">Diagrams</h1>\n<pre lang=\"mermaid\"><code>flowchart LR\n  A --&gt; B\n</code></pre>\n<pre><code>&lt;svg viewBox=\"0 0 1 1\"&gt;&lt;/svg&gt;\n</code></pre></div></div>",
+? 0
+```
+
+A trusted render keeps KPress’s Mermaid figure, which the page draws in the document,
+and the `svg` fence is still code.
+
+```console
+$ metab diagrams --api '/api/kpress/render?path=README.md&view=document' > diagrams-trusted.txt
+? 0
+```
+
+```console
+$ grep -oE 'data-kpress-diagram=\\"[a-z]+\\"' diagrams-trusted.txt
+data-kpress-diagram=\"mermaid\"
 ? 0
 ```

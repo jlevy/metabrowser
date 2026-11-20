@@ -41,8 +41,10 @@ produce is refused rather than ignored.
 | Recent targets | `--recent`, `--recent-add`, `--recent-forget`, `--recent-clear` | `recent_cli.py`, over [`recent_targets.py`](arch-recent-targets.md) |
 
 `_classified_root` decides whether ROOT is a local path or a Git source.
-An `ssh` source is refused in every mode.
-A mode that serves, shows, or checks a Git source runs under the forced untrusted
+First, `_root_in_full` writes `https://` before an argument that names nothing on disk
+and begins with a host a provider’s reducer claims, such as `github.com/owner/repo`;
+`--present` does the same before it reads ROOT. An `ssh` source is refused in every
+mode. A mode that serves, shows, or checks a Git source runs under the forced untrusted
 profile described in
 [Server and Content](arch-server-and-content.md#acquired-git-sources).
 The diff, API, acquire, and show modes import their modules inside their branch, so a

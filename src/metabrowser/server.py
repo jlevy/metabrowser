@@ -68,7 +68,14 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from strif import file_mtime_hash
 
-from metabrowser import __version__, delivery, kpress_adapter, server_timing
+from metabrowser import (
+    __version__,
+    delivery,
+    event_log,
+    event_log_reports,
+    kpress_adapter,
+    server_timing,
+)
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.asset_stamps import StampedStaticFiles, StampedTree, split_stamp
@@ -101,6 +108,7 @@ from metabrowser.diff.markdown_projection_worker import (
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.embedded_resources import embedded_raw_paths
 from metabrowser.encoded_assets import EncodedAssetResponse
+from metabrowser.event_log_route import EVENT_LOG_ROUTES
 from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
     BROWSER_TEXT_EXTS,
@@ -604,6 +612,14 @@ _sys.modules[__name__].__class__ = _ProcBrowserModule
 STATIC_DIR: Path = Path(__file__).parent / "static"
 # The stamp `?v=` names: each static file's own bytes (asset_stamps.StampedStaticFiles).
 _STATIC_TREE = StampedTree(STATIC_DIR, live=editable_install("metabrowser"))
+# Mermaid's chunks, which its build names `<name>-<hash>.mjs` by a hash of each one's
+# content and its entry imports by relative specifiers that drop the entry's `?v=`. The
+# name names the bytes, so a chunk the stamp holds is answered immutable at its plain
+# address. Before this, each chunk a page imported, of 105 (5,404,632 bytes), was
+# `no-cache` and asked for again on every load with a conditional request answered 304
+# (measured 2026-11-19). Its bytes change only with its name: `devtools/vendor_assets.py
+# --check` refuses vendored bytes its manifest does not pin.
+_SELF_NAMED_STATIC = ("vendor/mermaid/chunks/",)
 # The reading-width state machine is first-paint configuration and only 1 KiB
 # compressed. Embed its exact tested source once instead of spending a startup
 # request on it; keeping the file authoritative preserves the browserless
@@ -1136,6 +1152,61 @@ def _pin_is_served() -> bool:
         return True
 
 
+def _end_request_span(
+    span: event_log.Span,
+    *,
+    status: int | None,
+    body_bytes: int,
+    start_ms: float | None,
+    query: str,
+    record: server_timing.Record,
+    failure: BaseException | None,
+) -> None:
+    """End a request's event-log span with what the request log line says.
+
+    A status of 500 or more is ``failed``; a request cancelled, as when the client left,
+    is ``cancelled`` whether or not its answer had begun, and one the application raised
+    on is ``failed``.
+    """
+
+    attrs: dict[str, Any] = {"status": status, "bytes": body_bytes}
+    if query:
+        attrs["query"] = event_log.redact(query, limit=event_log.MAX_TEXT_CHARS)
+    if start_ms is not None:
+        attrs["start_ms"] = round(start_ms, 1)
+    phases = record.totals()
+    if phases:
+        attrs["phases"] = {name: round(ms, 1) for name, ms in phases}
+    processes = record.git_processes()
+    if processes:
+        attrs["git_processes"] = processes
+    if failure is not None:
+        cancelled = isinstance(failure, asyncio.CancelledError)
+        if not cancelled:
+            attrs["error"] = event_log.describe_error(failure)
+        span.end("cancelled" if cancelled else "failed", **attrs)
+    else:
+        span.end("failed" if status is not None and status >= 500 else "ok", **attrs)
+
+
+# Long-lived endpoints never flagged as slow. The SSE transport intentionally holds the
+# connection open for as long as the tab does, far past ``_SLOW_SERVER_REQUEST_MS``, so
+# without this skip every connected browser tab would emit a slow-request warning. These
+# paths also get no ``Server-Timing`` header, and a page never reports them as slow or
+# pending (``event_log_reports.browser_settings``). ``/api/tail`` has no route.
+LONG_LIVED_PATHS: Final[tuple[str, ...]] = ("/api/events", "/api/tail", "/api/stream")
+
+
+def _request_client(scope: dict[str, Any]) -> str | None:
+    """The page's ID for this request (``event_log.CLIENT_HEADER``), when it sent one."""
+
+    wanted = event_log.CLIENT_HEADER.encode("latin-1")
+    for name, value in scope.get("headers") or []:
+        if name == wanted:
+            return event_log.client_id(value)
+    return None
+
+
 class _SlowRequestLogMiddleware:
     """Time + log browser server requests.
 
@@ -1157,12 +1228,7 @@ class _SlowRequestLogMiddleware:
         self.threshold_ms = threshold_ms
         self.verbose = verbose
 
-    # Long-lived endpoints we never want flagged as slow. The SSE
-    # transport intentionally holds the connection open for as long as the
-    # tab does, far past ``_SLOW_SERVER_REQUEST_MS``, so without this skip
-    # every connected browser tab would emit a slow-request warning. These
-    # paths also get no ``Server-Timing`` header. ``/api/tail`` has no route.
-    _LONG_LIVED_PATHS: tuple[str, ...] = ("/api/events", "/api/tail", "/api/stream")
+    _LONG_LIVED_PATHS: tuple[str, ...] = LONG_LIVED_PATHS
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope.get("type") != "http":
@@ -1184,6 +1250,15 @@ class _SlowRequestLogMiddleware:
         body_bytes = 0
         start_ms: float | None = None
         record, token = server_timing.begin()
+        # The event log's record of the request (metabrowser.event_log): current while
+        # the application runs, so a job the request starts names it as its parent, and
+        # carries the page's ID for it, which a page's reports name too.
+        method = scope.get("method", "")
+        request_span = (
+            event_log.begin("request", f"{method} {path}", client=_request_client(scope))
+            if event_log.enabled()
+            else event_log.NULL_SPAN
+        )
 
         async def send_wrapper(message: dict[str, Any]) -> None:
             nonlocal body_bytes, start_ms, status
@@ -1212,8 +1287,13 @@ class _SlowRequestLogMiddleware:
                 body_bytes += len(body)
             await send(message)
 
+        failure: BaseException | None = None
         try:
-            await self.app(scope, receive, send_wrapper)
+            with event_log.within(request_span):
+                await self.app(scope, receive, send_wrapper)
+        except BaseException as exc:
+            failure = exc
+            raise
         finally:
             server_timing.end(record, token)
             # The time to the end of the body, which no header can carry.
@@ -1222,6 +1302,16 @@ class _SlowRequestLogMiddleware:
             phases = server_timing.log_value(record)
             query = (scope.get("query_string") or b"").decode("latin-1")
             full_path = f"{path}?{query}" if query else path
+            if request_span is not event_log.NULL_SPAN:
+                _end_request_span(
+                    request_span,
+                    status=status,
+                    body_bytes=body_bytes,
+                    start_ms=start_ms,
+                    query=query,
+                    record=record,
+                    failure=failure,
+                )
             if self.verbose:
                 # Verbose mode: every request, with arrival + completion
                 # epochs so correlation against browser-side perf.js
@@ -1283,35 +1373,33 @@ def _initial_path_html() -> str:
 def _pin_label_html(status: SourceStatus) -> str:
     """The navigation heading for a pinned revision.
 
-    A served mirror's is the repository's name, where a folder's name stands and with
-    the same `.path-base` emphasis, then the ref and the short commit, muted: the page
-    is called what a checkout of the repository would be, and the commit it is pinned
-    to stays in sight beside it, in the commit-ID face (`.git-commit-sha`) a commit has
-    wherever it appears. The full commit is in the heading's tooltip.
+    A pin with a name is headed by the name alone, where a folder's name stands and with
+    the same `.path-base` emphasis: a served mirror by the repository's name, as a
+    checkout of it would be called, and a revision a folder's server shows of its own
+    checkout by the folder's name. The ref selector in the Files toolbar names the ref,
+    and the heading's tooltip (`_mirror_tip`) the full commit, so the heading repeats
+    neither: the owner found them clutter beside the name (mb-qq4e).
 
-    A pin with no mirror has no origin to take a name from. Its ref stands as the name
-    with the short commit after it, or the short commit alone when no ref is known, in
-    the same face, and the full commit is its served root.
+    A pin with no mirror has no origin to take a name from, and no ref selector, so its
+    heading is the only place that names it. Its ref stands as the name with the short
+    commit after it, muted, in the commit-ID face (`.git-commit-sha`) a commit has
+    wherever it appears, or the short commit alone when no ref is known; the full commit
+    is its served root.
     """
-
-    short = html_escape(short_commit(status["pin"] or ""))
-    name = status["name"]
-    ref_name = status["ref_name"]
 
     def base(text: str) -> str:
         return f'<span class="path"><span class="path-base">{text}</span></span>'
 
-    commit = f'<span class="header-revision git-commit-sha">{short}</span>'
-    if name is None:
-        if ref_name is None:
-            return base(f'<span class="git-commit-sha">{short}</span>')
-        return base(html_escape(ref_name)) + commit
-    ref = (
-        ""
-        if ref_name is None
-        else f'<span class="header-revision header-ref">{html_escape(ref_name)}</span>'
+    name = status["name"]
+    if name is not None:
+        return base(html_escape(name))
+    short = html_escape(short_commit(status["pin"] or ""))
+    ref_name = status["ref_name"]
+    if ref_name is None:
+        return base(f'<span class="git-commit-sha">{short}</span>')
+    return (
+        base(html_escape(ref_name)) + f'<span class="header-revision git-commit-sha">{short}</span>'
     )
-    return base(html_escape(name)) + ref + commit
 
 
 def _mirror_tip(status: SourceStatus) -> str | None:
@@ -1419,8 +1507,10 @@ def _static_asset_url(rel_path: str) -> str:
 # Interface-font sets offered by the settings dropdown. The first entry is the
 # default. Each set's actual font stacks live in styles.css as a
 # `html[data-app-font="<value>"]` block (the default uses the :root base). To add
-# a set, append one entry here and one CSS block there — the dropdown options and
-# the pre-paint bootstrap both derive from this single list, so they stay in sync.
+# a set, append one entry here and one CSS block there, which sets both --font-sans and
+# the sans's x-height, --font-sans-ex-height (tests/test_short_commit.py checks each) —
+# the dropdown options and the pre-paint bootstrap both derive from this single list,
+# so they stay in sync.
 _FONT_SETS: tuple[dict[str, str], ...] = (
     {"value": "clean", "label": "Clean Fonts"},
     {"value": "system", "label": "System Fonts"},
@@ -1525,7 +1615,8 @@ def _source_ref_label_html(pin: GitRevisionSubject | None, *, checkout: bool) ->
         name = ref_short_name(pin.ref)
     if name:
         return html_escape(name)
-    # As much of the ID as the navigation heading shows: the page has the full ID alone.
+    # The short ID every line that names a commit shows (docs/design-system.md, "Short
+    # Commit IDs"); the navigation heading's tooltip has the full ID.
     return (
         f'Commit: <span class="git-commit-sha">{html_escape(short_commit(pin.commit_oid))}</span>'
     )
@@ -1584,7 +1675,7 @@ async def index(
         initial_root = html_escape(status["name"] or pin_oid, quote=True)
         mirror_attrs = _mirror_heading_attrs(status)
         # What styles a mirror's headings apart from a folder's: its root is a name,
-        # which is cut at its end, and its commit has a copy control beside it.
+        # which is cut at its end, and a control after the name copies its commit.
         mirror_class = " mirror-source" if mirror_attrs else ""
         # Core holds no provider URL grammar: the served mirror asks the installed
         # providers, and only a hosted repository's has an answer (a GitHub mirror's
@@ -1656,6 +1747,7 @@ async def index(
     git_graph_url = _static_asset_url("git-graph.js")
     git_history_window_url = _static_asset_url("git-history-window.js")
     git_panel_url = _static_asset_url("git-panel.js")
+    event_reports_url = _static_asset_url("event-reports.js")
     source_freshness_url = _static_asset_url("source-freshness.js")
     source_ref_selector_url = _static_asset_url("source-ref-selector.js")
     app_url = _static_asset_url("app.js")
@@ -1670,6 +1762,7 @@ async def index(
             capabilities=page_capabilities,
         ),
         "BUILD_TAG": BUILD_TAG,
+        "EVENT_REPORTS": event_log_reports.browser_settings(long_lived=LONG_LIVED_PATHS),
     }
     if pin is not None:
         client_settings["STORE_TAG"] = store_tag(pin.command_target.git_dir)
@@ -2037,11 +2130,41 @@ async def index(
             {"src": git_panel_url},
             # Only a shell that drew the Pulls tab has it, so a folder fetches nothing new.
             *([{"src": _static_asset_url("pulls-nav.js")}] if pulls_tab else []),
+            # The event log's reporter, last: nothing here waits on it (`event-reports`).
+            {"src": event_reports_url},
         ],
         # The compositor is needed only once file navigation begins, after the
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # What the page reports to the event log, and the Details a failure or a late
+        # wait offers (static/event-reports.js). It is the last script of `shell-tools`,
+        # so it loads after the first usable tree, and a page that waits on something
+        # before then asks for it by this name; the loader runs a script once whichever
+        # bundle asks. A report of what came earlier reads the browser's Resource Timing.
+        # Not a startup script, nor a call in app.js: the startup budget had 99 bytes left
+        # when it was written, and #622's changes left 2 after such a call (2026-11-19).
+        "event-reports": [{"src": event_reports_url}],
+        # Mermaid 12.3.0's ESM entry (static/vendor/mermaid/), imported by the Markdown
+        # plugin's diagram renderer only when a mounted view holds a diagram. The entry
+        # imports the chunks of each diagram type it draws by relative specifiers, so a
+        # document fetches the 30,936-byte entry and its types' chunks, and a document
+        # with no diagram fetches nothing (docs/project/specs/active/
+        # plan-2026-08-21-mermaid-diagram-rendering.md has the measurement).
+        "mermaid": [{"module": _static_asset_url("vendor/mermaid/mermaid.esm.min.mjs")}],
+        # KPress's diagram renderer and its opt-in controls, at the stamped URLs a
+        # render's asset manifest names, so they import the one KPress runtime the
+        # document's other modules share. Fetched with the first diagram, beside Mermaid.
+        "kpress-diagrams": [
+            {"module": kpress_adapter.kpress_static_url("js/diagrams.js", prefix=kpress_prefix)}
+        ],
+        "kpress-diagram-controls": [
+            {
+                "module": kpress_adapter.kpress_static_url(
+                    "js/diagram-controls.js", prefix=kpress_prefix
+                )
+            }
+        ],
         # A file's and a folder's view header: its builders, and the folder line's live
         # refresh. renderFile draws a header only after loadViewComposition, which fetches
         # this beside the compositor and the SDK's view helpers, so the first tree never
@@ -2263,8 +2386,8 @@ async def index(
              plain activation in the page and shows the folder's home view as a fresh load
              of this address does, every tab at its first, and `0` does the same. Its
              accessible name is "Home:" and then the name it shows, read from its own
-             content, so the name a mirror's heading shows, its ref and commit with it,
-             stays in it. The header anchors the key's badge, which sits beside the name
+             content, so a pin with no mirror's ref and commit, which stand as its name,
+             stay in it. The header anchors the key's badge, which sits beside the name
              because the name clips. -->
         <a href="{VIEW_ROUTE_PREFIX}" class="header-path" id="header-home"
            aria-labelledby="header-home-label header-home"
@@ -2308,10 +2431,10 @@ async def index(
               <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="sans" data-tip-text="Sans-serif reading font" aria-label="Sans-serif reading font"></button>
             </div>
             <div class="menu-separator"></div>
-            <select class="menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>
+            <select class="field menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>
             <div class="menu-separator"></div>
             <label class="menu-row" for="doc-max-chars-input">Max text width
-              <input class="menu-number" id="doc-max-chars-input" type="number"
+              <input class="field menu-number" id="doc-max-chars-input" type="number"
                      min="40" max="160" step="1" inputmode="numeric"
                      data-tip-text="Characters per line in rendered documents"></label>
             <div class="menu-separator"></div>
@@ -2364,8 +2487,8 @@ async def index(
         {preview_loading}
       </div>
       <!-- Hides and shows the navigation pane, as the backslash key does: at the start
-           of the main page's top row, in its gutter, across from the navigation title's
-           gear. It is in the frame, not the pane, so it stays when the pane is hidden and
+           of the main page's foot, in its gutter, on the row of the navigation's shortcut
+           strip. It is in the frame, not the pane, so it stays when the pane is hidden and
            slides with the page. app.js draws its chevron; static/nav-collapse.js runs it,
            and static/styles.css places it. -->
       <button class="icon-btn nav-collapse-toggle disclosure-toggle" id="nav-collapse-toggle" type="button"
@@ -2417,7 +2540,14 @@ async def index(
     return HTMLResponse(
         html,
         headers={
-            "Content-Security-Policy": untrusted_shell_csp(nonce, origin),
+            "Content-Security-Policy": untrusted_shell_csp(
+                nonce,
+                origin,
+                tuple(
+                    kpress_adapter.kpress_static_url(module, prefix=kpress_prefix)
+                    for module in kpress_adapter.DIAGRAM_MODULES
+                ),
+            ),
             "X-Frame-Options": "DENY",
         },
     )
@@ -5212,7 +5342,11 @@ routes = [
     Route("/raw/{path:path}", raw_file),
     Route("/kpress-static/{path:path}", kpress_static_asset),
     Mount(
-        "/static", app=StampedStaticFiles(directory=STATIC_DIR, tree=_STATIC_TREE), name="static"
+        "/static",
+        app=StampedStaticFiles(
+            directory=STATIC_DIR, tree=_STATIC_TREE, self_named=_SELF_NAMED_STATIC
+        ),
+        name="static",
     ),
     # Read-only git history, kept as its own collection in
     # ``metabrowser.git.routes``: separate wire model, separate failure
@@ -5226,6 +5360,8 @@ routes = [
     *SOURCE_ROUTES,
     # What the served subject is called, as the shell's title and a native window say.
     *IDENTITY_ROUTES,
+    # Where the event log is, and its records (metabrowser.event_log).
+    *EVENT_LOG_ROUTES,
     # A page's github.com counterpart, which every View on GitHub control links to.
     *COUNTERPART_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS, asset_trees=_PLUGIN_ASSET_TREES),
@@ -5284,6 +5420,8 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
     # refresh jobs start once the pin is attached and are cancelled before it closes.
     # What a folder's server keeps for its checkout comes last, so it is left first: a
     # revision of the checkout still served at shutdown is closed while the rest is up.
+    # A served process's event log pings this loop, so a turn that blocks it is on record.
+    event_log.watch_loop(asyncio.get_running_loop())
     async with (
         lifespan_subject(),
         build_lifespan(app=app, root_provider=_inventory_root_provider),

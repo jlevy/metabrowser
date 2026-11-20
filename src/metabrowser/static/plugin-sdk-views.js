@@ -2223,6 +2223,26 @@
     });
   }
 
+  /**
+   * An on-demand module bundle's absolute URL, or null for a name that is not one: what a
+   * frame of a plugin's own imports to run the module in that frame's realm, where the
+   * namespace `ensureModule` returns cannot reach (markdown/diagram-frame.js). Here and not
+   * in the startup scripts, asset-loader.js among them, since only a view that draws such
+   * a frame asks; it reads a bundle as `ensureModule` does, which
+   * tests/dom/markdown-diagram-frame-session.js checks shape by shape.
+   *
+   * @param {string} name
+   * @returns {string | null}
+   */
+  function moduleUrl(name) {
+    // A module bundle is one `{module: url}` entry (asset-loader.js, `ensureModule`).
+    const entries = /** @type {unknown} */ (global.METABROWSER_ASSET_BUNDLES?.[name]);
+    const entry = Array.isArray(entries) && entries.length === 1 ? entries[0] : null;
+    const url =
+      entry && typeof entry === "object" && typeof entry.module === "string" ? entry.module : "";
+    return url ? new URL(url, global.location.href).href : null;
+  }
+
   Object.assign(mb, {
     actorIdentity,
     actorIdentityHtml,
@@ -2246,5 +2266,6 @@
     renderTextLoadMoreFooter: renderTextLoadMoreFooter,
     renderTextTruncationWarning: renderTextTruncationWarning,
     wrapWithCopy: wrapWithCopy,
+    moduleUrl,
   });
 })(/** @type {Window & typeof globalThis} */ (typeof window !== "undefined" ? window : globalThis));

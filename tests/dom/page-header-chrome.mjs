@@ -197,8 +197,8 @@ const MEASURE = `async (which, width) => {
     const style = getComputedStyle(node);
     return { size: style.fontSize, lineHeight: style.lineHeight, weight: style.fontWeight, color: style.color };
   };
-  // What a run of text is: a chip keeps its own size, and a revision its one step down; any
-  // other run is the line's text.
+  // What a run of text is: a chip keeps its own size, and a revision takes the line's in its
+  // own face; any other run is the line's text.
   const kindOf = (element) =>
     element.closest(".git-ref") ? "ref chip"
       : element.closest(".file-header-badge") ? "badge"
@@ -345,8 +345,8 @@ async function main() {
           JSON.stringify([commit.gap, pull.gap]),
         );
         // One size: every line under the title computes to the body size, and every run of
-        // text in it, the Diff summary's included; a chip keeps its own size and a revision
-        // its one step down (docs/design-system.md, "Page Headers").
+        // text in it, the Diff summary's included; a chip keeps its own size, and a revision
+        // is the line's (docs/design-system.md, "Page Headers", "Short Commit IDs").
         for (const [name, page] of [
           ["commit", commit],
           ["pull request", pull],
@@ -387,8 +387,8 @@ async function main() {
             .flatMap((line) => line.runs)
             .filter((run) => run.kind === "revision");
           check(
-            `${where}: the ${name}'s revision, if any, is one step down, 13 px`,
-            revision.every((run) => run.size === "13px"),
+            `${where}: the ${name}'s revision, if any, is at the body size, its line's`,
+            revision.every((run) => run.size === body),
             JSON.stringify(revision),
           );
         }

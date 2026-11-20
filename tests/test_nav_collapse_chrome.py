@@ -3,8 +3,8 @@
 The owner asked for a chevron on the main page's left edge that hides the navigation pane,
 the page sliding over it, and turns to point back, with `\\` and Shift-`\\` doing the same
 from anywhere (docs/design-system.md, "Hiding the Navigation Pane"); then, 2026-11-18, for
-it to sit on the page's top row, across from the navigation title's gear, rather than on
-the shortcut strip's row at the foot (mb-tl7p). What the key and the click do to the
+it to sit on the page's top row (mb-tl7p), and, 2026-11-19, back at the page's foot on the
+shortcut strip's row, keeping its place in the gutter (mb-yw18). What the key and the click do to the
 page's state, and which keys stay live while the pane is hidden, are browserless
 (``cli-ui-nav-collapse.tryscript.md``). Where the chevron sits, the slide in every frame,
 and real key input are a browser's, so ``tests/dom/nav-collapse-chrome.mjs`` measures

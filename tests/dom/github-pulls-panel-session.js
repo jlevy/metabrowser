@@ -153,6 +153,7 @@ function createPage() {
     now: () => clock.now,
     isVisible: () => visible,
     formatTime: (iso) => new Date(iso).toISOString(),
+    formatCount: (count) => count.toLocaleString("en-US"),
     render(next) {
       model = next;
       paints += 1;
@@ -515,6 +516,7 @@ async function run() {
       rowsVersion: 1,
       nowMs: Date.parse(answer.body.fetched_at) + 30_000,
       formatTime: (iso) => new Date(iso).toISOString(),
+      formatCount: (count) => count.toLocaleString("en-US"),
       more: false,
       error: null,
     });

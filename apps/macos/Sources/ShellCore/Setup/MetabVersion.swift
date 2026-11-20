@@ -53,11 +53,15 @@ public nonisolated struct MetabVersion: Equatable, Sendable, CustomStringConvert
 public nonisolated enum MetabRequirement {
     /// The first release with `GET /api/identity`, which names each window, with
     /// `--exit-on-eof`, which ends a server with the app, with `--present`, whose dry run
-    /// resolves a GitHub link (`PresentDryRun`), and with `--recent`, which File > Open
-    /// Recent lists. 0.12.0, the latest published release, lacks all four, so the next
-    /// release is a minor one. Until it is on PyPI, only builds from a source checkout meet
-    /// this, and `RuntimeDiscovery.validate` finds one built before any of the flags too
-    /// old, whatever its number: the check runs with them all (`requiredFlags`).
+    /// resolves a GitHub link (`PresentDryRun`), with `--recent`, which File > Open
+    /// Recent lists, and with `POST /api/source/link`, which opens every link into a
+    /// repository in its one mirror (`SourceLink`). 0.12.0, the latest published release,
+    /// lacks all five, so the next release is a minor one. Until it is on PyPI, only builds
+    /// from a source checkout meet this, and `RuntimeDiscovery.validate` finds one built
+    /// before any of the flags too old, whatever its number: the check runs with them all
+    /// (`requiredFlags`). A route cannot be probed that way; a development build from
+    /// before the link route opens a link's repository and leaves its window on the
+    /// entry page, which the app logs.
     public static let minimumRelease = [0, 13, 0]
 
     /// The flags a `metab` must take that its number cannot show (`flagShortfall`), oldest

@@ -169,11 +169,20 @@ function summarize(model) {
 // KPress alone renders; the real browser's parse is checked in the QA runbook's
 // walkthrough with a network watch.
 
+// A pull request's text keeps no image and no anchor; its layout attributes are github.com's.
 const ALLOWED_ATTRIBUTES = {
   a: ["href", "target", "rel"],
   ol: ["start"],
-  td: ["colspan", "rowspan", "align"],
-  th: ["colspan", "rowspan", "align"],
+  p: ["align"],
+  div: ["align"],
+  ...Object.fromEntries(["h1", "h2", "h3", "h4", "h5", "h6"].map((tag) => [tag, ["align"]])),
+  table: ["align", "width"],
+  thead: ["align"],
+  tbody: ["align"],
+  tfoot: ["align"],
+  tr: ["align"],
+  td: ["colspan", "rowspan", "align", "width", "height"],
+  th: ["colspan", "rowspan", "align", "width", "height"],
   details: ["open"],
 };
 
@@ -947,7 +956,10 @@ async function main() {
   // A prior failed poll must not survive the pin guard's refusal.
   server.pull = { status: 502, etag: null, body: null };
   const failedPoll = await page.step("a poll failed before the pin moved", async () => page.fire());
-  assert(failedPoll.paint.message.includes("502"), "the failed poll did not show its error");
+  assert(
+    failedPoll.paint.message.includes("could not be loaded"),
+    "the failed poll did not show its error",
+  );
   // A page Back restores after the pin moved polls before the pin guard reloads it. The
   // guard's refusal is the guard's to answer, so the page says nothing of its own.
   server.pull = {
@@ -1050,7 +1062,7 @@ async function main() {
   const named = runtime.holdLiftText(refusedAt + 60_000, held.clock.now, "en-US", "UTC");
   assert(
     holding.paint.canRefresh === false &&
-      holding.paint.failure === `GitHub rate limit · next check at ${named}`,
+      holding.paint.failure === `GitHub rate limit reached. Next attempt after ${named}.`,
     `a held page offers Refresh or names another time: ${JSON.stringify(holding)}`,
   );
   rateLimitedStory.push(holding);

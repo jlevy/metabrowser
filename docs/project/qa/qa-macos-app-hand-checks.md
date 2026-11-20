@@ -331,29 +331,36 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
 3. **Each kind.** `$REPO`, `$REPO/tree/main/docs`, `$REPO/blob/main/README.md`, and
    `$REPO/commit/dcf2bcfa8` each bring the repository’s window forward at that page, as
    GitHub Links check 2 does.
-4. **The app’s refusals.** `jlevy/metabrowser`, `github.com/jlevy/metabrowser`,
-   `http://github.com/jlevy/metabrowser`,
+4. **The app’s refusals.** `jlevy/metabrowser`, `gitlab.com/jlevy/metabrowser`,
+   `git@github.com:jlevy/metabrowser.git`, `http://gitlab.com/jlevy/metabrowser`,
    `https://user:secret@github.com/jlevy/metabrowser`,
    `https://github.com:8443/jlevy/metabrowser`, and
    `https://gitlab.com/jlevy/metabrowser` each show a reason under the field, with no
    alert and no window; the panel stays open with the text, editing it clears the
    reason, and `log show --last 2m --predicate "subsystem == '$APP_ID'"` has no
    `Open URL…` line for any of them, since no `metab` ran.
-5. **`metab`’s refusals.** `$REPO/issues/1` shows `metab`’s message about issues pages,
+5. **An obvious URL is written in full.** `github.com/jlevy/metabrowser`,
+   `http://github.com/jlevy/metabrowser`, and `//github.com/jlevy/metabrowser` each show
+   `https://github.com/jlevy/metabrowser` in the field when Return is pressed, all of it
+   selected and the field still focused, with no message, and open the repository as
+   check 3 does. `github.com/jlevy/metabrowser/issues/1` shows
+   `https://github.com/jlevy/metabrowser/issues/1` in the field, selected, and `metab`’s
+   message about issues pages under it.
+6. **`metab`’s refusals.** `$REPO/issues/1` shows `metab`’s message about issues pages,
    and `$REPO/pull/0` its message about pull request numbers, under the field, with no
    alert and no window, and never JSON or a traceback; then editing the text to
    `$REPO/pull/517` and pressing Return opens it.
-6. **Cancel.** Escape, the Cancel button, the close button, and File > Close Window
+7. **Cancel.** Escape, the Cancel button, the close button, and File > Close Window
    (Command-W) each close the panel and open nothing, and close no window behind it.
    The panel comes back empty.
-7. **A repository the cache does not hold.** A small public repository you have never
+8. **A repository the cache does not hold.** A small public repository you have never
    opened: the panel closes, and the confirmation of GitHub Links check 4 appears.
-8. **No runtime yet.** As in GitHub Links check 10, choose a file that is not a `metab`
+9. **No runtime yet.** As in GitHub Links check 10, choose a file that is not a `metab`
    in Settings, then Open URL… `$REPO`: the panel closes and no window opens; choose
    this checkout’s `.venv/bin/metab`, and the repository opens.
-9. **Editing.** Command-V and Edit > Paste paste into the field, and Command-A selects
-   its text.
-10. **A space in the path.** `$REPO/blob/main/docs/a b.md` closes the panel and brings
+10. **Editing.** Command-V and Edit > Paste paste into the field, and Command-A selects
+    its text.
+11. **A space in the path.** `$REPO/blob/main/docs/a b.md` closes the panel and brings
     the repository’s window forward at the `handoff` that
     `metab "$REPO/blob/main/docs/a b.md" --present --dry-run --format json` prints,
     `docs/a%20b.md`, which the mirror reports missing.
@@ -443,13 +450,15 @@ yet been run on a Mac.
 ```shell
 APP="$PWD/apps/macos/build/dev/Metabrowser.app"
 mkdir -p /tmp/mb-check/{a,b,c,d}
+LONG=/tmp/mb-check/projects/2026/clients/northwind/archive/quarterly-reports
+mkdir -p "$LONG"
 ```
 
 Set Settings > Open folders in to Windows and close every window.
-Open `c` and close its window, then `d` and close its window, so both are recent and
-neither is open. Then open `a`, then `b`, each with `open -a "$APP" /tmp/mb-check/NAME`,
-so each has a window of its own.
-Each step starts where the one before it ends.
+Open `$LONG` and close its window, then `c` and close its window, then `d` and close its
+window, so all three are recent and none is open.
+Then open `a`, then `b`, each with `open -a "$APP" /tmp/mb-check/NAME`, so each has a
+window of its own. Each step starts where the one before it ends.
 
 1. **The title.** Each title reads its folder with a small chevron after it, dim at rest
    and darker under the pointer, where a rounded fill appears behind the title and
@@ -469,7 +478,15 @@ Each step starts where the one before it ends.
    Folders, disabled. Each folder shows the page’s folder glyph, and a GitHub repository
    among the recent ones the cloud mark; File > Open Recent and the Dock icon’s menu
    show the same marks on their rows.
-   Holding Option turns each row into “Open … in New Window”.
+   Each row’s mark sits on the line of its name, centered on that line as on Open
+   Recent’s one-line rows, never between the name and the subtitle, and the subtitle
+   starts under the name, not under the mark: in light and dark mode, on the highlighted
+   row as white as its text, and on the checked row, whose check mark stays centered on
+   the row. `quarterly-reports`, after `c`, shows its path on one line, cut in the middle
+   with an ellipsis, its mark still on the name’s line, and resting the pointer on the
+   row shows the whole path in a tooltip.
+   Holding Option turns each row into “Open … in New Window”, its mark still on the
+   name’s line and its subtitle the same.
    Escape closes it.
 4. **A folder another window shows.** Choosing `b` in `a`’s chooser brings `b`’s window
    forward and changes nothing in `a`’s.
@@ -508,8 +525,9 @@ Each step starts where the one before it ends.
     with an empty field that has the focus.
     It lists `a` first and selected, then `b` subtitled “In another window”, then the
     recent folders, and last `c`, checked.
-    Each row shows the page’s folder glyph, the selected row is drawn in the accent
-    color, and the check mark sits at the row’s trailing edge.
+    Each row shows the page’s folder glyph on the line of its name, as the chooser does,
+    the selected row is drawn in the accent color, and the check mark sits at the row’s
+    trailing edge, centered on the row.
     Return shows `a` in the window at once, as in step 6; Shift-Command-O, then Return,
     shows `c` again.
 12. **The panel’s keys.** In `c`’s window press Shift-Command-O, then:

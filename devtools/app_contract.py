@@ -106,6 +106,11 @@ class Surface:
 
     @property
     def flags(self) -> frozenset[str]:
+        """The flags the app passes ``metab``. A route's are none: the app asks it over
+        HTTP, and its ``argv`` is only how the golden asks it (``--api``, ``--data``)."""
+
+        if self.kind == "route":
+            return frozenset()
         return frozenset(word for word in self.argv if word.startswith("--"))
 
     @property
@@ -206,7 +211,7 @@ _READ_KEYS: Final = frozenset({"json", "values", "values_in", "shown", "opaque"}
 _SURFACE_KEYS: Final = {
     "command": _READ_KEYS
     | {"id", "argv", "source", "stdout", "stderr", "output", "app_runs", "because", "note"},
-    "route": _READ_KEYS | {"id", "route", "literal", "source", "note"},
+    "route": _READ_KEYS | {"id", "route", "literal", "data", "source", "note"},
 }
 _TABLE_KEYS: Final = {
     "line": frozenset({"id", "pattern", "source", "golden", "pinned_by", "holds", "note"}),
@@ -311,10 +316,12 @@ def _surface(kind: str, table: dict[str, object]) -> Surface:
     note = _text(table, "note", where, required=False)
     if kind == "route":
         route = _text(table, "route", where)
+        # A route the app sends a JSON body, which ``--api --data`` sends as the app does.
+        data = _text(table, "data", where, required=False)
         return Surface(
             id=identifier,
             kind=kind,
-            argv=("{root}", "--api", route),
+            argv=("{root}", "--api", route, *(("--data", data) if data else ())),
             source=_text(table, "source", where),
             json=json_paths,
             values=values,

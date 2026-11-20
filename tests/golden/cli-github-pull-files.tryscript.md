@@ -374,7 +374,7 @@ status: 200
   "refreshing": false,
   "last_refresh": {
     "outcome": "network_error",
-    "message": "gh could not reach api.github.com",
+    "message": "GitHub could not be reached because api.github.com did not resolve (DNS)",
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },

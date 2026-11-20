@@ -33,7 +33,9 @@ and each definition carries a comment naming its Lucide id, which the Icon colum
 repeats. Every one is inline SVG that strokes or fills `currentColor`, so the element
 around it sets its ink.
 Rendered Markdown draws its own chrome from KPress’s icon set, the same Lucide release
-([KPress icons](https://github.com/jlevy/kpress/blob/v0.3.0/docs/kpress-icons.md)).
+([KPress icons](https://github.com/jlevy/kpress/blob/v0.3.0/docs/kpress-icons.md)),
+Mermaid diagrams’ toolbar and dialog included: in an untrusted document, whose allowlist
+drops KPress’s inline sprites, KPress’s diagram controls fetch them.
 
 A glyph enters the registry only when a folder’s first paint can draw it: every page
 fetches the registry before it paints, so each glyph there is paid for by every folder
@@ -192,7 +194,7 @@ The state’s word beside the row’s title carries the meaning without the colo
 | `serif`, bespoke | Registry | The serif reading font: an “A” in the generic serif family | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
 | `sans`, bespoke | Registry | The sans reading font: an “A” in the generic sans-serif family | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
 | `↑` | Text | The parent folder, in the parent navigation button | `static/view-header.js`, `builtin_plugins/folder/treemap.js` | `--muted` | `--ui-small-font-size` |
-| `✓` | Text | A chosen value in a filter chip’s menu, and the current member in a stack’s menu | `static/filter-controls.js`, `builtin_plugins/github/pull-page.js` | `--link` in a chip menu, the text’s in a stack menu | The text’s, in a fixed column |
+| `✓` | Text | A chosen value in a filter chip’s menu, and the current member in a stack’s menu | `static/filter-controls.js`, `builtin_plugins/github/pull-page.js` | `--link`, in `.chip-menu-check` | The text’s, in a fixed column |
 | `→` | Text | From one to the other: a rename, a mode or type change, and a merge’s source and target | `builtin_plugins/diff/diff-model.js`, `static/git-panel.js`, `static/plugin-sdk-views.js` | The text’s | The text’s |
 | `→` | Text | An agent log’s tool call, going out, in an event’s kind | `builtin_plugins/agent_log/index.js` | The kind badge’s | The text’s |
 | `←` | Text | An agent log’s tool result, coming back, in an event’s kind | `builtin_plugins/agent_log/index.js` | The kind badge’s | The text’s |
@@ -201,7 +203,6 @@ The state’s word beside the row’s title carries the meaning without the colo
 | `‹` | Text | Opens the hex code the binary view shows for a byte that is not printable ASCII, such as `‹FF›` | `builtin_plugins/binary/byte-format.js` | `--muted`, the code’s | `--mono-block-font-size`, the code block’s |
 | `›` | Text | Closes a byte’s hex code in the binary view | `builtin_plugins/binary/byte-format.js` | `--muted`, the code’s | `--mono-block-font-size`, the code block’s |
 | `☰` | Text | The table of contents toggle in an untrusted document’s render | `builtin_plugins/markdown/inert-toc.js` | KPress’s muted document ink | The text’s |
-| `▸` | Text | Show or hide a structured data tree’s object or array | `builtin_plugins/structured/tree.js` | `--color-syntax-punct` | The text’s |
 
 ### Keyboard Hints
 
@@ -238,14 +239,10 @@ Each of these breaks a rule above, and is listed so that nobody copies it.
   theme.
 - **One drawing, two names.** The PDF family declares `fileText`, which is the drawing
   `doc` is, the Documentation category’s shape that PDF would take anyway.
-- **Characters stand in for two drawn glyphs.** An untrusted document’s table of
-  contents toggle types `☰` where a trusted render draws KPress’s Lucide `list`, and a
-  structured data tree types `▸` in syntax punctuation where every other disclosure
-  draws `toggle` in `--muted`.
+- **A character stands in for a drawn glyph.** An untrusted document’s table of contents
+  toggle types `☰` where a trusted render draws KPress’s Lucide `list`.
 - **The Metabrowser menu’s GitHub link ends in `→`**, where a link to GitHub elsewhere
   carries the GitHub mark.
-- **The check marks differ.** A chip menu’s `✓` is `--link` in a column narrower than
-  the glyph; a stack menu’s is the text’s ink in an `--icon-glyph` column.
 - **A branch chip’s copy glyph is smaller than `--icon-glyph`**, by its own rule, which
   the size rule does not list as an exception.
 - **Two glyphs one plugin draws are in the registry.** Only the GitHub plugin draws

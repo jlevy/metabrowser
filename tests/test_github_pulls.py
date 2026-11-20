@@ -349,8 +349,13 @@ def test_account_is_the_active_login_even_in_an_error_state() -> None:
 @pytest.mark.parametrize(
     ("state", "diagnostic", "outcome", "message"),
     [
-        ("error", "dial tcp: no such host", "network_error", "gh could not reach api.github.com"),
-        ("timeout", None, "network_error", "gh could not reach api.github.com"),
+        (
+            "error",
+            "dial tcp: no such host",
+            "network_error",
+            "api.github.com did not resolve (DNS)",
+        ),
+        ("timeout", None, "network_error", "GitHub did not answer in time"),
         ("error", "HTTP 503: private diagnostic", "network_error", "GitHub answered HTTP 503"),
         ("error", "HTTP 401: private diagnostic", "not_logged_in", "gh auth login"),
         ("error", "private diagnostic", "gh_failed", "not a GitHub login"),
@@ -909,6 +914,28 @@ def test_the_markdown_route_drops_the_kpress_icon_sprite(
     ).json()["html"]
     for gone in ("<svg", "<symbol", "<use"):
         assert gone not in html, gone
+
+
+def test_the_markdown_route_keeps_a_mermaid_block_for_the_page_to_draw(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """A text's Mermaid fence reaches the page as GitHub's fallback markup, the one block it
+    draws as an image (pull-page.js, `drawTextDiagrams`); any other fence stays code."""
+
+    stand, client = pinned_pull
+    record = stand.record(7)
+    assert isinstance(record, PullRecord)
+    text = "Two boxes:\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n```python\nx = 1\n```\n"
+    write_pull_record(
+        stand.published.home,
+        stand.published.slug,
+        record.model_copy(update={"pull": record.pull.model_copy(update={"body": text})}),
+    )
+    html = client.get(
+        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
+    ).json()["html"]
+    assert '<pre lang="mermaid"><code>flowchart LR\n  A --&gt; B\n</code></pre>' in html
+    assert (html.count("<pre"), html.count("lang=")) == (2, 1)
 
 
 def test_the_markdown_route_names_only_kpress_stylesheets_and_the_same_ones_for_any_text(

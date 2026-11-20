@@ -98,8 +98,11 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
 (`io.github.jlevy.metabrowser.dev` for a development build).
 `metab` reads each link first, and the app shows what `metab` makes of it.
 
-- **File > Open URL…** takes the full URL, starting with `https://github.com/`; a
-  shorthand such as `owner/repo` is not opened.
+- **File > Open URL…** takes a GitHub URL. It writes one typed without its scheme in
+  full, and the field shows what it opens: `github.com/owner/repo` and
+  `//github.com/owner/repo` get `https://`, and `http://github.com/…` becomes
+  `https://`. Another site’s address, a local path, an SSH address, and a shorthand such
+  as `owner/repo` are not opened.
   A space or a letter outside ASCII in the path is sent encoded, as a browser sends it,
   so a file named `Design Notes.md` opens as it does with `metab URL`. Open checks the
   URL with `metab`, and a URL it accepts opens as a sent link does, below.
@@ -131,20 +134,22 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   After Cancel, links into that repository sent in the same burst are not opened, and
   the app says how many; a link sent later asks again.
   A repository the cache holds opens without asking.
-- **One window per repository:** a link into a repository that has a window brings that
-  window forward, on the branch, commit, or pull request the link names and at its page.
-  Its server starts again on the link, which takes a few seconds, its other tabs reload
-  on that revision, and what pages kept in local storage starts fresh, since the server
-  comes back on a new port.
-  A start under way, such as a first clone or a File > Restart Server, finishes first,
-  and sending the same link again meanwhile starts nothing more: the window still comes
-  to the link’s page once that start ends.
+- **One window per repository:** a repository opens in one window, on its default
+  branch, whatever link opened it, and every link into the repository opens in that
+  window: a second pull request goes to its page in the same window, and a link to a
+  branch, a commit, a folder, or a file goes to its page at the revision it names.
+  Each link also refreshes the repository from GitHub, so what it shows is current.
+  The window’s server keeps running, so this takes a moment, not a restart; when a link
+  names another branch or commit than the window shows, the window switches to it, and
+  its other tabs offer to reload on it.
+  A start under way, such as a first clone, finishes first, and the newest link sent
+  meanwhile opens then.
   Without a window, a new one opens, and its server clones the repository, or uses the
   clone the cache has.
 - **A branch or commit the copy lacks:** a link to a branch, tag, or commit pushed since
-  the copy was last fetched opens the default branch while `metab` fetches it, then goes
-  to the link’s page. If GitHub does not have it either, or the fetch fails, the windows
-  stay on the default branch and the app says so.
+  the copy was last fetched waits for the refresh the link starts, then goes to the
+  link’s page. If GitHub does not have it either, the window stays where it was and the
+  app says so.
 - **A first clone** of a large repository can take minutes.
   The window says it is starting meanwhile, with the clone’s progress under it, as
   `metab` reports it in Terminal: how far the clone has got, how fast, and for how long,
@@ -188,6 +193,9 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   for the folder chooser.
   It lists the open folders, in the order you opened them, with a check mark on the
   window’s own, then the recent folders that are not open.
+  Each row’s mark, a folder or, for a GitHub repository, a cloud, stands beside the
+  name, and the row’s location, or “In another window”, is the line below the name; a
+  location too long for that line is cut in the middle, and its tooltip gives all of it.
   Choosing a folder shows it in this window, and the folder the window showed stays open
   in the background, its page kept, so switching back is instant; a folder another
   window shows brings that window forward instead.

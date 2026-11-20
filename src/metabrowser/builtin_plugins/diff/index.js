@@ -414,7 +414,8 @@ function changedFilesTree() {
 /** @param {HTMLElement} container @param {string} message */
 function renderFailure(container, message) {
   const notice = document.createElement("div");
-  notice.className = "diff-availability";
+  notice.className = "notice diff-notice diff-availability";
+  notice.setAttribute("data-severity", "error");
   notice.setAttribute("role", "alert");
   notice.textContent = message;
   container.append(notice);

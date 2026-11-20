@@ -110,6 +110,7 @@ function panelRig(panel, { current = null } = {}) {
       isVisible: () => state.visible,
       isOnline: () => state.online,
       formatTime: (at) => at,
+      formatCount: (count) => count.toLocaleString("en-US"),
       render(painted) {
         model = painted;
       },

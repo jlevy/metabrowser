@@ -188,3 +188,49 @@ export async function placeRendered(target, rendered, mb, enhance = null) {
   const inert = await import("./inert-render.js");
   return { enhanced: await inert.placeRendered(target, rendered, mb, enhance), inert };
 }
+
+/** What marks a Mermaid diagram in a trusted render, and in an inert one. */
+const DIAGRAM_PROBE = '[data-kpress-diagram="mermaid"], pre[lang="mermaid"]';
+
+/**
+ * Draw the Mermaid diagrams a placed render holds, or do nothing when it holds none.
+ *
+ * The host (diagrams.js), KPress's diagram modules, and Mermaid itself are imported only
+ * for a render that has a diagram, so a document without one fetches none of them. An
+ * inert render's diagrams are drawn as images, and untrusted text's on a page that may have
+ * no policy are drawn as images laid out in a frame of their own (diagrams.js,
+ * `mountDiagrams`, has the modes). Returns null when there is nothing to draw.
+ *
+ * @param {ParentNode} root
+ * @param {MetabrowserPublicSdk} mb
+ * @param {"document" | "image" | "isolated"} mode
+ * @returns {{dispose(): void, ready: Promise<void>} | null}
+ */
+export function drawDiagrams(root, mb, mode) {
+  if (!root.querySelector(DIAGRAM_PROBE)) {
+    return null;
+  }
+  let disposed = false;
+  /** @type {{dispose(): void} | null} */
+  let handle = null;
+  const ready = import("./diagrams.js")
+    .then((diagrams) => {
+      if (disposed) {
+        return undefined;
+      }
+      const mounted = diagrams.mountDiagrams(root, mb, { mode });
+      handle = mounted;
+      return mounted.ready;
+    })
+    .catch((error) => {
+      console.warn("metabrowser markdown: the diagram renderer could not load", error);
+    });
+  return {
+    ready,
+    dispose() {
+      disposed = true;
+      handle?.dispose();
+      handle = null;
+    },
+  };
+}

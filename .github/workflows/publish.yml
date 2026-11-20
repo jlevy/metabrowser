@@ -46,6 +46,17 @@ jobs:
       - name: Run the complete release gate
         run: make verify
 
+      # uv honors `[tool.uv.sources]` only in this checkout; the published metadata keeps
+      # the bare requirement, which a branch-built dependency's release may not satisfy.
+      - name: Refuse a dependency resolved from a source other than its index
+        run: |
+          uv --config-file uv.toml run --frozen python - <<'PY'
+          import sys, tomllib
+          sources = tomllib.load(open("pyproject.toml", "rb")).get("tool", {}).get("uv", {}).get("sources", {})
+          if sources:
+              sys.exit(f"Refusing to publish with [tool.uv.sources] set: {sorted(sources)}")
+          PY
+
       - name: Verify release tag and package version
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}

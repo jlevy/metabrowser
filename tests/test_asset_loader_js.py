@@ -2,7 +2,8 @@
 
 The tier's claim is that a document which never opens a consuming view pays
 nothing for its library, and that a document which opens two of them pays
-once. Both are invisible from a request count, so they are pinned here.
+once. Both are invisible from a request count, so they are pinned here, for
+script bundles (``ensureAsset``) and module bundles (``ensureModule``).
 """
 
 from __future__ import annotations
@@ -103,3 +104,28 @@ def test_on_demand_assets_load_once_when_asked_and_never_before() -> None:
     )
     assert payload["concurrentStrongRetryAppends"] == ["shared.js", "shared.js"]
     assert payload["concurrentStrongRetryLoaded"] is True
+
+
+def test_a_module_bundle_is_imported_once_and_a_failed_import_is_retried() -> None:
+    payload = _run_shim()
+
+    # Simultaneous callers, and a later one, share one import, and the bundle is
+    # loaded only once that import has succeeded, not while it is in flight.
+    assert payload["moduleCallersShareImport"] is True
+    assert payload["moduleLoadedWhileImporting"] is False
+    assert payload["moduleNamespaces"] == ["held", "held"]
+    assert payload["moduleLoadedAfterImport"] is True
+    assert payload["moduleLaterCallerShares"] is True
+
+    # A rejected import is not cached: the next caller imports again and recovers.
+    assert payload["moduleFailedImport"] == "ERR_MODULE_NOT_FOUND"
+    assert payload["moduleLoadedAfterFailure"] is False
+    assert payload["moduleRetryIsNewImport"] is True
+    assert payload["moduleRetryNamespace"] == "retried"
+    assert payload["moduleLoadedAfterRetry"] is True
+
+    # An unknown name, or a script bundle's, rejects without loading anything.
+    assert payload["moduleUnknownBundle"] == "Unknown module bundle: absent"
+    assert payload["moduleScriptBundle"] == "Unknown module bundle: chart"
+    assert payload["moduleUnknownAppends"] == 0
+    assert payload["moduleUnknownLoaded"] is False

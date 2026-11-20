@@ -262,7 +262,7 @@ def test_tree_focus_ring_is_token_based_and_preview_has_no_tree_listener() -> No
     css = proc_browser.STATIC_DIR.joinpath("styles.css").read_text()
     start = css.index(".tree-item:focus-visible")
     block = css[start : css.index("}", start)]
-    assert "var(--link)" in block
+    assert "var(--focus-ring-color)" in block
     assert "outline" in block
     assert "#" not in block
 

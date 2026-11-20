@@ -210,6 +210,11 @@ same store, resolved in the mirror alone.
 Given the `/view/` address the page shows, it answers `view_href`, where that page goes
 on the new pin. How a selection is resolved, and what happens when the mirror lacks it,
 is in [mirror acquisition and refresh](arch-mirror-acquisition-and-refresh.md).
+`POST /api/source/link` switches it the same way for a link into the served repository,
+which the macOS app sends for every such link
+([GitHub Links](arch-macos-app.md#github-links)): a branch, folder, file, or the
+repository itself is served at the revision the link names before the window goes to its
+address, and a pull request or a commit, each a page of its own, switches nothing.
 
 A switch, or a restarted server serving another commit, can leave a tab showing the old
 pin. Reading the new pin’s files into a page labeled with the old one would mix two
@@ -233,7 +238,10 @@ revisions, so every data request from a pin’s page names its commit:
   answers one, as before.
 - The page announces the refusal as a `metabrowser:pin-changed` event, and the freshness
   row offers a reload.
-  Nothing changes under a reader who is looking at the page.
+  A switch made elsewhere changes nothing under a reader who is looking at the page.
+  A pin on a branch or tag that a refresh moved is different: the server follows the
+  ref, and the page goes with it to the same address
+  ([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)).
 - The page that makes a switch is left behind too, from the moment it asks the pin route
   until it has gone, so its guarded requests wait out the switch (`createSwitchHold` in
   `source-pin-guard.js`): they go as soon as the switch is refused or changes nothing,
@@ -337,6 +345,9 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   otherwise says whether the working tree is served, which branch `HEAD` is on, and the
   folder’s `name` and `location`, as the page names the folder, and a row’s
   `checked_out` marks that branch, which lists first.
+  Every ref is listed, the rest newest first by the committer date each row shows, then
+  by name, as a mirror’s are, and the answer is kept, within the same limits, under the
+  checkout’s ref state and the branch `HEAD` is on, as a mirror’s is under its store’s.
   Each row has its commit and `committed_at`, the committer date a row’s age is read
   from: a tag’s is its commit’s, by `for-each-ref`’s `*committerdate`, in the same one
   process. The page shortens the commit as every line names one (`shortCommit` in

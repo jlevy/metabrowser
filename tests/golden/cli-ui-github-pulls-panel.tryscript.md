@@ -522,8 +522,8 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "open",
         "status": "absent",
         "listName": "Pull requests",
-        "empty": "This checkout's origin is not a GitHub repository Metabrowser can list.",
-        "live": "This checkout's origin is not a GitHub repository Metabrowser can list."
+        "empty": "This checkout’s origin is not a GitHub repository Metabrowser can list.",
+        "live": "This checkout’s origin is not a GitHub repository Metabrowser can list."
       }
     },
     {

@@ -35,7 +35,9 @@ check is also per file: the file must have the size, modification time, change t
 inode it had when the stamp was taken. KPress resolves its own files, so its check is
 that the bytes served are among those the stamp was taken from. One exception, as before
 these stamps: a KPress font at an address with no stamp segment, whatever its version
-segment, is immutable (``kpress_static_asset`` in ``server.py``).
+segment, is immutable (``kpress_static_asset`` in ``server.py``). And a static file whose
+build named it by a hash of its content, under a prefix the ``/static`` mount is given,
+is immutable at its plain address while the stamp holds it (:class:`StampedStaticFiles`).
 
 The work is bounded: a tree past :data:`MAX_TREE_FILES` files or :data:`MAX_TREE_BYTES`
 bytes is not stamped, and its assets keep unstamped addresses, which are revalidated.
@@ -255,12 +257,20 @@ class StampedStaticFiles(StaticFiles):
     cannot give two releases one address (review C of #372, C3). An immutable answer is
     sent from memory, read and compressed once under that digest
     (:mod:`metabrowser.encoded_assets`).
+
+    A file under one of the *self_named* prefixes is named by its build with a hash of its
+    content, and is fetched by a relative import that drops the importer's ``?v=``. Its
+    plain address is answered ``immutable`` while the stamp holds the file, and streamed
+    from disk rather than kept in memory: the encoded-asset bound was measured without it.
     """
 
-    def __init__(self, *, directory: Path, tree: StampedTree) -> None:
+    def __init__(
+        self, *, directory: Path, tree: StampedTree, self_named: tuple[str, ...] = ()
+    ) -> None:
         super().__init__(directory=directory)
         self._tree = tree
         self._root = directory.resolve()
+        self._self_named = self_named
 
     def file_response(
         self,
@@ -271,14 +281,17 @@ class StampedStaticFiles(StaticFiles):
     ) -> Response:
         response = super().file_response(full_path, stat_result, scope, status_code)
         requested = QueryParams(scope.get("query_string", b"")).get("v")
-        stamp = self._tree.latest() if requested is not None else None
+        stamp = self._tree.latest() if requested is not None or self._self_named else None
         current = False
         if stamp is not None:
             try:
                 rel = Path(full_path).resolve().relative_to(self._root).as_posix()
             except ValueError:
                 rel = ""
-            current = requested == stamp.digests.get(rel) and stamp.holds(rel, stat_result)
+            if requested is not None:
+                current = requested == stamp.digests.get(rel) and stamp.holds(rel, stat_result)
+            else:
+                current = rel.startswith(self._self_named) and stamp.holds(rel, stat_result)
         # Set on the 304 too: a revalidation's answer refreshes the headers a browser holds.
         response.headers["cache-control"] = stamped_asset_cache_control(current=current)
         if (

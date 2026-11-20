@@ -3,9 +3,11 @@
 // A folder's page is headed by the folder's name, and its main heading starts with the
 // folder's path. A served mirror's page showed the full commit ID in both places and
 // said nowhere that its files came out of the cache (mb-fndz). It is now headed by the
-// repository's name, as a checkout would be called, with a control that copies the
-// full commit beside the short one, and its main heading ends with a note saying where
-// the mirror is kept, whose tooltip says what that directory is.
+// repository's name alone, as a checkout would be called, with a control after it that
+// copies the full commit, and its main heading ends with a note saying where the mirror
+// is kept, whose tooltip says what that directory is. The ref and the short commit that
+// followed the name are gone (mb-qq4e): the ref selector names the ref, and the
+// heading's tooltip the full commit.
 //
 // The input is what the in-process application served, recorded in
 // tests/fixtures/mirror-heading-shell.json by tests/test_mirror_heading_session.py: for
@@ -445,7 +447,7 @@ async function observe(subject) {
   const tipName = hover(page, new FakeElement("span", { class: "file-header-root" }));
   const tipNote = hover(page, new FakeElement("span", { class: "file-header-mirror-text" }));
 
-  // The copy control beside the short commit, and a click on it.
+  // The copy control after the navigation heading, and a click on it.
   const control = page.heading.nextElementSibling;
   let commitCopy = null;
   if (control) {
@@ -548,9 +550,10 @@ async function main() {
     const sentence = `Mirror of ${origin} at ${pin}, stored in ${location}: a bare Git repository, with no checked-out files.`;
     const { root, file } = page.mainHeading;
 
-    // The repository's name is the root, in both headings, with the commit beside it.
+    // The repository's name is the root, in both headings. The navigation heading is the
+    // name alone: the ref selector names the ref, and the tooltip the commit (mb-qq4e).
     assert(
-      page.navigationHeading.text === `${name} ${ref} ${shortCommit(pin)}`,
+      page.navigationHeading.text === name && ref !== null,
       `${page.subject}: the navigation heading reads ${page.navigationHeading.text}`,
     );
     // A mirror's root has no directory above it: its eyebrow is the note alone.
@@ -587,9 +590,9 @@ async function main() {
     for (const html of [page.raw.tipAfter, page.raw.tipName, page.raw.tipNote]) {
       assert(/class="(tip-detail )?tip-mirror"/.test(html), `${page.subject}: no tip-mirror line`);
     }
-    // The full commit can be copied from beside the short one, by the SDK's delegate.
+    // The full commit can be copied from beside the name, by the SDK's delegate.
     const { commitCopy } = page.navigationHeading;
-    assert(commitCopy !== null, `${page.subject}: no copy control beside the commit`);
+    assert(commitCopy !== null, `${page.subject}: no copy control beside the heading`);
     assert(
       commitCopy.ownerStamped && commitCopy.attributes["data-mb-copy-text"] === pin,
       `${page.subject}: the copy control does not carry the full commit`,

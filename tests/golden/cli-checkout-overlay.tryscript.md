@@ -51,6 +51,7 @@ status: 200
   "borrows": "[CWD]/checkout",
   "shallow": false,
   "refreshable": true,
+  "follows": false,
   "latest": "806ef37f15fef9c34a47873090c6169008db8cd2",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -79,7 +80,6 @@ status: 200
 {
   "kind": "branch",
   "query": "",
-  "limit": 100,
   "pin": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
   "ref": "refs/remotes/origin/trunk",
   "kinds": [
@@ -87,8 +87,6 @@ status: 200
     "tag"
   ],
   "working_tree": null,
-  "total": 1,
-  "truncated": false,
   "refs": [
     {
       "name": "trunk",
@@ -248,6 +246,7 @@ status: 200
   "borrows": "[CWD]/moved",
   "shallow": false,
   "refreshable": true,
+  "follows": false,
   "latest": "806ef37f15fef9c34a47873090c6169008db8cd2",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -284,6 +283,7 @@ status: 200
   "borrows": "[CWD]/moved",
   "shallow": false,
   "refreshable": true,
+  "follows": false,
   "latest": "806ef37f15fef9c34a47873090c6169008db8cd2",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -540,6 +540,7 @@ status: 200
   "borrows": "[CWD]/shallow",
   "shallow": true,
   "refreshable": true,
+  "follows": false,
   "latest": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",

@@ -34,6 +34,182 @@ and a slow fetch message includes total, server, and transit time:
 - **Fetch fast but render slow:** inspect DOM volume, syntax highlighting, charts, or
   plugin rendering.
 
+## Event Log
+
+A served process also writes a structured event log (`metabrowser/event_log.py`): one
+JSON line for every request, for each background job that refreshes or prepares what a
+page shows, and for every `git` and `gh` process that runs to completion, with its
+duration, how it ended, and the span that started it.
+The jobs are those wrapped in `event_log.job`: pull request and file list refreshes,
+comparison listings, the pull request prefetch, a checkout’s idle comparison, GitHub
+status checks, and repository rediscovery.
+A streaming `git` session started with `spawn_git_process`, such as a history or tree
+reader, is not a span of its own; the request that reads it is.
+It covers what the stderr log cannot: a pull request’s refresh or a comparison’s listing
+runs after the request that asked for it has returned, and a `gh` that times out there
+writes nothing to stderr.
+The design and its schema are in
+[the plan](project/specs/active/plan-2026-11-19-structured-event-log.md).
+
+The log lives in `events/` under the state directory: `METABROWSER_STATE_DIR`, else
+`$XDG_STATE_HOME/metabrowser`, else `~/.local/state/metabrowser`, whether the server
+runs from a terminal or inside the macOS app, which passes those variables and
+`METABROWSER_EVENT_LOG` to the servers it starts (an app opened from the Finder or the
+Dock sees only what `launchctl setenv` set, not a shell’s exports).
+Each server writes its own owner-only segment, named for when it started and its process
+ID; a segment rolls at `MAX_FILE_BYTES` and the directory is kept within
+`MAX_TOTAL_BYTES` by deleting the oldest, except the segment each running server writes.
+A write that fails pauses the log, which tries a fresh segment after a backoff
+(`RETRY_FIRST_S` doubling to `RETRY_MAX_S`), and logging never fails the work it
+records. `METABROWSER_EVENT_LOG=0` turns it off.
+A one-shot command, such as `--api`, writes none.
+
+Read it with `/api/event-log`, from a running server or from a terminal:
+
+```shell
+metab . --api '/api/event-log?outcome=timeout,failed'
+metab . --api '/api/event-log?kind=job&sort=duration&limit=10'
+metab . --api '/api/event-log?span=8'
+```
+
+The answer names the directory and its segments, and reads the one this server writes,
+else the newest; `file=` reads another.
+Filters are `kind`, `outcome`, `event`, `name`, `client` (a request’s client ID, or a
+page’s, which finds every request the page sent and every report it made), `span` (that
+span’s records and those of the spans it started), and `min_ms`, and `sort=duration`
+puts the slowest first.
+From a running server, `open` lists what it is waiting on now, each with the client that
+started it.
+
+For a page that waits and nothing arrives:
+
+1. Find the request the page sent, such as `POST /api/plugin/github/pull-refresh`, and
+   its `span`.
+2. `span=<id>` shows the job it started: a `start`, `open` records at `OPEN_AFTER_MS`
+   and each doubling, and its `end`, or no end when it never finished.
+3. The job’s own `span` shows its `gh` and `git` processes.
+   A `gh` that timed out says where it stalled (`before any answer` or partway) and the
+   end of its stderr; a job whose work failed ends `failed` with the `failure` its
+   refresh recorded.
+
+At shutdown each span still open ends `abandoned`, and a turn of the event loop that
+took longer than `OPEN_AFTER_MS` is a `loop` record, so a blocked loop is on record too.
+The log holds request paths and folder names but never a token: command lines drop field
+and header values, and process text is redacted.
+
+### What the Page Reports
+
+Only the page knows what it waited for, so it reports that too
+(`static/event-reports.js`, to `POST /api/event-log/client`, which
+`metabrowser/event_log_reports.py` checks, bounds, and redacts).
+Each page has a client ID of eight letters and digits, and every request it sends to its
+own server’s `/api/` carries `<page>-<n>` in the `x-metabrowser-client` header.
+The server’s record of that request has it as `client`, and so does every job and
+process the request starts, so `client=<page>` reads everything one page asked for and
+saw, and `client=<page>-<n>` one request and the work behind it.
+Each report is a `browser` record named for its type: `fetch`, `render`, or `wait`.
+
+| Report | When | Threshold |
+| --- | --- | --- |
+| `fetch … open` | A request to this server still pending | `SLOW_MS` |
+| `fetch … end` | A request that took that long or longer, with its status, its `srv` Server-Timing, and `ok`, `failed`, or `cancelled`; or `never_completed` for one reported open that the page left first | `SLOW_MS` |
+| `render blocked` | A frame that blocked the page, with the function, source, and invoker the browser blamed, where it reports long animation frames or long tasks, as Chrome does; WebKit, the macOS app’s engine, reports neither, so the app reports no freezes | `FREEZE_MS` |
+| `wait … open` | Something the page shows as loading, still running after that long shown: the pull request page’s Diff summary and its refresh, and a mirror’s refresh | `WAIT_LATE_MS` |
+| `wait … end` | That wait’s end, once it was reported: `ok`, `failed`, `cancelled`, or `never_completed` when the page was left first | `WAIT_LATE_MS` |
+
+The thresholds are constants in `event_log_reports.py`, with the measurement that set
+each beside it; the page reads them from `METABROWSER_SETTINGS.EVENT_REPORTS`. A wait
+that ends before its threshold, and a request answered sooner, report nothing.
+A wait’s threshold counts only the time the page was shown: a hidden page stops polling,
+so its waits run long for no fault of the work behind them.
+A wait that spent some of its time hidden says how long, as `hidden_ms`. A page kept in
+the browser’s back/forward cache is not left, so its waits go on when it is restored.
+Reports are gathered for `FLUSH_MS` and sent in bodies of at most `MAX_REPORTS`, with
+`keepalive`, so the last leave with the page; a page sends at most
+`PAGE_REPORTS_PER_MINUTE`, and the server takes at most `RATE_REPORTS` in
+`RATE_WINDOW_S` from all pages, marking what it refused.
+A server that writes no log gets no header and no report, and its Details say the log is
+off rather than show what an earlier server wrote.
+The event log’s routes are exempt from a pinned revision’s guard, so a page left on a
+revision the server no longer serves still reports and reads the log.
+The reporter is an on-demand bundle the shell loads after the first usable tree;
+requests answered before it loaded are read from Resource Timing.
+
+A wait still running at its threshold says so on the page.
+On a pull request’s page the Diff summary’s placeholder becomes “The summary of changes
+has not arrived after N s.”, and a failed refresh’s line ends the same way, each with
+**Details**: a button that opens, under the header, what the event log holds for it.
+The Details list what the server is still running, this page’s first; the failures in
+the window by cause, with the message, the addresses that failed, and the latest calls;
+the last probe of GitHub; and this page’s own slow, failed, or unfinished records, with
+links to both answers as JSON. A failure’s window is the hour before its refresh ended,
+to a minute after.
+
+To read what one page saw from a terminal, take its ID from a request’s
+`x-metabrowser-client` header in the browser’s developer tools, or from the Details’
+JSON link:
+
+```shell
+metab . --api '/api/event-log?client=k3v9q2zx'
+metab . --api '/api/event-log?kind=browser&outcome=never_completed'
+```
+
+## GitHub Failures
+
+A failed `gh` or `git` call to GitHub carries a `cause` in the vocabulary
+`metabrowser/network_cause.py` defines for both tools (`CAUSES`): a name that did not
+resolve (`dns_failed`), a connection refused or timed out (`connect_refused`,
+`connect_timeout`), a TLS or proxy failure, an answer that stalled or never came
+(`stalled`, `no_answer`), or GitHub’s own refusal (`auth_refused`, `forbidden`,
+`not_found`, `rate_limited`, `server_error`). The refresh message on a page leads with
+it, as in “GitHub could not be reached because the connection to api.github.com at
+20.172.24.160 timed out”.
+GitHub’s own error text, and `gh`’s and Git’s, are never shown; the event log keeps
+them, redacted.
+
+A `gh` that gives up with no answer says nothing about why, so Metabrowser then probes
+the network itself (`network_cause.probe`): it resolves `api.github.com` and connects to
+each address DNS gave, through the proxy `gh` would use when `HTTPS_PROXY` is set and
+`NO_PROXY` does not exempt GitHub.
+The probe sends no request and no credential, finishes within `PROBE_TIMEOUT_S`, runs at
+most once per `PROBE_INTERVAL_S`, never replaces the failure it explains, and is a
+`probe` record in the log.
+Its finding says which it was: GitHub unreachable from this network, with the addresses
+that failed, or GitHub reachable from a fresh lookup (“gh did not answer within N s; a
+fresh lookup of api.github.com gave 140.82.114.5, which accepted a connection in M ms;
+DNS answers vary, so gh may have used another address”), with any address that failed in
+that lookup or in the last hour.
+A reachable probe is not proof that `gh`’s connection could open: DNS can answer the
+same name with a different address each time.
+
+On macOS, when no address of GitHub’s connects and no proxy is in the way, the probe
+opens one TCP connection to `captive.apple.com` port 80 (`CONTROL_TARGET`), the host
+macOS itself checks for a working network, and sends nothing on it.
+That tells “other sites are reachable” (GitHub, or the route to it, is the problem) from
+“other sites are not reachable either” (the network is down).
+It never runs on other platforms or through a proxy, and it shares the probe’s one
+deadline (`CONTROL_TIMEOUT_S` of it).
+`METABROWSER_NETWORK_PROBE_CONTROL=0` turns it off and `HOST:PORT` names another host,
+which then runs on any platform; `METABROWSER_NETWORK_PROBE=0` turns the whole probe
+off.
+
+To see what has been failing, and how often:
+
+```shell
+metab . --api '/api/event-log/failures'
+metab . --api '/api/event-log/failures?since=2026-11-19T21:00:00Z&kind=subprocess'
+metab . --api '/api/event-log?cause=connect_timeout&event=end'
+```
+
+The summary groups the failures since `since` (an hour ago by default) by cause, with
+how many, which work, the addresses that failed, the latest message, a `details` link to
+each example’s records, and the latest probe that failed.
+A page’s own reports of failure, such as a wait that never completed, are listed apart
+under `page_reports`, not counted as causes: they are the page’s view of a failure the
+server’s records name, so the cause leads.
+When the addresses vary between failures, DNS is answering a GitHub name with addresses
+the network reaches only some of the time.
+
 ## Debug Endpoints
 
 ```shell

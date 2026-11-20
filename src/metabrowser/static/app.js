@@ -254,8 +254,9 @@ function pathBaseName(path) {
 /**
  * Settle the navigation heading once the tree has loaded. A folder shows the
  * served root's name from the tree payload. A pinned revision keeps the heading
- * the server rendered from its session, its ref and short commit: the tree's
- * root there is the empty GitPath, which has no name to show.
+ * the server rendered from its session, its name, or a pin with no mirror's ref
+ * and short commit: the tree's root there is the empty GitPath, which has no name
+ * to show.
  */
 function renderServedRootHeading(pathEl, root) {
   if (!pathEl || isGitRevisionSource()) {
@@ -2729,7 +2730,7 @@ function treeLazyFailureHtml(message) {
   );
 }
 
-function responseErrorDetail(body, status) {
+function responseErrorDetail(body) {
   var text = String(body || "").trim();
   if (text) {
     try {
@@ -2745,7 +2746,7 @@ function responseErrorDetail(body, status) {
       return text;
     }
   }
-  return `The request failed (HTTP ${status}).`;
+  return "The server could not complete the request.";
 }
 
 function responseErrorSummary(body, fallback) {
@@ -3906,7 +3907,8 @@ async function toggleTreeContainer(row) {
         },
         error,
       );
-      children.innerHTML = '<div class="tree-empty-note">Could not load these entries.</div>';
+      children.innerHTML =
+        '<div class="tree-empty-note nav-error">Could not load these entries.</div>';
     }
     applyTreeFilters();
   }
@@ -5334,7 +5336,7 @@ function fetchRecent(cursor, preserveRows) {
         showInitialError: () => {
           if (results) {
             results.innerHTML =
-              '<div class="recent-empty" role="alert">Could not load recently modified files. Refresh the page to try again.</div>';
+              '<div class="recent-empty nav-error" role="alert">Could not load recently modified files. Refresh the page to try again.</div>';
           }
         },
       });
@@ -5931,7 +5933,7 @@ function renderNavFilterBar() {
   // "Keys in a Menu").
   var restoreFocus = fc.keepFocus(bar);
   // A page with the branch and tag chooser ships it leading the row, and its module owns
-  // it: it is carried over, not drawn (static/source-ref-selector.js#keepFocusAcross).
+  // it: it is carried over, not drawn (static/source-ref-selector.js#keepAcrossRefills).
   var chooser = document.getElementById("source-ref-selector");
   bar.innerHTML = main + drawer;
   if (chooser) {
@@ -6752,7 +6754,10 @@ async function selectFile(path, preferredViewId) {
               () => resp.text().catch(bodyFailure),
               responsePerfMeta(resp, path),
             );
-            throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
+            if (resp.status !== 404) {
+              console.error("file request failed", resp.status);
+            }
+            throw Object.assign(new Error(responseErrorDetail(text)), {
               notFound: resp.status === 404,
               summary: responseErrorSummary(text, "Could not open this file."),
             });
@@ -10065,6 +10070,46 @@ function drawNavCollapseButton() {
   // The chevron of the "icon-btn nav-collapse-toggle disclosure-toggle" server.py writes.
   button.innerHTML = `${ICONS.toggle}`;
   button.addEventListener("click", onEarlyNavCollapseClick);
+  alignNavCollapseButton(button);
+}
+
+/**
+ * Keep the chevron on the shortcut strip's row (mb-yw18), from the first paint on. The
+ * strip moves when a row under it shows, the scan's progress or a mirror's freshness,
+ * so a ResizeObserver on the pane and the rows from the strip down measures the row below
+ * the strip's rule, from the pane's top, where the frame and the divider start too, and
+ * gives `--nav-shortcut-row-top` and `--nav-shortcut-row-height` to the chevron, which it
+ * places, and to the divider, whose resize reach stops above it (`.nav-collapse-toggle`
+ * and `.resize-handle::after` in styles.css). Only those two take them: a property set on
+ * a shared ancestor restyled the whole open document on every change, 100 ms for a
+ * 28,000-node file in headless Chrome 152 (review A on #609). Boxes, not offsets, so the
+ * row is not rounded to a whole pixel under the app's fractional page zoom.
+ *
+ * @param {HTMLElement} button
+ */
+function alignNavCollapseButton(button) {
+  var pane = document.getElementById("tree-pane");
+  var strip = document.getElementById("nav-shortcut-hints");
+  var handle = document.getElementById("tree-resize");
+  if (!pane || !strip || typeof ResizeObserver !== "function") {
+    return;
+  }
+  var targets = handle ? [button, handle] : [button];
+  var row = strip;
+  var start = pane;
+  var observer = new ResizeObserver(() => {
+    var rect = row.getBoundingClientRect();
+    var top = `${rect.top + row.clientTop - start.getBoundingClientRect().top}px`;
+    var height = `${rect.height - row.clientTop}px`;
+    for (var target of targets) {
+      target.style.setProperty("--nav-shortcut-row-top", top);
+      target.style.setProperty("--nav-shortcut-row-height", height);
+    }
+  });
+  observer.observe(pane);
+  for (var node = /** @type {Element | null} */ (strip); node; node = node.nextElementSibling) {
+    observer.observe(node);
+  }
 }
 
 /** @param {MouseEvent} event */

@@ -78,6 +78,7 @@ from itertools import zip_longest
 from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 from weakref import WeakKeyDictionary
 
+from metabrowser import event_log
 from metabrowser.builtin_plugins.github import gh_budget, pulls
 from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
 from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
@@ -393,7 +394,15 @@ async def _prepare_lists(host: PullHost, lane: Lane) -> None:
         lane.prepared[number] = None
     if not numbers or host.store_turn is None:
         return
-    work = asyncio.get_running_loop().create_task(_prepare_at_turn(host, lane, numbers))
+    # A job in the event log: on the Diff summary's path, since a list it makes local is
+    # one GitHub need not answer.
+    work = asyncio.get_running_loop().create_task(
+        event_log.job(
+            _prepare_at_turn(host, lane, numbers),
+            "pull_prefetch.prepare_lists",
+            attrs={"pulls": len(numbers)},
+        )
+    )
     try:
         await asyncio.wait((work,))
     except asyncio.CancelledError:

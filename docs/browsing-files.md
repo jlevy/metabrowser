@@ -121,6 +121,7 @@ tabs, and `V` and `S` switch to the rendered view and the source wherever both e
 | File | Views |
 | --- | --- |
 | Markdown (`.md`) | Document, rendered by KPress, and Source |
+| Mermaid diagrams (`.mmd`, `.mermaid`) | Diagram and Source |
 | JSON and YAML | Tree, a collapsible view of the parsed structure, and Source |
 | JSONL logs | Log, a timeline of events, and Raw JSON; coding-agent logs add Charts |
 | Code and text | Source, with syntax highlighting where a grammar exists |
@@ -143,6 +144,18 @@ When the window is wide enough to show the document as a card, a print button at
 card’s top right prints the document without the rest of the page, and the README on a
 folder’s Overview has the same button.
 Command-P, or Control-P outside macOS, prints whichever view is shown, at any width.
+
+A fenced `mermaid` code block is drawn as a diagram, as GitHub draws it, in the page’s
+light or dark theme.
+Hovering a diagram shows buttons to copy its source, show the source in its place, and
+open it in a dialog where the buttons, the arrow keys, `+`, `-`, `0`, the scroll wheel,
+a pinch, and dragging zoom and pan it.
+A diagram Mermaid cannot parse shows Mermaid’s message above its source.
+Mermaid loads only for a document that has a diagram.
+With active content off, each diagram is drawn as a picture, so its text cannot be
+selected, and Mermaid’s `click` links and scripts never run in either mode.
+A `.mmd` or `.mermaid` file opens as one diagram, drawn the same way, with its source a
+tab away.
 
 Links resolve the way GitHub resolves them:
 
@@ -169,6 +182,14 @@ Obsidian wiki links work too:
   Embeds nest, within limits on depth, count, size, and time; past them, or in a cycle,
   the embed says why it stopped.
 - `![[image.png]]` and other media embed the file.
+
+HTML a README writes for its layout on GitHub lays it out here as github.com does:
+`align` on a paragraph, `div`, heading, image, or table cell or row, and `width` and
+`height` on an image or a table cell, such as a logo in `<p align="center">` drawn at
+`width="192"`, an image floated by `align="right"`, or a badge sized by its `height`.
+This holds with active content off too.
+An `<img>` given both a `width` and a `height` draws at that size, as on github.com,
+while a wiki embed sized as `![[image.png|640x480]]` keeps the image’s proportions.
 
 With active content off (`--untrusted` or `--no-active-content`, and always for a
 repository URL), a document renders without its styles and scripts, and with a time

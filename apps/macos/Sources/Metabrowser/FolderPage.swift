@@ -200,18 +200,6 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         if let endpoint { loadNextPageOnceAnswered(from: endpoint) }
     }
 
-    /// Loads the entry page of the server it attaches to next, rather than the page it shows
-    /// now: a repository's server starting again on a new link announces that link's page.
-    /// A load already waiting, such as a discarded page's revived as the link brought it
-    /// forward, is superseded, since the old server can go on serving while the restart
-    /// waits at the launch gate (`ServerSupervisor.restart`).
-    func showEntryPage() {
-        webPopover?.close()
-        loads.cancelAll()
-        loads.requestEntry()
-        isDiscarded = false
-    }
-
     /// Whether the start waits for another repository's, which can be a first clone.
     func showWaitingAtGate(_ waiting: Bool) {
         status.waitsForAnotherStart = waiting

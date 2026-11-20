@@ -12,6 +12,14 @@ id = "markdown"
 match = { ext = ".md" }
 priority = 0
 
+# A Mermaid diagram file, which GitHub draws as one diagram with its source a tab
+# away. The Diagram view is the Document view of the file's text inside one `mermaid`
+# fence (mermaid-view.js), so KPress draws it as it draws a document's diagrams.
+[[kind]]
+id = "mermaid"
+match = { exts = [".mmd", ".mermaid"] }
+priority = 0
+
 # View definitions; renderers live in index.js as
 # registerView("markdown", "rendered", ...) / ("markdown", "source", ...).
 # container_class drives the outer <div class="..."> the shell creates;
@@ -29,6 +37,25 @@ render_runtime = "kpress"
 
 [[view]]
 kind = "markdown"
+id = "source"
+label = "Source"
+key = "s"
+container_class = "content-body metabrowser-source-host"
+printable = true
+print_profile = "source"
+render_runtime = "client"
+
+[[view]]
+kind = "mermaid"
+id = "diagram"
+label = "Diagram"
+key = "v"
+default = true
+container_class = "content-body metabrowser-kpress-host md-body"
+render_runtime = "kpress"
+
+[[view]]
+kind = "mermaid"
 id = "source"
 label = "Source"
 key = "s"
