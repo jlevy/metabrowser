@@ -15,7 +15,8 @@ Chrome (``tests/dom/ref-selector-long-list-chrome.mjs``):
   first, no note, the list's role, and no more rows drawn than the view and the overscan;
 - a scroll to the middle, after which the row under the list's center is drawn where its
   index puts it;
-- End, which focuses the last branch, in view, and Home the first;
+- End, which focuses the last branch, in view, where a redraw of the Files toolbar around
+  the list leaves it, and Home the first;
 - a row given focus by the keys, which keeps it when the list scrolls far from it, and
   which Tab from the filter box reaches, and ArrowDown, which brings the next into view;
 - a filter, which narrows the list to its matches, newest first;
@@ -183,6 +184,13 @@ def test_a_list_of_every_branch_draws_only_its_view_in_chrome(
     assert (end["focusedIndex"], end["focusedName"]) == (BRANCHES + 1, newest[-1])
     assert end["inView"] is True
     assert end["drawn"] <= in_view + 2 * overscan + 2
+    # The Files toolbar drawn again around the list, as a tally refresh does, leaves it
+    # where End put it, with its row focused and in view: the toolbar takes the list out
+    # of the page and puts it back, which once left it scrolled to its top (mb-y1k0).
+    redrawn = result["redrawn"]
+    assert (redrawn["focusedIndex"], redrawn["inView"]) == (BRANCHES + 1, True)
+    assert redrawn["scrollTop"] == end["scrollTop"] > 0
+    assert redrawn["positions"] == end["positions"]
     assert result["home"]["focusedIndex"] == 1
 
     # A row with focus stays drawn, and focused, however far the list scrolls from it;

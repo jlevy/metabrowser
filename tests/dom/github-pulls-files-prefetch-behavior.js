@@ -257,6 +257,7 @@ function rig({
       isVisible: () => true,
       isOnline: () => true,
       formatTime: (at) => at,
+      formatCount: (count) => count.toLocaleString("en-US"),
       render() {},
       markCurrent() {},
       markAnchor() {},
@@ -289,6 +290,7 @@ function rig({
           now: () => now,
           isVisible: () => true,
           formatTime: (at) => at,
+          formatCount: (count) => count.toLocaleString("en-US"),
           render(model) {
             tree.model = model;
             if (

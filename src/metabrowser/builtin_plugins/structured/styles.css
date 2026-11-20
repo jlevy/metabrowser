@@ -90,7 +90,7 @@
   text-align: center;
   margin-right: 4px;
   transition: transform var(--transition-fast);
-  color: var(--color-syntax-punct);
+  color: var(--muted);
 }
 
 .srow-collapsed .srow-chevron {

@@ -269,6 +269,7 @@ const MEASURE = `async (titles) => {
         titleNodes: mb.titleNodes,
         shortCommit: mb.shortCommit,
         countPartsNodes: mb.countPartsNodes,
+        formatInteger: mb.formatInteger,
         formatAge: () => ({ label: "2mo ago", className: "age-old" }),
         formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
         navigation: { href: () => "/view/" },

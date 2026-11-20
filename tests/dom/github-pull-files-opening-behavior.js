@@ -118,6 +118,7 @@ function story(tree, answers, input, refresh = REFRESH_STARTED) {
       now: () => now,
       isVisible: () => true,
       formatTime: (iso) => iso,
+      formatCount: (count) => count.toLocaleString("en-US"),
       render(model) {
         lastModel = model;
         rendered.push(model);
@@ -809,6 +810,7 @@ async function run() {
       ...drawn,
       error: null,
       formatTime: (iso) => iso,
+      formatCount: (count) => count.toLocaleString("en-US"),
       withheld: 205,
       drawn: 200,
     });
@@ -816,6 +818,7 @@ async function run() {
       ...drawn,
       error: "The server did not answer.",
       formatTime: (iso) => iso,
+      formatCount: (count) => count.toLocaleString("en-US"),
       withheld: 3,
       drawn: 2,
       floats: true,

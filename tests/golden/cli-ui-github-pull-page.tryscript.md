@@ -1193,7 +1193,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "message": null,
         "canRefresh": false,
         "freshness": "Fetched 5 min ago via GitHub CLI",
-        "failure": "GitHub rate limit · next check at 12:06 PM",
+        "failure": "GitHub rate limit reached. Next attempt after 12:06 PM.",
         "browse": "link to the root",
         "headOffer": null
       },
@@ -1212,7 +1212,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "message": null,
         "canRefresh": false,
         "freshness": "Fetched 6 min ago via GitHub CLI",
-        "failure": "GitHub rate limit · next check at 12:06 PM",
+        "failure": "GitHub rate limit reached. Next attempt after 12:06 PM.",
         "browse": "link to the root",
         "headOffer": null
       },
@@ -1232,7 +1232,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "canRefresh": false,
         "freshness": "Fetched 6 min ago via GitHub CLI",
         "revalidating": true,
-        "failure": "GitHub rate limit · next check at 12:06 PM",
+        "failure": "GitHub rate limit reached. Next attempt after 12:06 PM.",
         "browse": "link to the root",
         "headOffer": null
       },
@@ -1349,25 +1349,25 @@ $ node tests/dom/github-pull-page-second-session.js
   ],
   "filesUnavailable": {
     "fetch_failed": {
-      "files": "Changes are unavailable: the pull request's base could not be compared with its head.",
+      "files": "Changes are unavailable: the pull request’s base could not be compared with its head.",
       "notes": [
         "Changes could not be read (fetch failed)."
       ]
     },
     "no_merge_base": {
-      "files": "Changes are unavailable: the pull request's base could not be compared with its head.",
+      "files": "Changes are unavailable: the pull request’s base could not be compared with its head.",
       "notes": [
         "Changes could not be read (no merge base)."
       ]
     },
     "base_uncertain": {
-      "files": "Changes are not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.",
+      "files": "Changes are not shown: this checkout’s history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.",
       "notes": [
         "Changes could not be read (base uncertain)."
       ]
     },
     "commits_unavailable": {
-      "files": "Changes are unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.",
+      "files": "Changes are unavailable: a commit of this pull request’s history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.",
       "notes": [
         "Changes could not be read (commits unavailable)."
       ]
@@ -1377,13 +1377,13 @@ $ node tests/dom/github-pull-page-second-session.js
       "notes": []
     },
     "comparison_timeout": {
-      "files": "Changes are unavailable: checking this pull request's history took too long. Refresh to try again.",
+      "files": "Changes are unavailable: checking this pull request’s history took too long. Refresh to try again.",
       "notes": [
         "Changes could not be read (comparison timeout)."
       ]
     },
     "comparison_too_large": {
-      "files": "Changes are unavailable: checking this pull request's history exceeded the comparison limit.",
+      "files": "Changes are unavailable: checking this pull request’s history exceeded the comparison limit.",
       "notes": [
         "Changes could not be read (comparison too large)."
       ]
@@ -1393,7 +1393,7 @@ $ node tests/dom/github-pull-page-second-session.js
     "HEAD is the pull request's head": {
       "browse": null,
       "headOffer": null,
-      "checkoutAtHead": "This checkout's HEAD is this pull request's head.",
+      "checkoutAtHead": "This checkout’s HEAD is this pull request’s head.",
       "comparison": null,
       "files": "Changes could not be fetched."
     },

@@ -501,6 +501,7 @@ export function mountFileTree(host) {
       now: () => Date.now(),
       isVisible: () => document.visibilityState === "visible",
       formatTime: host.formatTime,
+      formatCount: host.formatCount,
       render: paint,
       markAnchor(previous, next, focus) {
         const leaving = previous === null ? null : drawnElement(previous);
