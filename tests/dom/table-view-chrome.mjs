@@ -214,7 +214,27 @@ async function main() {
       window.dispatchEvent(new Event("afterprint"));
       return shown;
     })()`);
+    // A table read past PRINT_MAX_ROWS: the printout draws that many and says so.
     await chrome.send("Emulation.setEmulatedMedia", { media: "" });
+    await open("printed.csv", 20);
+    measured.printBound = await chrome.evaluate(`(async () => {
+      const scroll = __t().scroll;
+      const rowPx = __t().q("tbody tr:not(.table-spacer)").getBoundingClientRect().height;
+      const held = () => Math.round(__t().q("tbody").getBoundingClientRect().height / rowPx);
+      for (let wait = 0; wait < 400 && held() < 2500; wait++) {
+        scroll.scrollTop = scroll.scrollHeight;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      const heldBefore = held();
+      window.dispatchEvent(new Event("beforeprint"));
+      const printed = {
+        held: heldBefore,
+        rows: __t().qa("tbody tr:not(.table-spacer)").length,
+        note: __t().q(".table-print-note").textContent,
+      };
+      window.dispatchEvent(new Event("afterprint"));
+      return printed;
+    })()`);
 
     // A long table: the grid's own box scrolls, and its header stays at the box's top.
     measured.sticky = await chrome.evaluate(`(async () => {

@@ -702,12 +702,13 @@ Columns the reader chose live only there.
 
 **Accessibility.**
 
-- A table drawn whole is a `<table>` with `scope="col"` headers and `aria-sort`. A
-  windowed grid has `role="grid"`, `aria-rowcount` (`-1` while the count is a lower
-  bound), `aria-rowindex` on each row, and `aria-sort` on the sorted header.
+- A table drawn whole or windowed is a multiselectable `role="grid"` with `scope="col"`
+  headers and `aria-sort` on the sorted header; a windowed grid adds `aria-rowcount`
+  (`-1` while the count is a lower bound) and `aria-rowindex` on each row.
 - One Tab stop with roving focus: Up and Down (or `j`/`k`) move between rows and Left
-  and Right between cells, so a reference chip or a filtering value is reachable.
-  Enter on a cell follows its link; Enter on the row opens the record.
+  and Right between cells, so a reference chip or a filtering value is reachable; Up
+  from the first row reaches the header’s sort and menu buttons, which Left and Right
+  cross. Enter on a cell follows its link; Enter on the row opens the record.
   A hover card also opens on focus.
   This joins the shared row keyboard contract.
 - “3 new rows”, Paused, and writer busy are announced through one polite live region.
@@ -1038,18 +1039,29 @@ As built, where this plan left a choice open:
   A cursor continues only the question it was made for; while a new question’s first
   page is on its way, the rows held for the last read no further.
 - **What a budget did.** A sort refused with `sort_budget` is a notice naming the field,
-  with a link to the file’s order, not an empty table; a search stopped with `budget`
-  shows the matches among the rows it read and says how many it read, and scrolling
-  reads on among them.
-  A page that says `truncated` with an exact count was cut in a row’s cells, and one
-  with a lower bound in its rows, and the notice says which.
-  `tests/test_table_view_session.py` records these answers with each bound lowered for
-  one small file, since a file that meets the real bound is too large to record.
+  with a link to the table’s own order and one to try again, not an empty table; a
+  search stopped with `budget` shows the matches among the rows it read and says how
+  many it read, scrolling reads on among them, and one that found none says “No matches
+  among the first N rows”.
+  A page that says `truncated` with an exact count holds every row but not every value
+  of them, and one with a lower bound only the leading rows, and the notice says which
+  without naming a file.
+  A question’s pages join in `joinPage` (`table-model.js`): the last page says whether
+  the question is complete and why, and a page from a table that changed under the
+  cursor ends it as `cursor_expired`. `tests/test_table_view_session.py` records these
+  answers with each bound lowered for one small file, since a file that meets the real
+  bound is too large to record.
 - **The open record** is `record=<key>` on the table’s address, which the view reads and
   the rows route ignores; a record opens in place of the grid, and Back, or its own Back
   link, returns the grid with the keyboard on the row.
   The scroll position and focused row are kept in the history entry’s state, not the
-  address.
+  address, written only before the view navigates, when the page hides, and a pause
+  after the last move or scroll, since browsers bound history writes; the record’s Back
+  link goes Back only when the browser’s address is the entry the view pushed, and
+  otherwise replaces it with the table’s address.
+- **A new answer to the same question** (`refresh()` on the view’s handle) keeps the
+  focused row, the row at the top of the view, and the selection by key, so the live
+  tables of Phase 6 redraw in place rather than as a new question.
 - **Hover cards** are the shared tooltip’s content, shown on hover and on keyboard focus
   of a reference chip, and nothing in a card is interactive, since a tooltip takes no
   interactive children; the chip itself opens the record.

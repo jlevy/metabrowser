@@ -16,7 +16,8 @@ shell's own page, and measures what no browserless DOM computes:
   within half a pixel of the height Chrome lays out, the threshold past which the view
   draws its first window again;
 - a windowed table printed before its last page was read says on the page which rows it
-  printed, and the toolbar is not printed;
+  printed, and the toolbar is not printed; one read past ``PRINT_MAX_ROWS`` prints that
+  many and says so;
 - the browser's own history: a run of key presses past Chrome's bound on history calls
   (200 in 10 seconds) writes the place once, after the keys stop, so Enter still pushes
   the record's address; its Back link returns to the grid at the row and scroll the keys
@@ -85,6 +86,8 @@ def _write_folder(root: Path) -> None:
     )
     many = ["n,word"] + [f"{index},word {index}" for index in range(1, 701)]
     (root / "many.csv").write_text("\n".join(many) + "\n", encoding="utf-8")
+    printed = ["n,word"] + [f"{index},word {index}" for index in range(1, 2501)]
+    (root / "printed.csv").write_text("\n".join(printed) + "\n", encoding="utf-8")
     header = ",".join(f"column_name_{index}" for index in range(1, 25))
     rows = [",".join(f"value {row}-{index}" for index in range(1, 25)) for row in range(1, 4)]
     (root / "wide.csv").write_text("\n".join([header, *rows]) + "\n", encoding="utf-8")
@@ -198,6 +201,13 @@ def _check_print_says_which_rows_it_printed(measured: dict[str, Any]) -> None:
     )
     assert printed["noteShown"] is True
     assert printed["toolbarShown"] is False
+    bound = measured["printBound"]
+    assert bound["held"] == 2500
+    assert bound["rows"] == 2000, "PRINT_MAX_ROWS of them"
+    assert bound["note"] == (
+        "Rows 1 to 2,000 of 2,500. A printout holds at most 2,000 rows; "
+        "search or filter for the ones to print."
+    )
 
 
 def _check_history_survives_a_run_of_keys(measured: dict[str, Any]) -> None:

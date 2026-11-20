@@ -457,8 +457,11 @@ routes, and `builtin_plugins/delimited/source.py` is a complete source.
   page’s `limit`.
 
 The table plugin also draws the table: its exports are `mountTable(container, {path})`,
-which mounts the table view for the table at `path` and returns a handle with `ready`
-and `dispose()`. Give your kind a Table view that mounts it:
+which mounts the table view for the table at `path` and returns a handle with `ready`,
+`dispose()`, and `refresh()`. `refresh()` asks the current question again and draws the
+new answer in place, keeping the focused row, the row at the top of the view, and the
+selection by row key, for a source whose content changes while it is shown.
+Give your kind a Table view that mounts it:
 
 ```toml
 [[view]]
@@ -484,13 +487,14 @@ mb.registerView("example-table", "table", {
 
 The view keeps its sort, filters, search, columns, and open record in the address’s
 query, in the rows route’s own names (`cols` repeated, one field each), so a link
-reproduces it. It draws what a source answers as the route defines it: a page shorter
-than asked is read on from `next_after`, a `sort_budget` page is a notice naming the
-field rather than an empty table, and `budget`, `source_truncated`, and `truncated` are
-notices above the rows.
-A plugin whose files always open in the Table view starts the load when its own module
-is evaluated, as above, so the table plugin’s module is on its way while the shell
-prepares the pane; one that shows it only sometimes asks for it in `render`.
+reproduces it. It takes the table’s id from the schema answer’s `table`, and builds a
+reference’s address from it.
+It draws what a source answers as the route defines it: a page shorter than asked is
+read on from `next_after`, a `sort_budget` page is a notice naming the field rather than
+an empty table, and `budget`, `source_truncated`, and `truncated` are notices above the
+rows. A plugin whose files always open in the Table view starts the load when its own
+module is evaluated, as above, so the table plugin’s module is on its way while the
+shell prepares the pane; one that shows it only sometimes asks for it in `render`.
 
 ## Browser SDK
 

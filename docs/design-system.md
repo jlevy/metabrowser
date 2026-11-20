@@ -5974,25 +5974,42 @@ sorts its column either way, filters it by an operator and a value, and hides it
 Search is one field, which asks the server once the typing pauses.
 
 **One Tab stop.** The grid is a row collection under
-[Navigational Row Collections](#navigational-row-collections): one row is in the Tab
-order, Up and Down or `J` and `K` move a row, Left and Right move between the row and
-its cells, so a link in a cell is reachable, and Enter on the row opens its record in
-place of the grid; Back returns the keyboard to that row.
+[Navigational Row Collections](#navigational-row-collections): one element of the grid
+is in the Tab order, a row, a cell’s link, or a header’s button.
+Up and Down or `J` and `K` move a row, Left and Right move between the row and its
+cells, so a link in a cell is reachable, and Enter on the row opens its record in place
+of the grid; Back returns the keyboard to that row.
+Up from the first row moves to the header, where Left and Right cross each column’s sort
+and menu buttons and Down returns to the rows, so a column adds no Tab stop.
 Arrows do not open a row here, because a record replaces the grid the reader is reading.
+A header’s menu and the Columns menu are labelled dialogs: Tab moves through them, and
+they close when the focus leaves them or on Escape, which returns it to their button.
 
-**Small tables are tables; large ones are windows.** A table of at most
-`WHOLE_TABLE_MAX_ROWS` (`builtin_plugins/table/table-view.js`) is a plain `<table>` with
-`scope="col"` headers and `aria-sort`, and keeps the browser’s find, select all, copy,
-and print. A larger one is `role="grid"` with `aria-rowcount` and `aria-rowindex`, and
-draws only the rows near the view at one fixed row height; there, Search stands in for
-find in page, Shift with Up, Down, Home, or End selects rows that copy as tab-separated
-values, since a chord such as Command-A stays the browser’s, and print draws every row
-held ([Rendering Large Content](large-content-rendering.md)).
+**Small tables are drawn whole; large ones are windows.** Either is `role="grid"`,
+multiselectable, with `scope="col"` headers and `aria-sort`, and `aria-colcount` while
+columns are hidden to fit.
+A table of at most `WHOLE_TABLE_MAX_ROWS` (`builtin_plugins/table/table-view.js`) draws
+every row and keeps the browser’s find, select all, copy, and print.
+A larger one adds `aria-rowcount` and `aria-rowindex`, and draws only the rows near the
+view at one fixed row height; there, Search stands in for find in page, Shift with Up,
+Down, Home, or End selects rows that copy as tab-separated values, since a chord such as
+Command-A stays the browser’s, and print draws the rows held, up to `PRINT_MAX_ROWS`,
+with a line on the paper saying which rows it printed when it did not print them all
+([Rendering Large Content](large-content-rendering.md)).
+
+**The reader’s place is kept.** Back to the table, and a reload, return to the row that
+had focus and the scroll it had.
+The view writes its place to the history entry only when it matters, before it
+navigates, when the page is hidden, and once a pause after the last move or scroll
+(`PLACE_SAVE_MS`), because browsers bound history writes and a write a key press would
+use up the one a record’s address needs.
 
 `tests/dom/table-view-session.js` runs the view’s behavior from the command line, and
-`tests/test_table_view_chrome.py` checks in Chrome what only layout shows: one row
-height, cutting and its tooltip, the inks and faces, the header that stays put, and the
-pinned first column.
+`tests/test_table_view_chrome.py` checks in Chrome what only layout and the browser’s
+history show: one row height, which the view’s estimates match, cutting and its tooltip,
+the inks and faces, the header that stays put, the pinned first column, the printed
+line, and a run of key presses past Chrome’s bound on history writes followed by a
+record, its Back, and a reload.
 
 ## Source and Syntax Colors
 

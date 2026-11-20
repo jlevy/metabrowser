@@ -19,13 +19,20 @@ over the files in `tests/fixtures/table-view/` and the small files that recorder
 each with the bound it shows lowered to meet it.
 
 The address holds the view’s state: a header’s press sorts ascending, then descending,
-then back to the file’s order; a boolean value’s press adds a filter, which a chip
+then back to the table’s own order; a boolean value’s press adds a filter, which a chip
 removes; Search asks once the typing pauses and replaces the address rather than adding
-to its history; a header’s menu filters and hides its column; and Back shows the address
-before.
-The grid is one Tab stop: `j` and `k` move a row, Right and Left move between the
-row and its cells, and Enter opens the row’s record in place of the grid, whose Back
-returns the keyboard to the row; Escape in a record returns to the table.
+to its history; a header’s menu, a dialog, filters its column and hides it, replacing
+the address as the Columns menu does; and Back shows the address before.
+The grid is one Tab stop: `j` and `k` move a row, Right and Left move between the row
+and its cells, `k` from the first row reaches the header, whose buttons Right crosses,
+and Enter opens the row’s record in place of the grid, whose Back returns the keyboard
+to the row; Escape in a record returns to the table.
+A run of key presses writes the view’s place to the history entry once, a pause after
+the last, so Enter still pushes the record’s address and its Back link goes Back to the
+place the keys left; when the browser dropped that push, the Back link replaces the
+address with the table’s instead of leaving the table.
+A new answer to the same question (`refresh()`) keeps the focused row, the scroll, and
+the selection by key.
 A refusal is said in an alert with a way back to the whole table, and a view disposed
 before its answers arrive draws nothing from them.
 
@@ -40,10 +47,10 @@ from each `next_after` rather than counting on its own page size; `cols` names o
 a parameter, so a name with a comma is one column.
 A search the time budget stopped shows the matches among the rows it read, says so, and
 its cursor continues among them; a sort the budget refused has no rows, and the view
-names the field and offers the file’s order instead of saying the table is empty.
-A file read in part says whether its rows or a row’s cells were cut.
-A cursor names the sort and order it was made for, so a new sort is a new question read
-from its first page.
+names the field and offers the table’s own order, or to try again, instead of saying the
+table is empty. A file read in part says whether every row or only the leading rows were
+read. A cursor names the sort and order it was made for, so a new sort is a new question
+read from its first page.
 
 ```console
 $ node tests/dom/table-view-session.js

@@ -131,6 +131,26 @@ export const ROWS_OVERSCAN = 12;
 // How near the last row held, in rows, the window comes before the next page is read.
 export const READ_AHEAD_ROWS = 100;
 
+// Rows held. A windowed table keeps every page it reads, so what it holds grows as the
+// reader scrolls on, up to what its source parses; the view sets no bound of its own,
+// because at the delimited source's own bounds the cost stayed small and flat. Measured
+// with tests/dom/table-view-measure.mjs's `held` mode in headless Chrome 152 on the
+// shared 4-processor container at a load average of 8 to 14 (2026-11-20), scrolling a
+// 12-column table to its byte bound and a 2-column one to its row bound: at 139,676 rows
+// of 12 columns, the most the source parses of that shape, the JavaScript heap after a
+// collection was 38.8 MB and a window's redraw while scrolling 1.7 to 14.2 ms, as at
+// 10,200 rows (2 to 8.6 ms); at 500,000 rows of 2 columns, DELIMITED_MAX_ROWS, 83.5 MB
+// and 0.9 to 1.3 ms, its scroll box 16 million pixels tall. A source that parses more
+// than these brings a bound for it with it.
+
+// The most rows a printout of a windowed table draws: about what a table drawn whole may
+// be, a few times over. Drawing every row held for print is linear in them and stops the
+// page while it runs, as drawing a table whole is (WHOLE_TABLE_MAX_ROWS): in the
+// measurement above, 10,200 rows took 3.4 s from `beforeprint` to laid out, 50,200 rows
+// 6.8 to 15.7 s, and 500,000 rows of 2 columns 21.5 s, where 2,000 rows drawn whole took
+// 0.28 to 0.33 s. Past it the printout says which rows it holds and how to print others.
+export const PRINT_MAX_ROWS = 2000;
+
 // The pause after the reader stops typing in Search before the table asks again: the same
 // a quarter-second the shell's filter fields wait.
 export const SEARCH_DEBOUNCE_MS = 250;
@@ -901,11 +921,16 @@ export function mountTable(container, ctx, host = {}) {
     return th;
   }
 
+  /** Draw every row held, or for print, the first PRINT_MAX_ROWS of them. */
   function drawAllRows() {
     rowElements.clear();
-    const drawnRows = rows.map((row, index) => rowElement(row, index));
+    const end = printing ? Math.min(rows.length, PRINT_MAX_ROWS) : rows.length;
+    const drawnRows = [];
+    for (let index = 0; index < end; index++) {
+      drawnRows.push(rowElement(rows[index], index));
+    }
     tbody.replaceChildren(...drawnRows);
-    drawn = { start: 0, end: rows.length };
+    drawn = { start: 0, end };
     syncFocusable();
     measureRowHeight();
   }
@@ -2293,15 +2318,20 @@ export function mountTable(container, ctx, host = {}) {
       printing = true;
       drawAllRows();
       // The toolbar, with the count, is not printed: the page says which rows are, when
-      // rows past them were not read.
-      if (page.next_after) {
+      // rows past them were not read or past the most a printout draws.
+      const printed = drawn.end;
+      if (page.next_after || printed < rows.length) {
         const total =
           page.count_complete && page.count !== null
             ? ` of ${formatCount(page.count)}`
             : page.count !== null
               ? ` of at least ${formatCount(page.count)}`
               : "";
-        printNote.textContent = `Rows 1 to ${formatCount(rows.length)}${total}. The rows after them were not read, so they are not printed.`;
+        const why =
+          printed < rows.length
+            ? `A printout holds at most ${formatCount(PRINT_MAX_ROWS)} rows; search or filter for the ones to print.`
+            : "The rows after them were not read, so they are not printed.";
+        printNote.textContent = `Rows 1 to ${formatCount(printed)}${total}. ${why}`;
       }
     }
   }
