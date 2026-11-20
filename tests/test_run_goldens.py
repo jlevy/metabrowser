@@ -149,6 +149,36 @@ def test_a_command_that_cannot_start_leaves_its_file_without_a_verdict(
     assert _lines(capsys.readouterr().out)["a.tryscript.md"][0] == NO_VERDICT
 
 
+def test_the_parts_of_a_shard_hold_every_file_once_and_balance_by_size(tmp_path: Path) -> None:
+    directory = tmp_path / "goldens"
+    directory.mkdir()
+    for name, size in {"a": 90, "b": 50, "c": 40, "d": 30, "e": 10}.items():
+        (directory / f"{name}.tryscript.md").write_text("pass" + "x" * size, encoding="utf-8")
+    paths = run_goldens.matched([str(directory / "*.tryscript.md")])
+
+    parts = [run_goldens.dealt(paths, index, 2) for index in (1, 2)]
+
+    assert sorted(parts[0] + parts[1]) == paths
+    assert [[Path(path).stem.split(".")[0] for path in part] for part in parts] == [
+        ["a", "d"],
+        ["b", "c", "e"],
+    ]
+    assert run_goldens.dealt(paths, 1, 1) == paths
+
+
+def test_a_shard_runs_only_its_part_and_a_bad_shard_is_refused(
+    tmp_path: Path, tryscript: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    pattern = _goldens(tmp_path / "goldens", big="pass" + "x" * 99, small="pass")
+
+    assert run_goldens.main(["--shard", "2/2", pattern, "--", *tryscript]) == 0
+
+    assert list(_lines(capsys.readouterr().out)) == ["small.tryscript.md"]
+    for bad in ("0/2", "3/2", "1", "a/b"):
+        with pytest.raises(SystemExit):
+            run_goldens.main(["--shard", bad, pattern, "--", *tryscript])
+
+
 @pytest.mark.parametrize(
     "arguments", [["tests/golden/*.tryscript.md"], ["tests/golden/*.tryscript.md", "--"]]
 )
@@ -166,8 +196,8 @@ def test_make_test_goldens_runs_every_golden_through_the_runner_with_the_makefil
 
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     line = (
-        "\t$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) '$(GOLDENS)' "
-        "-- $(TRYSCRIPT)"
+        "\t$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) "
+        "$(if $(SHARD),--shard $(SHARD)) '$(GOLDENS)' -- $(TRYSCRIPT)"
     )
     assert recipe(makefile, "test-goldens") == line
     assert makefile_list(makefile, "GOLDENS") == ["tests/golden/*.tryscript.md"]
