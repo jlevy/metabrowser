@@ -449,9 +449,14 @@ Strict mode is off on a developer machine, which can add these:
   toolbar drawn again around it, and is filtered; `tests/test_control_chords_chrome.py`,
   which presses Control-N and Control-P through Chrome’s input under a navigator
   overridden to name a Mac and then Linux, on every host, and reads that only the Mac’s
-  binds them; `tests/test_overview_legend_hover_chrome.py`, which moves Chrome’s pointer
-  onto a File Overview legend entry and a bar segment and reads which bars and entry are
-  marked, what they compute to, where the tooltip lands, and that nothing moves;
+  binds them; `tests/test_overview_label_column_chrome.py`, which serves a folder of
+  eleven file-type families and reads, at five window widths in both font sets, where
+  every File Overview row’s label column ends and its bar starts, with Details closed
+  and open and Files and Bytes, whether the labels the column is sized for fit it, what
+  a longer label does to the bars, and how the legend’s ten entries wrap;
+  `tests/test_overview_legend_hover_chrome.py`, which moves Chrome’s pointer onto a File
+  Overview legend entry and a bar segment and reads which bars and entry are marked,
+  what they compute to, where the tooltip lands, and that nothing moves;
   `tests/test_treemap_legend_hover_chrome.py`, which moves Chrome’s pointer onto the
   Treemap’s legend entry and one of its cells and reads which cells, bars, and entry are
   marked, what they compute to, and that the view does not move;

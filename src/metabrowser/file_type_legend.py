@@ -13,8 +13,8 @@ The rule:
   claims, so they have no name to put in a legend and no color of their own.
 - They rank by the measure, in the population, descending, with the other
   measure and then the family ID as tie-breaks.
-- A family is named only above ``LEGEND_MINIMUM_SHARE_PERCENT`` of the
-  population, the floor at which the browser's breakdown table folds a row into
+- A family is named only at or above ``LEGEND_MINIMUM_SHARE_PERCENT`` of the
+  population, the floor below which the browser's breakdown table folds a row into
   "N more", and at most ``LEGEND_TYPE_LIMIT`` are. So every named family is also
   a row that table shows unfolded.
 - Whatever the named families leave of the population is ``other``, so the
@@ -22,7 +22,7 @@ The rule:
 
 Every measure and population is answered at once, because the browser switches
 between Files and Bytes and between the whole folder and its unignored files
-without asking again. That is four lists of at most five entries.
+without asking again. That is four lists of at most ``LEGEND_TYPE_LIMIT`` entries.
 """
 
 from __future__ import annotations
@@ -41,12 +41,15 @@ if TYPE_CHECKING:
 LEGEND_SCHEMA: Literal["file-type-legend-v1"] = "file-type-legend-v1"
 
 # A reading bound, not a cost bound: the legend is at most this many short items
-# plus Other whatever the folder holds, so there is no cost to measure. Five is
-# what GitHub's Languages box shows, and what the Overview was asked for.
-LEGEND_TYPE_LIMIT = 5
+# plus Other whatever the folder holds, so there is no cost to measure. It was
+# five, the count GitHub's Languages box shows, and the owner asked for up to nine
+# (2026-11-20), so a folder of many families names the ones that matter and Other
+# is the rest: ten entries at most, which wrap as whole items in a narrow pane
+# (docs/design-system.md, "Aggregate Distributions").
+LEGEND_TYPE_LIMIT = 9
 
-# The share, in percent, a family must exceed to be named. It is the floor below
-# which the browser's breakdown table folds a row into "N more"
+# The share, in percent, a family must reach to be named: at 1% exactly it is. It
+# is the floor below which the browser's breakdown table folds a row into "N more"
 # (MINIMUM_VISIBLE_SHARE in builtin_plugins/folder/file-type-summary-model.js),
 # and tests/test_file_type_legend.py holds the two equal, so the legend never
 # names a family that table folds away.
@@ -72,12 +75,15 @@ def _view(
             family[0],
         ),
     )
-    # In integers, so a family at exactly the floor is never named by rounding:
-    # value / total > minimum / 100.
+    # In integers, so a family just under the floor is never named by rounding:
+    # value / total >= minimum / 100. A family with nothing to its name is never
+    # named, which is what keeps an empty measure (total 0) from naming every
+    # family at 0 >= 0.
     eligible: list[FileTypeLegendEntry] = [
         {"family": family_id, "value": metrics[population][measure]}
         for family_id, metrics in ranked
-        if metrics[population][measure] * 100 > LEGEND_MINIMUM_SHARE_PERCENT * total
+        if metrics[population][measure] > 0
+        and metrics[population][measure] * 100 >= LEGEND_MINIMUM_SHARE_PERCENT * total
     ]
     named = eligible[:LEGEND_TYPE_LIMIT]
     return {
