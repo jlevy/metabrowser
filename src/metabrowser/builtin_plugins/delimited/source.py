@@ -162,19 +162,19 @@ _EXTRA = "extra"
 # Decoding with `surrogateescape` turns each invalid byte into one of these.
 _ESCAPED_BYTE = re.compile("[\udc80-\udcff]")
 
-# One parse at a time, process-wide. A cell longer than the `csv` module's default field
-# limit (131,072 characters) is a parse error there, and a parse is bounded by the byte
-# cap above, so a parse raises the limit to that cap and restores it after. The limit is
-# global to the `csv` module, so this lock serializes the parses that change it, and
-# another thread's `csv` reader that runs during a parse sees the raised limit. Holding
-# one parse at a time also bounds the transient memory of first opens.
+# One parse at a time, process-wide, which bounds the transient memory of first opens to
+# one file's. A cell longer than the `csv` module's default field limit (131,072
+# characters) is a parse error there, and a parse is bounded by the byte cap above, so a
+# parse raises the limit to that cap and restores it after. The limit is global to the
+# `csv` module: this lock serializes the parses that change it, and another thread's
+# `csv` reader that runs during a parse sees the raised limit.
 _PARSE_LOCK = threading.Lock()
 
 
 @contextmanager
-def _field_size_limit(limit: int) -> Generator[None]:
+def _parsing() -> Generator[None]:
     with _PARSE_LOCK:
-        previous = csv.field_size_limit(max(csv.field_size_limit(), limit))
+        previous = csv.field_size_limit(max(csv.field_size_limit(), DELIMITED_PARSE_MAX_BYTES))
         try:
             yield
         finally:
@@ -435,6 +435,11 @@ def parse_delimited(data: bytes, *, has_more: bool, delimiter: str, generation: 
     """Parse one bounded read of a delimited file. ``has_more`` says the read stopped at
     the byte cap, so the last record may be cut and is dropped."""
 
+    with _parsing():
+        return _parse(data, has_more=has_more, delimiter=delimiter, generation=generation)
+
+
+def _parse(data: bytes, *, has_more: bool, delimiter: str, generation: str) -> _Parsed:
     if data.startswith(_BOM):
         data = data[len(_BOM) :]
     try:
@@ -443,10 +448,9 @@ def parse_delimited(data: bytes, *, has_more: bool, delimiter: str, generation: 
     except UnicodeDecodeError:
         text = data.decode("utf-8", errors="surrogateescape")
         dirty = True
-    with _field_size_limit(DELIMITED_PARSE_MAX_BYTES):
-        records, rows_cut, cells_cut, cells = _read_records(
-            text, delimiter=delimiter, has_more=has_more
-        )
+    records, rows_cut, cells_cut, cells = _read_records(
+        text, delimiter=delimiter, has_more=has_more
+    )
     ascii_text = text.isascii()
     del text
     invalid = _clean(records) if dirty else frozenset[tuple[int, int]]()
