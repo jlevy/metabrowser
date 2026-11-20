@@ -16,8 +16,10 @@ from metabrowser import sqlite_access
 from metabrowser.sqlite_access import (
     FileState,
     Observation,
+    ReadFn,
     SqliteAccessError,
     choose,
+    deny_reads,
     library_report,
     observe,
     read,
@@ -458,3 +460,84 @@ def test_bounded_attempts_answer_without_waiting(tmp_path: Path) -> None:
         attempts=1,
     )
     assert (value, access.attempts) == (2, 1)
+
+
+# ── Reads a caller denies ──────────────────────────────────────
+
+
+def _virtual(path: Path) -> Path:
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        "CREATE VIRTUAL TABLE notes USING fts5(body);"
+        "INSERT INTO notes VALUES ('hello world');"
+        "CREATE VIEW note_bodies AS SELECT body FROM notes;"
+        "CREATE VIEW note_count AS SELECT count(*) AS n FROM notes;"
+        "CREATE VIRTUAL TABLE boxes USING rtree(id, x0, x1);"
+        "CREATE TABLE plain(a); INSERT INTO plain VALUES (1);"
+    )
+    connection.close()
+    then = time.time() - 60
+    os.utime(path, (then, then))
+    return path
+
+
+_VIRTUAL_NAMES: frozenset[str] = frozenset(
+    {
+        "notes",
+        "notes_data",
+        "notes_idx",
+        "notes_content",
+        "notes_docsize",
+        "notes_config",
+        "BOXES",
+        "boxes_node",
+        "boxes_parent",
+        "boxes_rowid",
+    }
+)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT * FROM note_bodies",
+        "SELECT n FROM note_count",
+        "SELECT count(*) FROM notes",
+        "SELECT * FROM notes_data",
+        "SELECT * FROM boxes",
+        "PRAGMA table_xinfo(boxes)",
+        "SELECT name FROM pragma_table_xinfo('boxes')",
+        "SELECT name FROM pragma_table_xinfo('Notes')",
+    ],
+)
+def test_denied_reads_are_refused_everywhere(tmp_path: Path, sql: str) -> None:
+    db = _virtual(tmp_path / "virtual.db")
+
+    def denied_then(query: str) -> ReadFn[object]:
+        def run(connection: sqlite3.Connection) -> object:
+            # Inside the read's transaction, as a caller that has just read the schema.
+            assert connection.execute("SELECT a FROM plain").fetchall() == [(1,)]
+            deny_reads(connection, _VIRTUAL_NAMES)
+            return connection.execute(query).fetchall()
+
+        return run
+
+    with pytest.raises(SqliteAccessError) as caught:
+        read(db, denied_then(sql), deadline=_deadline(), scratch=tmp_path)
+    assert caught.value.state == "refused"
+    # The other tables still read under the same denial.
+    value, _ = read(db, denied_then("SELECT a FROM plain"), deadline=_deadline(), scratch=tmp_path)
+    assert value == [(1,)]
+
+
+def test_without_a_denial_reads_are_as_before(tmp_path: Path) -> None:
+    db = _virtual(tmp_path / "virtual.db")
+    # An FTS5 table behind a view: refused by `trusted_schema=OFF` alone, as before.
+    with pytest.raises(SqliteAccessError):
+        _run(db, "SELECT * FROM note_bodies", tmp_path)
+    # A shadow table is an ordinary table, read as any other unless a caller denies it.
+    assert _run(db, "SELECT count(*) FROM notes_data", tmp_path) == [(3,)]
+    assert [row[1] for row in _run(db, "PRAGMA table_xinfo(notes_data)", tmp_path)] == [  # type: ignore[index, union-attr]
+        "id",
+        "block",
+    ]

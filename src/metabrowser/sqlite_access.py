@@ -38,7 +38,7 @@ import stat
 import sys
 import threading
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Literal, get_args
@@ -543,6 +543,42 @@ def _authorizer(
     if action == sqlite3.SQLITE_TRANSACTION:
         return sqlite3.SQLITE_OK
     return sqlite3.SQLITE_DENY
+
+
+def deny_reads(connection: sqlite3.Connection, names: Iterable[str]) -> None:
+    """Refuse, from now on, every read of a table named in *names* on *connection*, a
+    guest connection :func:`read` hands its ``fn``.
+
+    A connection has one authorizer, so this installs :func:`_authorizer` composed with
+    the denial: a column read or a whole-table read such as `count(*)` of a named table
+    (compared casefolded, as SQLite compares names) in any statement or inside any view,
+    and a schema pragma describing one, as a statement or a table-valued function, are
+    refused at prepare time (``refused``). Call it inside ``fn``, after reading the schema
+    in the same transaction, so the names come from the schema the read sees. A later
+    call replaces the earlier names.
+
+    It stops the query, not the virtual table's module: SQLite computes a view's column
+    names with no authorizer (``xAuth = 0``, measured on SQLite 3.53), so preparing a
+    statement over a view that names a virtual table still connects that table (FTS5's
+    ``xConnect`` reads ``<table>_config``). Only ``sqlite3_drop_modules`` would stop
+    that, and Python's ``sqlite3`` does not expose it.
+    """
+    denied = frozenset(name.casefold() for name in names)
+
+    def authorizer(
+        action: int, arg1: str | None, arg2: str | None, db: str | None, inside: str | None
+    ) -> int:
+        if action == sqlite3.SQLITE_READ and (arg1 or "").casefold() in denied:
+            return sqlite3.SQLITE_DENY
+        if (
+            action == sqlite3.SQLITE_PRAGMA
+            and (arg1 or "").lower() in ADAPTER_SCHEMA_PRAGMAS
+            and (arg2 or "").casefold() in denied
+        ):
+            return sqlite3.SQLITE_DENY
+        return _authorizer(action, arg1, arg2, db, inside)
+
+    connection.set_authorizer(authorizer)
 
 
 def apply_settings(
