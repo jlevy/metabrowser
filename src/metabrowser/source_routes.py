@@ -59,7 +59,6 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from metabrowser.cache.providers import RefPull, RefPulls, ref_pulls_for
 from metabrowser.checkout_revisions import (
     CheckoutGitUnsupportedError,
     CheckoutRevisions,
@@ -104,6 +103,7 @@ if TYPE_CHECKING:
     # Annotations only. The server registers this table for a folder too, so what a
     # function needs from the revision tree source, or from a link, it imports where a
     # pin is served.
+    from metabrowser.cache.providers import RefPull, RefPulls
     from metabrowser.cache.resolve import ResolvedSelection, UnresolvedSelection
     from metabrowser.cache.urls import RepositorySelection
     from metabrowser.git.tree_source import GitRevisionSubject
@@ -539,6 +539,10 @@ async def api_source_refs(request: Request) -> Response:
     kind = cast(RefKind, kind)
     subject = as_git_revision_subject(get_source_session().subject)
     # What the provider has cached: never fetched here. A tag is no pull request's head.
+    # Imported here, past the refusal a plain folder gets, so a folder's page never loads
+    # the providers (tests/test_plugin_public_api.py).
+    from metabrowser.cache.providers import ref_pulls_for
+
     pulls = await ref_pulls_for(request.app) if kind != "tag" else None
     working_tree: WorkingTree | None = None
     try:

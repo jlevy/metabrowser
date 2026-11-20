@@ -94,7 +94,7 @@ def _record_pull_requests(
     async def provided(app: object) -> GithubRefPulls:
         return await asyncio.to_thread(ref_pulls_of, repository, refreshing=held["refreshing"])
 
-    monkeypatch.setattr("metabrowser.source_routes.ref_pulls_for", provided)
+    monkeypatch.setattr("metabrowser.cache.providers.ref_pulls_for", provided)
 
     def listing(**params: str) -> dict[str, Any]:
         return answer(client.get("/api/source/refs", params=params))

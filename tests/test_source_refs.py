@@ -337,7 +337,7 @@ def _provide(monkeypatch: pytest.MonkeyPatch, pulls: _Pulls | None) -> None:
     async def provided(app: object) -> _Pulls | None:
         return pulls
 
-    monkeypatch.setattr("metabrowser.source_routes.ref_pulls_for", provided)
+    monkeypatch.setattr("metabrowser.cache.providers.ref_pulls_for", provided)
 
 
 def test_a_branch_lists_the_pull_requests_it_is_the_head_of(
