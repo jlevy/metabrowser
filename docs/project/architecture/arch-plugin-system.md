@@ -2,7 +2,8 @@
 
 **Status:** Built: manifest discovery from three sources, declared dependencies between
 plugins, declarative kind classification, the SDK version gate, Python data hooks, JSONL
-adapters, and two container kinds, directories and patch files.
+adapters, table sources served by the `table` plugin’s routes, and two container kinds,
+directories and patch files.
 Planned: editing through plugins
 ([trusted-local editing plan](../specs/active/plan-2026-07-16-trusted-local-file-editing.md)).
 Proposed, with no plan yet: archive containers and re-rooting the tree at a container.
@@ -25,6 +26,7 @@ This document is how the host implements it, and the path for adding a file type
 | `file_kinds.py` | `FileContext`, the built-in view registry, and the fallback detector chain |
 | `file_extensions.py` | The syntax registry and the text, image, and live-tracked extension sets |
 | `plugin_api.py` | The Python sidekick API that `metabrowser` re-exports |
+| `table_source.py` | The table source protocol, its wire contract and bounds, and the registry the table routes resolve a path through |
 | `cli/plugins.py` | `metab --plugins`, `--plugin`, and `--doctor` |
 | `static/plugin-sdk.js`, `static/plugin-sdk-views.js` | The `window.metabrowser` browser SDK |
 
@@ -65,6 +67,9 @@ serves:
   modules that each wait for the other’s exports never finish.
 - A plugin that requires one that was not discovered, or was refused, is refused in
   turn, so a refusal reaches everything that depends on it.
+- A plugin that declares a `[[table_source]]` fails its own manifest’s validation unless
+  it requires `table`, whose routes serve it, so a missing table plugin refuses every
+  source plugin.
 
 Each refusal is a discovery error, so the server logs it and the CLI modes print it and
 exit nonzero. The kept plugins stay in discovery order, which breaks kind priority ties.
@@ -165,6 +170,67 @@ its own view and nothing else.
 `/plugin-static/<plugin>/<file>` serves the plugin’s directory through a traversal
 guard. The shell addresses those files under a stamp of the whole directory, which
 `asset_stamps.py` defines, so a browser keeps them until the directory changes.
+
+## Table Sources
+
+The built-in `table` plugin owns the routes every tabular source answers through, and has
+no kind of its own. A source plugin claims a kind, requires `table`, and names the Python
+adapter that answers for that kind:
+
+```toml
+[plugin]
+name = "delimited"
+requires = ["table"]
+
+[[kind]]
+id = "delimited"
+match = { exts = [".csv", ".tsv"] }
+
+[[table_source]]
+kind = "delimited"
+adapter = "metabrowser.builtin_plugins.delimited.source:adapter"
+```
+
+`table_source.py` in core holds the protocol, so core imports no plugin, and
+`plugin_api.py` re-exports it as SDK surface.
+
+- **Registration.** A `[[table_source]]` names one of its own plugin’s kinds, once, and
+  its plugin must require `table`; `validate_consistency` refuses anything else.
+  `server.py` installs every declaration of a plugin allowed to run Python
+  (`install_table_sources`), so an operator-directory plugin’s are ignored with a log
+  line, as its data hooks are, and `metab --doctor` reports them and any adapter that
+  does not import. A later declaration for a kind replaces an earlier one.
+- **Dispatch.** Each route takes `?path=`. `open_table_source` resolves it through the
+  content reader, classifies it as `/api/file` does (the full classifier on a served
+  folder, the extension and basename rules on a Git pin), imports that kind’s adapter
+  on first use, and hands it a `TableHandle`: the `ContentRef`, the file’s name, and its
+  resolved real path on a served folder.
+- **The adapter** is a callable from a handle to a `TableSource`, whose methods are
+  synchronous and run on the route threadpool under one request’s `Budget`. A source
+  reads through `TableHandle.read_window`, which runs the content read on the event
+  loop and waits for it, and keeps any cache in its own module, keyed by its
+  `generation()`.
+- **The wire.** `tables_wire`, `schema_wire`, `page_wire`, `record_wire`, `card_wire`, and
+  `error_wire` are every route’s answer, so two sources cannot drift apart.
+  The query grammar (`parse_table_query`, checked against the schema by
+  `check_table_query`), the cell envelopes, and the key, position, and cursor tokens are
+  defined there as well, with the bounds every route applies beside the measurements
+  that set them.
+
+| Route | Serves |
+| --- | --- |
+| `/api/plugin/table/tables?path=` | The source’s tables, each with its group, whether its rows have a key, an estimate where the source has one, and its address |
+| `/api/plugin/table/schema?path=` | Field descriptors, key fields, default columns, and references in both directions |
+| `/api/plugin/table/rows?path=&…` | One page in the collection envelope, for `sort`, `order`, `q`, `f.<field>=<op>:<value>`, `ref`, `cols`, `after`, and `limit` |
+| `/api/plugin/table/record?path=&key=` | One record, each value previewed past the record bound, and whether the generation the key was read under has moved |
+| `/api/plugin/table/card?path=&key=` | A hover card: a label and a few fields |
+
+`tests/test_table_source.py` checks the protocol, and `tests/test_delimited_source.py`
+the delimited source through these routes; `tests/golden/cli-api-table.tryscript.md`
+pins each route’s answers and refusals.
+A file that is its own single table, such as a CSV file, is addressed by its own path;
+tables inside one file, such as a database’s, are planned as container children in
+[Tabular Data Browsing and Live SQLite](../specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md).
 
 ## Navigation Containers
 
@@ -290,6 +356,8 @@ Each is optional except the kind and one view.
    An installed plugin adds a `[[data_hook]]` whose sidekick reads through the content
    reader (`resolve_content`, `read_content_window`), which answers on a folder and on a
    Git pin alike and bounds every read.
+   A format whose files are tables declares a `[[table_source]]` instead, and the
+   `table` plugin’s routes serve it ([Table Sources](#table-sources)).
 4. **Parse a JSONL stream,** when the format is one.
    `register_log_adapter` adds a detector and parser for the JSONL view, and a rule with
    `match = { ext = ".jsonl", adapter = "<name>" }` claims those files, as the

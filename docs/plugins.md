@@ -385,6 +385,52 @@ async def summary_handler(request):
 Reads run off the event loop on both kinds, so an `async def` handler stays responsive
 without arranging that itself.
 
+#### Table Sources
+
+A plugin whose files are tables lets the built-in `table` plugin serve them: it claims
+the kind, requires `table`, and names a Python adapter for the kind.
+
+```toml
+[plugin]
+name = "example-tables"
+requires = ["table"]
+
+[[kind]]
+id = "example-table"
+match = { ext = ".extable" }
+priority = 100
+
+[[table_source]]
+kind = "example-table"
+adapter = "example_plugin.tables:adapter"
+```
+
+The adapter takes a `TableHandle` and returns an object with the `TableSource`
+methods: `generation()`, `tables()`, `schema(table)`, `rows(table, query, budget)`,
+`record(table, key, budget)`, and `card(table, key, budget)`. They are synchronous and
+run on the route threadpool, and every file of the kind is then served by
+`/api/plugin/table/{tables,schema,rows,record,card}?path=` with no route of your own.
+`metabrowser.plugin_api` exports the types, the cell and token helpers, and the bounds;
+[Table Sources](project/architecture/arch-plugin-system.md#table-sources) describes the
+routes, and `builtin_plugins/delimited/source.py` is a complete source.
+
+- A `[[table_source]]` names one of its own plugin’s kinds, once, and its plugin must
+  require `table`; an operator-directory plugin’s are ignored, since it runs no Python.
+- Read through `handle.read_window(max_bytes=...)`, which answers on a folder and on a
+  Git pin alike; `handle.local_path` is the real path on a served folder, or None.
+- `generation()` only stats files and reads bounded headers.
+  `content_generation(handle)` is the file’s identity, size, and modification time, or
+  a pinned blob’s object id. Key anything you cache by it.
+- A cell is a scalar or one of the envelopes `integer_cell`, `real_cell`, `text_cell`,
+  and `stored_cell` build, so a large integer keeps its digits, a long value says its
+  length, and a value whose stored type differs from its field’s says so.
+- Name a keyless row by its position with `position_key(n)`, counting from 1, and a
+  keyed one with `encode_key(values)`; mint cursors with `encode_cursor`, falling back
+  to `positional_cursor` past `TABLE_TOKEN_MAX_CHARS`. Every token is deterministic.
+- Raise a `TableSourceError` subclass, such as `RecordNotFoundError`, to refuse; the
+  route answers its `code` and status.
+  Stop a scan when `budget.expired()` and answer `complete=False` with the reason.
+
 ## Browser SDK
 
 The supported API is available as `window.metabrowser`. Use only the surface documented
@@ -480,8 +526,9 @@ was itself refused, and every plugin on a cycle of requirements, since two modul
 each wait for the other’s exports never finish.
 `metab --doctor` lists each refusal as a problem and reports the graph it kept, and
 `metab --plugins` and `--plugin NAME` show each plugin’s `requires`. Declare every
-provider you load and load every provider you declare:
-`tests/test_plugin_requirements.py` holds the built-in plugins to that.
+provider you load and load every provider you declare, except `table`, which a plugin
+with a [`[[table_source]]`](#table-sources) requires because the table plugin’s routes
+serve it: `tests/test_plugin_requirements.py` holds the built-in plugins to that.
 
 ### Rendering and Formatting
 

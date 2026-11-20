@@ -56,6 +56,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | `html` | `.html`, `.htm` | Preview `V`, Source `S` | File envelope; sandboxed raw document |
 | `text` | Text files | Source | File envelope |
 | `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Source `S` | File envelope and the `structured/parsed` hook |
+| `delimited` | `.csv`, `.tsv` | Source | File envelope; one table through the `table/*` hooks ([Table Sources](arch-plugin-system.md#table-sources)) |
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
 | `agent-log` | `.jsonl` sniffed as an agent log | Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agent-log/charts` hook |
 | `unknown-jsonl` | Other `.jsonl` | Log `V`, Raw JSON `S` | File envelope |
@@ -77,6 +78,10 @@ A rendered view takes `V` and a source view `S`, by the rules in
 `devtools/check_parity.py` fails the build when a kind a built-in manifest declares or
 consumes has no exact `kind: <id>` line in the output of a successful `--show` command
 in a golden transcript.
+
+The `table` plugin has no kind: it owns the `table/*` hooks, which serve every kind a
+plugin declares a `[[table_source]]` for
+([Table Sources](arch-plugin-system.md#table-sources)).
 
 Two kinds are also **containers**, folder-like entries whose children are addressable
 ([Plugin System](arch-plugin-system.md)): `folder`, whose children are files and
@@ -119,6 +124,8 @@ them. The list of [recent targets](arch-recent-targets.md), `recent-targets.yml`
 configuration directory, is an internal format as well, read only through `metab`.
 Everything else travels as an envelope on `/api/*`, versioned with the shell and the
 built-in plugins as one artifact: an internal contract, not a standard.
+The table routes’ envelopes are one such contract, defined in one module,
+`metabrowser.table_source`, for every source.
 [Where diff documents come from](arch-diff-pipeline.md#where-documents-come-from) maps
 the sources that produce diff documents.
 
@@ -217,6 +224,8 @@ counts is missing here; the asset routes are not counted.
 Plugin hooks currently registered: `diff/document`, `diff/children`, and
 `diff/comparison` ([Diff Pipeline](arch-diff-pipeline.md)); `binary/chunk`,
 `structured/parsed`, and `agent-log/charts` ([Plugin System](arch-plugin-system.md));
+`table/tables`, `table/schema`, `table/rows`, `table/record`, and `table/card`
+([Table Sources](arch-plugin-system.md#table-sources));
 and `github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
 `github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff`,
 `github/pull-timeline`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`,

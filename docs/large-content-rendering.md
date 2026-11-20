@@ -327,6 +327,12 @@ this standard. Paths are under `src/metabrowser/`.
 | `INERT_RENDER_DEADLINE_MS` | `diff/markdown_projection_worker.py` | One untrusted Markdown document’s render in the server’s Markdown child; past it the child is stopped and the page shows the document’s source |
 | `_MAX_RENDERS` | `diff/markdown_projection_worker.py` | Distinct untrusted Markdown renders in flight at once, the one in the Markdown child among them; past it a render is answered `503` with the code `renderer_busy`, which is not kept |
 | `ROWS_OVERSCAN` | `static/source-ref-selector.js` | Rows the branch and tag chooser draws beyond its list’s view; the list holds every ref, so the window, not the repository, bounds the rows drawn |
+| `TABLE_PAGE_ROWS_DEFAULT`, `TABLE_PAGE_ROWS_MAX` | `table_source.py` | Rows in one page of a table, when a query names no `limit` and at most |
+| `TABLE_CELL_PREVIEW_CHARS`, `TABLE_RECORD_VALUE_BYTES` | `table_source.py` | One text value in a page of rows, and in a record; a longer one is cut and says its length |
+| `TABLE_TOKEN_MAX_CHARS` | `table_source.py` | A record key or a cursor in a link; a longer one is named by position, valid for one generation |
+| `TABLE_REQUEST_DEADLINE_SECONDS` | `table_source.py` | A table request’s scan; past it a filter or search answers the rows it found with `complete: false` |
+| `DELIMITED_PARSE_MAX_BYTES` | `builtin_plugins/delimited/source.py` | The bytes of a `.csv` or `.tsv` file read as a table; past it the table holds the leading rows and says so |
+| `DELIMITED_CACHE_MAX_ENTRIES`, `DELIMITED_CACHE_MAX_BYTES` | `builtin_plugins/delimited/source.py` | Server memory for parsed delimited files |
 | `SUMMARY_ROWS_OVERSCAN` | `builtin_plugins/diff/diff-summary.js` | Diff summary rows mounted on either side of the window’s view of its tree, which has no scroll of its own and no length bound beyond `MAX_MANIFEST_FILES` |
 
 ## References
