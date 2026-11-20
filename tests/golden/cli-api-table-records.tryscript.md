@@ -121,7 +121,7 @@ status: 200
       "format": null,
       "ref": null,
       "sortable": true,
-      "sort_note": "values of several types: nulls first, then numbers, then text, then nested values",
+      "sort_note": "values of several types: nulls first, then numbers, then text, then nested values; a filter value that reads as a number matches numbers only",
       "filterable": true,
       "numeric": false
     },

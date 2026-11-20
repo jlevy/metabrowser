@@ -13,6 +13,7 @@ renderer rewrite when ``ruamel.yaml`` round-trip-with-comments lands.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import os
@@ -55,6 +56,9 @@ class StructuredPayload:
     # The bytes the parse read, which the record-list table source counts what a parse
     # holds by (records.py); 0 when nothing was parsed.
     source_bytes: int = 0
+    # False for a parse made without `pretty_yaml` (`serialize=False`), which
+    # `serialize_structured_payload` writes when the Tree view first asks for it.
+    serialized: bool = True
 
 
 def _count_nodes_and_depth(value: Any, depth: int = 0) -> tuple[int, int]:
@@ -215,18 +219,22 @@ def truncated_payload() -> StructuredPayload:
     )
 
 
-def _payload_from_parsed(
-    parsed: Any, *, label: str, source_bytes: int, serialize: bool
-) -> StructuredPayload:
+def _pretty_yaml(parsed: Any, label: str) -> str:
     try:
-        pretty_yaml = _serialize_to_yaml(parsed) if serialize else ""
+        return _serialize_to_yaml(parsed)
     except Exception as exc:
         # Parsing succeeded but serialization failed — uncommon (the
         # output is just structured data the YAML serializer should
         # handle), so log loudly and ship the parsed tree with an
         # empty pretty_yaml. The client still gets the tree view.
         LOG.warning("structured: failed to serialize %s to YAML: %s", label, exc, exc_info=True)
-        pretty_yaml = ""
+        return ""
+
+
+def _payload_from_parsed(
+    parsed: Any, *, label: str, source_bytes: int, serialize: bool
+) -> StructuredPayload:
+    pretty_yaml = _pretty_yaml(parsed, label) if serialize else ""
     node_count, max_depth = _count_nodes_and_depth(parsed)
     return StructuredPayload(
         parsed=parsed,
@@ -236,6 +244,17 @@ def _payload_from_parsed(
         parse_error=None,
         truncated=False,
         source_bytes=source_bytes,
+        serialized=serialize,
+    )
+
+
+def serialize_structured_payload(payload: StructuredPayload) -> StructuredPayload:
+    """*payload* with its canonical YAML written, from its own parse."""
+
+    if payload.serialized:
+        return payload
+    return dataclasses.replace(
+        payload, pretty_yaml=_pretty_yaml(payload.parsed, "cached parse"), serialized=True
     )
 
 

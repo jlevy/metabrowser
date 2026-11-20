@@ -46,7 +46,13 @@ from datetime import date, datetime
 from typing import Any
 
 from metabrowser.builtin_plugins.table import memory
-from metabrowser.builtin_plugins.table.memory import MemoryCache, SortKey, index_bytes
+from metabrowser.builtin_plugins.table.memory import (
+    BUDGET_CHECK_ROWS,
+    NULL_KEY,
+    MemoryCache,
+    SortKey,
+    index_bytes,
+)
 from metabrowser.plugin_api import (
     TABLE_CARD_MAX_FIELDS,
     TABLE_CELL_PREVIEW_CHARS,
@@ -316,6 +322,13 @@ class _Parsed:
     def row_count(self) -> int:
         return len(self.rows)
 
+    @property
+    def budget_check_rows(self) -> int:
+        return BUDGET_CHECK_ROWS
+
+    def is_null(self, index: int, column: int) -> bool:
+        return self.sort_key(index, column) == NULL_KEY
+
     def sort_key(self, index: int, column: int) -> SortKey:
         return self.columns[column].sort_key(self.value(index, column))
 
@@ -348,6 +361,12 @@ class _Parsed:
         max_bytes: int | None = None,
     ) -> dict[str, Cell]:
         return _cells(self, index, _plan(self, names), max_chars=max_chars, max_bytes=max_bytes)
+
+    def page_cells(
+        self, indexes: Sequence[int], names: Sequence[str], *, max_chars: int
+    ) -> list[dict[str, Cell]]:
+        plan = _plan(self, names)
+        return [_cells(self, index, plan, max_chars=max_chars) for index in indexes]
 
 
 def _column_names(header: Sequence[str]) -> list[str]:

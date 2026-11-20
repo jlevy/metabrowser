@@ -8,9 +8,12 @@ and through the structured plugin's ``parsed`` route where the two share a parse
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import os
+import time
 from collections.abc import Iterator
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +27,14 @@ from metabrowser.builtin_plugins.structured import parser, records
 from metabrowser.builtin_plugins.table import memory
 from metabrowser.git.tree_source import GitPath
 from metabrowser.plugin_loader.static_assets import build_plugin_routes
-from metabrowser.table_source import TABLE_CELL_PREVIEW_CHARS, Budget
+from metabrowser.table_source import (
+    TABLE_CELL_PREVIEW_CHARS,
+    TABLE_REQUEST_DEADLINE_SECONDS,
+    Budget,
+    Filter,
+    FilterOp,
+    TableQuery,
+)
 from tests.git_pin_harness import fast_import_store, pinned_client
 
 
@@ -72,6 +82,28 @@ def _write(tmp_path: Path, name: str, value: Any) -> str:
 
 def _types(client: TestClient, path: str) -> dict[str, str]:
     return {field["name"]: field["type"] for field in _ok(client, "schema", path)["fields"]}
+
+
+def _payload(parsed: Any) -> parser.StructuredPayload:
+    """A parse made in memory, for a document no file needs to hold."""
+
+    return parser.StructuredPayload(
+        parsed=parsed,
+        pretty_yaml="",
+        node_count=1,
+        max_depth=1,
+        parse_error=None,
+        truncated=False,
+        source_bytes=1,
+    )
+
+
+def records_query(**params: Any) -> TableQuery:
+    return TableQuery(**params)
+
+
+def _compact(value: Any) -> str:
+    return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
 
 
 # ── The table ────────────────────────────────────────────────
@@ -166,6 +198,12 @@ def test_a_yaml_date_is_a_date_and_a_value_json_cannot_carry_is_its_text(
         "big": {"int": "123456789012345678901"},
         "nested": {"json": {"inf": "Infinity", "day": "2024-01-02", "bin": "6869"}},
     }
+    # A field whose values are all binary, or all sets, is text: none of its values is a
+    # date, and no type is inferred from an empty sample of text.
+    (tmp_path / "b.yaml").write_text("- {b: !!binary aGVsbG8=, s: !!set {a}}\n")
+    assert _types(client, "b.yaml") == {"b": "text", "s": "text"}
+    (cells,) = _cells(_ok(client, "rows", "b.yaml"))
+    assert cells == {"b": "68656c6c6f", "s": "{'a'}"}
 
 
 def test_a_later_value_that_contradicts_its_field_is_shown_as_stored(
@@ -306,13 +344,150 @@ def test_an_exhausted_budget_returns_what_it_found(
 
     monkeypatch.setattr(Budget, "start", classmethod(spent))
     body = _ok(client, "rows", path, limit="2", **{"f.n": "ge:0"})
+    # A record's values cost more than a delimited cell's and not by a bound, so a scan
+    # of records reads its budget every few rows.
     assert (body["complete"], body["reason"], body["examined"]) == (
         False,
         "budget",
-        memory.BUDGET_CHECK_ROWS,
+        records.RECORDS_BUDGET_CHECK_ROWS,
     )
     refused = _ok(client, "rows", path, sort="n")
     assert (refused["rows"], refused["reason"], refused["sort_refused"]) == ([], "sort_budget", "n")
+
+
+def test_a_sort_index_whose_build_outlasts_the_budget_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    built = records.build_records(_payload([{"n": n} for n in range(100)]), "g")
+    checks = iter([False, True])  # spent once the build has begun
+    budget = Budget(deadline=float("inf"))
+    monkeypatch.setattr(Budget, "expired", lambda self: next(checks, True))
+    body = memory.page(built, records_query(sort="n"), budget)
+    assert (body.reason, body.sort_refused, body.rows) == ("sort_budget", "n", ())
+    assert built.sort_indexes == {}
+
+
+# ── Hostile documents ────────────────────────────────────────
+
+
+def test_an_aliased_value_costs_its_bounds_not_its_expansion() -> None:
+    # Every row refers to one long list, as YAML aliases make it: the file holds the
+    # list once, and a query that wrote it out for each row would cost thousands of
+    # times the file's bytes.
+    shared = list(range(50_000))
+    built = records.build_records(_payload([{"v": shared, "n": n} for n in range(2_000)]), "g")
+    whole = _compact(shared)
+
+    def timed(query: TableQuery) -> tuple[Any, float]:
+        started = time.perf_counter()
+        page = memory.page(built, query, Budget.start())
+        return page, time.perf_counter() - started
+
+    # Null tests read no text, and a page writes each value only to its preview.
+    nulls: tuple[tuple[FilterOp, int], ...] = (("notnull", 2_000), ("null", 0))
+    for op, count in nulls:
+        page, took = timed(records_query(filters=(Filter("v", op, None),), cols=("v",)))
+        assert (page.count, page.complete) == (count, True)
+        assert took < 1.0, (op, took)
+    page, took = timed(records_query(cols=("v",), limit=500))
+    assert len(page.rows) == 500 and took < 1.0, took
+    assert page.rows[0].cells["v"] == {
+        "text": whole[:TABLE_CELL_PREVIEW_CHARS],
+        "length": len(whole),
+    }
+    # A filter reads a nested value up to the bound a record shows, and a scan that runs
+    # past its budget says so instead of answering late.
+    reads: tuple[tuple[FilterOp, str], ...] = (("contains", "zzz"), ("eq", "[1]"))
+    for op, value in reads:
+        page, took = timed(records_query(filters=(Filter("v", op, value),)))
+        assert took < TABLE_REQUEST_DEADLINE_SECONDS + 1.0, (op, took)
+        assert page.complete or (page.reason, page.examined) == ("budget", page.examined)
+        assert page.complete or 0 < (page.examined or 0) < 2_000
+    record = built.cells(0, ("v",), max_bytes=records.TABLE_RECORD_VALUE_BYTES)
+    assert record["v"] == {
+        "text": whole[: records.TABLE_RECORD_VALUE_BYTES],
+        "length": len(whole),
+    }
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        [],
+        {},
+        [1, -2.5, True, None, 'a"b\\c\n\u00e9\u2028', {"k": [{}, []]}],
+        {"x": {"y": [1, 2, {"z": "w" * 100}]}, 1: "one", None: [float("inf")]},
+        [date(2024, 1, 2), b"hi", 10**40, float("nan")],
+    ],
+)
+def test_a_nested_value_is_written_and_counted_as_its_json(value: Any) -> None:
+    whole = _compact(records._json_safe(value))  # pyright: ignore[reportPrivateUsage]
+    assert records._json_length(value, {}) == len(whole)  # pyright: ignore[reportPrivateUsage]
+    for limit in range(len(whole) + 2):
+        written = records._json_text(value, limit)  # pyright: ignore[reportPrivateUsage]
+        assert written == whole[: limit + 1], limit
+
+
+def test_a_yaml_alias_reads_as_the_value_it_names(client: TestClient, tmp_path: Path) -> None:
+    items = ", ".join(str(n) for n in range(200))
+    (tmp_path / "a.yaml").write_text(
+        f"- {{v: &a [{items}], n: 1}}\n- {{v: *a, n: 2}}\n- {{v: *a, n: 3}}\n- {{n: 4}}\n"
+    )
+    whole = _compact(list(range(200)))
+    body = _ok(client, "rows", "a.yaml", cols="v")
+    assert _cells(body) == [
+        {"v": {"text": whole[:TABLE_CELL_PREVIEW_CHARS], "length": len(whole)}}
+    ] * 3 + [{}]
+    assert _keys(_ok(client, "rows", "a.yaml", **{"f.v": "notnull"})) == ["@1", "@2", "@3"]
+    assert _keys(_ok(client, "rows", "a.yaml", **{"f.v": "contains:,199]"})) == ["@1", "@2", "@3"]
+    assert _ok(client, "record", "a.yaml", key="@3")["cells"]["v"] == {"json": list(range(200))}
+
+
+@pytest.mark.parametrize(
+    ("name", "text"),
+    [
+        ("self.yaml", "- a: &x [*x]\n"),
+        ("deep.json", '[{"a": ' + "[" * 3_000 + "]" * 3_000 + "}]"),
+    ],
+    ids=["refers-to-itself", "nested-3000-deep"],
+)
+def test_a_document_nested_past_the_parse_or_referring_to_itself_is_refused(
+    client: TestClient, tmp_path: Path, name: str, text: str
+) -> None:
+    (tmp_path / name).write_text(text)
+    for route in ("schema", "rows"):
+        status, body = _get(client, route, name)
+        assert (status, body["code"]) == (422, "source_unreadable"), body
+        assert "nested too deeply or refers to itself" in body["error"]
+
+
+def test_a_lone_surrogate_is_shown_replaced(client: TestClient, tmp_path: Path) -> None:
+    (tmp_path / "a.json").write_text(
+        '[{"t": "a\\ud800b", "\\udc00k": 1, "j": ["\\ud800"]}, {"t": "c"}]'
+    )
+    assert _ok(client, "rows", "a.json")["columns"] == ["t", "\ufffdk", "j"]
+    cells = _cells(_ok(client, "rows", "a.json"))
+    assert cells[0] == {
+        "t": {"text": "a\ufffdb", "invalid_utf8": True},
+        "\ufffdk": 1,
+        "j": {"json": ["\ufffd"]},
+    }
+    # A sort cursor that cannot carry the value names its position instead.
+    page = _ok(client, "rows", "a.json", sort="t", order="asc", limit="1")
+    assert page["next_after"] is not None
+    assert _keys(_ok(client, "rows", "a.json", sort="t", limit="1", after=page["next_after"])) == [
+        "@2"
+    ]
+
+
+def test_an_aliased_parse_is_estimated_by_its_bytes() -> None:
+    payload = _payload([{"v": 1}])
+    built = records.build_records(
+        dataclasses.replace(payload, node_count=10**9, source_bytes=100), "g"
+    )
+    assert built.parsed_bytes == 100 * (
+        records._HELD_BYTES_PER_SOURCE_BYTE + records._HELD_BYTES_PER_NODE  # pyright: ignore[reportPrivateUsage]
+    )
 
 
 # ── What is not a list of records ────────────────────────────
@@ -420,7 +595,7 @@ def test_a_change_moves_the_generation_and_is_read(client: TestClient, tmp_path:
     assert record["generation_moved"] is True
 
 
-def test_the_table_reads_the_trees_parse_and_never_writes_its_yaml(
+def test_the_table_and_the_tree_share_one_parse_in_either_order(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[tuple[str, bool]] = []
@@ -438,13 +613,25 @@ def test_the_table_reads_the_trees_parse_and_never_writes_its_yaml(
         _ok(client, route, path, **({"key": "@1"} if route in ("record", "card") else {}))
     assert calls == [(".json", True)]
     # A table read first parses without the canonical YAML, which the Tree view's route
-    # writes when it is first shown.
+    # writes from that parse when it is first shown.
     other = _write(tmp_path, "b.json", [{"a": 1}])
     _ok(client, "rows", other)
     _ok(client, "schema", other)
-    tree = client.get("/api/plugin/structured/parsed", params={"path": other})
-    assert (tree.status_code, tree.json()["pretty_yaml"]) == (200, "  - a: 1\n")
-    assert calls == [(".json", True), (".json", False), (".json", True)]
+    for _ in range(2):
+        tree = client.get("/api/plugin/structured/parsed", params={"path": other})
+        assert (tree.status_code, tree.json()["pretty_yaml"]) == (200, "  - a: 1\n")
+    assert calls == [(".json", True), (".json", False)]
+    # A document that is not a list of records is parsed once, however often the Table
+    # tab asks, and its refusal is remembered for the file's generation.
+    mapping = _write(tmp_path, "c.json", {"a": 1})
+    for route in ("schema", "rows", "rows", "schema"):
+        assert _get(client, route, mapping)[0] == 422
+    assert calls == [(".json", True), (".json", False), (".json", False)]
+    parser._PAYLOAD_CACHE.clear()  # pyright: ignore[reportPrivateUsage]
+    assert _get(client, "rows", mapping)[0] == 422
+    assert calls == [(".json", True), (".json", False), (".json", False)]
+    tree = client.get("/api/plugin/structured/parsed", params={"path": mapping})
+    assert (tree.status_code, tree.json()["pretty_yaml"]) == (200, "a: 1\n")
 
 
 def test_a_git_pin_reads_a_record_list(tmp_path: Path) -> None:
