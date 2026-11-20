@@ -19,6 +19,7 @@ from metabrowser.cli.plugins import requirement_details
 from metabrowser.plugin_loader.discovery import LoadedPlugin, discover_plugins, resolve_requirements
 from metabrowser.plugin_loader.manifest import (
     PLUGIN_SDK_VERSION,
+    TABLE_PLUGIN,
     PluginInfo,
     PluginManifest,
     load_manifest,
@@ -164,20 +165,25 @@ def _builtin_manifests() -> dict[str, tuple[Path, PluginManifest]]:
 
 def test_every_builtin_loads_exactly_the_providers_it_declares() -> None:
     """A provider a plugin loads but does not declare is unchecked by discovery and
-    unreported by the doctor; one it declares but never loads refuses it for nothing."""
-    loaded: dict[str, set[str]] = {}
+    unreported by the doctor; one it declares but never loads refuses it for nothing.
+    A plugin with a ``[[table_source]]`` requires the table plugin, whose routes serve
+    it, whether or not its browser code loads it."""
+    used: dict[str, set[str]] = {}
     declared: dict[str, set[str]] = {}
     for name, (directory, manifest) in _builtin_manifests().items():
         sources = "\n".join(
             path.read_text(encoding="utf-8") for path in sorted(directory.rglob("*.js"))
         )
         # A provider's own comments name the call its dependents make.
-        loaded[name] = set(_LOAD_CALL.findall(sources)) - {manifest.plugin.name}
+        used[name] = set(_LOAD_CALL.findall(sources)) - {manifest.plugin.name}
+        if manifest.table_source:
+            used[name].add(TABLE_PLUGIN)
         declared[name] = set(manifest.plugin.requires)
-    assert loaded == declared
+    assert used == declared
     assert declared == {
         "agent_log": {"structured"},
         "binary": set(),
+        "delimited": {"table"},
         "diff": {"structured"},
         "folder": {"markdown"},
         "github": {"markdown"},
@@ -185,6 +191,7 @@ def test_every_builtin_loads_exactly_the_providers_it_declares() -> None:
         "image": set(),
         "markdown": set(),
         "structured": set(),
+        "table": set(),
         "text": set(),
         "unknown_jsonl": set(),
     }
