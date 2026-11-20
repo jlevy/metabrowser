@@ -38,6 +38,7 @@ import json
 from collections.abc import Sequence
 from typing import Any, Final, cast
 
+from metabrowser.builtin_plugins.sqlite import reader
 from metabrowser.builtin_plugins.sqlite.database import (
     Database,
     blob_too_large,
@@ -270,7 +271,7 @@ class SqliteSource:
                 id=table_segment(str(item["name"])),
                 label=str(item["name"]),
                 group=item["group"],
-                keyed=item["type"] == "table",
+                keyed=bool(item["keyed"]),
                 estimate=item["estimate"],
             )
             for item in catalog["objects"]
@@ -643,10 +644,9 @@ def _column(description: dict[str, Any], name: str) -> str:
 
 def _sortable(description: dict[str, Any]) -> tuple[set[str], str | None]:
     """The fields that sort past the unindexed bound, and the note for the rest."""
-    from metabrowser.builtin_plugins.sqlite.reader import SORT_UNINDEXED_MAX_ROWS
-
+    limit = reader.SORT_UNINDEXED_MAX_ROWS
     upto = description["rows_upto"]
-    if upto is not None and upto <= SORT_UNINDEXED_MAX_ROWS:
+    if upto is not None and upto <= limit:
         return {column["name"] for column in description["columns"]} | set(description["key"]), None
     fast = set(description["key"][:1])
     for index in description["indexes"]:
@@ -659,7 +659,7 @@ def _sortable(description: dict[str, Any]) -> tuple[set[str], str | None]:
         )
     else:
         note = (
-            f"only indexed fields sort in an object of more than {SORT_UNINDEXED_MAX_ROWS:,} "
+            f"only indexed fields sort in an object of more than {limit:,} "
             "rows: a sort of this field would read and sort every row first"
         )
     return fast, note

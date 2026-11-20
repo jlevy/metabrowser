@@ -317,6 +317,10 @@ def catalog(connection: sqlite3.Connection, deadline: float) -> dict[str, Any]:
     for item in objects:
         item["group"] = _group(item, application_id)
         item["estimate"] = estimates.get(str(item["name"]).lower())
+        keyed = item["type"] == "table" and bool(
+            _key(item, _columns(connection, str(item["name"])))[0]
+        )
+        item["keyed"] = keyed
     return {"application_id": application_id, "encoding": encoding, "objects": objects}
 
 
@@ -444,7 +448,12 @@ def _key(item: dict[str, Any], columns: list[dict[str, Any]]) -> tuple[list[str]
 
 
 def describe(
-    connection: sqlite3.Connection, name: str, deadline: float, *, virtual_ok: bool
+    connection: sqlite3.Connection,
+    name: str,
+    deadline: float,
+    *,
+    virtual_ok: bool,
+    sort_rows: int = SORT_UNINDEXED_MAX_ROWS,
 ) -> dict[str, Any] | None:
     connection.text_factory = bytes
     objects = _objects(connection)
@@ -479,7 +488,7 @@ def describe(
         rows, stopped = _fetch(
             connection,
             f"SELECT count(*) FROM (SELECT 1 FROM {quote(exact)} LIMIT ?)",
-            (SORT_UNINDEXED_MAX_ROWS + 1,),
+            (sort_rows + 1,),
         )
         rows_upto = None if stopped or not rows else int(rows[0][0])
     return {
@@ -612,7 +621,13 @@ def _predicates(spec: dict[str, Any]) -> tuple[list[str], list[Any], list[str]]:
             skips.append(f"(octet_length({q}) > {sqlite_access.VALUE_MAX_BYTES})")
         else:
             mark, param = bind(item["value"])
-            clauses.append(f"({_guard(column)} AND {q} {_OPERATORS[op]} {mark})")
+            typed = ""
+            if op in ("lt", "le", "gt", "ge"):
+                # An order compares values of the filter's own kind: SQLite orders every
+                # text after every number, so text in a numeric column is no match.
+                kinds = "'text'" if isinstance(param, str) else "'integer', 'real'"
+                typed = f"typeof({q}) IN ({kinds}) AND "
+            clauses.append(f"({typed}{_guard(column)} AND {q} {_OPERATORS[op]} {mark})")
             params.append(param)
             skips.append(f"(octet_length({q}) > {sqlite_access.VALUE_MAX_BYTES})")
     search = spec.get("search")
@@ -732,9 +747,13 @@ def _split(
         key_values.append(_wire(kind, row[at + 1]))
         at += 2
     sort_value: Wire = None
+    # The region of the order the row is in: the sort field's nulls, its values, or the
+    # key's order when nothing is sorted.
+    region = "k"
     if spec.get("sort") is not None:
         kind = row[at].decode() if isinstance(row[at], bytes) else str(row[at])
         sort_value = _wire(kind, row[at + 1])
+        region = "n" if kind == "null" else "v"
         at += 2
     rowid: Any = None
     if spec.get("rowid") is not None:
@@ -747,6 +766,7 @@ def _split(
     return {
         "key": key_values,
         "sort": sort_value,
+        "region": region,
         "rowid": rowid,
         "cells": cells,
     }
@@ -803,9 +823,7 @@ def _page(connection: sqlite3.Connection, spec: dict[str, Any], deadline: float)
                 sql, values = _region_sql(spec, region, after, select, where, params, positioned)
                 rows, stopped = _fetch(connection, sql, [*values, want])
                 for row in rows:
-                    split = _split(row, spec, positioned, columns)
-                    split["region"] = region
-                    found.append(split)
+                    found.append(_split(row, spec, positioned, columns))
                 if stopped:
                     break
     except sqlite3.Error as exc:
@@ -954,7 +972,8 @@ def _count(
     skip = " + ".join(skips) if skips else "0"
     rows, stopped = _fetch(
         connection,
-        f"SELECT count(*), sum(m), sum(s) FROM (SELECT ({match}) AS m, ({skip}) AS s "
+        f"SELECT count(*), sum(m), sum(s) FROM (SELECT CASE WHEN {match} THEN 1 ELSE 0 END AS m, "
+        f"({skip}) AS s "
         f"FROM {table} LIMIT ?)",
         [*params, cap + 1],
     )
@@ -1076,7 +1095,11 @@ def _describe_op(args: dict[str, Any], deadline: float) -> dict[str, Any] | None
         args,
         deadline,
         lambda connection: describe(
-            connection, str(args["table"]), deadline, virtual_ok=bool(args.get("virtual_ok"))
+            connection,
+            str(args["table"]),
+            deadline,
+            virtual_ok=bool(args.get("virtual_ok")),
+            sort_rows=int(args.get("sort_rows") or SORT_UNINDEXED_MAX_ROWS),
         ),
     )
     return value

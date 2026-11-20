@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
+from metabrowser.builtin_plugins.sqlite import reader
 from metabrowser.capabilities import capabilities_for
 from metabrowser.source import ContentRef, get_source_session
 from metabrowser.sqlite_access import SqliteAccessError, sqlite_generation
@@ -166,7 +167,11 @@ def cached(database: Database, what: str, name: str, *, deadline: float) -> Any:
     else:
         value = database.call(
             "sqlite_describe",
-            {"table": name, "virtual_ok": database.virtual_ok},
+            {
+                "table": name,
+                "virtual_ok": database.virtual_ok,
+                "sort_rows": reader.SORT_UNINDEXED_MAX_ROWS,
+            },
             deadline=deadline,
         )
         if value is None:

@@ -190,10 +190,12 @@ ADAPTER_FUNCTIONS: Final = frozenset(
 ADAPTER_SCHEMA_PRAGMAS: Final = frozenset(
     {"foreign_key_list", "index_list", "index_xinfo", "table_list", "table_xinfo"}
 )
-# Pragmas the adapter reads, never with a value.
+# Pragmas the adapter reads, never with a value. `data_version` is read by FTS5 itself
+# whenever a query touches one of its tables, so a virtual table read through it needs it.
 ADAPTER_PRAGMAS: Final = frozenset(
     {
         "application_id",
+        "data_version",
         "encoding",
         "freelist_count",
         "journal_mode",
