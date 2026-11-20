@@ -349,6 +349,21 @@ def _plugin_kind_for_git_path(
     )
 
 
+async def _blob_container_kind(subject: GitRevisionSubject, entry: GitTreeEntry) -> str | None:
+    """The container kind a blob is by its magic number, such as a SQLite database's
+    whatever its name, or None for a blob no container kind claims."""
+
+    from metabrowser.server import _container_kinds
+
+    head, _size = await subject.tree_source.read_blob_window(
+        entry.oid, offset=0, max_bytes=SNIFF_PREFIX_BYTES
+    )
+    if classify_prefix(head) is not ContentClass.BINARY:
+        return None
+    kind = plugin_magic_kind(head)
+    return kind if kind in _container_kinds() else None
+
+
 def plugin_magic_kind(prefix: bytes) -> str:
     """The kind of a blob whose bytes sniff as binary: a plugin kind whose ``magic``
     bytes *prefix* holds, or ``binary``. A stored blob is never decompressed, so its
@@ -2233,15 +2248,15 @@ async def _windowed_jsonl_response(
     return _json(_with_requested_path(payload, entry, requested, ages))
 
 
-def _patch_container_payload(
-    entry: GitTreeEntry, *, wire: str, inner: str, path: GitPath
+def _container_child_payload(
+    entry: GitTreeEntry, *, wire: str, inner: str, path: GitPath, kind: str = "diff"
 ) -> dict[str, Any]:
     ext = blob_logical_ext(entry.path)
     return {
         "subject": "git_revision",
         "type": "text",
-        "kind": "diff",
-        "views": _views_for_kind("diff"),
+        "kind": kind,
+        "views": _views_for_kind(kind),
         "path": wire,
         "display": path.display(),
         "container": path.to_wire(),
@@ -2279,11 +2294,18 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
             return _json(_NOT_FOUND, status_code=404)
         try:
             entry = await resolve_git_blob_entry(subject.tree_source, path)
-            if entry is None or blob_logical_ext(entry.path) not in _PATCH_EXTS:
+            if entry is None:
                 return _json(_NOT_FOUND, status_code=404)
+            kind = (
+                "diff"
+                if blob_logical_ext(entry.path) in _PATCH_EXTS
+                else await _blob_container_kind(subject, entry)
+            )
         except GitObjectUnavailableError:
             return _json(_NOT_FOUND, status_code=404)
-        return _json(_patch_container_payload(entry, wire=wire, inner=inner, path=path))
+        if kind is None:
+            return _json(_NOT_FOUND, status_code=404)
+        return _json(_container_child_payload(entry, wire=wire, inner=inner, path=path, kind=kind))
     try:
         entry = await subject.tree_source.resolve_path(path)
         if entry is None:

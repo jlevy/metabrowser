@@ -427,10 +427,16 @@ def test_virtual_tables_are_read_only_where_trusted(client: TestClient) -> None:
 @needs_git
 def test_a_pinned_database_lists_and_reads_its_tables(tmp_path: Path) -> None:
     built = build(tmp_path / "app.db", (FIXTURES / "snapshot.sql").read_text(encoding="utf-8"))
-    store, commit = fast_import_store(tmp_path, {b"app.db": built.read_bytes()})
+    store, commit = fast_import_store(
+        tmp_path, {b"app.db": built.read_bytes(), b"History": built.read_bytes()}
+    )
 
     async def run() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
         async with pinned_client(store, commit) as (pinned, _subject):
+            # A table's address is a container child on a pin too, whatever the name.
+            for wire in ("g1-YXBwLmRi/items", "g1-SGlzdG9yeQ/items"):
+                child = (await pinned.get("/api/file", params={"path": wire})).json()
+                assert (child["kind"], child["container_inner"]) == ("sqlite", "items")
             listed = (
                 await pinned.get("/api/plugin/table/tables", params={"path": "g1-YXBwLmRi"})
             ).json()
