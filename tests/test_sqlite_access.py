@@ -385,3 +385,76 @@ def test_worker_module_registrations_are_bounded(
         sqlite_readers.register_worker_module(f"m{index}", module)
     with pytest.raises(ValueError, match="more than"):
         sqlite_readers.register_worker_module("one_more", module)
+
+
+# ── Schema pragmas and bounded attempts ────────────────────────
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT name FROM pragma_table_xinfo('t')",
+        "SELECT * FROM pragma_foreign_key_list('child')",
+        "SELECT * FROM pragma_index_list('t')",
+        "SELECT * FROM pragma_index_xinfo('t_name')",
+        "SELECT name FROM pragma_table_list WHERE schema = 'main'",
+        "SELECT name FROM pragma_table_list('t')",
+        "PRAGMA table_xinfo(t)",
+        "PRAGMA index_list(t)",
+    ],
+)
+def test_schema_pragmas_answer_with_an_argument(tmp_path: Path, sql: str) -> None:
+    db = _database(tmp_path / "app.db")
+    connection = sqlite3.connect(db)
+    connection.execute("CREATE INDEX t_name ON t(name)")
+    connection.execute("CREATE TABLE child(id INTEGER PRIMARY KEY, parent REFERENCES t(id))")
+    connection.close()
+    os.utime(db, (time.time() - 60, time.time() - 60))
+    assert _run(db, sql, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "PRAGMA journal_mode = wal",
+        "PRAGMA user_version = 1",
+        "PRAGMA writable_schema = 1",
+        "PRAGMA writable_schema",
+        "PRAGMA query_only = 0",
+        "PRAGMA trusted_schema = 1",
+        "SELECT * FROM pragma_writable_schema",
+        "SELECT * FROM pragma_query_only",
+        "SELECT * FROM pragma_trusted_schema",
+        "SELECT * FROM pragma_wal_checkpoint",
+        "SELECT * FROM pragma_journal_mode('wal')",
+        "SELECT * FROM pragma_user_version(1)",
+    ],
+)
+def test_pragmas_that_write_or_set_stay_refused(tmp_path: Path, sql: str) -> None:
+    db = _database(tmp_path / "app.db", wal=True)
+    before = db.read_bytes()
+    with pytest.raises(SqliteAccessError) as caught:
+        _run(db, sql, tmp_path)
+    assert caught.value.state in {"refused", "unreadable"}
+    assert db.read_bytes() == before
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["app.db"]
+
+
+def test_bounded_attempts_answer_without_waiting(tmp_path: Path) -> None:
+    db = _database(tmp_path / "app.db")
+    journal = tmp_path / "app.db-journal"
+    journal.write_bytes(b"\xd9\xd5\x05\xf9\x20\xa1\x63\xd7" + bytes(512))
+    started = time.monotonic()
+    with pytest.raises(SqliteAccessError) as caught:
+        read(db, lambda c: None, deadline=time.monotonic() + 5, scratch=tmp_path, attempts=1)
+    assert caught.value.state == "writer_busy"
+    assert time.monotonic() - started < 1
+    journal.unlink()
+    value, access = read(
+        db,
+        lambda c: c.execute("SELECT count(*) FROM t").fetchone()[0],
+        deadline=_deadline(),
+        scratch=tmp_path,
+        attempts=1,
+    )
+    assert (value, access.attempts) == (2, 1)

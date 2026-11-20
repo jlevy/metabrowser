@@ -177,6 +177,14 @@ READ_OPCODE_BUDGET: Final = 10_000_000
 # (the authorizer names the view), since `trusted_schema=OFF` already refuses there
 # every function not marked innocuous (the exploration's Encoding record).
 ADAPTER_FUNCTIONS: Final = frozenset({"count", "typeof", "octet_length", "max", "min"})
+# Pragmas that describe the schema and take an argument, the object they describe, as a
+# statement (`PRAGMA table_xinfo(t)`) or a table-valued function
+# (`SELECT * FROM pragma_table_xinfo('t')`). None writes or changes the connection, so
+# each is admitted with any argument; every other pragma with an argument is a setting
+# and is refused.
+ADAPTER_SCHEMA_PRAGMAS: Final = frozenset(
+    {"foreign_key_list", "index_list", "index_xinfo", "table_list", "table_xinfo"}
+)
 # Pragmas the adapter reads, never with a value.
 ADAPTER_PRAGMAS: Final = frozenset(
     {
@@ -519,7 +527,8 @@ def _authorizer(
     action: int, arg1: str | None, arg2: str | None, _db: str | None, inside: str | None
 ) -> int:
     """Admit reads only: SELECT, column reads, the adapter's functions and any function
-    inside a view, the adapter's pragmas without a value, and transactions."""
+    inside a view, the adapter's pragmas without a value, its schema pragmas with any
+    argument, and transactions."""
     if action in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_RECURSIVE):
         return sqlite3.SQLITE_OK
     if action == sqlite3.SQLITE_FUNCTION:
@@ -527,7 +536,8 @@ def _authorizer(
             return sqlite3.SQLITE_OK
         return sqlite3.SQLITE_DENY
     if action == sqlite3.SQLITE_PRAGMA:
-        if arg2 is None and (arg1 or "").lower() in ADAPTER_PRAGMAS:
+        name = (arg1 or "").lower()
+        if name in ADAPTER_SCHEMA_PRAGMAS or (arg2 is None and name in ADAPTER_PRAGMAS):
             return sqlite3.SQLITE_OK
         return sqlite3.SQLITE_DENY
     if action == sqlite3.SQLITE_TRANSACTION:
@@ -753,14 +763,18 @@ def read[T](
     scratch: Path,
     immutable_content: bool = False,
     opcodes: int = READ_OPCODE_BUDGET,
+    attempts: int | None = None,
 ) -> tuple[T, Access]:
     """Run *fn* in one short read transaction on the database at *path*.
 
     *deadline* is a ``time.monotonic()`` instant. *scratch* is a private folder the
-    caller created and removes, where private copies go. Raises
-    :class:`SqliteAccessError` with the state the request is shown as.
+    caller created and removes, where private copies go. *attempts*, when given, is the
+    most attempts to make, with no wait after the last: one is a read validated apart
+    with no wait, as a capped count is (Decision 10), whose caller falls back to an
+    estimate. Raises :class:`SqliteAccessError` with the state the request is shown as.
     """
     real = Path(os.path.realpath(path))
+    limit = attempts
     attempts = 0
     copy_failures = 0
     wait = RETRY_FIRST_SECONDS
@@ -779,6 +793,8 @@ def read[T](
                 return value, Access(plan, obs, attempts, notices)
             if plan.mode == "private_copy":
                 copy_failures += 1
+        if limit is not None and attempts >= limit:
+            break
         if time.monotonic() + wait >= deadline:
             break
         time.sleep(wait)
