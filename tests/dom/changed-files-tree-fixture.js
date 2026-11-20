@@ -44,7 +44,7 @@ function shellFormatters() {
  * document the caller has set up when it is called, and the one length a commit's ID is
  * shown at, `shortCommit`.
  *
- * @returns {Pick<MetabrowserPublicSdk, "countPartsNodes" | "changeLine" | "changeLineNodes" | "shortCommit">}
+ * @returns {Pick<MetabrowserPublicSdk, "countPartsNodes" | "changeLine" | "changeLineNodes" | "changeSizeLine" | "changeSizeLineNodes" | "formatSize" | "shortCommit">}
  */
 function shellPainters() {
   const formatters = shellFormatters();
@@ -54,6 +54,26 @@ function shellPainters() {
     changeLine: (change) => formatters.changeLine(change, formatters.formatInteger),
     changeLineNodes: (line, options) =>
       formatters.changeLineNodes(globalThis.document, line, options),
+    // The size line is a view helper (plugin-sdk-views.js), taken from the SDK as a page
+    // has it, drawing into the caller's document.
+    ...sizeLinePainters(),
+    formatSize: (bytes) => formatters.formatBytes(bytes),
+  };
+}
+
+/**
+ * The SDK's size-line helpers, from the real view helpers, drawing into whatever document
+ * the caller has set up when each is called.
+ * @returns {Pick<MetabrowserPublicSdk, "changeSizeLine" | "changeSizeLineNodes">}
+ */
+function sizeLinePainters() {
+  const sandbox = require("./sdk-sandbox.js").createSdkSandbox();
+  return {
+    changeSizeLine: (change) => sandbox.metabrowser.changeSizeLine(change),
+    changeSizeLineNodes: (line) => {
+      sandbox.document = globalThis.document;
+      return sandbox.metabrowser.changeSizeLineNodes(line);
+    },
   };
 }
 
