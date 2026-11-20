@@ -5,7 +5,7 @@ title: Tabular data browsing and live SQLite
 kind: epic
 status: in_progress
 priority: 2
-version: 22
+version: 23
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
 refs:
   - kind: pr
@@ -39,8 +39,9 @@ child_order_hints:
   - is-01m7vtd4bjh7f8rsg0z9jqy9w6
   - is-01m7vtd571483vj430fqd5tw4y
   - is-01m7v9mwy0ye52geq4eqdxwz5a
+  - is-01m7xkmrfcwfdjb4g8zs93hxbt
 created_at: 2026-11-19T21:26:01.444Z
-updated_at: 2026-11-20T19:15:51.928Z
+updated_at: 2026-11-20T23:11:09.803Z
 extensions:
   linear:
     id: da4dab2f-0682-4c31-8c9a-29da1bda661e
