@@ -225,6 +225,45 @@ try {
     };
   })()`);
 
+  // 2b. A scroll the page makes, with the redraw of something else in the same task: no
+  // scroll event has come for it yet, so nothing but the scroll position itself says where
+  // the list is. The Files toolbar's redraw, which a tally arriving makes whenever the index
+  // is still warming, takes the list out of the page and puts it back, and a redraw of the
+  // list's own rows is anchored to where the reader is: neither may put the list anywhere
+  // but where the scroll put it (the nightly soak's 6 for 1001, mb-tjbm).
+  const SCROLL_THEN = (what, target) => `(async () => {
+    const list = ${LIST};
+    const row = list.querySelector(".source-ref-selector-item").getBoundingClientRect().height;
+    list.scrollTop = 0;
+    await ${FRAMES};
+    const at = ${target};
+    const want = Math.round(at * row - (list.clientHeight - row) / 2);
+    list.scrollTop = want;
+    ${what}
+    await ${FRAMES};
+    const box = list.getBoundingClientRect();
+    const under = document.elementFromPoint(box.left + box.width / 2, box.top + list.clientTop + list.clientHeight / 2);
+    const item = under?.closest(".source-ref-selector-item");
+    return {
+      want,
+      got: list.scrollTop,
+      expectedIndex: at + 1,
+      centerIndex: item ? Number(item.getAttribute("aria-posinset")) : null,
+      drawn: list.querySelectorAll("button").length,
+    };
+  })()`;
+  result.scrollThenToolbar = await chrome.evaluate(SCROLL_THEN("renderNavFilterBar();", 700));
+  result.scrollThenToolbarTwice = await chrome.evaluate(
+    SCROLL_THEN("renderNavFilterBar(); renderNavFilterBar();", 1200),
+  );
+  // The list's own render, as a poll or a stale-page notice makes one, in the same task.
+  result.scrollThenRender = await chrome.evaluate(
+    SCROLL_THEN(
+      `window.dispatchEvent(new CustomEvent("metabrowser:pin-changed", { detail: { pin: "x" } }));`,
+      1500,
+    ),
+  );
+
   // 3. End and Home, from the first row: End's row was never drawn before the key.
   await chrome.evaluate(`(async () => {
     ${LIST}.scrollTop = 0;

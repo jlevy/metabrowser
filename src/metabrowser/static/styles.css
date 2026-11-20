@@ -5339,15 +5339,22 @@ a.tab-btn {
    tooltips to document.body. Keyed on the host, the diff drew KPress's own
    palette: its text and link colors, its border and muted tones on quoted text
    and code, and in the dark theme a darker ground than the page's. So this and
-   the corner bridge below key on `.kpress` anywhere under `:root`. */
-:root .kpress,
-:root .kpress-tooltip {
-  --kpress-doc-bg: var(--bg);
-  --kpress-doc-text: var(--text);
-  --kpress-doc-muted: var(--muted);
-  --kpress-doc-border: var(--border);
-  --kpress-doc-link: var(--link);
-  --kpress-code-border: var(--code-border);
+   the corner bridge below key on `.kpress` anywhere under `:root`.
+
+   On screen only. Paper takes KPress's print palette (print.css): black text and links on
+   white, whatever the app's theme. Bridged in print too, the app's palette outranked it,
+   so a document printed with the app's blue links, and in the dark theme on a dark ground
+   with light code. */
+@media screen {
+  :root .kpress,
+  :root .kpress-tooltip {
+    --kpress-doc-bg: var(--bg);
+    --kpress-doc-text: var(--text);
+    --kpress-doc-muted: var(--muted);
+    --kpress-doc-border: var(--border);
+    --kpress-doc-link: var(--link);
+    --kpress-code-border: var(--code-border);
+  }
 }
 
 /* Corner radius is a host decision, unlike the size ramp KPress owns.
@@ -7220,8 +7227,16 @@ pre.code-block.metabrowser-source-lines > code {
 
 /* ── Print adapter: host chrome only, document styling stays in KPress ── */
 @media print {
+  /* KPress's page margin, `--kpress-print-page-margin` (style-tokens.css), as a length:
+     WebKit, the macOS app's engine, resolves no custom property in `@page`, so KPress's
+     own `margin: var(…)` (print.css) printed the app's pages edge to edge. Important,
+     because print.css loads after this sheet; `@page :left` and `:right`, which would
+     outrank it without, printed a single page in WebKit (2026-11-19). Chrome resolves
+     KPress's own rule to the same length. tests/test_kpress_print_contract.py holds the
+     copy to the token. */
   @page {
-    margin: var(--kpress-print-page-margin);
+    /* biome-ignore lint/complexity/noImportantStyles: print.css's @page loads later, and a page pseudo-class to outrank it printed one page in WebKit. */
+    margin: 0.7in !important;
   }
 
   html,
@@ -7277,6 +7292,14 @@ pre.code-block.metabrowser-source-lines > code {
   .preview-frame {
     transform: none;
     box-shadow: none;
+  }
+
+  /* Containment breaks it too: WebKit does not apply a document's break rules inside the
+     pane while the pane is a size container, so a heading printed alone at a page's foot.
+     KPress's print.css releases its own viewport the same way; nothing the pane holds
+     needs its container queries on paper. */
+  .preview-pane {
+    container-type: normal;
   }
 
   .preview-pane [data-tab-content] {
