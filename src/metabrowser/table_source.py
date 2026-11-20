@@ -51,6 +51,7 @@ from metabrowser.source import (
     get_source_session,
     read_content_window,
     resolve_content,
+    resolve_content_container,
     resolve_session_identity,
 )
 
@@ -515,6 +516,18 @@ def text_cell(
     if invalid_utf8:
         envelope["invalid_utf8"] = True
     return envelope
+
+
+def blob_cell(data: bytes, *, length: int | None = None, max_bytes: int) -> Cell:
+    """Bytes as `{blob: true, length, hex}`: the hex of at most *max_bytes* of them, and
+    `length`, the whole value's size in bytes, which is *length* when *data* is already
+    only a part of it."""
+
+    return {
+        "blob": True,
+        "length": len(data) if length is None else length,
+        "hex": data[:max_bytes].hex(),
+    }
 
 
 def stored_cell(value: Cell, stored: FieldType) -> Cell:
@@ -996,30 +1009,48 @@ def load_adapter(declaration: TableSourceDeclaration) -> TableSourceAdapter:
 @dataclass(frozen=True, slots=True)
 class OpenedTableSource:
     """A path resolved to its content, its kind, and the source that kind's adapter made.
-    `table` is the table the path names: "" for the content itself."""
+    `table` is the table the path names: "" for the content itself, and otherwise the
+    inner path of a container child, `<file>/<table>`, as the source's table ids name
+    its tables."""
 
     ref: ContentRef
     kind: str
     source: TableSource
     table: str
 
+    @property
+    def address(self) -> str:
+        """The address the path named: the table's own (:func:`table_address`)."""
+
+        return table_address(self.ref.identity, self.table)
+
 
 async def open_table_source(path: str) -> OpenedTableSource:
     """Resolve *path* to a table source: the content there, the kind it classifies as,
     and that kind's adapter applied to a handle on it.
 
-    Raises :class:`TablePathNotFoundError` when nothing readable is there and
-    :class:`NoTableSourceError` when its kind has no source, and lets a content read's
-    :class:`~metabrowser.content_errors.ContentReadError` propagate.
+    A path that names no file but extends one, `<file>/<table>`, names a table inside
+    that file, a container child as the tree addresses one: the file's kind picks the
+    source, whatever its extension, and the source answers for `<table>` or refuses it
+    with :class:`TableNotFoundError`. Raises :class:`TablePathNotFoundError` when nothing
+    readable is there and :class:`NoTableSourceError` when its kind has no source, and
+    lets a content read's :class:`~metabrowser.content_errors.ContentReadError`
+    propagate.
     """
 
+    table = ""
     ref = await resolve_content(path)
     if ref is None:
-        raise TablePathNotFoundError("Not found")
+        child = await resolve_content_container(path, suffixes=None)
+        if child is None or not child[1]:
+            raise TablePathNotFoundError("Not found")
+        ref, table = child
     classify = _REGISTRY.classify
     kind = await classify(ref) if classify is not None else None
     declaration = _REGISTRY.declarations.get(kind or "")
     if declaration is None:
+        if table:
+            raise TablePathNotFoundError("Not found")
         raise NoTableSourceError(f"files of kind {kind!r} are not tables", kind=kind)
     adapter = load_adapter(declaration)
     handle = TableHandle(
@@ -1029,7 +1060,7 @@ async def open_table_source(path: str) -> OpenedTableSource:
         local_path=await asyncio.to_thread(_local_path, ref),
         loop=asyncio.get_running_loop(),
     )
-    return OpenedTableSource(ref=ref, kind=kind or "", source=adapter(handle), table="")
+    return OpenedTableSource(ref=ref, kind=kind or "", source=adapter(handle), table=table)
 
 
 def _display_name(ref: ContentRef) -> str:
@@ -1099,6 +1130,7 @@ __all__ = [
     "TableSourceDeclaration",
     "TableSourceError",
     "card_wire",
+    "blob_cell",
     "check_table_query",
     "coerce_filter_value",
     "content_generation",
