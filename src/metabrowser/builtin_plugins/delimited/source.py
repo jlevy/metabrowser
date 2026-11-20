@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import csv
 import io
+import operator
 import re
 import threading
 from bisect import bisect_left, bisect_right
@@ -73,23 +74,25 @@ from metabrowser.plugin_api import (
     text_cell,
 )
 
-# The most bytes of a file parsed; past it the file shows its leading rows. Parsing is
-# the cost: 32 MiB of a 12-column CSV (about 290,000 rows) parsed in 1.0 s and held
-# about 125 MB of Python objects, 3.9 bytes per byte of file, and its first sort index
-# built in 0.39 s. Measured with `devtools/bench_table_source.py`, as the table bounds
-# in `metabrowser.table_source` are.
-DELIMITED_PARSE_MAX_BYTES = 32 * 1024 * 1024
+# The most bytes of a file parsed; past it the file shows its leading rows. A parse is
+# not interruptible, so this bounds the first request's latency and the cache's memory.
+# Measured with `devtools/bench_table_source.py`, as the bounds in
+# `metabrowser.table_source` are: 16 MiB of a 12-column CSV (about 150,000 rows) parsed
+# in 0.30 to 0.46 s and held 118 MB of Python objects, 7.0 bytes per byte of file; a
+# first sort index then took 0.26 to 0.53 s. At 32 MiB the parse took 1.2 s and a sort
+# 0.7 s, so a first sorted page approached two seconds.
+DELIMITED_PARSE_MAX_BYTES = 16 * 1024 * 1024
 
-# Rows whose values decide each column's type. Inference reads every sampled value
-# against up to five patterns, so it is cheap at this size and representative of a file
-# whose leading rows are typical; a later contradiction is shown, not hidden.
+# Rows whose values decide each column's type. Inference checks every sampled value
+# against at most five patterns, so it costs little at this size; a later value that
+# contradicts the type is shown as stored, not hidden.
 DELIMITED_TYPE_SAMPLE_ROWS = 1000
 
-# The parse cache's bounds: entries, and the estimated bytes of the parsed files held,
-# at the measured 3.9 bytes per byte of file, so two files at the parse cap fit.
+# The parse cache's bounds: entries, and the bytes the parsed files are estimated to
+# hold, at the measured 7 bytes per byte of file, so two files at the parse cap fit.
 DELIMITED_CACHE_MAX_ENTRIES = 8
 DELIMITED_CACHE_MAX_BYTES = 256 * 1024 * 1024
-_HELD_BYTES_PER_FILE_BYTE = 4
+_HELD_BYTES_PER_FILE_BYTE = 7
 
 # How often a scan checks its budget, in rows: often enough to stop within a few
 # milliseconds, rarely enough to cost nothing measurable.
@@ -410,7 +413,9 @@ class DelimitedSource:
         parsed = self._parsed()
         index = _row_index(parsed, key)
         names = _all_columns(parsed)
-        cells = _cells(parsed, index, names[: TABLE_CARD_MAX_FIELDS + 1], max_chars=TABLE_CELL_PREVIEW_CHARS)
+        cells = _cells(
+            parsed, index, names[: TABLE_CARD_MAX_FIELDS + 1], max_chars=TABLE_CELL_PREVIEW_CHARS
+        )
         label = cells.pop(names[0], None) if names else None
         return TableCard(key=key, label=label, cells=cells, generation=parsed.generation)
 
@@ -538,6 +543,14 @@ def _cells(
 # ── Queries ────────────────────────────────────────────────────
 
 RowTest = Callable[[int], bool]
+_COMPARISONS: dict[str, Callable[[SortKey, SortKey], bool]] = {
+    "eq": operator.eq,
+    "ne": operator.ne,
+    "lt": operator.lt,
+    "le": operator.le,
+    "gt": operator.gt,
+    "ge": operator.ge,
+}
 
 
 def _filter_test(parsed: _Parsed, item: Filter) -> RowTest:
@@ -558,19 +571,12 @@ def _filter_test(parsed: _Parsed, item: Filter) -> RowTest:
     target = TableField(name=column.name, type=column.type)
     coerced = coerce_filter_value(target, value)
     wanted: SortKey = (2, coerced) if column.type == "text" else (1, coerced)
-    compare: Callable[[SortKey], bool] = {
-        "eq": lambda key: key == wanted,
-        "ne": lambda key: key != wanted,
-        "lt": lambda key: key < wanted,
-        "le": lambda key: key <= wanted,
-        "gt": lambda key: key > wanted,
-        "ge": lambda key: key >= wanted,
-    }[item.op]
+    compare = _COMPARISONS[item.op]
 
     def test(index: int) -> bool:
         key = column.sort_key(raw(index))
         # A null is unknown to every comparison, as in SQL.
-        return key != (0,) and compare(key)
+        return key != (0,) and compare(key, wanted)
 
     return test
 
@@ -595,7 +601,9 @@ class _Scan:
 
 def _scan(parsed: _Parsed, tests: Sequence[RowTest], budget: Budget) -> _Scan:
     if not tests:
-        return _Scan(matches=list(range(len(parsed.rows))), complete=True, examined=len(parsed.rows))
+        return _Scan(
+            matches=list(range(len(parsed.rows))), complete=True, examined=len(parsed.rows)
+        )
     matches: list[int] = []
     for index in range(len(parsed.rows)):
         if index % _BUDGET_CHECK_ROWS == 0 and index and budget.expired():
@@ -606,10 +614,11 @@ def _scan(parsed: _Parsed, tests: Sequence[RowTest], budget: Budget) -> _Scan:
 
 
 def _sort_cursor(key: SortKey, index: int) -> list[Any]:
-    value = key[1] if len(key) > 1 else None
+    rank, *rest = key
+    value = rest[0] if rest else None
     if isinstance(value, float):
         value = real_cell(value)
-    return [key[0], value, index + 1]
+    return [rank, value, index + 1]
 
 
 def _cursor_point(values: list[Any], sorted_by: _Column | None) -> tuple[SortKey, int]:
@@ -628,7 +637,9 @@ def _cursor_point(values: list[Any], sorted_by: _Column | None) -> tuple[SortKey
         raise TableQueryError("after is not a cursor for this sort", param="after") from exc
 
 
-def _ordered(parsed: _Parsed, query: TableQuery, matches: list[int]) -> tuple[list[int], _Column | None]:
+def _ordered(
+    parsed: _Parsed, query: TableQuery, matches: list[int]
+) -> tuple[list[int], _Column | None]:
     """The matching rows in the query's order, and the column it sorts by."""
 
     if query.sort is None:
@@ -663,11 +674,11 @@ def _start(
         return served if generation == parsed.generation else None
     key, row = _cursor_point(decode_cursor(query.after), sorted_by)
     if sorted_by is None:
-        point: Callable[[int], tuple[Any, ...]] = lambda index: (index,)  # noqa: E731
+        point: Callable[[int], tuple[Any, ...]] = lambda index: (index,)
         target: tuple[Any, ...] = (row,)
     else:
         number = parsed.columns.index(sorted_by)
-        point = lambda index: (sorted_by.sort_key(parsed.value(index, number)), index)  # noqa: E731
+        point = lambda index: (sorted_by.sort_key(parsed.value(index, number)), index)
         target = (key, row)
     if query.order == "asc":
         return bisect_right(ordered, target, key=point)
@@ -764,5 +775,6 @@ def _page(parsed: _Parsed, query: TableQuery, budget: Budget) -> TablePage:
 
 def _row(parsed: _Parsed, index: int, columns: Sequence[str]) -> TableRow:
     return TableRow(
-        key=_name_of(index), cells=_cells(parsed, index, columns, max_chars=TABLE_CELL_PREVIEW_CHARS)
+        key=_name_of(index),
+        cells=_cells(parsed, index, columns, max_chars=TABLE_CELL_PREVIEW_CHARS),
     )

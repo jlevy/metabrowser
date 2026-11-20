@@ -119,6 +119,7 @@ def _plugin_details(plugin: LoadedPlugin) -> dict[str, object]:
         "disabled_data_hooks": [
             hook.model_dump(mode="json") for hook in _disabled_data_hooks(plugin)
         ],
+        "table_sources": [spec.model_dump(mode="json") for spec in plugin.manifest.table_source],
         "assets": _plugin_assets(plugin),
     }
 
@@ -234,6 +235,11 @@ def show_plugin(name: str, plugins_dir: list[Path] | None = None, *, as_json: bo
         typer.echo(f"  (disabled for operator-directory plugins: {routes})")
     elif not active_hooks:
         typer.echo("  (none)")
+    if plugin.manifest.table_source:
+        typer.echo("")
+        typer.echo("table sources:")
+        for spec in plugin.manifest.table_source:
+            typer.echo(f"  - {spec.kind} -> {spec.adapter}")
     typer.echo("")
     typer.echo("assets in static_root:")
     for asset in _plugin_assets(plugin):
@@ -302,6 +308,39 @@ def _view_key_problems(plugins: list[LoadedPlugin]) -> list[str]:
             holder = owners.get((kind, problem.holder)) if problem.holder is not None else None
             line = problem.describe(holder)
             problems.append(f"plugin '{owner}': {line}" if owner else line)
+    return problems
+
+
+def _table_source_problems(plugin: LoadedPlugin) -> list[str]:
+    """What keeps a plugin's ``[[table_source]]`` adapters from serving.
+
+    An operator-directory plugin runs no Python, so the server ignores its declarations,
+    as it does its data hooks; any other plugin's adapter must import and be callable.
+    """
+    if not plugin.manifest.table_source:
+        return []
+    if plugin.source.startswith("local:"):
+        return [
+            f"plugin '{plugin.name}' declares table sources, but operator-directory plugins "
+            "are JavaScript-only; package the plugin behind an installed metabrowser.plugins "
+            "entry point"
+        ]
+    problems: list[str] = []
+    for spec in plugin.manifest.table_source:
+        module_name, _, attr = spec.adapter.partition(":")
+        try:
+            module = importlib.import_module(module_name)
+        except ImportError as exc:
+            problems.append(
+                f"plugin '{plugin.name}' table_source '{spec.kind}': "
+                f"cannot import '{module_name}': {exc}"
+            )
+            continue
+        if not callable(getattr(module, attr, None)):
+            problems.append(
+                f"plugin '{plugin.name}' table_source '{spec.kind}': "
+                f"'{spec.adapter}' is not a callable"
+            )
     return problems
 
 
@@ -377,6 +416,10 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
                     f"plugin '{p.name}' data_hook '{hook.route}': "
                     f"'{module_name}:{attr}' is not callable"
                 )
+
+    # Per-plugin: table source adapters import, as the table routes import them.
+    for p in result.plugins:
+        problems.extend(_table_source_problems(p))
 
     # Per-plugin: index.js exists.
     for p in _plugins_with_index_check(result.plugins):

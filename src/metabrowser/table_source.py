@@ -55,40 +55,43 @@ from metabrowser.source import (
 
 # ── Bounds ─────────────────────────────────────────────────────
 #
-# Each bound caps one cost of one request. The measurements behind them were taken with
+# Each bound caps one cost of one request. The numbers beside them were measured with
 # `devtools/bench_table_source.py` on a shared 4-processor Linux container (Python 3.12,
-# 2026-11-20); rerun it to see the current numbers. The browser's own costs of drawing a
-# page belong to the table view, which measures them when it arrives.
+# 2026-11-20), over a synthetic 12-column CSV; rerun it for the current numbers. What a
+# browser pays to draw a page belongs to the table view, which measures it when it
+# arrives.
 
 # Rows per page when a query names no `limit`, and the most a `limit` may ask for.
-# Serving a page is linear in its rows and its cells' previews: a page of 1,000 rows of
-# 12 short columns encoded in 9 ms and answered 0.43 MB of JSON; at the default the
-# answer is 43 KB. A table view windows its rows, so it asks for about a screen at a time.
+# Encoding a page is linear in its rows: 100 short rows encoded in 4 to 10 ms as 25 KB
+# of JSON, and 1,000 in 13 to 29 ms as 0.25 MB. A table view windows its rows and asks
+# for about a screen at a time; the maximum is for a reader paging from the CLI.
 TABLE_PAGE_ROWS_DEFAULT = 100
 TABLE_PAGE_ROWS_MAX = 1000
 
 # Characters of one text cell a page carries; a longer value is a `{text, length}`
-# envelope cut here, and the record shows more. A page of 1,000 rows of 12 columns each
-# filled to this bound answered 5.0 MB of JSON in 31 ms, so the bound is what keeps a
-# page of long text near the size of a page of short text times a small factor, and a
-# two-line clamp never shows more than this.
+# envelope cut here, and the record shows more. A page of 1,000 rows whose 12 cells all
+# passed this bound encoded in 24 to 30 ms as 5.3 MB of JSON, so the bound keeps the
+# largest page of long text within about 20 times a page of short cells, while still
+# carrying more than a two-line clamp shows.
 TABLE_CELL_PREVIEW_CHARS = 400
 
 # UTF-8 bytes of one value a record carries; a longer value is cut here, never inside a
-# character. A record of 12 such values answered 0.79 MB in 6 ms.
+# character. A record of 12 values all past this bound encoded in 1 to 2 ms as 0.79 MB.
 TABLE_RECORD_VALUE_BYTES = 64 * 1024
 
 # Characters in a key or cursor token. A token travels in a URL's query, and uvicorn's
 # HTTP/1.1 parser (h11) refuses a request whose line and headers pass 16 KiB, so this
 # leaves a link room for several tokens, a path, and filters. A key or cursor that would
-# encode longer is named by position instead (`@<n>`), valid for one generation.
+# encode longer is named by position instead, valid for one generation.
 TABLE_TOKEN_MAX_CHARS = 1024
 
-# Wall-clock budget for one route's work in a source. A filter or search over the
-# largest delimited file the parse cap admits (about 290,000 rows of 12 columns)
-# examined every row in 0.66 s; under this budget it finishes, and on a slower machine a
-# larger scan stops with `complete: false` and the rows it examined instead of holding a
-# threadpool worker.
+# Wall-clock budget for a scan in one request. A filter or a search over the largest
+# file the delimited parse cap admits (about 150,000 rows of 12 columns) examined every
+# row in 0.10 s, so the budget stops only a source many times larger or slower, which
+# then answers `complete: false` with the rows it examined instead of holding a
+# threadpool worker. It counts from when the route accepts the request, so a parse
+# spends from it too, and it equals the server's default slow-request threshold
+# (`SLOW_OPERATION_LOG_SECONDS`), the latency the server already reports as too long.
 TABLE_REQUEST_DEADLINE_SECONDS = 2.0
 
 # Fields a hover card shows besides its label: a summary, not the record.
@@ -643,7 +646,7 @@ def parse_table_query(items: Iterable[tuple[str, str]]) -> TableQuery:
             raise TableQueryError("cols names no field", param="cols")
     return TableQuery(
         sort=single.get("sort") or None,
-        order=cast(Order, order),
+        order=order,
         q=single.get("q") or None,
         filters=tuple(filters),
         ref=ref,
@@ -662,7 +665,7 @@ def _parse_filter(field_name: str, raw: str) -> Filter:
             f"filter on {field_name!r} has no operator; use one of {', '.join(FILTER_OPS)}",
             param=f"f.{field_name}",
         )
-    typed_op = cast(FilterOp, op)
+    typed_op: FilterOp = op
     if typed_op in VALUELESS_OPS:
         if value:
             raise TableQueryError(f"{op} takes no value", param=f"f.{field_name}")
