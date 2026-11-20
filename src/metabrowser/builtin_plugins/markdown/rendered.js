@@ -1,7 +1,7 @@
 import { enhanceRenderedLinks } from "./link-enhancer.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { drawDiagrams, placeRendered } from "./place-rendered.js";
-import { mountPrintIndicator } from "./print-indicator.js";
+import { holdLightPrintTheme, mountPrintIndicator } from "./print-indicator.js";
 import { kpressTocConfig } from "./toc-toggle.js";
 import { transclusionKey } from "./transclusion.js";
 
@@ -151,11 +151,14 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   let disposePrintIndicator = null;
   /** @type {{dispose(): void, ready: Promise<void>} | null} */
   let diagrams = null;
+  // A rendered document prints on light paper, whatever the app's theme.
+  const releasePrintTheme = holdLightPrintTheme();
   const dispose = () => {
     if (disposed) {
       return;
     }
     disposed = true;
+    releasePrintTheme();
     options.signal?.removeEventListener("abort", abort);
     controller.abort();
     if (ownsWorkerClient) {
@@ -274,13 +277,16 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
             })
           : mb.kpressInitToc(container, kpressTocConfig(container));
       if (options.printIndicator === true) {
-        disposePrintIndicator = mountPrintIndicator(container, mb);
+        // The button waits for the diagrams before it prints (print-ready.js).
+        disposePrintIndicator = mountPrintIndicator(container, mb, {
+          diagrams: () => diagrams?.ready,
+        });
       }
       // Not awaited: the view's `ready`, which the shell's stage commit and the folder
       // Overview await, settles with the prose. Fetching Mermaid and laying out every
       // diagram follows, each drawing over the source block that already holds its place.
-      // Printing calls `window.print()` and waits on nothing, so a diagram not yet drawn
-      // prints as its source.
+      // The print button waits for them; Command-P waits on nothing, so a diagram not yet
+      // drawn prints as its source.
       diagrams = drawDiagrams(container, mb, inertRender ? "image" : "document");
     } catch (error) {
       if (disposed || mb.errors.isAbortError(error)) {

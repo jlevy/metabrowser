@@ -15,6 +15,7 @@ CI job.
 from __future__ import annotations
 
 import asyncio
+import importlib
 import io
 import json
 import os
@@ -54,6 +55,7 @@ from metabrowser.source import (
     serve_subject_opener,
 )
 from metabrowser.source_routes import SourceStatus
+from tests.forgotten_module import forget_module
 from tests.github_pull_fixture import allowlist_violations
 from tests.golden_harness import (
     block,
@@ -659,13 +661,18 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
             "short_name": "origin",
             "full_name": "~/git/origin.git@topic",
             "kind": "mirror",
-            "kind_label": "Cached mirror",
+            "kind_label": "Cloud mirror",
             "title": "origin \u2022 Metabrowser",
+            # A mirror no provider knows names no repository: its origin is said only where
+            # `remainder` below allows it.
+            "kind_tip": "Cloud mirror",
             # A file:// origin is on no host the macOS app opens links of.
             "repository": None,
         }
 
         page = client.get(f"/view/{_wire('README.md')}")
+        # The mark beside its name says the same: the route's kind and its sentence.
+        assert 'data-root-kind="mirror" data-tip-text="Cloud mirror"' in page.text
         assert (
             f'data-served-root="origin" data-mirror-location="{location}" '
             f'data-mirror-tip="{tip(origin.second)}">'
@@ -849,16 +856,45 @@ def test_a_served_pin_has_its_routes_before_its_first_request(
 ) -> None:
     # server.py imports a pin's routes where a pin is served, which keeps them off a
     # folder's start. A served pin imports them as it starts, so its first request does
-    # not import them on the event loop. This process has long since imported them, so
-    # the module is forgotten for the length of the test.
+    # not import them on the event loop. The module is imported first, as every process
+    # that has served or listed anything has, and forgotten for the length of the test
+    # (`forget_module`, which also leaves the package's attribute as it found it).
     _home(tmp_path, monkeypatch)
     origin = _origin(tmp_path)
-    monkeypatch.delitem(sys.modules, "metabrowser.git.content_routes", raising=False)
+    before = importlib.import_module("metabrowser.git.content_routes")
+    forget_module(monkeypatch, "metabrowser.git.content_routes")
 
     result = _serve(origin.url)
 
     assert result.exit_code == 0, result.output
-    assert "metabrowser.git.content_routes" in sys.modules
+    # Imported while the pin was served, afresh: not something an earlier test left.
+    assert sys.modules["metabrowser.git.content_routes"] is not before
+
+
+def test_a_module_forgotten_for_a_test_comes_back_as_the_one_object_everywhere(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """What `test_a_served_pin_has_its_routes_before_its_first_request` does to a module
+    leaves no trace: afterwards the server's import and a test's patch reach one module.
+
+    Where the package kept the re-imported module, a test that fixed the clock with
+    `from metabrowser.git import content_routes` patched a module the routes did not
+    run (mb-6byq)."""
+
+    import metabrowser.git as git_package
+    from metabrowser.git import content_routes as before
+
+    name = "metabrowser.git.content_routes"
+    with monkeypatch.context() as patch_context:
+        forget_module(patch_context, name)
+        again = importlib.import_module(name)
+        assert again is not before, "the import did not run again"
+        assert vars(git_package)["content_routes"] is again
+    assert sys.modules[name] is before
+    assert vars(git_package)["content_routes"] is before
+    from metabrowser.git import content_routes as from_the_package
+
+    assert from_the_package is before
 
 
 def test_a_pins_shell_adds_the_startup_scripts_the_budget_check_reports(

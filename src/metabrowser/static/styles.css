@@ -1683,6 +1683,17 @@ body {
   overflow: hidden;
 }
 
+/* The base anchor: a link no rule colors is the design's link color, not the user agent's
+   blue, or its purple once visited. `:where` makes it zero specificity, so any context's own
+   color, hover, or ring wins without a selector fight, and `:any-link` covers a visited link
+   the same. It sets the color and nothing else: the contexts that leave the user agent's
+   underline at rest (Markdown, Help, an event's details) keep it, and every ring is the
+   context's, so a link that is not styled as a control draws no ring of its own
+   (docs/design-system.md, "Links Have a Base Color"). */
+:where(a:any-link) {
+  color: var(--link);
+}
+
 /* Global scrollbars — every scroll container in the app inherits
    the same minimal style. Containers that sit on a non-default
    surface override --scrollbar-bg locally (e.g. .tree-content sets
@@ -1781,6 +1792,29 @@ body {
 .header-path:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
+}
+/* The mark before the name for the kind of root the page shows: a cloud for a mirror, a
+   folder with Git's branch for a checkout, a folder with a dot for a plain folder
+   (docs/design-system-icons.md, "Source Kinds"). The server writes its glyph into the
+   markup (source_kind_marks.py), so it is there from the first paint with no script. It is a
+   glyph-only mark, not a control: its sentence is its tooltip and its accessible name, and
+   it sits outside the name's link, so the name's hover surface, focus ring, and tooltip
+   stay the name's own. The glyph size is --icon-glyph and its ink the muted one a folder's
+   header glyph takes, so the name stays the heading. The end margin takes 2px from the row's
+   gap, which the name's own padding adds to: the name starts 6px after the glyph. */
+.header-root-kind {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+  margin-inline-end: -2px;
+  color: var(--muted);
+}
+.header-root-kind > svg {
+  width: 100%;
+  height: 100%;
 }
 .app-header > .settings-toggle {
   margin-left: auto;
@@ -5339,15 +5373,22 @@ a.tab-btn {
    tooltips to document.body. Keyed on the host, the diff drew KPress's own
    palette: its text and link colors, its border and muted tones on quoted text
    and code, and in the dark theme a darker ground than the page's. So this and
-   the corner bridge below key on `.kpress` anywhere under `:root`. */
-:root .kpress,
-:root .kpress-tooltip {
-  --kpress-doc-bg: var(--bg);
-  --kpress-doc-text: var(--text);
-  --kpress-doc-muted: var(--muted);
-  --kpress-doc-border: var(--border);
-  --kpress-doc-link: var(--link);
-  --kpress-code-border: var(--code-border);
+   the corner bridge below key on `.kpress` anywhere under `:root`.
+
+   On screen only. Paper takes KPress's print palette (print.css): black text and links on
+   white, whatever the app's theme. Bridged in print too, the app's palette outranked it,
+   so a document printed with the app's blue links, and in the dark theme on a dark ground
+   with light code. */
+@media screen {
+  :root .kpress,
+  :root .kpress-tooltip {
+    --kpress-doc-bg: var(--bg);
+    --kpress-doc-text: var(--text);
+    --kpress-doc-muted: var(--muted);
+    --kpress-doc-border: var(--border);
+    --kpress-doc-link: var(--link);
+    --kpress-code-border: var(--code-border);
+  }
 }
 
 /* Corner radius is a host decision, unlike the size ramp KPress owns.
@@ -6098,9 +6139,6 @@ pre.code-block.metabrowser-source-lines > code {
   padding: 0.3em 1em;
   color: var(--muted);
 }
-.md-body:not(.metabrowser-kpress-host) a {
-  color: var(--link);
-}
 .md-body:not(.metabrowser-kpress-host) hr {
   border: none;
   border-top: 1px solid var(--border);
@@ -6364,11 +6402,8 @@ pre.code-block.metabrowser-source-lines > code {
 .help-description p + p {
   margin-top: 6px;
 }
-/* The shell sets no global anchor color, so an unclassed link falls through to
-   the user agent's default blue instead of the accent every other link uses. */
-.help-project a {
-  color: var(--link);
-}
+/* A bare inline link in Help: the base anchor colors it, and its box is its text, so the ring
+   stands outside it. */
 .help-project a:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset-outset);
@@ -7092,9 +7127,6 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--text);
   font-weight: var(--weight-medium);
 }
-.event-log-details a {
-  color: var(--link);
-}
 /* A bare inline link: its box is its text, so the ring stands outside it. */
 .event-log-details a:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
@@ -7220,8 +7252,16 @@ pre.code-block.metabrowser-source-lines > code {
 
 /* ── Print adapter: host chrome only, document styling stays in KPress ── */
 @media print {
+  /* KPress's page margin, `--kpress-print-page-margin` (style-tokens.css), as a length:
+     WebKit, the macOS app's engine, resolves no custom property in `@page`, so KPress's
+     own `margin: var(…)` (print.css) printed the app's pages edge to edge. Important,
+     because print.css loads after this sheet; `@page :left` and `:right`, which would
+     outrank it without, printed a single page in WebKit (2026-11-19). Chrome resolves
+     KPress's own rule to the same length. tests/test_kpress_print_contract.py holds the
+     copy to the token. */
   @page {
-    margin: var(--kpress-print-page-margin);
+    /* biome-ignore lint/complexity/noImportantStyles: print.css's @page loads later, and a page pseudo-class to outrank it printed one page in WebKit. */
+    margin: 0.7in !important;
   }
 
   html,
@@ -7277,6 +7317,14 @@ pre.code-block.metabrowser-source-lines > code {
   .preview-frame {
     transform: none;
     box-shadow: none;
+  }
+
+  /* Containment breaks it too: WebKit does not apply a document's break rules inside the
+     pane while the pane is a size container, so a heading printed alone at a page's foot.
+     KPress's print.css releases its own viewport the same way; nothing the pane holds
+     needs its container queries on paper. */
+  .preview-pane {
+    container-type: normal;
   }
 
   .preview-pane [data-tab-content] {

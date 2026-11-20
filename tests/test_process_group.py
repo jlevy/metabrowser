@@ -26,6 +26,7 @@ import os
 import re
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -136,6 +137,7 @@ CHROME_TESTS = (
     "tests.test_raw_profile_cache_chrome",
     "tests.test_ref_selector_long_list_chrome",
     "tests.test_ref_selector_pulls_chrome",
+    "tests.test_root_kind_mark_chrome",
     "tests.test_shortcut_strip_chrome",
     "tests.test_staged_fonts_chrome",
     "tests.test_title_prefix_chrome",
@@ -207,7 +209,9 @@ def _record_group_signals(monkeypatch: pytest.MonkeyPatch) -> list[SignalCall]:
     real = os.killpg
 
     def recording(group: int, signum: int) -> None:
-        calls.append((group, signum, _unreaped(group)))
+        # Signal 0 only asks whether the group has a member.
+        if signum != 0:
+            calls.append((group, signum, _unreaped(group)))
         real(group, signum)
 
     monkeypatch.setattr(pg.os, "killpg", recording)
@@ -290,8 +294,48 @@ def test_a_child_that_ignores_sigterm_is_killed(
     assert [signum for _, signum, _ in signals] == [signal.SIGTERM, signal.SIGKILL]
 
 
+def _read_the_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stop groups as Linux does, by the process table: macOS stops need none (below), so
+    the tests of a slow or failed look make it the way to tell live from zombie."""
+
+    monkeypatch.setattr(pg, "_ZOMBIE_GROUP_REFUSES_SIGNALS", False)
+
+
+def _no_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reading the process table fails the test: a ``ps`` of every process took 1.3 to
+    2.7 s beside 250 busy loops, and a stop of a group with nothing live in it must not
+    wait on one. Only macOS answers signal 0 to a group of zombies with an error; elsewhere
+    the table tells them from live processes, so it is read."""
+
+    if sys.platform != "darwin":
+        return
+
+    def unread(deadline: float) -> list[pg._Process]:
+        raise AssertionError("the process table was read for a group with no live member")
+
+    monkeypatch.setattr(pg, "_processes", unread)
+
+
+@pytest.mark.macos_tier
+@pytest.mark.skipif(sys.platform != "darwin", reason="Linux answers a zombie like a live process")
+def test_a_live_group_is_stopped_without_reading_the_process_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The stop's looks at the table were what failed a Chrome test at 3 s beside heavy
+    load; on macOS signal 0 answers whether the group has a live member."""
+
+    _no_table(monkeypatch)
+    pid_file = tmp_path / "child.pid"
+    run = run_in_own_group(
+        _parent(STUBBORN, tmp_path, pid_file, "hang"), timeout_s=1.0, env=os.environ
+    )
+    assert run.timed_out
+    assert _gone(_wait_for(pid_file))
+
+
 def test_a_group_that_already_ended_gets_no_signal(monkeypatch: pytest.MonkeyPatch) -> None:
     signals = _record_group_signals(monkeypatch)
+    _no_table(monkeypatch)
     run = run_in_own_group([require_node(), "-e", "0"], timeout_s=DEADLINE_S, env=os.environ)
     assert (run.returncode, run.timed_out) == (0, False)
     assert signals == []
@@ -310,6 +354,7 @@ def test_a_group_of_only_zombies_gets_no_signal(monkeypatch: pytest.MonkeyPatch)
         while _running(process.pid) and time.monotonic() < deadline:
             time.sleep(0.05)
         assert not _running(process.pid), "the leader did not exit"
+        _no_table(monkeypatch)
         stop_group(process)
     finally:
         process.wait(timeout=5)
@@ -340,6 +385,7 @@ def test_a_failed_look_still_kills_the_whole_group(
         raise subprocess.TimeoutExpired(["ps"], 5)
 
     monkeypatch.setattr(pg, "_processes", unreadable)
+    _read_the_table(monkeypatch)
     pid_file = tmp_path / "child.pid"
     with pytest.raises(subprocess.TimeoutExpired):
         run_in_own_group(
@@ -383,6 +429,7 @@ def _slow_looks(monkeypatch: pytest.MonkeyPatch, hang: bool) -> None:
     given and then fails."""
 
     real = pg._processes
+    _read_the_table(monkeypatch)
 
     def slow(deadline: float) -> list[pg._Process]:
         if hang:
@@ -566,6 +613,45 @@ def test_chrome_keeps_its_processes_in_the_launched_group(chrome_profile: Path) 
     probe = json.loads(run.stdout)
     for launcher, snapshot in probe["snapshots"].items():
         assert not _outside_the_group(snapshot, probe["node"], chrome_profile), launcher
+
+
+STOP_CHROME = """
+import { spawn } from "node:child_process";
+import { stopChrome } from %s;
+// A browser that ignores SIGTERM, and a helper in its group that inherits its stderr
+// pipe and outlives it, as Chrome's helpers do: only destroying the pipe at the close
+// lets this process exit while the helper still holds the other end.
+const helper = "setTimeout(() => {}, 30000);";
+const stubborn = `process.on('SIGTERM', () => {});
+require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(helper)}],
+  { stdio: ['ignore', 'ignore', 'inherit'] });
+setInterval(() => {}, 1000);`;
+const chrome = spawn(process.execPath, ["-e", stubborn], { stdio: ["ignore", "ignore", "pipe"] });
+chrome.stderr.on("data", () => {});
+const exited = new Promise((resolve) => chrome.once("exit", resolve));
+await new Promise((resolve) => setTimeout(resolve, 500));
+const began = Date.now();
+await stopChrome(chrome, exited, 700);
+console.log(JSON.stringify({ ms: Date.now() - began, signal: chrome.signalCode }));
+"""
+
+
+def test_a_chrome_that_ignores_sigterm_is_killed_at_its_close_and_does_not_hold_the_session(
+    tmp_path: Path,
+) -> None:
+    """The close SIGKILLs a browser still up after its wait, and the session's process then
+    exits: waiting only held it until the test's bound while Chrome took 5 to 35 s to leave
+    after SIGTERM at a load average of 110 to 230."""
+
+    session = (ROOT / "tests" / "dom" / "chrome-session.mjs").as_uri()
+    script = tmp_path / "stop-chrome.mjs"
+    script.write_text(STOP_CHROME % json.dumps(session), encoding="utf-8")
+    started = time.monotonic()
+    run = run_in_own_group([require_node(), str(script)], timeout_s=DEADLINE_S, env=os.environ)
+    assert not run.timed_out and run.returncode == 0, run.stderr or run.stdout
+    stopped = json.loads(run.stdout)
+    assert stopped["signal"] == "SIGKILL", stopped
+    assert time.monotonic() - started < DEADLINE_S, "the session's process outlived its close"
 
 
 # ── Each Chrome test's budget ─────────────────────────────────────────────

@@ -7,8 +7,10 @@ Built on `main`: mirror mode; a folder served as the exact path named, with hist
 when that path is a repository’s root; a repository folder’s revision views with their
 chooser and `--ref`; recent targets kept by `metab`, behind File > Open Recent; and File
 \> Open URL…, without its offer of a known checkout.
-Not built: resolving a path to its repository’s root, Pulls and the toggle on a folder’s
-revision, the mode indicator, and Open URL…’s offer of a checkout.
+The mode indicator is built too, as three marks, one for each kind of root
+([The Indicator and View on GitHub](#the-indicator-and-view-on-github)). Not built:
+resolving a path to its repository’s root, Pulls and the toggle on a folder’s revision,
+and Open URL…’s offer of a checkout.
 [Implementation Status](#implementation-status) names the pull request or bead for each
 part.
 
@@ -34,8 +36,9 @@ safe. The mechanisms are in the documents it links: how a view is held and switc
   named.
 - **Mode:** how a root is open: plain folder, repository folder, or mirror.
   Nothing done in a page changes it.
-- **Folder mode:** the two folder modes together, which records and `kind` write as one
-  value, `folder`.
+- **Folder mode:** the two folder modes together, which a recent target’s `mode` writes
+  as one value, `folder`; its `git` and the `kind` of `GET /api/identity` tell them
+  apart.
 - **View:** what the server shows now: a folder’s working tree, or one revision.
   A repository folder can change its view while it stays open, and its mode stays.
 - **Working tree:** the files of a folder as they are on disk now, with whatever is
@@ -481,33 +484,35 @@ opened by URL, a GitHub link sent to the app or a URL entered in Open URL… amo
 
 ## The Indicator and View on GitHub
 
-**Not built.** These are two controls, and neither stands in for the other.
+These are two controls, and neither stands in for the other.
 
-**The mode indicator** shows how the root is open.
+**The mode indicator** shows how the root is open, as one of three marks.
+It is built, by the owner’s word on 2026-11-20 that each kind of root has an icon of its
+own, and [Source Kinds](../../design-system-icons.md#source-kinds) is where they are
+defined and where each is drawn.
 
-- **Where:** with the root’s name, in the page’s navigation heading and in the app’s
-  window title.
-- **A mirror:** the GitHub mark with a small cloud over it.
-  If that pair does not read at the size it is drawn, the cloud alone.
-  The GitHub mark alone would repeat View on GitHub’s glyph.
-- **A mirror of a repository that is not on github.com:** the cloud alone, since it has
-  no mark to show.
-- **A folder:** a folder icon.
+- **A mirror:** a cloud.
+  The GitHub mark with a small cloud over it, which this section first designed, would
+  have carried the legibility risk of two glyphs at the size drawn, and the GitHub mark
+  alone would repeat View on GitHub’s glyph.
+- **A repository folder:** a folder with Git’s branch, the `git` kind.
+  A folder that holds a `.git` entry, which is the test the Commits tab is drawn by, so
+  the mark is known at the first paint without asking Git.
+- **A plain folder:** a folder with a dot, the `folder` kind.
+- **Where:** with the root’s name: in the page’s navigation heading, and in the macOS
+  app’s menus that list roots, the title’s folder chooser and path menu, File > Open
+  Recent, and the Dock menu.
 - **What it reads:** `kind` in `GET /api/identity`, the route the app’s window title
   already reads, so the page and the app cannot disagree.
-- **It shows the mode and not the view.** A repository folder keeps the folder icon
-  while it shows a revision.
-  The chooser in the Files toolbar and the `@<ref>` in the name say which view is shown.
-
-**A recommendation, for the owner to confirm:** a plain folder and a repository folder
-show the same folder icon.
-The indicator answers one question, whether the root is the reader’s own folder or
-Metabrowser’s cached copy, and both folder modes give one answer.
-A repository folder already looks different where it matters: it has the ref chooser in
-its Files toolbar and the Commits tab, and a plain folder has neither.
-A third glyph, such as a folder with a branch badge, would carry the legibility risk the
-cloud over the GitHub mark has, and the heading would need Git’s answer before its first
-paint, where one icon for each `kind` needs none.
+  Its `kind_tip` is the sentence the mark carries as its tooltip, “Cloud mirror of
+  owner/repo”, “Local Git checkout (GitHub: owner/repo)”, or “Local folder”.
+- **It shows the mode and not the view.** A repository folder keeps its mark while it
+  shows a revision. The chooser in the Files toolbar and the `@<ref>` in the name say
+  which view is shown.
+- **A checkout’s mark differs from the ordinary folder’s.** The owner asked on
+  2026-11-20 that a root’s icon never read as the folder icon of an ordinary subfolder,
+  so the plain folder’s mark is not the folder outline, and the app’s title menu draws
+  the outline for the folders above the root.
 
 **View on GitHub** is a separate control, the button in a page header’s upper right
 ([View on GitHub](../../design-system.md#view-on-github)), and appears only for a
@@ -536,6 +541,7 @@ the design that carries it out.
 | Open URL… opens the mirror, always, offers a known checkout, and never silently shows another revision | 2026-11-18 | [The File Menu](#the-file-menu) |
 | A URL’s new mirror window joins an open checkout’s window of the same repository as a tab | 2026-11-18 | [The File Menu](#the-file-menu) |
 | The indicator sits with the root’s name; the cloud alone is the fallback; folder mode uses a folder icon | 2026-11-18 | [The Indicator and View on GitHub](#the-indicator-and-view-on-github) |
+| Each kind of root has an icon of its own, a cloud mirror, a local Git checkout, and a local folder, drawn the same in the page and the macOS app, and none reads as an ordinary folder’s icon | 2026-11-20 | [The Indicator and View on GitHub](#the-indicator-and-view-on-github), [Source Kinds](../../design-system-icons.md#source-kinds) |
 | The GitHub control is separate from the indicator, for github.com repositories only | 2026-11-18 | [The Indicator and View on GitHub](#the-indicator-and-view-on-github) |
 | One View on GitHub button in the upper right of every page github.com has a page for, which the app opens in a native popover and whose menu copies the link or opens it in the browser, in place of the Metabrowser and GitHub toggle and the pull request’s View on GitHub link | 2026-11-18 | [View on GitHub](../../design-system.md#view-on-github) |
 | A file joins the most specific open folder that contains it, never one above its repository’s root | 2026-11-18 | [What Keys on the Root](#what-keys-on-the-root) |
@@ -552,8 +558,6 @@ writing it, and made every view of a branch, tag, or commit an immutable revisio
 
 Each of these waits for the owner.
 
-- **Whether a plain folder and a repository folder look different.** The recommendation
-  [above](#the-indicator-and-view-on-github) is one folder icon for both.
 - **Pulls on a folder served exactly, below a repository’s root.** Such a folder has
   Pulls today when its repository’s `origin` is on github.com.
   The model’s plain folder has every Git feature off.
@@ -587,7 +591,7 @@ A pull request that builds a part updates its row.
 | Recent targets kept by `metab`, behind File > Open Recent | Built; a mirror’s `target` waits for `ProviderUrlReducer.web_url` (`mb-8bds`), and the resolved root for the resolver | [Recent Targets](arch-recent-targets.md), `mb-40k4` |
 | File > Open URL… | Built, without the offer of a known checkout, which waits for a way to tell that an open folder is a checkout of the URL’s repository | [#560](https://github.com/jlevy/metabrowser/pull/560), `mb-m4mg`; the offer is `mb-bkk2` |
 | View on GitHub on files, folders, pull requests, and commits | Built; the app’s native popover is its own | `mb-4wqh` |
-| The mode indicator | Not built | `mb-wup3` |
+| The mode indicator: three marks, the page’s nav heading and the app’s menus | Built | `mb-4s2y`; the page’s `kind` and `kind_tip` in `/api/identity`, the app’s `RootMark` |
 | One mode vocabulary across `IdentityKind`, the recent-targets store, and the app, held by a test; the shared resolution fixture | Not built | `mb-ajxe` |
 | The two [known gaps in the read-only rule](arch-git.md#known-gaps-in-the-read-only-rule) on a served checkout | Open | `mb-z849` |
 | Links that select a branch, and a branch beside the working tree in one server | Deferred | `mb-itzy` |
