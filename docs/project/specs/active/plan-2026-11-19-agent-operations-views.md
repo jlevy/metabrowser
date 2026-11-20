@@ -553,11 +553,11 @@ Each phase that changes what a user or plugin author sees carries a changelog fr
 
 ### Phase 1: Recognize Every Log
 
-- [ ] Recognize current Claude Code transcripts by their record shapes, not only by an
+- [x] Recognize current Claude Code transcripts by their record shapes, not only by an
   `assistant` record in the first 20 lines.
-- [ ] Add a Codex rollout adapter for plain `.jsonl` rollouts.
-- [ ] Give `agent-log` a `[[kind]]` rule for the `codex` adapter.
-- [ ] Add a changelog fragment.
+- [x] Add a Codex rollout adapter for plain `.jsonl` rollouts.
+- [x] Give `agent-log` a `[[kind]]` rule for the `codex` adapter.
+- [x] Add a changelog fragment.
 
 **Done when:** current Claude Code transcripts and plain Codex rollouts open with the
 Log and Charts views.
@@ -568,7 +568,8 @@ Phase 2 carries them into the plugin unchanged.
 
 - [ ] Land the Phase 2 SDK additions.
 - [ ] Create the `agents` plugin package and its import-boundary test.
-- [ ] Move the four adapters and the `agent-log` views into the plugin.
+- [ ] Move the five adapters (Phase 1 adds `codex-rollout`) and the `agent-log` views
+  into the plugin.
 - [ ] Define the shared model, the event kinds, and each provider’s mapping table, with
   their goldens.
 - [ ] Add the kind color tokens and their design checks, and use them in the Log and

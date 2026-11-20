@@ -103,9 +103,9 @@ def test_plain_text_source_view_is_printable(tmp_path: Path) -> None:
 def test_unknown_jsonl_gets_default_log_view(tmp_path: Path) -> None:
     """Unknown JSONL still needs an initial visible tab in the browser."""
     server._set_root_dir(tmp_path)
-    log = tmp_path / "agent.jsonl"
-    log.write_text('{"type":"thread.started","thread_id":"abc"}\n')
-    result = _api_file("agent.jsonl")
+    log = tmp_path / "events.jsonl"
+    log.write_text('{"event":"start"}\n')
+    result = _api_file("events.jsonl")
     assert result["kind"] == "unknown-jsonl"
     assert [v["id"] for v in result["views"] if v.get("default")] == ["log"]
 

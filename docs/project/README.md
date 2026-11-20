@@ -68,6 +68,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Tabular data browsing and live SQLite](specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md):
+  a draft for one generic table plugin over CSV, record lists, and SQLite, with
+  nondestructive, live reads of databases other applications are writing
 - [A structured event log](specs/active/plan-2026-11-19-structured-event-log.md): one
   JSON line for every request, background job, and `git` or `gh` process, with latency,
   outcome, and what started it; the causes of GitHub failures in the page; browser
