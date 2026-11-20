@@ -243,13 +243,39 @@ The deadline stays; the probe tells a stall from a slow gh within `PROBE_TIMEOUT
 
 ### Browser Reports
 
-`perf.js` gives each fetch an ID it sends as a request header, which the server records
-as the request’s `client`. It reports to `POST /api/event-log/client` (bounded body,
-rate-limited) a fetch slower than its slow threshold, a fetch still pending past it, and
-named waits: a page marks what it is waiting for, such as a pull request’s Diff summary,
-and the wait is reported when it is late, when it ends late, and as `never_completed`
-when the page is hidden or left first, through `navigator.sendBeacon`. The server writes
-each as a `browser` record.
+The reporter is `static/event-reports.js`, not `perf.js`, which is in the shell’s
+startup scripts and their budget (`devtools/check_startup_scripts.py`): it is the last
+script of the `shell-tools` bundle, which the shell loads after the first usable tree,
+and the `event-reports` bundle a page that waits before then loads itself.
+Each page has an ID, and each request it sends to its own server’s `/api/` carries
+`<page>-<n>` in the `x-metabrowser-client` header, which the server records as the
+request’s `client` and every job and process the request starts inherits;
+`client=<page>` matches the page’s ID and every request’s. Requests answered before the
+reporter loaded are read from Resource Timing.
+
+It reports to `POST /api/event-log/client` (`event_log_reports.py`: bounded body and
+count, each field checked and its text redacted, rate-limited across pages) a fetch
+slower than `SLOW_MS`, a fetch still pending at it, a frame that froze the page for
+`FREEZE_MS`, and named waits: a page marks what it is waiting for, such as a pull
+request’s Diff summary, and the wait is reported when it is late (`WAIT_LATE_MS`), when
+it ends late, and as `never_completed` when the page is left first.
+A wait counts only the time the page was shown: a hidden tab polls nothing, so its wait
+is not late until it has been late while shown, and its report says how long it was
+hidden (`hidden_ms`). A page the browser keeps in its back/forward cache has not been
+left: it sends what it has queued, and a wait it restores to ends as it would have.
+Reports leave in batches with `fetch(..., {keepalive: true})`, not
+`navigator.sendBeacon`, which cannot send the JSON type the same-origin guard requires
+of a `POST`. The server writes each as a `browser` record.
+
+A late wait says so on the page, and it and a failed refresh offer **Details**: what the
+server is still running, the failures in the window by cause, the last probe, and the
+page’s own records, read from `/api/event-log` and `/api/event-log/failures`. The page’s
+reports are listed apart from the causes, under `page_reports`: they say what the page
+saw, not why, so the server’s cause leads.
+When the server’s log is off, Details says so and reads nothing.
+The event log’s routes are about the server, not the served revision, so the source pin
+guard lets them through, as it does `/api/source/`: a page left behind by a switch still
+reports and reads its Details.
 
 ## Implementation Plan
 
@@ -267,9 +293,9 @@ One stack of pull requests.
 - [x] The shared cause classifier, the connectivity probe, cause-led messages with the
   recent count, `GET /api/event-log/failures` and the `cause` filter, with stand-in `gh`
   and `git` for each class and a golden of recent failures with their causes.
-- [ ] A link from the page’s failure line to the failures behind it (with the browser
+- [x] A link from the page’s failure line to the failures behind it (with the browser
   reports, which touch the same page code).
-- [ ] The browser reports and `POST /api/event-log/client`, the pull request page’s Diff
+- [x] The browser reports and `POST /api/event-log/client`, the pull request page’s Diff
   summary wait, and a browserless test of the reporter.
 
 ### Phase 2: Metabrowser Browses Its Own Log
@@ -295,6 +321,15 @@ message, and record, the probe to its verdicts against local ports, and a `git` 
 cannot connect to its cause; `tests/test_cache_origin.py` keeps Git’s captured errors on
 their states. `cli-api-event-log-failures.tryscript.md` pins the failure summary on a
 segment that tells the 2026-11-19 outage.
+`tests/test_event_log_reports.py` holds the report route to its fields, bounds, rate
+limit, same-origin guard, and redaction, and the client ID to the request and the job it
+starts; `cli-api-event-log-client.tryscript.md` pins the route and the page filter.
+`tests/dom/event-reports-session.js` runs the reporter and the Details without a browser
+(`cli-ui-event-reports.tryscript.md`), and `tests/test_event_reports_session.py` checks
+that the route accepts every body it sends and that the Details read from a refresh job
+that never ends show it running and the page’s wait never completed.
+`tests/dom/github-pull-page-mount-behavior.js` pins the pull request page’s late line
+and Details, and `tests/dom/event-log-details-chrome.mjs` the same in Chrome.
 
 ## Open Questions
 

@@ -198,6 +198,12 @@ status: 200
     },
     "cause": "connect_timeout",
     "message": "GitHub could not be reached because the connection to api.github.com at 20.172.24.160 timed out after 2 s; other sites are reachable"
+  },
+  "page_reports": {
+    "count": 0,
+    "outcomes": {},
+    "names": {},
+    "examples": []
   }
 }
 ? 0
@@ -318,6 +324,12 @@ status: 200
     },
     "cause": "connect_timeout",
     "message": "GitHub could not be reached because the connection to api.github.com at 20.172.24.160 timed out after 2 s; other sites are reachable"
+  },
+  "page_reports": {
+    "count": 0,
+    "outcomes": {},
+    "names": {},
+    "examples": []
   }
 }
 ? 0
@@ -396,6 +408,12 @@ status: 200
     },
     "cause": "connect_timeout",
     "message": "GitHub could not be reached because the connection to api.github.com at 20.172.24.160 timed out after 2 s; other sites are reachable"
+  },
+  "page_reports": {
+    "count": 0,
+    "outcomes": {},
+    "names": {},
+    "examples": []
   }
 }
 ? 0

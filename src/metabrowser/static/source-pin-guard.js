@@ -5,8 +5,8 @@
 // the tab it finds still open. Either tab would otherwise read the new pin's files into
 // a page labelled with the old one. The server renders this module inline on a pin,
 // with the commit and ref the page was rendered for, before any script can fetch. It
-// wraps `fetch` so every same-origin `/api/` request except the `/api/source/` routes
-// carries that commit in `x-metabrowser-pin`. The server refuses a request for a commit
+// wraps `fetch` so every same-origin `/api/` request except the `/api/source/` and
+// `/api/event-log` routes carries that commit in `x-metabrowser-pin`. The server refuses a request for a commit
 // it no longer serves with `409 pin_changed` and names the commit it serves in
 // `x-metabrowser-pin-changed`; the wrapper announces that as a
 // `metabrowser:pin-changed` event, and the freshness row offers a reload.
@@ -82,10 +82,16 @@
     } catch {
       return false;
     }
+    const path = target.pathname;
     return (
       target.origin === new URL(base).origin &&
-      target.pathname.startsWith("/api/") &&
-      !target.pathname.startsWith("/api/source/")
+      path.startsWith("/api/") &&
+      !path.startsWith("/api/source/") &&
+      // The event log is about the server, whichever revision it shows: a page left on
+      // an old pin still reports what it saw, and its Details still read the log
+      // (`_PIN_EXEMPT_EVENT_LOG` in source_routes.py).
+      path !== "/api/event-log" &&
+      !path.startsWith("/api/event-log/")
     );
   }
 

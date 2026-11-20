@@ -857,6 +857,33 @@
     const live = document.createElement("span");
     live.className = "sr-only";
     live.setAttribute("aria-live", "polite");
+    // A refresh the row shows running is a wait the event log hears of if it runs late, and
+    // how it ended (static/event-reports.js, mb-9zp5). The reporter is an on-demand bundle,
+    // so it is told when the wait began.
+    /** @type {{handle: MetabrowserEventWait | null, ended: boolean} | null} */
+    let refreshWait = null;
+    /** @param {MetabrowserSourceFreshnessModel} model */
+    const noteRefresh = (model) => {
+      if (model.tone === "refreshing" && refreshWait === null) {
+        const startedAt = performance.now();
+        /** @type {{handle: MetabrowserEventWait | null, ended: boolean}} */
+        const wait = { handle: null, ended: false };
+        refreshWait = wait;
+        window.MetabrowserAssets?.ensureAsset("event-reports").then(
+          () => {
+            if (!wait.ended) {
+              wait.handle =
+                window.metabrowser?.eventReports?.wait("source:refresh", { startedAt }) ?? null;
+            }
+          },
+          () => {},
+        );
+      } else if (model.tone !== "refreshing" && refreshWait !== null) {
+        refreshWait.ended = true;
+        refreshWait.handle?.end(model.tone === "warning" ? "failed" : "ok");
+        refreshWait = null;
+      }
+    };
     controller = createController(
       {
         async request(method, route, options) {
@@ -888,7 +915,10 @@
         cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
         now: () => Date.now(),
         isVisible: () => document.visibilityState === "visible",
-        render: (model) => paint(element, model, actions, live),
+        render: (model) => {
+          noteRefresh(model);
+          paint(element, model, actions, live);
+        },
         reload: () => window.location.reload(),
         navigate: (href) => window.location.assign(href),
       },

@@ -150,6 +150,14 @@ _FILE_NAME = re.compile(r"^events-(\d{8}T\d{6}Z)-p(\d{1,10})-(\d{3,6})\.jsonl$")
 # or off. The test suite sets it, so a server a test starts writes nothing in a home.
 ENABLE_ENV: Final = "METABROWSER_EVENT_LOG"
 _OFF: Final = frozenset({"0", "false", "no", "off"})
+# The request header a page names its request by, which the request's record carries as
+# its ``client``, and the work the request starts inherits (static/event-reports.js). A
+# page's ID is ``<page>``, and each of its requests ``<page>-<n>``, so a filter on the
+# page's ID finds all of them (``event_log_route``).
+CLIENT_HEADER: Final = "x-metabrowser-client"
+# What a client ID may be: letters, digits, and ``-_.:``, at most 64 characters, the
+# longest the log route filters on. Anything else is not recorded.
+_CLIENT_ID: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}")
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
@@ -164,6 +172,15 @@ _SCHEME_CREDENTIAL = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{4,}"
 _SECRET_FIELD = re.compile(
     r"(?i)(?<![\w-])([\w-]*(?:token|password|passwd|secret|api[_-]?key)[\w-]*)(\s*[:=]\s*)[^\s,;]+"
 )
+
+
+def client_id(raw: str | bytes | None) -> str | None:
+    """*raw* as a client ID, or ``None`` when it is not one (:data:`CLIENT_HEADER`)."""
+
+    if raw is None:
+        return None
+    text = raw.decode("latin-1") if isinstance(raw, bytes) else raw
+    return text if _CLIENT_ID.fullmatch(text) else None
 
 
 def redact(text: str, *, limit: int = MAX_TEXT_CHARS) -> str:
@@ -320,7 +337,9 @@ def begin(
 
     *announce* writes a ``start`` record now, as a job does. *min_ms* drops the end
     record of a span quicker than it, and its open records still go out. *parent*
-    defaults to the current span.
+    defaults to the current span. *client* defaults to the parent's, so the job a
+    page's request starts, and the processes the job runs, carry the request's client
+    ID; a job that another request joins keeps the first one's.
     """
 
     sink = _sink
@@ -333,7 +352,7 @@ def begin(
         kind,
         name,
         dict(attrs) if attrs else {},
-        client=client,
+        client=client if client is not None or above is None else above.client,
         min_ms=min_ms,
     )
     sink.started(span, announce=announce)
@@ -449,6 +468,39 @@ def mark(kind: Kind, name: str, **attrs: Any) -> None:
         sink.write(sink.record("mark", kind, name, attrs=attrs))
 
 
+def report(
+    event: EventType,
+    name: str,
+    *,
+    client: str | None,
+    dur_ms: float | None,
+    outcome: Outcome | None,
+    attrs: Mapping[str, Any],
+) -> bool:
+    """Write a ``browser`` record of what a page reported; whether a log took it.
+
+    The record has no span: the page timed the work, and its ``client`` ties it to the
+    server's records of the page's requests. The caller validates and bounds what the
+    page sent (``event_log_reports``).
+    """
+
+    sink = _sink
+    if sink is None:
+        return False
+    sink.write(
+        sink.record(
+            event,
+            "browser",
+            name,
+            client=client,
+            outcome=outcome,
+            dur_ms=dur_ms,
+            attrs=attrs,
+        )
+    )
+    return True
+
+
 @dataclass(frozen=True, slots=True)
 class RecentFailure:
     """A span that failed naming a cause, kept for :func:`recent_failures`: when
@@ -523,6 +575,7 @@ class OpenSpan:
     name: str
     age_ms: float
     attrs: dict[str, Any]
+    client: str | None = None
 
 
 def open_spans() -> list[OpenSpan]:
@@ -597,14 +650,16 @@ class EventLog:
         dur_ms: float | None = None,
         attrs: Mapping[str, Any] | None = None,
         wall: float | None = None,
+        client: str | None = None,
     ) -> dict[str, Any]:
         """One record. Its fields, in order:
 
         ``v`` the schema version; ``ts`` when it was written, UTC to the millisecond;
         ``event`` (``start``, ``end``, ``open``, ``mark``); ``kind``; ``name``; ``span``
-        and ``parent`` IDs; ``client``, the browser's ID for the request it sent;
-        ``dur_ms``, monotonic, which on an ``open`` record is the age so far;
-        ``outcome`` on an end; ``pid``; and ``attrs``, the kind's own detail.
+        and ``parent`` IDs; ``client``, the browser's ID for the request it sent, or
+        for the page, on a ``browser`` record; ``dur_ms``, monotonic, which on an
+        ``open`` record is the age so far; ``outcome`` on an end; ``pid``; and
+        ``attrs``, the kind's own detail.
         """
 
         moment = self._clock() if wall is None else wall
@@ -621,6 +676,8 @@ class EventLog:
                 out["parent"] = span.parent
             if span.client is not None:
                 out["client"] = span.client
+        elif client is not None:
+            out["client"] = client
         if dur_ms is not None:
             out["dur_ms"] = round(dur_ms, 1)
         if outcome is not None:
@@ -844,7 +901,9 @@ class EventLog:
         with self._open_lock:
             spans = sorted(self._open.values(), key=lambda s: s.started)
         return [
-            OpenSpan(s.id, s.parent, s.kind, s.name, round(s.age_ms(now), 1), dict(s.attrs))
+            OpenSpan(
+                s.id, s.parent, s.kind, s.name, round(s.age_ms(now), 1), dict(s.attrs), s.client
+            )
             for s in spans
         ]
 
@@ -1161,6 +1220,7 @@ def parse_lines(data: bytes) -> Iterable[dict[str, Any]]:
 
 
 __all__ = [
+    "CLIENT_HEADER",
     "ENABLE_ENV",
     "EVENTS_DIRECTORY",
     "EVENT_TYPES",
@@ -1185,6 +1245,7 @@ __all__ = [
     "RecentFailure",
     "Span",
     "begin",
+    "client_id",
     "close_log",
     "current",
     "current_file",
@@ -1199,6 +1260,7 @@ __all__ = [
     "mark",
     "recent_failed_addresses",
     "recent_failures",
+    "report",
     "open_log",
     "open_spans",
     "parse_file_name",

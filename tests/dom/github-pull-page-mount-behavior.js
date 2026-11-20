@@ -49,6 +49,15 @@ class Element {
   get ownerDocument() {
     return globalThis.document;
   }
+  // In the page while its root is a mount's container, a `main`, which stands for the
+  // document here: a control taken out of the header is not (mb-9zp5).
+  get isConnected() {
+    let at = this;
+    while (at.parentNode) {
+      at = at.parentNode;
+    }
+    return at.tag === "main";
+  }
   get childNodes() {
     return this.children;
   }
@@ -1890,15 +1899,16 @@ async function headerShape(page) {
     },
   };
   /** What each variant's status line says, on every tab, or null where it is not there. */
+  // A failure ends in its Details, the event log's records for it (mb-9zp5).
   const STATUS = {
     failed:
-      "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed out",
+      "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed outDetails",
     "behind the head":
       "This page’s code is f7c5a99, not the pull request’s head 85fcb2f. Switch to the head",
     "a checkout at the head":
       "This checkout’s HEAD is this pull request’s head. Browse the checkout",
     "on its way, its last refresh failed":
-      "Fetching the pull request…The last refresh failed: gh could not reach api.github.com",
+      "Fetching the pull request…The last refresh failed: gh could not reach api.github.comDetails",
   };
   /** What each variant's note says where it is not the record's fetch, null where none. */
   const NOTE = {
@@ -2263,6 +2273,8 @@ async function mountScripted(page, tab, options = {}) {
       ...(options.mountCounterpart === undefined
         ? {}
         : { mountCounterpart: options.mountCounterpart }),
+      // With *sdk*, more of the SDK, or a part of it replaced: the event log's reporter.
+      ...(options.sdk ?? {}),
       // With *brief*, the change line's painters, as text, and the tree's breakdown, so the
       // page draws the cached list's brief line (mb-z8ea).
       ...(options.brief === undefined && options.briefPainters !== true
@@ -2326,6 +2338,145 @@ async function mountScripted(page, tab, options = {}) {
     await idle();
   };
   return { handle, row, steps, idle, serve, poll, show, refused, container };
+}
+
+// A Diff summary that has not arrived at the event log's late threshold, and a refresh that
+// failed, each offer the event log's Details (mb-9zp5): the owner saw a summary still loading
+// after many seconds and had no way to tell slow from stuck, nor a record of it. The reporter
+// (static/event-reports.js, run by tests/dom/event-reports-session.js) is stood in for: the
+// waits the page names, how each ends, and the records it asks the Details for are told, in
+// order, for the golden.
+async function eventLogDetails(page) {
+  const told = [];
+  const waits = [];
+  const assets = [];
+  const reports = {
+    page: "k3v9q2zx",
+    lateMs: 10_000,
+    failureWindowS: 3600,
+    wait(name, options) {
+      const wait = { name, options, ended: [] };
+      waits.push(wait);
+      return { end: (outcome) => wait.ended.push(outcome) };
+    },
+    async showDetails(panel, query, options) {
+      told.push(
+        `Details asked for ${JSON.stringify(query)}, abortable ${options.signal !== undefined}`,
+      );
+      panel.replaceChildren("Still running: checkout._pull_job for 61.0 s");
+    },
+  };
+  const sdk = {
+    eventReports: reports,
+    ensureAsset: async (name) => {
+      assets.push(name);
+    },
+  };
+  const waited = () =>
+    waits
+      .map(({ name, options, ended }) =>
+        [
+          name,
+          JSON.stringify(options.detail),
+          typeof options.startedAt === "number" ? "timed from its start" : "untimed",
+          ended.length === 0 ? "running" : `ended ${ended.join(", ")}`,
+        ].join(" "),
+      )
+      .join("; ");
+  const holds = (row) =>
+    row.children.length === 1
+      ? row.children[0].classes.has("github-pull-summary-pending")
+        ? "the pending placeholder"
+        : row.children[0].classes.has("github-pull-summary-late")
+          ? `the late line "${row.children[0].textContent}"`
+          : row.children[0].classes.has("diff-summary")
+            ? "the summary"
+            : "another node"
+      : `${row.children.length} nodes`;
+  const tell = (step, mounted) => told.push(`${step}: ${holds(mounted.row())}; ${waited()}`);
+
+  // A wait that runs late, its Details opened and closed, and the page left before it ends.
+  const stuck = await mountScripted(page, "", { sdk });
+  const header = stuck.row().parentNode;
+  tell("mounted, the comparison not yet read", stuck);
+  assert.deepEqual(
+    assets.filter((name) => name === "event-reports"),
+    ["event-reports"],
+    "the reporter is asked for once, on demand",
+  );
+  waits[0].options.onLate(10_000);
+  tell("still waiting at the late threshold", stuck);
+  const late = stuck.row().children[0];
+  assert.equal(late.getAttribute("role"), "status", "the late line is announced");
+  const toggle = late.querySelector(".github-pull-details-toggle");
+  assert.equal(toggle.tag, "button", "Details is a button, so it takes focus and Enter");
+  assert.equal(toggle.getAttribute("type"), "button");
+  assert.equal(toggle.getAttribute("aria-controls"), "github-pull-details-7");
+  const expanded = () => toggle.getAttribute("aria-expanded");
+  assert.equal(expanded(), "false");
+  toggle.events.get("click")();
+  await settle();
+  const panel = header.querySelector(".event-log-details");
+  assert.equal(header.children.at(-1), panel, "the panel is the header's last row while open");
+  assert.equal(panel.getAttribute("role"), "region");
+  assert.equal(panel.getAttribute("id"), "github-pull-details-7");
+  told.push(`Details opened: expanded ${expanded()}; the panel says "${panel.textContent}"`);
+  toggle.events.get("click")();
+  told.push(
+    `Details closed: expanded ${expanded()}; panel in the header ${panel.parentNode === header}`,
+  );
+  toggle.events.get("click")();
+  await settle();
+  stuck.handle.dispose();
+  told.push(
+    `the page left: panel in the header ${panel.parentNode === header}; expanded ${expanded()}; ${waited()}`,
+  );
+
+  // A wait that runs late and then ends: the summary takes the late line's place, and the
+  // Details it offered close with it.
+  waits.length = 0;
+  const slow = await mountScripted(page, "", { sdk });
+  waits[0].options.onLate(10_000);
+  tell("another page, late", slow);
+  const slowToggle = slow.row().querySelector(".github-pull-details-toggle");
+  slowToggle.events.get("click")();
+  await settle();
+  const slowPanel = slow.container.querySelector(".event-log-details");
+  await slow.idle();
+  tell("its comparison read, its Details open", slow);
+  told.push(
+    `the late line's Details: expanded ${slowToggle.getAttribute("aria-expanded")}; panel in the header ${slowPanel.parentNode !== null}`,
+  );
+  slow.handle.dispose();
+
+  // A wait that ends before its threshold is ended, and never late.
+  waits.length = 0;
+  const quick = await mountScripted(page, "", { sdk });
+  await quick.idle();
+  tell("a page whose comparison is read at once", quick);
+  quick.handle.dispose();
+
+  // A failed refresh's Details read the window before it ended, to a minute after.
+  const failed = await mountOn(page, recorded.failed.body, "", () => "now", sdk);
+  const status = failed.container.querySelector(".github-pull-status");
+  const failureToggle = status.querySelector(".github-pull-details-toggle");
+  assert.equal(failureToggle.getAttribute("data-details"), "failure");
+  told.push(
+    `a failed refresh, ended ${recorded.failed.body.last_refresh.at}: "${status.textContent}"`,
+  );
+  failureToggle.events.get("click")();
+  await settle();
+  assert.equal(failureToggle.getAttribute("aria-expanded"), "true");
+  failed.handle.dispose();
+
+  // With no reporter, as on a page that cannot load it, Details says so.
+  const bare = await mountOn(page, recorded.failed.body, "", () => "now");
+  const bareToggle = bare.container.querySelector(".github-pull-details-toggle");
+  bareToggle.events.get("click")();
+  await settle();
+  told.push(`no reporter: "${bare.container.querySelector(".event-log-details").textContent}"`);
+  bare.handle.dispose();
+  return told;
 }
 
 // The pull request's Diff summary is the header's last row, on every tab (mb-pb35). Its row
@@ -3747,6 +3898,7 @@ async function run() {
   const textRefusalSteps = await textRefusal();
   const textDiagramSteps = await textDiagrams();
   const switchUnavailableSteps = await switchUnavailable(page);
+  const eventLogDetailsSteps = await eventLogDetails(page);
   for (const label of [
     "githubPull:decode",
     "githubPull:render",
@@ -3779,6 +3931,7 @@ async function run() {
     textRefusal: textRefusalSteps,
     textDiagrams: textDiagramSteps,
     switchUnavailable: switchUnavailableSteps,
+    eventLogDetails: eventLogDetailsSteps,
   };
 }
 module.exports = { Element, recorded, root, settle, perf };

@@ -6930,6 +6930,42 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--status-error-text);
 }
 
+/* The event log's Details for a failure or a late wait (static/event-reports.js, mb-9zp5):
+   short muted lines under a quiet rule, and links to the records as JSON. They read at the
+   size of the line they open from, stepping back by ink ("Type Scale" in
+   docs/design-system.md). */
+.event-log-details {
+  padding-block: 6px;
+  padding-inline-start: 10px;
+  border-inline-start: 2px solid var(--border);
+  color: var(--muted);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.event-log-details p,
+.event-log-details ul {
+  margin: 0;
+}
+.event-log-details ul {
+  padding-inline-start: 1.2em;
+}
+.event-log-details-part + .event-log-details-part,
+.event-log-details-links {
+  margin-block-start: 6px;
+}
+.event-log-details-heading {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+.event-log-details a {
+  color: var(--link);
+}
+/* A bare inline link: its box is its text, so the ring stands outside it. */
+.event-log-details a:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset-outset);
+}
+
 /* ── Tally skeleton cells ───────────────────────────────────── */
 /* Rendered by sizeHtml(null) / formatAge(null) when the
    inventory provider has not yet finalized a dir. The cell

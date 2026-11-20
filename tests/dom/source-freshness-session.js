@@ -750,6 +750,10 @@ async function run() {
     "/api/file?path=g1-UkVBRE1FLm1k",
     "/api/source/status",
     "http://elsewhere.example/api/file",
+    // The event log is about the server, whichever revision it shows (A4, review A of #629).
+    "/api/event-log/client",
+    "/api/event-log?client=k3v9q2zx",
+    "/api/event-logs",
     "/api/tree?depth=1",
   ]) {
     answered.push((await guardedFetch(url)).status);

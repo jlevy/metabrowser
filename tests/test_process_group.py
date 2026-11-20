@@ -106,6 +106,7 @@ CHROME_TESTS = (
     "tests.test_diff_markdown_fold_chrome",
     "tests.test_diff_structured_chrome",
     "tests.test_document_print_chrome",
+    "tests.test_event_log_details_chrome",
     "tests.test_files_tab_chrome",
     "tests.test_files_totals_stable_chrome",
     "tests.test_folder_home_chrome",
