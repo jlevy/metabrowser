@@ -4,8 +4,8 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft for the owner’s review, revised for review A on jlevy/metabrowser#623.
-It builds on the
+**Status:** Draft for the owner’s review, revised for reviews A and B on
+jlevy/metabrowser#623. It builds on the
 [agent home visibility research brief](../../research/research-2026-11-19-agent-home-visibility.md),
 which surveys every file format under `~/.claude` and `~/.codex` and recommends an
 `agents` plugin built only on the public plugin contract.
@@ -155,7 +155,7 @@ Every provider maps its files onto these entities:
 | **Home** | `~/.claude` | `~/.codex` |
 | **Session** | One transcript (`sessionId`) | One thread (`threads.id`), across its segments |
 | **Child session** | A subagent transcript, joined by `agentId` and `toolUseId` | A spawned thread, joined by `thread_spawn_edges` |
-| **Turn** | A user prompt to the end of the agent’s response | A `thread_turns` row or a `turn_context` span |
+| **Turn** | A user prompt to the end of the agent’s response | A `thread_turns` row, keyed by its segment’s history id, or a `turn_context` span |
 | **Record** | A transcript line | A rollout line or a `thread_items` row |
 | **Model request** | Assistant records sharing one `message.id` | A response with its `token_usage_record` |
 | **Tool call** | A `tool_use` and its `tool_result` | A function or command call and its output |
@@ -200,7 +200,9 @@ Subagent spawns and file changes are tool calls.
 Their tool family (`subagent` or `edit`) and the provider sections set them apart, so
 they never count twice.
 
-Each provider’s mapping table is a value in code.
+Each provider’s mapping table is a value in code, and it names the source of each kind.
+For Codex, `metering` events and `turn_context` exist only in rollouts.
+`thread_history` yields the rest.
 A golden pins it, along with a classification of every raw type the research survey
 observed. A tally has two levels: the kind, then the raw types under it.
 `unknown` is never silently dropped; it feeds the drift report under
@@ -267,21 +269,33 @@ Both agents copy history: Claude Code on resume and fork, and Codex across segme
 Counting per session is not enough, because a resumed session repeats requests that its
 original session already counted.
 
-- **Ownership rule:** every model request and event belongs to the first session that
-  wrote it. That is the earliest timestamp, and the ties are broken by session id.
-- **Ownership index:** the catalog keeps an index from each request’s identity (Claude
-  Code’s `message.id` and record `uuid`, and Codex’s response and item ids) to its
-  owning session.
-- **Replays:** Claude Code records naming another `sessionId` are resumed replays.
-  The provider follows the rules `urollup` documents in its
-  [Claude Code](https://github.com/jlevy/urollup/blob/main/docs/formats/claude-code.md)
-  and [Codex](https://github.com/jlevy/urollup/blob/main/docs/formats/codex.md) format
-  notes.
-- **Totals:** a summary counts owned and copied events separately, and every aggregate
-  sums only owned ones.
-  A session page shows both, so a resumed session explains its size.
-- **Parents and children:** a parent’s total including children adds each child once,
-  through the ownership rule.
+- **Replays marked in the file:** the provider marks an event as a replay when the
+  record’s own provenance names another session.
+  Every such rule reads only the file itself, so it is safe to cache.
+  - In a Claude Code main-session transcript, a record naming another `sessionId` is a
+    resumed replay.
+  - A subagent transcript is exempt: its records carry the parent’s `sessionId` by
+    design, and its own identity is the `agentId`.
+  - The provider follows the rules `urollup` documents in its
+    [Claude Code](https://github.com/jlevy/urollup/blob/main/docs/formats/claude-code.md)
+    and [Codex](https://github.com/jlevy/urollup/blob/main/docs/formats/codex.md) format
+    notes, including its fork and segment cases.
+- **Requests copied without a mark:** these are resolved at query time and never cached
+  in a session’s summary.
+  - The usage family stores one row per model request in the catalog’s database, with
+    its identity (Claude Code’s `message.id`, Codex’s response id), session, timestamp,
+    model, and token counts.
+  - A request’s owner is the session its provenance names.
+    When none does, the owner is the session whose file was created first.
+  - Aggregates sum each identity once, through its owner among the sessions present now.
+  - When a session is added, restored, or pruned, its rows are added or removed, and
+    ownership re-resolves on the next query.
+    Nothing cached goes stale.
+- **Events:** event tallies exclude events marked as replays.
+  A session page shows its replayed events apart, so a resumed session explains its
+  size.
+- **Parents and children:** a parent’s total including children adds each child’s owned
+  requests once.
 
 ### Drill-Down
 
@@ -302,14 +316,16 @@ named in Phase 2. Each is backed by a route that `metab --api` reaches.
 
 - **Agents home.** One page for each home under the served root, and a combined page
   when the root holds both.
-  - Totals: sessions, sessions running now, events, tokens, and size on disk.
+  - Totals: sessions, sessions running now, and size on disk.
+    Tokens arrive with the usage family, and event counts with the events family.
   - A **live strip** of running sessions, each with its project, model, current event
     kind, and the age of its last event.
   - Sessions per day, a histogram of session sizes (log-spaced, by bytes or by turns),
     and the most recent sessions.
   - Later phases add usage, event-kind, and tool panels.
 - **Session list.** Sortable columns: agent, title, origin, project, model, start,
-  duration, turns, size, tokens, errors, and status.
+  duration, turns, size, and status.
+  The tokens and errors columns arrive with their families.
   - Filters by agent, origin, project, model, status, and date range.
   - Automatic reviews are hidden by default, since they are most Codex threads.
 - **Session page.** A header with the session’s identity, origin, place, time, size,
@@ -317,7 +333,9 @@ named in Phase 2. Each is backed by a route that `metab --api` reaches.
   - **Log:** the Log timeline, colored by kind.
     Claude Code’s comes from the transcript.
     Codex’s comes from `thread_history`, which is indexed and uncompressed, so it needs
-    no zstd.
+    no zstd. From Phase 4, Codex events come from the rollout when it can be read, since
+    only the rollout holds `metering` and `turn_context` events.
+    `thread_history` remains the fallback, and the page names the source.
   - **Stats:** event tallies, tool rollup, and latency.
   - **Children:** the subagent tree, with each child’s size, duration, and tokens.
   - **Changes:** files changed, with diffs through the diff plugin’s renderer.
@@ -327,7 +345,8 @@ named in Phase 2. Each is backed by a route that `metab --api` reaches.
   - Sessions are bars, with their children nested under them.
   - It scrolls and zooms from hours to months, and keeps only the visible window in the
     page.
-  - At close zoom, a bar breaks into turns colored by event kind.
+  - From Phase 5, which adds turn spans to the events family, a bar breaks into turns
+    colored by event kind at close zoom.
   - Clicking a bar opens its session.
   - The rendering technique (DOM, SVG, or canvas) and its bounds are set from a Chrome
     measurement, per [rendering large content](../../../large-content-rendering.md).
@@ -420,7 +439,8 @@ Each provider exposes these operations:
 A summary is split into **measure families**, each with its own schema version:
 
 - **Session:** identity, origin, place, time, size, models, status, and children.
-- **Usage:** owned and copied token totals by model, and rate-limit samples.
+- **Usage:** per-request rows, as described under
+  [Copied History and Ownership](#copied-history-and-ownership), and rate-limit samples.
 - **Events:** two-level tallies, tool rollups, latency histograms, locators, and errors.
 - **Drift:** unknown types and columns.
 
@@ -484,7 +504,7 @@ Each addition lands in the commit that first uses it:
 | Registry-driven adapter detection, with the reserved built-in names removed | Phase 2, moving the adapters |
 | An exported JSONL parse limit or bounded-read helper in `plugin_api` | Phase 2, the import-boundary test |
 | A plugin cache directory and its lifecycle | Phase 2, the catalog |
-| Route-backed plugin pages, as the object data model plan proposes | Phase 2, the home, list, and session pages |
+| Route-backed plugin pages, as the [object data model plan](plan-2026-11-14-object-data-model-and-views.md) proposes | Phase 2, the home, list, and session pages |
 | Read zstd through `ArtifactPath` | Phase 4, Codex rollout usage |
 
 The live views poll data-hook routes with a cursor, so they need no change-subscription
@@ -499,7 +519,7 @@ research brief lists is not needed.
 | `sessions` | Filtered, sorted session rows | 2 |
 | `session` | One session’s summary, children, and declared provider sections | 2 |
 | `records` | One session’s normalized events, by kind, tool, or locator | 2 |
-| `live` | Running sessions, and events since a cursor | 2 |
+| `live` | Running sessions; from Phase 3, also events since a cursor | 2 |
 | `timeline` | Sessions and turns in a time window | 3 |
 | `usage` | Token tallies for a filter and a grouping | 4 |
 | `stats` | Event tallies, tool rollups, and latency for a filter and a grouping | 5 |
@@ -570,8 +590,8 @@ Phase 2 carries them into the plugin unchanged.
 
 - [ ] Measure timeline rendering in Chrome, and set the technique and its bounds from
   the measurement.
-- [ ] Build the timeline, with nested children and the per-turn breakdown at close zoom.
-- [ ] Build the live events tail.
+- [ ] Build the timeline, with nested children.
+- [ ] Add events since a cursor to the `live` route, and build the live events tail.
 - [ ] Add the `timeline` golden, the `live` cursor goldens, and the browserless
   state-machine sessions.
 
@@ -586,9 +606,10 @@ appear in one tail.
 - [ ] Add the ownership index and the usage family.
 - [ ] Build the Usage page and the home page’s usage panel, including Codex rate-limit
   headroom.
-- [ ] In `urollup`, add the incremental mode and publish a release.
-  Then, in Metabrowser, add `urollup` detection, the version floor, the
-  optional-dependency doctor report, the CI install, and the equality test.
+- [ ] In `urollup`, add the incremental mode and publish its first release.
+  Add `urollup` as a first-party tool to `SUPPLY-CHAIN-SECURITY.md`. Then, in
+  Metabrowser, add `urollup` detection, the version floor, the optional-dependency
+  doctor report, the CI install, and the equality test.
 - [ ] Add the `usage` goldens.
 
 **Done when:** tokens by model, project, origin, and day match the hand-computed numbers
@@ -596,8 +617,9 @@ with or without `urollup`, and are faster with it.
 
 ### Phase 5: Events, Tools, and Latency
 
-- [ ] Add the events family: two-level tallies, tool rollups, latency histograms, and
-  locators.
+- [ ] Add the events family: two-level tallies, tool rollups, latency histograms, turn
+  spans, and locators.
+- [ ] Add the per-turn breakdown to the timeline.
 - [ ] Build the session page’s Stats tab, the Records and Tools page, and the Errors
   page.
 - [ ] Add the tool-family color tokens to the palette check.
@@ -649,8 +671,11 @@ Each has a proposed default:
 
 1. **Served root (blocks Phase 2):** the proposed default serves each home on its own,
    and shows the combined home when the served root holds both.
-2. **zstd (blocks Phase 4):** wait for Python 3.14 as the floor, or vet a zstd package
-   now?
+2. **zstd (blocks Phase 4):** the proposed default vets `backports.zstd`, which provides
+   Python 3.14’s `compression.zstd` interface on older versions, as a dependency for
+   Python below 3.14 only, under the supply-chain rules.
+   Raising the floor to 3.14 would drop the 3.12 and 3.13 support that `requires-python`
+   promises.
 
 The brief’s other questions also still stand: companion paths, packaging, and secret
 masking. This plan adds:
@@ -672,6 +697,7 @@ masking. This plan adds:
 - [Rendering large content](../../../large-content-rendering.md)
 - [Command-line dependencies and doctor plan](plan-2026-11-18-cli-dependencies-and-doctor.md)
 - [Design System](../../../design-system.md)
+- [Object data model plan](plan-2026-11-14-object-data-model-and-views.md)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
