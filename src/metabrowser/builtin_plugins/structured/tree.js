@@ -208,10 +208,11 @@
   }
 
   // The registry's chevron (the SDK's `mb.icons.toggle`), the one every disclosure in
-  // the product wears. A module driven without the shell shows a plain glyph instead,
-  // so a row never loses its disclosure affordance.
+  // the product wears. A module driven without the shell has no SDK, so no chevron; the
+  // shell always ships it, and the icon catalog (docs/design-system-icons.md) lists every
+  // typed glyph, so a stand-in character is not added here.
   function disclosureIcon() {
-    return global.metabrowser?.icons.toggle || "▸";
+    return global.metabrowser?.icons.toggle || "";
   }
 
   function renderRowHtml(row, indentChars) {
