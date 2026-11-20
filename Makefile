@@ -226,10 +226,13 @@ benchmark: | install
 # beside other workers, like the parallel tier, so the same gates fail a serial or chrome
 # test in it.
 ADMITTED_GIT_TESTS := \
+	tests/test_git_file_ages.py \
+	tests/test_git_revision_ages_routes.py \
 	tests/test_git_full_clone_acceptance.py \
 	tests/test_cli_live_acquire_golden.py \
 	tests/test_cache_acquire.py \
 	tests/test_cache_publish.py \
+	tests/test_cache_store_rename.py \
 	tests/test_cli_acquire.py \
 	tests/test_cli_cache_acquire_golden.py \
 	tests/test_cli_git_pin_golden.py \
@@ -269,6 +272,8 @@ ADMITTED_GIT_TESTS := \
 	tests/test_cli_github_pull_files_golden.py \
 	tests/test_cli_github_pull_files_summary_golden.py \
 	tests/test_cli_github_pulls_prefetch_golden.py \
+	tests/test_github_ref_pulls.py \
+	tests/test_cli_github_ref_pulls_golden.py \
 	tests/test_github_pull_files.py \
 	tests/test_github_pull_files_summary.py \
 	tests/test_github_drawn_from_disk.py \
@@ -363,12 +368,14 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_github_pull_files_golden.py \
 	tests/test_cli_github_pull_files_summary_golden.py \
 	tests/test_cli_github_pulls_prefetch_golden.py \
+	tests/test_cli_github_ref_pulls_golden.py \
 	tests/test_cli_checkout_golden.py \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_cli_source_checkout_golden.py \
 	tests/test_cli_present_golden.py \
 	tests/test_app_contract_golden.py \
-	tests/test_diff_comparison_cache.py
+	tests/test_diff_comparison_cache.py \
+	tests/test_agents_mapping_golden.py
 
 golden-update:
 	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_RECORDERS)

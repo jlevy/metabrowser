@@ -185,6 +185,7 @@ The state’s word beside the row’s title carries the meaning without the colo
 | `chevron.down` | SF Symbol | A window’s title opens its folder chooser: after the title | `apps/macos/Sources/Metabrowser/TitleAccessory.swift` | Tertiary label color at rest, secondary under the pointer, quaternary in a window that is not main | Seven tenths of the title font’s point size, semibold |
 | `checkmark` | SF Symbol | The folder this window shows, in the Switch Folder panel’s list | `apps/macos/Sources/Metabrowser/SwitchFolderWindow.swift` | Secondary label color, or the selection’s ink on the selected row | The row’s default symbol size |
 | `.section-disclosure-trigger::after`, Lucide `chevron-right` | CSS mask | Show or hide a section, after its heading, and a rendered document’s `summary` | `static/styles.css` | `--section-disclosure-chevron-color` | `--section-disclosure-chevron-size`, in `em` of the heading |
+| `.mb-image-fallback::before`, Lucide `image` | CSS mask | An image a rendered document’s page does not load, drawn before its alt text | `static/styles.css` | The link’s own ink (`currentcolor`) | `1.1em` of the chip’s text |
 | `copy`, Lucide `copy` | Registry | Copy an identifier or a block’s content to the clipboard; also the Archives category’s shape | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph`; smaller in a branch chip (`.git-ref-copy`) |
 | `print`, Lucide `printer` | Registry | Print the document | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
 | `gear`, Lucide `settings` | Registry | Open the Metabrowser menu | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
@@ -196,8 +197,10 @@ The state’s word beside the row’s title carries the meaning without the colo
 | `↑` | Text | The parent folder, in the parent navigation button | `static/view-header.js`, `builtin_plugins/folder/treemap.js` | `--muted` | `--ui-small-font-size` |
 | `✓` | Text | A chosen value in a filter chip’s menu, and the current member in a stack’s menu | `static/filter-controls.js`, `builtin_plugins/github/pull-page.js` | `--link`, in `.chip-menu-check` | The text’s, in a fixed column |
 | `→` | Text | From one to the other: a rename, a mode or type change, and a merge’s source and target | `builtin_plugins/diff/diff-model.js`, `static/git-panel.js`, `static/plugin-sdk-views.js` | The text’s | The text’s |
-| `→` | Text | An agent log’s tool call, going out, in an event’s kind | `builtin_plugins/agent_log/index.js` | The kind badge’s | The text’s |
-| `←` | Text | An agent log’s tool result, coming back, in an event’s kind | `builtin_plugins/agent_log/index.js` | The kind badge’s | The text’s |
+| `→` | Text | An agent log’s tool call, going out, in an event’s kind | `builtin_plugins/agents/agent-log.js` | The kind badge’s | The text’s |
+| `←` | Text | An agent log’s tool result, coming back, in an event’s kind | `builtin_plugins/agents/agent-log.js` | The kind badge’s | The text’s |
+| `↑` | Text | A session table’s sorted column, ascending, after its header’s label | `builtin_plugins/agents/agents-views.css` | The header’s | The header’s |
+| `↓` | Text | A session table’s sorted column, descending, after its header’s label | `builtin_plugins/agents/agents-views.css` | The header’s | The header’s |
 | `→` | Text | The Metabrowser menu title’s link to the project on GitHub, shown on hover | `server.py` | The title’s | The text’s |
 | `⏎` | Text | A line with no newline at its end, in a diff | `builtin_plugins/diff/diff-view.js` | `--muted` | The text’s |
 | `‹` | Text | Opens the hex code the binary view shows for a byte that is not printable ASCII, such as `‹FF›` | `builtin_plugins/binary/byte-format.js` | `--muted`, the code’s | `--mono-block-font-size`, the code block’s |

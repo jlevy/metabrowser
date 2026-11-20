@@ -99,6 +99,7 @@ SLACK_S = 0.5
 # tests/test_suite_tiers.py, whose Chrome tests are probes of the harness with their own
 # bounds.
 CHROME_TESTS = (
+    "tests.test_agents_views_chrome",
     "tests.test_changed_file_rows_chrome",
     "tests.test_checkout_ref_selector_chrome",
     "tests.test_chrome_starts",
@@ -121,6 +122,7 @@ CHROME_TESTS = (
     "tests.test_github_pulls_stack_lines_chrome",
     "tests.test_github_pulls_stacks_chrome",
     "tests.test_inert_render_refusal_chrome",
+    "tests.test_markdown_badges_chrome",
     "tests.test_markdown_diagrams_chrome",
     "tests.test_markdown_github_layout_chrome",
     "tests.test_nav_collapse_chrome",
@@ -133,6 +135,7 @@ CHROME_TESTS = (
     "tests.test_prose_faces_chrome",
     "tests.test_raw_profile_cache_chrome",
     "tests.test_ref_selector_long_list_chrome",
+    "tests.test_ref_selector_pulls_chrome",
     "tests.test_shortcut_strip_chrome",
     "tests.test_staged_fonts_chrome",
     "tests.test_title_prefix_chrome",

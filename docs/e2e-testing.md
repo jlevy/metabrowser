@@ -213,7 +213,7 @@ Each has one command, one way its tests are selected, and a stated time when it 
 | Tier | Command | Selected by | When it runs |
 | --- | --- | --- | --- |
 | Default | `make test` | everything that does not skip | Every pull request in CI, as the [CI Jobs](#ci-jobs) on Ubuntu; the pre-push hook |
-| Admitted Git | `make test-admitted-git` | `ADMITTED_GIT_TESTS` in the `Makefile` | Every pull request in CI, on the lowest admitted Git release and the newest patched one |
+| Admitted Git | `make test-admitted-git` | `ADMITTED_GIT_TESTS` in the `Makefile` | Every pull request in CI, on the lowest admitted Git release, the newest patched one, and the release that reads file ages |
 | macOS | `make test-macos` | the `macos_tier` marker | Never in CI. Part of `make test` on a Mac; run it there before a release |
 | Live GitHub | `make test-live-github` | the `live_github` marker | Never in CI. By hand, before a release and after a change to GitHub URL or pull request reading |
 
@@ -322,7 +322,7 @@ says why each check runs where it does.
 | `unit` | `make test-parallel`, in parts by `SHARD` | each supported Python and the free-threaded build |
 | `goldens and serial` | `make test-goldens`, then `make test-serial` | the same interpreters |
 | `chrome` | `make test-chrome`, in parts by `SHARD` | `PR_CHROME_PYTHON` for a pull request while `main` is green; every interpreter for a push to `main`, and for a pull request while `main` is red |
-| `admitted-git` | `make test-admitted-git` | the two admitted Git releases |
+| `admitted-git` | `make test-admitted-git` | the three admitted Git releases |
 | `stack-integration` | `make lint-check` and the four tiers, on the head merged with `main` | a stacked pull request whose tested commit lacks `main`’s head and whose merge with `main` changes the tree: in practice an informal chain, since a formal GitHub stack’s merge commit already holds `main` |
 | `ci-ok` | `devtools/ci_verdict.sh`: fails unless every other job succeeded, and says why it accepted a skipped `stack-integration` | every run |
 
@@ -373,6 +373,9 @@ or the test fails:
 - Admitted-Git tier: `needs a Git the acquisition floor admits`, where the runner’s own
   Git is below the floor.
   The admitted-git job runs those tests.
+- File ages: `needs a Git that reads file ages`, where the installed Git is below
+  `FILE_AGES_GIT_MINIMUM`. The admitted-git job that builds a release at or above it
+  fails instead of skipping (`tests/file_ages_git.py`).
 
 Any other reason in a CI run means a test the suite is believed to run did not, so it
 fails there. `tests/suite_gates.py` holds these rules.
@@ -446,14 +449,18 @@ Strict mode is off on a developer machine, which can add these:
   the checkout with what it was; `tests/test_ref_selector_long_list_chrome.py`, which
   serves a checkout of thousands of branches and reads which of the branch chooser’s
   rows are drawn, and where, when it opens, scrolls, takes End and Home, has the Files
-  toolbar drawn again around it, and is filtered; `tests/test_control_chords_chrome.py`,
-  which presses Control-N and Control-P through Chrome’s input under a navigator
-  overridden to name a Mac and then Linux, on every host, and reads that only the Mac’s
-  binds them; `tests/test_overview_label_column_chrome.py`, which serves a folder of
-  eleven file-type families and reads, at five window widths in both font sets, where
-  every File Overview row’s label column ends and its bar starts, with Details closed
-  and open and Files and Bytes, whether the labels the column is sized for fit it, what
-  a longer label does to the bars, and how the legend’s ten entries wrap;
+  toolbar drawn again around it, and is filtered;
+  `tests/test_ref_selector_pulls_chrome.py`, which serves a checkout whose branches are
+  the heads of cached pull requests and reads the two heights of the chooser’s rows,
+  that each sits where the rows before it put it, a pull request’s icon, number, and
+  title, and what its filter finds; `tests/test_control_chords_chrome.py`, which presses
+  Control-N and Control-P through Chrome’s input under a navigator overridden to name a
+  Mac and then Linux, on every host, and reads that only the Mac’s binds them;
+  `tests/test_overview_label_column_chrome.py`, which serves a folder of eleven
+  file-type families and reads, at five window widths in both font sets, where every
+  File Overview row’s label column ends and its bar starts, with Details closed and open
+  and Files and Bytes, whether the labels the column is sized for fit it, what a longer
+  label does to the bars, and how the legend’s ten entries wrap;
   `tests/test_overview_legend_hover_chrome.py`, which moves Chrome’s pointer onto a File
   Overview legend entry and a bar segment and reads which bars and entry are marked,
   what they compute to, where the tooltip lands, and that nothing moves;

@@ -693,6 +693,7 @@ $ node tests/dom/key-reveal-session.js
         ["0","shell.home","squares"],
         ["\\","shell.nav-toggle","Hide navigation"],
         ["F","main-tabs.files","Files tab"],
+        ["E","view-tabs.e","Session tab"],
         ["V","view-tabs.v","Log tab"],
         ["C","view-tabs.c","Charts tab"],
         ["S","view-tabs.s","Raw JSON tab"],

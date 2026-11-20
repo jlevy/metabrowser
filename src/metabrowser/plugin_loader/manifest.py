@@ -183,6 +183,29 @@ class KindRule(BaseModel):
         default=None,
         description="Folder-like behavior for files of this kind; see ContainerSpec.",
     )
+    binary: bool = Field(
+        default=False,
+        description=(
+            "Claim files whose content is binary, by path alone: the rule is asked only "
+            "about a served file the server has already found to be binary, where it "
+            "would otherwise be the ``binary`` kind, and only path predicates (``ext``, "
+            "``exts``, ``basename``, ``folder_marker``, ``path_glob``) may match. A rule "
+            "without it is never asked about a binary file."
+        ),
+    )
+
+
+# The predicates that read a file's content. A ``binary`` rule may not use them, since
+# the content they would read is not text.
+CONTENT_MATCH_FIELDS: tuple[str, ...] = (
+    "adapter",
+    "frontmatter_has_key",
+    "frontmatter_schema_prefix",
+    "json_has_key",
+    "json_value_prefix",
+    "yaml_has_key",
+    "yaml_value_prefix",
+)
 
 
 class ViewSpec(BaseModel):
@@ -222,6 +245,18 @@ class ViewSpec(BaseModel):
     render_runtime: Literal["kpress", "client", "server", "plugin"] | None = Field(
         default=None,
         description="Descriptive runtime for the view renderer; JS registration still dispatches.",
+    )
+    offer: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z_][\w.]*:[A-Za-z_]\w*$",
+        description=(
+            "``module:function`` predicate, for a view of the ``folder`` kind only. The "
+            "function receives the folder's path and returns whether to offer the view "
+            "there; it runs for every folder page, off the event loop, so it reads no "
+            "more than a few directory entries. An offered view with ``default = true`` "
+            "is then the folder's only default. Python plugins only: an operator "
+            "directory's plugin never offers the view."
+        ),
     )
 
     @field_validator("key")
@@ -325,6 +360,18 @@ class PluginInfo(BaseModel):
             "compatibility path for older SDKs."
         ),
     )
+    register_module: str | None = Field(
+        alias="register",
+        default=None,
+        description=(
+            "Dotted Python module imported once when the plugin is discovered, for "
+            "registrations such as ``register_log_adapter``. Built-in and entry-point "
+            "plugins only: an operator-directory plugin is JavaScript-only, so the "
+            "field is ignored there with a warning. An import failure is a plugin "
+            "load error."
+        ),
+        pattern=r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$",
+    )
     extra_scripts: list[str] = Field(
         default_factory=list,
         description=(
@@ -410,6 +457,25 @@ class PluginManifest(BaseModel):
                 problems.append(
                     f"kind '{kr.id}' declares container.children="
                     f"{kr.container.children!r} but no [[data_hook]] has that route"
+                )
+
+        for kr in self.kind:
+            content = [f for f in CONTENT_MATCH_FIELDS if getattr(kr.match, f) is not None]
+            if kr.binary and content:
+                problems.append(
+                    f"kind '{kr.id}' claims binary files but matches on content "
+                    f"({', '.join(content)}); a binary rule matches by path only"
+                )
+            if kr.binary and kr.container is not None:
+                problems.append(f"kind '{kr.id}' claims binary files and cannot be a container")
+
+        # An offer decides where a folder view appears; no other kind has a place to
+        # decide it from, since a file's kind already chose the file.
+        for view in self.view:
+            if view.offer is not None and view.kind != "folder":
+                problems.append(
+                    f"view '{view.id}' declares offer={view.offer!r}, but only a "
+                    "view of the folder kind can be offered"
                 )
 
         # Each kind needs a non-empty match predicate.

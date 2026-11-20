@@ -37,6 +37,7 @@ class _FakeRequest:
     def __init__(self, query: dict[str, str], headers: dict[str, str] | None = None) -> None:
         self.query_params = _FakeQuery(query)
         self.headers = _FakeHeaders(headers or {})
+        self.cookies: dict[str, str] = {}
 
 
 class _FakeQuery:

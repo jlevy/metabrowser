@@ -23,11 +23,11 @@ public nonisolated struct TabActivity<ID: Hashable & Sendable>: Equatable, Senda
 /// folders in the background, ranked together.
 ///
 /// A folder page's web view is its own WebContent process, and that process is most of
-/// what a tab costs (see `defaultLiveBackgroundTabs`). A page's View on GitHub popover adds
-/// a process of its own while it is open, for `GitHubPopoverState.keptAfterClosing` after it
+/// what a tab costs (see `defaultLiveBackgroundTabs`). A page's web pane, as View on GitHub opens,
+/// adds a process of its own while it is open, for `WebPaneState.keptAfterClosing` after it
 /// closes, and for as long as it holds text the user has not sent. The policy does not
 /// count it; there is at most one per live page, since a page the policy discards lets its
-/// popover's go with its own. A discarded page keeps its window, if it
+/// pane's go with its own. A discarded page keeps its window, if it
 /// has one, and its server, and reloads its page from that running server when it is
 /// shown again. The windows on screen keep their pages, and so do the background pages
 /// shown most recently, up to the limit.
@@ -48,8 +48,8 @@ public nonisolated struct TabDiscardPolicy: Equatable, Sendable {
     ///   it was likely still walking the tree, two of five took 3.6 and 17.9 s.
     ///
     /// Three background tabs then hold at most about 0.6 GB beyond the windows on screen,
-    /// at the brief's upper figure, and as much again while each keeps a GitHub popover's web
-    /// view (`GitHubPopoverState.keptAfterClosing` has that measurement). It is a conservative default, not a measured optimum:
+    /// at the brief's upper figure, and as much again while each keeps a web pane's web view
+    /// (`WebPaneState.keptAfterClosing` has that measurement). It is a conservative default, not a measured optimum:
     /// showing a discarded tab costs a reload of a few hundred milliseconds, and how often
     /// people return to a tab past the third is unmeasured.
     public static let defaultLiveBackgroundTabs = 3

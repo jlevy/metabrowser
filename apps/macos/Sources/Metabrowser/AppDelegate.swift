@@ -1196,26 +1196,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(ProjectLinks.readme)
     }
 
-    // MARK: - GitHub data
+    // MARK: - Website data
 
-    /// Metabrowser > Clear GitHub Data…: empties the store every GitHub popover shares
-    /// (`GitHubDataStore`), which signs you out of GitHub in every window, then reloads each
-    /// open page's popover, signed out, whether a window shows the page or its folder is in
+    /// Metabrowser > Clear Website Data…: empties the store every web pane shares
+    /// (`WebDataStore`), for one site that stored something or for all of them, which signs
+    /// you out of each in every window, then reloads, signed out, each open page's popover
+    /// whose site's data was cleared, whether a window shows the page or its folder is in
     /// the background. Cancel is the default button, as for the clone question, so a stray
     /// Return keeps the sign-in.
-    @objc func clearGitHubData(_ sender: Any?) {
+    @objc func clearWebsiteData(_ sender: Any?) {
+        Task {
+            let sites = await WebDataStore.sites()
+            let clearing = askWhichWebsiteDataToClear(sites)
+            switch clearing {
+            case .cancelled: return
+            case .all: AppLog.app.info("clearing website data: every site")
+            case .sites: AppLog.app.info("clearing website data: one site")
+            }
+            await WebDataStore.clear(clearing)
+            for page in folderSessions.flatMap(\.pages) { page.reloadWebPopover(after: clearing) }
+        }
+    }
+
+    /// Asks which sites' data to clear, from a pop-up of `WebDataClearing.menu(sites)`.
+    private func askWhichWebsiteDataToClear(_ sites: [String]) -> WebDataClearing {
         let alert = NSAlert()
-        alert.messageText = "Clear GitHub data?"
+        alert.messageText = "Clear website data?"
         alert.informativeText =
-            "This signs you out of GitHub in Metabrowser’s View on GitHub popovers and removes the cookies, cache, and other data github.com stored there. It does not change your gh sign-in, your browser, or Metabrowser’s own settings."
+            "This signs you out of the websites Metabrowser shows in its own web views, such as View on GitHub, and removes the cookies, cache, and other data they stored there. It does not change your gh sign-in, your browser, or Metabrowser’s own settings."
+        let choice = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 26), pullsDown: false)
+        for title in WebDataClearing.menu(sites) {
+            choice.menu?.addItem(title.map { NSMenuItem(title: $0, action: nil, keyEquivalent: "") } ?? .separator())
+        }
+        choice.selectItem(at: 0)
+        alert.accessoryView = choice
         alert.addButton(withTitle: "Cancel")  // the first button is the default
         let clear = alert.addButton(withTitle: "Clear")
         clear.hasDestructiveAction = true
-        guard alert.runModal() == .alertSecondButtonReturn else { return }
-        AppLog.app.info("clearing the GitHub popovers' data")
-        Task {
-            await GitHubDataStore.clear()
-            for page in folderSessions.flatMap(\.pages) { page.reloadGitHubPopover() }
-        }
+        let confirmed = alert.runModal() == .alertSecondButtonReturn
+        return WebDataClearing(confirmed: confirmed, selected: choice.indexOfSelectedItem, sites: sites)
     }
 }

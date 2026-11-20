@@ -42,9 +42,12 @@ page shows, and for every `git` and `gh` process that runs to completion, with i
 duration, how it ended, and the span that started it.
 The jobs are those wrapped in `event_log.job`: pull request and file list refreshes,
 comparison listings, the pull request prefetch, a checkout’s idle comparison, GitHub
-status checks, and repository rediscovery.
-A streaming `git` session started with `spawn_git_process`, such as a history or tree
-reader, is not a span of its own; the request that reads it is.
+status checks, repository rediscovery, and the read of a Git revision’s file ages
+(`file_ages.read`, whose end record carries the files dated, the commits that dated
+them, and why any are not; a `git last-modified` that fails ends it `failed` with Git’s
+stderr).
+A streaming `git` session started with `spawn_git_process`, such as a history or
+tree reader, is not a span of its own; the request that reads it is.
 It covers what the stderr log cannot: a pull request’s refresh or a comparison’s listing
 runs after the request that asked for it has returned, and a `gh` that times out there
 writes nothing to stderr.

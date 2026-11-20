@@ -6,7 +6,7 @@
 // content is inert -- nothing in it loads or runs -- and `sanitizeNodes` builds new nodes
 // from the allowlist alone: new elements for allowed tags with only their checked
 // attributes, new text, images kept only inside the served tree and otherwise turned
-// into links, other tags unwrapped, and the dropped ones gone with their content. No
+// into a fallback, other tags unwrapped, and the dropped ones gone with their content. No
 // class, name, data, style, or event attribute survives, nor any SVG, MathML, media,
 // stylesheet, frame, or form, and no id the document wrote: in a document inside the
 // served tree each heading gets the anchor github.com would give it, `user-content-`
@@ -116,12 +116,18 @@
   // A number, with an optional fraction, then `%` or the `px` a README often writes; five
   // digits, for the reason inert_html.py gives beside its _DIMENSION.
   const DIMENSION = /^[0-9]{1,5}(?:\.[0-9]{1,3})?(?:%|px)?$/i;
+  // What an image the page does not load becomes, and the policy one from the web is
+  // fetched under, as inert_html.py has them.
+  const IMAGE_FALLBACK_CLASS = "mb-image-fallback";
+  const IMAGE_REFERRER_POLICY = "no-referrer";
   // The attributes each tag may keep; every value is checked by allowedAttributes,
-  // except a heading's id, which is always sanitizeNodes' own anchor, and an image's
-  // loading, which is always lazy.
+  // except a heading's id, which is always sanitizeNodes' own anchor, an image's loading,
+  // which is always lazy, its referrerpolicy, which is always no-referrer, and a span's,
+  // which only the image fallback's own shape keeps.
   const ALLOWED_ATTRIBUTES = Object.freeze({
     a: Object.freeze(["href", "target", "rel"]),
-    img: Object.freeze(["loading", "src", "alt", "align", "width", "height"]),
+    img: Object.freeze(["loading", "referrerpolicy", "src", "alt", "align", "width", "height"]),
+    span: Object.freeze(["class", "data-tip-text"]),
     ol: Object.freeze(["start"]),
     p: Object.freeze(["align"]),
     div: Object.freeze(["align"]),
@@ -219,6 +225,12 @@
   }
 
   const SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/;
+  // An address written in full: its scheme (or none), two slashes in any mix, and a
+  // character of the host, as inert_html.py's `_WRITTEN_AUTHORITY`.
+  const WRITTEN_AUTHORITY = /^(?:https:)?[/\\]{2}[^/\\?#]/i;
+  // The authority a written address names, which is ASCII or no image of the web, as
+  // inert_html.py's `_AUTHORITY` says why.
+  const AUTHORITY = /^(?:https:)?[/\\]{2}([^/\\?#]*)/i;
   // Two slashes or backslashes in any mix begin another origin's address.
   const OTHER_ORIGIN = /^[/\\]{2}/;
 
@@ -355,10 +367,28 @@
       // A constant, so the document has no say in when its images load: a trusted
       // render's images wait until they near the reader, and these wait the same way.
       // Ahead of src, for a browser that reads the two in order.
-      kept.push(["loading", "lazy"], ["src", clean(read("src") ?? "")]);
+      kept.push(["loading", "lazy"]);
+      const remote = remoteImage(read("src"), base);
+      if (remote === null) {
+        kept.push(["src", clean(read("src") ?? "")]);
+      } else {
+        // The address as a browser's URL parser writes it, as a kept link's is.
+        kept.push(["referrerpolicy", IMAGE_REFERRER_POLICY], ["src", remote]);
+      }
       const alt = read("alt");
       if (alt) {
         kept.push(["alt", alt]);
+      }
+    } else if (tag === "span") {
+      // Only the fallback the server's hardener wrote for an image the page does not
+      // load, so its answer hardens to itself, as inert_html.py has it: the class
+      // exactly, and an address a browser reads as http(s) for the tooltip.
+      if (read("class") === IMAGE_FALLBACK_CLASS) {
+        kept.push(["class", IMAGE_FALLBACK_CLASS]);
+        const address = outsideLink(read("data-tip-text"), null);
+        if (address !== null) {
+          kept.push(["data-tip-text", address]);
+        }
       }
     } else if (tag === "ol") {
       const start = read("start") ?? "";
@@ -396,13 +426,54 @@
   }
 
   /**
-   * Whether an image stays an image: only one inside the served tree, and only then.
+   * The `https` address of an image the page may fetch from the web, or null. Only an
+   * address the document writes in full qualifies, so a relative path in a pull request's
+   * comment, which `outsideLink` would make absolute against *base*, is not one; nor is
+   * `http`, or an address with a user name or password in it, which a browser refuses an
+   * image under. Written as `outsideLink` writes it, as inert_html.py's `remote_image`.
+   *
+   * @param {string | null} src
+   * @param {string | null} base
+   * @returns {string | null}
+   */
+  function remoteImage(src, base) {
+    if (!src) {
+      return null;
+    }
+    const cleaned = spelledOut(clean(src), base);
+    if (
+      !WRITTEN_AUTHORITY.test(cleaned) ||
+      /[\u0080-\uffff]/.test(AUTHORITY.exec(cleaned)?.[1] ?? "")
+    ) {
+      return null;
+    }
+    const outside = outsideLink(src, base);
+    if (outside === null || !outside.startsWith("https://")) {
+      return null;
+    }
+    // The URL parser refuses an empty or malformed host or port, as inert_html.py's
+    // `_host_parses` does for the same address.
+    const url = new URL(outside);
+    return url.hostname === "" || url.username !== "" || url.password !== "" ? null : outside;
+  }
+
+  /**
+   * Whether an image stays an image: one inside the served tree, or one from the web.
    *
    * @param {string | null} src
    * @param {string | null} base
    */
   function keepsImage(src, base) {
-    return base === null && isInside(src);
+    return (base === null && isInside(src)) || remoteImage(src, base) !== null;
+  }
+
+  /**
+   * Whether the reader has turned off the images of the web, in the shell's settings
+   * (`BLOCK_REMOTE_IMAGES`, which the server reads from the reader's preference). It is
+   * read at each use, so a page that changes it needs only load again.
+   */
+  function blocksRemoteImages() {
+    return window.METABROWSER_SETTINGS?.BLOCK_REMOTE_IMAGES === true;
   }
 
   /**
@@ -414,6 +485,41 @@
    */
   function imageLink(src, alt, base) {
     return { href: outsideLink(src, base), text: (alt ?? "").trim() || "image" };
+  }
+
+  /**
+   * What an image the page does not load becomes: its alt text in a span of the fallback's
+   * class, with the address the image would have loaded in its tooltip, and, outside a
+   * link, in a link to that address. Inside one, which a badge is, the span is the link's
+   * own content: a second link inside it is not valid, and a browser reads it as the
+   * first's end.
+   *
+   * @param {Pick<Document, "createElement" | "createTextNode">} doc
+   * @param {string | null} src
+   * @param {string | null} alt
+   * @param {string | null} base
+   * @param {boolean} inLink
+   * @returns {{node: Node, text: string}}
+   */
+  function imageFallback(doc, src, alt, base, inLink) {
+    const image = imageLink(src, alt, base);
+    /** @type {Array<[string, string]>} */
+    const attributes = [["class", IMAGE_FALLBACK_CLASS]];
+    if (image.href !== null) {
+      attributes.push(["data-tip-text", image.href]);
+    }
+    const chip = element(doc, "span", attributes);
+    chip.append(doc.createTextNode(image.text));
+    if (inLink || image.href === null) {
+      return { node: chip, text: image.text };
+    }
+    const link = element(
+      doc,
+      "a",
+      allowedAttributes("a", () => image.href, base),
+    );
+    link.append(chip);
+    return { node: link, text: image.text };
   }
 
   /**
@@ -443,7 +549,7 @@
   function sanitizeNodes(nodes, doc, base) {
     /** @type {Heading[]} */
     const headings = [];
-    const out = rebuild(nodes, doc, base, headings, []);
+    const out = rebuild(nodes, doc, base, headings, [], false);
     const anchor = createAnchors();
     for (const heading of headings) {
       heading.element.setAttribute("id", anchor(heading.text.join(""), heading.arrived));
@@ -459,9 +565,10 @@
    * @param {string | null} base
    * @param {Heading[]} headings Every heading so far, in document order.
    * @param {Heading[]} open The headings the text written now belongs to.
+   * @param {boolean} inLink Whether the nodes are the content of a link.
    * @returns {Node[]}
    */
-  function rebuild(nodes, doc, base, headings, open) {
+  function rebuild(nodes, doc, base, headings, open, inLink) {
     /** @type {Node[]} */
     const out = [];
     /** @param {string} text */
@@ -487,23 +594,19 @@
       /** @param {string} name */
       const read = (name) => source.getAttribute(name);
       if (tag === "img") {
-        if (keepsImage(read("src"), base)) {
+        // An image from the web is kept unless the reader has turned them off.
+        const fetched = remoteImage(read("src"), base) !== null;
+        if (keepsImage(read("src"), base) && !(fetched && blocksRemoteImages())) {
           out.push(element(doc, "img", allowedAttributes("img", read, base)));
           continue;
         }
-        const image = imageLink(read("src"), read("alt"), base);
-        const link = element(
-          doc,
-          image.href === null ? "span" : "a",
-          image.href === null ? [] : allowedAttributes("a", () => image.href, base),
-        );
-        link.append(doc.createTextNode(image.text));
-        shown(image.text);
-        out.push(link);
+        const fallback = imageFallback(doc, read("src"), read("alt"), base, inLink);
+        shown(fallback.text);
+        out.push(fallback.node);
         continue;
       }
       if (!ALLOWED_TAGS.includes(tag)) {
-        out.push(...rebuild(source.childNodes, doc, base, headings, open));
+        out.push(...rebuild(source.childNodes, doc, base, headings, open, inLink));
         continue;
       }
       const clean = element(doc, tag, allowedAttributes(tag, read, base));
@@ -514,7 +617,9 @@
         headings.push(heading);
         inside = [...open, heading];
       }
-      clean.append(...rebuild(source.childNodes, doc, base, headings, inside));
+      clean.append(
+        ...rebuild(source.childNodes, doc, base, headings, inside, inLink || tag === "a"),
+      );
       out.push(clean);
     }
     return out;
@@ -596,7 +701,10 @@
     ALLOWED_TAGS,
     DIMENSIONS,
     DROPPED_WITH_CONTENT,
+    IMAGE_FALLBACK_CLASS,
+    IMAGE_REFERRER_POLICY,
     allowedAttributes,
+    blocksRemoteImages,
     fragmentLink,
     headingSlug,
     imageLink,
@@ -605,6 +713,7 @@
     kpressProse,
     linkHref,
     outsideLink,
+    remoteImage,
     sanitizeHtml,
     sanitizeNodes,
   });

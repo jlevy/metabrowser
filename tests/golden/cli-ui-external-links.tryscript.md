@@ -121,6 +121,48 @@ $ node tests/dom/external-links-session.js
       "icon": null
     }
   ],
+  "imageOnlyLinks": [
+    {
+      "content": "an image",
+      "icon": null
+    },
+    {
+      "content": "an image between spaces",
+      "icon": null
+    },
+    {
+      "content": "two images",
+      "icon": null
+    },
+    {
+      "content": "the fallback",
+      "icon": null
+    },
+    {
+      "content": "an image and the fallback",
+      "icon": null
+    },
+    {
+      "content": "an image and a word",
+      "icon": "github"
+    },
+    {
+      "content": "a word",
+      "icon": "github"
+    },
+    {
+      "content": "a span that is not the fallback",
+      "icon": "github"
+    },
+    {
+      "content": "an image inside a span",
+      "icon": "github"
+    },
+    {
+      "content": "nothing",
+      "icon": "github"
+    }
+  ],
   "preserved": [
     "href",
     "target",

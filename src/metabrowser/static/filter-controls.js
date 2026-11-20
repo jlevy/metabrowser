@@ -82,7 +82,7 @@
    * `key`, on a dropdown's option, is the letter that chooses its row while the menu is
    * open and has focus; the shell's keymap gives it to the shortcut registry.
    * @typedef {{value: string, label: string, tip?: string, className?: string,
-   *            count?: number, icon?: string, iconClass?: string,
+   *            count?: number | string, icon?: string, iconClass?: string,
    *            ageClass?: string, key?: string}} ChipOption
    * @typedef {{key: string, select?: string, layout?: string, label: string,
    *            options: ChipOption[], value: string | string[] | null,
@@ -254,7 +254,7 @@
         const extra = opt.className ? ` ${esc(opt.className)}` : "";
         const tip = opt.tip ? ` data-tip-text="${esc(opt.tip)}"` : "";
         const count =
-          typeof opt.count === "number"
+          typeof opt.count === "number" || typeof opt.count === "string"
             ? `<span class="chip-menu-count">${esc(opt.count.toLocaleString())}</span>`
             : "";
         // The file-type icon, not a colored label: the icon is what
