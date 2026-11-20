@@ -75,9 +75,9 @@ class _AdapterRegistration:
     line_detector: LineDetector | None = None
 
 
-# Every JSONL adapter, core and plugin alike, in registration order. Detection asks
-# each line's detectors in this order, so core's adapters, registered at import, are
-# asked before a plugin's; each detector recognizes only its own format.
+# Every JSONL adapter, in registration order, which is plugin discovery order: core
+# registers none. Detection asks each line's detectors in this order, so each detector
+# recognizes only its own format.
 _ADAPTERS: dict[str, _AdapterRegistration] = {}
 
 

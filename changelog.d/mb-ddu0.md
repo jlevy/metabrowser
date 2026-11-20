@@ -3,7 +3,9 @@
   views live there. The charts hook moves from `/api/plugin/agent-log/charts` to
   `/api/plugin/agents/charts`; kind and view ids are unchanged.
   A JSONL file no adapter recognizes now reports the adapter `unknown`, where it
-  reported `claude`.
+  reported `claude`. The agent adapters register when plugins are discovered, so a
+  script that calls `detect_adapter` without starting the server gets `unknown` for
+  them.
 - Plugin authors: a manifest’s optional `[plugin] register = "dotted.module"` names a
   Python module that discovery imports once for registrations such as
   `register_log_adapter`. It applies to built-in and installed entry-point plugins; an

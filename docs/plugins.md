@@ -1023,9 +1023,11 @@ plugin’s first, so a detector should recognize only its own format.
 A detector failure is logged and skipped, so one adapter cannot break detection for
 every JSONL file. Registering the same callables again is idempotent; claiming a name
 already registered, the built-in plugin’s or another plugin’s, raises an error.
-A log that no registered adapter recognizes gets the `unknown` adapter, whose parser
-turns each JSON object into an event of its `type`. The factory returns a fresh parser
-for each file or live stream.
+Adapters register when plugins are discovered, which the server does at startup, so a
+script that calls `detect_adapter` without starting the server sees only the adapters it
+registered itself. A log that no registered adapter recognizes gets the `unknown`
+adapter, whose parser turns each JSON object into an event of its `type`. The factory
+returns a fresh parser for each file or live stream.
 A `[[kind]]` rule with `match = { ext = ".jsonl", adapter = "example" }` then claims the
 files the detector recognizes.
 
