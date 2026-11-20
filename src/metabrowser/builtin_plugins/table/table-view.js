@@ -584,9 +584,16 @@ export function mountTable(container, ctx, host = {}) {
 
   /** The row's own column's width in pixels: its largest number, room, and padding; none for keyed rows. */
   function positionPx() {
-    return positional()
-      ? Math.ceil((String(rows.length).length + 2) * measureCh().sans) + CELL_PAD_PX
-      : 0;
+    if (!positional()) {
+      return 0;
+    }
+    // As many digits as the largest position the table can show: its rows, or a
+    // filtered row's place in the file, which can be later than the count.
+    const largest = Math.max(
+      page?.count ?? 0,
+      ...rows.slice(0, FIRST_PAGE_ROWS).map((row) => rowPosition(row.key) ?? 0),
+    );
+    return Math.ceil((String(largest).length + 2) * measureCh().sans) + CELL_PAD_PX;
   }
 
   /** Whether rows are named by position, so the row's own column shows its number. */
@@ -1100,6 +1107,12 @@ export function mountTable(container, ctx, host = {}) {
       return;
     }
     const target = /** @type {Node | null} */ (event.target);
+    if (target && event.key === "Escape" && !recordPane.hidden && recordPane.contains(target)) {
+      // Escape in the record goes back to the table, as its Back link does.
+      event.preventDefault();
+      closeRecord();
+      return;
+    }
     if (!target || !scroller.contains(target) || rows.length === 0) {
       return;
     }

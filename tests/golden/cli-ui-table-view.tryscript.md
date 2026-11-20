@@ -616,6 +616,13 @@ $ node tests/dom/table-view-session.js
       "tabStops": 1
     }
   },
+  "Escape in the record: the table, the address without the record, replaced": {
+    "requests": [],
+    "address": "",
+    "entries": 1,
+    "record": null,
+    "drawn": 5
+  },
   "disposed before its answers arrived: nothing drawn": {
     "requests": [
       "schema?path=people.csv"

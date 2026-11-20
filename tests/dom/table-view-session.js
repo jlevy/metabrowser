@@ -602,6 +602,16 @@ async function refusals() {
     requests: takeRequests(),
     ...shown(opened),
   });
+  key(documentStandIn.activeElement, "Escape");
+  await settle();
+  const closed = shown(opened, { rows: 0 });
+  step("Escape in the record: the table, the address without the record, replaced", {
+    requests: takeRequests(),
+    address: closed.address,
+    entries: entries.length,
+    record: closed.record,
+    drawn: closed.table.drawn,
+  });
   opened.handle.dispose();
   opened.container.remove();
 
