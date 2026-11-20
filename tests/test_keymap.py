@@ -58,8 +58,17 @@ def test_every_kind_keeps_its_view_keys_clear_of_each_other_and_the_shell() -> N
         assert [key for key, count in taken.items() if count > 1] == [], kind
         assert check_view_keys(kind, _declared_views(kind)).problems == [], kind
 
+        # A folder view a plugin offers is served only where its predicate accepts the
+        # folder, so a request with no folder in hand does not list it.
+        offered = [
+            str(view["key"])
+            for view in _declared_views(kind)
+            if "key" in view and view["id"] in server._FOLDER_OFFERS
+        ]
         served = [view.get("key") for view in server._views_for_kind(kind)]
-        assert [key for key in served if key is not None] == declared, kind
+        assert [key for key in served if key is not None] == [
+            key for key in declared if key not in offered
+        ], kind
 
 
 def test_every_view_of_a_multi_view_kind_declares_a_key() -> None:
@@ -332,6 +341,10 @@ def _manifest_views() -> list[tuple[str, str, str]]:
     for kind in _served_kinds():
         for view in server._views_for_kind(kind):
             if "key" in view:
+                views.append((kind, str(view["label"]), str(view["key"])))
+        # The views a plugin offers on some folders are bound there, so they have rows too.
+        for view in _declared_views(kind):
+            if "key" in view and view["id"] in server._FOLDER_OFFERS:
                 views.append((kind, str(view["label"]), str(view["key"])))
     return views
 

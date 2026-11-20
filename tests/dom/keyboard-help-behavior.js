@@ -19,6 +19,19 @@ class FakeElement {
     this.textContent = "";
   }
 
+  // As the DOM has them: an element's nodes, text among them (here an element named "#text").
+  get childNodes() {
+    return this.children;
+  }
+
+  get nodeType() {
+    return this.tagName === "#TEXT" ? 3 : 1;
+  }
+
+  get nodeValue() {
+    return this.textContent;
+  }
+
   get isConnected() {
     let node = this;
     while (node) {

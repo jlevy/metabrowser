@@ -535,6 +535,10 @@ exit: 0
         {
           "name": "<text>",
           "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
         }
       ],
       "remedy": null
@@ -698,6 +702,10 @@ exit: 1
       "state": "ok",
       "summary": "<text>",
       "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
         {
           "name": "<text>",
           "value": "<text>"

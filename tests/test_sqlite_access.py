@@ -202,7 +202,15 @@ def test_settings_are_applied(tmp_path: Path) -> None:
 
     def settings(connection: sqlite3.Connection) -> tuple[object, ...]:
         connection.set_authorizer(None)
-        return (*tuple(connection.execute(f"PRAGMA {name}").fetchone()[0] for name in ("query_only", "trusted_schema", "cell_size_check", "mmap_size")), connection.getlimit(sqlite3.SQLITE_LIMIT_LENGTH), connection.getlimit(sqlite3.SQLITE_LIMIT_ATTACHED), connection.getconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE))
+        return (
+            *tuple(
+                connection.execute(f"PRAGMA {name}").fetchone()[0]
+                for name in ("query_only", "trusted_schema", "cell_size_check", "mmap_size")
+            ),
+            connection.getlimit(sqlite3.SQLITE_LIMIT_LENGTH),
+            connection.getlimit(sqlite3.SQLITE_LIMIT_ATTACHED),
+            connection.getconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE),
+        )
 
     value, _ = read(db, settings, deadline=_deadline(), scratch=tmp_path)
     assert value == (1, 0, 1, 0, sqlite_access.VALUE_MAX_BYTES, 0, True)
@@ -294,7 +302,159 @@ def test_a_worker_loads_only_the_access_module(tmp_path: Path) -> None:
         if environ.exists():
             arguments = environ.read_bytes().split(b"\0")
             assert b"-I" in arguments
-            assert arguments[-3].endswith(b"sqlite_access.py")
+            assert arguments[-4].endswith(b"sqlite_access.py")
         assert Path(f"/proc/{pid}/cwd").resolve() == Path("/") or not Path("/proc").exists()
     finally:
         pool.close()
+
+
+# ── Worker modules ─────────────────────────────────────────────
+
+_PROBE_MODULE = """
+import sys
+
+from metabrowser import sqlite_access
+
+
+def probe(args, deadline):
+    return {
+        "doubled": args["x"] * 2,
+        "name": __name__,
+        "version": VERSION,
+        "metabrowser": sorted(name for name in sys.modules if name.startswith("metabrowser")),
+    }
+
+
+sqlite_access.OPS["probe"] = probe
+"""
+
+
+def test_a_registered_module_answers_in_the_worker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser import sqlite_readers
+
+    monkeypatch.setattr(sqlite_readers, "_worker_modules", {})
+    first = tmp_path / "probe_one.py"
+    first.write_text(_PROBE_MODULE + "VERSION = 1\n")
+    second = tmp_path / "probe_two.py"
+    second.write_text(_PROBE_MODULE + "VERSION = 2\n")
+    sqlite_readers.register_worker_module("metabrowser.builtin_plugins.probe.reader", first)
+    pool = ReaderPool(size=1, temporary_root=tmp_path)
+    try:
+        answer = pool.call("probe", {"x": 21}, deadline=_deadline(), subject="s")
+        assert answer == {
+            "doubled": 42,
+            "name": "metabrowser.builtin_plugins.probe.reader",
+            "version": 1,
+            "metabrowser": [
+                "metabrowser",
+                "metabrowser.builtin_plugins",
+                "metabrowser.builtin_plugins.probe",
+                "metabrowser.builtin_plugins.probe.reader",
+                "metabrowser.sqlite_access",
+            ],
+        }
+        [before] = pool.workers()
+        # The same registration again changes nothing; another path replaces the worker.
+        sqlite_readers.register_worker_module("metabrowser.builtin_plugins.probe.reader", first)
+        pool.call("probe", {"x": 1}, deadline=_deadline(), subject="s")
+        assert pool.workers() == [before]
+        sqlite_readers.register_worker_module("metabrowser.builtin_plugins.probe.reader", second)
+        answer = pool.call("probe", {"x": 1}, deadline=_deadline(), subject="s")
+        assert answer["version"] == 2
+        assert pool.workers() != [before]
+        assert pool.started == 2
+    finally:
+        pool.close()
+
+
+def test_worker_module_registrations_are_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser import sqlite_readers
+
+    monkeypatch.setattr(sqlite_readers, "_worker_modules", {})
+    module = tmp_path / "m.py"
+    module.write_text("")
+    with pytest.raises(ValueError, match="dotted import name"):
+        sqlite_readers.register_worker_module("not a name", module)
+    with pytest.raises(ValueError, match="not a Python file"):
+        sqlite_readers.register_worker_module("m", tmp_path / "missing.py")
+    for index in range(sqlite_readers.MAX_WORKER_MODULES):
+        sqlite_readers.register_worker_module(f"m{index}", module)
+    with pytest.raises(ValueError, match="more than"):
+        sqlite_readers.register_worker_module("one_more", module)
+
+
+# ── Schema pragmas and bounded attempts ────────────────────────
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT name FROM pragma_table_xinfo('t')",
+        "SELECT * FROM pragma_foreign_key_list('child')",
+        "SELECT * FROM pragma_index_list('t')",
+        "SELECT * FROM pragma_index_xinfo('t_name')",
+        "SELECT name FROM pragma_table_list WHERE schema = 'main'",
+        "SELECT name FROM pragma_table_list('t')",
+        "PRAGMA table_xinfo(t)",
+        "PRAGMA index_list(t)",
+    ],
+)
+def test_schema_pragmas_answer_with_an_argument(tmp_path: Path, sql: str) -> None:
+    db = _database(tmp_path / "app.db")
+    connection = sqlite3.connect(db)
+    connection.execute("CREATE INDEX t_name ON t(name)")
+    connection.execute("CREATE TABLE child(id INTEGER PRIMARY KEY, parent REFERENCES t(id))")
+    connection.close()
+    os.utime(db, (time.time() - 60, time.time() - 60))
+    assert _run(db, sql, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "PRAGMA journal_mode = wal",
+        "PRAGMA user_version = 1",
+        "PRAGMA writable_schema = 1",
+        "PRAGMA writable_schema",
+        "PRAGMA query_only = 0",
+        "PRAGMA trusted_schema = 1",
+        "SELECT * FROM pragma_writable_schema",
+        "SELECT * FROM pragma_query_only",
+        "SELECT * FROM pragma_trusted_schema",
+        "SELECT * FROM pragma_wal_checkpoint",
+        "SELECT * FROM pragma_journal_mode('wal')",
+        "SELECT * FROM pragma_user_version(1)",
+    ],
+)
+def test_pragmas_that_write_or_set_stay_refused(tmp_path: Path, sql: str) -> None:
+    db = _database(tmp_path / "app.db", wal=True)
+    before = db.read_bytes()
+    with pytest.raises(SqliteAccessError) as caught:
+        _run(db, sql, tmp_path)
+    assert caught.value.state in {"refused", "unreadable"}
+    assert db.read_bytes() == before
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["app.db"]
+
+
+def test_bounded_attempts_answer_without_waiting(tmp_path: Path) -> None:
+    db = _database(tmp_path / "app.db")
+    journal = tmp_path / "app.db-journal"
+    journal.write_bytes(b"\xd9\xd5\x05\xf9\x20\xa1\x63\xd7" + bytes(512))
+    started = time.monotonic()
+    with pytest.raises(SqliteAccessError) as caught:
+        read(db, lambda c: None, deadline=time.monotonic() + 5, scratch=tmp_path, attempts=1)
+    assert caught.value.state == "writer_busy"
+    assert time.monotonic() - started < 1
+    journal.unlink()
+    value, access = read(
+        db,
+        lambda c: c.execute("SELECT count(*) FROM t").fetchone()[0],
+        deadline=_deadline(),
+        scratch=tmp_path,
+        attempts=1,
+    )
+    assert (value, access.attempts) == (2, 1)

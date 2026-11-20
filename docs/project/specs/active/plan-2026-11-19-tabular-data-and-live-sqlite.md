@@ -983,6 +983,27 @@ As built, where this plan left a choice open:
   moves it, and a cursor continues from the sort position it names.
 - `requires = ["table"]` is declared because the table plugin’s routes serve the source;
   a manifest with a `[[table_source]]` that does not require `table` is refused.
+- The envelope also carries `reason` (why a page is not complete: `budget`,
+  `sort_budget`, `source_truncated`, or `cursor_expired`), `examined` (the rows a scan
+  reached before its budget ran out), `searched` (the fields a search read),
+  `sort_refused`, and `limit` (the rows the page allowed).
+- A filter or search that runs out of budget answers the rows it found in the query’s
+  own order, and its cursor continues among them; a sort the budget cannot finish,
+  whether in the scan before it or in building its index, answers no rows with the
+  reason `sort_budget` and the field in `sort_refused`, as above.
+- `cols` names one field per parameter and repeats (`cols=a&cols=b`), since a delimited
+  header may hold a comma; `ref` splits at its last colon.
+- A page carries at most `TABLE_PAGE_CELLS_MAX` cells, so a page of wide rows has fewer
+  rows than its `limit` asked for.
+  A delimited file is bounded in rows, cells, and columns as well as bytes, since its
+  costs follow those.
+- A `c.` cursor names the sort field and order it was made for, and a cursor for another
+  is refused.
+- Of the cell envelopes above, this phase builds the integer, real, text (with `length`
+  and `invalid_utf8`), and `{value, stored}` ones.
+  `{blob, length, hex}`, `{length, preview: false}`, `{error}`, and `{ref}` arrive with
+  SQLite tables (Phase 5), and `{json, preview}` with the first source that types a
+  field `json` (Phase 5 or 7); a table view meets only the built ones until then.
 
 ### Phase 3: The Table View
 
@@ -1004,9 +1025,26 @@ As built, where this plan left a choice open:
   `WHOLE_TABLE_MAX_ROWS`, measured in Chrome (`tests/dom/table-view-measure.mjs`); a
   windowed grid reads the next page as the window nears the last row held, so its scroll
   height grows with what it has read rather than standing for the count.
-- **One filter per field in the view.** `fetchPluginData` sends one value per parameter,
-  so the header menu and the value links keep one filter per field, and a new one
-  replaces it; the route takes more, and a range waits for a reader who needs it.
+- **One filter per field in the view.** The header menu and the value links keep one
+  filter per field, and a new one replaces it; the route takes more, and a range waits
+  for a reader who needs it.
+- **Repeated parameters.** `fetchPluginData` sends an array value as its parameter
+  repeated, one value each, so `cols` names one field a parameter in the request and in
+  the address alike, and a field whose name holds a comma is one column.
+- **Pages the server bounds.** The view asks for `FIRST_PAGE_ROWS` and then
+  `NEXT_PAGE_ROWS`, and counts the rows that came: a page of wide rows carries fewer
+  (its `limit` says how many), so a table small enough to draw whole is read until its
+  `next_after` ends, and a window reads its next page as soon as the last is drawn.
+  A cursor continues only the question it was made for; while a new question’s first
+  page is on its way, the rows held for the last read no further.
+- **What a budget did.** A sort refused with `sort_budget` is a notice naming the field,
+  with a link to the file’s order, not an empty table; a search stopped with `budget`
+  shows the matches among the rows it read and says how many it read, and scrolling
+  reads on among them.
+  A page that says `truncated` with an exact count was cut in a row’s cells, and one
+  with a lower bound in its rows, and the notice says which.
+  `tests/test_table_view_session.py` records these answers with each bound lowered for
+  one small file, since a file that meets the real bound is too large to record.
 - **The open record** is `record=<key>` on the table’s address, which the view reads and
   the rows route ignores; a record opens in place of the grid, and Back, or its own Back
   link, returns the grid with the keyboard on the row.
@@ -1049,10 +1087,60 @@ Accepted from `metab` through the Info view, before any table is drawn.
 
 ### Phase 5: SQLite Tables
 
-- [ ] SQLite source as a container with its `children` hook and overview: tables, keys,
+- [x] SQLite source as a container with its `children` hook and overview: tables, keys,
   typed cells, references and back-references, keyset paging in both directions,
   sortability, capped counts, size-guarded values, the generation
-- [ ] Schema view, goldens, parity rows, map updates, changelog fragment
+- [x] Schema view, goldens, parity rows, map updates, changelog fragment
+
+As built, where this plan left a choice open:
+
+- **The SQL runs in the reader.** `builtin_plugins/sqlite/reader.py` is a worker module
+  (`register_worker_module`) holding every statement; `source.py` in the server turns
+  what it answers into descriptors, cells, keys, and cursors with the protocol’s
+  helpers, so a value crosses the pipe in a small encoding of its own (`_wire`) and
+  every token and cell rule stays in `table_source.py`.
+- **A table’s id is its address segment**, the escaped name, so a reference, a `ref=`
+  filter, and the view’s sibling addresses need no mapping; its label is the name.
+  A name starting with `g1-`, a Git path segment’s prefix, is escaped too.
+- **`open_table_source` resolves `<file>/<table>`** through
+  `resolve_content_container(path, suffixes=None)`, which now claims any extension, so a
+  database with no extension has addressable tables; every route but `tables` answers at
+  the table’s address.
+  Every `sqlite` route takes a table’s address and answers for its database.
+- **One Table view, two pages.** The `sqlite` kind’s Table view is the overview at the
+  database’s address and `mountTable` at a table’s, since a container’s children share
+  its kind and views; Table is the default, and Info keeps its key.
+- **Keys.** A rowid table without an integer primary key is keyed by a hidden `rowid`
+  field (`_rowid_` or `oid` when a column takes the name); a table whose columns take
+  all three is keyless.
+  A key too long for a token is named by its position in key order, found by a count; a
+  cursor too long is the positional one, carrying the rows served.
+  A keyless object is ordered by `row_number() OVER ()` whenever a page sorts, filters,
+  searches, or reads descending, and read by `OFFSET` otherwise.
+- **Cursors** are `[sort, order, region, value, key, served]`; every row knows its
+  region from its sort value’s type, so a positional cursor continues into the right
+  one.
+- **Sortability** is decided per object by a capped count up to
+  `SORT_UNINDEXED_MAX_ROWS` at describe time; past it the key, the first column of a
+  `WITHOUT ROWID` key, and every column that leads a full (not partial) index sort.
+- **Counts** read as `sum` over at most `COUNT_CAP` + 1 rows: with a filter or search it
+  counts matches and skipped values among the rows read, so a sparse filter on a huge
+  table is a lower bound rather than a scan.
+  A match in a select list is a `CASE WHEN` condition, since only a condition
+  short-circuits past a value over the length limit.
+- **Values.** A text read only in part is `{text, bytes}`, its size in bytes, since its
+  length in characters is unknown; a blob is `{blob: true, length, hex}` (`blob_cell`).
+  A JSON column’s text is `{json, preview}` only when it parses and fits the preview.
+  A `BOOLEAN` value other than 0 or 1 is shown as stored, and an order filter (`lt`,
+  `le`, `gt`, `ge`) compares only values of its own kind, since SQLite orders every text
+  after every number.
+- **References** are resolved in SQL, joining the page’s values to the target table, so
+  the target column’s affinity and collation decide a match; a missing target is
+  `{ref: {key: null, missing: true}}`, which the table view draws as its value marked
+  missing. A reference’s label is the referencing value.
+- **The authorizer** also admits `data_version`, which FTS5 reads on every query, and
+  the functions `sum`, `substr`, `like`, and `row_number`. Virtual tables are read where
+  the folder is trusted and never on a pin.
 
 ### Phase 6: Live Tables
 

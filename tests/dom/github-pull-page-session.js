@@ -169,9 +169,13 @@ function summarize(model) {
 // KPress alone renders; the real browser's parse is checked in the QA runbook's
 // walkthrough with a network watch.
 
-// A pull request's text keeps no image and no anchor; its layout attributes are github.com's.
+// A pull request's text keeps no image of a tree and no anchor; an image written in full
+// over https is kept with no referrer, or is the fallback span; its layout attributes are
+// github.com's.
 const ALLOWED_ATTRIBUTES = {
   a: ["href", "target", "rel"],
+  img: ["loading", "referrerpolicy", "src", "alt", "align", "width", "height"],
+  span: ["class", "data-tip-text"],
   ol: ["start"],
   p: ["align"],
   div: ["align"],

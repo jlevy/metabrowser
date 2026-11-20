@@ -61,6 +61,9 @@ MONO_ALLOWED_SELECTORS = frozenset(
         ".compression-badge",
         ".metabrowser-kpress-error-detail",
         ".log-event-header",
+        # The Session view's event row: the same structured log values (kind, tool,
+        # timestamp) as the Log's event header, in the same face so the two views agree.
+        ".agents-event",
         ".git-commit-sha",
         # The event log's own words: a span's name (`mirror_refresh.MirrorSession._pull_job`,
         # `GET /api/tree`), an identifier or a client ID in a span's detail, the attributes

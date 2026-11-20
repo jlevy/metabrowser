@@ -9,8 +9,9 @@
 // The address. The table's state is the query on the table's own address, in the names
 // the rows route takes (metabrowser.table_source.parse_table_query), so a link reproduces
 // the view and Back restores it: `sort`, `order`, `q`, `f.<field>=<op>:<value>`, `ref`,
-// `cols`, and `record`, the open record's key, which only the view reads. A parameter the
-// view does not own, such as the shell's `plain=1`, is kept as it was.
+// `cols`, and `record`, the open record's key, which only the view reads. `cols` repeats,
+// one field each (`cols=a&cols=b`), since a field's name may hold a comma. A parameter
+// the view does not own, such as the shell's `plain=1`, is kept as it was.
 
 /** @typedef {"asc" | "desc"} TableOrder */
 /** @typedef {"eq" | "ne" | "lt" | "le" | "gt" | "ge" | "null" | "notnull" | "contains"} TableFilterOp */
@@ -62,6 +63,8 @@
  *   skipped?: number,
  *   examined?: number | null,
  *   searched?: ReadonlyArray<string> | null,
+ *   sort_refused?: string | null,
+ *   limit?: number | null,
  *   generation?: string,
  * }>} TablePage
  */
@@ -131,6 +134,8 @@ export function parseState(query) {
   const other = [];
   /** @type {Record<string, string>} */
   const owned = {};
+  /** @type {string[]} */
+  const cols = [];
   for (const [name, value] of params) {
     if (name.startsWith("f.") && name.length > 2) {
       const field = name.slice(2);
@@ -146,13 +151,16 @@ export function parseState(query) {
           value: VALUELESS.has(op) ? null : operand,
         }),
       );
+    } else if (name === "cols") {
+      if (value) {
+        cols.push(value);
+      }
     } else if (OWNED.has(name)) {
       owned[name] = value;
     } else {
       other.push([name, value]);
     }
   }
-  const cols = owned.cols ? owned.cols.split(",").filter(Boolean) : [];
   return Object.freeze({
     sort: owned.sort || null,
     order: owned.order === "desc" ? "desc" : "asc",
@@ -189,8 +197,8 @@ export function stateQuery(state) {
   if (state.ref) {
     params.set("ref", state.ref);
   }
-  if (state.cols) {
-    params.set("cols", state.cols.join(","));
+  for (const name of state.cols ?? []) {
+    params.append("cols", name);
   }
   if (state.record) {
     params.set("record", state.record);
@@ -207,15 +215,20 @@ function filterValue(filter) {
 }
 
 /**
- * The rows route's parameters for *state*: its query, one page of *limit* rows, after
- * the cursor *after*. `path` is the caller's.
+ * The rows route's parameters for *state*: its query, one page of at most *limit* rows,
+ * after the cursor *after*. `cols` is a list, which the SDK sends one field a parameter.
+ * `path` is the caller's.
+ *
+ * A cursor holds the sort and order it was made for, and the route refuses it under
+ * another, so *after* must come from an answer to this same *state*'s rows: a new
+ * question starts again from its first page.
  *
  * @param {TableState} state
  * @param {{after?: string | null, limit: number}} page
- * @returns {Record<string, string>}
+ * @returns {Record<string, string | string[]>}
  */
 export function rowsParams(state, page) {
-  /** @type {Record<string, string>} */
+  /** @type {Record<string, string | string[]>} */
   const params = {};
   if (state.sort) {
     params.sort = state.sort;
@@ -231,7 +244,7 @@ export function rowsParams(state, page) {
     params.ref = state.ref;
   }
   if (state.cols) {
-    params.cols = state.cols.join(",");
+    params.cols = [...state.cols];
   }
   if (page.after) {
     params.after = page.after;
@@ -248,8 +261,15 @@ export function rowsParams(state, page) {
  * @param {TableState} right
  */
 export function sameRows(left, right) {
-  const query = (/** @type {TableState} */ state) =>
-    new URLSearchParams(rowsParams(state, { limit: 1 })).toString();
+  const query = (/** @type {TableState} */ state) => {
+    const params = new URLSearchParams();
+    for (const [name, value] of Object.entries(rowsParams(state, { limit: 1 }))) {
+      for (const item of Array.isArray(value) ? value : [value]) {
+        params.append(name, item);
+      }
+    }
+    return params.toString();
+  };
   return query(left) === query(right);
 }
 
@@ -343,7 +363,9 @@ export function withRecord(state, key) {
 }
 
 /**
- * The state with the reference filter, rows that reference one record (`<table>:<key>`).
+ * The state with the reference filter, rows that reference one record (`<table>:<key>`;
+ * the route splits it at its last colon, since a key token holds none and a table's name
+ * may).
  *
  * @param {TableState} state
  * @param {string | null} ref
@@ -418,6 +440,9 @@ export function reconcileState(state, fields) {
  * - `tip`: what the shared tooltip adds, the whole text of a value the clamp may hide, or
  *   what a marker means;
  * - `cut`: the whole value's length in characters, when the page holds a preview;
+ * - `size`: the whole value's size in bytes, when the page holds a preview and the source
+ *   knows only that (a SQLite text read in part);
+ * - `missing`: a reference no row of the referenced table holds, drawn as its value;
  * - `stored`: the stored type of a value whose type differs from its column's;
  * - `invalid`: the text was not valid UTF-8 and was decoded with replacement characters;
  * - `literal`: drawn in the monospaced face, as a key, timestamp, hex, or JSON is;
@@ -429,6 +454,8 @@ export function reconcileState(state, fields) {
  *   text: string,
  *   tip: string | null,
  *   cut: number | null,
+ *   size: number | null,
+ *   missing: boolean,
  *   stored: string | null,
  *   invalid: boolean,
  *   literal: boolean,
@@ -470,6 +497,8 @@ export function presentCell(cell, field) {
     text: "",
     tip: null,
     cut: null,
+    size: null,
+    missing: false,
     stored: null,
     invalid: false,
     literal: literalField(field),
@@ -522,16 +551,19 @@ export function presentCell(cell, field) {
   }
   if (typeof cell.text === "string") {
     const length = typeof cell.length === "number" ? cell.length : null;
+    const size = typeof cell.bytes === "number" ? cell.bytes : null;
     const invalid = cell.invalid_utf8 === true;
     const notes = [
       length !== null ? `${formatCount(length)} characters; the record shows more` : null,
+      size !== null ? `${formatCount(size)} bytes; the record shows more` : null,
       invalid ? "Not valid UTF-8: unreadable bytes are shown as �" : null,
     ];
     return {
       ...view,
-      kind: cell.text === "" && length === null ? "empty" : "text",
+      kind: cell.text === "" && length === null && size === null ? "empty" : "text",
       text: cell.text,
       cut: length,
+      size,
       invalid,
       tip: joinTips(cell.text, ...notes),
     };
@@ -555,6 +587,20 @@ export function presentCell(cell, field) {
   if (isEnvelope(cell.ref)) {
     const ref = cell.ref;
     const label = ref.label === null || ref.label === undefined ? String(ref.key) : ref.label;
+    if (ref.missing === true) {
+      // A value no row of the referenced table holds: shown as itself, marked, with no
+      // record to open.
+      const text = presentCell(label, undefined).text;
+      return {
+        ...view,
+        text,
+        missing: true,
+        tip: joinTips(
+          text,
+          `No row of ${String(ref.table ?? "the referenced table")} has this value`,
+        ),
+      };
+    }
     return {
       ...view,
       kind: "ref",
@@ -654,9 +700,24 @@ export function countText(page, filtered) {
 }
 
 /**
+ * The field a sort could not be done by in the time a request may take, when *page* is
+ * that refusal (`sort_budget`): it has no rows, and is not an empty table.
+ *
+ * @param {TablePage} page
+ * @returns {string | null}
+ */
+export function sortRefused(page) {
+  return page.reason === "sort_budget" ? (page.sort_refused ?? "") : null;
+}
+
+/**
  * What the reader is told about an answer that is not the whole story: a source that
  * read only part of its content, a scan that ran out of time, a cursor from before the
- * content changed, and values a search or filter could not read. Each is a sentence.
+ * content changed, and values a search or filter could not read. Each is a sentence. A
+ * refused sort is the view's own notice, with the way back (`sortRefused`).
+ *
+ * The rows route says a source was cut (`truncated`) without saying where; an exact
+ * count says every row was read, so what was cut is cells past a column bound.
  *
  * @param {TablePage} page
  * @returns {string[]}
@@ -664,14 +725,25 @@ export function countText(page, filtered) {
 export function pageNotes(page) {
   /** @type {string[]} */
   const notes = [];
-  if (page.reason === "source_truncated" || (page.truncated && !page.reason)) {
-    notes.push(
-      "This file is larger than the table reads: rows, counts, sorts, and filters cover its leading part only.",
-    );
-  } else if (page.reason === "budget") {
+  if (page.truncated || page.reason === "source_truncated") {
+    if (page.count_complete) {
+      notes.push(
+        "Some rows of this file have more cells than the table reads; the cells past them are not shown.",
+      );
+    } else if (page.reason === "budget") {
+      notes.push(
+        "This file is larger than the table reads: rows, counts, sorts, and filters cover the part it read.",
+      );
+    } else {
+      notes.push(
+        "This file is larger than the table reads: rows, counts, sorts, and filters cover its leading part only.",
+      );
+    }
+  }
+  if (page.reason === "budget") {
     const examined = typeof page.examined === "number" ? formatCount(page.examined) : "some";
     notes.push(
-      `The search stopped after ${examined} rows, at the time a request may take; these are the matches it found.`,
+      `The table stopped looking after ${examined} rows, at the time a request may take; these are the matches among them.`,
     );
   } else if (page.reason === "cursor_expired") {
     notes.push("The file changed while the table was being read; reload the table to continue.");

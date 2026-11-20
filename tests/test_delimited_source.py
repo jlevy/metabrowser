@@ -8,7 +8,12 @@ the server's own classifier and source registry. The CLI transcripts are in
 
 from __future__ import annotations
 
+import asyncio
+import base64
+import csv
+import json
 import os
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -18,10 +23,26 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-from metabrowser import server
+from metabrowser import server, table_source
 from metabrowser.builtin_plugins.delimited import source as delimited
+from metabrowser.cli.plugins import _table_source_problems  # pyright: ignore[reportPrivateUsage]
+from metabrowser.git.tree_source import GitPath
+from metabrowser.plugin_loader.discovery import LoadedPlugin
+from metabrowser.plugin_loader.manifest import PLUGIN_SDK_VERSION, PluginManifest
 from metabrowser.plugin_loader.static_assets import build_plugin_routes
-from metabrowser.table_source import TABLE_CELL_PREVIEW_CHARS, TABLE_TOKEN_MAX_CHARS, Budget
+from metabrowser.table_source import (
+    TABLE_CELL_PREVIEW_CHARS,
+    TABLE_PAGE_ROWS_MAX,
+    TABLE_TOKEN_MAX_CHARS,
+    Budget,
+    Filter,
+    TableQuery,
+    TableQueryError,
+    TableSourceDeclaration,
+    install_table_sources,
+    load_adapter,
+)
+from tests.git_pin_harness import fast_import_store, pinned_client
 
 
 @pytest.fixture
@@ -34,12 +55,15 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
     delimited.PARSE_CACHE.clear()
 
 
-def _get(client: TestClient, route: str, path: str, **params: str) -> tuple[int, dict[str, Any]]:
+Param = str | list[str]
+
+
+def _get(client: TestClient, route: str, path: str, **params: Param) -> tuple[int, dict[str, Any]]:
     response = client.get(f"/api/plugin/table/{route}", params={"path": path, **params})
     return response.status_code, response.json()
 
 
-def _rows(client: TestClient, path: str, **params: str) -> dict[str, Any]:
+def _rows(client: TestClient, path: str, **params: Param) -> dict[str, Any]:
     status, body = _get(client, "rows", path, **params)
     assert status == 200, body
     return body
@@ -144,7 +168,7 @@ def test_types_are_inferred_and_contradictions_shown(client: TestClient, tmp_pat
         "text",
         "integer",
     ]
-    last = _rows(client, "a.csv", after=f"c.{_b64([sample])}")["rows"][0]["cells"]
+    last = _rows(client, "a.csv", after=f"c.{_b64([None, 'asc', sample])}")["rows"][0]["cells"]
     assert last == {
         "i": {"value": "x", "stored": "text"},
         "r": {"real": "inf"},
@@ -157,11 +181,19 @@ def test_types_are_inferred_and_contradictions_shown(client: TestClient, tmp_pat
 
 
 def _b64(values: list[Any]) -> str:
-    import base64
-    import json
+    return _b64_raw(json.dumps(values, separators=(",", ":")))
 
-    raw = json.dumps(values, separators=(",", ":")).encode()
-    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+def _b64_raw(payload: str) -> str:
+    return base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
+
+
+def test_a_datetime_column_says_it_sorts_as_text(client: TestClient, tmp_path: Path) -> None:
+    (tmp_path / "a.csv").write_text("t,d\n2024-01-01T09:00:00Z,2024-01-01\n")
+    _status, schema = _get(client, "schema", "a.csv")
+    notes = {f["name"]: f["sort_note"] for f in schema["fields"]}
+    assert notes["t"] is not None and notes["t"].startswith("sorted as text")
+    assert notes["d"] is None
 
 
 def test_empty_is_null_in_a_typed_column_and_empty_in_text(
@@ -287,22 +319,73 @@ def test_search_reads_text_fields_and_names_them(client: TestClient, scores: str
     assert (_keys(body), body["searched"]) == (["@5"], ["name"])
 
 
-def test_an_exhausted_budget_returns_what_it_found_in_key_order(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    rows = 3 * delimited._BUDGET_CHECK_ROWS
-    (tmp_path / "a.csv").write_text("n\n" + "".join(f"{n}\n" for n in range(rows)))
-    _rows(client, "a.csv")  # parse first, outside the budget below
-
+def _spend_every_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     def spent(cls: type[Budget], seconds: float = 0.0) -> Budget:
         return Budget(0)
 
     monkeypatch.setattr(Budget, "start", classmethod(spent))
-    body = _rows(client, "a.csv", sort="n", order="desc", **{"f.n": "ge:0"}, limit="3")
-    assert (body["complete"], body["reason"], body["next_after"]) == (False, "budget", None)
+
+
+@pytest.fixture
+def numbers(client: TestClient, tmp_path: Path) -> str:
+    rows = 3 * delimited._BUDGET_CHECK_ROWS
+    (tmp_path / "a.csv").write_text("n\n" + "".join(f"{n}\n" for n in range(rows)))
+    _rows(client, "a.csv")  # parse first, outside any spent budget
+    return "a.csv"
+
+
+@pytest.mark.parametrize(
+    ("order", "first"),
+    [("asc", ["@1", "@2", "@3"]), ("desc", [f"@{3 * 4096 - n}" for n in range(3)])],
+)
+def test_an_exhausted_budget_returns_what_it_found_in_the_querys_order(
+    client: TestClient,
+    numbers: str,
+    monkeypatch: pytest.MonkeyPatch,
+    order: str,
+    first: list[str],
+) -> None:
+    assert delimited._BUDGET_CHECK_ROWS == 4096
+    _spend_every_budget(monkeypatch)
+    body = _rows(client, numbers, order=order, **{"f.n": "ge:0"}, limit="3")
+    assert (body["complete"], body["reason"], body["sort_refused"]) == (False, "budget", None)
     assert body["examined"] == delimited._BUDGET_CHECK_ROWS
-    assert _keys(body) == ["@1", "@2", "@3"]
+    assert _keys(body) == first
     assert (body["count"], body["count_complete"]) == (delimited._BUDGET_CHECK_ROWS, False)
+    # The cursor continues among the rows found, in the same order.
+    after = _rows(
+        client, numbers, order=order, **{"f.n": "ge:0"}, limit="3", after=body["next_after"]
+    )
+    whole = _rows(client, numbers, order=order, **{"f.n": "ge:0"}, limit="6")
+    assert _keys(body) + _keys(after) == _keys(whole)
+
+
+def test_a_sort_the_budget_cannot_finish_is_refused_by_name(
+    client: TestClient, numbers: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _spend_every_budget(monkeypatch)
+    # The scan before the sort runs out.
+    scanned = _rows(client, numbers, sort="n", order="desc", **{"f.n": "ge:0"}, limit="3")
+    assert (scanned["rows"], scanned["complete"], scanned["next_after"]) == ([], False, None)
+    assert (scanned["reason"], scanned["sort_refused"]) == ("sort_budget", "n")
+    assert (scanned["examined"], scanned["count_complete"]) == (delimited._BUDGET_CHECK_ROWS, False)
+    # No scan, but the sort's index is not built and the budget is spent before it.
+    unbuilt = _rows(client, numbers, sort="n", limit="3")
+    assert (unbuilt["rows"], unbuilt["reason"], unbuilt["sort_refused"]) == ([], "sort_budget", "n")
+    assert (unbuilt["count"], unbuilt["count_complete"], unbuilt["examined"]) == (
+        3 * delimited._BUDGET_CHECK_ROWS,
+        True,
+        None,
+    )
+    monkeypatch.undo()
+    _rows(client, numbers, sort="n", limit="1")  # builds the index within a fresh budget
+    _spend_every_budget(monkeypatch)
+    built = _rows(client, numbers, sort="n", order="desc", limit="2")
+    assert (_keys(built), built["reason"], built["sort_refused"]) == (
+        [f"@{3 * 4096}", f"@{3 * 4096 - 1}"],
+        None,
+        None,
+    )
 
 
 @pytest.mark.parametrize(
@@ -311,7 +394,10 @@ def test_an_exhausted_budget_returns_what_it_found_in_key_order(
         ({"sort": "extra"}, "no field named 'extra'"),
         ({"f.n": "gt:five"}, "'five' is not an integer"),
         ({"ref": "other:@1"}, "no field of this table references 'other'"),
-        ({"after": "c.WzEsNSwzXQ"}, "after is not a cursor for this sort"),
+        (
+            {"after": "c.WzEsNSwzXQ"},
+            "after is not a cursor for this query: it was made for sort=1 order=5",
+        ),
     ],
 )
 def test_a_query_the_table_cannot_serve_is_refused(
@@ -399,3 +485,447 @@ def test_the_cache_is_bounded_in_entries(client: TestClient, tmp_path: Path) -> 
     held = delimited.PARSE_CACHE._held  # pyright: ignore[reportPrivateUsage]
     assert len(held) == delimited.DELIMITED_CACHE_MAX_ENTRIES
     assert ("0.csv", ",") not in held
+
+
+# ── Tokens the server did not mint ───────────────────────────
+
+
+@pytest.fixture
+def typed(tmp_path: Path) -> str:
+    (tmp_path / "t.csv").write_text(
+        "n,d,r,b,s\n3,2024-01-03,1.5,true,x\n1,2024-01-01,,false,y\n2,,2.5,,z\n"
+    )
+    return "t.csv"
+
+
+def test_a_cursor_from_another_sort_is_refused_by_name(client: TestClient, typed: str) -> None:
+    by_date = _rows(client, typed, sort="d", limit="1")
+    status, body = _get(client, "rows", typed, sort="n", after=by_date["next_after"])
+    assert (status, body["code"], body["param"]) == (400, "bad_query", "after")
+    assert 'made for sort="d" order="asc"' in body["error"]
+    status, body = _get(client, "rows", typed, sort="d", order="desc", after=by_date["next_after"])
+    assert (status, body["code"]) == (400, "bad_query")
+
+
+@pytest.mark.parametrize(
+    ("params", "status", "code"),
+    [
+        # Values of the wrong type for the sort column, in the cursor's own format.
+        ({"sort": "n", "after": f"c.{_b64(['n', 'asc', 1, 'x', 5])}"}, 400, "bad_query"),
+        ({"sort": "n", "after": f"c.{_b64(['n', 'asc', 1, [1], 5])}"}, 400, "bad_query"),
+        ({"sort": "n", "after": f"c.{_b64(['n', 'asc', 1, None, 5])}"}, 400, "bad_query"),
+        ({"sort": "n", "after": f"c.{_b64(['n', 'asc', 1, True, 5])}"}, 400, "bad_query"),
+        ({"sort": "b", "after": f"c.{_b64(['b', 'asc', 1, 1, 5])}"}, 400, "bad_query"),
+        ({"sort": "d", "after": f"c.{_b64(['d', 'asc', 1, 7, 5])}"}, 400, "bad_query"),
+        ({"sort": "s", "after": f"c.{_b64(['s', 'asc', 1, 'x', 5])}"}, 400, "bad_query"),
+        ({"sort": "s", "after": f"c.{_b64(['s', 'asc', 2, 3, 5])}"}, 400, "bad_query"),
+        ({"sort": "n", "after": f"c.{_b64(['n', 'asc', '1', 3, 5])}"}, 400, "bad_query"),
+        # The review's tokens, in the format this layer first minted.
+        ({"sort": "n", "after": f"c.{_b64([1, 'x', 5])}"}, 400, "bad_query"),
+        ({"sort": "n", "after": f"c.{_b64([1, [1], 5])}"}, 400, "bad_query"),
+        ({"sort": "n", "after": f"c.{_b64([1, None, 5])}"}, 400, "bad_query"),
+        # Positions that are not positive integers, an infinity among them.
+        ({"after": f"c.{_b64_raw('[1e999]')}"}, 400, "bad_query"),
+        ({"after": f"c.{_b64_raw('[null,"asc",1e999]')}"}, 400, "bad_query"),
+        ({"sort": "n", "after": f"c.{_b64_raw('[1,5,1e999]')}"}, 400, "bad_query"),
+        ({"sort": "n", "after": f"c.{_b64_raw('["n","asc",1,5,1e999]')}"}, 400, "bad_query"),
+        ({"after": f"c.{_b64([None, 'asc', 0])}"}, 400, "bad_query"),
+        ({"after": f"c.{_b64([None, 'asc', True])}"}, 400, "bad_query"),
+        ({"after": "@" + "1" * 5000 + ".abc"}, 400, "bad_query"),
+    ],
+)
+def test_a_token_the_server_did_not_mint_is_a_bad_query(
+    client: TestClient, typed: str, params: dict[str, str], status: int, code: str
+) -> None:
+    found, body = _get(client, "rows", typed, **params)
+    assert (found, body["code"]) == (status, code), body
+
+
+def test_a_real_cursor_carries_infinities(client: TestClient, tmp_path: Path) -> None:
+    (tmp_path / "r.csv").write_text("r\n1e999\n1.5\n-1e999\n")
+    seen: list[str] = []
+    after: str | None = None
+    while True:
+        body = _rows(client, "r.csv", sort="r", limit="1", **({"after": after} if after else {}))
+        seen += _keys(body)
+        after = body["next_after"]
+        if after is None:
+            break
+    assert seen == ["@3", "@2", "@1"]
+
+
+def test_a_long_key_names_no_row_and_a_long_limit_is_the_maximum(
+    client: TestClient, typed: str
+) -> None:
+    for route in ("record", "card"):
+        status, body = _get(client, route, typed, key="@" + "1" * 5000)
+        assert (status, body["code"]) == (404, "record_not_found")
+    assert _rows(client, typed, limit="1" * 5000)["limit"] == TABLE_PAGE_ROWS_MAX
+
+
+# ── Bounds on what a file costs ──────────────────────────────
+
+
+def test_naming_a_repeated_header_is_linear() -> None:
+    started = time.perf_counter()
+    names = delimited._column_names(["a"] * 20_000)
+    # A name scan per retry made this cubic: 3,000 of one name took 28 s.
+    assert time.perf_counter() - started < 1.0
+    assert names[:3] == ["a", "a_2", "a_3"] and names[-1] == "a_20000"
+    assert len(set(names)) == len(names)
+    assert delimited._column_names(["a", "a_2", "a", "a", "a_2"]) == [
+        "a",
+        "a_2",
+        "a_3",
+        "a_4",
+        "a_2_2",
+    ]
+    assert delimited._column_names(["", "column_1", ""]) == ["column_1", "column_1_2", "column_3"]
+
+
+def test_cells_past_the_column_bound_are_not_read(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(delimited, "DELIMITED_MAX_COLUMNS", 3)
+    (tmp_path / "wide.csv").write_text("a,b,c,d,e\n1,2,3,4,5\n6,7\n")
+    body = _rows(client, "wide.csv")
+    assert body["columns"] == ["a", "b", "c"]
+    assert _cells(body) == [{"a": 1, "b": 2, "c": 3}, {"a": 6, "b": 7}]
+    assert (body["complete"], body["truncated"], body["reason"]) == (
+        False,
+        True,
+        "source_truncated",
+    )
+    # Every row was read, so the count is exact.
+    assert (body["count"], body["count_complete"]) == (2, True)
+    (tmp_path / "long.csv").write_text("a,b\n1,2,3,4,5\n")
+    long = _rows(client, "long.csv")
+    assert _cells(long) == [{"a": 1, "b": 2, "extra": ["3"]}]
+    assert long["truncated"] is True
+
+
+@pytest.mark.parametrize(
+    ("bound", "value"), [("DELIMITED_MAX_ROWS", 3), ("DELIMITED_MAX_CELLS", 8)]
+)
+def test_a_file_past_its_row_or_cell_bound_shows_its_leading_rows(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bound: str, value: int
+) -> None:
+    monkeypatch.setattr(delimited, bound, value)
+    (tmp_path / "a.csv").write_text("n,m\n1,1\n2,2\n3,3\n4,4\n5,5\n")
+    body = _rows(client, "a.csv", sort="n", order="desc")
+    # Three rows, or the header and three rows of two cells within eight cells.
+    assert [cells["n"] for cells in _cells(body)] == [3, 2, 1]
+    assert (body["complete"], body["truncated"], body["reason"]) == (
+        False,
+        True,
+        "source_truncated",
+    )
+    assert (body["count"], body["count_complete"]) == (3, False)
+
+
+def test_a_page_of_wide_rows_carries_fewer_and_says_so(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(table_source, "TABLE_PAGE_CELLS_MAX", 6)
+    (tmp_path / "a.csv").write_text("a,b,c\n1,2,3\n4,5,6\n7,8,9,10,11\n")
+    # Two named columns and the extra list, which holds up to two cells: four a row.
+    body = _rows(client, "a.csv", limit="100")
+    assert (body["limit"], _keys(body)) == (1, ["@1"])
+    assert body["next_after"] is not None
+    narrow = _rows(client, "a.csv", cols=["a", "b"], limit="100")
+    assert (narrow["limit"], _keys(narrow)) == (3, ["@1", "@2", "@3"])
+
+
+def test_held_bytes_follow_the_files_shape_and_its_sort_indexes() -> None:
+    narrow = delimited.parse_delimited(
+        b"n\n" + b"7\n" * 1000, has_more=False, delimiter=",", generation="g"
+    )
+    wide = delimited.parse_delimited(
+        b"a,b,c,d\n" + b"x,y,z,w\n" * 250, has_more=False, delimiter=",", generation="g"
+    )
+    # Bytes alone would call these alike; their rows and cells differ.
+    assert narrow.parsed_bytes == 1001 * 96 + 1001 * 56 + 2002
+    assert wide.parsed_bytes == 251 * 96 + 1004 * 56 + 2008
+    accented = delimited.parse_delimited(
+        "t\né\n".encode(), has_more=False, delimiter=",", generation="g"
+    )
+    assert accented.parsed_bytes == 2 * 96 + 2 * 56 + 4 * len("t\né\n".encode())
+    before = narrow.held_bytes
+    index = narrow.sort_index(0, Budget.start())
+    assert index is not None
+    assert narrow.held_bytes == before + len(index) * index.itemsize
+
+
+def test_the_cache_counts_a_sort_index_and_evicts_for_it(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in ("a.csv", "b.csv"):
+        (tmp_path / name).write_text("n\n" + "".join(f"{n}\n" for n in range(1000)))
+    one = delimited.parse_delimited(
+        (tmp_path / "a.csv").read_bytes(), has_more=False, delimiter=",", generation="g"
+    )
+    # Room for both files, but not for both and a sort index.
+    monkeypatch.setattr(delimited, "DELIMITED_CACHE_MAX_BYTES", 2 * one.parsed_bytes + 100)
+    _rows(client, "a.csv")
+    _rows(client, "b.csv")
+    held = delimited.PARSE_CACHE._held  # pyright: ignore[reportPrivateUsage]
+    assert [key[0] for key in held] == ["a.csv", "b.csv"]
+    _rows(client, "b.csv", sort="n")
+    assert [key[0] for key in held] == ["b.csv"]
+
+
+def test_a_parse_restores_the_csv_field_limit(tmp_path: Path) -> None:
+    before = csv.field_size_limit()
+    long = "x" * (before + 10)
+    parsed = delimited.parse_delimited(
+        f"t\n{long}\n".encode(), has_more=False, delimiter=",", generation="g"
+    )
+    assert parsed.rows == [[long]]
+    assert csv.field_size_limit() == before
+
+
+def test_concurrent_first_requests_parse_a_file_once(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "a.csv").write_text("n\n1\n2\n")
+    parses: list[int] = []
+    real = delimited.parse_delimited
+    entered = threading.Event()
+
+    def slow(data: bytes, **kwargs: Any) -> Any:
+        parses.append(1)
+        entered.set()
+        time.sleep(0.3)
+        return real(data, **kwargs)
+
+    monkeypatch.setattr(delimited, "parse_delimited", slow)
+    answers: list[int] = []
+
+    def ask(route: str) -> None:
+        answers.append(_get(client, route, "a.csv")[0])
+
+    first = threading.Thread(target=ask, args=("schema",))
+    first.start()
+    assert entered.wait(5)
+    others = [threading.Thread(target=ask, args=(route,)) for route in ("rows", "rows", "card")]
+    for thread in others:
+        thread.start()
+    for thread in (first, *others):
+        thread.join(10)
+    assert sorted(answers) == [200, 200, 200, 400]  # the card names no key
+    assert len(parses) == 1
+
+
+def test_a_failed_parse_lets_the_next_request_parse_again() -> None:
+    cache = delimited._ParseCache()
+    calls: list[int] = []
+
+    def fail() -> Any:
+        calls.append(1)
+        raise delimited.SourceUnreadableError("no")
+
+    for _ in range(2):
+        with pytest.raises(delimited.SourceUnreadableError):
+            cache.load(("a.csv", ","), "g", fail)
+    assert len(calls) == 2
+
+
+def test_the_source_refuses_a_field_it_does_not_have() -> None:
+    # The route checks the query against one parse and reads another; if the file lost
+    # the column in between, the source refuses rather than failing.
+    parsed = delimited.parse_delimited(b"n\n1\n", has_more=False, delimiter=",", generation="g")
+    for query in (TableQuery(sort="gone"), TableQuery(filters=(Filter("gone", "eq", "1"),))):
+        with pytest.raises(TableQueryError, match="no field named 'gone'"):
+            delimited._page(parsed, query, Budget.start())
+
+
+def test_a_page_with_no_tests_lists_no_row_indexes() -> None:
+    parsed = delimited.parse_delimited(
+        b"n\n1\n2\n3\n", has_more=False, delimiter=",", generation="g"
+    )
+    scan = delimited._scan(parsed, [], Budget.start(), descending=True)
+    assert scan.matches == range(2, -1, -1)
+
+
+def test_a_header_name_may_hold_a_comma(client: TestClient, tmp_path: Path) -> None:
+    (tmp_path / "a.csv").write_text('"Last, First",b\n"Lovelace, Ada",1\n')
+    body = _rows(client, "a.csv", cols="Last, First")
+    assert _cells(body) == [{"Last, First": "Lovelace, Ada"}]
+    both = _rows(client, "a.csv", cols=["b", "Last, First"])
+    assert both["columns"] == ["b", "Last, First"]
+
+
+# ── A Git pin ────────────────────────────────────────────────
+
+
+def test_the_routes_read_a_table_on_a_pin(tmp_path: Path) -> None:
+    store, commit = fast_import_store(
+        tmp_path,
+        {
+            b"people.csv": b"name,n\nada,3\nbob,1\ncy,2\n",
+            b"cities.tsv": b"city\tpop\nLima\t10\n",
+            b"notes.txt": b"x\n",
+        },
+        symlinks={b"alias.csv": b"people.csv", b"out.csv": b"../outside.csv"},
+    )
+
+    def wire(name: str) -> str:
+        return GitPath.from_segments(name.encode()).to_wire()
+
+    async def run() -> dict[str, Any]:
+        delimited.PARSE_CACHE.clear()
+        answers: dict[str, Any] = {}
+        async with pinned_client(store, commit) as (client, _subject):
+            for name, route, params in (
+                ("tables", "tables", {"path": wire("people.csv")}),
+                ("rows", "rows", {"path": wire("people.csv"), "sort": "n", "order": "desc"}),
+                ("record", "record", {"path": wire("people.csv"), "key": "@2"}),
+                ("tsv", "rows", {"path": wire("cities.tsv")}),
+                ("alias", "rows", {"path": wire("alias.csv"), "sort": "name"}),
+                ("missing", "schema", {"path": wire("gone.csv")}),
+                ("escape", "schema", {"path": wire("out.csv")}),
+                ("text", "schema", {"path": wire("notes.txt")}),
+            ):
+                response = await client.get(f"/api/plugin/table/{route}", params=params)
+                answers[name] = (response.status_code, response.json())
+        delimited.PARSE_CACHE.clear()
+        return answers
+
+    answers = asyncio.run(run())
+    status, tables = answers["tables"]
+    assert status == 200
+    assert [(t["id"], t["label"], t["keyed"]) for t in tables["tables"]] == [
+        ("", "people.csv", False)
+    ]
+    status, rows = answers["rows"]
+    assert (status, _keys(rows), rows["complete"]) == (200, ["@1", "@3", "@2"], True)
+    # A pin's content cannot change, so its generation is the blob's object id.
+    assert len(rows["generation"]) == 40 and rows["generation"] == tables["generation"]
+    status, record = answers["record"]
+    assert (status, record["cells"], record["positional"]) == (200, {"name": "bob", "n": 1}, True)
+    assert _cells(answers["tsv"][1]) == [{"city": "Lima", "pop": 10}]
+    assert [cells["name"] for cells in _cells(answers["alias"][1])] == ["ada", "bob", "cy"]
+    assert answers["missing"][1]["code"] == "not_found"
+    assert answers["escape"][1]["code"] == "not_found"
+    assert (answers["text"][0], answers["text"][1]["code"]) == (404, "not_a_table_source")
+
+
+def test_every_table_source_kind_classifies_on_a_pin_by_name_alone() -> None:
+    # On a pin a table route classifies by the Git-blob subset of the rules (extension
+    # and basename) and, for bytes that sniff as binary, a kind's magic number from the
+    # blob's first bytes; a table source whose kind needed more would not be served there.
+    pin_rules = {"ext", "exts", "basename", "magic"}
+    served = {
+        declaration.kind
+        for declaration in server._table_source_declarations()  # pyright: ignore[reportPrivateUsage]
+    }
+    assert "delimited" in served
+    for plugin in server._LOADED_PLUGINS:  # pyright: ignore[reportPrivateUsage]
+        for kind in plugin.manifest.kind:
+            if kind.id in served:
+                used = set(kind.match.model_dump(exclude_none=True))
+                assert used <= pin_rules, (plugin.name, kind.id, used)
+
+
+# ── Registration and the doctor ──────────────────────────────
+
+
+def adapter_for_tests(handle: Any) -> Any:
+    return handle
+
+
+not_callable = 7
+
+
+@pytest.fixture
+def registry() -> Iterator[None]:
+    saved = table_source._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    table_source._REGISTRY = table_source._Registry()  # pyright: ignore[reportPrivateUsage]
+    yield
+    table_source._REGISTRY = saved  # pyright: ignore[reportPrivateUsage]
+
+
+async def _no_kind(_ref: Any) -> str | None:
+    return None
+
+
+def test_a_later_declaration_for_a_kind_replaces_an_earlier_one(registry: None) -> None:
+    module = __name__
+    install_table_sources(
+        [
+            TableSourceDeclaration(plugin="first", kind="k", adapter=f"{module}:not_callable"),
+            TableSourceDeclaration(
+                plugin="second", kind="k", adapter=f"{module}:adapter_for_tests"
+            ),
+        ],
+        _no_kind,
+    )
+    declaration = table_source._REGISTRY.declarations["k"]  # pyright: ignore[reportPrivateUsage]
+    assert declaration.plugin == "second"
+    loaded = load_adapter(declaration)
+    assert loaded is adapter_for_tests
+    # Imported once, then reused.
+    assert table_source._REGISTRY.adapters == {"k": adapter_for_tests}  # pyright: ignore[reportPrivateUsage]
+
+
+def test_an_adapter_that_does_not_import_or_call_is_refused(registry: None) -> None:
+    with pytest.raises(TypeError, match="is not callable"):
+        load_adapter(
+            TableSourceDeclaration(plugin="p", kind="a", adapter=f"{__name__}:not_callable")
+        )
+    with pytest.raises(ImportError):
+        load_adapter(
+            TableSourceDeclaration(plugin="p", kind="b", adapter="no_such_module_x:adapter")
+        )
+    assert table_source._REGISTRY.adapters == {}  # pyright: ignore[reportPrivateUsage]
+
+
+def _plugin(source: str, adapter: str) -> LoadedPlugin:
+    manifest = PluginManifest.model_validate(
+        {
+            "plugin": {"name": "tabular", "sdk_version": PLUGIN_SDK_VERSION, "requires": ["table"]},
+            "kind": [{"id": "tabular", "match": {"ext": ".tabular"}}],
+            "table_source": [{"kind": "tabular", "adapter": adapter}],
+        }
+    )
+    return LoadedPlugin(
+        name="tabular", static_root=Path("/nonexistent"), manifest=manifest, source=source
+    )
+
+
+def test_an_operator_directory_plugins_table_sources_are_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local = _plugin("local:/plugins/tabular", f"{__name__}:adapter_for_tests")
+    installed = _plugin("entry-point:tabular", f"{__name__}:adapter_for_tests")
+    monkeypatch.setattr(server, "_LOADED_PLUGINS", [local])
+    assert server._table_source_declarations() == []  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(server, "_LOADED_PLUGINS", [installed])
+    assert server._table_source_declarations() == [  # pyright: ignore[reportPrivateUsage]
+        TableSourceDeclaration(
+            plugin="tabular", kind="tabular", adapter=f"{__name__}:adapter_for_tests"
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("source", "adapter", "problem"),
+    [
+        ("entry-point:tabular", f"{__name__}:adapter_for_tests", None),
+        (
+            "local:/plugins/tabular",
+            f"{__name__}:adapter_for_tests",
+            "operator-directory plugins are JavaScript-only",
+        ),
+        ("entry-point:tabular", "no_such_module_x:adapter", "cannot import 'no_such_module_x'"),
+        ("entry-point:tabular", f"{__name__}:not_callable", "is not a callable"),
+    ],
+)
+def test_the_doctor_reports_a_table_source_that_cannot_serve(
+    source: str, adapter: str, problem: str | None
+) -> None:
+    problems = _table_source_problems(_plugin(source, adapter))
+    if problem is None:
+        assert problems == []
+    else:
+        assert len(problems) == 1 and problem in problems[0], problems

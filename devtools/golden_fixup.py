@@ -111,7 +111,7 @@ FIXUPS: list[tuple[str, str]] = [
     # pin it. A hosted origin's key is the same on every machine and stays literal.
     (
         r'("origin": "file://\[CWD\][^"\n]*",\n\s*"location": "[^"\n]*/repository-stores/)'
-        r'[0-9a-f]{64}(/repository\.git")',
+        r'[a-z0-9-]+--[0-9a-f]{16}(/repository\.git")',
         r"\1[STORE_KEY]\2",
     ),
     (r"/\S*/builtin_plugins", "[BUILTIN]"),

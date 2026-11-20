@@ -54,6 +54,13 @@ from metabrowser.home import (
     private_directory,
     write_private_file_atomic,
 )
+from metabrowser.sqlite_access import (
+    HEADER_BYTES,
+    PROCESS_HANDLES,
+    apply_settings,
+    bound_work,
+    is_database_header,
+)
 
 log = logging.getLogger(__name__)
 
@@ -99,6 +106,18 @@ _SEARCH_RESULT_LIMIT = 12
 # Recent pulls and numeric queries use the primary key at any catalog size.
 _SEARCH_TITLE_ROWS = 50_000
 _SEARCH_READ_OPCODES = 500_000
+
+# The newest rows one read of the pull requests' head branches looks through, and the
+# most SQLite steps it takes. The scan is one pass over the primary key with the head
+# repository read from each row's JSON, which is all it costs, and a read that finds the
+# revision the caller holds reads no row. Measured 2026-11-20 in process on macOS at a
+# load average of 26, on synthetic catalogs of 1 KB rows, half from forks (median of 7,
+# ``catalog_heads``): 1,000 rows 3.7 ms; 20,000 rows 41 ms; 50,000 rows 102 ms, returning
+# 25,000 of them; 100,000 rows 111 ms, the newest 50,000 looked through and the cutoff
+# found; a held revision 0.8 ms at every size. What is bounded is the scan, whatever it
+# returns; `ref_pulls.py` keeps what it returned once for each revision.
+_HEADS_SCAN_ROWS: Final = 50_000
+_HEADS_READ_OPCODES: Final = 2_000_000
 
 # One exact disposable schema: no user triggers, views, or missing query indexes.
 # Initialization and admission share the same SQL so neither can drift independently.
@@ -255,24 +274,37 @@ def _relative(slug: str) -> str:
     return f"{source_pulls_directory(slug)}/catalog.sqlite3"
 
 
+def _key(info: os.stat_result) -> tuple[int, int]:
+    return info.st_dev, info.st_ino
+
+
 def _admit(home: Path, relative: str, *, write: bool) -> tuple[int, os.stat_result]:
+    """Open the catalog, check its header, and return the handle and its stat.
+
+    Every handle this opens is closed through
+    :data:`~metabrowser.sqlite_access.PROCESS_HANDLES`: another thread of this process may
+    hold a connection to the catalog with a lock on it, which closing any handle on the
+    file here would drop (mb-cggp, reproduced in
+    ``tests/test_github_pull_catalog_locks.py``).
+    """
     flags = os.O_RDWR if write else os.O_RDONLY
     directory, _, name = relative.rpartition("/")
     # One verification of the directory covers the catalog and its journal files.
     with private_directory(home, directory, shared="refuse") as entries:
         fd = entries.open(name, flags)
+        held = os.fstat(fd)
         try:
             for suffix in _SIDECARS:
                 try:
-                    os.close(entries.open(name + suffix, flags))
+                    PROCESS_HANDLES.close(entries.open(name + suffix, flags), _key(held))
                 except FileNotFoundError:
                     continue
         except BaseException:
-            os.close(fd)
+            PROCESS_HANDLES.close(fd, _key(held))
             raise
     try:
-        header = os.pread(fd, 100, 0)
-        if header and (not header.startswith(b"SQLite format 3\x00") or len(header) < 100):
+        header = os.pread(fd, HEADER_BYTES, 0)
+        if header and not is_database_header(header):
             raise CatalogUnusableError("the catalog is not an SQLite database")
         if header and header[18:20] != b"\x01\x01":
             # The header holds ``user_version`` too, so a newer schema is known unopened.
@@ -284,43 +316,51 @@ def _admit(home: Path, relative: str, *, write: bool) -> tuple[int, os.stat_resu
             )
         if not header and not write:
             raise CatalogUnusableError("the catalog is empty")
-        return fd, os.fstat(fd)
+        return fd, held
     except BaseException:
-        os.close(fd)
+        PROCESS_HANDLES.close(fd, _key(held))
         raise
+
+
+# The longest value a catalog statement reads: a row's JSON body is a few KiB.
+_CATALOG_VALUE_MAX_BYTES: Final = 32 * 1024
+# The catalog connection's page cache, in KiB.
+_CATALOG_CACHE_KIB: Final = 1024
 
 
 @contextlib.contextmanager
 def _database(
     home: Path, slug: str, *, write: bool = False, read_opcodes: int = 100_000
 ) -> Generator[sqlite3.Connection]:
+    """A connection to the catalog under the product's connection settings
+    (:func:`metabrowser.sqlite_access.apply_settings`), read-only and bounded unless
+    *write*. The admission handle stays open for the connection's life and closes
+    after it, deferred while another connection in this process is open on the file."""
     relative = _relative(slug)
     fd, held = _admit(home, relative, write=write)
     connection: sqlite3.Connection | None = None
     try:
-        uri = (home / relative).as_uri() + ("?mode=rw" if write else "?mode=ro")
-        connection = sqlite3.connect(uri, uri=True, timeout=0.25)
-        current = os.lstat(home / relative)
-        if (current.st_dev, current.st_ino) != (held.st_dev, held.st_ino):
-            raise OSError("the catalog changed while it was opened")
-        connection.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 32 * 1024)
-        connection.execute("PRAGMA trusted_schema=OFF")
-        connection.execute("PRAGMA cache_size=-1024")
-        if not write:
-            connection.execute("PRAGMA query_only=ON")
-            steps = 0
-
-            def bounded_read() -> int:
-                nonlocal steps
-                steps += 1000
-                return int(steps > read_opcodes)
-
-            connection.set_progress_handler(bounded_read, 1000)
-        yield connection
+        with PROCESS_HANDLES.connected(_key(held)):
+            try:
+                uri = (home / relative).as_uri() + ("?mode=rw" if write else "?mode=ro")
+                connection = sqlite3.connect(uri, uri=True, timeout=0.25)
+                current = os.lstat(home / relative)
+                if (current.st_dev, current.st_ino) != (held.st_dev, held.st_ino):
+                    raise OSError("the catalog changed while it was opened")
+                apply_settings(
+                    connection,
+                    value_max_bytes=_CATALOG_VALUE_MAX_BYTES,
+                    cache_kib=_CATALOG_CACHE_KIB,
+                )
+                if not write:
+                    connection.execute("PRAGMA query_only=ON")
+                    bound_work(connection, opcodes=read_opcodes, deadline=None)
+                yield connection
+            finally:
+                if connection is not None:
+                    connection.close()
     finally:
-        if connection is not None:
-            connection.close()
-        os.close(fd)
+        PROCESS_HANDLES.close(fd, _key(held))
 
 
 def _declarations(db: sqlite3.Connection) -> tuple[object, object]:
@@ -395,6 +435,7 @@ def _refuse_newer_in_copy(home: Path, relative: str) -> None:
     except (OSError, PrivateStorageError):
         return
     data = bytearray()
+    key = _key(os.fstat(fd))
     try:
         size = os.fstat(fd).st_size
         if size > _INSPECT_MAX_BYTES:
@@ -407,7 +448,7 @@ def _refuse_newer_in_copy(home: Path, relative: str) -> None:
     except OSError:
         return
     finally:
-        os.close(fd)
+        PROCESS_HANDLES.close(fd, key)
     if len(data) < 100:
         return
     data[18:20] = b"\x01\x01"
@@ -655,6 +696,94 @@ def catalog_search(repository: ListedRepository | None, query: str) -> PullSearc
 
 
 @dataclass(frozen=True, slots=True)
+class HeadPull:
+    """One pull request of the repository itself, as the ref chooser's row shows it."""
+
+    number: int
+    title: str
+    state: Literal["open", "draft", "merged", "closed"]
+    head_ref: str
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogHeads:
+    """What :func:`catalog_heads` read.
+
+    ``pulls`` are the newest first, ``None`` when the catalog is the revision the caller
+    already holds. ``limited`` is whether the catalog held more rows than were looked
+    through, so the oldest were not.
+    """
+
+    state: CatalogState | None
+    pulls: tuple[HeadPull, ...] | None
+    limited: bool
+
+
+def catalog_heads(
+    repository: ListedRepository, *, known: tuple[str, int] | None = None
+) -> CatalogHeads:
+    """The cached pull requests whose head is a branch of *repository* itself.
+
+    A pull request from a fork, or from a fork that was deleted, is left out: its branch is
+    not one of the repository's. Only the newest ``_HEADS_SCAN_ROWS`` rows are looked
+    through. *known* is the ``(epoch, revision)`` of the catalog the caller holds the
+    answer for: the pull requests are then not read again. Reads the cache alone, bounded;
+    a catalog that cannot be read answers as an absent one.
+    """
+
+    absent = CatalogHeads(None, (), False)
+    name = f"{repository.owner}/{repository.repo}"
+    try:
+        with _database(repository.home, repository.slug, read_opcodes=_HEADS_READ_OPCODES) as db:
+            db.execute("BEGIN")
+            state = _state(db)
+            if state is None or state.source != repository.source:
+                return absent
+            limited = state.cached["all"] > _HEADS_SCAN_ROWS
+            if known == (state.epoch, state.revision):
+                return CatalogHeads(state, None, limited)
+            oldest = 1
+            if limited:
+                cutoff = db.execute(
+                    "SELECT number FROM pulls ORDER BY number DESC LIMIT 1 OFFSET ?",
+                    (_HEADS_SCAN_ROWS - 1,),
+                ).fetchone()
+                if cutoff is not None:
+                    oldest = cutoff[0]
+            # Every row is fetched here and read after the connection is closed: a read
+            # transaction holds off the writer's commit, and a writer waits only 0.25 s
+            # (`_database`), so a Python loop over the rows inside it, which grows with them,
+            # is time the job's page write could fail for ("database is locked", 2 of 207
+            # commits at 100,000 rows against a scan that never paused, mb-tjbm review A3).
+            found = db.execute(
+                "SELECT number, state, json_extract(body, '$.draft'), "
+                "json_extract(body, '$.merged_at') IS NOT NULL, "
+                "json_extract(body, '$.title'), json_extract(body, '$.head_ref') "
+                "FROM pulls WHERE number >= ? "
+                "AND json_extract(body, '$.head_repository') = ? COLLATE NOCASE "
+                "ORDER BY number DESC",
+                (oldest, name),
+            ).fetchall()
+    except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
+        return absent
+    pulls: list[HeadPull] = []
+    for number, status, draft, merged, title, head_ref in found:
+        if (
+            not isinstance(number, int)
+            or status not in ("open", "closed")
+            or not isinstance(title, str)
+            or not isinstance(head_ref, str)
+            or not head_ref
+        ):
+            continue
+        shown: Literal["open", "draft", "merged", "closed"] = (
+            "merged" if merged else "draft" if status == "open" and draft else status
+        )
+        pulls.append(HeadPull(number, title, shown, head_ref))
+    return CatalogHeads(state, tuple(pulls), limited)
+
+
+@dataclass(frozen=True, slots=True)
 class CatalogMember:
     updated_at: str
     fingerprint: bytes
@@ -753,11 +882,12 @@ def _initialize(repository: ListedRepository) -> None:
     except FileNotFoundError:
         pass
     else:
+        info = os.fstat(fd)
         try:
-            if os.fstat(fd).st_size:
+            if info.st_size:
                 return
         finally:
-            os.close(fd)
+            PROCESS_HANDLES.close(fd, _key(info))
     # Publish a complete initialized database atomically, never a visible empty file.
     write_private_file_atomic(repository.home, _relative(repository.slug), _empty_catalog())
 

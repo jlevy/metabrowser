@@ -1,7 +1,9 @@
 """The table routes: ``/api/plugin/table/{tables,schema,rows,record,card}``.
 
 Every route takes ``?path=``, the address of a table: a file that is its own single
-table, such as a CSV file. The kind of the file there selects its source's adapter
+table, such as a CSV file, or one table inside a file, ``<file>/<table>``, as a
+database's tables are its container children. The tables route answers for the file
+either way. The kind of the file there selects its source's adapter
 (:func:`metabrowser.table_source.open_table_source`), the adapter's synchronous calls
 run on the route threadpool under one request's budget, and the answer is the wire
 contract :mod:`metabrowser.table_source` defines, so the routes know nothing about any
@@ -82,7 +84,7 @@ async def schema_handler(request: Request) -> JSONResponse:
 
     def answer(opened: OpenedTableSource, _budget: Budget) -> dict[str, Any]:
         generation = opened.source.generation()
-        return schema_wire(opened.ref.identity, generation, opened.source.schema(opened.table))
+        return schema_wire(opened.address, generation, opened.source.schema(opened.table))
 
     return await _answer(request, answer)
 
@@ -100,7 +102,7 @@ async def rows_handler(request: Request) -> JSONResponse:
     def answer(opened: OpenedTableSource, budget: Budget) -> dict[str, Any]:
         check_table_query(query, opened.source.schema(opened.table))
         page = opened.source.rows(opened.table, query, budget)
-        return page_wire(opened.ref.identity, opened.table, page)
+        return page_wire(opened.address, opened.table, page)
 
     return await _answer(request, answer)
 
@@ -114,7 +116,7 @@ async def record_handler(request: Request) -> JSONResponse:
     def answer(opened: OpenedTableSource, budget: Budget) -> dict[str, Any]:
         record = opened.source.record(opened.table, _required(request, "key"), budget)
         return record_wire(
-            opened.ref.identity,
+            opened.address,
             opened.table,
             record,
             requested_generation=request.query_params.get("generation") or None,
@@ -128,6 +130,6 @@ async def card_handler(request: Request) -> JSONResponse:
 
     def answer(opened: OpenedTableSource, budget: Budget) -> dict[str, Any]:
         card = opened.source.card(opened.table, _required(request, "key"), budget)
-        return card_wire(opened.ref.identity, opened.table, card)
+        return card_wire(opened.address, opened.table, card)
 
     return await _answer(request, answer)

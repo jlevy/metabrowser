@@ -16,8 +16,9 @@ changes nothing.
                oldest ``metab`` the app runs: the app running the check
                (:data:`DOCTOR_APP_ENV`), or else the one ``open_in`` found
 ``git``        The ``git`` on ``PATH`` against the cloning floor                   warning
-               (``ACQUISITION_MINIMUM``) and a partial clone's
-               (``PARTIAL_CLONE_GIT_MINIMUM``)
+               (``ACQUISITION_MINIMUM``), a partial clone's
+               (``PARTIAL_CLONE_GIT_MINIMUM``), and the release that reads
+               file ages on a Git revision (``FILE_AGES_GIT_MINIMUM``)
 ``config``     The configuration directory resolves, is private or can be          problem
                created, and its ``config.yml`` is one this release reads; an
                override the app's servers do not get is a warning
@@ -340,12 +341,18 @@ def metab_check(*, app_path: str | None, app_minimum: str | None, looked_up: boo
 
 
 def git_check() -> Check:
-    """The ``git`` on ``PATH``, against the floor for cloning and a partial clone's."""
+    """The ``git`` on ``PATH``: where it is, its version, and each thing that version does.
+
+    The floors are the cloning floor, a partial clone's, and the release that reads file
+    ages on a Git revision. A detail line says whether file ages are available, since that
+    is the one a person upgrades Git for without anything else failing.
+    """
 
     from metabrowser.checkout_revisions import (
         PARTIAL_CLONE_GIT_MINIMUM,
         partial_clone_version_label,
     )
+    from metabrowser.git.file_ages import file_ages_availability, file_ages_version_label
     from metabrowser.git.process import (
         acquisition_allowed,
         detect_git_version,
@@ -360,13 +367,23 @@ def git_check() -> Check:
             "git",
             "Git",
             "warning",
-            "no git on PATH, so metab clones no Git source and shows no branch or tag of a "
-            "checkout",
+            "no git on PATH, so metab clones no Git source, shows no branch or tag of a "
+            "checkout, and dates no file of a Git revision",
             (("executable", "not found on PATH"),),
             git_upgrade_remedy(None),
         )
     version, line = detect_git_version()
-    details = (("executable", _shown(executable)), ("version", line or "unknown"))
+    ages = file_ages_availability()
+    ages_detail = (
+        "available"
+        if ages.available
+        else f"needs Git {file_ages_version_label()} or newer, so a Git revision shows no By age"
+    )
+    details = (
+        ("executable", _shown(executable)),
+        ("version", line or "unknown"),
+        ("file ages", ages_detail),
+    )
     if version is None:
         summary = f"git at {_shown(executable)} did not name a version metab can read"
     elif not acquisition_allowed(version):
@@ -379,6 +396,8 @@ def git_check() -> Check:
             f"{line} shows no branch or tag of a partial clone, which needs "
             f"{partial_clone_version_label()}"
         )
+    elif not ages.available:
+        summary = ages.hint or "file ages on Git revisions are unavailable"
     else:
         return Check("git", "Git", "ok", f"{line}, which meets every floor", details)
     return Check("git", "Git", "warning", summary, details, git_upgrade_remedy(executable))

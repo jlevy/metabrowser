@@ -55,7 +55,8 @@ from metabrowser import sqlite_access
 from metabrowser.sqlite_access import SqliteAccessError
 
 # Workers alive at once. Each request is short (a page round trip measured 154 µs warm
-# in the exploration's Process record) and one table view asks one request at a time, so
+# in the exploration's Process record, an Info round trip 1.3 ms here, and a worker's
+# start to its first answer 45 to 51 ms, by `devtools/bench_sqlite_access.py`) and one table view asks one request at a time, so
 # two serve a page and a hover card together while bounding the memory of crafted
 # files to two processes.
 READER_POOL_SIZE: Final = 2
@@ -70,11 +71,13 @@ READER_KILL_GRACE_SECONDS: Final = 1.0
 # (`TABLE_REQUEST_DEADLINE_SECONDS`).
 SQLITE_REQUEST_DEADLINE_SECONDS: Final = 2.0
 # The address space a worker may map, where the platform enforces `RLIMIT_AS` (Linux;
-# macOS does not). A worker's interpreter maps about 40 MiB idle and an Info read adds
-# little (`devtools/bench_sqlite_access.py`); a preview through `blobopen` stays near its
-# baseline even for a 200 MiB value (the exploration's Values record). One GiB leaves the
-# private copy cap, SQLite's caches, and Python's heap ample room and stops a crafted
-# file that would take the machine's memory.
+# macOS does not). After 50 Info reads a worker had mapped 112 MiB, peaking at 176 MiB
+# with its watchdog thread's stack, and held 18 MiB resident
+# (`uv run python -m devtools.bench_sqlite_access`, 2026-11-20, 4 CPUs at a load of 4);
+# a preview through `blobopen` stays near its baseline even for a 200 MiB value (the
+# exploration's Values record). One GiB leaves a page's values, SQLite's cache, and
+# Python's heap several times that, and stops a crafted file that would take the
+# machine's memory.
 READER_ADDRESS_SPACE_BYTES: Final = 1024 * 1024 * 1024
 # The largest Git blob read as a database: written once to a private file, then read
 # with `immutable=1`. The same bound as a private copy (`COPY_MAX_BYTES`), whose cost
@@ -84,14 +87,57 @@ BLOB_MAX_BYTES: Final = sqlite_access.COPY_MAX_BYTES
 PRIVATE_PREFIX: Final = "metabrowser-sqlite-"
 _OWNER_LOCK: Final = "owner.lock"
 
+# The worker's whole program: load `sqlite_access.py` as `metabrowser.sqlite_access` and
+# run its loop, which loads the registered worker modules first (`serve`).
 _BOOTSTRAP: Final = (
-    "import importlib.util, sys\n"
-    "spec = importlib.util.spec_from_file_location('metabrowser_sqlite_reader', sys.argv[1])\n"
+    "import importlib.util, sys, types\n"
+    "package = types.ModuleType('metabrowser')\n"
+    "package.__path__ = []\n"
+    "sys.modules['metabrowser'] = package\n"
+    "spec = importlib.util.spec_from_file_location('metabrowser.sqlite_access', sys.argv[1])\n"
     "module = importlib.util.module_from_spec(spec)\n"
     "sys.modules[spec.name] = module\n"
+    "package.sqlite_access = module\n"
     "spec.loader.exec_module(module)\n"
     "module.serve()\n"
 )
+
+# The most modules that may be registered to run in workers: one per source plugin that
+# reads SQLite, with room to spare. A registration past it is refused.
+MAX_WORKER_MODULES: Final = 8
+
+type WorkerModules = tuple[tuple[str, str], ...]
+
+_worker_modules: dict[str, str] = {}
+_worker_modules_lock = threading.Lock()
+
+
+def register_worker_module(name: str, path: str | Path) -> None:
+    """Run the module at *path*, under the import name *name*, in every reader process.
+
+    The module must import only the standard library and ``metabrowser.sqlite_access``
+    (``from metabrowser import sqlite_access``), which resolves to the worker's own copy;
+    any other ``metabrowser`` import fails in the worker, whose ``metabrowser`` package
+    holds only that module and the registered ones. It adds the requests it answers to
+    ``sqlite_access.OPS`` when it is loaded. Workers started with another set of modules
+    are retired and replaced as they come free. Registering the same name and path again
+    changes nothing.
+    """
+    if not all(part.isidentifier() for part in name.split(".")):
+        raise ValueError(f"worker module name {name!r} is not a dotted import name")
+    resolved = Path(path).resolve()
+    if resolved.suffix != ".py" or not resolved.is_file():
+        raise ValueError(f"worker module {name!r} is not a Python file: {path}")
+    with _worker_modules_lock:
+        if name not in _worker_modules and len(_worker_modules) >= MAX_WORKER_MODULES:
+            raise ValueError(f"more than {MAX_WORKER_MODULES} worker modules")
+        _worker_modules[name] = str(resolved)
+
+
+def worker_modules() -> WorkerModules:
+    """The registered worker modules, in registration order."""
+    with _worker_modules_lock:
+        return tuple(_worker_modules.items())
 
 
 class _Stopped(Exception):
@@ -105,8 +151,9 @@ class _TimedOut(Exception):
 class _Worker:
     """One reader process and the subject it serves."""
 
-    def __init__(self, subject: str) -> None:
+    def __init__(self, subject: str, modules: WorkerModules) -> None:
         self.subject = subject
+        self.modules = modules
         self.process = subprocess.Popen(
             [
                 sys.executable,
@@ -115,6 +162,7 @@ class _Worker:
                 _BOOTSTRAP,
                 sqlite_access.__file__,
                 str(READER_ADDRESS_SPACE_BYTES),
+                json.dumps(modules),
             ],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -316,6 +364,7 @@ class ReaderPool:
 
     def _acquire(self, deadline: float, subject: str) -> _Worker:
         retired: list[_Worker] = []
+        modules = worker_modules()
         try:
             with self._cond:
                 if self._closed:
@@ -329,6 +378,11 @@ class ReaderPool:
                             if not worker.alive():
                                 self._idle.remove(worker)
                                 self._count -= 1
+                            elif worker.modules != modules:
+                                # Started with another set of modules: replaced.
+                                self._idle.remove(worker)
+                                self._count -= 1
+                                retired.append(worker)
                             elif worker.subject == subject:
                                 self._idle.remove(worker)
                                 return worker
@@ -350,7 +404,7 @@ class ReaderPool:
             for worker in retired:
                 worker.stop()
         try:
-            worker = _Worker(subject)
+            worker = _Worker(subject, modules)
         except OSError as exc:
             self._discard(None)
             raise SqliteAccessError(

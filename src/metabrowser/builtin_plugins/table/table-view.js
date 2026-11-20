@@ -48,6 +48,7 @@ import {
   rowsParams,
   rowsTsv,
   sameRows,
+  sortRefused,
   stateQuery,
   wantsMore,
   windowRange,
@@ -91,6 +92,10 @@ export const FIRST_PAGE_ROWS = 200;
 // Rows each later request asks for: as many as the route gives at once
 // (TABLE_PAGE_ROWS_MAX), so a table of WHOLE_TABLE_MAX_ROWS is read in two requests and a
 // long scroll asks seldom.
+//
+// Both are what the view asks, not what it gets: a page of wide rows carries fewer
+// (TABLE_PAGE_CELLS_MAX), and its `limit` says how many. The view counts the rows that
+// came and reads on from `next_after` until the table, or the window's need, is met.
 export const NEXT_PAGE_ROWS = 1000;
 
 // A row's height before the first drawn row is measured, by its line count, so the
@@ -182,6 +187,8 @@ export function mountTable(container, ctx, host = {}) {
   let rows = [];
   /** @type {TablePage | null} */
   let page = null;
+  /** The question `page` answers, whose rows its `next_after` continues. @type {TableState} */
+  let answered = state;
   /** @type {string[]} */
   let columns = [];
   /** @type {Record<string, number>} */
@@ -352,7 +359,7 @@ export function mountTable(container, ctx, host = {}) {
 
   /**
    * @param {string} route
-   * @param {Record<string, string>} params
+   * @param {Record<string, string | string[]>} params
    * @param {AbortSignal} signal
    */
   function ask(route, params, signal) {
@@ -417,6 +424,7 @@ export function mountTable(container, ctx, host = {}) {
       }
       rows = held;
       page = { ...first, next_after: last.next_after };
+      answered = question;
       windowed = !whole || Boolean(last.next_after);
       drawTable();
     } catch (error) {
@@ -430,20 +438,25 @@ export function mountTable(container, ctx, host = {}) {
     }
   }
 
-  /** Read the next page of a windowed table, once the window nears the last row held. */
+  /**
+   * Read the next page of a windowed table, once the window nears the last row held. The
+   * cursor continues only the question it was made for, so while a new question's first
+   * page is on its way, the rows held for the last one read no further.
+   */
   async function readMore() {
-    if (readingMore || moreFailed || !page?.next_after || !windowed) {
+    if (readingMore || moreFailed || !page?.next_after || !windowed || !sameRows(answered, state)) {
       return;
     }
     readingMore = true;
     const seq = loadSeq;
     const signal = loading?.signal ?? abort.signal;
+    let read = false;
     try {
       const next = /** @type {TablePage} */ (
         /** @type {unknown} */ (
           await ask(
             "rows",
-            rowsParams(state, { after: page.next_after, limit: NEXT_PAGE_ROWS }),
+            rowsParams(answered, { after: page.next_after, limit: NEXT_PAGE_ROWS }),
             signal,
           )
         )
@@ -452,9 +465,14 @@ export function mountTable(container, ctx, host = {}) {
         return;
       }
       rows.push(...next.rows);
-      page = { ...page, next_after: next.next_after, complete: next.complete, reason: next.reason };
-      drawNotes();
-      drawWindow(true);
+      page = {
+        ...page,
+        next_after: next.next_after,
+        complete: next.complete,
+        reason: next.reason,
+        examined: next.examined,
+      };
+      read = true;
     } catch (error) {
       if (seq === loadSeq && !disposed && !isAbort(error)) {
         // Said once; the next question, or a reload, asks again.
@@ -463,6 +481,12 @@ export function mountTable(container, ctx, host = {}) {
       }
     } finally {
       readingMore = false;
+    }
+    if (read) {
+      // Drawn once the read is over, so a page shorter than the window's need, as a page
+      // of wide rows is, reads the next at once.
+      drawNotes();
+      drawWindow(true);
     }
   }
 
@@ -865,8 +889,11 @@ export function mountTable(container, ctx, host = {}) {
     } else {
       box.append(view.kind === "absent" ? "—" : view.text);
     }
-    if (view.cut !== null && view.kind === "text") {
+    if ((view.cut !== null || view.size !== null) && view.kind === "text") {
       box.append(el("span", { class: "table-cut", "aria-hidden": "true" }, "…"));
+    }
+    if (view.missing) {
+      box.append(el("span", { class: "table-stored-mark", "aria-label": "missing" }, "missing"));
     }
     if (view.stored) {
       box.append(
@@ -903,6 +930,21 @@ export function mountTable(container, ctx, host = {}) {
   }
 
   function drawEmpty() {
+    const refused = page ? sortRefused(page) : null;
+    if (refused !== null) {
+      // A sort that could not be done in time answers no rows; the table has them.
+      const name = fieldsByName.get(refused)?.title || refused;
+      notice(
+        "warning",
+        `This table is too large to sort by “${name}” in the time a request may take.`,
+        el(
+          "a",
+          { href: href(withSort(state, refused, null)), class: "table-unsort" },
+          "Show the file’s order",
+        ),
+      );
+      return;
+    }
     const filtered = isFiltered(state);
     const message = el(
       "p",
@@ -1240,7 +1282,7 @@ export function mountTable(container, ctx, host = {}) {
 
   /**
    * Follow one of the view's own links: a filter, a chip's removal, a reference, a row's
-   * number, or a reset.
+   * number, a refused sort's way back, or a reset.
    *
    * @param {HTMLAnchorElement} link
    */
@@ -1261,6 +1303,8 @@ export function mountTable(container, ctx, host = {}) {
       go(withoutFilter(state));
     } else if (link.classList.contains("table-reset")) {
       go(EMPTY_STATE);
+    } else if (link.classList.contains("table-unsort")) {
+      go(withSort(state, state.sort ?? "", null));
     } else if (link.classList.contains("table-position")) {
       const tr = ancestor(link, (node) => node.localName === "tr");
       const index = Number(tr?.dataset.index ?? 0);
@@ -1673,6 +1717,20 @@ export function mountTable(container, ctx, host = {}) {
             { class: "table-record-note" },
             `Showing the first ${formatCount(view.text.length)} of ${formatCount(view.cut)} characters.`,
           ),
+        );
+      }
+      if (view.size !== null && view.kind === "text") {
+        dd.append(
+          el(
+            "p",
+            { class: "table-record-note" },
+            `Showing the first ${formatCount(view.text.length)} characters of ${formatCount(view.size)} bytes.`,
+          ),
+        );
+      }
+      if (view.missing) {
+        dd.append(
+          el("p", { class: "table-record-note" }, "No row of the referenced table has this value."),
         );
       }
       if (view.stored) {

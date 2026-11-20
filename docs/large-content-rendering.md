@@ -332,13 +332,22 @@ this standard. Paths are under `src/metabrowser/`.
 | `_MAX_RENDERS` | `diff/markdown_projection_worker.py` | Distinct untrusted Markdown renders in flight at once, the one in the Markdown child among them; past it a render is answered `503` with the code `renderer_busy`, which is not kept |
 | `ROWS_OVERSCAN` | `static/source-ref-selector.js` | Rows the branch and tag chooser draws beyond its list’s view; the list holds every ref, so the window, not the repository, bounds the rows drawn |
 | `TABLE_PAGE_ROWS_DEFAULT`, `TABLE_PAGE_ROWS_MAX` | `table_source.py` | Rows in one page of a table, when a query names no `limit` and at most |
+| `TABLE_PAGE_CELLS_MAX` | `table_source.py` | Cells in one page of a table; a page of wide rows carries fewer of them, and its `limit` says how many |
 | `TABLE_CELL_PREVIEW_CHARS`, `TABLE_RECORD_VALUE_BYTES` | `table_source.py` | One text value in a page of rows, and in a record; a longer one is cut and says its length |
+| `TABLE_CARD_MAX_FIELDS` | `table_source.py` | Fields a table’s hover card shows besides its label |
 | `TABLE_TOKEN_MAX_CHARS` | `table_source.py` | A record key or a cursor in a link; a longer one is named by position, valid for one generation |
-| `TABLE_REQUEST_DEADLINE_SECONDS` | `table_source.py` | A table request’s scan; past it a filter or search answers the rows it found with `complete: false` |
-| `DELIMITED_PARSE_MAX_BYTES` | `builtin_plugins/delimited/source.py` | The bytes of a `.csv` or `.tsv` file read as a table; past it the table holds the leading rows and says so |
-| `DELIMITED_CACHE_MAX_ENTRIES`, `DELIMITED_CACHE_MAX_BYTES` | `builtin_plugins/delimited/source.py` | Server memory for parsed delimited files |
+| `TABLE_REQUEST_DEADLINE_SECONDS` | `table_source.py` | A table request’s work; past it a filter or search answers the rows it found with `complete: false`, and a sort not yet indexed is refused with `sort_budget` |
+| `DELIMITED_PARSE_MAX_BYTES`, `DELIMITED_MAX_ROWS`, `DELIMITED_MAX_CELLS` | `builtin_plugins/delimited/source.py` | The bytes, rows, and cells of a `.csv` or `.tsv` file read as a table; past any of them the table holds the leading rows and says so |
+| `DELIMITED_MAX_COLUMNS` | `builtin_plugins/delimited/source.py` | The cells of one row of a delimited file read, the header’s among them; past it the table says it was cut |
+| `DELIMITED_TYPE_SAMPLE_ROWS` | `builtin_plugins/delimited/source.py` | Rows of a delimited file whose values decide each column’s type |
+| `DELIMITED_CACHE_MAX_ENTRIES`, `DELIMITED_CACHE_MAX_BYTES` | `builtin_plugins/delimited/source.py` | Server memory for parsed delimited files and their sort indexes, estimated from each file’s rows, cells, and text |
+| `SORT_UNINDEXED_MAX_ROWS` | `builtin_plugins/sqlite/reader.py` | The rows of a SQLite table or view past which only its key and the fields an index leads with sort; the rest say why in `sort_note` |
+| `COUNT_CAP` | `builtin_plugins/sqlite/reader.py` | The rows a SQLite page’s count reads; past it the count is a lower bound, drawn as “at least” |
+| `REFS_PER_PAGE` | `builtin_plugins/sqlite/reader.py` | Referenced rows one SQLite page resolves; a value past it is shown without its reference |
+| `PAGE_INLINE_BYTES` | `builtin_plugins/sqlite/reader.py` | A SQLite text or blob a page reads whole; a longer one is previewed from its stored bytes, or shown as its size where it has no rowid |
+| `DESCRIPTION_CACHE_ENTRIES` | `builtin_plugins/sqlite/database.py` | Server memory for SQLite catalogs and table descriptions, by database and generation |
 | `WHOLE_TABLE_MAX_ROWS` | `builtin_plugins/table/table-view.js` | The rows a table may hold and still be drawn whole, keeping the browser’s find, select all, copy, and print; a larger one is a window with Search, row selection that copies as tab-separated values, and print of the rows held in their place |
-| `FIRST_PAGE_ROWS`, `NEXT_PAGE_ROWS`, `ROWS_OVERSCAN`, `ROW_HEIGHT_ESTIMATE_PX` | `builtin_plugins/table/table-view.js` | The table view’s first and later requests, the rows its window draws past the view, and a row’s height before one is measured |
+| `FIRST_PAGE_ROWS`, `NEXT_PAGE_ROWS`, `ROWS_OVERSCAN`, `ROW_HEIGHT_ESTIMATE_PX` | `builtin_plugins/table/table-view.js` | The rows the table view’s first and later requests ask for, which a page of wide rows may answer with fewer, the rows its window draws past the view, and a row’s height before one is measured |
 | `SUMMARY_ROWS_OVERSCAN` | `builtin_plugins/diff/diff-summary.js` | Diff summary rows mounted on either side of the window’s view of its tree, which has no scroll of its own and no length bound beyond `MAX_MANIFEST_FILES` |
 
 ## References
