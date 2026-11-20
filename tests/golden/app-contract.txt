@@ -553,6 +553,27 @@ exit: 0
         }
       ],
       "remedy": null
+    },
+    {
+      "id": "event_log",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
     }
   ],
   "github": {
@@ -696,6 +717,27 @@ exit: 1
       "state": "problem",
       "summary": "<text>",
       "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "event_log",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
         {
           "name": "<text>",
           "value": "<text>"

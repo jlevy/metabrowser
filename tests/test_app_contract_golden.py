@@ -556,6 +556,10 @@ def _doctor(sandbox: _Sandbox) -> list[str]:
     with sandbox.monkeypatch.context() as patched:
         patched.setenv("PATH", f"{GIT_STAND_IN}{os.pathsep}{os.environ['PATH']}")
         patched.setenv("METABROWSER_MAX_FIRST_CLONE_KB", "1")
+        # The event log check is ok where the log is on and its directory can be made, and the
+        # suite turns the log off (tests/conftest.py); the state directory is the sandbox's.
+        patched.setenv("METABROWSER_EVENT_LOG", "1")
+        patched.setenv("METABROWSER_STATE_DIR", str(sandbox.root / "state"))
         git_process.git_executable.cache_clear()
         git_process.detect_git_version.cache_clear()
         try:
