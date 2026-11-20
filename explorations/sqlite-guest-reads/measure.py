@@ -14,6 +14,7 @@ import contextlib
 import hashlib
 import json
 import math
+import multiprocessing
 import os
 import platform
 import random
@@ -24,6 +25,8 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Generator
+from multiprocessing.connection import Connection
+from multiprocessing.context import ForkContext, ForkServerContext, SpawnContext
 from pathlib import Path
 from typing import cast
 
@@ -209,6 +212,19 @@ def _owner_main(role: str, args: list[str]) -> None:
         connection.execute("UPDATE t SET v = 'rewritten ' || id || ' ' || hex(randomblob(40))")
         print("ready", flush=True)
         os._exit(0)
+    elif role == "reader":
+        # A reader process inside one read transaction until it is killed.
+        connection = sqlite3.connect(_uri(path, "mode=ro"), uri=True, isolation_level=None)
+        connection.execute("BEGIN")
+        connection.execute("SELECT count(*) FROM small").fetchone()
+        print("ready", flush=True)
+        sys.stdin.readline()
+    elif role == "recovering-reader":
+        # The first read after every connection closed rebuilds the wal-index in -shm.
+        connection = sqlite3.connect(_uri(path, "mode=ro"), uri=True, timeout=0)
+        print("ready", flush=True)
+        sys.stdin.readline()
+        connection.execute("SELECT count(*) FROM sqlite_master").fetchone()
     elif role == "checkpoint":
         connection = sqlite3.connect(path, isolation_level=None)
         print("ready", flush=True)
@@ -266,8 +282,10 @@ def _driven_owner(path: Path) -> None:
                 )
                 connection.execute("COMMIT")
                 reply = "ok"
-            elif command == "restart":
-                busy, frames, done = connection.execute("PRAGMA wal_checkpoint(RESTART)").fetchone()
+            elif command in ("restart", "truncate"):
+                busy, frames, done = connection.execute(
+                    f"PRAGMA wal_checkpoint({command.upper()})"
+                ).fetchone()
                 reply = f"ok busy={busy} frames={frames} checkpointed={done}"
             elif command == "close":
                 connection.close()
@@ -526,10 +544,31 @@ def _interrupted_checkpoint(scratch: Path) -> Result:
                 "mode_ro_on_a_private_copy_with_its_log": _checked_read(
                     copy_folder / "app.db", "mode=ro"
                 ),
+                "private_copy_through_a_second_hard_link": _hard_link_copy(
+                    db, scratch / f"hard-link-copy-{kill_ms}"
+                ),
                 "after": _listing(folder),
             }
             shutil.rmtree(copy_folder)
     return out
+
+
+def _hard_link_copy(db: Path, copy_folder: Path) -> Result:
+    """The private copy a reader makes through a second name, which has no log beside it."""
+
+    hard = db.with_name("hard.db")
+    os.link(db, hard)
+    try:
+        before = _fingerprint(hard)
+        copy_folder.mkdir()
+        shutil.copy2(hard, copy_folder / "hard.db")
+        validated = _fingerprint(hard) == before and not (db.parent / "hard.db-wal").exists()
+        result = _checked_read(copy_folder / "hard.db", "mode=ro")
+        result["copy_validated"] = validated
+        return result
+    finally:
+        hard.unlink()
+        shutil.rmtree(copy_folder, ignore_errors=True)
 
 
 def _checked_read(db: Path, query: str) -> Result:
@@ -717,9 +756,9 @@ UNINDEXED_SORT_PAGE = "SELECT * FROM t ORDER BY b, a, id LIMIT 100"
 COUNT_STAR = "SELECT count(*) FROM t"
 CAPPED_COUNT = "SELECT count(*) FROM (SELECT 1 FROM t LIMIT 1000001)"
 
-# The plan's policy for a rollback-journal database: how long a read may wait for the
-# owner's journal to clear or for a validated read to succeed before it takes a lock,
-# and the backoff between attempts.
+# How long a read of a rollback-journal database may wait for the owner's journal to
+# clear or for a validated read to succeed, and the backoff between attempts. Past it,
+# review B's policy takes a lock; the plan's policy answers writer busy.
 POLICY_DEADLINE_S = 0.25
 POLICY_BACKOFF_S = (0.001, 0.016)
 
@@ -740,11 +779,15 @@ def suite_contention(scratch: Path) -> Result:
         "review_a_policy_page_and_capped_count": lambda db: _review_a_policy(
             db, [KEY_PAGE, CAPPED_COUNT]
         ),
-        "plan_policy_key_ordered_page_and_capped_count": lambda db: _plan_policy(
+        "review_b_policy_key_ordered_page_and_capped_count": lambda db: _review_b_policy(
             db, [KEY_PAGE, CAPPED_COUNT]
         ),
-        "plan_policy_unindexed_sort_page_and_capped_count": lambda db: _plan_policy(
+        "review_b_policy_unindexed_sort_page_and_capped_count": lambda db: _review_b_policy(
             db, [UNINDEXED_SORT_PAGE, CAPPED_COUNT]
+        ),
+        "plan_policy_key_ordered_page_then_capped_count": lambda db: _plan_policy(db, KEY_PAGE),
+        "plan_policy_unindexed_sort_page_then_capped_count": lambda db: _plan_policy(
+            db, UNINDEXED_SORT_PAGE
         ),
     }
     out: Result = {
@@ -856,21 +899,39 @@ def _review_a_policy(db: Path, statements: list[str]) -> str:
     return _locked_read(db, statements)
 
 
-def _plan_policy(db: Path, statements: list[str]) -> str:
-    """The plan's policy: wait out a journal or a failed validation with backoff until the
-    deadline, then lock for the key-ordered page alone, with no sort and no count."""
+def _waited_out(db: Path, statements: list[str]) -> bool:
+    """Retry a validated read with backoff until it succeeds or the deadline passes."""
 
     deadline = time.monotonic() + POLICY_DEADLINE_S
     delay, longest = POLICY_BACKOFF_S
     while True:
         if _validated_read(db, statements) == "validated":
-            return "validated"
+            return True
         if time.monotonic() + delay >= deadline:
-            break
+            return False
         time.sleep(delay)
         delay = min(delay * 2, longest)
+
+
+def _review_b_policy(db: Path, statements: list[str]) -> str:
+    """The policy review B's dispositions wrote: wait out a journal or a failed validation
+    of the page and count together, then lock for the key-ordered page alone."""
+
+    if _waited_out(db, statements):
+        return "validated"
     outcome = _locked_read(db, [KEY_PAGE])
     return "locked_key_page_only" if outcome == "locked" else outcome
+
+
+def _plan_policy(db: Path, page: str) -> str:
+    """The plan's policy: never lock. Wait out the page alone, then validate the capped
+    count as one further read with no wait, falling back to an estimate."""
+
+    if not _waited_out(db, [page]):
+        return "writer_busy"
+    if _validated_read(db, [CAPPED_COUNT]) == "validated":
+        return "page_and_count_validated"
+    return "page_validated_count_estimate"
 
 
 # ---- Suite: budget ----
@@ -1521,24 +1582,278 @@ def suite_generation(scratch: Path) -> Result:
         wal = folder / "app.db-wal"
         sizes: set[int] = set()
         headers: set[bytes] = set()
+        counters: set[bytes] = set()
         for i in range(GENERATION_CYCLES):
             owner.execute("INSERT INTO t(v) VALUES (?)", (f"cycle {i}",))
             sizes.add(wal.stat().st_size)
             with wal.open("rb") as handle:
                 headers.add(handle.read(24)[12:24])
             owner.execute("PRAGMA wal_checkpoint(PASSIVE)")
+            # The main file's change counter, after the checkpoint copied the commit in.
+            with db.open("rb") as handle:
+                handle.seek(24)
+                counters.add(handle.read(4))
         owner.close()
     return {
         "cycles": GENERATION_CYCLES,
         "distinct_wal_sizes": len(sizes),
         "distinct_header_salts": len(headers),
+        "distinct_main_file_change_counters": len(counters),
     }
+
+
+# ---- Suite: process ----
+
+
+# The rows rewritten into the log whose wal-index a killed reader was rebuilding, and the
+# fractions of the measured rebuild time at which it is killed.
+REBUILD_ROWS = 1_600_000
+REBUILD_KILL_FRACTIONS = (0.2, 0.4, 0.6, 0.8, 0.95)
+WORKER_START_METHODS = ("spawn", "forkserver", "fork")
+WORKER_STARTS = 5
+WORKER_ROUND_TRIPS = 50
+WORKER_TABLE_ROWS = 10_000
+WORKER_PAGE = "SELECT * FROM t WHERE id > ? ORDER BY id LIMIT 100"
+
+
+def suite_process(scratch: Path) -> Result:
+    """What Decision 13's reader processes rest on: the race check's held handle, what a
+    killed reader leaves the owner, and what a worker costs to start and to ask."""
+
+    return {
+        "race_check_shm_handle": _race_check_handle(scratch),
+        "reader_killed_inside_a_read": _killed_reader(scratch),
+        "reader_killed_rebuilding_the_wal_index": _killed_rebuild(scratch),
+        "worker_cost": _worker_cost(scratch),
+    }
+
+
+def _race_check_handle(scratch: Path) -> Result:
+    """The race check opens ``-shm`` before connecting. Held until after the connection
+    closes, it leaves the reader's locks alone; closed while connected, it drops them."""
+
+    out: Result = {}
+    for timing in ("held_until_after_close", "closed_while_connected"):
+        with _case(scratch, f"race-check-{timing}") as folder:
+            db = folder / "app.db"
+            _make_owner_tables(db, wal=True)
+            owner = Owner("driven", str(db))
+            owner.ask("fill 2000")
+            handle = (folder / "app.db-shm").open("rb")
+            reader = sqlite3.connect(_uri(db, "mode=ro"), uri=True, isolation_level=None, timeout=0)
+            reader.execute("BEGIN")
+            reader.execute("SELECT count(*) FROM small").fetchone()
+            if timing == "closed_while_connected":
+                handle.close()
+            restart = owner.ask("restart")
+            refill = owner.ask("fill 2000")
+            try:
+                rows = reader.execute("SELECT count(*) FROM big").fetchone()[0]
+                check = reader.execute("PRAGMA integrity_check").fetchone()[0]
+                reader_saw: Result = {"big_rows": rows, "integrity_check": check}
+            except sqlite3.Error as exc:
+                reader_saw = {"error": _error(exc), "message": str(exc)}
+            with contextlib.suppress(sqlite3.Error):
+                reader.execute("COMMIT")
+            reader.close()
+            handle.close()
+            owner.finish("close")
+            out[timing] = {
+                "owner_restart_during_read": restart,
+                "owner_rewrites_log": refill,
+                "reader_snapshot_of_2000_rows": reader_saw,
+            }
+    return out
+
+
+def _killed_reader(scratch: Path) -> Result:
+    """SIGKILL a reader process inside a read, then let the owner carry on."""
+
+    out: Result = {}
+    with _case(scratch, "killed-reader-wal") as folder:
+        db = folder / "app.db"
+        _make_owner_tables(db, wal=True)
+        owner = Owner("driven", str(db))
+        reader = Owner("reader", str(db))
+        owner.ask("commit")
+        before = owner.ask("truncate")
+        reader.process.kill()
+        reader.process.wait(timeout=60)
+        commit = owner.ask("commit")
+        after = owner.ask("truncate")
+        owner.finish("close")
+        out["write_ahead_log"] = {
+            "owner_truncate_while_reader_inside_a_read": before,
+            "owner_commit_after_kill": commit,
+            "owner_truncate_after_kill": after,
+            "after_owner_closed": _listing(folder),
+        }
+    with _case(scratch, "killed-reader-rollback") as folder:
+        db = folder / "app.db"
+        _make_owner_tables(db, wal=False)
+        owner = Owner("driven", str(db))
+        reader = Owner("reader", str(db))
+        before = owner.ask("commit")
+        reader.process.kill()
+        reader.process.wait(timeout=60)
+        after = owner.ask("commit")
+        owner.finish("close")
+        out["rollback_journal"] = {
+            "owner_commit_while_reader_holds_its_lock": before,
+            "owner_commit_after_kill": after,
+            "after_owner_closed": _listing(folder),
+        }
+    return out
+
+
+def _killed_rebuild(scratch: Path) -> Result:
+    """SIGKILL a reader part-way through rebuilding a crashed owner's wal-index, then
+    reopen as the owner: read every row, write, and check the file."""
+
+    out: Result = {}
+    with _case(scratch, "rebuild-template") as template:
+        db = template / "app.db"
+        _make_db(db, wal=True, rows=REBUILD_ROWS)
+        Owner("wal-fill", str(db)).process.wait(timeout=120)
+        out["wal_bytes"] = (template / "app.db-wal").stat().st_size
+        times: list[float] = []
+        for attempt in range(3):
+            with _case(scratch, f"rebuild-timing-{attempt}") as folder:
+                _copy_files(template, folder)
+                connection = sqlite3.connect(_uri(folder / "app.db", "mode=ro"), uri=True)
+                started = time.perf_counter()
+                connection.execute("SELECT count(*) FROM sqlite_master").fetchone()
+                times.append(time.perf_counter() - started)
+                connection.close()
+        rebuild_s = sorted(times)[1]
+        out["rebuild_ms_median_of_3"] = round(rebuild_s * 1000, 1)
+        for fraction in REBUILD_KILL_FRACTIONS:
+            with _case(scratch, f"rebuild-kill-{fraction}") as folder:
+                _copy_files(template, folder)
+                reader = Owner("recovering-reader", str(folder / "app.db"))
+                reader.send("go")
+                time.sleep(rebuild_s * fraction)
+                finished = reader.process.poll() is not None
+                reader.process.kill()
+                reader.process.wait(timeout=60)
+                out[f"killed_at_{round(fraction * 100)}_percent"] = {
+                    "reader_had_exited": finished,
+                    "owner_reopens": _owner_reopens(folder / "app.db"),
+                }
+    return out
+
+
+def _copy_files(source: Path, target: Path) -> None:
+    for entry in source.iterdir():
+        shutil.copy2(entry, target / entry.name)
+
+
+def _owner_reopens(db: Path) -> Result:
+    try:
+        connection = sqlite3.connect(db, isolation_level=None)
+        try:
+            rows, rewritten = connection.execute(
+                "SELECT count(*), sum(v LIKE 'rewritten %') FROM t"
+            ).fetchone()
+            connection.execute("INSERT INTO t(v) VALUES ('owner again')")
+            check = connection.execute("PRAGMA quick_check").fetchone()[0]
+        finally:
+            connection.close()
+    except sqlite3.Error as exc:
+        return {"error": _error(exc), "message": str(exc)}
+    return {"rows": rows, "rewritten_rows": rewritten, "wrote": True, "quick_check": check}
+
+
+def _worker_main(pipe: Connection, db: str) -> None:
+    """A reader worker: answer one page per request until the pipe closes."""
+
+    pipe.send("ready")
+    while True:
+        try:
+            after = pipe.recv()
+        except EOFError:
+            return
+        pipe.send(_worker_page(Path(db), cast(int, after)))
+
+
+def _worker_page(db: Path, after: int) -> list[tuple[object, ...]]:
+    """One 100-row page through a fresh connection, as every request opens its own."""
+
+    connection = sqlite3.connect(_uri(db, "mode=ro&immutable=1"), uri=True)
+    try:
+        return connection.execute(WORKER_PAGE, (after,)).fetchall()
+    finally:
+        connection.close()
+
+
+def _worker_cost(scratch: Path) -> Result:
+    """Start to first answer, and a warm round trip for one page, per start method."""
+
+    out: Result = {}
+    with _case(scratch, "worker-cost") as folder:
+        db = folder / "app.db"
+        _make_db(db, wal=False, rows=WORKER_TABLE_ROWS)
+        afters = [(i * 97) % (WORKER_TABLE_ROWS - 100) for i in range(WORKER_ROUND_TRIPS)]
+        in_process: list[float] = []
+        for after in afters:
+            started = time.perf_counter()
+            _worker_page(db, after)
+            in_process.append(time.perf_counter() - started)
+        out["in_process_page_us_median"] = _median_us(in_process)
+        for method in WORKER_START_METHODS:
+            if method not in multiprocessing.get_all_start_methods():
+                continue
+            context = _start_context(method)
+            starts: list[float] = []
+            trips: list[float] = []
+            exits_on_close: list[bool] = []
+            for _ in range(WORKER_STARTS):
+                ours, theirs = context.Pipe()
+                worker = context.Process(target=_worker_main, args=(theirs, str(db)), daemon=True)
+                started = time.perf_counter()
+                worker.start()
+                ours.recv()
+                starts.append(time.perf_counter() - started)
+                theirs.close()
+                for after in afters:
+                    started = time.perf_counter()
+                    ours.send(after)
+                    ours.recv()
+                    trips.append(time.perf_counter() - started)
+                ours.close()
+                worker.join(timeout=2)
+                exits_on_close.append(not worker.is_alive())
+                if worker.is_alive():
+                    worker.kill()
+                    worker.join(timeout=10)
+            out[method] = {
+                "start_to_first_answer_ms_median": round(
+                    sorted(starts)[len(starts) // 2] * 1000, 1
+                ),
+                "page_round_trip_us_median": _median_us(trips),
+                "exits_when_its_pipe_closes": all(exits_on_close),
+            }
+    return out
+
+
+def _start_context(
+    method: str,
+) -> SpawnContext | ForkServerContext | ForkContext:
+    if method == "spawn":
+        return multiprocessing.get_context("spawn")
+    if method == "forkserver":
+        return multiprocessing.get_context("forkserver")
+    return multiprocessing.get_context("fork")
+
+
+def _median_us(times: list[float]) -> int:
+    return round(sorted(times)[len(times) // 2] * 1_000_000)
 
 
 # ---- Entry point ----
 
 
-SUITES = ("access", "contention", "budget", "values", "encoding", "generation")
+SUITES = ("access", "contention", "budget", "values", "encoding", "generation", "process")
 
 
 def _environment() -> Result:
@@ -1621,6 +1936,7 @@ SUITE_FUNCTIONS: dict[str, Callable[[Path], Result]] = {
     "budget": suite_budget,
     "encoding": suite_encoding,
     "generation": suite_generation,
+    "process": suite_process,
 }
 
 

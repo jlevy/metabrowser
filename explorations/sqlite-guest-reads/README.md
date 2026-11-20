@@ -2,7 +2,7 @@
 
 **Status:** Recorded on 2026-11-20 as the measured basis for the access rules in
 [Tabular Data Browsing and Live SQLite](../../docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md#reading-another-applications-database),
-and rerun the same day for the plan’s second review.
+and rerun for the plan’s second and third reviews.
 Nothing here runs in CI. The plan’s nondestructive access tests grow from these cases.
 
 A viewer pointed at a browser’s history or an application’s state database is a guest.
@@ -25,7 +25,7 @@ permissions several cases depend on; the script refuses to run as root.
 
 ```shell
 uv --config-file uv.toml run --frozen python explorations/sqlite-guest-reads/measure.py \
-  --scratch "$TMPDIR/mb-sqlite-guest" access contention budget values encoding generation
+  --scratch "$TMPDIR/mb-sqlite-guest" access contention budget values encoding generation process
 ```
 
 | Suite | Question |
@@ -36,6 +36,7 @@ uv --config-file uv.toml run --frozen python explorations/sqlite-guest-reads/mea
 | `values` | Peak memory to preview one 200 MiB value, each query in a fresh process |
 | `encoding` | Values JSON or Python’s defaults cannot carry, keyset paging, authorizers, untrusted schemas |
 | `generation` | Whether a restarted write-ahead log repeats its size, and whether its header changes |
+| `process` | What a killed reader process leaves the owner, whether the race check’s held handle keeps its locks, and what a worker costs to start and to ask |
 
 ## Results
 
@@ -65,13 +66,13 @@ not treat as hot.
 was killed after each of nine delays from 5 to 100 ms, and `-shm` was removed, as a copy
 or a sync folder delivers the pair.
 
-| Killed after | Main file alone, `immutable=1` | Private copy of the main file and `-wal`, `mode=ro` |
-| --- | --- | --- |
-| 5, 10, 15 ms | 400,000 rows, none rewritten (the old state); `quick_check` ok | 400,000 rewritten; ok |
-| 20, 25, 30, 40 ms | **`database disk image is malformed`** | 400,000 rewritten; ok |
-| 60, 100 ms | 400,000 rewritten (checkpoint finished); ok | 400,000 rewritten; ok |
+| Killed after | Main file alone, `immutable=1` | Private copy of the main file and `-wal`, `mode=ro` | Private copy through a second hard link, which has no log beside it |
+| --- | --- | --- | --- |
+| 5, 10, 15 ms | 400,000 rows, none rewritten (the old state); `quick_check` ok | 400,000 rewritten; ok | The old state; ok |
+| 20, 25, 30, 40 ms | **`database disk image is malformed`** | 400,000 rewritten; ok | **Malformed**, though the copy’s validation passed |
+| 60, 100 ms | 400,000 rewritten (checkpoint finished); ok | 400,000 rewritten; ok | 400,000 rewritten; ok |
 
-Neither read wrote beside the original files.
+No read wrote beside the original files.
 Which delays tear the file depends on the machine; that a torn file exists does not.
 
 **A closed handle drops the reader’s locks.** The reader, in this process, is inside one
@@ -124,23 +125,29 @@ These counts depend on timing and vary between runs; their shape does not.
 
 | Viewer | Back-to-back commits | One commit per 5 ms | One commit per 50 ms |
 | --- | --- | --- | --- |
-| None | 0 of 4,606 | 0 of 624 | 0 of 78 |
-| `mode=ro`, 100-row key-ordered page | 2 of 4,721; 14 of 15 reads refused | 0 of 599 | 0 of 77 |
-| `mode=ro`, `count(*)` | 31 of 4,764 | 6 of 622 | 1 of 77 |
-| `mode=ro`, capped count | 63 of 4,545 | 13 of 613 | 1 of 77 |
-| `mode=ro`, page sorted by an unindexed column | 0 of 4,608; all 15 reads refused | 32 of 613 | 5 of 77 |
-| Validated `immutable=1`, key-ordered page | 0; 4 of 15 reads valid | 0; 12 of 15 valid | 0; 15 of 15 valid |
-| Validated `immutable=1`, unindexed sort | 0; 1 of 15 valid | 0; 0 of 14 valid | 0; 9 of 14 valid |
-| Review A’s policy: a journal means `mode=ro`; else validate, retry once, then `mode=ro`; page and capped count | 0 of 4,144; all 15 reads refused | 13 of 623 | 0; 15 of 15 valid |
-| The plan’s policy: wait out a journal or a failed validation for 250 ms, then lock for the key-ordered page alone; page and capped count | 1 of 4,657; 7 of 9 reads writer busy | 0 of 613; 7 of 9 locked page only | 0; 15 of 15 valid |
-| The plan’s policy, unindexed sort and capped count | 0 of 4,751; 8 of 9 writer busy | 0 of 612; 7 of 9 locked page only | 0; 14 of 14 valid |
+| None | 0 of 4,429 | 0 of 618 | 0 of 77 |
+| `mode=ro`, 100-row key-ordered page | 1 of 4,746; 14 of 15 reads refused | 0 of 611 | 0 of 78 |
+| `mode=ro`, `count(*)` | 1 of 4,736; all 15 reads refused | 4 of 626 | 0 of 77 |
+| `mode=ro`, capped count | 59 of 4,864 | 10 of 615 | 3 of 78 |
+| `mode=ro`, page sorted by an unindexed column | 284 of 4,862 | 27 of 613 | 2 of 78 |
+| Validated `immutable=1`, key-ordered page | 0; 3 of 15 reads valid | 0; 14 of 15 valid | 0; 15 of 15 valid |
+| Validated `immutable=1`, unindexed sort | 0; 0 of 14 valid | 0; 0 of 14 valid | 0; 10 of 14 valid |
+| Review A’s policy: a journal means `mode=ro`; else validate, retry once, then `mode=ro`; page and capped count | 131 of 5,078 | 14 of 618 | 0; 14 of 15 valid |
+| Review B’s policy: wait out a journal or a failed validation of the page and capped count together for 250 ms, then lock for the key-ordered page alone | 2 of 4,646; 6 of 9 reads writer busy | 0 of 619; 7 of 9 locked page only | 0; 15 of 15 valid |
+| Review B’s policy, unindexed sort and capped count | 0 of 4,717; 7 of 9 writer busy | 0 of 619; 6 of 9 locked page only | 0; 14 of 14 valid |
+| The plan’s policy: never lock; wait out the page alone for 250 ms, then validate the capped count once with no wait, else send an estimate | **0** of 4,759; 15 of 15 pages valid, every count an estimate | **0** of 632; 15 of 15 pages valid, every count an estimate | **0** of 77; 15 of 15 pages valid, 11 counts exact |
+| The plan’s policy, unindexed sort | 0 of 4,900; 1 of 9 valid, 8 writer busy | 0 of 615; 1 of 9 valid, 8 writer busy | 0 of 75; 14 of 14 valid, 12 counts exact |
 
 A validated read takes no lock, so it never fails a commit, but it succeeds only when
 the read is shorter than the gap between commits.
 Against a back-to-back writer a lock is rarely granted at all, so the locking rows’
 refusals there swing widely between runs.
-The plan’s policy keeps the lock for the cheapest read and only after waiting, so it
-refused one commit in these runs where reads that locked at once refused dozens.
+Review B’s policy failed validation whenever the capped count, about 25 ms, outlasted
+the gap between commits, and so locked on most reads at 5 ms.
+Validated apart, the key-ordered page was valid on every read at every pace, and the
+plan’s policy, which never locks, refused no commit.
+A sort that scans outlasts the gap as the count does, which is one reason the plan
+refuses it past a measured size.
 
 ### Budget
 
@@ -248,17 +255,51 @@ marked innocuous, which is what makes admitting the rest safe.
 
 Across 200 commit-and-checkpoint cycles, the restarted log took only two sizes, while
 the checkpoint sequence and salts in its header (bytes 12 to 24) were different every
-cycle.
+cycle. The main file’s change counter took only two values across the same cycles, so in
+write-ahead-log mode it does not mark a commit.
+
+### Process
+
+What
+[Decision 13](../../docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md#decision-13-where-sqlite-connections-run)’s
+reader processes rest on.
+
+- **The race check’s handle.** A reader opens `-shm` before connecting and enters a read
+  transaction; the owner, with no busy timeout, runs `wal_checkpoint(RESTART)` and
+  writes 2,000 more rows.
+  With the handle held until after the connection closed, the restart stayed busy and
+  the reader read its 2,000 rows, `integrity_check` ok.
+  With the handle closed while connected, the restart went through and the reader read
+  `database disk image is malformed`.
+- **A reader process killed with SIGKILL**, and what the owner then did:
+
+| State when killed | Owner while the reader lived | Owner after the kill |
+| --- | --- | --- |
+| Write-ahead log, reader inside a read | Commits; `wal_checkpoint(TRUNCATE)` busy | Commits; `wal_checkpoint(TRUNCATE)` returns `(0, 0, 0)`; closing removes `-wal` and `-shm` |
+| Rollback journal, reader holding its shared lock | Commit refused, `SQLITE_BUSY` | Commits |
+| Rebuilding a crashed owner’s wal-index (a 189 MB log; the rebuild takes 49 ms), killed at 20, 40, 60, 80, and 95% of that time | — | Reopens, reads all 1,600,000 rows rewritten, writes, `quick_check` ok, every time |
+
+- **What a worker costs** for a 100-row page through a fresh connection per request:
+  medians of five starts and of 50 round trips after each start.
+
+| Start method | Start to first answer | Page round trip | Exits when its pipe closes |
+| --- | --- | --- | --- |
+| In process | — | 52 µs | — |
+| `spawn` | 47.5 ms | 154 µs | Yes |
+| `forkserver` | 3.1 ms | 175 µs | Yes |
+| `fork` | 2.3 ms | 180 µs | **No**: it inherits the parent’s end of the pipe |
+
+The spawned worker imports only the standard library and this script.
 
 ## What the Plan Takes From This
 
 The plan’s access table keys on the write-ahead log’s size, a live journal, the link
 count, and the resolved path, not on which sidecars exist.
-Every SQLite connection runs in a reader process that opens nothing else while it is
-connected. A log with no `-shm`, or a file with a second name, is read through a
+Every SQLite connection runs in a spawned reader process that opens nothing else while
+it is connected. A log with no `-shm`, or a file with a second name, is read through a
 validated private copy.
-A rollback-journal database is read lock-free first and locks only for the key-ordered
-page after waiting out the owner.
+A rollback-journal database is never locked: its page is validated, waiting out the
+owner, and its count is validated apart or replaced by an estimate.
 Counts are capped subqueries under a wall-clock deadline and an interrupt, and never run
 under a lock.
 Sorts that would scan are refused past a measured size, and a sorted column

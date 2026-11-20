@@ -9,6 +9,7 @@
   "results": {
     "cycles": 200,
     "distinct_header_salts": 200,
+    "distinct_main_file_change_counters": 2,
     "distinct_wal_sizes": 2
   },
   "seconds": 1,

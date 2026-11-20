@@ -122,6 +122,12 @@
           "quick_check": "ok",
           "rewritten_rows": 400000,
           "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "quick_check": "ok",
+          "rewritten_rows": 400000,
+          "rows": 400000
         }
       },
       "killed_after_10_ms": {
@@ -141,6 +147,12 @@
         "mode_ro_on_a_private_copy_with_its_log": {
           "quick_check": "ok",
           "rewritten_rows": 400000,
+          "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "quick_check": "ok",
+          "rewritten_rows": 0,
           "rows": 400000
         }
       },
@@ -162,15 +174,21 @@
           "quick_check": "ok",
           "rewritten_rows": 400000,
           "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "quick_check": "ok",
+          "rewritten_rows": 0,
+          "rows": 400000
         }
       },
       "killed_after_20_ms": {
         "after": {
-          "app.db": 7524352,
+          "app.db": 8130560,
           "app.db-wal": 46646672
         },
         "before": {
-          "app.db": 7524352,
+          "app.db": 8130560,
           "app.db-wal": 46646672
         },
         "immutable_main_file_alone": {
@@ -181,15 +199,20 @@
           "quick_check": "ok",
           "rewritten_rows": 400000,
           "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "error": "SQLITE_CORRUPT",
+          "message": "database disk image is malformed"
         }
       },
       "killed_after_25_ms": {
         "after": {
-          "app.db": 19406848,
+          "app.db": 13660160,
           "app.db-wal": 46646672
         },
         "before": {
-          "app.db": 19406848,
+          "app.db": 13660160,
           "app.db-wal": 46646672
         },
         "immutable_main_file_alone": {
@@ -200,15 +223,20 @@
           "quick_check": "ok",
           "rewritten_rows": 400000,
           "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "error": "SQLITE_CORRUPT",
+          "message": "database disk image is malformed"
         }
       },
       "killed_after_30_ms": {
         "after": {
-          "app.db": 19722240,
+          "app.db": 25690112,
           "app.db-wal": 46646672
         },
         "before": {
-          "app.db": 19722240,
+          "app.db": 25690112,
           "app.db-wal": 46646672
         },
         "immutable_main_file_alone": {
@@ -219,15 +247,20 @@
           "quick_check": "ok",
           "rewritten_rows": 400000,
           "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "error": "SQLITE_CORRUPT",
+          "message": "database disk image is malformed"
         }
       },
       "killed_after_40_ms": {
         "after": {
-          "app.db": 37765120,
+          "app.db": 23941120,
           "app.db-wal": 46646672
         },
         "before": {
-          "app.db": 37765120,
+          "app.db": 23941120,
           "app.db-wal": 46646672
         },
         "immutable_main_file_alone": {
@@ -238,6 +271,11 @@
           "quick_check": "ok",
           "rewritten_rows": 400000,
           "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "error": "SQLITE_CORRUPT",
+          "message": "database disk image is malformed"
         }
       },
       "killed_after_5_ms": {
@@ -258,6 +296,12 @@
           "quick_check": "ok",
           "rewritten_rows": 400000,
           "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
+          "quick_check": "ok",
+          "rewritten_rows": 0,
+          "rows": 400000
         }
       },
       "killed_after_60_ms": {
@@ -275,6 +319,12 @@
           "rows": 400000
         },
         "mode_ro_on_a_private_copy_with_its_log": {
+          "quick_check": "ok",
+          "rewritten_rows": 400000,
+          "rows": 400000
+        },
+        "private_copy_through_a_second_hard_link": {
+          "copy_validated": true,
           "quick_check": "ok",
           "rewritten_rows": 400000,
           "rows": 400000
