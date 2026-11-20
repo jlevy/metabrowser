@@ -278,17 +278,18 @@ def _agent_chart_specs(events: list[LogEvent]) -> list[dict[str, Any]]:
     # Group events into bins by kind. Colors are CSS-var sentinels —
     # app.js resolveColor() substitutes computed values before Chart.js
     # consumes the spec (canvas can't resolve var() itself).
-    # The hues are the Log view's kind badges' (agent_log/styles.css), so a kind is one
-    # colour in the badge, the filter, and this chart; tests/test_plugin_design_consistency.py
-    # pins it. A tool call and its result share the badge's amber, the result lighter.
+    # A parsed log's kinds are the adapters' (tool_call, init, ...). Each is drawn in the fill
+    # of the event kind it is, so a kind is one colour in the Log's badge, its filter, and this
+    # chart: the plugin's `--agent-kind-<kind>-fill` tokens (agents/agent-log.css). The same
+    # table is in agents/agent-log.js, and tests/test_agent_kind_palette.py pins the two together.
     kind_colors = {
-        "tool_call": "var(--agent-log-kind-tool-text)",
-        "tool_result": "var(--agent-log-kind-tool-result-fill)",
-        "text": "var(--agent-log-kind-neutral-text)",
-        "thinking": "var(--agent-log-kind-thinking-text)",
-        "result": "var(--agent-log-kind-result-text)",
-        "init": "var(--agent-log-kind-init-text)",
-        "system": "var(--agent-log-kind-muted-text)",
+        "tool_call": "var(--agent-kind-tool-call-fill)",
+        "tool_result": "var(--agent-kind-tool-result-fill)",
+        "text": "var(--agent-kind-text-fill)",
+        "thinking": "var(--agent-kind-thinking-fill)",
+        "result": "var(--agent-kind-metering-fill)",
+        "init": "var(--agent-kind-context-fill)",
+        "system": "var(--agent-kind-control-fill)",
     }
     # Collect event kinds present
     kinds_present: list[str] = []
@@ -321,7 +322,7 @@ def _agent_chart_specs(events: list[LogEvent]) -> list[dict[str, Any]]:
     for kind in kinds_present:
         if kind == "raw":
             continue
-        color = kind_colors.get(kind, "var(--agent-log-kind-muted-text)")
+        color = kind_colors.get(kind, "var(--agent-kind-unknown-fill)")
         data = [{"x": bin_times[j], "y": bins_by_kind[kind][j]} for j in range(num_bins)]
         series.append({"label": kind, "color": color, "data": data})
 

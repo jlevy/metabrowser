@@ -1,0 +1,95 @@
+# Claude Code: ordered mapping table (raw type, subtype, block -> kind)
+assistant        *                  api_error            -> error
+assistant        *                  usage                -> metering
+assistant        *                  text                 -> text
+assistant        *                  thinking             -> thinking
+assistant        *                  redacted_thinking    -> thinking
+assistant        *                  tool_use             -> tool-call
+assistant        *                  server_tool_use      -> tool-call
+assistant        *                  *_tool_result        -> tool-result
+user             *                  permission_decision  -> control
+user             *                  text                 -> prompt
+user             *                  image                -> prompt
+user             *                  document             -> prompt
+user             *                  tool_result          -> tool-result
+queue-operation  *                  *                    -> prompt
+attachment       hook_*             *                    -> control
+attachment       queued_command     *                    -> prompt
+attachment       *                  *                    -> context
+system           api_error          *                    -> error
+system           stop_hook_summary  *                    -> control
+system           *                  *                    -> context
+permission-mode  *                  *                    -> control
+cost-state       *                  *                    -> metering
+api-request*     *                  *                    -> metering
+custom-title     *                  *                    -> context
+agent-name       *                  *                    -> context
+last-prompt      *                  *                    -> context
+mode             *                  *                    -> context
+pr-link          *                  *                    -> context
+relocated        *                  *                    -> context
+tools-used       *                  *                    -> context
+atis-latch       *                  *                    -> context
+file-history-*   *                  *                    -> context
+summary          *                  *                    -> context
+progress         *                  *                    -> context
+
+# Claude Code: every raw type the research brief lists
+assistant / - / text -> text
+assistant / - / thinking -> thinking
+assistant / - / tool_use -> tool-call
+assistant / - / usage -> metering
+assistant / - / api_error -> error
+user / - / text -> prompt
+user / - / tool_result -> tool-result
+user / - / permission_decision -> control
+api-request / - / - -> metering
+api-request-shape / - / - -> metering
+api-request-blob / - / - -> metering
+queue-operation / - / - -> prompt
+attachment / hook_success / - -> control
+attachment / hook_non_blocking_error / - -> control
+attachment / task_status / - -> context
+attachment / queued_command / - -> prompt
+attachment / remote_session_change / - -> context
+attachment / diagnostics / - -> context
+system / api_error / - -> error
+system / compact_boundary / - -> context
+system / stop_hook_summary / - -> control
+system / turn_duration / - -> context
+system / init / - -> context
+custom-title / - / - -> context
+agent-name / - / - -> context
+last-prompt / - / - -> context
+mode / - / - -> context
+permission-mode / - / - -> control
+pr-link / - / - -> context
+relocated / - / - -> context
+tools-used / - / - -> context
+cost-state / - / - -> metering
+atis-latch / - / - -> context
+file-history-snapshot / - / - -> context
+file-history-delta / - / - -> context
+summary / - / - -> context
+progress / - / - -> context
+
+# Claude Code: tool name -> family (mcp__server__tool -> mcp:server.tool)
+Bash -> shell
+BashOutput -> shell
+KillShell -> shell
+KillBash -> shell
+Monitor -> shell
+Read -> read
+NotebookRead -> read
+Edit -> edit
+MultiEdit -> edit
+Write -> edit
+NotebookEdit -> edit
+Grep -> search
+Glob -> search
+ToolSearch -> search
+WebFetch -> web
+WebSearch -> web
+Task -> subagent
+Agent -> subagent
+Workflow -> subagent

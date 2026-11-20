@@ -109,7 +109,7 @@ $ metab showroot --show session.jsonl
 show: session.jsonl
 route: /view/session.jsonl
 kind: agent-log
-views: log (default, key V), charts (key C), raw (key S)
+views: session (default, key E), log (key V), charts (key C), raw (key S)
 model: jsonl envelope; size=66
 ? 0
 ```
