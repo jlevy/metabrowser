@@ -3,10 +3,14 @@ type: is
 id: is-01m7x3ps2aqxta639bre6yj468
 title: "macOS title folder menu: the check mark of the current entry sits on the name's (first, bold) line, not centred across the two-line row, keeping the accessible checked state"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 8
+version: 10
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/672
+    at: 2026-11-20T22:58:31.644Z
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -14,10 +18,10 @@ parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 hold: null
 hold_until: null
 created_at: 2026-11-20T18:32:38.727Z
-updated_at: 2026-11-20T22:57:21.196Z
+updated_at: 2026-11-20T22:58:31.978Z
 started_at: 2026-11-20T18:33:17.490Z
-closed_at: null
-close_reason: null
+closed_at: 2026-11-20T22:58:31.977Z
+close_reason: "PR #672 merged as a1ccf1cc14af75a5bcaa906cf3e7fe3d44d9963c. Main macOS run 44832111266 passed native tests and package checks. The app ZIP embeds the merge SHA, and its checksum and the DMG checksum match GitHub. Automated tests cover the AppKit accessibility mark. The VoiceOver check remains in macOS hand checks step 17 because the local probe lacked accessibility trust."
 resolution: null
 duplicate_of: null
 ---
