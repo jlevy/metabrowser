@@ -5916,6 +5916,10 @@ function renderNavFilterBar() {
   // A page with the branch and tag chooser ships it leading the row, and its module owns
   // it: it is carried over, not drawn (static/source-ref-selector.js#keepAcrossRefills).
   var chooser = document.getElementById("source-ref-selector");
+  // Told before it leaves the page, while its list still has its scroll position: a scroll
+  // the list has not yet drawn for (its scroll event comes a frame later) would otherwise
+  // be lost with the detach.
+  chooser?.dispatchEvent(new Event("source-ref-selector:carry"));
   bar.innerHTML = main + drawer;
   if (chooser) {
     bar.firstElementChild?.prepend(chooser);

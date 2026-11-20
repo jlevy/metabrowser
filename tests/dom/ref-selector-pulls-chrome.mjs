@@ -343,6 +343,29 @@ try {
     };
   })()`);
 
+  // 2b. A scroll that the Files toolbar's refill (`renderNavFilterBar`) comes between and
+  // the scroll event, which the toolbar's tallies do whenever the index finishes a step:
+  // the refill takes the list out of the page and puts it back, which empties its scroll
+  // position, and the list is put back where it is, not where its rows were last drawn.
+  // Both here in one task, so no frame comes between them, as one comes between them in a
+  // loaded page at a time nothing controls (mb-tjbm).
+  result.carried = await chrome.evaluate(`(async () => {
+    const list = ${LIST};
+    list.scrollTop = 5000;
+    renderNavFilterBar();
+    await ${FRAMES};
+    const box = list.getBoundingClientRect();
+    const under = document.elementFromPoint(
+      box.left + box.width / 2,
+      box.top + list.clientTop + list.clientHeight / 2,
+    )?.closest(".source-ref-selector-item");
+    return {
+      scrollTop: list.scrollTop,
+      centerIndex: under ? Number(under.getAttribute("aria-posinset")) : null,
+      drawn: list.querySelectorAll("button").length,
+    };
+  })()`);
+
   // 3. End and Home, from the first row: End's row was never drawn before the key.
   await chrome.evaluate(`(async () => {
     ${LIST}.scrollTop = 0;

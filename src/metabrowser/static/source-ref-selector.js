@@ -1689,7 +1689,10 @@
    * the element is out of the page for that moment, and an element taken out loses focus
    * and its scroll position, with no scroll event to say so: a list that End had scrolled
    * to its foot came back at its top, where no rows were drawn, with the focused row out
-   * of view (mb-y1k0). So *restore* puts the list back where its rows were drawn for, and
+   * of view (mb-y1k0). So *restore* puts the list back where its rows were drawn for, which
+   * the toolbar says just before the refill (`source-ref-selector:carry`, which records the
+   * list's scroll position then, since a scroll's own event, which records it otherwise,
+   * comes a frame later and a refill can come first; mb-tjbm), and
    * the control that had focus gets it back, unless the reader has since put focus
    * somewhere else: elsewhere by a key, or anywhere by a press outside the selector.
    * Focus events do not fire in a page that is not focused, a background window's or a
@@ -1860,6 +1863,16 @@
       () => (parts.panel.hidden ? null : parts.filter),
       () => keepScroll(parts),
       signal,
+    );
+    // The toolbar says it is about to carry this element out of the page (app.js,
+    // `renderNavFilterBar`): the list's scroll position now, which a scroll since the last
+    // draw has moved and whose scroll event has not come, is the one to put back.
+    element.addEventListener(
+      "source-ref-selector:carry",
+      () => {
+        parts.rows.drawnAt = parts.list.scrollTop || 0;
+      },
+      { signal },
     );
     parts.filter.addEventListener("input", () => mounted.setQuery(parts.filter.value), {
       signal,

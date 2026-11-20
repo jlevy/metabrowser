@@ -207,6 +207,12 @@ def test_rows_with_a_pull_request_are_placed_by_their_own_height_in_chrome(
     assert middle["centerIndex"] == middle["expectedIndex"]
     assert middle["drawn"] <= in_view + 2 * overscan + 2
 
+    # A refill of the Files toolbar between a scroll and its scroll event leaves the list
+    # where the scroll put it, with the rows there drawn (mb-tjbm).
+    carried = result["carried"]
+    assert carried["scrollTop"] == 5000, carried
+    assert carried["centerIndex"] is not None and carried["drawn"] > 0, carried
+
     # End draws the last row, never drawn before the key, and brings it into view, where a
     # redraw of the Files toolbar around the list leaves it.
     for step in ("end", "redrawn"):
