@@ -824,8 +824,17 @@ mark in a trailing one (`TitleBarMarkController`).
   (`foldersChanged`).
 - **Shared marks.** The menus that list roots (the chooser, File > Open Recent, and the
   Dock menu) draw each root’s `RootMark` as a template image: the page’s own Lucide
-  glyph for a folder, copied from `static/icons.js` and held to it by `RootMarkTests`,
-  and Lucide `cloud` for a repository, which the page draws no mark for.
+  glyph for the root’s kind, copied from `static/source-kind-glyphs.json`, which the
+  server writes into the page’s first paint, and held to it by `RootMarkTests`; the
+  ordinary folder’s is copied from `static/icons.js`. There are three kinds of root,
+  each with a mark of its own, a cloud for a mirror, a folder with Git’s branch for a
+  Git checkout, and a folder with a dot for a plain folder, and the ordinary folder’s
+  outline is the mark of a folder above the root in the title’s path menu
+  ([Source Kinds](../../design-system-icons.md#source-kinds)). A window’s kind is `kind`
+  in its server’s `GET /api/identity` (`FolderKind`), and a recent entry’s is its `mode`
+  and its `git`, which `metab` records when it serves the folder, so no menu looks at a
+  listed folder. A folder whose server has not answered yet is a plain folder, and a
+  recent entry from before `git` is one until it is opened again.
   The Switch Folder panel draws the same marks.
   On a row with a subtitle the mark stands on the title’s line.
   AppKit centers a menu item’s image on its title and subtitle together, so
@@ -840,12 +849,13 @@ mark in a trailing one (`TitleBarMarkController`).
 - **The check mark.** AppKit also centers an item’s check mark on both lines, so the
   chooser’s rows are `TitleLineMenuItem`s, which give a row with a subtitle a check
   raised as the mark is: AppKit’s own `checkmark` symbol, drawn at the size and column
-  width of AppKit’s check, at the top of a taller image (`TitleLineMenuItem.CheckMark`).
-  A custom `onStateImage` costs a stock item its `AXMenuItemMarkChar`, the “✓” VoiceOver
-  hears as “checked”, so the item answers that attribute itself, with what a stock item
-  in the same state answers.
-  `TitleLineCheckTests` holds the check’s position, size, and column width, and that the
-  item is reported checked as a stock one is.
+  width of AppKit’s check, at the top of a taller image (`TitleLineMenuItem.CheckMark`;
+  its [icon catalog](../../design-system-icons.md#ui-chrome-and-actions) row is the
+  second `checkmark`). A custom `onStateImage` costs a stock item its
+  `AXMenuItemMarkChar`, the “✓” VoiceOver hears as “checked”, so the item answers that
+  attribute itself, with what a stock item in the same state answers.
+  `TitleLineCheckTests` holds the check’s position, size, and slot, and that the item is
+  reported checked as a stock one is.
   Three other ways were tried on macOS 26.5 and dropped:
   `NSMenu.showsStateColumn = false` still draws the check; an `NSMenuItem.view` draws
   the whole row itself, so the highlight and the tint are the view’s to redo, and never

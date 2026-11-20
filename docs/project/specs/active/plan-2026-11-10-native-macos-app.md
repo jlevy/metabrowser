@@ -107,9 +107,9 @@ through `metab --api`:
 - **Cached mirror** (a pure cache location, served by `metab <git-url>`): `short_name`
   is the repository name; `full_name` is the origin abbreviated to `host/owner/repo@ref`
   (or `@` and 12 hex digits for a commit pin), never the path in the cache; `kind_label`
-  is “Cached mirror”.
-- **A repository folder showing a revision** keeps `kind: folder` and adds `@<ref>` to
-  `full_name`, by the design in
+  was “Cached mirror”, now “Cloud mirror”.
+- **A repository folder showing a revision** keeps its kind (`git` since mb-4s2y, a
+  checkout; it was `folder`) and adds `@<ref>` to `full_name`, by the design in
   [Open Modes](../../architecture/arch-open-modes.md#views); it is not built.
 - **Title:** the short name, a bullet (U+2022), and “Metabrowser”.
   The served page uses it as its `<title>`, so browser tabs show it too.

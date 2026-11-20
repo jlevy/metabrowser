@@ -1,19 +1,33 @@
 import Foundation
 
-/// What a folder's server serves.
-public nonisolated enum FolderKind: String, Codable, Equatable, Sendable {
-    /// A folder on this Mac: its window's title opens the folder's path menu, on a
-    /// Command-click, a right-click, or VoiceOver's Show Menu.
+/// What a folder's server serves: the three kinds of root, which `GET /api/identity` calls
+/// `kind` and `RootMark` draws a mark for.
+public nonisolated enum FolderKind: String, Codable, Equatable, Sendable, CaseIterable {
+    /// A plain folder on this Mac, one that is not a Git checkout.
     case folder
+    /// A Git checkout on this Mac: a folder that holds a `.git` entry.
+    case git
     /// A cached Git mirror: its cache path means nothing to the user, so its title has no
     /// path menu.
     case mirror
+
+    /// Whether the root is a folder on this Mac, a plain folder or a checkout: its window's
+    /// title opens the folder's path menu, on a Command-click, a right-click, or VoiceOver's
+    /// Show Menu.
+    public var isLocal: Bool { self != .mirror }
+
+    /// The words for the kind: "Local folder", "Local Git checkout", or "Cloud mirror".
+    /// `RootMark` holds the one copy, which `tests/test_icon_catalog.py` holds to `KIND_LABELS`
+    /// in `root_identity.py`, so the title's tooltip, a window's subtitle, and the mark's
+    /// accessible name cannot differ.
+    public var label: String { RootMark(self).label }
 }
 
 /// Which folder a window shows, as `GET /api/identity` names it:
 ///
-///     {"short_name": "fdu", "full_name": "~/wrk/github/fdu", "kind": "folder",
-///      "kind_label": "Local folder", "title": "fdu • Metabrowser",
+///     {"short_name": "fdu", "full_name": "~/wrk/github/fdu", "kind": "git",
+///      "kind_label": "Local Git checkout", "title": "fdu • Metabrowser",
+///      "kind_tip": "Local Git checkout (GitHub: jlevy/fdu)",
 ///      "repository": "https://github.com/jlevy/fdu"}
 public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
     public static let appName = "Metabrowser"
@@ -23,7 +37,8 @@ public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
     /// The path with `~` for home, or a mirror's abbreviated origin.
     public var fullName: String
     public var kind: FolderKind
-    /// "Local folder" or "Cached mirror".
+    /// The words for the kind (`KIND_LABELS` in `root_identity.py`): "Local folder", "Local
+    /// Git checkout", or "Cloud mirror".
     public var kindLabel: String
     /// "fdu • Metabrowser", the plain title.
     public var title: String
@@ -64,19 +79,22 @@ public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
     /// folder's own name, `~` for the home folder, and `/` for the root.
     ///
     /// A window shows it while its server starts, before there is a route to ask, and
-    /// keeps it if asking fails.
+    /// keeps it if asking fails. The path alone does not say whether the folder is a Git
+    /// checkout, which the app never looks at, so this is a plain folder's unless `git` says
+    /// otherwise: a recent target's does (`RecentTarget.git`).
     ///
     /// `root` is canonical, as the app opens it, and `home` is compared with symbolic
     /// links resolved, as `metab` compares it.
     public static func localFolder(
-        _ root: URL, home: String = FileChecks.canonicalPath(NSHomeDirectory())
+        _ root: URL, git: Bool = false, home: String = FileChecks.canonicalPath(NSHomeDirectory())
     ) -> FolderIdentity {
         var path = root.path(percentEncoded: false)
         while path.count > 1, path.hasSuffix("/") { path.removeLast() }
         let fullName = abbreviatingHome(path, home: home)
         let name = fullName == "~" || path == "/" ? fullName : (path as NSString).lastPathComponent
         return FolderIdentity(
-            shortName: name, fullName: fullName, kind: .folder, kindLabel: "Local folder", title: title(for: name))
+            shortName: name, fullName: fullName, kind: git ? .git : .folder,
+            kindLabel: (git ? FolderKind.git : FolderKind.folder).label, title: title(for: name))
     }
 
     /// A repository's identity from its canonical URL alone, named as `metab` names a
@@ -89,7 +107,8 @@ public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
         let name = (path as NSString).lastPathComponent
         let fullName = (url.host(percentEncoded: false) ?? "") + path
         return FolderIdentity(
-            shortName: name, fullName: fullName, kind: .mirror, kindLabel: "Cached mirror", title: title(for: name),
+            shortName: name, fullName: fullName, kind: .mirror, kindLabel: FolderKind.mirror.label,
+            title: title(for: name),
             repository: url)
     }
 

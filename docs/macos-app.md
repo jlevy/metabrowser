@@ -187,15 +187,18 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
 
 - **Titles:** each window is titled with its folder’s short name, or its full name while
   another open folder has the same short name.
-  The title’s tooltip gives the full name and whether the folder is local or a cached
-  mirror; Command-click or right-click a local folder’s title for its path menu.
+  The title’s tooltip gives the full name and whether the folder is a local folder, a
+  local Git checkout, or a cloud mirror; Command-click or right-click a local folder’s
+  title for its path menu.
 - **Switching folders:** click a window’s title, marked by the small chevron after it,
   for the folder chooser.
   It lists the open folders, in the order you opened them, with a check mark beside the
   name of the window’s own, then the recent folders that are not open.
-  Each row’s mark, a folder or, for a GitHub repository, a cloud, stands beside the
-  name, and the row’s location, or “In another window”, is the line below the name; a
-  location too long for that line is cut in the middle, and its tooltip gives all of it.
+  Each row’s mark stands beside the name: a cloud for a GitHub repository, a folder with
+  Git’s branch for a Git checkout, and a folder with a dot for any other folder, the
+  same marks as at the top of the page’s navigation column, and the row’s location, or
+  “In another window”, is the line below the name; a location too long for that line is
+  cut in the middle, and its tooltip gives all of it.
   Choosing a folder shows it in this window, and the folder the window showed stays open
   in the background, its page kept, so switching back is instant; a folder another
   window shows brings that window forward instead.

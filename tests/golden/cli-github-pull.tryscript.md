@@ -1106,8 +1106,9 @@ status: 200
   "short_name": "demo #7",
   "full_name": "github.com/octo/demo#7",
   "kind": "mirror",
-  "kind_label": "Cached mirror",
+  "kind_label": "Cloud mirror",
   "title": "demo #7 • Metabrowser",
+  "kind_tip": "Cloud mirror of octo/demo",
   "repository": "https://github.com/octo/demo"
 }
 ? 0
@@ -1123,8 +1124,9 @@ status: 200
   "short_name": "demo",
   "full_name": "github.com/octo/demo@topic",
   "kind": "mirror",
-  "kind_label": "Cached mirror",
+  "kind_label": "Cloud mirror",
   "title": "demo • Metabrowser",
+  "kind_tip": "Cloud mirror of octo/demo",
   "repository": "https://github.com/octo/demo"
 }
 ? 0
@@ -1140,8 +1142,9 @@ status: 200
   "short_name": "demo",
   "full_name": "github.com/octo/demo@wip",
   "kind": "mirror",
-  "kind_label": "Cached mirror",
+  "kind_label": "Cloud mirror",
   "title": "demo • Metabrowser",
+  "kind_tip": "Cloud mirror of octo/demo",
   "repository": "https://github.com/octo/demo"
 }
 ? 0
@@ -1160,8 +1163,9 @@ status: 200
   "short_name": "demo",
   "full_name": "github.com/octo/demo@07b55f0",
   "kind": "mirror",
-  "kind_label": "Cached mirror",
+  "kind_label": "Cloud mirror",
   "title": "demo • Metabrowser",
+  "kind_tip": "Cloud mirror of octo/demo",
   "repository": "https://github.com/octo/demo"
 }
 ? 0

@@ -1085,7 +1085,7 @@ def _is_target_identity(answer: object, target: Presentable) -> bool:
     # Imported here, once a server has said where it serves: the names come from the
     # session modules, which a dry run never loads (about 60 to 130 ms more, measured on
     # 2026-11-18 on an Apple silicon Mac under a load average of 50 to 80).
-    from metabrowser.root_identity import abbreviate_origin, folder_identity, user_home
+    from metabrowser.root_identity import LOCAL_KINDS, abbreviate_origin, folder_identity, user_home
 
     if not isinstance(answer, dict):
         return False
@@ -1095,7 +1095,10 @@ def _is_target_identity(answer: object, target: Presentable) -> bool:
         return False
     if os.path.isabs(target.root):
         expected = folder_identity(Path(target.root), home=user_home())["full_name"]
-        return kind == "folder" and name == expected
+        # A folder that holds a `.git` entry is a checkout, `git`; any other is `folder`
+        # (`root_identity.py`). Either is the target's own server, and a revision it shows
+        # is named `<path>@<ref>`, which a server started without --ref does not.
+        return kind in LOCAL_KINDS and name == expected
     origin = abbreviate_origin(target.root, home=None).casefold()
     return kind == "mirror" and name.casefold().startswith((f"{origin}@", f"{origin}#"))
 
