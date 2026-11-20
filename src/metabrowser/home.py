@@ -138,7 +138,7 @@ CACHEDIR_TAG_CONTENT: Final = (
     b"# This file is a cache directory tag created by Metabrowser.\n"
     b"# For information about cache directory tags, see https://bford.info/cachedir/\n"
 )
-# The owner-only directories of the f02 layout, parents first. Lock files live under
+# The owner-only directories of the f03 layout, parents first. Lock files live under
 # locks/ so no publication or sweep ever renames one.
 F01_DIRECTORIES: Final = (
     "",
@@ -149,7 +149,7 @@ F01_DIRECTORIES: Final = (
     "locks/providers",
     "staging",
     "sources",
-    "repository-stores",
+    "repos",
 )
 
 # Any permission granted to group or other.
@@ -830,7 +830,7 @@ def ensure_storage_root(directory: Path) -> None:
 
 @_without_file_names
 def ensure_home(home: Path) -> Path:
-    """Create or verify the home and its owner-only ``f02`` skeleton; return the cache root.
+    """Create or verify the home and its owner-only ``f03`` skeleton; return the cache root.
 
     Every directory in :data:`F01_DIRECTORIES` is created ``0700`` or verified, and
     ``CACHEDIR.TAG`` is written atomically unless a file beginning with the cache

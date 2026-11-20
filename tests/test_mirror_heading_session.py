@@ -188,7 +188,7 @@ def test_fixture_is_what_the_server_serves_for_a_folder_and_for_a_mirror(
         # The page and the status say the same thing: one is rendered from the other.
         assert page["dataset"]["servedRoot"] == status["name"]
         assert page["dataset"]["mirrorLocation"] == status["location"]
-        assert status["location"] == f"~/{home}/repository-stores/{key}/repository.git"
+        assert status["location"] == f"~/{home}/repos/{key}/repository.git"
         assert page["dataset"]["mirrorTip"] == (
             f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}: "
             "a bare Git repository, with no checked-out files."
@@ -255,7 +255,7 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
     assert folder["mainHeading"]["file"]["text"] == "\u2191 ~/wrk/squares / docs"
     assert folder["mainHeading"]["file"]["title"] == "guide.md"
     assert folder["mainHeading"]["root"] == "\u2191 ~/wrk squares"
-    location = f"~/.cache/metabrowser/repository-stores/{STORE_KEY_STAND_INS[0]}/repository.git"
+    location = f"~/.cache/metabrowser/repos/{STORE_KEY_STAND_INS[0]}/repository.git"
     pin = mirror["status"]["pin"]
     sentence = (
         f"Mirror of file://~/git/squares.git at {pin}, stored in {location}: "

@@ -136,7 +136,7 @@ $ node tests/dom/mirror-heading-session.js
     "status": {
       "name": "squares",
       "origin": "file://~/git/squares.git",
-      "location": "~/.cache/metabrowser/repository-stores/store-key-1/repository.git",
+      "location": "~/.cache/metabrowser/repos/store-key-1/repository.git",
       "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
       "ref_name": "topic"
     },
@@ -165,10 +165,10 @@ $ node tests/dom/mirror-heading-session.js
       }
     },
     "mainHeading": {
-      "root": "↑ mirror in ~/.cache/metabrowser/repository-stores/store-key-1 squares",
+      "root": "↑ mirror in ~/.cache/metabrowser/repos/store-key-1 squares",
       "file": {
-        "html": "<button type=\"button\" class=\"icon-btn folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/.cache/metabrowser/repository-stores/store-key-1</span></span></span>",
-        "text": "↑ squares / docs mirror in ~/.cache/metabrowser/repository-stores/store-key-1",
+        "html": "<button type=\"button\" class=\"icon-btn folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/.cache/metabrowser/repos/store-key-1</span></span></span>",
+        "text": "↑ squares / docs mirror in ~/.cache/metabrowser/repos/store-key-1",
         "title": "guide.md"
       },
       "fileHeaders": {
@@ -185,11 +185,11 @@ $ node tests/dom/mirror-heading-session.js
     },
     "tooltips": {
       "navigationHeading": {
-        "served": "squares Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files.",
-        "afterTreeLoad": "squares 3 files 140 bytes Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files."
+        "served": "squares Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repos/store-key-1/repository.git: a bare Git repository, with no checked-out files.",
+        "afterTreeLoad": "squares 3 files 140 bytes Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repos/store-key-1/repository.git: a bare Git repository, with no checked-out files."
       },
-      "rootName": "Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files.",
-      "note": "Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files."
+      "rootName": "Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repos/store-key-1/repository.git: a bare Git repository, with no checked-out files.",
+      "note": "Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repos/store-key-1/repository.git: a bare Git repository, with no checked-out files."
     }
   },
   {
@@ -198,7 +198,7 @@ $ node tests/dom/mirror-heading-session.js
     "status": {
       "name": "a<b>&�x",
       "origin": "file://~/git/a%3Cb%3E&%E2%80%AEx.git",
-      "location": "~/odd\"<&>home/repository-stores/store-key-2/repository.git",
+      "location": "~/odd\"<&>home/repos/store-key-2/repository.git",
       "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
       "ref_name": "topic"
     },
@@ -227,10 +227,10 @@ $ node tests/dom/mirror-heading-session.js
       }
     },
     "mainHeading": {
-      "root": "↑ mirror in ~/odd\"<&>home/repository-stores/store-key-2 a<b>&�x",
+      "root": "↑ mirror in ~/odd\"<&>home/repos/store-key-2 a<b>&�x",
       "file": {
-        "html": "<button type=\"button\" class=\"icon-btn folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>a&lt;b&gt;&amp;�x</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/odd&quot;&lt;&amp;&gt;home/repository-stores/store-key-2</span></span></span>",
-        "text": "↑ a<b>&�x / docs mirror in ~/odd\"<&>home/repository-stores/store-key-2",
+        "html": "<button type=\"button\" class=\"icon-btn folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>a&lt;b&gt;&amp;�x</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/odd&quot;&lt;&amp;&gt;home/repos/store-key-2</span></span></span>",
+        "text": "↑ a<b>&�x / docs mirror in ~/odd\"<&>home/repos/store-key-2",
         "title": "guide.md"
       },
       "fileHeaders": {
@@ -247,11 +247,11 @@ $ node tests/dom/mirror-heading-session.js
     },
     "tooltips": {
       "navigationHeading": {
-        "served": "a<b>&�x Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files.",
-        "afterTreeLoad": "a<b>&�x 3 files 140 bytes Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files."
+        "served": "a<b>&�x Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repos/store-key-2/repository.git: a bare Git repository, with no checked-out files.",
+        "afterTreeLoad": "a<b>&�x 3 files 140 bytes Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repos/store-key-2/repository.git: a bare Git repository, with no checked-out files."
       },
-      "rootName": "Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files.",
-      "note": "Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files."
+      "rootName": "Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repos/store-key-2/repository.git: a bare Git repository, with no checked-out files.",
+      "note": "Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repos/store-key-2/repository.git: a bare Git repository, with no checked-out files."
     }
   }
 ]

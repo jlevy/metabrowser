@@ -28,7 +28,9 @@ from metabrowser.cache.urls import FileAnchor
 from metabrowser.git.process import GitError
 
 CANONICAL = "https://github.com/octo/demo"
-_PUBLISHED: Any = SimpleNamespace(home=Path("/nonexistent"), slug="github-com--octo--demo")
+_PUBLISHED: Any = SimpleNamespace(
+    home=Path("/nonexistent"), slug="github-com-octo-demo-01234567890"
+)
 
 
 def _listed(*paths: str) -> PullFileList:

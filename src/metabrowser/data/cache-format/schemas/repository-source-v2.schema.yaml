@@ -17,9 +17,9 @@ $defs:
     pattern: ^[!-~]+$
     type: string
   SourceSlug:
-    maxLength: 162
+    maxLength: 147
     minLength: 1
-    pattern: ^[a-z0-9]+(?:-[a-z0-9]+)*(?:--[a-z0-9]+(?:-[a-z0-9]+)*)*$
+    pattern: ^[a-z0-9]+(?:-[a-z0-9]+)+$
     type: string
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
@@ -47,5 +47,5 @@ required:
 title: RepositorySource
 type: object
 x-softschema:
-  contract: metabrowser.cache:RepositorySource/v1
-  schema_sha256: e2d87a6ac675cae47eaca40ec13cbd283af95c9ef232e22d7ad6700039b6304f
+  contract: metabrowser.cache:RepositorySource/v2
+  schema_sha256: ba07839909809ca839f6e994c659bd0601eca4d77d89b8ce4ea797d32f8080bf

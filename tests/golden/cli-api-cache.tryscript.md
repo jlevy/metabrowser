@@ -37,7 +37,7 @@ api: /api/cache/layout
 status: 200
 {
   "home": "absent",
-  "supported_format": "f02",
+  "supported_format": "f03",
   "state": "absent",
   "layout": null,
   "config": {
@@ -73,10 +73,10 @@ api: /api/cache/layout
 status: 200
 {
   "home": "present",
-  "supported_format": "f02",
+  "supported_format": "f03",
   "state": "current",
   "layout": {
-    "format": "f02",
+    "format": "f03",
     "created_by": "0.11.0"
   },
   "config": {
@@ -97,7 +97,7 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "stores": [],
   "unrecognized_entries": 0,
   "limit": 25,
@@ -119,10 +119,10 @@ api: /api/cache/layout
 status: 200
 {
   "home": "present",
-  "supported_format": "f02",
+  "supported_format": "f03",
   "state": "current",
   "layout": {
-    "format": "f02",
+    "format": "f03",
     "created_by": "0.11.0"
   },
   "config": {
@@ -145,10 +145,10 @@ api: /api/cache/sources
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "sources": [
     {
-      "slug": "github-com--pallets--click--76d8973c8c6c",
+      "slug": "github-com-pallets-click-gpnozfvu34k",
       "publication": "unattached",
       "identity": {
         "id": "sha256:76d8973c8c6c75bf3de6ea688ad89b5990a44d85a3e0d203fd4c44e24b109c46",
@@ -162,7 +162,7 @@ status: 200
       "problems": []
     },
     {
-      "slug": "github-com--pallets--flask--74fe6e07e4b9",
+      "slug": "github-com-pallets-flask-gga4r9z0oe0",
       "publication": "published",
       "identity": {
         "id": "sha256:74fe6e07e4b9e366cbfea79bdb0f6051ae58c0742e1a6748ba6c9dea86b1e231",
@@ -180,7 +180,7 @@ status: 200
       "problems": []
     },
     {
-      "slug": "github-com--pallets--flask--e7b7fe0ffe8a",
+      "slug": "github-com-pallets-flask-wl2qiw4376x",
       "publication": "published",
       "identity": {
         "id": "sha256:e7b7fe0ffe8a446772b8a863f51222c90d256e511e1a4da3daec599735962fa9",
@@ -218,10 +218,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "stores": [
     {
-      "key": "github-com--pallets--click--c3c36fb283ea2c90",
+      "key": "github-com-pallets-click-rj1vthi8bez",
       "id": "sha256:c3c36fb283ea2c90a566bfb072d621839b3940b93ef33c8a53b8d4e120dc22bf",
       "publication": "published",
       "mode": "full",
@@ -248,7 +248,7 @@ status: 200
       "reference_state": "unreferenced"
     },
     {
-      "key": "github-com--pallets--flask--4c2d8559cb0179ba",
+      "key": "github-com-pallets-flask-apnenfl1h0x",
       "id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
       "publication": "published",
       "mode": "full",
@@ -273,11 +273,11 @@ status: 200
       "problems": [],
       "referenced_by": [
         {
-          "slug": "github-com--pallets--flask--74fe6e07e4b9",
+          "slug": "github-com-pallets-flask-gga4r9z0oe0",
           "generation": 2
         },
         {
-          "slug": "github-com--pallets--flask--e7b7fe0ffe8a",
+          "slug": "github-com-pallets-flask-wl2qiw4376x",
           "generation": 1
         }
       ],
@@ -294,14 +294,14 @@ status: 200
 ## Test: one source with its recency and its store’s head
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/populated metab root --api /api/cache/source/github-com--pallets--flask--e7b7fe0ffe8a
-api: /api/cache/source/github-com--pallets--flask--e7b7fe0ffe8a
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/populated metab root --api /api/cache/source/github-com-pallets-flask-wl2qiw4376x
+api: /api/cache/source/github-com-pallets-flask-wl2qiw4376x
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "source": {
-    "slug": "github-com--pallets--flask--e7b7fe0ffe8a",
+    "slug": "github-com-pallets-flask-wl2qiw4376x",
     "publication": "published",
     "identity": {
       "id": "sha256:e7b7fe0ffe8a446772b8a863f51222c90d256e511e1a4da3daec599735962fa9",
@@ -320,7 +320,7 @@ status: 200
     },
     "problems": [],
     "store": {
-      "key": "github-com--pallets--flask--4c2d8559cb0179ba",
+      "key": "github-com-pallets-flask-apnenfl1h0x",
       "id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
       "publication": "published",
       "mode": "full",
@@ -357,10 +357,10 @@ api: /api/cache/sources?limit=2
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "sources": [
     {
-      "slug": "github-com--pallets--click--76d8973c8c6c",
+      "slug": "github-com-pallets-click-gpnozfvu34k",
       "publication": "unattached",
       "identity": {
         "id": "sha256:76d8973c8c6c75bf3de6ea688ad89b5990a44d85a3e0d203fd4c44e24b109c46",
@@ -374,7 +374,7 @@ status: 200
       "problems": []
     },
     {
-      "slug": "github-com--pallets--flask--74fe6e07e4b9",
+      "slug": "github-com-pallets-flask-gga4r9z0oe0",
       "publication": "published",
       "identity": {
         "id": "sha256:74fe6e07e4b9e366cbfea79bdb0f6051ae58c0742e1a6748ba6c9dea86b1e231",
@@ -394,7 +394,7 @@ status: 200
   ],
   "unrecognized_entries": 0,
   "limit": 2,
-  "next_after": "github-com--pallets--flask--74fe6e07e4b9"
+  "next_after": "github-com-pallets-flask-gga4r9z0oe0"
 }
 ? 0
 ```
@@ -406,10 +406,10 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/future metab roo
 api: /api/cache/sources
 status: 409
 {
-  "error": "This Metabrowser cache directory uses format f03, and this release reads formats up to f02. Upgrade Metabrowser, or set METABROWSER_CACHE_DIR to a different directory.",
+  "error": "This Metabrowser cache directory uses format f04, and this release reads formats up to f03. Upgrade Metabrowser, or set METABROWSER_CACHE_DIR to a different directory.",
   "code": "future_format",
-  "found": "f03",
-  "supported": "f02"
+  "found": "f04",
+  "supported": "f03"
 }
 Error: /api/cache/sources returned HTTP 409
 ? 1
@@ -456,10 +456,10 @@ api: /api/cache/sources
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "sources": [
     {
-      "slug": "github-com--pallets--click--76d8973c8c6c",
+      "slug": "github-com-pallets-click-gpnozfvu34k",
       "publication": "damaged",
       "identity": null,
       "alias": null,
@@ -468,12 +468,12 @@ status: 200
         {
           "record": "source.yml",
           "code": "invalid",
-          "message": "the record does not satisfy metabrowser.cache:RepositorySource/v1: record: Value error, source id does not match its transport and clone URL"
+          "message": "the record does not satisfy metabrowser.cache:RepositorySource/v2: record: Value error, source id does not match its transport and clone URL"
         }
       ]
     },
     {
-      "slug": "github-com--pallets--flask--74fe6e07e4b9",
+      "slug": "github-com-pallets-flask-gga4r9z0oe0",
       "publication": "damaged",
       "identity": {
         "id": "sha256:74fe6e07e4b9e366cbfea79bdb0f6051ae58c0742e1a6748ba6c9dea86b1e231",
@@ -493,7 +493,7 @@ status: 200
       ]
     },
     {
-      "slug": "github-com--pallets--flask--e7b7fe0ffe8a",
+      "slug": "github-com-pallets-flask-wl2qiw4376x",
       "publication": "damaged",
       "identity": {
         "id": "sha256:e7b7fe0ffe8a446772b8a863f51222c90d256e511e1a4da3daec599735962fa9",
@@ -517,7 +517,7 @@ status: 200
       ]
     },
     {
-      "slug": "github-com--pallets--itsdangerous--428923955b39",
+      "slug": "github-com-pallets-itsdangerous-9cu4q0dq8jx",
       "publication": "not_private",
       "identity": null,
       "alias": null,
@@ -541,7 +541,7 @@ status: 200
       ]
     },
     {
-      "slug": "github-com--pallets--jinja--1b7f05892a34",
+      "slug": "github-com-pallets-jinja-3v76fb6qr7r",
       "publication": "damaged",
       "identity": {
         "id": "sha256:1b7f05892a34c8a9a2c373e617a7522e692cd1e5ef1557b385eba62e5ade5209",
@@ -565,7 +565,7 @@ status: 200
       ]
     },
     {
-      "slug": "github-com--pallets--markupsafe--c9f236af140d",
+      "slug": "github-com-pallets-markupsafe-secoo45saxc",
       "publication": "not_private",
       "identity": null,
       "alias": null,
@@ -579,7 +579,7 @@ status: 200
       ]
     },
     {
-      "slug": "github-com--pallets--werkzeug--731ec7030846",
+      "slug": "github-com-pallets-werkzeug-g6snsgxla1o",
       "publication": "dangling",
       "identity": {
         "id": "sha256:731ec703084622f28033594c20370bc971a33e97349937be3527397e90dfe671",
@@ -617,10 +617,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "stores": [
     {
-      "key": "github-com--pallets--click--c3c36fb283ea2c90",
+      "key": "github-com-pallets-click-rj1vthi8bez",
       "id": "sha256:c3c36fb283ea2c90a566bfb072d621839b3940b93ef33c8a53b8d4e120dc22bf",
       "publication": "damaged",
       "mode": "full",
@@ -644,7 +644,7 @@ status: 200
       "reference_state": "unknown"
     },
     {
-      "key": "github-com--pallets--flask--4c2d8559cb0179ba",
+      "key": "github-com-pallets-flask-apnenfl1h0x",
       "id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
       "publication": "published",
       "mode": "full",
@@ -669,11 +669,11 @@ status: 200
       "problems": [],
       "referenced_by": [
         {
-          "slug": "github-com--pallets--flask--e7b7fe0ffe8a",
+          "slug": "github-com-pallets-flask-wl2qiw4376x",
           "generation": 1
         },
         {
-          "slug": "github-com--pallets--jinja--1b7f05892a34",
+          "slug": "github-com-pallets-jinja-3v76fb6qr7r",
           "generation": 1
         }
       ],
@@ -693,14 +693,14 @@ The list and the detail build one row, so an entry cannot look healthy on one of
 A source that is not published carries no store.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/damaged metab root --api /api/cache/source/github-com--pallets--flask--e7b7fe0ffe8a
-api: /api/cache/source/github-com--pallets--flask--e7b7fe0ffe8a
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/damaged metab root --api /api/cache/source/github-com-pallets-flask-wl2qiw4376x
+api: /api/cache/source/github-com-pallets-flask-wl2qiw4376x
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "source": {
-    "slug": "github-com--pallets--flask--e7b7fe0ffe8a",
+    "slug": "github-com-pallets-flask-wl2qiw4376x",
     "publication": "damaged",
     "identity": {
       "id": "sha256:e7b7fe0ffe8a446772b8a863f51222c90d256e511e1a4da3daec599735962fa9",
@@ -743,10 +743,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "stores": [
     {
-      "key": "github-com--pallets--itsdangerous--84b4d10c2cb4434a",
+      "key": "github-com-pallets-itsdangerous-intq4qekuvi",
       "id": "sha256:84b4d10c2cb4434a734326ce37e519802d313c88b83783304b3fdb8b8646a080",
       "publication": "damaged",
       "mode": "overlay",
@@ -777,14 +777,14 @@ status: 200
       ],
       "referenced_by": [
         {
-          "slug": "github-com--pallets--itsdangerous--428923955b39",
+          "slug": "github-com-pallets-itsdangerous-9cu4q0dq8jx",
           "generation": 1
         }
       ],
       "reference_state": "referenced"
     },
     {
-      "key": "github-com--pallets--jinja--f68db9d30e59b33c",
+      "key": "github-com-pallets-jinja-yo6ea1up7it",
       "id": "sha256:f68db9d30e59b33c3db7869b2f860dda22207fddaf4ce29f8782c44710f1c142",
       "publication": "published",
       "mode": "overlay",
@@ -809,14 +809,14 @@ status: 200
       "problems": [],
       "referenced_by": [
         {
-          "slug": "github-com--pallets--jinja--1b7f05892a34",
+          "slug": "github-com-pallets-jinja-3v76fb6qr7r",
           "generation": 1
         }
       ],
       "reference_state": "referenced"
     },
     {
-      "key": "github-com--pallets--markupsafe--c72e53ac1334507a",
+      "key": "github-com-pallets-markupsafe-s0cqb115yzx",
       "id": "sha256:c72e53ac1334507aefa51f16c87f73fdd076eb774f12b348b44f0baf40b6a530",
       "publication": "published",
       "mode": "overlay",
@@ -841,7 +841,7 @@ status: 200
       "problems": [],
       "referenced_by": [
         {
-          "slug": "github-com--pallets--markupsafe--c9f236af140d",
+          "slug": "github-com-pallets-markupsafe-secoo45saxc",
           "generation": 1
         }
       ],

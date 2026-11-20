@@ -448,7 +448,7 @@ def _record_writes(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 
 def test_the_current_format_ends_the_history_and_every_older_format_migrates() -> None:
-    assert FORMAT_HISTORY[-1] == LAYOUT_FORMAT == "f02"
+    assert FORMAT_HISTORY[-1] == LAYOUT_FORMAT == "f03"
     assert set(MIGRATIONS) == set(FORMAT_HISTORY[:-1])
     assert [format_number(value) for value in FORMAT_HISTORY] == sorted(
         {format_number(value) for value in FORMAT_HISTORY}
@@ -464,7 +464,7 @@ def test_a_new_cache_initializes_separate_configuration_and_layout(
     outcome = migrate_layout(cache_home, version="0.11.0")
 
     assert writes == ["config.yml", "layout.yml"]
-    assert outcome.layout == CacheLayout(format="f02", created_by="0.11.0")
+    assert outcome.layout == CacheLayout(format="f03", created_by="0.11.0")
     assert outcome.config.model_dump(mode="json") == {
         "format": "f01",
         "written_by": "0.11.0",
@@ -487,7 +487,7 @@ def test_reopening_a_current_home_writes_nothing(
     outcome = migrate_layout(cache_home, version="0.12.0")
 
     assert writes == []
-    assert outcome.previous_format == "f02"
+    assert outcome.previous_format == "f03"
     assert _snapshot(cache_home) == before
 
 
@@ -495,11 +495,11 @@ def test_reopening_a_current_home_writes_nothing(
 @pytest.mark.parametrize(
     ("setup", "supported"),
     [
-        (lambda home: _write_layout(home, "f03"), "f02"),
-        (lambda home: _write_layout(home, "f07", version="v3", extra="  shards: 256\n"), "f02"),
+        (lambda home: _write_layout(home, "f04"), "f03"),
+        (lambda home: _write_layout(home, "f07", version="v3", extra="  shards: 256\n"), "f03"),
         (
             lambda home: (
-                _write_layout(home, "f02"),
+                _write_layout(home, "f03"),
                 _write_config(
                     home, "config:\n  format: f02\n  written_by: 0.13.0\n  upgrades: []\n"
                 ),
@@ -544,7 +544,7 @@ def test_a_shared_future_home_is_refused_before_its_modes_are_tightened(
 ) -> None:
     """The future-format answer must precede every change, repairs included."""
 
-    _write_layout(cache_home, "f03")
+    _write_layout(cache_home, "f04")
     (cache_home / "locks").chmod(0o755)
     (cache_home / "layout.yml").chmod(0o644)
     before = _snapshot(cache_home)
@@ -577,7 +577,7 @@ def test_a_shared_but_readable_home_is_still_repaired_and_then_prepared(
 
     opened = open_cache(cache_home, version="0.11.0")
 
-    assert opened.layout.format == "f02"
+    assert opened.layout.format == "f03"
     assert {entry: _mode(cache_home / entry) for entry in shared} == {
         "locks": 0o700,
         "layout.yml": 0o600,
@@ -799,7 +799,7 @@ def test_open_cache_prepares_probes_migrates_and_sweeps(tmp_path: Path) -> None:
     opened = open_cache(home, version="0.11.0")
 
     assert opened.home == home
-    assert opened.layout.format == "f02"
+    assert opened.layout.format == "f03"
     assert opened.config.format == "f01"
     assert opened.sweep.removed == ("staging/crashed-clone",)
     assert not (home / "staging/crashed-clone").exists()
@@ -819,8 +819,8 @@ def test_open_cache_keeps_an_unreferenced_store_and_an_aliased_one(tmp_path: Pat
 
     open_cache(home, version="0.11.0")
 
-    assert (home / f"repository-stores/{ORPHAN_STORE.key}").is_dir()
-    assert (home / f"repository-stores/{FLASK_STORE.key}").is_dir()
+    assert (home / f"repos/{ORPHAN_STORE.key}").is_dir()
+    assert (home / f"repos/{FLASK_STORE.key}").is_dir()
 
 
 @posix_only
@@ -839,7 +839,7 @@ def test_open_cache_resolves_metabrowser_home_when_no_home_is_given(
 @pytest.mark.parametrize("prepare", [open_cache, migrate_layout])
 @pytest.mark.parametrize(
     "directory",
-    ["sources", "repository-stores"],
+    ["sources", "repos", "repository-stores"],
 )
 def test_unrecognized_durable_cache_is_refused_without_any_mutation(
     tmp_path: Path, prepare: Callable[..., object], directory: str
@@ -927,7 +927,7 @@ def _hard_linked_future_layout(home: Path) -> None:
     """A future ``layout.yml`` whose bytes are reachable from outside the home."""
 
     home_module.ensure_private_directory(home, "cache")
-    _write_layout(home, "f03")
+    _write_layout(home, "f04")
     os.link(home / "layout.yml", home.parent / "backup-of-layout.yml")
 
 
@@ -935,7 +935,7 @@ def _unreadable_future_layout(home: Path) -> None:
     """A future ``layout.yml`` whose own permissions deny its owner a read."""
 
     home_module.ensure_private_directory(home, "cache")
-    _write_layout(home, "f03")
+    _write_layout(home, "f04")
     (home / "layout.yml").chmod(0o200)
 
 

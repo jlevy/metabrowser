@@ -32,9 +32,10 @@ import pytest
 
 from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache import layout as layout_module
+from metabrowser.cache.urls import GitSource, classify_root_argument
 from metabrowser.git import process as git_process
 from metabrowser.home import configuration_directory
-from tests.cache_home_fixture import rewrite_as_f01
+from tests.cache_home_fixture import FixtureSource, rewrite_as_f01, rewrite_as_f02
 from tests.golden_harness import (
     block,
     check_golden,
@@ -153,7 +154,7 @@ def test_golden_interrupted_before_store_publication(
     session.note("A child is killed at the rename that would publish the store.")
     _killed_at_publication(session, "metab <ORIGIN-A> --no-serve", [url, "--no-serve"], survive=0)
     assert len(list((home / "staging").iterdir())) == 1
-    assert list((home / "repository-stores").iterdir()) == []
+    assert list((home / "repos").iterdir()) == []
 
     session.note("Nothing is published: one abandoned staging entry, no store, no source.")
     assert '"staging_entries": 1' in session.inspect("/api/cache/layout")
@@ -179,7 +180,7 @@ def test_golden_interrupted_between_store_and_alias_publication(
 
     session.note("A child publishes the store and is killed at the source alias rename.")
     _killed_at_publication(session, "metab <ORIGIN-A> --no-serve", [url, "--no-serve"], survive=1)
-    assert len(list((home / "repository-stores").iterdir())) == 1
+    assert len(list((home / "repos").iterdir())) == 1
     assert list((home / "sources").iterdir()) == []
 
     session.note(
@@ -190,7 +191,7 @@ def test_golden_interrupted_between_store_and_alias_publication(
     assert '"reference_state": "unreferenced"' in session.inspect("/api/cache/stores")
     assert '"sources": []' in session.inspect("/api/cache/sources")
 
-    (orphan,) = list((home / "repository-stores").iterdir())
+    (orphan,) = list((home / "repos").iterdir())
     orphan_inode = orphan.stat().st_ino
     session.note(
         "The next acquisition fetches again, finds the same store already published, "
@@ -239,7 +240,7 @@ def test_golden_fetch_failures_leave_other_sources_untouched(
 
     session.note("Source A is acquired.")
     first = session.no_serve("A", url)
-    snapshot = _snapshot(home / "repository-stores")
+    snapshot = _snapshot(home / "repos")
 
     for letter, (why, path) in failures.items():
         session.note(f"Source {letter}, {why}, fails without publishing anything.")
@@ -259,7 +260,7 @@ def test_golden_fetch_failures_leave_other_sources_untouched(
     assert sources.count('"slug":') == 1
     assert '"generation": 1' in sources
     session.inspect("/api/cache/stores")
-    assert _snapshot(home / "repository-stores") == snapshot
+    assert _snapshot(home / "repos") == snapshot
 
     session.note("A is still a cache hit, and another spelling of A normalizes to A.")
     hit = session.no_serve("A", url)
@@ -270,7 +271,7 @@ def test_golden_fetch_failures_leave_other_sources_untouched(
         [f"FILE://LocalHost{path_a}/", "--no-serve"],
     )
     assert (folded.stdout, folded.stderr) == (hit.stdout, hit.stderr)
-    assert _snapshot(home / "repository-stores") == snapshot
+    assert _snapshot(home / "repos") == snapshot
 
     check_golden("cli-cache-fetch-failures.txt", session.render())
 
@@ -448,7 +449,7 @@ def test_golden_refusals_name_their_repair(tmp_path: Path, monkeypatch: pytest.M
     session.note("A home written by a newer release is refused before anything is written.")
     layout = home / "layout.yml"
     layout.write_text(
-        layout.read_text(encoding="utf-8").replace("format: f02", "format: f03", 1),
+        layout.read_text(encoding="utf-8").replace("format: f03", "format: f04", 1),
         encoding="utf-8",
     )
     before = _snapshot(home)
@@ -475,12 +476,12 @@ def test_golden_a_cache_an_earlier_release_wrote_is_migrated_by_its_first_open(
 
     session.note("A repository is cloned, and its store is named for it.")
     acquired = session.no_serve("A", url)
-    (store,) = list((home / "repository-stores").iterdir())
+    (store,) = list((home / "repos").iterdir())
     inode = store.stat().st_ino
     session.inspect("/api/cache/stores")
 
     session.note(
-        "The cache is rewritten as the release before this one left it: the store is named by "
+        "The cache is rewritten as the first release left it: the store is named by "
         "the whole digest of its identity, and the layout says f01."
     )
     rewrite_as_f01(home)
@@ -498,12 +499,58 @@ def test_golden_a_cache_an_earlier_release_wrote_is_migrated_by_its_first_open(
         "and reuses it: nothing is fetched."
     )
     assert session.no_serve("A", url).stdout == acquired.stdout
-    (migrated,) = list((home / "repository-stores").iterdir())
+    (migrated,) = list((home / "repos").iterdir())
     assert migrated.name == store.name and migrated.stat().st_ino == inode
     session.inspect("/api/cache/layout")
     session.inspect("/api/cache/stores")
 
     check_golden("cli-cache-migrated.txt", session.render())
+
+
+def test_golden_a_cache_the_previous_layout_wrote_is_renamed_by_its_first_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session, home = open_session(tmp_path, monkeypatch)
+    url = file_url(named_origin(tmp_path, "a"))
+    session.origin("A", url)
+
+    session.note("A repository is cloned, and its store is named for it.")
+    acquired = session.no_serve("A", url)
+    (store,) = list((home / "repos").iterdir())
+    inode = store.stat().st_ino
+    session.inspect("/api/cache/stores")
+
+    session.note(
+        "The cache is rewritten as the previous layout left it: the store is named by its "
+        "repository's words joined by two dashes and 16 hexadecimal digits of its identity, "
+        "and the layout says f02."
+    )
+    identity = origin_identity(url)
+    classified = classify_root_argument(url)
+    assert isinstance(classified, GitSource)
+    fixture = FixtureSource(classified.transport, classified.normalized).store()
+    assert fixture.id == identity.store_id
+    rewrite_as_f02(home, [fixture])
+    (previous,) = list((home / "repository-stores").iterdir())
+    assert previous.name != store.name and "--" in previous.name
+
+    session.note("A read answers that the home awaits its migration, and changes nothing.")
+    before = _snapshot(home)
+    session.inspect("/api/cache/layout")
+    session.inspect("/api/cache/stores", exit_code=1)
+    assert _snapshot(home) == before
+
+    session.note(
+        "The first open of a repository renames the store where it stands, to its current key, "
+        "and reuses it: nothing is fetched."
+    )
+    assert session.no_serve("A", url).stdout == acquired.stdout
+    (migrated,) = list((home / "repos").iterdir())
+    assert migrated.name == store.name and migrated.stat().st_ino == inode
+    session.inspect("/api/cache/layout")
+    session.inspect("/api/cache/stores")
+
+    check_golden("cli-cache-migrated-f02.txt", session.render())
 
 
 @skip_as_root

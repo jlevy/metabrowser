@@ -32,8 +32,8 @@ def _fixed(body: str) -> str:
 _SANDBOX_HOME = "/".join(("/private/var/folders/x/T/tryscript-AbC123", "home"))
 # The key of a store of a sandbox origin, which is named for `local` and the origin's last
 # segment, and of one of a hosted origin, which is named for its host and path.
-_SANDBOX_KEY = "local--origin--" + "0f" * 8
-_HOSTED_KEY = "github-com--octo--demo--" + "0f" * 8
+_SANDBOX_KEY = "local-origin-" + "0f" * 5 + "0"
+_HOSTED_KEY = "github-com-octo-demo-" + "0f" * 5 + "0"
 
 
 @pytest.mark.parametrize(
@@ -50,24 +50,24 @@ _HOSTED_KEY = "github-com--octo--demo--" + "0f" * 8
         ),
         (
             '  "origin": "file:///private/var/folders/x/T/tryscript-AbC123/origin.git",\n'
-            '  "location": "~/repository-stores/' + _SANDBOX_KEY + '/repository.git",\n',
+            '  "location": "~/repos/' + _SANDBOX_KEY + '/repository.git",\n',
             '  "origin": "file://[CWD]/origin.git",\n'
-            '  "location": "~/repository-stores/[STORE_KEY]/repository.git",\n',
+            '  "location": "~/repos/[STORE_KEY]/repository.git",\n',
         ),
         (
             '  "origin": "file:///private/var/folders/x/T/tryscript-AbC123/origin.git",\n'
             '  "location": "' + _SANDBOX_HOME + "/"
-            "repository-stores/" + _SANDBOX_KEY + '/repository.git",\n',
+            "repos/" + _SANDBOX_KEY + '/repository.git",\n',
             '  "origin": "file://[CWD]/origin.git",\n'
-            '  "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",\n',
+            '  "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",\n',
         ),
         (
             # A hosted origin's key is derived from its address alone and stays literal.
             '  "origin": "https://github.com/octo/demo",\n'
             '  "location": "' + _SANDBOX_HOME + "/"
-            "repository-stores/" + _HOSTED_KEY + '/repository.git",\n',
+            "repos/" + _HOSTED_KEY + '/repository.git",\n',
             '  "origin": "https://github.com/octo/demo",\n'
-            '  "location": "[APP_HOME]/repository-stores/' + _HOSTED_KEY + '/repository.git",\n',
+            '  "location": "[APP_HOME]/repos/' + _HOSTED_KEY + '/repository.git",\n',
         ),
         ("metab 0.12.0a1 (3 commits past v0.11.0, dirty)\n", "metab [VERSION]\n"),
         (

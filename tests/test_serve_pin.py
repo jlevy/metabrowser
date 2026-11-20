@@ -635,8 +635,8 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
     result = _serve(origin.url)
     assert result.exit_code == 0, result.output
 
-    (store,) = (home / "repository-stores").iterdir()
-    location = f"~/.cache/metabrowser/repository-stores/{store.name}/repository.git"
+    (store,) = (home / "repos").iterdir()
+    location = f"~/.cache/metabrowser/repos/{store.name}/repository.git"
     shown_origin = "file://~/git/origin.git"
     # It is what it is said to be: a bare repository, with the pinned commit in it.
     assert (store / "repository.git" / "HEAD").is_file()
@@ -725,7 +725,7 @@ def test_the_api_mode_prints_where_the_mirror_is_kept(
     home = _home(tmp_path, monkeypatch)
     origin = _origin(tmp_path)
     store_key = origin_identity(origin.url).store_key
-    location = str(home / "repository-stores" / store_key / "repository.git")
+    location = str(home / "repos" / store_key / "repository.git")
 
     status = ok([origin.url, "--api", "/api/source/status"])
     assert status.payload()["location"] == location
@@ -1153,7 +1153,9 @@ class _ServedMirror:
         """
 
         rest, named = self.remainder(path, response, commit=commit)
-        for private in (str(self.home), str(self.origin_path), self.store_key, "repository-stores"):
+        # The directory is probed as a path segment: "repos" is also the start of "repository",
+        # which pages say freely.
+        for private in (str(self.home), str(self.origin_path), self.store_key, "/repos/"):
             assert private not in rest, (private, where, response.status_code)
         return named
 
@@ -1223,7 +1225,7 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
     # not under the user's home directory here, so the location is absolute and the
     # sweep below would find the home in any answer that named it.
     store_key = origin_identity(origin.url).store_key
-    location = str(home / "repository-stores" / store_key / "repository.git")
+    location = str(home / "repos" / store_key / "repository.git")
     assert Path(location, "HEAD").is_file()
     mirror = _ServedMirror(
         origin=origin.url,

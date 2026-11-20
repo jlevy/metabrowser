@@ -167,7 +167,7 @@ def test_backfill_all_beyond_old_cap_with_small_indexed_windows(
         (_path(repository).parent / f"list-{name}.json").exists()
         for name in ("all", "open", "closed")
     )
-    assert not list((repository.home / "repository-stores").iterdir())
+    assert not list((repository.home / "repos").iterdir())
     calls.clear()
     assert not refresh_wanted(ListView(repository, None, False), RefreshRequest("open", 2000))
     assert asyncio.run(refresh_pull_list(repository, "open", target=2000)).cached == state.cached
@@ -420,7 +420,7 @@ def test_actual_gh_transport_keeps_only_lightweight_metadata(
     ]
     assert [args[:2] for args in log if args[0] == "api"] == [["api", "graphql"]]
     assert any("avatar_url:avatarUrl(size:40)" in arg for args in log for arg in args)
-    assert not list((repository.home / "repository-stores").iterdir())
+    assert not list((repository.home / "repos").iterdir())
 
 
 def test_append_generation_counts_and_stale_backfill_guard(repository: ListedRepository) -> None:
@@ -1164,7 +1164,7 @@ def test_clearing_removes_only_the_plugins_cache_and_never_follows_a_link(
     assert read_list_refresh(repository.home, repository.slug, "all") is None
     assert clear_pulls(repository.home, repository.slug) == 0
 
-    unclaimed = repository.home / "sources/github-com--octo--other--000000000000"
+    unclaimed = repository.home / "sources/github-com-octo-other-00000000000"
     assert clear_pulls(repository.home, unclaimed.name) == 0
     assert not unclaimed.exists()
 

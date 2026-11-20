@@ -88,7 +88,7 @@ _RESULTS_MUTEX = threading.Lock()
 def probe_application_cache(home: Path, *, force: bool = False) -> ProbeReport:
     """Verify *home*'s locks and publication once per process, or refuse the home.
 
-    The ``f02`` skeleton must exist. Raises :class:`PrivateStorageError` with violation
+    The ``f03`` skeleton must exist. Raises :class:`PrivateStorageError` with violation
     ``unverifiable`` when a check fails.
     """
 

@@ -114,7 +114,7 @@ tested directly, as the paragraph after it says.
 | `fetching` | `fetch_succeeded` | `fetched` | staging entry | Objects are in the staging store or, for an overlay, its lender |
 | `fetched` | `validation_failed` | `abandoned` | staging entry | The default branch or object format did not validate; staging deleted |
 | `fetched` | `validated` | `validated` | staging entry | Write `store.yml`, with the lender if any, and `state.yml` |
-| `validated` | `publish_store` | `store_published` | alias, store, staging entry | Verify the store directory is absent and rename staging into `repository-stores/<store key>` |
+| `validated` | `publish_store` | `store_published` | alias, store, staging entry | Verify the store directory is absent and rename staging into `repos/<store key>` |
 | `validated` | `store_exists_same_identity` | `store_reused` | alias, store, staging entry | A concurrent acquisition published the same store first; staging is deleted after the locks are released |
 | `store_published` or `store_reused` | `publish_alias` | `alias_published` | alias, store, staging entry | Create `sources/<slug>/` with `source.yml` and `store-alias.yml`, the only visibility commit |
 | `store_published` or `store_reused` | `alias_exists_same_store` | `alias_published` | alias, store, staging entry | Another process committed the same alias first |

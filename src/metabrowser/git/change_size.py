@@ -551,7 +551,7 @@ class _StoreBank:
         """The bank of the repository store *location* reads, or ``None`` for any other
         repository, such as a checkout's own Git directory.
 
-        A store is ``<home>/repository-stores/<key>/repository.git``, the layout
+        A store is ``<home>/repos/<key>/repository.git``, the layout
         :mod:`metabrowser.cache.paths` spells. Anything else is not the cache's to write
         beside. Nothing is imported from the cache for a folder's own repository.
         """
@@ -560,12 +560,12 @@ class _StoreBank:
         if not isinstance(target, RepositoryStoreTarget):
             return None
         from metabrowser.cache.identity import is_store_key
-        from metabrowser.cache.paths import REPOSITORY_STORES
+        from metabrowser.cache.paths import REPOSITORY_GIT, REPOSITORY_STORES
 
         git_dir = target.git_dir
         store = git_dir.parent
         if (
-            git_dir.name != "repository.git"
+            git_dir.name != REPOSITORY_GIT
             or store.parent.name != REPOSITORY_STORES
             or not is_store_key(store.name)
         ):
