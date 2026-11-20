@@ -263,8 +263,14 @@ The one KPress script source is the set of modules that draw Mermaid diagrams as
 The browsed tree’s files under `/raw` are never script sources.
 Images admit this origin, `data:` images the stylesheet draws, and the exact avatar host
 for application-owned author portraits, whose URLs provider and browser code validate.
-The page frames nothing, since the untrusted profile removes the HTML preview, its only
-frame; nothing may frame it; and plugins, `<base>`, and form submission are off.
+The page frames no URL, since the untrusted profile removes the HTML preview, its only
+framed address; its one frame is the diagram frame
+(`builtin_plugins/markdown/diagram-frame.js`), an `about:srcdoc` document that
+`frame-src` does not govern, sandboxed to scripts and its own origin, which keeps this
+policy and adds its own, admitting less, and under which a pull request’s text’s Mermaid
+diagrams are laid out on any page.
+This policy’s `style-src` admits the frame’s one stylesheet, from `/plugin-static/`.
+Nothing may frame the page; and plugins, `<base>`, and form submission are off.
 Inline `style` attributes stay allowed because the application writes them for layout;
 untrusted Markdown carries none.
 `tests/test_untrusted_markdown.py` pins the policy and fails when the application writes
