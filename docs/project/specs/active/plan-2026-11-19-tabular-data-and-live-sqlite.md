@@ -1027,6 +1027,10 @@ As built, where this plan left a choice open:
   `mb.plugins.load("table")` when its own module is evaluated, since its kind always
   opens in the Table view; starting every declared provider with its dependent would put
   Markdown on every folder’s page.
+- **Select all in a windowed grid** is Home and then Shift-End, not Command-A: every
+  page key handler leaves a chord to the browser (`tests/test_modified_keys.py`), so
+  Command-A keeps the browser’s own select all, which in a window holds only the rows
+  drawn.
 - `.table-container`, unused like `.data-table`, went with it; the folder tables take
   `.data-num` and `.data-label`.
 
