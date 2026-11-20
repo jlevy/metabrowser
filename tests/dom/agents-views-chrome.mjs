@@ -77,6 +77,61 @@ async function open(chrome, url) {
   await until(chrome, `Boolean(${SHOWN})`);
 }
 
+// Every anchor the shown view renders, and a bare `<a href>` put in it, as a link reads in
+// the theme the page is in: the design's `--link`, never the user agent's blue (`-webkit-link`)
+// or its visited purple, and no underline at rest. The bare anchor is what a new view that
+// styles nothing gets, which the shell's base rule (styles.css, `:where(a:any-link)`) colors.
+const LINKS = `(() => {
+  const probe = (token) => {
+    const span = document.createElement("span");
+    span.style.color = "var(" + token + ")";
+    document.body.append(span);
+    const color = getComputedStyle(span).color;
+    span.remove();
+    return color;
+  };
+  const view = ${SHOWN}.view;
+  const link = probe("--link");
+  const anchors = [...view.querySelectorAll("a[href]")];
+  const bare = document.createElement("a");
+  bare.href = "#bare";
+  bare.textContent = "bare";
+  view.append(bare);
+  const bareColor = getComputedStyle(bare).color;
+  bare.remove();
+  return {
+    link,
+    count: anchors.length,
+    wrong: anchors
+      .filter((a) => getComputedStyle(a).color !== link)
+      .map((a) => [a.className, getComputedStyle(a).color]),
+    underlined: anchors
+      .filter((a) => getComputedStyle(a).textDecorationLine !== "none")
+      .map((a) => a.className),
+    bare: bareColor,
+  };
+})()`;
+
+/** Check `LINKS` in both themes; *label* names the view. */
+async function checkLinks(chrome, label, minimum = 1) {
+  for (const theme of ["light", "dark"]) {
+    await chrome.evaluate(`document.documentElement.setAttribute("data-theme", "${theme}")`);
+    const seen = await chrome.evaluate(LINKS);
+    check(`${label} draws links to check in the ${theme} theme`, seen.count >= minimum, seen);
+    check(`every ${label} anchor is --link in the ${theme} theme`, seen.wrong.length === 0, seen);
+    check(
+      `none underlined at rest in the ${theme} theme (${label})`,
+      seen.underlined.length === 0,
+      seen,
+    );
+    check(
+      `a bare link in the ${label} is --link, not the user agent's, in the ${theme} theme`,
+      seen.bare === seen.link && seen.bare !== "rgb(0, 0, 238)" && seen.bare !== "rgb(85, 26, 139)",
+      seen,
+    );
+  }
+}
+
 const clickTab = (chrome, tab) =>
   chrome.evaluate(
     `document.querySelector('.preview-pane > .tab-bar > .tab-btn[data-tab="${tab}"]').click()`,
@@ -147,7 +202,7 @@ try {
     ]));
     return {
       stats,
-      recent: view.querySelectorAll(".agents-recent tbody tr").length,
+      recent: view.querySelectorAll(".agents-recent .agents-session-row").length,
       homes: [...view.querySelectorAll(".agents-home-item")].map((li) => li.textContent.slice(0, 20)),
       live: view.querySelector(".agents-live")?.textContent ?? null,
       bars: view.querySelectorAll(".agents-histogram-row").length,
@@ -172,6 +227,50 @@ try {
   measure("the home's agents assets (name, encoded bytes)", homeAssets);
   const liveFirst = await chrome.evaluate(COUNT_REQUESTS("/api/plugin/agents/live"));
   check("the live strip asked once", liveFirst === 1, liveFirst);
+  await checkLinks(chrome, "home");
+  // A row is two lines, and the age stays on the first however long the project path is:
+  // that is the row's contract (docs/design-system.md, "Session Rows").
+  const ROW_LAYOUT = `(() => {
+    const view = ${SHOWN}.view;
+    return [...view.querySelectorAll(".agents-session-row")].map((row) => {
+      const line = row.querySelector(".agents-row-line").getBoundingClientRect();
+      const meta = row.querySelector(".agents-row-meta").getBoundingClientRect();
+      const age = row.querySelector(".agents-row-age").getBoundingClientRect();
+      const title = row.querySelector(".agents-row-title").getBoundingClientRect();
+      const box = row.getBoundingClientRect();
+      return {
+        height: Math.round(box.height),
+        ageOnFirstLine: age.top >= line.top - 1 && age.bottom <= line.bottom + 1,
+        ageAtEnd: Math.abs(age.right - line.right) < 1,
+        metaBelow: meta.top >= line.bottom - 1,
+        metaInside: meta.right <= box.right + 1,
+        titleBeforeAge: title.right <= age.left + 1,
+      };
+    });
+  })()`;
+  const rowsBefore = await chrome.evaluate(ROW_LAYOUT);
+  check("the home lists its recent sessions as rows", rowsBefore.length >= 8, rowsBefore.length);
+  await chrome.evaluate(`(() => {
+    const view = ${SHOWN}.view;
+    for (const project of view.querySelectorAll(".agents-row-project")) {
+      project.textContent = "/work/github/a-very-long-project-directory-name/nested/deeper/still-deeper/and-deeper-still";
+    }
+    for (const title of view.querySelectorAll(".agents-row-title")) {
+      title.textContent = "A title long enough to run past the end of the line on a narrow page, ".repeat(3);
+    }
+  })()`);
+  const rowsLong = await chrome.evaluate(ROW_LAYOUT);
+  const keeps = (rows) =>
+    rows.every(
+      (r) => r.ageOnFirstLine && r.ageAtEnd && r.metaBelow && r.metaInside && r.titleBeforeAge,
+    );
+  check("a row's age is at the end of its first line", keeps(rowsBefore), rowsBefore[0]);
+  check("and stays there under a long title and a long path", keeps(rowsLong), rowsLong[0]);
+  check(
+    "a long path and title do not make a row taller",
+    rowsLong.every((r, i) => r.height === rowsBefore[i].height),
+    { before: rowsBefore[0], after: rowsLong[0] },
+  );
   step("home");
 
   // -- leaving the home stops its poll ------------------------------------------------
@@ -272,6 +371,39 @@ try {
     ),
     await chrome.evaluate(SUMMARY),
   );
+  await checkLinks(chrome, "list");
+  // The table is wider than the pane, so its wrap scrolls and takes the keyboard's focus;
+  // scrolled to the end, its last column is whole inside it, so none is cut off for good.
+  const reach = await chrome.evaluate(`(() => {
+    const wrap = ${SHOWN}.view.querySelector(".agents-table-wrap");
+    const heads = [...wrap.querySelectorAll("thead th")];
+    const overflowing = wrap.scrollWidth > wrap.clientWidth;
+    wrap.scrollLeft = 0;
+    const first = heads[0].getBoundingClientRect();
+    const edge = wrap.getBoundingClientRect();
+    const startsInside = first.left >= edge.left - 1;
+    wrap.scrollLeft = wrap.scrollWidth;
+    const last = heads[heads.length - 1].getBoundingClientRect();
+    return {
+      overflowing,
+      focusable: wrap.tabIndex === 0,
+      scrolls: getComputedStyle(wrap).overflowX === "auto",
+      startsInside,
+      endsInside: last.right <= edge.right + 1 && last.left >= edge.left - 1,
+      columns: heads.length,
+      paneFits: edge.right <= document.documentElement.clientWidth + 1,
+    };
+  })()`);
+  check(
+    "every column of the list is reachable by scrolling its wrap",
+    reach.endsInside && reach.startsInside,
+    reach,
+  );
+  check(
+    "the wrap is a keyboard stop, and the page itself does not overflow",
+    reach.focusable && reach.paneFits,
+    reach,
+  );
   step("list");
 
   // -- a session page -----------------------------------------------------------------
@@ -346,6 +478,7 @@ try {
       dark: dark[kind],
     });
   }
+  await checkLinks(chrome, "session page");
   step("session page");
 
   // -- a transcript outside a home falls back to its Log -------------------------------

@@ -1120,6 +1120,12 @@ get the element they expect.
 The diff file bar’s [View file and View on branch](#diff-file-bar), and
 [Browse code, a review comment’s file, Refresh, and Switch to the head](#chrome) on a
 pull request’s page, are text actions.
+A sortable column header’s label, `.agents-sort` in the session table, is a text action
+in this sense: a bordered button inside a header would read as a different thing from
+the label it sits in.
+It is a real `<button>` with the cell’s `aria-sort`, takes the label’s type, muted at
+rest and `--text` on hover, shows the sorted direction as an arrow after the label, and
+has the one focus ring.
 Each context sets one look for the `<a>` and the `<button>`, box included: a `<button>`
 is always an atomic inline box, so where a label can wrap, the `<a>` is one too, and
 what follows a wrapped label starts on the next line in both forms.
@@ -1209,6 +1215,28 @@ A file that falls back permanently to Source has no format chooser.
 `test_a_toggle_cannot_fork_the_family` fails when a stylesheet or a source states a
 toggle’s ARIA outside this family, and
 `test_exclusive_choices_share_one_answer_to_each_state` holds the table above.
+
+### Links Have a Base Color
+
+A link is `--link`, and the shell says so once: `:where(a:any-link)` in
+`static/styles.css` sets `color: var(--link)`. Without it a link no rule colors falls
+through to the user agent’s blue, and its purple once visited, so a new view that forgot
+would read as a different app.
+The selector has zero specificity, so every context’s own color, hover, and ring wins
+without a fight, and `:any-link` covers a visited link as well as a fresh one.
+It sets the color and nothing else, deliberately: a context that keeps the user agent’s
+underline at rest (rendered Markdown, Help, an event’s details) is unchanged, and no
+ring is drawn that a context did not choose.
+
+A context that wants the link’s full treatment says so itself, as the
+[Link row](#chrome) of a pull request’s page does: `--link` and no underline at rest, an
+underline on hover, and the [focus ring](#focus-ring) with its outset offset, since a
+bare inline link’s box is its text.
+A link that sets its own ink, a Pulls row’s title, sets it on the link itself.
+A context never patches the fallback with a rule of its own that colors its anchors
+`--link`; `test_a_link_no_rule_colors_is_the_link_color` holds the base and holds those
+rules gone, and `tests/dom/agents-views-chrome.mjs` reads in Chrome that a bare
+`<a href>` in a plugin view computes to `--link`, in both themes.
 
 ### Focus Ring
 
@@ -3135,6 +3163,56 @@ A closed row is one height whatever its line holds, so nothing moves when one ar
 
 New pull requests use the [shared arrival highlight](#live-row-arrivals), and the rows’
 keys are under [Navigational Row Collections](#navigational-row-collections).
+
+## The Agents Views
+
+The agents plugin’s home, session list, and Session view (`builtin_plugins/agents/`) are
+built from the shell’s parts, and add only what a session needs.
+The page’s title is `.page-heading`, a section’s title is `.section-heading` over its
+rule, a statistic’s label and a table’s headers are labels, and a status is the shell’s
+badge. Color is an event’s kind or a tool’s family, nothing else: an agent is a label,
+bold, never a color.
+
+### Session Rows
+
+The home’s Running now and Recent sessions are one list of two-line rows
+(`sessionRowsHtml` in `session-rows.js`), in the manner of
+[The Pulls Tab](#the-pulls-tab)’s rows.
+The first line is the agent, bold, the session’s title as a link, and the age at the
+line’s end, muted, in tabular numerals, never wrapping.
+The second line is muted: a status badge where the list has one, the project, then the
+model, parted by the design’s separator
+([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)). The title
+and the project are cut short with an ellipsis, the project first, and the model keeps
+its words unless it alone runs past 45% of the line, so a long path never pushes the age
+onto a line of its own, and a row is two lines whatever it holds.
+A row whose second line has nothing to say keeps the line’s height, so the rows of a
+list stand at one height.
+`tests/dom/agents-views-chrome.mjs` holds that the age stays at the end of the first
+line and the row keeps its height under a long title and a long path.
+
+An agent’s line on the home, “Claude Code · 2,202 sessions, 6.2 GB”, is a count summary:
+the dot is the design’s separator, the figures are bold, and the served folder’s own
+home names no path, so none is shown.
+
+### Session Links
+
+A session’s title is a link to its file, in every view that draws one, with the
+treatment of the [Link row](#chrome): `--link` at rest and once visited, no underline at
+rest, an underline on hover, and the focus ring with the outset offset
+(`a.agents-session-link`). A session with no file is plain muted text with the same
+class on a `<span>`. `tests/dom/agents-views-chrome.mjs` reads every anchor the three
+views render, in both themes.
+
+### The Session List’s Table
+
+Its eleven columns are wider than the pane, so the table scrolls inside its own wrap, as
+a wide table does elsewhere ([Reading Width](#reading-width)), and the wrap is a
+keyboard stop (`tabindex="0"`, a region named “Sessions”) with the one focus ring, so a
+reader without a pointer reaches every column too.
+The cells that can run long, the title, the project, and the model, are capped and cut
+with an ellipsis, the whole value in a tooltip, so a long model list never pushes the
+columns after it out of reach.
 
 ## Stacks
 
