@@ -2008,6 +2008,7 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
 }
 # Sources with a marker that build no toggle of their own, and why.
 _NOT_TOGGLES: dict[str, str] = {
+    "file-watches.js": "reads aria-expanded on the tree rows app.js builds",
     "tree-keyboard-navigation.js": "reflects aria-expanded on the tree rows app.js builds",
     "overlay-layer.js": "a dialog's trigger, an icon or labelled button, is not a disclosure",
     "search-palette.js": "the search field is a combobox, and its text stays editable",
