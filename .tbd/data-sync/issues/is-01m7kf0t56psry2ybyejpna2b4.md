@@ -5,7 +5,11 @@ title: "Chrome flake: tests/test_nav_reveal_chrome.py:217 'a long folder's fifth
 kind: bug
 status: closed
 priority: 1
-version: 9
+version: 10
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/556
+    at: 2026-11-20T17:05:12.014Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -14,7 +18,7 @@ parent_id: is-01m7hgpc9550w78kmwqsvv64xh
 hold: null
 hold_until: null
 created_at: 2026-11-17T00:37:57.540Z
-updated_at: 2026-11-20T17:00:12.540Z
+updated_at: 2026-11-20T17:05:12.055Z
 started_at: 2026-11-18T04:30:44.246Z
 closed_at: 2026-11-18T05:36:29.708Z
 close_reason: "Fixed in PR #556: a landing's row scrolls once its folders open (app.js folderTravelAbove), and the Pulls list keeps a reveal's place while hidden (pulls-panel.js keptPlace); both checks strengthened to fail every run without the fixes."

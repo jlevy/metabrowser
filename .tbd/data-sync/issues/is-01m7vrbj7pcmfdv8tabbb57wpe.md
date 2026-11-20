@@ -5,7 +5,11 @@ title: Load remote images in cloud-repo Markdown by default, like GitHub; a priv
 kind: bug
 status: closed
 priority: 1
-version: 6
+version: 7
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/644
+    at: 2026-11-20T17:05:06.529Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T05:55:02.515Z
-updated_at: 2026-11-20T17:00:12.221Z
+updated_at: 2026-11-20T17:05:06.579Z
 started_at: 2026-11-20T05:56:00.070Z
 closed_at: 2026-11-20T08:57:57.241Z
 close_reason: "Landed in #644: remote images on by default with a Block remote images setting, sandboxed shell, no-referrer"

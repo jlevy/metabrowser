@@ -5,7 +5,11 @@ title: "Files overview: less, uniform bar indent; legend names up to 9 file type
 kind: task
 status: closed
 priority: 2
-version: 5
+version: 6
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/650
+    at: 2026-11-20T17:05:09.881Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T06:53:10.379Z
-updated_at: 2026-11-20T17:00:12.586Z
+updated_at: 2026-11-20T17:05:09.894Z
 started_at: 2026-11-20T06:53:46.204Z
 closed_at: 2026-11-20T07:59:52.725Z
 close_reason: "Merged in PR 650: legend names up to 9 families at >= 1% plus Other; overview label column 130px measured."

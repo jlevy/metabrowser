@@ -5,7 +5,11 @@ title: "Title folder menu: the cloud or folder icon sits on the name's line, not
 kind: bug
 status: closed
 priority: 2
-version: 6
+version: 7
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/628
+    at: 2026-11-20T17:05:54.516Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T01:10:01.003Z
-updated_at: 2026-11-20T17:00:14.416Z
+updated_at: 2026-11-20T17:05:54.523Z
 started_at: 2026-11-20T01:12:38.418Z
 closed_at: 2026-11-20T02:39:54.466Z
 close_reason: "Merged in PR 628. Check mark stays centered on two-line rows: a custom onStateImage loses AXMenuItemMarkChar (accessibility checked state), so the accessible native check was kept."

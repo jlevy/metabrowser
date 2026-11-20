@@ -5,7 +5,14 @@ title: "One rule for the app's command-line dependencies (metab, gh, future tool
 kind: feature
 status: closed
 priority: 1
-version: 11
+version: 12
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/590
+    at: 2026-11-20T17:05:26.098Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/596
+    at: 2026-11-20T17:05:26.099Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -15,7 +22,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-19T00:11:26.622Z
-updated_at: 2026-11-20T17:00:12.819Z
+updated_at: 2026-11-20T17:05:26.099Z
 started_at: 2026-11-19T00:12:06.859Z
 closed_at: 2026-11-19T04:11:15.457Z
 close_reason: "Phases 1-3 landed: #590 (minimum release and versioning rule), #596 (metab --doctor checks, gh minimum, Help > Check Setup..., contract entries). Review B Lows tracked separately."

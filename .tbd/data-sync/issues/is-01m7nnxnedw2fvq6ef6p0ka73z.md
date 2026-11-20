@@ -5,8 +5,12 @@ title: "GitHub status check: gh path, version, account, scopes; --doctor section
 kind: feature
 status: closed
 priority: 2
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/581
+    at: 2026-11-20T17:05:57.514Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -23,7 +27,7 @@ parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 hold: null
 hold_until: null
 created_at: 2026-11-17T21:17:03.309Z
-updated_at: 2026-11-20T17:00:14.122Z
+updated_at: 2026-11-20T17:05:57.521Z
 started_at: 2026-11-18T21:02:21.507Z
 closed_at: 2026-11-19T01:12:00.549Z
 close_reason: "Landed in #581"

@@ -5,7 +5,14 @@ title: "Research: operational visibility into ~/.claude and ~/.codex as an agent
 kind: task
 status: closed
 priority: 2
-version: 4
+version: 5
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/619
+    at: 2026-11-20T17:05:48.387Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/623
+    at: 2026-11-20T17:05:48.389Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -13,7 +20,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T21:46:18.105Z
-updated_at: 2026-11-20T17:00:19.945Z
+updated_at: 2026-11-20T17:05:48.389Z
 started_at: 2026-11-19T21:46:23.462Z
 closed_at: 2026-11-20T17:00:19.940Z
 close_reason: "Delivered: the research brief docs/project/research/research-2026-11-19-agent-home-visibility.md merged in PR #619, and the plan in PR #623"

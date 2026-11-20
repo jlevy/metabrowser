@@ -5,7 +5,11 @@ title: "Flake: test_checkout_ref_selector_chrome refuses /api/tree during a revi
 kind: bug
 status: closed
 priority: 2
-version: 4
+version: 5
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/567
+    at: 2026-11-20T17:05:55.501Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T20:29:42.497Z
-updated_at: 2026-11-20T17:00:12.809Z
+updated_at: 2026-11-20T17:05:55.505Z
 started_at: 2026-11-18T20:41:10.835Z
 closed_at: 2026-11-18T21:26:58.872Z
 close_reason: "Fixed in PR #567 (claude/checkout-chooser-refused-tree, head 023d83dde). Cause: the leaving working-tree page's own root-tally refresh, GET /api/tree?depth=0 from fetchRootSummary (app.js:2049, 500 ms after first rows), was sent after the server switched and before the page unloaded, so SourcePinGuard refused it (409 pin_changed); the leaving page logged the 409 and painted the selector's Reload offer. Fix: source-pin-guard.js createSwitchHold holds a page's guarded requests while its own switch is asked (released if the switch is refused or changes nothing, on a bfcache restore, or after LEAVING_BOUND_MS); source-ref-selector.js starts it before POST /api/source/pin. The Chrome driver now records loader/document, full URL, pin, caller and timing per request and asks for tallies every 10 ms during the switch: 3/3 failures without the fix, CI green with it (all four chrome 3/4 shards ran the test). Confirm after merge."

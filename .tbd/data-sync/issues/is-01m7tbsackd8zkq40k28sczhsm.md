@@ -5,7 +5,11 @@ title: Pulls tab says '#N is not listed under Closed' instead of listing it
 kind: bug
 status: closed
 priority: 2
-version: 7
+version: 8
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/611
+    at: 2026-11-20T17:05:56.660Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T16:56:07.314Z
-updated_at: 2026-11-20T17:00:12.308Z
+updated_at: 2026-11-20T17:05:56.661Z
 started_at: 2026-11-19T16:56:37.177Z
 closed_at: 2026-11-19T19:07:01.469Z
 close_reason: "PR #611 merged"

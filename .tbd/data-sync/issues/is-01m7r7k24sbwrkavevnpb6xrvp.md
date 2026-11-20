@@ -5,7 +5,11 @@ title: "Files view: the border under the file tally stops short of the full widt
 kind: bug
 status: closed
 priority: 2
-version: 8
+version: 9
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/573
+    at: 2026-11-20T17:05:29.435Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T21:04:19.094Z
-updated_at: 2026-11-20T17:00:14.289Z
+updated_at: 2026-11-20T17:05:29.436Z
 started_at: 2026-11-18T21:06:44.438Z
 closed_at: 2026-11-19T00:25:04.754Z
 close_reason: "Landed in #573 (1a2cabe60)"

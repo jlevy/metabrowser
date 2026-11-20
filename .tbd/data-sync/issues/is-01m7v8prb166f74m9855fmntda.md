@@ -5,7 +5,11 @@ title: "macOS Open URL (Cmd-L) of a PR or any in-repo GitHub URL opens a mirror 
 kind: bug
 status: closed
 priority: 1
-version: 6
+version: 7
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/631
+    at: 2026-11-20T17:05:15.970Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -14,7 +18,7 @@ parent_id: is-01m7v8bs62dz0nqmqb9rnhgsdb
 hold: null
 hold_until: null
 created_at: 2026-11-20T01:21:32.000Z
-updated_at: 2026-11-20T17:00:12.237Z
+updated_at: 2026-11-20T17:05:16.069Z
 started_at: 2026-11-20T01:22:03.159Z
 closed_at: 2026-11-20T05:10:56.484Z
 close_reason: "Merged in PR #631 (ccd4f771b): one mirror per repository; every link opens through POST /api/source/link."

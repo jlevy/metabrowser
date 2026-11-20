@@ -5,7 +5,11 @@ title: "The commit page's and the pull request page's headers share one design: 
 kind: feature
 status: closed
 priority: 1
-version: 17
+version: 18
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/487
+    at: 2026-11-20T17:06:00.373Z
 labels:
   - linear
 dependencies:
@@ -27,7 +31,7 @@ child_order_hints:
   - is-01m7kbsrh0j72tyze0brmcr691
   - is-01m7kbss0kd4h8j8sgzfn70yh0
 created_at: 2026-11-16T20:47:16.705Z
-updated_at: 2026-11-20T17:00:12.173Z
+updated_at: 2026-11-20T17:06:00.375Z
 closed_at: 2026-11-17T00:30:22.598Z
 close_reason: "Header parity merged in #487 (6579c0d41); commit-author GitHub avatars continue as mb-rlp4 under mb-s3g8"
 resolution: null

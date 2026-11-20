@@ -5,7 +5,14 @@ title: Design the macOS app's publishing setup (signing, notarization, DMG, inst
 kind: task
 status: closed
 priority: 1
-version: 46
+version: 47
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/509
+    at: 2026-11-20T17:05:37.698Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/510
+    at: 2026-11-20T17:05:37.702Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -57,7 +64,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T20:47:48.560Z
-updated_at: 2026-11-20T17:00:12.983Z
+updated_at: 2026-11-20T17:05:37.702Z
 started_at: 2026-11-16T20:49:22.082Z
 closed_at: 2026-11-17T00:47:22.328Z
 close_reason: "Publishing plan landed in #485 (squash); implementation beads under it remain"

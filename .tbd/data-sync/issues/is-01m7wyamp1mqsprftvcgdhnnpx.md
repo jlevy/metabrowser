@@ -5,12 +5,16 @@ title: "macOS app: an outline folder symbol beside the mirror's cloud in the men
 kind: feature
 status: closed
 priority: 2
-version: 2
+version: 3
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/564
+    at: 2026-11-20T17:05:58.502Z
 labels:
   - linear
 dependencies: []
 created_at: 2026-11-18T20:23:03.000Z
-updated_at: 2026-11-20T16:58:41.273Z
+updated_at: 2026-11-20T17:05:58.503Z
 closed_at: 2026-11-18T21:02:16.000Z
 close_reason: "Merged in #564"
 resolution: null
