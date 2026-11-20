@@ -90,11 +90,17 @@ def _free_port() -> int:
 
 def _legend_in_place(reading: dict[str, Any], label: str) -> None:
     # Markdown and Python tie on files and bytes, so the family ID orders them
-    # (file_type_legend.py).
-    assert reading["legend"] == ["Markdown", "Python", "JSON", "TypeScript", "YAML", "Other"], (
-        label,
-        reading["legend"],
-    )
+    # (file_type_legend.py), as it does CSS and Rust. All seven families clear the share
+    # floor and the legend's limit, so they are all named and nothing is left for Other.
+    assert reading["legend"] == [
+        "Markdown",
+        "Python",
+        "JSON",
+        "TypeScript",
+        "YAML",
+        "CSS",
+        "Rust",
+    ], (label, reading["legend"])
     assert reading["legendName"] == "Share of Total (30 files)", (label, reading)
     assert reading["legendUnderBars"] and reading["legendRowHeld"], (label, reading)
 
