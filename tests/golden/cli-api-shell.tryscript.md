@@ -786,6 +786,13 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/source/link",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/source/pin",
       "methods": [
         "POST"
