@@ -80,6 +80,7 @@ selected. Opening a path inside a Git repository at the repository’s root is p
 | `--plugins`, `--plugin NAME`, `--doctor` | List, show, or validate plugins |
 | `--present` | Open a folder, a file, or a GitHub URL in the [macOS app](macos-app.md) or a browser |
 | `--recent`, `--recent-add`, `--recent-forget`, `--recent-clear` | List or change the [recent targets](#recent-targets) |
+| `--event-log` | Name Metabrowser’s own [event log](realtime-debugging.md#browsing-the-log) as `ROOT`, for serving or any mode that takes a folder |
 
 The modes read, with three exceptions: a Git source is cloned into the cache by
 whichever mode opens it first; `--api` writes when the route it names does, as a refresh
@@ -207,6 +208,25 @@ metab ~/src/repo --ref v2.0 --api '/api/tree?depth=1'
 While serving, the page’s button switches to any other branch or tag and back to the
 working tree; the
 [history guide](browsing-history.md#branches-and-tags-of-a-local-checkout) shows it.
+
+### Metabrowser’s Own Event Log
+
+```shell
+metab --event-log
+metab --event-log --api '/api/plugin/event-log/errors?path=events-20261119T210201Z-p4242-000.jsonl'
+```
+
+A served `metab` writes a structured log of the requests it answered and the work it
+did, and `--event-log` opens it: `ROOT` is the directory it is written to, under
+`METABROWSER_STATE_DIR`, else `$XDG_STATE_HOME/metabrowser`, else
+`~/.local/state/metabrowser`, and serving selects its newest segment, which opens as
+Timeline, Latency, By kind, and Errors.
+`--path` selects another segment, and every mode that takes a folder (`--api`, `--show`,
+`--walk`, `--check-api`) reads the log as one.
+The flag names the folder, so it takes no `ROOT`, and a state directory with no log yet
+says where one is written.
+The server that shows the log writes none of its own, which its Details and `--doctor`
+say. [Browsing the Log](realtime-debugging.md#browsing-the-log) describes the views.
 
 ### GitHub URLs
 
@@ -525,6 +545,12 @@ sentence, the details it read, and the step that fixes it:
   free. Less than the largest first clone `metab` admits can take is a warning:
   `low_free_space_bytes` in `cli/doctor.py`, which follows
   `METABROWSER_MAX_FIRST_CLONE_KB`.
+- **`event_log`:** whether a server writes its event log: where, and from which variable
+  the directory comes.
+  `METABROWSER_EVENT_LOG` turning it off is a warning, since no latency or failure is
+  then recorded, and so is a state directory `metab` cannot create.
+  A server whose folder is the events directory or inside it writes none, whatever the
+  environment says, and its Details name that reason.
 
 The macOS app runs its servers without `METABROWSER_CONFIG_DIR`,
 `METABROWSER_CACHE_DIR`, or the `XDG_` variables, so when `--present` would open the

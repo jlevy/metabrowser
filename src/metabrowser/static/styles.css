@@ -729,6 +729,12 @@
   /* Content spacing */
   --content-padding-x: 24px;
   --content-padding-y: 16px;
+  /* The room between a bordered box's edge and the prose in it, each side
+     (docs/design-system.md, "Boxed Prose"). The pane inset, 12px, put a description's h2 13px
+     from the border (owner, 2026-11-20). github.com pads `.comment-body` 16px, measured
+     2026-11-19 in headless Chrome on a public pull request: an h2 17px inside the box's edge.
+     16px is `--content-padding-y`, the text's block padding, too. */
+  --boxed-prose-padding-inline: 16px;
   --preview-message-max-width: 42rem;
   --embedded-document-padding-top: 8px;
   /* The navigation column has one left inset, and everything in it
@@ -6996,8 +7002,14 @@ pre.code-block.metabrowser-source-lines > code {
   padding-inline-start: 1.2em;
 }
 .event-log-details-part + .event-log-details-part,
-.event-log-details-links {
+.event-log-details-links,
+.event-log-details-open {
   margin-block-start: 6px;
+}
+/* The command a person copies to open the whole log: in the code face, its own ink. */
+.event-log-details-open code {
+  color: var(--text);
+  font-family: var(--font-mono);
 }
 .event-log-details-heading {
   color: var(--text);
@@ -7903,7 +7915,7 @@ pre.code-block.metabrowser-source-lines > code {
    where it will not, the message as written, wrapped where it was written. */
 .git-commit-body {
   margin: 16px 0;
-  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
+  padding: var(--pane-header-padding-y) var(--boxed-prose-padding-inline);
   overflow-x: auto;
   font-size: var(--document-body-font-size);
   font-weight: var(--weight-normal);

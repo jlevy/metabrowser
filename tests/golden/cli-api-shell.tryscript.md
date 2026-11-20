@@ -602,6 +602,38 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/event-log/errors",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/event-log/kinds",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/event-log/slowest",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/event-log/timeline",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/cache-clear",
       "methods": [
         "POST"
@@ -948,7 +980,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 76
+  "count": 80
 }
 ? 0
 ```

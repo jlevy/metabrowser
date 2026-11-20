@@ -1,0 +1,72 @@
+[plugin]
+name = "event-log"
+display_name = "Event log"
+version = "0.0.1"
+sdk_version = "0.7"
+
+# Metabrowser's own structured event log (metabrowser.event_log): the segments a served
+# process writes, `events-<UTC start>-p<pid>-<NNN>.jsonl`, one JSON record per line. The
+# file's name is the claim, so a segment is an event log wherever it is served or copied;
+# a JSONL file named otherwise is a generic or agent log. `path_glob` is a filesystem
+# match, so a Git blob of that name stays a generic JSONL file.
+#
+# Every view but Raw JSON asks one hook, which reads the file through the content reader
+# and answers a query of the schema (metabrowser.event_log_views), so `metab ROOT --api`
+# reads each view. The views open for a file of an attached folder only, for the reason
+# above.
+
+[[kind]]
+id = "event-log"
+match = { ext = ".jsonl", path_glob = "events-*.jsonl" }
+priority = 10
+
+[[data_hook]]
+route = "timeline"
+sidekick = "metabrowser.builtin_plugins.event_log.sidekick:timeline_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "slowest"
+sidekick = "metabrowser.builtin_plugins.event_log.sidekick:slowest_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "kinds"
+sidekick = "metabrowser.builtin_plugins.event_log.sidekick:kinds_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "errors"
+sidekick = "metabrowser.builtin_plugins.event_log.sidekick:errors_handler"
+methods = ["GET"]
+
+[[view]]
+kind = "event-log"
+id = "timeline"
+label = "Timeline"
+key = "v"
+default = true
+
+[[view]]
+kind = "event-log"
+id = "latency"
+label = "Latency"
+key = "l"
+
+[[view]]
+kind = "event-log"
+id = "kinds"
+label = "By kind"
+key = "b"
+
+[[view]]
+kind = "event-log"
+id = "errors"
+label = "Errors"
+key = "e"
+
+[[view]]
+kind = "event-log"
+id = "raw"
+label = "Raw JSON"
+key = "s"

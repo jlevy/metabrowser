@@ -31,6 +31,7 @@ const ORIGIN = "http://localhost:8411";
 // event_log_reports.browser_settings(long_lived=server.LONG_LIVED_PATHS) with a log open.
 const SETTINGS = Object.freeze({
   log: true,
+  off_reason: null,
   route: "/api/event-log/client",
   header: "x-metabrowser-client",
   slow_ms: 2000,
@@ -41,6 +42,8 @@ const SETTINGS = Object.freeze({
   per_minute: 30,
   long_lived: ["/api/events", "/api/tail", "/api/stream"],
   failure_window_s: 3600,
+  open_command: "metab --event-log",
+  open_menu: null,
 });
 
 /** A node, enough of one for the Details panel's paint. */
@@ -745,7 +748,7 @@ async function details(api) {
   const painting = api.showDetails(
     panel,
     { client: PAGE, since: FAILURES.since },
-    { fetch: fetchImpl, slowMs: 2000 },
+    { fetch: fetchImpl, slowMs: 2000, openCommand: SETTINGS.open_command },
   );
   const note = panel.outline();
   await painting;
@@ -754,6 +757,22 @@ async function details(api) {
     asked,
     painted: panel.outline().map((text) => text.replace(/ · \d{1,2}:\d\d:\d\d.*$/, " · <time>")),
   };
+  // A server the macOS app started: its window has no terminal, so Details names the menu.
+  const app = new Node("div");
+  await api.showDetails(
+    app,
+    { client: PAGE, since: FAILURES.since },
+    {
+      // Its own reads, which the list of requests above does not take on.
+      fetch: async (route) => ({ ok: true, json: async () => answers.get(route.split("?")[0]) }),
+      slowMs: 2000,
+      openCommand: SETTINGS.open_command,
+      openMenu: "Help > Open Event Log",
+    },
+  );
+  out.panel["in the app, the menu item"] = app
+    .outline()
+    .filter((line) => line.startsWith("event-log-details-open"));
   const aborted = new AbortController();
   const left = new Node("div");
   const leaving = api.showDetails(
@@ -785,6 +804,19 @@ async function details(api) {
     painted: off.outline(),
     asked: asked.length - askedBefore,
   };
+  const reasoned = new Node("div");
+  await api.showDetails(
+    reasoned,
+    { client: PAGE },
+    {
+      fetch: fetchImpl,
+      slowMs: 2000,
+      log: false,
+      offReason:
+        "the folder this server shows is the event log's own, and recording its requests would change the files on screen",
+    },
+  );
+  out.panel["the log off with its reason"] = reasoned.outline();
   return out;
 }
 
