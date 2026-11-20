@@ -5949,7 +5949,11 @@ The view is drawn after the knowledge-base browser in
   small outlined badge naming the stored type, in `--status-warning`, beside the value
   rather than in its place.
 - A value the server cut for the page ends in a muted ellipsis, and its tooltip gives
-  its length and says the record shows more; the record says how much of it it shows.
+  its length, or its size in bytes where the source read only its first bytes, and says
+  the record shows more; the record says how much of it it shows.
+- A reference to a row that is not there is drawn as its value, not a chip, with the
+  same outlined badge saying `missing`, and its tooltip says no row of the referenced
+  table holds it.
 
 **Rows are one height, and cells are cut, never wrapped past it.** A table’s rows are
 one line, or two when a value it holds is longer than its column or holds a line break;
