@@ -5,7 +5,7 @@ title: "Cache layout and contract: repos/ and sources/ with short readable names
 kind: epic
 status: in_progress
 priority: 1
-version: 10
+version: 13
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/551
@@ -25,8 +25,11 @@ child_order_hints:
   - is-01m7x1f1scztk0y814r77bz58v
   - is-01m7vrbkq0241m0fr2fmkgx1ej
   - is-01m7m9v3mwpg9rgacw38xp0376
+  - is-01m7x8aemh8m150e3806ct28rf
+  - is-01m7x8afdch1746ake734g9r60
+  - is-01m7x8ag6z4efv8z79hajaa1ak
 created_at: 2026-11-20T17:55:15.547Z
-updated_at: 2026-11-20T19:16:56.533Z
+updated_at: 2026-11-20T19:53:19.326Z
 extensions:
   linear:
     id: 1910be4b-70e6-4d39-ad72-341b9d3c22ce
