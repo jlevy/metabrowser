@@ -66,8 +66,14 @@ APP_SOURCES = REPO_ROOT / "apps" / "macos" / "Sources" / "ShellCore"
 AGENT_LOG_MANIFEST = SRC / "builtin_plugins" / "agent_log" / "manifest.toml"
 
 # What a guide calls each JSONL adapter. A new adapter fails here until it has a name, so
-# that the guides can be told about it.
-AGENT_NAMES = {"claude": "Claude Code", "gemini": "Gemini CLI", "pi": "Pi", "codex": "Codex"}
+# that the guides can be told about it. Codex's two formats share a name.
+AGENT_NAMES = {
+    "claude": "Claude Code",
+    "gemini": "Gemini CLI",
+    "pi": "Pi",
+    "codex": "Codex",
+    "codex-rollout": "Codex",
+}
 
 # The examples docs/browsing-files.md gives of directories the watcher does not observe.
 # They come from `watchfiles.DefaultFilter`, which `run_watcher` leaves in place; a
@@ -111,7 +117,8 @@ def _manifest_adapters() -> set[str]:
 
 
 def _charted_agents() -> str:
-    return _series([AGENT_NAMES[name] for name in sorted(_manifest_adapters())])
+    names = [AGENT_NAMES[name] for name in sorted(_manifest_adapters())]
+    return _series(list(dict.fromkeys(names)))
 
 
 def stated_values() -> list[Stated]:
@@ -202,12 +209,6 @@ def stated_values() -> list[Stated]:
             "the charted agents",
             r"the session logs of ([^,]+(?:, [^,]+)*?) open with",
             (_charted_agents(),),
-        ),
-        Stated(
-            "docs/working-with-agents.md",
-            "the agents parsed without Charts",
-            r"(\w+) logs are\s+parsed into the same timeline, without Charts",
-            tuple(AGENT_NAMES[name] for name in sorted(_BUILTIN_ADAPTERS - _manifest_adapters())),
         ),
         Stated(
             "docs/reviewing-pull-requests.md",
@@ -406,6 +407,11 @@ def test_every_jsonl_adapter_has_a_name_the_guides_can_use() -> None:
     assert _manifest_adapters() <= _BUILTIN_ADAPTERS
     unnamed = sorted(_BUILTIN_ADAPTERS - AGENT_NAMES.keys())
     assert not unnamed, f"name {unnamed} in AGENT_NAMES, then say which guides list it"
+    # docs/working-with-agents.md says every recognized agent's logs open with Charts.
+    uncharted = sorted(_BUILTIN_ADAPTERS - _manifest_adapters())
+    assert not uncharted, (
+        f"{uncharted} parse without Charts: say so in docs/working-with-agents.md and pin it"
+    )
 
 
 def test_the_watcher_keeps_the_filter_the_guide_describes() -> None:

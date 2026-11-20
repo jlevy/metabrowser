@@ -214,7 +214,9 @@ def _parse_jsonl_stream(
 
     tool_calls = sum(1 for e in events if e.kind == "tool_call")
     errors = sum(1 for e in events if e.is_error)
-    result_event = next((e for e in events if e.kind == "result"), None)
+    # The last result is the run's state: a multi-turn log (a Codex rollout, or a
+    # `codex exec --json` stream) writes one per turn, and a one-shot log writes one.
+    result_event = next((e for e in reversed(events) if e.kind == "result"), None)
 
     summary: dict[str, Any] = {
         "adapter": adapter,

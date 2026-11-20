@@ -54,7 +54,7 @@ registered, any other status, and a golden that never runs the route.
 | `/api/git/commit-markdown` | covered | `--api` | `cli-api-git-commit-markdown.tryscript.md` |
 | `/api/kpress/render` | covered | `--api`, `--api --data` | `cli-api-shell.tryscript.md`, `cli-api-untrusted-markdown.tryscript.md`, `cli-api-render-diagnostics.tryscript.md`, `cli-api-frontmatter-bounds.tryscript.md` |
 | `/api/kpress/export` | covered | `--api --data` | `cli-api-shell.tryscript.md` |
-| `/api/plugin/agent-log/charts` | covered | `--api` | `cli-api-plugins.tryscript.md` |
+| `/api/plugin/agent-log/charts` | covered | `--api` | `cli-api-agent-logs.tryscript.md`, `cli-api-plugins.tryscript.md` |
 | `/api/plugin/binary/chunk` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/document` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/children` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-diff-no-hunks.tryscript.md` |
