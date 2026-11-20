@@ -5,7 +5,7 @@ title: "Event log Phase 2: browse Metabrowser's own event log in Metabrowser"
 kind: feature
 status: in_progress
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-19-structured-event-log.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,11 @@ parent_id: is-01m7ts09te3ty0ca6tbbsybgrj
 hold: null
 hold_until: null
 created_at: 2026-11-19T22:17:11.751Z
-updated_at: 2026-11-20T02:55:08.943Z
+updated_at: 2026-11-20T03:49:42.189Z
 started_at: 2026-11-20T02:55:08.942Z
 ---
 Phase 2 of mb-wr5e (spec: Phase 2). A log view for the event schema beside the agent-log and JSONL views, picked for events-*.jsonl; views by latency, by kind, slowest, errors, and a timeline nesting spans under parents; a way to open the log from the app (menu command) and the shell, and from the refresh failure line; a metab equivalent and golden for each view's query (parity rule). Owner's goal, 2026-11-19: a clean JSON log browsable in Metabrowser in different ways, with a full UI based on Metabrowser's own logs.
+
+## Notes
+
+2026-11-19: stacked in two pull requests. #633 (claude/event-log-ui): the event-log plugin, its four routes (timeline, slowest, kinds, errors), goldens, browserless session, Chrome test, parity rows, docs. Second: metab --event-log, the macOS app's Open Event Log command, and a link from the pull request page's Details.
