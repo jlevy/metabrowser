@@ -762,6 +762,46 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/table/card",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/table/record",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/table/rows",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/table/schema",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/table/tables",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/recent",
       "methods": [
         "GET",
@@ -932,7 +972,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 74
+  "count": 79
 }
 ? 0
 ```

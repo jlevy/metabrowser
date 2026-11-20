@@ -31,6 +31,7 @@ NAME           SOURCE   KINDS             REQUIRES    VIEWS  HOOKS
 -------------  -------  ----------------  ----------  -----  ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 agent-log      builtin  agent-log         structured  3      charts
 binary         builtin  -                 -           1      chunk
+delimited      builtin  delimited         table       1      -
 diff           builtin  diff              structured  1      document,children,comparison
 folder         builtin  -                 markdown    2      -
 github         builtin  -                 markdown    2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
@@ -38,6 +39,7 @@ html           builtin  html              -           2      -
 image          builtin  -                 -           1      -
 markdown       builtin  markdown,mermaid  -           4      -
 structured     builtin  structured        -           2      parsed
+table          builtin  -                 -           0      tables,schema,rows,record,card
 text           builtin  -                 -           1      -
 unknown-jsonl  builtin  -                 -           2      -
 ? 0
@@ -87,6 +89,25 @@ $ metab --plugins --json
       "data_hooks": [
         "chunk"
       ],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "delimited",
+      "display_name": "Delimited Text",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/delimited",
+      "kinds": [
+        "delimited"
+      ],
+      "requires": [
+        "table"
+      ],
+      "views": [
+        "source"
+      ],
+      "view_count": 1,
+      "data_hooks": [],
       "disabled_data_hooks": []
     },
     {
@@ -241,6 +262,25 @@ $ metab --plugins --json
       "view_count": 2,
       "data_hooks": [
         "parsed"
+      ],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "table",
+      "display_name": "Tables",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/table",
+      "kinds": [],
+      "requires": [],
+      "views": [],
+      "view_count": 0,
+      "data_hooks": [
+        "tables",
+        "schema",
+        "rows",
+        "record",
+        "card"
       ],
       "disabled_data_hooks": []
     },
@@ -420,6 +460,7 @@ $ metab --plugin markdown --json
     ],
     "data_hooks": [],
     "disabled_data_hooks": [],
+    "table_sources": [],
     "assets": [
       "diagram-frame-entry.js",
       "diagram-frame.css",
@@ -466,9 +507,10 @@ recorded on its own: the answer is on stdout, and stderr is empty.
 ```console
 $ metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 11 plugin(s) OK
+metab --doctor: 13 plugin(s) OK
 plugin requirements:
   agent-log: requires structured
+  delimited: requires table
   diff: requires structured
   folder: requires markdown
   github: requires markdown
@@ -493,7 +535,7 @@ $ metab --doctor >/dev/null
 $ metab --doctor --json 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 11,
+  "plugin_count": 13,
   "problems": [],
   "open_in": {
     "value": "browser",

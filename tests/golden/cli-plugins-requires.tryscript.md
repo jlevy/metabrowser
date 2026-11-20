@@ -67,9 +67,10 @@ assets in static_root:
 ```console
 $ metab --plugins-dir ok --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 12 plugin(s) OK
+metab --doctor: 14 plugin(s) OK
 plugin requirements:
   agent-log: requires structured
+  delimited: requires table
   diff: requires structured
   folder: requires markdown
   github: requires markdown
@@ -110,6 +111,7 @@ metab --doctor: 4 problem(s):
   • plugin 'on-loop' is refused: it requires 'loop-a', which was refused
 plugin requirements:
   agent-log: requires structured
+  delimited: requires table
   diff: requires structured
   folder: requires markdown
   github: requires markdown

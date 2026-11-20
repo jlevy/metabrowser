@@ -72,6 +72,7 @@ metab --doctor: 1 problem(s):
   • plugin 'beta': view 'more' of kind 'myk' declares key 'm', but view 'main' (plugin 'alpha') already holds it; the view is served without a key
 plugin requirements:
   agent-log: requires structured
+  delimited: requires table
   diff: requires structured
   folder: requires markdown
   github: requires markdown
@@ -96,7 +97,7 @@ $ metab --doctor --plugins-dir pair 2>/dev/null
 $ metab --doctor --json --plugins-dir pair 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 13,
+  "plugin_count": 15,
   "problems": [
     "plugin 'beta': view 'more' of kind 'myk' declares key 'm', but view 'main' (plugin 'alpha') already holds it; the view is served without a key"
   ],
@@ -138,7 +139,7 @@ so `N` alone is free in every kind, a pull request’s included, and the plugin 
 $ metab --doctor --json --plugins-dir stack 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 12,
+  "plugin_count": 14,
   "problems": [],
   "open_in": {
     "value": "browser",
@@ -178,7 +179,7 @@ refuses a view that takes it, a Preview included.
 $ metab --doctor --json --plugins-dir pulls 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 11,
+  "plugin_count": 13,
   "problems": [
     "[CWD]/pulls/pullkey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'P' is reserved for the shell's Pulls tab [type=value_error, input_value='P', input_type=str]\n    For further information visit [PYDANTIC_URL]"
   ],
@@ -219,7 +220,7 @@ The plugin is not loaded, so `plugin_count` is the eleven built-in plugins alone
 $ metab --doctor --json --plugins-dir reserved 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 11,
+  "plugin_count": 13,
   "problems": [
     "[CWD]/reserved/reskey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'T' is reserved for the shell's Quick Search [type=value_error, input_value='T', input_type=str]\n    For further information visit [PYDANTIC_URL]"
   ],
@@ -278,6 +279,7 @@ metab --doctor: 1 problem(s):
   • plugin 'markdown': view 'source' of kind 'markdown' declares key 's', but view 'rendered' (plugin 'steal') already holds it; the view is served without a key
 plugin requirements:
   agent-log: requires structured
+  delimited: requires table
   diff: requires structured
   folder: requires markdown
   github: requires markdown
