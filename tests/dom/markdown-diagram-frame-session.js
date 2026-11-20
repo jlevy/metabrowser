@@ -8,17 +8,22 @@
 // Chrome (tests/test_markdown_diagrams_chrome.py). What Metabrowser decides runs here:
 //
 // - `framePolicy`: scripts only from the frame's entry and the Mermaid bundle's directory,
-//   inline style, `data:` images, and nothing else;
-// - the frame: hidden, out of the tab order, its document the policy before the entry;
+//   the frame's stylesheet and inline style, `data:` images, and nothing else;
+// - the frame: sandboxed to scripts and its origin, hidden, out of the tab order, its
+//   document the policy, then the stylesheet, then the entry;
+// - the SDK's `moduleUrl`, read through asset-loader.js's `moduleSource`;
 // - leases: the first lease's `mermaid()` opens the one frame, every other lease shares
-//   it and its one Mermaid, and the last release removes it;
+//   it and its one Mermaid import, and the last release removes it;
 // - the frame's Mermaid: `initialize` gets the frame's own copy of the configuration, and
 //   `render` lays the diagram out in a host in the frame's document carrying the measuring
-//   host's style, returns only the SVG text, and removes the host;
+//   host's style, returns only the SVG text, and removes the host; an image shape's
+//   failure says that its image is not loaded;
 // - a render in flight when the frame closes rejects, so KPress's queue of Mermaid calls
 //   moves on; a released lease's `mermaid()` rejects; a later lease opens a new frame;
-// - a frame whose entry never ran, a frame released before it loaded, and a page with no
-//   Mermaid bundle each reject, and none of them is kept.
+// - a frame taken out of the page or navigated away closes as a release does, and the
+//   lease's next render opens a new frame with the binding's configuration;
+// - a frame whose entry never ran, a frame released or taken out before it loaded, and a
+//   page with no Mermaid bundle each reject, and none of them is kept.
 //
 // The page's DOM is a small one of this file's own. A frame "loads" a turn after it is
 // put in the page, as a srcdoc frame does, and its window holds the real entry
@@ -27,7 +32,9 @@
 //
 // Prints the transcript as JSON, with `failures`; exits 1 on any failure.
 
+const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
 const { pathToFileURL } = require("node:url");
 const { createSdkSandbox } = require("./sdk-sandbox.js");
 
@@ -65,17 +72,51 @@ class FakeElement {
     return this.attributes.get(name) ?? null;
   }
 
+  get isConnected() {
+    return this.parentNode !== null;
+  }
+
   remove() {
-    if (this.parentNode) {
-      this.parentNode.children = this.parentNode.children.filter((node) => node !== this);
+    const parent = this.parentNode;
+    if (parent) {
+      parent.children = parent.children.filter((node) => node !== this);
       this.parentNode = null;
+      // A MutationObserver's records arrive a microtask later.
+      queueMicrotask(() => {
+        for (const observer of [...observers]) {
+          if (observer.target === parent) {
+            observer.callback([]);
+          }
+        }
+      });
     }
   }
 }
 
+/** The page's MutationObservers, watching a parent's children. */
+const observers = new Set();
+globalThis.MutationObserver = class {
+  constructor(callback) {
+    this.callback = callback;
+    this.target = null;
+  }
+
+  observe(target, options) {
+    if (options?.childList) {
+      this.target = target;
+      observers.add(this);
+    }
+  }
+
+  disconnect() {
+    observers.delete(this);
+  }
+};
+
 class FakeBody {
   constructor() {
     this.children = [];
+    this.style = {};
   }
 
   append(node) {
@@ -120,7 +161,18 @@ class FakeFrame extends FakeElement {
       }
       const body = new FakeBody();
       this.contentDocument = { body, createElement: (tag) => new FakeElement(tag) };
+      const pagehide = [];
+      this.navigate = () => {
+        for (const listener of pagehide.splice(0)) {
+          listener();
+        }
+      };
       this.contentWindow = {
+        addEventListener(type, listener) {
+          if (type === "pagehide") {
+            pagehide.push(listener);
+          }
+        },
         structuredClone(value) {
           const copy = structuredClone(value);
           frameClones.add(copy);
@@ -177,18 +229,25 @@ globalThis.diagramFrameSessionMermaid = {
     if (text === "broken") {
       return Promise.reject(new Error("Parse error on line 1"));
     }
+    if (text.includes("img:")) {
+      return Promise.reject(new Error("The source image cannot be decoded."));
+    }
     return Promise.resolve({ svg: `<svg id="${id}"></svg>`, bindFunctions() {} });
   },
 };
 
-// The production SDK (plugin-sdk.js with plugin-sdk-views.js), whose `moduleUrl` reads the
-// bundles the server publishes: one with the fixture as its `mermaid` bundle, and one with
-// none.
-const sdkSandbox = (bundles) =>
-  createSdkSandbox({
+// The production SDK (plugin-sdk.js with plugin-sdk-views.js) and asset loader, whose
+// `moduleUrl` reads the bundles the server publishes: one with the fixture as its
+// `mermaid` bundle, and one with none.
+const assetLoader = path.join(repoRoot, "src/metabrowser/static/asset-loader.js");
+const sdkSandbox = (bundles) => {
+  const sandbox = createSdkSandbox({
     METABROWSER_ASSET_BUNDLES: bundles,
     location: { href: "http://127.0.0.1:8000/pull/7", origin: "http://127.0.0.1:8000" },
-  }).metabrowser;
+  });
+  vm.runInContext(fs.readFileSync(assetLoader, "utf8"), sandbox, { filename: assetLoader });
+  return sandbox.metabrowser;
+};
 const published = sdkSandbox({ mermaid: [{ module: fixtureUrl }] });
 const unpublished = sdkSandbox({});
 const sdk = (url = fixtureUrl) => (url ? published : unpublished);
@@ -213,18 +272,25 @@ function unescapeAttribute(value) {
     .replaceAll("&amp;", "&");
 }
 
-/** A frame as the page holds it: its attributes, style, and srcdoc's policy and script. */
+/**
+ * A frame as the page holds it: its attributes, style, and srcdoc's policy, stylesheet,
+ * and script.
+ */
 function describeFrame(frame) {
   const policy = /content="([^"]*)"/.exec(frame.srcdoc)?.[1] ?? null;
+  const stylesheet = /<link rel="stylesheet" href="([^"]*)">/.exec(frame.srcdoc)?.[1] ?? null;
   const script = /<script type="module" src="([^"]*)"><\/script>/.exec(frame.srcdoc)?.[1] ?? null;
+  const at = (text) => frame.srcdoc.indexOf(text);
   return {
     className: frame.className,
+    sandbox: frame.getAttribute("sandbox"),
     tabIndex: frame.tabIndex,
     ariaHidden: frame.getAttribute("aria-hidden"),
     style: frame.style,
-    policyBeforeScript:
-      frame.srcdoc.indexOf("Content-Security-Policy") < frame.srcdoc.indexOf("<script"),
+    policyThenStylesheetThenScript:
+      at("Content-Security-Policy") < at("<link") && at("<link") < at("<script"),
     policy: policy === null ? null : shown(unescapeAttribute(policy)),
+    stylesheet: stylesheet === null ? null : shown(unescapeAttribute(stylesheet)),
     script: script === null ? null : shown(unescapeAttribute(script)),
   };
 }
@@ -242,6 +308,7 @@ async function main() {
   transcript.policy = framePolicy(
     "http://127.0.0.1:8000/plugin-static/markdown/0a1b/diagram-frame-entry.js",
     "http://127.0.0.1:8000/static/0a1b/vendor/mermaid/mermaid.esm.min.mjs",
+    "http://127.0.0.1:8000/plugin-static/markdown/0a1b/diagram-frame.css",
   ).split("; ");
   transcript.entry = { frozen: Object.isFrozen(entry), keys: Object.keys(entry) };
 
@@ -273,14 +340,15 @@ async function main() {
     const whileLoading = inPage();
     const api = await firstMermaid;
     const second = leaseDiagramFrame(sdk());
-    const shared = (await second.mermaid()) === api;
-    const sameAgain = first.mermaid() === firstMermaid;
+    const secondApi = await second.mermaid();
+    const askedAgain = await first.mermaid();
     transcript.leases = {
       framesBeforeAsking: beforeAsking,
       framesWhileLoading: whileLoading,
       framesWithTwoLeases: inPage(),
-      secondLeaseSharesTheMermaid: shared,
-      askingAgainIsTheSamePromise: sameAgain,
+      framesEverOpened: frames.length,
+      askingAgainIsTheSameMermaid: askedAgain === api,
+      eachLeaseHasItsOwnMermaid: secondApi !== api,
       mermaidImports: imports.splice(0),
       frame: describeFrame(frames[0]),
     };
@@ -289,20 +357,24 @@ async function main() {
       beforeAsking === 0 &&
         whileLoading === 1 &&
         inPage() === 1 &&
-        shared &&
-        sameAgain &&
+        frames.length === 1 &&
+        askedAgain === api &&
         transcript.leases.mermaidImports.length === 1,
       transcript.leases,
     );
+    const markdownUrl = `${rootUrl}/src/metabrowser/builtin_plugins/markdown`;
     check(
-      "the frame's policy is in its document before its one script",
-      transcript.leases.frame.policyBeforeScript &&
+      "the frame is sandboxed, and its policy is in its document before anything it loads",
+      transcript.leases.frame.sandbox === "allow-scripts allow-same-origin" &&
+        transcript.leases.frame.policyThenStylesheetThenScript &&
         transcript.leases.frame.script === "builtin_plugins/markdown/diagram-frame-entry.js" &&
+        transcript.leases.frame.stylesheet === "builtin_plugins/markdown/diagram-frame.css" &&
         transcript.leases.frame.policy ===
           shown(
             framePolicy(
-              `${rootUrl}/src/metabrowser/builtin_plugins/markdown/diagram-frame-entry.js`,
+              `${markdownUrl}/diagram-frame-entry.js`,
               fixtureUrl,
+              `${markdownUrl}/diagram-frame.css`,
             ),
           ),
       transcript.leases.frame,
@@ -317,12 +389,20 @@ async function main() {
     const hostsAfterDrawing = frames[0].contentDocument.body.children.length;
     const broken = await outcome(api.render("kpress-diagram-2", "broken", host));
     const hostsAfterFailing = frames[0].contentDocument.body.children.length;
+    const image = await outcome(
+      api.render(
+        "kpress-diagram-3",
+        'flowchart LR\n  A@{ img: "https://example.com/a.png" }',
+        host,
+      ),
+    );
     transcript.mermaid = {
       calls: calls.splice(0),
       drawn,
       hostsAfterDrawing,
       broken,
       hostsAfterFailing,
+      imageShape: image,
     };
     check(
       "initialize gets the frame's own copy, and render lays out in the frame",
@@ -331,7 +411,10 @@ async function main() {
         transcript.mermaid.calls[1].hostStyle === host.style.cssText &&
         JSON.stringify(Object.keys(drawn)) === '["svg"]' &&
         hostsAfterDrawing === 0 &&
-        hostsAfterFailing === 0,
+        hostsAfterFailing === 0 &&
+        broken.rejected === "Parse error on line 1" &&
+        image.rejected ===
+          "Images in diagrams from untrusted text, such as a pull request's, are not loaded",
       transcript.mermaid,
     );
 
@@ -341,7 +424,8 @@ async function main() {
     first.release();
     const framesAfterOneRelease = inPage();
     const released = await outcome(first.mermaid());
-    const held = api.render("kpress-diagram-3", "held", host);
+    const releasedRenders = await outcome(api.render("kpress-diagram-4", "flowchart LR; A", host));
+    const held = secondApi.render("kpress-diagram-5", "held", host);
     await settle();
     second.release();
     const inFlight = await outcome(held);
@@ -349,18 +433,18 @@ async function main() {
     transcript.release = {
       framesAfterOneRelease,
       releasedLeaseAsks: released,
+      releasedLeaseRenders: releasedRenders,
       framesAfterTheLast: inPage(),
       renderInFlight: inFlight,
-      afterClosing: await outcome(api.render("kpress-diagram-4", "flowchart LR; A", host)),
     };
     calls.splice(0);
     check(
       "the last release removes the frame and ends what was in flight",
       framesAfterOneRelease === 1 &&
         released.rejected === "The diagram frame's lease was released" &&
+        releasedRenders.rejected === "The diagram frame's lease was released" &&
         inPage() === 0 &&
-        inFlight.rejected === "The diagram frame closed" &&
-        transcript.release.afterClosing.rejected === "The diagram frame closed",
+        inFlight.rejected === "The diagram frame closed",
       transcript.release,
     );
   }
@@ -383,6 +467,61 @@ async function main() {
     );
   }
 
+  // --- A frame that goes other than by release, taken out of the page or navigated away,
+  //     closes: a render in flight rejects, and the lease's next render opens a new frame
+  //     and gives it the binding's configuration.
+  {
+    const lease = leaseDiagramFrame(sdk());
+    const api = await lease.mermaid();
+    const host = { style: { cssText: "font-size: 16px;" } };
+    api.initialize({ theme: "neutral" });
+    const before = frames.length;
+    const removed = api.render("kpress-diagram-6", "held", host);
+    await settle();
+    frames.at(-1).remove();
+    const removedInFlight = await outcome(removed);
+    hold?.({ svg: "<svg></svg>" });
+    const framesAfterRemoval = inPage();
+    const redrawn = await outcome(api.render("kpress-diagram-7", "flowchart LR; A", host));
+    const navigated = api.render("kpress-diagram-8", "held", host);
+    await settle();
+    frames.at(-1).navigate();
+    const navigatedInFlight = await outcome(navigated);
+    hold?.({ svg: "<svg></svg>" });
+    const framesAfterNavigating = inPage();
+    const redrawnAgain = await outcome(api.render("kpress-diagram-9", "flowchart LR; B", host));
+    const framesReopened = frames.length - before;
+    lease.release();
+    const rendered = calls.splice(0);
+    transcript.lost = {
+      removedInFlight,
+      framesAfterRemoval,
+      redrawn,
+      navigatedInFlight,
+      framesAfterNavigating,
+      redrawnAgain,
+      framesReopened,
+      framesInPage: inPage(),
+      mermaidImports: imports.splice(0).length,
+      newFramesGotTheConfiguration: rendered
+        .filter((call) => call.initialize)
+        .map((call) => call.initialize),
+    };
+    check(
+      "a frame taken out or navigated away ends what was in flight, and the next render reopens",
+      removedInFlight.rejected === "The diagram frame closed" &&
+        framesAfterRemoval === 0 &&
+        redrawn.resolved?.[0] === "svg" &&
+        navigatedInFlight.rejected === "The diagram frame closed" &&
+        framesAfterNavigating === 0 &&
+        redrawnAgain.resolved?.[0] === "svg" &&
+        framesReopened === 2 &&
+        inPage() === 0 &&
+        transcript.lost.newFramesGotTheConfiguration.join() === "neutral,neutral,neutral",
+      transcript.lost,
+    );
+  }
+
   // --- Frames that fail to start are not kept, and the next lease starts again.
   {
     nextStart = "entry-missing";
@@ -401,6 +540,13 @@ async function main() {
     await settle();
     early.release();
     const releasedBeforeLoading = await asked;
+
+    const taken = leaseDiagramFrame(sdk());
+    const takenAsked = outcome(taken.mermaid());
+    await settle();
+    frames.at(-1).remove();
+    const takenOutBeforeLoading = await takenAsked;
+    taken.release();
     nextStart = "starts";
 
     const unpublished = leaseDiagramFrame(sdk(null));
@@ -412,6 +558,7 @@ async function main() {
       framesAfterMissing,
       nextLeaseAfterMissing: afterMissing,
       releasedBeforeLoading,
+      takenOutBeforeLoading,
       noBundle,
       framesOpenedWithNoBundle: frames.length - framesBefore,
       framesInPage: inPage(),
@@ -423,6 +570,7 @@ async function main() {
         framesAfterMissing === 0 &&
         afterMissing.resolved !== undefined &&
         releasedBeforeLoading.rejected === "The diagram frame closed" &&
+        takenOutBeforeLoading.rejected === "The diagram frame closed" &&
         noBundle.rejected === "The Mermaid module bundle is not published" &&
         transcript.failedStarts.framesOpenedWithNoBundle === 0 &&
         inPage() === 0,

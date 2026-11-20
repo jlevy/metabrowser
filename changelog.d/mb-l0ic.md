@@ -1,8 +1,9 @@
 - Mermaid diagrams in a pull request’s description and comments are now drawn beside a
   checkout too, not only on a repository URL’s page.
-  Each is laid out in a hidden frame that can load nothing, so a diagram that names an
+  They are laid out in a hidden frame that can load nothing, so a diagram that names an
   image cannot fetch it; one drawn around an image, Mermaid’s image shape, shows its
-  source with Mermaid’s message ([Trust](docs/reviewing-pull-requests.md#trust)).
+  source with a message that its image is not loaded
+  ([Trust](docs/reviewing-pull-requests.md#trust)).
 
 - Plugin SDK: `metabrowser.moduleUrl(name)` returns an on-demand module bundle’s
   absolute URL, for a frame that imports it in its own realm, and

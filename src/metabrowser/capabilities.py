@@ -192,7 +192,8 @@ def untrusted_shell_csp(nonce: str, origin: str, kpress_scripts: tuple[str, ...]
     draws and GitHub's exact avatar host for application-owned author portraits;
     document images remain restricted by the markup allowlist. The page frames no URL
     -- the untrusted profile removes the HTML preview, its only framed address; its one
-    frame is the ``about:srcdoc`` diagram frame, under a stricter policy of its own
+    frame is the ``about:srcdoc`` diagram frame, under a stricter policy of its own as
+    well as this one, which admits its stylesheet from ``/plugin-static/``
     (``builtin_plugins/markdown/diagram-frame.js``) -- is framed by nothing, and has no
     plugins, ``<base>``, or form submission. Inline ``style``
     attributes stay allowed because the application writes them; an outside ``url()``

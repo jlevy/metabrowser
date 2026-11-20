@@ -259,8 +259,10 @@ for application-owned author portraits, whose URLs provider and browser code val
 The page frames no URL, since the untrusted profile removes the HTML preview, its only
 framed address; its one frame is the diagram frame
 (`builtin_plugins/markdown/diagram-frame.js`), an `about:srcdoc` document that
-`frame-src` does not govern, whose own policy admits less than this one and under which
-a pull request’s text’s Mermaid diagrams are laid out on any page.
+`frame-src` does not govern, sandboxed to scripts and its own origin, which keeps this
+policy and adds its own, admitting less, and under which a pull request’s text’s Mermaid
+diagrams are laid out on any page.
+This policy’s `style-src` admits the frame’s one stylesheet, from `/plugin-static/`.
 Nothing may frame the page; and plugins, `<base>`, and form submission are off.
 Inline `style` attributes stay allowed because the application writes them for layout;
 untrusted Markdown carries none.

@@ -4179,6 +4179,8 @@ declare global {
       ensureAsset(name: string): Promise<void>;
       assetLoaded(name: string): boolean;
       ensureModule(name: string): Promise<unknown>;
+      /** A module bundle's URL as published, or "" for a name that is not one. */
+      moduleSource(name: string): string;
     };
     MetabrowserCharts?: MetabrowserChartRuntime;
     MetabrowserDocumentWidth: MetabrowserDocumentWidthRuntime;

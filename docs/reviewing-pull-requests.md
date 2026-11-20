@@ -392,10 +392,10 @@ A description or comment that takes longer than a few seconds to render stays pl
 text, under one line saying so; the same line says when the renderer is busy with other
 texts or could not start, and reloading the page then tries again.
 A description’s or comment’s Mermaid diagrams are drawn as pictures, as GitHub draws
-them, on a repository URL’s page and beside a checkout alike: each is laid out in a
-hidden frame of its own that can load nothing, so a diagram that names an image cannot
-fetch it, and one drawn around an image, Mermaid’s image shape, shows its source with
-Mermaid’s message instead.
+them, on a repository URL’s page and beside a checkout alike: they are laid out in one
+hidden frame on the page that can load nothing, so a diagram that names an image cannot
+fetch it. Images in a pull request’s diagrams are not loaded: one drawn around an image,
+Mermaid’s image shape, shows its source with a message saying so instead.
 A repository URL is served under the untrusted profile.
 Files of a local folder keep that folder’s
 [content-trust](command-line.md#content-trust) settings; reviewing a pull request does
