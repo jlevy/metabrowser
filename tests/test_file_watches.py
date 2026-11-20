@@ -286,6 +286,88 @@ def test_an_inventory_change_at_a_watched_path_or_its_sidecar_polls_soon() -> No
     assert not _touches("data/other.csv", "data/people.csv")
 
 
+def _woken(watches: FileWatches) -> bool:
+    woken = watches._wake.is_set()  # pyright: ignore[reportPrivateUsage]
+    watches._wake.clear()  # pyright: ignore[reportPrivateUsage]
+    return woken
+
+
+def test_a_nudge_wakes_for_what_touches_says_and_forgets_released_watches() -> None:
+    """The nudge's index answers as _touches does, and holds only what is watched."""
+
+    async def none(_path: str) -> str | None:
+        return None
+
+    async def run() -> None:
+        watches = FileWatches(send=lambda _c, _e: None, generation_of=none)
+        watches.open("a")
+        watches.open("b")
+        await watches.register("a", "data/people.csv")
+        await watches.register("b", "data/people.csv")
+        await watches.register("b", "app.db/users")
+        for dirty, expected in [
+            (["data/people.csv"], True),
+            (["data"], True),
+            (["app.db-wal"], True),
+            (["app.db-journal"], True),
+            (["data/other.csv"], False),
+            ([""], False),
+            (["-wal"], False),
+            ([f"elsewhere/f{n}.txt" for n in range(1024)], False),
+        ]:
+            watches.nudge(dirty)
+            assert _woken(watches) is expected, dirty
+        watches.unregister("a", "data/people.csv")
+        watches.nudge(["data"])
+        assert _woken(watches), "b still watches data/people.csv"
+        watches.close("b")
+        assert watches._reached == {}  # pyright: ignore[reportPrivateUsage]
+        watches.nudge(["data", "app.db"])
+        assert not _woken(watches)
+
+    asyncio.run(run())
+
+
+def test_a_poll_never_sends_a_generation_older_than_a_registration_answered() -> None:
+    """A path sampled, then written and registered by another connection, is not sent
+    the older sample; the next poll compares it as usual."""
+
+    generation = {"p": "g0"}
+    sampling = asyncio.Event()
+    release = asyncio.Event()
+
+    async def sample(path: str) -> str | None:
+        seen = generation[path]
+        if not release.is_set():
+            sampling.set()
+            await release.wait()
+        return seen
+
+    async def run() -> list[tuple[str, str | None]]:
+        sent: list[tuple[str, str | None]] = []
+        watches = FileWatches(
+            send=lambda connection, event: sent.append((connection, event.generation)),
+            generation_of=sample,
+        )
+        watches.open("early")
+        watches.open("late")
+        release.set()
+        await watches.register("early", "p")
+        release.clear()
+        poll = asyncio.create_task(watches.poll())
+        await sampling.wait()
+        generation["p"] = "g1"
+        release.set()
+        assert await watches.register("late", "p") == "g1"
+        await poll
+        assert watches.watched("late") == {"p": "g1"}
+        await watches.poll()
+        return sent
+
+    # The late connection is never sent g0; the early one hears g1, from the second poll.
+    assert asyncio.run(run()) == [("early", "g1")]
+
+
 def test_the_poll_loop_runs_on_a_nudge_and_spaces_its_polls() -> None:
     polls: list[float] = []
 

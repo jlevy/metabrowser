@@ -156,9 +156,14 @@ spend them
 - **The poll.** `FileWatches.run` asks each distinct watched path’s generation every
   `FILE_WATCH_POLL_INTERVAL_S`, and sooner after the relay sees an inventory change at a
   watched path, an ancestor, or a `-suffix` sidecar, but never within
-  `FILE_WATCH_MIN_SPACING_S` of the last poll.
+  `FILE_WATCH_MIN_SPACING_S` of the end of the last poll.
+  The relay asks that of every inventory change on the event loop, so `FileWatches`
+  keeps an index of every watched path and its ancestors, and the question is two
+  lookups for each changed path, measured beside the index.
   Each connection that saw another generation gets one `file.changed`, so a burst
   between two polls is one event.
+  A path is compared as soon as it is sampled, and only with an entry written before
+  the sample, so a registration answered meanwhile is never sent an older generation.
   Every watched path is polled, the ones the inventory reports too, since which paths
   the inventory covers depends on its ignore rules and its watcher’s state; the cost per
   path is measured beside `FILE_WATCH_MAX_PATHS`.
