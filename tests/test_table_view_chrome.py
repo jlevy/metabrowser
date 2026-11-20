@@ -11,7 +11,10 @@ shell's own page, and measures what no browserless DOM computes:
 - the grid's own box scrolls, not the page, and its header stays at the box's top;
 - default columns too many for the pane hide from the right with a note saying how many;
   columns the reader chose all show, and the first stays in place as they scroll
-  sideways.
+  sideways;
+- the structured kind's Table tab draws a JSON list of records, a record's nested values
+  as the structured plugin's own tree, through the view it hands the table, and a JSON
+  mapping as a notice that it is not a list of records.
 
 What the address holds, which rows and cells exist, and what a key does run browserless
 in ``tests/dom/table-view-session.js``. Without Chrome this skips (``require_chrome`` in
@@ -74,6 +77,12 @@ def _write_folder(root: Path) -> None:
     header = ",".join(f"column_name_{index}" for index in range(1, 25))
     rows = [",".join(f"value {row}-{index}" for index in range(1, 25)) for row in range(1, 4)]
     (root / "wide.csv").write_text("\n".join([header, *rows]) + "\n", encoding="utf-8")
+    records = [
+        {"name": "Ada", "tags": ["math", "engines"], "meta": {"born": 1815}},
+        {"name": "Bob", "tags": []},
+    ]
+    (root / "records.json").write_text(json.dumps(records), encoding="utf-8")
+    (root / "mapping.json").write_text('{"name": "metabrowser"}', encoding="utf-8")
 
 
 def _measure(tmp_path: Path, chrome_profile: Path) -> dict[str, Any]:
@@ -160,6 +169,20 @@ def _check_columns_fit_and_chosen_ones_pin_the_first(measured: dict[str, Any]) -
     assert pinned["secondMoved"] > 100
 
 
+def _check_a_record_list_draws_its_records_and_their_trees(measured: dict[str, Any]) -> None:
+    records = measured["records"]
+    assert records["tab"] == "table"
+    assert records["headers"] == ["#", "name", "tags", "meta"]
+    assert records["rows"] == 2
+    assert len(records["trees"]) == 2
+    assert "math" in records["trees"][0] and "born" in records["trees"][1]
+    mapping = measured["mapping"]
+    assert mapping["notice"] == (
+        "This document is not a list of records: its top level is a mapping, not a list."
+    )
+    assert (mapping["toolbar"], mapping["links"]) == (False, 0)
+
+
 def test_the_table_view_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
     measured = _measure(tmp_path, chrome_profile)
     assert measured["exceptions"] == []
@@ -168,3 +191,4 @@ def test_the_table_view_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
     _check_two_line_rows_are_one_height_and_clamp(measured)
     _check_the_header_stays_at_the_top_of_the_grids_own_box(measured)
     _check_columns_fit_and_chosen_ones_pin_the_first(measured)
+    _check_a_record_list_draws_its_records_and_their_trees(measured)

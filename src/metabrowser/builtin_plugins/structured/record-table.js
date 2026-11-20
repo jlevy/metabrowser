@@ -23,7 +23,7 @@ const mb = window.metabrowser;
 let table = null;
 
 /**
- * @param {(container: HTMLElement, value: unknown, opts: {virtualize: boolean}) => {dispose(): void}} renderInlineTree
+ * @param {(container: HTMLElement, value: unknown, opts: {virtualize: boolean}) => ({dispose?: () => void} | undefined)} renderInlineTree
  * @returns {{render(container: HTMLElement, ctx: {path?: string}): Promise<ReturnType<TableExports["mountTable"]>>}}
  */
 export function recordTableView(renderInlineTree) {
@@ -35,7 +35,12 @@ export function recordTableView(renderInlineTree) {
         path: ctx.path ?? "",
         // A record's value is at most TABLE_RECORD_VALUE_BYTES of JSON, and the tree
         // opens only as much of it as its first draw allows, so it is drawn whole.
-        renderJson: (host, value) => renderInlineTree(host, value, { virtualize: false }),
+        renderJson: (host, value) => {
+          const mount = host.ownerDocument.createElement("div");
+          mount.className = "structured-tree-mount";
+          host.append(mount);
+          return renderInlineTree(mount, value, { virtualize: false });
+        },
       });
     },
   };

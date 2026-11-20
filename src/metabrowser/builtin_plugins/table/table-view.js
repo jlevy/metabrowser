@@ -167,7 +167,7 @@ const CELL_PAD_PX = 20;
  *
  * @typedef {{
  *   path: string,
- *   renderJson?: (container: HTMLElement, value: unknown) => ({dispose(): void} | void),
+ *   renderJson?: (container: HTMLElement, value: unknown) => ({dispose?: () => void} | void),
  * }} TableContext
  */
 
@@ -235,7 +235,7 @@ export function mountTable(container, ctx, host = {}) {
   const hrefs = new Map();
   /** @type {string | null} */
   let recordTemplate = null;
-  /** What the open record's JSON values drew, released when the record goes. @type {Array<{dispose(): void}>} */
+  /** What the open record's JSON values drew, released when the record goes. @type {Array<{dispose?: () => void}>} */
   let recordMounts = [];
 
   // ── Markup ───────────────────────────────────────────────────
@@ -1667,7 +1667,7 @@ export function mountTable(container, ctx, host = {}) {
     const mounts = recordMounts;
     recordMounts = [];
     for (const mount of mounts) {
-      mount.dispose();
+      mount.dispose?.();
     }
   }
 

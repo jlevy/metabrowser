@@ -8,13 +8,13 @@ env:
   METABROWSER_PLUGINS_DIRS: ""
   METABROWSER_LOG_LEVEL: "WARNING"
 before: >-
-  mkdir -p recroot &&
-  printf '[\n  {"name": "Ada", "age": 36, "joined": "2020-01-02", "tags": ["math", "engines"], "meta": {"born": 1815}},\n  {"name": "Bob", "age": "unknown", "joined": "2021-03-04", "tags": [], "active": true},\n  {"name": "Cy", "age": 41.5, "joined": "2019-12-31", "meta": null},\n  {"name": "Dee", "age": 99999999999999999999, "joined": "2022-07-08", "active": false}\n]\n' > recroot/people.json &&
-  printf -- '- city: Oslo\n  founded: 1040-01-01\n  pop: 709000\n- city: Lima\n  founded: 1535-01-18\n  pop: 10000000\n' > recroot/cities.yaml &&
-  printf '{"name": "metabrowser", "version": 1}\n' > recroot/package.json &&
-  printf '[{"a": 1}, "two"]\n' > recroot/mixed.json &&
-  printf '[{"a": ' > recroot/broken.json &&
-  touch -t 202311142213.20 recroot/people.json recroot/cities.yaml recroot/package.json recroot/mixed.json recroot/broken.json
+  mkdir -p listroot &&
+  printf '[\n  {"name": "Ada", "age": 36, "joined": "2020-01-02", "tags": ["math", "engines"], "meta": {"born": 1815}},\n  {"name": "Bob", "age": "unknown", "joined": "2021-03-04", "tags": [], "active": true},\n  {"name": "Cy", "age": 41.5, "joined": "2019-12-31", "meta": null},\n  {"name": "Dee", "age": 99999999999999999999, "joined": "2022-07-08", "active": false}\n]\n' > listroot/people.json &&
+  printf -- '- city: Oslo\n  founded: 1040-01-01\n  pop: 709000\n- city: Lima\n  founded: 1535-01-18\n  pop: 10000000\n' > listroot/cities.yaml &&
+  printf '{"name": "metabrowser", "version": 1}\n' > listroot/package.json &&
+  printf '[{"a": 1}, "two"]\n' > listroot/mixed.json &&
+  printf '[{"a": ' > listroot/broken.json &&
+  touch -t 202311142213.20 listroot/people.json listroot/cities.yaml listroot/package.json listroot/mixed.json listroot/broken.json
 ---
 # Golden tests: the table routes over record lists
 
@@ -32,7 +32,7 @@ checkout to the next and the transcripts elide it.
 ## Test: every JSON and YAML file has a Table view, and Tree stays the default
 
 ```console
-$ metab recroot --show people.json
+$ metab listroot --show people.json
 show: people.json
 route: /view/people.json
 kind: structured
@@ -42,7 +42,7 @@ model: text envelope; size=[..] content_bytes=[..] content_truncated=False
 ```
 
 ```console
-$ metab recroot --api '/api/plugin/table/tables?path=people.json'
+$ metab listroot --api '/api/plugin/table/tables?path=people.json'
 api: /api/plugin/table/tables?path=people.json
 status: 200
 {
@@ -71,7 +71,7 @@ values, `json`, which have no order to sort by; and `active`, which two records 
 a boolean.
 
 ```console
-$ metab recroot --api '/api/plugin/table/schema?path=people.json'
+$ metab listroot --api '/api/plugin/table/schema?path=people.json'
 api: /api/plugin/table/schema?path=people.json
 status: 200
 {
@@ -211,7 +211,7 @@ is `{json}`, the value itself, and an integer past what a browser number holds k
 digits.
 
 ```console
-$ metab recroot --api '/api/plugin/table/rows?path=people.json'
+$ metab listroot --api '/api/plugin/table/rows?path=people.json'
 api: /api/plugin/table/rows?path=people.json
 status: 200
 {
@@ -299,7 +299,7 @@ status: 200
 ## Test: a field of several types sorts numbers before text
 
 ```console
-$ metab recroot --api '/api/plugin/table/rows?path=people.json&sort=age&order=desc&cols=name&cols=age'
+$ metab listroot --api '/api/plugin/table/rows?path=people.json&sort=age&order=desc&cols=name&cols=age'
 api: /api/plugin/table/rows?path=people.json&sort=age&order=desc&cols=name&cols=age
 status: 200
 {
@@ -362,7 +362,7 @@ status: 200
 ## Test: a filter on a field of several types compares a number as a number
 
 ```console
-$ metab recroot --api '/api/plugin/table/rows?path=people.json&f.age=gt:40&cols=name&cols=age'
+$ metab listroot --api '/api/plugin/table/rows?path=people.json&f.age=gt:40&cols=name&cols=age'
 api: /api/plugin/table/rows?path=people.json&f.age=gt:40&cols=name&cols=age
 status: 200
 {
@@ -418,7 +418,7 @@ status: 200
 ## Test: a search reads the text fields and says which
 
 ```console
-$ metab recroot --api '/api/plugin/table/rows?path=people.json&q=b&cols=name'
+$ metab listroot --api '/api/plugin/table/rows?path=people.json&q=b&cols=name'
 api: /api/plugin/table/rows?path=people.json&q=b&cols=name
 status: 200
 {
@@ -458,7 +458,7 @@ status: 200
 ## Test: a record carries each nested value whole, and a card a few fields
 
 ```console
-$ metab recroot --api '/api/plugin/table/record?path=people.json&key=@1'
+$ metab listroot --api '/api/plugin/table/record?path=people.json&key=@1'
 api: /api/plugin/table/record?path=people.json&key=@1
 status: 200
 {
@@ -491,7 +491,7 @@ status: 200
 ```
 
 ```console
-$ metab recroot --api '/api/plugin/table/card?path=people.json&key=@2'
+$ metab listroot --api '/api/plugin/table/card?path=people.json&key=@2'
 api: /api/plugin/table/card?path=people.json&key=@2
 status: 200
 {
@@ -516,7 +516,7 @@ status: 200
 ## Test: a YAML list, whose dates the parse reads as dates
 
 ```console
-$ metab recroot --api '/api/plugin/table/rows?path=cities.yaml&sort=pop&order=desc'
+$ metab listroot --api '/api/plugin/table/rows?path=cities.yaml&sort=pop&order=desc'
 api: /api/plugin/table/rows?path=cities.yaml&sort=pop&order=desc
 status: 200
 {
@@ -566,7 +566,7 @@ status: 200
 ## Test: a document that is not a list of records is refused, saying why
 
 ```console
-$ metab recroot --api '/api/plugin/table/schema?path=package.json'
+$ metab listroot --api '/api/plugin/table/schema?path=package.json'
 api: /api/plugin/table/schema?path=package.json
 status: 422
 {
@@ -580,7 +580,7 @@ Error: /api/plugin/table/schema?path=package.json returned HTTP 422
 ```
 
 ```console
-$ metab recroot --api '/api/plugin/table/rows?path=mixed.json'
+$ metab listroot --api '/api/plugin/table/rows?path=mixed.json'
 api: /api/plugin/table/rows?path=mixed.json
 status: 422
 {
@@ -594,7 +594,7 @@ Error: /api/plugin/table/rows?path=mixed.json returned HTTP 422
 ```
 
 ```console
-$ metab recroot --api '/api/plugin/table/schema?path=broken.json'
+$ metab listroot --api '/api/plugin/table/schema?path=broken.json'
 api: /api/plugin/table/schema?path=broken.json
 status: 422
 {
