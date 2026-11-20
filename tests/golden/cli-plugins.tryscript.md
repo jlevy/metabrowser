@@ -27,19 +27,19 @@ The setup checks that end the report depend on the host, so they are elided here
 
 ```console
 $ metab --plugins
-NAME           SOURCE   KINDS             VIEWS  HOOKS
--------------  -------  ----------------  -----  ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-agents         builtin  agent-log         3      charts
-binary         builtin  -                 1      chunk
-diff           builtin  diff              1      document,children,comparison
-folder         builtin  -                 2      -
-github         builtin  -                 2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
-html           builtin  html              2      -
-image          builtin  -                 1      -
-markdown       builtin  markdown,mermaid  4      -
-structured     builtin  structured        2      parsed
-text           builtin  -                 1      -
-unknown-jsonl  builtin  -                 2      -
+NAME           SOURCE   KINDS                   VIEWS  HOOKS
+-------------  -------  ----------------------  -----  ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+agents         builtin  agent-log,agent-thread  8      charts,catalog,sessions,session,records,live
+binary         builtin  -                       1      chunk
+diff           builtin  diff                    1      document,children,comparison
+folder         builtin  -                       2      -
+github         builtin  -                       2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
+html           builtin  html                    2      -
+image          builtin  -                       1      -
+markdown       builtin  markdown,mermaid        4      -
+structured     builtin  structured              2      parsed
+text           builtin  -                       1      -
+unknown-jsonl  builtin  -                       2      -
 ? 0
 ```
 
@@ -56,16 +56,27 @@ $ metab --plugins --json
       "source": "builtin",
       "static_root": "[BUILTIN]/agents",
       "kinds": [
-        "agent-log"
+        "agent-log",
+        "agent-thread"
       ],
       "views": [
+        "agents",
+        "agent-sessions",
+        "session",
         "log",
         "charts",
-        "raw"
+        "raw",
+        "session",
+        "log"
       ],
-      "view_count": 3,
+      "view_count": 8,
       "data_hooks": [
-        "charts"
+        "charts",
+        "catalog",
+        "sessions",
+        "session",
+        "records",
+        "live"
       ],
       "disabled_data_hooks": []
     },

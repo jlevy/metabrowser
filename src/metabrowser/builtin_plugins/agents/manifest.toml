@@ -36,17 +36,55 @@ id = "agent-log"
 match = { ext = ".jsonl", adapter = "pi" }
 priority = 0
 
+# A Codex rollout that Codex has compressed with zstd. Metabrowser reads no zstd, so the
+# file's kind is claimed by its path, and its views read the thread's history store
+# through the `session` and `records` routes instead (agents/codex.py).
+[[kind]]
+id = "agent-thread"
+binary = true
+match = { path_glob = "**/sessions/**/rollout-*.jsonl.zst" }
+priority = 0
+
 [[data_hook]]
 route = "charts"
 sidekick = "metabrowser.builtin_plugins.agents.sidekick:charts_handler"
 methods = ["GET"]
+
+# The home and the session list are views of a folder that is, or holds, a Claude Code or
+# Codex home. `holds_homes` runs on every folder page, so it reads a handful of directory
+# entries at most (homes.py). The home is then the folder's default.
+[[view]]
+kind = "folder"
+id = "agents"
+label = "Agents"
+key = "a"
+default = true
+offer = "metabrowser.builtin_plugins.agents.homes:holds_homes"
+container_class = "content-body agents-home-host"
+
+[[view]]
+kind = "folder"
+id = "agent-sessions"
+label = "Sessions"
+key = "s"
+offer = "metabrowser.builtin_plugins.agents.homes:holds_homes"
+container_class = "content-body agents-list-host"
+
+# The session page is the session's own file: its header from the `session` route and its
+# events from `records`. It is the default; a file in no agent home falls back to the Log.
+[[view]]
+kind = "agent-log"
+id = "session"
+label = "Session"
+key = "e"
+default = true
+container_class = "content-body agents-session-host"
 
 [[view]]
 kind = "agent-log"
 id = "log"
 label = "Log"
 key = "v"
-default = true
 
 [[view]]
 kind = "agent-log"
@@ -59,6 +97,21 @@ kind = "agent-log"
 id = "raw"
 label = "Raw JSON"
 key = "s"
+
+[[view]]
+kind = "agent-thread"
+id = "session"
+label = "Session"
+key = "e"
+default = true
+container_class = "content-body agents-session-host"
+
+[[view]]
+kind = "agent-thread"
+id = "log"
+label = "Log"
+key = "v"
+container_class = "content-body agents-session-host"
 
 [[data_hook]]
 route = "catalog"

@@ -269,6 +269,32 @@ status: 200
         "/work/beta",
         1
       ]
+    ],
+    "model": [
+      [
+        "gpt-test-1",
+        7
+      ],
+      [
+        "claude-sub-1",
+        1
+      ],
+      [
+        "claude-sub-2",
+        1
+      ],
+      [
+        "claude-test-1",
+        1
+      ],
+      [
+        "claude-test-2",
+        1
+      ],
+      [
+        "gpt-test-2",
+        1
+      ]
     ]
   },
   "progress": {
@@ -540,6 +566,32 @@ status: 200
         "/work/beta",
         1
       ]
+    ],
+    "model": [
+      [
+        "gpt-test-1",
+        7
+      ],
+      [
+        "claude-sub-1",
+        1
+      ],
+      [
+        "claude-sub-2",
+        1
+      ],
+      [
+        "claude-test-1",
+        1
+      ],
+      [
+        "claude-test-2",
+        1
+      ],
+      [
+        "gpt-test-2",
+        1
+      ]
     ]
   },
   "progress": {
@@ -683,6 +735,32 @@ status: 200
         "/work/beta",
         1
       ]
+    ],
+    "model": [
+      [
+        "gpt-test-1",
+        7
+      ],
+      [
+        "claude-sub-1",
+        1
+      ],
+      [
+        "claude-sub-2",
+        1
+      ],
+      [
+        "claude-test-1",
+        1
+      ],
+      [
+        "claude-test-2",
+        1
+      ],
+      [
+        "gpt-test-2",
+        1
+      ]
     ]
   },
   "progress": {
@@ -816,6 +894,32 @@ status: 200
       ],
       [
         "/work/beta",
+        1
+      ]
+    ],
+    "model": [
+      [
+        "gpt-test-1",
+        7
+      ],
+      [
+        "claude-sub-1",
+        1
+      ],
+      [
+        "claude-sub-2",
+        1
+      ],
+      [
+        "claude-test-1",
+        1
+      ],
+      [
+        "claude-test-2",
+        1
+      ],
+      [
+        "gpt-test-2",
         1
       ]
     ]
@@ -958,6 +1062,32 @@ status: 200
         "/work/beta",
         1
       ]
+    ],
+    "model": [
+      [
+        "gpt-test-1",
+        7
+      ],
+      [
+        "claude-sub-1",
+        1
+      ],
+      [
+        "claude-sub-2",
+        1
+      ],
+      [
+        "claude-test-1",
+        1
+      ],
+      [
+        "claude-test-2",
+        1
+      ],
+      [
+        "gpt-test-2",
+        1
+      ]
     ]
   },
   "progress": {
@@ -1097,6 +1227,32 @@ status: 200
         "/work/beta",
         1
       ]
+    ],
+    "model": [
+      [
+        "gpt-test-1",
+        7
+      ],
+      [
+        "claude-sub-1",
+        1
+      ],
+      [
+        "claude-sub-2",
+        1
+      ],
+      [
+        "claude-test-1",
+        1
+      ],
+      [
+        "claude-test-2",
+        1
+      ],
+      [
+        "gpt-test-2",
+        1
+      ]
     ]
   },
   "progress": {
@@ -1208,6 +1364,32 @@ status: 200
       ],
       [
         "/work/beta",
+        1
+      ]
+    ],
+    "model": [
+      [
+        "gpt-test-1",
+        7
+      ],
+      [
+        "claude-sub-1",
+        1
+      ],
+      [
+        "claude-sub-2",
+        1
+      ],
+      [
+        "claude-test-1",
+        1
+      ],
+      [
+        "claude-test-2",
+        1
+      ],
+      [
+        "gpt-test-2",
         1
       ]
     ]

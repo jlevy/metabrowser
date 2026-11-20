@@ -7,6 +7,10 @@
 //                             agent-log data hook
 //   ("agent-log", "raw")    — pretty-printed JSON
 //
+// and registers stubs for the plugin's other surfaces, whose modules load on demand:
+// the agents home and the session list (folder views), and the Session view of an
+// agent-log or agent-thread file (home.js, session-list.js, session.js).
+//
 // The unknown-jsonl plugin loads these shared views on demand through the SDK.
 // The agentLog namespace also exposes event rendering for live log updates.
 //
@@ -514,4 +518,33 @@
     dispose: disposeCharts,
   });
   mb.registerView("agent-log", "raw", { render: renderRaw });
+
+  // The agents home, the session list, and the Session view are the plugin's other
+  // surfaces. Their code is on demand: this file is loaded for every folder page (the
+  // plugin offers views of the folder kind), so each of these is a stub that imports its
+  // module the first time its view is shown. Each module returns a handle with a
+  // disposer, which the view composition owns.
+  function lazyView(load) {
+    return {
+      render: async (container, ctx) => {
+        const view = await load();
+        return view.render(container, ctx);
+      },
+    };
+  }
+  mb.registerView(
+    "folder",
+    "agents",
+    lazyView(async () => (await import("./home.js")).createHomeView(mb)),
+  );
+  mb.registerView(
+    "folder",
+    "agent-sessions",
+    lazyView(async () => (await import("./session-list.js")).createSessionListView(mb)),
+  );
+  const sessionPage = (withHeader) =>
+    lazyView(async () => (await import("./session.js")).createSessionView(mb, { withHeader }));
+  mb.registerView("agent-log", "session", sessionPage(true));
+  mb.registerView("agent-thread", "session", sessionPage(true));
+  mb.registerView("agent-thread", "log", sessionPage(false));
 })();

@@ -27,7 +27,7 @@ $ metab root --show claude-transcript.jsonl
 show: claude-transcript.jsonl
 route: /view/claude-transcript.jsonl
 kind: agent-log
-views: log (default, key V), charts (key C), raw (key S)
+views: session (default, key E), log (key V), charts (key C), raw (key S)
 model: jsonl envelope; size=10570
 ? 0
 ```
@@ -39,7 +39,7 @@ $ metab root --show codex-rollout.jsonl
 show: codex-rollout.jsonl
 route: /view/codex-rollout.jsonl
 kind: agent-log
-views: log (default, key V), charts (key C), raw (key S)
+views: session (default, key E), log (key V), charts (key C), raw (key S)
 model: jsonl envelope; size=6611
 ? 0
 ```

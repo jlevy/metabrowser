@@ -81,8 +81,9 @@ CHILDREN_MAX: Final = 200
 # The most characters of a live session's name or project, which come from a pid file.
 LIVE_TEXT_MAX_CHARS: Final = 200
 
-# The projects a `sessions` response lists as a facet, most sessions first.
+# The projects and the models a `sessions` response lists as facets, most sessions first.
 PROJECT_FACET_MAX: Final = 50
+MODEL_FACET_MAX: Final = 50
 
 # The most days `catalog` reports sessions for, newest.
 PER_DAY_MAX: Final = 400
@@ -578,6 +579,7 @@ def sessions_handler(request: Request) -> dict[str, object]:
     page = matched[offset : offset + limit]
     every = [r[0] for r in everything]
     projects = Counter(p for p in (_project(s.cwd) for s in every) if p is not None)
+    models = Counter(name for s in every for name in s.models)
     return {
         "folder": scope.folder,
         "now": scope.now,
@@ -609,6 +611,12 @@ def sessions_handler(request: Request) -> dict[str, object]:
                 [name, count]
                 for name, count in sorted(projects.items(), key=lambda kv: (-kv[1], kv[0]))[
                     :PROJECT_FACET_MAX
+                ]
+            ],
+            "model": [
+                [name, count]
+                for name, count in sorted(models.items(), key=lambda kv: (-kv[1], kv[0]))[
+                    :MODEL_FACET_MAX
                 ]
             ],
         },
@@ -675,10 +683,16 @@ def _locate(request: Request) -> _Located:
                 if str(target) in entry.summary.source_paths:
                     return replace(_located(scope, snap, entry), source=target)
         # Two files can carry one session id, and the catalog keeps one of them; the
-        # request still streams the file it named.
+        # request still streams the file it named. A Codex thread's database records its
+        # rollout's path as Codex wrote it, which need not spell the file the way the
+        # request does (a relative path, a link, or a moved home), so a rollout is also
+        # found by the thread id in its name.
+        thread = codex.rollout_thread_id(target.name)
         for snap in scope.snapshots:
             for entry in snap.entries:
                 if snap.home.agent == "claude" and entry.summary.session_id == stem:
+                    return replace(_located(scope, snap, entry), source=target)
+                if snap.home.agent == "codex" and entry.summary.session_id == thread:
                     return replace(_located(scope, snap, entry), source=target)
         raise _Refusal(404, "session_not_found", "No session in the catalog has that file", "path")
     agent = _choice(request, "agent", AGENTS)
@@ -811,6 +825,7 @@ def live_handler(request: Request) -> dict[str, object]:
                 "title": session.title if session else None,
                 "models": list(session.models) if session else [],
                 "started_at": session.started_at if session else None,
+                "source_paths": _source_files(session.source_paths) if session else [],
                 "pid": item.pid,
                 "updated_at": item.updated_at,
             }

@@ -50,14 +50,15 @@ route-backed selections of `cli/show_cli.py` register them.
 
 | Kind | Matches | Views (default first) and keys | Model |
 | --- | --- | --- | --- |
-| `folder` | Directories | Overview `O`, Treemap `M` | Folder envelope and [File Rollup Format](file-rollup-format/file-rollup-format.md) |
+| `folder` | Directories | Agents `A`, the default, and Sessions `S` on a folder that is or holds an agent home; Overview `O` and Treemap `M` on every folder | Folder envelope and [File Rollup Format](file-rollup-format/file-rollup-format.md); Agents and Sessions read the `agents` catalog routes |
 | `markdown` | `.md` | Document `V`, Source `S` | File envelope; KPress render |
 | `mermaid` | `.mmd`, `.mermaid` | Diagram `V`, Source `S` | The file’s text as one `mermaid` fence through `/api/kpress/render`, drawn as a document’s diagrams are |
 | `html` | `.html`, `.htm` | Preview `V`, Source `S` | File envelope; sandboxed raw document |
 | `text` | Text files | Source | File envelope |
 | `structured` | `.json`, `.yaml`, `.yml` | Tree `V`, Source `S` | File envelope and the `structured/parsed` hook |
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
-| `agent-log` | `.jsonl` sniffed as an agent log | Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agents/charts` hook |
+| `agent-log` | `.jsonl` sniffed as an agent log | Session `E`, Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agents/charts` hook; Session reads `agents/session` and `agents/records` |
+| `agent-thread` | A compressed Codex rollout, `sessions/**/rollout-*.jsonl.zst`, claimed by its path | Session `E`, Log `V` | `agents/session` and `agents/records`, by the file’s path; the thread’s history store stands in for the unreadable rollout |
 | `unknown-jsonl` | Other `.jsonl` | Log `V`, Raw JSON `S` | File envelope |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | The `binary/chunk` hook’s bounded byte windows |
@@ -265,6 +266,26 @@ When no private cache directory can be made, `cache.state` is `unavailable` and 
 routes answer from memory.
 The limits and the measurements that set them are beside their constants, in
 `catalog.py`, `routes.py`, `store.py`, `readers.py`, and `codex.py`.
+
+### Agent Views
+
+The plugin’s surfaces are views of kinds that already exist, so each is reached by
+`metab --show` and reads only the routes above (no plugin can register an address space
+of its own).
+
+| View | Kind | Offered | Reads |
+| --- | --- | --- | --- |
+| Agents (`agents`), the default | `folder` | Where `holds_homes` accepts the folder: a Claude Code or Codex home, or a folder holding `.claude` or `.codex` | `catalog`, `sessions` for the recent rows, `live` |
+| Sessions (`agent-sessions`) | `folder` | The same | `sessions`, one page at a time, with its filters, sort, and page |
+| Session (`session`), the default | `agent-log`, `agent-thread` | Every file of the kind | `session` and `records` by the file’s `path`; a file in no agent home falls back to the Log |
+| Log (`log`) | `agent-thread` | Every file of the kind | `records` by `path` |
+
+The views’ code and stylesheet (`agents-views.css`) are on demand: `index.js` registers
+a stub for each and imports the module the first time its view is shown, because the
+plugin’s own assets load for every folder page.
+What the browser owns is in `session-list-state.js` (filters, sort, and paging),
+`poller.js` (when a page asks again), and `home-model.js` (what the home derives), each
+pinned browserlessly by `tests/dom/agents-views-session.js`.
 
 ## Adding Something
 

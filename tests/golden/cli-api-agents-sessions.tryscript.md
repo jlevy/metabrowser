@@ -728,6 +728,7 @@ status: 200
         "gpt-test-1"
       ],
       "started_at": 1799998800.0,
+      "source_paths": [],
       "pid": null,
       "updated_at": 1799999980.0
     },
@@ -744,6 +745,7 @@ status: 200
         "gpt-test-1"
       ],
       "started_at": 1799999370.0,
+      "source_paths": [],
       "pid": null,
       "updated_at": 1799999970.0
     }

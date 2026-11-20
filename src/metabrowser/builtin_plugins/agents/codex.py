@@ -236,6 +236,13 @@ _ROLLOUT_NAME: Final = re.compile(
 )
 
 
+def rollout_thread_id(name: str) -> str | None:
+    """The thread a rollout file belongs to, from its name, or ``None`` for any other file."""
+
+    match = _ROLLOUT_NAME.match(name)
+    return match["tid"] if match else None
+
+
 def _generation(home: Home, prefix: str) -> Path | None:
     """The newest ``<prefix>_<N>.sqlite`` in the home, by its generation number."""
 

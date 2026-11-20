@@ -603,13 +603,29 @@ moved into it; the catalog and its routes; and the views, with the kind colors.
   into the plugin.
 - [x] Define the shared model, the event kinds, and each provider’s mapping table, with
   their goldens.
-- [ ] Add the kind color tokens and their design checks, and use them in the Log and
-  Charts views.
+- [x] Add the kind color tokens and their design checks, and use them in the Log and
+  Charts views. The tool-family tokens landed with them, since the palette check covers
+  both as one.
 - [x] Build the catalog’s fast pass, and its summary pass for the session and drift
   families. Measure both on whole history.
-- [ ] Build the agents home, the session list, the session page’s header and Log tab,
+- [x] Build the agents home, the session list, the session page’s header and Log tab,
   and the live strip.
 - [x] Add the synthetic-home generator and the goldens for the Phase 2 routes.
+
+What the views settled, beyond the plan:
+
+- **The session page is the default view** of an `agent-log` file, first in its tab
+  strip. A file that is in no agent home, or from a Git revision, has no session in the
+  catalog, so the view shows the Log it always had.
+- **The plugin’s assets load for every folder page**, since the plugin offers views of
+  the folder kind, and `index.js` and `styles.css` are the plugin’s per-kind assets.
+  The views’ own code and stylesheet are not: `index.js` registers a stub for each and
+  imports its module on first use.
+  `tests/test_agents_views_chrome.py` measures what a plain folder pays.
+- **The live strip shows each running session’s project, model, and age**, not yet its
+  current event kind, which arrives with the cursor on `live` in Phase 3.
+- **The polls are `LIVE_POLL_MS` and `PROGRESS_POLL_MS`** in `poller.js`, set from the
+  catalog’s own reuse window and measured request times, which are recorded beside them.
 
 **Done when:** opening a served home shows the following, all colored by event kind:
 
@@ -654,7 +670,8 @@ with or without `urollup`, and are faster with it.
 - [ ] Add the per-turn breakdown to the timeline.
 - [ ] Build the session page’s Stats tab, the Records and Tools page, and the Errors
   page.
-- [ ] Add the tool-family color tokens to the palette check.
+- [x] Add the tool-family color tokens to the palette check.
+  Phase 2 did.
 - [ ] Add the `stats` and `errors` goldens.
 
 **Done when:** every event kind and tool has counts, errors, and latency percentiles,

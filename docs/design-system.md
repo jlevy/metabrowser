@@ -85,6 +85,15 @@ Consequences worth knowing:
 `tests/test_design_vocabulary.py` enforces both halves: every color is `oklch`, and
 every chromatic token defined in both themes carries the same hue in each.
 
+The `agents` plugin keeps the one categorical palette a plugin owns: a color for each
+event kind and each tool family, `--agent-kind-<kind>-*` and `--agent-tool-<family>-*`
+in `builtin_plugins/agents/styles.css`, each with a `-bg` and `-text` for a badge and a
+`-fill` for a chart series, a tally bar, or a timeline segment.
+A kind is one color in every place it appears, and the agent and the origin are labels,
+never colors. `tests/test_agent_kind_palette.py` holds each `-text` to the contrast of
+its `-bg` in both themes, each token to its hue between themes, and every pair of fills
+in a theme to `MIN_FILL_DISTANCE`, since kinds and families are drawn together.
+
 ## File Age
 
 File age is one shared primitive across navigation rows, file headers, recent-filter

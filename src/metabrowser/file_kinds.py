@@ -35,7 +35,8 @@ from metabrowser.gz_io import (
 # manifests without extending this registry.
 VIEW_REGISTRY: dict[str, list[dict[str, Any]]] = {
     "agent-log": [
-        {"id": "log", "label": "Log", "default": True},
+        {"id": "session", "label": "Session", "default": True},
+        {"id": "log", "label": "Log"},
         {"id": "charts", "label": "Charts"},
         {"id": "raw", "label": "Raw JSON"},
     ],

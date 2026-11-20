@@ -487,7 +487,9 @@ def _build_codex(home: Path, omit_thread_columns: tuple[str, ...]) -> None:
     ) -> Path:
         tail = f"_{history}" if history else ""
         path = day / f"rollout-2026-11-18T{hour:02d}-00-00-{thread}{tail}{suffix}"
-        path.write_bytes(b"z" * size)
+        # The zstd frame magic, then padding: not text, so the file is served as binary,
+        # as a real compressed rollout is. The sizes the goldens pin are unchanged.
+        path.write_bytes((b"\x28\xb5\x2f\xfd" + b"z" * size)[:size])
         return path
 
     rollout(T1, 0, size=40)

@@ -39,6 +39,9 @@ BUTTON_PRIMITIVES = frozenset(
 BUTTON_CLASS_ALLOWLIST = {
     # "A text action ... on <a> and <button> alike": each context names its own class.
     "github-pull-text-action": "the pull page's text action, a link-like action in a line of chrome",
+    # A sortable column header's label: a text action in a line of chrome, with `aria-sort` on
+    # its cell, since a bordered button in a header would read as a different thing.
+    "agents-sort": "the session table's sortable column headers",
     # The file bar is itself the .disclosure-toggle row; this button is its labelled hit area.
     "diff-file-toggle": "the label of a diff file bar, which carries .disclosure-toggle",
 }

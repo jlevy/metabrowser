@@ -113,7 +113,11 @@ def _series(names: list[str], conjunction: str = "and") -> str:
 
 def _manifest_adapters() -> set[str]:
     manifest = tomllib.loads(AGENT_LOG_MANIFEST.read_text(encoding="utf-8"))
-    return {str(kind["match"]["adapter"]) for kind in manifest["kind"]}
+    # The rules that name an adapter; a rule that claims a file by its path, such as a
+    # compressed rollout's, names none.
+    return {
+        str(kind["match"]["adapter"]) for kind in manifest["kind"] if "adapter" in kind["match"]
+    }
 
 
 def _charted_agents() -> str:
