@@ -200,6 +200,19 @@ Reloading it shows the source again at once for a while, since the server rememb
 The same line says when the renderer is busy with other documents or could not start;
 reloading the page then tries again.
 
+With active content off, a document shows its images from the web over `https`, as on
+github.com, such as a README’s badges, and the browser fetches them with no referrer
+sent. A badge that links somewhere keeps its link.
+An image the page does not load, one over `http`, is its alt text in a small chip with
+an image mark, in the link it was in or in a link to the image, and hovering the chip
+shows the address. Those requests tell the image’s host that you opened the page, so the
+Metabrowser menu has **Block remote images**, off unless you tick it: every such image
+is then its chip, and the page’s policy refuses an image from another site, so the
+browser sends no request for one.
+It applies to what is untrusted, a repository opened from its URL, a pull request’s
+text, a commit’s, a Markdown diff, and a folder served with `--untrusted`; your own
+folder’s Markdown is not changed.
+
 ### Data, Logs, and Code
 
 - **JSON and YAML:** Tree shows the parsed document with collapsible levels and draws

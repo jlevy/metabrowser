@@ -1796,6 +1796,38 @@
   };
   /** @type {WeakMap<HTMLElement, {node: HTMLElement, kind: string, supplied: Element | undefined}>} */
   const linkMarks = new WeakMap();
+  /** The class of the span an image the page does not load becomes (inert_html.py). */
+  const IMAGE_FALLBACK_CLASS = "mb-image-fallback";
+
+  /**
+   * Whether *anchor*'s whole content is images: a badge, or the fallback an image the page
+   * does not load becomes, with no text of its own to put a mark after. github.com draws no
+   * mark on one, and here it landed on a line of its own under the badges. The *mark* the
+   * decorator put in it is not content.
+   *
+   * @param {HTMLElement} anchor
+   * @param {HTMLElement | undefined} mark
+   */
+  function holdsImagesOnly(anchor, mark) {
+    let images = 0;
+    for (const child of Array.from(anchor.childNodes)) {
+      if (child === mark) {
+        continue;
+      }
+      if (child.nodeType === 3) {
+        if ((child.nodeValue ?? "").trim() !== "") {
+          return false;
+        }
+      } else if (child.nodeType === 1) {
+        const element = /** @type {Element} */ (child);
+        if (element.tagName !== "IMG" && !element.classList.contains(IMAGE_FALLBACK_CLASS)) {
+          return false;
+        }
+        images += 1;
+      }
+    }
+    return images > 0;
+  }
 
   /** Decorate a final external destination without changing authored content or navigation.
    * Only the calling view may supply a state icon; document attributes are never read.
@@ -1809,7 +1841,7 @@
       anchor.tagName === "A" ? githubDestination(anchor.getAttribute("href")) : null;
     const kind = destination === null ? null : options.icon === "github" ? "github" : destination;
     let mark = linkMarks.get(anchor);
-    if (kind === null) {
+    if (kind === null || holdsImagesOnly(anchor, mark?.node)) {
       mark?.node.remove();
       linkMarks.delete(anchor);
       return anchor;

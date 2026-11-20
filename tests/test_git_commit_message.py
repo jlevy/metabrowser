@@ -268,17 +268,19 @@ def test_a_commit_body_renders_as_a_pull_request_description_does(served: Path) 
     # gone.
     assert "<b>bold</b>" in html
     assert allowlist_violations(html) == []
-    for gone in ("<script", "alert(1)", "onclick", "<img"):
+    for gone in ("<script", "alert(1)", "onclick"):
         assert gone not in html, gone
     # Only an absolute http(s) link keeps its address; a relative one, a fragment, and a
-    # protocol-relative one keep their text. An image becomes a link to its address.
+    # protocol-relative one keep their text. An image written in full over https is an
+    # image, as in a description, with no referrer sent.
     assert (
         '<a href="https://example.com/doc" target="_blank" rel="noopener noreferrer">link</a>'
     ) in html
     for text in ("relative one", "fragment", "protocol-relative one"):
         assert f"<a>{text}</a>" in html, text
     assert (
-        '<a href="https://example.com/i.png" target="_blank" rel="noopener noreferrer">image</a>'
+        '<img loading="lazy" referrerpolicy="no-referrer" src="https://example.com/i.png"'
+        ' alt="image">'
     ) in html
     # The trailers are answered as written and are not in the prose.
     assert (

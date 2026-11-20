@@ -517,7 +517,11 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     hook = steps["the hook sends the comment inert"]["markdown"][0].split(": ", 1)[1]
     assert allowlist_violations(hook) == []
     assert allowlist_violations(transcript["pageDefense"]) == []
-    assert "build badge</a>" in transcript["pageDefense"]
+    # An image written in full over https is an image, with no referrer sent.
+    assert (
+        '<img loading="lazy" referrerpolicy="no-referrer" src="https://example.com/badge.png"'
+        ' alt="build badge">'
+    ) in transcript["pageDefense"]
     unavailable = transcript["filesUnavailable"]
     assert set(unavailable) == {
         "fetch_failed",

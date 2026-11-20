@@ -495,11 +495,13 @@ HOSTILE_COMMENT: Final = (
 def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
     """Every tag and attribute in *html* the page may not insert, parsed as HTML.
 
-    The allowlist is :mod:`metabrowser.inert_html`'s. *images* admits an image, which a
-    document inside the served tree keeps and a pull-request comment never does. Every
-    link must leave for http(s) or stay inside the served tree, a heading's ``id`` must
-    be one of the hardener's anchors, an image's ``loading`` must be ``lazy``, and a layout
-    attribute (``align``, ``width``, ``height``) must hold a value the hardener keeps.
+    The allowlist is :mod:`metabrowser.inert_html`'s. An image from the web is always
+    admitted, as an ``https`` address with no referrer sent; *images* also admits one
+    inside the served tree, which a document keeps and a pull-request comment never does.
+    Every link must leave for http(s) or stay inside the served tree, a heading's ``id``
+    must be one of the hardener's anchors, an image's ``loading`` must be ``lazy``, a
+    span may only be the image fallback's, and a layout attribute (``align``, ``width``,
+    ``height``) must hold a value the hardener keeps.
     """
 
     from html.parser import HTMLParser
@@ -508,17 +510,25 @@ def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
         ALLOWED_ATTRIBUTES,
         ALLOWED_TAGS,
         ANCHOR_PREFIX,
+        IMAGE_FALLBACK_CLASS,
         allowed_attributes,
         is_inside,
     )
 
-    tags = ALLOWED_TAGS | ({"img"} if images else set())
+    tags = ALLOWED_TAGS | {"img"}
     found: list[str] = []
 
     class _Check(HTMLParser):
         def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
             if tag not in tags:
                 found.append(f"<{tag}>")
+            if tag == "img":
+                written = dict(attrs)
+                if (written.get("src") or "").startswith("https://"):
+                    if written.get("referrerpolicy") != "no-referrer":
+                        found.append("img[referrerpolicy missing]")
+                elif not images:
+                    found.append("<img>")
             for name, value in attrs:
                 if name not in ALLOWED_ATTRIBUTES.get(tag, ()):
                     found.append(f"{tag}[{name}]")
@@ -526,6 +536,14 @@ def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
                     found.append(f"{tag}[id={value}]")
                 elif name == "loading" and value != "lazy":
                     found.append(f"{tag}[loading={value}]")
+                elif name == "referrerpolicy" and value != "no-referrer":
+                    found.append(f"{tag}[referrerpolicy={value}]")
+                elif name == "class" and value != IMAGE_FALLBACK_CLASS:
+                    found.append(f"{tag}[class={value}]")
+                elif name == "data-tip-text" and not (value or "").startswith(
+                    ("https://", "http://")
+                ):
+                    found.append(f"{tag}[data-tip-text={value}]")
                 elif name in {"align", "width", "height"}:
                     # A layout attribute holds what the hardener would keep of it.
                     kept = allowed_attributes(tag, {name: value}, None)
