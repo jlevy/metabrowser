@@ -285,6 +285,20 @@ metab = "src/metabrowser/cli/doctor.py"
 note = "Set to the app's own bundle when Check Setup… runs the doctor, whose metab check then compares with that build's MetabrowserMinimumMetab rather than the app LaunchServices finds first."
 
 [[env]]
+name = "METABROWSER_STATE_DIR"
+source = "Sources/ShellCore/Runtime/ChildEnvironment.swift"
+golden = "cli-api-event-log.tryscript.md"
+metab = "src/metabrowser/home.py"
+note = "Not set by the app: passed through from the app's own environment, with XDG_STATE_HOME, so a server it starts writes its event log (metabrowser.event_log) where a terminal's would."
+
+[[env]]
+name = "METABROWSER_EVENT_LOG"
+source = "Sources/ShellCore/Runtime/ChildEnvironment.swift"
+golden = "cli-api-event-log.tryscript.md"
+metab = "src/metabrowser/event_log.py"
+note = "Not set by the app: passed through from the app's own environment, so 0 turns the event log off for the servers it starts too."
+
+[[env]]
 name = "METABROWSER_CONFIG_DIR"
 source = "Tests/ShellCoreTests/LiveMetabTests.swift"
 metab = "src/metabrowser/home.py"

@@ -37,8 +37,14 @@ and a slow fetch message includes total, server, and transit time:
 ## Event Log
 
 A served process also writes a structured event log (`metabrowser/event_log.py`): one
-JSON line for every request, every background job, and every `git` and `gh` process,
-with its duration, how it ended, and the span that started it.
+JSON line for every request, for each background job that refreshes or prepares what a
+page shows, and for every `git` and `gh` process that runs to completion, with its
+duration, how it ended, and the span that started it.
+The jobs are those wrapped in `event_log.job`: pull request and file list refreshes,
+comparison listings, the pull request prefetch, a checkout’s idle comparison, GitHub
+status checks, and repository rediscovery.
+A streaming `git` session started with `spawn_git_process`, such as a history or tree
+reader, is not a span of its own; the request that reads it is.
 It covers what the stderr log cannot: a pull request’s refresh or a comparison’s listing
 runs after the request that asked for it has returned, and a `gh` that times out there
 writes nothing to stderr.
@@ -47,11 +53,15 @@ The design and its schema are in
 
 The log lives in `events/` under the state directory: `METABROWSER_STATE_DIR`, else
 `$XDG_STATE_HOME/metabrowser`, else `~/.local/state/metabrowser`, whether the server
-runs from a terminal or inside the macOS app.
+runs from a terminal or inside the macOS app, which passes those variables and
+`METABROWSER_EVENT_LOG` to the servers it starts (an app opened from the Finder or the
+Dock sees only what `launchctl setenv` set, not a shell’s exports).
 Each server writes its own owner-only segment, named for when it started and its process
 ID; a segment rolls at `MAX_FILE_BYTES` and the directory is kept within
-`MAX_TOTAL_BYTES` by deleting the oldest.
-`METABROWSER_EVENT_LOG=0` turns it off.
+`MAX_TOTAL_BYTES` by deleting the oldest, except the segment each running server writes.
+A write that fails pauses the log, which tries a fresh segment after a backoff
+(`RETRY_FIRST_S` doubling to `RETRY_MAX_S`), and logging never fails the work it
+records. `METABROWSER_EVENT_LOG=0` turns it off.
 A one-shot command, such as `--api`, writes none.
 
 Read it with `/api/event-log`, from a running server or from a terminal:

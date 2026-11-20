@@ -30,9 +30,12 @@ and later the same day:
 > error”
 
 This plan adds one structured log, JSON Lines in the user’s state directory, that
-records every request, every background job, and every `git` and `gh` process a served
-Metabrowser runs, with how long each took and how it ended, and what the browser waited
-for. It is first an internal debugging log, read through a `metab` route, and then a log
+records every request, the background jobs that refresh and prepare what a page shows,
+and every `git` and `gh` process a served Metabrowser runs to completion, with how long
+each took and how it ended, and what the browser waited for.
+A streaming `git` session (`spawn_git_process`) is not a span of its own in Phase 1; the
+request that reads it is.
+It is first an internal debugging log, read through a `metab` route, and then a log
 Metabrowser browses in its own views.
 
 ## What Was Captured Before

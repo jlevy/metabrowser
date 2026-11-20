@@ -1,8 +1,10 @@
 """The structured event log: what the server did and how long it took, one JSON line each.
 
-A served process writes every HTTP request, every background job, and every ``git`` and
-``gh`` process it runs to a JSON Lines file in the user's state directory
-(:func:`log_directory`), with the time each took and how it ended. The stderr log's
+A served process writes every HTTP request, each background job wrapped in :func:`job`,
+and every ``git`` and ``gh`` process it runs to completion to a JSON Lines file in the
+user's state directory (:func:`log_directory`), with the time each took and how it
+ended. A streaming ``git`` session (``spawn_git_process``), whose streams its caller
+reads, is not a span of its own; the request that reads it is. The stderr log's
 slow-request warning covers only requests; the work a page waits on after its request
 has returned, such as a pull request's refresh or a comparison's listing, is recorded
 only here. The specification is
@@ -35,8 +37,14 @@ of its quickest (0.3 ms).
 
 **Bounds.** A file rolls to a new segment past :data:`MAX_FILE_BYTES`, and every roll and
 every open deletes the oldest files in the directory until the rest fit in
-:data:`MAX_TOTAL_BYTES`, so several servers sharing the directory share one bound. A
-line is at most :data:`MAX_LINE_BYTES`.
+:data:`MAX_TOTAL_BYTES`, so several servers sharing the directory share one bound; the
+segment each running server writes is never deleted, so each adds at most one segment
+to it (:func:`prune`). A line is at most :data:`MAX_LINE_BYTES`.
+
+**Failures.** Logging never fails the work it records: a record that cannot be encoded is
+dropped, text that cannot be encoded is escaped, and a write that fails or is short
+pauses the log, which tries a fresh segment after :data:`RETRY_FIRST_S`, doubling to
+:data:`RETRY_MAX_S`. A segment deleted while open is replaced within a watch interval.
 
 **Privacy.** The log is the user's own, owner-only (``0700`` directory, ``0600`` files,
 through :mod:`metabrowser.home`), and holds request paths and the folders they name.
@@ -117,6 +125,15 @@ MAX_LINE_BYTES: Final[int] = 8 * 1024
 # The longest text kept from a process's stderr or an error message: enough for gh's or
 # Git's last error lines.
 MAX_TEXT_CHARS: Final[int] = 600
+# The most words of a ``git`` or ``gh`` command line a record keeps.
+MAX_LOGGED_ARGS: Final = 24
+# A record's name past this many characters is cut when the record is too long to keep
+# whole (:data:`MAX_LINE_BYTES`), so the line that says so fits.
+_FALLBACK_NAME_CHARS: Final = 200
+# After a write fails, the log tries a fresh segment after this long, doubling to the
+# most, so a full disk that clears or a directory recreated brings it back.
+RETRY_FIRST_S: Final[float] = 1.0
+RETRY_MAX_S: Final[float] = 60.0
 # Where the log's files live below the state directory, and how they are named:
 # ``events-<UTC start>-p<pid>-<segment>.jsonl``, so names sort by start, then segment.
 EVENTS_DIRECTORY: Final = "events"
@@ -136,7 +153,11 @@ _URL_CREDENTIALS = re.compile(r"\b([a-z][a-z0-9+.-]*://)[^/\s@]+@", re.IGNORECAS
 # A header's whole value; a scheme's credential; a named secret's value after : or =.
 _AUTH_HEADER = re.compile(r"(?i)\b((?:proxy-)?authorization)(\s*[:=]\s*)[^\r\n,;]*")
 _SCHEME_CREDENTIAL = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{4,}")
-_SECRET_FIELD = re.compile(r"(?i)\b(token|password|passwd|secret|api[_-]?key)(\s*[:=]\s*)[^\s,;]+")
+# The name may be compound (``access_token``, ``client_secret``, ``GITHUB_TOKEN``,
+# ``x-api-key``): any word around the secret's own.
+_SECRET_FIELD = re.compile(
+    r"(?i)(?<![\w-])([\w-]*(?:token|password|passwd|secret|api[_-]?key)[\w-]*)(\s*[:=]\s*)[^\s,;]+"
+)
 
 
 def redact(text: str, *, limit: int = MAX_TEXT_CHARS) -> str:
@@ -371,18 +392,21 @@ def _outcome_of(exc: BaseException) -> tuple[Outcome, dict[str, Any]]:
 def job[T](
     work: Awaitable[T], name: str, *, attrs: Mapping[str, Any] | None = None
 ) -> Coroutine[Any, Any, T]:
-    """*work* as a background job: a span that writes its start now and ends with it.
+    """*work* as a background job: a span that writes its start when the job first runs
+    and ends with it.
 
     Wrap the coroutine handed to ``asyncio.create_task``. The job's parent is the span
     current here, usually the request that started it; work the job starts names the
-    job. With no log open, *work* is awaited as it is.
+    job. A task cancelled before its first step runs nothing, so it leaves no span open.
+    With no log open, *work* is awaited as it is.
     """
 
-    started = begin("job", name, attrs=attrs, announce=True)
-    if started is NULL_SPAN and asyncio.iscoroutine(work):
+    if _sink is None and asyncio.iscoroutine(work):
         return work
+    parent = _CURRENT.get()
 
     async def run() -> T:
+        started = begin("job", name, attrs=attrs, announce=True, parent=parent)
         if started is NULL_SPAN:
             return await work
         token = _CURRENT.set(started)
@@ -480,6 +504,9 @@ class EventLog:
         self._watcher: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._ping: Span | None = None
+        self._closed = False
+        self._retry_s = RETRY_FIRST_S
+        self._retry_at = 0.0
         self._roll()
 
     # ── writing ─────────────────────────────────────────────────
@@ -530,16 +557,29 @@ class EventLog:
 
     @staticmethod
     def _encode(record: Mapping[str, Any]) -> bytes:
+        """*record* as one line. Text Python cannot encode, such as a lone surrogate from
+        output decoded with ``surrogateescape``, is written as its escape."""
+
         line = json.dumps(record, ensure_ascii=False, separators=(",", ":"), default=str)
-        data = line.encode("utf-8") + b"\n"
+        data = line.encode("utf-8", errors="backslashreplace") + b"\n"
         if len(data) > MAX_LINE_BYTES:
             trimmed = {key: value for key, value in record.items() if key != "attrs"}
+            trimmed["name"] = str(trimmed.get("name", ""))[:_FALLBACK_NAME_CHARS]
+            if isinstance(trimmed.get("client"), str):
+                trimmed["client"] = trimmed["client"][:_FALLBACK_NAME_CHARS]
             trimmed["attrs"] = {"dropped_bytes": len(data)}
-            data = json.dumps(trimmed, ensure_ascii=False, separators=(",", ":")).encode() + b"\n"
+            line = json.dumps(trimmed, ensure_ascii=False, separators=(",", ":"), default=str)
+            data = line.encode("utf-8", errors="backslashreplace") + b"\n"
         return data
 
     def write(self, record: Mapping[str, Any]) -> None:
-        data = self._encode(record)
+        """Append *record*. Never raises: logging must not fail the work it records."""
+
+        try:
+            data = self._encode(record)
+        except Exception as exc:  # a value json cannot write, such as a cycle
+            log.debug("event log dropped a record it could not encode: %s", exc)
+            return
         with self._write_lock:
             self._append(data)
 
@@ -551,21 +591,58 @@ class EventLog:
     def _append(self, data: bytes) -> None:
         """Append one encoded line; the caller holds the write lock."""
 
-        if self._fd is None:
+        if self._fd is None and not self._retry_due():
             return
-        if self._size and self._size + len(data) > self._max_file_bytes:
+        if self._fd is None or (self._size and self._size + len(data) > self._max_file_bytes):
             self._roll()
         fd = self._descriptor()
         if fd is None:  # the roll could not open the next segment
+            self._failed()
             return
         try:
-            os.write(fd, data)
+            written = os.write(fd, data)
         except OSError as exc:
-            # A full disk or a removed directory ends the log, never the server.
-            log.warning("event log stopped: could not write %s: %s", self.path, exc)
-            self._close_file()
+            # A full disk or a removed directory pauses the log, never the server.
+            log.warning("event log paused: could not write %s: %s", self.path, exc)
+            self._failed()
+            return
+        if written != len(data):
+            log.warning("event log paused: %s took %d of %d bytes", self.path, written, len(data))
+            self._failed()
             return
         self._size += len(data)
+        self._retry_s = RETRY_FIRST_S
+
+    def _failed(self) -> None:
+        """Close the segment and try a fresh one after the backoff; the caller holds the
+        write lock. Until then :attr:`path` is ``None``, so the route names no file."""
+
+        self._close_file()
+        self.path = None
+        self._retry_at = time.monotonic() + self._retry_s
+        self._retry_s = min(self._retry_s * 2, RETRY_MAX_S)
+
+    def _retry_due(self) -> bool:
+        return not self._closed and time.monotonic() >= self._retry_at
+
+    def check_file(self) -> None:
+        """Start a fresh segment when this one's name is gone from the directory, as
+        when another process's prune or a person deleted it: writing on would land in a
+        file no reader can find. The watcher calls this every interval."""
+
+        with self._write_lock:
+            fd = self._fd
+            if fd is None or self._closed:
+                return
+            try:
+                unlinked = os.fstat(fd).st_nlink == 0
+            except OSError:
+                unlinked = True
+            if unlinked:
+                log.info("event log: %s was removed; starting a fresh segment", self.path)
+                self._roll()
+                if self._fd is None:
+                    self._failed()
 
     def close_from_signal_handler(self) -> None:
         """What :meth:`close` writes, from a handler that stops the process on the spot.
@@ -575,6 +652,7 @@ class EventLog:
         left unwritten rather than deadlocking the stop. Nothing here logs or imports.
         """
 
+        self._closed = True
         if not self._write_lock.acquire(blocking=False):
             return
         try:
@@ -620,7 +698,7 @@ class EventLog:
                 os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_APPEND,
             )
         except (OSError, home_module.PrivateStorageError) as exc:
-            log.warning("event log stopped: could not create %s: %s", name, exc)
+            log.warning("event log paused: could not create %s: %s", name, exc)
             self._fd = None
             self.path = None
             return
@@ -713,6 +791,7 @@ class EventLog:
         while not self._stop.wait(self._watch_interval_s):
             try:
                 self._ping_loop()
+                self.check_file()
                 self.check_open()
             except Exception:  # pragma: no cover - the watcher must outlive a bad record
                 log.exception("event log watcher failed")
@@ -752,14 +831,18 @@ class EventLog:
         watcher = self._watcher
         if watcher is not None and watcher is not threading.current_thread():
             watcher.join(timeout=2 * self._watch_interval_s)
+        self._closed = True
         with self._open_lock:
             remaining = sorted(self._open.values(), key=lambda s: s.started)
         for s in remaining:
-            if s.kind == "loop":
+            if s.kind == "loop" or s._ended:
                 with self._open_lock:
                     self._open.pop(s.id, None)
                 continue
-            s.end("abandoned")
+            # Through this log, not the process's: a log being replaced, or installed
+            # for a test, ends its own spans.
+            s._ended = True
+            self.finish(s, "abandoned")
         self.write(self.record("mark", "lifecycle", "server.stop"))
         with self._write_lock:
             self._close_file()
@@ -915,16 +998,54 @@ def list_files(directory: Path) -> list[LogFile]:
     return files
 
 
+def _alive(pid: int) -> bool:
+    """Whether a process with *pid* runs now. A process of another user counts; a pid
+    reused since is taken as alive, which only keeps one more segment."""
+
+    if pid == os.getpid():
+        return True
+    if os.name != "posix":  # pragma: no cover - served processes run on macOS and Linux
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except (OverflowError, ValueError):
+        return False
+    except OSError:  # PermissionError: it exists and is someone else's
+        return True
+    return True
+
+
+def _writing_now(files: list[LogFile]) -> set[str]:
+    """The segment each live process writes: the newest of each writer, named by its
+    start and pid, whose process still runs."""
+
+    newest: dict[tuple[str, int], LogFile] = {}
+    for f in files:
+        held = newest.get((f.started, f.pid))
+        if held is None or f.segment > held.segment:
+            newest[(f.started, f.pid)] = f
+    return {f.name for f in newest.values() if _alive(f.pid)}
+
+
 def prune(directory: Path, max_total_bytes: int, *, keep: Path | None = None) -> list[str]:
-    """Delete the oldest segments until the rest fit in *max_total_bytes*; their names."""
+    """Delete the oldest segments until the rest fit in *max_total_bytes*; their names.
+
+    The segment each live server writes is kept, however old: an idle server's file has
+    the oldest time, and deleting it would leave that server writing to a name no reader
+    finds. So the bound holds for closed segments, and each running server adds at most
+    one segment, :data:`MAX_FILE_BYTES`, to it.
+    """
 
     files = list_files(directory)
     total = sum(f.bytes for f in files)
     removed: list[str] = []
+    live = _writing_now(files)
     for old in reversed(files):
         if total <= max_total_bytes:
             break
-        if keep is not None and old.name == keep.name:
+        if (keep is not None and old.name == keep.name) or old.name in live:
             continue
         with contextlib.suppress(FileNotFoundError):
             (directory / old.name).unlink()
@@ -954,11 +1075,14 @@ __all__ = [
     "KINDS",
     "MAX_FILE_BYTES",
     "MAX_LINE_BYTES",
+    "MAX_LOGGED_ARGS",
     "MAX_TEXT_CHARS",
     "MAX_TOTAL_BYTES",
     "NULL_SPAN",
     "OPEN_AFTER_MS",
     "OUTCOMES",
+    "RETRY_FIRST_S",
+    "RETRY_MAX_S",
     "SCHEMA_VERSION",
     "WATCH_INTERVAL_S",
     "EventLog",

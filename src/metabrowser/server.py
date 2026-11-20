@@ -1157,8 +1157,9 @@ def _end_request_span(
 ) -> None:
     """End a request's event-log span with what the request log line says.
 
-    A status of 500 or more is ``failed``; a request the client left before an answer
-    began is ``cancelled``, and one the application raised on is ``failed``.
+    A status of 500 or more is ``failed``; a request cancelled, as when the client left,
+    is ``cancelled`` whether or not its answer had begun, and one the application raised
+    on is ``failed``.
     """
 
     attrs: dict[str, Any] = {"status": status, "bytes": body_bytes}
@@ -1173,7 +1174,7 @@ def _end_request_span(
     if processes:
         attrs["git_processes"] = processes
     if failure is not None:
-        cancelled = isinstance(failure, asyncio.CancelledError) and status is None
+        cancelled = isinstance(failure, asyncio.CancelledError)
         if not cancelled:
             attrs["error"] = event_log.describe_error(failure)
         span.end("cancelled" if cancelled else "failed", **attrs)

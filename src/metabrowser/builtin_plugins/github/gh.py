@@ -305,7 +305,6 @@ async def _run(
 _FIELD_OPTIONS: Final = frozenset({"-f", "-F", "--field", "--raw-field"})
 _HEADER_OPTIONS: Final = frozenset({"-H", "--header"})
 _PROGRAM_OPTIONS: Final = frozenset({"-q", "--jq", "-t", "--template", "--input"})
-_LOGGED_ARGS_MAX: Final = 24
 
 
 def loggable_args(args: Sequence[str]) -> list[str]:
@@ -327,7 +326,7 @@ def loggable_args(args: Sequence[str]) -> list[str]:
             out += [arg, "…"]
         else:
             out.append(event_log.redact(arg, limit=200))
-        if len(out) >= _LOGGED_ARGS_MAX:
+        if len(out) >= event_log.MAX_LOGGED_ARGS:
             out.append("…")
             break
     return out
