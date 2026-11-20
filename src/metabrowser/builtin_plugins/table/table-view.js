@@ -464,7 +464,12 @@ export function mountTable(container, ctx, host = {}) {
     }
     const sample = rows.slice(0, FIRST_PAGE_ROWS);
     columns = [...page.columns];
-    ({ widths, lines: rowLines } = columnWidths(columns, sample, fields));
+    // Widths hold for the table's life, from the first rows that showed each column.
+    const measured = columnWidths(columns, sample, fields, widths);
+    rowLines = measured.lines;
+    if (sample.length) {
+      widths = measured.widths;
+    }
     rowHeight = ROW_HEIGHT_ESTIMATE_PX[rowLines];
     rowHeightMeasured = false;
     focus = { row: Math.min(focus.row, Math.max(0, rows.length - 1)), col: -1 };
@@ -1657,12 +1662,17 @@ export function mountTable(container, ctx, host = {}) {
 
   function showGrid() {
     recordSeq += 1;
+    // The keyboard was in the record: it goes back to the row the record was opened from.
+    const refocus = recordPane.contains(doc.activeElement);
     recordPane.hidden = true;
     recordPane.replaceChildren();
     toolbar.hidden = false;
     notes.hidden = false;
     scroller.hidden = false;
     restorePlace();
+    if (refocus) {
+      focusElement()?.focus({ preventScroll: true });
+    }
   }
 
   // ── Hover cards ──────────────────────────────────────────────

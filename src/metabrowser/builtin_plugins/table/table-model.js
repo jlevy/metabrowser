@@ -702,16 +702,18 @@ const HEADER_EXTRA_CH = 3;
 
 /**
  * Each column's width in characters, from what it holds: the longest of its header and
- * the values *rows* hold, between COLUMN_MIN_CH and COLUMN_MAX_CH. A width comes from the
- * first rows the view reads and holds for the table's life, so the columns do not move as
- * more rows arrive.
+ * the values *rows* hold, between COLUMN_MIN_CH and COLUMN_MAX_CH. A column in *known*
+ * keeps the width it has there: a width comes from the first rows the view reads of that
+ * column and holds for the table's life, so the columns do not move as more rows arrive
+ * or a filter narrows them. `lines` is 2 when a value is cut or longer than its column.
  *
  * @param {ReadonlyArray<string>} columns
  * @param {ReadonlyArray<TableRow>} rows
  * @param {ReadonlyArray<TableField>} fields
+ * @param {Readonly<Record<string, number>>} [known]
  * @returns {{widths: Record<string, number>, lines: 1 | 2}}
  */
-export function columnWidths(columns, rows, fields) {
+export function columnWidths(columns, rows, fields, known = {}) {
   const byName = new Map(fields.map((field) => [field.name, field]));
   /** @type {Record<string, number>} */
   const widths = {};
@@ -730,7 +732,8 @@ export function columnWidths(columns, rows, fields) {
         lines = 2;
       }
     }
-    const width = Math.max(COLUMN_MIN_CH, Math.min(COLUMN_MAX_CH, Math.max(header, longest)));
+    const width =
+      known[name] ?? Math.max(COLUMN_MIN_CH, Math.min(COLUMN_MAX_CH, Math.max(header, longest)));
     if (longest > width) {
       lines = 2;
     }
