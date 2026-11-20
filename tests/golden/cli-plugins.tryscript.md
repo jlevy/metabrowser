@@ -51,7 +51,7 @@ $ metab --plugins --json
   "plugins": [
     {
       "name": "agent-log",
-      "display_name": "Agent log (Claude / Gemini / Pi)",
+      "display_name": "Agent log (Claude / Codex / Gemini / Pi)",
       "version": "0.0.1",
       "source": "builtin",
       "static_root": "[BUILTIN]/agent_log",
