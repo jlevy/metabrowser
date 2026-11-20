@@ -3,9 +3,9 @@ type: is
 id: is-01m7ty57a9b1d4gy8xcrhek4xq
 title: "Event log Phase 2: browse Metabrowser's own event log in Metabrowser"
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-19-structured-event-log.md
 delegate: claude-code@spud10
 labels: []
@@ -17,8 +17,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-19T22:17:11.751Z
-updated_at: 2026-11-20T06:54:26.290Z
+updated_at: 2026-11-20T07:25:02.836Z
 started_at: 2026-11-20T02:55:08.942Z
+closed_at: 2026-11-20T07:25:02.836Z
+close_reason: "Merged in PRs 633 and 634. Follow-ups: mb-9n0x, mb-7uqr."
+resolution: null
+duplicate_of: null
 ---
 Phase 2 of mb-wr5e (spec: Phase 2). A log view for the event schema beside the agent-log and JSONL views, picked for events-*.jsonl; views by latency, by kind, slowest, errors, and a timeline nesting spans under parents; a way to open the log from the app (menu command) and the shell, and from the refresh failure line; a metab equivalent and golden for each view's query (parity rule). Owner's goal, 2026-11-19: a clean JSON log browsable in Metabrowser in different ways, with a full UI based on Metabrowser's own logs.
 
