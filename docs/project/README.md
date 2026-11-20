@@ -70,7 +70,11 @@ It links each document below and the contributor standards in `docs/`.
 
 - [Tabular data browsing and live SQLite](specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md):
   a draft for one generic table plugin over CSV, record lists, and SQLite, with
-  nondestructive reads of live databases and live reload for open files
+  nondestructive, live reads of databases other applications are writing
+- [A structured event log](specs/active/plan-2026-11-19-structured-event-log.md): one
+  JSON line for every request, background job, and `git` or `gh` process, with latency,
+  outcome, and what started it; the causes of GitHub failures in the page; browser
+  reports of waits that never ended; then views of the log in Metabrowser
 - [The app’s command-line dependencies and a complete doctor](specs/active/plan-2026-11-18-cli-dependencies-and-doctor.md):
   where each tool’s minimum version lives, the app’s versioning contract with `metab`, a
   doctor that checks everything a setup needs, and Check Setup… in the macOS app

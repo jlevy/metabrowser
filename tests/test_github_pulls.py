@@ -349,8 +349,13 @@ def test_account_is_the_active_login_even_in_an_error_state() -> None:
 @pytest.mark.parametrize(
     ("state", "diagnostic", "outcome", "message"),
     [
-        ("error", "dial tcp: no such host", "network_error", "gh could not reach api.github.com"),
-        ("timeout", None, "network_error", "gh could not reach api.github.com"),
+        (
+            "error",
+            "dial tcp: no such host",
+            "network_error",
+            "api.github.com did not resolve (DNS)",
+        ),
+        ("timeout", None, "network_error", "GitHub did not answer in time"),
         ("error", "HTTP 503: private diagnostic", "network_error", "GitHub answered HTTP 503"),
         ("error", "HTTP 401: private diagnostic", "not_logged_in", "gh auth login"),
         ("error", "private diagnostic", "gh_failed", "not a GitHub login"),
