@@ -59,6 +59,35 @@ import Testing
         // A whole point up, so the mark lands on whole pixels at 1x and 2x.
         #expect(layout.mark.minY == layout.mark.minY.rounded())
     }
+
+    @Test func aTruncationKeepsTheEndsOfTheText() {
+        #expect(FolderChooser.middleTruncated("abcdefgh", keeping: 3) == "ab…h")
+        #expect(FolderChooser.middleTruncated("abcdefgh", keeping: 4) == "ab…gh")
+        #expect(FolderChooser.middleTruncated("abcdefgh", keeping: 0) == "…")
+        #expect(FolderChooser.middleTruncated("abcdefgh", keeping: 8) == "abcdefgh")
+        #expect(FolderChooser.middleTruncated("~/a/é/z", keeping: 4) == "~/…/z")
+    }
+
+    @Test func aSubtitleThatFitsIsShownWholeAndOneThatDoesNotIsCutAsLittleAsFits() {
+        var asked: [String] = []
+        // Fits in 12 characters, as a stand-in for AppKit's one line.
+        let fits = { (text: String) -> Bool in
+            asked.append(text)
+            return text.count <= 12
+        }
+        #expect(FolderChooser.oneLine("~/notes", fits: fits) == "~/notes")
+        #expect(asked == ["~/notes"])
+        asked = []
+        let location = "~/Documents/projects/2026/drafts"
+        let shown = FolderChooser.oneLine(location, fits: fits)
+        #expect(shown == "~/Docu…rafts")
+        #expect(shown == FolderChooser.middleTruncated(location, keeping: 11))
+        // The whole, then a binary search: what comes back was asked about.
+        #expect(asked.first == location && asked.contains(shown))
+        #expect(asked.count <= 1 + Int(log2(Double(location.count))) + 1)
+        #expect(FolderChooser.oneLine("", fits: { _ in false }) == "")
+        #expect(FolderChooser.oneLine("abc", fits: { $0 == "…" }) == "…")
+    }
 }
 
 @Suite struct FolderChooserTests {

@@ -808,10 +808,16 @@ mark in a trailing one (`TitleBarMarkController`).
   The Switch Folder panel draws the same marks.
   On a row with a subtitle the mark stands on the title’s line.
   AppKit centers a menu item’s image on its title and subtitle together, so
-  `RootMark.image(for:)` gives such an item the mark at the top of a taller image
-  (`RootMark.TitleLineLayout`, whose comment holds the measurement), and the item stays
-  a native one, its highlight, check mark, alternates, and accessibility AppKit’s; the
-  panel centers its mark on the title’s label.
+  `NSMenuItem.setMark`, which sets an item’s mark and subtitle together, gives such an
+  item the mark at the top of a taller image (`RootMark.TitleLineLayout`, whose comment
+  holds the measurement), and the item stays a native one, its highlight, check mark,
+  alternates, and accessibility AppKit’s; the panel centers its mark on the title’s
+  label. AppKit wraps a subtitle at about 300 points, or the title’s width where that is
+  wider, which would put the mark between lines again, so `setMark` cuts a subtitle that
+  would wrap in the middle (`FolderChooser.oneLine`), measured by `NSMenu` itself, and
+  puts the whole of it in the item’s tooltip.
+  The check mark stays AppKit’s, centered on the row: a custom `onStateImage` would drop
+  the item’s `AXMenuItemMarkChar`, so VoiceOver would no longer hear it as checked.
 - **The mark.** The partial M and the B, drawn as paths from the icon masters’ glyph
   group, which `AppIcon/make-glyphs.swift` copies into `AppIconMarkGeometry.swift`; a
   test checks the copy against both masters.

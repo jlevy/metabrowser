@@ -451,7 +451,7 @@ final class TitleBarTitleView: NSView {
             item.representedObject = index == 0 ? [path] : [path, folders[index - 1]]
             // Every row is a folder: the shared folder mark Open Recent and the chooser
             // draw (`RootMark`), not Finder's colored icon for that path.
-            item.image = RootMark.folder.image(for: item)
+            item.setMark(.folder)
             menu.addItem(item)
         }
         let anchor = NSPoint(x: label.frame.minX - 10, y: label.frame.maxY + 4)

@@ -169,7 +169,7 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
                 // The shared mark, the page's own glyph (`RootMark`), never read from the
                 // entry's path: a look at a listed folder can raise a privacy prompt nobody
                 // asked for.
-                item.image = RootMark(entry.target.mode).image(for: item)
+                item.setMark(RootMark(entry.target.mode))
                 menu.addItem(item)
             case .empty:
                 let none = NSMenuItem(title: "No Recent Items", action: nil, keyEquivalent: "")

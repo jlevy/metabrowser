@@ -87,6 +87,34 @@ public nonisolated enum FolderChooser {
     /// The subtitle of a folder another window shows.
     public static let inAnotherWindow = "In another window"
 
+    /// What a chooser row shows of `subtitle`, on one line: all of it when `fits` says it
+    /// fits, else the longest middle truncation of it that does (`middleTruncated`), as the
+    /// Switch Folder panel's label cuts the same subtitle. AppKit wraps a menu item's
+    /// subtitle that is too wide, which would put the row's mark between lines again.
+    ///
+    /// `fits` is asked about the whole subtitle, then about truncations in a binary search
+    /// over how many characters to keep, so about `log2` of the length times. What comes
+    /// back is a string `fits` answered true for, or, should none, the ellipsis alone.
+    public static func oneLine(_ subtitle: String, fits: (String) -> Bool) -> String {
+        guard !subtitle.isEmpty, !fits(subtitle) else { return subtitle }
+        // `kept` characters fit, the ellipsis alone at first; `tooMany` do not.
+        var kept = 0
+        var tooMany = subtitle.count
+        while tooMany - kept > 1 {
+            let tried = (kept + tooMany) / 2
+            if fits(middleTruncated(subtitle, keeping: tried)) { kept = tried } else { tooMany = tried }
+        }
+        return middleTruncated(subtitle, keeping: kept)
+    }
+
+    /// `text` with its middle replaced by an ellipsis, keeping `kept` of its characters:
+    /// the first half of them, rounded up, and the last half. `text` itself when it has no
+    /// more than `kept`.
+    public static func middleTruncated(_ text: String, keeping kept: Int) -> String {
+        guard kept < text.count else { return text }
+        return String(text.prefix((kept + 1) / 2)) + "…" + String(text.suffix(kept / 2))
+    }
+
     /// The chooser's rows: `open` in the order the folders opened, then `recent` less
     /// those that are open, in their order.
     public static func menuRows(
