@@ -246,10 +246,10 @@ other two builds exercise the absent one.
   `B8868C80BA62A1FFFAF5FDA9632D3A06589DA6B1`; the signature was not verified when the
   checksums were copied.
   The 2.50.1 values also match those recorded independently in the tracking issue.
-  The 2.56.1 value was copied from Homebrew’s `git` formula, whose `url` is that
-  directory’s `git-2.56.1.tar.xz`, on November 20, 2026, and not from `sha256sums.asc`:
-  it has to be compared with that signed file before this is relied on.
-  The build fails closed on a wrong value.
+  The 2.56.1 value was first copied from Homebrew’s `git` formula, whose `url` is that
+  directory’s `git-2.56.1.tar.xz`, and it matches the `git-2.56.1.tar.xz` line of that
+  directory’s `sha256sums.asc`, checked on November 20, 2026; the signature on that file
+  was not verified. The build fails closed on a wrong value.
 - **Cool-off.** Both archives were published on July 8, 2025, in the security batch the
   version floor is based on, so they are well past the 14-day cool-off.
   The 2.56.1 tag is dated October 26, 2026, 25 days before the pin.
