@@ -59,3 +59,28 @@ kind = "agent-log"
 id = "raw"
 label = "Raw JSON"
 key = "s"
+
+[[data_hook]]
+route = "catalog"
+sidekick = "metabrowser.builtin_plugins.agents.routes:catalog_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "sessions"
+sidekick = "metabrowser.builtin_plugins.agents.routes:sessions_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "session"
+sidekick = "metabrowser.builtin_plugins.agents.routes:session_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "records"
+sidekick = "metabrowser.builtin_plugins.agents.routes:records_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "live"
+sidekick = "metabrowser.builtin_plugins.agents.routes:live_handler"
+methods = ["GET"]

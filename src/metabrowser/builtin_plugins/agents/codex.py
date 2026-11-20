@@ -26,7 +26,7 @@ import dataclasses
 import json
 import re
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Final
 
@@ -57,17 +57,28 @@ AGENT: Final = "codex"
 # The measure families a Codex summary holds, each with its schema version.
 FAMILY_VERSIONS: Final = {"session": 1, "drift": 1}
 
-# The most threads one discovery reads, newest first. A full scan of `threads` took about
-# 20 s on a 1.1 GB store in the research survey, and an indexed read of the newest 50
-# took 0.1 ms, so discovery reads by recency and never scans. The limit is a placeholder
-# that the catalog's cold-start measurement replaces.
-DISCOVER_LIMIT: Final = 5000
+# The most threads one discovery reads, newest first, by an indexed read that never scans.
+# Measured on the maintainer's machine (see `catalog.py`, "Measurements"): one real store
+# holds 22,302 threads, and reading all of them took 23.8 s under heavy load (about 1 ms
+# a thread; the newest 5,000 took 2 s), in the catalog's background worker, never on a
+# request. The limit is 30,000: every thread of that store with 1.3 times its size to grow
+# into. A store over it lists its newest threads, and `catalog` says so
+# (`discover_limit_reached`).
+DISCOVER_LIMIT: Final = 30_000
+
+# The most characters of a thread's title or name one discovery reads. A thread with no
+# name keeps its first prompt as its title: of 22,302 real threads the median title was 15
+# characters, the 99th percentile 245,541 and the longest 647,106, and reading them whole
+# took the discovery to 618 MB of memory. The cut is in SQL.
+TITLE_READ_CHARS: Final = 4000
 
 # The most spawn edges one discovery reads.
 EDGE_LIMIT: Final = 200_000
 
-# The most history items one stream reads from a thread, across all its segments.
-MAX_ITEMS: Final = 200_000
+# The most history items one stream reads from a thread, across all its segments. The
+# largest of 16,125 real threads holds 27,682 items (2,021,343 in all), so this is 3.6
+# times the largest.
+MAX_ITEMS: Final = 100_000
 
 # The most characters of one item's JSON a stream reads. SQLite counts a TEXT value's
 # characters, not bytes, so this is at most four times as many bytes. An item over it
@@ -216,6 +227,9 @@ _THREAD_COLUMNS: Final = (
     "thread_source",
 )
 
+# The `threads` columns that hold free text, which `_select_list` cuts in SQL.
+_FREE_TEXT_COLUMNS: Final = frozenset({"title", "name"})
+
 _ROLLOUT_NAME: Final = re.compile(
     r"^rollout-.+-(?P<tid>[0-9a-fA-F]{8}-[0-9a-fA-F-]{27})(?:_(?P<hid>[0-9A-Za-z-]+))?"
     r"\.jsonl(?:\.zst|\.gz)?$"
@@ -327,7 +341,7 @@ def discover(
         order = next((c for c in ("updated_at_ms", "updated_at") if c in actual), "rowid")
         rows = _query(
             conn,
-            f"SELECT {', '.join(wanted)} FROM threads ORDER BY {order} DESC LIMIT ?",
+            f"SELECT {_select_list(wanted)} FROM threads ORDER BY {order} DESC LIMIT ?",
             (limit,),
             drift,
             "state.threads",
@@ -815,10 +829,22 @@ def stream(home: Home, session_id: str) -> Iterator[Event]:
     yield from _events(home, session_id, paths, None)
 
 
+def _select_list(columns: Iterable[str]) -> str:
+    """*columns* as a ``SELECT`` list, with the free-text ones cut to TITLE_READ_CHARS.
+
+    A thread with no name keeps its first prompt as its title, so a title can be hundreds
+    of kilobytes. The cut is in SQL, so the rest is never read into memory.
+    """
+
+    return ", ".join(
+        f"substr({c}, 1, {TITLE_READ_CHARS})" if c in _FREE_TEXT_COLUMNS else c for c in columns
+    )
+
+
 def _thread_select(actual: frozenset[str]) -> str:
     """The columns `live` reads from `threads`, with NULL for any this schema lacks."""
 
-    return ", ".join(
+    return _select_list(
         c if c in actual else "NULL"
         for c in ("id", "cwd", "name", "title", "updated_at_ms", "updated_at")
     )

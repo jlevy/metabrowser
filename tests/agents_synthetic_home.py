@@ -617,3 +617,11 @@ def build(root: Path, *, omit_thread_columns: tuple[str, ...] = ()) -> Synthetic
     _build_claude(claude)
     _build_codex(codex, omit_thread_columns)
     return SyntheticHomes(root, Home("claude", claude), Home("codex", codex))
+
+
+if __name__ == "__main__":
+    # `python tests/agents_synthetic_home.py DIR` writes both homes under DIR; the goldens'
+    # `before` step uses it, so a golden serves the same homes the unit tests read.
+    import sys
+
+    build(Path(sys.argv[1]))

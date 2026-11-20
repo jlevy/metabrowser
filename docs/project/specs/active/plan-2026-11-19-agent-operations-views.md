@@ -605,11 +605,11 @@ moved into it; the catalog and its routes; and the views, with the kind colors.
   their goldens.
 - [ ] Add the kind color tokens and their design checks, and use them in the Log and
   Charts views.
-- [ ] Build the catalog’s fast pass, and its summary pass for the session and drift
+- [x] Build the catalog’s fast pass, and its summary pass for the session and drift
   families. Measure both on whole history.
 - [ ] Build the agents home, the session list, the session page’s header and Log tab,
   and the live strip.
-- [ ] Add the synthetic-home generator and the goldens for the Phase 2 routes.
+- [x] Add the synthetic-home generator and the goldens for the Phase 2 routes.
 
 **Done when:** opening a served home shows the following, all colored by event kind:
 

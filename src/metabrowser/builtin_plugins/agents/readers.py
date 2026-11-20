@@ -21,9 +21,15 @@ from urllib.parse import quote
 from .model import DriftCollector
 
 # The most bytes of one transcript or rollout a summary or stream reads. A transcript
-# line is read whole, so a budget is checked between lines. The figure is a placeholder
-# set from the research brief's largest plain rollout (97 MB) with headroom; the catalog's
-# whole-history measurement replaces it with the measured size and records it here.
+# line is read whole, so a budget is checked between lines. Measured on the maintainer's
+# machine (see `catalog.py`, "Measurements"): the largest of 2,404 real Claude Code
+# transcripts is 144,197,868 bytes (137.5 MiB; the median is 1.9 MB and the 99th
+# percentile 20 MB) and none was cut. Summarizing the largest ones ran at 20 to 36 MB/s
+# under heavy load, so a read at this limit takes at most about 13 s. The limit is 256 MiB,
+# 1.8 times the largest transcript, which leaves room to grow while keeping one read to
+# seconds. A Codex rollout read only when its history store has no rows can exceed it (the
+# largest real rollout is 514 MB, which the history store replaces); that read is cut and
+# reported as truncated.
 MAX_READ_BYTES: Final = 256 * 1024 * 1024
 
 # How much of each end of a file the fast pass reads for its first and last records.

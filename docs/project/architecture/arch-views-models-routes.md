@@ -216,14 +216,52 @@ counts is missing here; the asset routes are not counted.
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, and
 `diff/comparison` ([Diff Pipeline](arch-diff-pipeline.md)); `binary/chunk`,
-`structured/parsed`, and `agents/charts` ([Plugin System](arch-plugin-system.md)); and
-`github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
-`github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff`,
-`github/pull-timeline`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`,
-`github/pulls-prefetch`, `github/pull-files`, `github/pull-files-refresh`,
-`github/pull-files-summary`, `github/stacks`, `github/stacks-refresh`,
-`github/stack-change`, `github/labels`, `github/labels-refresh`, `github/cache-clear`,
-and `github/status` ([GitHub Pull Requests](arch-github-pull-requests.md)).
+`structured/parsed`, and `agents/charts` ([Plugin System](arch-plugin-system.md));
+`agents/catalog`, `agents/sessions`, `agents/session`, `agents/records`, and
+`agents/live`, the catalog of Claude Code and Codex sessions under a served folder
+([Agent Catalog](#agent-catalog)); and `github/pull`, `github/pull-refresh`,
+`github/pull-cores-prepare`, `github/pull-comparison`, `github/pull-image`,
+`github/pull-rendered-diff`, `github/pull-timeline`, `github/pull-markdown`,
+`github/pulls`, `github/pulls-refresh`, `github/pulls-prefetch`, `github/pull-files`,
+`github/pull-files-refresh`, `github/pull-files-summary`, `github/stacks`,
+`github/stacks-refresh`, `github/stack-change`, `github/labels`,
+`github/labels-refresh`, `github/cache-clear`, and `github/status`
+([GitHub Pull Requests](arch-github-pull-requests.md)).
+
+## Agent Catalog
+
+The `agents` plugin keeps a catalog of the Claude Code and Codex sessions under a served
+folder and answers five data hooks from it.
+The
+[operational views plan](../specs/active/plan-2026-11-19-agent-operations-views.md#engines-and-the-catalog)
+gives the design. `builtin_plugins/agents/homes.py` decides which folders hold a home
+(`homes_in`, and `holds_homes` for a view’s `offer`), `catalog.py` keeps the sessions
+current on a worker thread, `store.py` caches each summary, and `routes.py` serves them.
+
+| Route | Parameters | Returns |
+| --- | --- | --- |
+| `catalog` | `folder` | Homes, totals, size-histogram buckets, sessions per day, progress, freshness, cache state, drift, and engines |
+| `sessions` | `folder`; filters `agent`, `origin`, `status`, `project`, `model`, `since`, `until`; `sort`, `order`, `limit`, `offset` | Matching rows, `total`, `next_offset`, and facets over the whole folder |
+| `session` | `agent` and `id`, or `path`, the session’s source file | One row, its parent, its children, and its drift |
+| `records` | the session as above; `kind`, `tool`, `locator`, `limit`, `cursor` | One page of the session’s normalized events, with `next_cursor` |
+| `live` | `folder` | Sessions a pid file, an active turn, or a recent update vouches for |
+
+Paths in `folder` and `path` are served-root-relative and resolve through `plugin_api`;
+every path in a response is relative to the served root, and a project shows the user’s
+home directory as `~`. A refusal is `{"error", "code", "param"}` with status 400 or 404.
+
+A request answers from what the worker has summarized so far and reports `progress` and
+`freshness`; it starts a pass when the last is old, and never waits for a full one.
+`sync=1` waits until the catalog is fully summarized, which is how `metab --api`, tests,
+and goldens get a complete answer, and `now` (Unix seconds) replaces the clock the
+passes and liveness checks read.
+Each summary is cached in `plugin_cache_directory("agents")`, keyed by the session’s
+source files, sizes, modification times, and measure-family versions (`session_key`), so
+a change re-reads only that session.
+When no private cache directory can be made, `cache.state` is `unavailable` and the
+routes answer from memory.
+The limits and the measurements that set them are beside their constants, in
+`catalog.py`, `routes.py`, `store.py`, `readers.py`, and `codex.py`.
 
 ## Adding Something
 
