@@ -54,6 +54,7 @@ status: 200
     "name": "checkout",
     "location": "<ROOT>"
   },
+  "pull_requests": null,
   "refs": [
     {
       "name": "topic",
@@ -110,6 +111,7 @@ status: 200
     "name": "checkout",
     "location": "<ROOT>"
   },
+  "pull_requests": null,
   "refs": [
     {
       "name": "origin/feature",
@@ -155,6 +157,7 @@ status: 200
     "name": "checkout",
     "location": "<ROOT>"
   },
+  "pull_requests": null,
   "refs": [
     {
       "name": "local-tag",

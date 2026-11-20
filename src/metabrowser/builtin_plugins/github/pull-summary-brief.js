@@ -1,6 +1,7 @@
-// A pull request page's brief line in its Diff summary's row (mb-z8ea): "36 files changed ·
-// 2 A, 3 D, 31 M · +2,076 −224", what the pull request's cached list of changed files sums
-// to, drawn while the page reads the comparison its Diff summary is drawn from.
+// A pull request page's brief line in its Diff summary's row (mb-z8ea): "2 A, 3 D, 31 M ·
+// +2,076 −224", what the pull request's cached list of changed files sums to, drawn while the
+// page reads the comparison its Diff summary is drawn from; its file count, "36 files
+// changed", is on the header's size line above (pull-page.js, `paintSize`).
 //
 // The comparison waits on the record, which on a page whose record is not cached is the full
 // record from GitHub, seconds away, and is then read from the store. The changed-files list
@@ -29,9 +30,6 @@ import {
   rowLineInput,
   rowLineKey,
 } from "./row-lines.js";
-
-/** The dot after the file count, a line's, said as a comma (diff-view.js, `LINE_SEPARATOR`). */
-const SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });
 
 /**
  * A cached list's sums with what it was listed against, as `GET pull-files-summary` answers
@@ -216,19 +214,10 @@ export function briefLine(mb, h, summary, breakdown) {
       role: "status",
       "aria-label": `${words}${line.label === "" ? "" : `: ${line.label}`}; loading the summary of changes`,
     },
+    // Its file count is on the size line above it, as the summary that replaces it leaves
+    // it there (docs/design-system.md, "Change Size Line").
     [
       h("span", { class: "diff-summary-chevron", "aria-hidden": "true" }),
-      h("span", { class: "diff-summary-group" }, [
-        h(
-          "span",
-          { class: "diff-summary-files" },
-          mb.countPartsNodes([
-            { number: mb.formatInteger(files) },
-            ` ${files === 1 ? "file" : "files"} changed`,
-          ]),
-        ),
-        ...mb.countPartsNodes([SEPARATOR]),
-      ]),
       ...mb.changeLineNodes(line, { spoken: ", " }),
     ],
   );

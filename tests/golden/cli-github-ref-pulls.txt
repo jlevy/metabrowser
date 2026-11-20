@@ -1,0 +1,246 @@
+## The mirror is cached by this first command, and no pull request is: the listing
+## says the catalog is absent, and no row has a pull request.
+# metab https://github.com/octo/demo --api '/api/source/refs?kind=branch'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=branch
+status: 200
+{
+  "kind": "branch",
+  "query": "",
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "ref": "refs/remotes/origin/topic",
+  "kinds": [
+    "branch",
+    "tag"
+  ],
+  "working_tree": null,
+  "pull_requests": {
+    "state": "absent",
+    "complete": false,
+    "refreshing": false
+  },
+  "refs": [
+    {
+      "name": "topic",
+      "ref": "refs/remotes/origin/topic",
+      "commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "committed_at": 1788021600.0,
+      "default": true,
+      "checked_out": false,
+      "current": true
+    },
+    {
+      "name": "wip",
+      "ref": "refs/remotes/origin/wip",
+      "commit": "7a7d6596e515735d244dc1d942463c95851e139c",
+      "committed_at": 1788032400.0,
+      "default": false,
+      "checked_out": false,
+      "current": false
+    }
+  ]
+}
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+## With the catalog cached, a branch lists the pull requests it heads: `wip`'s open
+## draft first and then its earlier closed one, `topic`'s merged one. The fork's
+## `wip` is another branch, and `elsewhere` is no branch of the mirror.
+# metab https://github.com/octo/demo --api '/api/source/refs?kind=branch'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=branch
+status: 200
+{
+  "kind": "branch",
+  "query": "",
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "ref": "refs/remotes/origin/topic",
+  "kinds": [
+    "branch",
+    "tag"
+  ],
+  "working_tree": null,
+  "pull_requests": {
+    "state": "ready",
+    "complete": true,
+    "refreshing": false
+  },
+  "refs": [
+    {
+      "name": "topic",
+      "ref": "refs/remotes/origin/topic",
+      "commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "committed_at": 1788021600.0,
+      "default": true,
+      "checked_out": false,
+      "current": true,
+      "pulls": [
+        {
+          "number": 12,
+          "title": "Start the topic",
+          "state": "merged"
+        }
+      ],
+      "pulls_total": 1
+    },
+    {
+      "name": "wip",
+      "ref": "refs/remotes/origin/wip",
+      "commit": "7a7d6596e515735d244dc1d942463c95851e139c",
+      "committed_at": 1788032400.0,
+      "default": false,
+      "checked_out": false,
+      "current": false,
+      "pulls": [
+        {
+          "number": 31,
+          "title": "WIP: draft the next page",
+          "state": "draft"
+        },
+        {
+          "number": 28,
+          "title": "An earlier try at the page",
+          "state": "closed"
+        }
+      ],
+      "pulls_total": 2
+    }
+  ]
+}
+--- stderr ---
+## The filter finds a branch by a pull request's number, the start of it after `#`,
+## and lists the pull request that matched first.
+# metab https://github.com/octo/demo --api '/api/source/refs?kind=branch&q=%2328'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=branch&q=%2328
+status: 200
+{
+  "kind": "branch",
+  "query": "#28",
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "ref": "refs/remotes/origin/topic",
+  "kinds": [
+    "branch",
+    "tag"
+  ],
+  "working_tree": null,
+  "pull_requests": {
+    "state": "ready",
+    "complete": true,
+    "refreshing": false
+  },
+  "refs": [
+    {
+      "name": "wip",
+      "ref": "refs/remotes/origin/wip",
+      "commit": "7a7d6596e515735d244dc1d942463c95851e139c",
+      "committed_at": 1788032400.0,
+      "default": false,
+      "checked_out": false,
+      "current": false,
+      "pulls": [
+        {
+          "number": 28,
+          "title": "An earlier try at the page",
+          "state": "closed"
+        },
+        {
+          "number": 31,
+          "title": "WIP: draft the next page",
+          "state": "draft"
+        }
+      ],
+      "pulls_total": 2
+    }
+  ]
+}
+--- stderr ---
+## Or by every word of a title, in any case, whatever the branch is named.
+# metab https://github.com/octo/demo --api '/api/source/refs?kind=branch&q=START+topic'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=branch&q=START+topic
+status: 200
+{
+  "kind": "branch",
+  "query": "START topic",
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "ref": "refs/remotes/origin/topic",
+  "kinds": [
+    "branch",
+    "tag"
+  ],
+  "working_tree": null,
+  "pull_requests": {
+    "state": "ready",
+    "complete": true,
+    "refreshing": false
+  },
+  "refs": [
+    {
+      "name": "topic",
+      "ref": "refs/remotes/origin/topic",
+      "commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "committed_at": 1788021600.0,
+      "default": true,
+      "checked_out": false,
+      "current": true,
+      "pulls": [
+        {
+          "number": 12,
+          "title": "Start the topic",
+          "state": "merged"
+        }
+      ],
+      "pulls_total": 1
+    }
+  ]
+}
+--- stderr ---
+## A fork's pull request, and one whose branch the mirror lacks, find nothing.
+# metab https://github.com/octo/demo --api '/api/source/refs?kind=branch&q=fork'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=branch&q=fork
+status: 200
+{
+  "kind": "branch",
+  "query": "fork",
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "ref": "refs/remotes/origin/topic",
+  "kinds": [
+    "branch",
+    "tag"
+  ],
+  "working_tree": null,
+  "pull_requests": {
+    "state": "ready",
+    "complete": true,
+    "refreshing": false
+  },
+  "refs": []
+}
+--- stderr ---
+## A list of tags has no pull requests.
+# metab https://github.com/octo/demo --api '/api/source/refs?kind=tag'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=tag
+status: 200
+{
+  "kind": "tag",
+  "query": "",
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "ref": "refs/remotes/origin/topic",
+  "kinds": [
+    "branch",
+    "tag"
+  ],
+  "working_tree": null,
+  "pull_requests": null,
+  "refs": []
+}
+--- stderr ---

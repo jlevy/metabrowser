@@ -24,7 +24,10 @@ before: >-
   printf '%010d' 0 > legendroot/r1.rs &&
   for i in $(seq 1 5); do printf 'nnnn' > legendroot/notes$i; done &&
   for i in $(seq 1 3); do printf '%050d' 0 > legendroot/u$i.zzq; done &&
-  find legendroot -path legendroot/.git -prune -o -exec touch -t 202311142213.20 {} +
+  find legendroot -path legendroot/.git -prune -o -exec touch -t 202311142213.20 {} + &&
+  mkdir manyroot &&
+  git -C manyroot init -q --initial-branch=main . &&
+  for spec in json:20 yaml:18 md:16 ts:14 py:12 js:10 css:8 html:6 toml:5 go:4 sh:3; do ext=${spec%%:*}; n=${spec##*:}; for i in $(seq 1 $n); do printf 'x' > manyroot/f$i.$ext; done; done
 ---
 # Golden test: the File Overview legend through `--api`
 
@@ -50,16 +53,23 @@ The fixture has 100 files, 20 of them JSON files in an ignored `build/` director
 The legend answers every measure and population at once, so the browser switches them
 without asking again:
 
-- By files over the whole folder it names JSON, YAML, Markdown, TypeScript, and Python,
-  and leaves 15 files for Other: JavaScript, Rust, No extension, and Other types, which
-  are never named.
+- By files over the whole folder it names JSON, YAML, Markdown, TypeScript, Python, and
+  JavaScript, and Rust, whose one file is exactly 1% of the 100, the least it can be and
+  be named. That leaves 8 files for Other: No extension and Other types, which are never
+  named.
 - By files over the unignored files, JSON falls to fourth.
 - By bytes, JavaScript leads.
   Markdown and TypeScript tie at 300 bytes and Markdown comes first on files; JSON and
-  YAML tie at 60 bytes and JSON takes the fifth place on files.
-- Over unignored bytes YAML takes JSON’s place.
-- At most five are named, and only above 1% of the population, the share at which the
-  type table folds a row into “N more”.
+  YAML tie at 60 bytes and JSON comes first on files.
+  Rust’s 10 bytes are 0.5% of the folder’s, under the floor, so it is in Other.
+- Over unignored bytes YAML takes the fifth place and JSON’s 20 bytes, a little over 1%,
+  the sixth.
+- At most `limit` families are named, and only at or above `minimum_share_percent` of
+  the population, the share below which the type table folds a row into “N more”.
+
+The second test is a folder of eleven families, every one at least 2% of its files,
+which shows the cap: the nine largest are named and the two below them, which clear the
+floor too, are left in Other.
 
 ## Test: a folder’s rollup carries its legend
 
@@ -490,7 +500,7 @@ status: 200
   },
   "file_type_legend": {
     "schema": "file-type-legend-v1",
-    "limit": 5,
+    "limit": 9,
     "minimum_share_percent": 1,
     "files": {
       "all": {
@@ -515,9 +525,17 @@ status: 200
           {
             "family": "python",
             "value": 8
+          },
+          {
+            "family": "javascript",
+            "value": 6
+          },
+          {
+            "family": "rust",
+            "value": 1
           }
         ],
-        "other": 15
+        "other": 8
       },
       "unignored": {
         "total": 80,
@@ -541,9 +559,17 @@ status: 200
           {
             "family": "python",
             "value": 8
+          },
+          {
+            "family": "javascript",
+            "value": 6
+          },
+          {
+            "family": "rust",
+            "value": 1
           }
         ],
-        "other": 15
+        "other": 8
       }
     },
     "bytes": {
@@ -569,9 +595,13 @@ status: 200
           {
             "family": "json",
             "value": 60
+          },
+          {
+            "family": "yaml",
+            "value": 60
           }
         ],
-        "other": 240
+        "other": 180
       },
       "unignored": {
         "total": 1860,
@@ -595,9 +625,13 @@ status: 200
           {
             "family": "yaml",
             "value": 60
+          },
+          {
+            "family": "json",
+            "value": 20
           }
         ],
-        "other": 200
+        "other": 180
       }
     }
   },
@@ -606,5 +640,196 @@ status: 200
   "max_files": 500000,
   "truncated": false
 }
+? 0
+```
+
+## Test: families past the limit are left in Other
+
+The rollup is kept in a file, and the next block reads its legend.
+
+```console
+$ metab manyroot --api '/api/rollup?path=.&depth=0' > many.out
+```
+
+```console
+$ sed -n '/"file_type_legend"/,/"index_status"/p' many.out
+  "file_type_legend": {
+    "schema": "file-type-legend-v1",
+    "limit": 9,
+    "minimum_share_percent": 1,
+    "files": {
+      "all": {
+        "total": 116,
+        "named": [
+          {
+            "family": "json",
+            "value": 20
+          },
+          {
+            "family": "yaml",
+            "value": 18
+          },
+          {
+            "family": "markdown",
+            "value": 16
+          },
+          {
+            "family": "typescript",
+            "value": 14
+          },
+          {
+            "family": "python",
+            "value": 12
+          },
+          {
+            "family": "javascript",
+            "value": 10
+          },
+          {
+            "family": "css",
+            "value": 8
+          },
+          {
+            "family": "html",
+            "value": 6
+          },
+          {
+            "family": "toml",
+            "value": 5
+          }
+        ],
+        "other": 7
+      },
+      "unignored": {
+        "total": 116,
+        "named": [
+          {
+            "family": "json",
+            "value": 20
+          },
+          {
+            "family": "yaml",
+            "value": 18
+          },
+          {
+            "family": "markdown",
+            "value": 16
+          },
+          {
+            "family": "typescript",
+            "value": 14
+          },
+          {
+            "family": "python",
+            "value": 12
+          },
+          {
+            "family": "javascript",
+            "value": 10
+          },
+          {
+            "family": "css",
+            "value": 8
+          },
+          {
+            "family": "html",
+            "value": 6
+          },
+          {
+            "family": "toml",
+            "value": 5
+          }
+        ],
+        "other": 7
+      }
+    },
+    "bytes": {
+      "all": {
+        "total": 116,
+        "named": [
+          {
+            "family": "json",
+            "value": 20
+          },
+          {
+            "family": "yaml",
+            "value": 18
+          },
+          {
+            "family": "markdown",
+            "value": 16
+          },
+          {
+            "family": "typescript",
+            "value": 14
+          },
+          {
+            "family": "python",
+            "value": 12
+          },
+          {
+            "family": "javascript",
+            "value": 10
+          },
+          {
+            "family": "css",
+            "value": 8
+          },
+          {
+            "family": "html",
+            "value": 6
+          },
+          {
+            "family": "toml",
+            "value": 5
+          }
+        ],
+        "other": 7
+      },
+      "unignored": {
+        "total": 116,
+        "named": [
+          {
+            "family": "json",
+            "value": 20
+          },
+          {
+            "family": "yaml",
+            "value": 18
+          },
+          {
+            "family": "markdown",
+            "value": 16
+          },
+          {
+            "family": "typescript",
+            "value": 14
+          },
+          {
+            "family": "python",
+            "value": 12
+          },
+          {
+            "family": "javascript",
+            "value": 10
+          },
+          {
+            "family": "css",
+            "value": 8
+          },
+          {
+            "family": "html",
+            "value": 6
+          },
+          {
+            "family": "toml",
+            "value": 5
+          }
+        ],
+        "other": 7
+      }
+    }
+  },
+  "index_status": "done",
 ? 0
 ```

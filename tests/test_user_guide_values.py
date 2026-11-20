@@ -45,6 +45,8 @@ from metabrowser.commit_ids import SHORT_COMMIT_CHARS
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.dotenv import ALLOWED_KEYS
 from metabrowser.file_extensions import BROWSER_TRACKABLE_EXTS
+from metabrowser.file_type_legend import LEGEND_MINIMUM_SHARE_PERCENT, LEGEND_TYPE_LIMIT
+from metabrowser.git.file_ages import file_ages_version_label
 from metabrowser.git.log import TRUNK_BRANCH_NAMES, TRUNK_REMOTES
 from metabrowser.git.process import ACQUISITION_MINIMUM
 from metabrowser.gz_io import GZIP_SUFFIX, ZLIB_SUFFIX
@@ -80,7 +82,16 @@ AGENT_NAMES = {
 # watchfiles release that drops one, or a filter of our own, fails here.
 UNWATCHED_EXAMPLES = ("node_modules", ".venv", "__pycache__")
 
-_NUMBER_WORDS = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven"}
+_NUMBER_WORDS = {
+    2: "two",
+    3: "three",
+    4: "four",
+    5: "five",
+    6: "six",
+    7: "seven",
+    8: "eight",
+    9: "nine",
+}
 
 
 @dataclass(frozen=True)
@@ -337,6 +348,18 @@ def stated_values() -> list[Stated]:
             (".".join(str(part) for part in ACQUISITION_MINIMUM),),
         ),
         Stated(
+            "docs/browsing-files.md",
+            "the Git release that reads file ages",
+            r"which needs Git (\d+\.\d+) or newer",
+            (file_ages_version_label(),),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the Git release that reads file ages",
+            r"\(`git last-modified`, Git (\d+\.\d+)\)",
+            (file_ages_version_label(),),
+        ),
+        Stated(
             "docs/installation.md",
             "the GitHub CLI minimum",
             r"the doctor.s GitHub check, need `gh` (\d+\.\d+\.\d+) or later",
@@ -359,6 +382,18 @@ def stated_values() -> list[Stated]:
             "the app's minimum metab",
             r"the app needs `metab` (\d+\.\d+\.\d+) or later",
             (".".join(app_minimum.groups()),),
+        ),
+        Stated(
+            "docs/browsing-files.md",
+            "the legend's family limit",
+            r"largest file-type families, such as Python, Markdown, and JSON, up to (\w+),",
+            (_NUMBER_WORDS.get(LEGEND_TYPE_LIMIT, str(LEGEND_TYPE_LIMIT)),),
+        ),
+        Stated(
+            "docs/browsing-files.md",
+            "the legend's share floor",
+            r"each at least (\d+)% of what is shown",
+            (str(LEGEND_MINIMUM_SHARE_PERCENT),),
         ),
         Stated(
             "docs/macos-app.md",

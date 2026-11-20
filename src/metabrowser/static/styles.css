@@ -729,6 +729,12 @@
   /* Content spacing */
   --content-padding-x: 24px;
   --content-padding-y: 16px;
+  /* The room between a bordered box's edge and the prose in it, each side
+     (docs/design-system.md, "Boxed Prose"). The pane inset, 12px, put a description's h2 13px
+     from the border (owner, 2026-11-20). github.com pads `.comment-body` 16px, measured
+     2026-11-19 in headless Chrome on a public pull request: an h2 17px inside the box's edge.
+     16px is `--content-padding-y`, the text's block padding, too. */
+  --boxed-prose-padding-inline: 16px;
   --preview-message-max-width: 42rem;
   --embedded-document-padding-top: 8px;
   /* The navigation column has one left inset, and everything in it
@@ -2426,6 +2432,20 @@ summary {
   font-weight: var(--weight-medium);
   text-align: right;
 }
+/* A labelled checkbox row, as Show ignored is in the filter bar: the label states what
+   ticking does, so the polarity is legible. The label is the click target. */
+.menu-row:has(.menu-check) {
+  cursor: pointer;
+}
+.menu-check {
+  accent-color: var(--link);
+  cursor: pointer;
+  margin: 0;
+}
+.menu-row:has(.menu-check:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
 
 /* Theme crossfade. Scoped to the large structural surfaces (and the
    prose/code content panels) so the page background and panes glide
@@ -2944,6 +2964,57 @@ html.theme-anim .menu {
 .source-ref-selector-row[aria-current="true"],
 .source-ref-selector-working-tree[aria-current="true"] {
   font-weight: var(--weight-medium);
+}
+/* A row is the ref's own line and, under it, the pull request its branch heads. The ref's line
+   is a row with none, as tall as before; the list places each row by its own height
+   (`rowOffsets`; docs/design-system.md, "The Ref Selector"). */
+.source-ref-selector-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+.source-ref-selector-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* The pull request's icon (the GitHub plugin's, drawn once it loads into a slot as wide as
+   itself), its number (--pull-number-weight), and its title: bold in normal ink, cut at
+   the line's end; a count of the branch's other pull requests follows, muted. The line is
+   one height whatever its title holds: a title's emoji or CJK fall back to a font whose
+   `normal` line is taller, which made the row 2 to 3 px taller than the list places it. */
+.source-ref-selector-pull {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: calc(var(--nav-metadata-line-height) * 1em);
+  overflow: hidden;
+  line-height: var(--nav-metadata-line-height);
+}
+.source-ref-selector-pull-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--tree-icon-slot);
+}
+.source-ref-selector-pull > .source-ref-selector-pull-number {
+  flex: none;
+}
+.source-ref-selector-pull-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: var(--weight-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-ref-selector-pull-more {
+  flex: none;
+  color: var(--muted);
 }
 .source-ref-selector-name {
   flex: 1 1 auto;
@@ -5042,7 +5113,8 @@ a.tab-btn {
    the row is narrower than that the text wraps to the second line, which is
    clipped away. Wider, the text fills the row and ends in an ellipsis rather
    than starting with one, because the start is what says where the mirror is
-   and the end is a store's hexadecimal key.
+   and the end is a store's key, which names its repository and ends in a digest
+   prefix.
 
    Measured with the long name metabrowser-v012-landing-docs on 12 heading
    widths from 250px to 1350px in the in-app browser, and again on 12 from
@@ -5463,6 +5535,63 @@ a.tab-btn {
 }
 .metabrowser-kpress-host .kpress details > summary:hover {
   color: var(--text);
+}
+
+/* ── An image the page does not load ──────────────────────────────
+   A document from an untrusted source shows its images from the web unless the reader
+   has turned that off (Block remote images, in the Metabrowser menu), and an `http`
+   image, or one the document gives no address, is never loaded. Each becomes this chip
+   (inert_html.py, IMAGE_FALLBACK_CLASS): an image glyph and the alt text, inside the
+   link the image was in, or inside a link to the image. It is a badge's size, one
+   line of `--ui-small-font-size` and its border, so a row of them lies on one line as
+   a row of badges does, and it reads as a thing that is not there rather than as text:
+   the glyph and the border. Where the image's address is known the page's tooltip shows
+   it (`data-tip-text`). A chip never wraps its text; one wider than its line is cut
+   with an ellipsis, and the tooltip has the rest. */
+.mb-image-fallback {
+  background: var(--viz-surface);
+  border: var(--chip-border) solid var(--viz-border);
+  border-radius: var(--radius-tag);
+  box-sizing: border-box;
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: var(--ui-small-font-size);
+  line-height: 1.5;
+  max-inline-size: 100%;
+  overflow: hidden;
+  padding-inline: 0.5em;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  /* On the baseline, as an image is: an inline block that clips its overflow rests its
+     foot there, so a chip and a badge beside it, both 20 pixels, have one top and one foot. */
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+.mb-image-fallback::before {
+  background-color: currentcolor;
+  content: "";
+  display: inline-block;
+  height: 1.1em;
+  margin-inline-end: 0.4em;
+  mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  vertical-align: -0.2em;
+  width: 1.1em;
+}
+.kpress-prose a:hover > .mb-image-fallback {
+  background: var(--hover-bg);
+}
+
+/* KPress gives every image `margin-block: 1rem`, which lifts a badge a rem above the chip
+   that stands for it, and above its row's words, and made a row of badges two rems taller
+   than github.com draws it. github.com gives an image no margin. An image in a link, which
+   a badge is, takes none, nor does any image in a paragraph that holds one, or a chip, so
+   the images and chips of one row share a line. An image alone in its paragraph keeps
+   KPress's room, as the rules below leave it. */
+.kpress-prose a > img,
+.kpress-prose p:is(:has(a > img), :has(.mb-image-fallback)) img {
+  margin-block: 0;
 }
 
 /* ── GitHub's layout attributes in rendered Markdown ─────────────
@@ -6950,8 +7079,14 @@ pre.code-block.metabrowser-source-lines > code {
   padding-inline-start: 1.2em;
 }
 .event-log-details-part + .event-log-details-part,
-.event-log-details-links {
+.event-log-details-links,
+.event-log-details-open {
   margin-block-start: 6px;
+}
+/* The command a person copies to open the whole log: in the code face, its own ink. */
+.event-log-details-open code {
+  color: var(--text);
+  font-family: var(--font-mono);
 }
 .event-log-details-heading {
   color: var(--text);
@@ -7788,8 +7923,16 @@ pre.code-block.metabrowser-source-lines > code {
    line totals the inline change stats: its file count, then the brief change line
    (`.change-line`). Its groups are items of one line, spaced as the Diff summary's are, and
    each dot is one item with the group before it, so a line that wraps breaks after a dot. */
-.git-commit-change-stats {
+/* The hover card's size line, "32 files changed · 56.9 KB compressed (…)", above its change
+   line, in the change line's ink and size (docs/design-system.md, "Change Size Line"). */
+.git-commit-size-line {
   margin-top: 6px;
+  color: var(--text);
+  font-size: var(--body-font-size);
+}
+
+.git-commit-change-stats {
+  margin-top: 2px;
   color: var(--text);
   font-size: var(--body-font-size);
 }
@@ -7849,7 +7992,7 @@ pre.code-block.metabrowser-source-lines > code {
    where it will not, the message as written, wrapped where it was written. */
 .git-commit-body {
   margin: 16px 0;
-  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
+  padding: var(--pane-header-padding-y) var(--boxed-prose-padding-inline);
   overflow-x: auto;
   font-size: var(--document-body-font-size);
   font-weight: var(--weight-normal);

@@ -12,6 +12,8 @@ env:
   METABROWSER_OPEN_IN: "browser"
   METABROWSER_CONFIG_DIR: "/tmp/metabrowser-doctor-golden-never-created/config"
   METABROWSER_CACHE_DIR: "/tmp/metabrowser-doctor-golden-never-created/cache"
+  METABROWSER_STATE_DIR: "/tmp/metabrowser-doctor-golden-never-created/state"
+  METABROWSER_EVENT_LOG: "1"
   METABROWSER_MAX_FIRST_CLONE_KB: "1"
 patterns:
   FAKE_GH: '[^\s"]+/fixtures/github-status/gh'
@@ -32,7 +34,7 @@ before: >-
 
 After the plugin verdict, where `--present` opens a target, and GitHub CLI’s sign-in,
 `metab --doctor` checks the setup: this `metab`, the `git` on `PATH`, and the
-configuration and cache directories.
+configuration and cache directories, and the event log.
 `--doctor --json` serves all of them, the plugins and `open_in` first, as `checks`,
 which the macOS app’s Help > Check Setup… decodes into one row each;
 `src/metabrowser/cli/doctor.py` documents the shape and each check.
@@ -40,11 +42,13 @@ which the macOS app’s Help > Check Setup… decodes into one row each;
 `git` here is `tests/fixtures/doctor/git`, which names the version `FAKE_GIT_VERSION`
 chooses, and `gh` is `tests/fixtures/github-status/gh`, so neither the host’s Git nor a
 signed-in `gh` decides the answer.
-The frontmatter names configuration and cache directories that do not exist and that
-metab can create, as on a Mac where `metab` has not run yet; the doctor creates neither.
-The other commands name theirs in the sandbox, or under `/nonexistent`, which this user
-cannot create. `METABROWSER_OPEN_IN=browser` looks for no app, so the `metab` check has
-no app’s minimum to compare; `tests/test_doctor.py` covers that comparison.
+The frontmatter names configuration, cache, and state directories that do not exist and
+that metab can create, as on a Mac where `metab` has not run yet; the doctor creates
+neither. The other commands name theirs in the sandbox, or under `/nonexistent`, which
+this user cannot create.
+`METABROWSER_OPEN_IN=browser` looks for no app, so the `metab` check has no app’s
+minimum to compare; `tests/test_doctor.py` covers that comparison.
+`METABROWSER_EVENT_LOG` is set on, as the Makefile’s goldens otherwise turn it off.
 The patterns elide what the host decides: the `metab` version and executable, the
 Python, the checkout it runs from, and the free space.
 `METABROWSER_MAX_FIRST_CLONE_KB` admits a first clone of 1 KB, so the cache check warns
@@ -55,7 +59,7 @@ of low free space only on a full volume; `tests/test_doctor.py` covers that warn
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 11 plugin(s) OK
+metab --doctor: 12 plugin(s) OK
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -66,9 +70,10 @@ metab: ok: metab [METAB_VERSION]
   python: [PYTHON]
   installed: from the source checkout [ENVIRONMENT]
   app: not looked for
-git: ok: git version 2.50.1, which meets every floor
+git: ok: git version 2.56.1, which meets every floor
   executable: [FAKE_GIT]
-  version: git version 2.50.1
+  version: git version 2.56.1
+  file ages: available
 config: ok: the configuration directory is private
   directory: [SANDBOX]/config
   source: METABROWSER_CONFIG_DIR
@@ -77,6 +82,10 @@ cache: ok: the cache directory is private and writable
   directory: [SANDBOX]/cache
   source: METABROWSER_CACHE_DIR
   free space: [FREE]
+event_log: ok: no event log is written yet; the first server creates its directory
+  directory: /tmp/metabrowser-doctor-golden-never-created/state/events
+  source: METABROWSER_STATE_DIR
+  not recorded: a server whose folder is the events directory or inside it writes no log, so that browsing the log does not change it; every other server writes one
 ? 0
 ```
 
@@ -88,7 +97,7 @@ This is the report the app’s Check Setup… reads.
 $ metab --doctor --json
 {
   "ok": true,
-  "plugin_count": 11,
+  "plugin_count": 12,
   "problems": [],
   "open_in": {
     "value": "browser",
@@ -119,11 +128,11 @@ $ metab --doctor --json
       "id": "plugins",
       "title": "Plugins",
       "state": "ok",
-      "summary": "11 plugins and the packaged cache record contracts check out",
+      "summary": "12 plugins and the packaged cache record contracts check out",
       "details": [
         {
           "name": "plugins",
-          "value": "11"
+          "value": "12"
         }
       ],
       "remedy": null
@@ -182,7 +191,7 @@ $ metab --doctor --json
       "id": "git",
       "title": "Git",
       "state": "ok",
-      "summary": "git version 2.50.1, which meets every floor",
+      "summary": "git version 2.56.1, which meets every floor",
       "details": [
         {
           "name": "executable",
@@ -190,7 +199,11 @@ $ metab --doctor --json
         },
         {
           "name": "version",
-          "value": "git version 2.50.1"
+          "value": "git version 2.56.1"
+        },
+        {
+          "name": "file ages",
+          "value": "available"
         }
       ],
       "remedy": null
@@ -236,6 +249,27 @@ $ metab --doctor --json
         }
       ],
       "remedy": null
+    },
+    {
+      "id": "event_log",
+      "title": "Event log",
+      "state": "ok",
+      "summary": "no event log is written yet; the first server creates its directory",
+      "details": [
+        {
+          "name": "directory",
+          "value": "/tmp/metabrowser-doctor-golden-never-created/state/events"
+        },
+        {
+          "name": "source",
+          "value": "METABROWSER_STATE_DIR"
+        },
+        {
+          "name": "not recorded",
+          "value": "a server whose folder is the events directory or inside it writes no log, so that browsing the log does not change it; every other server writes one"
+        }
+      ],
+      "remedy": null
     }
   ]
 }
@@ -259,9 +293,10 @@ metab: ok: metab [METAB_VERSION]
   python: [PYTHON]
   installed: from the source checkout [ENVIRONMENT]
   app: not looked for
-git: ok: git version 2.50.1, which meets every floor
+git: ok: git version 2.56.1, which meets every floor
   executable: [FAKE_GIT]
-  version: git version 2.50.1
+  version: git version 2.56.1
+  file ages: available
 config: problem: the configuration directory does not exist, and metab cannot create it: / is not writable by this user
   directory: /nonexistent/metabrowser-doctor-golden/config
   source: METABROWSER_CONFIG_DIR
@@ -272,6 +307,10 @@ cache: problem: the cache directory does not exist, and metab cannot create it: 
   source: METABROWSER_CACHE_DIR
   free space: [FREE]
   fix: Create it with mode 700 yourself, or set METABROWSER_CACHE_DIR to a private directory you own.
+event_log: ok: no event log is written yet; the first server creates its directory
+  directory: /tmp/metabrowser-doctor-golden-never-created/state/events
+  source: METABROWSER_STATE_DIR
+  not recorded: a server whose folder is the events directory or inside it writes no log, so that browsing the log does not change it; every other server writes one
 ? 1
 ```
 
@@ -280,11 +319,12 @@ cache: problem: the cache directory does not exist, and metab cannot create it: 
 A warning never changes the exit status: a folder is served without cloning anything.
 
 ```console
-$ FAKE_GIT_VERSION=apple-old METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A3 '^git:' doctor.txt
+$ FAKE_GIT_VERSION=apple-old METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A4 '^git:' doctor.txt
 exit: 0
 git: warning: git version 2.39.5 (Apple Git-154) is below the floor for cloning, 2.43.7 or a patched release at least 2.50.1 on a newer track, so metab clones no Git source and shows no branch or tag of a checkout
   executable: [FAKE_GIT]
   version: git version 2.39.5 (Apple Git-154)
+  file ages: needs Git 2.53 or newer, so a Git revision shows no By age
   fix: Update Git with the package manager that installed it, or from Git's downloads. https://git-scm.com/downloads
 ? 0
 ```
@@ -292,11 +332,29 @@ git: warning: git version 2.39.5 (Apple Git-154) is below the floor for cloning,
 ## Test: a Git below a partial clone’s release
 
 ```console
-$ FAKE_GIT_VERSION=before-partial-clone METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A3 '^git:' doctor.txt
+$ FAKE_GIT_VERSION=before-partial-clone METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A4 '^git:' doctor.txt
 exit: 0
 git: warning: git version 2.44.4 shows no branch or tag of a partial clone, which needs 2.45.4 or a patched release at least 2.50.1 on a newer track
   executable: [FAKE_GIT]
   version: git version 2.44.4
+  file ages: needs Git 2.53 or newer, so a Git revision shows no By age
+  fix: Update Git with the package manager that installed it, or from Git's downloads. https://git-scm.com/downloads
+? 0
+```
+
+## Test: a Git that clones but reads no file ages is a warning with its remedy
+
+`git last-modified`, which dates the files of a Git revision, is Git 2.53’s, so a Git
+that meets every floor for cloning still shows a revision no By age.
+The report says so, and says which release it needs, and the exit status stays 0.
+
+```console
+$ FAKE_GIT_VERSION=before-file-ages METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A4 '^git:' doctor.txt
+exit: 0
+git: warning: File ages on Git revisions need Git 2.53 or newer (found 2.50.1)
+  executable: [FAKE_GIT]
+  version: git version 2.50.1
+  file ages: needs Git 2.53 or newer, so a Git revision shows no By age
   fix: Update Git with the package manager that installed it, or from Git's downloads. https://git-scm.com/downloads
 ? 0
 ```
@@ -304,11 +362,12 @@ git: warning: git version 2.44.4 shows no branch or tag of a partial clone, whic
 ## Test: a Git that names no version
 
 ```console
-$ FAKE_GIT_VERSION=unreadable METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A3 '^git:' doctor.txt
+$ FAKE_GIT_VERSION=unreadable METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A4 '^git:' doctor.txt
 exit: 0
 git: warning: git at [FAKE_GIT] did not name a version metab can read
   executable: [FAKE_GIT]
   version: a build of git that names no version
+  file ages: needs Git 2.53 or newer, so a Git revision shows no By age
   fix: Update Git with the package manager that installed it, or from Git's downloads. https://git-scm.com/downloads
 ? 0
 ```
@@ -347,9 +406,10 @@ metab: ok: metab [METAB_VERSION]
   python: [PYTHON]
   installed: from the source checkout [ENVIRONMENT]
   app: not looked for
-git: ok: git version 2.50.1, which meets every floor
+git: ok: git version 2.56.1, which meets every floor
   executable: [FAKE_GIT]
-  version: git version 2.50.1
+  version: git version 2.56.1
+  file ages: available
 config: problem: The Metabrowser storage directory is accessible to other users (mode 0755). Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own.
   directory: [SANDBOX]/shared
   source: METABROWSER_CONFIG_DIR
@@ -357,6 +417,10 @@ cache: ok: the cache directory is private and writable
   directory: [SANDBOX]/cache
   source: METABROWSER_CACHE_DIR
   free space: [FREE]
+event_log: ok: no event log is written yet; the first server creates its directory
+  directory: /tmp/metabrowser-doctor-golden-never-created/state/events
+  source: METABROWSER_STATE_DIR
+  not recorded: a server whose folder is the events directory or inside it writes no log, so that browsing the log does not change it; every other server writes one
 ? 1
 ```
 
@@ -380,7 +444,7 @@ cache: ok: the cache directory is private and writable
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doctor --json 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 11,
+  "plugin_count": 12,
   "problems": [
     "cache: METABROWSER_CACHE_DIR must be a nonempty absolute path without '..' components."
   ],
@@ -413,11 +477,11 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doct
       "id": "plugins",
       "title": "Plugins",
       "state": "ok",
-      "summary": "11 plugins and the packaged cache record contracts check out",
+      "summary": "12 plugins and the packaged cache record contracts check out",
       "details": [
         {
           "name": "plugins",
-          "value": "11"
+          "value": "12"
         }
       ],
       "remedy": null
@@ -476,7 +540,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doct
       "id": "git",
       "title": "Git",
       "state": "ok",
-      "summary": "git version 2.50.1, which meets every floor",
+      "summary": "git version 2.56.1, which meets every floor",
       "details": [
         {
           "name": "executable",
@@ -484,7 +548,11 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doct
         },
         {
           "name": "version",
-          "value": "git version 2.50.1"
+          "value": "git version 2.56.1"
+        },
+        {
+          "name": "file ages",
+          "value": "available"
         }
       ],
       "remedy": null
@@ -522,10 +590,73 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doct
         }
       ],
       "remedy": null
+    },
+    {
+      "id": "event_log",
+      "title": "Event log",
+      "state": "ok",
+      "summary": "no event log is written yet; the first server creates its directory",
+      "details": [
+        {
+          "name": "directory",
+          "value": "/tmp/metabrowser-doctor-golden-never-created/state/events"
+        },
+        {
+          "name": "source",
+          "value": "METABROWSER_STATE_DIR"
+        },
+        {
+          "name": "not recorded",
+          "value": "a server whose folder is the events directory or inside it writes no log, so that browsing the log does not change it; every other server writes one"
+        }
+      ],
+      "remedy": null
     }
   ]
 }
 ? 1
+```
+
+## Test: an environment that turns the event log off is a warning
+
+The owner’s aim is that latency is always captured, so a log that is off is said, with
+the setting that turned it off and the step that undoes it.
+It is a warning, not a problem: a folder is served without a log.
+
+```console
+$ METABROWSER_EVENT_LOG=0 METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A3 '^event_log:' doctor.txt
+exit: 0
+event_log: warning: METABROWSER_EVENT_LOG turns the event log off, so no latency or failure is recorded
+  directory: /tmp/metabrowser-doctor-golden-never-created/state/events
+  source: METABROWSER_STATE_DIR
+  fix: Unset METABROWSER_EVENT_LOG, or set it to 1.
+? 0
+```
+
+## Test: a state directory that cannot be created is a warning
+
+```console
+$ METABROWSER_STATE_DIR=/nonexistent/metabrowser-doctor-golden/state METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A4 '^event_log:' doctor.txt
+exit: 0
+event_log: warning: the event log's directory does not exist, and metab cannot create it: / is not writable by this user
+  directory: /nonexistent/metabrowser-doctor-golden/state/events
+  source: METABROWSER_STATE_DIR
+  not recorded: a server whose folder is the events directory or inside it writes no log, so that browsing the log does not change it; every other server writes one
+  fix: Create the state directory with mode 700 yourself, or set METABROWSER_STATE_DIR to a private directory you own.
+? 0
+```
+
+## Test: the events directory a server has written counts its segments
+
+```console
+$ mkdir -m 700 state state/events && touch state/events/events-20260101T000000Z-p1-000.jsonl && METABROWSER_STATE_DIR=$PWD/state METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor > doctor.txt 2>/dev/null; echo "exit: $?"; grep -A4 '^event_log:' doctor.txt
+exit: 0
+event_log: ok: a server writes an event log here
+  directory: [SANDBOX]/state/events
+  source: METABROWSER_STATE_DIR
+  not recorded: a server whose folder is the events directory or inside it writes no log, so that browsing the log does not change it; every other server writes one
+  segments: 1
+? 0
 ```
 
 <!-- This document follows common-doc-guidelines.md.

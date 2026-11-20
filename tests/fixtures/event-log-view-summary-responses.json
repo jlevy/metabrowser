@@ -1,0 +1,945 @@
+{
+  "answers": {
+    "kinds?path=events-20261119T220000Z-p7007-000.jsonl": {
+      "status": 200,
+      "body": {
+        "view": "kinds",
+        "log": {
+          "schema_version": 1,
+          "kinds": [
+            "request",
+            "job",
+            "subprocess",
+            "browser",
+            "lifecycle",
+            "loop",
+            "probe"
+          ],
+          "outcomes": [
+            "ok",
+            "failed",
+            "timeout",
+            "cancelled",
+            "abandoned",
+            "never_completed"
+          ],
+          "edges_ms": [
+            1.0,
+            10.0,
+            100.0,
+            500.0,
+            2000.0,
+            10000.0
+          ],
+          "bytes": 14917,
+          "records": 58,
+          "skipped": 2,
+          "spans": 46,
+          "unfinished": 2,
+          "started": "2026-11-19T22:00:00.100Z",
+          "ended": "2026-11-19T22:03:50.003Z",
+          "extent_ms": 229903.0,
+          "pids": [
+            7007
+          ],
+          "continues": false
+        },
+        "query": {
+          "kind": [],
+          "outcome": [],
+          "name": null,
+          "client": null,
+          "cause": null,
+          "min_ms": null
+        },
+        "edges_ms": [
+          1.0,
+          10.0,
+          100.0,
+          500.0,
+          2000.0,
+          10000.0
+        ],
+        "histogram": [
+          0,
+          23,
+          11,
+          0,
+          4,
+          4,
+          7
+        ],
+        "kinds": [
+          {
+            "kind": "request",
+            "count": 36,
+            "timed": 36,
+            "outcomes": {
+              "ok": 35,
+              "cancelled": 1
+            },
+            "p50_ms": 4.4,
+            "p95_ms": 2412.5,
+            "max_ms": 30003.1,
+            "total_ms": 32800.2,
+            "histogram": [
+              0,
+              23,
+              11,
+              0,
+              0,
+              1,
+              1
+            ],
+            "names": [
+              {
+                "name": "GET /api/plugin/github/pull-comparison",
+                "count": 1,
+                "failed": 0,
+                "p50_ms": 30003.1,
+                "p95_ms": 30003.1,
+                "max_ms": 30003.1,
+                "total_ms": 30003.1
+              },
+              {
+                "name": "GET /api/plugin/github/pulls",
+                "count": 1,
+                "failed": 0,
+                "p50_ms": 2412.5,
+                "p95_ms": 2412.5,
+                "max_ms": 2412.5,
+                "total_ms": 2412.5
+              },
+              {
+                "name": "GET /api/tree",
+                "count": 9,
+                "failed": 0,
+                "p50_ms": 22.9,
+                "p95_ms": 58.3,
+                "max_ms": 58.3,
+                "total_ms": 243.3
+              },
+              {
+                "name": "GET /api/file",
+                "count": 10,
+                "failed": 0,
+                "p50_ms": 5.2,
+                "p95_ms": 36.2,
+                "max_ms": 36.2,
+                "total_ms": 108.0
+              },
+              {
+                "name": "GET /api/plugin/github/pull",
+                "count": 12,
+                "failed": 0,
+                "p50_ms": 1.2,
+                "p95_ms": 1.4,
+                "max_ms": 1.4,
+                "total_ms": 15.0
+              },
+              {
+                "name": "GET /view/",
+                "count": 1,
+                "failed": 0,
+                "p50_ms": 11.8,
+                "p95_ms": 11.8,
+                "max_ms": 11.8,
+                "total_ms": 11.8
+              },
+              {
+                "name": "POST /api/plugin/github/pull-refresh",
+                "count": 2,
+                "failed": 0,
+                "p50_ms": 2.9,
+                "p95_ms": 3.6,
+                "max_ms": 3.6,
+                "total_ms": 6.5
+              }
+            ],
+            "names_more": 0
+          },
+          {
+            "kind": "job",
+            "count": 3,
+            "timed": 3,
+            "outcomes": {
+              "failed": 2,
+              "unfinished": 1
+            },
+            "p50_ms": 29993.0,
+            "p95_ms": 32050.0,
+            "max_ms": 32050.0,
+            "total_ms": 63373.6,
+            "histogram": [
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              2
+            ],
+            "names": [
+              {
+                "name": "mirror_refresh.MirrorSession._pull_job",
+                "count": 1,
+                "failed": 1,
+                "p50_ms": 32050.0,
+                "p95_ms": 32050.0,
+                "max_ms": 32050.0,
+                "total_ms": 32050.0
+              },
+              {
+                "name": "comparison_cache.manifest",
+                "count": 1,
+                "failed": 1,
+                "p50_ms": 29993.0,
+                "p95_ms": 29993.0,
+                "max_ms": 29993.0,
+                "total_ms": 29993.0
+              },
+              {
+                "name": "pull_files_refresh.refresh_files",
+                "count": 1,
+                "failed": 1,
+                "p50_ms": 1330.6,
+                "p95_ms": 1330.6,
+                "max_ms": 1330.6,
+                "total_ms": 1330.6
+              }
+            ],
+            "names_more": 0
+          },
+          {
+            "kind": "subprocess",
+            "count": 5,
+            "timed": 5,
+            "outcomes": {
+              "failed": 2,
+              "ok": 2,
+              "unfinished": 1
+            },
+            "p50_ms": 1810.2,
+            "p95_ms": 30006.4,
+            "max_ms": 30006.4,
+            "total_ms": 63101.9,
+            "histogram": [
+              0,
+              0,
+              0,
+              0,
+              3,
+              0,
+              2
+            ],
+            "names": [
+              {
+                "name": "gh api",
+                "count": 2,
+                "failed": 2,
+                "p50_ms": 688.9,
+                "p95_ms": 30006.4,
+                "max_ms": 30006.4,
+                "total_ms": 30695.3
+              },
+              {
+                "name": "git diff-tree",
+                "count": 1,
+                "failed": 1,
+                "p50_ms": 29973.0,
+                "p95_ms": 29973.0,
+                "max_ms": 29973.0,
+                "total_ms": 29973.0
+              },
+              {
+                "name": "git fetch",
+                "count": 1,
+                "failed": 0,
+                "p50_ms": 1810.2,
+                "p95_ms": 1810.2,
+                "max_ms": 1810.2,
+                "total_ms": 1810.2
+              },
+              {
+                "name": "gh auth",
+                "count": 1,
+                "failed": 0,
+                "p50_ms": 623.4,
+                "p95_ms": 623.4,
+                "max_ms": 623.4,
+                "total_ms": 623.4
+              }
+            ],
+            "names_more": 0
+          },
+          {
+            "kind": "browser",
+            "count": 5,
+            "timed": 3,
+            "outcomes": {
+              "none": 2,
+              "ok": 2,
+              "never_completed": 1
+            },
+            "p50_ms": 30000.0,
+            "p95_ms": 32100.0,
+            "max_ms": 32100.0,
+            "total_ms": 66200.0,
+            "histogram": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              2
+            ],
+            "names": [
+              {
+                "name": "wait githubPull:diffSummary",
+                "count": 2,
+                "failed": 0,
+                "p50_ms": 32100.0,
+                "p95_ms": 32100.0,
+                "max_ms": 32100.0,
+                "total_ms": 32100.0
+              },
+              {
+                "name": "fetch GET /api/plugin/github/pull-comparison",
+                "count": 1,
+                "failed": 1,
+                "p50_ms": 30000.0,
+                "p95_ms": 30000.0,
+                "max_ms": 30000.0,
+                "total_ms": 30000.0
+              },
+              {
+                "name": "fetch GET /api/tree",
+                "count": 1,
+                "failed": 0,
+                "p50_ms": 4100.0,
+                "p95_ms": 4100.0,
+                "max_ms": 4100.0,
+                "total_ms": 4100.0
+              },
+              {
+                "name": "browser.reports_rate_limited",
+                "count": 1,
+                "failed": 0,
+                "p50_ms": null,
+                "p95_ms": null,
+                "max_ms": null,
+                "total_ms": 0
+              }
+            ],
+            "names_more": 0
+          },
+          {
+            "kind": "lifecycle",
+            "count": 1,
+            "timed": 0,
+            "outcomes": {
+              "none": 1
+            },
+            "p50_ms": null,
+            "p95_ms": null,
+            "max_ms": null,
+            "total_ms": 0,
+            "histogram": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "names": [
+              {
+                "name": "server.start",
+                "count": 1,
+                "failed": 0,
+                "p50_ms": null,
+                "p95_ms": null,
+                "max_ms": null,
+                "total_ms": 0
+              }
+            ],
+            "names_more": 0
+          },
+          {
+            "kind": "loop",
+            "count": 1,
+            "timed": 1,
+            "outcomes": {
+              "ok": 1
+            },
+            "p50_ms": 2410.0,
+            "p95_ms": 2410.0,
+            "max_ms": 2410.0,
+            "total_ms": 2410.0,
+            "histogram": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0
+            ],
+            "names": [
+              {
+                "name": "event_loop.turn",
+                "count": 1,
+                "failed": 0,
+                "p50_ms": 2410.0,
+                "p95_ms": 2410.0,
+                "max_ms": 2410.0,
+                "total_ms": 2410.0
+              }
+            ],
+            "names_more": 0
+          },
+          {
+            "kind": "probe",
+            "count": 1,
+            "timed": 1,
+            "outcomes": {
+              "failed": 1
+            },
+            "p50_ms": 2031.2,
+            "p95_ms": 2031.2,
+            "max_ms": 2031.2,
+            "total_ms": 2031.2,
+            "histogram": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0
+            ],
+            "names": [
+              {
+                "name": "probe api.github.com:443",
+                "count": 1,
+                "failed": 1,
+                "p50_ms": 2031.2,
+                "p95_ms": 2031.2,
+                "max_ms": 2031.2,
+                "total_ms": 2031.2
+              }
+            ],
+            "names_more": 0
+          }
+        ]
+      }
+    },
+    "kinds?outcome=failed&path=events-20261119T220000Z-p7007-000.jsonl": {
+      "status": 200,
+      "body": {
+        "view": "kinds",
+        "log": {
+          "schema_version": 1,
+          "kinds": [
+            "request",
+            "job",
+            "subprocess",
+            "browser",
+            "lifecycle",
+            "loop",
+            "probe"
+          ],
+          "outcomes": [
+            "ok",
+            "failed",
+            "timeout",
+            "cancelled",
+            "abandoned",
+            "never_completed"
+          ],
+          "edges_ms": [
+            1.0,
+            10.0,
+            100.0,
+            500.0,
+            2000.0,
+            10000.0
+          ],
+          "bytes": 14917,
+          "records": 58,
+          "skipped": 2,
+          "spans": 46,
+          "unfinished": 2,
+          "started": "2026-11-19T22:00:00.100Z",
+          "ended": "2026-11-19T22:03:50.003Z",
+          "extent_ms": 229903.0,
+          "pids": [
+            7007
+          ],
+          "continues": false
+        },
+        "query": {
+          "kind": [],
+          "outcome": [
+            "failed"
+          ],
+          "name": null,
+          "client": null,
+          "cause": null,
+          "min_ms": null
+        },
+        "edges_ms": [
+          1.0,
+          10.0,
+          100.0,
+          500.0,
+          2000.0,
+          10000.0
+        ],
+        "histogram": [
+          0,
+          0,
+          0,
+          0,
+          2,
+          1,
+          2
+        ],
+        "kinds": [
+          {
+            "kind": "job",
+            "count": 2,
+            "timed": 2,
+            "outcomes": {
+              "failed": 2
+            },
+            "p50_ms": 1330.6,
+            "p95_ms": 32050.0,
+            "max_ms": 32050.0,
+            "total_ms": 33380.6,
+            "histogram": [
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              1
+            ],
+            "names": [
+              {
+                "name": "mirror_refresh.MirrorSession._pull_job",
+                "count": 1,
+                "failed": 1,
+                "p50_ms": 32050.0,
+                "p95_ms": 32050.0,
+                "max_ms": 32050.0,
+                "total_ms": 32050.0
+              },
+              {
+                "name": "pull_files_refresh.refresh_files",
+                "count": 1,
+                "failed": 1,
+                "p50_ms": 1330.6,
+                "p95_ms": 1330.6,
+                "max_ms": 1330.6,
+                "total_ms": 1330.6
+              }
+            ],
+            "names_more": 0
+          },
+          {
+            "kind": "subprocess",
+            "count": 2,
+            "timed": 2,
+            "outcomes": {
+              "failed": 2
+            },
+            "p50_ms": 688.9,
+            "p95_ms": 30006.4,
+            "max_ms": 30006.4,
+            "total_ms": 30695.3,
+            "histogram": [
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              1
+            ],
+            "names": [
+              {
+                "name": "gh api",
+                "count": 2,
+                "failed": 2,
+                "p50_ms": 688.9,
+                "p95_ms": 30006.4,
+                "max_ms": 30006.4,
+                "total_ms": 30695.3
+              }
+            ],
+            "names_more": 0
+          },
+          {
+            "kind": "probe",
+            "count": 1,
+            "timed": 1,
+            "outcomes": {
+              "failed": 1
+            },
+            "p50_ms": 2031.2,
+            "p95_ms": 2031.2,
+            "max_ms": 2031.2,
+            "total_ms": 2031.2,
+            "histogram": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0
+            ],
+            "names": [
+              {
+                "name": "probe api.github.com:443",
+                "count": 1,
+                "failed": 1,
+                "p50_ms": 2031.2,
+                "p95_ms": 2031.2,
+                "max_ms": 2031.2,
+                "total_ms": 2031.2
+              }
+            ],
+            "names_more": 0
+          }
+        ]
+      }
+    },
+    "errors?path=events-20261119T220000Z-p7007-000.jsonl": {
+      "status": 200,
+      "body": {
+        "view": "errors",
+        "log": {
+          "schema_version": 1,
+          "kinds": [
+            "request",
+            "job",
+            "subprocess",
+            "browser",
+            "lifecycle",
+            "loop",
+            "probe"
+          ],
+          "outcomes": [
+            "ok",
+            "failed",
+            "timeout",
+            "cancelled",
+            "abandoned",
+            "never_completed"
+          ],
+          "edges_ms": [
+            1.0,
+            10.0,
+            100.0,
+            500.0,
+            2000.0,
+            10000.0
+          ],
+          "bytes": 14917,
+          "records": 58,
+          "skipped": 2,
+          "spans": 46,
+          "unfinished": 2,
+          "started": "2026-11-19T22:00:00.100Z",
+          "ended": "2026-11-19T22:03:50.003Z",
+          "extent_ms": 229903.0,
+          "pids": [
+            7007
+          ],
+          "continues": false
+        },
+        "kinds": [],
+        "failures": 5,
+        "causes": [
+          {
+            "cause": "connect_timeout",
+            "source": "cause",
+            "count": 3,
+            "kinds": {
+              "job": 1,
+              "subprocess": 1,
+              "probe": 1
+            },
+            "names": {
+              "mirror_refresh.MirrorSession._pull_job": 1,
+              "gh api": 1,
+              "probe api.github.com:443": 1
+            },
+            "first": "2026-11-19T22:01:00.016Z",
+            "last": "2026-11-19T22:01:02.051Z",
+            "message": "GitHub could not be reached because the connection to api.github.com at 20.172.24.160 timed out after 2 s; other sites are reachable",
+            "addresses": [
+              "20.172.24.160"
+            ],
+            "examples": [
+              {
+                "ts": "2026-11-19T22:01:02.051Z",
+                "key": "7007:25",
+                "pid": 7007,
+                "span": 25,
+                "kind": "probe",
+                "name": "probe api.github.com:443",
+                "outcome": "failed",
+                "dur_ms": 2031.2,
+                "address": null,
+                "path": [
+                  {
+                    "key": "7007:22",
+                    "kind": "request",
+                    "name": "POST /api/plugin/github/pull-refresh"
+                  },
+                  {
+                    "key": "7007:23",
+                    "kind": "job",
+                    "name": "mirror_refresh.MirrorSession._pull_job"
+                  }
+                ]
+              },
+              {
+                "ts": "2026-11-19T22:01:02.051Z",
+                "key": "7007:23",
+                "pid": 7007,
+                "span": 23,
+                "kind": "job",
+                "name": "mirror_refresh.MirrorSession._pull_job",
+                "outcome": "failed",
+                "dur_ms": 32050.0,
+                "address": null,
+                "path": [
+                  {
+                    "key": "7007:22",
+                    "kind": "request",
+                    "name": "POST /api/plugin/github/pull-refresh"
+                  }
+                ]
+              },
+              {
+                "ts": "2026-11-19T22:01:00.016Z",
+                "key": "7007:24",
+                "pid": 7007,
+                "span": 24,
+                "kind": "subprocess",
+                "name": "gh api",
+                "outcome": "failed",
+                "dur_ms": 30006.4,
+                "address": "20.172.24.160",
+                "path": [
+                  {
+                    "key": "7007:22",
+                    "kind": "request",
+                    "name": "POST /api/plugin/github/pull-refresh"
+                  },
+                  {
+                    "key": "7007:23",
+                    "kind": "job",
+                    "name": "mirror_refresh.MirrorSession._pull_job"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "cause": "server_error",
+            "source": "cause",
+            "count": 2,
+            "kinds": {
+              "job": 1,
+              "subprocess": 1
+            },
+            "names": {
+              "pull_files_refresh.refresh_files": 1,
+              "gh api": 1
+            },
+            "first": "2026-11-19T22:02:01.328Z",
+            "last": "2026-11-19T22:02:01.331Z",
+            "message": "GitHub answered HTTP 503",
+            "addresses": [],
+            "examples": [
+              {
+                "ts": "2026-11-19T22:02:01.331Z",
+                "key": "7007:39",
+                "pid": 7007,
+                "span": 39,
+                "kind": "job",
+                "name": "pull_files_refresh.refresh_files",
+                "outcome": "failed",
+                "dur_ms": 1330.6,
+                "address": null,
+                "path": [
+                  {
+                    "key": "7007:38",
+                    "kind": "request",
+                    "name": "POST /api/plugin/github/pull-refresh"
+                  }
+                ]
+              },
+              {
+                "ts": "2026-11-19T22:02:01.328Z",
+                "key": "7007:41",
+                "pid": 7007,
+                "span": 41,
+                "kind": "subprocess",
+                "name": "gh api",
+                "outcome": "failed",
+                "dur_ms": 688.9,
+                "address": null,
+                "path": [
+                  {
+                    "key": "7007:38",
+                    "kind": "request",
+                    "name": "POST /api/plugin/github/pull-refresh"
+                  },
+                  {
+                    "key": "7007:39",
+                    "kind": "job",
+                    "name": "pull_files_refresh.refresh_files"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "probe": {
+          "ts": "2026-11-19T22:01:02.051Z",
+          "key": "7007:25",
+          "span": 25,
+          "timeout_s": 3.0,
+          "via_proxy": false,
+          "target": "api.github.com:443",
+          "verdict": "connect_timeout",
+          "dns_ms": 6.6,
+          "addresses": [
+            {
+              "address": "20.172.24.160",
+              "result": "timeout",
+              "ms": 1993.0
+            }
+          ],
+          "control": {
+            "target": "captive.apple.com:80",
+            "verdict": "reachable"
+          },
+          "cause": "connect_timeout",
+          "message": "GitHub could not be reached because the connection to api.github.com at 20.172.24.160 timed out after 2 s; other sites are reachable"
+        },
+        "page_reports": {
+          "count": 1,
+          "outcomes": {
+            "never_completed": 1
+          },
+          "names": {
+            "fetch GET /api/plugin/github/pull-comparison": 1
+          },
+          "examples": [
+            {
+              "ts": "2026-11-19T22:03:50.000Z",
+              "key": "7007@57",
+              "pid": 7007,
+              "client": "k3v9q2zx-90",
+              "name": "fetch GET /api/plugin/github/pull-comparison",
+              "outcome": "never_completed",
+              "dur_ms": 30000.0,
+              "status": null,
+              "path": "/pull/615"
+            }
+          ]
+        },
+        "unfinished": {
+          "total": 2,
+          "shown": 2,
+          "rows": [
+            {
+              "type": "span",
+              "key": "7007:45",
+              "kind": "job",
+              "name": "comparison_cache.manifest",
+              "start_ms": 199910.0,
+              "dur_ms": null,
+              "outcome": null,
+              "state": "unfinished",
+              "client": "k3v9q2zx-90",
+              "pid": 7007,
+              "span": 45,
+              "parent": "7007:44",
+              "attrs": {
+                "key": "store 4922384 519dabc merge_base"
+              },
+              "elapsed_ms": 29993.0,
+              "opens": 3,
+              "path": [
+                {
+                  "key": "7007:44",
+                  "kind": "request",
+                  "name": "GET /api/plugin/github/pull-comparison"
+                }
+              ]
+            },
+            {
+              "type": "span",
+              "key": "7007:46",
+              "kind": "subprocess",
+              "name": "git diff-tree",
+              "start_ms": 199930.0,
+              "dur_ms": null,
+              "outcome": null,
+              "state": "unfinished",
+              "client": "k3v9q2zx-90",
+              "pid": 7007,
+              "span": 46,
+              "parent": "7007:45",
+              "attrs": {
+                "args": [
+                  "diff-tree",
+                  "--raw",
+                  "-z",
+                  "4922384",
+                  "519dabc"
+                ],
+                "timeout_s": 900.0
+              },
+              "elapsed_ms": 29973.0,
+              "opens": 2,
+              "path": [
+                {
+                  "key": "7007:44",
+                  "kind": "request",
+                  "name": "GET /api/plugin/github/pull-comparison"
+                },
+                {
+                  "key": "7007:45",
+                  "kind": "job",
+                  "name": "comparison_cache.manifest"
+                }
+              ]
+            }
+          ]
+        },
+        "not_failures": {
+          "cancelled": 1
+        }
+      }
+    },
+    "errors?path=absent.jsonl": {
+      "status": 404,
+      "body": {
+        "error": "Not found",
+        "code": "not_found"
+      }
+    }
+  }
+}

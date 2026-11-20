@@ -441,7 +441,11 @@ def serve_until_interrupted(
     # cannot be opened is a warning, never a server that does not start.
     from metabrowser import __version__, event_log
 
-    event_log.open_log(served=served, version=__version__)
+    event_log.open_log(
+        served=served,
+        version=__version__,
+        served_directory=Path(served) if mode == "folder" else None,
+    )
 
     # Browser tabs hold open SSE streams, so cancel in-flight local requests rather
     # than waiting indefinitely for graceful shutdown after Ctrl-C.

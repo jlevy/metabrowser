@@ -320,7 +320,6 @@ def _header_inks(paint: dict[str, Any]) -> list[str]:
                 f"{where}: {count['text']!r} at {count['contrast']}:1 on {count['ground']}"
             )
     if [(text, hidden) for text, hidden, _, _ in paint["marks"]] != [
-        ("·", "true"),
         (",", None),
         (",", None),
         ("·", "true"),
@@ -331,15 +330,15 @@ def _header_inks(paint: dict[str, Any]) -> list[str]:
             broken.append(f"{where}: {text!r} at {color}, not --muted")
     if paint["words"] != tokens["--text"]:
         broken.append(f"{where}: the words at {paint['words']}, not --text")
-    if [(text, weight) for text, _, weight in paint["numbers"]] != [("4", BOLD)]:
+    # The file count leads the page's size line, above the header ("Change Size Line"), bold
+    # in the line's ink, as the size's numbers after it are once the size is known.
+    numbers = paint["numbers"]
+    if not numbers or numbers[0][0] != "4" or any(weight != BOLD for _, _, weight in numbers):
         broken.append(f"{where}: the file count {paint['numbers']}")
     for text, color, _ in paint["numbers"]:
         if color != tokens["--text"]:
             broken.append(f"{where}: number {text} at {color}, not --text")
-    if (
-        paint["label"]
-        != "4 files changed: 1 added, 1 deleted, 2 modified; 3 lines added, 1 deleted"
-    ):
+    if paint["label"] != "1 added, 1 deleted, 2 modified; 3 lines added, 1 deleted":
         broken.append(f"{where}: label {paint['label']!r}")
     return broken
 
@@ -478,18 +477,18 @@ def test_the_diff_summary_opens_in_the_pages_flow_on_the_trees_step(
     broken += _counts_read_bold(commit_page["counts"]["summary"], "commit's Diff summary")
     broken += _counts_read_bold(commit_page["counts"]["commits"], "Commits tally")
     assert broken == [], (broken, patch, commit_page)
-    # The commit's header bolds its file count and each status's: 4 files changed, 1 A, 1 D,
-    # 2 M.
+    # The commit's header bolds each status's count, 1 A, 1 D, 2 M; its file count is on the
+    # page's size line above it ("Change Size Line").
     numbers = [run["text"] for run in commit_page["counts"]["summary"] if run["number"]]
-    assert numbers == ["4", "1", "1", "2"], commit_page["counts"]["summary"]
-    # It reads "4 files changed · 1 A, 1 D, 2 M · +3 −1", each status count bold in its
+    assert numbers == ["1", "1", "2"], commit_page["counts"]["summary"]
+    # It reads "1 A, 1 D, 2 M · +3 −1", each status count bold in its
     # status's ink, number and letter, and its dots and commas muted, in both themes (mb-vb51,
     # mb-8iwn). Before, it read "4 changed files (1 added, 1 removed, 2 modified)", its
     # statuses in words and all of them muted, and then each count in the line's ink and
     # each letter at the line's weight.
     paints = commit_page["paint"]
     assert [paint["theme"] for paint in paints] == ["light", "dark"], paints
-    assert all(paint["text"] == "4 files changed·1 A, 1 D, 2 M·+3−1" for paint in paints), paints
+    assert all(paint["text"] == "1 A, 1 D, 2 M·+3−1" for paint in paints), paints
     inks = [problem for paint in paints for problem in _header_inks(paint)]
     assert inks == [], (inks, paints)
     # The two themes ink the status counts apart, so each was read in its own.

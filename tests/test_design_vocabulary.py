@@ -1100,15 +1100,21 @@ def test_git_commit_summary_is_one_component() -> None:
     assert '"git-commit-summary git-commit-summary-compact"' in panel
     assert 'class="git-commit-change-stats"' in panel
     assert "html += renderCommitSummary(detail);" in panel
-    assert "renderCommitSummary(detail, { compact: true })" in panel
-    # The commit page's change counts are its one Diff summary, which its diff draws in the
-    # summary's place (mb-pb35); only the compact summary, in a tooltip, draws its own, one
-    # line in the Diff summary's words and paint (mb-khm6). Until the diff draws it, and where
-    # it is not drawn, the place holds the commit's totals (A6 of review A on #470).
+    assert "return renderCommitSummary(detail, {\n      compact: true," in panel
+    # The commit page's change counts are its size line and its one Diff summary, which its
+    # diff draws in the summary's place (mb-pb35): the size line, the page header's line
+    # above it, says the file count and the size ("Change Size Line"), and the summary the
+    # statuses and line totals. Only the compact summary, in a tooltip, draws its own, its
+    # size line and one line in the Diff summary's words and paint (mb-khm6). Until the diff
+    # draws it, and where it is not drawn, the place holds the commit's totals (A6 of review
+    # A on #470).
+    assert "html += renderCommitChangeStats(stats, options.size ?? null);" in panel
     assert (
-        "html += compact\n"
-        "      ? renderCommitChangeStats(stats)\n"
-        '      : `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">'
+        'html += `<div class="git-commit-size page-header-line">'
+        "${commitSizeLineHtml(stats, kept)}</div>`;"
+    ) in panel
+    assert (
+        'html += `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">'
         "${renderCommitTotals(stats)}</div>`;"
     ) in panel
     assert (
@@ -1577,6 +1583,10 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".filter-check"): "a filter",
     ("styles.css", ".chip-clear"): "a chip's control",
     ("styles.css", ".file-header-badge"): "a badge",
+    (
+        "styles.css",
+        ".mb-image-fallback",
+    ): "the stand-in for a badge: an image the page does not load",
     ("styles.css", ".tree-container-badge"): "a tree row's leading letter, its slot's glyph",
     ("agent_log/styles.css", ".log-event-kind"): "a badge",
     (
@@ -1952,6 +1962,7 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     # The View on GitHub button's chevron, which opens its menu.
     "plugin-sdk-views.js": ('"chip chip-menu-trigger counterpart-more disclosure-toggle"',),
     "agent_log/index.js": ('class="log-event-header disclosure-toggle"',),
+    "event_log/event-log-views.js": ('"disclosure-toggle event-log-row-head"',),
     "structured/tree.js": ('" srow-container disclosure-toggle"',),
     "markdown/inert-toc.js": ('"kpress-toc-toggle disclosure-toggle"',),
     "markdown/rendered.js": ('class="section-disclosure-trigger disclosure-toggle">Diagnostics',),
@@ -2069,6 +2080,7 @@ _TOGGLE_CLASSES: frozenset[str] = frozenset(
         "chip-menu-trigger",
         "source-ref-selector-toggle",
         "log-event-header",
+        "event-log-row-head",
         "srow-container",
         "kpress-toc-toggle",
         "section-disclosure-trigger",
@@ -2604,15 +2616,23 @@ _PUNCTUATION_PAINTERS = {
         "changeLine: changeLine,",
         "changeLineNodes: changeLineNodes,",
     ),
+    # The size line is a view helper, drawn only by a commit's or a pull request's page
+    # and a commit's hover card, so it is not in a startup script ("Change Size Line").
+    "static/plugin-sdk-views.js": (
+        "element.append(...mb.countPartsNodes(counts));",
+        "sized.append(...mb.countPartsNodes(size));",
+        "const paint = global.MetabrowserFormatters.countPartsHtml;",
+        "changeSizeLineNodes,",
+    ),
     "static/changed-files-tree.js": (
         "return formatters().changeSummary(totals, statusBreakdown(statuses), formatCount);",
         'letter: STATUS_BADGES[/** @type {keyof typeof STATUS_BADGES} */ (status)] ?? "?",',
     ),
     "static/git-panel.js": (
         "const said = formatters.changeSummary(",
-        "formatters.countPartsHtml([COMMIT_CHANGE_SEPARATOR])",
         "formatters.changeLineHtml(said.line)",
-        'const COMMIT_CHANGE_SEPARATOR = Object.freeze({ separator: "·" });',
+        # The size line, the SDK's one component for it ("Change Size Line").
+        "return mb.changeSizeLineHtml(",
     ),
     "builtin_plugins/diff/diff-view.js": (
         'const SUMMARY_SEPARATOR = Object.freeze({ separator: "·" });',
@@ -3108,6 +3128,39 @@ def test_a_hovered_legend_entrys_ink_reads_for_every_family() -> None:
             assert ratio >= 4.5, f"{family['key']} reads {ratio:.2f}:1 on the {theme} page"
 
 
+# How many times the separation floor Other's neutral must be from every family's color. The
+# legend names up to nine families and Other (file_type_legend.py), and the family colors are
+# held a floor apart from each other (devtools/check_file_type_colors.py), which nothing held
+# for Other, drawn in --muted. Measured 2026-11-20, 56 families: 0.1111 in the light theme and
+# 0.1074 in the dark, 7.4 and 7.2 times the floor, the nearest to Other plain text and asciidoc.
+OTHER_CLEARANCE_FLOORS = 5
+
+
+def test_other_is_clear_of_every_family_in_both_themes() -> None:
+    """The legend's Other, drawn in `--muted`, is never taken for a family it sits beside.
+
+    Every family's color is `MINIMUM_HOUSE_DELTA_E` or more from every other's in both themes,
+    held by `devtools/check_file_type_colors.py`. Other is none of them and takes the page's
+    muted ink (`--mb-distribution-other`), so this holds it the same distance in Oklab,
+    several times over, from each family, as the server resolves them for each theme.
+    """
+
+    from devtools.check_file_type_colors import MINIMUM_HOUSE_DELTA_E
+    from metabrowser.file_type_filters import serialize_distribution_colors
+
+    light_block, dark_block = _theme_blocks()
+    assert _declared(light_block, "--mb-distribution-other") == "var(--muted)"
+    colors = serialize_distribution_colors()
+    assert len(colors) > 9
+    for theme, block in (("light", light_block), ("dark", dark_block)):
+        other = _oklab(_declared(block, "--muted"))
+        for family in colors:
+            distance = math.dist(other, _oklab(family[theme]))
+            assert distance >= OTHER_CLEARANCE_FLOORS * MINIMUM_HOUSE_DELTA_E, (
+                f"{family['key']} is {distance:.4f} from Other on the {theme} page"
+            )
+
+
 def test_only_the_group_by_wait_dims_shown_content_and_never_twice() -> None:
     """The one wait that dims what is shown has its own token, and dims nothing twice.
 
@@ -3290,6 +3343,40 @@ def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
         assert "var(--actor-identity-gap)" in geometry, selector
     # No avatar size or gap is written as a pixel literal in a rule.
     assert "18px + 4px" not in github and "+ 9px" not in github
+
+
+def test_boxed_prose_takes_one_inline_padding() -> None:
+    """A bordered box that holds prose has one inline padding, `--boxed-prose-padding-inline`.
+
+    The pane inset, `--pane-header-padding-x`, aligns the navigation column's rows, and put a
+    description's h2 a few pixels inside its box's border (owner, 2026-11-20). The token is
+    declared once, on the shell's `:root`; a pull request's cards read it through
+    `--github-pull-text-inset`, which their head, text, hunk lines, and commit rows share, and
+    a commit's message reads it directly. docs/design-system.md, "Boxed Prose", names what
+    keeps its own padding and why. `tests/test_github_pull_text_chrome.py` measures the
+    padding the boxes lay out.
+    """
+
+    shell_path = STATIC / "styles.css"
+    github_path = REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"
+    token = "--boxed-prose-padding-inline"
+    shell_rules = _rules_of(shell_path)
+    declared = [
+        (selector, body[token])
+        for selector, body in shell_rules + _rules_of(github_path)
+        if token in body
+    ]
+    assert len(declared) == 1 and declared[0][0] == ":root", declared
+    assert re.fullmatch(r"\d+px", declared[0][1]), "the token's value is a length of its own"
+    github = dict(_rules_of(github_path))
+    shell = dict(shell_rules)
+    # A pull request's text is padded by the card's inset, which is the token and no pane inset.
+    assert github[".github-pull"]["--github-pull-text-inset"] == f"var({token})"
+    assert github[".github-pull-text"]["padding"] == (
+        "var(--content-padding-y) var(--github-pull-text-inset)"
+    )
+    # A commit's message is the same kind of box, and reads the token itself.
+    assert shell[".git-commit-body"]["padding"] == f"var(--pane-header-padding-y) var({token})"
 
 
 # A serif face, named directly, as a family, or through the token KPress reads it from.
