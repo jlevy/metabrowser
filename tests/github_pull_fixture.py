@@ -498,12 +498,19 @@ def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
     The allowlist is :mod:`metabrowser.inert_html`'s. *images* admits an image, which a
     document inside the served tree keeps and a pull-request comment never does. Every
     link must leave for http(s) or stay inside the served tree, a heading's ``id`` must
-    be one of the hardener's anchors, and an image's ``loading`` must be ``lazy``.
+    be one of the hardener's anchors, an image's ``loading`` must be ``lazy``, and a layout
+    attribute (``align``, ``width``, ``height``) must hold a value the hardener keeps.
     """
 
     from html.parser import HTMLParser
 
-    from metabrowser.inert_html import ALLOWED_ATTRIBUTES, ALLOWED_TAGS, ANCHOR_PREFIX, is_inside
+    from metabrowser.inert_html import (
+        ALLOWED_ATTRIBUTES,
+        ALLOWED_TAGS,
+        ANCHOR_PREFIX,
+        allowed_attributes,
+        is_inside,
+    )
 
     tags = ALLOWED_TAGS | ({"img"} if images else set())
     found: list[str] = []
@@ -519,6 +526,11 @@ def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
                     found.append(f"{tag}[id={value}]")
                 elif name == "loading" and value != "lazy":
                     found.append(f"{tag}[loading={value}]")
+                elif name in {"align", "width", "height"}:
+                    # A layout attribute holds what the hardener would keep of it.
+                    kept = allowed_attributes(tag, {name: value}, None)
+                    if (name, value or "") not in kept:
+                        found.append(f"{tag}[{name}={value}]")
                 elif name in {"href", "src"} and not (
                     (value or "").startswith(("https://", "http://")) or is_inside(value)
                 ):

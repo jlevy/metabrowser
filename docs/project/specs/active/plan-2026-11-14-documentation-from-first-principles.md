@@ -277,13 +277,14 @@ switcher shows, centered above a centered title.
   With active content off, on a served mirror or a folder served with `--untrusted`,
   Metabrowser’s inert Markdown keeps only in-tree images and keeps `align` only on table
   cells, so it shows the icon left-aligned and without its `width`, still with no
-  diagnostics. One more cost is accepted for the centered block on GitHub: the
-  rendered-Markdown diff refuses raw HTML, so a README change has no rendered diff
-  (measured the same day, a one-word README change projects as `unsupported`, and the
-  same change under a Markdown title as `ready`). The inert profile’s `align` and the
-  projection are tracked as mb-4cwy. PyPI, which publishes the README as the package
-  description, shows the alt text instead, as it does for today’s screenshot (see
-  Decisions).
+  diagnostics. Since mb-5xq7 (2026-11-19) the inert allowlist keeps the `align` and
+  `width` github.com keeps, so there too the icon is centered at 192 pixels.
+  One more cost is accepted for the centered block on GitHub: the rendered-Markdown diff
+  refuses raw HTML, so a README change has no rendered diff (measured the same day, a
+  one-word README change projects as `unsupported`, and the same change under a Markdown
+  title as `ready`). The inert profile’s `align` and the projection are tracked as
+  mb-4cwy. PyPI, which publishes the README as the package description, shows the alt
+  text instead, as it does for today’s screenshot (see Decisions).
 
 **Outline:**
 

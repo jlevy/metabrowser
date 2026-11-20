@@ -5410,6 +5410,83 @@ a.tab-btn {
   color: var(--text);
 }
 
+/* ── GitHub's layout attributes in rendered Markdown ─────────────
+   A README lays itself out with the HTML attributes github.com keeps: `align` on a
+   block, a heading, an image, or a table part, and `width` and `height` on an image
+   or a table cell (html-pipeline's SanitizationFilter; inert_html.py lists what an
+   untrusted document keeps). The browser applies each as a presentational hint, which
+   every author rule outranks, so where KPress's stylesheets set the same property the
+   attribute is lost. These rules give it back, as github.com's stylesheet leaves it,
+   in every place Markdown is set as `.kpress-prose`: a document, trusted or inert, a
+   pull request's text, and a Markdown diff. A block's or a heading's `align` and an
+   image's `width` need nothing here: no rule of KPress's sets them. */
+
+/* KPress gives every image `height: auto`, which keeps the file's proportions and so
+   overrides a `height` attribute: a badge written `height="20"` drew at its file's
+   height. github.com sets no height, so the attribute wins there. `revert-layer` here
+   rolls back every unlayered author rule, KPress's included, to the attribute's hint,
+   in Chrome 152 and in the macOS app's WebKit (both measured 2026-11-19; `revert` goes
+   past the hint to the browser's default, and typed `attr()` is not in WebKit); it
+   relies on neither stylesheet using cascade layers. An image with only a `width`
+   keeps `height: auto`, its proportions, as on github.com. */
+.kpress-prose img[height] {
+  height: revert-layer;
+}
+
+/* An image floated by `align` keeps github.com's room from the text beside it, outside
+   its width, as github.com's `content-box` images have it: in KPress's `border-box` the
+   room came out of the image, and a `width="120"` image drew 100 pixels wide. */
+.kpress-prose img:is([align="left" i], [align="right" i]) {
+  box-sizing: content-box;
+}
+
+.kpress-prose img[align="left" i] {
+  padding-right: 20px;
+}
+
+.kpress-prose img[align="right" i] {
+  padding-left: 20px;
+}
+
+/* KPress sets every table cell's text alignment (start, a header centred, a number at
+   the end), which outranks the `align` of the cell, its row, or its row group. A
+   cell's own `align` wins over its row's, and a row's over its group's. */
+.kpress-prose
+:is(td, th):is(
+  [align="left" i],
+  tr[align="left" i] > :not([align]),
+  :is(thead, tbody, tfoot)[align="left" i] > tr:not([align]) > :not([align])
+) {
+  text-align: left;
+}
+
+.kpress-prose
+  :is(td, th):is(
+    [align="center" i],
+    tr[align="center" i] > :not([align]),
+    :is(thead, tbody, tfoot)[align="center" i] > tr:not([align]) > :not([align])
+  ) {
+  text-align: center;
+}
+
+.kpress-prose
+  :is(td, th):is(
+    [align="right" i],
+    tr[align="right" i] > :not([align]),
+    :is(thead, tbody, tfoot)[align="right" i] > tr:not([align]) > :not([align])
+  ) {
+  text-align: right;
+}
+
+.kpress-prose
+  :is(td, th):is(
+    [align="justify" i],
+    tr[align="justify" i] > :not([align]),
+    :is(thead, tbody, tfoot)[align="justify" i] > tr:not([align]) > :not([align])
+  ) {
+  text-align: justify;
+}
+
 /* ── Embedded KPress documents ─────────────────────────────────────
    metabrowser consumes KPress's own TOC runtime rather than reimplementing
    it. The preview pane is marked `data-kpress-viewport` (see server.py) and

@@ -90,19 +90,50 @@
     "track",
     "video",
   ]);
+  const HEADINGS = Object.freeze(["h1", "h2", "h3", "h4", "h5", "h6"]);
+  // The align keywords each tag keeps, lowercased, and the sizes it keeps, as
+  // inert_html.py lists them: the layout attributes github.com keeps, each a keyword or
+  // a number.
+  const TEXT_ALIGN = Object.freeze(["left", "center", "right", "justify"]);
+  /** @type {Readonly<Record<string, readonly string[]>>} */
+  const ALIGN_VALUES = Object.freeze({
+    p: TEXT_ALIGN,
+    div: TEXT_ALIGN,
+    ...Object.fromEntries(HEADINGS.map((tag) => [tag, TEXT_ALIGN])),
+    img: Object.freeze(["left", "right", "top", "middle", "center", "bottom", "baseline"]),
+    table: Object.freeze(["left", "center", "right"]),
+    ...Object.fromEntries(
+      ["thead", "tbody", "tfoot", "tr", "td", "th"].map((tag) => [tag, TEXT_ALIGN]),
+    ),
+  });
+  /** @type {Readonly<Record<string, readonly string[]>>} */
+  const DIMENSIONS = Object.freeze({
+    img: Object.freeze(["width", "height"]),
+    table: Object.freeze(["width"]),
+    td: Object.freeze(["width", "height"]),
+    th: Object.freeze(["width", "height"]),
+  });
+  // A number, with an optional fraction, then `%` or the `px` a README often writes.
+  const DIMENSION = /^[0-9]{1,5}(?:\.[0-9]{1,3})?(?:%|px)?$/i;
   // The attributes each tag may keep; every value is checked by allowedAttributes,
   // except a heading's id, which is always sanitizeNodes' own anchor, and an image's
   // loading, which is always lazy.
-  const HEADINGS = Object.freeze(["h1", "h2", "h3", "h4", "h5", "h6"]);
   const ALLOWED_ATTRIBUTES = Object.freeze({
     a: Object.freeze(["href", "target", "rel"]),
-    img: Object.freeze(["loading", "src", "alt"]),
+    img: Object.freeze(["loading", "src", "alt", "align", "width", "height"]),
     ol: Object.freeze(["start"]),
-    td: Object.freeze(["colspan", "rowspan", "align"]),
-    th: Object.freeze(["colspan", "rowspan", "align"]),
+    p: Object.freeze(["align"]),
+    div: Object.freeze(["align"]),
+    table: Object.freeze(["align", "width"]),
+    thead: Object.freeze(["align"]),
+    tbody: Object.freeze(["align"]),
+    tfoot: Object.freeze(["align"]),
+    tr: Object.freeze(["align"]),
+    td: Object.freeze(["colspan", "rowspan", "align", "width", "height"]),
+    th: Object.freeze(["colspan", "rowspan", "align", "width", "height"]),
     details: Object.freeze(["open"]),
     pre: Object.freeze(["lang"]),
-    ...Object.fromEntries(HEADINGS.map((tag) => [tag, Object.freeze(["id"])])),
+    ...Object.fromEntries(HEADINGS.map((tag) => [tag, Object.freeze(["id", "align"])])),
   });
   // The one language a block keeps, a Mermaid diagram's, as inert_html.py keeps it.
   const DIAGRAM_LANGUAGE = "mermaid";
@@ -340,10 +371,6 @@
           kept.push([name, value]);
         }
       }
-      const align = (read("align") ?? "").toLowerCase();
-      if (align === "left" || align === "center" || align === "right") {
-        kept.push(["align", align]);
-      }
     } else if (tag === "details" && read("open") !== null) {
       kept.push(["open", ""]);
     } else if (
@@ -352,6 +379,17 @@
         (read("class") ?? "").split(/\s+/).includes("kpress-diagram-source"))
     ) {
       kept.push(["lang", DIAGRAM_LANGUAGE]);
+    }
+    // A browser matches an align keyword in any case and with nothing around it.
+    const align = (read("align") ?? "").toLowerCase();
+    if (Object.hasOwn(ALIGN_VALUES, tag) && ALIGN_VALUES[tag].includes(align)) {
+      kept.push(["align", align]);
+    }
+    for (const name of Object.hasOwn(DIMENSIONS, tag) ? DIMENSIONS[tag] : []) {
+      const size = read(name) ?? "";
+      if (DIMENSION.test(size)) {
+        kept.push([name, size]);
+      }
     }
     return kept;
   }
@@ -502,7 +540,8 @@
    * KPress's own wrappers around a render's blocks, which arrive as two bare `<div>`s once
    * the allowlist has taken their classes. Dropped, so the blocks are the prose element's
    * children, as KPress's stylesheets and the host's first-heading rule expect. Exactly
-   * these two: a `<div>` beneath them is a table's or the document's own.
+   * these two: a `<div>` beneath them is a table's or the document's own, and so is one
+   * with an attribute, which only a document's `align` can give a `<div>`.
    *
    * @param {Node[]} nodes
    * @returns {Node[]}
@@ -514,7 +553,7 @@
       const only = /** @type {Element | undefined} */ (
         present.length === 1 ? present[0] : undefined
       );
-      if (only?.tagName !== "DIV") {
+      if (only?.tagName !== "DIV" || only.attributes.length > 0) {
         break;
       }
       blocks = Array.from(only.childNodes);
@@ -550,9 +589,11 @@
   }
 
   window.MetabrowserInertHtml = Object.freeze({
+    ALIGN_VALUES,
     ALLOWED_ATTRIBUTES,
     ANCHOR_PREFIX,
     ALLOWED_TAGS,
+    DIMENSIONS,
     DROPPED_WITH_CONTENT,
     allowedAttributes,
     fragmentLink,

@@ -3320,9 +3320,11 @@ declare global {
   /** What the freshness label says and offers; see static/source-freshness.js. */
   /** static/inert-html.js: untrusted Markdown reduced to an allowlist. */
   type MetabrowserInertHtmlRuntime = Readonly<{
+    ALIGN_VALUES: Readonly<Record<string, readonly string[]>>;
     ALLOWED_ATTRIBUTES: Readonly<Record<string, readonly string[]>>;
     ALLOWED_TAGS: readonly string[];
     ANCHOR_PREFIX: string;
+    DIMENSIONS: Readonly<Record<string, readonly string[]>>;
     DROPPED_WITH_CONTENT: readonly string[];
     fragmentLink(href: string): string;
     headingSlug(text: string): string;

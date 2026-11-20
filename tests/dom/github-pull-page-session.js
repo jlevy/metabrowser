@@ -169,11 +169,20 @@ function summarize(model) {
 // KPress alone renders; the real browser's parse is checked in the QA runbook's
 // walkthrough with a network watch.
 
+// A pull request's text keeps no image and no anchor; its layout attributes are github.com's.
 const ALLOWED_ATTRIBUTES = {
   a: ["href", "target", "rel"],
   ol: ["start"],
-  td: ["colspan", "rowspan", "align"],
-  th: ["colspan", "rowspan", "align"],
+  p: ["align"],
+  div: ["align"],
+  ...Object.fromEntries(["h1", "h2", "h3", "h4", "h5", "h6"].map((tag) => [tag, ["align"]])),
+  table: ["align", "width"],
+  thead: ["align"],
+  tbody: ["align"],
+  tfoot: ["align"],
+  tr: ["align"],
+  td: ["colspan", "rowspan", "align", "width", "height"],
+  th: ["colspan", "rowspan", "align", "width", "height"],
   details: ["open"],
 };
 

@@ -14,9 +14,20 @@ only what is listed here and drops the rest.
   them; any other tag is unwrapped, keeping its text.
 - Attributes: none, except ``a[href]``, ``img[src, alt]`` where images are kept, with
   ``loading="lazy"`` written here on every one and never read from the document,
-  ``ol[start]`` as digits, ``td``/``th`` ``colspan`` and ``rowspan`` as small numbers and
-  ``align`` as left, center, or right, and ``details[open]``. A kept link opens in a new
-  tab with no opener or referrer when it leaves the page.
+  ``ol[start]`` as digits, ``td``/``th`` ``colspan`` and ``rowspan`` as small numbers,
+  ``details[open]``, and the layout attributes github.com keeps (:data:`ALIGN_VALUES`,
+  :data:`DIMENSIONS`): ``align`` as a keyword on a block, a heading, an image, or a table
+  part, and ``width`` and ``height`` as a number of pixels or a percentage on an image
+  or a table cell. A kept link opens in a new tab with no opener or referrer when it
+  leaves the page.
+- Layout: github.com's sanitizer (html-pipeline's ``SanitizationFilter``) keeps
+  ``align``, ``width``, and ``height`` on every element, and a README lays itself out
+  with them: ``<p align="center"><img width="192">`` is a small centered logo there. Each
+  is a keyword or a number, with no address, script, or style in it, so the allowlist
+  keeps those that KPress's sanitized mode keeps too, and the page shows a document from
+  an untrusted source laid out as a trusted one is. KPress's sanitized mode drops others
+  that github.com keeps before this sees them: ``valign``, ``hspace``, ``vspace``,
+  ``clear``, ``nowrap``, and ``open`` on ``details``, which this would keep.
 - Links and images depend on *link_base*. With one -- a pull request's github.com page
   -- every reference is made absolute against it and kept only for ``http`` and
   ``https``, and every image becomes a link to it. Without one -- a document inside the
@@ -121,19 +132,47 @@ DROPPED_WITH_CONTENT: Final = frozenset(
         "video",
     }
 )
+# The align keywords each tag keeps, lowercased: those a browser lays out (the HTML
+# standard's rendering section), so a kept value always means what it does on github.com.
+# A block, a heading, and a table's cells, rows, and row groups align their text; a table
+# sits left, center, or right; an image floats left or right, or sits on the line at its
+# top, middle (written `middle` or `center`), bottom, or baseline.
+_TEXT_ALIGN: Final = ("left", "center", "right", "justify")
+ALIGN_VALUES: Final = {
+    "p": _TEXT_ALIGN,
+    "div": _TEXT_ALIGN,
+    **{f"h{level}": _TEXT_ALIGN for level in range(1, 7)},
+    "img": ("left", "right", "top", "middle", "center", "bottom", "baseline"),
+    "table": ("left", "center", "right"),
+    **dict.fromkeys(("thead", "tbody", "tfoot", "tr", "td", "th"), _TEXT_ALIGN),
+}
+# The sizes each tag keeps, each a number of pixels or a percentage (_DIMENSION).
+DIMENSIONS: Final = {
+    "img": ("width", "height"),
+    "table": ("width",),
+    "td": ("width", "height"),
+    "th": ("width", "height"),
+}
 # The attributes each tag may keep; every value is checked by allowed_attributes, except
 # a heading's id, which is always the hardener's own anchor and never the document's, and
 # an image's loading, which is always lazy. An image is not an allowed tag: it is kept,
 # with these, only inside the served tree.
 ALLOWED_ATTRIBUTES: Final = {
     "a": ("href", "target", "rel"),
-    "img": ("loading", "src", "alt"),
+    "img": ("loading", "src", "alt", "align", "width", "height"),
     "ol": ("start",),
-    "td": ("colspan", "rowspan", "align"),
-    "th": ("colspan", "rowspan", "align"),
+    "p": ("align",),
+    "div": ("align",),
+    "table": ("align", "width"),
+    "thead": ("align",),
+    "tbody": ("align",),
+    "tfoot": ("align",),
+    "tr": ("align",),
+    "td": ("colspan", "rowspan", "align", "width", "height"),
+    "th": ("colspan", "rowspan", "align", "width", "height"),
     "details": ("open",),
     "pre": ("lang",),
-    **{f"h{level}": ("id",) for level in range(1, 7)},
+    **{f"h{level}": ("id", "align") for level in range(1, 7)},
 }
 # The one language a block keeps: a Mermaid diagram's, spelled as GitHub's own fallback
 # markup spells it, `<pre lang="mermaid">`, so the page can draw it as an image
@@ -225,7 +264,10 @@ _VOID: Final = frozenset(
 )
 _DIGITS: Final = re.compile(r"^[0-9]{1,6}$")
 _SPAN: Final = re.compile(r"^[1-9][0-9]?$")
-_ALIGN: Final = frozenset({"left", "center", "right"})
+# A size as a browser reads one from an attribute: a number, with an optional fraction,
+# then `%` for a share of the container, or the `px` a README often writes, which a
+# browser reads as the number before it.
+_DIMENSION: Final = re.compile(r"[0-9]{1,5}(?:\.[0-9]{1,3})?(?:%|px)?", re.IGNORECASE)
 # What a browser strips from a URL before reading it: ASCII tab and newline anywhere,
 # and C0 controls and spaces at either end. Read the same way here, so "java\tscript:"
 # is the scheme a browser would see.
@@ -379,9 +421,6 @@ def allowed_attributes(
             value = attrs.get(name) or ""
             if _SPAN.match(value):
                 kept.append((name, value))
-        align = (attrs.get("align") or "").lower()
-        if align in _ALIGN:
-            kept.append(("align", align))
     elif tag == "details" and "open" in attrs:
         kept.append(("open", ""))
     elif tag == "pre" and (
@@ -389,6 +428,14 @@ def allowed_attributes(
         or _DIAGRAM_SOURCE_CLASS in (attrs.get("class") or "").split()
     ):
         kept.append(("lang", DIAGRAM_LANGUAGE))
+    # A browser matches an align keyword in any case and with nothing around it.
+    align = (attrs.get("align") or "").lower()
+    if align in ALIGN_VALUES.get(tag, ()):
+        kept.append(("align", align))
+    for name in DIMENSIONS.get(tag, ()):
+        size = attrs.get(name) or ""
+        if _DIMENSION.fullmatch(size):
+            kept.append((name, size))
     return kept
 
 
@@ -412,10 +459,14 @@ def _open_tag(tag: str, kept: list[tuple[str, str]]) -> str:
 
 
 class _Heading:
-    def __init__(self, index: int, tag: str, original: str | None) -> None:
+    def __init__(
+        self, index: int, tag: str, original: str | None, kept: list[tuple[str, str]]
+    ) -> None:
         self.index = index
         self.tag = tag
         self.original = original
+        # The attributes it keeps besides the anchor, such as its `align`.
+        self.kept = kept
         self.text: list[str] = []
 
 
@@ -481,7 +532,7 @@ class _Hardener(HTMLParser):
                     kept = [] if scoped is None else [("href", scoped)]
             self.out.append(_open_tag(tag, kept))
             if tag in _HEADINGS and self.base is None:
-                heading = _Heading(len(self.out) - 1, tag, values.get("id"))
+                heading = _Heading(len(self.out) - 1, tag, values.get("id"), kept)
                 self.headings.append(heading)
                 self.open_headings.append(heading)
 
@@ -522,7 +573,7 @@ class _Hardener(HTMLParser):
         replaced: dict[str, str] = {}
         for heading in self.headings:
             anchor = anchors.anchor("".join(heading.text))
-            self.out[heading.index] = f'<{heading.tag} id="{escape(anchor)}">'
+            self.out[heading.index] = _open_tag(heading.tag, [("id", anchor), *heading.kept])
             if heading.original is not None and written[heading.original] == 1:
                 replaced[heading.original] = anchor
         return replaced
@@ -563,9 +614,11 @@ def _harden(
 
 
 __all__ = [
+    "ALIGN_VALUES",
     "ALLOWED_ATTRIBUTES",
     "ANCHOR_PREFIX",
     "ALLOWED_TAGS",
+    "DIMENSIONS",
     "DROPPED_WITH_CONTENT",
     "allowed_attributes",
     "fragment_link",
