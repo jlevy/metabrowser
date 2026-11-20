@@ -1,10 +1,12 @@
 // Browserless session for the "Block remote images" preference state machine.
 //
-// static/remote-images.js loads whole, as the shell loads it on demand when the menu's
-// checkbox changes. The session reads the preference as every profile can hold it, makes
-// each choice from each state the page can be served under, and records what is written
-// and whether the page loads again, which is how the server's policy follows the choice.
-// The cookie key is the one src/metabrowser/settings.py names, which the server reads.
+// static/remote-images.js loads whole, as the shell loads it on demand when the menu opens.
+// The session makes each choice from each state the page can be served under, and wires the
+// menu's checkbox as the page does, and records what is written, whether the page loads
+// again, which is how the server's policy follows the choice, and when the box, which the
+// server draws disabled, is enabled. Only the server reads the cookie, so the key is the
+// one src/metabrowser/settings.py names, and tests/test_remote_images_js.py holds the
+// server's reading of its values to a table of its own.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -24,18 +26,6 @@ vm.createContext(sandbox);
 const productionPath = path.join(repoRoot, "src/metabrowser/static/remote-images.js");
 vm.runInContext(fs.readFileSync(productionPath, "utf8"), sandbox, { filename: productionPath });
 const remoteImages = sandbox.MetabrowserRemoteImages;
-
-// What each cookie value the reader's browser can hold reads as; the server reads the same.
-const READS = [null, "1", "0", "", "true", "yes", "11", " 1"];
-const stored = {};
-for (const value of READS) {
-  stored[JSON.stringify(value)] = remoteImages.readStored((key) => {
-    if (key !== remoteImages.KEY) {
-      throw new Error(`read ${key}`);
-    }
-    return value;
-  });
-}
 
 // One choice, from a page served under *applied*: what it wrote, and how often it reloaded.
 function choice(blocked, applied) {
@@ -58,14 +48,17 @@ function box(served, drawn) {
   const writes = [];
   let reloads = 0;
   let change = null;
+  // Drawn disabled, as the server draws it: a change before the box is wired is not made.
   const input = {
     checked: drawn,
+    disabled: true,
     addEventListener(type, listener) {
       if (type === "change") {
         change = listener;
       }
     },
   };
+  const disabledBefore = input.disabled;
   const mounted = remoteImages.mount(
     { getElementById: (id) => (id === remoteImages.INPUT_ID ? input : null) },
     {
@@ -78,6 +71,8 @@ function box(served, drawn) {
   );
   return {
     mounted,
+    disabledBefore,
+    disabledAfter: input.disabled,
     tick(checked) {
       input.checked = checked;
       change();
@@ -101,7 +96,6 @@ console.log(
         serverKey: cookieMatch[1],
         frozen: Object.isFrozen(remoteImages),
       },
-      stored,
       choices: {
         "off, stays off": choice(false, false),
         "off, turned on": choice(true, false),
@@ -110,6 +104,11 @@ console.log(
       },
       checkbox: {
         "a page with no box": noBox,
+        "served off, before and after wiring": {
+          mounted: fromOff.mounted,
+          disabledBefore: fromOff.disabledBefore,
+          disabledAfter: fromOff.disabledAfter,
+        },
         "served off, ticked": fromOff.tick(true),
         "served off, ticked and unticked": fromOff.tick(false),
         "served on, unticked": fromOn.tick(false),

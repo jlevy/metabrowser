@@ -12,7 +12,8 @@
   them all into those chips, and the page’s policy then refuses an image from the web,
   so no request for one leaves the page
   ([The Untrusted Page Policy](docs/project/architecture/arch-server-and-content.md#the-untrusted-page-policy)).
-  A trusted folder’s own Markdown is unchanged.
+  A trusted folder’s own Markdown is unchanged; a pull request’s text, a commit’s, and a
+  Markdown diff follow the setting in any folder.
 - A link that holds only an image, such as a badge, no longer has a GitHub mark after
   it, in a trusted folder or an untrusted one, so the mark no longer wraps onto a line
   of its own under a row of badges

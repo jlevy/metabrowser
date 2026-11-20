@@ -225,6 +225,12 @@
   }
 
   const SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/;
+  // An address written in full: its scheme (or none), two slashes in any mix, and a
+  // character of the host, as inert_html.py's `_WRITTEN_AUTHORITY`.
+  const WRITTEN_AUTHORITY = /^(?:https:)?[/\\]{2}[^/\\?#]/i;
+  // The authority a written address names, which is ASCII or no image of the web, as
+  // inert_html.py's `_AUTHORITY` says why.
+  const AUTHORITY = /^(?:https:)?[/\\]{2}([^/\\?#]*)/i;
   // Two slashes or backslashes in any mix begin another origin's address.
   const OTHER_ORIGIN = /^[/\\]{2}/;
 
@@ -435,15 +441,20 @@
       return null;
     }
     const cleaned = spelledOut(clean(src), base);
-    if (cleaned.slice(0, 8).toLowerCase() !== "https://" && !OTHER_ORIGIN.test(cleaned)) {
+    if (
+      !WRITTEN_AUTHORITY.test(cleaned) ||
+      /[\u0080-\uffff]/.test(AUTHORITY.exec(cleaned)?.[1] ?? "")
+    ) {
       return null;
     }
     const outside = outsideLink(src, base);
     if (outside === null || !outside.startsWith("https://")) {
       return null;
     }
+    // The URL parser refuses an empty or malformed host or port, as inert_html.py's
+    // `_host_parses` does for the same address.
     const url = new URL(outside);
-    return url.username !== "" || url.password !== "" ? null : outside;
+    return url.hostname === "" || url.username !== "" || url.password !== "" ? null : outside;
   }
 
   /**

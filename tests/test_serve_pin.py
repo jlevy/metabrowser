@@ -785,7 +785,9 @@ def test_repository_content_cannot_read_where_the_mirror_is_kept(
                 kpress_adapter.kpress_static_url(module)
                 for module in kpress_adapter.DIAGRAM_MODULES
             ),
+            remote_images=True,
         )
+        assert shell.headers["referrer-policy"] == "no-referrer"
         for directive in (
             "img-src 'self' data:",
             "connect-src 'self'",

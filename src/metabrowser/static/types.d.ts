@@ -304,13 +304,21 @@ type MetabrowserDocumentWidthRuntime = Readonly<{
 }>;
 
 type MetabrowserRemoteImagesRuntime = Readonly<{
+  INPUT_ID: string;
   KEY: string;
   choose(
     blocked: boolean,
     applied: boolean,
     dependencies: { writePreference(key: string, value: string): void; reload(): void },
   ): boolean;
-  readStored(readPreference: (key: string) => string | null): boolean;
+  mount(
+    doc: Pick<Document, "getElementById">,
+    dependencies: {
+      applied(): boolean;
+      writePreference(key: string, value: string): void;
+      reload(): void;
+    },
+  ): boolean;
 }>;
 
 type MetabrowserRepositoryContext = Readonly<{

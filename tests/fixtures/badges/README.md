@@ -4,6 +4,12 @@
 
 A line of text after the badges, with a [link](https://example.com/) and [the repository](https://github.com/octo/demo) of its own.
 
+```mermaid
+flowchart LR
+  A@{ img: "https://badges.test/mermaid.svg", label: "x", w: 60, h: 60 }
+  A --> B
+```
+
 <!-- A test fixture: a row of README badges, rendered only by tests/dom/markdown-badges-chrome.mjs.
 This document follows common-doc-guidelines.md.
 -->

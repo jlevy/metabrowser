@@ -403,6 +403,30 @@ REMOTE_IMAGES = [
     ("ftp://example.com/a.png", None, None),
     ("https://user:secret@example.com/a.png", None, None),
     ("https://user@example.com/a.png", None, None),
+    # No host of its own, or one a browser's URL parser refuses: an address that resolves
+    # against the page, or none, and no image of the web.
+    ("//", None, None),
+    ("//", PR_PAGE, None),
+    ("\\\\", PR_PAGE, None),
+    ("https:///", None, None),
+    ("https://:443/a.png", None, None),
+    ("//?a.png", None, None),
+    ("https://x.com:99999/a.png", None, None),
+    ("https://[::1/a.png", None, None),
+    ("https://[zz]/a.png", None, None),
+    ("https://evil.test127.0.0.1/a.png", None, None),
+    ("https://1.2.3.4.5/a.png", None, None),
+    ("https://256.1.1.1/a.png", None, None),
+    ("https://x.com%2f@evil/a.png", None, None),
+    ("https://x .com/a.png", None, None),
+    # Written outside ASCII, which a document can hide another host in (IDNA drops some
+    # characters and maps others).
+    ("https://m\u00fcnchen.de/a.png", None, None),
+    ("//\u200b..", None, None),
+    # And what is a host: an IPv4 address in any form a browser reads, and an IPv6 one.
+    ("https://127.0.0.1/a.png", None, "https://127.0.0.1/a.png"),
+    ("https://[::1]/a.png", None, "https://[::1]/a.png"),
+    ("https://x.com:8443/a.png", None, "https://x.com:8443/a.png"),
     ("docs/a.png", None, None),
     ("/raw?path=a.png", None, None),
     ("docs/a.png", PR_PAGE, None),
@@ -421,6 +445,45 @@ def test_only_an_address_written_in_full_over_https_is_loaded(
 
     assert inert_html.remote_image(src, base) == expected
     assert json.loads(_node({"remoteImages": [[src, base]]})) == [expected]
+
+
+REMOTE_IMAGE_CORPUS = json.loads(
+    (REPO_ROOT / "tests" / "fixtures" / "inert-html-remote-image-corpus.json").read_text(
+        encoding="utf-8"
+    )
+)
+
+
+def test_both_sides_agree_which_addresses_are_images_of_the_web_on_a_corpus() -> None:
+    """The server's choice and the page's are one, on addresses written to tell them apart.
+
+    ``tests/fixtures/inert-html-remote-image-corpus.json`` is every degenerate shape of an
+    address written in full (no host, an empty port, a credential, IPv6 and IPv4 forms, a
+    host outside ASCII, backslashes, tabs, a bare scheme), each with no base and with a
+    pull request's, beside what a seeded fuzz of such fragments (seed 644) made of them: the
+    first sixty it accepted, and sixty it refused. Each side reads the address
+    its own way, Python's split and the browser's URL parser, so agreeing on which are
+    images is the check; what they write for one differs only as a URL parser writes it
+    (a trailing slash, lower case, an IPv4 address in dots).
+    """
+
+    py = [inert_html.remote_image(src, base) for src, base in REMOTE_IMAGE_CORPUS]
+    js = json.loads(_node({"remoteImages": REMOTE_IMAGE_CORPUS}))
+    disagree = [
+        (case, one, other)
+        for case, one, other in zip(REMOTE_IMAGE_CORPUS, py, js, strict=True)
+        if (one is None) != (other is None)
+    ]
+    assert disagree == []
+    kept = [one for one in py if one is not None]
+    assert 100 < len(kept) < len(py) - 100, "the corpus has both kinds"
+    assert all(one.startswith("https://") for one in kept)
+    # A pull request's page is no host an address with none resolves to.
+    assert not any(
+        one is not None and one.startswith("https://github.com/octo/demo/pull")
+        for (_src, base), one in zip(REMOTE_IMAGE_CORPUS, py, strict=True)
+        if base is not None
+    )
 
 
 def _parsed(html: str) -> list[tuple[str, tuple[str, ...]]]:

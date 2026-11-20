@@ -241,8 +241,11 @@ It drops every class, `id`, `name`, `data-*`, style, and event attribute, and al
 MathML, media, stylesheets, frames, forms, and scripts.
 An image from the web is kept when the document writes its address in full over `https`
 (`remote_image` in `inert_html.py`), as github.com shows a README’s, with no referrer
-sent (`referrerpolicy="no-referrer"`) and no credentials: a browser sends none with an
-image to another site, and an address with a user name in it is not loaded.
+sent (`referrerpolicy="no-referrer"`) and none of Metabrowser’s cookies, which are
+`SameSite=Lax` preferences a browser does not send with an image to another site.
+An address with no host or one a URL parser refuses, one with a user name in it, and one
+whose host is written outside ASCII are not loaded; `tests/test_inert_html.py` holds the
+server’s choice and the page’s to one answer on a corpus.
 Any other image, one over `http` or one with no address of its own, is not loaded: it is
 its alt text in a small chip (`mb-image-fallback`), inside the link it was in, so a
 badge keeps its destination, and otherwise inside a link to the image, with the image’s
@@ -261,11 +264,13 @@ avatar host, so the browser refuses an image from the web whatever the page’s 
 and the page carries `BLOCK_REMOTE_IMAGES` in `METABROWSER_SETTINGS`, which
 `static/inert-html.js` reads when it rebuilds a render.
 Ticking the box writes the cookie and loads the page again, so the policy follows it.
-It applies to an untrusted render: a mirrored repository’s documents, a pull request’s
-and a commit’s text, a Markdown diff, and a folder served with `--untrusted`. A trusted
-folder’s own Markdown and files are the reader’s, and its page has no policy to narrow,
-so it shows its images as it always did.
-No KPress script loads for such a document.
+It applies to every inert render: a mirrored repository’s documents, a folder served
+with `--untrusted`, and, on any page, a pull request’s text, a commit’s text, and a
+Markdown diff, which are inert whatever the folder’s profile.
+On an untrusted page the policy enforces it; on a trusted folder’s page, which has no
+policy to narrow, the allowlist alone does, so only those three texts follow it there.
+A trusted folder’s own Markdown and files are the reader’s, and are shown as they always
+were. No KPress script loads for such a document.
 
 In an inert render, an address that points at the application rather than the tree, a
 query alone or a root-relative `/api`, `/_debug`, or `/raw` address however spelled,
@@ -284,6 +289,9 @@ every response; no inline event handler runs, and the application writes none.
 The one KPress script source is the set of modules that draw Mermaid diagrams as images,
 `kpress_adapter.DIAGRAM_MODULES`, each admitted by its exact stamped path.
 The browsed tree’s files under `/raw` are never script sources.
+The shell’s response also sends `Referrer-Policy: no-referrer`, so no image the page
+fetches, one the allowlist wrote or one a Mermaid diagram laid out in the page names (an
+`A@{ img: … }` shape), carries the page’s address.
 Images admit this origin, `data:` images the stylesheet draws, and any `https:` image,
 as github.com shows a README’s: the allowlist above keeps a document’s images to `https`
 addresses written in full, and an image runs no script whatever its address.

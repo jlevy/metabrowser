@@ -9,14 +9,15 @@
 // Content-Security-Policy no longer admits one (src/metabrowser/capabilities.py).
 //
 // The choice is one host-wide preference cookie, as the theme and the reading width are,
-// so it covers every Metabrowser server on this host. The server reads it from the page
-// request, which is what the policy, the box's state, and
-// `METABROWSER_SETTINGS.BLOCK_REMOTE_IMAGES` follow, so a change takes effect as the page
-// loads again: `choose` writes the cookie and asks for that. The exact module runs
-// browserlessly in tests/dom/remote-images-session.js.
+// so it covers every Metabrowser server on this host. Only the server reads it, from the
+// page request, and the policy, the box's state, and
+// `METABROWSER_SETTINGS.BLOCK_REMOTE_IMAGES` follow what it read, so a change takes effect
+// as the page loads again: `choose` writes the cookie and asks for that. The exact module
+// runs browserlessly in tests/dom/remote-images-session.js.
 //
-// Loaded on demand (`ensureAsset("remote-images")`) when the menu opens, so the checkbox
-// the server drew is wired before anyone can change it, and no startup script carries it.
+// Loaded on demand (`ensureAsset("remote-images")`) when the menu opens. The server draws
+// the checkbox disabled, and `mount` enables it once it is wired, so a change before then
+// is not made and lost.
 
 (() => {
   const KEY = "metabrowser.blockRemoteImages";
@@ -25,11 +26,6 @@
   const ON = "1";
   const OFF = "0";
   const INPUT_ID = "block-remote-images-input";
-
-  /** @param {(key: string) => string | null} readPreference */
-  function readStored(readPreference) {
-    return readPreference(KEY) === ON;
-  }
 
   /**
    * Make *blocked* the reader's choice, from *applied*, which the page was served with:
@@ -71,6 +67,7 @@
     input.addEventListener("change", () => {
       choose(input.checked, dependencies.applied(), dependencies);
     });
+    input.disabled = false;
     return true;
   }
 
@@ -79,7 +76,6 @@
     KEY,
     choose,
     mount,
-    readStored,
   });
 
   // In the page, not in the browserless session that loads this file to run the rest.

@@ -179,7 +179,7 @@ def untrusted_shell_csp(
     origin: str,
     kpress_scripts: tuple[str, ...],
     *,
-    remote_images: bool = True,
+    remote_images: bool,
 ) -> str:
     """The Content-Security-Policy of the application page when active content is off.
 
@@ -202,6 +202,11 @@ def untrusted_shell_csp(
     *remote_images*, the reader's privacy setting, the policy is narrow: this origin, and
     GitHub's exact avatar host for application-owned author portraits, so a page that
     meant to load a remote image is refused by the browser and not only by the allowlist.
+    The argument has no default, so a caller that forgets it fails and does not quietly
+    admit the web. The page's response also sends ``Referrer-Policy: no-referrer``
+    (``server.index``), beside this policy, which covers an image the allowlist never sees:
+    one a Mermaid diagram laid out in the page names, an ``A@{ img: … }`` shape in a README,
+    is fetched under the page's policy and sends no referrer either.
     The page frames no URL
     -- the untrusted profile removes the HTML preview, its only framed address; its one
     frame is the ``about:srcdoc`` diagram frame, under a stricter policy of its own as

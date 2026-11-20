@@ -1628,17 +1628,6 @@ def _source_ref_label_html(pin: GitRevisionSubject | None, *, checkout: bool) ->
     )
 
 
-def _requested_blocking(request: Request) -> bool:
-    """Whether the page request's cookies turn off remote images: the reader's preference.
-
-    Read as a mapping when the request has one, so a caller that stands one in for the
-    shell's page, as the tests do, answers with the default: images shown.
-    """
-
-    cookies = getattr(request, "cookies", None)
-    return isinstance(cookies, Mapping) and blocks_remote_images(cookies)
-
-
 async def index(
     request: Request,
     *,
@@ -1670,7 +1659,7 @@ async def index(
     page_capabilities = capabilities_for(pinned_revision=git_pin)
     # The reader's privacy preference, read from the request's cookies once, so the
     # settings the page carries and the policy it is served under cannot disagree.
-    block_remote_images = _requested_blocking(request)
+    block_remote_images = blocks_remote_images(request.cookies)
     remote_images_checked = " checked" if block_remote_images else ""
     # Only a pin has a mirror session; a folder's shell never reads the app's state.
     mirror = mirror_session(request.app) if pin is not None else None
@@ -2469,7 +2458,7 @@ async def index(
                      data-tip-text="Characters per line in rendered documents"></label>
             <div class="menu-separator"></div>
             <label class="menu-row" for="block-remote-images-input">Block remote images
-              <input class="menu-check" id="block-remote-images-input" type="checkbox"{remote_images_checked}
+              <input class="menu-check" id="block-remote-images-input" type="checkbox"{remote_images_checked} disabled
                      data-tip-text="Show an untrusted document's images from the web as their alt text. Reloads the page"></label>
             <div class="menu-separator"></div>
             <div class="menu-version">{version_line}</div>
@@ -2584,6 +2573,11 @@ async def index(
                 remote_images=not block_remote_images,
             ),
             "X-Frame-Options": "DENY",
+            # No page address goes to an image's host, from an image the allowlist wrote
+            # (`referrerpolicy` on it says so too) or one a Mermaid diagram drawn in the
+            # page names, which no markup of the document reaches
+            # (`builtin_plugins/markdown/diagram-frame.js`). Nothing here reads a Referer.
+            "Referrer-Policy": "no-referrer",
         },
     )
 

@@ -66,14 +66,19 @@ every [environment variable](docs/command-line.md#environment-variables).
 request’s text, or a folder served with `--untrusted`, shows its images from the web
 over `https`, as github.com does: the page’s Content-Security-Policy admits `https:`
 images, the allowlist keeps only an address written in full over `https`, and each is
-fetched with no referrer.
-An image runs no script and reads nothing of the page, but its host learns that the
-document was opened and from where, and the browser requests whatever address the
-document names, including an `https` address on your own machine or network, as it would
-for any web page. **Block remote images**, in the Metabrowser menu and off unless you
-tick it, shows every such image as its alt text and narrows the policy to this origin,
-so the browser sends no request for one
+fetched with no referrer: the image says so, and so does the page’s
+`Referrer-Policy: no-referrer`, which covers an image a Mermaid diagram names.
+An image runs no script and reads nothing of the page, but its host learns that your
+browser fetched it, and from what address of yours, and the browser requests whatever
+address the document names, including an `https` address on your own machine or network,
+as it would for any web page.
+**Block remote images**, in the Metabrowser menu and off unless you tick it, shows every
+such image as its alt text and narrows the policy to this origin, so the browser sends
+no request for one
 ([the policy](docs/project/architecture/arch-server-and-content.md#the-untrusted-page-policy)).
+On a trusted folder’s page, which has no policy to narrow, the box affects a pull
+request’s text, a commit’s, and a Markdown diff, through the allowlist alone; the
+folder’s own Markdown is the reader’s and is not changed.
 
 **`.env` files.** Metabrowser reads `.env` and `.env.local` from the working directory
 and its parents, so running `metab` inside a cloned repository reads that repository’s

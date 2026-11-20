@@ -210,7 +210,8 @@ Metabrowser menu has **Block remote images**, off unless you tick it: every such
 is then its chip, and the page’s policy refuses an image from another site, so the
 browser sends no request for one.
 It applies to what is untrusted, a repository opened from its URL, a pull request’s
-text, and a folder served with `--untrusted`; your own folder’s Markdown is not changed.
+text, a commit’s, a Markdown diff, and a folder served with `--untrusted`; your own
+folder’s Markdown is not changed.
 
 ### Data, Logs, and Code
 

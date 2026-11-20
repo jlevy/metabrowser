@@ -71,6 +71,7 @@ only what is listed here and drops the rest.
 
 from __future__ import annotations
 
+import ipaddress
 import re
 import unicodedata
 from collections import Counter
@@ -488,6 +489,91 @@ def allowed_attributes(
     return kept
 
 
+# An address written in full: its scheme (or none, for `//host`), two slashes in any mix, and
+# then a character of the host, so `//`, `https:///`, and `//?x` name none. Without a host
+# of its own, an address resolves against the page it sits in, which is no image of the web.
+_WRITTEN_AUTHORITY: Final = re.compile(r"^(?:https:)?[/\\]{2}[^/\\?#]", re.IGNORECASE)
+# The authority a written address names: what follows its two slashes up to the path, query,
+# or fragment. A host in letters outside ASCII is read through IDNA, which Python does not
+# have and which drops or maps characters a document can hide a different host in, so an
+# address with one is not an image the page fetches: its alt text and a link are shown.
+_AUTHORITY: Final = re.compile(r"^(?:https:)?[/\\]{2}([^/\\?#]*)", re.IGNORECASE)
+# What a browser's URL parser refuses in a host: controls, space, and these (the WHATWG
+# URL standard's forbidden host code points, with the percent sign it adds for a domain).
+_HOST_FORBIDDEN: Final = re.compile(r"[\x00-\x20#%/:<>?@\[\\\]^|\x7f]")
+
+
+# A number in one part of an IPv4 address, as the URL standard reads one: hex after `0x`,
+# octal after a leading `0`, decimal otherwise.
+_IPV4_DECIMAL: Final = re.compile(r"[0-9]+")
+_IPV4_HEX: Final = re.compile(r"[0-9a-fA-F]*")
+_IPV4_OCTAL: Final = re.compile(r"[0-7]*")
+
+
+def _ipv4_number(part: str) -> int | None:
+    if part == "":
+        return None
+    if part[:2].lower() == "0x":
+        digits, pattern, base = part[2:], _IPV4_HEX, 16
+    elif len(part) > 1 and part[0] == "0":
+        digits, pattern, base = part[1:], _IPV4_OCTAL, 8
+    else:
+        digits, pattern, base = part, _IPV4_DECIMAL, 10
+    if pattern.fullmatch(digits) is None:
+        return None
+    return int(digits, base) if digits else 0
+
+
+def _ends_in_number(host: str) -> bool:
+    """The URL standard's test for a host that is an IPv4 address, or fails to be one."""
+
+    parts = host.split(".")
+    if parts[-1] == "":
+        if len(parts) == 1:
+            return False
+        parts.pop()
+    return _ipv4_number(parts[-1]) is not None
+
+
+def _ipv4_parses(host: str) -> bool:
+    parts = host.split(".")
+    if parts[-1] == "" and len(parts) > 1:
+        parts.pop()
+    numbers = [_ipv4_number(part) for part in parts]
+    if len(parts) > 4 or None in numbers:
+        return False
+    values = [number for number in numbers if number is not None]
+    return all(number < 256 for number in values[:-1]) and values[-1] < 256 ** (5 - len(parts))
+
+
+def _host_parses(address: str) -> bool:
+    """Whether *address* has a host a browser reads and a port it accepts.
+
+    The host is named, holds none of :data:`_HOST_FORBIDDEN`, and, in brackets, is an IPv6
+    address; the port, if there is one, is a number a browser takes. Python's own split
+    reads neither, so an address with an empty or malformed one passes it.
+    """
+
+    try:
+        parts = urlsplit(address)
+        host = parts.hostname
+        parts.port  # noqa: B018 -- reading it is the check: it raises for one out of range
+    except ValueError:
+        return False
+    if not host:
+        return False
+    if parts.netloc.rpartition("@")[2].startswith("["):
+        try:
+            ipaddress.IPv6Address(host)
+        except ValueError:
+            return False
+        return True
+    if _HOST_FORBIDDEN.search(host) is not None:
+        return False
+    # A host that ends in a number is an IPv4 address or none: `evil.test127.0.0.1` is neither.
+    return _ipv4_parses(host) if _ends_in_number(host) else True
+
+
 def remote_image(src: str | None, base: str | None) -> str | None:
     """The ``https`` address of an image the page may fetch from the web, or ``None``.
 
@@ -495,14 +581,21 @@ def remote_image(src: str | None, base: str | None) -> str | None:
     any case or spelling a browser reads the same way (``//host/...``, ``https:host/...``,
     a backslash for a slash), so a relative path in a pull request's comment, which
     :func:`outside_link` would make absolute against *base*, is not one. ``http`` is not
-    one, nor is an address with a user name or password in it, which a browser refuses
-    an image under. What qualifies is returned as :func:`outside_link` writes it.
+    one, nor is an address with no host, or one a browser's URL parser refuses
+    (:func:`_host_parses`), nor one with a user name or password in it, which a browser
+    refuses an image under, nor one whose host is written outside ASCII. What qualifies is
+    returned as :func:`outside_link` writes it.
+    ``static/inert-html.js`` makes the same choice; ``tests/test_inert_html.py`` holds the two
+    to one answer on a corpus.
     """
 
     if not src:
         return None
     cleaned = _spelled_out(_clean(src), base)
-    if not (cleaned[:8].lower() == "https://" or _OTHER_ORIGIN.match(cleaned)):
+    if not _WRITTEN_AUTHORITY.match(cleaned):
+        return None
+    authority = _AUTHORITY.match(cleaned)
+    if authority is None or not authority[1].isascii():
         return None
     outside = outside_link(src, base)
     if outside is None or not outside.startswith("https://"):
@@ -510,7 +603,7 @@ def remote_image(src: str | None, base: str | None) -> str | None:
     parts = urlsplit(outside)
     if parts.username or parts.password:
         return None
-    return outside
+    return outside if _host_parses(outside) else None
 
 
 def keeps_image(src: str | None, base: str | None) -> bool:

@@ -1946,8 +1946,13 @@ uv --config-file uv.toml run --frozen metab "file://${QA_README}/origin.git" --n
    `img.shields.io`, `github.com`), each an image with no `Referer` header; none over
    `http`; no other origin but `127.0.0.1`; no `/kpress-static/` script (its stylesheets
    and fonts load); and no iframe; no dialog covers the page.
+   Add a `flowchart LR` Mermaid block with the node
+   `A@{ img: "https://example.com/m.png", label: "x", w: 60, h: 60 }` to the README and
+   reload: its image is requested too, and with no `Referer` either, which the
+   response’s `Referrer-Policy` (step 3) is what guarantees.
 3. The page’s response carries `Content-Security-Policy` with
-   `script-src 'self' 'nonce-…'` and `img-src 'self' data: https:`. In the console,
+   `script-src 'self' 'nonce-…'`, `img-src 'self' data: https:`, and, as a header beside
+   it, `Referrer-Policy: no-referrer`. In the console,
    `document.body.append(Object.assign(document.createElement("img"), {src: "http://example.com/x.png"}))`
    is refused by `img-src`, and no other policy violation is reported.
 4. Open `README.md` itself, then **Guide**: the relative link opens `docs/guide.md` at

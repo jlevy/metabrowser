@@ -104,8 +104,12 @@ def test_the_untrusted_shell_runs_only_this_servers_scripts(untrusted: None) -> 
     diagram_scripts = tuple(
         kpress_adapter.kpress_static_url(module) for module in kpress_adapter.DIAGRAM_MODULES
     )
-    assert policy == untrusted_shell_csp(nonce.group(1), "http://testserver", diagram_scripts)
+    assert policy == untrusted_shell_csp(
+        nonce.group(1), "http://testserver", diagram_scripts, remote_images=True
+    )
     assert first.headers["x-frame-options"] == "DENY"
+    # No address of the page reaches an image's host, from an image the allowlist did not write.
+    assert first.headers["referrer-policy"] == "no-referrer"
     # A fresh nonce per response, carried by every inline script of the shell.
     assert nonce.group(1) not in second.headers["content-security-policy"]
     inline = re.findall(r"<script(?![^>]*\bsrc=)([^>]*)>", first.text)
@@ -272,10 +276,13 @@ def test_the_reader_who_blocks_remote_images_gets_the_narrow_policy(
     assert re.search(box, other.text).group(1) is None  # type: ignore[union-attr]
     # Everything else the policy says is the same as without the cookie.
     assert untrusted_shell_csp("n", "http://testserver", (), remote_images=False) == (
-        untrusted_shell_csp("n", "http://testserver", ()).replace(
+        untrusted_shell_csp("n", "http://testserver", (), remote_images=True).replace(
             "img-src 'self' data: https:", narrow
         )
     )
+    assert blocked.headers["referrer-policy"] == "no-referrer"
+    with pytest.raises(TypeError):
+        untrusted_shell_csp("n", "http://testserver", ())  # type: ignore[call-arg]  # pyright: ignore[reportCallIssue]
 
 
 def test_a_trusted_folders_page_has_the_setting_and_no_policy_either_way(tmp_path: Path) -> None:

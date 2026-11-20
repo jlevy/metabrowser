@@ -21,10 +21,15 @@
 // - trusted: every image loads. Untrusted: the https images load, with no `Referer`
 //   sent, under a policy that admits https images, and the http one is the fallback
 //   chip in its link, with the address it stands for in its tooltip;
+// - the page's response says `Referrer-Policy: no-referrer`, and an image a Mermaid
+//   diagram in the README names, which the allowlist never wrote, is asked for with no
+//   Referer (the README's last block is a diagram whose image shape names one);
+// - the box is drawn disabled and the menu's opening, which loads its wiring, enables it;
 // - blocked: the box is ticked, no request leaves the page, no image is drawn, every badge
 //   is its chip in the same link, the unlinked ones in a link to their image, and the
 //   policy is the narrow one, which the browser enforces: a console probe of an image
-//   from the web is refused.
+//   from the web is refused, and hovering a chip shows its image's address in the app's
+//   tooltip; unticked again, the images, the diagram's too, are back.
 //
 // Each step writes `phase <name> <ms since start>` to stderr. It prints
 // `markdown badges in Chrome: <n> checks passed`, or the failures and exits 1.
@@ -129,11 +134,20 @@ const VIEW = `(() => {
 const BADGE_ROW = `${VIEW}?.querySelector(".kpress-prose p")`;
 // What stands for a badge: an image, or the chip an image the page does not load becomes.
 const STANDS = "img, .mb-image-fallback";
-const settled = `(() => {
+const badgesSettled = `(() => {
   const row = ${BADGE_ROW};
   const badges = row ? [...row.querySelectorAll("${STANDS}")] : [];
   return badges.length === 5 && badges.every((badge) => badge.tagName !== "IMG" || badge.complete);
 })()`;
+// The README's Mermaid diagram, whose image shape names an image the allowlist never sees,
+// settled: drawn, or showing its error.
+const diagramSettled = `(() => {
+  const figures = [...(${VIEW}?.querySelectorAll('[data-kpress-diagram="mermaid"]') ?? [])];
+  return figures.length === 1 && ["rendered", "error"].includes(figures[0].dataset.kpressDiagramStatus);
+})()`;
+const settled = `(${badgesSettled}) && (${diagramSettled})`;
+// The image the diagram names, which is asked for apart from the badges.
+const DIAGRAM_IMAGE = "https://badges.test/mermaid.svg";
 
 // Every badge of the row, left to right, as a box and as what it is and where it goes; the
 // links of the row; and what follows each link.
@@ -164,7 +178,7 @@ const MEASURE = `(() => {
     nested: link.querySelector("a") !== null,
     marks: [...link.querySelectorAll(".external-link-icon")].length,
   }));
-  const after = [...document.querySelectorAll(".kpress-prose p")].at(-1);
+  const after = [...document.querySelectorAll(".kpress-prose p")].find((p) => p.textContent.startsWith("A line of text"));
   return {
     badges,
     links,
@@ -262,11 +276,13 @@ try {
       body: BADGE,
     });
   });
-  /** @param {string} cookie */
-  const policy = async (cookie) => {
+  /** The shell's response headers for a request that carries *cookie*. @param {string} cookie */
+  const headers = async (cookie) => {
     const answer = await fetch(`${base}/view/`, { headers: cookie ? { cookie } : {} });
-    return answer.headers.get("content-security-policy") ?? "";
+    return answer.headers;
   };
+  /** @param {string} cookie */
+  const policy = async (cookie) => (await headers(cookie)).get("content-security-policy") ?? "";
 
   /** Wait for *expression* across a page that loads again, where a call can land between two. */
   const settle = async (expression, timeoutMs = 30000) => {
@@ -292,6 +308,19 @@ try {
     await settle(
       `window.MetabrowserRemoteImages !== undefined && document.getElementById("settings-control").getAttribute("aria-expanded") === "true"`,
     );
+  };
+
+  /**
+   * Click the control *id*, which loads the page again: the old document is marked, so a
+   * wait for the new one cannot be answered by the old.
+   * @param {string} id
+   */
+  const click = async (id) => {
+    await page.evaluate(`(() => {
+      window.__beforeReload = true;
+      document.getElementById("${id}").click();
+      return true;
+    })()`);
   };
 
   const open = async () => {
@@ -347,10 +376,24 @@ try {
     );
     check(
       "untrusted the page asked for the four https images and sent no referrer",
-      requests.length === 4 &&
+      requests.filter((request) => request.url !== DIAGRAM_IMAGE).length === 4 &&
         IMAGES.slice(0, 4).every((url) => requests.some((request) => request.url === url)) &&
         requests.every((request) => request.referer === null),
       requests,
+    );
+    // The page's own policy sends no referrer, which is what covers an image the allowlist
+    // never wrote: this one is named by a Mermaid image shape and laid out in the page.
+    check(
+      "untrusted the Mermaid diagram's image is asked for, with no referrer",
+      requests.filter((request) => request.url === DIAGRAM_IMAGE).length >= 1 &&
+        requests
+          .filter((request) => request.url === DIAGRAM_IMAGE)
+          .every((request) => request.referer === null),
+      requests,
+    );
+    check(
+      "untrusted the response says so: Referrer-Policy no-referrer",
+      (await headers("")).get("referrer-policy") === "no-referrer",
     );
     check(
       "untrusted the policy admits https images",
@@ -370,9 +413,19 @@ try {
     // and the page loads again, under the narrow policy, with no request for an image of
     // the web.
     requests.length = 0;
+    check(
+      "untrusted the box is disabled until the menu wires it",
+      (await page.evaluate("document.getElementById('block-remote-images-input').disabled")) ===
+        true,
+    );
     await openMenu();
-    await page.evaluate(`document.getElementById("block-remote-images-input").click()`);
-    await settle(`document.cookie.includes("metabrowser.blockRemoteImages=1") && (${settled})`);
+    check(
+      "untrusted opening the menu enables the box",
+      (await page.evaluate("document.getElementById('block-remote-images-input').disabled")) ===
+        false,
+    );
+    await click("block-remote-images-input");
+    await settle(`window.__beforeReload === undefined && (${settled})`);
     await page.evaluate("document.fonts.ready.then(() => true)");
     await page.evaluate(frames());
     const blocked = await page.evaluate(MEASURE);
@@ -400,9 +453,33 @@ try {
       blocked.badges[3].href === IMAGES[3] && blocked.badges[4].href === IMAGES[4],
       blocked.badges,
     );
+    // The chip's tooltip is the app's own, inside a rendered document: hovering a chip shows
+    // the address its image would have loaded.
+    for (const at of [0, 3]) {
+      const { box } = blocked.badges[at];
+      await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 5, y: 5 });
+      await page.send("Input.dispatchMouseEvent", {
+        type: "mouseMoved",
+        x: box.left + box.width / 2,
+        y: box.top + box.height / 2,
+      });
+      await settle(
+        `document.querySelector(".custom-tooltip")?.classList.contains("visible") && document.querySelector(".custom-tooltip").textContent === "${IMAGES[at]}"`,
+      ).catch(() => {});
+      check(
+        `blocked hovering the chip of ${blocked.badges[at].text} shows its image's address`,
+        (await page.evaluate(`document.querySelector(".custom-tooltip")?.textContent ?? null`)) ===
+          IMAGES[at],
+        await page.evaluate(`document.querySelector(".custom-tooltip")?.textContent ?? null`),
+      );
+    }
     checkOneLine("blocked", blocked.badges);
     checkLinks("blocked", blocked);
-    check("blocked no request left the page", requests.length === 0, requests);
+    check(
+      "blocked no request left the page, the Mermaid diagram's image included",
+      requests.length === 0,
+      requests,
+    );
     const narrow = await policy("metabrowser.blockRemoteImages=1");
     check(
       "blocked the policy admits only this origin, data, and the avatar host",
@@ -427,15 +504,30 @@ try {
     // And off again: the cookie is cleared, and the images are back.
     requests.length = 0;
     await openMenu();
-    await page.evaluate(`document.getElementById("block-remote-images-input").click()`);
-    await settle(`document.cookie.includes("metabrowser.blockRemoteImages=0") && (${settled})`);
-    await settle(`${BADGE_ROW}.querySelectorAll("img").length === 4`);
-    check("blocked turned off again, the images load again", true);
+    await click("block-remote-images-input");
+    await settle(`window.__beforeReload === undefined && (${settled})`);
+    const again = await page.evaluate(MEASURE);
+    check(
+      "blocked turned off again, the box is clear, the cookie says so, and the images load again",
+      (await page.evaluate("document.getElementById('block-remote-images-input').checked")) ===
+        false &&
+        (await page.evaluate("document.cookie")).includes("metabrowser.blockRemoteImages=0") &&
+        again.images === 4 &&
+        again.badges.slice(0, 4).every((badge) => badge.kind === "image" && badge.loaded === 90) &&
+        requests.some((request) => request.url === IMAGES[0]) &&
+        requests.some((request) => request.url === DIAGRAM_IMAGE),
+      { again, requests },
+    );
   } finally {
     await stop();
   }
   phase("untrusted");
 } finally {
+  // Chrome with a request still paused for this session's answer, or a page still open on a
+  // server that has stopped, was seen not to exit when asked to (it then held this process
+  // open), so the session lets go of both first.
+  await page.send("Fetch.disable").catch(() => {});
+  await page.send("Page.navigate", { url: "about:blank" }).catch(() => {});
   await page.close();
 }
 phase("closed");
