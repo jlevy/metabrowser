@@ -2,58 +2,66 @@ import AppKit
 import ShellCore
 import WebKit
 
-/// View on GitHub in a folder window (`GitHubView`): a native popover, anchored to the
-/// page's View on GitHub button, with a web view of the item's page on github.com below a
-/// one-line header of Back, Forward, the page's location, Copy Link, and Open in Browser.
+/// What shows a web pane: a popover over a folder's page today (`WebPopover`), and, as the
+/// pane holds nothing of its host's, a window's own content later.
+@MainActor protocol WebPaneHost: AnyObject {
+    /// Closes the host, as Escape, Command-W, and Open in Browser do.
+    func closePane(_ sender: Any?)
+    /// Holds the host open while the pane shows an app-modal panel, or lets it close again.
+    func holdPaneOpen(_ held: Bool)
+}
+
+/// A web view of a site's page (`WebSite`), below a one-line header of Back, Forward, the
+/// page's location, Copy Link, and Open in Browser (mb-730z, first built for View on GitHub
+/// in mb-4wqh).
 ///
-/// The web view keeps what github.com stores in the one store every window's popover shares
-/// (`GitHubDataStore`), so signing in once holds in every tab and window and after a
-/// relaunch. Navigation follows `GitHubViewPolicy`: GitHub's own pages stay, and anything
-/// else opens in the default browser. A file dropped on it goes to github.com, and its zoom
-/// is its own (`WebConfiguration.makeGitHubWebView`).
+/// The web view keeps what its site stores in the one store every pane shares
+/// (`WebDataStore`), so signing in to a site once holds in every tab and window and after a
+/// relaunch. Navigation follows the policy for the site it was opened on (`WebViewPolicy`):
+/// that site's own pages stay, and anything else opens in the default browser; opening it
+/// on another site's page starts a new web view, with no history. A file dropped on it goes
+/// to the site, and its zoom is its own (`WebConfiguration.makeWebPaneView`).
 ///
-/// The popover is transient: Escape, Command-W, or a click outside it closes it. Its web
-/// view stays for `GitHubPopoverState.keptAfterClosing`, so opening it again for the same
-/// item soon after shows it at once, as it was left, and is then let go with its WebContent
-/// process, unless the page holds text the user has not sent; its folder page (`FolderPage`)
-/// closes it when the page leaves its window, and lets it go at once when the page gives
-/// up its web view or closes. The `NSPopover` itself is made each time the
-/// popover opens and let go when it closes, since it holds this controller, its content,
-/// and this controller holds it.
+/// Its host (`WebPaneHost`) says when it shows and hides it. A hidden pane keeps its web
+/// view for `WebPaneState.keptAfterClosing`, so showing it again on the same page soon after
+/// shows it at once, as it was left, and then lets it go with its WebContent process, unless
+/// the page holds text the user has not sent; `discard()` lets it go at once.
 ///
-/// The page's file panel and its `alert`, `confirm`, and `prompt` (`GitHubViewUI`) show as
-/// app-modal panels, while the popover stays open behind them.
+/// The page's file panel and its `alert`, `confirm`, and `prompt` (`WebViewUI`) show as
+/// app-modal panels, while the host holds itself open behind them.
 ///
-/// While the popover has the keyboard, the main menu's actions reach this controller, in the
-/// popover's responder chain, before the window behind it: Back, Forward, Reload Page,
-/// zoom, and Open in Default Browser act on the popover, and Print and Find are off rather
-/// than acting on the hidden page.
-final class GitHubPopover: NSViewController, NSPopoverDelegate, NSMenuItemValidation {
+/// While the pane has the keyboard, the main menu's actions reach this controller, in its
+/// host's responder chain, before the window behind it: Back, Forward, Reload Page, zoom,
+/// and Open in Default Browser act on the pane, and Print and Find are off rather than
+/// acting on the page hidden behind it.
+final class WebPane: NSViewController, NSMenuItemValidation {
     /// The header's height: one row of small controls, as in a toolbar's accessory bar.
     static let headerHeight: CGFloat = 30
 
     private let isInspectable: Bool
     private(set) var webView: WKWebView?
-    /// While the popover is open, and from then until it has closed.
-    private var popover: NSPopover?
-    private lazy var ui = GitHubViewUI(
+    weak var host: (any WebPaneHost)?
+    /// Between the host's showing the pane and its hiding it.
+    private var isShown = false
+    private lazy var ui = WebViewUI(
+        policy: { [weak self] in self?.policy },
         present: { [weak self] request, answer in
             guard let self else { return answer(.dismissed) }
             present(request, answer: answer)
         },
         openExternally: { NSWorkspace.shared.open($0) })
-    private var state = GitHubPopoverState()
+    private var state = WebPaneState()
     /// Reloads after the web content process dies, as a folder's page does.
     private var recoveries = RecoveryBudget.webContent
     private var observations: [NSKeyValueObservation] = []
-    /// Lets the web view go once the popover has stayed closed for `keptAfterClosing`.
+    /// Lets the web view go once the pane has stayed hidden for `keptAfterClosing`.
     private var release: Task<Void, Never>?
     private let page = NSView()
-    private let back = GitHubPopover.button(symbol: "chevron.backward", label: "Back")
-    private let forward = GitHubPopover.button(symbol: "chevron.forward", label: "Forward")
+    private let back = WebPane.button(symbol: "chevron.backward", label: "Back")
+    private let forward = WebPane.button(symbol: "chevron.forward", label: "Forward")
     private let location = NSTextField(labelWithString: "")
-    private let copyLink = GitHubPopover.button(title: "Copy Link")
-    private let openInBrowser = GitHubPopover.button(title: "Open in Browser")
+    private let copyLink = WebPane.button(title: "Copy Link")
+    private let openInBrowser = WebPane.button(title: "Open in Browser")
 
     init(isInspectable: Bool) {
         self.isInspectable = isInspectable
@@ -128,28 +136,24 @@ final class GitHubPopover: NSViewController, NSPopoverDelegate, NSMenuItemValida
 
     // MARK: - Showing
 
-    /// Opens the popover at `anchor` in `view`, the page's web view, on `page`, or as it was
-    /// left when it was last opened for `page`. It takes most of the window, at least
-    /// `GitHubPopoverLayout.minimumSize` where the screen allows, and opens below the
-    /// button.
-    func show(_ page: URL, at anchor: NSRect, of view: NSView) {
+    /// The policy of the site the pane was last opened on (`WebPaneState.site`).
+    var policy: WebViewPolicy? { state.site.map(WebViewPolicy.init(site:)) }
+
+    /// Opens the pane on `page`, or as it was left when it was last opened on it. A page on
+    /// another site than the last starts a new web view (`WebPaneState.open`).
+    func open(_ page: WebSite.Page) {
         loadViewIfNeeded()
+        let opening = state.open(page, hasPage: hasPage)
+        if opening.replacesWebView { dropWebView() }
         let webView = webView ?? makeWebView()
-        if let load = state.open(page, hasPage: hasPage) { webView.load(URLRequest(url: load)) }
-        let size = GitHubPopoverLayout.contentSize(
-            window: view.window?.contentLayoutRect.size ?? view.bounds.size,
-            screen: view.window?.screen?.visibleFrame.size)
-        preferredContentSize = size
-        let popover = popover ?? makePopover()
-        popover.contentSize = size
-        popover.show(relativeTo: anchor, of: view, preferredEdge: view.isFlipped ? .maxY : .minY)
-        webView.window?.makeFirstResponder(webView)
+        if let load = opening.load { webView.load(URLRequest(url: load)) }
     }
 
-    func close() { popover?.close() }
+    /// Gives the web view the keyboard, once the host shows the pane.
+    func focus() { webView?.window?.makeFirstResponder(webView) }
 
-    /// Reload Page, and after Metabrowser > Clear GitHub Data…: the page loads again, or,
-    /// if it never loaded, the page the popover was opened for.
+    /// Reload Page, and after Metabrowser > Clear Website Data…: the page loads again, or,
+    /// if it never loaded, the page the pane was opened on.
     func reload() {
         guard let webView else { return }
         if let page = state.pageToLoad(hasPage: hasPage) {
@@ -159,35 +163,33 @@ final class GitHubPopover: NSViewController, NSPopoverDelegate, NSMenuItemValida
         }
     }
 
+    /// After Metabrowser > Clear Website Data…: reloads, signed out, if what was cleared
+    /// includes the pane's site's data (`WebPaneState.reloads(after:)`).
+    func reload(after clearing: WebDataClearing) {
+        if state.reloads(after: clearing) { reload() }
+    }
+
     /// Lets the web view go at once: the page gave up its web view, or it closes.
-    func discard() {
-        popover?.close()
-        letPopoverGo()
-        dropWebView()
+    func discard() { letWebViewGo() }
+
+    /// The host is about to show the pane.
+    func hostWillShow() {
+        isShown = true
+        release?.cancel()
+        release = nil
+    }
+
+    /// The host hid the pane.
+    func hostDidHide() {
+        isShown = false
+        if webView != nil { releaseLater() }
     }
 
     /// Whether the web view has a committed page: a first load that failed leaves none.
     private var hasPage: Bool { webView?.backForwardList.currentItem != nil }
 
-    private func makePopover() -> NSPopover {
-        let popover = NSPopover()
-        popover.contentViewController = self
-        popover.behavior = .transient
-        popover.delegate = self
-        self.popover = popover
-        return popover
-    }
-
-    /// Breaks the cycle between the popover and its content, this controller, so a window
-    /// that closes frees both.
-    private func letPopoverGo() {
-        popover?.delegate = nil
-        popover?.contentViewController = nil
-        popover = nil
-    }
-
     private func makeWebView() -> WKWebView {
-        let webView = WebConfiguration.makeGitHubWebView(isInspectable: isInspectable)
+        let webView = WebConfiguration.makeWebPaneView(isInspectable: isInspectable)
         webView.navigationDelegate = self
         webView.uiDelegate = ui
         webView.frame = page.bounds
@@ -202,6 +204,13 @@ final class GitHubPopover: NSViewController, NSPopoverDelegate, NSMenuItemValida
         return webView
     }
 
+    /// Lets the web view go, and with it what the pane was opened for.
+    private func letWebViewGo() {
+        state.discard()
+        dropWebView()
+    }
+
+    /// Lets the web view go, keeping `state`, as opening it on another site does.
     private func dropWebView() {
         release?.cancel()
         release = nil
@@ -212,45 +221,33 @@ final class GitHubPopover: NSViewController, NSPopoverDelegate, NSMenuItemValida
         webView.uiDelegate = nil
         webView.removeFromSuperview()
         self.webView = nil
-        state.discard()
         showLocation()
         showHistory()
     }
 
-    func popoverWillShow(_ notification: Notification) {
-        release?.cancel()
-        release = nil
-    }
-
-    func popoverDidClose(_ notification: Notification) {
-        guard let closed = notification.object as? NSPopover, closed === popover, !closed.isShown else { return }
-        letPopoverGo()
-        if webView != nil { releaseLater() }
-    }
-
-    /// Lets the web view go after `keptAfterClosing`, unless the popover opened again, or
-    /// the page holds text the user has not sent (`GitHubPopoverState.unsentTextProbe`),
+    /// Lets the web view go after `keptAfterClosing`, unless the pane showed again, or the
+    /// page holds text the user has not sent (`WebPaneState.unsentTextProbe`),
     /// which keeps it for another while.
     private func releaseLater() {
         release?.cancel()
         release = Task { [weak self] in
-            try? await Task.sleep(for: GitHubPopoverState.keptAfterClosing)
-            guard !Task.isCancelled, let self, popover == nil, let webView else { return }
+            try? await Task.sleep(for: WebPaneState.keptAfterClosing)
+            guard !Task.isCancelled, let self, !isShown, let webView else { return }
             let unsent = try? await webView.evaluateJavaScript(
-                GitHubPopoverState.unsentTextProbe, in: nil, contentWorld: .defaultClient)
-            guard !Task.isCancelled, popover == nil else { return }
-            if unsent as? Bool == true { releaseLater() } else { dropWebView() }
+                WebPaneState.unsentTextProbe, in: nil, contentWorld: .defaultClient)
+            guard !Task.isCancelled, !isShown else { return }
+            if unsent as? Bool == true { releaseLater() } else { letWebViewGo() }
         }
     }
 
     // MARK: - The page's panels
 
-    /// Shows what the page asked for as an app-modal panel, with the popover held open
-    /// behind it: a transient popover would close as the panel takes the keyboard.
-    private func present(_ request: GitHubViewUI.Request, answer: @escaping @MainActor (GitHubViewUI.Answer) -> Void) {
-        let held = popover
-        held?.behavior = .applicationDefined
-        defer { held?.behavior = .transient }
+    /// Shows what the page asked for as an app-modal panel, with the host held open behind
+    /// it: a transient popover would close as the panel takes the keyboard.
+    private func present(_ request: WebViewUI.Request, answer: @escaping @MainActor (WebViewUI.Answer) -> Void) {
+        let held = host
+        held?.holdPaneOpen(true)
+        defer { held?.holdPaneOpen(false) }
         switch request {
         case .alert(let message):
             let alert = NSAlert()
@@ -280,15 +277,15 @@ final class GitHubPopover: NSViewController, NSPopoverDelegate, NSMenuItemValida
         }
     }
 
-    /// The page the popover shows, for Copy Link and Open in Browser: the web view's, while
-    /// it is one of GitHub's, or else the one it was opened for.
+    /// The page the pane shows, for Copy Link and Open in Browser: the web view's, while it
+    /// is one of its site's, or else the one it was opened on.
     private var shownPage: URL? {
-        if let url = webView?.url, GitHubViewPolicy.staysInView(url) { return url }
+        if let url = webView?.url, state.site?.staysInView(url) == true { return url }
         return state.openedFor
     }
 
     private func showLocation() {
-        location.stringValue = GitHubView.location(webView?.url ?? state.openedFor)
+        location.stringValue = WebLocation.text(webView?.url ?? state.openedFor)
         location.toolTip = webView?.url?.absoluteString
     }
 
@@ -307,25 +304,25 @@ final class GitHubPopover: NSViewController, NSPopoverDelegate, NSMenuItemValida
     @objc func navigateForward(_ sender: Any?) { webView?.goForward() }
     @objc func reloadPage(_ sender: Any?) { reload() }
 
-    // github.com at its own zoom, apart from the pages' remembered one and never saved.
+    // The site at its own zoom, apart from the pages' remembered one and never saved.
     @objc func actualSize(_ sender: Any?) { webView?.pageZoom = 1 }
     @objc func zoomIn(_ sender: Any?) { webView.map { $0.pageZoom = PageZoom.zoomedIn($0.pageZoom) } }
     @objc func zoomOut(_ sender: Any?) { webView.map { $0.pageZoom = PageZoom.zoomedOut($0.pageZoom) } }
 
-    /// Off while the popover has the keyboard (`validateMenuItem`), so neither prints nor
+    /// Off while the pane has the keyboard (`validateMenuItem`), so neither prints nor
     /// searches the page hidden behind it.
     @objc func printPage(_ sender: Any?) {}
     @objc func performFindAction(_ sender: Any?) {}
 
-    /// The header's Open in Browser, or File > Open in Default Browser: the page the popover
-    /// shows, in the default browser, and the popover closes.
+    /// The header's Open in Browser, or File > Open in Default Browser: the page the pane
+    /// shows, in the default browser, and the host closes.
     @objc func openInDefaultBrowser(_ sender: Any?) {
         guard let page = shownPage else { return NSSound.beep() }
         NSWorkspace.shared.open(page)
-        popover?.performClose(sender)
+        host?.closePane(sender)
     }
 
-    /// The header's Copy Link: the page the popover shows, as a URL and as text.
+    /// The header's Copy Link: the page the pane shows, as a URL and as text.
     @objc func copyLink(_ sender: Any?) {
         guard let page = shownPage else { return NSSound.beep() }
         let board = NSPasteboard.general
@@ -334,10 +331,10 @@ final class GitHubPopover: NSViewController, NSPopoverDelegate, NSMenuItemValida
         board.setString(page.absoluteString, forType: .string)
     }
 
-    /// Command-W closes the popover, not the window behind it.
-    @objc func performClose(_ sender: Any?) { popover?.performClose(sender) }
+    /// Command-W closes the host, not the window behind it.
+    @objc func performClose(_ sender: Any?) { host?.closePane(sender) }
 
-    override func cancelOperation(_ sender: Any?) { popover?.performClose(sender) }
+    override func cancelOperation(_ sender: Any?) { host?.closePane(sender) }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
@@ -352,13 +349,14 @@ final class GitHubPopover: NSViewController, NSPopoverDelegate, NSMenuItemValida
     }
 }
 
-extension GitHubPopover: WKNavigationDelegate {
+extension WebPane: WKNavigationDelegate {
     func webView(
         _ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
         decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
     ) {
+        guard let policy else { return decisionHandler(.cancel) }
         let linkClick = action.navigationType == .linkActivated
-        let decision = GitHubViewPolicy.decide(
+        let decision = policy.decide(
             action.request.url, isMainFrame: action.targetFrame?.isMainFrame ?? true,
             byUser: [.linkActivated, .formSubmitted, .formResubmitted].contains(action.navigationType),
             shouldDownload: action.shouldPerformDownload,
@@ -371,8 +369,9 @@ extension GitHubPopover: WKNavigationDelegate {
         decisionHandler: @escaping @MainActor (WKNavigationResponsePolicy) -> Void
     ) {
         guard response.isForMainFrame else { return decisionHandler(.allow) }
+        guard let policy else { return decisionHandler(.cancel) }
         let disposition = (response.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
-        let decision = GitHubViewPolicy.decideResponse(
+        let decision = policy.decideResponse(
             response.response.url,
             ResponsePolicy.decide(canShowMIMEType: response.canShowMIMEType, contentDisposition: disposition))
         decisionHandler(follow(decision) ? .allow : .cancel)
