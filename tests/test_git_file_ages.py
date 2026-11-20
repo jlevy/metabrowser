@@ -276,9 +276,45 @@ def test_a_shallow_boundary_leaves_files_undated_and_says_older_than(
     )
 
 
-def test_a_cut_read_keeps_nothing_and_says_older_than_the_revision(history: History) -> None:
+def test_a_cut_read_keeps_what_git_printed_and_says_older_than_the_oldest_printed(
+    history: History, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A read past its budget keeps the files Git had printed and leaves the rest undated,
+    last changed before the oldest commit printed. Git prints a file as soon as it knows
+    it, so the read is stood in for by one that prints a single file and then stalls."""
+
+    from metabrowser.git import file_ages
+
     tip = build_branchy(history)
-    ages = asyncio.run(history.date(tip, limits=AgeLimits(timeout_s=0.0)))
+    root = history.git("rev-list", "--max-parents=0", "HEAD")
+
+    async def prints_one_then_stalls(
+        _process: object, wanted: frozenset[bytes], found: dict[bytes, bytes]
+    ) -> None:
+        assert b"root_only" in wanted
+        found[b"root_only"] = root.encode()
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(file_ages, "_consume", prints_one_then_stalls)
+    ages = asyncio.run(history.date(tip, limits=AgeLimits(timeout_s=0.5)))
+    assert ages.stop == "budget"
+    assert ages.dated == 1
+    assert ages.time_of(b"root_only") == EPOCH
+    assert ages.older_than == EPOCH
+
+
+def test_a_cut_read_that_printed_nothing_says_older_than_the_revision(
+    history: History, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.git import file_ages
+
+    tip = build_branchy(history)
+
+    async def stalls(*_args: object) -> None:
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(file_ages, "_consume", stalls)
+    ages = asyncio.run(history.date(tip, limits=AgeLimits(timeout_s=0.5)))
     assert ages.stop == "budget"
     assert ages.dated == 0
     assert ages.older_than == EPOCH + 7 * DAY

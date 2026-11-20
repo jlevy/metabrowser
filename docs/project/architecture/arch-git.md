@@ -434,9 +434,10 @@ for the command.
   background job named `file_ages.read` in the [event log](../../realtime-debugging.md).
   A route asks `request`, which returns the answer, or `dating`, or why there is none,
   at once. `/api/tree` carries `mtime` on the nodes it can date and an `ages` state;
-  `/api/index/progress` carries the same state, which a command reading it waits on
-  (`wait_for_index` in `cli/asgi_client.py`) and a page polls.
-  A file the answer leaves undated carries no `mtime`.
+  `/api/index/progress` carries the same state, which a page polls and a command that
+  prints it waits on (`wait_for_index` in `cli/asgi_client.py`, for `/api/tree` and the
+  progress route itself; every other `--api` route passes `ages=0` and never starts the
+  read). A file the answer leaves undated carries no `mtime`.
 - **Per commit.** A commit ID names a tree for good, so an answer is never stale: a
   branch shown again is a lookup, a new branch or tag is read for its own tip, and a tip
   whose ancestor is answered reads `C ^A`, so Git walks only the commits since it.

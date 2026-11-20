@@ -117,6 +117,11 @@ class FileAgesService:
     def _key(target: RepositoryStoreTarget, commit: str) -> _Key:
         return (target.git_dir, commit)
 
+    def is_idle(self) -> bool:
+        """Whether no answer, read, or failure is kept."""
+
+        return not (self._answers or self._jobs or self._failures)
+
     def peek(self, target: RepositoryStoreTarget, commit: str) -> RevisionAges | None:
         """The kept answer for *commit*, starting nothing."""
 

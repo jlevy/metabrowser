@@ -668,3 +668,22 @@ def test_a_pin_without_file_ages_has_no_times_and_says_why(
         "minimum_git": "2.53",
         "hint": "File ages on Git revisions need Git 2.53 or newer (found 2.50.1)",
     }
+
+
+@posix_only
+def test_a_command_that_prints_no_ages_never_reads_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, file_ages_git: tuple[int, int, int]
+) -> None:
+    """``--api`` waits on the background read only for a route that prints its answer, so a
+    rollup, a catalog, or a file does not pay for it on a large history."""
+
+    from metabrowser.git.file_ages_service import file_ages_service
+
+    isolate_cli(tmp_path, monkeypatch)
+    pin = _Pin(tmp_path)
+    pin.use(ages_origin(tmp_path))
+    for route in ("/api/rollup?depth=1", "/api/catalog", f"/api/file?path={_wire(b'README.md')}"):
+        pin.api(route)
+        assert file_ages_service().is_idle(), route
+    pin.api("/api/tree?depth=1")
+    assert not file_ages_service().is_idle()

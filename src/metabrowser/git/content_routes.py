@@ -1194,17 +1194,25 @@ async def _git_ages_status(subject: GitRevisionSubject) -> AgesStatus:
 
 
 @_typed_git_failures
-async def git_revision_index_progress(subject: GitRevisionSubject) -> JSONResponse:
-    """Terminal crawl footer for a pin. There is no walker."""
+async def git_revision_index_progress(
+    subject: GitRevisionSubject, *, ages: bool = True
+) -> JSONResponse:
+    """Terminal crawl footer for a pin. There is no walker.
+
+    It also asks for the revision's file ages and says how that stands, which is what a
+    page polls; `ages=0` leaves them alone, for a command that only waits for the index
+    (`wait_for_index`) and would otherwise start a read of a large history it never prints.
+    """
 
     try:
         facts = await _git_index_facts(subject)
     except GitObjectUnavailableError as exc:
         return _json(_object_unavailable_payload(exc), status_code=404)
     payload = {**_git_index_common(facts), "active": False}
-    ages = await _git_ages_status(subject)
-    if ages.state != "unavailable":
-        payload["ages"] = ages.wire(files=facts.indexed_files)
+    if ages:
+        status = await _git_ages_status(subject)
+        if status.state != "unavailable":
+            payload["ages"] = status.wire(files=facts.indexed_files)
     return _json(payload)
 
 

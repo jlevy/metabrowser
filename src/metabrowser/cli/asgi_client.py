@@ -336,24 +336,27 @@ async def wait_for_index(
     client: InProcessClient,
     *,
     timeout_s: float = INDEX_READY_TIMEOUT_S,
+    ages: bool = False,
 ) -> IndexResult:
     """Poll the cheap progress route until the inventory reaches a terminal state.
 
     A Git revision's file ages are read in the background, and a page shows them when they
-    land; a command prints once, so it waits for them as well (`ages.state` of `dating`).
+    land; a command prints once, so with *ages* it waits for them as well (`ages.state` of
+    `dating`). Only a command that prints them asks, so one that does not (a rollup, a
+    catalog, a file) never waits on a read of a large history.
     """
 
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        response = await client.get("/api/index/progress")
+        response = await client.get("/api/index/progress", params=None if ages else {"ages": "0"})
         if response.status_code != 200:
             return IndexResult(f"HTTP {response.status_code}", False)
         payload = _read_json(response)
         if isinstance(payload, dict):
             status = payload.get("status")
-            ages = payload.get("ages")
-            dating = isinstance(ages, dict) and ages.get("state") == "dating"
-            if status in ("done", "truncated") and not dating:
+            shown = payload.get("ages")
+            dating = isinstance(shown, dict) and shown.get("state") == "dating"
+            if status in ("done", "truncated") and not (ages and dating):
                 return IndexResult(status, True)
             if status == "failed":
                 return IndexResult("failed", False)
