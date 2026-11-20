@@ -2014,7 +2014,7 @@ _NOT_TOGGLES: dict[str, str] = {
     "shell-keymap.js": "reads which filter dropdown is open, for its rows' letters",
     "nav-collapse.js": "reflects aria-expanded on the chevron server.py writes and app.js draws",
     "server.py": "the gear has no chevron; the navigation chevron is .disclosure-toggle",
-    "table/table-view.js": "the Columns button and a header's menu button open menus, not disclosures",
+    "table/table-view.js": "the Columns button and a header's menu button open dialogs, not disclosures",
 }
 # Each chevron and `summary` a source builds, in source order, with the builder whose
 # element it goes into. Whitespace in a glyph is collapsed to one space.

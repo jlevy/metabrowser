@@ -20,13 +20,20 @@ over the files in `tests/fixtures/table-view/` and the small files that recorder
 each with the bound it shows lowered to meet it.
 
 The address holds the view’s state: a header’s press sorts ascending, then descending,
-then back to the file’s order; a boolean value’s press adds a filter, which a chip
+then back to the table’s own order; a boolean value’s press adds a filter, which a chip
 removes; Search asks once the typing pauses and replaces the address rather than adding
-to its history; a header’s menu filters and hides its column; and Back shows the address
-before.
-The grid is one Tab stop: `j` and `k` move a row, Right and Left move between the
-row and its cells, and Enter opens the row’s record in place of the grid, whose Back
-returns the keyboard to the row; Escape in a record returns to the table.
+to its history; a header’s menu, a dialog, filters its column and hides it, replacing
+the address as the Columns menu does; and Back shows the address before.
+The grid is one Tab stop: `j` and `k` move a row, Right and Left move between the row
+and its cells, `k` from the first row reaches the header, whose buttons Right crosses,
+and Enter opens the row’s record in place of the grid, whose Back returns the keyboard
+to the row; Escape in a record returns to the table.
+A run of key presses writes the view’s place to the history entry once, a pause after
+the last, so Enter still pushes the record’s address and its Back link goes Back to the
+place the keys left; when the browser dropped that push, the Back link replaces the
+address with the table’s instead of leaving the table.
+A new answer to the same question (`refresh()`) keeps the focused row, the scroll, and
+the selection by key.
 A refusal is said in an alert with a way back to the whole table, and a view disposed
 before its answers arrive draws nothing from them.
 
@@ -41,10 +48,10 @@ from each `next_after` rather than counting on its own page size; `cols` names o
 a parameter, so a name with a comma is one column.
 A search the time budget stopped shows the matches among the rows it read, says so, and
 its cursor continues among them; a sort the budget refused has no rows, and the view
-names the field and offers the file’s order instead of saying the table is empty.
-A file read in part says whether its rows or a row’s cells were cut.
-A cursor names the sort and order it was made for, so a new sort is a new question read
-from its first page.
+names the field and offers the table’s own order, or to try again, instead of saying the
+table is empty. A file read in part says whether every row or only the leading rows were
+read. A cursor names the sort and order it was made for, so a new sort is a new question
+read from its first page.
 
 The structured kind’s Table view draws a JSON list of mappings through the same view.
 A nested value is its JSON text in the grid, and in the record it is drawn by the
@@ -97,6 +104,22 @@ $ node tests/dom/table-view-session.js
       "hidden": [],
       "pinned": true
     },
+    "a later page: the question's end, and a changed table's": {
+      "joined": {
+        "rows": 2,
+        "complete": false,
+        "reason": "budget"
+      },
+      "expired": {
+        "rows": 1,
+        "complete": false,
+        "reason": "cursor_expired"
+      }
+    },
+    "no rows match, said of a scan the budget stopped": [
+      "No rows match.",
+      "No matches among the first 4,096 rows."
+    ],
     "window at 1,000 px of 31 px rows": {
       "start": 20,
       "end": 55
@@ -113,7 +136,7 @@ $ node tests/dom/table-view-session.js
     "notes": [],
     "empty": null,
     "table": {
-      "role": "table",
+      "role": "grid",
       "rowcount": null,
       "lines": 1,
       "header": [
@@ -150,7 +173,7 @@ $ node tests/dom/table-view-session.js
     "notes": [],
     "empty": null,
     "table": {
-      "role": "table",
+      "role": "grid",
       "rowcount": null,
       "lines": 1,
       "header": [
@@ -187,7 +210,7 @@ $ node tests/dom/table-view-session.js
     "notes": [],
     "empty": null,
     "table": {
-      "role": "table",
+      "role": "grid",
       "rowcount": null,
       "lines": 1,
       "header": [
@@ -242,7 +265,7 @@ $ node tests/dom/table-view-session.js
     "notes": [],
     "empty": null,
     "table": {
-      "role": "table",
+      "role": "grid",
       "rowcount": null,
       "lines": 1,
       "header": [
@@ -287,7 +310,7 @@ $ node tests/dom/table-view-session.js
     "notes": [],
     "empty": null,
     "table": {
-      "role": "table",
+      "role": "grid",
       "rowcount": null,
       "lines": 1,
       "header": [
@@ -341,7 +364,7 @@ $ node tests/dom/table-view-session.js
     "notes": [],
     "empty": null,
     "table": {
-      "role": "table",
+      "role": "grid",
       "rowcount": null,
       "lines": 1,
       "header": [
@@ -369,7 +392,7 @@ $ node tests/dom/table-view-session.js
       "back": "← Back to the table",
       "title": "Row 2",
       "notes": [
-        "This row is named by its position in the file."
+        "This row is named by its position in the table."
       ],
       "fields": [
         "name (text): Bob",
@@ -396,7 +419,7 @@ $ node tests/dom/table-view-session.js
     "notes": [],
     "empty": null,
     "table": {
-      "role": "table",
+      "role": "grid",
       "rowcount": null,
       "lines": 1,
       "header": [
@@ -422,7 +445,47 @@ $ node tests/dom/table-view-session.js
       "tabStops": 1
     }
   },
+  "the header: k from the first row, Right across its controls, Down to the row": {
+    "after k, k": {
+      "on": "button",
+      "row": null,
+      "text": "name",
+      "tabStops": 1
+    },
+    "after Right": {
+      "on": "button",
+      "row": null,
+      "text": "▾",
+      "tabStops": 1
+    },
+    "after Right again": {
+      "on": "button",
+      "row": null,
+      "text": "age",
+      "tabStops": 1
+    },
+    "after Down": {
+      "on": "td",
+      "row": "0",
+      "text": "36",
+      "tabStops": 1
+    },
+    "header controls out of the Tab order": 13
+  },
+  "a header's menu: closed when the focus leaves it, and by Escape, to its button": {
+    "role": "dialog",
+    "label": "name: sort, filter, or hide",
+    "closed when the focus left": true,
+    "open after Escape": false,
+    "focus": {
+      "on": "button",
+      "row": null,
+      "text": "▾",
+      "tabStops": 1
+    }
+  },
   "the age header's menu, and a filter from its form": {
+    "role": "dialog",
     "menu items": [
       "Sort ascending",
       "Sort descending",
@@ -450,7 +513,7 @@ $ node tests/dom/table-view-session.js
     "notes": [],
     "empty": null,
     "table": {
-      "role": "table",
+      "role": "grid",
       "rowcount": null,
       "lines": 1,
       "header": [
@@ -471,7 +534,12 @@ $ node tests/dom/table-view-session.js
       ]
     },
     "record": null,
-    "focus": null
+    "focus": {
+      "on": "button",
+      "row": null,
+      "text": "▾",
+      "tabStops": 1
+    }
   },
   "Hide column: the reader's columns, in the address": {
     "requests": [
@@ -483,7 +551,7 @@ $ node tests/dom/table-view-session.js
     "notes": [],
     "empty": null,
     "table": {
-      "role": "table",
+      "role": "grid",
       "rowcount": null,
       "lines": 1,
       "header": [
@@ -504,7 +572,12 @@ $ node tests/dom/table-view-session.js
       ]
     },
     "record": null,
-    "focus": null
+    "focus": {
+      "on": "button",
+      "row": null,
+      "text": "▾",
+      "tabStops": 1
+    }
   },
   "Columns: each field, checked when shown; Default columns": {
     "listed": [
@@ -532,8 +605,10 @@ $ node tests/dom/table-view-session.js
     ]
   },
   "Back: the address before, shown": {
-    "requests": [],
-    "address": "",
+    "requests": [
+      "rows?f.age=contains%3A9&limit=200&path=people.csv"
+    ],
+    "address": "f.age=contains%3A9",
     "header": [
       "#",
       "name",
@@ -596,7 +671,7 @@ $ node tests/dom/table-view-session.js
     "notes": [],
     "empty": null,
     "table": {
-      "role": "table",
+      "role": "grid",
       "rowcount": null,
       "lines": 1,
       "header": [
@@ -624,7 +699,7 @@ $ node tests/dom/table-view-session.js
       "back": "← Back to the table",
       "title": "Row 4",
       "notes": [
-        "This row is named by its position in the file."
+        "This row is named by its position in the table."
       ],
       "fields": [
         "name (text): Dee",
@@ -677,11 +752,11 @@ $ node tests/dom/table-view-session.js
         "word",
         "even"
       ],
-      "drawn": 24,
+      "drawn": 25,
       "first": "2",
       "spacers": [
         "height: 0px",
-        "height: 5808px"
+        "height: 5600px"
       ],
       "rows": [
         "1 | 1 [num] | bravo 1 | false",
@@ -710,11 +785,11 @@ $ node tests/dom/table-view-session.js
         "word",
         "even"
       ],
-      "drawn": 36,
+      "drawn": 37,
       "first": "140",
       "spacers": [
-        "height: 4554px",
-        "height: 14058px"
+        "height: 4416px",
+        "height: 13600px"
       ],
       "rows": [
         "139 | 139 [num] | bravo 139 | false"
@@ -724,9 +799,9 @@ $ node tests/dom/table-view-session.js
     "focus": null
   },
   "End: the last row held, scrolled into the window, focused": {
-    "scrollTop": 19437,
-    "first": "579",
-    "drawn": 23,
+    "scrollTop": 18837,
+    "first": "578",
+    "drawn": 24,
     "focus": {
       "on": "tr",
       "row": "599",
@@ -748,7 +823,7 @@ $ node tests/dom/table-view-session.js
   },
   "Home, then Shift-End: every row held selected, the window at the last": {
     "handled": true,
-    "drawnSelected": 23,
+    "drawnSelected": 24,
     "focus": {
       "on": "tr",
       "row": "599",
@@ -758,7 +833,7 @@ $ node tests/dom/table-view-session.js
   },
   "print draws every row held, and the window again after": {
     "rows while printing": 600,
-    "rows after": 23
+    "rows after": 24
   },
   "sorted descending: the grid's first rows, its sort said in the header": {
     "requests": [
@@ -780,11 +855,11 @@ $ node tests/dom/table-view-session.js
         "word",
         "even"
       ],
-      "drawn": 24,
+      "drawn": 25,
       "first": "2",
       "spacers": [
         "height: 0px",
-        "height: 5808px"
+        "height: 5600px"
       ],
       "rows": [
         "600 | 600 [num] | alpha 600 | true",
@@ -793,6 +868,86 @@ $ node tests/dom/table-view-session.js
     },
     "record": null,
     "focus": null
+  },
+  "150 presses of j: no history write while the keys come, one a pause after": {
+    "writes while pressing": 0,
+    "writes just before the pause ends": 0,
+    "writes after it": 1,
+    "requests": [
+      "rows?after=c.W251bGwsImFzYyIsMjAwXQ&limit=1000&path=long.csv"
+    ],
+    "focus": {
+      "on": "tr",
+      "row": "150",
+      "text": "151151bravo 151false",
+      "tabStops": 1
+    }
+  },
+  "Enter after them: the record's entry pushed, its address the record's": {
+    "entries added": 1,
+    "browser's address": "?record=%40151",
+    "title": "Row 151",
+    "requests": [
+      "record?generation=G&key=%40151&path=long.csv"
+    ]
+  },
+  "its Back link: Back, to the grid at the place the keys left": {
+    "went back": true,
+    "browser's address": "",
+    "record": null,
+    "scrollTop": 4469,
+    "focus": {
+      "on": "tr",
+      "row": "150",
+      "text": "151151bravo 151false",
+      "tabStops": 1
+    }
+  },
+  "a push the browser dropped: the record drawn, the browser's address unchanged": {
+    "shell's address": "record=%40151",
+    "browser's address": "",
+    "title": "Row 151",
+    "requests": [
+      "record?generation=G&key=%40151&path=long.csv"
+    ]
+  },
+  "its Back link: the table's address replaces the entry, and Back is not taken": {
+    "went back": false,
+    "entries added": 0,
+    "browser's address": "",
+    "record": null,
+    "focus": {
+      "on": "tr",
+      "row": "150",
+      "text": "151151bravo 151false",
+      "tabStops": 1
+    }
+  },
+  "refresh: the question asked again, its answer drawn with the place kept by key": {
+    "requests": [
+      "rows?limit=200&path=long.csv",
+      "rows?after=c.W251bGwsImFzYyIsMjAwXQ&limit=1000&path=long.csv"
+    ],
+    "before": {
+      "scrollTop": 4501,
+      "focus": {
+        "on": "tr",
+        "row": "151",
+        "text": "152152charlie 152true",
+        "tabStops": 1
+      },
+      "selected": 2
+    },
+    "after": {
+      "scrollTop": 4501,
+      "focus": {
+        "on": "tr",
+        "row": "151",
+        "text": "152152charlie 152true",
+        "tabStops": 1
+      },
+      "selected": 2
+    }
   },
   "pages shorter than asked: read on from each cursor, the table drawn whole": {
     "requests": [
@@ -807,7 +962,7 @@ $ node tests/dom/table-view-session.js
     "notes": [],
     "empty": null,
     "table": {
-      "role": "table",
+      "role": "grid",
       "rowcount": null,
       "lines": 1,
       "header": [
@@ -844,7 +999,7 @@ $ node tests/dom/table-view-session.js
     "notes": [],
     "empty": null,
     "table": {
-      "role": "table",
+      "role": "grid",
       "rowcount": null,
       "lines": 1,
       "header": [
@@ -883,11 +1038,11 @@ $ node tests/dom/table-view-session.js
         "n",
         "tag"
       ],
-      "drawn": 24,
+      "drawn": 25,
       "first": "2",
       "spacers": [
         "height: 0px",
-        "height: 5808px"
+        "height: 5600px"
       ],
       "rows": [
         "1 | 0 [num] | match",
@@ -916,7 +1071,7 @@ $ node tests/dom/table-view-session.js
     "status": "12,288 rows",
     "chips": [],
     "notes": [
-      "This table is too large to sort by “n” in the time a request may take. Show the file’s order"
+      "This table is too large to sort by “n” in the time a request may take. Show the table’s own order or try again."
     ],
     "empty": null,
     "table": "hidden",
@@ -945,7 +1100,7 @@ $ node tests/dom/table-view-session.js
       "first": "2",
       "spacers": [
         "height: 0px",
-        "height: 5511px"
+        "height: 5344px"
       ],
       "rows": [
         "1 | 0 [num] | match",
@@ -964,11 +1119,11 @@ $ node tests/dom/table-view-session.js
     "status": "2 rows",
     "chips": [],
     "notes": [
-      "Some rows of this file have more cells than the table reads; the cells past them are not shown."
+      "Every row of this table was read, but some of their values were not; those are not shown."
     ],
     "empty": null,
     "table": {
-      "role": "table",
+      "role": "grid",
       "rowcount": null,
       "lines": 1,
       "header": [
@@ -995,7 +1150,7 @@ $ node tests/dom/table-view-session.js
     "status": "At least 3 rows",
     "chips": [],
     "notes": [
-      "This file is larger than the table reads: rows, counts, sorts, and filters cover its leading part only."
+      "This table is larger than its source reads: rows, counts, sorts, and filters cover its leading part only."
     ],
     "empty": null,
     "table": {
@@ -1030,7 +1185,7 @@ $ node tests/dom/table-view-session.js
     "notes": [],
     "empty": null,
     "table": {
-      "role": "table",
+      "role": "grid",
       "rowcount": null,
       "lines": 1,
       "header": [
@@ -1061,7 +1216,7 @@ $ node tests/dom/table-view-session.js
       "back": "← Back to the table",
       "title": "Row 1",
       "notes": [
-        "This row is named by its position in the file."
+        "This row is named by its position in the table."
       ],
       "fields": [
         "name (text): Ada",
@@ -1087,7 +1242,7 @@ $ node tests/dom/table-view-session.js
     "notes": [],
     "empty": null,
     "table": {
-      "role": "table",
+      "role": "grid",
       "rowcount": null,
       "lines": 1,
       "header": [

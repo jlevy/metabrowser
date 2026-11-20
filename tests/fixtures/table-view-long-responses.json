@@ -1109,6 +1109,20 @@
         "sort_refused": null,
         "limit": 200
       }
+    },
+    "record?generation=G&key=%40151&path=long.csv": {
+      "status": 200,
+      "body": {
+        "type": "table_record",
+        "path": "long.csv",
+        "table": "",
+        "key": "@151",
+        "positional": true,
+        "generation": "G",
+        "generation_moved": false,
+        "cells": {"n": 151, "word": "bravo 151", "even": false},
+        "referenced_by": []
+      }
     }
   }
 }

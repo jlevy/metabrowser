@@ -461,7 +461,10 @@ other views: it reads the plugin’s own parse of a JSON or YAML file and refuse
 
 The table plugin also draws the table: its exports are
 `mountTable(container, {path, renderJson})`, which mounts the table view for the table
-at `path` and returns a handle with `ready` and `dispose()`.
+at `path` and returns a handle with `ready`, `dispose()`, and `refresh()`. `refresh()`
+asks the current question again and draws the new answer in place, keeping the focused
+row, the row at the top of the view, and the selection by row key, for a source whose
+content changes while it is shown.
 `renderJson(element, value)`, optional, draws a JSON value (a `{json}` cell) into a
 record’s element and returns a handle with `dispose()`, which the view calls when the
 record goes; without it the value is its JSON text.
@@ -492,12 +495,13 @@ mb.registerView("example-table", "table", {
 
 The view keeps its sort, filters, search, columns, and open record in the address’s
 query, in the rows route’s own names (`cols` repeated, one field each), so a link
-reproduces it. It draws what a source answers as the route defines it: a page shorter
-than asked is read on from `next_after`, a `sort_budget` page is a notice naming the
-field rather than an empty table, and `budget`, `source_truncated`, and `truncated` are
-notices above the rows.
-A `source_unreadable` refusal is the source’s own words in place of the table, so say
-there why the file holds no table, as the record lists say a document is not one.
+reproduces it. It takes the table’s id from the schema answer’s `table`, and builds a
+reference’s address from it.
+It draws what a source answers as the route defines it: a page shorter than asked is
+read on from `next_after`, a `sort_budget` page is a notice naming the field rather than
+an empty table, and `budget`, `source_truncated`, and `truncated` are notices above the
+rows. A `source_unreadable` refusal is the source’s own words in place of the table, so
+say there why the file holds no table, as the record lists say a document is not one.
 A plugin whose files always open in the Table view starts the load when its own module
 is evaluated, as above, so the table plugin’s module is on its way while the shell
 prepares the pane; one that shows it only sometimes asks for it in `render`.
