@@ -23,7 +23,7 @@ to its history; a header’s menu filters and hides its column; and Back shows t
 before.
 The grid is one Tab stop: `j` and `k` move a row, Right and Left move between the
 row and its cells, and Enter opens the row’s record in place of the grid, whose Back
-returns the keyboard to the row.
+returns the keyboard to the row; Escape in a record returns to the table.
 A refusal is said in an alert with a way back to the whole table, and a view disposed
 before its answers arrive draws nothing from them.
 
