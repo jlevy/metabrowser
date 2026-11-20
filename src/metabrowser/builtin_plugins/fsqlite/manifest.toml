@@ -28,7 +28,6 @@ container = { children = "children" }
 kind = "sqlite-store"
 id = "info"
 label = "Info"
-key = "i"
 default = true
 container_class = "content-body sqlite-info-host"
 render_runtime = "client"

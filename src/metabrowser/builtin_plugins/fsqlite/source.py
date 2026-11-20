@@ -7,7 +7,7 @@ tables grouped as internal. This module is the one place the store meets that ad
 so the store's container hook and, once declared, its ``[[table_source]]`` both go
 through it.
 
-The SQLite source (the plan's Phase 5) is not part of this layer yet. Until it is,
+The SQLite source (the plan's "SQLite Tables") is not part of this layer yet. Until it is,
 :func:`snapshot_children` answers no tables, and the store is a container whose
 children hook has its full shape (``{children: [{name, path}]}``, store errors, the
 retry when garbage collection removes a snapshot) and an empty list. Plugging the

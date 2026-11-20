@@ -1,7 +1,7 @@
 """An fsqlite store, read as a guest: recognition, the `current` pointer, and its snapshot.
 
-An fsqlite store (https://github.com/jlevy/fsqlite, `docs/fsql-format-spec.md`, format
-`f1.0`) is a directory holding ``fsqlite.json``, whose ``current`` file names the
+An fsqlite store (the specification is
+https://github.com/jlevy/fsqlite/blob/main/docs/fsql-format-spec.md, format `f1.0`) is a directory holding ``fsqlite.json``, whose ``current`` file names the
 published version, an immutable SQLite file ``snapshots/<version>.fsqlite.sqlite`` with
 the version zero-padded to 12 digits. Everything here is a reader's part of the protocol
 (the spec's section 13, "Reader"): parse the marker and the pointer strictly, open only
@@ -35,17 +35,18 @@ MARKER_NAME: Final = "fsqlite.json"
 CURRENT_NAME: Final = "current"
 SNAPSHOTS_DIR: Final = "snapshots"
 PENDING_DIR: Final = "tx/pending"
-# The snapshot's SQLite `application_id`, ASCII "FSQL" (the format's `application-id.md`).
+# The snapshot's SQLite `application_id`, ASCII "FSQL"
+# (https://github.com/jlevy/fsqlite/blob/main/docs/application-id.md).
 FSQLITE_APPLICATION_ID: Final = 0x4653514C
 # The two tables every snapshot carries for the format's own use (the spec's S3): the
 # idempotency ledger and the identity stamp. A table view groups them as internal.
 RESERVED_TABLES: Final = frozenset({"applied_tx", "fsqlite_meta"})
 # Digits of a snapshot's zero-padded version in its file name (the spec's section 2).
 SNAPSHOT_DIGITS: Final = 12
-# The pointer's content may be at most this many bytes (the spec's P1); one more is read
+# The pointer's content may be at most this many bytes (the spec's section 4); one more is read
 # so a longer file is detected without loading it.
 CURRENT_MAX_BYTES: Final = 64
-# The greatest version a pointer may name, 2^53 - 1 (the spec's P1).
+# The greatest version a pointer may name, 2^53 - 1 (the spec's section 4).
 CURRENT_MAX_VERSION: Final = 2**53 - 1
 # The marker is a few hundred bytes (the spec's section 2 example is 140); one past this
 # is invalid rather than parsed, so a crafted marker costs one bounded read.
@@ -68,10 +69,10 @@ PENDING_SCAN_MAX: Final = 10_000
 
 _FORMAT_VERSION = re.compile(r"f(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 _DIGITS = re.compile(rb"[0-9]+")
-# ASCII whitespace as the spec's P1 lists it; a byte order mark or a no-break space is
+# ASCII whitespace as the spec's section 4 lists it; a byte order mark or a no-break space is
 # not whitespace here.
 _ASCII_WHITESPACE: Final = b" \t\n\v\f\r"
-# Diagnostics quote at most this much of a malformed pointer (the spec's P1).
+# Diagnostics quote at most this much of a malformed pointer (the spec's section 4).
 _QUOTE_CHARS: Final = 32
 
 type StoreState = Literal["invalid", "unsupported", "corrupt"]
@@ -159,7 +160,7 @@ def parse_marker(raw: bytes) -> Marker:
 
 
 def parse_current(raw: bytes) -> int:
-    """The version a ``current`` file's bytes name, parsed strictly (the spec's P1).
+    """The version a ``current`` file's bytes name, parsed strictly (the spec's section 4).
 
     At most :data:`CURRENT_MAX_BYTES` bytes; after trimming ASCII whitespace, ASCII
     digits only, naming at most :data:`CURRENT_MAX_VERSION`. Anything else, empty

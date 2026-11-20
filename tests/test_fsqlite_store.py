@@ -1,7 +1,7 @@
 """fsqlite stores read as a guest: the marker, the pointer, the snapshot, and the routes.
 
-The format rules are the fsqlite specification's (`docs/fsql-format-spec.md` in
-https://github.com/jlevy/fsqlite) as ``builtin_plugins/fsqlite/store.py`` cites them; the
+The format rules are the fsqlite specification's
+(https://github.com/jlevy/fsqlite/blob/main/docs/fsql-format-spec.md) as ``builtin_plugins/fsqlite/store.py`` cites them; the
 routes are checked through ``/api/plugin/fsqlite/*`` with the server's own plugins and a
 real reader pool. The CLI transcripts are in ``tests/golden/cli-api-fsqlite.tryscript.md``.
 """

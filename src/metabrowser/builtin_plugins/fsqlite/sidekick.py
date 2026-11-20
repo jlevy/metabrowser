@@ -131,6 +131,7 @@ def _store_info(found: _Store, path: str, *, deadline: float, subject: str) -> d
         tried.append(snapshot)
         return _snapshot_info(snapshot, deadline=deadline, subject=subject)
 
+    snapshot_payload: dict[str, Any] | None = None
     try:
         snapshot_payload, snapshot = store.read_snapshot(current, found.snapshot, read)
     except store.StoreError as exc:
@@ -139,10 +140,8 @@ def _store_info(found: _Store, path: str, *, deadline: float, subject: str) -> d
     except SqliteAccessError as exc:
         # The pointer named a snapshot the reader could not read: the store section still
         # says which, and the snapshot section shows the reader's state.
-        last = tried[-1]
-        described |= {"version": last.version, "snapshot": last.name, "attempts": last.attempts}
+        snapshot = tried[-1]
         payload["snapshot"] = {"error": {"state": exc.state, "message": str(exc)}}
-        return payload
     described |= {
         "version": snapshot.version,
         "snapshot": snapshot.name,
@@ -153,11 +152,12 @@ def _store_info(found: _Store, path: str, *, deadline: float, subject: str) -> d
             payload["generation"] = store.store_generation(found.marker, current, snapshot.version)
         except OSError:
             payload["generation"] = None
-    payload["snapshot"] = snapshot_payload
-    try:
-        store.check_application_id(int(snapshot_payload["database"]["application_id"]))
-    except store.StoreError as exc:
-        payload["error"] = {"state": exc.state, "message": str(exc)}
+    if snapshot_payload is not None:
+        payload["snapshot"] = snapshot_payload
+        try:
+            store.check_application_id(int(snapshot_payload["database"]["application_id"]))
+        except store.StoreError as exc:
+            payload["error"] = {"state": exc.state, "message": str(exc)}
     return payload
 
 

@@ -1,0 +1,337 @@
+{
+  "answers": {
+    "notes/fsqlite.json": {
+      "status": 200,
+      "body": {
+        "type": "fsqlite_info",
+        "path": "notes/fsqlite.json",
+        "generation": "G",
+        "store": {
+          "format_version": "f1.0",
+          "store_id": "550e8400-e29b-41d4-a716-446655440000",
+          "required_features": [],
+          "pending": {
+            "committed": 2,
+            "uncommitted": 1,
+            "complete": true
+          },
+          "version": 2,
+          "snapshot": "000000000002.fsqlite.sqlite",
+          "attempts": 1
+        },
+        "snapshot": {
+          "access": {
+            "mode": "immutable",
+            "state": "current",
+            "reason": "content that cannot change is read as it is",
+            "attempts": 1,
+            "notices": []
+          },
+          "journal_mode": "rollback",
+          "links": 1,
+          "size": 24576,
+          "sidecars": [],
+          "database": {
+            "page_size": 4096,
+            "page_count": 6,
+            "encoding": "UTF-8",
+            "user_version": 3,
+            "application_id": 1179865420,
+            "application_name": "fsqlite snapshot",
+            "freelist_count": 0,
+            "objects": {
+              "index": 2,
+              "table": 3
+            }
+          },
+          "library": {
+            "version": "L",
+            "minimum": "3.43.0",
+            "meets_minimum": true,
+            "versions": [
+              {
+                "version": "3.7.0",
+                "meaning": "write-ahead-log databases",
+                "available": true
+              },
+              {
+                "version": "3.8.2",
+                "meaning": "WITHOUT ROWID tables",
+                "available": true
+              },
+              {
+                "version": "3.26.0",
+                "meaning": "SQLITE_DBCONFIG_DEFENSIVE and PRAGMA table_xinfo",
+                "available": true
+              },
+              {
+                "version": "3.31.0",
+                "meaning": "PRAGMA trusted_schema and generated columns",
+                "available": true
+              },
+              {
+                "version": "3.37.0",
+                "meaning": "STRICT tables",
+                "available": true
+              },
+              {
+                "version": "3.43.0",
+                "meaning": "octet_length(), the reader's minimum for reading tables",
+                "available": true
+              },
+              {
+                "version": "3.45.0",
+                "meaning": "JSONB values",
+                "available": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    "empty/fsqlite.json": {
+      "status": 200,
+      "body": {
+        "type": "fsqlite_info",
+        "path": "empty/fsqlite.json",
+        "generation": "G",
+        "store": {
+          "format_version": "f1.0",
+          "store_id": "550e8400-e29b-41d4-a716-446655440000",
+          "required_features": [],
+          "pending": {
+            "committed": 0,
+            "uncommitted": 0,
+            "complete": true
+          },
+          "version": 0,
+          "snapshot": "000000000000.fsqlite.sqlite",
+          "attempts": 1
+        },
+        "snapshot": {
+          "access": {
+            "mode": "immutable",
+            "state": "current",
+            "reason": "content that cannot change is read as it is",
+            "attempts": 1,
+            "notices": []
+          },
+          "journal_mode": "rollback",
+          "links": 1,
+          "size": 24576,
+          "sidecars": [],
+          "database": {
+            "page_size": 4096,
+            "page_count": 6,
+            "encoding": "UTF-8",
+            "user_version": 3,
+            "application_id": 1179865420,
+            "application_name": "fsqlite snapshot",
+            "freelist_count": 0,
+            "objects": {
+              "index": 2,
+              "table": 3
+            }
+          },
+          "library": {
+            "version": "L",
+            "minimum": "3.43.0",
+            "meets_minimum": true,
+            "versions": [
+              {
+                "version": "3.7.0",
+                "meaning": "write-ahead-log databases",
+                "available": true
+              },
+              {
+                "version": "3.8.2",
+                "meaning": "WITHOUT ROWID tables",
+                "available": true
+              },
+              {
+                "version": "3.26.0",
+                "meaning": "SQLITE_DBCONFIG_DEFENSIVE and PRAGMA table_xinfo",
+                "available": true
+              },
+              {
+                "version": "3.31.0",
+                "meaning": "PRAGMA trusted_schema and generated columns",
+                "available": true
+              },
+              {
+                "version": "3.37.0",
+                "meaning": "STRICT tables",
+                "available": true
+              },
+              {
+                "version": "3.43.0",
+                "meaning": "octet_length(), the reader's minimum for reading tables",
+                "available": true
+              },
+              {
+                "version": "3.45.0",
+                "meaning": "JSONB values",
+                "available": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    "torn/fsqlite.json": {
+      "status": 200,
+      "body": {
+        "type": "fsqlite_info",
+        "path": "torn/fsqlite.json",
+        "generation": null,
+        "store": {
+          "format_version": "f1.0",
+          "store_id": "550e8400-e29b-41d4-a716-446655440000",
+          "required_features": [],
+          "pending": {
+            "committed": 0,
+            "uncommitted": 0,
+            "complete": true
+          }
+        },
+        "error": {
+          "state": "corrupt",
+          "message": "The current pointer does not name a version: “\\xef\\xbb\\xbf7”."
+        }
+      }
+    },
+    "newer/fsqlite.json": {
+      "status": 200,
+      "body": {
+        "type": "fsqlite_info",
+        "path": "newer/fsqlite.json",
+        "generation": null,
+        "store": {},
+        "error": {
+          "state": "unsupported",
+          "message": "This store's format f2.0 is newer than this reader knows."
+        }
+      }
+    },
+    "foreign/fsqlite.json": {
+      "status": 200,
+      "body": {
+        "type": "fsqlite_info",
+        "path": "foreign/fsqlite.json",
+        "generation": "G",
+        "store": {
+          "format_version": "f1.0",
+          "store_id": "550e8400-e29b-41d4-a716-446655440000",
+          "required_features": [],
+          "pending": {
+            "committed": 0,
+            "uncommitted": 0,
+            "complete": true
+          },
+          "version": 1,
+          "snapshot": "000000000001.fsqlite.sqlite",
+          "attempts": 1
+        },
+        "snapshot": {
+          "access": {
+            "mode": "immutable",
+            "state": "current",
+            "reason": "content that cannot change is read as it is",
+            "attempts": 1,
+            "notices": []
+          },
+          "journal_mode": "rollback",
+          "links": 1,
+          "size": 24576,
+          "sidecars": [],
+          "database": {
+            "page_size": 4096,
+            "page_count": 6,
+            "encoding": "UTF-8",
+            "user_version": 3,
+            "application_id": 0,
+            "application_name": null,
+            "freelist_count": 0,
+            "objects": {
+              "index": 2,
+              "table": 3
+            }
+          },
+          "library": {
+            "version": "L",
+            "minimum": "3.43.0",
+            "meets_minimum": true,
+            "versions": [
+              {
+                "version": "3.7.0",
+                "meaning": "write-ahead-log databases",
+                "available": true
+              },
+              {
+                "version": "3.8.2",
+                "meaning": "WITHOUT ROWID tables",
+                "available": true
+              },
+              {
+                "version": "3.26.0",
+                "meaning": "SQLITE_DBCONFIG_DEFENSIVE and PRAGMA table_xinfo",
+                "available": true
+              },
+              {
+                "version": "3.31.0",
+                "meaning": "PRAGMA trusted_schema and generated columns",
+                "available": true
+              },
+              {
+                "version": "3.37.0",
+                "meaning": "STRICT tables",
+                "available": true
+              },
+              {
+                "version": "3.43.0",
+                "meaning": "octet_length(), the reader's minimum for reading tables",
+                "available": true
+              },
+              {
+                "version": "3.45.0",
+                "meaning": "JSONB values",
+                "available": true
+              }
+            ]
+          }
+        },
+        "error": {
+          "state": "corrupt",
+          "message": "The snapshot's application_id is 0x00000000, not fsqlite's 0x4653514c (“FSQL”)."
+        }
+      }
+    },
+    "garbled/fsqlite.json": {
+      "status": 200,
+      "body": {
+        "type": "fsqlite_info",
+        "path": "garbled/fsqlite.json",
+        "generation": "G",
+        "store": {
+          "format_version": "f1.0",
+          "store_id": "550e8400-e29b-41d4-a716-446655440000",
+          "required_features": [],
+          "pending": {
+            "committed": 0,
+            "uncommitted": 0,
+            "complete": true
+          },
+          "version": 1,
+          "snapshot": "000000000001.fsqlite.sqlite",
+          "attempts": 1
+        },
+        "snapshot": {
+          "error": {
+            "state": "not_sqlite",
+            "message": "This file is not a SQLite database."
+          }
+        }
+      }
+    }
+  }
+}
