@@ -15,6 +15,12 @@ public nonisolated enum FolderKind: String, Codable, Equatable, Sendable, CaseIt
     /// title opens the folder's path menu, on a Command-click, a right-click, or VoiceOver's
     /// Show Menu.
     public var isLocal: Bool { self != .mirror }
+
+    /// The words for the kind: "Local folder", "Local Git checkout", or "Cloud mirror".
+    /// `RootMark` holds the one copy, which `tests/test_icon_catalog.py` holds to `KIND_LABELS`
+    /// in `root_identity.py`, so the title's tooltip, a window's subtitle, and the mark's
+    /// accessible name cannot differ.
+    public var label: String { RootMark(self).label }
 }
 
 /// Which folder a window shows, as `GET /api/identity` names it:
@@ -88,7 +94,7 @@ public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
         let name = fullName == "~" || path == "/" ? fullName : (path as NSString).lastPathComponent
         return FolderIdentity(
             shortName: name, fullName: fullName, kind: git ? .git : .folder,
-            kindLabel: git ? "Local Git checkout" : "Local folder", title: title(for: name))
+            kindLabel: (git ? FolderKind.git : FolderKind.folder).label, title: title(for: name))
     }
 
     /// A repository's identity from its canonical URL alone, named as `metab` names a
@@ -101,7 +107,8 @@ public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
         let name = (path as NSString).lastPathComponent
         let fullName = (url.host(percentEncoded: false) ?? "") + path
         return FolderIdentity(
-            shortName: name, fullName: fullName, kind: .mirror, kindLabel: "Cloud mirror", title: title(for: name),
+            shortName: name, fullName: fullName, kind: .mirror, kindLabel: FolderKind.mirror.label,
+            title: title(for: name),
             repository: url)
     }
 

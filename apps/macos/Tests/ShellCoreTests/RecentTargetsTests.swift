@@ -55,7 +55,9 @@ import Testing
         #expect(RecentTargets.answer(result(Self.answer)) == .listing(expected))
     }
 
-    @Test func anEntryWithNoCheckoutFlagIsAPlainFolder() {
+    /// `metab` lists `git` for every target, so an entry without it is not a list this `metab`
+    /// wrote: the app reads it as unreadable and does not guess.
+    @Test func anEntryWithNoCheckoutFlagIsNotAList() {
         let bare = """
             {
               "targets": [
@@ -64,11 +66,7 @@ import Testing
               "problem": null
             }
             """
-        guard case .listing(let listing) = RecentTargets.answer(result(bare)) else {
-            Issue.record("the entry was not read")
-            return
-        }
-        #expect(listing.targets.map(\.git) == [false])
+        #expect(RecentTargets.answer(result(bare)) == .unreadable("printed JSON that is not a list of targets"))
     }
 
     @Test func aWarningAroundTheObjectIsSkipped() {

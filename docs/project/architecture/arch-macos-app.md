@@ -824,11 +824,12 @@ mark in a trailing one (`TitleBarMarkController`).
   (`foldersChanged`).
 - **Shared marks.** The menus that list roots (the chooser, File > Open Recent, and the
   Dock menu) draw each root’s `RootMark` as a template image: the page’s own Lucide
-  glyph for the root’s kind, copied from `static/icons.js` and held to it by
-  `RootMarkTests`. There are three kinds of root, each with a mark of its own, a cloud
-  for a mirror, a folder with Git’s branch for a Git checkout, and a folder with its
-  root node for a plain folder, and the ordinary folder’s outline is the mark of a
-  folder above the root in the title’s path menu
+  glyph for the root’s kind, copied from `static/source-kind-glyphs.json`, which the
+  server writes into the page’s first paint, and held to it by `RootMarkTests`; the
+  ordinary folder’s is copied from `static/icons.js`. There are three kinds of root,
+  each with a mark of its own, a cloud for a mirror, a folder with Git’s branch for a
+  Git checkout, and a folder with a dot for a plain folder, and the ordinary folder’s
+  outline is the mark of a folder above the root in the title’s path menu
   ([Source Kinds](../../design-system-icons.md#source-kinds)). A window’s kind is `kind`
   in its server’s `GET /api/identity` (`FolderKind`), and a recent entry’s is its `mode`
   and its `git`, which `metab` records when it serves the folder, so no menu looks at a

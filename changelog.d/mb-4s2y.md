@@ -1,6 +1,8 @@
 - The root’s name at the top of the navigation leads with a mark for what is open: a
   cloud for a cloud mirror, a folder with Git’s branch for a local Git checkout, and a
   folder with a dot for a local folder.
+  The main page’s header for the root leads with the same mark, and a folder inside it
+  with the plain folder outline.
   Hover the mark for its kind, such as “Cloud mirror of owner/repo”, “Local Git checkout
   (GitHub: owner/repo)”, or “Local folder”.
   None of them is the plain folder outline of an ordinary folder, and the macOS app

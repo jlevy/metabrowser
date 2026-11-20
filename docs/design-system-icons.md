@@ -197,6 +197,7 @@ route may say only where `tests/test_serve_pin.py` allows.
 | Surface | Draws |
 | --- | --- |
 | The navigation column’s heading, before the root’s name | The root’s kind mark, `.header-root-kind`, at `--icon-glyph` in `--muted`, outside the name’s link so the name’s hover surface, focus ring, and tooltip stay its own. The server writes the kind, its glyph, and its sentence into the first paint (`source_kind_marks.py`) |
+| The main pane’s header for the root, at the title’s size | The same mark: the glyph is copied from the navigation’s (`view-header.js`, `folderGlyphHtml`), so a root’s name has one icon wherever it stands. A pinned revision of a checkout, whose root is still the root, keeps it. A folder inside the root leads with the ordinary folder |
 | The macOS title’s folder chooser and the Switch Folder panel, each row | The row’s kind mark, from its window’s `/api/identity` or its recent entry |
 | File > Open Recent and the Dock menu, each row | The row’s kind mark, from the entry’s `mode` and `git` in `metab --recent --json`, never from a look at the folder, which can raise a privacy prompt |
 | The macOS title’s path menu | The root’s kind mark on its first row, and the ordinary folder on each row for a folder above it |
@@ -206,8 +207,8 @@ route may say only where `tests/test_serve_pin.py` allows.
 A folder that is not a root is an ordinary folder, and its icon is the plain outline.
 Closed and open are the family’s two states, and each is its own Lucide drawing:
 
-- **Closed, `folder`**: a folder in a view header, beside its name, and a folder above a
-  root in the app’s path menu.
+- **Closed, `folder`**: a folder other than the root in a view header, beside its name,
+  and a folder above a root in the app’s path menu.
   It is the one ordinary folder drawn today.
 - **Open, Lucide `folder-open`**: a folder whose contents show.
   No surface draws it today: a folder’s row in the browser leads with its chevron, which
@@ -219,7 +220,7 @@ An ordinary folder never takes a root’s icon and a root never takes the ordina
 
 | Icon | Source | Meaning | Defined in | Ink | Size |
 | --- | --- | --- | --- | --- | --- |
-| `folder`, Lucide `folder` | Registry | An ordinary folder, closed, beside its name in its view header | `static/icons.js` | `--muted` | `1em` of the page’s title |
+| `folder`, Lucide `folder` | Registry | An ordinary folder, closed: a folder other than the root, beside its name in its view header | `static/icons.js` | `--muted` | `1em` of the page’s title |
 | `folder`, Lucide `folder` | App glyph | An ordinary folder, a row above the root in the app’s title path menu | `apps/macos/Sources/ShellCore/Folders/RootMark.swift` | The menu’s, as a template image | `RootMark.menuSize` |
 
 In the browser a folder’s row leads with its chevron and a Treemap folder’s label ends

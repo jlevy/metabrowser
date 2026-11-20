@@ -26,7 +26,8 @@ public nonisolated struct RecentTarget: Codable, Equatable, Sendable {
     /// When it was last opened, `2026-11-18T03:14:15Z`.
     public var openedAt: String
     /// Whether a folder was a Git checkout when it was last opened: it held a `.git` entry,
-    /// which is the `git` kind `GET /api/identity` gives it. The app draws the Git
+    /// which is the `git` kind `GET /api/identity` gives it. `metab --recent --json` lists it
+    /// for every target, so the list is read with it. The app draws the Git
     /// checkout's mark for it (`RootMark`) without looking at the folder, which could raise
     /// a privacy prompt, so a folder that became a checkout since reads as a plain one until
     /// it is opened again. Always false for a mirror.
@@ -44,15 +45,6 @@ public nonisolated struct RecentTarget: Codable, Equatable, Sendable {
         case root
         case openedAt = "opened_at"
         case git
-    }
-
-    public init(from decoder: Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        mode = try values.decode(Mode.self, forKey: .mode)
-        root = try values.decode(String.self, forKey: .root)
-        openedAt = try values.decode(String.self, forKey: .openedAt)
-        // The list writes the flag only for a checkout, so a missing one is false, not an error.
-        git = try values.decodeIfPresent(Bool.self, forKey: .git) ?? false
     }
 
     /// What the app is asked to open for this entry, as a folder dropped on it or a link
@@ -83,7 +75,7 @@ public nonisolated struct RecentTarget: Codable, Equatable, Sendable {
         case .mirror:
             guard let url = URL(string: root) else {
                 return FolderIdentity(
-                    shortName: root, fullName: root, kind: .mirror, kindLabel: "Cloud mirror",
+                    shortName: root, fullName: root, kind: .mirror, kindLabel: FolderKind.mirror.label,
                     title: FolderIdentity.title(for: root))
             }
             return .repository(url)

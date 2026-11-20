@@ -3,8 +3,10 @@
 A root is a plain folder, a Git checkout, or a mirror
 (:data:`~metabrowser.root_identity.IdentityKind`), and the mark before the root's name at the
 top of the navigation draws one glyph for the kind (docs/design-system-icons.md, "Source
-Kinds"). The glyphs are Lucide's, v1.17.0 (ISC), kept in ``static/source-kind-glyphs.json``, which is also what the macOS app's ``RootMark`` is held to
-(``RootMarkTests``), so the page and the app's menus draw one set.
+Kinds"). The glyphs are Lucide's, v1.17.0 (ISC; its notice is beside the file, in
+``static/source-kind-glyphs.license.txt``), kept in ``static/source-kind-glyphs.json``,
+which is also what the macOS app's ``RootMark`` is held to (``RootMarkTests``), so the page
+and the app's menus draw one set.
 
 They are not in the browser's icon registry (``static/icons.js``). The registry is a startup
 script every page fetches before its first tree, under a transfer budget that

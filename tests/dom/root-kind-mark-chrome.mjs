@@ -18,6 +18,8 @@
 //   without moving the name;
 // - the glyph is the one the server wrote for the kind (static/source-kind-glyphs.json), drawn
 //   in `--muted`, and the three kinds draw three shapes, none of them the ordinary folder's;
+// - the main pane's header for the root leads with that same glyph, and the header of a folder
+//   inside the root with the ordinary folder's, so a root is never drawn as an ordinary folder;
 // - its tooltip shows over it, and is its accessible name; and
 // - the name's own tooltip is still the name's, not the mark's.
 //
@@ -107,6 +109,11 @@ const READ = `(() => {
     strokeColor: svg ? getComputedStyle(svg).stroke : "",
     svgBox: svg ? rect(svg) : null,
     nameText: name.textContent.trim(),
+    // The glyph the main pane's header leads with, for the root or the folder it shows.
+    headerGlyph: (() => {
+      const icon = document.querySelector("#preview-pane .view-header-icon svg");
+      return icon ? shape(icon.outerHTML) : "";
+    })(),
   };
 })()`;
 
@@ -123,6 +130,7 @@ async function open(url) {
   await browser.waitFor(
     "window.__root_kind_page !== 'old' && document.readyState === 'complete' && " +
       "document.querySelector('#header-root-kind svg') !== null && " +
+      "document.querySelector('#preview-pane .view-header-icon svg') !== null && " +
       "document.querySelector('.header-path') !== null",
     STEP_MS,
   );
@@ -209,6 +217,11 @@ for (const theme of ["light", "dark"]) {
       at.drawn !== at.folderGlyph,
       at.drawn,
     );
+    check(
+      `${where}: the root's header in the main pane leads with the same glyph`,
+      at.headerGlyph === at.drawn,
+      JSON.stringify({ header: at.headerGlyph, mark: at.drawn }),
+    );
     if (theme === "light") {
       seen[kind] = at;
     }
@@ -241,6 +254,16 @@ for (const theme of ["light", "dark"]) {
     await screenshot(`root-kind-${kind}-${theme}.png`);
   }
 }
+
+// A folder inside the root is an ordinary folder: its header leads with the ordinary glyph,
+// which is no kind's.
+await open(`${pages.folder}docs`);
+const inside = await browser.evaluate(READ);
+check(
+  "a folder inside the root leads its header with the ordinary folder's glyph",
+  inside.headerGlyph === inside.folderGlyph && inside.headerGlyph !== inside.drawn,
+  JSON.stringify({ header: inside.headerGlyph, ordinary: inside.folderGlyph }),
+);
 
 // The three kinds are three shapes, and none is the ordinary folder's.
 const shapes = Object.values(seen).map((at) => at.drawn);

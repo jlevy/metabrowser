@@ -39,6 +39,19 @@ nonisolated private func json(_ text: String) -> Data { Data(text.utf8) }
         #expect(checkout.shortName == "tbd" && checkout.fullName == "~/src/tbd")
     }
 
+    /// One Swift copy of the kind words, `RootMark`'s, which `test_icon_catalog.py` holds to
+    /// `KIND_LABELS`: the identities the app derives itself say them too.
+    @Test func theKindWordsAreRootMarksInEveryIdentityTheAppDerives() {
+        let url = URL(filePath: "/Volumes/Home/src/tbd")
+        let repository = URL(string: "https://github.com/jlevy/tbd")!
+        #expect(FolderIdentity.localFolder(url, home: "/Volumes/Home").kindLabel == RootMark.plainFolder.label)
+        #expect(FolderIdentity.localFolder(url, git: true, home: "/Volumes/Home").kindLabel == RootMark.gitCheckout.label)
+        #expect(FolderIdentity.repository(repository).kindLabel == RootMark.mirror.label)
+        let mirror = RecentTarget(mode: .mirror, root: "https://github.com/jlevy/tbd", openedAt: "2026-11-18T03:14:15Z")
+        #expect(mirror.identity().kindLabel == RootMark.mirror.label)
+        for kind in FolderKind.allCases { #expect(kind.label == RootMark(kind).label) }
+    }
+
     @Test func decodesAMirrorAndIgnoresFieldsItDoesNotUse() {
         let body = json("""
             {"short_name": "metabrowser", "full_name": "github.com/jlevy/metabrowser@main", "kind": "mirror",

@@ -262,6 +262,30 @@ def test_a_plain_folder_and_a_subdirectory_of_a_checkout_have_no_selector(
         assert (pin.status_code, pin.json()["capability"]) == (409, "pin"), root
 
 
+def test_a_revision_of_a_checkout_keeps_the_mark_and_the_repository_the_route_names(
+    checkout: Path,
+) -> None:
+    """The shell's mark and `/api/identity` say the same on the working tree and on a revision.
+
+    A revision has no mirror session, so the page's own repository context is empty for it;
+    the sentence still names the repository the checkout's `origin` is on github.com.
+    """
+
+    git(checkout, "remote", "set-url", "origin", "git@github.com:Octo/Demo.git")
+    server._set_root_dir(checkout)
+    tip = "Local Git checkout (GitHub: Octo/Demo)"
+    with TestClient(server.app) as client:
+        for shown in ("working tree", "revision"):
+            if shown == "revision":
+                _pin(client, ref="refs/heads/feature", view="/view/README.md")
+            identity = client.get("/api/identity").json()
+            assert (identity["kind"], identity["kind_tip"]) == ("git", tip), shown
+            for address in ("/view/", "/pulls", "/commit/0123456789abcdef"):
+                page = client.get(address).text
+                assert 'data-root-kind="git"' in page, (shown, address)
+                assert f'data-tip-text="{tip}"' in page, (shown, address)
+
+
 # ── Showing a revision ───────────────────────────────────────
 
 

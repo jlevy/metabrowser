@@ -1095,7 +1095,10 @@ def _is_target_identity(answer: object, target: Presentable) -> bool:
         return False
     if os.path.isabs(target.root):
         expected = folder_identity(Path(target.root), home=user_home())["full_name"]
-        return kind == "folder" and name == expected
+        # A folder that holds a `.git` entry is a checkout, `git`; any other is `folder`
+        # (`root_identity.py`). Either is the target's own server, and a revision it shows
+        # is named `<path>@<ref>`, which a server started without --ref does not.
+        return kind in ("folder", "git") and name == expected
     origin = abbreviate_origin(target.root, home=None).casefold()
     return kind == "mirror" and name.casefold().startswith((f"{origin}@", f"{origin}#"))
 

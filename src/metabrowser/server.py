@@ -209,7 +209,12 @@ from metabrowser.recent import (
     recent_result_from_projection,
 )
 from metabrowser.repository_context import discover_repository_context, is_checkout_root
-from metabrowser.root_identity import IDENTITY_ROUTES, identity_kind_tip, root_identity
+from metabrowser.root_identity import (
+    IDENTITY_ROUTES,
+    identity_kind_tip,
+    root_identity,
+    served_repository_context,
+)
 from metabrowser.settings import (
     DOC_MAX_CHARS_DEFAULT,
     FOLDER_DISCOVERY_MAX_ENTRIES,
@@ -1712,9 +1717,16 @@ async def index(
     # same one `/api/identity` answers as `kind_tip`. The glyph is not in the icon registry:
     # the registry is a startup script every page pays for under a gated budget, and a page
     # draws one of the three, which only the server knows (source_kind_marks.py).
+    #
+    # The sentence's repository is the route's: `served_repository_context`. A revision of
+    # the served checkout has no mirror session, so the page's own `repository_context`
+    # above is empty for it, and the route still reads the checkout's `origin`.
+    tip_context = repository_context
+    if pin is not None and checkout is not None and checkout.serves(pin):
+        tip_context = await served_repository_context(mirror, checkout)
     root_kind = identity["kind"]
     root_kind_svg = source_kind_svg(root_kind)
-    root_kind_tip = html_escape(identity_kind_tip(identity, repository_context), quote=True)
+    root_kind_tip = html_escape(identity_kind_tip(identity, tip_context), quote=True)
     version_line = html_escape(display_version_line("metab", __version__))
     styles_url = _static_asset_url("styles.css")
     asset_loader_url = _static_asset_url("asset-loader.js")

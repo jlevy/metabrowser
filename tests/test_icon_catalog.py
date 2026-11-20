@@ -592,6 +592,11 @@ def test_the_page_draws_a_root_with_its_server_written_glyph_and_no_script_draws
         for match in _REGISTRY_USE.finditer(_script_code(path)):
             callers.setdefault(match[1] or match[2], set()).add(_relative(path))
     assert callers.get("folder", set()) == ORDINARY_FOLDER_CALLERS
+    # The root's header draws the navigation's mark, not the ordinary folder: the only place a
+    # script reaches `folder` branches on the root (`path !== ""`) and takes the mark first.
+    header = (STATIC / "view-header.js").read_text(encoding="utf-8")
+    assert 'path !== "" || typeof document === "undefined"' in header
+    assert '"#header-root-kind > svg"' in header
     for kind, glyph in _kind_glyphs().items():
         for path in (*_browser_scripts(), *_stylesheets()):
             assert glyph["elements"] not in path.read_text(encoding="utf-8"), (

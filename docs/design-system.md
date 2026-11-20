@@ -385,7 +385,7 @@ a pull request, and a commit.
 | Part | A file | A folder | A pull request | A commit |
 | --- | --- | --- | --- | --- |
 | 1. Eyebrow | Up, the address of the folder that holds it, and Copy path | Up, and the address of its parent; at the served root, the directory that holds the root | Only where it says something the rows under it do not (planned) | The same (planned) |
-| 2. Heading row | The navigation row’s icon for its type, and its name and the metadata after it | The folder icon, and its name and the metadata after it | Its state icon, its title, and its number | The commit icon, its subject (planned) |
+| 2. Heading row | The navigation row’s icon for its type, and its name and the metadata after it | The folder icon, or at the root its [kind mark](#source-kind-marks), and its name and the metadata after it | Its state icon, its title, and its number | The commit icon, its subject (planned) |
 | 3. Metadata | Its badges, size, and age, after its name | Its size, file count, and age, after its name | Its author line, branches, and ages, lines under the title ([Page Headers](#page-headers)) | Its author, revision, and age, lines under the title ([Page Headers](#page-headers)) |
 | 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Conversation, Changes, and Checks | None |
 | The corner | [View on GitHub](#view-on-github) | The same | The same | The same |
@@ -433,7 +433,10 @@ A file’s or a folder’s name is whole, never cut short: a name too long for t
 wraps, anywhere, so it has no tooltip, since none of it is hidden
 ([Tooltips Add Information](#tooltips-add-information)), and the icon stays beside its
 first line. A pull request’s title is cut short at two lines.
-The row holds no controls: the header’s are in its corner.
+The served root’s header leads with the root’s kind mark, the one the navigation’s
+heading draws, because the root is a root wherever its name stands; a folder inside it
+leads with the ordinary folder’s ([Source Kind Marks](#source-kind-marks)). The row
+holds no controls: the header’s are in its corner.
 The header has no print button ([Print](#print)).
 
 **The corner**, at the end of the title’s first line, holds the page’s
@@ -3941,6 +3944,9 @@ The rules for the page are:
 - **A mark is a root’s and never an ordinary folder’s.** A source-kind glyph differs
   from the ordinary `folder`, which a subfolder’s view header draws, so the root of a
   window and any folder inside it never wear the same icon.
+  The root’s own header in the main pane draws the kind mark too (`folderGlyphHtml` in
+  `static/view-header.js` copies the navigation’s), so the one root has one icon in
+  both.
 - **The server writes the kind, its glyph, and its sentence.** The shell puts `kind` and
   `kind_tip` of `GET /api/identity`, and the one glyph for the kind, into its first
   paint, `.header-root-kind`, from `static/source-kind-glyphs.json`, so the mark is
@@ -3961,7 +3967,8 @@ The rules for the page are:
 `tests/test_root_identity.py` holds the page’s mark to the route for each kind,
 `tests/test_icon_catalog.py` holds the three glyphs, the ordinary folder’s, and where
 each is drawn to the catalog, and `tests/test_root_kind_mark_chrome.py` draws a folder,
-a checkout, and a mirror’s page in Chrome.
+a checkout, and a mirror’s page in Chrome, and holds the root’s header in the main pane
+to the navigation’s mark and a folder inside it to the ordinary one.
 
 ### Every Icon-Only Control Is the Same Control
 
