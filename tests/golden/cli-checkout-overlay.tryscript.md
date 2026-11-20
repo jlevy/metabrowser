@@ -340,6 +340,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": {
     "schema_version": 2,
     "projection_version": 2,

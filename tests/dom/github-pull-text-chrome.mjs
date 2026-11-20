@@ -20,6 +20,12 @@
 // Request Page", "Text". Inside a text the space around a heading is KPress's, so each level
 // after each kind of block must measure what it measures in a document. Margins and their
 // collapsing are layout, which no browserless DOM computes.
+//
+// The sides of a box that holds prose are one token's too (docs/design-system.md, "Boxed
+// Prose"): a pull request's text and a commit's message, in a wide pane and a narrow one,
+// must lay out `--boxed-prose-padding-inline` on each side, more than the pane inset an h2
+// sat a few pixels inside the border at, with the card head's text on the same x, nothing
+// padded twice between the box's edge and the prose, and no overflow.
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -101,11 +107,17 @@ const MEASURE = `async (texts, document_html) => {
     text.setAttribute("data-part", part);
     return el("section", "page-card github-pull-card", [el("div", "github-pull-card-head", ["author opened"]), text]);
   });
+  // A commit's message, as git-panel.js's placeCommitBody sets it: a card of its own, with no head.
+  const commit = el("div", "git-commit-body page-card chrome-prose", [
+    el("div", "metabrowser-kpress-host", [el("article", "kpress kpress-inert", [prose(texts[0].html)])]),
+  ]);
   const article = el("article", "kpress kpress-doc kpress-inert", [el("div", "kpress-doc-layout", [prose(document_html)])]);
   article.setAttribute("data-kpress-card", "on");
   article.querySelector(".kpress-prose").classList.add("kpress-long-text");
-  document.getElementById("preview-pane").replaceChildren(
+  const pane = document.getElementById("preview-pane");
+  pane.replaceChildren(
     el("div", "github-pull", [el("div", "github-pull-body", cards)]),
+    commit,
     el("div", "metabrowser-kpress-host", [article]),
   );
   await document.fonts.ready;
@@ -129,9 +141,54 @@ const MEASURE = `async (texts, document_html) => {
     }
     return rows;
   };
+  const length = (value) => parseFloat(value);
+  const rootStyle = getComputedStyle(document.documentElement);
+  // Each box's sides at the pane's width: what its padding lays out, where its first heading
+  // and its prose stand against it, and whether anything spills.
+  const sides = async (width) => {
+    pane.style.width = width + "px";
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const measureBox = (name, box, head) => {
+      const style = getComputedStyle(box);
+      const edge = box.getBoundingClientRect();
+      const border = length(style.borderLeftWidth);
+      const prose = box.querySelector(".kpress-prose");
+      const proseBox = prose.getBoundingClientRect();
+      const heading = box.querySelector(".kpress-prose > :is(h1, h2, h3)");
+      const padLeft = length(style.paddingLeft);
+      const padRight = length(style.paddingRight);
+      const headStyle = head ? getComputedStyle(head) : null;
+      return {
+        name,
+        width,
+        padLeft,
+        padRight,
+        // The distance from the box's own content edge to its prose: nothing between them.
+        proseGapLeft: round(proseBox.left - (edge.left + border + padLeft)),
+        proseGapRight: round(edge.right - border - padRight - proseBox.right),
+        headingFromBorder: heading
+          ? round(heading.getBoundingClientRect().left - (edge.left + border))
+          : null,
+        headPadLeft: headStyle ? length(headStyle.paddingLeft) : null,
+        spill: box.scrollWidth - box.clientWidth,
+      };
+    };
+    const first = cards.find((card) => card.querySelector('[data-part="body"]'));
+    const boxes = [
+      measureBox("pull request text", first.querySelector(".github-pull-text"), first.querySelector(".github-pull-card-head")),
+      measureBox("commit message", commit, null),
+    ];
+    return { boxes, paneSpill: pane.scrollWidth - pane.clientWidth };
+  };
+  const wide = await sides(900);
+  const narrow = await sides(320);
   return {
     text: cards.flatMap((card) => read(card)),
     document: read(article),
+    token: length(rootStyle.getPropertyValue("--boxed-prose-padding-inline")),
+    paneInset: length(rootStyle.getPropertyValue("--pane-header-padding-x")),
+    wide,
+    narrow,
   };
 }`;
 
@@ -194,6 +251,44 @@ try {
         Math.abs(opening.below - inside.below) < 0.01,
       `${opening?.below} px against ${inside?.below} px`,
     );
+  }
+  // The sides: one token, more than the pane inset, laid out on each side of each box.
+  check(
+    "the boxed-prose token is a length, more than the pane inset an h2 sat near the border at",
+    Number.isFinite(measured.token) && measured.token > measured.paneInset,
+    `${measured.token} px against the pane inset's ${measured.paneInset} px`,
+  );
+  for (const [where, at] of [
+    ["900 px", measured.wide],
+    ["320 px", measured.narrow],
+  ]) {
+    for (const box of at.boxes) {
+      const label = `${box.name} at ${where}`;
+      check(
+        `${label} pads each side by the token`,
+        box.padLeft === measured.token && box.padRight === measured.token,
+        `${box.padLeft} and ${box.padRight} px against ${measured.token} px`,
+      );
+      check(
+        `${label} puts its heading the token in from its border, not a pixel more`,
+        box.headingFromBorder !== null && Math.abs(box.headingFromBorder - measured.token) < 0.01,
+        `${box.headingFromBorder} px`,
+      );
+      check(
+        `${label} pads nothing twice between its padding and its prose`,
+        Math.abs(box.proseGapLeft) < 0.01 && Math.abs(box.proseGapRight) < 0.01,
+        `${box.proseGapLeft} px left, ${box.proseGapRight} px right`,
+      );
+      check(`${label} does not overflow`, box.spill <= 0, `${box.spill} px`);
+      if (box.headPadLeft !== null) {
+        check(
+          `${label}: the card head's text starts where the text's does`,
+          box.headPadLeft === box.padLeft,
+          `${box.headPadLeft} px against ${box.padLeft} px`,
+        );
+      }
+    }
+    check(`the pane does not overflow at ${where}`, at.paneSpill <= 0, `${at.paneSpill} px`);
   }
 } finally {
   await chrome?.close();

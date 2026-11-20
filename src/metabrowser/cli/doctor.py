@@ -1,5 +1,5 @@
-"""The checks of ``metab --doctor``: the plugins, ``open_in``, this ``metab``, Git, and the
-two directories.
+"""The checks of ``metab --doctor``: the plugins, ``open_in``, this ``metab``, Git, the
+two directories, and the event log.
 
 ``doctor_plugins`` (:mod:`metabrowser.cli.plugins`) validates the plugins, reports where
 ``--present`` opens a target (``open_in``) and GitHub CLI's sign-in (``github``), and
@@ -25,6 +25,9 @@ changes nothing.
                created, and is apart from the configuration; an override the
                app's servers do not get, or free space below
                :func:`low_free_space_bytes`, is a warning
+``event_log``  Whether a server writes its event log, where, and what it leaves    warning
+               out; an environment that turns it off, or a state directory that
+               cannot hold it, is a warning
 =============  ==================================================================  =========
 
 A ``problem`` is one ``metab`` cannot serve a folder with: it makes the doctor exit 1, and
@@ -614,6 +617,68 @@ def cache_check(*, app_path: str | None = None) -> Check:
     )
 
 
+def event_log_check() -> Check:
+    """The event log: whether a server writes one, where, and what it leaves out.
+
+    An environment that turns it off is a warning, since no latency or failure is then
+    recorded (the owner's aim is that they always are). So is a state directory that
+    cannot hold it. The check reads the environment of the process that runs it, and a
+    server in a folder inside the events directory writes none whatever the environment
+    says, which a detail states and the page's Details names when it happens
+    (:func:`metabrowser.event_log.off_reason`).
+    """
+
+    from metabrowser import event_log
+    from metabrowser.home import StorageDirectoryError
+
+    heading = "Event log"
+    source = _directory_source("METABROWSER_STATE_DIR", "XDG_STATE_HOME")
+    try:
+        _, directory = event_log.log_directory()
+    except StorageDirectoryError as exc:
+        summary = f"the state directory, which holds the event log, does not resolve: {exc}"
+        return Check("event_log", heading, "warning", summary, (("source", source),))
+    details: list[tuple[str, str]] = [("directory", _shown(directory)), ("source", source)]
+    if not event_log.enabled_by_environment():
+        return Check(
+            "event_log",
+            heading,
+            "warning",
+            f"{event_log.ENABLE_ENV} turns the event log off, so no latency or failure is recorded",
+            tuple(details),
+            Remedy(f"Unset {event_log.ENABLE_ENV}, or set it to 1."),
+        )
+    details.append(
+        (
+            "not recorded",
+            "a server whose folder is the events directory or inside it writes no log, "
+            "so that browsing the log does not change it; every other server writes one",
+        )
+    )
+    if directory.is_dir():
+        segments = sum(1 for _ in directory.glob("events-*.jsonl"))
+        details.append(("segments", str(segments)))
+        return Check(
+            "event_log", heading, "ok", "a server writes an event log here", tuple(details)
+        )
+    blocked = _not_creatable(directory)
+    if blocked is not None:
+        summary = f"the event log's directory does not exist, and metab cannot create it: {blocked}"
+        return Check(
+            "event_log",
+            heading,
+            "warning",
+            summary,
+            tuple(details),
+            Remedy(
+                "Create the state directory with mode 700 yourself, or set "
+                "METABROWSER_STATE_DIR to a private directory you own."
+            ),
+        )
+    summary = "no event log is written yet; the first server creates its directory"
+    return Check("event_log", heading, "ok", summary, tuple(details))
+
+
 def low_free_space_bytes() -> int:
     """The free space the largest first clone this ``metab`` admits can take: the floor
     :data:`LOW_FREE_SPACE_BYTES` sets for the default limit, or the same for the limit
@@ -676,6 +741,7 @@ def doctor_checks(
         git_check(),
         config,
         cache_check(app_path=app_path),
+        event_log_check(),
     )
 
 
@@ -693,6 +759,7 @@ __all__ = [
     "MetabInstallMethod",
     "declares_this_project",
     "doctor_checks",
+    "event_log_check",
     "low_free_space_bytes",
     "meets_release",
     "metab_check",

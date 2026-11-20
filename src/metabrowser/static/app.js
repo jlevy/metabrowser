@@ -9321,12 +9321,12 @@ async function applyNavigationTarget(target, context) {
     if (context.source === "user" && !target.fragment && !target.query) {
       await revealAddressedItem(route, { isCurrent: context.isCurrent, again: true });
     }
-    // A line anchor added to the file shown opens its Source tab, as opening it does.
+    // A line anchor opens its Source tab; a caller's `viewId` wins, as below.
     var shownView = anchorModule ? await addressedView(target, anchorModule) : null;
     if (!context.isCurrent()) {
       return { status: "cancelled" };
     }
-    showPreviewTab(path, shownView);
+    showPreviewTab(path, context.viewId || shownView);
     deliverNavigationFragment(target);
     return {
       focusTarget: document.getElementById("preview-pane") || undefined,

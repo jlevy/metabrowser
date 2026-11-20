@@ -54,7 +54,7 @@ from typing import Any, Final, cast
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from metabrowser import event_log
+from metabrowser import delivery, event_log
 
 REPORT_ROUTE: Final = "/api/event-log/client"
 # The most reports one body carries, and the most bytes it may be. The largest report
@@ -113,16 +113,26 @@ _REPORT_KEYS: Final = frozenset({"type", "event", "name", "client", "dur_ms", "o
 _BODY_KEYS: Final = frozenset({"page", "path", "reports", "dropped"})
 
 
+# What a person runs to open the whole log: the flag that names the log's directory as ROOT
+# (``cli/event_log_cli.py``). A page's Details says it, since a page cannot open a window
+# on a directory of the server's machine. A person in the macOS app has a menu item instead
+# (``OPEN_MENU``), which Details names for a server the app started.
+OPEN_COMMAND: Final = "metab --event-log"
+OPEN_MENU: Final = "Help > Open Event Log"
+
+
 def browser_settings(*, long_lived: tuple[str, ...]) -> dict[str, Any]:
     """What ``static/event-reports.js`` reads as ``METABROWSER_SETTINGS.EVENT_REPORTS``.
 
     ``log`` says whether this server writes an event log; without one the page sends no
-    header and no report, and still says when a wait is late. *long_lived* are the paths
-    whose requests stay open by design, which the server does not time either.
+    header and no report, and still says when a wait is late, and ``off_reason`` says why
+    there is none (Details shows it). *long_lived* are the paths whose requests stay open
+    by design, which the server does not time either.
     """
 
     return {
         "log": event_log.enabled(),
+        "off_reason": None if event_log.enabled() else event_log.off_reason(),
         "route": REPORT_ROUTE,
         "header": event_log.CLIENT_HEADER,
         "slow_ms": SLOW_MS,
@@ -133,6 +143,10 @@ def browser_settings(*, long_lived: tuple[str, ...]) -> dict[str, Any]:
         "per_minute": PAGE_REPORTS_PER_MINUTE,
         "long_lived": list(long_lived),
         "failure_window_s": event_log.RECENT_WINDOW_S,
+        "open_command": OPEN_COMMAND,
+        # Named for a server started as the app starts one (``delivery.serving_locally``),
+        # whose client is the app's window and has no terminal in front of it.
+        "open_menu": OPEN_MENU if delivery.serving_locally() else None,
     }
 
 
