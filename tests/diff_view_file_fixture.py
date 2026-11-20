@@ -129,7 +129,7 @@ def view(display: str | bytes) -> str:
 def hold_pull_head(directory: Path, origin: Path) -> None:
     """Write :data:`PULL_REF` at ``second`` into the home's one store."""
 
-    (store,) = (directory / "home" / "repository-stores").iterdir()
+    (store,) = (directory / "home" / "repos").iterdir()
     subprocess.run(
         [
             "git",

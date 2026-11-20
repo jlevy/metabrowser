@@ -111,15 +111,15 @@ def test_the_identity_specification_matches_the_production_constants() -> None:
     assert document["source_identity"]["domain"] == identity.SOURCE_IDENTITY_DOMAIN
     assert document["store_identity"]["domain"] == identity.STORE_IDENTITY_DOMAIN
     store_spec = document["store_identity"]
-    assert tuple(store_spec["key_suffix_chars"]) == identity.STORE_KEY_SUFFIX_CHARS
-    assert store_spec["key_separator"] == identity.STORE_KEY_SEPARATOR
-    assert store_spec["key_max_bytes"] == identity.STORE_KEY_MAX_BYTES
+    assert tuple(store_spec["key_suffix_chars"]) == identity.NAME_SUFFIX_CHARS
+    assert store_spec["key_separator"] == identity.NAME_SEPARATOR
+    assert store_spec["key_max_bytes"] == identity.NAME_MAX_BYTES
     slug_spec = document["slug"]
-    assert slug_spec["token_separator"] == identity.SLUG_TOKEN_SEPARATOR
-    assert slug_spec["readable_max_bytes"] == identity.SLUG_READABLE_MAX_BYTES
-    assert slug_spec["empty_readable"] == identity.SLUG_EMPTY_READABLE
-    assert tuple(slug_spec["suffix_hex_digits"]) == identity.SLUG_SUFFIX_HEX_DIGITS
-    assert slug_spec["max_bytes"] == identity.SLUG_MAX_BYTES
+    assert slug_spec["separator"] == identity.NAME_SEPARATOR
+    assert slug_spec["readable_max_bytes"] == identity.READABLE_MAX_BYTES
+    assert slug_spec["empty_readable"] == identity.EMPTY_READABLE
+    assert tuple(slug_spec["suffix_chars"]) == identity.NAME_SUFFIX_CHARS
+    assert slug_spec["max_bytes"] == identity.NAME_MAX_BYTES
 
 
 def test_source_identity_and_slugs_are_reproducible() -> None:
@@ -208,12 +208,10 @@ def test_every_claimed_store_key_width_is_a_typed_collision() -> None:
 
 def test_every_claimed_suffix_width_is_a_typed_collision() -> None:
     record = _load("source-identity.json")["sources"][0]
-    digest = record["source_id"].removeprefix("sha256:")
-    readable = identity.slug_readable_part(record["transport"], record["normalized"])
-    claimed = {
-        f"{readable}--{digest[:width]}": "sha256:" + "0" * 64
-        for width in identity.SLUG_SUFFIX_HEX_DIGITS
-    }
+    claimed = dict.fromkeys(
+        identity.slug_candidates(record["transport"], record["normalized"], record["source_id"]),
+        "sha256:" + "0" * 64,
+    )
     with pytest.raises(identity.SlugCollisionError):
         identity.cache_slug(
             record["transport"], record["normalized"], record["source_id"], slug_owner=claimed.get
@@ -291,9 +289,9 @@ def _lock_sequence_valid(steps: list[str]) -> bool:
 
 
 def _store_key(key: str) -> str:
-    """A store key that sorts like the fixture's placeholder key."""
+    """A store key, or a slug, that sorts like the fixture's placeholder key."""
 
-    return f"{key}-{'0' * identity.STORE_KEY_SUFFIX_CHARS[0]}"
+    return f"{key}-{'0' * identity.NAME_SUFFIX_CHARS[0]}"
 
 
 def _real_lock(home: Path, kind: LockKind, key: str | None) -> locks.CacheLock:
@@ -301,7 +299,7 @@ def _real_lock(home: Path, kind: LockKind, key: str | None) -> locks.CacheLock:
         return locks.application_cache_lock(home)
     if kind is LockKind.SOURCE_ALIAS:
         assert key is not None
-        return locks.source_alias_lock(home, key)
+        return locks.source_alias_lock(home, _store_key(key))
     assert kind is LockKind.REPOSITORY_STORE and key is not None
     return locks.repository_store_lock(home, _store_key(key))
 
@@ -357,7 +355,7 @@ def test_lock_files_are_where_the_fixture_places_them(tmp_path: Path) -> None:
     templates = {
         lock["name"]: lock["path"] for lock in [*document["hierarchy"], *document["side_locks"]]
     }
-    slug = "github-com--pallets--flask--e7b7fe0ffe8a"
+    slug = "github-com-pallets-flask-wl2qiw4376x"
     store = "github-com-pallets-flask-apnenfl1h0x"
     source_digest = "e7b7fe0ffe8a446772b8a863f51222c90d256e511e1a4da3daec599735962fa9"
     acquisitions = {

@@ -37,11 +37,11 @@ from pydantic import BaseModel
 from metabrowser import home as home_module
 from metabrowser.cache.atomic import RecordError, read_record
 from metabrowser.cache.identity import (
-    STORE_KEY_SEPARATOR,
+    NAME_SEPARATOR,
     is_slug,
     is_store_key,
+    name_suffixes,
     store_key_matches_identity,
-    store_key_suffixes,
 )
 from metabrowser.cache.layout import (
     FORMAT_HISTORY,
@@ -63,6 +63,7 @@ from metabrowser.cache.paths import (
     source_directory,
     source_record,
     store_directory,
+    store_git_directory,
     store_record,
 )
 from metabrowser.cache.records import (
@@ -628,14 +629,14 @@ class _StoreNames:
         grouped: dict[str, list[str]] = {}
         for key in names:
             if is_store_key(key):
-                grouped.setdefault(key.rpartition(STORE_KEY_SEPARATOR)[2], []).append(key)
+                grouped.setdefault(key.rpartition(NAME_SEPARATOR)[2], []).append(key)
         return cls({suffix: tuple(found) for suffix, found in grouped.items()})
 
     def named_for(self, store_id: str) -> tuple[str, ...]:
         """The listed keys that end in a suffix of *store_id*, shortest suffix first."""
 
         return tuple(
-            key for suffix in store_key_suffixes(store_id) for key in self.by_suffix.get(suffix, ())
+            key for suffix in name_suffixes(store_id) for key in self.by_suffix.get(suffix, ())
         )
 
 
@@ -745,7 +746,7 @@ def _store_state(state: RepositoryStoreState) -> StoreState:
 def _borrowing_disagrees(home: Path, key: str, store: RepositoryStore) -> bool:
     """Whether the alternates file names anything but what ``store.yml`` says it borrows."""
 
-    named = read_alternates(home / store_directory(key) / "repository.git")
+    named = read_alternates(home / store_git_directory(key))
     return named != (store.lender.objects if store.lender is not None else None)
 
 

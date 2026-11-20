@@ -47,7 +47,7 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[APP_HOME]/repository-stores/github-com-octo-demo-e7qjzskw2rq/repository.git",
+  "location": "[APP_HOME]/repos/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": "[CWD]/checkout",
   "shallow": false,
   "refreshable": true,
@@ -156,7 +156,7 @@ status: 200
       "problems": [],
       "referenced_by": [
         {
-          "slug": "github-com--octo--demo--46386669dc01",
+          "slug": "github-com-octo-demo-9vhngza0oa1",
           "generation": 1
         }
       ],
@@ -217,7 +217,7 @@ status: 200
       "problems": [],
       "referenced_by": [
         {
-          "slug": "github-com--octo--demo--46386669dc01",
+          "slug": "github-com-octo-demo-9vhngza0oa1",
           "generation": 1
         }
       ],
@@ -249,7 +249,7 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[CWD]/home-moved/repository-stores/github-com-octo-demo-e7qjzskw2rq/repository.git",
+  "location": "[CWD]/home-moved/repos/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": "[CWD]/moved",
   "shallow": false,
   "refreshable": true,
@@ -286,7 +286,7 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[CWD]/home-moved/repository-stores/github-com-octo-demo-e7qjzskw2rq/repository.git",
+  "location": "[CWD]/home-moved/repos/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": "[CWD]/moved",
   "shallow": false,
   "refreshable": true,
@@ -544,7 +544,7 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[CWD]/home-shallow/repository-stores/github-com-octo-demo-e7qjzskw2rq/repository.git",
+  "location": "[CWD]/home-shallow/repos/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": "[CWD]/shallow",
   "shallow": true,
   "refreshable": true,
@@ -614,7 +614,7 @@ status: 200
       ],
       "referenced_by": [
         {
-          "slug": "github-com--octo--demo--46386669dc01",
+          "slug": "github-com-octo-demo-9vhngza0oa1",
           "generation": 1
         }
       ],

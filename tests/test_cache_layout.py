@@ -819,8 +819,8 @@ def test_open_cache_keeps_an_unreferenced_store_and_an_aliased_one(tmp_path: Pat
 
     open_cache(home, version="0.11.0")
 
-    assert (home / f"repository-stores/{ORPHAN_STORE.key}").is_dir()
-    assert (home / f"repository-stores/{FLASK_STORE.key}").is_dir()
+    assert (home / f"repos/{ORPHAN_STORE.key}").is_dir()
+    assert (home / f"repos/{FLASK_STORE.key}").is_dir()
 
 
 @posix_only
@@ -839,7 +839,7 @@ def test_open_cache_resolves_metabrowser_home_when_no_home_is_given(
 @pytest.mark.parametrize("prepare", [open_cache, migrate_layout])
 @pytest.mark.parametrize(
     "directory",
-    ["sources", "repository-stores"],
+    ["sources", "repos", "repository-stores"],
 )
 def test_unrecognized_durable_cache_is_refused_without_any_mutation(
     tmp_path: Path, prepare: Callable[..., object], directory: str

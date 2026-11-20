@@ -6,7 +6,7 @@
     },
     "source": {
       "id": "sha256:e7b7fe0ffe8a446772b8a863f51222c90d256e511e1a4da3daec599735962fa9",
-      "slug": "github-com--pallets--flask--e7b7fe0ffe8a",
+      "slug": "github-com-pallets-flask-wl2qiw4376x",
       "display_url": "https://github.com/pallets/flask",
       "clone_url": "https://github.com/pallets/flask",
       "transport": "https",
@@ -14,7 +14,7 @@
     },
     "scp_source": {
       "id": "sha256:74fe6e07e4b9e366cbfea79bdb0f6051ae58c0742e1a6748ba6c9dea86b1e231",
-      "slug": "github-com--pallets--flask--74fe6e07e4b9",
+      "slug": "github-com-pallets-flask-gga4r9z0oe0",
       "display_url": "git@github.com:pallets/flask.git",
       "clone_url": "git@github.com:pallets/flask.git",
       "transport": "ssh",
@@ -94,7 +94,7 @@
     {
       "name": "source-extended-slug-suffix",
       "record": "source",
-      "changes": [{ "path": ["slug"], "value": "github-com--pallets--flask--e7b7fe0ffe8a4467" }],
+      "changes": [{ "path": ["slug"], "value": "github-com-pallets-flask-wl2qiw4376x48g9dx1k" }],
       "expect": "valid"
     },
     {
@@ -112,19 +112,25 @@
     {
       "name": "source-slug-suffix-must-be-its-digest",
       "record": "source",
-      "changes": [{ "path": ["slug"], "value": "github-com--pallets--flask--000000000000" }],
+      "changes": [{ "path": ["slug"], "value": "github-com-pallets-flask-00000000000" }],
       "expect": "invalid"
     },
     {
       "name": "source-slug-suffix-width-is-frozen",
       "record": "source",
-      "changes": [{ "path": ["slug"], "value": "github-com--pallets--flask--e7b7fe0ffe8a4" }],
+      "changes": [{ "path": ["slug"], "value": "github-com-pallets-flask-wl2qiw4376" }],
       "expect": "invalid"
     },
     {
       "name": "source-slug-is-lowercase",
       "record": "source",
-      "changes": [{ "path": ["slug"], "value": "GitHub-com--pallets--flask--e7b7fe0ffe8a" }],
+      "changes": [{ "path": ["slug"], "value": "GitHub-com-pallets-flask-wl2qiw4376x" }],
+      "expect": "invalid"
+    },
+    {
+      "name": "source-slug-of-an-older-layout-is-refused",
+      "record": "source",
+      "changes": [{ "path": ["slug"], "value": "github-com--pallets--flask--e7b7fe0ffe8a" }],
       "expect": "invalid"
     },
     {

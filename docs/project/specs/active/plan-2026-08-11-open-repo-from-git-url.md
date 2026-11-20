@@ -559,7 +559,7 @@ Resolution, lifecycle, and safety rules are specified in
 │   ├── source.yml
 │   ├── state.yml
 │   └── store-alias.yml
-└── repository-stores/<store-key>/
+└── repos/<store-key>/
     ├── store.yml
     ├── state.yml
     └── repository.git/
@@ -1612,7 +1612,7 @@ replay against production functions when they land.
 | URL grammar | `url-grammar.json` | Git’s HTTP client sent the same request with and without a trailing slash, and sent `//`, `%72`, and path case verbatim |
 | Source and store identity, aliases, slugs | `source-identity.json` | The home filesystem folded case and Unicode normalization, and `NAME_MAX` was 255 bytes |
 | Locks and state machines | `state-machines.json` for the lock order, the side locks, and the startup sweep, and the tables in [Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md#acquisition) for acquisition and refresh; publication verifies absence under the owning lock, with a platform no-replace rename as defense in depth | `flock` released 2.8 ms after its holder was killed; `lockf` vanished when an unrelated descriptor closed; `os.rename` replaced an empty directory and `renamex_np(RENAME_EXCL)` refused it. The interleaving check found the store-to-alias reclamation race in the previous design and none in this one |
-| Catalog layout | Flat `sources/` and `repository-stores/` directories | Scanning 10,000 flat entries and reading each record took 262 ms |
+| Catalog layout | Flat `sources/` and `repos/` directories | Scanning 10,000 flat entries and reading each record took 262 ms |
 
 Store and alias rules follow from those identities.
 A store acquired from a source before provider resolution takes a deterministic identity

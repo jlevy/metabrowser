@@ -1,8 +1,9 @@
-"""The ``f01`` and ``f02`` to ``f03`` migration: older store names become current keys.
+"""The ``f01`` and ``f02`` to ``f03`` migration: older names become current ones.
 
 Released ``f01`` homes name each store by all 64 digits of its identity, and ``f02`` homes
-by its repository's words joined by ``--`` and 16 hexadecimal digits. Every home here is a
-current home rewritten as the release that wrote that format left it
+by its repository's words joined by ``--`` and 16 hexadecimal digits, in
+``repository-stores``; both name a source by words joined by ``--`` and 12 digits. Every
+home here is a current home rewritten as the release that wrote that format left it
 (:func:`tests.cache_home_fixture.rewrite_as_f01` and ``rewrite_as_f02``), so the migration
 is judged against the shapes the writers of those releases left.
 """
@@ -25,46 +26,58 @@ from metabrowser.cache import projection
 from metabrowser.cache.acquire import acquire_source, cached_source
 from metabrowser.cache.atomic import read_record, write_record_atomic
 from metabrowser.cache.identity import (
+    SlugCollisionError,
     StoreKeyCollisionError,
+    is_slug,
     is_store_key,
+    name_suffixes,
+    slug_candidates,
     store_key_candidates,
     store_key_matches_identity,
-    store_key_suffixes,
 )
 from metabrowser.cache.layout import migrate_layout, open_cache, read_layout
 from metabrowser.cache.paths import (
     REPOSITORY_STORES,
+    SOURCES,
     source_directory,
     source_record,
     store_directory,
 )
 from metabrowser.cache.records import (
+    REPOSITORY_SOURCE_CONTRACT_ID,
     REPOSITORY_STORE_CONTRACT_ID,
     CacheLayout,
+    RepositorySource,
     RepositoryStore,
 )
 from metabrowser.cache.store_rename import (
     DERIVED_OBJECT_FORMATS,
     F02_KEY_SUFFIX_HEX_DIGITS,
+    F02_SLUG_SUFFIX_HEX_DIGITS,
+    LEGACY_REPOSITORY_STORES,
     MAX_MIGRATED_ENTRIES,
     UNATTACHED_READABLE,
     NoFreeTargetError,
     Rename,
     apply_renames,
     f02_key_parts,
+    f02_slug_parts,
+    is_f02_slug,
     is_f02_store_key,
     is_legacy_store_key,
     plan_store_renames,
-    rename_legacy_stores,
+    rename_legacy_names,
 )
 from metabrowser.git.process import OBJECT_FORMATS
 from tests.cache_home_fixture import (
     CLICK,
     FLASK_HTTPS,
+    FLASK_SSH,
     FLASK_STORE,
     ORPHAN_STORE,
     FixtureSource,
     build_populated_home,
+    legacy_slug,
     rewrite_as_f01,
     rewrite_as_f02,
 )
@@ -82,6 +95,7 @@ OLD_NAMES: dict[str, Callable[[str], bool]] = {
 }
 # What a home of each format migrates through to reach the current one.
 CHAINS: dict[str, tuple[str, ...]] = {"f01": ("f02", "f03"), "f02": ("f03",)}
+SOURCES_OF_THE_HOME = (FLASK_HTTPS, FLASK_SSH, CLICK)
 
 
 @pytest.fixture(params=["f01", "f02"])
@@ -90,7 +104,17 @@ def old_format(request: pytest.FixtureRequest) -> str:
 
 
 def _names(home: Path) -> set[str]:
+    """The entries of ``repos``, where every store belongs after the migration."""
+
     return {entry.name for entry in (home / REPOSITORY_STORES).iterdir()}
+
+
+def _old_names(home: Path) -> set[str]:
+    return {entry.name for entry in (home / LEGACY_REPOSITORY_STORES).iterdir()}
+
+
+def _source_names(home: Path) -> set[str]:
+    return {entry.name for entry in (home / SOURCES).iterdir()}
 
 
 def _old_home(tmp_path: Path, old_format: str) -> tuple[Path, dict[str, str]]:
@@ -111,13 +135,21 @@ def test_a_whole_digest_is_a_legacy_name_and_a_key_is_not() -> None:
 
 def test_an_f02_name_is_words_joined_by_double_dashes_and_hexadecimal_digits() -> None:
     assert F02_KEY_SUFFIX_HEX_DIGITS == (16, 24, 32, 64)
+    assert F02_SLUG_SUFFIX_HEX_DIGITS == (12, 16, 24, 32, 64)
     assert f02_key_parts("github-com--pallets--flask--4c2d8559cb0179ba") == (
         "github-com--pallets--flask",
         "4c2d8559cb0179ba",
     )
     assert f02_key_parts("unattached--" + "0" * 64) == ("unattached", "0" * 64)
+    assert f02_slug_parts("github-com--pallets--flask--e7b7fe0ffe8a") == (
+        "github-com--pallets--flask",
+        "e7b7fe0ffe8a",
+    )
+    # A store key never had 12 digits, and a slug never had 12 fewer than its widths.
+    assert f02_key_parts("github-com--pallets--flask--e7b7fe0ffe8a") is None
     for name in (
         FLASK_STORE.key,
+        FLASK_HTTPS.slug,
         "a" * 64,
         "github-com--pallets--flask",
         "github-com--pallets--flask--4c2d8559cb0179b",
@@ -129,22 +161,27 @@ def test_an_f02_name_is_words_joined_by_double_dashes_and_hexadecimal_digits() -
     ):
         assert f02_key_parts(name) is None, name
         assert not is_f02_store_key(name), name
+        assert not is_f02_slug(name), name
 
 
-def test_no_name_is_a_key_and_an_older_name_at_once() -> None:
-    for name in (FLASK_STORE.key, ORPHAN_STORE.key):
-        assert is_store_key(name)
-        assert not is_legacy_store_key(name) and not is_f02_store_key(name)
+def test_no_name_is_a_current_one_and_an_older_one_at_once() -> None:
+    for name in (FLASK_STORE.key, ORPHAN_STORE.key, FLASK_HTTPS.slug, CLICK.slug):
+        assert is_store_key(name) and is_slug(name)
+        assert not is_legacy_store_key(name)
+        assert not is_f02_store_key(name) and not is_f02_slug(name)
+    for name in (legacy_slug(FLASK_HTTPS), legacy_slug(CLICK)):
+        assert is_f02_slug(name)
+        assert not is_slug(name) and not is_store_key(name)
     assert not is_store_key("github-com--pallets--flask--4c2d8559cb0179ba")
     assert not is_store_key("a" * 64)
 
 
 @posix_only
-def test_an_old_home_has_its_stores_renamed_where_they_stand(
+def test_an_old_home_has_its_stores_renamed_and_moved_where_they_stand(
     tmp_path: Path, old_format: str
 ) -> None:
     home, old = _old_home(tmp_path, old_format)
-    inodes = {name: (home / REPOSITORY_STORES / name).stat().st_ino for name in old.values()}
+    inodes = {name: (home / LEGACY_REPOSITORY_STORES / name).stat().st_ino for name in old.values()}
     pack = f"repository.git/objects/pack/pack-{FLASK_STORE.id.removeprefix('sha256:')[:40]}.pack"
     assert OLD_NAMES[old_format](old[FLASK_STORE.key])
 
@@ -161,8 +198,57 @@ def test_an_old_home_has_its_stores_renamed_where_they_stand(
     assert flask.stat().st_ino == inodes[old[FLASK_STORE.key]]
     assert not any(OLD_NAMES[old_format](name) for name in _names(home))
     assert all(is_store_key(name) for name in _names(home))
+    # The directory stores used to be in is gone with nothing in it.
+    assert not (home / LEGACY_REPOSITORY_STORES).exists()
     # Its lock files are left: an older process may hold one, and an empty file costs nothing.
     assert (home / "locks/stores" / f"{old[FLASK_STORE.key]}.lock").exists()
+
+
+@posix_only
+def test_open_cache_moves_into_the_repos_directory_the_skeleton_made(
+    tmp_path: Path, old_format: str
+) -> None:
+    """``ensure_home`` runs first, so ``repos`` exists and is empty, and the move is per store."""
+
+    home, _old = _old_home(tmp_path, old_format)
+    assert not (home / REPOSITORY_STORES).exists()
+
+    open_cache(home, version="0.13.0")
+
+    assert _names(home) == {FLASK_STORE.key, ORPHAN_STORE.key}
+    assert not (home / LEGACY_REPOSITORY_STORES).exists()
+
+
+@posix_only
+def test_an_old_home_has_its_sources_renamed_and_their_records_rewritten(
+    tmp_path: Path, old_format: str
+) -> None:
+    home, _old = _old_home(tmp_path, old_format)
+    inodes = {
+        source: (home / SOURCES / legacy_slug(source)).stat().st_ino
+        for source in SOURCES_OF_THE_HOME
+    }
+    pulls = home / SOURCES / legacy_slug(FLASK_HTTPS) / "pulls"
+    pulls.mkdir()
+    (pulls / "1.json").write_text("{}")
+    assert all(is_f02_slug(name) for name in _source_names(home))
+
+    open_cache(home, version="0.13.0")
+
+    assert _source_names(home) == {source.slug for source in SOURCES_OF_THE_HOME}
+    for source in SOURCES_OF_THE_HOME:
+        directory = home / source_directory(source.slug)
+        # The same directory, so what a provider kept beside the source moved with it.
+        assert directory.stat().st_ino == inodes[source]
+        record = read_record(
+            home, source_record(source.slug, "source.yml"), REPOSITORY_SOURCE_CONTRACT_ID
+        )
+        assert isinstance(record, RepositorySource)
+        assert record.slug == source.slug and record.id == source.id
+        assert record.created_at == "2026-09-17T12:00:00Z"
+    assert (home / source_directory(FLASK_HTTPS.slug) / "pulls/1.json").read_text() == "{}"
+    # The alias, which names the store by identity, is untouched and still resolves.
+    assert (home / source_record(FLASK_HTTPS.slug, "store-alias.yml")).is_file()
 
 
 @posix_only
@@ -196,19 +282,19 @@ def test_a_store_keeps_the_name_of_the_repository_of_a_source_that_names_or_deri
 @posix_only
 def test_an_f01_store_no_source_names_is_unattached(tmp_path: Path) -> None:
     home, _old = _old_home(tmp_path, "f01")
-    shutil.rmtree(home / source_directory(CLICK.slug))
+    shutil.rmtree(home / SOURCES / legacy_slug(CLICK))
 
     open_cache(home, version="0.13.0")
 
     (orphan,) = _names(home) - {FLASK_STORE.key}
-    assert orphan == f"{UNATTACHED_READABLE}-{store_key_suffixes(ORPHAN_STORE.id)[0]}"
+    assert orphan == f"{UNATTACHED_READABLE}-{name_suffixes(ORPHAN_STORE.id)[0]}"
     assert is_store_key(orphan) and store_key_matches_identity(orphan, ORPHAN_STORE.id)
 
 
 @posix_only
 def test_an_f02_store_no_source_names_keeps_the_words_its_name_had(tmp_path: Path) -> None:
     home, old = _old_home(tmp_path, "f02")
-    shutil.rmtree(home / source_directory(CLICK.slug))
+    shutil.rmtree(home / SOURCES / legacy_slug(CLICK))
     assert old[ORPHAN_STORE.key].startswith("github-com--pallets--click--")
 
     open_cache(home, version="0.13.0")
@@ -224,36 +310,44 @@ def test_an_entry_the_migration_cannot_read_is_named_and_skipped(
     """One entry that cannot be read must not stop the rest, or every open with it."""
 
     home, old = _old_home(tmp_path, old_format)
-    # A second name for an alias is one a private read refuses; a file where a store's
+    # A second name for a record is one a private read refuses; a file where a store's
     # directory belongs has no record to read.
-    os.link(home / source_record(CLICK.slug, "source.yml"), tmp_path / "second-name-of-a-record")
-    os.link(home / source_record(FLASK_HTTPS.slug, "store-alias.yml"), tmp_path / "second-alias")
+    os.link(
+        home / SOURCES / legacy_slug(CLICK) / "source.yml", tmp_path / "second-name-of-a-record"
+    )
+    os.link(
+        home / SOURCES / legacy_slug(FLASK_HTTPS) / "store-alias.yml", tmp_path / "second-alias"
+    )
     stray = "c" * 64 if old_format == "f01" else "github-com--stray--" + "c" * 16
-    (home / REPOSITORY_STORES / stray).write_text("")
+    (home / LEGACY_REPOSITORY_STORES / stray).write_text("")
 
     with caplog.at_level(logging.WARNING, logger="metabrowser.cache.store_rename"):
         outcome = migrate_layout(home, version="0.13.0")
 
     assert outcome.layout.format == "f03"
     assert FLASK_STORE.key in _names(home)
+    # The stray file is kept, under the name it had, with the entries nothing recognises.
     assert stray in _names(home) and (home / REPOSITORY_STORES / stray).is_file()
-    assert f"could not read: {CLICK.slug}" in caplog.text
+    assert f"could not read: {legacy_slug(CLICK)}" in caplog.text
+    # flask's source was renamed first, so its alias is read, and refused, under the new name.
     assert f"could not read: {FLASK_HTTPS.slug}" in caplog.text
     assert f"could not read: {stray}" in caplog.text
     assert str(home) not in caplog.text
-    # click's source cannot say what its store holds: an f01 name said nothing, so that
-    # store is unattached, and an f02 name said click, which it keeps.
+    # click's source cannot say what its store holds, and stays under its old name. An f01
+    # store name said nothing, so that store is unattached, and an f02 name said click.
+    assert legacy_slug(CLICK) in _source_names(home)
     assert old[ORPHAN_STORE.key] not in _names(home)
     if old_format == "f01":
         assert any(name.startswith(f"{UNATTACHED_READABLE}-") for name in _names(home))
     else:
         assert ORPHAN_STORE.key in _names(home)
+    assert not (home / LEGACY_REPOSITORY_STORES).exists()
 
 
 @posix_only
 def test_two_opens_of_an_old_home_at_once_migrate_it_once(tmp_path: Path, old_format: str) -> None:
     home, old = _old_home(tmp_path, old_format)
-    inode = (home / REPOSITORY_STORES / old[FLASK_STORE.key]).stat().st_ino
+    inode = (home / LEGACY_REPOSITORY_STORES / old[FLASK_STORE.key]).stat().st_ino
     barrier = threading.Barrier(2)
 
     def open_together(_index: int) -> str:
@@ -280,11 +374,11 @@ def test_the_migration_lists_no_more_entries_than_the_cache_routes_do() -> None:
 def test_running_the_migration_again_changes_nothing(tmp_path: Path, old_format: str) -> None:
     home, _old = _old_home(tmp_path, old_format)
     open_cache(home, version="0.13.0")
-    before = _names(home)
+    before = (_names(home), _source_names(home))
 
-    rename_legacy_stores(home)
+    rename_legacy_names(home)
 
-    assert _names(home) == before
+    assert (_names(home), _source_names(home)) == before
     assert plan_store_renames(home) == []
 
 
@@ -293,15 +387,23 @@ def test_an_interrupted_migration_resumes_with_what_is_left(
     tmp_path: Path, old_format: str
 ) -> None:
     home, old = _old_home(tmp_path, old_format)
-    # One store was renamed before the process died; the layout still names the old format.
-    (home / REPOSITORY_STORES / old[FLASK_STORE.key]).rename(
+    # One store was moved, and one source had its record rewritten, before the process died;
+    # the layout still names the old format.
+    (home / REPOSITORY_STORES).mkdir()
+    (home / LEGACY_REPOSITORY_STORES / old[FLASK_STORE.key]).rename(
         home / REPOSITORY_STORES / FLASK_STORE.key
+    )
+    record = home / SOURCES / legacy_slug(FLASK_HTTPS) / "source.yml"
+    record.write_text(
+        record.read_text().replace(f"slug: {legacy_slug(FLASK_HTTPS)}", f"slug: {FLASK_HTTPS.slug}")
     )
 
     outcome = migrate_layout(home, version="0.13.0")
 
     assert outcome.layout.format == "f03"
     assert _names(home) == {FLASK_STORE.key, ORPHAN_STORE.key}
+    assert _source_names(home) == {source.slug for source in SOURCES_OF_THE_HOME}
+    assert not (home / LEGACY_REPOSITORY_STORES).exists()
 
 
 @posix_only
@@ -315,7 +417,7 @@ def test_a_chain_interrupted_between_its_two_steps_resumes(tmp_path: Path) -> No
 
     with pytest.raises(RuntimeError, match="between the two steps"):
         migrate_layout(
-            home, version="0.13.0", migrations={"f01": rename_legacy_stores, "f02": crash}
+            home, version="0.13.0", migrations={"f01": rename_legacy_names, "f02": crash}
         )
     layout = read_layout(home)
     assert layout is not None and layout.format == "f02"
@@ -325,6 +427,7 @@ def test_a_chain_interrupted_between_its_two_steps_resumes(tmp_path: Path) -> No
 
     assert outcome.previous_format == "f02" and outcome.migrated_through == ("f03",)
     assert _names(home) == {FLASK_STORE.key, ORPHAN_STORE.key}
+    assert _source_names(home) == {source.slug for source in SOURCES_OF_THE_HOME}
 
 
 @posix_only
@@ -334,12 +437,12 @@ def test_a_store_whose_record_does_not_name_its_directory_is_left_alone(
     home, old = _old_home(tmp_path, old_format)
     damaged = old[ORPHAN_STORE.key]
     record = read_record(
-        home, f"{REPOSITORY_STORES}/{damaged}/store.yml", REPOSITORY_STORE_CONTRACT_ID
+        home, f"{LEGACY_REPOSITORY_STORES}/{damaged}/store.yml", REPOSITORY_STORE_CONTRACT_ID
     )
     assert isinstance(record, RepositoryStore)
     write_record_atomic(
         home,
-        f"{REPOSITORY_STORES}/{damaged}/store.yml",
+        f"{LEGACY_REPOSITORY_STORES}/{damaged}/store.yml",
         record.model_copy(update={"id": "sha256:" + "e" * 64}),
         REPOSITORY_STORE_CONTRACT_ID,
     )
@@ -347,8 +450,27 @@ def test_a_store_whose_record_does_not_name_its_directory_is_left_alone(
     with caplog.at_level(logging.WARNING, logger="metabrowser.cache.store_rename"):
         open_cache(home, version="0.13.0")
 
-    assert damaged in _names(home)
+    # It is moved with the others, under the name it has, and nothing recognises it.
+    assert damaged in _names(home) and not is_store_key(damaged)
     assert FLASK_STORE.key in _names(home)
+    assert "does not name its directory" in caplog.text
+    assert not (home / LEGACY_REPOSITORY_STORES).exists()
+
+
+@posix_only
+def test_a_source_whose_record_does_not_name_its_directory_is_left_alone(
+    tmp_path: Path, old_format: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    home, _old = _old_home(tmp_path, old_format)
+    path = home / SOURCES / legacy_slug(CLICK) / "source.yml"
+    path.write_text(path.read_text().replace("pallets/click", "pallets/other"))
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.cache.store_rename"):
+        open_cache(home, version="0.13.0")
+
+    assert legacy_slug(CLICK) in _source_names(home)
+    assert CLICK.slug not in _source_names(home)
+    assert FLASK_HTTPS.slug in _source_names(home)
     assert "does not name its directory" in caplog.text
 
 
@@ -362,6 +484,7 @@ def test_a_name_another_store_holds_is_skipped_and_never_shared(
     first, second, *_ = store_key_candidates("https", FLASK_HTTPS.address, FLASK_STORE.id)
     assert first == FLASK_STORE.key
     old = REWRITES[old_format](home)
+    (home / REPOSITORY_STORES).mkdir()
     occupy(home, first, store_id="sha256:" + "f" * 64)
 
     open_cache(home, version="0.13.0")
@@ -373,6 +496,37 @@ def test_a_name_another_store_holds_is_skipped_and_never_shared(
 
 
 @posix_only
+def test_a_name_another_source_holds_is_skipped_and_never_shared(
+    tmp_path: Path, old_format: str
+) -> None:
+    home, _old = _old_home(tmp_path, old_format)
+    first, second, *_ = slug_candidates("https", FLASK_HTTPS.address, FLASK_HTTPS.id)
+    assert first == FLASK_HTTPS.slug
+    (home / SOURCES / first).mkdir()
+
+    open_cache(home, version="0.13.0")
+
+    # flask's source takes the next slug, its record says so, and the other entry is not touched.
+    assert (home / SOURCES / first).is_dir() and not any((home / SOURCES / first).iterdir())
+    record = read_record(home, source_record(second, "source.yml"), REPOSITORY_SOURCE_CONTRACT_ID)
+    assert isinstance(record, RepositorySource) and record.slug == second
+
+
+@posix_only
+def test_a_source_holding_every_name_of_another_is_a_typed_collision(
+    tmp_path: Path, old_format: str
+) -> None:
+    home, _old = _old_home(tmp_path, old_format)
+    for slug in slug_candidates("https", FLASK_HTTPS.address, FLASK_HTTPS.id):
+        (home / SOURCES / slug).mkdir()
+
+    with pytest.raises(SlugCollisionError):
+        migrate_layout(home, version="0.13.0")
+
+    assert (home / SOURCES / legacy_slug(FLASK_HTTPS)).is_dir()
+
+
+@posix_only
 def test_a_store_holding_every_name_of_another_is_a_typed_collision(
     tmp_path: Path, old_format: str
 ) -> None:
@@ -380,13 +534,34 @@ def test_a_store_holding_every_name_of_another_is_a_typed_collision(
     build_populated_home(home)
     candidates = store_key_candidates("https", FLASK_HTTPS.address, FLASK_STORE.id)
     old = REWRITES[old_format](home)
+    (home / REPOSITORY_STORES).mkdir()
     for key in candidates:
         occupy(home, key, store_id="sha256:" + "f" * 64)
 
     with pytest.raises(StoreKeyCollisionError):
-        rename_legacy_stores(home)
+        rename_legacy_names(home)
 
-    assert (home / REPOSITORY_STORES / old[FLASK_STORE.key]).is_dir()
+    assert (home / LEGACY_REPOSITORY_STORES / old[FLASK_STORE.key]).is_dir()
+
+
+@posix_only
+def test_an_entry_whose_name_another_entry_holds_stays_and_keeps_the_old_directory(
+    tmp_path: Path, old_format: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    home, _old = _old_home(tmp_path, old_format)
+    stray = "notes.txt"
+    (home / LEGACY_REPOSITORY_STORES / stray).write_text("old")
+    (home / REPOSITORY_STORES).mkdir()
+    (home / REPOSITORY_STORES / stray).write_text("new")
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.cache.store_rename"):
+        rename_legacy_names(home)
+
+    assert (home / REPOSITORY_STORES / stray).read_text() == "new"
+    assert (home / LEGACY_REPOSITORY_STORES / stray).read_text() == "old"
+    assert _old_names(home) == {stray}
+    assert "whose name another entry holds" in caplog.text
+    assert _names(home) >= {FLASK_STORE.key, ORPHAN_STORE.key}
 
 
 @posix_only
@@ -394,23 +569,36 @@ def test_a_cache_with_no_stores_directory_is_migrated_and_nothing_is_created(
     tmp_path: Path, old_format: str
 ) -> None:
     home, _old = _old_home(tmp_path, old_format)
-    shutil.rmtree(home / REPOSITORY_STORES)
+    shutil.rmtree(home / LEGACY_REPOSITORY_STORES)
 
-    rename_legacy_stores(home)
+    rename_legacy_names(home)
 
+    assert not (home / LEGACY_REPOSITORY_STORES).exists()
     assert not (home / REPOSITORY_STORES).exists()
+
+
+@posix_only
+def test_a_migration_run_alone_makes_the_repos_directory_it_moves_into(
+    tmp_path: Path, old_format: str
+) -> None:
+    home, _old = _old_home(tmp_path, old_format)
+    assert not (home / REPOSITORY_STORES).exists()
+
+    rename_legacy_names(home)
+
+    assert _names(home) == {FLASK_STORE.key, ORPHAN_STORE.key}
 
 
 @posix_only
 def test_a_home_already_at_f03_is_left_as_it_is(tmp_path: Path) -> None:
     home = tmp_path / "home"
     build_populated_home(home)
-    before = _names(home)
+    before = (_names(home), _source_names(home))
 
     assert plan_store_renames(home) == []
-    rename_legacy_stores(home)
+    rename_legacy_names(home)
 
-    assert _names(home) == before
+    assert (_names(home), _source_names(home)) == before
 
 
 @posix_only
@@ -449,6 +637,7 @@ def test_a_released_home_is_a_cache_hit_after_the_migration_and_never_a_new_clon
     second = asyncio.run(acquire_source(source, home=home))
 
     assert second.store_key == first.store_key
+    assert second.slug == first.slug
     assert second.git_dir == first.git_dir and second.git_dir.is_dir()
     assert second.git_dir.stat().st_ino == inode
     assert not second.fetched
@@ -470,9 +659,9 @@ def test_a_rename_takes_its_first_free_target_and_never_replaces(tmp_path: Path)
     (tmp_path / "to/first").mkdir()
     (tmp_path / "to/first/other").write_text("not replaced")
 
-    moved = apply_renames(tmp_path, [Rename("from/a", ("to/first", "to/second", "to/third"))])
+    taken = apply_renames(tmp_path, [Rename("from/a", ("to/first", "to/second", "to/third"))])
 
-    assert moved == 1
+    assert taken == ["to/second"]
     assert (tmp_path / "to/first/other").read_text() == "not replaced"
     assert (tmp_path / "to/second/payload").read_text() == "kept"
     assert not (tmp_path / "from/a").exists()
@@ -486,9 +675,9 @@ def test_a_rename_can_move_an_entry_to_another_directory(tmp_path: Path) -> None
     (tmp_path / "old-directory/entry/payload").write_text("kept")
     (tmp_path / "new-directory").mkdir()
 
-    moved = apply_renames(tmp_path, [Rename("old-directory/entry", ("new-directory/entry",))])
+    taken = apply_renames(tmp_path, [Rename("old-directory/entry", ("new-directory/entry",))])
 
-    assert moved == 1
+    assert taken == ["new-directory/entry"]
     assert (tmp_path / "new-directory/entry/payload").read_text() == "kept"
 
 
@@ -503,4 +692,4 @@ def test_an_entry_every_target_of_which_is_held_is_a_typed_failure(tmp_path: Pat
 
 
 def test_a_plan_of_nothing_moves_nothing(tmp_path: Path) -> None:
-    assert apply_renames(tmp_path, []) == 0
+    assert apply_renames(tmp_path, []) == []

@@ -30,6 +30,7 @@ from pydantic import (
 )
 
 from metabrowser.cache.identity import (
+    NAME_MAX_BYTES,
     SOURCE_ADDRESS_MAX_BYTES,
     GitTransport,
     ObjectFormat,
@@ -86,7 +87,7 @@ def _require_timestamp(value: str) -> str:
 
 def _require_slug(value: str) -> str:
     if not is_slug(value):
-        raise ValueError("a source slug is bounded lowercase ASCII tokens joined by '--'")
+        raise ValueError("a source slug is bounded lowercase ASCII tokens joined by '-'")
     return value
 
 
@@ -106,8 +107,8 @@ type SourceSlug = Annotated[
     str,
     StringConstraints(
         min_length=1,
-        max_length=162,
-        pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*(?:--[a-z0-9]+(?:-[a-z0-9]+)*)*$",
+        max_length=NAME_MAX_BYTES,
+        pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)+$",
     ),
     AfterValidator(_require_slug),
 ]
@@ -247,7 +248,7 @@ class RepositorySource(_MachineRecord):
         if source_identity(self.transport, self.clone_url) != self.id:
             raise ValueError("source id does not match its transport and clone URL")
         if not slug_matches_identity(self.slug, self.id):
-            raise ValueError("source slug does not end in a digest suffix of its id")
+            raise ValueError("source slug does not end in a base-36 digest suffix of its id")
         return self
 
 
@@ -266,7 +267,7 @@ class RepositoryStoreAlias(_MachineRecord):
     updated_at: CanonicalTimestamp
 
 
-# ── repository-stores/<store-key>/ ───────────────────────────
+# ── repos/<store-key>/ ───────────────────────────────────────
 
 
 class StoreAcquisition(_MachineRecord):

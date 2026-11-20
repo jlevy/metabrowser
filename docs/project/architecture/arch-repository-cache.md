@@ -84,28 +84,40 @@ lock, and refuses only new ones.
   locks/
     home.lock
     sources/<slug>.lock
-    sources/<source key>.acquire.lock
+    sources/<source digest>.acquire.lock
     stores/<store key>.lock
     stores/<store key>.fetch.lock
     staging/<entry>.lock
+    providers/                  provider locks
   staging/<entry>/
-  sources/<slug>/
+  sources/<slug>/               one per repository address
     source.yml
     state.yml
     store-alias.yml
     pulls/                      provider records
-  repository-stores/<store key>/
+  repos/<store key>/            one per Git database
     repository.git/
     store.yml
     state.yml
     github-pull-manifests/      provider records
     change-sizes/               measured change sizes
     github-pull-manifest-<slot>.epoch
+  plugins/<plugin>/             a plugin's own cache, which Metabrowser never reads
 ```
 
-`cache/paths.py` spells every record and directory location and `cache/locks.py` every
-lock file, and their helpers refuse a slug, store key, or entry name that does not
-validate rather than build a path from it.
+A **source** is a repository as addressed and what its provider said about it; a
+**repo** is Metabrowser’s own Git copy of it and what was computed from that copy.
+Both directories hold one entry per repository, and `repos/` is named for what is in it:
+a bare repository, whether it is opened as a mirror or attached beside a served checkout
+for pull request comparisons.
+`repository.git` is the name of that bare repository, which `git -C` takes, and
+`store_git_directory` in `cache/paths.py` spells its path.
+Lock files for stores stay under `locks/stores/`, where the code’s word “store” is kept,
+and renaming a directory of locks while a process may hold one is the one unsafe rename.
+
+`cache/paths.py` spells every record and directory location, including the Git directory
+of a store, and `cache/locks.py` every lock file, and their helpers refuse a slug, store
+key, or entry name that does not validate rather than build a path from it.
 A source directory says what was asked for and which store answers it; a store directory
 holds the Git database and what is known about it.
 A source with `source.yml` alone is `unattached`: the GitHub plugin publishes one for a
@@ -125,14 +137,23 @@ interrupted chain resumes where it stopped.
 A newer format is refused with `FutureLayoutFormatError`, which asks for an upgrade.
 
 `f02` is the format in which a store directory is named by a key and not by the whole
-digest of its identity, as `f01` named it, and `f03` is the format of the
-[key](#store-keys) as it now reads: single-dash words and a base-36 suffix, where `f02`
-joined its words with `--` and spelled the suffix in hexadecimal.
-`cache/store_rename.py` migrates a home from either to `f03` by renaming each store
-where it stands, which `acquire_source` does before it looks for a hit, so a store
-cached by an older release is still a hit, and no clone is repeated.
-A home that is `f01` is renamed once, straight to its `f03` keys, and the step from
+digest of its identity, as `f01` named it.
+`f03` is the format of the names as they now read, for both entries: single-dash words
+and a base-36 suffix ([store keys](#store-keys) and [slugs](#slugs)), where `f02` joined
+its words with `--` and spelled the suffix in hexadecimal; and the stores live in
+`repos/`, where `f01` and `f02` kept them in `repository-stores/`.
+`cache/store_rename.py` migrates a home from either to `f03`, which `acquire_source`
+does before it looks for a hit, so a store cached by an older release is still a hit,
+and no clone is repeated.
+A home that is `f01` is renamed once, straight to its `f03` names, and the step from
 `f02` that follows finds nothing left to rename.
+Each entry is renamed where it stands, and a store is moved into `repos/` by the same
+atomic, no-replace rename that respells its key; the skeleton has made `repos/` already,
+so the parent is not renamed in one step.
+Sources go first: `source.yml` records its slug and validates it against the identity,
+so its record is rewritten with the new slug in the old directory, and the directory is
+renamed after, which leaves an interrupted migration an entry under its old name to
+finish and never a directory whose record disagrees with its name.
 A rename was chosen over leaving the old names because a store can hold a repository of
 gigabytes and nothing in the cache deletes one: orphaned, every store would be cloned
 again and the old copies would stay, listed by nothing.
@@ -145,10 +166,13 @@ left unreferenced keeps its repository’s name, and the next acquisition of tha
 reuses it. A store no source names keeps the words an `f02` name had, and an `f01` one,
 which had none, takes the readable part `unattached`, so it is listed as unreferenced
 and kept, as it always was.
-A directory whose `store.yml` does not record the identity its name spells was damaged
-already and is left as it is, and an entry the migration cannot read, such as a record
-with a second hard link or a file where a store belongs, is named in a warning and
-skipped, so that one entry cannot stop every open.
+A directory whose `store.yml` or `source.yml` does not record the identity its name
+spells was damaged already and is left as it is, and an entry the migration cannot read,
+such as a record with a second hard link or a file where a store belongs, is named in a
+warning and skipped, so that one entry cannot stop every open.
+A skipped or damaged store is moved into `repos/` under the name it had, with the other
+entries no route recognises, and the old parent is removed once it is empty; a source
+left under its old name stays in `sources/`, listed among its unrecognised entries.
 
 The migration is the first write to the home after an upgrade, so that first open needs
 a writable cache, and a home read before it answers `migration_pending`, which says that
@@ -183,8 +207,8 @@ clone; clearing the cache removes it.
 - **Store identity** digests the source identity and the object format observed during
   acquisition, so two concurrent acquisitions of one source converge on one store.
   The **store key** is the name of its directory; see [Store Keys](#store-keys).
-- **Slug** is a readable lowercase prefix plus the shortest digest suffix no other
-  source has claimed, recorded in `source.yml` at creation and never recomputed.
+- **Slug** is the name of a source’s directory, of one grammar with a store key; see
+  [Slugs](#slugs). It is recorded in `source.yml` at creation and never recomputed.
 
 Spellings converge only through the grammar and the provider reducers.
 The GitHub reducer lowercases owner and repository, so every spelling of a GitHub URL
@@ -194,16 +218,16 @@ Two stores are never merged because their owner and name text match.
 ### Store Keys
 
 A store directory is named `<readable>-<suffix>`, such as
-`github-com-jlevy-markform-1bo2sp3ey2l`, where it was once the whole digest of the store
-identity, and then `github-com--jlevy--markform--096a832ec2dfe765`. The readable part is
-the words a slug of the same address has, joined by single dashes where the slug joins
-them with `--`, and the suffix is the first `STORE_KEY_SUFFIX_CHARS[0]` base-36
-characters (`0-9a-z`) of the identity’s digest, read as a fraction of 1 so that a longer
-suffix begins with a shorter one and a leading zero is kept.
+`github-com-jlevy-markform-1bo2sp3ey2l`, where it was once
+`github-com--jlevy--markform--096a832ec2dfe765`, and before that the whole digest of the
+store identity. The readable part is the words of the repository’s address, joined by
+single dashes, and the suffix is the first `NAME_SUFFIX_CHARS[0]` base-36 characters
+(`0-9a-z`) of the identity’s digest, read as a fraction of 1 so that a longer suffix
+begins with a shorter one and a leading zero is kept.
 So the key is a name and the identity is the record: `store.yml` holds the whole `id`,
 and a lookup or a listing checks it.
 
-- **The width is sized, and never relied on.** `STORE_KEY_SUFFIX_CHARS` in
+- **The width is sized, and never relied on.** `NAME_SUFFIX_CHARS` in
   `cache/identity.py` carries the birthday-bound arithmetic that picked the first width,
   and `tests/test_cache_store_keys.py` recomputes it.
   Two stores can take one first name only when they agree on that many bits of digest
@@ -228,8 +252,22 @@ and a lookup or a listing checks it.
   key, but `locks/sources/<source digest>.acquire.lock` reserves a source’s cold load
   before any slug exists.
   Only the message of a wait that timed out shows it.
-- **A source’s slug is not changed.** `sources/<slug>` still joins its words with `--`
-  and ends in hexadecimal digits of the source identity.
+
+### Slugs
+
+A source directory is named for the repository in the same way, with its source
+identity: `sources/github-com-jlevy-markform-jqlzm24hgct`, where `f02` had
+`github-com--jlevy--markform--8c5e18ed6f7f`. A slug and a store key have one grammar
+(`is_slug` and `is_store_key`), and `slug_matches_identity` and
+`store_key_matches_identity` tell them apart by the identity each suffix digests, so a
+name is a slug only of the source whose identity it ends in.
+`source.yml` records the slug, and `RepositorySource` refuses a record whose slug is not
+one of its identity’s, so the record, its packaged schema, and the directory move
+together.
+A source is claimed under the source-alias lock (`cache_slug`), takes the first
+slug no other source holds, and is never renamed once published.
+The same sizing holds as for stores, since the cache routes list at most the same number
+of sources, and the same widths: 11, 19, 25, then 50 characters.
 
 ## Records
 

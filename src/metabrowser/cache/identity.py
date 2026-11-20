@@ -10,13 +10,13 @@ the URL classifier's job, not this module's.
   spelling of one hosted repository are two sources.
 - A store identity digests the source identity and the object format observed during
   acquisition, so two concurrent acquisitions of one source converge on one store.
-- A store key is the readable words a slug has, joined by single dashes, then a dash and
-  the first base-36 characters of the store identity's digest, so a store directory reads
-  as the repository it holds. The suffix is the shortest of a few widths that no store with
-  a different identity holds: a claim under the store lock never shares a name, and takes
-  the next width instead.
-- A slug is a readable, lowercase ASCII prefix plus the shortest digest suffix no other
-  source has claimed. It is recorded in ``source.yml`` at creation and never recomputed.
+- A slug and a store key have one grammar, ``<readable>-<suffix>``: the repository's
+  words joined by single dashes, a dash, and the first base-36 characters of an identity's
+  digest, so a directory reads as the repository it holds. A slug's suffix is the source
+  identity's and a key's is the store identity's. The suffix is the shortest of a few
+  widths that no entry with a different identity holds: a claim under the entry's lock
+  never shares a name, and takes the next width instead. A slug is recorded in
+  ``source.yml`` at creation and never recomputed.
 """
 
 from __future__ import annotations
@@ -42,30 +42,27 @@ IDENTITY_PREFIX: Final = "sha256:"
 # can be created and never read back, so both refuse the same addresses.
 SOURCE_ADDRESS_MAX_BYTES: Final = 2048
 
-SLUG_TOKEN_SEPARATOR: Final = "--"
-SLUG_READABLE_MAX_BYTES: Final = 96
-SLUG_EMPTY_READABLE: Final = "source"
-SLUG_SUFFIX_HEX_DIGITS: Final = (12, 16, 24, 32, 64)
-# The readable part, its separator, and the widest suffix.
-SLUG_MAX_BYTES: Final = SLUG_READABLE_MAX_BYTES + len(SLUG_TOKEN_SEPARATOR) + 64
+# The readable part of a slug or a store key, bounded.
+READABLE_MAX_BYTES: Final = 96
+EMPTY_READABLE: Final = "source"
 
-# The single dash that joins a store key's readable words and its suffix. A slug joins its
-# words with `--` so a word's own dash shows; a key does not, because its readable part is
+# The single dash that joins a name's readable words and its suffix. The readable part is
 # only a name for a person, the suffix makes it unique, and the suffix is simply the last
-# token, so no `--` is needed to find where it starts.
-STORE_KEY_SEPARATOR: Final = "-"
+# token, so nothing wider than a dash is needed to find where it starts. (An ``f02`` name
+# joined its words with `--` so that a word's own dash showed.)
+NAME_SEPARATOR: Final = "-"
 
-# The base-36 characters (`0-9a-z`) of a store identity's digest that end a store key,
-# shortest first. A key is `<readable>-<suffix>`: the first width names the store, and each
-# later one is the name it takes when a store with a different identity already holds the
+# The base-36 characters (`0-9a-z`) of an identity's digest that end a slug or a store key,
+# shortest first. A name is `<readable>-<suffix>`: the first width names the entry, and each
+# later one is the name it takes when an entry with a different identity already holds the
 # shorter name. The suffix is the first characters of the digest read as a fraction of 1
-# (:func:`store_key_suffixes`), so each is a prefix of the next, every character is
-# uniform, and the last width spells all 256 bits (50 characters are 258.5 bits), so only
-# the same identity can share it.
+# (:func:`name_suffixes`), so each is a prefix of the next, every character is uniform, and
+# the last width spells all 256 bits (50 characters are 258.5 bits), so only the same
+# identity can share it.
 #
-# Sizing, by the birthday bound. Two stores can claim one first-choice name only if their
+# Sizing, by the birthday bound. Two entries can claim one first-choice name only if their
 # digests agree on its first b = 11 x log2(36) = 56.9 bits (and, further, share a readable
-# part). Among n stores the chance that any two agree is at most n(n - 1) / 2^(b + 1),
+# part). Among n entries the chance that any two agree is at most n(n - 1) / 2^(b + 1),
 # taking every readable part to be the same, which no real cache does:
 #
 #   13 chars (67.2 bits): n = 10^4 -> 2.9e-13, n = 10^5 -> 2.9e-11
@@ -73,33 +70,30 @@ STORE_KEY_SEPARATOR: Final = "-"
 #   11 chars (56.9 bits): n = 10^4 -> 3.8e-10, n = 10^5 -> 3.8e-8
 #   10 chars (51.7 bits): n = 10^4 -> 1.4e-8,  n = 10^5 -> 1.4e-6
 #
-# The target is under 1e-9 at 10^4 stores with the readable part ignored: the cache routes
-# list at most MAX_DIRECTORY_ENTRIES = 10,000 stores and refuse a home past it, so that is
-# the most a home can hold and still be read, and 11 characters are the shortest that meet
+# The target is under 1e-9 at 10^4 entries with the readable part ignored: the cache routes
+# list at most MAX_DIRECTORY_ENTRIES = 10,000 sources or stores and refuse a home past it,
+# so that is the most a home can hold and still be read, and 11 characters are the shortest that meet
 # it. (The first sizing, under 1e-9 at 10^5, took 64 bits, which is 13 characters, and
 # left a key longer than a person reading it wants.) With the readable part counted, the
-# figure is far lower: stores share one only as other spellings of one repository (its
+# figure is far lower: entries share one only as other spellings of one repository (its
 # transport, a trailing `.git`, path case) and its two object formats, so groups hold a
-# handful, and for groups of 8 the 11 characters give 2.7e-13 at 10^4 stores and 2.7e-12 at
+# handful, and for groups of 8 the 11 characters give 2.7e-13 at 10^4 entries and 2.7e-12 at
 # 10^5.
 #
 # The bound prices a second name, not correctness. A claim reads the identity recorded in
-# any store already at a candidate and takes the next width instead of sharing it, a
-# lookup does the same, and the identity recorded in `store.yml` is checked whenever a
-# store is looked up or listed (`cache.acquire`, `cache.projection`). Someone who chooses
-# addresses can grind 2^56 digests to occupy a name and force a longer one; that is all
-# they can force. `tests/test_cache_store_keys.py` recomputes the figures above.
-STORE_KEY_SUFFIX_CHARS: Final = (11, 19, 25, 50)
-STORE_KEY_MAX_BYTES: Final = (
-    SLUG_READABLE_MAX_BYTES + len(STORE_KEY_SEPARATOR) + STORE_KEY_SUFFIX_CHARS[-1]
-)
+# any entry already at a candidate and takes the next width instead of sharing it, a
+# lookup does the same, and the identity recorded in `source.yml` or `store.yml` is checked
+# whenever an entry is looked up or listed (`cache.acquire`, `cache.projection`). Someone
+# who chooses addresses can grind 2^56 digests to occupy a name and force a longer one;
+# that is all they can force. `tests/test_cache_store_keys.py` recomputes the figures above.
+NAME_SUFFIX_CHARS: Final = (11, 19, 25, 50)
+NAME_MAX_BYTES: Final = READABLE_MAX_BYTES + len(NAME_SEPARATOR) + NAME_SUFFIX_CHARS[-1]
 
 TRANSPORTS: Final[frozenset[str]] = frozenset({"https", "ssh", "file"})
 
 _IDENTITY_RE: Final = re.compile(r"^sha256:[0-9a-f]{64}$")
-_SLUG_RE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*(?:--[a-z0-9]+(?:-[a-z0-9]+)*)*$")
 # Single-dash tokens, at least two: the readable part's words, and the suffix.
-_STORE_KEY_RE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)+$")
+_NAME_RE: Final = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)+$")
 _FOLD_RE: Final = re.compile(r"[^a-z0-9]+")
 
 
@@ -143,10 +137,18 @@ def is_identity(value: str) -> bool:
     return _IDENTITY_RE.fullmatch(value) is not None
 
 
+def _has_name_shape(value: str) -> bool:
+    return (
+        len(value) <= NAME_MAX_BYTES
+        and _NAME_RE.fullmatch(value) is not None
+        and len(value.rpartition(NAME_SEPARATOR)[2]) in NAME_SUFFIX_CHARS
+    )
+
+
 def is_store_key(value: str) -> bool:
     """Whether *value* spells a store directory key: dash-joined tokens whose last is a suffix.
 
-    The suffix is always the last token and has one of :data:`STORE_KEY_SUFFIX_CHARS`
+    The suffix is always the last token and has one of :data:`NAME_SUFFIX_CHARS`
     characters of ``0-9a-z``, so a readable word that happens to look like one, such as a
     repository named ``abcdefghijk``, is still read as part of the readable part: the key
     that follows it ends in the real suffix. A bare run of characters is no key, so a name
@@ -154,17 +156,18 @@ def is_store_key(value: str) -> bool:
     ``--`` name an ``f02`` home gave one.
     """
 
-    return (
-        len(value) <= STORE_KEY_MAX_BYTES
-        and _STORE_KEY_RE.fullmatch(value) is not None
-        and len(value.rpartition(STORE_KEY_SEPARATOR)[2]) in STORE_KEY_SUFFIX_CHARS
-    )
+    return _has_name_shape(value)
 
 
 def is_slug(value: str) -> bool:
-    """Whether *value* has the lowercase ASCII shape and bound of a source slug."""
+    """Whether *value* has the shape and bound of a source slug, which is a key's.
 
-    return len(value) <= SLUG_MAX_BYTES and _SLUG_RE.fullmatch(value) is not None
+    A slug and a store key have one grammar and differ in the identity their suffix
+    digests, which :func:`slug_matches_identity` and :func:`store_key_matches_identity`
+    check, so shape alone never says which an entry is.
+    """
+
+    return _has_name_shape(value)
 
 
 def source_identity(transport: GitTransport, normalized_address: str) -> str:
@@ -228,27 +231,17 @@ def slug_tokens(transport: GitTransport, normalized_address: str) -> tuple[str, 
     return tuple(folded for folded in (_fold(token) for token in decoded) if folded)
 
 
-def _bounded_readable(tokens: tuple[str, ...], separator: str) -> str:
-    readable = separator.join(tokens) or SLUG_EMPTY_READABLE
-    if len(readable) > SLUG_READABLE_MAX_BYTES:
-        readable = readable[:SLUG_READABLE_MAX_BYTES].rstrip("-")
-    return readable
-
-
-def slug_readable_part(transport: GitTransport, normalized_address: str) -> str:
-    """Return the bounded readable prefix of a new slug: its tokens joined by ``--``."""
-
-    return _bounded_readable(slug_tokens(transport, normalized_address), SLUG_TOKEN_SEPARATOR)
-
-
-def store_readable_part(transport: GitTransport, normalized_address: str) -> str:
-    """Return the bounded readable prefix of a store key: the slug's tokens joined by ``-``.
+def readable_part(transport: GitTransport, normalized_address: str) -> str:
+    """Return the bounded readable part of a slug or a store key: its tokens joined by ``-``.
 
     It is a name for a person and never an identity, so ``jlevy/my-repo`` and
-    ``jlevy/my/repo`` may read alike: the suffix tells the stores apart.
+    ``jlevy/my/repo`` may read alike: the suffix tells the entries apart.
     """
 
-    return _bounded_readable(slug_tokens(transport, normalized_address), STORE_KEY_SEPARATOR)
+    readable = NAME_SEPARATOR.join(slug_tokens(transport, normalized_address)) or EMPTY_READABLE
+    if len(readable) > READABLE_MAX_BYTES:
+        readable = readable[:READABLE_MAX_BYTES].rstrip("-")
+    return readable
 
 
 def cache_slug(
@@ -269,10 +262,7 @@ def cache_slug(
         raise ValueError("a source identity is sha256:<64 lowercase hex digits>")
     if source_identity(transport, normalized_address) != source_id:
         raise ValueError("the source identity does not match its transport and address")
-    readable = slug_readable_part(transport, normalized_address)
-    digest = source_id.removeprefix(IDENTITY_PREFIX)
-    for width in SLUG_SUFFIX_HEX_DIGITS:
-        candidate = f"{readable}{SLUG_TOKEN_SEPARATOR}{digest[:width]}"
+    for candidate in slug_candidates(transport, normalized_address, source_id):
         owner = slug_owner(candidate)
         if owner is None or owner == source_id:
             return candidate
@@ -280,7 +270,7 @@ def cache_slug(
 
 
 def slug_matches_identity(slug: str, source_id: str) -> bool:
-    """Whether *slug* ends in a permitted digest suffix of *source_id*.
+    """Whether *slug* ends in a permitted suffix of *source_id*.
 
     The readable part is deliberately not recomputed: it is recorded at creation, so its
     bound may change later without orphaning entries.
@@ -288,14 +278,7 @@ def slug_matches_identity(slug: str, source_id: str) -> bool:
 
     if not is_slug(slug) or not is_identity(source_id):
         return False
-    readable, separator, suffix = slug.rpartition(SLUG_TOKEN_SEPARATOR)
-    digest = source_id.removeprefix(IDENTITY_PREFIX)
-    return (
-        bool(separator)
-        and bool(readable)
-        and len(suffix) in SLUG_SUFFIX_HEX_DIGITS
-        and digest.startswith(suffix)
-    )
+    return slug.rpartition(NAME_SEPARATOR)[2] in name_suffixes(source_id)
 
 
 def _base36_prefix(digest: str, characters: int) -> str:
@@ -313,19 +296,31 @@ def _base36_prefix(digest: str, characters: int) -> str:
     return base36_encode(scaled).rjust(characters, "0")
 
 
-def store_key_suffixes(store_id: str) -> tuple[str, ...]:
-    """Return the suffixes a store may have, one for each of :data:`STORE_KEY_SUFFIX_CHARS`."""
+def name_suffixes(identity: str) -> tuple[str, ...]:
+    """Return the suffixes an entry of *identity* may have, one for each of :data:`NAME_SUFFIX_CHARS`."""
 
-    digest = identity_digest(store_id)
-    return tuple(_base36_prefix(digest, characters) for characters in STORE_KEY_SUFFIX_CHARS)
+    digest = identity_digest(identity)
+    return tuple(_base36_prefix(digest, characters) for characters in NAME_SUFFIX_CHARS)
+
+
+def name_candidates_for(readable: str, identity: str) -> tuple[str, ...]:
+    """Return the names an entry may have under the readable part *readable*, first choice first."""
+
+    return tuple(f"{readable}{NAME_SEPARATOR}{suffix}" for suffix in name_suffixes(identity))
+
+
+def slug_candidates(
+    transport: GitTransport, normalized_address: str, source_id: str
+) -> tuple[str, ...]:
+    """Return the slugs a source at *normalized_address* may have, first choice first."""
+
+    return name_candidates_for(readable_part(transport, normalized_address), source_id)
 
 
 def store_key_candidates_for(readable: str, store_id: str) -> tuple[str, ...]:
     """Return the keys a store may have under the readable part *readable*, first choice first."""
 
-    return tuple(
-        f"{readable}{STORE_KEY_SEPARATOR}{suffix}" for suffix in store_key_suffixes(store_id)
-    )
+    return name_candidates_for(readable, store_id)
 
 
 def store_key_candidates(
@@ -334,11 +329,11 @@ def store_key_candidates(
     """Return the keys a store of the source at *normalized_address* may have, first choice first.
 
     The readable part is the words of a slug of the address, joined by single dashes, and
-    the suffixes are those of :func:`store_key_suffixes`. A store has the first key no
-    other store holds.
+    the suffixes are those of :func:`name_suffixes`. A store has the first key no other
+    store holds.
     """
 
-    return store_key_candidates_for(store_readable_part(transport, normalized_address), store_id)
+    return store_key_candidates_for(readable_part(transport, normalized_address), store_id)
 
 
 def cache_store_key(
@@ -379,23 +374,20 @@ def store_key_matches_identity(key: str, store_id: str) -> bool:
 
     if not is_store_key(key) or not is_identity(store_id):
         return False
-    return key.rpartition(STORE_KEY_SEPARATOR)[2] in store_key_suffixes(store_id)
+    return key.rpartition(NAME_SEPARATOR)[2] in name_suffixes(store_id)
 
 
 __all__ = [
+    "EMPTY_READABLE",
     "IDENTITY_PREFIX",
+    "NAME_MAX_BYTES",
+    "NAME_SEPARATOR",
+    "NAME_SUFFIX_CHARS",
     "OBJECT_FORMATS",
-    "SLUG_EMPTY_READABLE",
-    "SLUG_MAX_BYTES",
-    "SLUG_READABLE_MAX_BYTES",
-    "SLUG_SUFFIX_HEX_DIGITS",
-    "SLUG_TOKEN_SEPARATOR",
+    "READABLE_MAX_BYTES",
     "SOURCE_ADDRESS_MAX_BYTES",
     "SOURCE_IDENTITY_DOMAIN",
     "STORE_IDENTITY_DOMAIN",
-    "STORE_KEY_MAX_BYTES",
-    "STORE_KEY_SEPARATOR",
-    "STORE_KEY_SUFFIX_CHARS",
     "TRANSPORTS",
     "GitTransport",
     "ObjectFormat",
@@ -407,14 +399,15 @@ __all__ = [
     "is_identity",
     "is_slug",
     "is_store_key",
+    "name_candidates_for",
+    "name_suffixes",
+    "readable_part",
     "repository_store_id",
+    "slug_candidates",
     "slug_matches_identity",
-    "slug_readable_part",
     "slug_tokens",
     "source_identity",
     "store_key_candidates",
     "store_key_candidates_for",
     "store_key_matches_identity",
-    "store_key_suffixes",
-    "store_readable_part",
 ]

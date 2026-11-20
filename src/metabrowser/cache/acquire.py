@@ -98,10 +98,12 @@ from metabrowser.cache.origin import (
     remote_tracking_ref,
 )
 from metabrowser.cache.paths import (
+    REPOSITORY_GIT,
     source_directory,
     source_record,
     staging_entry,
     store_directory,
+    store_git_directory,
     store_record,
 )
 from metabrowser.cache.providers import check_first_clone
@@ -488,7 +490,7 @@ async def acquire_into_staging(
     # the home. Discovery stops at the working directory, and this one is private, new,
     # and never a repository, so neither the home nor anything enclosing it lends config.
     staging = home / staging_entry(entry)
-    git_dir = staging / "repository.git"
+    git_dir = staging / REPOSITORY_GIT
     try:
         _report(on_phase, "reading the default branch")
         try:
@@ -700,7 +702,7 @@ def _claim_store_key(home: Path, source: GitSource, store_id: str) -> tuple[str,
     """Lock the key *store_id* is published under, or will be: the first no other store holds.
 
     A name another store holds is skipped whatever the odds of that were
-    (:data:`~metabrowser.cache.identity.STORE_KEY_SUFFIX_CHARS`), so two stores never
+    (:data:`~metabrowser.cache.identity.NAME_SUFFIX_CHARS`), so two stores never
     share a directory. The identity is read again under the lock, which is what makes the
     claim the store's: another process may have published at the key since it was chosen.
     """
@@ -863,7 +865,7 @@ def _published(
         home=home,
         slug=slug,
         store_key=key,
-        git_dir=home / store_directory(key) / "repository.git",
+        git_dir=home / store_git_directory(key),
         source=source,
         source_id=source_id,
         store_id=store_id,

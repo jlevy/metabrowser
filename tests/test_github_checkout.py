@@ -30,6 +30,7 @@ import pytest
 
 from metabrowser.builtin_plugins.github import pull_list, pull_markdown, pulls
 from metabrowser.builtin_plugins.github.pull_record import write_refresh_stamp
+from metabrowser.cache.identity import name_suffixes
 from metabrowser.cache.paths import source_pull_refresh
 from metabrowser.capabilities import Capabilities, set_capabilities
 from tests.checkout_replica import fingerprint
@@ -287,8 +288,8 @@ def test_nothing_is_written_under_a_slug_no_source_holds(tmp_path: Path) -> None
     with pytest.raises(FileNotFoundError):
         write_refresh_stamp(
             home,
-            "github-com--octo--demo--0123456789ab",
-            source_pull_refresh("github-com--octo--demo--0123456789ab", 7),
+            "github-com-octo-demo-01234567890",
+            source_pull_refresh("github-com-octo-demo-01234567890", 7),
             stamp,
         )
     assert not home.exists()
@@ -480,7 +481,7 @@ def test_checkout_comparison_fetch_uses_only_the_overlay(
     record = _api(root, route, {"number": 10, "retry": True}, request)
     assert record.exit_code == 0, record.stderr
     assert _after(record)["record"]["unavailable"]["comparison"] == "no_store"
-    assert not list((home / "repository-stores").iterdir())
+    assert not list((home / "repos").iterdir())
 
     fetched = _api(
         root,
@@ -876,7 +877,7 @@ def test_checkout_comparison_fetch_refuses_to_clone_when_borrowing_is_unavailabl
     assert after["last_refresh"]["outcome"] == "lender_missing"
     assert after["record"] == initial["record"]
     assert str(checkout) not in fetched.stdout
-    assert not list((home / "repository-stores").iterdir())
+    assert not list((home / "repos").iterdir())
     assert fingerprint(checkout) == before
 
 
@@ -1164,7 +1165,7 @@ def test_publication_rebinds_checkout_records_to_the_claimed_slug(
     def longer_slug(transport: Any, address: str, source_id: str, **kwargs: Any) -> str:
         # Inject the admitted collision chooser; publication and route reads remain real.
         short = choose(transport, address, source_id, **kwargs)
-        return short.rsplit("--", 1)[0] + "--" + source_id.removeprefix("sha256:")[:16]
+        return short.rpartition("-")[0] + "-" + name_suffixes(source_id)[1]
 
     monkeypatch.setattr(acquire, "cache_slug", longer_slug)
     refreshed = _api(
@@ -1177,7 +1178,7 @@ def test_publication_rebinds_checkout_records_to_the_claimed_slug(
     assert _api(checkout, route, None, request).payload()["record"] == after["record"]
     assert _api(other, route, None, request).payload()["record"] == after["record"]
     written = list(home.glob("sources/*/pulls/10.json"))
-    assert len(written) == 1 and len(written[0].parents[1].name.rsplit("--", 1)[1]) == 16
+    assert len(written) == 1 and len(written[0].parents[1].name.rpartition("-")[2]) == 19
 
 
 @pytest.mark.usefixtures("fresh_checkout_state")
@@ -1521,7 +1522,7 @@ def test_conversation_alone_never_creates_a_store_or_runs_git(
     for number in (9, 10):
         assert session.after({"number": number, "retry": True})["comparison_route"] is None
     assert session.git() == []
-    assert not list((session.home / "repository-stores").iterdir())
+    assert not list((session.home / "repos").iterdir())
     assert fingerprint(session.checkout) == session.before
 
 

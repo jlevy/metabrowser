@@ -1309,16 +1309,16 @@ status: 200
 --- body ---
 {"state": "all", "window": {"id": "leased-8", "generation": "<CATALOG_EPOCH_2>:1"}, "numbers": [7, 8]}
 --- gh ---
-# metab root --api /api/cache/source/github-com--octo--demo--46386669dc01
+# metab root --api /api/cache/source/github-com-octo-demo-9vhngza0oa1
 exit: 0
 --- stdout ---
-api: /api/cache/source/github-com--octo--demo--46386669dc01
+api: /api/cache/source/github-com-octo-demo-9vhngza0oa1
 status: 200
 {
   "home": "present",
   "layout_format": "f03",
   "source": {
-    "slug": "github-com--octo--demo--46386669dc01",
+    "slug": "github-com-octo-demo-9vhngza0oa1",
     "publication": "published",
     "identity": {
       "id": "sha256:46386669dc018f7570de90cce6b7e97fcdcf2d10c5a4949e668d38336b0fb12e",

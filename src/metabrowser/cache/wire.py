@@ -229,7 +229,7 @@ class StoreState(TypedDict):
 
 
 class StoreRecords(TypedDict):
-    """One store's records. ``key`` names its directory below ``repository-stores`` and
+    """One store's records. ``key`` names its directory below ``repos`` and
     is what a page of stores continues after; it says which repository the store holds and
     only a prefix of its identity. ``id`` is the identity ``store.yml`` records, and
     ``mode`` and ``lender`` are ``None`` too when ``store.yml`` is not readable; ``lender``

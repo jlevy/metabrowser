@@ -154,7 +154,7 @@ def test_golden_interrupted_before_store_publication(
     session.note("A child is killed at the rename that would publish the store.")
     _killed_at_publication(session, "metab <ORIGIN-A> --no-serve", [url, "--no-serve"], survive=0)
     assert len(list((home / "staging").iterdir())) == 1
-    assert list((home / "repository-stores").iterdir()) == []
+    assert list((home / "repos").iterdir()) == []
 
     session.note("Nothing is published: one abandoned staging entry, no store, no source.")
     assert '"staging_entries": 1' in session.inspect("/api/cache/layout")
@@ -180,7 +180,7 @@ def test_golden_interrupted_between_store_and_alias_publication(
 
     session.note("A child publishes the store and is killed at the source alias rename.")
     _killed_at_publication(session, "metab <ORIGIN-A> --no-serve", [url, "--no-serve"], survive=1)
-    assert len(list((home / "repository-stores").iterdir())) == 1
+    assert len(list((home / "repos").iterdir())) == 1
     assert list((home / "sources").iterdir()) == []
 
     session.note(
@@ -191,7 +191,7 @@ def test_golden_interrupted_between_store_and_alias_publication(
     assert '"reference_state": "unreferenced"' in session.inspect("/api/cache/stores")
     assert '"sources": []' in session.inspect("/api/cache/sources")
 
-    (orphan,) = list((home / "repository-stores").iterdir())
+    (orphan,) = list((home / "repos").iterdir())
     orphan_inode = orphan.stat().st_ino
     session.note(
         "The next acquisition fetches again, finds the same store already published, "
@@ -240,7 +240,7 @@ def test_golden_fetch_failures_leave_other_sources_untouched(
 
     session.note("Source A is acquired.")
     first = session.no_serve("A", url)
-    snapshot = _snapshot(home / "repository-stores")
+    snapshot = _snapshot(home / "repos")
 
     for letter, (why, path) in failures.items():
         session.note(f"Source {letter}, {why}, fails without publishing anything.")
@@ -260,7 +260,7 @@ def test_golden_fetch_failures_leave_other_sources_untouched(
     assert sources.count('"slug":') == 1
     assert '"generation": 1' in sources
     session.inspect("/api/cache/stores")
-    assert _snapshot(home / "repository-stores") == snapshot
+    assert _snapshot(home / "repos") == snapshot
 
     session.note("A is still a cache hit, and another spelling of A normalizes to A.")
     hit = session.no_serve("A", url)
@@ -271,7 +271,7 @@ def test_golden_fetch_failures_leave_other_sources_untouched(
         [f"FILE://LocalHost{path_a}/", "--no-serve"],
     )
     assert (folded.stdout, folded.stderr) == (hit.stdout, hit.stderr)
-    assert _snapshot(home / "repository-stores") == snapshot
+    assert _snapshot(home / "repos") == snapshot
 
     check_golden("cli-cache-fetch-failures.txt", session.render())
 
@@ -476,7 +476,7 @@ def test_golden_a_cache_an_earlier_release_wrote_is_migrated_by_its_first_open(
 
     session.note("A repository is cloned, and its store is named for it.")
     acquired = session.no_serve("A", url)
-    (store,) = list((home / "repository-stores").iterdir())
+    (store,) = list((home / "repos").iterdir())
     inode = store.stat().st_ino
     session.inspect("/api/cache/stores")
 
@@ -499,7 +499,7 @@ def test_golden_a_cache_an_earlier_release_wrote_is_migrated_by_its_first_open(
         "and reuses it: nothing is fetched."
     )
     assert session.no_serve("A", url).stdout == acquired.stdout
-    (migrated,) = list((home / "repository-stores").iterdir())
+    (migrated,) = list((home / "repos").iterdir())
     assert migrated.name == store.name and migrated.stat().st_ino == inode
     session.inspect("/api/cache/layout")
     session.inspect("/api/cache/stores")
@@ -516,7 +516,7 @@ def test_golden_a_cache_the_previous_layout_wrote_is_renamed_by_its_first_open(
 
     session.note("A repository is cloned, and its store is named for it.")
     acquired = session.no_serve("A", url)
-    (store,) = list((home / "repository-stores").iterdir())
+    (store,) = list((home / "repos").iterdir())
     inode = store.stat().st_ino
     session.inspect("/api/cache/stores")
 
@@ -545,7 +545,7 @@ def test_golden_a_cache_the_previous_layout_wrote_is_renamed_by_its_first_open(
         "and reuses it: nothing is fetched."
     )
     assert session.no_serve("A", url).stdout == acquired.stdout
-    (migrated,) = list((home / "repository-stores").iterdir())
+    (migrated,) = list((home / "repos").iterdir())
     assert migrated.name == store.name and migrated.stat().st_ino == inode
     session.inspect("/api/cache/layout")
     session.inspect("/api/cache/stores")

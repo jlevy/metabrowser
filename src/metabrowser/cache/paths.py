@@ -17,7 +17,12 @@ CACHE_ROOT: Final = "."
 LAYOUT_RECORD: Final = "layout.yml"
 STAGING: Final = "staging"
 SOURCES: Final = "sources"
-REPOSITORY_STORES: Final = "repository-stores"
+# The directory of the repository stores, one per Git database. Its name is `repos`, and
+# the code still says "repository store" for an entry of it. An `f02` home named it
+# `repository-stores` (``store_rename.LEGACY_REPOSITORY_STORES``).
+REPOSITORY_STORES: Final = "repos"
+# The bare repository inside a store, and inside a staging entry that becomes one.
+REPOSITORY_GIT: Final = "repository.git"
 STAGING_LOCKS: Final = "locks/staging"
 # The GitHub URL grammar's ``^[1-9][0-9]{0,9}$``.
 MAX_PULL_REQUEST_NUMBER: Final = 9_999_999_999
@@ -120,7 +125,7 @@ def source_pull_files_refresh(slug: str, number: int) -> str:
 
 
 def store_directory(store_key: str) -> str:
-    """Return ``repository-stores/<store-key>``."""
+    """Return ``repos/<store-key>``."""
 
     if not is_store_key(store_key):
         raise ValueError("invalid store key")
@@ -131,6 +136,12 @@ def store_record(store_key: str, name: StoreRecordName) -> str:
     """Return the path of one record of a repository store."""
 
     return f"{store_directory(store_key)}/{name}"
+
+
+def store_git_directory(store_key: str) -> str:
+    """Return ``repos/<store-key>/repository.git``, the bare repository of a store."""
+
+    return f"{store_directory(store_key)}/{REPOSITORY_GIT}"
 
 
 def staging_entry(entry: str) -> str:
@@ -149,6 +160,7 @@ __all__ = [
     "MAX_PULL_REQUEST_NUMBER",
     "PULL_LIST_NAMES",
     "PullListName",
+    "REPOSITORY_GIT",
     "REPOSITORY_STORES",
     "SOURCES",
     "STAGING",
@@ -169,5 +181,6 @@ __all__ = [
     "source_stacks",
     "staging_entry",
     "store_directory",
+    "store_git_directory",
     "store_record",
 ]

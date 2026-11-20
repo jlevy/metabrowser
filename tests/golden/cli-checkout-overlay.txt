@@ -4,7 +4,7 @@
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
 borrows: <ROOT>/checkout
@@ -35,7 +35,7 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "<HOME>/repository-stores/github-com-octo-demo-e7qjzskw2rq/repository.git",
+  "location": "<HOME>/repos/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": "<ROOT>/checkout",
   "shallow": false,
   "refreshable": true,
@@ -128,7 +128,7 @@ status: 200
       "problems": [],
       "referenced_by": [
         {
-          "slug": "github-com--octo--demo--46386669dc01",
+          "slug": "github-com-octo-demo-9vhngza0oa1",
           "generation": 1
         }
       ],
@@ -149,7 +149,7 @@ status: 200
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
 borrows: <ROOT>/checkout
@@ -163,7 +163,7 @@ using the clone of https://github.com/octo/demo cached in <HOME>, fetched less t
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
 --- stderr ---
@@ -175,7 +175,7 @@ cloned https://github.com/octo/demo in 0.0 s
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
 --- stderr ---
@@ -216,7 +216,7 @@ status: 200
       "problems": [],
       "referenced_by": [
         {
-          "slug": "github-com--octo--demo--46386669dc01",
+          "slug": "github-com-octo-demo-9vhngza0oa1",
           "generation": 1
         }
       ],
@@ -235,7 +235,7 @@ status: 200
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
 --- stderr ---
@@ -248,7 +248,7 @@ using the clone of https://github.com/octo/demo cached in <HOME>, fetched less t
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
 --- stderr ---
@@ -260,7 +260,7 @@ cloned https://github.com/octo/demo in 0.0 s
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
 --- stderr ---
@@ -272,7 +272,7 @@ cloned https://github.com/octo/demo in 0.0 s
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
 --- stderr ---
@@ -284,7 +284,7 @@ cloned https://github.com/octo/demo in 0.0 s
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
 --- stderr ---
@@ -318,7 +318,7 @@ Error: --checkout names a checkout for a Git source to borrow objects from, and 
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
 borrows: <ROOT>/fork
@@ -362,7 +362,7 @@ status: 200
   "ref_name": "refs/pull/1/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "<HOME>/repository-stores/github-com-octo-demo-e7qjzskw2rq/repository.git",
+  "location": "<HOME>/repos/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": "<ROOT>/shallow",
   "shallow": true,
   "refreshable": true,
@@ -392,7 +392,7 @@ pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 3fe5d55744d3e20e0fdcb2a6c7e774b6d48ea19f
 borrows: <ROOT>/shallow
@@ -566,7 +566,7 @@ pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
 borrows: <ROOT>/swept
@@ -635,7 +635,7 @@ status: 200
       "problems": [],
       "referenced_by": [
         {
-          "slug": "github-com--octo--demo--46386669dc01",
+          "slug": "github-com-octo-demo-9vhngza0oa1",
           "generation": 1
         }
       ],
@@ -654,7 +654,7 @@ status: 200
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
 borrows: <ROOT>/moved
@@ -666,7 +666,7 @@ using the clone of https://github.com/octo/demo cached in <HOME>, fetched less t
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
 borrows: <ROOT>/moved
@@ -728,7 +728,7 @@ status: 200
       ],
       "referenced_by": [
         {
-          "slug": "github-com--octo--demo--46386669dc01",
+          "slug": "github-com-octo-demo-9vhngza0oa1",
           "generation": 1
         }
       ],

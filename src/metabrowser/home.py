@@ -149,7 +149,7 @@ F01_DIRECTORIES: Final = (
     "locks/providers",
     "staging",
     "sources",
-    "repository-stores",
+    "repos",
 )
 
 # Any permission granted to group or other.

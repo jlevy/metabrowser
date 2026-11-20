@@ -229,7 +229,7 @@ gh auth status
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -387,7 +387,7 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -667,7 +667,7 @@ status: 200
   "ref_name": "topic",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "<HOME>/repository-stores/github-com-octo-demo-e7qjzskw2rq/repository.git",
+  "location": "<HOME>/repos/github-com-octo-demo-e7qjzskw2rq/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
@@ -692,7 +692,7 @@ status: 200
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -713,7 +713,7 @@ gh auth status
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -868,7 +868,7 @@ pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -884,7 +884,7 @@ gh auth status
 exit: 1
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 --- stderr ---
@@ -896,7 +896,7 @@ gh auth status
 exit: 1
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 --- stderr ---
@@ -908,7 +908,7 @@ gh auth status
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -923,7 +923,7 @@ gh api repos/octo/demo/pulls/11
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -938,7 +938,7 @@ gh api repos/octo/demo/pulls/11
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -953,7 +953,7 @@ gh api repos/octo/demo/pulls/11
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -1011,7 +1011,7 @@ gh api repos/octo/demo/pulls/11
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -1032,7 +1032,7 @@ gh auth status
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -1053,7 +1053,7 @@ gh auth status
 exit: 0
 --- stdout ---
 acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
+slug: github-com-octo-demo-9vhngza0oa1
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
@@ -1124,16 +1124,16 @@ selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab root --api /api/cache/source/github-com--octo--demo--46386669dc01
+# metab root --api /api/cache/source/github-com-octo-demo-9vhngza0oa1
 exit: 0
 --- stdout ---
-api: /api/cache/source/github-com--octo--demo--46386669dc01
+api: /api/cache/source/github-com-octo-demo-9vhngza0oa1
 status: 200
 {
   "home": "present",
   "layout_format": "f03",
   "source": {
-    "slug": "github-com--octo--demo--46386669dc01",
+    "slug": "github-com-octo-demo-9vhngza0oa1",
     "publication": "published",
     "identity": {
       "id": "sha256:46386669dc018f7570de90cce6b7e97fcdcf2d10c5a4949e668d38336b0fb12e",

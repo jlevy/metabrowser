@@ -15,19 +15,21 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
 from metabrowser.cache.atomic import publish_entry, read_record, write_record_atomic
 from metabrowser.cache.identity import (
+    EMPTY_READABLE,
+    READABLE_MAX_BYTES,
     GitTransport,
     ObjectFormat,
     cache_slug,
     identity_digest,
     repository_store_id,
-    slug_readable_part,
+    slug_tokens,
     source_identity,
     store_key_candidates,
 )
@@ -65,6 +67,7 @@ from metabrowser.cache.records import (
     StoreLender,
     StoreOperation,
 )
+from metabrowser.cache.store_rename import LEGACY_REPOSITORY_STORES
 from metabrowser.home import ensure_home, ensure_private_directory, write_private_file_atomic
 
 FIXTURE_VERSION: Final = "0.11.0"
@@ -361,33 +364,94 @@ def build_overlay_home(home: Path, checkouts: Path) -> None:
     )
 
 
-def rewrite_as_f01(home: Path) -> dict[str, str]:
-    """Rewrite *home* as the release that wrote ``f01`` left it; return each store's old name.
+def _f02_readable(transport: GitTransport, address: str) -> str:
+    """The readable part an ``f01`` or ``f02`` name had: the words joined by ``--``."""
 
-    A store directory is named by the whole digest of its identity, its lock files are
-    named so too, and the layout says ``f01``. The map is from the key each store has now
-    to the name it is given.
+    readable = "--".join(slug_tokens(transport, address)) or EMPTY_READABLE
+    return (
+        readable[:READABLE_MAX_BYTES].rstrip("-")
+        if len(readable) > READABLE_MAX_BYTES
+        else readable
+    )
+
+
+def legacy_slug(source: FixtureSource) -> str:
+    """The slug ``f01`` and ``f02`` gave *source*: its words joined by ``--`` and 12 digits."""
+
+    return f"{_f02_readable(source.transport, source.address)}--{identity_digest(source.id)[:12]}"
+
+
+def _rewrite_sources_as_f02(home: Path) -> None:
+    """Name every source as ``f01`` and ``f02`` did: words joined by ``--`` and 12 digits.
+
+    The record says so too. It is written as the text it was, because the record of this
+    release no longer validates a slug spelled that way.
+    """
+
+    sources = home / SOURCES
+    for entry in sorted(sources.iterdir()):
+        record = read_record(
+            home, f"{SOURCES}/{entry.name}/source.yml", REPOSITORY_SOURCE_CONTRACT_ID
+        )
+        assert isinstance(record, RepositorySource)
+        old = f"{_f02_readable(record.transport, record.clone_url)}--{identity_digest(record.id)[:12]}"
+        path = home / SOURCES / entry.name / "source.yml"
+        text = path.read_text(encoding="utf-8")
+        assert f"slug: {entry.name}\n" in text
+        write_private_file_atomic(
+            home,
+            f"{SOURCES}/{entry.name}/source.yml",
+            text.replace(f"slug: {entry.name}\n", f"slug: {old}\n", 1).encode(),
+        )
+        entry.rename(sources / old)
+
+
+def _rewrite_stores(
+    home: Path, name_of: Callable[[RepositoryStore], str], layout_format: str
+) -> dict[str, str]:
+    """Name every store by *name_of*, in ``repository-stores``; return each one's old name.
+
+    The layout says *layout_format*, the lock files are named for the old names too, and
+    ``repos`` is gone, as in a home that no release of this layout has opened: the skeleton
+    that ``open_cache`` makes is what brings it back. The map is from the key each store has
+    now to the name it is given.
     """
 
     old_names: dict[str, str] = {}
-    stores = home / REPOSITORY_STORES
+    (home / REPOSITORY_STORES).rename(home / LEGACY_REPOSITORY_STORES)
+    stores = home / LEGACY_REPOSITORY_STORES
     for entry in sorted(stores.iterdir()):
         record = read_record(
-            home, f"{REPOSITORY_STORES}/{entry.name}/store.yml", REPOSITORY_STORE_CONTRACT_ID
+            home,
+            f"{LEGACY_REPOSITORY_STORES}/{entry.name}/store.yml",
+            REPOSITORY_STORE_CONTRACT_ID,
         )
         assert isinstance(record, RepositoryStore)
-        digest = identity_digest(record.id)
-        entry.rename(stores / digest)
-        old_names[entry.name] = digest
+        name = name_of(record)
+        entry.rename(stores / name)
+        old_names[entry.name] = name
         for suffix in (".lock", ".fetch.lock"):
-            write_private_file_atomic(home, f"locks/stores/{digest}{suffix}", b"")
+            write_private_file_atomic(home, f"locks/stores/{name}{suffix}", b"")
     write_record_atomic(
         home,
         LAYOUT_RECORD,
-        CacheLayout(format="f01", created_by="0.12.0"),
+        CacheLayout(format=layout_format, created_by="0.12.0"),
         CACHE_LAYOUT_CONTRACT_ID,
     )
     return old_names
+
+
+def rewrite_as_f01(home: Path) -> dict[str, str]:
+    """Rewrite *home* as the release that wrote ``f01`` left it; return each store's old name.
+
+    A store directory is named by the whole digest of its identity, in
+    ``repository-stores``, and a source by words joined by ``--`` and 12 digits. Lock files
+    are named for the old store names too, and the layout says ``f01``. The map is from the
+    key each store has now to the name it is given.
+    """
+
+    _rewrite_sources_as_f02(home)
+    return _rewrite_stores(home, lambda record: identity_digest(record.id), "f01")
 
 
 def rewrite_as_f02(
@@ -395,34 +459,22 @@ def rewrite_as_f02(
 ) -> dict[str, str]:
     """Rewrite *home* as the release that wrote ``f02`` left it; return each store's old name.
 
-    A store directory is named for its source's slug words joined by ``--`` and the first
-    16 hexadecimal digits of its identity, its lock files are named so too, and the layout
-    says ``f02``. *stores* are the fixture stores the home holds, which say each one's
-    repository. The map is from the key each store has now to the name it is given.
+    A store directory is named for its source's words joined by ``--`` and 16 hexadecimal
+    digits of its identity, in ``repository-stores``, a source as ``f01`` named it, and the
+    layout says ``f02``. *stores* are the fixture stores the home holds, which say each
+    one's repository. The map is from the key each store has now to the name it is given.
     """
 
-    old_names: dict[str, str] = {}
-    directory = home / REPOSITORY_STORES
     by_id = {store.id: store for store in stores}
-    for entry in sorted(directory.iterdir()):
-        record = read_record(
-            home, f"{REPOSITORY_STORES}/{entry.name}/store.yml", REPOSITORY_STORE_CONTRACT_ID
+
+    def name_of(record: RepositoryStore) -> str:
+        source = by_id[record.id].source
+        return (
+            f"{_f02_readable(source.transport, source.address)}--{identity_digest(record.id)[:16]}"
         )
-        assert isinstance(record, RepositoryStore)
-        store = by_id[record.id]
-        readable = slug_readable_part(store.source.transport, store.source.address)
-        name = f"{readable}--{identity_digest(record.id)[:16]}"
-        entry.rename(directory / name)
-        old_names[entry.name] = name
-        for suffix in (".lock", ".fetch.lock"):
-            write_private_file_atomic(home, f"locks/stores/{name}{suffix}", b"")
-    write_record_atomic(
-        home,
-        LAYOUT_RECORD,
-        CacheLayout(format="f02", created_by="0.12.0"),
-        CACHE_LAYOUT_CONTRACT_ID,
-    )
-    return old_names
+
+    _rewrite_sources_as_f02(home)
+    return _rewrite_stores(home, name_of, "f02")
 
 
 def build_shared_directories_home(home: Path) -> None:

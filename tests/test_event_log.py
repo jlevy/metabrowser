@@ -587,7 +587,7 @@ def test_a_refresh_failure_is_the_jobs_even_when_its_stamp_is_not_written(
     )
     with event_log.span("job", "files"):
         pull_list.write_files_refresh(
-            tmp_path / "home", "github-com--octo--demo--46386669dc01", 7, stamp, persist=False
+            tmp_path / "home", "github-com-octo-demo-46386669dc0", 7, stamp, persist=False
         )
     (record,) = _named(sink, "files")
     assert record["outcome"] == "failed"

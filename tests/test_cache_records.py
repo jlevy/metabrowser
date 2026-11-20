@@ -32,7 +32,9 @@ from metabrowser.cache.contracts import (
 )
 from metabrowser.cache.identity import (
     SOURCE_ADDRESS_MAX_BYTES,
-    slug_readable_part,
+    name_suffixes,
+    readable_part,
+    slug_matches_identity,
     source_identity,
 )
 from metabrowser.cache.records import (
@@ -296,7 +298,8 @@ def test_a_source_record_is_bound_to_its_identity_material() -> None:
     record = _valid_record(REPOSITORY_SOURCE_CONTRACT_ID)
     source = RepositorySource.model_validate(record)
 
-    assert source.slug.endswith(source.id.removeprefix("sha256:")[:12])
+    assert slug_matches_identity(source.slug, source.id)
+    assert source.slug.rpartition("-")[2] == name_suffixes(source.id)[0]
     with pytest.raises(ValueError, match="does not match its transport"):
         RepositorySource.model_validate({**record, "clone_url": "https://github.com/pallets/Flask"})
 
@@ -352,7 +355,7 @@ def test_identity_refuses_every_address_a_source_record_would_refuse() -> None:
     with pytest.raises(ValueError, match="normalized source address"):
         source_identity("file", over)
     with pytest.raises(ValueError, match="normalized source address"):
-        slug_readable_part("file", over)
+        readable_part("file", over)
 
 
 def test_a_large_invalid_config_reports_bounded_value_free_reasons() -> None:

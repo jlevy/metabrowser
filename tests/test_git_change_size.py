@@ -277,9 +277,9 @@ def _store(tmp_path: Path) -> tuple[Path, Path, GitLocation]:
 
     work = _repository(tmp_path)
     home = tmp_path / "cache"
-    git_dir = home / "repository-stores" / STORE_KEY / "repository.git"
+    git_dir = home / "repos" / STORE_KEY / "repository.git"
     git_dir.parent.mkdir(parents=True)
-    for directory in (home, home / "repository-stores", git_dir.parent):
+    for directory in (home, home / "repos", git_dir.parent):
         directory.chmod(0o700)
     subprocess.run(
         ["git", "clone", "-q", "--bare", "--template=", str(work), str(git_dir)],
@@ -300,7 +300,7 @@ def test_a_store_keeps_sizes_beside_it_for_a_fresh_server(
     work, home, location = _store(tmp_path)
     merge = _rev(work, "main")
     measured = _measure(location, merge)
-    bank = home / "repository-stores" / STORE_KEY / sizes.BANK_DIRECTORY / f"{merge[:2]}.json"
+    bank = home / "repos" / STORE_KEY / sizes.BANK_DIRECTORY / f"{merge[:2]}.json"
     record = json.loads(bank.read_bytes())
     assert record["measure"] == sizes.MEASURE
     assert oct(bank.stat().st_mode & 0o777) == oct(0o600)
@@ -319,7 +319,7 @@ def test_a_bank_written_for_other_options_or_corrupt_is_a_miss(tmp_path: Path) -
     work, home, location = _store(tmp_path)
     merge = _rev(work, "main")
     measured = _measure(location, merge)
-    bank = home / "repository-stores" / STORE_KEY / sizes.BANK_DIRECTORY / f"{merge[:2]}.json"
+    bank = home / "repos" / STORE_KEY / sizes.BANK_DIRECTORY / f"{merge[:2]}.json"
     record = json.loads(bank.read_bytes())
     for spoiled in (
         json.dumps({**record, "measure": "another"}).encode(),
@@ -351,7 +351,7 @@ def test_bank_file_stays_under_its_read_bound(tmp_path: Path) -> None:
             ("range", base, head),
             sizes.measured(base, head, big, big, big),
         )
-    data = (home / "repository-stores" / STORE_KEY / sizes.BANK_DIRECTORY / "ab.json").read_bytes()
+    data = (home / "repos" / STORE_KEY / sizes.BANK_DIRECTORY / "ab.json").read_bytes()
     assert len(json.loads(data)["sizes"]) == sizes.MAX_BANK_FILE_ENTRIES
     # Measured 2026-11-20: 66.4 KB, the most a file holds, against a bound about twice that.
     assert len(data) < sizes.MAX_BANK_FILE_BYTES

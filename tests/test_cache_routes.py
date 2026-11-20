@@ -250,7 +250,7 @@ def populated(use_home: Any, tmp_path: Path) -> Path:
 def test_an_unknown_or_malformed_slug_is_answered_honestly(
     client: TestClient, populated: Path
 ) -> None:
-    missing = _json(client, "/api/cache/source/github-com--nobody--nothing--000000000000", 404)
+    missing = _json(client, "/api/cache/source/github-com-nobody-nothing-00000000000", 404)
     malformed = _json(client, "/api/cache/source/Not_A_Slug", 400)
 
     assert missing["code"] == "source_not_found"
@@ -285,7 +285,7 @@ def test_pages_follow_the_sorted_keys_and_clamp_their_limit(
 def test_a_store_is_listed_by_the_key_that_names_its_directory(
     client: TestClient, populated: Path
 ) -> None:
-    """The row's key is the directory below ``repository-stores``, and its id the record's."""
+    """The row's key is the directory below ``repos``, and its id the record's."""
 
     rows = {row["key"]: row for row in _json(client, "/api/cache/stores")["stores"]}
 

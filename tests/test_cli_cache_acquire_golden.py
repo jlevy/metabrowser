@@ -172,7 +172,7 @@ def test_golden_file_url_acquire_and_reuse(tmp_path: Path, monkeypatch: pytest.M
     # stream name the store's own directory or a staging entry.
     assert str(home) not in first.stdout
     for stream in (first.stderr, again.stderr):
-        assert "repository-stores" not in stream
+        assert "repos" not in stream
         assert "staging" not in stream
     assert "Serving" not in first.stdout + first.stderr
 
@@ -204,24 +204,24 @@ def test_the_home_label_is_refused_anywhere_but_the_whole_lines_that_may_name_it
         f"using the clone of {url} cached in {home}\n"
         # A served mirror's status says where it is kept: the store's bare repository,
         # by its key or by the key's label.
-        f'  "location": "{home}/repository-stores/{store_key}/repository.git",\n'
-        f'    "location": "{home}/repository-stores/<STORE_KEY-A>/repository.git",\n'
+        f'  "location": "{home}/repos/{store_key}/repository.git",\n'
+        f'    "location": "{home}/repos/<STORE_KEY-A>/repository.git",\n'
     )
     assert label_home(allowed, home) == allowed.replace(str(home), HOME_LABEL)
     for leaked in (
-        f"cloning {url} into {home}/repository-stores/abc/repository.git\n",
+        f"cloning {url} into {home}/repos/abc/repository.git\n",
         f"cloning {url} into {home}/staging/acq-0123456789ab\n",
-        f"using the clone of {url} cached in {home}/repository-stores/abc, fetched 1 day ago\n",
+        f"using the clone of {url} cached in {home}/repos/abc, fetched 1 day ago\n",
         f"cloning {url} into {home} and more\n",
         f"note: store at {home}\n",
         f'  "where": "{home}"\n',
         f"Error: could not read {home}\n",
         # Only the location, and only the store's repository.
-        f'  "store": "{home}/repository-stores/{store_key}/repository.git",\n',
-        f'  "location": "{home}/repository-stores/{store_key}",\n',
-        f'  "location": "{home}/sources/local--origin--0123456789ab",\n',
-        f'  "location": "{home}/repository-stores/{store_key}/repository.git/objects",\n',
-        f'  "error": "not found in {home}/repository-stores/{store_key}/repository.git",\n',
+        f'  "store": "{home}/repos/{store_key}/repository.git",\n',
+        f'  "location": "{home}/repos/{store_key}",\n',
+        f'  "location": "{home}/sources/local-origin-01234567890",\n',
+        f'  "location": "{home}/repos/{store_key}/repository.git/objects",\n',
+        f'  "error": "not found in {home}/repos/{store_key}/repository.git",\n',
     ):
         with pytest.raises(AssertionError, match="outside the lines that may name it"):
             label_home(leaked, home)
