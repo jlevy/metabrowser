@@ -5104,6 +5104,13 @@ def _table_source_declarations() -> list[TableSourceDeclaration]:
     return out
 
 
+def _classify_served_file(ref: ContentRef) -> str | None:
+    target = resolve_session_identity(ref.identity)
+    if target is None or not target.is_file():
+        return None
+    return _classify_with_plugins(target, ref.logical_ext)
+
+
 async def _table_content_kind(ref: ContentRef) -> str | None:
     """The kind of the content a table route names, as ``/api/file`` classifies it.
 
@@ -5112,10 +5119,8 @@ async def _table_content_kind(ref: ContentRef) -> str | None:
     is every rule a table source's kind uses.
     """
     if get_source_session().subject.filesystem_root is not None:
-        target = resolve_session_identity(ref.identity)
-        if target is None or not target.is_file():
-            return None
-        return await asyncio.to_thread(_classify_with_plugins, target, ref.logical_ext)
+        # Resolving and statting the file runs off the event loop, with the classifier.
+        return await asyncio.to_thread(_classify_served_file, ref)
     from metabrowser.git.content_routes import plugin_kind_for_git_wire
 
     return plugin_kind_for_git_wire(ref.identity) or classify_by_ext(ref.logical_ext)

@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, cast, get_args
 
 from metabrowser.content_errors import ContentReadError
+from metabrowser.settings import SLOW_OPERATION_LOG_SECONDS
 from metabrowser.source import (
     ContentRef,
     ContentWindow,
@@ -68,6 +69,13 @@ from metabrowser.source import (
 TABLE_PAGE_ROWS_DEFAULT = 100
 TABLE_PAGE_ROWS_MAX = 1000
 
+# Cells in one page: a page of wide rows carries fewer of them (`page_row_limit`), and
+# the envelope's `limit` says how many it allowed. A page's cost follows its cells, not
+# its rows: 1,000 rows of 12 cells, each cell cut at the preview bound, is this many
+# cells, and it encoded in 24 to 30 ms as 5.3 MB of JSON, the largest page the row
+# bounds above admit at that width; a wider table pays the same per page.
+TABLE_PAGE_CELLS_MAX = 12_000
+
 # Characters of one text cell a page carries; a longer value is a `{text, length}`
 # envelope cut here, and the record shows more. A page of 1,000 rows whose 12 cells all
 # passed this bound encoded in 24 to 30 ms as 5.3 MB of JSON, so the bound keeps the
@@ -85,14 +93,13 @@ TABLE_RECORD_VALUE_BYTES = 64 * 1024
 # encode longer is named by position instead, valid for one generation.
 TABLE_TOKEN_MAX_CHARS = 1024
 
-# Wall-clock budget for a scan in one request. A filter or a search over the largest
-# file the delimited parse cap admits (about 150,000 rows of 12 columns) examined every
-# row in 0.10 s, so the budget stops only a source many times larger or slower, which
-# then answers `complete: false` with the rows it examined instead of holding a
-# threadpool worker. It counts from when the route accepts the request, so a parse
-# spends from it too, and it equals the server's default slow-request threshold
-# (`SLOW_OPERATION_LOG_SECONDS`), the latency the server already reports as too long.
-TABLE_REQUEST_DEADLINE_SECONDS = 2.0
+# Wall-clock budget for the work of one request: a scan stops at it and answers
+# `complete: false` with the rows it examined, and a sort whose index is not built yet
+# is refused past it (`sort_budget`), instead of holding a threadpool worker. It counts
+# from when the route accepts the request, so a parse spends from it too. It is the
+# server's slow-request threshold, the latency the server already reports as too long;
+# what a delimited file can cost within it is measured beside that source's bounds.
+TABLE_REQUEST_DEADLINE_SECONDS = SLOW_OPERATION_LOG_SECONDS
 
 # Fields a hover card shows besides its label: a summary, not the record.
 TABLE_CARD_MAX_FIELDS = 6
@@ -116,12 +123,16 @@ VALUELESS_OPS: frozenset[FilterOp] = frozenset({"null", "notnull"})
 Order = Literal["asc", "desc"]
 
 # Why a page is not complete, or why it has no rows.
-#  - `budget`: a filter or search ran out of `TABLE_REQUEST_DEADLINE_SECONDS`; the rows
-#    it found come back in key order with the number it examined.
+#  - `budget`: a filter or search on a query with no `sort` ran out of
+#    `TABLE_REQUEST_DEADLINE_SECONDS`; the rows it found come back in the query's order
+#    with the number it examined, and `next_after` continues among them.
+#  - `sort_budget`: the query's sort could not be done within the budget, because the
+#    scan before it or the sort itself ran out. A sort cannot be returned in part, so
+#    the page has no rows and `sort_refused` names the field.
 #  - `source_truncated`: the source read only part of its content (a delimited file past
-#    its parse cap), so a count, sort, or filter covers only that part.
+#    one of its parse bounds), so a count, sort, or filter covers only that part.
 #  - `cursor_expired`: a positional cursor was minted under an earlier generation.
-PageReason = Literal["budget", "source_truncated", "cursor_expired"]
+PageReason = Literal["budget", "sort_budget", "source_truncated", "cursor_expired"]
 
 # A JSON value: a scalar cell, or one of the envelopes the cell helpers below build.
 Cell = Any
@@ -296,7 +307,12 @@ class TablePage:
     `count` is exact when `count_complete`, and otherwise a lower bound; `estimate` is a
     cheap approximate total a source may send beside or instead of it. `skipped` counts
     values a filter or search could not examine, and `examined` the rows a scan reached
-    before its budget ran out. `searched` names the fields a search looked in."""
+    before its budget ran out. `searched` names the fields a search looked in.
+
+    Rows always come in the order the query asked for: a page whose sort could not be
+    done has none (`reason == "sort_budget"`, with `sort_refused` naming the field).
+    `limit` is the number of rows the page allowed, which is less than the query's when
+    `TABLE_PAGE_ROWS_MAX` or `TABLE_PAGE_CELLS_MAX` bound it."""
 
     rows: tuple[TableRow, ...]
     columns: tuple[str, ...]
@@ -311,6 +327,8 @@ class TablePage:
     examined: int | None = None
     searched: tuple[str, ...] | None = None
     reason: PageReason | None = None
+    sort_refused: str | None = None
+    limit: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -515,6 +533,12 @@ def stored_cell(value: Cell, stored: FieldType) -> Cell:
 #   `@<n>.<generation>`    a cursor past `TABLE_TOKEN_MAX_CHARS`, valid for one generation
 
 
+# Digits of a position or a count in a token or a `limit`: a 64-bit integer's. A longer
+# digit string names nothing a source holds, and is refused before `int()`, whose cost
+# grows with the digits and which refuses past the interpreter's digit limit.
+_MAX_DIGITS = 18
+
+
 def _pack(prefix: str, values: Sequence[Any]) -> str | None:
     payload = json.dumps(list(values), separators=(",", ":"), ensure_ascii=False, allow_nan=False)
     token = prefix + base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
@@ -568,7 +592,12 @@ def parse_position_key(key: str) -> int | None:
     if not key.startswith("@"):
         return None
     digits = key[1:]
-    if not digits.isdigit() or not digits.isascii() or (len(digits) > 1 and digits[0] == "0"):
+    if (
+        not digits.isdigit()
+        or not digits.isascii()
+        or len(digits) > _MAX_DIGITS
+        or (len(digits) > 1 and digits[0] == "0")
+    ):
         raise RecordNotFoundError(f"{key!r} names no row", key=key)
     position = int(digits)
     if position < 1:
@@ -589,7 +618,13 @@ def parse_positional_cursor(after: str) -> tuple[int, str] | None:
     if not after.startswith("@"):
         return None
     served, dot, generation = after[1:].partition(".")
-    if not dot or not served.isdigit() or not served.isascii() or not _GENERATION.match(generation):
+    if (
+        not dot
+        or not served.isdigit()
+        or not served.isascii()
+        or len(served) > _MAX_DIGITS
+        or not _GENERATION.match(generation)
+    ):
         raise TableQueryError("after is not a token this server minted", param="after")
     return int(served), generation
 
@@ -605,10 +640,16 @@ _ROUTE_PARAMS = frozenset({"path", "key", "generation"})
 def parse_table_query(items: Iterable[tuple[str, str]]) -> TableQuery:
     """Parse the rows route's query: `sort`, `order`, `q`, `f.<field>=<op>:<value>`,
     `ref=<table>:<key>`, `cols`, `after`, and `limit`. Field names are checked against
-    the schema by :func:`check_table_query`."""
+    the schema by :func:`check_table_query`.
+
+    `cols` names one field per parameter and repeats, in page order (`cols=a&cols=b`),
+    since a field name may hold any character, a comma among them. Every other
+    parameter is given at most once. `ref` splits at its last colon, since a key token
+    has none and a table name may."""
 
     single: dict[str, str] = {}
     filters: list[Filter] = []
+    cols_given: list[str] = []
     for name, value in items:
         if name.startswith("f."):
             filters.append(_parse_filter(name[2:], value))
@@ -617,33 +658,26 @@ def parse_table_query(items: Iterable[tuple[str, str]]) -> TableQuery:
             continue
         if name not in _QUERY_PARAMS:
             raise TableQueryError(f"unknown query parameter {name!r}", param=name)
+        if name == "cols":
+            if not value:
+                raise TableQueryError("cols names no field", param="cols")
+            cols_given.append(value)
+            continue
         if name in single:
             raise TableQueryError(f"{name} is given more than once", param=name)
         single[name] = value
     order = single.get("order", "asc") or "asc"
     if order not in ("asc", "desc"):
         raise TableQueryError("order must be asc or desc", param="order")
-    limit = TABLE_PAGE_ROWS_DEFAULT
-    raw_limit = single.get("limit", "")
-    if raw_limit:
-        if not raw_limit.isdigit() or not raw_limit.isascii():
-            raise TableQueryError("limit must be a positive integer", param="limit")
-        limit = int(raw_limit)
-        if limit < 1:
-            raise TableQueryError("limit must be a positive integer", param="limit")
-        limit = min(limit, TABLE_PAGE_ROWS_MAX)
+    limit = _parse_limit(single.get("limit", ""))
     ref: RefFilter | None = None
     raw_ref = single.get("ref", "")
     if raw_ref:
-        table, colon, key = raw_ref.partition(":")
+        table, colon, key = raw_ref.rpartition(":")
         if not colon or not key:
             raise TableQueryError("ref must be <table>:<key>", param="ref")
         ref = RefFilter(table=table, key=key)
-    cols: tuple[str, ...] | None = None
-    if "cols" in single:
-        cols = tuple(name for name in single["cols"].split(",") if name)
-        if not cols:
-            raise TableQueryError("cols names no field", param="cols")
+    cols = tuple(cols_given) if cols_given else None
     return TableQuery(
         sort=single.get("sort") or None,
         order=order,
@@ -654,6 +688,26 @@ def parse_table_query(items: Iterable[tuple[str, str]]) -> TableQuery:
         after=single.get("after") or None,
         limit=limit,
     )
+
+
+def _parse_limit(raw: str) -> int:
+    """A `limit`: a positive integer, clamped to `TABLE_PAGE_ROWS_MAX`."""
+
+    if not raw:
+        return TABLE_PAGE_ROWS_DEFAULT
+    digits = raw.lstrip("0")
+    if not raw.isdigit() or not raw.isascii() or not digits:
+        raise TableQueryError("limit must be a positive integer", param="limit")
+    if len(digits) > _MAX_DIGITS:
+        return TABLE_PAGE_ROWS_MAX
+    return min(int(digits), TABLE_PAGE_ROWS_MAX)
+
+
+def page_row_limit(limit: int, cells_per_row: int) -> int:
+    """The rows a page may carry: the query's `limit`, fewer when rows of
+    *cells_per_row* cells would pass `TABLE_PAGE_CELLS_MAX`, and always at least one."""
+
+    return max(1, min(limit, TABLE_PAGE_CELLS_MAX // max(1, cells_per_row)))
 
 
 def _parse_filter(field_name: str, raw: str) -> Filter:
@@ -819,6 +873,8 @@ def page_wire(path: str, table: str, page: TablePage) -> dict[str, Any]:
         "skipped": page.skipped,
         "examined": page.examined,
         "searched": list(page.searched) if page.searched is not None else None,
+        "sort_refused": page.sort_refused,
+        "limit": page.limit,
     }
 
 
@@ -860,7 +916,10 @@ def card_wire(path: str, table: str, card: TableCard) -> dict[str, Any]:
 
 
 def error_wire(path: str, exc: TableSourceError) -> dict[str, Any]:
-    return {"type": "table_error", "path": path, "code": exc.code, "error": str(exc), **exc.details}
+    """A refusal: its details, under the envelope's own keys, which a detail of the same
+    name cannot replace."""
+
+    return {**exc.details, "type": "table_error", "path": path, "code": exc.code, "error": str(exc)}
 
 
 def table_address(path: str, table: str) -> str:
@@ -958,7 +1017,8 @@ async def open_table_source(path: str) -> OpenedTableSource:
     handle = TableHandle(
         ref=ref,
         name=_display_name(ref),
-        local_path=_local_path(ref),
+        # Resolving a real path stats the filesystem, so it runs off the event loop.
+        local_path=await asyncio.to_thread(_local_path, ref),
         loop=asyncio.get_running_loop(),
     )
     return OpenedTableSource(ref=ref, kind=kind or "", source=adapter(handle), table="")
@@ -992,6 +1052,7 @@ __all__ = [
     "TABLE_CARD_MAX_FIELDS",
     "TABLE_CELL_PREVIEW_CHARS",
     "TABLE_GROUPS",
+    "TABLE_PAGE_CELLS_MAX",
     "TABLE_PAGE_ROWS_DEFAULT",
     "TABLE_PAGE_ROWS_MAX",
     "TABLE_RECORD_VALUE_BYTES",
@@ -1043,6 +1104,7 @@ __all__ = [
     "integer_cell",
     "open_table_source",
     "page_columns",
+    "page_row_limit",
     "page_wire",
     "parse_position_key",
     "parse_positional_cursor",
