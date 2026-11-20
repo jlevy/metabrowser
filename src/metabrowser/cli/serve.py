@@ -138,6 +138,11 @@ def _stop_now(sig: int, _frame: FrameType | None) -> NoReturn:
     lands here exits with the status a shell reports for it.
     """
     _write_stopping_notice()
+    # The event log says what was still running when the process stopped. A handler must
+    # not import, so only a log this process opened is closed.
+    event_log = sys.modules.get("metabrowser.event_log")
+    if event_log is not None:
+        event_log.close_from_signal_handler()
     stop_process_groups()
     # The Markdown child leads its own process group too, so the terminal's signal does
     # not reach it. Only a process that imported its module can have started one, and a
@@ -431,6 +436,17 @@ def serve_until_interrupted(
             daemon=True,
         ).start()
 
+    # The event log (metabrowser.event_log) is serve mode's: a one-shot command writes
+    # none. Opened once the server is about to listen, closed when it stops; a log that
+    # cannot be opened is a warning, never a server that does not start.
+    from metabrowser import __version__, event_log
+
+    event_log.open_log(
+        served=served,
+        version=__version__,
+        served_directory=Path(served) if mode == "folder" else None,
+    )
+
     # Browser tabs hold open SSE streams, so cancel in-flight local requests rather
     # than waiting indefinitely for graceful shutdown after Ctrl-C.
     uvicorn_logger = logging.getLogger("uvicorn.error")
@@ -462,3 +478,4 @@ def serve_until_interrupted(
         uvicorn_logger.removeFilter(_shutdown_noise_filter)
         uvicorn_logger.removeFilter(_subject_open_failure_filter)
         uvicorn_logger.setLevel(original_uvicorn_log_level)
+        event_log.close_log()

@@ -10,9 +10,11 @@ A folder’s page is headed by the folder’s name, and its main heading’s eye
 with the folder’s path.
 A page served from a mirror showed the full commit ID in both places, and said nowhere
 that its files came out of the cache.
-It is now headed by the repository’s name, as a checkout of it would be called, with the
-ref and the short commit beside it and a control that copies the full commit, and its
-main heading’s eyebrow ends with a note that says where the mirror is kept.
+It is now headed by the repository’s name alone, as a checkout of it would be called,
+with a control after it that copies the full commit, and its main heading’s eyebrow ends
+with a note that says where the mirror is kept.
+The ref and the short commit no longer follow the name: the ref selector in the Files
+toolbar names the ref, and the heading’s tooltip names the full commit.
 
 The mirror is a bare Git repository, and each page is read from a Git object at the
 pinned commit, so no folder holds these files.
@@ -81,7 +83,7 @@ $ node tests/dom/mirror-heading-session.js
     "mainHeading": {
       "root": "↑ ~/wrk squares",
       "file": {
-        "html": "<button type=\"button\" class=\"btn parent-nav-btn parent-nav-btn-icon-only folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"docs\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>~/wrk/squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"docs\" data-mb-owner data-tip-text=\"docs\">docs</button></span>",
+        "html": "<button type=\"button\" class=\"icon-btn folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"docs\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>~/wrk/squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"docs\" data-mb-owner data-tip-text=\"docs\">docs</button></span>",
         "text": "↑ ~/wrk/squares / docs",
         "title": "guide.md"
       },
@@ -144,8 +146,8 @@ $ node tests/dom/mirror-heading-session.js
       "writes": []
     },
     "navigationHeading": {
-      "html": "<span class=\"path\"><span class=\"path-base\">squares</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision git-commit-sha\">42382ea2303b</span>",
-      "text": "squares topic 42382ea2303b",
+      "html": "<span class=\"path\"><span class=\"path-base\">squares</span></span>",
+      "text": "squares",
       "commitCopy": {
         "attributes": {
           "type": "button",
@@ -163,10 +165,10 @@ $ node tests/dom/mirror-heading-session.js
       }
     },
     "mainHeading": {
-      "root": "↑ mirror in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git squares",
+      "root": "↑ mirror in ~/.cache/metabrowser/repository-stores/store-key-1 squares",
       "file": {
-        "html": "<button type=\"button\" class=\"btn parent-nav-btn parent-nav-btn-icon-only folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git</span></span></span>",
-        "text": "↑ squares / docs mirror in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git",
+        "html": "<button type=\"button\" class=\"icon-btn folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/.cache/metabrowser/repository-stores/store-key-1</span></span></span>",
+        "text": "↑ squares / docs mirror in ~/.cache/metabrowser/repository-stores/store-key-1",
         "title": "guide.md"
       },
       "fileHeaders": {
@@ -206,8 +208,8 @@ $ node tests/dom/mirror-heading-session.js
       "writes": []
     },
     "navigationHeading": {
-      "html": "<span class=\"path\"><span class=\"path-base\">a&lt;b&gt;&amp;�x</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision git-commit-sha\">42382ea2303b</span>",
-      "text": "a<b>&�x topic 42382ea2303b",
+      "html": "<span class=\"path\"><span class=\"path-base\">a&lt;b&gt;&amp;�x</span></span>",
+      "text": "a<b>&�x",
       "commitCopy": {
         "attributes": {
           "type": "button",
@@ -225,10 +227,10 @@ $ node tests/dom/mirror-heading-session.js
       }
     },
     "mainHeading": {
-      "root": "↑ mirror in ~/odd\"<&>home/repository-stores/store-key-2/repository.git a<b>&�x",
+      "root": "↑ mirror in ~/odd\"<&>home/repository-stores/store-key-2 a<b>&�x",
       "file": {
-        "html": "<button type=\"button\" class=\"btn parent-nav-btn parent-nav-btn-icon-only folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>a&lt;b&gt;&amp;�x</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/odd&quot;&lt;&amp;&gt;home/repository-stores/store-key-2/repository.git</span></span></span>",
-        "text": "↑ a<b>&�x / docs mirror in ~/odd\"<&>home/repository-stores/store-key-2/repository.git",
+        "html": "<button type=\"button\" class=\"icon-btn folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>a&lt;b&gt;&amp;�x</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/odd&quot;&lt;&amp;&gt;home/repository-stores/store-key-2</span></span></span>",
+        "text": "↑ a<b>&�x / docs mirror in ~/odd\"<&>home/repository-stores/store-key-2",
         "title": "guide.md"
       },
       "fileHeaders": {

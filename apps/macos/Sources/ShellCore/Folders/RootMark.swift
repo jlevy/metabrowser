@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// The mark that names a kind of root in the app's menus that list roots: the title's
@@ -66,5 +67,35 @@ public nonisolated enum RootMark: String, CaseIterable, Sendable {
         let open = #"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" "#
             + #"stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">"#
         return open + paths.map { #"<path d="\#($0)"/>"# }.joined() + "</svg>"
+    }
+
+    /// Where a menu item with a subtitle draws its mark: on the title's line, as an item
+    /// with no subtitle does, so the subtitle reads as the next line after the mark.
+    ///
+    /// AppKit centers an item's image on the whole item, title and subtitle together,
+    /// which leaves a mark as tall as the title between the two lines. So the app draws
+    /// the mark at the top of an image `2 × rise` taller than the mark: centered on the
+    /// item, that image puts the mark's middle `rise` above the item's middle, on the
+    /// title's line, and the title and subtitle still start after it, one above the other.
+    public nonisolated struct TitleLineLayout: Equatable, Sendable {
+        /// How far the middle of a subtitled item's title line is above the item's middle:
+        /// 7 points, measured on macOS 26.5 by drawing a menu of a one-line item and two
+        /// subtitled ones into a bitmap while it was open. Raised 7 points, the mark's ink
+        /// sits on the title's ink exactly as on the one-line item, its middle half a point
+        /// above the middle of the title's ink on both; 6 points leaves it a point low.
+        /// The image is then 30 points tall, the tallest that leaves a subtitled item as
+        /// tall as a 16-point image does: a 31-point one (7.5 points up) makes it taller.
+        public static let rise: CGFloat = 7
+
+        /// The image's size.
+        public let size: CGSize
+        /// The mark's frame in the image, y up: at its top, full width.
+        public let mark: CGRect
+
+        /// The layout for a mark `mark` in size, raised `rise`.
+        public init(mark: CGSize, rise: CGFloat = Self.rise) {
+            size = CGSize(width: mark.width, height: mark.height + 2 * rise)
+            self.mark = CGRect(origin: CGPoint(x: 0, y: 2 * rise), size: mark)
+        }
     }
 }

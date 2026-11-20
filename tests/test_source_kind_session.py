@@ -61,7 +61,7 @@ _INDEX_POLLS = 1200
 
 # A pin's shell is never trusted, so each of its inline scripts carries the page's nonce.
 _SOURCE_KIND_BLOCK = re.compile(
-    r'<script(?: nonce="[^"]*")?>(window\.METABROWSER_(?:SOURCE_KIND|REPOSITORY_CONTEXT)=[^<]*;)'
+    r'<script(?: nonce="[^"]*")?>(window\.METABROWSER_(?:SOURCE_KIND|REPOSITORY_CONTEXT|FILE_AGES)=[^<]*;)'
     r"</script>"
 )
 # The navigation heading as served: a folder's name, or a pin's ref and short commit.
@@ -131,7 +131,8 @@ async def _observe(client: AsyncClient) -> dict[str, Any]:
     shell = await client.get("/view/")
     assert shell.status_code == 200
     block = _SOURCE_KIND_BLOCK.findall(shell.text)
-    assert len(block) == 2, block
+    # The kind and the repository context, and a pin's one more: whether its Git dates files.
+    assert len(block) == (3 if "git_revision" in block[0] else 2), block
     heading = _HEADING.findall(shell.text)
     assert len(heading) == 1, heading
     tree = await client.get("/api/tree?depth=2")
@@ -186,12 +187,20 @@ def test_fixture_is_what_the_server_serves_for_each_source_kind(tmp_path: Path) 
 
 def test_source_kind_session_agrees_with_the_served_kind() -> None:
     observed = run_session("source-kind-session.js")
-    assert [kind["sourceKind"] for kind in observed] == ["filesystem", "git_revision"]
-    folder, pin = observed
+    assert [kind["sourceKind"] for kind in observed] == [
+        "filesystem",
+        "git_revision",
+        "git_revision",
+    ]
+    folder, pin, pin_with_ages = observed
     assert folder["gates"]["inventoryEvents"]["eventSourcesOpened"] == 1
     assert pin["gates"]["inventoryEvents"]["eventSourcesOpened"] == 0
     assert "recency" in folder["gates"]["navFilterControls"]
     assert "recency" not in pin["gates"]["navFilterControls"]
+    # A pin whose Git dates its files offers what has a time to read.
+    assert "recency" in pin_with_ages["gates"]["navFilterControls"]
+    assert pin_with_ages["gates"]["groupByOptions"] == ["age", "type"]
+    assert pin["gates"]["groupByOptions"] == ["type"]
     assert sorted(row["location"] for row in folder["rows"]) == sorted(
         row["location"] for row in pin["rows"]
     )
@@ -199,3 +208,10 @@ def test_source_kind_session_agrees_with_the_served_kind() -> None:
     assert pin["heading"]["afterTreeLoad"] == pin["heading"]["served"]
     assert '<span class="path-base">topic</span>' in pin["heading"]["served"]
     assert 'class="header-revision git-commit-sha"' in pin["heading"]["served"]
+
+
+@posix_only
+def test_a_pins_shell_says_whether_its_git_dates_files(tmp_path: Path) -> None:
+    """The suite starts on a pretend Git 2.50.1, so a pin's page says it has no file ages."""
+
+    assert "window.METABROWSER_FILE_AGES=false;" in _served(tmp_path)["git_revision"]["shell"]

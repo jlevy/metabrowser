@@ -138,7 +138,7 @@ CACHEDIR_TAG_CONTENT: Final = (
     b"# This file is a cache directory tag created by Metabrowser.\n"
     b"# For information about cache directory tags, see https://bford.info/cachedir/\n"
 )
-# The owner-only directories of the f01 layout, parents first. Lock files live under
+# The owner-only directories of the f02 layout, parents first. Lock files live under
 # locks/ so no publication or sweep ever renames one.
 F01_DIRECTORIES: Final = (
     "",
@@ -795,6 +795,15 @@ def configuration_directory(environ: Mapping[str, str] | None = None) -> Path:
     return _storage_directory("METABROWSER_CONFIG_DIR", "XDG_CONFIG_HOME", ".config", environ)
 
 
+def state_directory(environ: Mapping[str, str] | None = None) -> Path:
+    """Resolve METABROWSER_STATE_DIR, XDG_STATE_HOME/metabrowser, or ~/.local/state/metabrowser.
+
+    The XDG directory for state that outlives a restart but is not configuration: the
+    event log (:mod:`metabrowser.event_log`) lives here.
+    """
+    return _storage_directory("METABROWSER_STATE_DIR", "XDG_STATE_HOME", ".local/state", environ)
+
+
 @_without_file_names
 def validate_storage_separation(cache: Path) -> None:
     """Refuse overlapping roots so discarding cache cannot discard configuration."""
@@ -821,7 +830,7 @@ def ensure_storage_root(directory: Path) -> None:
 
 @_without_file_names
 def ensure_home(home: Path) -> Path:
-    """Create or verify the home and its owner-only ``f01`` skeleton; return the cache root.
+    """Create or verify the home and its owner-only ``f02`` skeleton; return the cache root.
 
     Every directory in :data:`F01_DIRECTORIES` is created ``0700`` or verified, and
     ``CACHEDIR.TAG`` is written atomically unless a file beginning with the cache

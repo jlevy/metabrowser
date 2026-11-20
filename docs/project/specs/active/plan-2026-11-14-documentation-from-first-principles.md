@@ -74,7 +74,7 @@ The README states the shipped part and links the plan for the rest.
 
 | Pillar | Ships today | Evidence | Planned |
 | --- | --- | --- | --- |
-| Agents show you content | The `metabrowser` agent skill. An agent can serve a path or a pull-request URL and hand you the page. `--api`, `--show`, and `--walk` give an agent the same data the UI draws. JSONL timelines for coding-agent logs. | `skills/metabrowser/SKILL.md`; `devtools/check_parity.py`; the `agent_log` built-in plugin | `metab --present`: one front door that shows content in the running app or browser ([native macOS app plan](plan-2026-11-10-native-macos-app.md), Phase 3) |
+| Agents show you content | The `metabrowser` agent skill. An agent can serve a path or a pull-request URL and hand you the page. `--api`, `--show`, and `--walk` give an agent the same data the UI draws. JSONL timelines for coding-agent logs. | `skills/metabrowser/SKILL.md`; `devtools/check_parity.py`; the `agents` built-in plugin | `metab --present`: one front door that shows content in the running app or browser ([native macOS app plan](plan-2026-11-10-native-macos-app.md), Phase 3) |
 | Local, in your browser | A server bound to `127.0.0.1` that any browser opens; remote hosts over an SSH tunnel; cached repositories readable offline | `SECURITY.md`; `cli/remote.py` | None |
 | A native Mac app for convenience | An alpha AppKit shell over `metab`, built from source: a window per folder, tabs, recent folders, and session restore | `apps/macos/` | A signed, notarized download |
 | Any file type, through plugins | Manifest-based plugins with browser views and optional Python data hooks; every built-in view is a plugin | `docs/plugins.md`; `PLUGIN_SDK_VERSION` in `plugin_loader/manifest.py` | Editing ([trusted-local editing plan](plan-2026-07-16-trusted-local-file-editing.md)); more formats as plugins |
@@ -275,15 +275,17 @@ switcher shows, centered above a centered title.
   `align="center"` tags and empty `diagnostics` and `sanitizer_diagnostics`, so the page
   has no Diagnostics disclosure.
   With active content off, on a served mirror or a folder served with `--untrusted`,
-  Metabrowser’s inert Markdown keeps only in-tree images and keeps `align` only on table
-  cells, so it shows the icon left-aligned and without its `width`, still with no
-  diagnostics. One more cost is accepted for the centered block on GitHub: the
+  Metabrowser’s inert Markdown keeps only in-tree images, still with no diagnostics.
+  Until mb-5xq7 (2026-11-19) it kept `align` only on table cells and dropped `width`, so
+  it showed the icon left-aligned at its file’s size; since then the inert allowlist
+  keeps the `align` and `width` github.com keeps, so there too the icon is centered at
+  192 pixels. One more cost is accepted for the centered block on GitHub: the
   rendered-Markdown diff refuses raw HTML, so a README change has no rendered diff
   (measured the same day, a one-word README change projects as `unsupported`, and the
-  same change under a Markdown title as `ready`). The inert profile’s `align` and the
-  projection are tracked as mb-4cwy. PyPI, which publishes the README as the package
-  description, shows the alt text instead, as it does for today’s screenshot (see
-  Decisions).
+  same change under a Markdown title as `ready`). The projection is tracked as mb-4cwy,
+  which also tracked the inert profile’s `align` until mb-5xq7 fixed it.
+  PyPI, which publishes the README as the package description, shows the alt text
+  instead, as it does for today’s screenshot (see Decisions).
 
 **Outline:**
 

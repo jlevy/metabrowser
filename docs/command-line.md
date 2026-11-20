@@ -37,8 +37,13 @@ Two rules decide between a path and a source, in this order:
    directory. To serve a folder with such a name, write `./https://host/x`.
 2. Any other argument that names an existing path is that path.
    A folder called `file:notes` or `me@host:dir` is served, and a symbolic link is
-   followed. Only an argument that names nothing on disk is read as an scp-like address,
-   such as `git@github.com:owner/repo`, or refused as malformed.
+   followed. Only an argument that names nothing on disk is read as anything else: an
+   scp-like address, such as `git@github.com:owner/repo`; a GitHub URL without its
+   `https://`, such as `github.com/owner/repo`, which opens as the full URL; or a
+   malformed source, which is refused.
+   `owner/repo` alone is a path.
+   So `github.com/owner/repo` is a folder of that name when one exists; write the
+   `https://` to open the repository whatever is on disk.
 
 A path that exists but cannot be read is a usage error.
 An empty argument is refused; write `.` for the current directory.
@@ -75,6 +80,7 @@ selected. Opening a path inside a Git repository at the repository’s root is p
 | `--plugins`, `--plugin NAME`, `--doctor` | List, show, or validate plugins |
 | `--present` | Open a folder, a file, or a GitHub URL in the [macOS app](macos-app.md) or a browser |
 | `--recent`, `--recent-add`, `--recent-forget`, `--recent-clear` | List or change the [recent targets](#recent-targets) |
+| `--event-log` | Name Metabrowser’s own [event log](realtime-debugging.md#browsing-the-log) as `ROOT`, for serving or any mode that takes a folder |
 
 The modes read, with three exceptions: a Git source is cloned into the cache by
 whichever mode opens it first; `--api` writes when the route it names does, as a refresh
@@ -163,10 +169,12 @@ A pinned source always runs under the untrusted profile: `--untrusted` is implie
 `METAB_*` enables are ignored, `--allow-edits` is an error, and HTML files show only
 their source.
 
-The mirror refreshes from its origin in the background, and a refresh never moves the
-page you are reading; the
-[history guide](browsing-history.md#branches-and-tags-of-a-repository-url) shows how to
-switch branches and take a newer commit.
+The mirror refreshes from its origin in the background.
+A served branch or tag follows the origin: when a refresh moves it, the server serves
+its new commit, and an open page follows it there.
+A commit the URL names by its ID stays put.
+The [history guide](browsing-history.md#branches-and-tags-of-a-repository-url) shows how
+to switch branches.
 [Mirror acquisition and refresh](project/architecture/arch-mirror-acquisition-and-refresh.md)
 covers the refresh cadence, the `/api/source/…` routes, and what a clone prints.
 
@@ -200,6 +208,25 @@ metab ~/src/repo --ref v2.0 --api '/api/tree?depth=1'
 While serving, the page’s button switches to any other branch or tag and back to the
 working tree; the
 [history guide](browsing-history.md#branches-and-tags-of-a-local-checkout) shows it.
+
+### Metabrowser’s Own Event Log
+
+```shell
+metab --event-log
+metab --event-log --api '/api/plugin/event-log/errors?path=events-20261119T210201Z-p4242-000.jsonl'
+```
+
+A served `metab` writes a structured log of the requests it answered and the work it
+did, and `--event-log` opens it: `ROOT` is the directory it is written to, under
+`METABROWSER_STATE_DIR`, else `$XDG_STATE_HOME/metabrowser`, else
+`~/.local/state/metabrowser`, and serving selects its newest segment, which opens as
+Timeline, Latency, By kind, and Errors.
+`--path` selects another segment, and every mode that takes a folder (`--api`, `--show`,
+`--walk`, `--check-api`) reads the log as one.
+The flag names the folder, so it takes no `ROOT`, and a state directory with no log yet
+says where one is written.
+The server that shows the log writes none of its own, which its Details and `--doctor`
+say. [Browsing the Log](realtime-debugging.md#browsing-the-log) describes the views.
 
 ### GitHub URLs
 
@@ -508,9 +535,14 @@ sentence, the details it read, and the step that fixes it:
   oldest that app runs, and an older one is a warning whose step upgrades it with the
   tool that installed it.
   Run from the app’s Check Setup…, it compares with that app instead.
-- **`git`:** the `git` on `PATH`, against the floor for cloning and fetching and the one
-  for showing a branch or tag of a partial clone.
-  Below either is a warning: browsing a folder needs no Git.
+- **`git`:** the `git` on `PATH`: where it is, its version, and each thing that version
+  does. It is checked against the floor for cloning and fetching, the one for showing a
+  branch or tag of a partial clone, and the one for file ages on a Git revision
+  (`git last-modified`, Git 2.53), and a `file ages` line says whether they are
+  available. Below any is a warning that names what is missing, with the step that
+  upgrades Git: browsing a folder needs no Git, and a Git revision without file ages
+  shows no times. Run from the app’s Check Setup…, it reports the Git the app’s servers
+  use.
 - **`config`:** the configuration directory: its override is valid, it is private or can
   be created, and its `config.yml` is one this release reads.
 - **`cache`:** the cache directory: its override is valid, it is private and writable or
@@ -518,6 +550,12 @@ sentence, the details it read, and the step that fixes it:
   free. Less than the largest first clone `metab` admits can take is a warning:
   `low_free_space_bytes` in `cli/doctor.py`, which follows
   `METABROWSER_MAX_FIRST_CLONE_KB`.
+- **`event_log`:** whether a server writes its event log: where, and from which variable
+  the directory comes.
+  `METABROWSER_EVENT_LOG` turning it off is a warning, since no latency or failure is
+  then recorded, and so is a state directory `metab` cannot create.
+  A server whose folder is the events directory or inside it writes none, whatever the
+  environment says, and its Details name that reason.
 
 The macOS app runs its servers without `METABROWSER_CONFIG_DIR`,
 `METABROWSER_CACHE_DIR`, or the `XDG_` variables, so when `--present` would open the
@@ -929,8 +967,13 @@ Metabrowser keeps the keys and comments you add, and refuses keys that look like
 credentials. If the file cannot be parsed, Metabrowser names it and exits without
 replacing it: move it aside and start again.
 A newer format asks you to upgrade Metabrowser.
-Deleting the cache directory, with no server running, removes every mirror and record;
-the next run clones again.
+A cache an older release wrote is migrated the first time a repository in it is opened:
+each mirror’s directory is renamed to a readable name, and nothing is cloned again.
+That first open writes to the cache, so it needs a cache you can write once; a read-only
+copy is not migrated.
+Stop running `metab` servers first: one of an older release cannot read its mirrors once
+they are renamed. Deleting the cache directory, with no server running, removes every
+mirror and record; the next run clones again.
 [The repository cache](project/architecture/arch-repository-cache.md) describes the
 layout, and the repair for each refusal that concerns it.
 

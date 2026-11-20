@@ -278,14 +278,18 @@ def _agent_chart_specs(events: list[LogEvent]) -> list[dict[str, Any]]:
     # Group events into bins by kind. Colors are CSS-var sentinels —
     # app.js resolveColor() substitutes computed values before Chart.js
     # consumes the spec (canvas can't resolve var() itself).
+    # A parsed log's kinds are the adapters' (tool_call, init, ...). Each is drawn in the fill
+    # of the event kind it is, so a kind is one colour in the Log's badge, its filter, and this
+    # chart: the plugin's `--agent-kind-<kind>-fill` tokens (agents/agent-log.css). The same
+    # table is in agents/agent-log.js, and tests/test_agent_kind_palette.py pins the two together.
     kind_colors = {
-        "tool_call": "var(--chart-series-info)",
-        "tool_result": "var(--chart-series-info-soft)",
-        "text": "var(--chart-series-success)",
-        "thinking": "var(--chart-series-thinking)",
-        "result": "var(--chart-series-result)",
-        "init": "var(--chart-series-init)",
-        "system": "var(--chart-series-system)",
+        "tool_call": "var(--agent-kind-tool-call-fill)",
+        "tool_result": "var(--agent-kind-tool-result-fill)",
+        "text": "var(--agent-kind-text-fill)",
+        "thinking": "var(--agent-kind-thinking-fill)",
+        "result": "var(--agent-kind-metering-fill)",
+        "init": "var(--agent-kind-context-fill)",
+        "system": "var(--agent-kind-control-fill)",
     }
     # Collect event kinds present
     kinds_present: list[str] = []
@@ -318,7 +322,7 @@ def _agent_chart_specs(events: list[LogEvent]) -> list[dict[str, Any]]:
     for kind in kinds_present:
         if kind == "raw":
             continue
-        color = kind_colors.get(kind, "var(--chart-series-init)")
+        color = kind_colors.get(kind, "var(--agent-kind-unknown-fill)")
         data = [{"x": bin_times[j], "y": bins_by_kind[kind][j]} for j in range(num_bins)]
         series.append({"label": kind, "color": color, "data": data})
 

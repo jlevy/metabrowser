@@ -7,9 +7,11 @@ env:
 # Golden Test: Source Ref Selector
 
 A page on a served mirror’s pin shows a compact button naming the ref it was rendered
-for. Opening it lists the mirror’s branches or tags from `/api/source/refs`, the default
-branch first and the served ref marked; the filter box asks again after a pause in
-typing, and a newer filter, or closing the list, aborts a request still on its way.
+for.
+Opening it lists every one of the mirror’s branches or tags from `/api/source/refs`,
+the default branch first and then newest first, with the served ref marked; the filter
+box asks again after a pause in typing, and a newer filter, or closing the list, aborts
+a request still on its way.
 Choosing a ref switches the served pin with `POST /api/source/pin`, naming the page’s
 `/view/` address so the answer says where the page goes: the same file when the new
 revision has it, else the root.
@@ -25,6 +27,11 @@ what it would paint, and where it navigated.
 number set bold in brackets, and a commit with no ref; `keys` is where an arrow, Home,
 or End key moves focus in a list of three rows, `-1` being the filter box and `null` a
 key the list leaves alone.
+`windows` is which rows a list draws (`rowWindow`): those in its view and `overscan`
+more on either side, at the top, the middle, and the end of 10,001 rows, so the page
+draws about as many rows for every ref as for a few; before a row is measured, the first
+rows. The row that takes Tab is drawn too wherever the list is scrolled, since focus may
+be on it and Tab from the filter box goes to it.
 
 `checkout` is the same module as a served checkout’s selector: a folder that is a
 repository’s root, recorded in
@@ -98,8 +105,8 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "topic 42382ea2303b 2026-01-01T01:00:00Z [default] [current]",
-          "feature c7ae2a331f54 2026-01-01T02:00:00Z"
+          "topic 42382ea 2026-01-01T01:00:00Z [default] [current]",
+          "feature c7ae2a3 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -117,8 +124,8 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "topic 42382ea2303b 2026-01-01T01:00:00Z [default] [current]",
-          "feature c7ae2a331f54 2026-01-01T02:00:00Z"
+          "topic 42382ea 2026-01-01T01:00:00Z [default] [current]",
+          "feature c7ae2a3 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -138,7 +145,7 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "feature c7ae2a331f54 2026-01-01T02:00:00Z"
+          "feature c7ae2a3 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -160,7 +167,7 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "feature c7ae2a331f54 2026-01-01T02:00:00Z"
+          "feature c7ae2a3 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -199,29 +206,9 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "v1 fcb9d63c3c85 2026-01-01T00:00:00Z"
+          "v1 fcb9d63 2026-01-01T00:00:00Z"
         ],
         "note": "",
-        "error": null
-      }
-    },
-    {
-      "step": "a list longer than a page says it stops short",
-      "requests": [
-        "GET /api/source/refs?kind=branch"
-      ],
-      "filterPending": false,
-      "paint": {
-        "button": "Branch: topic",
-        "open": true,
-        "kind": "branch",
-        "query": "",
-        "loading": false,
-        "switching": false,
-        "rows": [
-          "topic 42382ea2303b 2026-01-01T01:00:00Z [default] [current]"
-        ],
-        "note": "Showing 1 of 2 branches; filter to narrow.",
         "error": null
       }
     },
@@ -278,8 +265,8 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": true,
         "rows": [
-          "topic 42382ea2303b 2026-01-01T01:00:00Z [default] [current]",
-          "feature c7ae2a331f54 2026-01-01T02:00:00Z"
+          "topic 42382ea 2026-01-01T01:00:00Z [default] [current]",
+          "feature c7ae2a3 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -297,8 +284,8 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": true,
         "rows": [
-          "topic 42382ea2303b 2026-01-01T01:00:00Z [default] [current]",
-          "feature c7ae2a331f54 2026-01-01T02:00:00Z"
+          "topic 42382ea 2026-01-01T01:00:00Z [default] [current]",
+          "feature c7ae2a3 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": null
@@ -355,8 +342,8 @@ $ node tests/dom/source-ref-selector-session.js
         "loading": false,
         "switching": false,
         "rows": [
-          "topic 42382ea2303b 2026-01-01T01:00:00Z [default] [current]",
-          "feature c7ae2a331f54 2026-01-01T02:00:00Z"
+          "topic 42382ea 2026-01-01T01:00:00Z [default] [current]",
+          "feature c7ae2a3 2026-01-01T02:00:00Z"
         ],
         "note": "",
         "error": "That ref is no longer in the mirror."
@@ -380,7 +367,7 @@ $ node tests/dom/source-ref-selector-session.js
   "labels": [
     "Tag: v1",
     "Pull request: #7 [bold #7]",
-    "Commit: 42382ea2303b"
+    "Commit: 42382ea"
   ],
   "copies": [
     {
@@ -411,6 +398,21 @@ $ node tests/dom/source-ref-selector-session.js
     "End from 0: 2",
     "Enter from 1: null",
     "ArrowDown from -1 in an empty list: null"
+  ],
+  "overscan": 20,
+  "windows": [
+    "10001 rows 28 px tall, scrolled 0 px in 320 px, Tab on row 0: rows 0 to 32",
+    "10001 rows 28 px tall, scrolled 0 px in 320 px, Tab on row 9000: rows 0 to 32 and row 9000",
+    "10001 rows 28 px tall, scrolled 140010 px in 320 px, Tab on row 0: rows 4980 to 5032 and row 0",
+    "10001 rows 28 px tall, scrolled 140010 px in 320 px, Tab on row 5003: rows 4980 to 5032",
+    "10001 rows 28 px tall, scrolled 279708 px in 320 px, Tab on row 10000: rows 9969 to 10001",
+    "3 rows 28 px tall, scrolled 0 px in 320 px, Tab on row 1: rows 0 to 3",
+    "10001 rows 0 px tall, scrolled 0 px in 0 px, Tab on row 0: rows 0 to 40",
+    "0 rows 28 px tall, scrolled 0 px in 320 px, Tab on row 0: rows 0 to 0",
+    "10001 rows 28 px tall (every 4th 46 px), scrolled 0 px in 320 px, Tab on row 0: rows 0 to 30",
+    "10001 rows 28 px tall (every 4th 46 px), scrolled 115264 px in 320 px, Tab on row 0: rows 3526 to 3577 and row 0",
+    "10001 rows 28 px tall (every 4th 46 px), scrolled 324726 px in 320 px, Tab on row 10000: rows 9971 to 10001",
+    "10001 rows 28 px tall (every 10,001st 46 px), scrolled 0 px in 320 px, Tab on row 0: rows 0 to 31"
   ],
   "checkout": {
     "steps": [
@@ -443,9 +445,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "topic 42382ea2303b 2026-01-01T01:00:00Z [checked out] (local chip)",
-            "feature c7ae2a331f54 2026-01-01T02:00:00Z (local chip)",
-            "local-work 25e0a2a76ab4 2026-02-01T00:00:00Z (local chip)"
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)"
           ],
           "note": "",
           "error": null
@@ -471,8 +473,8 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "origin/feature c7ae2a331f54 2026-01-01T02:00:00Z (remote chip)",
-            "origin/topic 42382ea2303b 2026-01-01T01:00:00Z (remote chip)"
+            "origin/feature c7ae2a3 2026-01-01T02:00:00Z (remote chip)",
+            "origin/topic 42382ea 2026-01-01T01:00:00Z (remote chip)"
           ],
           "note": "",
           "error": null
@@ -498,8 +500,8 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "local-tag c7ae2a331f54 2026-01-01T02:00:00Z (tag chip)",
-            "v1 fcb9d63c3c85 2026-01-01T00:00:00Z (tag chip)"
+            "local-tag c7ae2a3 2026-01-01T02:00:00Z (tag chip)",
+            "v1 fcb9d63 2026-01-01T00:00:00Z (tag chip)"
           ],
           "note": "",
           "error": null
@@ -525,9 +527,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": true,
           "rows": [
-            "topic 42382ea2303b 2026-01-01T01:00:00Z [checked out] (local chip)",
-            "feature c7ae2a331f54 2026-01-01T02:00:00Z (local chip)",
-            "local-work 25e0a2a76ab4 2026-02-01T00:00:00Z (local chip)"
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)"
           ],
           "note": "",
           "error": null
@@ -551,9 +553,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": true,
           "rows": [
-            "topic 42382ea2303b 2026-01-01T01:00:00Z [checked out] (local chip)",
-            "feature c7ae2a331f54 2026-01-01T02:00:00Z (local chip)",
-            "local-work 25e0a2a76ab4 2026-02-01T00:00:00Z (local chip)"
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)"
           ],
           "note": "",
           "error": null
@@ -591,9 +593,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "topic 42382ea2303b 2026-01-01T01:00:00Z [checked out] (local chip)",
-            "feature c7ae2a331f54 2026-01-01T02:00:00Z [current] (local chip)",
-            "local-work 25e0a2a76ab4 2026-02-01T00:00:00Z (local chip)"
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z [current] (local chip)"
           ],
           "note": "",
           "error": null
@@ -619,9 +621,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": true,
           "rows": [
-            "topic 42382ea2303b 2026-01-01T01:00:00Z [checked out] (local chip)",
-            "feature c7ae2a331f54 2026-01-01T02:00:00Z [current] (local chip)",
-            "local-work 25e0a2a76ab4 2026-02-01T00:00:00Z (local chip)"
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z [current] (local chip)"
           ],
           "note": "",
           "error": null
@@ -684,9 +686,9 @@ $ node tests/dom/source-ref-selector-session.js
           "loading": false,
           "switching": false,
           "rows": [
-            "topic 42382ea2303b 2026-01-01T01:00:00Z [checked out] (local chip)",
-            "feature c7ae2a331f54 2026-01-01T02:00:00Z (local chip)",
-            "local-work 25e0a2a76ab4 2026-02-01T00:00:00Z (local chip)"
+            "topic 42382ea 2026-01-01T01:00:00Z [checked out] (local chip)",
+            "local-work 25e0a2a 2026-02-01T00:00:00Z (local chip)",
+            "feature c7ae2a3 2026-01-01T02:00:00Z (local chip)"
           ],
           "note": "",
           "error": "That ref is no longer in the checkout."
@@ -761,7 +763,7 @@ $ node tests/dom/source-ref-selector-session.js
       "Branch: feature (local chip)",
       "Remote branch: origin/feature (remote chip)",
       "Tag: v1 (tag chip)",
-      "Commit: c7ae2a331f54"
+      "Commit: c7ae2a3"
     ],
     "guard": {
       "a checkout's working tree": "working-tree; refused when another is served: true; while its own is: false",

@@ -56,6 +56,7 @@ from metabrowser.cli.present import (
     Presentable,
     resolve_target,
 )
+from metabrowser.commit_ids import SHORT_COMMIT_CHARS
 from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
 from metabrowser.git.progress import GitProgress
 from metabrowser.home import METABROWSER_CACHE_DIR_ENV
@@ -201,6 +202,13 @@ def test_the_link_hosts_are_the_github_reducers() -> None:
 
 def test_the_cache_page_is_the_routes_largest() -> None:
     assert _swift_int("Folders/RepositoryCache.swift", "pageLimit") == MAX_PAGE_LIMIT
+
+
+def test_the_about_box_cuts_a_commit_as_every_line_does() -> None:
+    # The build records the full ID (scripts/common.sh, `source_commit`), and the About
+    # box shows it as the page and the CLI show a commit (docs/design-system.md, "Short
+    # Commit IDs").
+    assert _swift_int("App/AppIdentity.swift", "shortCommitChars") == SHORT_COMMIT_CHARS
 
 
 @pytest.mark.skipif(os.name != "posix", reason="owner-only storage needs POSIX")
@@ -352,10 +360,10 @@ def _elements(markup: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def test_the_link_the_apps_script_takes_is_the_one_the_page_marks() -> None:
-    """``GitHubViewRequests.marker`` selects the View on GitHub button's main link.
+    """``WebViewRequests.marker`` selects the View on GitHub button's main link.
 
     The app's user script takes a plain click on the element its selector matches and
-    opens the popover; the page only marks its links and knows nothing of the app. So the
+    opens its web pane; the page only marks its links and knows nothing of the app. So the
     selector is a copy of the page's hook: renamed on one side alone, the button would
     open the default browser in the app with every test of either side green. The link
     is also what the script and the window expect of it: a page on github.com, and a
@@ -363,9 +371,9 @@ def test_the_link_the_apps_script_takes_is_the_one_the_page_marks() -> None:
     alone goes (``NavigationPolicy.decideNewWindow``).
     """
 
-    marker = _swift_value("Web/GitHubViewRequests.swift", "marker")
+    marker = _swift_value("Web/WebViewRequests.swift", "marker")
     selector = re.fullmatch(r'#"(\w+)\[([\w-]+)="(\w+)"\]"#', marker)
-    assert selector, f'GitHubViewRequests.marker is not tag[attribute="value"]: {marker}'
+    assert selector, f'WebViewRequests.marker is not tag[attribute="value"]: {marker}'
     tag, attribute, value = selector.groups()
 
     markup = run_session("counterpart-session.js")["markup"]

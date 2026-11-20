@@ -417,7 +417,13 @@ def test_row_text_shares_one_baseline() -> None:
     # sits on the title's baseline as text does (docs/design-system.md, "View Headers"). No
     # flex baseline rule reaches either: an item holding only a pending skeleton, aligned
     # as a flex item, would sit the skeleton's bottom edge on the baseline.
+    # The header's corner (`.view-header-end`) is neither row: a strut of the title's type
+    # and the View on GitHub button, which opts in to the strut's baseline, the title's
+    # first line's (mb-tatf), as a row's text does. tests/dom/view-header-chrome.mjs
+    # measures the button's label and the title on one baseline.
     for selector, _is_items in rules:
+        if selector.startswith(".view-header-end"):
+            continue
         assert not re.search(r"\.(?:file-header|view-header)", selector), (
             f"{selector} aligns a view header's text to a baseline"
         )
@@ -1094,15 +1100,21 @@ def test_git_commit_summary_is_one_component() -> None:
     assert '"git-commit-summary git-commit-summary-compact"' in panel
     assert 'class="git-commit-change-stats"' in panel
     assert "html += renderCommitSummary(detail);" in panel
-    assert "renderCommitSummary(detail, { compact: true })" in panel
-    # The commit page's change counts are its one Diff summary, which its diff draws in the
-    # summary's place (mb-pb35); only the compact summary, in a tooltip, draws its own, one
-    # line in the Diff summary's words and paint (mb-khm6). Until the diff draws it, and where
-    # it is not drawn, the place holds the commit's totals (A6 of review A on #470).
+    assert "return renderCommitSummary(detail, {\n      compact: true," in panel
+    # The commit page's change counts are its size line and its one Diff summary, which its
+    # diff draws in the summary's place (mb-pb35): the size line, the page header's line
+    # above it, says the file count and the size ("Change Size Line"), and the summary the
+    # statuses and line totals. Only the compact summary, in a tooltip, draws its own, its
+    # size line and one line in the Diff summary's words and paint (mb-khm6). Until the diff
+    # draws it, and where it is not drawn, the place holds the commit's totals (A6 of review
+    # A on #470).
+    assert "html += renderCommitChangeStats(stats, options.size ?? null);" in panel
     assert (
-        "html += compact\n"
-        "      ? renderCommitChangeStats(stats)\n"
-        '      : `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">'
+        'html += `<div class="git-commit-size page-header-line">'
+        "${commitSizeLineHtml(stats, kept)}</div>`;"
+    ) in panel
+    assert (
+        'html += `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">'
         "${renderCommitTotals(stats)}</div>`;"
     ) in panel
     assert (
@@ -1140,7 +1152,11 @@ def test_git_commit_summary_is_one_component() -> None:
     # Its face is chrome prose's, which its markup carries (test_serif_is_only_for_documents).
     assert "font-family" not in summary_body
     assert "font-size: var(--document-body-font-size)" in summary_body
-    assert "white-space: pre-wrap" in summary_body
+    # Its Markdown is set as a PR description's (placeCommitBody); the message as written,
+    # until then and where it is not rendered, and its trailers keep their newlines.
+    assert "white-space" not in summary_body
+    written = _rule(styles, ".git-commit-body-plain,\n.git-commit-trailers")
+    assert "white-space: pre-wrap" in written
     for rule in (
         change_stats,
         meta,
@@ -1152,12 +1168,12 @@ def test_git_commit_summary_is_one_component() -> None:
     # Its ref chips take their size from this text, by the chip ratio, and no rule here
     # sizes them: test_branch_chips_scale_with_their_text.
     assert ".git-commit-summary .git-ref" not in styles
-    # The revision is the documented exception: monospace at body size
-    # renders optically larger than the sans beside it, so the sha sits
-    # one step down the ramp. See "Git Commit Summary" in the design
-    # system.
+    # The revision is monospace, the documented exception, at the size of its line, with its
+    # face's x-height the sans's: "Short Commit IDs" in the design system, and
+    # test_the_commit_id_face_is_one_face_one_gray_and_its_lines_size.
     assert "font-family: var(--font-mono)" in summary_sha
-    assert "font-size: var(--nav-font-size)" in summary_sha
+    assert "font-size:" not in summary_sha
+    assert "font-size-adjust: var(--font-sans-ex-height)" in summary_sha
     assert "noninteractive copy glyph" in doc
 
 
@@ -1178,13 +1194,13 @@ _PAGE_HEADER_LINES = (
 def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     """A commit's page and a pull request's have one header (mb-26zj, "Page Headers").
 
-    Each is a `.page-header`, its title then its lines 6 px apart, and every line under the
-    title but the labels, a row of chips, is a `.page-header-line` at `--body-font-size`, an
+    Each is a `.page-header`, its title, then its lines, the first `--page-title-gap` under
+    the title and the rest 6 px apart, and every line under the title but the labels, a row of chips, is a `.page-header-line` at `--body-font-size`, an
     age in it and the Diff summary's row included, whose header the diff plugin sets at the
     same token: the owner found the summary and the pull request's
     rows of ages and status a step smaller than the lines above them (mb-kisi). No rule sets
     another size on a line or its text; a chip keeps its own (Branch Chips, Label Colors) and
-    a revision its one step down. `tests/dom/page-header-chrome.mjs` reads the computed sizes
+    a revision the line's. `tests/dom/page-header-chrome.mjs` reads the computed sizes
     on both pages in Chrome.
     """
 
@@ -1193,10 +1209,19 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     assert "test_page_headers_set_every_line_under_the_title_at_the_body_size" in doc
     shell = dict(_rules_of(STATIC / "styles.css"))
     assert shell[".page-header"] == {
+        "--page-header-line-gap": "6px",
         "display": "flex",
         "flex-direction": "column",
-        "gap": "6px",
+        "gap": "var(--page-header-line-gap)",
     }
+    # The first line is `--page-title-gap` under the title, the gap a view header leaves
+    # between its title and the metadata line after it (mb-wcbc).
+    assert shell[".page-header > .page-heading"] == {
+        "margin": "0 0 calc(var(--page-title-gap) - var(--page-header-line-gap))"
+    }
+    assert shell[".view-header-title.page-heading"]["padding-inline-end"] == (
+        "var(--page-title-gap)"
+    )
     assert shell[".page-header-line"]["font-size"] == "var(--body-font-size)"
     # An age in a line takes the line's size because the age primitive sets none
     # (test_age_is_one_primitive_everywhere), so no rule restates it here.
@@ -1449,7 +1474,9 @@ def test_every_tab_is_the_tab_primitive() -> None:
     # A tab that is an address renders as the same tab.
     link = _rule(styles, "a.tab-btn")
     assert "text-decoration: none" in link and "line-height: normal" in link
-    assert "outline: 2px solid var(--link)" in _rule(styles, ".tab-btn:focus-visible")
+    assert "outline: var(--focus-ring-width) solid var(--focus-ring-color)" in _rule(
+        styles, ".tab-btn:focus-visible"
+    )
     # Only core styles the primitive; a use site adds positioning from its own class.
     for sheet in _stylesheets()[1:]:
         for selector, _declared in _rules_of(sheet):
@@ -1556,8 +1583,12 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".filter-check"): "a filter",
     ("styles.css", ".chip-clear"): "a chip's control",
     ("styles.css", ".file-header-badge"): "a badge",
+    (
+        "styles.css",
+        ".mb-image-fallback",
+    ): "the stand-in for a badge: an image the page does not load",
     ("styles.css", ".tree-container-badge"): "a tree row's leading letter, its slot's glyph",
-    ("agent_log/styles.css", ".log-event-kind"): "a badge",
+    ("agents/agent-log.css", ".log-event-kind"): "a badge",
     (
         "diff/styles.css",
         ".metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary",
@@ -1693,7 +1724,7 @@ _TOGGLE_SOURCES: dict[str, str] = {
     "app.js": ".menu-seg's checked mark and the drawer's .icon-btn toggle",
     "server.py": ".menu-seg in the shell's menu",
     "source-ref-selector.js": "marks a chip of its groupHtml in place",
-    "agent_log/index.js": "marks a chip of its groupHtml in place",
+    "agents/agent-log.js": "marks a chip of its groupHtml in place",
     "folder/treemap.js": "marks a chip of its groupHtml in place",
     "github/pulls-panel.js": "marks a chip of its groupHtml in place",
     "shell-keymap.js": "reads a filter menu's checked row to focus it, and renders none",
@@ -1759,11 +1790,13 @@ def test_exclusive_choices_share_one_answer_to_each_state() -> None:
     wrapped_rest = styles.index('.chip-group:is([data-layout="wrap"], [data-fit="wrap"]) > .chip {')
     assert styles.index(".chip-group > .chip:hover {") > max(chip_rest, wrapped_rest)
     # One focus ring. A fill cannot be the signal, since a checked segment's would hide it.
-    ring = "outline: 2px solid var(--link)"
+    ring = "outline: var(--focus-ring-width) solid var(--focus-ring-color)"
     for selector in (".chip:focus-visible", ".menu-seg:focus-visible"):
         rule = _rule(styles, selector)
         assert ring in rule, f"{selector} lost the focus ring"
-        assert "outline-offset: -2px" in rule, f"{selector} moved the focus ring"
+        assert "outline-offset: var(--focus-ring-offset)" in rule, (
+            f"{selector} moved the focus ring"
+        )
     # A consumer repaints a group from its state, so focus has to survive that.
     controls = (STATIC / "filter-controls.js").read_text(encoding="utf-8")
     assert "chip.isConnected === false" in controls
@@ -1928,7 +1961,8 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     ),
     # The View on GitHub button's chevron, which opens its menu.
     "plugin-sdk-views.js": ('"chip chip-menu-trigger counterpart-more disclosure-toggle"',),
-    "agent_log/index.js": ('class="log-event-header disclosure-toggle"',),
+    "agents/agent-log.js": ('class="log-event-header disclosure-toggle"',),
+    "event_log/event-log-views.js": ('"disclosure-toggle event-log-row-head"',),
     "structured/tree.js": ('" srow-container disclosure-toggle"',),
     "markdown/inert-toc.js": ('"kpress-toc-toggle disclosure-toggle"',),
     "markdown/rendered.js": ('class="section-disclosure-trigger disclosure-toggle">Diagnostics',),
@@ -1994,7 +2028,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
             '"chip chip-menu-trigger counterpart-more disclosure-toggle"',
         ),
     ),
-    "agent_log/index.js": (("mb.icons.toggle +", 'class="log-event-header disclosure-toggle"'),),
+    "agents/agent-log.js": (("mb.icons.toggle +", 'class="log-event-header disclosure-toggle"'),),
     "structured/tree.js": (('srow-chevron"', '" srow-container disclosure-toggle"'),),
     "markdown/rendered.js": (
         ("<summary", 'class="section-disclosure-trigger disclosure-toggle">Diagnostics'),
@@ -2046,6 +2080,7 @@ _TOGGLE_CLASSES: frozenset[str] = frozenset(
         "chip-menu-trigger",
         "source-ref-selector-toggle",
         "log-event-header",
+        "event-log-row-head",
         "srow-container",
         "kpress-toc-toggle",
         "section-disclosure-trigger",
@@ -2346,9 +2381,12 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     )
     assert github[".github-pulls-row.selected"]["border-left-color"] == "var(--highlight-bar)"
     ring = github[f"{item}:has(> .github-pulls-row:focus-visible)"]
-    assert ring["outline"] == "2px solid var(--link)"
-    assert ring["outline-offset"] == "-2px"
-    assert github[".github-pulls-stack-row:focus-visible"]["outline"] == "2px solid var(--link)"
+    assert ring["outline"] == "var(--focus-ring-width) solid var(--focus-ring-color)"
+    assert ring["outline-offset"] == "var(--focus-ring-offset)"
+    assert (
+        github[".github-pulls-stack-row:focus-visible"]["outline"]
+        == "var(--focus-ring-width) solid var(--focus-ring-color)"
+    )
     assert github[f"{item} > .github-pulls-row:focus-visible"]["outline"] == "none"
     # The change line is the item's inner target: no ground of its own, and only its chevron's
     # plate answers the pointer, so its status inks keep the grounds their contrast is held on.
@@ -2578,15 +2616,23 @@ _PUNCTUATION_PAINTERS = {
         "changeLine: changeLine,",
         "changeLineNodes: changeLineNodes,",
     ),
+    # The size line is a view helper, drawn only by a commit's or a pull request's page
+    # and a commit's hover card, so it is not in a startup script ("Change Size Line").
+    "static/plugin-sdk-views.js": (
+        "element.append(...mb.countPartsNodes(counts));",
+        "sized.append(...mb.countPartsNodes(size));",
+        "const paint = global.MetabrowserFormatters.countPartsHtml;",
+        "changeSizeLineNodes,",
+    ),
     "static/changed-files-tree.js": (
         "return formatters().changeSummary(totals, statusBreakdown(statuses), formatCount);",
         'letter: STATUS_BADGES[/** @type {keyof typeof STATUS_BADGES} */ (status)] ?? "?",',
     ),
     "static/git-panel.js": (
         "const said = formatters.changeSummary(",
-        "formatters.countPartsHtml([COMMIT_CHANGE_SEPARATOR])",
         "formatters.changeLineHtml(said.line)",
-        'const COMMIT_CHANGE_SEPARATOR = Object.freeze({ separator: "·" });',
+        # The size line, the SDK's one component for it ("Change Size Line").
+        "return mb.changeSizeLineHtml(",
     ),
     "builtin_plugins/diff/diff-view.js": (
         'const SUMMARY_SEPARATOR = Object.freeze({ separator: "·" });',
@@ -2819,22 +2865,30 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert github[".github-pull-header a:not(:where(.view-header-end *))"]["color"] == (
         "var(--link)"
     )
-    # A GitHub action (a check's action on GitHub, a conversation commit hash) is quiet:
-    # muted at rest, the link token on hover and focus. A check's is at its row's size; a
-    # commit hash is one step below its row (below). View on GitHub is the header corner's
-    # button, a chip (mb-4wqh), and not one of them.
-    for place in (".github-pull-checks", ".github-pull-commit"):
-        action = f"{place} .github-pull-external-action"
-        assert github[action] == {"color": "var(--muted)"}, action
-        for state in (":hover", ":focus-visible"):
-            assert github[action + state]["color"] == "var(--link)", action + state
+    # A check's action on GitHub is quiet: muted at rest, the link token on hover and
+    # focus, at its row's size. View on GitHub is the header corner's button, a chip
+    # (mb-4wqh), and not one of them.
+    action = ".github-pull-checks .github-pull-external-action"
+    assert github[action] == {"color": "var(--muted)"}, action
+    for state in (":hover", ":focus-visible"):
+        assert github[action + state]["color"] == "var(--link)", action + state
     assert page.count('"github-pull-external-action"') == 1, "a check's"
-    assert '"github-pull-commit-id git-commit-sha github-pull-external-action"' in page
+    # A conversation commit's hash links to it on GitHub and is a short commit ID, in the
+    # commit-ID gray under the pointer too, which only underlines it (docs/design-system.md,
+    # "Short Commit IDs"); tests/test_github_pull_timeline_chrome.py measures it.
+    assert '"github-pull-commit-id git-commit-sha"' in page
+    assert not any(
+        "color" in declarations
+        for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
+        if ".github-pull-commit-id" in selector
+        or ".github-pull-commit .github-pull-external-action" in selector
+    )
+    assert github[".github-pull-commit-id:hover"]["text-decoration"] == "underline"
     # A check's own site is an ordinary link, so it never reads as the description after it.
     assert github[".github-pull-checks a"]["color"] == "var(--link)"
     # A conversation commit is said in a card head's type ("Conversation Timeline"): its
-    # when is no quieter than a comment's, its age is the head's, and its hash takes a
-    # revision's own size, one step below the text beside it. The sizes and the line they
+    # when is no quieter than a comment's, its age is the head's, and its hash is the size
+    # of the text beside it, as a short commit ID is everywhere. The sizes and the line they
     # draw are measured in Chrome by tests/test_github_pull_timeline_chrome.py.
     commit = github[".github-pull-commit"]
     assert commit["font-size"] == github[".github-pull-card-head"]["font-size"]
@@ -3074,6 +3128,39 @@ def test_a_hovered_legend_entrys_ink_reads_for_every_family() -> None:
             assert ratio >= 4.5, f"{family['key']} reads {ratio:.2f}:1 on the {theme} page"
 
 
+# How many times the separation floor Other's neutral must be from every family's color. The
+# legend names up to nine families and Other (file_type_legend.py), and the family colors are
+# held a floor apart from each other (devtools/check_file_type_colors.py), which nothing held
+# for Other, drawn in --muted. Measured 2026-11-20, 56 families: 0.1111 in the light theme and
+# 0.1074 in the dark, 7.4 and 7.2 times the floor, the nearest to Other plain text and asciidoc.
+OTHER_CLEARANCE_FLOORS = 5
+
+
+def test_other_is_clear_of_every_family_in_both_themes() -> None:
+    """The legend's Other, drawn in `--muted`, is never taken for a family it sits beside.
+
+    Every family's color is `MINIMUM_HOUSE_DELTA_E` or more from every other's in both themes,
+    held by `devtools/check_file_type_colors.py`. Other is none of them and takes the page's
+    muted ink (`--mb-distribution-other`), so this holds it the same distance in Oklab,
+    several times over, from each family, as the server resolves them for each theme.
+    """
+
+    from devtools.check_file_type_colors import MINIMUM_HOUSE_DELTA_E
+    from metabrowser.file_type_filters import serialize_distribution_colors
+
+    light_block, dark_block = _theme_blocks()
+    assert _declared(light_block, "--mb-distribution-other") == "var(--muted)"
+    colors = serialize_distribution_colors()
+    assert len(colors) > 9
+    for theme, block in (("light", light_block), ("dark", dark_block)):
+        other = _oklab(_declared(block, "--muted"))
+        for family in colors:
+            distance = math.dist(other, _oklab(family[theme]))
+            assert distance >= OTHER_CLEARANCE_FLOORS * MINIMUM_HOUSE_DELTA_E, (
+                f"{family['key']} is {distance:.4f} from Other on the {theme} page"
+            )
+
+
 def test_only_the_group_by_wait_dims_shown_content_and_never_twice() -> None:
     """The one wait that dims what is shown has its own token, and dims nothing twice.
 
@@ -3166,7 +3253,7 @@ def test_both_trees_of_changed_files_use_the_shells_rows() -> None:
     assert row["border-left"] == "2px solid transparent"
     assert row["height"] == "var(--ui-row-height)"
     assert shell[".changed-file-row:hover"] == {"background": "var(--hover-bg)"}
-    assert shell[".changed-file-row:focus-visible"]["outline-offset"] == "-2px"
+    assert shell[".changed-file-row:focus-visible"]["outline-offset"] == "var(--focus-ring-offset)"
     assert shell[".changed-file-toggle"]["width"] == "var(--tree-icon-slot)"
     sources = ("diff/diff-summary.js", "github/pull-files-view.js")
     for source in sources:
@@ -3193,7 +3280,7 @@ def test_both_trees_of_changed_files_use_the_shells_rows() -> None:
     diff = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
     toggle = ".metabrowser-diff-host .diff-summary-toggle"
     assert diff[toggle]["border-radius"] == "0"
-    assert diff[toggle + ":focus-visible"]["outline-offset"] == "-2px"
+    assert diff[toggle + ":focus-visible"]["outline-offset"] == "var(--focus-ring-offset)"
     # A folder's tooltip gives what its sums leave out, the counts alone.
     for source in sources:
         text = (REPO_ROOT / BUILTIN_PLUGINS / source).read_text(encoding="utf-8")
@@ -3256,6 +3343,40 @@ def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
         assert "var(--actor-identity-gap)" in geometry, selector
     # No avatar size or gap is written as a pixel literal in a rule.
     assert "18px + 4px" not in github and "+ 9px" not in github
+
+
+def test_boxed_prose_takes_one_inline_padding() -> None:
+    """A bordered box that holds prose has one inline padding, `--boxed-prose-padding-inline`.
+
+    The pane inset, `--pane-header-padding-x`, aligns the navigation column's rows, and put a
+    description's h2 a few pixels inside its box's border (owner, 2026-11-20). The token is
+    declared once, on the shell's `:root`; a pull request's cards read it through
+    `--github-pull-text-inset`, which their head, text, hunk lines, and commit rows share, and
+    a commit's message reads it directly. docs/design-system.md, "Boxed Prose", names what
+    keeps its own padding and why. `tests/test_github_pull_text_chrome.py` measures the
+    padding the boxes lay out.
+    """
+
+    shell_path = STATIC / "styles.css"
+    github_path = REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"
+    token = "--boxed-prose-padding-inline"
+    shell_rules = _rules_of(shell_path)
+    declared = [
+        (selector, body[token])
+        for selector, body in shell_rules + _rules_of(github_path)
+        if token in body
+    ]
+    assert len(declared) == 1 and declared[0][0] == ":root", declared
+    assert re.fullmatch(r"\d+px", declared[0][1]), "the token's value is a length of its own"
+    github = dict(_rules_of(github_path))
+    shell = dict(shell_rules)
+    # A pull request's text is padded by the card's inset, which is the token and no pane inset.
+    assert github[".github-pull"]["--github-pull-text-inset"] == f"var({token})"
+    assert github[".github-pull-text"]["padding"] == (
+        "var(--content-padding-y) var(--github-pull-text-inset)"
+    )
+    # A commit's message is the same kind of box, and reads the token itself.
+    assert shell[".git-commit-body"]["padding"] == f"var(--pane-header-padding-y) var({token})"
 
 
 # A serif face, named directly, as a family, or through the token KPress reads it from.
@@ -4003,3 +4124,280 @@ def test_a_heading_tally_out_of_sequence_fails() -> None:
     assert _heading_tally_problems("github/pull-page.js", padded)[1]
     elsewhere = text + '\nconst stray = `<span class="heading-tally">3</span>`;\n'
     assert _heading_tally_problems(key, elsewhere)[1]
+
+
+# ── Tokens: every one used is defined, and the system's inks read ────────────────────
+
+
+def _shipped_css_text() -> dict[Path, str]:
+    return {sheet: sheet.read_text(encoding="utf-8") for sheet in _stylesheets()}
+
+
+# A custom property a stylesheet reads that no shipped stylesheet or script sets: the host
+# page or an embedded document supplies these, so they are not ours to define. A prefix
+# names a family the host owns.
+_EXTERNAL_PROPERTIES: frozenset[str] = frozenset(
+    {
+        # Written per element by a script through a named constant, so no literal
+        # `setProperty("--name")` call is there to find (folder/category-palette.js's
+        # LIGHT_PROPERTY and DARK_PROPERTY; app.js's FILE_COLOR_*_PROPERTY).
+        "--mb-distribution-color-light",
+        "--mb-distribution-color-dark",
+        "--mb-file-color-light",
+        "--mb-file-color-dark",
+        # The embedded kpress document's own properties, which its stylesheet defines.
+        "--kpress-font-prose",
+        "--kpress-line-height-normal",
+        "--kpress-toc-toggle-clearance",
+        "--kpress-column-inset",
+    }
+)
+_VAR_WITHOUT_FALLBACK = re.compile(r"var\(\s*(--[\w-]+)\s*\)")
+_PROPERTY_DECLARATION = re.compile(r"(--[a-zA-Z][\w-]*)\s*:")
+_SET_PROPERTY = re.compile(r"setProperty\(\s*[\"'`](--[\w-]+)")
+
+
+def _defined_custom_properties() -> set[str]:
+    defined: set[str] = set()
+    for css in _shipped_css_text().values():
+        defined.update(_PROPERTY_DECLARATION.findall(re.sub(r"/\*.*?\*/", "", css, flags=re.S)))
+    for source in _browser_sources():
+        # A name in a comment is prose, not a definition.
+        text = re.sub(r"/\*.*?\*/", "", source.read_text(encoding="utf-8"), flags=re.S)
+        text = re.sub(r"^\s*//.*$", "", text, flags=re.M)
+        defined.update(_SET_PROPERTY.findall(text))
+        # An inline `style="--x: …"` or a style object key written by a script.
+        defined.update(_PROPERTY_DECLARATION.findall(text))
+    return defined
+
+
+def test_every_custom_property_a_stylesheet_reads_is_defined() -> None:
+    """`var(--x)` with no fallback names a token, so the token must exist.
+
+    A read of a name nothing defines falls through to the property's initial value, which
+    is how `min-height: var(--button-height-compact)` sat in the shell doing nothing. A
+    read with a fallback is an optional hook and is not checked.
+
+    Limit: "defined" is a name set anywhere in a shipped stylesheet, or in a script outside
+    a comment, at any selector; it does not check that the definition is in scope of the
+    reader (a token set only under one component's selector but read elsewhere passes).
+    """
+
+    defined = _defined_custom_properties()
+    undefined: dict[str, set[str]] = {}
+    for sheet, css in _shipped_css_text().items():
+        stripped = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        for name in _VAR_WITHOUT_FALLBACK.findall(stripped):
+            if name in defined or name in _EXTERNAL_PROPERTIES:
+                continue
+            undefined.setdefault(name, set()).add(_sheet_name(sheet))
+    assert not undefined, f"custom properties read but never defined: {undefined}"
+
+
+_FOCUS_OUTLINE = "var(--focus-ring-width) solid var(--focus-ring-color)"
+_FOCUS_OFFSET = "var(--focus-ring-offset)"
+_FOCUS_OFFSET_OUTSET = "var(--focus-ring-offset-outset)"
+# The bare controls whose box is their text: a ring inside it would sit on the glyphs, so it
+# stands outside (docs/design-system.md, "Focus Ring"). Nothing else takes the outset.
+_FOCUS_RING_OUTSET = frozenset(
+    {
+        ".nav-shortcut-action:focus-visible",
+        ".source-freshness-label:focus-visible",
+        ".filter-check:has(input:focus-visible)",
+        ".help-project a:focus-visible",
+        ".event-log-details a:focus-visible",
+    }
+)
+
+
+def test_every_focus_ring_is_the_one_ring() -> None:
+    """Width, color, and offset come from the focus-ring tokens, never a literal."""
+
+    problems: list[str] = []
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            outline = declarations.get("outline")
+            if "focus-visible" not in selector or outline is None or outline in {"none", "0"}:
+                continue
+            offset = declarations.get("outline-offset")
+            want = _FOCUS_OFFSET_OUTSET if selector in _FOCUS_RING_OUTSET else _FOCUS_OFFSET
+            if outline != _FOCUS_OUTLINE or offset != want:
+                problems.append(f"{_sheet_name(sheet)} {selector}: {outline}; offset {offset}")
+    assert not problems, "\n".join(problems)
+
+
+def test_the_outset_focus_ring_is_only_for_the_documented_controls() -> None:
+    """A control not in the allowlist cannot take the outset by naming the token."""
+
+    outset = {
+        selector
+        for sheet in _stylesheets()
+        for selector, declarations in _rules_of(sheet)
+        if declarations.get("outline-offset") == _FOCUS_OFFSET_OUTSET
+    }
+    assert outset == set(_FOCUS_RING_OUTSET)
+    root = _theme_tokens()["light"]
+    assert root["--focus-ring-offset"].startswith("-")
+    assert root["--focus-ring-offset-outset"][0].isdigit()
+
+
+_STATUS_TEXT_TOKENS = (
+    "--status-success-text",
+    "--status-warning-text",
+    "--status-error-text",
+    "--status-info-text",
+    "--status-success-soft-text",
+)
+_BADGE_TONES = (
+    "completed",
+    "failed",
+    "running",
+    "pending",
+    "claude",
+    "gemini",
+    "pi",
+    "adapter",
+    "compressed",
+)
+_STATUS_FILL_TOKENS = (
+    "--status-success",
+    "--status-warning",
+    "--status-warning-strong",
+    "--status-error",
+    "--status-error-strong",
+    "--status-info",
+)
+_AA_TEXT = 4.5
+
+
+def test_status_and_badge_inks_read_in_both_themes() -> None:
+    """A status ink is held to 4.5:1 on the page and the hover ground; a badge's on its own fill."""
+
+    for theme, tokens in _theme_tokens().items():
+        for ground_token in ("--bg", "--hover-bg"):
+            ground = _resolved(tokens, ground_token)
+            for token in _STATUS_TEXT_TOKENS:
+                ink = _resolved(tokens, token)
+                assert _contrast(ink, ground) >= _AA_TEXT, (
+                    f"{token} in the {theme} theme reads at {_contrast(ink, ground):.2f}:1 "
+                    f"on {ground_token}"
+                )
+        for tone in _BADGE_TONES:
+            fill = _resolved(tokens, f"--badge-{tone}-bg")
+            ink = _resolved(tokens, f"--badge-{tone}-text")
+            assert _contrast(ink, fill) >= _AA_TEXT, (
+                f"--badge-{tone} in the {theme} theme reads at {_contrast(ink, fill):.2f}:1"
+            )
+
+
+def test_status_text_inks_keep_their_fills_hue() -> None:
+    """A text ink is its fill's color seen as text, so the two share a hue family."""
+
+    light = _theme_tokens()["light"]
+    for name in ("success", "warning", "error"):
+        ink = _oklch_channels(_resolved(light, f"--status-{name}-text"))
+        fill = _oklch_channels(_resolved(light, f"--status-{name}"))
+        assert _hue_gap(ink[2], fill[2]) <= 15, name
+
+
+def test_no_stylesheet_sets_text_in_a_status_fill() -> None:
+    """A fill token is for dots, bars, tints, and borders; text takes the themed ink."""
+
+    fills = {f"var({token})" for token in _STATUS_FILL_TOKENS}
+    problems = [
+        f"{_sheet_name(sheet)} {selector}: color {declarations['color']}"
+        for sheet in _stylesheets()
+        for selector, declarations in _rules_of(sheet)
+        if declarations.get("color") in fills
+    ]
+    assert not problems, "\n".join(problems)
+
+
+def test_a_failure_is_one_ink_and_a_stat_is_one_pair() -> None:
+    """Additions and deletions read in one ink wherever drawn, and so does a failed load."""
+
+    ink = {
+        ".diff-stat-add": "--status-success-text",
+        ".diff-stat-del": "--status-error-text",
+        ".git-stat-add": "--status-success-text",
+        ".git-stat-del": "--status-error-text",
+    }
+    seen: dict[str, set[str]] = {}
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            for stat in ink:
+                if selector.endswith(stat) and "color" in declarations:
+                    seen.setdefault(stat, set()).add(declarations["color"])
+    for stat, token in ink.items():
+        assert seen.get(stat) == {f"var({token})"}, (stat, seen.get(stat))
+    failure = {
+        ".tree-lazy-error",
+        ".git-graph-more-failed",
+        ".nav-error",
+        ".source-freshness-error",
+        ".source-ref-selector-error",
+    }
+    found = {
+        selector: declarations["color"]
+        for selector, declarations in _rules_of(STATIC / "styles.css")
+        if selector in failure and "color" in declarations
+    }
+    assert set(found) == failure
+    assert set(found.values()) == {"var(--status-error-text)"}
+
+
+def test_the_diff_row_tints_are_shell_tokens() -> None:
+    """The plugins and the shell tint an added or removed line from one pair."""
+
+    root = _theme_tokens()["light"]
+    assert root["--diff-add-row-bg"] == "color-mix(in srgb, var(--status-success) 9%, transparent)"
+    assert root["--diff-del-row-bg"] == "color-mix(in srgb, var(--status-error) 9%, transparent)"
+
+
+_RADIUS_VALUE = r"(?:var\(--[\w-]*radius[\w-]*\)|0|inherit)"
+_BORDER_RADIUS = re.compile(rf"{_RADIUS_VALUE}(?:\s+{_RADIUS_VALUE})*")
+# A radius that is not a token, and why: a shape the token set cannot say.
+_RADIUS_EXCEPTIONS: dict[tuple[str, str], str] = {}
+
+
+def test_every_border_radius_is_a_radius_token() -> None:
+    """The app's corners are `--radius-*` tokens; a literal forks the shape vocabulary."""
+
+    problems = []
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            value = declarations.get("border-radius")
+            if value is None or _BORDER_RADIUS.fullmatch(value):
+                continue
+            if (_sheet_name(sheet), selector) in _RADIUS_EXCEPTIONS:
+                continue
+            problems.append(f"{_sheet_name(sheet)} {selector}: {value}")
+    assert not problems, "\n".join(problems)
+
+
+_FIELD_CONSUMERS = (".menu-select", ".menu-number", ".source-ref-selector-filter")
+_FIELD_OWNED = ("border", "background", "outline", "outline-offset", "border-radius")
+
+
+def test_text_fields_carry_the_field_primitive() -> None:
+    """Border, fill, ring, and hover are stated once; a field sets only its own layout."""
+
+    rules = _rules_of(STATIC / "styles.css")
+    alone = [
+        (selectors.strip(), dict(_declarations(body)))
+        for selectors, body in _style_rules((STATIC / "styles.css").read_text(encoding="utf-8"))
+    ]
+    for selector in _FIELD_CONSUMERS:
+        own = [declarations for selectors, declarations in alone if selectors == selector]
+        assert own, selector
+        for declarations in own:
+            restated = [name for name in _FIELD_OWNED if name in declarations]
+            assert not restated, f"{selector} restates {restated}"
+    field = dict(next(d for rule, d in rules if rule == ".field"))
+    assert {"border", "background", "border-radius", "padding"} <= set(field)
+    assert any(rule == ".field:focus-visible" for rule, _ in rules)
+    source = (STATIC / "source-ref-selector.js").read_text(encoding="utf-8")
+    assert 'filter.className = "field source-ref-selector-filter";' in source
+    server = (STATIC.parent / "server.py").read_text(encoding="utf-8")
+    assert '<select class="field menu-select"' in server
+    assert '<input class="field menu-number"' in server

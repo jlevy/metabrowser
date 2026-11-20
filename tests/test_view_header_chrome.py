@@ -16,30 +16,39 @@ shell's own builders, as the folder header's live refresh does: the age of somet
 written ("just now"), an hour later ("59m ago"), and the pending skeletons of a walk that
 has not finished. This judges the record:
 
-- the rows: the eyebrow, its token's height, then the heading row a gap under it and the
-  header's bottom pad under that, with no row of the line's own, and the tab bar right
-  under the header. Where the name and the line share one line, the heading row is the
-  title's line high, so the header is that line, the eyebrow, the gap, and the two pads;
+- the rows: the eyebrow at the header's top, the top bar's row height, then the heading row
+  under its rule, the title the header's top pad under that and the header's bottom pad
+  under the heading row, with no row of the line's own, and the tab bar right under the
+  header. Where the name and the line share one line, the heading row is the title's line
+  and the top pad, so the header is that line, the eyebrow, and the two pads;
+- the top bar's rhythm across the divider (mb-ch82, mb-tl7p): the eyebrow is the
+  navigation's path row's twin, its rule at the path row's rule's height and its address,
+  at the path row's text size, on the navigation name's baseline; Up is centered on the
+  row's line, as the Metabrowser menu's gear is across the divider, and is an icon button
+  with no hairline or surface at rest, and both while hovered (mb-igva);
 - the line after the name: where the room after the name's last line holds it, the line
   sits there, the title gap after the name's text and on its baseline; where it does not,
   the line starts the next line, at the name's start. The file's, the folder's, and the
   root's names are one line with the line after them in every pane from 800 px; the long
   name wraps, in every pane, and is whole;
-- the type and ink: the title at the page title's size and bold, the eyebrow's address and
-  the metadata line at the body size, the line in muted ink;
+- the type and ink: the title at the page title's size and bold, the eyebrow's address at
+  the navigation's size, and the metadata line at the body size in muted ink;
 - the ground and the rules: the header and the tab bar on the body's ground, which is not
-  the navigation's, the header with no rule of its own, and the tab bar's one rule under
-  it;
+  the navigation's, the header with no rule of its own but its eyebrow's, and the tab
+  bar's one rule under it;
 - the View on GitHub button (mb-4wqh), on a folder served as a checkout whose origin is
-  on github.com: in the header's corner at its tokens' insets and height, inside the room
-  the eyebrow leaves it from first paint and above the heading row, its link and its
-  menu's Open in Browser the item's page on github.com at the checkout's commit, through
+  on github.com: in the header's corner at the end of the title's first line, its label on
+  the title's baseline (mb-tatf), at its tokens' end inset and height, inside the room the
+  title's first line leaves it from first paint; in a main view too narrow for that room
+  beside a title, on the eyebrow's row instead, centered on its line, inside the room the
+  eyebrow's end leaves it; its link and its menu's Open in Browser the item's page on github.com at the checkout's commit, through
   the hooks the macOS app reads, in the text ink with a muted chevron in a joined chip
   group's frame, at a chip's size rather than the title's; its menu, opened with a click
   and walked with the arrow keys, Home, End, Escape, and Tab, every item on top where it
   is drawn; a file the checkout does not track, whose corner keeps its room and draws
-  nothing; and a commit's page, its button placed in the page as a view header's is, its
-  subject leaving it room only where the reading column reaches it;
+  nothing; and a commit's page, its button placed in the page as a view header's is, on its
+  subject's baseline, its subject leaving it room only where the reading column reaches it
+  and its first line `--page-title-gap` under the subject (mb-wcbc);
 - whole: no name cut short or run past its row, so no name has a tooltip, every metadata
   item shown whole inside the header, and nothing in the header past its box. The long
   name has an unbroken run, a digest's 64 hex digits, so it wraps inside a word too;
@@ -62,6 +71,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -87,7 +97,8 @@ _WRAPPED = (
     "of-the-view-header-so-it-wraps-and-its-size-and-age-follow-its-last-line.md"
 )
 # One server start, one Chrome, and 32 loads, each with three rewrites of its line, then in
-# each theme a menu's walk, a page with no counterpart, and two commit pages: the 32 loads
+# each theme a menu's walk, a page with no counterpart, and two commit pages, and in the
+# light theme three loads of names at the widths the corner's room broke: the 32 loads
 # alone took 37 s to 50 s on a 10-core Mac (24 loads took 28 s there at a load average
 # near 12). A cold Chrome start in CI has taken 28.2 s, and the server's start is bounded
 # at 30 s inside the session.
@@ -135,6 +146,10 @@ def _served(root: Path) -> tuple[Path, str]:
     )
     (notes / "b.txt").write_text("b\n" * 4000, encoding="utf-8")
     (notes / _WRAPPED).write_text("# A long name\n", encoding="utf-8")
+    # Names the heading row's whole width holds that the corner's room broke (review A on
+    # #608): the session draws them where it did.
+    (notes / "arch-views-models-routes.md").write_text("# Routes\n", encoding="utf-8")
+    (root / "CONTRIBUTING.md").write_text("# Contributing\n", encoding="utf-8")
     (root / "README.md").write_text("# Served\n", encoding="utf-8")
     _git(root, "init", "-q", "--initial-branch=main", ".")
     _git(root, "remote", "add", "origin", "https://github.com/octo/demo.git")
@@ -167,6 +182,49 @@ _TITLES = {
 # widest of those names, the file's, is 426 px, with the title gap and its widest line,
 # "26 B · just now", 535 px (Chrome 152, 2026-11-18).
 _INLINE_FROM_PX = 800
+_STYLES = Path(__file__).resolve().parents[1] / "src" / "metabrowser" / "static" / "styles.css"
+
+
+def _token_px(css: str, name: str) -> float:
+    found = re.findall(rf"(?m)^\s*{re.escape(name)}:\s*([\d.]+)px;", css)
+    assert len(found) == 1, (name, found)
+    return float(found[0])
+
+
+def _narrow_below_px() -> float:
+    """The main view's width below which a view header's corner is on the eyebrow's row: the
+    width its container condition names (static/styles.css), read from the sheet."""
+
+    found = re.findall(r"@container kpress-doc \(width < ([\d.]+)px\)", _STYLES.read_text())
+    assert len(found) == 1, found
+    return float(found[0])
+
+
+def test_the_corner_leaves_a_narrow_title_its_row() -> None:
+    """Below a width, a view header's corner moves to the eyebrow's row.
+
+    Beside the corner's room a page title breaks anywhere (`.page-heading`), so a name wider
+    than the first line there broke mid-word rather than moving under the room: "docs" in a
+    260 px main view, "CONTRIBUTING.md" at 380 px, and "arch-views-models-routes.md" at 560
+    px (Chrome 152, 2026-11-18 and 19; review A on #608). The width is where the title group,
+    the main view less its side pads, the icon at the title's size, and the heading row's
+    gap, holds the room and `--view-header-title-room` beside it. A container condition
+    takes no var(), so the width is a number, held here to the tokens it is made of.
+    """
+
+    css = _STYLES.read_text(encoding="utf-8")
+    heading = re.search(r"(?m)^\.view-header-heading \{([^}]*)\}", css)
+    assert heading is not None
+    gap = re.search(r"\bgap: ([\d.]+)px;", heading.group(1))
+    assert gap is not None
+    want = (
+        2 * _token_px(css, "--content-padding-x")
+        + _token_px(css, "--page-title-font-size")
+        + float(gap.group(1))
+        + _token_px(css, "--view-header-corner-room")
+        + _token_px(css, "--view-header-title-room")
+    )
+    assert _narrow_below_px() == want
 
 
 def _links(commit: str) -> dict[str, str]:
@@ -243,12 +301,16 @@ def _check_line_placement(name: str, snapshot: dict[str, Any]) -> bool:
     title gap after the text and on its baseline; otherwise it starts the next line at the
     name's start. Either way it is whole inside the title's group, and so the header.
     Whether it wrapped to the next line."""
-    gap = _px(snapshot["tokens"]["--view-header-title-gap"])
+    gap = _px(snapshot["tokens"]["--page-title-gap"])
     rects, line, group = snapshot["titleTextRects"], snapshot["line"], snapshot["group"]
     assert rects, f"{name}: the title has no text"
     last = max(rect["top"] for rect in rects)
     text_right = max(rect["right"] for rect in rects if rect["top"] == last)
     room = group["right"] - text_right - gap
+    # The title's first line leaves the corner its room, none where the corner is on the
+    # eyebrow's row, so a line after a one-line name has that much less.
+    if last == min(rect["top"] for rect in rects):
+        room -= snapshot["rhythm"]["titleRoom"]
     wrapped = line["width"] > room + TOLERANCE_PX
     if not wrapped:
         assert abs(line["left"] - text_right - gap) <= TOLERANCE_PX, (
@@ -325,21 +387,21 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         assert page["scheme"] == result["theme"], f"{name}: drawn in {page['scheme']}"
         assert abs(page["paneWidth"] - result["pane"]) <= 1, f"{name}: {page['paneWidth']} px"
 
-        # The rows: the eyebrow its token's height, the heading row a gap under it, the
-        # header's bottom pad under that, and the tab bar right under the header. The line
-        # has no row of its own: it is inside the heading row (static/styles.css,
+        # The rows: the eyebrow at the header's top, the top bar's row height, the heading
+        # row under its rule, the title the header's top pad under that, the header's
+        # bottom pad under the heading row, and the tab bar right under the header. The
+        # line has no row of its own: it is inside the heading row (static/styles.css,
         # `--view-header-*`).
         tokens = page["tokens"]
-        gap = _px(tokens["--view-header-row-gap"])
+        rhythm = page["rhythm"]
+        row = _px(tokens["--pane-header-row-height"])
         eyebrow, heading, line, bar = page["eyebrow"], page["heading"], page["line"], page["bar"]
         header, title_line = page["header"], page["titleLineHeight"]
-        assert eyebrow["height"] == _px(tokens["--view-header-eyebrow-height"]), (
-            f"{name}: eyebrow {eyebrow}"
-        )
+        assert abs(eyebrow["top"] - header["top"]) <= TOLERANCE_PX, f"{name}: {eyebrow}"
+        assert eyebrow["height"] == row, f"{name}: eyebrow {eyebrow}"
         pad_top = _px(tokens["--view-header-padding-top"])
         pad_bottom = _px(tokens["--view-header-padding-bottom"])
-        assert abs(eyebrow["top"] - header["top"] - pad_top) <= TOLERANCE_PX, name
-        assert abs(heading["top"] - eyebrow["bottom"] - gap) <= TOLERANCE_PX, name
+        assert abs(heading["top"] - eyebrow["bottom"]) <= TOLERANCE_PX, name
         assert abs(header["bottom"] - heading["bottom"] - pad_bottom) <= TOLERANCE_PX, (
             f"{name}: heading {heading}, header {header}"
         )
@@ -347,13 +409,42 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         assert heading["top"] - TOLERANCE_PX <= line["top"], f"{name}: line {line}"
         assert line["bottom"] <= heading["bottom"] + TOLERANCE_PX, f"{name}: line {line}"
         assert abs(heading["left"] - eyebrow["left"]) <= TOLERANCE_PX, name
-        # The icon at the title's size, before the title, on its first line.
+        # The icon at the title's size, before the title, on its first line, the header's
+        # top pad under the eyebrow's rule.
         assert page["iconGlyph"]["width"] == _px(tokens["--page-title-font-size"]), (
             f"{name}: icon {page['iconGlyph']}"
         )
         assert page["icon"]["right"] <= page["title"]["left"], name
-        assert abs(page["icon"]["top"] - heading["top"]) <= TOLERANCE_PX, name
+        assert abs(page["icon"]["top"] - heading["top"] - pad_top) <= TOLERANCE_PX, name
         assert abs(page["icon"]["height"] - title_line) <= TOLERANCE_PX, name
+
+        # The top bar across the divider (mb-ch82): the eyebrow is the navigation's path
+        # row's twin, its height, its rule at the same height and paint, and its address on
+        # the navigation name's baseline. Layout puts both rows' text on whole or half
+        # pixels at one font size and line, so the two agree exactly.
+        nav_rule, eyebrow_rule = rhythm["navRule"], rhythm["eyebrowRule"]
+        assert rhythm["navRow"]["height"] == row, f"{name}: {rhythm['navRow']}"
+        assert nav_rule is not None and eyebrow_rule is not None, f"{name}: {rhythm}"
+        assert nav_rule["top"] == eyebrow_rule["top"], f"{name}: {nav_rule} {eyebrow_rule}"
+        assert nav_rule["width"] == eyebrow_rule["width"] == 1, f"{name}: {rhythm}"
+        assert nav_rule["color"] == eyebrow_rule["color"], f"{name}: {rhythm}"
+        assert rhythm["addressBaseline"] == rhythm["navNameBaseline"], (
+            f"{name}: address {rhythm['addressBaseline']}, nav {rhythm['navNameBaseline']}"
+        )
+        # Up is centered on the row's line, the line above its rule, as the Metabrowser
+        # menu's gear is across the divider. The chevron that hides the navigation is on
+        # the shortcut strip's row (mb-yw18), which test_nav_collapse_chrome.py checks.
+        line_middle = eyebrow["top"] + (row - 1) / 2
+        assert rhythm["gear"] == line_middle, f"{name}: {rhythm}"
+        up_box = rhythm["upBox"]
+        assert (up_box["top"] + up_box["bottom"]) / 2 == line_middle, f"{name}: {up_box}"
+        # A target of the Up size, 24 px, WCAG 2.2's minimum (review A on #608).
+        target = _px(tokens["--view-header-up-size"])
+        assert up_box["right"] - up_box["left"] == target, f"{name}: {up_box}"
+        assert up_box["bottom"] - up_box["top"] == target, f"{name}: {up_box}"
+        # Up at rest is the arrow alone: no hairline and no surface (mb-igva).
+        clear = "rgba(0, 0, 0, 0)"
+        assert rhythm["upRest"] == {"border": clear, "ground": clear}, f"{name}: {rhythm}"
 
         # The type and the line's ink, the muted ink metadata has everywhere.
         assert page["type"]["title"] == tokens["--page-title-font-size"], (
@@ -361,7 +452,7 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         )
         assert int(page["type"]["titleWeight"]) >= 600, f"{name}: title {page['type']}"
         assert page["type"]["line"] == tokens["--body-font-size"], f"{name}: line {page['type']}"
-        assert page["type"]["eyebrow"] == tokens["--body-font-size"], (
+        assert page["type"]["eyebrow"] == tokens["--nav-font-size"], (
             f"{name}: eyebrow {page['type']}"
         )
         assert page["inks"]["line"] == page["inks"]["muted"], f"{name}: {page['inks']}"
@@ -383,38 +474,52 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         assert not page["titleCut"], f"{name}: the title is cut short"
         assert not page["titleClipped"], f"{name}: the title runs past its row"
         assert page["titleTip"] is False, f"{name}: the title has a tooltip"
-        # The corner is above the heading row, so the row keeps the header's width.
-        if page["button"] is not None:
-            assert page["button"]["bottom"] <= heading["top"] + TOLERANCE_PX, name
         # Up: disabled at the root, a control everywhere else.
         assert page["upDisabled"] is (kind == "root"), name
 
-        # The View on GitHub button in the header's corner: at the corner's insets from the
-        # header's top and right edges and its height, inside the room the eyebrow leaves
-        # it from first paint with the row's gap before it, the eyebrow's address ending
-        # that gap clear of it.
+        # The View on GitHub button in the header's corner, at the corner's end inset and
+        # height, inside the room left it from first paint with the heading row's gap
+        # before it.
         button = page["button"]
         assert page["endMarked"], f"{name}: the corner is not marked for a button"
         assert button is not None, f"{name}: no button"
         _button_drawn(name, page, links[kind])
-        assert (
-            abs(button["top"] - header["top"] - _px(tokens["--view-header-corner-inset-top"]))
-            <= TOLERANCE_PX
-        ), f"{name}: {button} {header}"
         assert (
             abs(header["right"] - button["right"] - _px(tokens["--view-header-corner-inset-end"]))
             <= TOLERANCE_PX
         ), f"{name}: {button} {header}"
         assert abs(button["height"] - _px(tokens["--view-header-corner-height"])) <= TOLERANCE_PX
         room = _px(tokens["--view-header-corner-room"])
+        pad_x = _px(tokens["--content-padding-x"])
         assert button["width"] + _GAP_PX <= room + TOLERANCE_PX, f"{name}: {button} {room}"
-        assert page["eyebrowRoom"] == room, f"{name}: eyebrow room {page['eyebrowRoom']}"
-        assert page["addressBox"]["right"] <= button["left"] - _GAP_PX + TOLERANCE_PX, (
-            f"{name}: the address {page['addressBox']} runs under the button {button}"
-        )
-        # Level with the eyebrow: the corner is the eyebrow's height at its top.
-        middle = (eyebrow["top"] + eyebrow["bottom"]) / 2
-        assert abs((button["top"] + button["bottom"]) / 2 - middle) <= TOLERANCE_PX, name
+        if page["paneInline"] >= _narrow_below_px():
+            # At the end of the title's first line, its label on the title's baseline
+            # (mb-tatf), and the title's first line leaves it its room: its text ends the
+            # row's gap clear of the button. The eyebrow keeps its side pad alone.
+            assert rhythm["labelBaseline"] == rhythm["titleBaseline"], (
+                f"{name}: label {rhythm['labelBaseline']}, title {rhythm['titleBaseline']}"
+            )
+            assert rhythm["titleRoom"] == room, f"{name}: title room {rhythm['titleRoom']}"
+            assert page["eyebrowRoom"] == pad_x, f"{name}: eyebrow room {page['eyebrowRoom']}"
+            first = min(rect["top"] for rect in page["titleTextRects"])
+            first_end = max(
+                rect["right"] for rect in page["titleTextRects"] if rect["top"] == first
+            )
+            assert first_end <= button["left"] - _GAP_PX + TOLERANCE_PX, (
+                f"{name}: the title's first line ends at {first_end}, under {button}"
+            )
+        else:
+            # Too narrow for the room beside a title: on the eyebrow's row, centered on its
+            # line as Up is, inside the room the eyebrow's end leaves it, the address ending
+            # the gap clear of it; the title keeps the heading row's whole width.
+            middle = (button["top"] + button["bottom"]) / 2
+            assert middle == line_middle, f"{name}: {button} on {line_middle}"
+            assert rhythm["titleRoom"] == 0, f"{name}: title room {rhythm['titleRoom']}"
+            assert page["eyebrowRoom"] == pad_x + room, f"{name}: {page['eyebrowRoom']}"
+            assert page["addressBox"]["right"] <= button["left"] - _GAP_PX + TOLERANCE_PX, (
+                f"{name}: the address {page['addressBox']} runs under the button {button}"
+            )
+            assert button["bottom"] <= heading["top"] + TOLERANCE_PX, f"{name}: {button}"
 
         # The line after the name, or under it where the row has no room after the name.
         if _check_line_placement(name, page):
@@ -424,14 +529,17 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
             assert page["titleLines"] >= 2, f"{name}: {page['titleLines']} lines"
         elif result["pane"] >= _INLINE_FROM_PX:
             # A name that fits its row is one line, the line after it on its baseline, so
-            # the heading row is the title's line high and the header holds no other row.
+            # the heading row is the top pad and the title's line, and the header holds no
+            # other row.
             assert page["titleLines"] == 1, f"{name}: {page['titleLines']} lines"
             assert _after_name(page), f"{name}: the line is not after the name: {line}"
             assert abs(page["lineBaseline"] - page["titleBaseline"]) <= TOLERANCE_PX, (
                 f"{name}: line baseline {page['lineBaseline']}, title {page['titleBaseline']}"
             )
-            assert abs(heading["height"] - title_line) <= TOLERANCE_PX, f"{name}: {heading}"
-            one_line = pad_top + eyebrow["height"] + gap + title_line + pad_bottom
+            assert abs(heading["height"] - pad_top - title_line) <= TOLERANCE_PX, (
+                f"{name}: {heading}"
+            )
+            one_line = eyebrow["height"] + pad_top + title_line + pad_bottom
             assert abs(header["height"] - one_line) <= TOLERANCE_PX, f"{name}: {header}"
 
         # Every item is whole inside the header, the age last, after each value the session
@@ -517,19 +625,45 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         assert steps["outside"]["hidden"], f"{name}: {steps['outside']}"
         assert steps["outside"]["expanded"] == "false", f"{name}: {steps['outside']}"
 
-    # A file the checkout does not track: its corner is marked, so the eyebrow keeps the
-    # room from first paint, and once the server has answered it holds nothing.
+    # A file the checkout does not track: its corner is marked, so the title's first line
+    # keeps the room from first paint, and once the server has answered it holds nothing.
+    first_tokens = results[0]["settled"]["tokens"]
     for absent in record["absent"]:
         name = f"untracked file {absent['theme']}"
         assert absent["answered"] and absent["marked"], f"{name}: {absent}"
         assert absent["children"] == 0, f"{name}: {absent}"
-        assert absent["eyebrowRoom"] == _px(
-            results[0]["settled"]["tokens"]["--view-header-corner-room"]
-        )
+        assert absent["titleRoom"] == _px(first_tokens["--view-header-corner-room"]), absent
+        assert absent["eyebrowRoom"] == _px(first_tokens["--content-padding-x"]), absent
 
-    # A commit's page: the button in the page's corner at the same insets as a view
-    # header's, after the subject in the reading order, its link the commit's page; the
-    # subject leaves it room only where the reading column reaches it, and its text ends
+    # A name the heading row's whole width holds is one line whatever the main view's width:
+    # below the container width the corner is on the eyebrow's row and the title has the
+    # row, and above it the first line beside the room holds the name (review A on #608).
+    band = record["band"]
+    assert [(page["pane"], page["href"]) for page in band] == [
+        (480, "/view/CONTRIBUTING.md"),
+        (560, "/view/docs/notes/arch-views-models-routes.md"),
+        (720, "/view/docs/notes/arch-views-models-routes.md"),
+    ], band
+    for page in band:
+        name = f"{page['href']} at {page['pane']} px"
+        wide = page["paneInline"] >= _narrow_below_px()
+        assert wide is (page["pane"] == 720), f"{name}: {page['paneInline']}"
+        assert page["titleLines"] == 1, f"{name}: {page['titleLines']} lines"
+        room = _px(first_tokens["--view-header-corner-room"]) if wide else 0
+        assert page["rhythm"]["titleRoom"] == room, f"{name}: {page['rhythm']['titleRoom']}"
+
+    # Up under the pointer shows the hover surface and its hairline, and away from it, in
+    # each theme, neither (mb-igva).
+    clear = "rgba(0, 0, 0, 0)"
+    ups = record["ups"]
+    assert [up["theme"] for up in ups] == ["light", "dark"], ups
+    for up in ups:
+        assert clear not in (up["hover"]["border"], up["hover"]["ground"]), up
+        assert up["away"] == {"border": clear, "ground": clear}, up
+
+    # A commit's page: the button in the page's corner, on the subject's first line as a
+    # view header's is on its title's and at the same end inset, after the subject in the
+    # reading order, its link the commit's page; the subject leaves it room only where the reading column reaches it, and its text ends
     # the gap clear of it.
     commits = record["commits"]
     assert [(page["theme"], page["pane"]) for page in commits] == [
@@ -546,11 +680,13 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         assert page["corners"] == 1 and page["viewClass"] == "git-commit-view", f"{name}: {page}"
         assert page["marked"] and page["afterSubject"], f"{name}: {page}"
         _button_drawn(name, page, links["commit"])
-        button, view = page["button"], page["view"]
-        assert (
-            abs(button["top"] - view["top"] - _px(tokens["--view-header-corner-inset-top"]))
-            <= TOLERANCE_PX
-        ), f"{name}: {button} {view}"
+        button, view, rhythm = page["button"], page["view"], page["rhythm"]
+        # On the subject's first line, its label on the subject's baseline (mb-tatf).
+        assert rhythm["labelBaseline"] == rhythm["titleBaseline"], f"{name}: {rhythm}"
+        # The author's line `--page-title-gap` under the subject, as on a pull request's
+        # page, whatever the subject's lines (mb-wcbc).
+        title_gap = page["firstLine"]["top"] - page["subject"]["bottom"]
+        assert title_gap == _px(tokens["--page-title-gap"]), f"{name}: {title_gap}"
         assert (
             abs(view["right"] - button["right"] - _px(tokens["--view-header-corner-inset-end"]))
             <= TOLERANCE_PX

@@ -16,7 +16,7 @@ enum MainMenu {
             item("About \(appName)", #selector(AppDelegate.showAbout(_:))),
             .separator(),
             item("Settings…", #selector(AppDelegate.showSettings(_:)), ","),
-            item("Clear GitHub Data…", #selector(AppDelegate.clearGitHubData(_:))),
+            item("Clear Website Data…", #selector(AppDelegate.clearWebsiteData(_:))),
             .separator(),
             item("Hide \(appName)", #selector(NSApplication.hide(_:)), "h"),
             item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
@@ -96,6 +96,7 @@ enum MainMenu {
             .separator(),
             item("Check Setup…", #selector(AppDelegate.showCheckSetup(_:))),
             item("Reveal Logs Folder", #selector(AppDelegate.revealLogsFolder(_:))),
+            item("Open Event Log", #selector(AppDelegate.openEventLog(_:))),
         ])
         return main
     }

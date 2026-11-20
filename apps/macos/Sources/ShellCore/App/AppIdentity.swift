@@ -17,6 +17,20 @@ public nonisolated struct AppIdentity: Equatable, Sendable {
     public static let variantKey = "MetabrowserBuildVariant"
     public static let commitKey = "MetabrowserSourceCommit"
 
+    /// How much of a commit ID a line shows: seven characters, as GitHub shows them
+    /// (docs/design-system.md, "Short Commit IDs"). The package's copy is
+    /// `SHORT_COMMIT_CHARS` in src/metabrowser/commit_ids.py, and
+    /// tests/test_short_commit.py holds the two equal.
+    public static let shortCommitChars = 7
+
+    /// *commit* as a line names it: its first `shortCommitChars` characters, cut from the
+    /// full ID the build records, with the build's `-dirty` mark kept.
+    public static func shortCommit(_ commit: String) -> String {
+        let dirty = "-dirty"
+        if commit.hasSuffix(dirty) { return shortCommit(String(commit.dropLast(dirty.count))) + dirty }
+        return String(commit.prefix(shortCommitChars))
+    }
+
     public var name: String
     public var bundleIdentifier: String
     public var variant: Variant
@@ -24,7 +38,8 @@ public nonisolated struct AppIdentity: Equatable, Sendable {
     public var version: String?
     /// `CFBundleVersion`: the commit count of the build.
     public var build: String?
-    /// The short commit the build came from, with `-dirty` if `apps/macos` had changes.
+    /// The commit the build came from, its full ID, with `-dirty` if `apps/macos` had
+    /// changes. A line shows it cut short (`shortCommit`).
     public var commit: String?
 
     /// Anything but the release variant counts as a development build: an unbundled run
@@ -50,7 +65,7 @@ public nonisolated struct AppIdentity: Equatable, Sendable {
         let kind = variant == .release ? "Release" : "Development build"
         guard let version else { return "\(kind) · unbundled" }
         let numbered = build.map { "\(version) (\($0))" } ?? version
-        return ([kind, numbered] + [commit].compactMap(\.self)).joined(separator: " · ")
+        return ([kind, numbered] + [commit.map(Self.shortCommit)].compactMap(\.self)).joined(separator: " · ")
     }
 
     /// `~/Library/Logs/Metabrowser/`, named for the app, for either variant; Console.app

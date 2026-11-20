@@ -165,7 +165,7 @@ for that check, and not a second account.
 | Views | The working tree | The working tree, and revisions | Revisions |
 | Commits, diffs, and the ref chooser | No | Yes | Yes |
 | Pulls and View on GitHub | No, with one case [not decided](#not-decided) | When `origin` is on github.com | When the origin is on github.com |
-| Refresh from the origin | None | Never into the checkout | A background fetch into the store |
+| Refresh from the origin | None | Never into the checkout | A background fetch into the store, which a served branch follows |
 | `kind` in `GET /api/identity` | `folder` | `folder` | `mirror` |
 
 - **Repository folder mode needs only Git.** Any repository gets its root opened,
@@ -176,6 +176,11 @@ for that check, and not a second account.
   checkout’s window is open.
 - **A mirror has no working tree.** Its store is bare, so there is nothing checked out
   that could hold a change, and every view of it is a revision.
+- **A mirror is browsed as github.com is,** as of the data last fetched: a branch or tag
+  shown follows its ref when a fetch moves it
+  ([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)), and
+  a repository folder is the same layer of revisions with the live working tree beside
+  it.
 - **A repository folder is a mirror and more.** It views every branch and tag the way a
   mirror does, as a revision, the checked-out branch included, and it also has the true
   working tree, where the folder-only features live.
@@ -461,8 +466,16 @@ opened by URL, a GitHub link sent to the app or a URL entered in Open URL… amo
   none of the objects the checkout already has, and **open the checkout instead**, which
   opens that folder. A checkout is known when an open folder window is one; recent
   folders join when an entry records its repository.
-  If the mirror already has a window, the window switches to the branch or pull request
-  the URL selects, and it never shows another revision silently.
+  A repository has one mirror, served from the repository itself, never from the URL
+  that first opened it, by the owner’s word on 2026-11-19. If the mirror already has a
+  window, that window and its server open the URL: the mirror refreshes, a pull request
+  or a commit opens at its page, and a branch, folder, or file switches the window to
+  the revision the URL selects, so it never shows another revision silently
+  (`POST /api/source/link`). A link sent to the app does the same.
+  If it has none but a window shows a checkout of the same repository, the mirror’s
+  window opens as a tab of that one, by the owner’s word on 2026-11-18: the mirror still
+  serves the URL, and the checkout keeps its own tab
+  ([GitHub Links](arch-macos-app.md#github-links)).
 - **Open Recent** lists the recent targets `metab` keeps, repositories opened by URL
   among them, and reopens each in the mode it records.
 
@@ -521,6 +534,7 @@ the design that carries it out.
 | Pulls and View on GitHub stay on a revision view, and it links to the commit viewed | 2026-11-18 | [Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder) |
 | View on branch and Browse code go to the pull request’s head as a revision view; the working-tree copy is a separate, labelled action | 2026-11-18 | [Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder) |
 | Open URL… opens the mirror, always, offers a known checkout, and never silently shows another revision | 2026-11-18 | [The File Menu](#the-file-menu) |
+| A URL’s new mirror window joins an open checkout’s window of the same repository as a tab | 2026-11-18 | [The File Menu](#the-file-menu) |
 | The indicator sits with the root’s name; the cloud alone is the fallback; folder mode uses a folder icon | 2026-11-18 | [The Indicator and View on GitHub](#the-indicator-and-view-on-github) |
 | The GitHub control is separate from the indicator, for github.com repositories only | 2026-11-18 | [The Indicator and View on GitHub](#the-indicator-and-view-on-github) |
 | One View on GitHub button in the upper right of every page github.com has a page for, which the app opens in a native popover and whose menu copies the link or opens it in the browser, in place of the Metabrowser and GitHub toggle and the pull request’s View on GitHub link | 2026-11-18 | [View on GitHub](../../design-system.md#view-on-github) |
@@ -567,7 +581,7 @@ A pull request that builds a part updates its row.
 | History only at a repository’s root | Built; stays as the gate for a folder served exactly | [The Exact-Root Gate](arch-git.md#discovery-and-the-exact-root-gate) |
 | The resolver: a path to its repository’s root, the guards, `--exact-root`, and the root in the `Serving` line | Not built | `mb-2wfk` |
 | `metab TARGET --present`, whose dry run answers a resolution | Partly built: `--present` and its dry run, on the path named; answering a resolution waits on the resolver | [#540](https://github.com/jlevy/metabrowser/pull/540), `mb-d9tu`; `mb-2wfk` |
-| GitHub links opened in the app, and `SessionRoot` | Built | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0` |
+| GitHub links opened in the app, and `SessionRoot` | Built: one mirror per repository, which opens every link into it in its running server | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0`; `mb-30xb` |
 | A repository folder’s revision views, its chooser, and their command line, with the two revision requirements above | Built | [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout); [#559](https://github.com/jlevy/metabrowser/pull/559), `mb-8ob8` |
 | Pulls on a folder’s revision; View on branch and Browse code to the head as a revision | Not built | Follows `mb-8ob8` |
 | Recent targets kept by `metab`, behind File > Open Recent | Built; a mirror’s `target` waits for `ProviderUrlReducer.web_url` (`mb-8bds`), and the resolved root for the resolver | [Recent Targets](arch-recent-targets.md), `mb-40k4` |

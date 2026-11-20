@@ -22,15 +22,19 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     private(set) weak var session: FolderSession?
     /// The window showing the page, while one is. Its controller sets it when it hosts the
     /// page, and clears it when the window closes or shows another page in its place
-    /// (`BrowserWindowController.show`). A page that leaves its window closes its View on
-    /// GitHub popover, which points into it.
+    /// (`BrowserWindowController.show`). A page that leaves its window closes its web
+    /// popover, which points into it.
     weak var host: BrowserWindowController? {
-        didSet { if host !== oldValue { gitHubPopover?.close() } }
+        didSet { if host !== oldValue { webPopover?.close() } }
     }
     private var policy = NavigationPolicy()
     private let container: WebContainerView
     private let status = WindowStatus()
-    private let textFinder = NSTextFinder()
+    /// Find on the page: WebKit's own find, run from the window's find bar (`PageFind`).
+    private let find = PageFind()
+    private lazy var findBar = makeFindBar()
+    /// The newest find's number, so an older one's answer, arriving late, is dropped.
+    private var findGeneration = 0
     /// The navigation `load` submitted, whose commit reveals the page in place of the
     /// status view, until server state supersedes it (`PageReveal`).
     private var reveal = PageReveal<WKNavigation>()
@@ -45,8 +49,9 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     private(set) var isDiscarded = false
     /// Reloads after the web content process dies, then the status view.
     private var contentRecoveries = RecoveryBudget.webContent
-    /// View on GitHub's popover, from the button's first use until the page closes.
-    private var gitHubPopover: GitHubPopover?
+    /// The web pane's popover, as View on GitHub opens, from a marked link's first use until
+    /// the page closes.
+    private var webPopover: WebPopover?
     /// The sheets the page opened, which Command-R cancels before it reloads.
     private var pageSheets = PageSheets<NSWindow>()
     /// The print panel, while a print the page started runs.
@@ -73,8 +78,6 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         super.init(nibName: nil, bundle: nil)
 
         wire(webView)
-        textFinder.findBarContainer = container
-        textFinder.isIncrementalSearchingEnabled = true
         // A page WebKit creates for `target=_blank` shows at once.
         container.showsStatus = configuration == nil
     }
@@ -106,10 +109,10 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         return webView
     }
 
-    /// A page's configuration: the folder's own, with the page's Print and View on GitHub
-    /// buttons answered by the page that asked.
+    /// A page's configuration: the folder's own, with the page's Print button and its links
+    /// marked to open in a web pane answered by the page that asked.
     private static func pageConfiguration() -> WKWebViewConfiguration {
-        WebConfiguration.make(pagePrints: pagePrints, gitHubViews: gitHubViews)
+        WebConfiguration.make(pagePrints: pagePrints, webViews: webViews)
     }
 
     private func wire(_ webView: DropAwareWebView) {
@@ -120,7 +123,6 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
             urls.forEach { app.request($0) }
             return true
         }
-        textFinder.client = webView  // WKWebView adopts NSTextFinderClient
     }
 
     // MARK: - Server state
@@ -192,22 +194,10 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
 
     /// Shows `address` now if the server is ready and still answers, or once it is ready.
     func show(_ address: PageAddress) {
-        gitHubPopover?.close()
+        webPopover?.close()
         loads.request(address)
         isDiscarded = false
         if let endpoint { loadNextPageOnceAnswered(from: endpoint) }
-    }
-
-    /// Loads the entry page of the server it attaches to next, rather than the page it shows
-    /// now: a repository's server starting again on a new link announces that link's page.
-    /// A load already waiting, such as a discarded page's revived as the link brought it
-    /// forward, is superseded, since the old server can go on serving while the restart
-    /// waits at the launch gate (`ServerSupervisor.restart`).
-    func showEntryPage() {
-        gitHubPopover?.close()
-        loads.cancelAll()
-        loads.requestEntry()
-        isDiscarded = false
     }
 
     /// Whether the start waits for another repository's, which can be a first clone.
@@ -238,7 +228,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         discarded.navigationDelegate = nil
         discarded.uiDelegate = nil
         discarded.onFileDrop = nil
-        gitHubPopover?.discard()
+        webPopover?.discard()
         webView = Self.makeWebView(Self.pageConfiguration())
         wire(webView)
         container.replaceWebView(webView)
@@ -313,10 +303,9 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     /// Nothing it started may load or call back after this.
     func close() {
         loads.cancelAll()
-        gitHubPopover?.discard()
-        gitHubPopover = nil
-        textFinder.client = nil
-        textFinder.findBarContainer = nil
+        webPopover?.discard()
+        webPopover = nil
+        container.isFindBarVisible = false
         webView.stopLoading()
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
@@ -435,38 +424,115 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         printPage(nil)
     }
 
-    /// Every page's View on GitHub buttons (`GitHubViewRequests`): each opens the popover
-    /// of the page that asked, while a window shows it.
-    static let gitHubViews = GitHubViewRequests { webView, frame, request in
+    /// Every page's links marked to open in a web pane (`WebViewRequests`), as View on
+    /// GitHub's is: each opens the popover of the page that asked, while a window shows it.
+    static let webViews = WebViewRequests { webView, frame, request in
         guard let page = (webView.window?.windowController as? BrowserWindowController)?.page,
               page.webView === webView
         else { return }
-        page.pageAskedToViewOnGitHub(request, from: frame)
+        page.pageAskedToShowWeb(request, from: frame)
     }
 
-    /// Opens View on GitHub's popover below the page's button, on the item's page on
-    /// github.com, for a click in the main frame of the server's own page.
-    private func pageAskedToViewOnGitHub(_ request: GitHubViewRequests.Request, from frame: WKFrameInfo) {
-        guard GitHubViewRequests.allows(frame, under: policy) else {
-            AppLog.app.info("a View on GitHub click was not answered: not from this server's own page")
+    /// Opens the web pane's popover below the page's marked link, on the link's page, for a
+    /// click in the main frame of the server's own page.
+    private func pageAskedToShowWeb(_ request: WebViewRequests.Request, from frame: WKFrameInfo) {
+        guard WebViewRequests.allows(frame, under: policy) else {
+            AppLog.app.info("a web pane link's click was not answered: not from this server's own page")
             return
         }
-        let popover = gitHubPopover ?? GitHubPopover(isInspectable: Self.isInspectable)
-        gitHubPopover = popover
-        let anchor = GitHubPopoverLayout.anchor(
+        let popover = webPopover ?? WebPopover(isInspectable: Self.isInspectable)
+        webPopover = popover
+        let anchor = WebPopoverLayout.anchor(
             request.link, viewportWidth: request.viewportWidth, in: webView.bounds, flipped: webView.isFlipped)
         popover.show(request.page, at: anchor, of: webView)
     }
 
-    /// After Metabrowser > Clear GitHub Data…: the popover's page loads again, signed out.
-    func reloadGitHubPopover() {
-        gitHubPopover?.reload()
+    /// After Metabrowser > Clear Website Data…: the popover's page loads again, signed out,
+    /// if what was cleared includes its site's data.
+    func reloadWebPopover(after clearing: WebDataClearing) {
+        webPopover?.reload(after: clearing)
     }
 
-    /// Menu items carry the `NSTextFinder.Action` in their tag.
+    /// Menu items carry the `NSTextFinder.Action` in their tag, though `PageFind`, not
+    /// `NSTextFinder`, answers them (mb-jkbp).
     @objc func performFindAction(_ sender: Any?) {
         guard let tag = (sender as? NSMenuItem)?.tag, let action = NSTextFinder.Action(rawValue: tag) else { return }
-        textFinder.performAction(action)
+        switch action {
+        case .showFindInterface:
+            showFindBar()
+        case .nextMatch, .previousMatch:
+            // With no search string yet, the shared one other apps' Find set, as in Safari.
+            if find.query.isEmpty, let shared = NSPasteboard(name: .find).string(forType: .string), !shared.isEmpty {
+                find.use(shared)
+                findBar.field.stringValue = shared
+            }
+            guard !find.query.isEmpty else { return showFindBar() }
+            runFind { find, webView in await find.step(action == .nextMatch ? .next : .previous, in: webView) }
+        case .setSearchString:
+            let webView = self.webView
+            Task { [weak self] in
+                guard let self, let text = await find.selection(in: webView) else { return }
+                find.use(text)
+                findBar.field.stringValue = text
+                shareSearchString(text)
+            }
+        case .hideFindInterface:
+            hideFindBar()
+        default:
+            return
+        }
+    }
+
+    private func makeFindBar() -> FindBar {
+        let bar = FindBar()
+        bar.onSearch = { [weak self] text in
+            self?.shareSearchString(text)
+            self?.runFind { find, webView in await find.search(text, in: webView) }
+        }
+        bar.onStep = { [weak self] step in
+            self?.runFind { find, webView in await find.step(step, in: webView) }
+        }
+        bar.onClose = { [weak self] in self?.hideFindBar() }
+        return bar
+    }
+
+    private func showFindBar() {
+        container.findBarView = findBar
+        container.isFindBarVisible = true
+        if findBar.field.stringValue.isEmpty, let shared = NSPasteboard(name: .find).string(forType: .string) {
+            findBar.field.stringValue = shared
+            find.use(shared)
+        }
+        window?.makeFirstResponder(findBar.field)
+        findBar.field.selectText(nil)
+    }
+
+    private func hideFindBar() {
+        guard container.isFindBarVisible else { return }
+        container.isFindBarVisible = false
+        findBar.show(found: nil)
+        window?.makeFirstResponder(webView)
+    }
+
+    /// The search string other apps' Find reads, as macOS shares it.
+    private func shareSearchString(_ text: String) {
+        guard !text.isEmpty else { return }
+        let pasteboard = NSPasteboard(name: .find)
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
+
+    /// Run one find against the page shown now and show its answer, unless a newer find
+    /// started meanwhile.
+    private func runFind(_ body: @escaping @MainActor (PageFind, WKWebView) async -> Bool?) {
+        findGeneration += 1
+        let generation = findGeneration
+        let webView = self.webView
+        Task { [weak self] in
+            guard let self else { return }
+            let found = await body(find, webView)
+            if generation == findGeneration { findBar.show(found: found) }
+        }
     }
 
     @objc func restartServer(_ sender: Any?) { session?.retry(from: self) }
@@ -489,7 +555,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         case #selector(performFindAction(_:)):
             guard PageMenu.isEnabled(.find, in: state), let action = NSTextFinder.Action(rawValue: item.tag)
             else { return false }
-            return textFinder.validateAction(action)
+            return action != .hideFindInterface || container.isFindBarVisible
         case #selector(openInDefaultBrowser(_:)): return currentServerURL != nil
         default: return true
         }

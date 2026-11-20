@@ -1,0 +1,324 @@
+/* The agents home, the session list, and the Session view. Loaded on demand by
+   support.js#ensureViewStyles, the first time one of them mounts, with agent-log.css, which
+   holds the kind colors and the Log's own rules. Color is the event kind or the tool family, nothing
+   else: an agent is a label, and a status uses the shell's badges. */
+
+.agents-home,
+.agents-list,
+.agents-session {
+  display: flex;
+  flex-direction: column;
+  gap: var(--content-padding-y);
+  padding: var(--content-padding-y) var(--content-padding-x);
+}
+
+.agents-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--content-padding-y);
+}
+
+.agents-sections[hidden],
+.agents-table-wrap[hidden],
+.agents-pager[hidden],
+.agents-more[hidden],
+.agents-empty[hidden] {
+  display: none;
+}
+
+.agents-loading {
+  min-height: 120px;
+}
+
+.agents-title {
+  margin: 0;
+}
+
+.agents-heading {
+  margin: 0 0 8px;
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  text-transform: var(--label-text-transform);
+  letter-spacing: var(--label-letter-spacing);
+  color: var(--muted);
+}
+
+.agents-heading-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agents-homes,
+.agents-live-list,
+.agents-children {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agents-agent {
+  font-weight: var(--weight-bold);
+}
+
+.agents-muted {
+  color: var(--muted);
+}
+
+.agents-empty {
+  color: var(--muted);
+  margin: 0;
+}
+
+.agents-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 12px var(--content-padding-x);
+  background: var(--agent-log-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-document);
+}
+
+.agents-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agents-stat-label {
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  text-transform: var(--label-text-transform);
+  letter-spacing: var(--label-letter-spacing);
+  color: var(--muted);
+}
+
+.agents-stat-value {
+  font-weight: var(--weight-bold);
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.agents-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.agents-progress-bar {
+  inline-size: 200px;
+  max-inline-size: 100%;
+}
+
+.agents-live-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+}
+
+.agents-live-age {
+  margin-inline-start: auto;
+  color: var(--muted);
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+/* Sessions per day: one bar a day, as tall as its share of the busiest day. */
+.agents-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  block-size: 96px;
+}
+
+.agents-bar {
+  flex: 1 1 0;
+  min-inline-size: 2px;
+  block-size: max(var(--agents-bar-size), 2px);
+  background: var(--chart-series-info);
+}
+
+/* Session sizes: one row a bucket, its bar as long as its share of the fullest bucket. */
+.agents-histogram {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agents-histogram-row {
+  display: grid;
+  grid-template-columns: minmax(8ch, 18ch) 1fr 6ch;
+  gap: 8px;
+  align-items: center;
+}
+
+.agents-histogram-track {
+  display: block;
+  block-size: 10px;
+}
+
+.agents-histogram-fill {
+  display: block;
+  block-size: 100%;
+  inline-size: var(--agents-bar-size);
+  min-inline-size: 2px;
+  background: var(--chart-series-info);
+}
+
+.agents-histogram-count {
+  text-align: end;
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.agents-sort:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* The tables */
+.agents-table-wrap {
+  overflow-x: auto;
+}
+
+.agents-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+}
+
+.agents-table th,
+.agents-table td {
+  padding: 4px 8px;
+  text-align: start;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.agents-table th {
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  text-transform: var(--label-text-transform);
+  letter-spacing: var(--label-letter-spacing);
+  color: var(--muted);
+}
+
+.agents-table .agents-numeric {
+  text-align: end;
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.agents-col-title,
+.agents-col-project {
+  max-inline-size: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agents-sort {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+
+.agents-sort:hover {
+  color: var(--text);
+}
+
+/* The sorted column's direction, drawn after its label; the cell's aria-sort says it too. */
+th[aria-sort="ascending"] .agents-sort::after {
+  content: " \2191";
+}
+
+th[aria-sort="descending"] .agents-sort::after {
+  content: " \2193";
+}
+
+.agents-no-file {
+  color: var(--muted);
+}
+
+.agents-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+
+.agents-list-summary {
+  color: var(--muted);
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.agents-pager {
+  display: flex;
+  gap: 8px;
+}
+
+/* The session page */
+.agents-session-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agents-session-line {
+  margin: 0;
+}
+
+.agents-relatives {
+  margin: 0;
+}
+
+.agents-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agents-event {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  background: var(--agent-log-surface);
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+}
+
+.agents-event-replay {
+  opacity: 0.7;
+}
+
+.agents-event-summary {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agents-event-time {
+  color: var(--muted);
+  font-variant-numeric: var(--tabular-numerals);
+  white-space: nowrap;
+}

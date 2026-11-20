@@ -19,14 +19,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from metabrowser.cache.atomic import publish_entry, write_record_atomic
+from metabrowser.cache.atomic import publish_entry, read_record, write_record_atomic
 from metabrowser.cache.identity import (
     GitTransport,
     ObjectFormat,
     cache_slug,
+    identity_digest,
     repository_store_id,
     source_identity,
-    store_key,
+    store_key_candidates,
 )
 from metabrowser.cache.layout import migrate_layout
 from metabrowser.cache.locks import (
@@ -36,6 +37,7 @@ from metabrowser.cache.locks import (
 )
 from metabrowser.cache.paths import (
     LAYOUT_RECORD,
+    REPOSITORY_STORES,
     SOURCES,
     STAGING,
     source_directory,
@@ -88,9 +90,38 @@ class FixtureSource:
     def slug(self) -> str:
         return cache_slug(self.transport, self.address, self.id, slug_owner=lambda _slug: None)
 
-    def store_key(self, object_format: ObjectFormat = "sha1") -> str:
-        return store_key(repository_store_id(self.id, object_format))
+    def store(self, object_format: ObjectFormat = "sha1") -> FixtureStore:
+        return FixtureStore(self, object_format)
 
+    def store_key(self, object_format: ObjectFormat = "sha1") -> str:
+        return self.store(object_format).key
+
+
+@dataclass(frozen=True, slots=True)
+class FixtureStore:
+    """The store a source acquires: its identity, and the key it is published under."""
+
+    source: FixtureSource
+    object_format: ObjectFormat = "sha1"
+
+    @property
+    def id(self) -> str:
+        return repository_store_id(self.source.id, self.object_format)
+
+    @property
+    def key(self) -> str:
+        return store_key_candidates(self.source.transport, self.source.address, self.id)[0]
+
+
+@dataclass(frozen=True, slots=True)
+class FixedStore:
+    """A store of an identity and a key a test chose, such as one that must sort first."""
+
+    id: str
+    key: str
+
+
+type PublishedStore = FixtureStore | FixedStore
 
 FLASK_HTTPS: Final = FixtureSource("https", "https://github.com/pallets/flask")
 FLASK_SSH: Final = FixtureSource("ssh", "git@github.com:pallets/flask.git")
@@ -100,11 +131,11 @@ JINJA: Final = FixtureSource("https", "https://github.com/pallets/jinja")
 MARKUPSAFE: Final = FixtureSource("https", "https://github.com/pallets/markupsafe")
 ITSDANGEROUS: Final = FixtureSource("https", "https://github.com/pallets/itsdangerous")
 # Both flask spellings share the store the HTTPS source acquired.
-FLASK_STORE_KEY: Final = FLASK_HTTPS.store_key()
+FLASK_STORE: Final = FLASK_HTTPS.store()
 # An acquisition interrupted after publishing its store and before its alias.
-ORPHAN_STORE_KEY: Final = CLICK.store_key()
+ORPHAN_STORE: Final = CLICK.store()
 # A store nothing publishes, for an alias that dangles.
-MISSING_STORE_KEY: Final = WERKZEUG.store_key()
+MISSING_STORE: Final = WERKZEUG.store()
 # A name no slug spells, so the routes count it and never repeat it.
 UNRECOGNIZED_ENTRY: Final = "Private Notes"
 # Shaped like a token and nothing more. A record that fails validation can hold one, so
@@ -113,21 +144,23 @@ RECORD_SECRET: Final = "ghp-examplesecrettokenvalue"
 
 
 def _stage_and_publish_store(
-    home: Path, key: str, *, with_revision: bool, lender: StoreLender | None = None
+    home: Path, store: PublishedStore, *, with_revision: bool, lender: StoreLender | None = None
 ) -> None:
-    entry = f"store-{key[:16]}"
+    key = store.key
+    digest = store.id.removeprefix("sha256:")
+    entry = f"store-{digest[:16]}"
     staged = staging_entry(entry)
     with staging_entry_lock(home, entry) as liveness:
         ensure_private_directory(home, f"{staged}/repository.git/objects/pack")
         # A physical Git file the routes must never expose.
         write_private_file_atomic(
-            home, f"{staged}/repository.git/objects/pack/pack-{key[:40]}.pack", b"PACK"
+            home, f"{staged}/repository.git/objects/pack/pack-{digest[:40]}.pack", b"PACK"
         )
         write_record_atomic(
             home,
             f"{staged}/store.yml",
             RepositoryStore(
-                id=f"sha256:{key}",
+                id=store.id,
                 created_at=CREATED_AT,
                 acquisition=StoreAcquisition(git_version="2.50.1", object_format="sha1"),
                 lender=lender,
@@ -187,16 +220,18 @@ def _stage_and_publish_source(home: Path, source: FixtureSource, *, opened: bool
         liveness.remove_lock_file()
 
 
-def _attach(home: Path, source: FixtureSource, key: str, *, generation: int, at: str) -> None:
+def _attach(
+    home: Path, source: FixtureSource, store: PublishedStore, *, generation: int, at: str
+) -> None:
     """Write the alias, the visibility commit, under the alias lock and the store lock."""
 
-    with source_alias_lock(home, source.slug), repository_store_lock(home, key):
+    with source_alias_lock(home, source.slug), repository_store_lock(home, store.key):
         write_record_atomic(
             home,
             source_record(source.slug, "store-alias.yml"),
             RepositoryStoreAlias(
                 source_id=source.id,
-                store_id=f"sha256:{key}",
+                store_id=store.id,
                 generation=generation,
                 updated_at=at,
             ),
@@ -223,14 +258,14 @@ def build_populated_home(home: Path) -> None:
     """
 
     build_empty_home(home)
-    _stage_and_publish_store(home, FLASK_STORE_KEY, with_revision=True)
+    _stage_and_publish_store(home, FLASK_STORE, with_revision=True)
     _stage_and_publish_source(home, FLASK_HTTPS, opened=True)
-    _attach(home, FLASK_HTTPS, FLASK_STORE_KEY, generation=1, at=ALIASED_AT)
+    _attach(home, FLASK_HTTPS, FLASK_STORE, generation=1, at=ALIASED_AT)
     _stage_and_publish_source(home, FLASK_SSH, opened=False)
-    _attach(home, FLASK_SSH, FLASK_STORE_KEY, generation=1, at=ALIASED_AT)
-    _attach(home, FLASK_SSH, FLASK_STORE_KEY, generation=2, at=REPOINTED_AT)
+    _attach(home, FLASK_SSH, FLASK_STORE, generation=1, at=ALIASED_AT)
+    _attach(home, FLASK_SSH, FLASK_STORE, generation=2, at=REPOINTED_AT)
 
-    _stage_and_publish_store(home, ORPHAN_STORE_KEY, with_revision=False)
+    _stage_and_publish_store(home, ORPHAN_STORE, with_revision=False)
     _stage_and_publish_source(home, CLICK, opened=False)
 
     ensure_private_directory(home, f"{staging_entry(LEFTOVER_STAGING_ENTRY)}/repository.git")
@@ -256,14 +291,14 @@ def build_damaged_home(home: Path) -> None:
     build_populated_home(home)
     for source in (ITSDANGEROUS, JINJA, MARKUPSAFE, WERKZEUG):
         _stage_and_publish_source(home, source, opened=False)
-    _attach(home, WERKZEUG, MISSING_STORE_KEY, generation=1, at=ALIASED_AT)
-    with source_alias_lock(home, JINJA.slug), repository_store_lock(home, FLASK_STORE_KEY):
+    _attach(home, WERKZEUG, MISSING_STORE, generation=1, at=ALIASED_AT)
+    with source_alias_lock(home, JINJA.slug), repository_store_lock(home, FLASK_STORE.key):
         write_record_atomic(
             home,
             source_record(JINJA.slug, "store-alias.yml"),
             RepositoryStoreAlias(
                 source_id=FLASK_HTTPS.id,
-                store_id=f"sha256:{FLASK_STORE_KEY}",
+                store_id=FLASK_STORE.id,
                 generation=1,
                 updated_at=ALIASED_AT,
             ),
@@ -293,7 +328,7 @@ def build_damaged_home(home: Path) -> None:
         home, source_record(FLASK_SSH.slug, "store-alias.yml"), b"alias: nonsense\n"
     )
     ensure_private_directory(home, f"{SOURCES}/{UNRECOGNIZED_ENTRY}")
-    (home / store_record(ORPHAN_STORE_KEY, "state.yml")).unlink()
+    (home / store_record(ORPHAN_STORE.key, "state.yml")).unlink()
     os.chmod(home / source_record(MARKUPSAFE.slug, "source.yml"), 0o640)
     os.chmod(home / source_directory(ITSDANGEROUS.slug), 0o750)
 
@@ -314,14 +349,43 @@ def build_overlay_home(home: Path, checkouts: Path) -> None:
         )
         if source is not MARKUPSAFE:
             objects.mkdir(parents=True)
-        _stage_and_publish_store(home, source.store_key(), with_revision=True, lender=lender)
+        _stage_and_publish_store(home, source.store(), with_revision=True, lender=lender)
         _stage_and_publish_source(home, source, opened=False)
-        _attach(home, source, source.store_key(), generation=1, at=ALIASED_AT)
+        _attach(home, source, source.store(), generation=1, at=ALIASED_AT)
     write_private_file_atomic(
         home,
         f"{store_directory(ITSDANGEROUS.store_key())}/repository.git/objects/info/alternates",
         f"{checkouts}/elsewhere/objects\n".encode(),
     )
+
+
+def rewrite_as_f01(home: Path) -> dict[str, str]:
+    """Rewrite *home* as the release that wrote ``f01`` left it; return each store's old name.
+
+    A store directory is named by the whole digest of its identity, its lock files are
+    named so too, and the layout says ``f01``. The map is from the key each store has now
+    to the name it is given.
+    """
+
+    old_names: dict[str, str] = {}
+    stores = home / REPOSITORY_STORES
+    for entry in sorted(stores.iterdir()):
+        record = read_record(
+            home, f"{REPOSITORY_STORES}/{entry.name}/store.yml", REPOSITORY_STORE_CONTRACT_ID
+        )
+        assert isinstance(record, RepositoryStore)
+        digest = identity_digest(record.id)
+        entry.rename(stores / digest)
+        old_names[entry.name] = digest
+        for suffix in (".lock", ".fetch.lock"):
+            write_private_file_atomic(home, f"locks/stores/{digest}{suffix}", b"")
+    write_record_atomic(
+        home,
+        LAYOUT_RECORD,
+        CacheLayout(format="f01", created_by="0.12.0"),
+        CACHE_LAYOUT_CONTRACT_ID,
+    )
+    return old_names
 
 
 def build_shared_directories_home(home: Path) -> None:
@@ -339,7 +403,7 @@ def build_future_home(home: Path) -> None:
     write_record_atomic(
         home,
         LAYOUT_RECORD,
-        CacheLayout(format="f02", created_by="0.12.0"),
+        CacheLayout(format="f03", created_by="0.12.0"),
         CACHE_LAYOUT_CONTRACT_ID,
     )
 

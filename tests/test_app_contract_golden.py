@@ -67,6 +67,7 @@ import json
 import os
 import plistlib
 import re
+import shutil
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -81,6 +82,7 @@ from devtools.app_contract import OPAQUE, SCENARIO_SECTION, SHOWN_OUTPUT, Surfac
 from metabrowser import recent_targets
 from metabrowser.cli.doctor import DOCTOR_APP_ENV
 from metabrowser.cli.present import MINIMUM_METAB_KEY
+from metabrowser.git import file_ages
 from metabrowser.git import process as git_process
 from metabrowser.home import METABROWSER_CACHE_DIR_ENV
 from metabrowser.normalize import ROOT_PLACEHOLDER
@@ -113,6 +115,7 @@ posix_only = pytest.mark.skipif(os.name != "posix", reason="the owner-only cache
 CONTRACT: Final = app_contract.load()
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
 SHELL_CORE: Final = app_contract.APP_ROOT / "Sources" / "ShellCore"
+FIXTURES: Final = Path(__file__).resolve().parent / "fixtures"
 GH_STAND_IN: Final = Path(__file__).resolve().parent / "fixtures" / "github-status"
 GIT_STAND_IN: Final = Path(__file__).resolve().parent / "fixtures" / "doctor"
 # A minimum `metab` no release meets, so the doctor's `metab` check warns whatever this
@@ -260,12 +263,12 @@ def _cache(home: Path) -> None:
 
     build_empty_home(home)
     for store, sources in ((HELD, (HELD, HELD_BY_SSH)), (ANOTHER, (ANOTHER,))):
-        _stage_and_publish_store(home, store.store_key(), with_revision=True)
+        _stage_and_publish_store(home, store.store(), with_revision=True)
         for source in sources:
             _stage_and_publish_source(home, source, opened=False)
-            _attach(home, source, store.store_key(), generation=1, at=ALIASED_AT)
+            _attach(home, source, store.store(), generation=1, at=ALIASED_AT)
     # Acquired, and never attached to its store: the route lists it as not published.
-    _stage_and_publish_store(home, LISTED_ONLY.store_key(), with_revision=False)
+    _stage_and_publish_store(home, LISTED_ONLY.store(), with_revision=False)
     _stage_and_publish_source(home, LISTED_ONLY, opened=False)
 
 
@@ -331,6 +334,11 @@ class _Sandbox:
         opened = iter(f"2026-11-18T03:14:{second:02d}Z" for second in range(15, 60))
         monkeypatch.setattr(recent_targets, "now", lambda: next(opened))
         self.origin = _origin(tmp_path)
+        # A checkout of a GitHub repository, whose window a link's new mirror window of
+        # that repository joins as a tab: its origin is what names the repository.
+        self.checkout = tmp_path / "checkout"
+        _git(tmp_path, "clone", "-q", "--template=", "--", self.origin, str(self.checkout))
+        _git(self.checkout, "remote", "set-url", "origin", "git@github.com:Octo/Demo.git")
 
     def run(
         self,
@@ -431,6 +439,14 @@ class _Sandbox:
         return normalize_console(label_home(text, self.home), self.root)
 
 
+def _body(directory: Path, name: str, link: str) -> str:
+    """A link request's body, as ``SourceLink`` sends it, written where ``--data`` reads it."""
+
+    body = directory / f"{name}.json"
+    body.write_text(json.dumps({"fetch": False, "link": link}) + "\n", encoding="utf-8")
+    return str(body)
+
+
 @posix_only
 @needs_git
 def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -471,12 +487,20 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         run("serve-path/file", {**folder, "path": ESCAPED_FILE}),
         run("identity/folder", {"root": served}),
         run("identity/under-home", {"root": served}, env={"HOME": str(tmp_path)}),
+        run("identity/checkout", {"root": str(sandbox.checkout)}),
         run("source-status/folder", {"root": served}),
         # A repository: its first start clones, and the next finds the clone.
         run("serve/repository-cloned", repository),
         run("serve/repository-cached", repository),
         run("identity/mirror", {"root": mirror}),
         run("source-status/mirror", {"root": mirror}),
+        # A link into the mirror's repository opens at its page; one into another is refused.
+        run("source-link/repository", {"root": mirror, "body": _body(tmp_path, "link", mirror)}),
+        run(
+            "source-link/elsewhere",
+            {"root": mirror, "body": _body(tmp_path, "elsewhere", f"{mirror}-other")},
+            status=1,
+        ),
         run("acquire/in-terminal", {"url": mirror}),
     ]
     # What a GitHub link opens: each kind the app knows, and a refusal.
@@ -509,6 +533,26 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         )
     )
     assert cast("dict[str, object]", sandbox.answer)["next_after"] is None
+    # Where Metabrowser's own event log is: a state directory with two segments, newest
+    # first in the answer, and one with a log directory and no segment.
+    state = sandbox.root / "events-state"
+    log = state / "events"
+    state.mkdir(mode=0o700)
+    log.mkdir(mode=0o700)
+    for segment in sorted((FIXTURES / "event-log").glob("events-*.jsonl")):
+        shutil.copy(segment, log / segment.name)
+        (log / segment.name).chmod(0o600)
+    quiet = sandbox.root / "quiet-state" / "events"
+    quiet.parent.mkdir(mode=0o700)
+    quiet.mkdir(mode=0o700)
+    blocks.append(
+        run("event-log/found", {"folder": support}, env={"METABROWSER_STATE_DIR": str(state)})
+    )
+    blocks.append(
+        run(
+            "event-log/empty", {"folder": support}, env={"METABROWSER_STATE_DIR": str(quiet.parent)}
+        )
+    )
     blocks += _doctor(sandbox)
     assert app_contract.GOLDEN_NAME == "app-contract.txt"
     check_golden("app-contract.txt", "".join(blocks))
@@ -535,6 +579,14 @@ def _doctor(sandbox: _Sandbox) -> list[str]:
     with sandbox.monkeypatch.context() as patched:
         patched.setenv("PATH", f"{GIT_STAND_IN}{os.pathsep}{os.environ['PATH']}")
         patched.setenv("METABROWSER_MAX_FIRST_CLONE_KB", "1")
+        # The suite starts every test on a pretend Git 2.50.1 for file ages
+        # (tests/file_ages_git.py); the doctor's Git check reads the stand-in as a whole.
+        patched.setattr(file_ages, "git_executable", git_process.git_executable)
+        patched.setattr(file_ages, "detect_git_version", git_process.detect_git_version)
+        # The event log check is ok where the log is on and its directory can be made, and the
+        # suite turns the log off (tests/conftest.py); the state directory is the sandbox's.
+        patched.setenv("METABROWSER_EVENT_LOG", "1")
+        patched.setenv("METABROWSER_STATE_DIR", str(sandbox.root / "state"))
         git_process.git_executable.cache_clear()
         git_process.detect_git_version.cache_clear()
         try:

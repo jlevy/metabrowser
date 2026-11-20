@@ -139,11 +139,12 @@ nonisolated enum ContractGolden {
         "serve-path/file",
         "recent-list/empty", "recent-list/after-an-open", "recent-list/listed", "recent-list/problem",
         "recent-add/repository", "recent-forget/folder", "recent-clear",
-        "identity/folder", "identity/under-home", "identity/mirror",
-        "source-status/folder", "source-status/mirror",
+        "identity/folder", "identity/under-home", "identity/checkout", "identity/mirror",
+        "source-status/folder", "source-status/mirror", "source-link/repository", "source-link/elsewhere",
         "present-dry-run/repository", "present-dry-run/pull-request", "present-dry-run/commit",
         "present-dry-run/tree", "present-dry-run/file", "present-dry-run/refused",
         "cache-sources/none", "cache-sources/held", "cache-sources/first-page", "cache-sources/next-page",
+        "event-log/found", "event-log/empty",
         "doctor/clean", "doctor/as-the-app", "acquire/in-terminal",
     ]
 
@@ -305,6 +306,20 @@ nonisolated enum ContractGolden {
         #expect(try block("identity/under-home").environment == ["HOME": ContractGolden.sandbox])
         #expect(try identity("identity/under-home") == .identity(.localFolder(served, home: ContractGolden.sandbox)))
 
+        // A checkout names its GitHub repository as a link's dry run names the link's.
+        guard case .identity(let checkout) = try identity("identity/checkout") else {
+            Issue.record("a checkout's identity was not read")
+            return
+        }
+        #expect(checkout.kind == .folder)
+        #expect(checkout.repository == demo)
+        guard case .plan(let plan) = PresentDryRun.answer(try block("present-dry-run/repository").result) else {
+            Issue.record("a repository link was not resolved")
+            return
+        }
+        #expect(CheckoutWindow.same(try #require(checkout.repository), plan.repository))
+        #expect(checkout.repository == plan.repository)
+
         guard case .identity(let mirror) = try identity("identity/mirror") else {
             Issue.record("a mirror's identity was not read")
             return
@@ -315,12 +330,27 @@ nonisolated enum ContractGolden {
         #expect(mirror.title == FolderIdentity.title(for: mirror.shortName))
     }
 
-    @Test func aSourceWithNothingToFetchHasNothingToSay() throws {
+    @Test func aStatusSaysWhetherARefreshRuns() throws {
         for scenario in ["source-status/folder", "source-status/mirror"] {
             let block = try block(scenario)
-            #expect(Array(block.words.dropFirst()) == ["--api", "/" + LinkSelection.route])
+            #expect(Array(block.words.dropFirst()) == ["--api", "/" + SourceLink.statusRoute])
             let status = try #require(block.httpStatus)
-            #expect(LinkSelection.read(status: status, body: block.json) == .settled(.shown))
+            #expect(SourceLink.refreshing(status: status, body: block.json) == false)
+        }
+    }
+
+    /// A link into the repository a mirror serves opens at the page the server names; one
+    /// into another repository is refused, which leaves the window where it was.
+    @Test func aLinkOpensInTheMirrorOfItsRepository() throws {
+        let opened = try block("source-link/repository")
+        #expect(Array(opened.words.dropFirst().prefix(2)) == ["--api", "/" + SourceLink.route])
+        #expect(opened.words.dropFirst(3).first == "--data")
+        #expect(SourceLink.read(status: try #require(opened.httpStatus), body: opened.json)
+            == .page(PageAddress(reference: "/view/")!))
+        let refused = try block("source-link/elsewhere")
+        guard case .failed = SourceLink.read(status: try #require(refused.httpStatus), body: refused.json) else {
+            Issue.record("a link into another repository was not refused")
+            return
         }
     }
 
@@ -388,6 +418,24 @@ nonisolated enum ContractGolden {
         #expect(RepositoryCache.read(next.result, looking: demo) == .found)
     }
 
+    // MARK: - The event log
+
+    @Test func theEventLogIsFoundByItsNewestSegment() throws {
+        let folder = ContractGolden.sandbox + "/support"
+        // The golden's state directory holds two segments, listed newest first.
+        let found = try block("event-log/found")
+        #expect(found.words == EventLogLocation.arguments(folder: folder))
+        let directory = ContractGolden.sandbox + "/events-state/events"
+        #expect(EventLogLocation.read(found.result) == .found(
+            URL(filePath: directory + "/events-20261119T210201Z-p4242-000.jsonl")))
+
+        // A log directory with no segment is an answer, and the app says there is none yet.
+        let empty = try block("event-log/empty")
+        #expect(empty.words == EventLogLocation.arguments(folder: folder))
+        #expect(EventLogLocation.read(empty.result) == .empty(
+            URL(filePath: ContractGolden.sandbox + "/quiet-state/events", directoryHint: .isDirectory)))
+    }
+
     // MARK: - Check Setup
 
     /// Help > Check Setup… runs the doctor as `DoctorRun.spec` writes it, naming this
@@ -400,7 +448,7 @@ nonisolated enum ContractGolden {
                 runtime: Runtime(executable: "/opt/metab", version: MetabRequirement.minimum, source: .chosen),
                 tools: ToolPaths()),
             inherited: [:], appBundle: bundle)
-        let ids = ["plugins", "open_in", "metab", "git", "config", "cache", "github"]
+        let ids = ["plugins", "open_in", "metab", "git", "config", "cache", "event_log", "github"]
 
         let clean = try block("doctor/clean")
         #expect(clean.words == spec.arguments)
@@ -421,7 +469,7 @@ nonisolated enum ContractGolden {
         }
         #expect(!found.ok && found.hasChecks)
         #expect(found.rows.map(\.id) == ids)
-        #expect(found.rows.map(\.state) == [.ok, .ok, .warning, .ok, .warning, .problem, .warning])
+        #expect(found.rows.map(\.state) == [.ok, .ok, .warning, .ok, .warning, .problem, .ok, .warning])
         let fixes = Dictionary(uniqueKeysWithValues: found.rows.map { ($0.id, $0.remedy) })
         let step = DoctorReport.Remedy(text: ContractGolden.text, command: ContractGolden.text)
         #expect(fixes["metab"] == step, "the upgrade the app's minimum calls for")

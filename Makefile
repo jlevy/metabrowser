@@ -112,10 +112,15 @@ lint-check:
 # line. It is a wall-clock measurement and not behavior, so the threshold is put past
 # tryscript's own 30 s command timeout, where it cannot fire before the command fails.
 #
-# `env` sets both, so the same words work as a shell command and as the command
+# A golden that serves writes no event log into the state directory of whoever runs it
+# (METABROWSER_EVENT_LOG=0, as tests/conftest.py sets for pytest); one that reads the log
+# names its own directory. Nor does a stand-in gh that fails make it probe the network
+# (METABROWSER_NETWORK_PROBE=0, as tests/conftest.py also sets).
+#
+# `env` sets them all, so the same words work as a shell command and as the command
 # devtools/run_goldens.py runs once for each golden.
 TRYSCRIPT := env PATH="$(CURDIR)/tests/no-real-gh:$$PATH" METABROWSER_SLOW_SERVER_MS=60000 \
-	npx --no-install tryscript
+	METABROWSER_EVENT_LOG=0 METABROWSER_NETWORK_PROBE=0 npx --no-install tryscript
 GOLDENS := tests/golden/*.tryscript.md
 # How many golden files devtools/run_goldens.py runs at a time: one per processor of a CI
 # runner, which has four. tryscript runs a file's commands one after another, each in a
@@ -221,10 +226,13 @@ benchmark: | install
 # beside other workers, like the parallel tier, so the same gates fail a serial or chrome
 # test in it.
 ADMITTED_GIT_TESTS := \
+	tests/test_git_file_ages.py \
+	tests/test_git_revision_ages_routes.py \
 	tests/test_git_full_clone_acceptance.py \
 	tests/test_cli_live_acquire_golden.py \
 	tests/test_cache_acquire.py \
 	tests/test_cache_publish.py \
+	tests/test_cache_store_rename.py \
 	tests/test_cli_acquire.py \
 	tests/test_cli_cache_acquire_golden.py \
 	tests/test_cli_git_pin_golden.py \
@@ -254,6 +262,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_cli_checkout_golden.py \
 	tests/test_cli_github_pull_golden.py \
 	tests/test_cli_github_pull_image_golden.py \
+	tests/test_cli_github_pull_size_golden.py \
 	tests/test_cli_github_pull_rendered_golden.py \
 	tests/test_cli_github_pulls_golden.py \
 	tests/test_cli_github_stacks_golden.py \
@@ -263,6 +272,8 @@ ADMITTED_GIT_TESTS := \
 	tests/test_cli_github_pull_files_golden.py \
 	tests/test_cli_github_pull_files_summary_golden.py \
 	tests/test_cli_github_pulls_prefetch_golden.py \
+	tests/test_github_ref_pulls.py \
+	tests/test_cli_github_ref_pulls_golden.py \
 	tests/test_github_pull_files.py \
 	tests/test_github_pull_files_summary.py \
 	tests/test_github_drawn_from_disk.py \
@@ -325,6 +336,7 @@ GOLDEN_RECORDERS := \
 	tests/test_source_freshness_session.py \
 	tests/test_source_ref_selector_session.py \
 	tests/test_key_reveal_session.py \
+	tests/test_event_log_view_session.py \
 	tests/test_diff_view_file_session.py \
 	tests/test_diff_markdown_session.py \
 	tests/test_diff_structured_session.py \
@@ -347,6 +359,7 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_github_url_golden.py \
 	tests/test_cli_github_pull_golden.py \
 	tests/test_cli_github_pull_image_golden.py \
+	tests/test_cli_github_pull_size_golden.py \
 	tests/test_cli_github_pull_rendered_golden.py \
 	tests/test_cli_github_pulls_golden.py \
 	tests/test_cli_github_stacks_golden.py \
@@ -355,12 +368,14 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_github_pull_files_golden.py \
 	tests/test_cli_github_pull_files_summary_golden.py \
 	tests/test_cli_github_pulls_prefetch_golden.py \
+	tests/test_cli_github_ref_pulls_golden.py \
 	tests/test_cli_checkout_golden.py \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_cli_source_checkout_golden.py \
 	tests/test_cli_present_golden.py \
 	tests/test_app_contract_golden.py \
-	tests/test_diff_comparison_cache.py
+	tests/test_diff_comparison_cache.py \
+	tests/test_agents_mapping_golden.py
 
 golden-update:
 	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_RECORDERS)

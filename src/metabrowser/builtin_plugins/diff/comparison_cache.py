@@ -69,6 +69,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from metabrowser import event_log
+
 if TYPE_CHECKING:
     from metabrowser.diff.format import ChangeSetManifest, ResolvedComparison
 
@@ -144,7 +146,15 @@ class ComparisonCache:
             return kept
         shared = self._computing.get(key)
         if shared is None:
-            shared = asyncio.ensure_future(compute())
+            # A job in the event log, whose parent is the request that started it: the
+            # listing a pull request's Diff summary waits for.
+            shared = asyncio.ensure_future(
+                event_log.job(
+                    compute(),
+                    "comparison_cache.manifest",
+                    attrs={"key": event_log.redact(" ".join(key), limit=300)},
+                )
+            )
             self._computing[key] = shared
             shared.add_done_callback(functools.partial(self._finished, key))
         # wait() leaves shared work running when this reader leaves. Unlike shield()

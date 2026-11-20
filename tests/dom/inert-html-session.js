@@ -30,6 +30,88 @@ const hostileLinks = JSON.parse(
 const linkTree = Object.entries({ ...hostileLinks.refused, ...hostileLinks.kept }).map(
   ([name, href]) => ({ tag: "a", attrs: [["href", href]], children: [name] }),
 );
+// The fallback's span as the server's hardener writes it, and every other shape of one: the
+// page keeps the class exactly and an address for the tooltip, and nothing else of a span.
+const span = (attrs, text) => ({ tag: "span", attrs, children: [text] });
+const FALLBACK = "mb-image-fallback";
+// The badges of a README that the fixture's tree is too long to hold each of: an image in a
+// link, over https and over http, one in no link in each, and one in a link to GitHub.
+const badge = (src, alt, href) => {
+  const image = {
+    tag: "img",
+    attrs: [
+      ["src", src],
+      ["alt", alt],
+    ],
+    children: [],
+  };
+  return href === undefined ? image : { tag: "a", attrs: [["href", href]], children: [image] };
+};
+const badgeTree = [
+  badge("https://img.shields.io/badge/a-b", "Linked", "https://x.com/ojoshe"),
+  " ",
+  badge(
+    "https://github.com/octo/demo/actions/workflows/ci.yml/badge.svg",
+    "CI",
+    "https://github.com/octo/demo/actions/workflows/ci.yml",
+  ),
+  " ",
+  badge("http://example.com/insecure.png", "Linked over http", "https://example.com/dest"),
+  " ",
+  badge("https://img.shields.io/badge/c-d", "Standalone"),
+  " ",
+  badge("http://example.com/plain.png", "Plain over http"),
+  " ",
+  badge("https://img.shields.io/badge/e-f", "", "docs/guide.md"),
+];
+const chipTree = [
+  span(
+    [
+      ["class", FALLBACK],
+      ["data-tip-text", "https://example.com/a.png"],
+    ],
+    "valid",
+  ),
+  span([["class", FALLBACK]], "no address"),
+  span(
+    [
+      ["class", FALLBACK],
+      ["data-tip-text", "javascript:alert(1)"],
+    ],
+    "bad address",
+  ),
+  span(
+    [
+      ["class", FALLBACK],
+      ["data-tip-text", "/api/tree"],
+    ],
+    "relative address",
+  ),
+  span(
+    [
+      ["class", `modal-overlay ${FALLBACK}`],
+      ["data-tip-text", "https://example.com/b"],
+    ],
+    "other class",
+  ),
+  span(
+    [
+      ["class", FALLBACK],
+      ["style", "position:fixed"],
+      ["onclick", "alert(1)"],
+      ["id", "x"],
+      ["title", "t"],
+    ],
+    "extras",
+  ),
+  span(
+    [
+      ["data-tip-text", "https://example.com/c"],
+      ["data-nav-dir", "up"],
+    ],
+    "no class",
+  ),
+];
 const inertPath = path.join(repoRoot, "src/metabrowser/static/inert-html.js");
 const context = { window: {}, URL };
 vm.runInNewContext(fs.readFileSync(inertPath, "utf8"), context, { filename: inertPath });
@@ -77,8 +159,12 @@ function proseElement(tag) {
     nodeType: 1,
     tagName: tag.toUpperCase(),
     className: "",
+    attributes: [],
     childNodes: [],
     parentElement: null,
+    setAttribute(name, value) {
+      element.attributes.push({ name, value: String(value) });
+    },
     append(...nodes) {
       for (const node of nodes) {
         node.parentElement = element;
@@ -105,13 +191,14 @@ function proseElement(tag) {
 }
 
 function proseTree(element) {
-  return element.nodeType === 1
-    ? {
-        [element.className
-          ? `${element.tagName.toLowerCase()}.${element.className}`
-          : element.tagName.toLowerCase()]: element.childNodes.map(proseTree),
-      }
-    : element.textContent;
+  if (element.nodeType !== 1) {
+    return element.textContent;
+  }
+  const label = element.className
+    ? `${element.tagName.toLowerCase()}.${element.className}`
+    : element.tagName.toLowerCase();
+  const attributes = element.attributes.map(({ name, value }) => `[${name}=${value}]`).join("");
+  return { [`${label}${attributes}`]: element.childNodes.map(proseTree) };
 }
 
 function renderShaped(tag, ...children) {
@@ -120,16 +207,24 @@ function renderShaped(tag, ...children) {
   return element;
 }
 
+// A document's own `<div align>`, the one attribute a kept `<div>` can carry.
+function aligned(element, align) {
+  element.setAttribute("align", align);
+  return element;
+}
+
 function escapeText(value) {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
-function serialize(nodes) {
+function serialize(nodes, inLink = false) {
   return nodes
     .map((node) => {
       if ("text" in node) {
         return escapeText(node.text);
       }
+      // A link never holds another: a browser reads that as the first's end.
+      assert(!(inLink && node.tag === "a"), "the page kept a link inside a link");
       const allowed = inert.ALLOWED_TAGS.includes(node.tag) || node.tag === "img";
       assert(allowed, `the page kept <${node.tag}>`);
       for (const [name] of node.attributes) {
@@ -143,6 +238,26 @@ function serialize(nodes) {
         node.tag !== "img" || loading === "lazy",
         `the page kept an image, loading=${loading}`,
       );
+      // An image from the web is fetched over https with no referrer; an image of the
+      // document's own is in its tree.
+      const source = node.attributes.find(([name]) => name === "src")?.[1] ?? "";
+      const referrer = node.attributes.find(([name]) => name === "referrerpolicy")?.[1];
+      const fromTheWeb = source.startsWith("https://");
+      assert(
+        node.tag !== "img" ||
+          (fromTheWeb
+            ? referrer === "no-referrer"
+            : referrer === undefined && !/^[a-z][a-z0-9+.-]*:|^\/\//i.test(source)),
+        `the page kept an image from ${source}, referrerpolicy=${referrer}`,
+      );
+      const tip = node.attributes.find(([name]) => name === "data-tip-text")?.[1];
+      assert(
+        node.tag !== "span" ||
+          node.attributes.length === 0 ||
+          (node.attributes[0][1] === inert.IMAGE_FALLBACK_CLASS &&
+            (tip === undefined || /^https?:\/\//.test(tip))),
+        `the page kept a span with ${JSON.stringify(node.attributes)}`,
+      );
       const attributes = node.attributes
         .map(([name, value]) =>
           name === "open" ? " open" : ` ${name}="${escapeText(value).replaceAll('"', "&quot;")}"`,
@@ -150,7 +265,7 @@ function serialize(nodes) {
         .join("");
       return ["br", "hr", "img"].includes(node.tag)
         ? `<${node.tag}${attributes}>`
-        : `<${node.tag}${attributes}>${serialize(node.children)}</${node.tag}>`;
+        : `<${node.tag}${attributes}>${serialize(node.children, inLink || node.tag === "a")}</${node.tag}>`;
     })
     .join("");
 }
@@ -165,6 +280,18 @@ async function main() {
     serialize(inert.sanitizeNodes(templateNodes(nodes), pageDocument, base));
   const documentMode = rebuilt(tree, null);
   const commentMode = rebuilt(tree, pullRequest);
+  // The reader has turned off the images of the web: the shell's settings say so. Read
+  // each time the page sanitizes, so it is a change of what the page carries and no more.
+  context.window.METABROWSER_SETTINGS = { BLOCK_REMOTE_IMAGES: true };
+  const blockedDocument = rebuilt(tree, null);
+  const blockedComment = rebuilt(tree, pullRequest);
+  const blockedBadges = rebuilt(badgeTree, null);
+  context.window.METABROWSER_SETTINGS = { BLOCK_REMOTE_IMAGES: false };
+  assert(rebuilt(tree, null) === documentMode, "an off setting changed the document");
+  delete context.window.METABROWSER_SETTINGS;
+  assert(rebuilt(tree, pullRequest) === commentMode, "no setting changed the comment");
+  assert(!blockedDocument.includes("referrerpolicy"), "a blocked image loaded in a document");
+  assert(!blockedComment.includes("referrerpolicy"), "a blocked image loaded in a comment");
   console.log(
     JSON.stringify(
       {
@@ -174,6 +301,17 @@ async function main() {
         },
         document: documentMode,
         comment: commentMode,
+        // The same with the reader's setting on: every image from the web is its fallback, in
+        // the link it was in or in a link to the image; the document's own image still loads.
+        blocked: { document: blockedDocument, comment: blockedComment },
+        // A row of badges: in the link they were in, or in a link to the image, whatever loads.
+        badges: {
+          document: rebuilt(badgeTree, null),
+          comment: rebuilt(badgeTree, pullRequest),
+          blocked: blockedBadges,
+        },
+        // What the page keeps of a span the server did not write as the fallback.
+        fallbacks: rebuilt(chipTree, null),
         // A render arrives in KPress's two wrappers, classes gone. The blocks become the prose
         // element's children, and a code block and a table get back the classes KPress's
         // stylesheets hang their type on, from the module and never from the document.
@@ -191,6 +329,15 @@ async function main() {
                 ),
               ),
             ],
+            { createElement: proseElement },
+          ),
+        ),
+        // A document whose one block is its own `<div align>`, here inside one wrapper: the
+        // unwrapping stops at a `<div>` with an attribute, which is the document's and keeps
+        // its align.
+        alignedProse: proseTree(
+          inert.kpressProse(
+            [renderShaped("div", aligned(renderShaped("div", renderShaped("h1")), "center"))],
             { createElement: proseElement },
           ),
         ),

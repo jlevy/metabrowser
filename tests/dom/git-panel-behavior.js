@@ -43,6 +43,17 @@ function assertNotContains(label, haystack, needle) {
 
 // A hover card's change line, as a reader sees it: its markup's text, without the words a
 // screen reader is told in its place.
+/** The hover card's size line as it reads, "32 files changed · 56.9 KB compressed (…)". */
+function sizeLineText(html) {
+  const line = String(html).match(/<div class="git-commit-size-line">(.*?)<\/div>/s);
+  return line === null
+    ? null
+    : line[1]
+        .replace(/<span class="visually-hidden">[^<]*<\/span>/g, "")
+        .replace(/<[^>]*>/g, "")
+        .replaceAll("\u00a0", " ");
+}
+
 function changeLineText(html) {
   const line = String(html).match(
     /<span class="git-commit-change-line" aria-hidden="true">(.*?)<\/div>/s,
@@ -615,9 +626,30 @@ sandbox.metabrowser = {
 const responses = new Map();
 let fetchCount = 0;
 const fetchRequests = [];
+/** The commit sizes asked for, by commit ID, counted apart from the detail work. */
+const sizeRequests = [];
 sandbox.fetch = async (url, options) => {
-  fetchCount += 1;
-  fetchRequests.push({ url, signal: options?.signal });
+  // A commit's size, which a commit's page and its hover card ask for beside its detail
+  // (git/change_size.py): measured, so the panel keeps it, as a real answer is kept.
+  const sized = /^\/api\/git\/commit-size\/([0-9a-f]{40})$/.exec(url);
+  if (sized === null) {
+    fetchCount += 1;
+    fetchRequests.push({ url, signal: options?.signal });
+  } else {
+    sizeRequests.push(sized[1]);
+  }
+  if (sized !== null && !responses.has(url)) {
+    const size = {
+      base: null,
+      head: sized[1],
+      state: "measured",
+      reason: null,
+      commits: 1,
+      pushed_bytes: 58_270,
+      diff_bytes: 198_540,
+    };
+    return { ok: true, status: 200, json: async () => ({ is_repo: true, size }) };
+  }
   for (const [prefix, payload] of responses) {
     if (url.startsWith(prefix)) {
       const value = typeof payload === "function" ? await payload(url, options) : payload;
@@ -916,24 +948,33 @@ async function run() {
         html.indexOf("git-commit-revision", identityStart) < identityEnd &&
         html.indexOf("git-commit-refs", identityStart) < identityEnd,
     );
-    // The hover card says a commit's changes in the Diff summary's words and paint, through
-    // its parts and painter (formatters.js, `changeSummary` and `countPartsHtml`): the
-    // summary's order, A, D, M, the file count bold in the line's ink, each status count,
-    // number and letter, one span that is the status primitive and bold (mb-8iwn), and the
-    // commas and dots muted, each dot one item with the group before it (mb-khm6).
+    // The hover card says a commit's changes as a commit's page does: its size line, the file
+    // count bold in the line's ink (docs/design-system.md, "Change Size Line"), then the
+    // brief change line in the Diff summary's words and paint, through its parts and painter
+    // (formatters.js, `changeSummary` and `countPartsHtml`): the summary's order, A, D, M,
+    // each status count, number and letter, one span that is the status primitive and bold
+    // (mb-8iwn), and the commas and dots muted, each dot one item with the group before it
+    // (mb-khm6).
     const format = sandbox.MetabrowserFormatters.formatInteger;
+    assertEqual(
+      "tooltip: the size line says the file count",
+      sizeLineText(html),
+      "32 files changed",
+    );
+    assertContains(
+      "tooltip: the size line's count is a bold number in the line's ink",
+      html,
+      '<span class="change-size-line"><span class="summary-number">32</span> files changed</span>',
+    );
     assertEqual(
       "tooltip: the change line reads as the Diff summary's header",
       changeLineText(html),
-      `32 files changed·4 A, 28 M·+${format(1921)}−160`,
+      `4 A, 28 M·+${format(1921)}−160`,
     );
     assertContains(
       "tooltip: the change line, painted",
       html,
       '<span class="git-commit-change-line" aria-hidden="true">' +
-        '<span class="git-commit-change-group"><span class="git-commit-change-files">' +
-        '<span class="summary-number">32</span> files changed</span>' +
-        '<span class="summary-punctuation" aria-hidden="true">·</span></span>' +
         // The brief change line, the one component for "4 A, 28 M · +1,921 −160" (mb-9ekj).
         '<span class="change-line"><span class="change-line-group"><span class="change-line-statuses">' +
         '<span class="summary-status-count file-change-status" data-file-status="added">' +
@@ -954,7 +995,7 @@ async function run() {
     assertContains(
       "tooltip: a screen reader is told the change line in words",
       html,
-      `<span class="visually-hidden">32 files changed: 4 added, 28 modified; ${format(1921)} lines added, 160 deleted</span>`,
+      `<span class="visually-hidden">4 added, 28 modified; ${format(1921)} lines added, 160 deleted</span>`,
     );
     // The same counts as the Diff summary says them, from the shared changed-files model.
     const said = sharedTree.describeChanges(
@@ -964,8 +1005,67 @@ async function run() {
     );
     assertEqual(
       "tooltip: the change line is the Diff summary's, word for word",
-      [changeLineText(html), html.includes(`>${said.label}</span>`)],
-      [said.text.replaceAll(" · ", "·").replace(" \u2212", "\u2212"), true],
+      [changeLineText(html), html.includes(`>${said.line.label}</span>`)],
+      [said.line.text.replaceAll(" · ", "·").replace(" \u2212", "\u2212"), true],
+    );
+    // Once the commit's size is known, the size line says it: what Git pushes and the
+    // patch's size, each a bold number with its unit, the tooltip saying what each is.
+    const sized = internals.renderCommitSummary(detail, {
+      compact: true,
+      size: {
+        base: SHA_B,
+        head: SHA_A,
+        state: "measured",
+        reason: null,
+        commits: 1,
+        pushed_bytes: 58_270,
+        diff_bytes: 198_540,
+      },
+    });
+    assertEqual(
+      "tooltip: a known size is on the size line",
+      sizeLineText(sized),
+      "32 files changed · 56.9 KB compressed (193.9 KB raw diff)",
+    );
+    assertContains(
+      "tooltip: the size's numbers are bold with their units",
+      sized,
+      '<span class="summary-number">56.9 KB</span> compressed (<span class="summary-number">193.9 KB</span> raw diff)',
+    );
+    assertContains("tooltip: the size says what it is", sized, "what Git pushes for this change");
+    const merged = internals.renderCommitSummary(detail, {
+      compact: true,
+      size: {
+        base: SHA_B,
+        head: SHA_A,
+        state: "measured",
+        reason: null,
+        commits: 3,
+        pushed_bytes: 900,
+        diff_bytes: 1_400,
+      },
+    });
+    assertEqual(
+      "tooltip: a merge says the commits it brings in",
+      sizeLineText(merged),
+      "3 commits · 32 files changed · 900 B compressed (1.4 KB raw diff)",
+    );
+    const unmeasured = internals.renderCommitSummary(detail, {
+      compact: true,
+      size: {
+        base: null,
+        head: SHA_A,
+        state: "unknown",
+        reason: "parent_unavailable",
+        commits: null,
+        pushed_bytes: null,
+        diff_bytes: null,
+      },
+    });
+    assertEqual(
+      "tooltip: a size that cannot be known is left out",
+      sizeLineText(unmeasured),
+      "32 files changed",
     );
     assertNotContains("tooltip: no old per-status tint", html, "git-commit-file-status-");
     assertNotContains("tooltip: no old units", html, "git-commit-stat-unit");
@@ -988,12 +1088,12 @@ async function run() {
     assertEqual(
       "tooltip: unknown counts stay unknown, each family kept",
       changeLineText(unknown),
-      "? files changed·? A, ? D, ? M·+?−?",
+      "? A, ? D, ? M·+?−?",
     );
     assertContains(
       "tooltip: unknown counts are said as unknown",
       unknown,
-      '<span class="visually-hidden">? files changed: ? added, ? deleted, ? modified; line counts unknown</span>',
+      '<span class="visually-hidden">? added, ? deleted, ? modified; line counts unknown</span>',
     );
     const one = internals.renderCommitTooltip({
       ...detail,
@@ -1006,11 +1106,12 @@ async function run() {
         deletions: 1,
       },
     });
-    assertEqual("tooltip: one file", changeLineText(one), "1 file changed·1 D·+0−1");
+    assertEqual("tooltip: one file", changeLineText(one), "1 D·+0−1");
+    assertEqual("tooltip: one file, its size line", sizeLineText(one), "1 file changed");
     assertContains(
       "tooltip: one file, in words",
       one,
-      "1 file changed: 1 deleted; 0 lines added, 1 deleted</span>",
+      ">1 deleted; 0 lines added, 1 deleted</span>",
     );
     const empty = internals.renderCommitTooltip({
       ...detail,
@@ -1023,7 +1124,8 @@ async function run() {
         deletions: 0,
       },
     });
-    assertEqual("tooltip: no files", changeLineText(empty), "0 files changed·+0−0");
+    assertEqual("tooltip: no files", changeLineText(empty), "+0−0");
+    assertEqual("tooltip: no files, its size line", sizeLineText(empty), "0 files changed");
   }
   internals.setStateForTests({ ...internals.emptyState(), selectedId: SHA_A });
   await internals.renderCommitDetail({
@@ -1094,16 +1196,24 @@ async function run() {
   // on #479); the spaces around the dot are written, so it reads as one line without the
   // diff plugin's stylesheet too (B3 of review B on #479).
   assertContains(
-    "detail: summary holds the Diff summary's place, with the commit's totals",
+    "detail: summary holds the Diff summary's place, with the commit's line totals",
     previewHtml,
     '<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">' +
       '<div class="diff-summary">' +
-      '<span class="diff-summary-group"><span class="diff-summary-files">' +
-      '<span class="summary-number">2</span> files changed</span> ' +
-      '<span class="summary-punctuation" aria-hidden="true">·</span>' +
-      '<span class="visually-hidden">, </span></span> ' +
       '<span class="change-line"><span class="change-line-stats"><span class="diff-stat-add">+5</span>' +
       '<span class="diff-stat-del">−1</span></span></span></div></div>',
+  );
+  // The file count is on the page header's size line, above the Diff summary's place
+  // (docs/design-system.md, "Change Size Line"), with the size once it is asked for.
+  assertContains(
+    "detail: the size line above the Diff summary says the file count",
+    previewHtml,
+    '<div class="git-commit-size page-header-line"><span class="change-size-line">' +
+      '<span class="summary-number">2</span> files changed',
+  );
+  assertTrue(
+    "detail: the size line is above the Diff summary's place",
+    previewHtml.indexOf("git-commit-size") < previewHtml.indexOf("git-commit-diff-summary"),
   );
   assertNotContains(
     "detail: summary draws no change stats of its own",
@@ -1244,9 +1354,9 @@ async function run() {
     { files: 900, additions: 1, deletions: 1, exact: true },
   );
   assertContains(
-    "detail: a truncated commit's place says the whole commit's totals",
+    "detail: a truncated commit's size line says the whole commit's file count",
     previewHtml,
-    '<span class="diff-summary-files"><span class="summary-number">900</span> files changed</span>',
+    '<span class="change-size-line"><span class="summary-number">900</span> files changed',
   );
   // A detail with no count of files has no line, and its empty place takes no room.
   await internals.renderCommitDetail({
@@ -1911,11 +2021,14 @@ async function run() {
     assertContains("selection: switches to the newer commit", previewHtml, "second");
     assertTrue("selection: issued a request", fetchCount > before);
 
-    // Re-selecting a cached commit must not hit the network again.
-    const cachedBefore = fetchCount;
+    // Re-selecting a cached commit must not ask for its detail again. Its body's Markdown,
+    // which this stub never answers, is asked for again, as a failed request is.
+    const detailRequests = () =>
+      fetchRequests.filter((request) => request.url.startsWith("/api/git/commit/")).length;
+    const cachedBefore = detailRequests();
     rows[0].dispatch("click");
     await new Promise((resolve) => setTimeout(resolve, 0));
-    assertEqual("selection: cache avoids a refetch", fetchCount, cachedBefore);
+    assertEqual("selection: cache avoids a refetch", detailRequests(), cachedBefore);
 
     // A shell navigation owns the preview after it happens. A late Git
     // response must not replace the newer file/navigation surface.

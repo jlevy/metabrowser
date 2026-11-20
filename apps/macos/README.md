@@ -77,9 +77,11 @@ Both are named Metabrowser:
 | DMG | `build/Metabrowser-Dev-<VERSION>-arm64.dmg` | `build/Metabrowser-<VERSION>-arm64.dmg` |
 
 `scripts/build-app.sh` writes the variant and the commit into the bundle’s property list
-(`MetabrowserBuildVariant` and `MetabrowserSourceCommit`, the commit with `-dirty` when
-`apps/macos` had uncommitted changes), and the app reads them (`AppIdentity`). A bundle
-without the release variant counts as a development build.
+(`MetabrowserBuildVariant` and `MetabrowserSourceCommit`, the commit’s full ID with
+`-dirty` when `apps/macos` had uncommitted changes), and the app reads them
+(`AppIdentity`). The release check compares the full ID with the tag’s, and the About
+box shows it as a [short commit ID](../../docs/design-system.md#short-commit-ids).
+A bundle without the release variant counts as a development build.
 
 The rule: **the canary icon is for development builds, and the published icon only for
 official releases.**
@@ -160,8 +162,12 @@ decide, is checked by hand against a built development app with the
   build and a release alike, mode 0600. It holds the server’s output, with the app’s
   lifecycle events interleaved: start command, pid, announced URL, readiness time, stop,
   and exit status. File > Reveal Server Log opens it, and Help > Reveal Logs Folder opens
-  the folder. A second running copy, or a folder opened again while its last server is
-  still stopping, writes a log named for its own process beside it (`ServerLogLease`).
+  the folder. Help > Open Event Log opens `metab`’s own event log (`EventLogLocation`), a
+  separate record of its requests and work that `metab` writes to its state directory;
+  it opens in a window on the log’s own directory, not inside an open folder that holds
+  it, and stays out of Open Recent.
+  A second running copy, or a folder opened again while its last server is still
+  stopping, writes a log named for its own process beside it (`ServerLogLease`).
 - **App log:** `log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"'`
   for a development build; the subsystem is the bundle identifier, so a release build
   logs as `io.github.jlevy.metabrowser`.

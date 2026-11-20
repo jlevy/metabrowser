@@ -29,6 +29,9 @@ class FakeElement extends ElementShim {
     this.scrolled = false;
   }
 
+  get childNodes() {
+    return this.children;
+  }
   append(...nodes) {
     for (const node of nodes) {
       node.parentNode = this;

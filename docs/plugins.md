@@ -205,6 +205,11 @@ claim a narrower format.
 Kind rules apply to files Metabrowser reads as text and to JSONL streams.
 A file whose bytes sniff as binary, or whose extension is an image extension, keeps the
 built-in `binary` or `image` kind; a plugin can add a view to that kind instead.
+A rule with `binary = true` is the exception: it is asked only about a served file
+already found to be binary, and claims it by path, so a compressed format Metabrowser
+cannot read reaches the plugin’s views.
+It may use only `ext`, `exts`, `basename`, `folder_marker`, and `path_glob`, cannot be a
+container, and never matches a text file or a Git blob.
 A format whose reader needs a native library belongs in an installed plugin, so the
 dependency is never Metabrowser’s.
 
@@ -255,6 +260,15 @@ At most one view per kind may set `default = true`. A plugin may register a view
 kind declared by another plugin, which is useful for composing generic renderers.
 `render_runtime` documents whether the client or KPress renders the view, and a
 printable view declares a `print_profile` suited to documents or source code.
+
+A view of the `folder` kind may set `offer = "module:function"`, a Python predicate that
+receives the folder’s path.
+The view is served only on folders where it returns true, and an offered view with
+`default = true` is then the folder’s only default, so the page opens on it.
+The predicate runs for every folder page, off the event loop, and should read no more
+than a few directory entries; one that raises is logged and its view left out.
+A Git revision’s folders never offer a view, and an operator directory’s JavaScript-only
+plugin cannot declare one.
 
 `key` is an optional one-letter key for the view’s tab.
 A kind with more than one view should give each view one: `v` for a rendered view, `s`
@@ -450,8 +464,10 @@ private storage.
 ### Render-Time-Only Namespace Rule
 
 A built-in plugin may publish helpers for others on `mb.builtins.<name>`, as Markdown
-publishes `mb.builtins.markdown` and structured data `mb.builtins.structured`. Read
-another plugin’s namespace only at render time, inside `render` or a handler, never
+publishes `mb.builtins.markdown` and structured data `mb.builtins.structured`, and the
+GitHub plugin `mb.builtins.github.pullStateIcon`, which the ref selector’s rows draw a
+branch’s pull request with.
+Read another plugin’s namespace only at render time, inside `render` or a handler, never
 while your `index.js` evaluates: plugins load on demand, so the other plugin may not
 have run yet. Await `ensureKindAssets(kind)` for that plugin’s kind first.
 `tests/test_plugin_e2e_render.py` fails when a plugin reads a missing namespace at load
@@ -486,11 +502,11 @@ Useful helpers include:
   address you vouch for, and the host’s person glyph without one or when the image
   fails, so nothing moves.
   The image is requested in anonymous CORS mode with no referrer, so its host must send
-  `Access-Control-Allow-Origin`, and a folder served untrusted loads images only from
-  GitHub’s avatar host; any other image shows the glyph.
-  `loading` is lazy unless the placement is built again on a repaint; `className` and
-  `nameClass` add classes; `placeholder: false` draws no box for a person with no
-  avatar, for a dense list row.
+  `Access-Control-Allow-Origin`, and a folder served untrusted whose reader has turned
+  on Block remote images loads images only from GitHub’s avatar host; any other image
+  shows the glyph. `loading` is lazy unless the placement is built again on a repaint;
+  `className` and `nameClass` add classes; `placeholder: false` draws no box for a
+  person with no avatar, for a dense list row.
   `actorIdentityHtml` writes the same markup, its box holding the glyph;
 - `mountCounterpart(corner, page)` and `counterpartButton(counterpart)` for a page’s
   [View on GitHub](design-system.md#view-on-github) button.
@@ -520,6 +536,11 @@ Useful helpers include:
   holds: a conventional-commit prefix such as `feat(ledger):` in a `span.title-prefix`,
   which the host draws at regular weight, then the rest, which keeps the element’s
   weight; a title with no prefix is its text alone ([Titles](design-system.md#titles));
+- `shortCommit(commit)` for a commit’s ID as every line names one, cut from its full ID
+  to the host’s one length; put it in an element of class `git-commit-sha`, which sets
+  it in the commit-ID face and gray at the size of the text around it, so give the
+  element no size of its own, and keep the full ID for copying and links
+  ([Short Commit IDs](design-system.md#short-commit-ids));
 - `countPartsNodes(parts)` for a count summary, such as “3 success · 1 failure”, as the
   nodes its element holds, painted as the host paints every count summary: the parts are
   words as strings, `{number}`, drawn bold, `{punctuation}` for a list’s comma and
@@ -536,6 +557,13 @@ Useful helpers include:
   `label` in words; `changeLineNodes` paints it as the nodes of one `span.change-line`,
   with `{spoken: ", "}` on a line whose name does not say it in words
   ([Brief Change Line](design-system.md#brief-change-line));
+- `changeSizeLine(change)` and `changeSizeLineNodes(line)` for a change set’s size line,
+  “77 commits · 83 files changed · 2.3 MB compressed (14.0 MB raw diff)”:
+  `changeSizeLine` builds it from `{commits?, files, pushedBytes?, diffBytes?}`, a count
+  `null` where it is not known and left out where `undefined`, and the size group there
+  once `pushedBytes` is known, and returns its parts, `text`, `label`, and the size’s
+  `tooltip`; `changeSizeLineNodes` paints it as the nodes of one `span.change-size-line`
+  ([Change Size Line](design-system.md#change-size-line));
 - `countClass(value)` and `sizeClass(value)` for the magnitude-driven emphasis classes
   of core numeric readouts;
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and
@@ -551,8 +579,8 @@ Useful helpers include:
 - `filterControls` for the host’s accessible filter chips and menus, and for any
   exclusive choice among labelled values;
 - `shortcuts.attach(element, spec)`; see [Keyboard Shortcuts](#keyboard-shortcuts);
-- `chart(container, type, data, options)`, `ensureAsset(name)`, and
-  `ensureKindAssets(kind)`, below;
+- `chart(container, type, data, options)`, `ensureAsset(name)`, `ensureModule(name)`,
+  `moduleUrl(name)`, and `ensureKindAssets(kind)`, below;
 - `whenIdle(callback, {timeout})`, which runs `callback` when the page is free, no later
   than `timeout` milliseconds, and returns a canceller
   ([Idle Work](project/architecture/arch-browser-shell.md#idle-work));
@@ -617,6 +645,14 @@ callers share one load, and it rejects for an unknown name or a failed script, s
 can say so.
 The bundles are named in `on_demand_script_bundles` in `server.py`; `"chart"`
 is Chart.js with its annotation plugin and date adapter.
+`ensureModule(name)` is its counterpart for a bundle that is one ES module, declared
+there as `{"module": url}`, such as `"mermaid"`: it imports the module once and resolves
+to its namespace, so read the library from what it returns rather than from a global.
+Simultaneous callers share one import, a failed import rejects and the next call imports
+again, and a name that is not a module bundle, a script bundle’s among them, rejects.
+`moduleUrl(name)` is the same bundle’s absolute URL, or `null` for a name that is not a
+module bundle: what a frame of the plugin’s own imports to run the module in that
+frame’s realm, where the namespace `ensureModule` returns cannot reach.
 [Asset Loading Tiers](project/architecture/arch-browser-shell.md#asset-loading-tiers)
 says which tier an asset belongs in.
 
@@ -664,12 +700,27 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   summary and the Pulls tab’s changed files both draw with it;
   `static/changed-files-tree.js` documents each function.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
+- `eventReports`, once `await mb.ensureAsset("event-reports")` has loaded it, tells the
+  event log what the page waits for
+  ([What the Page Reports](realtime-debugging.md#what-the-page-reports)).
+  `eventReports.wait(name, { startedAt, detail, onLate })` names a wait that reports
+  nothing unless it has run `eventReports.lateMs` while the page was shown; then it is
+  reported, `onLate(ms)` lets the view say so, and the handle’s `end(outcome)` reports
+  how it ended. Pass the `performance.now()` at which the wait began as `startedAt`,
+  since the bundle may arrive later, and end every wait from `dispose`, as
+  `never_completed` when the reader leaves first.
+  `eventReports.showDetails(panel, query, { signal })` paints into *panel* what the
+  event log holds for `{ client, since, until }`: `client` is `eventReports.page` for
+  this page’s own records, and a failure’s window can be `eventReports.failureWindowS`
+  seconds before it ended, the window the failure’s recent count covers.
 - `navigation.href(target)` returns the canonical `/view/` URL for a
   `{ path, query?, fragment? }` target, whose path is served-root-relative with `/`
   separators and no leading slash; the empty path selects the served root.
 - `navigation.open(target, options?)` performs normal user navigation and returns a
   promise. `{ viewId }` prefers a view the destination declares, falling back to its
-  default, without changing the URL.
+  default, without changing the URL. When the destination is the file already shown, it
+  selects that view of it, as its tab does, which is how a view takes a person to
+  another view of the same file.
 - `navigation.current()` returns the current target, or `null` on the landing URL.
 - `fileCatalog.snapshot()` returns an immutable view of the files the shell knows, as
   canonical logical-file paths ordered by UTF-16 code units, with no global path-length
@@ -869,6 +920,20 @@ Transclusions share depth, document, source-byte, cycle, abort, and disposal lim
 across the mounted document, and each embed’s time limit starts when that embed begins
 loading. Do not copy Markdown DOM or table-of-contents behavior into a contribution.
 
+`mb.builtins.markdown.drawDiagrams(root, {inert, isolated})` draws the Mermaid diagrams
+of a KPress render your plugin placed under `root`, as the Markdown view draws its own:
+an inert render’s `<pre lang="mermaid">` blocks become images, and only `inert: false`,
+for a render the reader trusts, puts the SVG in the page.
+It returns null, and loads nothing, when `root` holds no diagram; otherwise its
+`dispose()` stops drawing and leaves the figures as drawn, so call it when you replace
+`root`. Mermaid lays an image out in a document before it becomes one, and there a
+diagram’s own CSS can load an image, so a plain image is laid out in the page and
+bounded only by the page’s policy.
+For untrusted text on a page that may have none, such as a folder’s page served trusted,
+pass `isolated: true`, as a pull request’s page does: the images are laid out in a frame
+whose own policy loads nothing (`builtin_plugins/markdown/diagram-frame.js`;
+[Inert Markdown](project/architecture/arch-server-and-content.md#inert-markdown)).
+
 ### The SDK Version
 
 The SDK is versioned with the release, and the version is enforced.
@@ -906,10 +971,32 @@ Ensure the wheel includes the manifest, JavaScript, CSS, and any extra assets, a
 the built wheel in an isolated environment, since an editable checkout can conceal
 missing package data.
 
+### Python Registration Module
+
+A built-in or installed entry-point plugin that registers Python-side extensions, such
+as a JSONL adapter, names the module that does it in its manifest:
+
+```toml
+[plugin]
+name = "example-plugin"
+register = "example_plugin.adapters"
+```
+
+Discovery imports that module once, when it finds the plugin, so the module’s top-level
+calls (`register_log_adapter` and the like) run before the server mounts anything.
+A module that fails to import is a plugin load error, reported as the others are: the
+plugin is skipped and `metab --doctor` exits nonzero.
+An operator-directory plugin is JavaScript-only, so its `register` is ignored with a
+warning, and `metab --doctor` reports it.
+The module should import from `metabrowser.plugin_api` and do nothing but register.
+
 ### Plugin-Owned JSONL Adapters
 
 Plugins that recognize an additional JSONL event format can register a detector and
-parser factory when their entry-point module loads:
+parser factory when their `register` module loads
+([Python Registration Module](#python-registration-module)). The built-in `agents`
+plugin registers its Claude Code, Codex, Pi, and Gemini adapters the same way, so
+`registered_log_adapters()` lists every name in detection order:
 
 ```python
 from typing import Any
@@ -940,11 +1027,18 @@ register_log_adapter(
 
 The detector receives parsed objects from the beginning of the stream; keep it fast,
 deterministic, and free of filesystem or network work.
+A format whose stream opens with plain text can also pass `line_detector`, which
+receives each opening line that is not a JSON object.
+Detection asks each line’s detectors in registration order, the built-in `agents`
+plugin’s first, so a detector should recognize only its own format.
 A detector failure is logged and skipped, so one adapter cannot break detection for
-every JSONL file.
-Registering the same detector and factory again is idempotent; claiming
-another plugin’s adapter name raises an error, and built-in names cannot be replaced.
-The factory returns a fresh parser for each file or live stream.
+every JSONL file. Registering the same callables again is idempotent; claiming a name
+already registered, the built-in plugin’s or another plugin’s, raises an error.
+Adapters register when plugins are discovered, which the server does at startup, so a
+script that calls `detect_adapter` without starting the server sees only the adapters it
+registered itself. A log that no registered adapter recognizes gets the `unknown`
+adapter, whose parser turns each JSON object into an event of its `type`. The factory
+returns a fresh parser for each file or live stream.
 A `[[kind]]` rule with `match = { ext = ".jsonl", adapter = "example" }` then claims the
 files the detector recognizes.
 
@@ -972,11 +1066,22 @@ which a CLI integration can catch to keep a command’s message and exit code, a
   transparently, within decompression limits, and raises `ArtifactCompressionError`,
   `ArtifactDecompressionLimitError`, or `ArtifactDecompressionTimeoutError` to separate
   malformed data from size and time limits.
-- **JSONL:** `LogEvent`, `LogParser`, `detect_adapter(lines)`, and
-  `register_log_adapter` are the adapter contract above.
+- **JSONL:** `LogEvent`, `LogParser`, `detect_adapter(lines)`, `register_log_adapter`,
+  and `registered_log_adapters()` are the adapter contract above.
+  Built-in `agents` imports these from `metabrowser.plugin_api`, and
+  `tests/test_agents_import_boundary.py` holds it to that.
+  `jsonl_parse_max_bytes()` is the parser’s decompressed input limit, so a hook reads at
+  most that many bytes of a log.
   `extract_agent_charts_cached(path)` reuses the agent-log chart projection, returning
   `None` for an absent file and raising `JsonlParseLimitError` past the parser’s input
-  limit.
+  limit. `extract_agent_charts_bytes(data)` projects bytes already read, and
+  `lookup_agent_charts` and `remember_agent_charts` memoize a projection by a content
+  reference’s identity and fingerprint.
+- **Cache:** `plugin_cache_directory(name)` creates or verifies the plugin’s owner-only
+  directory under the application cache root and returns it.
+  It is a cache: a user may delete it at any time, so key what it holds by what it was
+  computed from. It raises `PluginCacheUnavailableError` when no private cache root can
+  be made.
 - **Lifecycle:** `register_root_callback(callback)` invalidates plugin caches when the
   served root changes.
   Do not cache the resolved root, or import underscored helpers from

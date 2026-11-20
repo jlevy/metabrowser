@@ -117,6 +117,13 @@ opaque = ["next_after"]
 note = "Whether the cache holds a repository, asked before a link clones one. The app's limit is `RepositoryCache.pageLimit`; a smaller one in the golden shows the cursor."
 
 [[command]]
+id = "event-log"
+argv = ["{folder}", "--api", "/api/event-log?limit=1", "--format", "json"]
+source = "Sources/ShellCore/Folders/EventLogLocation.swift"
+json = ["directory", "files[].name"]
+note = "Help > Open Event Log: where Metabrowser's own event log is and which segment is newest, asked of the route that lists it, newest first. `{folder}` is any folder, whose server is never started, and `--api` writes the folder it serves as `<ROOT>`, so the app passes its own support folder, which is not the log's directory."
+
+[[command]]
 id = "doctor"
 argv = ["--doctor", "--json"]
 source = "Sources/ShellCore/Setup/DoctorReport.swift"
@@ -175,27 +182,36 @@ output = "shown"
 #
 # What the app asks a ready server over HTTP. `literal` is the route as the Swift source
 # spells it. The golden asks each with `metab ROOT --api ROUTE`, which issues the request
-# the app issues and prints the status the app checks.
+# the app issues and prints the status the app checks; `data` is the JSON body of a route
+# the app posts to, which the golden sends with `--data`.
 
 [[route]]
 id = "identity"
 route = "/api/identity"
 literal = "api/identity"
 source = "Sources/ShellCore/Folders/FolderIdentity.swift"
-json = ["short_name", "full_name", "kind", "kind_label", "title"]
+json = ["short_name", "full_name", "kind", "kind_label", "title", "repository"]
 values = { kind = ["folder", "mirror"] }
-note = "Names each window. Status 200, or the window keeps the name it derived."
+note = "Names each window. Status 200, or the window keeps the name it derived. `repository` puts a link's new mirror window beside an open checkout of the same GitHub repository (`CheckoutWindow`)."
 
 [[route]]
 id = "source-status"
 route = "/api/source/status"
 literal = "api/source/status"
-source = "Sources/ShellCore/Folders/LinkSelection.swift"
-json = ["ref_name", "selection_state"]
-values = { selection_state = ["pending", "not_found", "fetch_failed"] }
-shown = ["ref_name"]
-values_in = "cli-github-url-waits.txt"
-note = "Whether a repository's server found what its link names. The three states need a refresh against an origin, which cli-github-url-waits.txt records; any other value reads as found."
+source = "Sources/ShellCore/Folders/SourceLink.swift"
+json = ["refreshing"]
+note = "Whether the refresh a link the mirror lacked waits for still runs (`SourceLink`): the app asks the link route again once it is false."
+
+[[route]]
+id = "source-link"
+route = "/api/source/link"
+literal = "api/source/link"
+data = "{body}"
+source = "Sources/ShellCore/Folders/SourceLink.swift"
+json = ["href", "code"]
+values = { code = ["selection_pending"] }
+values_in = "cli-api-source-link.txt"
+note = "Opens a link into the repository a mirror's server serves, its only one: the page its window goes to (`href`), switching the pin first where the link names another revision. A ref the mirror lacks needs a refresh against an origin, which cli-api-source-link.txt records with each kind of link; any other code is not found or a refusal, which leaves the window where it was."
 
 # ── Lines ───────────────────────────────────────────────────────────────────────────────
 #
@@ -285,6 +301,20 @@ metab = "src/metabrowser/cli/doctor.py"
 note = "Set to the app's own bundle when Check Setup… runs the doctor, whose metab check then compares with that build's MetabrowserMinimumMetab rather than the app LaunchServices finds first."
 
 [[env]]
+name = "METABROWSER_STATE_DIR"
+source = "Sources/ShellCore/Runtime/ChildEnvironment.swift"
+golden = "cli-api-event-log.tryscript.md"
+metab = "src/metabrowser/home.py"
+note = "Not set by the app: passed through from the app's own environment, with XDG_STATE_HOME, so a server it starts writes its event log (metabrowser.event_log) where a terminal's would."
+
+[[env]]
+name = "METABROWSER_EVENT_LOG"
+source = "Sources/ShellCore/Runtime/ChildEnvironment.swift"
+golden = "cli-api-event-log.tryscript.md"
+metab = "src/metabrowser/event_log.py"
+note = "Not set by the app: passed through from the app's own environment, so 0 turns the event log off for the servers it starts too."
+
+[[env]]
 name = "METABROWSER_CONFIG_DIR"
 source = "Tests/ShellCoreTests/LiveMetabTests.swift"
 metab = "src/metabrowser/home.py"
@@ -302,11 +332,11 @@ note = "Set only by the app's live tests, so that a test's folder stays out of t
 # records, so that a changed value is a change to the contract.
 
 [[behavior]]
-id = "view-on-github-link"
-source = "Sources/ShellCore/Web/GitHubViewRequests.swift"
-what = "A page marks its View on GitHub button's main link `data-view-on-github=\"open\"`: an `a` whose `href` is the item's page on github.com, with `target=\"_blank\"` and `rel=\"noopener\"`. The app's script takes a plain click on that link and opens its popover there; any other click is the link's own, which opens a new window that the app hands to the default browser."
+id = "web-view-link"
+source = "Sources/ShellCore/Web/WebViewRequests.swift"
+what = "A page marks a link that opens in the app's web pane `data-web-view=\"open\"`, as the View on GitHub button's main link is: an `a` whose `href` is a page on a site the app knows (`WebSite.known`), with `target=\"_blank\"` and `rel=\"noopener\"`. The app's script takes a plain click on that link and opens its pane there, in a popover; any other click is the link's own, which opens a new window that the app hands to the default browser."
 pinned_by = "tests/golden/cli-ui-counterpart.tryscript.md"
-holds = '"data-view-on-github": "open"'
+holds = '"data-web-view": "open"'
 
 [[behavior]]
 id = "json-framing"
@@ -448,8 +478,15 @@ metab = "the identity `/api/identity` answers, which a window shows in its place
 pinned_by = "apps/macos/Tests/ShellCoreTests/AppContractTests.swift::aWindowIsNamedAsTheServerNamesIt"
 
 [[copy]]
-swift = "GitHubViewRequests.marker"
-source = "Sources/ShellCore/Web/GitHubViewRequests.swift"
+swift = "AppIdentity.shortCommitChars"
+source = "Sources/ShellCore/App/AppIdentity.swift"
+metab = "SHORT_COMMIT_CHARS in commit_ids.py: how much of a commit ID a line shows, which the About box shows of the commit the build records"
+pinned_by = "tests/test_macos_app_pins.py::test_the_about_box_cuts_a_commit_as_every_line_does"
+values = ["metabrowser.commit_ids:SHORT_COMMIT_CHARS"]
+
+[[copy]]
+swift = "WebViewRequests.marker"
+source = "Sources/ShellCore/Web/WebViewRequests.swift"
 metab = "the hook `counterpartButton` in static/plugin-sdk-views.js gives the button's main link"
 pinned_by = "tests/test_macos_app_pins.py::test_the_link_the_apps_script_takes_is_the_one_the_page_marks"
 
@@ -493,6 +530,7 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 "Sources/ShellCore/Supervision/ServerLaunch.swift" = { sites = 1, runs = ["serve"] }
 "Sources/ShellCore/Folders/PresentPlan.swift" = { sites = 1, runs = ["present-dry-run"] }
 "Sources/ShellCore/Folders/RecentTargets.swift" = { sites = 1, runs = ["recent-list", "recent-add", "recent-forget", "recent-clear"] }
+"Sources/ShellCore/Folders/EventLogLocation.swift" = { sites = 1, runs = ["event-log"] }
 "Sources/ShellCore/Folders/RepositoryCache.swift" = { sites = 1, runs = ["cache-sources"] }
 "Sources/ShellCore/Setup/DoctorReport.swift" = { sites = 1, runs = ["doctor"] }
 
@@ -502,23 +540,26 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 [files.json]
 "Sources/ShellCore/Folders/PresentPlan.swift" = ["present-dry-run"]
 "Sources/ShellCore/Folders/RecentTargets.swift" = ["recent-list"]
+"Sources/ShellCore/Folders/EventLogLocation.swift" = ["event-log"]
 "Sources/ShellCore/Folders/RepositoryCache.swift" = ["cache-sources"]
 "Sources/ShellCore/Folders/FolderIdentity.swift" = ["identity"]
-"Sources/ShellCore/Folders/LinkSelection.swift" = ["source-status"]
+"Sources/ShellCore/Folders/SourceLink.swift" = ["source-link", "source-status"]
 "Sources/ShellCore/Setup/DoctorReport.swift" = ["doctor"]
 "Sources/ShellCore/Folders/SavedSession.swift" = ["own: the app's saved session"]
 "Sources/ShellCore/Runtime/Runtime.swift" = ["own: the runtime the app last settled on"]
 
 [files.http]
 "Sources/ShellCore/Folders/FolderIdentity.swift" = ["identity", "source-status"]
+"Sources/ShellCore/Folders/SourceLink.swift" = ["source-link"]
 "Sources/ShellCore/Supervision/ReadinessProbe.swift" = ["entry-page-answers"]
 "Sources/Metabrowser/FolderPage.swift" = ["own: the page a window loads, which the web view requests"]
-"Sources/Metabrowser/GitHubPopover.swift" = ["own: github.com, in the View on GitHub popover"]
+"Sources/Metabrowser/WebPane.swift" = ["own: a known site's pages, such as github.com's, in the web pane"]
 
 [files.script]
 "Sources/ShellCore/Web/PagePrint.swift" = ["own: window.print, which WebKit gives the app no public way to receive"]
-"Sources/ShellCore/Web/GitHubViewRequests.swift" = ["view-on-github-link"]
-"Sources/Metabrowser/GitHubPopover.swift" = ["own: whether the popover's github.com page holds text not yet sent"]
+"Sources/ShellCore/Web/WebViewRequests.swift" = ["web-view-link"]
+"Sources/Metabrowser/WebPane.swift" = ["own: whether the pane's page holds text not yet sent"]
+"Sources/ShellCore/Web/PageFind.swift" = ["own: the page's selection, which find reads and starts from, through the DOM's own Selection"]
 
 # ── What the scans pass over ────────────────────────────────────────────────────────────
 #

@@ -46,12 +46,16 @@ The page begins with the commit’s summary, laid out as a pull request’s head
 
 - the subject
 - the author, with a person icon where a pull request shows the author’s avatar
-- the short ID with a copy control, and the commit’s branches and tags
+- the short ID, its first seven characters, as GitHub shows them, with a copy control
+  for the full ID, and the commit’s branches and tags
 - “Committed” and the age
 - the **Diff summary**, on every commit, one file or many: the files changed, counted by
   status, and the lines added and deleted; it starts collapsed and opens into the tree
   of changed files, where a file takes you to its diff
-- the full commit message, when there is more than a subject
+- the rest of the commit message, when there is more than a subject, as Markdown, as a
+  pull request’s description is: wrapped lines join into paragraphs, `-` and `*` lines
+  are lists, and indented or fenced code stays code; trailers such as `Signed-off-by:`
+  follow as written, one per line
 
 Below it is the diff against the commit’s first parent, one section per file with its
 `+N` and `−N` counts.
@@ -77,16 +81,20 @@ A repository opened by its URL is pinned to one commit, its default branch’s u
 URL names another. The button under the navigation header names the served branch, tag,
 pull request, or commit; click it or press `W` to switch.
 
-It lists the mirror’s branches, default first, or its tags, newest first, and the filter
-box narrows either list by name.
+It lists every one of the mirror’s branches, or every one of its tags.
+The default branch is first, and the rest are newest first, by the date of each one’s
+last commit, which its row shows as an age.
+The filter box narrows either list by name.
 Choosing one serves it and reloads the page on the same file or folder when the new
 commit has it, or at the root when it does not.
 The switch lasts until the server stops.
 
 The foot of the navigation pane says when the mirror was last fetched from its origin;
 click it to fetch now.
-A fetch never moves the page under you: when it moves the served branch, the foot offers
-the new commit, and **Switch** serves it.
+A branch or tag is shown as the mirror last fetched it, as github.com shows a branch:
+when a fetch moves the served branch, the page follows it to the new commit by itself,
+on the same file or folder when the new commit has it, or at the root when it does not.
+A commit you opened by its ID stays put.
 
 ## Branches and Tags of a Local Checkout
 
@@ -97,11 +105,12 @@ Click it or press `W` to see any other branch or tag without checking it out.
 - **Working tree** is the first row, and the only one that shows your live files.
 - **Branches** are the checkout’s own, with the one you have checked out first and
   marked “checked out”.
-  **Tags** are its tags, newest first.
+  **Tags** are its tags.
   **Remotes** are its remote-tracking branches, such as `origin/main`, as your last
-  fetch left them.
+  fetch left them. Each list holds every one, newest first by its last commit.
 - Choosing a branch or tag shows its last commit, read from the repository’s Git
-  objects. The button and the navigation header then name it, with its short commit.
+  objects. The button then names it, and the navigation header, still the folder’s name,
+  names its full commit when you hover over it.
   This includes the checked-out branch: choosing it shows what is committed, without
   your uncommitted changes, and **Working tree** is the way back to them.
 

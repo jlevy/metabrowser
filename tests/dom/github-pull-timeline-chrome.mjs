@@ -19,7 +19,7 @@
 //
 // What it holds (docs/design-system.md, "The Pull Request Page", "Conversation Timeline"):
 // - a commit row is set in the type of a card head: the same size and line, its verb and
-//   age as a comment's, and its hash one step below, as a revision is beside body text;
+//   age as a comment's, and its hash at the same size, as a short commit ID is everywhere;
 // - every heading reads alike (mb-novh): the author, a plain verb, and the age, and a boxed
 //   chip after the age only for a review state the verb does not say;
 // - one rhythm (mb-w7rt): every two consecutive events are the timeline's one token apart,
@@ -190,7 +190,9 @@ const MEASURE = `async (arrangement, width, theme) => {
       mountRefCopies: mb.mountRefCopies,
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
+      shortCommit: mb.shortCommit,
       countPartsNodes: mb.countPartsNodes,
+      formatInteger: mb.formatInteger,
       formatAge: () => ({ label: "2mo ago", className: "age-old" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       navigation: { href: () => "/view/" },
@@ -269,32 +271,28 @@ const MEASURE = `async (arrangement, width, theme) => {
       : null;
   };
   // Where an element's glyphs start and end, however it wraps: the union of its text nodes'
-  // own boxes, and the size of the text that ends lowest. A range over the element would
-  // also give each flex item's border box, and a commit row's items fill its line, so it
-  // would read the row's box and not its text.
+  // own boxes. A range over the element would also give each flex item's border box, and a
+  // commit row's items fill its line, so it would read the row's box and not its text.
   const glyphs = (element) => {
     const rects = [];
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
       const range = document.createRange();
       range.selectNodeContents(node);
-      const size = getComputedStyle(node.parentElement).fontSize;
       for (const r of range.getClientRects()) {
-        if (r.width > 0) rects.push({ top: r.top, bottom: r.bottom, size });
+        if (r.width > 0) rects.push({ top: r.top, bottom: r.bottom });
       }
     }
     if (rects.length === 0) return null;
-    const last = rects.reduce((low, r) => (r.bottom > low.bottom ? r : low));
     return {
       top: round(Math.min(...rects.map((r) => r.top)) + scrollY),
-      bottom: round(last.bottom + scrollY),
-      endSize: last.size,
+      bottom: round(Math.max(...rects.map((r) => r.bottom)) + scrollY),
     };
   };
   const type = (node) => {
     if (!node) return null;
     const s = getComputedStyle(node);
-    return { size: s.fontSize, line: s.lineHeight, weight: s.fontWeight, color: s.color, family: s.fontFamily };
+    return { size: s.fontSize, line: s.lineHeight, weight: s.fontWeight, color: s.color, family: s.fontFamily, adjust: s.fontSizeAdjust };
   };
   // An absolutely positioned pseudo-element, in page coordinates: Chrome resolves its
   // offsets and size to the used values, from its element's padding box.
@@ -315,9 +313,18 @@ const MEASURE = `async (arrangement, width, theme) => {
     };
   };
   const probe = document.createElement("span");
-  probe.style.fontSize = "var(--nav-font-size)";
   container.append(probe);
-  const navSize = getComputedStyle(probe).fontSize;
+  // The commit-ID face, as a short commit ID is set wherever it appears
+  // (docs/design-system.md, "Short Commit IDs"): the one gray, and the monospace face with
+  // the sans's x-height.
+  probe.style.color = "var(--muted)";
+  probe.style.fontFamily = "var(--font-mono)";
+  probe.style.fontSizeAdjust = "var(--font-sans-ex-height)";
+  const idFace = {
+    color: getComputedStyle(probe).color,
+    family: getComputedStyle(probe).fontFamily,
+    adjust: getComputedStyle(probe).fontSizeAdjust,
+  };
   probe.remove();
   const items = [...body().children].map((node) => {
     const kind = node.classList.contains("github-pull-commit")
@@ -344,6 +351,7 @@ const MEASURE = `async (arrangement, width, theme) => {
         age: type(node.querySelector(".github-pull-age")),
         sha: type(node.querySelector(".git-commit-sha")),
       };
+      item.shaText = node.querySelector(".git-commit-sha")?.textContent ?? null;
     } else if (kind === "card") {
       const head = node.querySelector(":scope > .github-pull-card-head");
       const author = head?.querySelector(".github-pull-author");
@@ -419,7 +427,8 @@ const MEASURE = `async (arrangement, width, theme) => {
     gap,
     rhythm,
     threads,
-    navSize,
+    idFace,
+    shortCommit: mb.shortCommit("0123456789abcdef0123456789abcdef01234567"),
     items,
     // To the conversation's end: the page past it is the window's.
     height: Math.ceil(body().getBoundingClientRect().bottom + scrollY),
@@ -559,9 +568,24 @@ function hold(measured, image) {
       `${row.type.age?.size} against ${head.type.age?.size}`,
     );
     check(
-      `${label} sets its hash one step below its text, as a revision`,
-      row.type.sha?.size === measured.navSize,
-      `${row.type.sha?.size} against ${measured.navSize}`,
+      `${label} sets its hash at its text's size, with the sans's x-height`,
+      row.type.sha?.size === row.type.subject.size &&
+        row.type.sha?.adjust === measured.idFace.adjust &&
+        measured.idFace.adjust !== "none",
+      `${row.type.sha?.size} ${row.type.sha?.adjust} against ${row.type.subject.size} ${measured.idFace.adjust}`,
+    );
+    // A short commit ID, as every line names one: its length, the one gray, and the
+    // commit-ID face, though it links to the commit on GitHub.
+    check(
+      `${label} names its commit by a short commit ID`,
+      row.shaText?.length === measured.shortCommit.length,
+      `${JSON.stringify(row.shaText)} against ${measured.shortCommit.length} characters`,
+    );
+    check(
+      `${label} sets its commit ID in the commit-ID face and gray`,
+      row.type.sha?.color === measured.idFace.color &&
+        row.type.sha?.family === measured.idFace.family,
+      `${row.type.sha?.color} ${row.type.sha?.family} against ${measured.idFace.color} ${measured.idFace.family}`,
     );
   }
 
@@ -604,13 +628,12 @@ function hold(measured, image) {
   // the glyphs 20 to 21 px: the face's glyphs fill 20 of the line's 21 px, and a face whose
   // glyphs sit higher or lower in their line may differ by its half-leading, a pixel at most.
   // A line taller than its glyphs, as `line-height: 2` on the rows and heads, fails here.
-  // A row that a narrow pane wraps can end on a line that holds only its hash, a revision a
-  // step below the row's text in a monospace face, whose glyphs leave more of their line
-  // under them: in Chrome 152 on a Mac, 13 px SF Mono's 15 px of glyphs leave 2.5 px of its
-  // 19.5 px line, so 22.5 px shows below each such row at 420 px. Under such a line the
-  // space may be up to 3 px over the rhythm, to allow another platform's monospace face, and
-  // it is left out of the comparison of every pair, which is of the events' own face.
-  const HASH_LINE_SPARE = 3;
+  // A row that a narrow pane wraps can end on a line that holds only its hash, a short
+  // commit ID whose line box is its glyphs' (`.git-commit-sha`), so it shows the rhythm
+  // below it as any row does. When the hash was a step below the row's text with the row's
+  // line ratio, 13 px SF Mono's 15 px of glyphs left 2.5 px of their 19.5 px line under
+  // them, and 22.5 px showed below such a row at 420 px; and when it took the row's size,
+  // its line's half-leading grew a one-line row to 22 px (mb-qq4e).
   const rhythm = measured.rhythm;
   check(`${where}: the rhythm is one token, roomier than 12 px`, rhythm > 12, String(rhythm));
   const top = (item) => (item.kind === "commit" ? item.glyphs.top : item.box.top);
@@ -629,14 +652,11 @@ function hold(measured, image) {
       `${round(between)} against ${rhythm} px`,
     );
     const space = top(next) - end(item);
-    const underHash = item.kind === "commit" && item.glyphs.endSize !== item.type.row.size;
-    if (!underHash) {
-      spaces.push([pair, round(space)]);
-    }
+    spaces.push([pair, round(space)]);
     check(
       `${where}: ${pair}, "${item.label}" to "${next.label}", show the rhythm between them`,
-      space >= rhythm - 1 && space <= rhythm + (underHash ? HASH_LINE_SPARE : 1),
-      `${round(space)} against ${rhythm} px${underHash ? ", under a line of its hash" : ""}`,
+      space >= rhythm - 1 && space <= rhythm + 1,
+      `${round(space)} against ${rhythm} px`,
     );
   }
   // Anything else keeps the page's gap above it, and its own margin: the rhythm is the
@@ -834,6 +854,37 @@ const LAYOUTS = [
   ["held", 980, "dark"],
 ];
 
+/**
+ * A commit's ID under the pointer: a link, so it underlines, and still the commit-ID gray
+ * (docs/design-system.md, "Short Commit IDs"). The pointer moves away after, before the
+ * next layout's screenshot.
+ *
+ * @param {Awaited<ReturnType<typeof launchChrome>>} chrome
+ * @param {{arrangement: string, width: number, theme: string, idFace: {color: string}}} measured
+ */
+async function holdHover(chrome, measured) {
+  const where = `${measured.arrangement} at ${measured.width} px, ${measured.theme}`;
+  const at = await chrome.evaluate(`(() => {
+    const id = document.querySelector(".github-pull-commit .git-commit-sha");
+    id.scrollIntoView({ block: "center" });
+    const r = id.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`);
+  await chrome.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: at.x, y: at.y });
+  const hovered = await chrome.evaluate(`(() => {
+    const id = document.querySelector(".github-pull-commit .git-commit-sha");
+    const s = getComputedStyle(id);
+    return { hover: id.matches(":hover"), color: s.color, line: s.textDecorationLine };
+  })()`);
+  await chrome.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 0, y: 0 });
+  await chrome.evaluate("window.scrollTo(0, 0)");
+  check(
+    `${where}: a commit ID under the pointer underlines and stays the commit-ID gray`,
+    hovered.hover && hovered.line === "underline" && hovered.color === measured.idFace.color,
+    JSON.stringify(hovered),
+  );
+}
+
 const server = await serve();
 const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
 /** @type {Awaited<ReturnType<typeof launchChrome>> | null} */
@@ -865,6 +916,7 @@ try {
       fs.writeFileSync(path.join(SHOTS, `${arrangement}-${width}-${theme}.png`), png);
     }
     hold(measured, decodePng(png));
+    await holdHover(chrome, measured);
     await chrome.evaluate("window.__dispose()");
   }
 } finally {

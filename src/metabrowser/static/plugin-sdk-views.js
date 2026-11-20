@@ -1796,6 +1796,38 @@
   };
   /** @type {WeakMap<HTMLElement, {node: HTMLElement, kind: string, supplied: Element | undefined}>} */
   const linkMarks = new WeakMap();
+  /** The class of the span an image the page does not load becomes (inert_html.py). */
+  const IMAGE_FALLBACK_CLASS = "mb-image-fallback";
+
+  /**
+   * Whether *anchor*'s whole content is images: a badge, or the fallback an image the page
+   * does not load becomes, with no text of its own to put a mark after. github.com draws no
+   * mark on one, and here it landed on a line of its own under the badges. The *mark* the
+   * decorator put in it is not content.
+   *
+   * @param {HTMLElement} anchor
+   * @param {HTMLElement | undefined} mark
+   */
+  function holdsImagesOnly(anchor, mark) {
+    let images = 0;
+    for (const child of Array.from(anchor.childNodes)) {
+      if (child === mark) {
+        continue;
+      }
+      if (child.nodeType === 3) {
+        if ((child.nodeValue ?? "").trim() !== "") {
+          return false;
+        }
+      } else if (child.nodeType === 1) {
+        const element = /** @type {Element} */ (child);
+        if (element.tagName !== "IMG" && !element.classList.contains(IMAGE_FALLBACK_CLASS)) {
+          return false;
+        }
+        images += 1;
+      }
+    }
+    return images > 0;
+  }
 
   /** Decorate a final external destination without changing authored content or navigation.
    * Only the calling view may supply a state icon; document attributes are never read.
@@ -1809,7 +1841,7 @@
       anchor.tagName === "A" ? githubDestination(anchor.getAttribute("href")) : null;
     const kind = destination === null ? null : options.icon === "github" ? "github" : destination;
     let mark = linkMarks.get(anchor);
-    if (kind === null) {
+    if (kind === null || holdsImagesOnly(anchor, mark?.node)) {
       mark?.node.remove();
       linkMarks.delete(anchor);
       return anchor;
@@ -1858,11 +1890,12 @@
    * `GET /api/counterpart` answers, so the provider supplies the label and the URL, and
    * another provider draws the same control.
    *
-   * The markup is the macOS app's contract (mb-4wqh): the root carries
-   * `data-view-on-<provider>`, the link `data-view-on-<provider>="open"`, and the menu's
-   * Open in Browser `data-view-on-<provider>="external"`. In a browser the link opens the
-   * page in a new tab; the app shows a plain click on it in a popover of its own. Nothing
-   * here knows of the app.
+   * The root carries `data-view-on-<provider>`, which names the button. The links carry
+   * the macOS app's contract, which names no site (mb-730z): the link
+   * `data-web-view="open"`, and the menu's Open in Browser `data-web-view="external"`. In
+   * a browser the link opens the page in a new tab; the app shows a plain click on it in a
+   * web pane of its own, in a popover, when the page is on a site it knows. Nothing here
+   * knows of the app.
    *
    * The menu is a menu button's: the chevron opens it with focus on its first item, the
    * arrow keys, Home, and End move among the items, and Escape, a second click on the
@@ -1892,7 +1925,7 @@
     group.dataset.layout = "joined";
     const open = doc.createElement("a");
     open.className = "chip counterpart-open";
-    open.setAttribute(hook, "open");
+    open.setAttribute("data-web-view", "open");
     open.setAttribute("href", counterpart.url);
     open.setAttribute("target", "_blank");
     open.setAttribute("rel", "noopener");
@@ -1939,7 +1972,7 @@
     copy.setAttribute("type", "button");
     copy.dataset.counterpartAction = "copy";
     const external = menuItem(doc.createElement("a"), "Open in Browser");
-    external.setAttribute(hook, "external");
+    external.setAttribute("data-web-view", "external");
     external.setAttribute("href", counterpart.url);
     external.setAttribute("target", "_blank");
     external.setAttribute("rel", "noopener");
@@ -2212,6 +2245,130 @@
    *
    * @returns {Promise<MetabrowserChangedFilesTree>}
    */
+  // A change set's size line, "77 commits · 83 files changed · 2.3 MB compressed (14.0 MB raw
+  // diff)", the line a page header gives its change set above its Diff summary
+  // (docs/design-system.md, "Change Size Line"). A count summary, painted by the shell's one
+  // painter of them: its numbers bold in the line's own ink, a size's unit with its number,
+  // the words and parentheses regular, never a status's color. Here, not in a startup
+  // script: only a commit's or a pull request's page, and a commit's hover card, draw it.
+
+  /**
+   * A change set's size line in its parts: each group a count and its words, set apart by
+   * muted dots, each kept with the group before it by a no-break space, so no line starts
+   * with one, and said as a comma. A count `undefined` is left out and one null is "?"; the
+   * size group is there once the pushed size is known.
+   *
+   * @param {MetabrowserChangeSizeInput} change
+   * @returns {MetabrowserChangeSizeLine}
+   */
+  function changeSizeLine(change) {
+    /** @param {number | null} count */
+    const written = (count) => (count === null ? "?" : mb.formatInteger(count));
+    /** @type {Array<{parts: MetabrowserCountParts, words: string}>} */
+    const groups = [];
+    if (change.commits !== undefined) {
+      const noun = change.commits === 1 ? "commit" : "commits";
+      groups.push({
+        parts: [{ number: written(change.commits) }, ` ${noun}`],
+        words: `${written(change.commits)} ${noun}`,
+      });
+    }
+    const files = change.files === 1 ? "file changed" : "files changed";
+    groups.push({
+      parts: [{ number: written(change.files) }, ` ${files}`],
+      words: `${written(change.files)} ${files}`,
+    });
+    /** @type {MetabrowserCountParts} */
+    let sizeParts = [];
+    let tooltip = null;
+    if (typeof change.pushedBytes === "number") {
+      const pushed = formatSize(change.pushedBytes);
+      sizeParts = [{ number: pushed }, " compressed"];
+      groups.push({ parts: [], words: `${pushed} compressed` });
+      tooltip = `${pushed} compressed: what Git pushes for this change.`;
+      if (typeof change.diffBytes === "number") {
+        const diff = formatSize(change.diffBytes);
+        sizeParts = [...sizeParts, " (", { number: diff }, " raw diff)"];
+        groups.push({ parts: [], words: `${diff} raw diff` });
+        tooltip += ` ${diff} raw diff: its patch, uncompressed.`;
+      }
+    }
+    const separator = { separator: "·", spoken: ", " };
+    const counts = groups.filter((group) => group.parts.length > 0).map((group) => group.parts);
+    /** @type {MetabrowserCountParts} */
+    const parts = [...counts, ...(sizeParts.length > 0 ? [sizeParts] : [])].flatMap((group, at) => [
+      ...(at === 0 ? [] : ["\u00a0", separator, " "]),
+      ...group,
+    ]);
+    const text = parts
+      .map((part) =>
+        typeof part === "string"
+          ? part
+          : "number" in part
+            ? part.number
+            : "separator" in part
+              ? part.separator
+              : "",
+      )
+      .join("");
+    return {
+      parts,
+      sizeParts,
+      text,
+      label: groups.map((group) => group.words).join(", "),
+      tooltip,
+    };
+  }
+
+  /**
+   * The line's counts, and its size in a `span.change-size-line-size` whose tooltip says
+   * what each size is.
+   * @param {MetabrowserChangeSizeLine} line
+   */
+  function sizeLineSplit(line) {
+    const at = line.parts.length - line.sizeParts.length;
+    return { counts: line.parts.slice(0, at), size: line.sizeParts };
+  }
+
+  /**
+   * A change set's size line as the nodes of one `span.change-size-line`.
+   * @param {MetabrowserChangeSizeLine} line
+   * @returns {Array<Node | string>}
+   */
+  function changeSizeLineNodes(line) {
+    const { counts, size } = sizeLineSplit(line);
+    const element = document.createElement("span");
+    element.className = "change-size-line";
+    element.append(...mb.countPartsNodes(counts));
+    if (size.length > 0) {
+      const sized = document.createElement("span");
+      sized.className = "change-size-line-size";
+      if (line.tooltip !== null) {
+        sized.dataset.tipText = line.tooltip;
+      }
+      sized.append(...mb.countPartsNodes(size));
+      element.append(sized);
+    }
+    return [element];
+  }
+
+  /**
+   * A change set's size line as markup, for a view that writes its markup as text, as the
+   * Git panel's commit summary does.
+   * @param {MetabrowserChangeSizeLine} line
+   * @returns {string}
+   */
+  function changeSizeLineHtml(line) {
+    const { counts, size } = sizeLineSplit(line);
+    const paint = global.MetabrowserFormatters.countPartsHtml;
+    const tip = line.tooltip === null ? "" : ` data-tip-text="${escapeHtml(line.tooltip)}"`;
+    return (
+      `<span class="change-size-line">${paint(counts)}` +
+      (size.length > 0 ? `<span class="change-size-line-size"${tip}>${paint(size)}</span>` : "") +
+      "</span>"
+    );
+  }
+
   function loadChangedFilesTree() {
     return mb.ensureAsset("changed-files-tree").then(() => {
       const tree = global.MetabrowserChangedFilesTree;
@@ -2222,9 +2379,32 @@
     });
   }
 
+  /**
+   * An on-demand module bundle's absolute URL, or null for a name that is not one: what a
+   * frame of a plugin's own imports to run the module in that frame's realm, where the
+   * namespace `ensureModule` returns cannot reach (markdown/diagram-frame.js). Here and not
+   * in the startup scripts, asset-loader.js among them, since only a view that draws such
+   * a frame asks; it reads a bundle as `ensureModule` does, which
+   * tests/dom/markdown-diagram-frame-session.js checks shape by shape.
+   *
+   * @param {string} name
+   * @returns {string | null}
+   */
+  function moduleUrl(name) {
+    // A module bundle is one `{module: url}` entry (asset-loader.js, `ensureModule`).
+    const entries = /** @type {unknown} */ (global.METABROWSER_ASSET_BUNDLES?.[name]);
+    const entry = Array.isArray(entries) && entries.length === 1 ? entries[0] : null;
+    const url =
+      entry && typeof entry === "object" && typeof entry.module === "string" ? entry.module : "";
+    return url ? new URL(url, global.location.href).href : null;
+  }
+
   Object.assign(mb, {
     actorIdentity,
     actorIdentityHtml,
+    changeSizeLine,
+    changeSizeLineHtml,
+    changeSizeLineNodes,
     counterpartButton,
     decorateExternalLink,
     loadChangedFilesTree,
@@ -2245,5 +2425,6 @@
     renderTextLoadMoreFooter: renderTextLoadMoreFooter,
     renderTextTruncationWarning: renderTextTruncationWarning,
     wrapWithCopy: wrapWithCopy,
+    moduleUrl,
   });
 })(/** @type {Window & typeof globalThis} */ (typeof window !== "undefined" ? window : globalThis));

@@ -83,6 +83,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=[BUILD]&store=[STORE]",
   "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=[STORE]",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=[STORE]",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=[STORE]",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -552,6 +553,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=[BUILD]&store=[STORE]",
   "image_route": "/api/plugin/github/pull-image?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=[STORE]",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=[STORE]",
+  "size_route": "/api/plugin/github/pull-size?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=[STORE]",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -724,6 +726,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -788,6 +791,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -834,6 +838,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -913,6 +918,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -952,6 +958,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -991,6 +998,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -1022,10 +1030,11 @@ status: 200
   "ref_name": "refs/pull/7/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[APP_HOME]/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[APP_HOME]/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": false,
   "latest": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "ref_on_origin": true,
   "last_fetch_at": "[TIMESTAMP]",
@@ -1056,10 +1065,11 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https
   "ref_name": "refs/pull/7/head",
   "name": "demo",
   "origin": "https://github.com/octo/demo",
-  "location": "[APP_HOME]/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "location": "[APP_HOME]/repository-stores/github-com--octo--demo--65157fba6c20ff90/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": false,
   "latest": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "ref_on_origin": true,
   "last_fetch_at": "[TIMESTAMP]",
@@ -1097,7 +1107,8 @@ status: 200
   "full_name": "github.com/octo/demo#7",
   "kind": "mirror",
   "kind_label": "Cached mirror",
-  "title": "demo #7 • Metabrowser"
+  "title": "demo #7 • Metabrowser",
+  "repository": "https://github.com/octo/demo"
 }
 ? 0
 ```
@@ -1113,7 +1124,8 @@ status: 200
   "full_name": "github.com/octo/demo@topic",
   "kind": "mirror",
   "kind_label": "Cached mirror",
-  "title": "demo • Metabrowser"
+  "title": "demo • Metabrowser",
+  "repository": "https://github.com/octo/demo"
 }
 ? 0
 ```
@@ -1129,7 +1141,8 @@ status: 200
   "full_name": "github.com/octo/demo@wip",
   "kind": "mirror",
   "kind_label": "Cached mirror",
-  "title": "demo • Metabrowser"
+  "title": "demo • Metabrowser",
+  "repository": "https://github.com/octo/demo"
 }
 ? 0
 ```
@@ -1145,10 +1158,11 @@ api: /api/identity
 status: 200
 {
   "short_name": "demo",
-  "full_name": "github.com/octo/demo@07b55f07793d",
+  "full_name": "github.com/octo/demo@07b55f0",
   "kind": "mirror",
   "kind_label": "Cached mirror",
-  "title": "demo • Metabrowser"
+  "title": "demo • Metabrowser",
+  "repository": "https://github.com/octo/demo"
 }
 ? 0
 ```
@@ -1198,6 +1212,7 @@ status: 202
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],
@@ -1231,6 +1246,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -1273,6 +1289,7 @@ status: 202
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],
@@ -1306,6 +1323,7 @@ status: 200
   "comparison_route": null,
   "image_route": null,
   "rendered_route": null,
+  "size_route": null,
   "record": null,
   "core_preview": null,
   "repository_labels": [],
@@ -1349,6 +1367,7 @@ status: 200
     "comparison_route": null,
     "image_route": null,
     "rendered_route": null,
+    "size_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],

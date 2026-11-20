@@ -124,7 +124,8 @@ status: 200
   "full_name": "<SERVED>",
   "kind": "folder",
   "kind_label": "Local folder",
-  "title": "served • Metabrowser"
+  "title": "served • Metabrowser",
+  "repository": null
 }
 --- stderr ---
 --- contract ---
@@ -138,18 +139,33 @@ status: 200
   "full_name": "~/served",
   "kind": "folder",
   "kind_label": "Local folder",
-  "title": "served • Metabrowser"
+  "title": "served • Metabrowser",
+  "repository": null
 }
 --- stderr ---
 --- contract ---
 identity/under-home
+# metab <ROOT>/checkout --api /api/identity
+exit: 0
+--- stdout ---
+status: 200
+{
+  "short_name": "checkout",
+  "full_name": "<SERVED>",
+  "kind": "folder",
+  "kind_label": "Local folder",
+  "title": "checkout • Metabrowser",
+  "repository": "https://github.com/octo/demo"
+}
+--- stderr ---
+--- contract ---
+identity/checkout
 # metab <ROOT>/served --api /api/source/status
 exit: 0
 --- stdout ---
 status: 200
 {
-  "ref_name": null,
-  "selection_state": null
+  "refreshing": false
 }
 --- stderr ---
 --- contract ---
@@ -180,7 +196,8 @@ status: 200
   "full_name": "<ROOT>/origin.git@main",
   "kind": "mirror",
   "kind_label": "Cached mirror",
-  "title": "origin • Metabrowser"
+  "title": "origin • Metabrowser",
+  "repository": null
 }
 --- stderr ---
 --- contract ---
@@ -190,12 +207,33 @@ exit: 0
 --- stdout ---
 status: 200
 {
-  "ref_name": "<text>",
-  "selection_state": null
+  "refreshing": false
 }
 --- stderr ---
 --- contract ---
 source-status/mirror
+# metab file://<ROOT>/origin.git --api /api/source/link --data <ROOT>/link.json
+exit: 0
+--- stdout ---
+status: 200
+{
+  "href": "/view/",
+  "code": null
+}
+--- stderr ---
+--- contract ---
+source-link/repository
+# metab file://<ROOT>/origin.git --api /api/source/link --data <ROOT>/elsewhere.json
+exit: 1
+--- stdout ---
+status: 409
+{
+  "href": null,
+  "code": "<other>"
+}
+--- stderr ---
+--- contract ---
+source-link/elsewhere
 # metab file://<ROOT>/origin.git --no-serve
 exit: 0
 --- stdout ---
@@ -387,6 +425,33 @@ exit: 0
 --- stderr ---
 --- contract ---
 cache-sources/next-page
+# METABROWSER_STATE_DIR=<ROOT>/events-state metab <ROOT>/support --api '/api/event-log?limit=1' --format json
+exit: 0
+--- stdout ---
+{
+  "directory": "<ROOT>/events-state/events",
+  "files": [
+    {
+      "name": "events-20261119T210201Z-p4242-000.jsonl"
+    },
+    {
+      "name": "events-20261118T090000Z-p17-000.jsonl"
+    }
+  ]
+}
+--- stderr ---
+--- contract ---
+event-log/found
+# METABROWSER_STATE_DIR=<ROOT>/quiet-state metab <ROOT>/support --api '/api/event-log?limit=1' --format json
+exit: 0
+--- stdout ---
+{
+  "directory": "<ROOT>/quiet-state/events",
+  "files": []
+}
+--- stderr ---
+--- contract ---
+event-log/empty
 # metab --doctor --json
 exit: 0
 --- stdout ---
@@ -470,6 +535,10 @@ exit: 0
         {
           "name": "<text>",
           "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
         }
       ],
       "remedy": null
@@ -497,6 +566,27 @@ exit: 0
     },
     {
       "id": "cache",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "event_log",
       "title": "<text>",
       "state": "ok",
       "summary": "<text>",
@@ -619,6 +709,10 @@ exit: 1
         {
           "name": "<text>",
           "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
         }
       ],
       "remedy": null
@@ -658,6 +752,27 @@ exit: 1
       "state": "problem",
       "summary": "<text>",
       "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "event_log",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
         {
           "name": "<text>",
           "value": "<text>"

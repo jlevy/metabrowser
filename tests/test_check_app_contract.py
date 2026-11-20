@@ -158,8 +158,8 @@ def test_a_copy_of_what_the_check_reads_passes(tmp_path: Path) -> None:
         (
             _replace(
                 DECLARATION,
-                '"ref_name", "selection_state"]',
-                '"ref_name", "selection_state", "pin"]',
+                'json = ["refreshing"]',
+                'json = ["refreshing", "pin"]',
             ),
             "source-status: declares the key `pin`, and",
         ),
@@ -627,7 +627,7 @@ def test_a_copied_value_and_a_behavior_are_part_of_the_contract(tmp_path: Path) 
     assert len(problems) == 1 and "declares a different surface" in problems[0]
 
     # So is the text a pin file must hold: it is the page's marker that the app looks for.
-    marker = 'holds = \'"data-view-on-github": "open"\''
+    marker = 'holds = \'"data-web-view": "open"\''
     assert marker in declaration
     renamed = declaration.replace(marker, marker.replace('"open"', '"main"'))
     _write(root, {DECLARATION: renamed})
@@ -668,8 +668,8 @@ def test_a_name_or_an_order_is_no_part_of_the_contract(tmp_path: Path) -> None:
     )
     unchanged(
         declaration.replace(
-            '["short_name", "full_name", "kind", "kind_label", "title"]',
-            '["title", "kind_label", "kind", "full_name", "short_name"]',
+            '["short_name", "full_name", "kind", "kind_label", "title", "repository"]',
+            '["repository", "title", "kind_label", "kind", "full_name", "short_name"]',
         )
     )
 

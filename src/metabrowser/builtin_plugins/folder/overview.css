@@ -32,8 +32,8 @@
 }
 
 .folder-overview-panel-toggle:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Clipped, for the collapse, without becoming a scroll container: one would hold a
@@ -97,8 +97,6 @@
   display: flex;
   gap: 12px;
   align-items: center;
-  padding: 12px;
-  color: var(--muted);
 }
 
 /* Every panel shares the README card's edges inside the outer pane gutter.
@@ -181,6 +179,16 @@
 }
 
 @media print {
+  /* No container on paper, as the pane has none (static/styles.css, "Print adapter"):
+     WebKit applies no break rule inside one, and the README is a document that needs
+     them. */
+  .folder-overview-host {
+    container-type: normal;
+  }
+
+  /* The README's panel prints the document alone, as its own Document view does: its
+     heading, "README", is the page's label for it, not part of it. */
+  .folder-overview-panel-document > .folder-overview-panel-heading,
   .folder-overview-panel-surface,
   .folder-overview-panel-error,
   .folder-overview-loading {

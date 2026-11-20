@@ -19,7 +19,11 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
+import pytest
+
 from metabrowser import server
+from metabrowser.plugin_loader.classify import CompiledKindRule, build_classifier
+from metabrowser.plugin_loader.manifest import PluginManifest
 
 
 class _FakeQuery:
@@ -103,9 +107,9 @@ def test_plain_text_source_view_is_printable(tmp_path: Path) -> None:
 def test_unknown_jsonl_gets_default_log_view(tmp_path: Path) -> None:
     """Unknown JSONL still needs an initial visible tab in the browser."""
     server._set_root_dir(tmp_path)
-    log = tmp_path / "agent.jsonl"
-    log.write_text('{"type":"thread.started","thread_id":"abc"}\n')
-    result = _api_file("agent.jsonl")
+    log = tmp_path / "events.jsonl"
+    log.write_text('{"event":"start"}\n')
+    result = _api_file("events.jsonl")
     assert result["kind"] == "unknown-jsonl"
     assert [v["id"] for v in result["views"] if v.get("default")] == ["log"]
 
@@ -223,3 +227,80 @@ def test_binary_content_under_a_text_extension_is_still_text(tmp_path: Path) -> 
     odd.write_bytes(b"\x00\x01\x02\x03" * 64)
     result = _api_file("weird.txt")
     assert result["kind"] == "text"
+
+
+def _thread_manifest(match: dict[str, Any], **kind: Any) -> PluginManifest:
+    return PluginManifest.model_validate(
+        {
+            "plugin": {"name": "threads", "version": "0.0.1", "sdk_version": "0.7"},
+            "kind": [{"id": "agent-thread", "match": match, "binary": True, **kind}],
+        }
+    )
+
+
+@pytest.fixture
+def thread_kind(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A plugin kind claiming compressed rollouts, which the server finds binary."""
+    manifest = _thread_manifest({"path_glob": "**/sessions/**/*.jsonl.zst"})
+    rules = [CompiledKindRule(rule=manifest.kind[0], plugin_name="threads", discovery_index=0)]
+    monkeypatch.setattr(server, "_PLUGIN_BINARY_KIND_RULES", rules)
+    monkeypatch.setattr(server, "_PLUGIN_CLASSIFY_BINARY", build_classifier(rules))
+    view = {"id": "session", "label": "Session", "default": True, "container_class": "x"}
+    monkeypatch.setitem(server._PLUGIN_VIEWS_BY_KIND, "agent-thread", [view])
+
+
+@pytest.mark.usefixtures("thread_kind")
+def test_a_binary_kind_rule_claims_a_binary_file_by_its_path(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    rollout = tmp_path / "sessions" / "2026" / "rollout.jsonl.zst"
+    rollout.parent.mkdir(parents=True)
+    rollout.write_bytes(b"\x28\xb5\x2f\xfd" + bytes(range(256)) * 8)
+
+    result = _api_file("sessions/2026/rollout.jsonl.zst")
+
+    assert result["type"] == "binary"
+    assert result["kind"] == "agent-thread"
+    assert [v["id"] for v in result["views"]] == ["session"]
+    assert "content" not in result
+
+
+@pytest.mark.usefixtures("thread_kind")
+def test_a_binary_file_outside_the_rule_stays_binary(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "other.jsonl.zst").write_bytes(bytes(range(256)) * 8)
+
+    assert _api_file("other.jsonl.zst")["kind"] == "binary"
+
+
+@pytest.mark.usefixtures("thread_kind")
+def test_a_binary_kind_rule_is_never_asked_about_a_text_file(tmp_path: Path) -> None:
+    """The rule claims by path, so a text file at that path keeps its text kind."""
+    server._set_root_dir(tmp_path)
+    text = tmp_path / "sessions" / "notes.jsonl.zst"
+    text.parent.mkdir()
+    text.write_text("plain text that happens to share the name\n")
+
+    assert _api_file("sessions/notes.jsonl.zst")["kind"] == "text"
+
+
+def test_a_binary_kind_rule_matches_by_path_only() -> None:
+    manifest = _thread_manifest({"ext": ".jsonl", "adapter": "codex-rollout"})
+    assert any(
+        "matches on content (adapter)" in problem for problem in manifest.validate_consistency()
+    )
+
+
+@pytest.mark.usefixtures("thread_kind")
+def test_a_binary_claim_by_a_kind_without_views_keeps_the_bytes_view(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delitem(server._PLUGIN_VIEWS_BY_KIND, "agent-thread")
+    server._set_root_dir(tmp_path)
+    rollout = tmp_path / "sessions" / "rollout.jsonl.zst"
+    rollout.parent.mkdir()
+    rollout.write_bytes(bytes(range(256)) * 8)
+
+    result = _api_file("sessions/rollout.jsonl.zst")
+
+    assert result["kind"] == "binary"
+    assert [v["id"] for v in result["views"]] == ["bytes"]

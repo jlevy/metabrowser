@@ -41,7 +41,6 @@ const ROLE = {
   "reading text": 14,
   tooltip: 14,
   "list text": 13,
-  revision: 13,
   control: 12,
   label: 12,
   "hint strip": 12,
@@ -276,9 +275,10 @@ try {
   );
   phase("files");
 
-  // A file's view header and a folder's: the title at the page title's size, and the
-  // eyebrow's address and the metadata line at the main view's reading size, the line's
-  // values at the size of the line they are on (docs/design-system.md, "View Headers").
+  // A file's view header and a folder's: the title at the page title's size, the eyebrow's
+  // address at the list size of the navigation's path row, its twin across the divider
+  // (mb-ch82), and the metadata line at the main view's reading size, the line's values at
+  // the size of the line they are on (docs/design-system.md, "View Headers").
   await evaluate(
     "[...document.querySelectorAll('#tab-files .tree-file')].find((row) => /README/.test(row.textContent)).click()",
   );
@@ -287,7 +287,7 @@ try {
   );
   const fileHeader = "a file's header";
   await role(fileHeader, "page title", ".file-header .view-header-title");
-  await role(fileHeader, "reading text", ".file-header .folder-crumb-root");
+  await role(fileHeader, "list text", ".file-header .folder-crumb-root");
   await role(fileHeader, "reading text", ".file-header .view-header-line");
   await role(fileHeader, "reading text", ".file-header .file-header-size");
   await accompanies(fileHeader, ".file-header .file-header-size", ".file-header .view-header-line");
@@ -344,13 +344,36 @@ try {
   );
   phase("commits");
 
-  // A commit's page: its header's lines at the body size, its revision one step down.
+  // A commit's page: its header's lines at the body size, its revision among them.
   await click(".git-graph-row .git-graph-body");
   await waitFor("document.querySelector('#preview-pane .git-commit-ages') !== null");
   const commitPage = "a commit's page";
   await role(commitPage, "page title", "#preview-pane .git-commit-subject");
   await role(commitPage, "reading text", "#preview-pane .git-commit-ages");
-  await role(commitPage, "revision", "#preview-pane .git-commit-sha");
+  // A short commit ID is the size of its line, and its monospace face's x-height the sans's
+  // (docs/design-system.md, "Short Commit IDs"): the width of 100ex in each, measured.
+  await accompanies(
+    commitPage,
+    "#preview-pane .git-commit-sha",
+    "#preview-pane .git-commit-revision-line",
+  );
+  const xHeights = await evaluate(`(() => {
+    const ex = (host) => {
+      const probe = document.createElement("span");
+      probe.style.cssText = "display: inline-block; position: absolute; width: 100ex; height: 0";
+      host.append(probe);
+      const width = probe.getBoundingClientRect().width / 100;
+      probe.remove();
+      return width;
+    };
+    const id = document.querySelector("#preview-pane .git-commit-sha");
+    return { id: ex(id), line: ex(id.closest(".git-commit-revision-line")) };
+  })()`);
+  check(
+    `${commitPage}: its revision's x-height is its line's`,
+    Math.abs(xHeights.id - xHeights.line) <= 0.01 * xHeights.line,
+    JSON.stringify(xHeights),
+  );
   await accompanies(commitPage, "#preview-pane .git-commit-age", "#preview-pane .git-commit-ages");
   // Its diff's file bars: a main-view path strip, at the body size, with its stats.
   await waitFor("document.querySelector('#preview-pane .diff-file-bar .diff-file-path') !== null");

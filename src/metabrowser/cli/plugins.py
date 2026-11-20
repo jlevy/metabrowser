@@ -109,8 +109,18 @@ def _plugin_details(plugin: LoadedPlugin) -> dict[str, object]:
         "sdk_version": plugin.manifest.plugin.sdk_version,
         "source": plugin.source,
         "static_root": str(plugin.static_root),
-        "kinds": [kind.model_dump(mode="json", exclude_none=True) for kind in plugin.manifest.kind],
-        "views": [view.model_dump(mode="json") for view in plugin.manifest.view],
+        # A field a manifest can leave out is shown only where the manifest declares it,
+        # so a plugin's details say what that plugin asks for.
+        "kinds": [
+            kind.model_dump(
+                mode="json", exclude_none=True, exclude=None if kind.binary else {"binary"}
+            )
+            for kind in plugin.manifest.kind
+        ],
+        "views": [
+            view.model_dump(mode="json", exclude=None if view.offer else {"offer"})
+            for view in plugin.manifest.view
+        ],
         "data_hooks": [hook.model_dump(mode="json") for hook in _active_data_hooks(plugin)],
         "disabled_data_hooks": [
             hook.model_dump(mode="json") for hook in _disabled_data_hooks(plugin)
@@ -344,6 +354,12 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
 
     # Per-plugin: sidekick imports resolve.
     for p in result.plugins:
+        if p.source.startswith("local:") and p.manifest.plugin.register_module:
+            problems.append(
+                f"plugin '{p.name}' declares a Python register module, but operator-directory "
+                "plugins are JavaScript-only; package the plugin behind an installed "
+                "metabrowser.plugins entry point"
+            )
         if p.source.startswith("local:") and p.manifest.data_hook:
             problems.append(
                 f"plugin '{p.name}' declares Python data hooks, but operator-directory "

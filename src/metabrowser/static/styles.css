@@ -144,13 +144,25 @@
                 ui-serif "New York"); no web fonts are fetched.
      Clean is the default and lives in this :root base; each additional set is a
      `html[data-app-font="<value>"]` block below (see "system"). To add a set:
-     add a _FONT_SETS entry (server) and one such block here. */
+     add a _FONT_SETS entry (server) and one such block here, which repoints both
+     --font-sans and --font-sans-ex-height (tests/test_short_commit.py checks each). */
   --app-sans-clean:
     "Source Sans 3 Variable", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     sans-serif;
   --app-sans-system: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --app-serif-system: ui-serif, Georgia, "Times New Roman", serif;
   --font-sans: var(--app-sans-clean);
+  /* Each set's sans x-height per em, which a short commit ID's monospace face is scaled to
+     (.git-commit-sha), so it reads at the size of the sans around it (mb-qq4e). A set's
+     block repoints it with --font-sans. Measured 2026-11-19 in Chrome 152 at 12-14 px:
+     Source Sans 3 0.486, system-ui (SF Pro) 0.526. Not a ratio of sizes, since the mono
+     face is the engine's: one would be 0.889 (Clean) and 0.962 (System) for Chromium's
+     Menlo, x-height 0.547, but about 0.917 and 0.992 for WebKit's SF Mono, 0.530 in a
+     WKWebView on macOS 26.5 the same day. The record: "Short Commit IDs" in
+     explorations/performance-loop/design-rule-measurements.md. */
+  --app-sans-clean-ex-height: 0.486;
+  --app-sans-system-ex-height: 0.526;
+  --font-sans-ex-height: var(--app-sans-clean-ex-height);
   /* One monospace stack for all code, the shell's and the embedded document's:
      --font-mono here and KPress's --kpress-host-font-mono hook (bridged below)
      both read it, so highlighted source and Markdown code draw in one face. The
@@ -184,11 +196,14 @@
        highlighted source, code blocks, Markdown inline code, and raw
        log payloads.
 
-     Three deliberate exceptions, and no others:
+     Four deliberate exceptions, and no others:
        .compression-badge          a 7px glyph — iconography, not text
        .metabrowser-kpress-error-detail   a verbatim error payload
        .log-event-header           structured log values (event type,
                                    timestamps) rather than prose or paths
+       .git-commit-sha             a short commit ID, where every character
+                                   is identity (docs/design-system.md,
+                                   "Short Commit IDs")
      tests/test_chrome_typography.py enforces this list, so a new mono
      use site fails the build until it is classified here.
 
@@ -330,7 +345,8 @@
      One relative size: --git-ref-font-size, a ref chip's, is
      --git-ref-font-scale of the text it sits in, so a chip is slightly
      smaller than that text wherever it appears (docs/design-system.md,
-     "Branch Chips").
+     "Branch Chips"). A short commit ID is its line's size
+     (--font-sans-ex-height, "Short Commit IDs").
 
      Document (rendered prose) sizes — ONE token, deliberately:
        --document-body-font-size         prose (one step above chrome body)
@@ -356,6 +372,19 @@
   --tooltip-font-size: var(--body-font-size);
   --micro-font-size: 10px;
   --page-title-font-size: 24px;
+  /* The page title's line height (`.page-heading`), which a view header's icon and the
+     strut in its corner (`.view-header-end`) take too, so the corner's baseline is the
+     title's first line's. */
+  --page-title-line-height: 1.25;
+  /* The space between a page's title and its metadata, one on every page (mb-wcbc): beside
+     the title on a view header's row, before its metadata line (`.view-header-title`), and
+     under it on a page header, before a pull request's author line and a commit's
+     (`.page-header`). Half the title's size: wider than the 8 px between a line's items and
+     the 6 px between a page header's lines, so the metadata reads as its own phrase after
+     the title rather than as more of it. Under a one-line title the space was 36.5 px to
+     the author's text, the title's held second line, and under a two-line one 4 px
+     (measured 2026-11-18 in Chrome 152). */
+  --page-title-gap: 12px;
   /* A ref chip is slightly smaller than the text around it: one ratio, not
      one size. Measured in Chrome, the text a chip sits in is 12px (a Pulls
      row, the ref selector) to 14px (a pull request's header, a commit's
@@ -639,6 +668,16 @@
   /* Square-ish corner for tag-like chips (branch refs): visibly not a
      pill, still not a hard corner. */
   --radius-tag: 3px;
+  /* Keyboard focus, one ring for every control (docs/design-system.md, "Focus Ring"): a
+     `:focus-visible` rule sets `outline: var(--focus-ring-width) solid var(--focus-ring-color)`
+     and an offset from here, and tests/test_design_vocabulary.py rejects one that restates
+     them. The ring sits 2px inside the control's box, so no ancestor's overflow clips it and
+     it reads the same on a filled and a bare control. The outset offset is only for an
+     inline text link or a bare check, whose box is its text and has no room to hold a ring. */
+  --focus-ring-width: 2px;
+  --focus-ring-color: var(--link);
+  --focus-ring-offset: -2px;
+  --focus-ring-offset-outset: 2px;
   /* Transient loading chrome stays quiet through work that finishes within
      about three frames, which covers a cached subtree expansion and most
      local requests. The placeholder still reserves its layout while hidden,
@@ -690,6 +729,12 @@
   /* Content spacing */
   --content-padding-x: 24px;
   --content-padding-y: 16px;
+  /* The room between a bordered box's edge and the prose in it, each side
+     (docs/design-system.md, "Boxed Prose"). The pane inset, 12px, put a description's h2 13px
+     from the border (owner, 2026-11-20). github.com pads `.comment-body` 16px, measured
+     2026-11-19 in headless Chrome on a public pull request: an h2 17px inside the box's edge.
+     16px is `--content-padding-y`, the text's block padding, too. */
+  --boxed-prose-padding-inline: 16px;
   --preview-message-max-width: 42rem;
   --embedded-document-padding-top: 8px;
   /* The navigation column has one left inset, and everything in it
@@ -702,42 +747,64 @@
      align their border instead, since that is their visual edge. */
   --pane-header-padding-x: 12px;
   --pane-header-padding-y: 8px;
-  /* The height of the navigation column's path row, border included: a fixed
-     height rather than its content's, so the column's rules sit where they sit
-     whatever the path's font set measures. The row is border-box, so this is the
-     whole row. The main view's header is a view header (below), not a twin of it. */
-  --pane-header-row-height: 41px;
-  /* A view header's rhythm (docs/design-system.md, "View Headers"): the pads above
-     its first row and below its last, the gap between rows, the eyebrow's and
-     the metadata line's heights, which a row holds whatever fills it, so nothing
-     under it moves as a value arrives, and the gap between the title and the metadata
-     line after it. 22 px is the body size's line (21 px) with room for a badge's box,
-     22 px, on the metadata line, and the Up control's box, 20 px, on the eyebrow. The
-     title gap is half the title's size, wider than the line's own 8 px between items,
-     so the line reads as its own phrase after the name rather than as more of it. */
-  --view-header-padding-top: 12px;
+  /* The height of the top bar's rows, border included: the navigation column's path
+     row and, across the divider, a view header's eyebrow (docs/design-system.md, "View
+     Headers"), so their rules are one line across the window and their text one
+     baseline. A fixed height rather than its content's, so the rules sit where they sit
+     whatever the text's font set measures; the rows are border-box, so this is the whole
+     row. 34 px puts the path's text 7.25 px under the row's top, the inset the tabs
+     under it give their labels (7 px; measured 2026-11-18 in Chrome, the path's box 24.5
+     px centered in the row's 33 and its 19.5 px line 3 px into that box); 41 px put it
+     10.75 px under, which read as loose beside the tabs. */
+  --pane-header-row-height: 34px;
+  /* The shortcut strip's row under its rule (`.nav-shortcut-hints`): its padding, a
+     hint's padding, and a keycap's border and 1.5 lines. app.js
+     (`alignNavCollapseButton`) gives the chevron and the divider the strip's measured
+     row instead, which this is until it does. */
+  --nav-shortcut-row-height: calc(12px + 6px + 2px + 1.5 * var(--kbd-font-size));
+  /* A view header's rhythm (docs/design-system.md, "View Headers"): the pad above the
+     heading row, under the eyebrow's rule or, with no eyebrow, the page's top, and the
+     pad under the last row; the metadata line's height, which it holds whatever fills
+     it, so nothing under it moves as a value arrives. The gap between the title and the
+     metadata line after it is every page's, `--page-title-gap`. The top pad is the
+     content's, the pad a pull request's page and a commit's have above their titles, so a
+     title sits as far under what is above it on every page. 22 px is the body size's line
+     (21 px) with room for a badge's box, 22 px. The Up control's box is 24 px, inside the
+     eyebrow's row: a pointer target of WCAG 2.2's minimum (2.5.8), as the navigation
+     title's gear is, and the size of the navigation's chevron (`.nav-collapse-toggle`),
+     so the page's icon buttons are one size. */
+  --view-header-padding-top: var(--content-padding-y);
   --view-header-padding-bottom: 8px;
-  --view-header-row-gap: 4px;
-  --view-header-eyebrow-height: 22px;
   --view-header-line-height: 22px;
-  --view-header-title-gap: 12px;
-  --view-header-up-size: 20px;
-  /* The header's corner, its upper right, which holds a page's View on GitHub button
-     (docs/design-system.md, "View on GitHub"): the button's inset from the header's top
-     and right edges and its height. A native bar that draws the same button, as the
-     macOS app's over its GitHub popover may, takes the same three, so the button does
-     not move between them. The inset is the header's top and side pads and the height
-     the eyebrow's, so the button is level with the eyebrow. */
+  --view-header-up-size: 24px;
+  /* The header's corner, which holds a page's View on GitHub button (docs/design-system.md,
+     "View on GitHub"): at the end of the title's first line, from the top of that line
+     and the header's right edge, and the button's height. Where on that line the button
+     sits is the title's: the corner sets its label on the title's first baseline
+     (`.view-header-end`), so a native bar that draws the same button, as the macOS app's
+     over its GitHub popover may, takes the title's type with these three to put it in the
+     same place. The top inset is the header's top pad, under the eyebrow's row where
+     there is one; the height is a chip group's whole box, a chip's 20 px line and its
+     frame's 1 px above and below. */
   --view-header-corner-inset-top: var(--view-header-padding-top);
   --view-header-corner-inset-end: var(--content-padding-x);
-  --view-header-corner-height: var(--view-header-eyebrow-height);
-  /* The room the header's first row leaves the corner from first paint, before the
+  --view-header-corner-height: 22px;
+  /* The room the title's first line leaves the corner from first paint, before the
      button is drawn: the button's width and the heading row's 8 px gap. Measured
      2026-11-18 in Chrome 152 with the shell's faces, the button is 140.05 px wide at
      every pane width and in both themes, 148.05 px with the gap; the room rounds that up
      to the next 10 px. tests/dom/github-pull-header-chrome.mjs (`corner`) and
      tests/dom/view-header-chrome.mjs hold the button and its gap within it. */
   --view-header-corner-room: 150px;
+  /* The first line a title keeps beside the corner's room: a name up to this wide is
+     whole on one line there. Below the main view's width that leaves it (the container
+     condition after `.view-header-title-group::before`), the corner is on the eyebrow's
+     row instead. Measured 2026-11-19 in Chrome 152 with the shell's faces, this
+     repository's 2,164 file and folder names at the title's type: half are at most 250
+     px, 90% at most 424 ("test_kpress_dynamic_render_smoke.py"), 95% at most 505. 450 px
+     holds 91% of them. A container condition takes no var(), so the condition is a number
+     tests/test_view_header_chrome.py holds to this and the tokens beside it. */
+  --view-header-title-room: 450px;
   --file-tab-padding-x: 12px;
   --file-tab-padding-y: 4px;
   --file-tab-align-adjust: 3px;
@@ -1184,6 +1251,38 @@
   --status-info: oklch(62.8% 0.167 259.5);
   --status-info-bg: oklch(93.46% 0.0305 255.11);
   --status-info-text: oklch(50% 0.163 265.7);
+  /* Text inks. The fills above are for dots, bars, tints, and borders; they do not read as
+     text on --bg in both themes, so every status color set as `color:` on text takes one
+     of these, themed and held to 4.5:1 on --bg by tests/test_design_vocabulary.py. */
+  --status-success-text: oklch(51% 0.15 149.18);
+  --status-warning-text: oklch(54% 0.17 50);
+  --status-error-text: oklch(55% 0.2 27.2);
+  /* The tint behind an added or removed line, in a diff or beside one. */
+  --diff-add-row-bg: color-mix(in srgb, var(--status-success) 9%, transparent);
+  --diff-del-row-bg: color-mix(in srgb, var(--status-error) 9%, transparent);
+
+  /* Badge tones — a badge's fill and the ink it sets on it (`.badge-*`). Each pair is held
+     to 4.5:1 in both themes by tests/test_design_vocabulary.py. A failure and a front-matter
+     error are one tone, --badge-failed-*. Where a status already names the pair, the badge
+     takes it. */
+  --badge-completed-bg: var(--status-success-soft-bg);
+  --badge-completed-text: var(--status-success-soft-text);
+  --badge-failed-bg: oklch(91% 0.036 12.1);
+  --badge-failed-text: oklch(37.3% 0.12 19.9);
+  --badge-running-bg: oklch(96.4% 0.052 93.1);
+  --badge-running-text: oklch(50% 0.1071 88.17);
+  --badge-pending-bg: oklch(94.5% 0.005 247.9);
+  --badge-pending-text: oklch(42.4% 0.015 248.2);
+  --badge-claude-bg: var(--status-info-bg);
+  --badge-claude-text: oklch(48.3% 0.145 257);
+  --badge-gemini-bg: oklch(96.2% 0.057 95.6);
+  --badge-gemini-text: oklch(50% 0.1136 92.83);
+  --badge-pi-bg: oklch(93.7% 0.031 294.2);
+  --badge-pi-text: oklch(43% 0.209 292.4);
+  --badge-adapter-bg: oklch(93.13% 0.0327 272.26);
+  --badge-adapter-text: oklch(44% 0.146 267.3);
+  --badge-compressed-bg: oklch(93.9% 0 89.9);
+  --badge-compressed-text: oklch(46.5% 0 89.9);
 
   /* Secondary muted tone (slate) for metadata/labels on charts & stats.
      Distinct from --muted which is the warmer bootstrap grey. */
@@ -1527,6 +1626,29 @@
   --git-ref-local: oklch(0.74 0.1 205);
   --git-ref-tag: oklch(0.76 0.14 71.1);
   --git-ref-bg: oklch(26% 0.008 240);
+
+  --status-success-soft-bg: oklch(32% 0.06 152.6);
+  --status-success-soft-text: oklch(84% 0.13 147.4);
+  --status-info-bg: oklch(32% 0.07 255.11);
+  --status-info-text: oklch(78% 0.13 265.7);
+  --status-success-text: oklch(72% 0.16 149.18);
+  --status-warning-text: oklch(78% 0.15 50);
+  --status-error-text: oklch(72% 0.18 27.2);
+  --badge-failed-bg: oklch(31% 0.07 12.1);
+  --badge-failed-text: oklch(85% 0.11 19.9);
+  --badge-running-bg: oklch(33% 0.07 93.1);
+  --badge-running-text: oklch(86% 0.12 88.17);
+  --badge-pending-bg: oklch(32% 0.01 247.9);
+  --badge-pending-text: oklch(84% 0.015 248.2);
+  --badge-claude-text: oklch(84% 0.1 257);
+  --badge-gemini-bg: oklch(33% 0.07 95.6);
+  --badge-gemini-text: oklch(86% 0.12 92.83);
+  --badge-pi-bg: oklch(32% 0.09 294.2);
+  --badge-pi-text: oklch(85% 0.1 292.4);
+  --badge-adapter-bg: oklch(32% 0.08 272.26);
+  --badge-adapter-text: oklch(85% 0.1 267.3);
+  --badge-compressed-bg: oklch(32% 0 89.9);
+  --badge-compressed-text: oklch(84% 0 89.9);
 }
 
 /* Which of the two colors on the element is live. Both are written once, when
@@ -1596,12 +1718,15 @@ body {
 
 /* The navigation column's path row: one row, the path and then the
    Metabrowser menu, at one fixed height (--pane-header-row-height) with its
-   hairline under it. The main view's header across the divider is a view
-   header of its own rows (.view-header, below), not a twin of this one. */
+   hairline under it. Across the divider a file's or a folder's view header opens
+   with this row's twin, its eyebrow (.view-header-eyebrow, below): the same height,
+   rule, and text size, so the two read as one bar and their text as one baseline. */
 .app-header {
   background: var(--header-bg);
   color: var(--header-text);
-  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
+  /* No vertical padding: the fixed height and the centering place the row's line, and
+     the Metabrowser menu's 24 px button fits the row without it. */
+  padding: 0 var(--pane-header-padding-x);
   height: var(--pane-header-row-height);
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -1610,7 +1735,7 @@ body {
   gap: 8px;
   font-size: var(--ui-small-font-size);
   font-weight: var(--weight-bold);
-  letter-spacing: 0.1em;
+  letter-spacing: var(--label-letter-spacing);
   text-transform: uppercase;
   flex-shrink: 0;
   position: relative;
@@ -1654,16 +1779,17 @@ body {
   white-space: nowrap;
 }
 .header-path:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 .app-header > .settings-toggle {
   margin-left: auto;
 }
-/* A pinned revision's heading: the repository's name at the heading's weight,
-   then the ref and the short commit, muted, the commit in the commit-ID face
-   (.git-commit-sha). The full commit is in the heading's tooltip. A pin with no mirror has no name, and its ref stands in
-   the name's place. */
+/* A pin with no mirror's heading: it has no name and no ref selector, so its ref
+   stands in the name's place at the heading's weight, then its short commit, muted,
+   in the commit-ID face (.git-commit-sha). A served mirror's heading and a checkout's
+   revision's are the name alone (server.py, _pin_label_html): the ref selector names
+   the ref and the tooltip the commit. */
 .header-revision {
   flex: none;
   margin-left: 6px;
@@ -1671,8 +1797,8 @@ body {
   font-weight: var(--weight-normal);
 }
 /* The commit is the identity and must stay visible, so on a narrow column the
-   branch name is what gives way. Its own rule: an engine without :has() drops
-   a whole selector list, and then the heading simply truncates as before. */
+   ref is what gives way. Its own rule: an engine without :has() drops a whole
+   selector list, and then the heading simply truncates as before. */
 .header-path:has(> .header-revision) {
   display: flex;
   align-items: baseline;
@@ -1682,19 +1808,10 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* A served mirror's heading is the repository's name, the ref, then the commit.
-   The ref gives way before the name does: the ref selector in the Files toolbar
-   names it too. */
-.header-ref {
-  flex: 0 1000 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* The control that copies the full commit stands right after the short one, so
-   a mirror's heading ends at its text, as every heading does, and the menu
-   keeps the far end. It shows while the pointer is over the header, as the
-   file header's copy control does. */
+/* The control that copies the full commit stands right after the heading's name,
+   a mirror's or a checkout's revision's, so the heading ends at its text,
+   as every heading does, and the menu keeps the far end. It shows while the
+   pointer is over the header, as the file header's copy control does. */
 .header-copy {
   flex: none;
   margin-left: -4px;
@@ -1704,7 +1821,7 @@ body {
   pointer-events: auto;
 }
 .header-copy.copied {
-  color: var(--status-success);
+  color: var(--status-success-text);
   opacity: 1;
   pointer-events: auto;
 }
@@ -1726,12 +1843,13 @@ body {
   color: var(--link);
 }
 .btn:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
-/* Parent navigation is a button, not a bare icon action. Labelled and
-   icon-only forms share the same compact arrow, persistent boundary,
-   hover, and focus vocabulary through `.btn`. */
+/* Parent navigation with a label, the treemap's Zoom out, is a bordered `.btn`
+   (docs/design-system.md, "Parent Navigation"). Up alone, in a view header's
+   eyebrow, is an icon button with the same arrow (`.view-header-eyebrow >
+   .folder-up`, below). */
 .parent-nav-btn {
   display: inline-flex;
   height: var(--icon-btn-size);
@@ -1739,11 +1857,6 @@ body {
   gap: 6px;
   border-color: var(--viz-border-strong);
   background: var(--viz-surface);
-}
-.parent-nav-btn-icon-only {
-  width: var(--icon-btn-size);
-  justify-content: center;
-  padding: 3px;
 }
 .parent-nav-arrow {
   color: var(--muted);
@@ -1866,8 +1979,8 @@ summary {
   background: var(--hover-bg);
 }
 .fold-expander:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* ── Icon buttons — shared icon-only control primitive ───────────
    Every icon-only control in the chrome reads the same: a
@@ -1943,8 +2056,8 @@ summary {
 /* The hover surface alone is not a focus indicator — keyboard focus
    also takes the app's standard ring. */
 .icon-btn:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* A reveal button that takes keyboard focus must actually appear. */
 .icon-btn-reveal:focus-visible {
@@ -1965,8 +2078,13 @@ summary {
    itself is the .icon-btn primitive above; only the trigger's placement and
    the menu's anchored positioning live here. The menu surface comes from the
    .menu primitive, and the segments from the .menu-chooser primitive below. */
+/* A flex box as tall as its gear, so the path row centers the gear itself on the row's
+   line, the line the main page's Up is centered on across the divider. As a block it was
+   a 25 px line box with the gear at its top, and the gear's center 0.5 px above the
+   row's (Chrome 152, 2026-11-18). */
 .settings-toggle {
   position: relative;
+  display: flex;
   flex: 0 0 auto;
 }
 /* Anchored placement under the trigger; the .menu primitive supplies the
@@ -2127,7 +2245,7 @@ summary {
   align-items: center;
   gap: 4px;
   text-decoration: none;
-  border-radius: 3px;
+  border-radius: var(--radius-chrome);
 }
 .menu-title-link:hover,
 .menu-title-link:focus-visible {
@@ -2135,8 +2253,8 @@ summary {
   color: var(--text);
 }
 .menu-title-link:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* The arrow occupies its space whether or not it is showing, so revealing it
@@ -2241,8 +2359,8 @@ summary {
 /* The chip's ring. A focused segment's fill cannot be the signal: the checked rule above
    would hide it, and the checked segment is where keyboard focus lands. */
 .menu-seg:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* The sanctioned exception to --icon-glyph: here the glyph is the whole
    label of the segment (sun / moon / monitor), not a mark beside text,
@@ -2251,27 +2369,34 @@ summary {
   width: 16px;
   height: 16px;
 }
+/* The text field primitive (docs/design-system.md, "Text Fields"): the border, the
+   recessed fill, the ink, the padding, the hover, and the focus ring of every typed or
+   chosen value that is not a button. A use site carries `.field` in its markup and sets
+   only its layout. */
+.field {
+  padding: 4px 6px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+}
+.field:hover {
+  border-color: var(--muted);
+}
+.field:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
 /* Small dropdown chooser inside the menu (the font-set picker). A native
    <select> so sets can be added from the registry/markup alone; styled to sit
    quietly on the menu surface as a recessed field. */
 .menu-select {
   width: 100%;
-  padding: 4px 8px;
+  padding-inline: 8px;
   font-family: var(--font-sans);
   font-size: var(--ui-small-font-size);
   font-weight: var(--weight-medium);
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
   cursor: pointer;
-}
-.menu-select:hover {
-  border-color: var(--muted);
-}
-.menu-select:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
 }
 
 /* A labelled numeric row. The label is the click target (it wraps the input),
@@ -2302,22 +2427,24 @@ summary {
 }
 .menu-number {
   width: 4.5em;
-  padding: 4px 6px;
   font-family: var(--font-sans);
   font-size: var(--ui-small-font-size);
   font-weight: var(--weight-medium);
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
   text-align: right;
 }
-.menu-number:hover {
-  border-color: var(--muted);
+/* A labelled checkbox row, as Show ignored is in the filter bar: the label states what
+   ticking does, so the polarity is legible. The label is the click target. */
+.menu-row:has(.menu-check) {
+  cursor: pointer;
 }
-.menu-number:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+.menu-check {
+  accent-color: var(--link);
+  cursor: pointer;
+  margin: 0;
+}
+.menu-row:has(.menu-check:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Theme crossfade. Scoped to the large structural surfaces (and the
@@ -2332,7 +2459,6 @@ html.theme-anim .container,
 html.theme-anim .tree-pane,
 html.theme-anim .preview-pane,
 html.theme-anim .preview-frame,
-html.theme-anim .nav-collapse-toggle,
 html.theme-anim .app-header,
 html.theme-anim .tree-content,
 html.theme-anim .preview-empty,
@@ -2639,7 +2765,7 @@ html.theme-anim .menu {
 .nav-shortcut-hints[hidden] {
   display: flex;
   visibility: hidden;
-  min-height: calc(1px + 12px + 6px + 2px + 1.5em);
+  min-height: calc(1px + var(--nav-shortcut-row-height));
 }
 /* An item the row has no room for. Its own rule below would otherwise keep it drawn. */
 .nav-shortcut-hints > [hidden] {
@@ -2679,8 +2805,8 @@ html.theme-anim .menu {
   color: var(--link);
 }
 .nav-shortcut-action:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset-outset);
   border-radius: var(--radius-chrome);
 }
 /* ── Keyboard keys — the revealed strip ──────────────────────────
@@ -2752,7 +2878,7 @@ html.theme-anim .menu {
   flex: 0 0 auto;
   border: 2px solid var(--spinner-track);
   border-top-color: var(--spinner-accent);
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   animation: spin 0.8s linear infinite;
 }
 .index-progress-text {
@@ -2816,27 +2942,79 @@ html.theme-anim .menu {
 }
 .source-ref-selector-filter {
   width: 100%;
-  padding: 3px 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
-  background: var(--bg);
-  color: var(--text);
+  padding-block: 3px;
   font: inherit;
 }
-.source-ref-selector-filter:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
-}
+/* The list holds every ref and draws only the rows near its view
+   (static/source-ref-selector.js, `drawWindow`): the sizer is as tall as every row, and
+   each drawn row is placed over it by its index. */
 .source-ref-selector-list {
+  position: relative;
   max-height: min(50vh, 320px);
   margin: 0;
   padding: 0;
   overflow-y: auto;
   list-style: none;
 }
+.source-ref-selector-item {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
 .source-ref-selector-row[aria-current="true"],
 .source-ref-selector-working-tree[aria-current="true"] {
   font-weight: var(--weight-medium);
+}
+/* A row is the ref's own line and, under it, the pull request its branch heads. The ref's line
+   is a row with none, as tall as before; the list places each row by its own height
+   (`rowOffsets`; docs/design-system.md, "The Ref Selector"). */
+.source-ref-selector-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+.source-ref-selector-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* The pull request's icon (the GitHub plugin's, drawn once it loads into a slot as wide as
+   itself), its number (--pull-number-weight), and its title: bold in normal ink, cut at
+   the line's end; a count of the branch's other pull requests follows, muted. The line is
+   one height whatever its title holds: a title's emoji or CJK fall back to a font whose
+   `normal` line is taller, which made the row 2 to 3 px taller than the list places it. */
+.source-ref-selector-pull {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: calc(var(--nav-metadata-line-height) * 1em);
+  overflow: hidden;
+  line-height: var(--nav-metadata-line-height);
+}
+.source-ref-selector-pull-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--tree-icon-slot);
+}
+.source-ref-selector-pull > .source-ref-selector-pull-number {
+  flex: none;
+}
+.source-ref-selector-pull-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: var(--weight-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-ref-selector-pull-more {
+  flex: none;
+  color: var(--muted);
 }
 .source-ref-selector-name {
   flex: 1 1 auto;
@@ -2844,29 +3022,27 @@ html.theme-anim .menu {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The badge's border reaches into the row's padding rather than making its row taller:
+   every row is placed at one row's height (`drawWindow` in source-ref-selector.js), and
+   the badged row, measured first, was 2px taller than the rest, which left a gap under
+   every row. It is an outlined tag in the row's muted ink, not a status badge: it
+   shares .file-header-badge's radius, size and nowrap, but not its filled, bold,
+   two-pad box, whose block size would be that taller row (docs/design-system.md,
+   "Badges"). */
 .source-ref-selector-badge {
   flex: 0 0 auto;
+  margin-block: -1px;
   padding: 0 4px;
   border: 1px solid var(--border);
   border-radius: var(--radius-chrome);
   color: var(--muted);
 }
-/* A ref's commit as the history shows one: Git's short ID in the commit-ID face
-   (`.git-commit-sha`), muted beside the ref's name, then its age, whose tier sets its
-   colour and weight (`.age-*`). Neither shrinks: the name gives way first. The age ends
-   the row in a column as wide as the widest compact age, so the IDs line up. */
+/* A ref's commit as every line names one: its short ID in the commit-ID face and gray
+   (`.git-commit-sha`) beside the ref's name, then its age, whose tier sets its colour
+   and weight (`.age-*`). Neither shrinks: the name gives way first. The age ends the row
+   in a column as wide as the widest compact age, so the IDs line up. */
 .source-ref-selector-commit {
   flex: 0 0 auto;
-  color: var(--muted);
-}
-/* A commit ID sits one step below the sans beside it (`.git-commit-sha`), and this list
-   and the button are at the small size, the ramp's last step before the micro marks. So
-   here an ID takes the ratio a ref chip takes to its text, and reads at the size of the
-   ref names it sits among; at the history's size it read larger than them. A mirror's
-   offer of a newer commit, in the freshness row, names it the same way. */
-.source-ref-selector .git-commit-sha,
-.source-freshness .git-commit-sha {
-  font-size: var(--git-ref-font-size);
 }
 /* The age column is as wide as the widest compact age, "12mo". In em, not ch: a tier's
    weight widens its "0", so 4ch was 24.2px at weight 500 and 25.3px at 700, while "12mo"
@@ -2885,7 +3061,7 @@ html.theme-anim .menu {
   color: var(--muted);
 }
 .source-ref-selector-error {
-  color: var(--status-warning-strong);
+  color: var(--status-error-text);
 }
 /* A checkout's working tree: a row like a ref's, above the lists and ruled off from
    them, since it is the one choice that is not a ref. The folder's path stands where a
@@ -2959,8 +3135,8 @@ html.theme-anim .menu {
   color: var(--link);
 }
 .source-freshness-label:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset-outset);
   border-radius: var(--radius-chrome);
 }
 .source-freshness-label:disabled {
@@ -2968,7 +3144,7 @@ html.theme-anim .menu {
   cursor: default;
 }
 .source-freshness[data-tone="warning"] .source-freshness-label {
-  color: var(--status-warning-strong);
+  color: var(--status-warning-text);
 }
 .source-freshness-offer {
   display: inline-flex;
@@ -2977,7 +3153,7 @@ html.theme-anim .menu {
   color: var(--text);
 }
 .source-freshness-error {
-  color: var(--status-warning-strong);
+  color: var(--status-error-text);
 }
 .source-freshness-pull {
   color: var(--link);
@@ -3000,11 +3176,15 @@ html.theme-anim .menu {
   z-index: var(--z-resize-handle);
   transition: background var(--transition-fast);
 }
+/* The handle's reach, 4 px either side of the divider, stops above the shortcut strip's
+   row: on the row the main page's side is the chevron's (`.nav-collapse-toggle`), which
+   fills the gutter there, and the reach took a press on its first 4 px for a resize
+   (Chrome 152, 2026-11-19). The divider's own 4 px are the handle's on the row too. */
 .resize-handle::after {
   content: "";
   position: absolute;
   top: 0;
-  bottom: 0;
+  bottom: calc(100% - (var(--nav-shortcut-row-top, 100% - var(--nav-shortcut-row-height))));
   left: -4px;
   right: -4px;
   cursor: col-resize;
@@ -3028,18 +3208,34 @@ html.theme-anim .menu {
 .container[data-nav-collapsed] > .resize-handle {
   display: none;
 }
-/* The chevron: an icon button on the main page's left edge, beside the pane's shadow,
-   on the shortcut strip's row. The module centers it on the strip; `bottom` holds it
-   near there until the first measurement. It has the page's ground at rest, as a plate,
-   since the page's content can run under it, and the hover surface over that. The shared
-   chevron points right; turned, it points left, at the pane it hides, and it turns back
-   when the pane is hidden. */
+/* The chevron: an icon button at the start of the main page's foot, centered in the
+   gutter before the content's edge, and on the shortcut strip's row (mb-yw18): centered
+   on the strip below its rule, the line its keys are on, across the divider. The strip
+   moves when a row under it shows, the scan's progress or a mirror's freshness, so
+   app.js (`alignNavCollapseButton`) measures it from the first paint and gives the button
+   `--nav-shortcut-row-top` and `--nav-shortcut-row-height`; until it does, the row is the
+   strip's height at the pane's foot. It is in the frame, so it stays when the pane is
+   hidden and slides with the page. Its box is the eyebrow's Up control's, so the page's icon buttons are one size,
+   and fills the gutter, the divider's resize reach kept off the row
+   (`.resize-handle::after`); it has no plate, so the page's edge and the pane's shadow
+   show through it, and only the hover surface fills it. The shared chevron points right;
+   turned, it points left, at the pane it hides, and it turns back when the pane is
+   hidden. */
 .nav-collapse-toggle {
+  --icon-btn-size: var(--view-header-up-size);
   position: absolute;
-  left: 4px;
-  bottom: 5px;
+  inset-block-start: calc(
+    (var(--nav-shortcut-row-top, 100% - var(--nav-shortcut-row-height))) +
+    (var(--nav-shortcut-row-height) - var(--icon-btn-size)) /
+    2
+  );
+  inset-inline-start: calc((var(--content-padding-x) - var(--icon-btn-size)) / 2);
   z-index: var(--z-resize-handle);
-  background: var(--bg);
+}
+/* Its Shift badge is in the frame, over the button's inline end like every `beside`
+   badge, and needs the button's level to paint over it rather than under it. */
+.nav-collapse-toggle ~ .kbd-badge {
+  z-index: var(--z-resize-handle);
 }
 .nav-collapse-toggle svg {
   transform: rotate(180deg);
@@ -3088,6 +3284,7 @@ html.theme-anim .menu {
    boot script (server.py) and the settings control (app.js). */
 html[data-app-font="system"] {
   --font-sans: var(--app-sans-system);
+  --font-sans-ex-height: var(--app-sans-system-ex-height);
   --prose-sans-font: var(--app-sans-system);
   --kpress-host-font-sans: var(--app-sans-system);
   --kpress-host-font-body: var(--app-sans-system);
@@ -3173,9 +3370,25 @@ html[data-prose-font="sans"] .kpress-prose h2,
      resolves it as the scroll root. No transform here; see .preview-frame. */
   container: kpress-doc / inline-size;
 }
+/* The main page's focus ring, on the frame over the pane rather than on the pane: the
+   pane's own outline, inset, paints under a positioned box in it with a ground of its
+   own, so a page drawn on the file stage (`.preview-file-stage`), as a pull request's
+   tab bar is, covered the ring (the macOS app; in Chrome 152 on 2026-11-19 a band placed
+   at the pane's top covered it too, tests/dom/nav-collapse-chrome.mjs). Over the frame's
+   content, it takes no press (mb-0rop). It is at the anchored menus' level, over the
+   plugins' positioned grounds (the Pulls filters' and the folder plugin's, z-index 1 to
+   3) and under KPress's floating UI (its TOC, settings, and tooltips, 199 and up), which
+   covers the page's edge on purpose; print drops it with the rest of the chrome. */
 .preview-pane:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: none;
+}
+.preview-frame:has(> .preview-pane:focus-visible)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--link);
+  pointer-events: none;
+  z-index: var(--z-overlay);
 }
 .preview-file-stage {
   position: absolute;
@@ -3261,8 +3474,8 @@ html[data-prose-font="sans"] .kpress-prose h2,
   background: var(--hover-bg);
 }
 .tree-item:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
   background: var(--hover-bg);
 }
 /* Current item — same tinted background + accent left bar as the embedded
@@ -3615,8 +3828,8 @@ a.tab-btn {
   color: var(--text);
 }
 .tab-btn:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 .tab-btn.active {
   color: var(--text);
@@ -3711,8 +3924,8 @@ a.tab-btn {
   background: var(--hover-bg);
 }
 .chip:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* Joined groups are segmented controls: one shared border and one
    row. A set that cannot fit that contract opts into the wrapping
@@ -3920,8 +4133,8 @@ a.tab-btn {
   color: var(--text);
 }
 .filter-check:has(input:focus-visible) {
-  outline: 2px solid var(--link);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset-outset);
   border-radius: var(--radius-chrome);
 }
 .chip-badge {
@@ -3952,15 +4165,15 @@ a.tab-btn {
   text-decoration: underline;
 }
 .chip-clear:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* ── Navigation filter bar ───────────────────────────────────────
    Sits between the nav tab bar and the scrolling tree, outside the
    replaceable #tab-files container so a tree reload never destroys
    it and so it never scrolls away. The always-visible row carries
-   Group by and Show ignored; the three filters live in the drawer one
+   Group by; the three filters and Show ignored live in the drawer one
    toggle down. */
 .nav-filter-bar {
   display: flex;
@@ -4075,18 +4288,19 @@ a.tab-btn {
    Lines are `--nav-toolbar-line-height` tall and `--nav-toolbar-gap` apart, the gap
    between controls and above the first line and below the last, so a toolbar grows
    by a line and a gap for each line it adds, and a wrapped toolbar reads as one. A
-   control is one line tall: a shorter one, Show ignored's checkbox, is centred in a
-   line's height rather than making its line shorter, and a taller one, a `.btn` such
-   as Reload (26 px at the default size, two over a chip), is held to it rather than
-   making its line, and so the one-line toolbar, taller. A cluster's own lines are a
-   row's apart.
+   control is one line tall: a shorter one is centred in a line's height rather than
+   making its line shorter, as Show ignored's checkbox is in the Files drawer
+   (`.filter-drawer-row`), and a taller one, a `.btn` such as Reload (26 px at the
+   default size, two over a chip), is held to it rather than making its line, and so
+   the one-line toolbar, taller. A cluster's own lines are a row's apart.
 
-   Measured in headless Chrome on 2026-11-15, pane widths 179 px (the narrowest, 180
-   less the pane's border) to 420 px, both font sets; the themes lay out alike. The
-   widths each row fits one line from, default set / system set, the Pulls tallies
-   "Open 100, Closed 2, All 102" unless four-digit:
-     Files, no filter set                             246 / 262
-     Files, a filter set, "No grouping" (its widest)  298 / 317
+   Measured in headless Chrome on 2026-11-15, and the Files rows again on 2026-11-18
+   once Show ignored moved into the drawer (mb-ey0d), pane widths 179 px (the
+   narrowest, 180 less the pane's border) to 420 px, both font sets; the themes lay out
+   alike. The widths each row fits one line from, default set / system set, the Pulls
+   tallies "Open 100, Closed 2, All 102" unless four-digit:
+     Files, no filter set                             179 / 179 (the narrowest)
+     Files, a filter set, "No grouping" (its widest)  204 / 216
      Pulls, Show and Reload                           276 / 308
      Pulls, Show and Reload, four-digit tallies       303 / 341
    Before this rule, the Files row ran up to 17.69 px past the default pane in the
@@ -4094,7 +4308,7 @@ a.tab-btn {
    the default pane in the system set, scrolled out of sight (35.77 px in the default
    set while it held a Stacks chip). The Pulls Show group alone is joined from
    218 / 245 with three-digit tallies and 244 / 278 with four, and the cluster below.
-   At the narrowest pane, with a filter set, the Files row is three lines (97 px) and
+   At the narrowest pane, with a filter set, the Files row is two lines (67 px) and
    the Pulls toolbar three or four. tests/test_files_tab_chrome.py and
    tests/test_github_pulls_stacks_chrome.py sweep those widths and hold the wrap to
    this rule (tests/dom/nav-toolbar-wrap.mjs). */
@@ -4226,8 +4440,8 @@ a.tab-btn {
   row-gap: var(--nav-toolbar-gap);
 }
 /* The Files tab's toolbar row (`.nav-toolbar-row`), the bar's first line, over the
-   drawer. It wraps by the toolbar rows' rule: Group by, then Show ignored, then Clear
-   and the chevron, which stay together at the line's end. */
+   drawer. It wraps by the toolbar rows' rule: Group by, then Clear and the chevron,
+   which stay together at the line's end. */
 .nav-filter-bar-main {
   width: 100%;
 }
@@ -4243,7 +4457,16 @@ a.tab-btn {
   padding-inline: 7px;
 }
 /* Pushes the drawer toggle and Clear to the trailing edge, so Group by
-   always starts at the same x as the tree's first row. */
+   always starts at the same x as the tree's first row. The chevron has no
+   count badge (its name carries the count), which leaves Clear and the
+   chevron room beside the branch chooser and Group by in a checkout.
+   Measured in headless Chrome on 2026-11-18 at the default 300 px pane in a
+   Git checkout, its branch chooser showing "Working tree", with a filter set
+   so Clear shows: in the default font set "No grouping", the widest trigger,
+   has 3.03 px to spare, "By file type" 8.97, and "By age" 31.84; with the
+   count badge "No grouping" overflowed by about 11 px and the span wrapped.
+   In the system font set "No grouping" overflows by 16.78 px and "By file
+   type" by 11.91, so there the span wraps as a narrower pane's does. */
 .nav-filter-bar-end {
   position: relative;
   display: flex;
@@ -4251,21 +4474,6 @@ a.tab-btn {
   gap: 4px;
   margin-left: auto;
   flex: 0 0 auto;
-}
-/* The chevron's count sits outside its fixed-size button
-   (filter-controls.js#toggleHtml) and counts the chevron's filters, so it
-   sits against the chevron: the margin cancels the span's gap on that
-   side, and the 5 px a badge keeps from a chip's label goes, since the
-   gap already parts it from Clear. That gives the row 9 px (mb-x1h6).
-   Measured in headless Chrome on 2026-11-15 at the default 299 px bar
-   (a 275 px row), in the default font set, with a filter set so Clear
-   and the badge "1" show: "No grouping", the widest trigger, overflowed
-   by 7.11 px and now has 1.89 px to spare; "By file type" overflowed by
-   about 1 px and has 7.83; "By age" has 30.7. In a narrower pane, or in
-   the system font set's wider face, the row wraps (`.nav-toolbar-row`). */
-.nav-filter-bar-end > .chip-badge {
-  margin-left: 0;
-  margin-right: -4px;
 }
 /* The closed drawer's filters take their keyboard numbers on these stand-ins: no box, no
    focus, and a badge that sits beside the chevron, Modified within's before File type's.
@@ -4324,14 +4532,22 @@ a.tab-btn {
 }
 /* No section headings in here: its three menus, Modified within, File
    type, and Minimum file size, already say what they are on their
-   triggers, and uppercase labels cost more vertical space in a 300px pane
-   than they were paying for. Its menus wrap on the toolbar's spacing, so
-   an open drawer's lines sit as far apart as the row's over them. */
+   triggers, as Show ignored's label does after them, and uppercase labels
+   cost more vertical space in a 300px pane than they were paying for. Its
+   controls wrap on the toolbar's spacing and each is one line tall, as
+   the row's are (`.nav-toolbar-row`): Show ignored's checkbox, shorter
+   than a chip, is centred in a line's height, so an open drawer's lines
+   sit as far apart as the row's over them. At the default 299 px bar the
+   three menus take the first line and Show ignored the second (measured
+   in headless Chrome on 2026-11-18; tests/test_files_tab_chrome.py). */
 .filter-drawer-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--nav-toolbar-gap);
+}
+.filter-drawer-row > * {
+  min-block-size: var(--nav-toolbar-line-height);
 }
 .filter-drawer-actions {
   display: flex;
@@ -4351,10 +4567,13 @@ a.tab-btn {
   display: none;
 }
 
+/* A navigation column's empty state — no files match, no commits, nothing to list — one
+   look in every tab: the column's inset, left, muted. A load that failed is not empty: it
+   adds .nav-error. */
+.git-panel-empty,
 .recent-empty {
-  padding: 24px 12px;
+  padding: 16px 12px;
   color: var(--muted);
-  text-align: center;
 }
 /* The lines under the tally — what the filter narrowed the tree to
    (`.tree-summary-filtered`), that the selected folder is outside the filter
@@ -4459,10 +4678,11 @@ a.tab-btn {
 
 /* The block above a file's or a folder's tab bar (docs/design-system.md, "View
    Headers"; view-header.js, viewHeaderHtml): the eyebrow, then the heading row, which
-   holds the title and the metadata line after it, on the main view's own ground, --bg,
-   with no rule of its own. The one rule under a view's header is the tab bar's, under
-   the tabs. Every row holds its height whatever fills it, so a value arriving or
-   changing moves nothing below it.
+   holds the title and the metadata line after it, on the main view's own ground, --bg.
+   The eyebrow is the top bar's half over the main view, and its rule the bar's; under
+   the heading row the one rule is the tab bar's, under the tabs. Every row holds its
+   height whatever fills it, so a value arriving or changing moves nothing below it.
+   Each row carries the content's side pads, so the eyebrow's rule spans the pane.
    The block's rules are on .view-header, the structure a kind's header takes;
    .file-header names a file's or a folder's for the keymap and the key badges. */
 .view-header {
@@ -4470,16 +4690,18 @@ a.tab-btn {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--view-header-row-gap);
-  padding: var(--view-header-padding-top) var(--content-padding-x) var(--view-header-padding-bottom);
+  padding-block-end: var(--view-header-padding-bottom);
   background: var(--bg);
   flex-shrink: 0;
   min-width: 0;
 }
-/* The eyebrow: what holds the item, quiet, at the body size, above its title. It is
-   one line, which a long address gives way inside (`.folder-breadcrumb`). A kind
-   with nothing to say there writes it empty, and an empty eyebrow is left out of
-   the header, its height and its gap with it. */
+/* The eyebrow: what holds the item, quiet, above its title, as the top bar's half over
+   the main view. It is the twin of the navigation's path row across the divider
+   (`.app-header`): that row's height and rule, and its text at that row's size,
+   centered as that row centers its path, so the two rules are one line and the two
+   rows' text sits on one baseline. It is one line, which a long address gives way
+   inside (`.folder-breadcrumb`). A kind with nothing to say there writes it empty, and
+   an empty eyebrow is left out of the header, its row and its rule with it. */
 .view-header-eyebrow:empty {
   display: none;
 }
@@ -4488,13 +4710,29 @@ a.tab-btn {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  height: var(--view-header-eyebrow-height);
+  height: var(--pane-header-row-height);
+  padding-inline: var(--content-padding-x);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--nav-font-size);
 }
-/* Up, at the eyebrow's height, so the control reads as part of the line it leads. */
+/* Up is an icon button (`.icon-btn`): the arrow alone at rest, and the hover surface and
+   its hairline only while hovered or focused, as the navigation's collapse chevron
+   (`.nav-collapse-toggle`), at a box the eyebrow's row holds. At the served root it is
+   disabled in place, dimmed, and surfaces nothing. */
 .view-header-eyebrow > .folder-up {
-  width: var(--view-header-up-size);
-  height: var(--view-header-up-size);
-  padding: 0;
+  --icon-btn-size: var(--view-header-up-size);
+}
+.view-header-eyebrow > .folder-up > .parent-nav-arrow {
+  color: inherit;
+}
+.view-header-eyebrow > .folder-up[disabled] {
+  cursor: default;
+  opacity: 0.4;
+}
+.view-header-eyebrow > .folder-up[disabled]:hover {
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
 }
 .view-header-eyebrow > .file-header-path {
   font-weight: var(--weight-normal);
@@ -4507,15 +4745,17 @@ a.tab-btn {
   height: var(--view-header-up-size);
 }
 /* The heading row: the kind's icon, then the title at the page title's size with the
-   metadata line after it. The icon is the title's first line's height and starts the
-   row, so a name that wraps keeps it beside its first line. The header's controls are
-   not in the row: they are its corner's (`.view-header-end`, below), so nothing here
-   takes the title's size but the icon and the title. */
+   metadata line after it, the header's top pad under the eyebrow's rule. The icon is
+   the title's first line's height and starts the row, so a name that wraps keeps it
+   beside its first line. The header's controls are not in the row: they are its
+   corner's (`.view-header-end`, below), so nothing here takes the title's size but the
+   icon and the title. */
 .view-header-heading {
   display: flex;
   align-items: flex-start;
   gap: 8px;
   min-width: 0;
+  padding: var(--view-header-padding-top) var(--content-padding-x) 0;
 }
 /* The icon a navigation row draws for the item, at the title's size, as a pull
    request's state icon is in its title. */
@@ -4524,13 +4764,13 @@ a.tab-btn {
   width: 1em;
   height: 1lh;
   font-size: var(--page-title-font-size);
-  line-height: 1.25;
+  line-height: var(--page-title-line-height);
 }
 .view-header-icon.file-identity-icon svg {
   width: 1em;
   height: 1em;
 }
-/* The name, then the metadata line on its baseline, --view-header-title-gap after it
+/* The name, then the metadata line on its baseline, --page-title-gap after it
    (docs/design-system.md, "View Headers"): one run of inline text, the title inline and
    the line one box after it, so neither is cut. A name too long for the row wraps
    anywhere (`.page-heading`) and the line follows its last line; a row with no room for
@@ -4545,15 +4785,18 @@ a.tab-btn {
 }
 .view-header-title.page-heading {
   display: inline;
-  padding-inline-end: var(--view-header-title-gap);
+  padding-inline-end: var(--page-title-gap);
 }
-/* The header's corner, its upper right (docs/design-system.md, "View on GitHub"): at a
-   fixed inset from the header's top and right edges and a fixed height, whatever the rows
-   under it hold, so a title that wraps or an eyebrow a long address fills never moves it.
-   A corner that may hold a button (`data-counterpart`, which view-header.js sets on a
-   page whose repository is on github.com) has the header's first row leave it its room
-   from first paint, so the button arriving moves nothing; the rows under it keep the
-   header's whole width. */
+/* The header's corner (docs/design-system.md, "View on GitHub"): at the end of the
+   title's first line, the line's top and the header's right edge its insets, whatever
+   the rows hold, so a title that wraps or an address that fills the eyebrow never moves
+   it. A pull request's page and a commit's place the same corner in the page, whose top
+   pad is the header's (`.github-pull-header`, `.git-commit-view`). Its first item is a
+   strut, a line of the title's type with nothing to see in it, so the corner's line is
+   the title's first line, size, weight, and line height alike, from first paint; what
+   the corner holds opts in to that line's baseline, as a row's text does
+   (docs/design-system.md, "Row Text Shares a Baseline"), so View on GitHub's label sits
+   on the title's baseline, whatever the two sizes measure. */
 .view-header-end {
   position: absolute;
   inset-block-start: var(--view-header-corner-inset-top);
@@ -4561,11 +4804,61 @@ a.tab-btn {
   display: flex;
   align-items: center;
   gap: 4px;
-  block-size: var(--view-header-corner-height);
 }
-.view-header:has(> .view-header-end[data-counterpart])
-  > :is(.view-header-eyebrow, .view-header-eyebrow:empty + .view-header-heading) {
-  padding-inline-end: var(--view-header-corner-room);
+.view-header-end::before {
+  content: "\200b" / "";
+  align-self: baseline;
+  font-size: var(--page-title-font-size);
+  font-weight: var(--weight-bold);
+  line-height: var(--page-title-line-height);
+}
+.view-header-end > .counterpart {
+  align-self: baseline;
+}
+/* Under an eyebrow, the title's first line is the eyebrow's row further down. */
+.view-header-eyebrow:not(:empty) ~ .view-header-end {
+  inset-block-start: calc(var(--pane-header-row-height) + var(--view-header-corner-inset-top));
+}
+/* A corner that may hold a button (`data-counterpart`, which view-header.js sets on a
+   page whose repository is on github.com) has the title's first line leave it its room
+   from first paint, so the button arriving moves nothing: a float of the room's width
+   and the title's line height, at the end of the title's first line. Only that line
+   gives way, so a name that wraps keeps the row's whole width under it. */
+.view-header:has(> .view-header-end[data-counterpart]) .view-header-title-group::before {
+  content: "";
+  float: inline-end;
+  inline-size: var(--view-header-corner-room);
+  block-size: calc(var(--page-title-font-size) * var(--page-title-line-height));
+}
+/* A main view too narrow to leave the title's first line `--view-header-title-room`
+   beside the corner's room puts the corner on the eyebrow's row, centered on its line as
+   the row's controls are, and gives the eyebrow's end its room, so the title has the
+   heading row's whole width. A name wider than the first line beside the room breaks
+   there, since a page title breaks anywhere (`.page-heading`), and a float does not move
+   a word that can break below it: beside the room, "docs" broke after its first letter in
+   a 260 px main view, "CONTRIBUTING.md" at 380 px, and "arch-views-models-routes.md" at
+   560 px, each of which the row's whole width holds (Chrome 152, 2026-11-18 and 19). The
+   width is the title group's, the main view less its side pads, the icon, and the icon's
+   8 px gap, at the room and the title's first line: 2 * 24 + 24 + 8 + 150 + 450 px.
+   tests/test_view_header_chrome.py holds it to those tokens. A name wider than
+   `--view-header-title-room` still breaks beside the room in a main view a little wider
+   than this. */
+@container kpress-doc (width < 680px) {
+  .view-header:has(> .view-header-eyebrow:not(:empty)) > .view-header-end {
+    inset-block-start: calc(
+      (var(--pane-header-row-height) - 1px - var(--view-header-corner-height)) /
+      2
+    );
+  }
+  .view-header:has(> .view-header-eyebrow:not(:empty)) > .view-header-end::before {
+    display: none;
+  }
+  .view-header:has(> .view-header-eyebrow:not(:empty)) .view-header-title-group::before {
+    display: none;
+  }
+  .view-header:has(> .view-header-end[data-counterpart]) > .view-header-eyebrow {
+    padding-inline-end: calc(var(--content-padding-x) + var(--view-header-corner-room));
+  }
 }
 /* The metadata line: badges, then the item's values after muted dots, at the body size,
    on the title's baseline. A line wider than its row wraps between items, each item whole
@@ -4625,6 +4918,17 @@ a.tab-btn {
   gap: 6px;
   color: var(--text);
   text-decoration: none;
+}
+/* The label is the button's text, and so its baseline: it opts in to its chip's
+   baseline, as a row's text does, and the mark stays centered (docs/design-system.md,
+   "Row Text Shares a Baseline"). Without it the button's baseline was the mark's lower
+   edge, which a box with no text gives, and a corner that sets the button on its
+   title's baseline (`.view-header-end`) set the mark there, not the label. Baseline
+   alignment puts the label at the chip's top, so its line is the chip's whole height,
+   the group's less its frame, and it stays centered. */
+.counterpart-open > .counterpart-label {
+  align-self: baseline;
+  line-height: calc(var(--view-header-corner-height) - 2 * var(--chip-border));
 }
 .counterpart-more {
   padding-inline: 5px;
@@ -4724,14 +5028,14 @@ a.tab-btn {
   color: var(--link);
   padding: 0 2px;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--radius-chrome);
 }
 .folder-crumb:hover {
   background: var(--hover-bg);
 }
 .folder-crumb:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* The served root, absolute, ahead of the first slash. Dimmed because it
    is identical on every page of the app: context for the live part of the
@@ -4809,7 +5113,8 @@ a.tab-btn {
    the row is narrower than that the text wraps to the second line, which is
    clipped away. Wider, the text fills the row and ends in an ellipsis rather
    than starting with one, because the start is what says where the mirror is
-   and the end is a store's hexadecimal key.
+   and the end is a store's key, which names its repository and ends in a digest
+   prefix.
 
    Measured with the long name metabrowser-v012-landing-docs on 12 heading
    widths from 250px to 1350px in the in-app browser, and again on 12 from
@@ -4866,7 +5171,7 @@ a.tab-btn {
   pointer-events: auto;
 }
 .file-header-copy.copied {
-  color: var(--status-success);
+  color: var(--status-success-text);
   opacity: 1;
   pointer-events: auto;
 }
@@ -4925,44 +5230,44 @@ a.tab-btn {
   visibility: hidden;
 }
 .badge-completed {
-  background: oklch(92.2% 0.037 152.6);
-  color: oklch(40.1% 0.103 147.4);
+  background: var(--badge-completed-bg);
+  color: var(--badge-completed-text);
 }
 .badge-failed {
-  background: oklch(91% 0.036 12.1);
-  color: oklch(37.3% 0.12 19.9);
+  background: var(--badge-failed-bg);
+  color: var(--badge-failed-text);
 }
 .badge-running {
-  background: oklch(96.4% 0.052 93.1);
-  color: oklch(53.05% 0.1071 88.17);
+  background: var(--badge-running-bg);
+  color: var(--badge-running-text);
 }
 .badge-pending {
-  background: oklch(94.5% 0.005 247.9);
-  color: oklch(42.4% 0.015 248.2);
+  background: var(--badge-pending-bg);
+  color: var(--badge-pending-text);
 }
 .badge-claude {
-  background: oklch(93.46% 0.0305 255.11);
-  color: oklch(48.3% 0.145 257);
+  background: var(--badge-claude-bg);
+  color: var(--badge-claude-text);
 }
 .badge-gemini {
-  background: oklch(96.2% 0.057 95.6);
-  color: oklch(57.4% 0.1136 92.83);
+  background: var(--badge-gemini-bg);
+  color: var(--badge-gemini-text);
 }
 .badge-pi {
-  background: oklch(93.7% 0.031 294.2);
-  color: oklch(43% 0.209 292.4);
+  background: var(--badge-pi-bg);
+  color: var(--badge-pi-text);
 }
 .badge-adapter {
-  background: oklch(93.13% 0.0327 272.26);
-  color: oklch(44% 0.146 267.3);
+  background: var(--badge-adapter-bg);
+  color: var(--badge-adapter-text);
 }
 .badge-compressed {
-  background: oklch(93.9% 0 89.9);
-  color: oklch(46.5% 0 89.9);
+  background: var(--badge-compressed-bg);
+  color: var(--badge-compressed-text);
 }
 .badge-frontmatter-error {
-  background: oklch(91% 0.036 12.1);
-  color: oklch(37.3% 0.12 19.9);
+  background: var(--badge-failed-bg);
+  color: var(--badge-failed-text);
   cursor: help;
 }
 
@@ -4985,7 +5290,7 @@ a.tab-btn {
   pointer-events: auto;
 }
 .content-copy-btn.copied {
-  color: var(--status-success);
+  color: var(--status-success-text);
   opacity: 1;
   pointer-events: auto;
 }
@@ -5034,15 +5339,22 @@ a.tab-btn {
    tooltips to document.body. Keyed on the host, the diff drew KPress's own
    palette: its text and link colors, its border and muted tones on quoted text
    and code, and in the dark theme a darker ground than the page's. So this and
-   the corner bridge below key on `.kpress` anywhere under `:root`. */
-:root .kpress,
-:root .kpress-tooltip {
-  --kpress-doc-bg: var(--bg);
-  --kpress-doc-text: var(--text);
-  --kpress-doc-muted: var(--muted);
-  --kpress-doc-border: var(--border);
-  --kpress-doc-link: var(--link);
-  --kpress-code-border: var(--code-border);
+   the corner bridge below key on `.kpress` anywhere under `:root`.
+
+   On screen only. Paper takes KPress's print palette (print.css): black text and links on
+   white, whatever the app's theme. Bridged in print too, the app's palette outranked it,
+   so a document printed with the app's blue links, and in the dark theme on a dark ground
+   with light code. */
+@media screen {
+  :root .kpress,
+  :root .kpress-tooltip {
+    --kpress-doc-bg: var(--bg);
+    --kpress-doc-text: var(--text);
+    --kpress-doc-muted: var(--muted);
+    --kpress-doc-border: var(--border);
+    --kpress-doc-link: var(--link);
+    --kpress-code-border: var(--code-border);
+  }
 }
 
 /* Corner radius is a host decision, unlike the size ramp KPress owns.
@@ -5085,29 +5397,29 @@ a.tab-btn {
 .page-heading {
   font-size: var(--page-title-font-size);
   font-weight: var(--weight-bold);
-  line-height: 1.25;
+  line-height: var(--page-title-line-height);
   overflow-wrap: anywhere;
 }
-/* A commit's subject holds two lines from first paint, so the diff under a one-line
-   subject starts where it starts under a two-line one (it moved 30 px between commits).
-   The pull request's title does the same, and clamps there (github/styles.css). */
-.git-commit-subject.page-heading {
-  min-height: 2lh;
-}
 /* A page's header, a commit's summary and a pull request's (docs/design-system.md, "Page
-   Headers"): its title, then its lines, each 6 px under the one before. Every line under
-   the title is a `.page-header-line` at the body size, the Diff summary's row included (its
-   header's own size is the diff plugin's, the same token), so the two pages read in one
-   type: an age in one keeps the line's size, as an age does everywhere. The one row that
-   is not is a pull request's labels, a row of chips. A chip in a line keeps its own size
-   (Branch Chips, Label Colors), and a revision its one step down. */
+   Headers"): its title, then its lines, the first `--page-title-gap` under the title, as a
+   view header's metadata line is after its title, and each after it 6 px under the one
+   before. The title is as tall as its lines: a commit's subject held two lines, so the
+   diff under a one-line subject started where it starts under a two-line one, and the
+   held line stood between the subject and its author, 34 px of space where a two-line
+   subject had 4 (mb-wcbc). Every line under the title is a `.page-header-line` at the body
+   size, the Diff summary's row included (its header's own size is the diff plugin's, the
+   same token), so the two pages read in one type: an age in one keeps the line's size, as
+   an age does everywhere. The one row that is not is a pull request's labels, a row of
+   chips. A chip in a line keeps its own size (Branch Chips, Label Colors), and a revision
+   takes the line's, as a short commit ID does everywhere (Short Commit IDs). */
 .page-header {
+  --page-header-line-gap: 6px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--page-header-line-gap);
 }
 .page-header > .page-heading {
-  margin: 0;
+  margin: 0 0 calc(var(--page-title-gap) - var(--page-header-line-gap));
 }
 .page-header-line {
   min-height: 1lh;
@@ -5230,6 +5542,161 @@ a.tab-btn {
 }
 .metabrowser-kpress-host .kpress details > summary:hover {
   color: var(--text);
+}
+
+/* ── An image the page does not load ──────────────────────────────
+   A document from an untrusted source shows its images from the web unless the reader
+   has turned that off (Block remote images, in the Metabrowser menu), and an `http`
+   image, or one the document gives no address, is never loaded. Each becomes this chip
+   (inert_html.py, IMAGE_FALLBACK_CLASS): an image glyph and the alt text, inside the
+   link the image was in, or inside a link to the image. It is a badge's size, one
+   line of `--ui-small-font-size` and its border, so a row of them lies on one line as
+   a row of badges does, and it reads as a thing that is not there rather than as text:
+   the glyph and the border. Where the image's address is known the page's tooltip shows
+   it (`data-tip-text`). A chip never wraps its text; one wider than its line is cut
+   with an ellipsis, and the tooltip has the rest. */
+.mb-image-fallback {
+  background: var(--viz-surface);
+  border: var(--chip-border) solid var(--viz-border);
+  border-radius: var(--radius-tag);
+  box-sizing: border-box;
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: var(--ui-small-font-size);
+  line-height: 1.5;
+  max-inline-size: 100%;
+  overflow: hidden;
+  padding-inline: 0.5em;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  /* On the baseline, as an image is: an inline block that clips its overflow rests its
+     foot there, so a chip and a badge beside it, both 20 pixels, have one top and one foot. */
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+.mb-image-fallback::before {
+  background-color: currentcolor;
+  content: "";
+  display: inline-block;
+  height: 1.1em;
+  margin-inline-end: 0.4em;
+  mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  vertical-align: -0.2em;
+  width: 1.1em;
+}
+.kpress-prose a:hover > .mb-image-fallback {
+  background: var(--hover-bg);
+}
+
+/* KPress gives every image `margin-block: 1rem`, which lifts a badge a rem above the chip
+   that stands for it, and above its row's words, and made a row of badges two rems taller
+   than github.com draws it. github.com gives an image no margin. An image in a link, which
+   a badge is, takes none, nor does any image in a paragraph that holds one, or a chip, so
+   the images and chips of one row share a line. An image alone in its paragraph keeps
+   KPress's room, as the rules below leave it. */
+.kpress-prose a > img,
+.kpress-prose p:is(:has(a > img), :has(.mb-image-fallback)) img {
+  margin-block: 0;
+}
+
+/* ── GitHub's layout attributes in rendered Markdown ─────────────
+   A README lays itself out with the HTML attributes github.com keeps: `align` on a
+   block, a heading, an image, or a table part, and `width` and `height` on an image
+   or a table cell (html-pipeline's SanitizationFilter; inert_html.py lists what an
+   untrusted document keeps). The browser applies each as a presentational hint, which
+   every author rule outranks, so where KPress's stylesheets set the same property the
+   attribute is lost. These rules give it back, as github.com's stylesheet leaves it,
+   in every place Markdown is set as `.kpress-prose`: a document, trusted or inert, a
+   pull request's text, and a Markdown diff. A block's or a heading's `align` and an
+   image's `width` need nothing here: no rule of KPress's sets them. */
+
+/* KPress gives every image `height: auto`, which keeps the file's proportions and so
+   overrides a `height` attribute: a badge written `height="20"` drew at its file's
+   height. github.com sets no height, so the attribute wins there. `revert-layer` here
+   rolls back every unlayered author rule, KPress's included, to the attribute's hint,
+   in Chrome 152 and in the macOS app's WebKit (both measured 2026-11-19; `revert` goes
+   past the hint to the browser's default, and typed `attr()` is not in WebKit); it
+   relies on neither stylesheet using cascade layers. An image with only a `width`
+   keeps `height: auto`, its proportions, as on github.com, and so does a wiki embed,
+   `![[image.png|640x480]]`: the markdown plugin gives it both attributes, and it keeps
+   its file's proportions within that width, as it did before these rules. */
+.kpress-prose img[height]:not([data-metabrowser-link-syntax="wiki-embed"]) {
+  height: revert-layer;
+}
+
+/* github.com gives an image no margin. KPress gives every image `margin-block: 1rem`,
+   which lifted a `height="20"` badge wholly above its line of text and kept a floated
+   image's foot a rem lower, so the images after it were pushed aside. An image laid
+   out by these attributes takes github.com's none; a Markdown image, which has none of
+   them, and a wiki embed keep KPress's room. */
+.kpress-prose img:is([align], [width], [height]):not([data-metabrowser-link-syntax="wiki-embed"]) {
+  margin-block: 0;
+}
+
+/* A floated image can end below the document's last line, and then it was drawn past
+   the foot of the card. github.com clears every Markdown body with this `::after`; only
+   prose with an image floated by `align` gets it here, so no other document's last
+   margin moves. */
+.kpress-prose:has(img:is([align="left" i], [align="right" i]))::after {
+  clear: both;
+  content: "";
+  display: table;
+}
+
+/* An image floated by `align` keeps github.com's room from the text beside it, outside
+   its width, as github.com's `content-box` images have it: in KPress's `border-box` the
+   room came out of the image, and a `width="120"` image drew 100 pixels wide. */
+.kpress-prose img:is([align="left" i], [align="right" i]) {
+  box-sizing: content-box;
+}
+
+.kpress-prose img[align="left" i] {
+  padding-right: 20px;
+}
+
+.kpress-prose img[align="right" i] {
+  padding-left: 20px;
+}
+
+/* KPress sets every table cell's text alignment (start, a header centred, a number at
+   the end), which outranks the `align` of the cell, its row, or its row group. A
+   cell's own `align` wins over its row's, and a row's over its group's. */
+.kpress-prose
+:is(td, th):is(
+  [align="left" i],
+  tr[align="left" i] > :not([align]),
+  :is(thead, tbody, tfoot)[align="left" i] > tr:not([align]) > :not([align])
+) {
+  text-align: left;
+}
+
+.kpress-prose
+  :is(td, th):is(
+    [align="center" i],
+    tr[align="center" i] > :not([align]),
+    :is(thead, tbody, tfoot)[align="center" i] > tr:not([align]) > :not([align])
+  ) {
+  text-align: center;
+}
+
+.kpress-prose
+  :is(td, th):is(
+    [align="right" i],
+    tr[align="right" i] > :not([align]),
+    :is(thead, tbody, tfoot)[align="right" i] > tr:not([align]) > :not([align])
+  ) {
+  text-align: right;
+}
+
+.kpress-prose
+  :is(td, th):is(
+    [align="justify" i],
+    tr[align="justify" i] > :not([align]),
+    :is(thead, tbody, tfoot)[align="justify" i] > tr:not([align]) > :not([align])
+  ) {
+  text-align: justify;
 }
 
 /* ── Embedded KPress documents ─────────────────────────────────────
@@ -5508,8 +5975,8 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--text);
 }
 .source-line-numbers:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* The scroll target sits on the anchor's first line, or on the line a key moved to. */
 .source-line-anchor-target {
@@ -5910,8 +6377,8 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--link);
 }
 .help-project a:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset-outset);
   border-radius: var(--radius-chrome);
 }
 .help-section-heading,
@@ -5998,8 +6465,8 @@ pre.code-block.metabrowser-source-lines > code {
   font-size: var(--body-font-size);
 }
 .search-palette-input:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 /* The input above supplies this list's top rule, so the list carries only its
    bottom one. Owning both put two hairlines back to back whenever the list was
@@ -6012,7 +6479,10 @@ pre.code-block.metabrowser-source-lines > code {
 }
 .search-palette-option {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  /* The icon column is its box and 2px of air; an option under a pull request's heading
+     lines its text up with the others' (36px = the 10px inset, the column, the 8px gap). */
+  --search-palette-icon-column: calc(var(--icon-box) + 2px);
+  grid-template-columns: var(--search-palette-icon-column) minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   min-height: 38px;
@@ -6024,7 +6494,7 @@ pre.code-block.metabrowser-source-lines > code {
 }
 .search-palette-option-pull {
   grid-template-columns: minmax(0, 1fr);
-  padding-inline-start: 36px;
+  padding-inline-start: calc(10px + var(--search-palette-icon-column) + 8px);
 }
 .search-palette-option:hover,
 .search-palette-option.active,
@@ -6288,7 +6758,7 @@ pre.code-block.metabrowser-source-lines > code {
   font-style: italic;
 }
 .tree-lazy-error {
-  color: var(--status-error);
+  color: var(--status-error-text);
   font-style: normal;
 }
 
@@ -6389,8 +6859,8 @@ pre.code-block.metabrowser-source-lines > code {
   background: var(--hover-bg);
 }
 .changed-file-row:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
   background: var(--hover-bg);
 }
 .changed-file-row.selected {
@@ -6419,11 +6889,11 @@ pre.code-block.metabrowser-source-lines > code {
   font-variant-numeric: var(--tabular-numerals);
 }
 .changed-file-stats > .diff-stat-add {
-  color: var(--status-success);
+  color: var(--status-success-text);
   font-weight: var(--weight-bold);
 }
 .changed-file-stats > .diff-stat-del {
-  color: var(--status-error);
+  color: var(--status-error-text);
   font-weight: var(--weight-bold);
 }
 .changed-file-row > :is(.tree-container-badge, .changed-file-name, .changed-file-stats) {
@@ -6523,7 +6993,7 @@ pre.code-block.metabrowser-source-lines > code {
    alignment through tabular numerals rather than a monospaced face. */
 .tally-tree {
   font-size: var(--nav-font-size);
-  line-height: 1.8;
+  line-height: var(--ui-row-height);
   padding: 8px 12px;
   font-family: var(--font-sans);
 }
@@ -6540,8 +7010,8 @@ pre.code-block.metabrowser-source-lines > code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: var(--tree-icon-slot);
+  height: var(--tree-icon-slot);
   vertical-align: middle;
 }
 .tally-label {
@@ -6579,24 +7049,63 @@ pre.code-block.metabrowser-source-lines > code {
 
 /* Tally color hints */
 .tally-color-success {
-  color: var(--status-success);
+  color: var(--status-success-text);
 }
 .tally-color-failed,
 .tally-color-error {
-  color: var(--status-error);
+  color: var(--status-error-text);
 }
 .tally-color-critical {
-  color: var(--status-error);
+  color: var(--status-error-text);
   font-weight: var(--weight-bold);
 }
-.tally-color-high {
-  color: var(--status-warning-strong);
-}
-.tally-color-elevated {
-  color: var(--status-warning);
+.tally-color-warning {
+  color: var(--status-warning-text);
 }
 .tally-color-kill {
-  color: var(--status-error);
+  color: var(--status-error-text);
+}
+
+/* The event log's Details for a failure or a late wait (static/event-reports.js, mb-9zp5):
+   short muted lines under a quiet rule, and links to the records as JSON. They read at the
+   size of the line they open from, stepping back by ink ("Type Scale" in
+   docs/design-system.md). */
+.event-log-details {
+  padding-block: 6px;
+  padding-inline-start: 10px;
+  border-inline-start: 2px solid var(--border);
+  color: var(--muted);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.event-log-details p,
+.event-log-details ul {
+  margin: 0;
+}
+.event-log-details ul {
+  padding-inline-start: 1.2em;
+}
+.event-log-details-part + .event-log-details-part,
+.event-log-details-links,
+.event-log-details-open {
+  margin-block-start: 6px;
+}
+/* The command a person copies to open the whole log: in the code face, its own ink. */
+.event-log-details-open code {
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+.event-log-details-heading {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+.event-log-details a {
+  color: var(--link);
+}
+/* A bare inline link: its box is its text, so the ring stands outside it. */
+.event-log-details a:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset-outset);
 }
 
 /* ── Tally skeleton cells ───────────────────────────────────── */
@@ -6718,8 +7227,16 @@ pre.code-block.metabrowser-source-lines > code {
 
 /* ── Print adapter: host chrome only, document styling stays in KPress ── */
 @media print {
+  /* KPress's page margin, `--kpress-print-page-margin` (style-tokens.css), as a length:
+     WebKit, the macOS app's engine, resolves no custom property in `@page`, so KPress's
+     own `margin: var(…)` (print.css) printed the app's pages edge to edge. Important,
+     because print.css loads after this sheet; `@page :left` and `:right`, which would
+     outrank it without, printed a single page in WebKit (2026-11-19). Chrome resolves
+     KPress's own rule to the same length. tests/test_kpress_print_contract.py holds the
+     copy to the token. */
   @page {
-    margin: var(--kpress-print-page-margin);
+    /* biome-ignore lint/complexity/noImportantStyles: print.css's @page loads later, and a page pseudo-class to outrank it printed one page in WebKit. */
+    margin: 0.7in !important;
   }
 
   html,
@@ -6738,6 +7255,8 @@ pre.code-block.metabrowser-source-lines > code {
   .tree-pane,
   .resize-handle,
   .nav-collapse-toggle,
+  /* The main page's focus ring. */
+  .preview-frame::after,
   .app-header,
   .file-header,
   .tab-bar,
@@ -6773,6 +7292,14 @@ pre.code-block.metabrowser-source-lines > code {
   .preview-frame {
     transform: none;
     box-shadow: none;
+  }
+
+  /* Containment breaks it too: WebKit does not apply a document's break rules inside the
+     pane while the pane is a size container, so a heading printed alone at a page's foot.
+     KPress's print.css releases its own viewport the same way; nothing the pane holds
+     needs its container queries on paper. */
+  .preview-pane {
+    container-type: normal;
   }
 
   .preview-pane [data-tab-content] {
@@ -6921,10 +7448,6 @@ pre.code-block.metabrowser-source-lines > code {
   margin: 0 12px;
 }
 
-.git-history-retry {
-  min-height: var(--button-height-compact);
-}
-
 .git-graph-row {
   display: flex;
   align-items: center;
@@ -6947,8 +7470,8 @@ pre.code-block.metabrowser-source-lines > code {
 }
 
 .git-graph-row:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Width is set per panel from the widest row loaded, so the subject
@@ -7054,13 +7577,9 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--muted);
 }
 
-.git-graph-more-failed {
-  color: var(--status-error-strong);
-}
-
-.git-panel-empty {
-  padding: 16px 12px;
-  color: var(--muted);
+.git-graph-more-failed,
+.nav-error {
+  color: var(--status-error-text);
 }
 
 /* Rides the .btn primitive; only the spacing is local. */
@@ -7173,12 +7692,12 @@ pre.code-block.metabrowser-source-lines > code {
 }
 
 .change-line-stats > .diff-stat-add {
-  color: var(--status-success);
+  color: var(--status-success-text);
   font-weight: var(--weight-bold);
 }
 
 .change-line-stats > .diff-stat-del {
-  color: var(--status-error);
+  color: var(--status-error-text);
   font-weight: var(--weight-bold);
 }
 
@@ -7312,14 +7831,16 @@ pre.code-block.metabrowser-source-lines > code {
 /* ── Commit detail view ─────────────────────────────────────── */
 
 .git-commit-view {
-  /* The box the header's corner is placed in (below). */
+  /* The box the header's corner is placed in (below). Its top pad is a view header's, the
+     corner's inset, so the subject's first line is the corner's line. */
   position: relative;
-  padding: var(--content-padding-y) var(--content-padding-x);
+  padding: var(--view-header-padding-top) var(--content-padding-x) var(--content-padding-y);
 }
 /* The header's corner, its View on GitHub button (git-panel.js; docs/design-system.md, "View
    on GitHub"), is a view header's, `.view-header-end` above, placed in the page rather than
-   in the header, as a pull request's is (github/styles.css): at the same inset from the
-   page's top and right edges as a file's and a folder's. The header is the reading column,
+   in the header, as a pull request's is (github/styles.css): at the same insets from the
+   subject's first line and the page's right edge as a file's and a folder's from their
+   title's, and on the subject's baseline. The header is the reading column,
    which in a wide pane ends left of the button; where it does not, the subject leaves the
    button its room, less the space beside the column: the main view's width, `100cqi`, less
    the page's pads and the subject's `100%`. */
@@ -7344,13 +7865,18 @@ pre.code-block.metabrowser-source-lines > code {
   font-size: var(--body-font-size);
 }
 
+/* A short commit ID, wherever a line names a commit (docs/design-system.md, "Short
+   Commit IDs"): the one face and the one gray, whatever the line around it is in, so
+   every ID reads as the same kind of thing. Its text is `shortCommit`'s, a fixed length
+   cut from the full ID. It sets no size, so it is its line's, and its face is scaled to
+   the sans's x-height (--font-sans-ex-height); no context sizes it (mb-qq4e). Its line
+   box is its glyphs': with the line's ratio, a Conversation commit row grew from 21 to
+   22 px in Chrome 152 (2026-11-19). */
 .git-commit-sha {
+  color: var(--muted);
   font-family: var(--font-mono);
-  /* One step below the sans metadata beside it: SF Mono's x-height and
-     advance run visually larger than SF Pro at the same nominal size,
-     so body-size mono read as a bigger hash next to the age, refs, and
-     stat text it sits among. */
-  font-size: var(--nav-font-size);
+  font-size-adjust: var(--font-sans-ex-height);
+  line-height: normal;
 }
 
 .git-commit-revision {
@@ -7420,8 +7946,16 @@ pre.code-block.metabrowser-source-lines > code {
    line totals the inline change stats: its file count, then the brief change line
    (`.change-line`). Its groups are items of one line, spaced as the Diff summary's are, and
    each dot is one item with the group before it, so a line that wraps breaks after a dot. */
-.git-commit-change-stats {
+/* The hover card's size line, "32 files changed · 56.9 KB compressed (…)", above its change
+   line, in the change line's ink and size (docs/design-system.md, "Change Size Line"). */
+.git-commit-size-line {
   margin-top: 6px;
+  color: var(--text);
+  font-size: var(--body-font-size);
+}
+
+.git-commit-change-stats {
+  margin-top: 2px;
   color: var(--text);
   font-size: var(--body-font-size);
 }
@@ -7462,8 +7996,8 @@ pre.code-block.metabrowser-source-lines > code {
 
 .git-commit-summary-compact .git-commit-revision-copy-preview {
   display: inline-flex;
-  width: 14px;
-  height: 14px;
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
   color: var(--muted);
 }
 
@@ -7476,15 +8010,82 @@ pre.code-block.metabrowser-source-lines > code {
   gap: 4px;
 }
 
+/* A commit's body: its Markdown in a KPress article, as a pull request's description is set
+   (git-panel.js, `placeCommitBody`), then its trailers; or, until the Markdown comes and
+   where it will not, the message as written, wrapped where it was written. */
 .git-commit-body {
   margin: 16px 0;
-  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
+  padding: var(--pane-header-padding-y) var(--boxed-prose-padding-inline);
   overflow-x: auto;
   font-size: var(--document-body-font-size);
   font-weight: var(--weight-normal);
   line-height: var(--kpress-line-height-normal);
+}
+
+.git-commit-body-plain,
+.git-commit-trailers {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* The card's padding is the space around the body, so the first and last block have none of
+   their own, as in a pull request's text (builtin_plugins/github/styles.css). */
+.git-commit-body .kpress-prose > :first-child {
+  margin-block-start: 0;
+}
+
+.git-commit-body .kpress-prose > :last-child {
+  margin-block-end: 0;
+}
+
+/* Git's trailers, a block of their own lines under the prose, a paragraph's gap below it
+   (KPress's `.kpress-prose p`), in the muted ink of metadata. */
+.git-commit-trailers {
+  color: var(--muted);
+}
+
+.git-commit-body .metabrowser-kpress-host + .git-commit-trailers {
+  margin-block-start: 0.75rem;
+}
+
+.git-commit-body-notice {
+  margin-block: var(--pane-header-padding-y) 0;
+}
+
+/* A body whose Markdown is on its way keeps its box out of sight, and past the shell's quiet
+   period shows the loading blocks' gray rows and pulse, so its first sight is its Markdown,
+   as a pull request's text's is (`.github-pull-plain-pending`). */
+.git-commit-body-plain-pending {
+  position: relative;
+  visibility: hidden;
+}
+
+.git-commit-body-plain-pending::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 4px,
+    var(--tally-skeleton-bg) 4px,
+    var(--tally-skeleton-bg) calc(var(--ui-row-height) - 4px),
+    transparent calc(var(--ui-row-height) - 4px),
+    transparent var(--ui-row-height)
+  );
+  background-size: 70% 100%;
+  background-repeat: repeat-y;
+  animation:
+    mb-delayed-loading-reveal 0s linear var(--loading-state-delay) forwards,
+    tally-pending-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .git-commit-body-plain-pending::after {
+    animation: mb-delayed-loading-reveal 0s linear var(--loading-state-delay) forwards;
+    opacity: 0.7;
+  }
 }
 
 .git-commit-files {
@@ -7525,8 +8126,8 @@ pre.code-block.metabrowser-source-lines > code {
    family's focus ring. .git-commit-file is a bare native button and needs
    its own. */
 .git-commit-file:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Files outside the served root, and deleted files, are listed but not
@@ -7567,12 +8168,12 @@ pre.code-block.metabrowser-source-lines > code {
 }
 
 .git-stat-add {
-  color: var(--status-success);
+  color: var(--status-success-text);
   font-weight: var(--weight-bold);
 }
 
 .git-stat-del {
-  color: var(--status-error-strong);
+  color: var(--status-error-text);
   font-weight: var(--weight-bold);
 }
 
@@ -7647,13 +8248,15 @@ pre.code-block.metabrowser-source-lines > code {
   right: 2px;
   top: 50%;
   transform: translateY(-50%);
-  width: 16px;
-  height: 16px;
+  width: var(--icon-box);
+  height: var(--icon-box);
   min-width: 0;
   padding: 1px;
   opacity: 0;
   color: inherit;
 }
+/* A step under --icon-glyph on purpose: the button is a chip's corner, with 1px of padding
+   in an --icon-box that must not widen the chip, so a full glyph would touch its edges. */
 .git-ref-copy > svg {
   width: 12px;
   height: 12px;
@@ -7663,7 +8266,8 @@ pre.code-block.metabrowser-source-lines > code {
   opacity: 1;
 }
 .git-ref-copy:focus-visible {
-  outline: 1px solid var(--link);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 .git-ref-copy-host {
   position: relative;

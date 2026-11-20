@@ -293,6 +293,20 @@ function el(tag, className, text) {
 }
 
 /**
+ * A box saying something about the diff it sits in: `.notice`, the shell's one primitive,
+ * with the severity on its border. The plain availability reasons stay muted text.
+ *
+ * @param {"warning" | "error"} severity
+ * @param {string} className
+ * @param {string} [text]
+ */
+function noticeEl(severity, className, text) {
+  const node = el("div", `notice diff-notice diff-availability ${className}`.trim(), text);
+  node.setAttribute("data-severity", severity);
+  return node;
+}
+
+/**
  * A glyph from the shell's shared registry, or "" outside the shell.
  *
  * @param {string} name
@@ -669,11 +683,7 @@ export function renderFileBody(state, layout) {
       }
       if (state.patch.truncated) {
         state.body.append(
-          el(
-            "div",
-            "diff-availability diff-patch-truncated",
-            "This patch was truncated at its bounds.",
-          ),
+          noticeEl("warning", "diff-patch-truncated", "This patch was truncated at its bounds."),
         );
       }
     },
@@ -1462,6 +1472,25 @@ function summaryFiles(parts, paint, separator) {
 }
 
 /**
+ * A summary's words without its file count, "2 A · +1 −1 (2 listed)" and "2 added; 1 line
+ * added, 1 deleted; 2 listed", for a header whose page says the count on its size line
+ * (docs/design-system.md, "Change Size Line"): the notes after the totals stay.
+ *
+ * @param {{filesParts: MetabrowserCountParts, text: string, label: string}} said
+ * @returns {{text: string, label: string}}
+ */
+function withoutFileCount(said) {
+  const files = said.filesParts
+    .map((part) => (typeof part === "string" ? part : "number" in part ? part.number : ""))
+    .join("");
+  const text = said.text.startsWith(`${files} · `) ? said.text.slice(files.length + 3) : said.text;
+  const label = said.label.startsWith(files)
+    ? said.label.slice(files.length).replace(/^[:;] /, "")
+    : said.label;
+  return { text, label };
+}
+
+/**
  * The note of a list cut short at its bound, "(2,000 listed)": its figure a bold number,
  * muted with the note, as a count summary's numbers are (docs/design-system.md, "Count
  * Summaries Bold Their Numbers").
@@ -1486,6 +1515,9 @@ function listedNote(listed, paint) {
  * @property {boolean} disposed
  * @property {MetabrowserChangedFilesTree | null} changedFiles
  * @property {(path: string) => void} jump
+ * @property {boolean} countsFiles Whether the header says the file count. A page header
+ *   says it on its size line above the summary (docs/design-system.md, "Change Size Line"),
+ *   so a summary drawn there is its statuses and line totals alone.
  */
 
 /**
@@ -1499,11 +1531,13 @@ function listedNote(listed, paint) {
  * A diff's view as its Diff summary reads it.
  *
  * @param {MountedDiffState} view
+ * @param {boolean} [countsFiles]
  * @returns {SummaryOwner}
  */
-function summaryOwnerOf(view) {
+function summaryOwnerOf(view, countsFiles = true) {
   return {
     api: view.api,
+    countsFiles,
     get disposed() {
       return view.disposed;
     },
@@ -1550,11 +1584,15 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
   const named = rows.length > 0;
   /** @type {Array<Node | string>} */
   const parts = [
-    summaryFiles(
-      said.filesParts,
-      paint.countPartsNodes,
-      named ? SUMMARY_SEPARATOR : LINE_SEPARATOR,
-    ),
+    ...(view.countsFiles
+      ? [
+          summaryFiles(
+            said.filesParts,
+            paint.countPartsNodes,
+            named ? SUMMARY_SEPARATOR : LINE_SEPARATOR,
+          ),
+        ]
+      : []),
     ...paint.changeLineNodes(said.line, named ? {} : { spoken: ", " }),
   ];
   if (said.estimated) {
@@ -1571,7 +1609,8 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
   const toggle = el("button", "diff-summary diff-summary-toggle disclosure-toggle collapsed");
   toggle.setAttribute("type", "button");
   toggle.setAttribute("aria-expanded", "false");
-  toggle.setAttribute("aria-label", said.label);
+  const words = view.countsFiles ? said : withoutFileCount(said);
+  toggle.setAttribute("aria-label", words.label);
   const chevron = el("span", "diff-summary-chevron");
   chevron.setAttribute("aria-hidden", "true");
   const chevronSvg = shellIcon("toggle");
@@ -1611,7 +1650,7 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
       }
       const statuses = toggle.querySelector(".change-line-statuses");
       if (statuses !== null && statuses.scrollWidth > statuses.clientWidth) {
-        toggle.dataset.tipText = said.text;
+        toggle.dataset.tipText = words.text;
       } else {
         delete toggle.dataset.tipText;
       }
@@ -1713,7 +1752,9 @@ function summaryOrTotals(totals, files, view, whole = null) {
   const said = plainTotals(whole ?? totals, formatCount);
   const line = el("div", "diff-summary");
   line.append(
-    summaryFiles(said.filesParts, paint.countPartsNodes, LINE_SEPARATOR),
+    ...(view.countsFiles
+      ? [summaryFiles(said.filesParts, paint.countPartsNodes, LINE_SEPARATOR)]
+      : []),
     ...paint.changeLineNodes(paint.changeLine(said.change), { spoken: ", " }),
   );
   if (said.estimated) {
@@ -1775,7 +1816,14 @@ function renderDiffToolbar(totals, files, view, showSummary, summaryHost = null,
   /** @type {(() => void) | null} */
   let disposeSummary = null;
   if (showSummary && (summaryHost !== null || Number(totals.files) !== 1)) {
-    const summary = summaryOrTotals(totals, files, summaryOwnerOf(view), whole);
+    // A page that places the summary at its own top says its file count on the size line
+    // above it.
+    const summary = summaryOrTotals(
+      totals,
+      files,
+      summaryOwnerOf(view, summaryHost === null),
+      whole,
+    );
     disposeSummary = summary.dispose;
     if (summaryHost !== null) {
       summaryHost.replaceChildren(summary.element);
@@ -2450,7 +2498,7 @@ function spliceDeferred(file, loaded, view) {
  */
 function failDeferred(file, error, view) {
   const count = ++view.deferredFailed;
-  view.hydrationFailure.textContent = `Could not load changes for ${count.toLocaleString("en-US")} ${count === 1 ? "file" : "files"}.`;
+  view.hydrationFailure.textContent = `Could not load changes for ${countFormatter(view.api)(count)} ${count === 1 ? "file" : "files"}.`;
   view.hydrationFailure.hidden = false;
   reportLoad(
     "file hydration",
@@ -2462,7 +2510,7 @@ function failDeferred(file, error, view) {
     },
     error,
   );
-  file.body.append(el("div", "diff-availability", "Could not load this file's changes."));
+  file.body.append(noticeEl("error", "", "Could not load this file's changes."));
   return "failed";
 }
 
@@ -3071,6 +3119,8 @@ export function mountDiffSummary(slot, document_, api, options) {
     disposed: false,
     changedFiles: options.changedFiles,
     jump: options.openFile,
+    // The page's header says the file count on its size line, above the summary.
+    countsFiles: false,
   };
   const summary = summaryOrTotals(manifest.totals, manifest.files, owner);
   slot.replaceChildren(summary.element);
@@ -3147,7 +3197,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     layoutKey: null,
     listTruncated: false,
     narrow,
-    hydrationFailure: el("div", "diff-availability diff-hydration-failure"),
+    hydrationFailure: noticeEl("error", "diff-hydration-failure"),
     pinListeners: null,
     pinned: null,
     pinnedAt: Number.NEGATIVE_INFINITY,
@@ -3233,7 +3283,7 @@ export function mountDiffView(container, document_, api, options = {}) {
   root.append(toolbar);
   // What the source could not model is left out of the files below, so it is said above them.
   for (const warning of /** @type {string[]} */ (view.resolved.warnings ?? [])) {
-    root.append(el("div", "diff-availability diff-warning", warning));
+    root.append(noticeEl("warning", "diff-warning", warning));
   }
   const context = { revision: String(document_.__revision ?? "") };
   view.hydrationFailure.hidden = true;
@@ -3261,7 +3311,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         }
       }
       if (manifest.truncated) {
-        root.append(el("div", "diff-availability", "The change list was truncated at its bounds."));
+        root.append(noticeEl("warning", "", "The change list was truncated at its bounds."));
       }
       view.spacer = el("div", "diff-end-spacer");
       root.append(view.spacer);

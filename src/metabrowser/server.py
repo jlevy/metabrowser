@@ -68,7 +68,14 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from strif import file_mtime_hash
 
-from metabrowser import __version__, delivery, kpress_adapter, server_timing
+from metabrowser import (
+    __version__,
+    delivery,
+    event_log,
+    event_log_reports,
+    kpress_adapter,
+    server_timing,
+)
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.asset_stamps import StampedStaticFiles, StampedTree, split_stamp
@@ -87,6 +94,7 @@ from metabrowser.capabilities import (
 from metabrowser.charts import clear_charts_cache
 from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
+from metabrowser.commit_ids import short_commit
 from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.counterpart import COUNTERPART_ROUTES
 from metabrowser.diff.markdown_projection_worker import (
@@ -100,6 +108,7 @@ from metabrowser.diff.markdown_projection_worker import (
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.embedded_resources import embedded_raw_paths
 from metabrowser.encoded_assets import EncodedAssetResponse
+from metabrowser.event_log_route import EVENT_LOG_ROUTES
 from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
     BROWSER_TEXT_EXTS,
@@ -200,7 +209,7 @@ from metabrowser.recent import (
     recent_result_from_projection,
 )
 from metabrowser.repository_context import discover_repository_context
-from metabrowser.root_identity import IDENTITY_ROUTES, root_identity, short_commit
+from metabrowser.root_identity import IDENTITY_ROUTES, root_identity
 from metabrowser.settings import (
     DOC_MAX_CHARS_DEFAULT,
     FOLDER_DISCOVERY_MAX_ENTRIES,
@@ -222,6 +231,7 @@ from metabrowser.settings import (
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
     VALID_LOG_LEVELS,
+    blocks_remote_images,
     client_settings_dict,
 )
 from metabrowser.source import (
@@ -269,6 +279,7 @@ from metabrowser.tree_filter import (
     parse_types,
 )
 from metabrowser.tree_groups import (
+    UNDATED_GROUP_ID,
     GroupBy,
     age_band,
     group_row,
@@ -603,6 +614,14 @@ _sys.modules[__name__].__class__ = _ProcBrowserModule
 STATIC_DIR: Path = Path(__file__).parent / "static"
 # The stamp `?v=` names: each static file's own bytes (asset_stamps.StampedStaticFiles).
 _STATIC_TREE = StampedTree(STATIC_DIR, live=editable_install("metabrowser"))
+# Mermaid's chunks, which its build names `<name>-<hash>.mjs` by a hash of each one's
+# content and its entry imports by relative specifiers that drop the entry's `?v=`. The
+# name names the bytes, so a chunk the stamp holds is answered immutable at its plain
+# address. Before this, each chunk a page imported, of 105 (5,404,632 bytes), was
+# `no-cache` and asked for again on every load with a conditional request answered 304
+# (measured 2026-11-19). Its bytes change only with its name: `devtools/vendor_assets.py
+# --check` refuses vendored bytes its manifest does not pin.
+_SELF_NAMED_STATIC = ("vendor/mermaid/chunks/",)
 # The reading-width state machine is first-paint configuration and only 1 KiB
 # compressed. Embed its exact tested source once instead of spending a startup
 # request on it; keeping the file authoritative preserves the browserless
@@ -1135,6 +1154,61 @@ def _pin_is_served() -> bool:
         return True
 
 
+def _end_request_span(
+    span: event_log.Span,
+    *,
+    status: int | None,
+    body_bytes: int,
+    start_ms: float | None,
+    query: str,
+    record: server_timing.Record,
+    failure: BaseException | None,
+) -> None:
+    """End a request's event-log span with what the request log line says.
+
+    A status of 500 or more is ``failed``; a request cancelled, as when the client left,
+    is ``cancelled`` whether or not its answer had begun, and one the application raised
+    on is ``failed``.
+    """
+
+    attrs: dict[str, Any] = {"status": status, "bytes": body_bytes}
+    if query:
+        attrs["query"] = event_log.redact(query, limit=event_log.MAX_TEXT_CHARS)
+    if start_ms is not None:
+        attrs["start_ms"] = round(start_ms, 1)
+    phases = record.totals()
+    if phases:
+        attrs["phases"] = {name: round(ms, 1) for name, ms in phases}
+    processes = record.git_processes()
+    if processes:
+        attrs["git_processes"] = processes
+    if failure is not None:
+        cancelled = isinstance(failure, asyncio.CancelledError)
+        if not cancelled:
+            attrs["error"] = event_log.describe_error(failure)
+        span.end("cancelled" if cancelled else "failed", **attrs)
+    else:
+        span.end("failed" if status is not None and status >= 500 else "ok", **attrs)
+
+
+# Long-lived endpoints never flagged as slow. The SSE transport intentionally holds the
+# connection open for as long as the tab does, far past ``_SLOW_SERVER_REQUEST_MS``, so
+# without this skip every connected browser tab would emit a slow-request warning. These
+# paths also get no ``Server-Timing`` header, and a page never reports them as slow or
+# pending (``event_log_reports.browser_settings``). ``/api/tail`` has no route.
+LONG_LIVED_PATHS: Final[tuple[str, ...]] = ("/api/events", "/api/tail", "/api/stream")
+
+
+def _request_client(scope: dict[str, Any]) -> str | None:
+    """The page's ID for this request (``event_log.CLIENT_HEADER``), when it sent one."""
+
+    wanted = event_log.CLIENT_HEADER.encode("latin-1")
+    for name, value in scope.get("headers") or []:
+        if name == wanted:
+            return event_log.client_id(value)
+    return None
+
+
 class _SlowRequestLogMiddleware:
     """Time + log browser server requests.
 
@@ -1156,12 +1230,7 @@ class _SlowRequestLogMiddleware:
         self.threshold_ms = threshold_ms
         self.verbose = verbose
 
-    # Long-lived endpoints we never want flagged as slow. The SSE
-    # transport intentionally holds the connection open for as long as the
-    # tab does, far past ``_SLOW_SERVER_REQUEST_MS``, so without this skip
-    # every connected browser tab would emit a slow-request warning. These
-    # paths also get no ``Server-Timing`` header. ``/api/tail`` has no route.
-    _LONG_LIVED_PATHS: tuple[str, ...] = ("/api/events", "/api/tail", "/api/stream")
+    _LONG_LIVED_PATHS: tuple[str, ...] = LONG_LIVED_PATHS
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope.get("type") != "http":
@@ -1183,6 +1252,20 @@ class _SlowRequestLogMiddleware:
         body_bytes = 0
         start_ms: float | None = None
         record, token = server_timing.begin()
+        # The event log's record of the request (metabrowser.event_log): current while
+        # the application runs, so a job the request starts names it as its parent, and
+        # carries the page's ID for it, which a page's reports name too.
+        method = scope.get("method", "")
+        # A request for something inside the events directory is not recorded, when this
+        # server's folder holds the directory (event_log.quiet_request says why).
+        request_span = (
+            event_log.begin("request", f"{method} {path}", client=_request_client(scope))
+            if event_log.enabled()
+            and not event_log.quiet_request(
+                path, (scope.get("query_string") or b"").decode("latin-1")
+            )
+            else event_log.NULL_SPAN
+        )
 
         async def send_wrapper(message: dict[str, Any]) -> None:
             nonlocal body_bytes, start_ms, status
@@ -1211,8 +1294,13 @@ class _SlowRequestLogMiddleware:
                 body_bytes += len(body)
             await send(message)
 
+        failure: BaseException | None = None
         try:
-            await self.app(scope, receive, send_wrapper)
+            with event_log.within(request_span):
+                await self.app(scope, receive, send_wrapper)
+        except BaseException as exc:
+            failure = exc
+            raise
         finally:
             server_timing.end(record, token)
             # The time to the end of the body, which no header can carry.
@@ -1221,6 +1309,16 @@ class _SlowRequestLogMiddleware:
             phases = server_timing.log_value(record)
             query = (scope.get("query_string") or b"").decode("latin-1")
             full_path = f"{path}?{query}" if query else path
+            if request_span is not event_log.NULL_SPAN:
+                _end_request_span(
+                    request_span,
+                    status=status,
+                    body_bytes=body_bytes,
+                    start_ms=start_ms,
+                    query=query,
+                    record=record,
+                    failure=failure,
+                )
             if self.verbose:
                 # Verbose mode: every request, with arrival + completion
                 # epochs so correlation against browser-side perf.js
@@ -1282,33 +1380,33 @@ def _initial_path_html() -> str:
 def _pin_label_html(status: SourceStatus) -> str:
     """The navigation heading for a pinned revision.
 
-    A served mirror's is the repository's name, where a folder's name stands and with
-    the same `.path-base` emphasis, then the ref and the short commit, muted: the page
-    is called what a checkout of the repository would be, and the commit it is pinned
-    to stays in sight beside it, in the commit-ID face (`.git-commit-sha`) a commit has
-    wherever it appears. The full commit is in the heading's tooltip.
+    A pin with a name is headed by the name alone, where a folder's name stands and with
+    the same `.path-base` emphasis: a served mirror by the repository's name, as a
+    checkout of it would be called, and a revision a folder's server shows of its own
+    checkout by the folder's name. The ref selector in the Files toolbar names the ref,
+    and the heading's tooltip (`_mirror_tip`) the full commit, so the heading repeats
+    neither: the owner found them clutter beside the name (mb-qq4e).
 
-    A pin with no mirror has no origin to take a name from. Its ref stands as the name
-    with the short commit after it, or the short commit alone when no ref is known,
-    and the full commit is its served root.
+    A pin with no mirror has no origin to take a name from, and no ref selector, so its
+    heading is the only place that names it. Its ref stands as the name with the short
+    commit after it, muted, in the commit-ID face (`.git-commit-sha`) a commit has
+    wherever it appears, or the short commit alone when no ref is known; the full commit
+    is its served root.
     """
-
-    short = html_escape(short_commit(status["pin"] or ""))
-    name = status["name"]
-    ref_name = status["ref_name"]
 
     def base(text: str) -> str:
         return f'<span class="path"><span class="path-base">{text}</span></span>'
 
-    commit = f'<span class="header-revision git-commit-sha">{short}</span>'
-    if name is None:
-        return base(short) if ref_name is None else base(html_escape(ref_name)) + commit
-    ref = (
-        ""
-        if ref_name is None
-        else f'<span class="header-revision header-ref">{html_escape(ref_name)}</span>'
+    name = status["name"]
+    if name is not None:
+        return base(html_escape(name))
+    short = html_escape(short_commit(status["pin"] or ""))
+    ref_name = status["ref_name"]
+    if ref_name is None:
+        return base(f'<span class="git-commit-sha">{short}</span>')
+    return (
+        base(html_escape(ref_name)) + f'<span class="header-revision git-commit-sha">{short}</span>'
     )
-    return base(html_escape(name)) + ref + commit
 
 
 def _mirror_tip(status: SourceStatus) -> str | None:
@@ -1416,8 +1514,10 @@ def _static_asset_url(rel_path: str) -> str:
 # Interface-font sets offered by the settings dropdown. The first entry is the
 # default. Each set's actual font stacks live in styles.css as a
 # `html[data-app-font="<value>"]` block (the default uses the :root base). To add
-# a set, append one entry here and one CSS block there — the dropdown options and
-# the pre-paint bootstrap both derive from this single list, so they stay in sync.
+# a set, append one entry here and one CSS block there, which sets both --font-sans and
+# the sans's x-height, --font-sans-ex-height (tests/test_short_commit.py checks each) —
+# the dropdown options and the pre-paint bootstrap both derive from this single list,
+# so they stay in sync.
 _FONT_SETS: tuple[dict[str, str], ...] = (
     {"value": "clean", "label": "Clean Fonts"},
     {"value": "system", "label": "System Fonts"},
@@ -1522,7 +1622,8 @@ def _source_ref_label_html(pin: GitRevisionSubject | None, *, checkout: bool) ->
         name = ref_short_name(pin.ref)
     if name:
         return html_escape(name)
-    # As much of the ID as the navigation heading shows: the page has the full ID alone.
+    # The short ID every line that names a commit shows (docs/design-system.md, "Short
+    # Commit IDs"); the navigation heading's tooltip has the full ID.
     return (
         f'Commit: <span class="git-commit-sha">{html_escape(short_commit(pin.commit_oid))}</span>'
     )
@@ -1557,6 +1658,10 @@ async def index(
     # awaited: a pin is never trusted, so a switch of the served subject while this
     # request renders cannot hand a revision's shell the folder's policy.
     page_capabilities = capabilities_for(pinned_revision=git_pin)
+    # The reader's privacy preference, read from the request's cookies once, so the
+    # settings the page carries and the policy it is served under cannot disagree.
+    block_remote_images = blocks_remote_images(request.cookies)
+    remote_images_checked = " checked" if block_remote_images else ""
     # Only a pin has a mirror session; a folder's shell never reads the app's state.
     mirror = mirror_session(request.app) if pin is not None else None
     # The served checkout's own refs and revisions: a folder that is a repository's root,
@@ -1581,7 +1686,7 @@ async def index(
         initial_root = html_escape(status["name"] or pin_oid, quote=True)
         mirror_attrs = _mirror_heading_attrs(status)
         # What styles a mirror's headings apart from a folder's: its root is a name,
-        # which is cut at its end, and its commit has a copy control beside it.
+        # which is cut at its end, and a control after the name copies its commit.
         mirror_class = " mirror-source" if mirror_attrs else ""
         # Core holds no provider URL grammar: the served mirror asks the installed
         # providers, and only a hosted repository's has an answer (a GitHub mirror's
@@ -1612,6 +1717,7 @@ async def index(
     view_state_url = _static_asset_url("view-state.js")
     navigation_url = _static_asset_url("navigation.js")
     source_append_url = _static_asset_url("source-append.js")
+    revision_ages_url = _static_asset_url("revision-ages.js")
     file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin-sdk.js")
     plugin_sdk_views_url = _static_asset_url("plugin-sdk-views.js")
@@ -1628,6 +1734,7 @@ async def index(
     pull_route_script = _startup_script_tags(PULL_PAGE_STARTUP_SCRIPTS if pull_page else ())
     view_composition_url = _static_asset_url("view-composition.js")
     inert_html_url = _static_asset_url("inert-html.js")
+    remote_images_url = _static_asset_url("remote-images.js")
     filter_state_url = _static_asset_url("filter-state.js")
     filter_controls_url = _static_asset_url("filter-controls.js")
     icons_url = _static_asset_url("icons.js")
@@ -1653,6 +1760,7 @@ async def index(
     git_graph_url = _static_asset_url("git-graph.js")
     git_history_window_url = _static_asset_url("git-history-window.js")
     git_panel_url = _static_asset_url("git-panel.js")
+    event_reports_url = _static_asset_url("event-reports.js")
     source_freshness_url = _static_asset_url("source-freshness.js")
     source_ref_selector_url = _static_asset_url("source-ref-selector.js")
     app_url = _static_asset_url("app.js")
@@ -1665,8 +1773,10 @@ async def index(
         **client_settings_dict(
             syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES,
             capabilities=page_capabilities,
+            block_remote_images=block_remote_images,
         ),
         "BUILD_TAG": BUILD_TAG,
+        "EVENT_REPORTS": event_log_reports.browser_settings(long_lived=LONG_LIVED_PATHS),
     }
     if pin is not None:
         client_settings["STORE_TAG"] = store_tag(pin.command_target.git_dir)
@@ -1679,6 +1789,8 @@ async def index(
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
     # A pin's freshness row, filled by static/source-freshness.js. A folder has none.
+    # It sits above the keyboard shortcut strip, so the strip stays the pane's last row
+    # (owner, 2026-11-20).
     source_freshness_row = (
         '\n      <div class="source-freshness" id="source-freshness" hidden></div>'
         if git_pin
@@ -1954,7 +2066,12 @@ async def index(
         # and the freshness row compares both with what the server serves, so a switch
         # or a restart onto another pin before its first poll still offers a reload.
         page_pin = _json.dumps({"pin": pin.commit_oid, "ref": pin.ref}).replace("<", "\\u003c")
+        # Whether the Git this server runs dates a revision's files, which is what the Files
+        # tab's age menus wait for: Group by age and Modified within, hidden on a revision
+        # that has no times (static/app.js `noFileAges`).
+        has_ages = "true" if pin.capabilities.recency else "false"
         repository_context_block += (
+            f"<script>window.METABROWSER_FILE_AGES={has_ages};</script>"
             f"<script>window.METABROWSER_SOURCE_PIN={page_pin};</script>"
             f"<script>{_SOURCE_PIN_GUARD_SCRIPT}</script>"
         )
@@ -2034,11 +2151,41 @@ async def index(
             {"src": git_panel_url},
             # Only a shell that drew the Pulls tab has it, so a folder fetches nothing new.
             *([{"src": _static_asset_url("pulls-nav.js")}] if pulls_tab else []),
+            # The event log's reporter, last: nothing here waits on it (`event-reports`).
+            {"src": event_reports_url},
         ],
         # The compositor is needed only once file navigation begins, after the
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # What the page reports to the event log, and the Details a failure or a late
+        # wait offers (static/event-reports.js). It is the last script of `shell-tools`,
+        # so it loads after the first usable tree, and a page that waits on something
+        # before then asks for it by this name; the loader runs a script once whichever
+        # bundle asks. A report of what came earlier reads the browser's Resource Timing.
+        # Not a startup script, nor a call in app.js: the startup budget had 99 bytes left
+        # when it was written, and #622's changes left 2 after such a call (2026-11-19).
+        "event-reports": [{"src": event_reports_url}],
+        # Mermaid 12.3.0's ESM entry (static/vendor/mermaid/), imported by the Markdown
+        # plugin's diagram renderer only when a mounted view holds a diagram. The entry
+        # imports the chunks of each diagram type it draws by relative specifiers, so a
+        # document fetches the 30,936-byte entry and its types' chunks, and a document
+        # with no diagram fetches nothing (docs/project/specs/active/
+        # plan-2026-08-21-mermaid-diagram-rendering.md has the measurement).
+        "mermaid": [{"module": _static_asset_url("vendor/mermaid/mermaid.esm.min.mjs")}],
+        # KPress's diagram renderer and its opt-in controls, at the stamped URLs a
+        # render's asset manifest names, so they import the one KPress runtime the
+        # document's other modules share. Fetched with the first diagram, beside Mermaid.
+        "kpress-diagrams": [
+            {"module": kpress_adapter.kpress_static_url("js/diagrams.js", prefix=kpress_prefix)}
+        ],
+        "kpress-diagram-controls": [
+            {
+                "module": kpress_adapter.kpress_static_url(
+                    "js/diagram-controls.js", prefix=kpress_prefix
+                )
+            }
+        ],
         # A file's and a folder's view header: its builders, and the folder line's live
         # refresh. renderFile draws a header only after loadViewComposition, which fetches
         # this beside the compositor and the SDK's view helpers, so the first tree never
@@ -2079,6 +2226,9 @@ async def index(
         # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
         # document under the untrusted profile, which the server marks inert.
         "inert-html": [{"src": inert_html_url}],
+        # The menu's Block remote images checkbox draws from the page's settings and
+        # needs this only to change them, once.
+        "remote-images": [{"src": remote_images_url, "provides": "MetabrowserRemoteImages"}],
         # The tree of a change set's files that both the Pulls tab and a diff's Diff summary
         # draw, which two plugins share through metabrowser.loadChangedFilesTree(). Only a
         # page that shows a pull request's files or a multi-file diff asks for it: a diff
@@ -2119,6 +2269,17 @@ async def index(
             {"src": source_ref_selector_url},
         ],
         "source-append": [{"src": source_append_url}],
+        # The watch on a revision's file ages and the notes about them, which only a page whose
+        # Git can read ages and whose response says they are not all in yet needs: asked for
+        # the first time a response says `dating`, `partial`, or `failed`, and never by a page
+        # whose answer is whole or whose Git cannot (it is not offered to that page at all).
+        # It was a startup script of every pin's shell, 4,940 bytes (1,896 gzipped) before a
+        # page could use it, and 3,783 bytes of that shell over the folder's budget.
+        **(
+            {"revision-ages": [{"src": revision_ages_url, "provides": "MetabrowserRevisionAges"}]}
+            if pin is not None and pin.capabilities.recency
+            else {}
+        ),
         "chart": [
             {"src": _static_asset_url("vendor/chart.umd.min.js"), "provides": "Chart"},
             {"src": charts_url, "requires": "Chart"},
@@ -2260,8 +2421,8 @@ async def index(
              plain activation in the page and shows the folder's home view as a fresh load
              of this address does, every tab at its first, and `0` does the same. Its
              accessible name is "Home:" and then the name it shows, read from its own
-             content, so the name a mirror's heading shows, its ref and commit with it,
-             stays in it. The header anchors the key's badge, which sits beside the name
+             content, so a pin with no mirror's ref and commit, which stand as its name,
+             stay in it. The header anchors the key's badge, which sits beside the name
              because the name clips. -->
         <a href="{VIEW_ROUTE_PREFIX}" class="header-path" id="header-home"
            aria-labelledby="header-home-label header-home"
@@ -2273,8 +2434,10 @@ async def index(
              which returns that line of the navigation column — the app's
              scarcest width — to the path. Inside: two icon-segment choosers
              (theme + reading font), a small font-set dropdown
-             (#app-font-select, options from _FONT_SETS), and the same build
-             version line printed by `metab --version`. Choices apply instantly.
+             (#app-font-select, options from _FONT_SETS), a privacy checkbox
+             (Block remote images, which reloads the page because the server's
+             policy follows it), and the same build version line printed by
+             `metab --version`. Other choices apply instantly.
              app.js (initSettingsControl) fills the icon segments and wires
              open/select + the dropdown. The wrapper's aria-expanded drives the
              menu's visibility via CSS.
@@ -2305,12 +2468,16 @@ async def index(
               <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="sans" data-tip-text="Sans-serif reading font" aria-label="Sans-serif reading font"></button>
             </div>
             <div class="menu-separator"></div>
-            <select class="menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>
+            <select class="field menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>
             <div class="menu-separator"></div>
             <label class="menu-row" for="doc-max-chars-input">Max text width
-              <input class="menu-number" id="doc-max-chars-input" type="number"
+              <input class="field menu-number" id="doc-max-chars-input" type="number"
                      min="40" max="160" step="1" inputmode="numeric"
                      data-tip-text="Characters per line in rendered documents"></label>
+            <div class="menu-separator"></div>
+            <label class="menu-row" for="block-remote-images-input">Block remote images
+              <input class="menu-check" id="block-remote-images-input" type="checkbox"{remote_images_checked} disabled
+                     data-tip-text="Show an untrusted document's images from the web as their alt text. Reloads the page"></label>
             <div class="menu-separator"></div>
             <div class="menu-version">{version_line}</div>
           </div>
@@ -2336,7 +2503,7 @@ async def index(
           <div class="loading mb-delayed-loading"><div class="spinner"></div><span
             class="sr-only">Loading files…</span></div>
         </div>{git_container}{pulls_container}
-      </div>
+      </div>{source_freshness_row}
       <!-- role="group" carries the accessible name: ARIA forbids naming a
            generic element, so a bare div would drop the label and announce
            the hints and their controls with no grouping context. Not a live
@@ -2347,7 +2514,7 @@ async def index(
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
         <span class="index-progress-spinner" aria-hidden="true"></span>
         <span class="index-progress-text">Scanning…</span>
-      </div>{source_freshness_row}
+      </div>
     </div>
     <div class="resize-handle" id="tree-resize"></div>
     <!-- Every route that serves this shell selects something: /view/ names a
@@ -2360,10 +2527,11 @@ async def index(
       <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
         {preview_loading}
       </div>
-      <!-- Hides and shows the navigation pane, as the backslash key does: on the main
-           page's left edge, beside the pane's shadow, on the shortcut strip's row. It
-           is in the frame, not the pane, so it stays when the pane is hidden and slides
-           with the page. app.js draws its chevron; static/nav-collapse.js runs it. -->
+      <!-- Hides and shows the navigation pane, as the backslash key does: at the start
+           of the main page's foot, in its gutter, on the row of the navigation's shortcut
+           strip. It is in the frame, not the pane, so it stays when the pane is hidden and
+           slides with the page. app.js draws its chevron; static/nav-collapse.js runs it,
+           and static/styles.css places it. -->
       <button class="icon-btn nav-collapse-toggle disclosure-toggle" id="nav-collapse-toggle" type="button"
               aria-controls="tree-pane" aria-expanded="true"
               aria-label="Hide navigation"></button>
@@ -2413,8 +2581,21 @@ async def index(
     return HTMLResponse(
         html,
         headers={
-            "Content-Security-Policy": untrusted_shell_csp(nonce, origin),
+            "Content-Security-Policy": untrusted_shell_csp(
+                nonce,
+                origin,
+                tuple(
+                    kpress_adapter.kpress_static_url(module, prefix=kpress_prefix)
+                    for module in kpress_adapter.DIAGRAM_MODULES
+                ),
+                remote_images=not block_remote_images,
+            ),
             "X-Frame-Options": "DENY",
+            # No page address goes to an image's host, from an image the allowlist wrote
+            # (`referrerpolicy` on it says so too) or one a Mermaid diagram drawn in the
+            # page names, which no markup of the document reaches
+            # (`builtin_plugins/markdown/diagram-frame.js`). Nothing here reads a Referer.
+            "Referrer-Policy": "no-referrer",
         },
     )
 
@@ -2956,6 +3137,9 @@ async def api_tree(request: Request) -> Response:
         if group_by is not None:
             return await git_revision_tree_groups(request, pin, tree_filter, group_by)
         return await git_revision_tree(request, pin, tree_filter)
+    if tree_filter.group is not None and tree_filter.group.id == UNDATED_GROUP_ID:
+        # Only a Git revision has files with no time.
+        return JSONResponse({"error": "Not found"}, status_code=404)
     subpath = parse_inventory_path(requested)
     remaining_depth = _tree_depth_from_query(depth_str)
     if subpath is None or resolve_session_identity(subpath) is None:
@@ -3160,7 +3344,7 @@ async def api_rollup(request: Request) -> Response:
 
 
 @log_async_calls()
-async def api_recent(request: Request) -> JSONResponse:
+async def api_recent(request: Request) -> Response:
     """``GET /api/recent`` — top-N files by mtime within a
     rolling window (1h / 24h / 7d / 30d / all), filtered by
     the navigation filter vocabulary plus optional ``prefix`` and
@@ -3195,6 +3379,19 @@ async def api_recent(request: Request) -> JSONResponse:
     # CLI inspection. Merge it into `types` so one provider predicate decides
     # both spellings before the response cap is applied.
     types = parse_types((*requested_filter.types, *ext_filter))
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is not None:
+        # A revision has no inventory: the newest files by the time of their last commit.
+        from metabrowser.git.content_routes import git_revision_recent
+
+        return await git_revision_recent(
+            pin,
+            window=window,
+            limit=limit,
+            types=types,
+            min_size=requested_filter.min_size,
+            prefix=prefix_filter,
+        )
     recent_filter = TreeFilter(
         recency_seconds=int(RECENT_WINDOW_SECONDS[window] or 0),
         types=types,
@@ -3451,7 +3648,11 @@ async def _api_folder_envelope(
         "kind": "folder",
         "path": subpath,
         "name": target.name,
-        "views": _views_for_kind("folder"),
+        "views": (
+            await asyncio.to_thread(_views_for_kind, "folder", target=target)
+            if _FOLDER_OFFERS
+            else _views_for_kind("folder")
+        ),
         "dir": {
             "total_files": total_files,
             "total_size": total_size,
@@ -3863,11 +4064,12 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         # document in the normal file response.
         return JSONResponse(result, headers=etag_headers)
 
+    binary_kind = _binary_kind(target, ext)
     return JSONResponse(
         {
             "type": "binary",
-            "kind": "binary",
-            "views": _views_for_kind("binary"),
+            "kind": binary_kind,
+            "views": _views_for_kind(binary_kind),
             "path": subpath,
             "size": disk_size,
             **_mtime_field(file_mtime),
@@ -4757,9 +4959,11 @@ from metabrowser.plugin_loader.manifest import (
     view_entry,
 )
 from metabrowser.plugin_loader.static_assets import (
+    FolderOffer,
     build_plugin_routes,
     plugin_asset_prefix,
     plugin_asset_trees,
+    resolve_folder_offers,
 )
 from metabrowser.tree import (
     set_folder_markers,
@@ -4797,21 +5001,28 @@ _PLUGIN_ASSET_TREES = plugin_asset_trees(_LOADED_PLUGINS)
 # Pre-compile plugin kind rules and view bindings for fast lookup at
 # request time. Higher priority wins; within a priority, the plugin
 # discovered first wins (``CompiledKindRule.sort_key``).
+# A ``binary = true`` rule is asked only about a file already found to be binary, so it
+# sits in its own list and no text classifier sees it.
 _PLUGIN_KIND_RULES: list[CompiledKindRule] = []
+_PLUGIN_BINARY_KIND_RULES: list[CompiledKindRule] = []
 _PLUGIN_VIEWS_BY_KIND: dict[str, list[dict[str, Any]]] = {}
 for _idx, _plugin in enumerate(_LOADED_PLUGINS):
     for _kr in _plugin.manifest.kind:
-        _PLUGIN_KIND_RULES.append(
+        (_PLUGIN_BINARY_KIND_RULES if _kr.binary else _PLUGIN_KIND_RULES).append(
             CompiledKindRule(rule=_kr, plugin_name=_plugin.name, discovery_index=_idx)
         )
     for _view in _plugin.manifest.view:
         _PLUGIN_VIEWS_BY_KIND.setdefault(_view.kind, []).append(view_entry(_view))
 
+# Folder views a plugin offers only where its predicate accepts the folder, by view id.
+_FOLDER_OFFERS: dict[str, FolderOffer | None] = resolve_folder_offers(_LOADED_PLUGINS)
+
 _PLUGIN_CLASSIFY = build_classifier(_PLUGIN_KIND_RULES)
+_PLUGIN_CLASSIFY_BINARY = build_classifier(_PLUGIN_BINARY_KIND_RULES)
 # Hand the tree renderer the folder-marker set so directories whose direct
 # children include a known marker get a ``marker_basename`` field on their
 # row. This is the only piece of plugin state that ``tree.py`` needs.
-set_folder_markers(collect_folder_markers(_PLUGIN_KIND_RULES))
+set_folder_markers(collect_folder_markers(_PLUGIN_KIND_RULES + _PLUGIN_BINARY_KIND_RULES))
 
 
 def _classify_with_plugins(
@@ -4835,6 +5046,20 @@ def _classify_with_plugins(
     if plugin_kind is not None:
         return plugin_kind
     return classify_file_kind(target, ext, adapter)
+
+
+def _binary_kind(target: Path, ext: str) -> str:
+    """The kind of a served file found to be binary: a plugin's binary claim, or ``binary``.
+
+    Path predicates only, so this reads nothing; ``_classify_with_plugins`` is never
+    asked about a binary file, whose content its predicates would misread. A claim by a
+    kind no loaded plugin gives a view keeps ``binary``, so the file keeps its Bytes view
+    rather than reaching a page with nothing to show.
+    """
+    if not _PLUGIN_BINARY_KIND_RULES:
+        return "binary"
+    claimed = _PLUGIN_CLASSIFY_BINARY(FileContext(target, ext, None))
+    return claimed if claimed is not None and _PLUGIN_VIEWS_BY_KIND.get(claimed) else "binary"
 
 
 def _container_kinds() -> dict[str, dict[str, str]]:
@@ -4953,14 +5178,56 @@ def _views_for_kind(
     dropped when active content is off, and a bounded sniff may move the
     default tab to Source. *target* is the file being classified; omit it
     only when no file is in hand.
+
+    For the folder kind *target* is the folder, and :func:`_offered_folder_views`
+    keeps a plugin's offered view only where its predicate accepts the folder; with
+    no folder in hand no offered view is kept. The predicates touch the disk, so a
+    caller on the event loop runs this in a thread when :data:`_FOLDER_OFFERS` is
+    not empty.
     """
     merged = merge_views(VIEW_REGISTRY.get(kind, []), _PLUGIN_VIEWS_BY_KIND.get(kind, []))
     out = check_view_keys(kind, merged).views
+    if kind == "folder" and _FOLDER_OFFERS:
+        out = _offered_folder_views(out, target)
     if kind == "html":
         out = _html_kind_views(out, target, active_content=active_content)
     elif out and not any(v.get("default") for v in out):
         out[0] = {**out[0], "default": True}
     return live_view_keys(out)
+
+
+def _offered_folder_views(views: list[dict[str, Any]], target: Path | None) -> list[dict[str, Any]]:
+    """Keep each offered folder view only where its predicate accepts *target*.
+
+    A predicate that raises is logged and its view left out, so one plugin cannot take
+    every folder page down. An offered view that is a default becomes the only
+    default, the first such one if several are offered: the folder is the plugin's
+    subject, so its page opens there rather than on the Overview.
+    """
+
+    kept: list[dict[str, Any]] = []
+    offered_default: str | None = None
+    for view in views:
+        view_id = view["id"]
+        if view_id not in _FOLDER_OFFERS:
+            kept.append(view)
+            continue
+        predicate = _FOLDER_OFFERS[view_id]
+        if target is None or predicate is None:
+            continue
+        try:
+            offered = bool(predicate(target))
+        except Exception:
+            LOG.exception("folder view %s offer failed; leaving the view out", view_id)
+            continue
+        if not offered:
+            continue
+        kept.append(view)
+        if offered_default is None and view.get("default"):
+            offered_default = view_id
+    if offered_default is not None:
+        kept = [{**view, "default": view["id"] == offered_default} for view in kept]
+    return kept
 
 
 def _html_kind_views(
@@ -5208,7 +5475,11 @@ routes = [
     Route("/raw/{path:path}", raw_file),
     Route("/kpress-static/{path:path}", kpress_static_asset),
     Mount(
-        "/static", app=StampedStaticFiles(directory=STATIC_DIR, tree=_STATIC_TREE), name="static"
+        "/static",
+        app=StampedStaticFiles(
+            directory=STATIC_DIR, tree=_STATIC_TREE, self_named=_SELF_NAMED_STATIC
+        ),
+        name="static",
     ),
     # Read-only git history, kept as its own collection in
     # ``metabrowser.git.routes``: separate wire model, separate failure
@@ -5222,6 +5493,8 @@ routes = [
     *SOURCE_ROUTES,
     # What the served subject is called, as the shell's title and a native window say.
     *IDENTITY_ROUTES,
+    # Where the event log is, and its records (metabrowser.event_log).
+    *EVENT_LOG_ROUTES,
     # A page's github.com counterpart, which every View on GitHub control links to.
     *COUNTERPART_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS, asset_trees=_PLUGIN_ASSET_TREES),
@@ -5280,6 +5553,8 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
     # refresh jobs start once the pin is attached and are cancelled before it closes.
     # What a folder's server keeps for its checkout comes last, so it is left first: a
     # revision of the checkout still served at shutdown is closed while the rest is up.
+    # A served process's event log pings this loop, so a turn that blocks it is on record.
+    event_log.watch_loop(asyncio.get_running_loop())
     async with (
         lifespan_subject(),
         build_lifespan(app=app, root_provider=_inventory_root_provider),

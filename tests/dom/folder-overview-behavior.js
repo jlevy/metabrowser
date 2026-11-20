@@ -406,7 +406,7 @@ global.window = { METABROWSER_SETTINGS: {} };
   }
   check(
     "an incompatible first rollup replaces the pending skeleton with an error",
-    summaryBody.innerHTML.includes("rollup data is incompatible"),
+    summaryBody.innerHTML.includes("Could not display file types for this folder."),
     summaryBody.innerHTML,
   );
   rollupApply({

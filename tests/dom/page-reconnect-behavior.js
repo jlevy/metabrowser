@@ -213,6 +213,7 @@ function recoverySession(filtered = false) {
     },
     _rootTotals: null,
     updateFilterTallies: () => false,
+    observeFileAges() {},
     _rootTreeRequestsInFlight: 0,
     _inlineTreeBaseline: null,
     reconcileMountedTree: () => calls.push("authoritative root reconciled"),

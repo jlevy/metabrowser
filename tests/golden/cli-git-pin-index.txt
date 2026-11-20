@@ -90,6 +90,11 @@ status: 200
     "stream": "off",
     "reason": "git-revision-no-watcher"
   },
+  "file_ages": {
+    "available": false,
+    "minimum_git": "2.53",
+    "hint": "File ages on Git revisions need Git 2.53 or newer (found 2.50.1)"
+  },
   "capabilities": {
     "active_content": false,
     "mutations": false
@@ -113,6 +118,7 @@ status: 200
   "borrows": null,
   "shallow": false,
   "refreshable": true,
+  "follows": true,
   "latest": "8653ceb4d5ca69e2e7e3b39d04645b3820233854",
   "ref_on_origin": true,
   "last_fetch_at": "2026-09-17T12:00:00Z",

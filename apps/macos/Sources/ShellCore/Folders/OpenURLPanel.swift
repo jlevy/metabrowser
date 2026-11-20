@@ -1,15 +1,19 @@
 import Foundation
 
-/// What File > Open URL… takes: a full GitHub URL, which the panel hands to `metab` only
-/// once `GitHubLink` accepts it, the check every link sent to the app passes first.
+/// What File > Open URL… takes: a GitHub URL, which the panel hands to `metab` only once
+/// `GitHubLink` accepts it, the check every link sent to the app passes first.
 ///
-/// `metab TARGET --present --dry-run` reads a target with no scheme as a local path, so
-/// `owner/repo` or `github.com/owner/repo` would name a folder under its working
-/// directory: the panel takes no shorthand, and says so. Every other problem here is one
-/// `metab` would refuse as well (`insecure_http`, `credentials_in_url`,
-/// `unsupported_source`, `control_or_whitespace`, `non_ascii`, `backslash`,
-/// `invalid_percent_encoding`); the panel says it first, in its own words, since `metab`'s
-/// answer for another site is about the command line's `--present`.
+/// The panel opens nothing but GitHub URLs, so a GitHub URL typed without `https://` is
+/// written in full before it is checked (`corrected(_:)`): `github.com/owner/repo`, and an
+/// `http` or `//` URL on GitHub. The panel sends `metab` only the full URL, since
+/// `metab TARGET --present --dry-run` reads other text with no scheme as a local path.
+/// Other text with no scheme is refused: a path, another site's address, and a shorthand
+/// such as `owner/repo`, which the owner decided on 2026-11-18 the panel does not take
+/// (bead `mb-m4mg`) and on 2026-11-19 left so. Every other problem here is one `metab`
+/// would refuse as well (`insecure_http`,
+/// `credentials_in_url`, `unsupported_source`, `control_or_whitespace`, `non_ascii`,
+/// `backslash`, `invalid_percent_encoding`); the panel says it first, in its own words,
+/// since `metab`'s answer for another site is about the command line's `--present`.
 ///
 /// The path, query, and fragment are encoded as a browser sends them, so the panel opens
 /// what `metab URL` opens, a file named with a space or a letter outside ASCII among
@@ -23,7 +27,9 @@ public nonisolated enum OpenURLEntry {
         case empty
         /// Longer than `GitHubLink.maximumLength`, as typed or once encoded.
         case tooLong
-        /// No scheme: a shorthand such as `owner/repo`, or a URL without `https://`.
+        /// No scheme, and not a GitHub URL with its scheme left out (`corrected(_:)`): a
+        /// local path, an SSH address, another site's address, or a shorthand such as
+        /// `owner/repo`.
         case notAFullURL
         /// A scheme other than `https`.
         case notHTTPS
@@ -78,11 +84,44 @@ public nonisolated enum OpenURLEntry {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The link `text` names, if `GitHubLink` accepts it, else why not. The scheme and the
-    /// host are checked as typed; the rest is encoded as a browser sends it
-    /// (`encoded(_:)`), and that encoded text is the link `metab` is given.
-    public static func link(_ text: String) -> Result<URL, Problem> {
+    /// `text`, trimmed, and written in full when it can only be a GitHub URL; anything else
+    /// as it is. The corrected text then opens, or is refused, as the full URL is:
+    ///
+    /// - `github.com/owner/repo`: no scheme, and a GitHub host (`GitHubLink.hosts`, in any
+    ///   letter case) before the first `/`, `?`, or `#`, gets `https://`.
+    /// - `http://github.com/owner/repo` becomes `https://`, which is all GitHub serves.
+    /// - `//github.com/owner/repo`, a URL with its scheme left out, gets `https:`.
+    ///
+    /// A host that is not GitHub's, one with a user name, a password, or a port, and text
+    /// that starts with no host, such as `owner/repo` or `docs/macos-app.md`, are left alone,
+    /// so `link(_:)` refuses them as it did. The panel shows the corrected text
+    /// in its field (`OpenURLPanel.open()`), so what is checked is what the field holds.
+    public static func corrected(_ text: String) -> String {
         let text = trimmed(text)
+        if let scheme = text.firstMatch(of: schemePattern)?.output.1 {
+            guard scheme.lowercased() == "http", startsWithGitHubHost(text.dropFirst(scheme.count + 3)) else {
+                return text
+            }
+            return "https" + text.dropFirst(scheme.count)
+        }
+        if text.hasPrefix("//") {
+            return startsWithGitHubHost(text.dropFirst(2)) ? "https:" + text : text
+        }
+        return startsWithGitHubHost(text[...]) ? "https://" + text : text
+    }
+
+    /// Whether `rest`, a URL after its `scheme://`, or text with none, begins with a GitHub
+    /// host and nothing else before its path, query, or fragment.
+    private static func startsWithGitHubHost(_ rest: Substring) -> Bool {
+        GitHubLink.hosts.contains(rest.prefix { !"/?#".contains($0) }.lowercased())
+    }
+
+    /// The link `text` names, written in full (`corrected(_:)`), if `GitHubLink` accepts
+    /// it, else why not. The scheme and the host are checked as typed; the rest is encoded
+    /// as a browser sends it (`encoded(_:)`), and that encoded text is the link `metab` is
+    /// given.
+    public static func link(_ text: String) -> Result<URL, Problem> {
+        let text = corrected(text)
         if text.isEmpty { return .failure(.empty) }
         if text.utf8.count > GitHubLink.maximumLength { return .failure(.tooLong) }
         guard let scheme = text.firstMatch(of: schemePattern)?.output.1 else { return .failure(.notAFullURL) }
@@ -236,6 +275,8 @@ public nonisolated struct OpenURLPanel: Equatable, Sendable {
         case closed
     }
 
+    /// The field's text: as typed, until Open writes a GitHub URL in full
+    /// (`OpenURLEntry.corrected(_:)`), which the window then shows in the field.
     public private(set) var text = ""
     public private(set) var phase = Phase.editing
     /// Why the text was not opened, said under the field until the next edit.
@@ -267,9 +308,12 @@ public nonisolated struct OpenURLPanel: Equatable, Sendable {
     }
 
     /// Open was pressed: the link to ask `metab` about, which the panel now awaits, or nil,
-    /// with `message` saying why the text is not one.
+    /// with `message` saying why the text is not one. Text that is plainly a GitHub URL is
+    /// first written in full, with no message: the field shows the URL that is checked.
     public mutating func open() -> URL? {
         guard canOpen else { return nil }
+        let corrected = OpenURLEntry.corrected(text)
+        if corrected != OpenURLEntry.trimmed(text) { text = corrected }
         switch OpenURLEntry.link(text) {
         case .success(let link):
             phase = .checking(link)

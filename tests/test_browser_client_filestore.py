@@ -855,11 +855,6 @@ def test_a_mirrors_note_takes_nothing_from_the_address_and_is_whole_or_absent() 
         start = css.index(f"\n{selector} {{")
         return css[start : css.index("}", start)]
 
-    def shrink(selector: str) -> float:
-        match = re.search(r"flex(?:-shrink)?:\s*(?:[\d.]+\s+)?([\d.]+)", block(selector))
-        assert match is not None, f"{selector} declares no shrink weight"
-        return float(match.group(1))
-
     note = block(".file-header-mirror")
     assert "flex: 1 1 0;" in note
     assert "order: 1;" in note
@@ -886,9 +881,12 @@ def test_a_mirrors_note_takes_nothing_from_the_address_and_is_whole_or_absent() 
     assert "color: var(--muted);" in note and "font-size" not in note
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b|rgb\(|oklch\(", note + text)
 
-    # In the navigation heading the ref narrows before the name, and the commit never.
+    # A mirror's navigation heading and a checkout's revision's are the name alone, so no
+    # rule styles a ref beside a name. A pin with no mirror's ref is its name, which
+    # narrows, and its commit never does.
     # The copy control keeps its size, and shows as the file header's does.
-    assert shrink(".header-ref") > 1
+    assert ".header-ref" not in css
+    assert "min-width: 0;" in block(".header-path:has(> .header-revision) > .path")
     assert "flex: none;" in block(".header-revision")
     assert "flex: none;" in block(".header-copy")
     assert "opacity: 1;" in block(".app-header:hover .header-copy")
@@ -1311,8 +1309,12 @@ def test_the_navigation_path_row_takes_one_height_and_the_view_header_its_rows()
 
     The navigation's path row reads its height from one token, so its rule sits where it
     sits whatever the path's font set measures. The main view's header is a view header
-    (docs/design-system.md, "View Headers"): rows on the main view's ground, with no rule of
-    its own and no fixed height, whose one rule is the tab bar's under it.
+    (docs/design-system.md, "View Headers"): rows on the main view's ground, with no fixed
+    height of its own. Its first row, the eyebrow, is the path row's twin across the
+    divider (mb-ch82): the same height token, the same rule, and the same text size, so the
+    two rules are one line and the two rows' text one baseline;
+    tests/dom/view-header-chrome.mjs measures both in Chrome. Under the heading row the
+    one rule is the tab bar's.
     """
 
     css = _read_styles_css()
@@ -1330,5 +1332,10 @@ def test_the_navigation_path_row_takes_one_height_and_the_view_header_its_rows()
     assert "background: var(--bg);" in view
     assert "flex-direction: column;" in view
     assert "border" not in view and "height" not in view
+    eyebrow = block(".view-header-eyebrow")
+    assert "height: var(--pane-header-row-height);" in eyebrow
+    assert "border-bottom: 1px solid var(--border);" in eyebrow
+    assert "align-items: center;" in eyebrow
+    assert "font-size: var(--nav-font-size);" in eyebrow
     bar = block(":is(.preview-pane, .preview-file-stage) .tab-bar")
     assert "background: var(--bg);" in bar

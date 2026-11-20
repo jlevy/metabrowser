@@ -43,8 +43,9 @@ links describe what was built.
   (`MetabRequirement.requiredFlags`).
   [GitHub Links](../../architecture/arch-macos-app.md#github-links) describes it.
 - **File > Open URL…** (jlevy/metabrowser#560), on Command-L, is the plan’s Open
-  Location…. It takes a full GitHub URL, with no local path and no `owner/repo`
-  shorthand. The app checks the URL with the gate it applies to a sent link, then asks
+  Location…. It takes a GitHub URL, with no local path and no `owner/repo` shorthand;
+  since 2026-11-19 it writes a GitHub URL without `https://` in full (bead `mb-nl0c`).
+  The app checks the URL with the gate it applies to a sent link, then asks
   `--present --dry-run --format json`, and opens it in its mirror, always.
   File > Open… became Open Folder….
 - **Recent targets** (jlevy/metabrowser#546), in place of a recents section drawn from
@@ -506,7 +507,9 @@ Questions 1, 2, 5, and 6 are answered; 3 and 4 wait for the owner.
    opens the mirror. When a checkout of its repository is known, Open URL… is to offer
    “borrow from the checkout” or “open the checkout instead”
    ([The File Menu](../../architecture/arch-open-modes.md#the-file-menu)). The mirror is
-   built (jlevy/metabrowser#560); the offer is not (`mb-bkk2`).
+   built (jlevy/metabrowser#560); the offer is not (`mb-bkk2`). Later the same day the
+   owner asked that the mirror land in the checkout’s window: its new window joins an
+   open checkout’s window of that repository as a tab (`mb-h5dd`).
 3. **New local roots from an agent in Phase 1.** `open -a` admits any folder today, so
    an agent’s `--present` could raise a privacy prompt in the app’s name.
    Accept that for the first release, or send roots the app does not have open to the
@@ -525,6 +528,9 @@ Questions 1, 2, 5, and 6 are answered; 3 and 4 wait for the owner.
    **Answered** by the owner on 2026-11-18 (bead `mb-m4mg`): no shorthand in the first
    release, only full GitHub URLs.
    Open URL… refuses one with its own message, and `--present` reads it as a local path.
+   Kept on 2026-11-19 (bead `mb-nl0c`), when the owner asked only that a GitHub URL
+   missing its `https://` be completed: Open URL… and `metab` now complete
+   `github.com/owner/repo`, and neither takes `owner/repo`.
 6. **Shortcut for Open Location….** Command-L, as browsers use it, or Shift-Command-O?
    **Answered** by the owner on 2026-11-18 (bead `mb-m4mg`): Command-L, which was free.
    Built in jlevy/metabrowser#560.

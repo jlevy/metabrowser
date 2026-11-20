@@ -7,6 +7,10 @@
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
+// The SDK the page gives the module, of which it calls only `shortCommit`: the shell's own.
+const { shortCommit } = require("./changed-files-tree-fixture.js").shellFormatters();
+globalThis.window = { metabrowser: { shortCommit } };
+
 const repoRoot = path.resolve(process.argv[2]);
 const failures = [];
 
@@ -156,7 +160,7 @@ async function main() {
   // ── What each control is ────────────────────────────────────────────────
   const head = viewFileSide(modified, commits);
   const address = "/view/g1-YS50eHQ";
-  const at = COMMIT.slice(0, 12);
+  const at = shortCommit(COMMIT);
   const commitPage = { kind: "pin", pin: COMMIT, branch: null };
   equal(
     "a commit's diff at the page's commit is a link",

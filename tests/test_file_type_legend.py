@@ -101,7 +101,7 @@ MANY = _breakdown(
 )
 
 
-def test_names_the_five_largest_families_across_groups_then_other() -> None:
+def test_names_every_family_at_the_floor_across_groups_largest_first_then_other() -> None:
     legend = build_file_type_legend(MANY)
     assert legend is not None
     view = legend["files"]["all"]
@@ -113,9 +113,11 @@ def test_names_the_five_largest_families_across_groups_then_other() -> None:
             {"family": "markdown", "value": 150},
             {"family": "typescript", "value": 60},
             {"family": "python", "value": 33},
+            {"family": "javascript", "value": 25},
+            {"family": "log", "value": 21},
         ],
-        # JavaScript, Rust, and Log files, plus both special rollups.
-        "other": 347,
+        # Rust, at 0.8% under the floor, plus both special rollups.
+        "other": 301,
     }
 
 
@@ -140,18 +142,24 @@ def test_follows_the_measure_and_the_population() -> None:
         "python",
         "javascript",
         "json",
+        "yaml",
+        "log",
     ]
     assert legend is not None
-    assert legend["bytes"]["all"]["other"] == 130
+    assert legend["bytes"]["all"]["other"] == 55
     assert _named(legend, "files", "unignored") == [
         "yaml",
         "markdown",
         "typescript",
         "json",
         "python",
+        "javascript",
+        "log",
+        # 8 of 800 files is exactly 1%, so Rust is named in this population alone.
+        "rust",
     ]
     assert legend["files"]["unignored"]["total"] == 800
-    assert _named(legend, "bytes", "unignored")[-1] == "yaml"
+    assert _named(legend, "bytes", "unignored")[-1] == "json"
 
 
 @pytest.mark.parametrize(
@@ -159,11 +167,11 @@ def test_follows_the_measure_and_the_population() -> None:
     [
         # Below the floor, exactly at it, and just above it, of 1,000 files.
         (9, False),
-        (10, False),
+        (10, True),
         (11, True),
     ],
 )
-def test_names_a_family_only_above_the_share_floor(rust_files: int, named: bool) -> None:
+def test_names_a_family_only_at_or_above_the_share_floor(rust_files: int, named: bool) -> None:
     breakdown = _breakdown(
         {"code": [("python", _metrics(1000 - rust_files, 1)), ("rust", _metrics(rust_files, 1))]}
     )
@@ -174,12 +182,12 @@ def test_names_a_family_only_above_the_share_floor(rust_files: int, named: bool)
     assert view["other"] == (0 if named else rust_files)
 
 
-def test_names_at_most_five_however_many_clear_the_floor() -> None:
-    families = [(f"f{index}", _metrics(100, 100)) for index in range(8)]
+def test_names_at_most_nine_however_many_clear_the_floor() -> None:
+    families = [(f"f{index}", _metrics(100, 100)) for index in range(12)]
     legend = build_file_type_legend(_breakdown({"code": families}))
     assert legend is not None
     view = legend["files"]["all"]
-    assert len(view["named"]) == LEGEND_TYPE_LIMIT == 5
+    assert len(view["named"]) == LEGEND_TYPE_LIMIT == 9
     assert view["other"] == 300
 
 

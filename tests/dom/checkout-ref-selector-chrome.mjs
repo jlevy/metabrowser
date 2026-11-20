@@ -12,9 +12,9 @@
 //      toolbar, its bundle, and its panel: the Working tree row and the folder it names,
 //      the three lists, each ref's short commit ID and age, the checked-out branch's badge;
 //   2. chooses a branch, while the working tree's page asks for its root's tallies, as its
-//      own refresh of them can, and reads the revision's page: the button and heading that
-//      name it, the committed file where the working tree's edit was, a tree with no
-//      untracked file, and the document's policy;
+//      own refresh of them can, and reads the revision's page: the button that names it,
+//      the heading, which is the folder's name alone, the committed file where the working
+//      tree's edit was, a tree with no untracked file, and the document's policy;
 //   3. reads each list there, with the served branch marked;
 //   4. switches the server back from outside the page, as another tab would, asks the page
 //      for data, and reads the offer to reload that the selector then makes, and where
@@ -243,6 +243,25 @@ const SELECTOR = `document.querySelector("#source-ref-selector .source-ref-selec
 const MOUNTED = `(document.querySelector("#source-ref-selector .source-ref-selector-panel") !== null)`;
 const ROWS = `[...document.querySelectorAll("#tree-content .tree-item")]`;
 
+// Every short commit ID the page shows, and what the commit-ID face resolves to here: each
+// is one length, in the mono face, and in the muted gray, whatever the line around it is in
+// (docs/design-system.md, "Short Commit IDs"). Matched by the class's end, as below.
+const COMMIT_IDS = `(() => {
+  const probe = document.createElement("span");
+  probe.style.color = "var(--muted)";
+  probe.style.fontFamily = "var(--font-mono)";
+  document.body.append(probe);
+  const face = { color: getComputedStyle(probe).color, font: getComputedStyle(probe).fontFamily };
+  probe.remove();
+  const ids = [...document.querySelectorAll('[class*="-commit-sha"]')]
+    .filter((node) => node.checkVisibility())
+    .map((node) => {
+      const style = getComputedStyle(node);
+      return { text: node.textContent, color: style.color, font: style.fontFamily };
+    });
+  return { face, ids };
+})()`;
+
 /** What the page shows of itself and its selector. */
 const PAGE = `(() => {
   const toggle = ${SELECTOR};
@@ -258,6 +277,7 @@ const PAGE = `(() => {
     // The button leads the Files tab's toolbar, since it chooses only what that tab shows.
     inFilesToolbar: toggle?.closest('#nav-filter-bar[data-nav-toolbar="files"]') != null,
     heading: heading ? heading.textContent.replace(/\\s+/g, " ").trim() : null,
+    commitIds: ${COMMIT_IDS},
     guard: typeof window.MetabrowserSourcePinGuard?.guardFetch === "function",
     capabilities: window.METABROWSER_SETTINGS?.CAPABILITIES ?? null,
     stale: stale && !stale.hidden ? stale.textContent.trim() : null,
@@ -295,11 +315,12 @@ const PANEL = `(() => {
   const tree = root.querySelector(".source-ref-selector-working-tree");
   const pane = document.querySelector(".tree-pane").getBoundingClientRect();
   const box = panel.getBoundingClientRect();
-  // A row's text leaves out its age, which the clock moves; the age is read on its own.
+  // A row's text leaves out its age, which the clock moves; the age is read on its own. A
+  // ref's row holds its own line, and a pull request's line under it when it has one.
   const row = (button) => {
     const age = button.querySelector(".source-ref-selector-age");
     return {
-      text: [...button.children]
+      text: [...(button.querySelector(":scope > .source-ref-selector-main") ?? button).children]
         .filter((child) => child !== age)
         .map((child) => child.innerText)
         .join(" ")
@@ -357,6 +378,7 @@ const PANEL = `(() => {
     rows: [...root.querySelectorAll(".source-ref-selector-list button")].map(row),
     ageColumn: [ageWidth("12mo", "age-old"), ageWidth("60m", "age-min"), ageWidth("7d", "age-day")],
     commitColumns: new Set(commitLefts).size,
+    commitIds: ${COMMIT_IDS},
     note: root.querySelector(".source-ref-selector-note").textContent,
     error: root.querySelector(".source-ref-selector-error").textContent,
     // The panel is inside the navigation pane, and no row is wider than it.
@@ -482,6 +504,17 @@ const LAYOUT = `({
     && window.__firstToggle.closest("#source-ref-selector")?.querySelector(".source-ref-selector-panel") != null,
 })`;
 
+// The layout sampled so far, read once a frame has run since the wait before it. The waits
+// ask the DOM, which can hold the tree's rows before any frame has drawn them: on a loaded
+// runner a new document's first frame can come after the wait answers, and a read then
+// finds no top for the tree at all (mb-hujg). A frame's callbacks run in the order they
+// were asked for, so the sampler's, asked for in the frame before, runs ahead of this one.
+async function sampledLayout() {
+  await chrome.evaluate(
+    "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))",
+  );
+  return chrome.evaluate(LAYOUT);
+}
 const result = {};
 try {
   await chrome.send("Page.enable");
@@ -494,7 +527,7 @@ try {
   result.workingTreeLoadMs = await load("/view/README.md");
   takeDataRequests();
   result.workingTree = await chrome.evaluate(PAGE);
-  result.workingTreeLayout = await chrome.evaluate(LAYOUT);
+  result.workingTreeLayout = await sampledLayout();
   // What the selector's bundle cost this page: the guard and the selector, on demand.
   result.bundle = await chrome.evaluate(`performance.getEntriesByType("resource")
     .filter((entry) => /source-(pin-guard|ref-selector)\\.js/.test(entry.name))
@@ -517,7 +550,7 @@ try {
   result.toBranch = await switchBy(rowNamed("feature"), true);
   const switched = switchAsked;
   result.branch = await chrome.evaluate(PAGE);
-  result.branchLayout = await chrome.evaluate(LAYOUT);
+  result.branchLayout = await sampledLayout();
   await capture("revision");
 
   // 3. Its lists.

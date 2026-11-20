@@ -39,6 +39,7 @@ from starlette.testclient import TestClient
 from metabrowser import server
 from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.urls import GitSource, classify_root_argument
+from metabrowser.commit_ids import short_commit
 from tests.git_pin_harness import fast_import_store, pinned_client
 from tests.golden_harness import (
     SANDBOX_STAND_IN,
@@ -241,7 +242,7 @@ def test_a_pin_with_no_mirror_is_headed_as_before_and_carries_nothing_of_one(
         "module": False,
         "heading": [
             '<span class="path"><span class="path-base">topic</span></span>'
-            f'<span class="header-revision git-commit-sha">{commit[:12]}</span>'
+            f'<span class="header-revision git-commit-sha">{short_commit(commit)}</span>'
         ],
         "status": [None, None, None],
     }
@@ -260,9 +261,13 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
         f"Mirror of file://~/git/squares.git at {pin}, stored in {location}: "
         "a bare Git repository, with no checked-out files."
     )
-    assert mirror["navigationHeading"]["text"] == f"squares topic {pin[:12]}"
-    assert mirror["mainHeading"]["file"]["text"] == f"\u2191 squares / docs mirror in {location}"
-    assert mirror["mainHeading"]["root"] == f"\u2191 mirror in {location} squares"
+    # The name alone: the ref selector names the ref, and the tooltip the commit (mb-qq4e).
+    assert mirror["navigationHeading"]["text"] == "squares"
+    # The note names the store's directory, and the tooltip the bare repository inside it.
+    directory = location.removesuffix("/repository.git")
+    assert directory != location
+    assert mirror["mainHeading"]["file"]["text"] == f"\u2191 squares / docs mirror in {directory}"
+    assert mirror["mainHeading"]["root"] == f"\u2191 mirror in {directory} squares"
     assert mirror["tooltips"] == {
         "navigationHeading": {
             "served": f"squares {sentence}",
@@ -271,7 +276,7 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
         "rootName": sentence,
         "note": sentence,
     }
-    # The full commit is copied from the control beside the short one.
+    # The full commit is copied from the control after the name.
     copy = mirror["navigationHeading"]["commitCopy"]
     assert copy["copied"] == [pin] and copy["ownerStamped"] is True
     assert copy["attributes"]["aria-label"] == f"Copy commit {pin}"

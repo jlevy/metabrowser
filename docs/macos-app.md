@@ -98,8 +98,11 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
 (`io.github.jlevy.metabrowser.dev` for a development build).
 `metab` reads each link first, and the app shows what `metab` makes of it.
 
-- **File > Open URL…** takes the full URL, starting with `https://github.com/`; a
-  shorthand such as `owner/repo` is not opened.
+- **File > Open URL…** takes a GitHub URL. It writes one typed without its scheme in
+  full, and the field shows what it opens: `github.com/owner/repo` and
+  `//github.com/owner/repo` get `https://`, and `http://github.com/…` becomes
+  `https://`. Another site’s address, a local path, an SSH address, and a shorthand such
+  as `owner/repo` are not opened.
   A space or a letter outside ASCII in the path is sent encoded, as a browser sends it,
   so a file named `Design Notes.md` opens as it does with `metab URL`. Open checks the
   URL with `metab`, and a URL it accepts opens as a sent link does, below.
@@ -112,6 +115,16 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
 - **Always the mirror:** a link opens Metabrowser’s own copy of the repository, its
   mirror in `metab`’s cache, never a checkout of it that you have open
   ([Open Modes](project/architecture/arch-open-modes.md)).
+- **Beside your checkout:** when the mirror has no window yet but a window shows a
+  checkout of the same GitHub repository, the mirror opens as a new tab of that window
+  instead of a window of its own, whatever Settings says about new folders.
+  A checkout belongs to the repository its `origin` names on github.com, not to the
+  repository its folder is named after, and a folder inside a checkout belongs to it
+  too. If several open windows show checkouts of the repository, the tab joins the one
+  you used most recently.
+  The checkout’s own tab keeps showing your working tree.
+  A checkout whose window is minimized, or whose server has not started yet, is passed
+  over, and the mirror opens as any new folder does.
 - **Asked once before a clone:** a link to a repository the cache does not hold yet asks
   first, naming the repository: opening it clones the repository into the cache and
   reads it, and its pull requests, with your `gh` sign-in.
@@ -121,20 +134,22 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   After Cancel, links into that repository sent in the same burst are not opened, and
   the app says how many; a link sent later asks again.
   A repository the cache holds opens without asking.
-- **One window per repository:** a link into a repository that has a window brings that
-  window forward, on the branch, commit, or pull request the link names and at its page.
-  Its server starts again on the link, which takes a few seconds, its other tabs reload
-  on that revision, and what pages kept in local storage starts fresh, since the server
-  comes back on a new port.
-  A start under way, such as a first clone or a File > Restart Server, finishes first,
-  and sending the same link again meanwhile starts nothing more: the window still comes
-  to the link’s page once that start ends.
+- **One window per repository:** a repository opens in one window, on its default
+  branch, whatever link opened it, and every link into the repository opens in that
+  window: a second pull request goes to its page in the same window, and a link to a
+  branch, a commit, a folder, or a file goes to its page at the revision it names.
+  Each link also refreshes the repository from GitHub, so what it shows is current.
+  The window’s server keeps running, so this takes a moment, not a restart; when a link
+  names another branch or commit than the window shows, the window switches to it, and
+  its other tabs offer to reload on it.
+  A start under way, such as a first clone, finishes first, and the newest link sent
+  meanwhile opens then.
   Without a window, a new one opens, and its server clones the repository, or uses the
   clone the cache has.
 - **A branch or commit the copy lacks:** a link to a branch, tag, or commit pushed since
-  the copy was last fetched opens the default branch while `metab` fetches it, then goes
-  to the link’s page. If GitHub does not have it either, or the fetch fails, the windows
-  stay on the default branch and the app says so.
+  the copy was last fetched waits for the refresh the link starts, then goes to the
+  link’s page. If GitHub does not have it either, the window stays where it was and the
+  app says so.
 - **A first clone** of a large repository can take minutes.
   The window says it is starting meanwhile, with the clone’s progress under it, as
   `metab` reports it in Terminal: how far the clone has got, how fast, and for how long,
@@ -178,6 +193,9 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   for the folder chooser.
   It lists the open folders, in the order you opened them, with a check mark on the
   window’s own, then the recent folders that are not open.
+  Each row’s mark, a folder or, for a GitHub repository, a cloud, stands beside the
+  name, and the row’s location, or “In another window”, is the line below the name; a
+  location too long for that line is cut in the middle, and its tooltip gives all of it.
   Choosing a folder shows it in this window, and the folder the window showed stays open
   in the background, its page kept, so switching back is instant; a folder another
   window shows brings that window forward instead.
@@ -212,8 +230,20 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
 The menus add what a browser would: File > Restart Server, Open in Default Browser,
 Reveal Server Log (each folder has its own log), and Print; View > Back, Forward, Reload
 Page, and zoom, which the app remembers; Edit > Find; and Help > Metabrowser
-Documentation, Check Setup…, and Reveal Logs Folder.
+Documentation, Check Setup…, Reveal Logs Folder, and Open Event Log, which opens
+Metabrowser’s own [event log](realtime-debugging.md#browsing-the-log), the record of
+what the servers it runs did and how long each took, at its newest segment in a window
+on the log’s own folder, which Open Recent does not list.
 The mark at the title bar’s trailing end opens the project on GitHub.
+
+Edit > Find (Command-F) opens a find bar above the page.
+It searches as a browser’s find does: the whole page, the navigation pane included,
+without regard to case, wrapping at either end, and it searches the page as it is now,
+after you open another file in place.
+Typing searches as you go; Return or Command-G finds the next match, Shift-Return or
+Shift-Command-G the previous one; Command-E makes the selected text the search string;
+and Escape or Done closes the bar.
+The search string is the one other apps’ Find shares.
 
 ## View on GitHub
 
@@ -255,16 +285,18 @@ the window, without leaving Metabrowser’s page.
 Sign in to github.com once, in any window’s popover, and you stay signed in in every
 window and tab, and after you quit and reopen the app.
 The popover keeps what github.com stores, its sign-in cookies, cache, and other site
-data, in one store of the app’s own, which macOS keeps under `~/Library/WebKit` in the
-app’s folder. It is apart from your browser, from Metabrowser’s own pages and settings,
-and from your `gh` sign-in, which is what Metabrowser reads repositories and pull
-requests with. A development build keeps a store of its own.
+data, in one store of the app’s own, which every site the app shows in its own web views
+shares, as a browser profile does; macOS keeps it under `~/Library/WebKit` in the app’s
+folder. It is apart from your browser, from Metabrowser’s own pages and settings, and
+from your `gh` sign-in, which is what Metabrowser reads repositories and pull requests
+with. A development build keeps a store of its own.
 
 - **Who can use it:** as with a browser, anyone using your Mac account can open the app
   and act as you on github.com.
 - **Signing out:** sign out on github.com in the popover, or choose Metabrowser > Clear
-  GitHub Data…, which removes everything github.com stored in the app, signs you out in
-  every window, and reloads any popover’s page.
+  Website Data…, pick `github.com` or All Websites, and Clear.
+  That removes everything the sites you picked stored in the app, signs you out of them
+  in every window, and reloads each popover showing one of them.
   It leaves your `gh` sign-in, your browser, and Metabrowser’s settings as they were.
 - **Ways to sign in:** a password, with GitHub’s two-factor code, signs in within the
   popover. A sign-in that goes through another site, such as an organization’s single
@@ -353,12 +385,14 @@ which can take seconds.
 
 Help > Check Setup… runs `metab --doctor --json` with the `metab`, `git`, and `gh` the
 app hands its servers, and shows the report: one row each for the plugins, opening from
-a terminal, `metab`, Git, the configuration directory, the cache directory, and GitHub
-CLI, with its state, what it found, and the step that fixes it, a command to copy or a
-page to open.
-[Diagnostics](command-line.md#diagnostics-and-plugins) says what each check
-covers. Settings’ Check Setup… opens the same window.
+a terminal, `metab`, Git, the configuration directory, the cache directory, the event
+log, and GitHub CLI, with its state, what it found, and the step that fixes it, a
+command to copy or a page to open.
+[Diagnostics](command-line.md#diagnostics-and-plugins) says what each check covers.
+Settings’ Check Setup… opens the same window.
 The `metab` row compares with the oldest `metab` this build of the app runs.
+The Git row names that `git`, its version, and whether it reads file ages on a Git
+revision; a Git too old for them is a warning that says which release it needs.
 
 - **Check Again** runs it again, as after following a step or choosing a `metab` in
   Settings.

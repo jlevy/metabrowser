@@ -39,6 +39,7 @@ def _render_index_html() -> str:
         def __init__(self) -> None:
             self.query_params = _FakeQuery()
             self.headers: dict[str, str] = {}
+            self.cookies: dict[str, str] = {}
 
     resp = asyncio.run(proc_browser.index(cast(Any, _FakeReq())))
     return resp.body.decode() if isinstance(resp.body, (bytes, bytearray)) else str(resp.body)
@@ -114,7 +115,7 @@ def test_folder_rollups_use_coordinated_totals_and_breakdown_sections() -> None:
     assert 'label: "File Overview"' in overview_panel
     assert "defaultExpanded: true" in overview_panel
     assert '"folder.file-overview"' in index
-    assert '<h2 class="tm-totals-heading">Files</h2>' in treemap
+    assert '<h2 class="section-heading tm-totals-heading">Files</h2>' in treemap
     assert "mountFolderTotalsView" in file_totals
     assert "mountFolderTotalsView" not in file_types
     # The bodies stay separate modules and the section composes them, so the
@@ -346,15 +347,19 @@ def test_the_checkbox_exception_is_scoped_and_explained() -> None:
     )
 
 
-def test_git_pin_hides_mtime_backed_filter_controls() -> None:
-    """A pin has no mtime, so recency would 409. Omit the control rather
-    than offering a window the tree cannot answer."""
+def test_git_pin_hides_mtime_backed_filter_controls_without_file_ages() -> None:
+    """A pin whose Git cannot date its files has no mtime, so recency would 409. Omit the
+    control rather than offering a window the tree cannot answer; where the Git can, the
+    server says so (`METABROWSER_FILE_AGES`) and the controls come back."""
 
     app = _read("app.js")
+    assert "var noFileAges = window.METABROWSER_FILE_AGES === false;" in app
     recency_at = app.index('key: "recency"', app.index("function renderNavFilterBar()"))
-    assert "isGitRevisionSource()" in app[recency_at - 160 : recency_at]
+    assert "noFileAges" in app[recency_at - 160 : recency_at]
     recent_fn = app.index("function filesPanelUsesRecentSource()")
-    assert "isGitRevisionSource()" in app[recent_fn : recent_fn + 180]
+    assert "noFileAges" in app[recent_fn : recent_fn + 180]
+    options_fn = app.index("function filterGroupOptions()")
+    assert "noFileAges" in app[options_fn : options_fn + 300]
 
 
 def test_extension_tallies_come_from_the_index_not_the_catalog() -> None:
@@ -474,22 +479,23 @@ def test_group_by_and_the_three_filters_are_dropdowns() -> None:
         assert label in fn_block, f"missing any-label {label}"
 
 
-def test_group_by_and_show_ignored_ride_the_row_and_the_filters_sit_in_the_drawer() -> None:
-    """Group by leads the row: it removes nothing, so it needs no drawer. Show ignored
-    follows it, its tick stating its own direction. The three filters sit behind the
-    disclosure, whose badge counts only them; Clear, which resets Show ignored too,
-    shows while any filter is set (mb-sogv, mb-x1h6)."""
+def test_group_by_rides_the_row_and_the_filters_and_show_ignored_sit_in_the_drawer() -> None:
+    """Group by leads the row: it removes nothing, so it needs no drawer. The three
+    filters sit behind the disclosure, and Show ignored follows them there, its tick
+    stating its own direction; the chevron's name counts the ones set, Show ignored
+    turned off among them, and it shows no count badge, which would push Clear and the
+    chevron off Group by's line in a checkout (mb-as1w). Clear, on the row, shows while any of them is set (mb-sogv, mb-x1h6,
+    mb-ey0d)."""
 
     fn_block = _render_nav_filter_bar()
     main = fn_block[fn_block.index("var main =") : fn_block.index("var drawer =")]
     drawer = fn_block[fn_block.index("var drawer =") :]
-    group_at = main.index('key: "group"')
-    assert group_at < main.index('"Show ignored"') < main.index("nav-filter-bar-end")
-    for menu in ("recencyMenu", "typeMenu", "sizeMenu"):
-        assert menu not in main
-    assert "recencyMenu +\n    typeMenu +\n    sizeMenu +" in drawer
-    assert '"Show ignored"' not in drawer
-    assert "badge: drawerCount," in main
+    assert main.index('key: "group"') < main.index("nav-filter-bar-end")
+    for control in ("recencyMenu", "typeMenu", "sizeMenu", "ignoredCheck", '"Show ignored"'):
+        assert control not in main
+    assert "recencyMenu +\n    typeMenu +\n    sizeMenu +\n    ignoredCheck +" in drawer
+    assert "badge:" not in main
+    assert "` (${drawerCount} active)`" in main
     assert "treeFilterModel.drawerFilterCount(st)" in fn_block
 
 
@@ -613,15 +619,20 @@ def test_plain_text_actions_use_the_shared_button_primitive() -> None:
         assert "file-header-action" not in source, (
             "the header no longer restates partial progress; the notice owns it"
         )
-    assert 'class="btn parent-nav-btn parent-nav-btn-icon-only folder-up"' in header
+    # Up alone, in a view header's eyebrow, is an icon button: the arrow at rest, and
+    # the hover surface only while hovered or focused, as the navigation's chevron
+    # (mb-igva). Parent navigation with a label stays the bordered `.btn`.
+    assert 'class="icon-btn folder-up"' in header
+    assert "parent-nav-btn-icon-only" not in header + css
     assert '<span class="parent-nav-arrow" aria-hidden="true">↑</span>' in header
     assert ".btn {" in css
     assert ".btn:focus-visible {" in css
     assert ".parent-nav-btn {" in css
-    assert ".parent-nav-btn-icon-only {" in css
-    parent_nav = css[css.index(".parent-nav-btn {") : css.index(".parent-nav-btn-icon-only {")]
+    parent_nav = css[css.index(".parent-nav-btn {") : css.index(".parent-nav-arrow {")]
     assert "height: var(--icon-btn-size);" in parent_nav
     assert "border-color: var(--viz-border-strong);" in parent_nav
+    up = css[css.index(".view-header-eyebrow > .folder-up {") :]
+    assert "--icon-btn-size: var(--view-header-up-size);" in up.split("}")[0]
     assert 'aria-label="Open parent folder ${esc(label)}"' in header
 
 
@@ -1043,7 +1054,10 @@ def test_opening_age_menu_refreshes_rolling_tallies() -> None:
 
     refresh_start = js.index("async function fetchRootSummary()")
     refresh_block = js[refresh_start : js.index("\nfunction ", refresh_start + 1)]
-    assert "patchOpenRecencyTallyCounts();" in refresh_block
+    assert "applyFilterTallies(data);" in refresh_block
+    helper_start = js.index("function refreshFilterTallies()")
+    helper_block = js[helper_start : js.index("\n}\n", helper_start)]
+    assert "patchOpenRecencyTallyCounts();" in helper_block
 
 
 def test_filters_reapply_when_new_rows_render() -> None:
@@ -1095,7 +1109,10 @@ def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
     # count: a comment added inside this one pushed the last assertion out
     # of an 1800-character window and failed a behavior that had not changed.
     block = js[start : js.index("\nfunction ", start + 1)]
-    assert "filterOpenMenu === null" in block
+    # Its counts go through the one helper, which leaves the bar alone while a menu is open.
+    assert "applyFilterTallies(data);" in block
+    helper = js[js.index("function refreshFilterTallies()") :]
+    assert "filterOpenMenu === null" in helper[: helper.index("\n}\n")]
     # The tally is painted in place in the Files metadata band, outside the panel, so no
     # cached copy of it can revert to first-paint figures under a recency filter: no source
     # paints the panel with a tally of its own.
@@ -1362,9 +1379,9 @@ def test_agent_log_uses_the_shared_additive_chip_family() -> None:
     """
 
     css = _read("styles.css")
-    plugin_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "agent_log"
-    plugin = (plugin_root / "index.js").read_text()
-    plugin_css = (plugin_root / "styles.css").read_text()
+    plugin_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "agents"
+    plugin = (plugin_root / "agent-log.js").read_text()
+    plugin_css = (plugin_root / "agent-log.css").read_text()
 
     assert ".nav-filter-bar {" in css
     assert "mb.filterControls" in plugin

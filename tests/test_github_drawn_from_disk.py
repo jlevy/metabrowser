@@ -196,6 +196,7 @@ class Built:
     comparison_route: str
     image_route: str
     rendered_route: str
+    size_route: str
     core_body: str | None
 
     @property
@@ -363,6 +364,7 @@ def _build(root: Path, origin: Origin) -> Built:
         comparison_route=envelope["comparison_route"],
         image_route=envelope["image_route"],
         rendered_route=envelope["rendered_route"],
+        size_route=envelope["size_route"],
         core_body=entry.get("body"),
     )
     built.timeline_request.write_text(json.dumps(ask), encoding="utf-8")
@@ -570,6 +572,11 @@ def _image(_built: Built, result: Invocation) -> None:
     assert '"code": "unsupported_image"' in result.stdout
 
 
+def _size(_built: Built, result: Invocation) -> None:
+    size = answer(result)["size"]
+    assert size["state"] == "measured" and size["pushed_bytes"] > 0 and size["diff_bytes"] > 0
+
+
 def _rendered(_built: Built, result: Invocation) -> None:
     rendered = answer(result)
     assert rendered["status"] == "ready" and rendered["blocks"]
@@ -641,6 +648,16 @@ ELEMENTS: Final[tuple[Drawn, ...]] = (
         _rendered,
         # The comparison's manifest from the bank, then both sides rendered off the loop.
         _COMPARES,
+    ),
+    Drawn(
+        "Size line: what the comparison pushes",
+        "PR page",
+        "pull-size",
+        lambda built: built.size_route,
+        _size,
+        # The pair's merge base alone: the refresh that listed the files from the store
+        # measured the size and kept it beside the store, where this reads it.
+        frozenset({"merge-base"}),
     ),
 )
 

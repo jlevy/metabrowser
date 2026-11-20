@@ -188,8 +188,10 @@
     }
 
     /**
-     * The reader chose a filter. At the list's address it is part of the address; at a pull
-     * request's page it is the panel's, and the address keeps naming that pull request.
+     * The list's filter changed: the reader chose it, or a navigation moved the list to the
+     * filter that draws the pull request it named (pulls-panel.js, `placeSought`). At the
+     * list's address it is part of the address; at a pull request's page it is the panel's,
+     * and the address keeps naming that pull request.
      *
      * @param {string} state
      */

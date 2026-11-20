@@ -49,7 +49,7 @@ build:
 # ignoreSIGPIPELikeTheApp in Tests/ShellCoreTests/Support.swift, and
 # ExitObservationStressTests.swift. The patterns also match StagedDownloadTests.
 webkit_suites := DownloadTests WebConfigurationTests PagePrintTests PagePrintAuthorizationTests PageRevealWebKitTests \
-	GitHubViewWebKitTests
+	WebViewWebKitTests PageFindWebKitTests
 #
 # The WebKit gate's driver ships in no product, so nothing else would notice a change to
 # the app's views or configuration that broke its build; the gate itself needs Chrome and

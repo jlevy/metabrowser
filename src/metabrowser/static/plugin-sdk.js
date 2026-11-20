@@ -64,6 +64,8 @@
 //     formatTimestamp(secondsSinceEpoch) — local-time short form
 //     titleNodes(title)                  — a commit or PR title's nodes: a conventional-
 //                                          commit prefix in span.title-prefix, then the rest
+//     shortCommit(commit)                — a commit ID as every line names one, for an
+//                                          element of class git-commit-sha
 //     countPartsNodes(parts)             — a count summary's nodes, its numbers bold, its
 //                                          marks muted, and its status counts, "21 A",
 //                                          bold in their statuses' ink: the shell's one
@@ -1289,6 +1291,13 @@
         await _loadKpressTocModule(url);
         continue;
       }
+      // The Markdown plugin imports KPress's diagram module itself, with the figures and
+      // the Mermaid it supplies (builtin_plugins/markdown/diagrams.js, through the
+      // `kpress-diagrams` module bundle at this same URL). Loaded here, it would bind its
+      // zero-configuration behavior, which draws nothing without `globalThis.mermaid`.
+      if (asset?.id === "js/diagrams.js" || url.endsWith("/diagrams.js")) {
+        continue;
+      }
       await _loadScript(url, asset.loading);
     }
   }
@@ -1350,6 +1359,17 @@
       return Promise.reject(new Error("metabrowser.ensureAsset: asset loader is not available"));
     }
     return assets.ensureAsset(name);
+  }
+
+  // The namespace of an on-demand module bundle (asset-loader.js), such as the
+  // vendored Mermaid entry, imported the first time a consumer asks for it.
+  /** @param {string} name @returns {Promise<unknown>} */
+  function ensureModule(name) {
+    const assets = global.MetabrowserAssets;
+    if (!assets || typeof assets.ensureModule !== "function") {
+      return Promise.reject(new Error("metabrowser.ensureModule: asset loader is not available"));
+    }
+    return assets.ensureModule(name);
   }
 
   // Load the plugins that declare support for a file kind. This is public so
@@ -1599,6 +1619,14 @@
     return global.MetabrowserFormatters.titleNodes(global.document, title);
   }
 
+  // A commit ID as every line names one: its first characters, the shell's one length
+  // (docs/design-system.md, "Short Commit IDs"). Shown, it is in the commit-ID face,
+  // `.git-commit-sha`, and its full ID is a copy or a link away.
+  /** @param {string} commit @returns {string} */
+  function shortCommit(commit) {
+    return global.MetabrowserFormatters.shortCommit(commit);
+  }
+
   // The shell's painters of a count summary and a brief change line, into the page's
   // document (docs/design-system.md, "Count Summaries Bold Their Numbers", "Brief Change
   // Line").
@@ -1833,6 +1861,7 @@
     fetchKpressRender: fetchKpressRender,
     loadKpressAssets: loadKpressAssets,
     ensureAsset: ensureAsset,
+    ensureModule: ensureModule,
     ensureKindAssets: ensureKindAssets,
     whenIdle: whenIdle,
     kpressInitToc: kpressInitToc,
@@ -1844,6 +1873,7 @@
     formatAge: formatAge,
     formatTimestamp: formatTimestamp,
     titleNodes: titleNodes,
+    shortCommit: shortCommit,
     countPartsNodes: countPartsNodes,
     changeLine: changeLine,
     changeLineNodes: changeLineNodes,

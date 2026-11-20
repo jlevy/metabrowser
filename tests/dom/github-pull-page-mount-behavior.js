@@ -49,6 +49,15 @@ class Element {
   get ownerDocument() {
     return globalThis.document;
   }
+  // In the page while its root is a mount's container, a `main`, which stands for the
+  // document here: a control taken out of the header is not (mb-9zp5).
+  get isConnected() {
+    let at = this;
+    while (at.parentNode) {
+      at = at.parentNode;
+    }
+    return at.tag === "main";
+  }
   get childNodes() {
     return this.children;
   }
@@ -128,11 +137,23 @@ class Element {
     const nodes = direct
       ? this.children.filter((node) => typeof node !== "string")
       : [...this.descendants()];
-    return nodes.filter((node) =>
-      wanted === "a[href]"
-        ? node.tag === "a" && node.attributes.has("href")
-        : wanted.startsWith(".") && node.classes.has(wanted.slice(1)),
-    );
+    // A list of compounds: a class, `a[href]`, or an attribute's value with or without its
+    // tag, as the page and the Markdown plugin probe a text for a diagram
+    // (`pre[lang="mermaid"]`, `[data-kpress-diagram="mermaid"]`).
+    const compounds = wanted.split(",").map((part) => {
+      const compound = part.trim();
+      const valued = /^([a-z]*)\[([a-z-]+)="([^"]*)"\]$/.exec(compound);
+      if (compound === "a[href]") {
+        return (node) => node.tag === "a" && node.attributes.has("href");
+      }
+      if (valued !== null) {
+        return (node) =>
+          (valued[1] === "" || node.tag === valued[1]) &&
+          node.attributes.get(valued[2]) === valued[3];
+      }
+      return (node) => compound.startsWith(".") && node.classes.has(compound.slice(1));
+    });
+    return nodes.filter((node) => compounds.some((matches) => matches(node)));
   }
   querySelector(selector) {
     return this.querySelectorAll(selector)[0] ?? null;
@@ -744,6 +765,297 @@ async function textRefusal() {
   await poll();
   look("a newer record whose Markdown renders");
   handle.dispose();
+  return steps;
+}
+
+// A text's Mermaid blocks on the mounted page (A3 of the review of #597): github.com draws
+// them in a description and in comments, and so does the page, each as an image, since a
+// text is untrusted. The page reads the Markdown plugin's published host
+// (`mb.builtins.markdown.drawDiagrams`) once a text has a block, and a page with none asks
+// for nothing. A folder's page draws them as a pinned revision's does: on either, each
+// binding's Mermaid is the Markdown plugin's diagram frame's, whose own policy bounds what
+// Mermaid loads while it lays a diagram out, never the page's (markdown/diagram-frame.js).
+// A binding lasts as long as its text's section: a poll or a tab that keeps the section
+// keeps it, a section the conversation drops ends it, one dropped before the plugin
+// arrives never binds, and the page's end ends them all. The Markdown plugin's index.js,
+// place-rendered.js, diagrams.js, and diagram-frame.js run as production code; KPress's two
+// diagram modules are stubs that `ensureModule` returns, and record the placement each
+// binding asks for, the figures it holds, where its Mermaid comes from, and its disposal.
+// The SDK publishes no Mermaid bundle, so a frame's lease says so before any frame opens.
+// Returns what each step asked and bound.
+async function textDiagrams() {
+  const pullPage = pathToFileURL(
+    path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js"),
+  ).href;
+  const markdownPlugin = path.join(root, "src/metabrowser/builtin_plugins/markdown");
+  const page = await importPage(`${pullPage}?text-diagrams`);
+  // Loaded once up front, as the browser keeps a module: place-rendered.js imports it on the
+  // first diagram, and an import from the module cache settles within the session's turns.
+  await import(pathToFileURL(path.join(markdownPlugin, "diagrams.js")).href);
+  const timers = new Map();
+  globalThis.document = {
+    visibilityState: "visible",
+    addEventListener() {},
+    removeEventListener() {},
+    createElement: (tag) => new Element(tag),
+    importNode: () => new Element("svg"),
+  };
+  globalThis.window = {
+    location: { pathname: "/pull/7" },
+    setTimeout(callback, delay) {
+      const id = Symbol();
+      timers.set(id, { callback, delay });
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
+  };
+  // The allowlist is a dependency boundary here, as in markdownOwnership: a line
+  // `mermaid: <source>` of a text stands for the `<pre lang="mermaid">` both sides of the
+  // allowlist keep (tests/test_inert_html.py), and any other line for a paragraph.
+  const inert = {
+    sanitizeHtml: (html) => html,
+    kpressProse(html) {
+      const prose = document.createElement("div");
+      prose.className = "kpress-prose";
+      for (const line of String(html).split("\n")) {
+        const diagram = line.startsWith("mermaid: ");
+        const block = document.createElement(diagram ? "pre" : "p");
+        if (diagram) {
+          block.setAttribute("lang", "mermaid");
+        }
+        block.append(diagram ? line.slice("mermaid: ".length) : line);
+        prose.append(block);
+      }
+      return prose;
+    },
+  };
+  const record = (revision, description, comment) => {
+    const answer = structuredClone(recorded.current);
+    answer.body.record_revision = revision.repeat(64);
+    answer.body.record.pull.body = description;
+    answer.body.record.issue_comments[0].body = comment;
+    answer.body.record.issue_comments.splice(1);
+    answer.body.record.reviews = [];
+    answer.body.record.review_comments = [];
+    answer.body.record.comparison = null;
+    answer.body.record.unavailable.comparison = "no_store";
+    return answer;
+  };
+  let current = record("a", "No diagram here.", "Nor here.");
+  const response = (status, body) => ({
+    status,
+    headers: { get: () => null },
+    json: async () => body,
+  });
+  globalThis.fetch = async (route) => {
+    if (route.startsWith("/api/plugin/github/pull-markdown")) {
+      const part = new URL(route, "http://page").searchParams.get("part");
+      const held = current.body.record;
+      return response(200, {
+        number: 7,
+        fetched_at: current.body.fetched_at,
+        record_revision: current.body.record_revision,
+        part,
+        html: part === "body" ? held.pull.body : held.issue_comments[0].body,
+        assets: {},
+      });
+    }
+    return route.startsWith("/api/plugin/github/pull?")
+      ? response(200, current.body)
+      : { status: 304, headers: { get: () => null } };
+  };
+  /** What the page asked to load, in order, since the last step. */
+  const asked = [];
+  /** Every binding KPress's stub made, in order. */
+  const bound = [];
+  const partOf = (node) => {
+    let at = node;
+    while (at && at.getAttribute?.("data-part") === null) {
+      at = at.parentNode;
+    }
+    return at?.getAttribute?.("data-part") ?? "outside any text";
+  };
+  const modules = {
+    "kpress-diagrams": {
+      mermaidFigureFor(pre) {
+        const figure = document.createElement("figure");
+        figure.setAttribute("data-kpress-diagram", "mermaid");
+        pre.replaceWith(figure);
+        figure.append(pre);
+        return figure;
+      },
+      initKpressDiagrams(root, options) {
+        const binding = {
+          part: partOf(root),
+          placement: options.placement,
+          figures: root.querySelectorAll('[data-kpress-diagram="mermaid"]').length,
+          mermaid: "not asked",
+          disposed: false,
+        };
+        bound.push(binding);
+        // KPress asks for Mermaid once a figure needs it; the stub asks at once, to show
+        // where the binding's Mermaid comes from.
+        Promise.resolve(options.mermaid?.()).then(
+          () => {
+            binding.mermaid = "the page's";
+          },
+          (error) => {
+            binding.mermaid =
+              error.message === "The Mermaid module bundle is not published"
+                ? "the diagram frame's"
+                : error.message;
+          },
+        );
+        return {
+          figures: [],
+          ready: Promise.resolve(),
+          rerender() {},
+          dispose() {
+            binding.disposed = true;
+          },
+        };
+      },
+    },
+    "kpress-diagram-controls": { diagramControls: () => ({}) },
+  };
+  // Opened by the story to hold the Markdown plugin's arrival.
+  let arrives = Promise.resolve();
+  const loads = [];
+  // A pinned revision's page, always under the untrusted policy, unless a step serves a
+  // folder's, which may have none.
+  let served = "git_revision";
+  const sdk = {
+    perf,
+    builtins: {},
+    registerView() {},
+    renderSourceView() {},
+    ensureAsset: async () => {
+      window.MetabrowserInertHtml = inert;
+    },
+    loadKpressAssets: () => Promise.resolve(),
+    ensureKindAssets(kind) {
+      asked.push(`${kind} plugin`);
+      if (kind !== "markdown") {
+        return Promise.resolve();
+      }
+      // The plugin's index.js publishes its namespace on the SDK it finds, this one.
+      const load = arrives.then(() => {
+        window.metabrowser = sdk;
+        return import(`${pathToFileURL(path.join(markdownPlugin, "index.js")).href}?pull-text`);
+      });
+      loads.push(load);
+      return load;
+    },
+    async ensureModule(name) {
+      asked.push(name);
+      return modules[name];
+    },
+    moduleUrl(name) {
+      asked.push(`the ${name} bundle's address`);
+      return null;
+    },
+    ...require("./sdk-ref-fixture.js").refHelpers(document),
+    formatAge: () => ({ label: "now", className: "age" }),
+    formatTimestamp: () => "now",
+    navigation: { href: () => "/view/", async open() {} },
+    sourceKind: () => served,
+    icons: { toggle: "" },
+  };
+  const settled = async () => {
+    await settle();
+    await Promise.all(loads.splice(0));
+    await settle();
+  };
+  const poll = async () => {
+    const ready = [...timers.values()];
+    timers.clear();
+    for (const timer of ready) {
+      timer.callback();
+    }
+    await settled();
+  };
+  /** The page the story looks at. */
+  let shownIn = new Element("main");
+  const mount = async () => {
+    shownIn = new Element("main");
+    const handle = page.mountPullPage(
+      shownIn,
+      { number: 7, tab: "", reader: { initial: current, fetchAfterMs: 0 } },
+      sdk,
+    );
+    await settled();
+    // The first paint's bounded hold, if the Markdown did not already end it.
+    await poll();
+    return handle;
+  };
+  const steps = [];
+  const look = (label) => {
+    // The blocks the page shows, and how many of them KPress's stub made a figure of.
+    const blocks = shownIn.querySelectorAll('pre[lang="mermaid"]');
+    const figures = blocks.filter(
+      (pre) => pre.parentNode?.getAttribute("data-kpress-diagram") === "mermaid",
+    );
+    const shown = `${blocks.length} block${blocks.length === 1 ? "" : "s"}, ${figures.length} in a figure`;
+    const loaded = asked.splice(0);
+    const bindings = bound.map(
+      (binding) =>
+        `${binding.part} as ${binding.placement}, ${binding.figures} figure, ` +
+        `Mermaid ${binding.mermaid}${binding.disposed ? ", disposed" : ""}`,
+    );
+    steps.push(
+      `${label}: ${shown}; asked ${loaded.length === 0 ? "nothing" : loaded.join(", ")}; ` +
+        `bindings ${bindings.length === 0 ? "none" : bindings.join("; ")}`,
+    );
+  };
+  const plain = await mount();
+  look("a description and a comment with no Mermaid block");
+  plain.dispose();
+
+  current = record("b", "Two boxes:\nmermaid: flowchart LR; A --> B", "mermaid: pie; a: 1");
+  served = "filesystem";
+  const folder = await mount();
+  look("the same with Mermaid blocks, on a folder's page");
+  folder.dispose();
+  served = "git_revision";
+  const handle = await mount();
+  look("a description and a comment each with a Mermaid block");
+  await poll();
+  look("a poll of the same record");
+  handle.land({ tab: "files" });
+  handle.land({ tab: "" });
+  await settled();
+  look("Changes and back to Conversation");
+  current = record(
+    "c",
+    "Two boxes, renamed:\nmermaid: flowchart LR; A --> C",
+    "mermaid: pie; a: 1",
+  );
+  await poll();
+  look("the description edited, the comment not");
+  current = record("d", "No diagram any more.", "mermaid: pie; a: 1");
+  await poll();
+  look("the description's block taken out");
+  let arrive = () => {};
+  arrives = new Promise((resolve) => {
+    arrive = resolve;
+  });
+  current = record("e", "mermaid: flowchart TD; X --> Y", "mermaid: pie; a: 1");
+  const waiting = poll();
+  await settle();
+  current = record("f", "Plain again.", "mermaid: pie; a: 1");
+  const ready = [...timers.values()];
+  timers.clear();
+  for (const timer of ready) {
+    timer.callback();
+  }
+  await settle();
+  arrive();
+  await waiting;
+  await settled();
+  look("a block whose text is replaced before the Markdown plugin arrives");
+  handle.dispose();
+  await settled();
+  look("the page ends");
   return steps;
 }
 
@@ -1587,19 +1899,21 @@ async function headerShape(page) {
     },
   };
   /** What each variant's status line says, on every tab, or null where it is not there. */
+  // A failure ends in its Details, the event log's records for it (mb-9zp5).
   const STATUS = {
-    failed: "The last refresh failed: gh could not reach api.github.com",
+    failed:
+      "The last refresh failed: GitHub could not be reached because the connection to api.github.com timed outDetails",
     "behind the head":
-      "This page's code is f7c5a9918657, not the pull request's head 85fcb2fa9e77. Switch to the head",
+      "This page’s code is f7c5a99, not the pull request’s head 85fcb2f. Switch to the head",
     "a checkout at the head":
-      "This checkout's HEAD is this pull request's head. Browse the checkout",
+      "This checkout’s HEAD is this pull request’s head. Browse the checkout",
     "on its way, its last refresh failed":
-      "Fetching the pull request…The last refresh failed: gh could not reach api.github.com",
+      "Fetching the pull request…The last refresh failed: gh could not reach api.github.comDetails",
   };
   /** What each variant's note says where it is not the record's fetch, null where none. */
   const NOTE = {
     "on its way, its last refresh failed": null,
-    "held by a rate limit": /^GitHub rate limit · next check at /,
+    "held by a rate limit": /^GitHub rate limit reached\. Next attempt after /,
     "on its way": /^(Fetching the pull request…|This pull request has not been fetched yet\.)$/,
     "no GitHub repository": /^This server serves no GitHub repository\.$/,
   };
@@ -1732,6 +2046,9 @@ async function headerShape(page) {
           "title meta branches opened",
           ...(labelled ? ["labels"] : []),
           ...(name in STATUS ? ["status"] : []),
+          // The size line, then the Diff summary under it (docs/design-system.md, "Change
+          // Size Line").
+          "size",
           "summary",
         ].join(" "),
         `${name} ${tab}: the header's rows`,
@@ -1742,10 +2059,10 @@ async function headerShape(page) {
   assert.deepEqual(
     new Set(Object.values(shapes)),
     new Set([
-      "title meta branches opened labels summary",
-      "title meta branches opened summary",
-      "title meta branches opened labels status summary",
-      "title meta branches opened status summary",
+      "title meta branches opened labels size summary",
+      "title meta branches opened size summary",
+      "title meta branches opened labels status size summary",
+      "title meta branches opened status size summary",
     ]),
     JSON.stringify(shapes, null, 2),
   );
@@ -1959,6 +2276,8 @@ async function mountScripted(page, tab, options = {}) {
       ...(options.mountCounterpart === undefined
         ? {}
         : { mountCounterpart: options.mountCounterpart }),
+      // With *sdk*, more of the SDK, or a part of it replaced: the event log's reporter.
+      ...(options.sdk ?? {}),
       // With *brief*, the change line's painters, as text, and the tree's breakdown, so the
       // page draws the cached list's brief line (mb-z8ea).
       ...(options.brief === undefined && options.briefPainters !== true
@@ -2022,6 +2341,145 @@ async function mountScripted(page, tab, options = {}) {
     await idle();
   };
   return { handle, row, steps, idle, serve, poll, show, refused, container };
+}
+
+// A Diff summary that has not arrived at the event log's late threshold, and a refresh that
+// failed, each offer the event log's Details (mb-9zp5): the owner saw a summary still loading
+// after many seconds and had no way to tell slow from stuck, nor a record of it. The reporter
+// (static/event-reports.js, run by tests/dom/event-reports-session.js) is stood in for: the
+// waits the page names, how each ends, and the records it asks the Details for are told, in
+// order, for the golden.
+async function eventLogDetails(page) {
+  const told = [];
+  const waits = [];
+  const assets = [];
+  const reports = {
+    page: "k3v9q2zx",
+    lateMs: 10_000,
+    failureWindowS: 3600,
+    wait(name, options) {
+      const wait = { name, options, ended: [] };
+      waits.push(wait);
+      return { end: (outcome) => wait.ended.push(outcome) };
+    },
+    async showDetails(panel, query, options) {
+      told.push(
+        `Details asked for ${JSON.stringify(query)}, abortable ${options.signal !== undefined}`,
+      );
+      panel.replaceChildren("Still running: checkout._pull_job for 61.0 s");
+    },
+  };
+  const sdk = {
+    eventReports: reports,
+    ensureAsset: async (name) => {
+      assets.push(name);
+    },
+  };
+  const waited = () =>
+    waits
+      .map(({ name, options, ended }) =>
+        [
+          name,
+          JSON.stringify(options.detail),
+          typeof options.startedAt === "number" ? "timed from its start" : "untimed",
+          ended.length === 0 ? "running" : `ended ${ended.join(", ")}`,
+        ].join(" "),
+      )
+      .join("; ");
+  const holds = (row) =>
+    row.children.length === 1
+      ? row.children[0].classes.has("github-pull-summary-pending")
+        ? "the pending placeholder"
+        : row.children[0].classes.has("github-pull-summary-late")
+          ? `the late line "${row.children[0].textContent}"`
+          : row.children[0].classes.has("diff-summary")
+            ? "the summary"
+            : "another node"
+      : `${row.children.length} nodes`;
+  const tell = (step, mounted) => told.push(`${step}: ${holds(mounted.row())}; ${waited()}`);
+
+  // A wait that runs late, its Details opened and closed, and the page left before it ends.
+  const stuck = await mountScripted(page, "", { sdk });
+  const header = stuck.row().parentNode;
+  tell("mounted, the comparison not yet read", stuck);
+  assert.deepEqual(
+    assets.filter((name) => name === "event-reports"),
+    ["event-reports"],
+    "the reporter is asked for once, on demand",
+  );
+  waits[0].options.onLate(10_000);
+  tell("still waiting at the late threshold", stuck);
+  const late = stuck.row().children[0];
+  assert.equal(late.getAttribute("role"), "status", "the late line is announced");
+  const toggle = late.querySelector(".github-pull-details-toggle");
+  assert.equal(toggle.tag, "button", "Details is a button, so it takes focus and Enter");
+  assert.equal(toggle.getAttribute("type"), "button");
+  assert.equal(toggle.getAttribute("aria-controls"), "github-pull-details-7");
+  const expanded = () => toggle.getAttribute("aria-expanded");
+  assert.equal(expanded(), "false");
+  toggle.events.get("click")();
+  await settle();
+  const panel = header.querySelector(".event-log-details");
+  assert.equal(header.children.at(-1), panel, "the panel is the header's last row while open");
+  assert.equal(panel.getAttribute("role"), "region");
+  assert.equal(panel.getAttribute("id"), "github-pull-details-7");
+  told.push(`Details opened: expanded ${expanded()}; the panel says "${panel.textContent}"`);
+  toggle.events.get("click")();
+  told.push(
+    `Details closed: expanded ${expanded()}; panel in the header ${panel.parentNode === header}`,
+  );
+  toggle.events.get("click")();
+  await settle();
+  stuck.handle.dispose();
+  told.push(
+    `the page left: panel in the header ${panel.parentNode === header}; expanded ${expanded()}; ${waited()}`,
+  );
+
+  // A wait that runs late and then ends: the summary takes the late line's place, and the
+  // Details it offered close with it.
+  waits.length = 0;
+  const slow = await mountScripted(page, "", { sdk });
+  waits[0].options.onLate(10_000);
+  tell("another page, late", slow);
+  const slowToggle = slow.row().querySelector(".github-pull-details-toggle");
+  slowToggle.events.get("click")();
+  await settle();
+  const slowPanel = slow.container.querySelector(".event-log-details");
+  await slow.idle();
+  tell("its comparison read, its Details open", slow);
+  told.push(
+    `the late line's Details: expanded ${slowToggle.getAttribute("aria-expanded")}; panel in the header ${slowPanel.parentNode !== null}`,
+  );
+  slow.handle.dispose();
+
+  // A wait that ends before its threshold is ended, and never late.
+  waits.length = 0;
+  const quick = await mountScripted(page, "", { sdk });
+  await quick.idle();
+  tell("a page whose comparison is read at once", quick);
+  quick.handle.dispose();
+
+  // A failed refresh's Details read the window before it ended, to a minute after.
+  const failed = await mountOn(page, recorded.failed.body, "", () => "now", sdk);
+  const status = failed.container.querySelector(".github-pull-status");
+  const failureToggle = status.querySelector(".github-pull-details-toggle");
+  assert.equal(failureToggle.getAttribute("data-details"), "failure");
+  told.push(
+    `a failed refresh, ended ${recorded.failed.body.last_refresh.at}: "${status.textContent}"`,
+  );
+  failureToggle.events.get("click")();
+  await settle();
+  assert.equal(failureToggle.getAttribute("aria-expanded"), "true");
+  failed.handle.dispose();
+
+  // With no reporter, as on a page that cannot load it, Details says so.
+  const bare = await mountOn(page, recorded.failed.body, "", () => "now");
+  const bareToggle = bare.container.querySelector(".github-pull-details-toggle");
+  bareToggle.events.get("click")();
+  await settle();
+  told.push(`no reporter: "${bare.container.querySelector(".event-log-details").textContent}"`);
+  bare.handle.dispose();
+  return told;
 }
 
 // The pull request's Diff summary is the header's last row, on every tab (mb-pb35). Its row
@@ -2666,6 +3124,41 @@ async function coldHold(page) {
   const opened = await mountScripted(page, "");
   tell("mounted with its record in hand", opened.container);
   opened.handle.dispose();
+  // The cold header's title: "Pull request #7", held at two lines, or, with the Pulls tab's
+  // row for it in hand as the list notes it, the record's shape with the row's state and
+  // title, so the record lands on the same lines (review A on #608). A page does not know its
+  // repository before its record, so a number two repositories' lists both name titles no
+  // cold header. The rows are older than any record, so no later step's state is the list's.
+  const states = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-state.js")).href
+  );
+  const titled = (step, container) => {
+    const title = container.querySelector(".github-pull-title");
+    const shape = title.classes.has("github-pull-title-with-state")
+      ? "the record's shape"
+      : "plain";
+    told.push(`${step}: title "${title.textContent}", ${shape}`);
+  };
+  const plain = await mountScripted(page, "", { cold: true });
+  titled("no Pulls row in hand, mounted with no record in hand", plain.container);
+  plain.handle.dispose();
+  const listedAt = "2000-01-01T00:00:00Z";
+  states.noteListed("https://github.com/octo/listed", [
+    { number: 7, state: "open", updatedAt: listedAt, title: "Count to two in the app" },
+  ]);
+  const seeded = await mountScripted(page, "", { cold: true });
+  titled("its Pulls row in hand, mounted with no record in hand", seeded.container);
+  tell("its Pulls row in hand, mounted with no record in hand", seeded.container);
+  seeded.handle.dispose();
+  states.noteListed("https://github.com/octo/also-listed", [
+    { number: 7, state: "merged", updatedAt: listedAt, title: "Another seven" },
+  ]);
+  const ambiguous = await mountScripted(page, "", { cold: true });
+  titled(
+    "two repositories' rows for its number, mounted with no record in hand",
+    ambiguous.container,
+  );
+  ambiguous.handle.dispose();
   return told;
 }
 
@@ -3406,7 +3899,9 @@ async function run() {
   const counterpartStepsTold = await counterpartSteps(page);
   const tabKeySteps = await tabKeys(page);
   const textRefusalSteps = await textRefusal();
+  const textDiagramSteps = await textDiagrams();
   const switchUnavailableSteps = await switchUnavailable(page);
+  const eventLogDetailsSteps = await eventLogDetails(page);
   for (const label of [
     "githubPull:decode",
     "githubPull:render",
@@ -3437,7 +3932,9 @@ async function run() {
     counterpart: counterpartStepsTold,
     tabKeys: tabKeySteps,
     textRefusal: textRefusalSteps,
+    textDiagrams: textDiagramSteps,
     switchUnavailable: switchUnavailableSteps,
+    eventLogDetails: eventLogDetailsSteps,
   };
 }
 module.exports = { Element, recorded, root, settle, perf };

@@ -1,4 +1,4 @@
-"""Logical paths of the ``f01`` layout, relative to the application home.
+"""Logical paths of the ``f02`` layout, relative to the application home.
 
 Every cache module and the read routes spell layout locations through these names, so a
 physical spelling changes in one place. Callers pass only validated slugs, store keys,

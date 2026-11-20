@@ -25,7 +25,9 @@ serves and how a pinned revision projects its tree, and the
 | `git/log.py`, `git/detail.py` | Argument vectors and parsers for refs, log records, and one commit |
 | `git/history.py` | History sessions, cursors, and graph checkpoints |
 | `git/ref_state.py`, `git/route_memo.py` | Naming the refs’ state, and answers kept under it |
+| `git/file_ages.py`, `git/file_ages_service.py` | When each file of a revision last changed, from `git last-modified`, and the answers kept per commit |
 | `git/shallow.py` | What a shallow boundary leaves certain |
+| `git/change_size.py` | A change’s size as Git pushes it and as a patch, measured once and kept |
 | `git/wire.py` | The JSON shapes the routes emit, and their validators |
 | `static/git-graph.js` | Lane assignment and row SVG, ported from VS Code |
 | `static/git-history-window.js` | The browser’s page cache and virtual window |
@@ -171,8 +173,11 @@ octal escapes. Commands that must carry any byte use `-z` NUL framing, where Git
 quoting at all.
 
 Object IDs are full: SHA-1 or SHA-256 hexadecimal, checked by `is_full_revision` in
-`git/wire.py`. Abbreviations come from Git as `short_id`, which respects `core.abbrev`
-and grows with the repository; truncating in the browser would eventually collide.
+`git/wire.py`. Every address and copy carries the full ID. Git’s own abbreviation comes
+as `short_id`, which respects `core.abbrev` and grows with the repository, for a caller
+that hands it back to Git; the page shows a commit by a fixed length cut from `id`, as
+GitHub does ([Short Commit IDs](../../design-system.md#short-commit-ids)), since a shown
+ID is read, not resolved.
 
 ## Discovery and the Exact-Root Gate
 
@@ -217,6 +222,8 @@ The read-only routes, registered as `GIT_ROUTES` in `git/routes.py`:
 | `/api/git/summary` | History depth for the panel header: commit count in scope and oldest root-commit date |
 | `/api/git/log` | One page of a history session |
 | `/api/git/commit/{revision}` | One commit’s message, files, and counts |
+| `/api/git/commit-markdown/{revision}` | One commit’s body rendered as Markdown, with its trailers as written |
+| `/api/git/commit-size/{revision}` | One commit’s size as Git pushes it and as a patch |
 
 `tests/test_git_arch_doc.py` compares this table to `GIT_ROUTES`. The routes also appear
 in the [views, models, and routes map](arch-views-models-routes.md).
@@ -242,6 +249,18 @@ work. On a served mirror the commit view can ask for the fetch such a commit wai
 `POST /api/source/refresh` with `{"for": "commit"}`; the functional row
 `git.unfetched-commit` in the [parity registry](arch-parity-registry.md) pins that
 sequence.
+
+`/api/git/commit-markdown/{revision}` reads the commit’s message with one `git show -s`
+and renders its body through the path a pull request’s description takes: KPress in the
+Markdown child under its deadline, then the inert allowlist.
+The commit page asks for it beside the commit route, which keeps the message as written
+for the hover card and for a body that is not rendered.
+The `git/message.py` docstring says what differs from a description: Git’s trailers are
+split off as written, links resolve against `COMMIT_MESSAGE_LINK_BASE`, so only an
+absolute one keeps its address, and a body past `GIT_COMMIT_BODY_MARKDOWN_MAX_BYTES`
+(`settings.py`) answers 422 `body_too_large` and is shown as written.
+The same 404 and 400 answers apply, and a revision that names an object that is not a
+commit is not found.
 
 ## Answers Kept Under the Refs’ State
 
@@ -382,6 +401,167 @@ no diff surface of its own.
 The page keeps those comparisons, as [the diff pipeline](arch-diff-pipeline.md#caches)
 describes.
 
+## File Ages
+
+**Status:** Implemented: a pinned revision’s tree nodes and file envelopes carry
+`mtime`, its index progress carries the state of getting it, Group by age, Modified
+within, and Recent read those times, and the page draws again when they land.
+
+A Git revision has no modification times, so a file’s age is the committer time of the
+last commit that changed it, which is what a hosting site’s file list shows, and a
+directory’s is the newest of its files’.
+`git/file_ages.py` takes both from Git itself: it runs
+`git last-modified -r -z <commit>` at the store, reads the commit each file names, asks
+`git log --no-walk` for those commits’ times, and walks no history of its own.
+The meaning is `git log -1 -- <path>`’s, which history simplification gives: a change on
+a side branch that a merge discarded is not the file’s last change, and a file only a
+merge’s resolution changed is dated by the merge.
+A plain `git log --name-only` pass gets both wrong, which is why this does not stand in
+for the command.
+
+- **The Git it needs.** `git last-modified` is Git 2.52’s and experimental there.
+  `FILE_AGES_GIT_MINIMUM` is the first release that carries the fixes of its early
+  defects, and it is tested at the release the `admitted-git` CI job builds for it, not
+  at the minimum itself.
+  The read names neither a pathspec nor a subdirectory.
+  With an older Git, or when the command fails, nothing replaces it: a revision shows no
+  times, as before, `/api/capabilities` says so (`file_ages.hint`), and `metab --doctor`
+  names the version found and the step that upgrades it.
+  `file_ages_availability` is the one place the question is answered.
+- **Never waited for.** `file_ages_service.FileAgesService` keeps one answer per commit
+  ID, in memory, bounded by `GIT_AGES_CACHE_REVISIONS`, and reads a missing one as a
+  background job named `file_ages.read` in the [event log](../../realtime-debugging.md).
+  A route asks `request`, which returns the answer, or `dating`, or why there is none,
+  at once. `/api/tree` carries `mtime` on the nodes it can date and an `ages` state;
+  `/api/index/progress` carries the same state, which a page polls and a command that
+  prints it waits on (`wait_for_index` in `cli/asgi_client.py`, for `/api/tree`,
+  `/api/recent` and the progress route itself, and for `/api/file` only when asked with
+  `?ages=1`, which the route ignores: a file’s envelope takes its time from an answer
+  that is there and starts no read, since a page opens many files and asks for none.
+  Every other `--api` route passes `ages=0` and never starts the read).
+  A file the answer leaves undated carries no `mtime`. A read that fails is asked again
+  after `GIT_AGES_RETRY_AFTER_S`, and every step of one is inside its `file_ages.read`
+  span, so a failure leaves a record with Git’s stderr.
+  An answer cut by its budget is served, and the first request after
+  `GIT_AGES_CUT_RETRY_AFTER_S` starts a read to replace it while it goes on being
+  served, so a history too large to finish does not lose its ages for the length of
+  every read; a read that fails leaves it.
+  At most `GIT_AGES_MAX_CONCURRENT_READS` reads run at once across every revision the
+  process shows, because a read’s memory follows its history; the next waits for a slot
+  and is `dating` meanwhile, and a read cancelled while it waits leaves the queue.
+  A served pin has one revision and leaving it cancels its read, so the bound is a
+  defence for a caller of the service, and only its tests reach it.
+- **What reads them.** The age bands and windows are cut at one instant per request, so
+  the groups of one grouped answer partition the times; a file the answer leaves undated
+  is in no window and no band but a last group, `undated`, whose name carries
+  `older_than` when the answer has one.
+  A grouped answer asks for the state of the read once and buckets every file once at
+  that instant (`_GitTimes`), so all its groups are cut from one state of one answer,
+  and the split costs one pass over the files and not one per group (the measurement is
+  beside `_GitTimes`). The answer carries `recency_tallies` for the Modified within
+  menu, grouped or not.
+  A folder row in a group or a window is dated by the newest of the files that put it
+  there, as its count is, and not by the whole folder.
+  A submodule (a gitlink) has no time and is no file the answer dates, so it is listed
+  in no age group and in no window, as it is in the ungrouped tree and in By file type.
+  `/api/recent` lists the newest files of a window with the folders above each by name
+  (`dir_names`) and counts the files it could not date (`undated`): those that pass its
+  other filters and have no time, whatever the window, since a window cannot place them
+  and a shallow clone’s may be inside it.
+  The file envelope carries `mtime` only from an answer that is already there.
+  OLD
+
+swap(<<'OLD', <<'NEW', “the page”);
+- **The page.** A response that says `ages.state` is `dating` starts one watch
+  (`static/revision-ages.js`) that asks `/api/index/progress` every `GIT_AGES_POLL_MS`
+  and, when the answer lands, draws the tree, grouped tree, or Recent list again, once;
+  folders opened before it are read again when opened.
+  The page never waits: until then every file is undated.
+  OLD
+- **The page.** A response that says `ages.state` is anything but `ready` brings in
+  `static/revision-ages.js`, an on-demand script (the `revision-ages` bundle, offered
+  only to a page whose Git can read ages), so a page whose Git cannot, or whose answer
+  was whole at its first request, never fetches it.
+  A `dating` response starts one watch that asks `/api/index/progress` every
+  `GIT_AGES_POLL_MS`, retries a failed poll a few times, and gives up after
+  `GIT_AGES_WATCH_GIVE_UP_MS`. When the answer lands, or a response says it has, the
+  page draws the tree, grouped tree, Recent list and the open file again, once, and
+  drops the folders it had read.
+  The page never waits: until then every file is undated, the Modified within counts
+  read “…”, a Recent list says it is reading, and the line that counts the files a
+  filter keeps adds a clause saying so (an item of a line that is already there, so the
+  tree does not move; `annotate`); it also says why a read failed and how many files
+  could not be dated, and the Undated group’s name says which state it is in.
+  A revision whose Git cannot date its files has `recency` false, so these answer
+  `unsupported_for_subject` and the page does not offer them
+  (`GitRevisionSubject.capabilities`, `METABROWSER_FILE_AGES`).
+- **The page.** A response that says `ages.state` is `dating` starts one watch
+  (`static/revision-ages.js`) that asks `/api/index/progress` every `GIT_AGES_POLL_MS`
+  and, when the answer lands, draws the tree, grouped tree, or Recent list again, once;
+  folders opened before it are read again when opened.
+  The page never waits: until then every file is undated.
+- **Per commit.** A commit ID names a tree for good, so an answer is never stale: a
+  branch shown again is a lookup, a new branch or tag is read for its own tip, and a tip
+  whose ancestor is answered, with no merge commit between them, reads `C ^A`, so Git
+  walks only the commits since it.
+  That derivation is the same answer as a cold read only over a range with no merge:
+  Git’s `^A` boundary marks a file whose last change it could not place after `A`, and
+  across a merge that can name `A` for a file whose last change is older (a merge that
+  restores a mode, for one).
+  `nearest_ancestor` therefore offers an ancestor only when
+  `git rev-list --merges --count A..C` is 0, and never an answer that was cut by its
+  budget, and otherwise the answer is read cold.
+  A file the derived read reports as unchanged since an excluded commit other than the
+  ancestor would need that commit’s own answer, so the whole answer is then read again,
+  with its own budget.
+  `tests/test_git_file_ages.py` checks cold reads against `git log -1 -- <path>`, and
+  derived reads against cold ones over random histories with merges.
+- **What it does not know.** A shallow boundary is a root to Git, which adds every file,
+  so a file last changed there is *undated* and the answer says `older_than`: the
+  boundary commit’s time, never the time a file was not changed at.
+  A read past `GIT_AGES_TIMEOUT_S` is cut, and Git prints a file as soon as it knows it,
+  so the files it had printed keep their times and the rest are undated, last changed
+  before the oldest commit printed.
+- **A checkout’s revision.** The mechanism is the same: the commit’s store target is the
+  checkout’s Git directory, which a read leaves as it found it, and the answers are in
+  the process’s memory, so nothing is written there.
+
+`settings.py` records beside `GIT_AGES_TIMEOUT_S` what a read cost on four histories,
+with and without a commit-graph, and what a one-level read cost, which is why no store
+is given a commit-graph and why the whole tree is read, not the directory on screen.
+
+## Change Sizes
+
+A change’s size is two numbers, both measured by `git/change_size.py`: the thin pack
+`git push` sends for it, every object the head reaches that the base does not,
+compressed and stored as deltas against each other and against the base’s objects
+(`pushed_bytes`), and its patch, `git diff --binary`, uncompressed (`diff_bytes`), with
+the commits the change holds.
+A commit’s change is against its first parent, as its detail is; a pull request’s is its
+head against the merge base its Files changed compares.
+Neither the sum of the new objects’ sizes nor their size on disk answers the question:
+the first counts every touched file and directory whole, and the second depends on how
+the repository’s packs happen to be laid out; the module docstring has the measurements.
+
+Every option that could move either number is pinned on the command line, the reader’s
+and the repository’s configuration included, and `--no-reuse-object` keeps the store’s
+own packs out of the pack, so a size is a function of the two commit IDs and of the zlib
+Git is built with. A measured size is therefore never measured again: it is kept in
+memory, and for a [repository store](arch-repository-cache.md#layout) in its
+`change-sizes/` bank, which a fresh server reads.
+A served folder keeps sizes in memory only, since browsing a folder never touches the
+cache. `pack-objects` is a store read only with `--stdout`, which `git/process.py`
+enforces.
+
+What cannot be known is answered `unknown` with a reason, never as a number that is
+wrong: `parent_unavailable` at a shallow boundary, `history_unavailable` for a walk that
+crosses one, `objects_unavailable` for an object the repository lacks, and `too_costly`
+past the request deadline, which is kept for the process so it is paid once.
+`/api/git/commit-size/{revision}` is a route of its own, apart from the commit route the
+hover card asks for on every row, because a first measurement takes a pack’s time.
+The pull request’s size is `GET github/pull-size`
+([GitHub Pull Requests](arch-github-pull-requests.md)).
+
 ## Wire Models
 
 `git/wire.py` uses `TypedDict` with `NotRequired`, plus validators and `_*_REQUIRED`
@@ -394,6 +574,9 @@ closed vocabulary.
 For a new Git model, default to the `diff/format.py` idiom.
 Use `TypedDict` only where a producer streams many rows and the construction cost is
 measured, and then say so in the module and keep the gate set in one place.
+`GitChangeSize` is a `TypedDict` because it is a field of `TypedDict` answers, the Pulls
+rows’ summary among them, and its validator, `validate_git_change_size`, is its one
+gate.
 
 ## Providers
 

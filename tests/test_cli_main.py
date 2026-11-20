@@ -33,7 +33,13 @@ from metabrowser import __version__
 from metabrowser.build_version import display_version_line
 from metabrowser.cache import urls as cache_urls
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
-from metabrowser.cli.main import _EXPLICIT_URL, _app, _is_plain_local_root, main
+from metabrowser.cli.main import (
+    _EXPLICIT_URL,
+    _app,
+    _is_plain_local_root,
+    _root_in_full,
+    main,
+)
 from metabrowser.cli.serve import (
     _STOPPING_NOTICE,
     _QuietForceExitServer,
@@ -933,6 +939,67 @@ def test_explicit_url_pattern_matches_the_grammar() -> None:
         assert (_EXPLICIT_URL.match(value) is not None) is expected, value
 
 
+@pytest.mark.parametrize(
+    ("value", "in_full"),
+    [
+        ("github.com/octo/demo", "https://github.com/octo/demo"),
+        ("GitHub.com/octo/demo/pull/7", "https://GitHub.com/octo/demo/pull/7"),
+        ("www.github.com/octo/demo", "https://www.github.com/octo/demo"),
+        (
+            "raw.githubusercontent.com/octo/demo/main/a.md",
+            "https://raw.githubusercontent.com/octo/demo/main/a.md",
+        ),
+        ("github.com/octo/demo/issues/5", "https://github.com/octo/demo/issues/5"),
+        ("github.com", "https://github.com"),
+    ],
+)
+def test_a_github_url_typed_without_https_is_written_in_full(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str, in_full: str
+) -> None:
+    """A host the GitHub reducer claims gets ``https://`` when nothing on disk has the
+    name; the reducer then reads it as the full URL, refusal and all."""
+    monkeypatch.chdir(tmp_path)
+    assert _root_in_full(value) == in_full
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "gitlab.com/octo/demo",
+        "gist.github.com/octo/0123",
+        "github.com.evil.example/octo/demo",
+        "github.com:8443/octo/demo",
+        "user@github.com/octo/demo",
+        "git@github.com:octo/demo.git",
+        "https://github.com/octo/demo",
+        "http://github.com/octo/demo",
+        "//github.com/octo/demo",
+        "octo/demo",
+        "README.md",
+        "",
+    ],
+)
+def test_anything_else_typed_without_https_is_left_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """Another host, a user name or port, a scheme, and ``owner/repo`` are not completed."""
+    monkeypatch.chdir(tmp_path)
+    assert _root_in_full(value) == value
+
+
+def test_a_path_that_exists_is_not_written_as_a_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A folder named for a GitHub URL, or a dangling link, is still the path it names."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "github.com" / "octo" / "demo").mkdir(parents=True)
+    (tmp_path / "www.github.com").symlink_to(tmp_path / "nowhere")
+
+    assert _root_in_full("github.com/octo/demo") == "github.com/octo/demo"
+    assert _root_in_full("www.github.com") == "www.github.com"
+    assert _root_in_full("github.com/octo/other") == "https://github.com/octo/other"
+
+
 def test_cli_serves_an_existing_folder_without_asking_the_grammar(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1443,5 +1510,5 @@ def test_cli_plugins_list_works() -> None:
     result = runner.invoke(_app, ["--plugins"])
     assert result.exit_code == 0
     # Built-in plugins should always be discovered.
-    assert "agent-log" in result.output
+    assert "agents" in result.output
     assert "markdown" in result.output

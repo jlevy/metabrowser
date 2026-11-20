@@ -154,8 +154,12 @@ def test_the_shortcut_strip_keeps_one_row_until_it_is_filled() -> None:
     rule = _rule(_css(), ".nav-shortcut-hints[hidden]")
     assert "visibility: hidden;" in rule
     assert "display: none" not in rule
-    # A keycap is 1.5 lines of the strip's own type, so the reservation is in line units.
-    assert re.search(r"min-height: calc\([^;]*1\.5em\)", rule), rule
+    # A keycap is 1.5 lines of the strip's own type, so the reservation is in line units:
+    # the row's height token, which the chevron is placed on too (mb-yw18), plus the rule.
+    assert "min-height: calc(1px + var(--nav-shortcut-row-height));" in rule, rule
+    assert re.search(
+        r"--nav-shortcut-row-height: calc\([^;]*1\.5 \* var\(--kbd-font-size\)\);", _css()
+    )
     keycap = _rule(_css(), ".kbd")
     assert "line-height: 1.5;" in keycap
     assert "font-size: var(--kbd-font-size);" in keycap
@@ -285,15 +289,29 @@ def _github_css() -> str:
 
 
 def test_a_title_holds_two_lines_and_never_more() -> None:
-    """A pull request's title was 1 to 3 lines, 30 px each, under the tab bar's feet."""
+    """A pull request's title was 1 to 3 lines, 30 px each, under the tab bar's feet.
+
+    It is cut short at two lines. A record's title is its own one or two lines, and the
+    author's line is `--page-title-gap` under it: a held second line stood between a one-line
+    title and its author, 36.5 px of space where a two-line title had 6 (mb-wcbc). The commit
+    view's subject is the same heading, and holds no line either. The title while the record
+    is on its way, where the Pulls tab has no row to title it with, holds two, the most a
+    record's title takes, and a record seen landing on it keeps them
+    (`.github-pull-title-held`, set by pull-page.js), so the record lands moving nothing
+    (review A on #608).
+    """
 
     css = _github_css()
-    assert "min-height: 2lh;" in _rule(css, ".github-pull-title")
+    assert not re.search(r"(?m)^\.github-pull-title\s*\{", css)
+    assert "min-height" not in _rule(css, ".github-pull-title-with-state")
     clamp = _rule(css, ".github-pull-title-text")
     assert "-webkit-line-clamp: 2;" in clamp and "line-clamp: 2;" in clamp
     assert "overflow: hidden;" in clamp
-    # The commit view's subject is the same heading, and holds the same two lines.
-    assert "min-height: 2lh;" in _rule(_css(), ".git-commit-subject.page-heading")
+    cold = _rule(css, ".github-pull-title:not(.github-pull-title-with-state)")
+    assert "min-height: 2lh;" in cold
+    assert "-webkit-line-clamp: 2;" in cold and "line-clamp: 2;" in cold
+    assert "min-height: 2lh;" in _rule(css, ".github-pull-title-held > .github-pull-title")
+    assert not re.search(r"(?m)^\.git-commit-subject\.page-heading\s*\{", _css())
 
 
 def test_the_state_row_is_one_line_held_by_a_strut() -> None:
@@ -544,7 +562,7 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     assert "grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr);" in change
     assert "column-gap: var(--github-pull-row-gap);" in change
     assert "column-gap: var(--github-pull-row-gap);" in _rule(css, ".github-pulls-row")
-    assert "  --github-pull-row-gap: 6px;\n" in css
+    assert "  --github-pull-row-gap: var(--tree-icon-gap);\n" in css
     column = (
         "--github-pull-row-text-column: calc(var(--tree-icon-slot) + var(--github-pull-row-gap));"
     )

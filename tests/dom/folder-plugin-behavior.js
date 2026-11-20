@@ -448,7 +448,7 @@ sandbox.MetabrowserNavigationRoute.attachController({
   );
   check(
     "Files heading precedes the treemap",
-    container.innerHTML.includes('<h2 class="tm-totals-heading">Files</h2>'),
+    container.innerHTML.includes('<h2 class="section-heading tm-totals-heading">Files</h2>'),
     container.innerHTML,
   );
   check("shared controls rendered", container.innerHTML.includes("folder-rollup-controls"));
@@ -1034,7 +1034,7 @@ sandbox.MetabrowserNavigationRoute.attachController({
       await new Promise((resolve) => setImmediate(resolve));
       check(
         `treemap: ${name} on a capped index carries the notice`,
-        pane.status.textContent.startsWith("Index capped at 500,000 files"),
+        pane.status.textContent.startsWith("Only the first 500,000 files were scanned"),
         pane.status.textContent,
       );
       check(

@@ -1,5 +1,7 @@
-// Hiding the navigation pane: the chevron at the foot of the main page's left edge, and
-// `\` (docs/keyboard-shortcuts.md), close the pane and open it again.
+// Hiding the navigation pane: the chevron on the shortcut strip's row at the main page's
+// foot, and `\` (docs/keyboard-shortcuts.md), close the pane and open it again. app.js
+// (`alignNavCollapseButton`) and the stylesheet (`.nav-collapse-toggle`) place the
+// chevron, so nothing here measures it.
 //
 // The pane does not shrink. Hidden, it leaves the layout, and the main frame, which
 // already floats over it with its left shadow, slides left over it to the window's
@@ -52,7 +54,6 @@
 
   /**
    * @param {{
-   *   anchor?: HTMLElement | null,
    *   button: HTMLButtonElement,
    *   container: HTMLElement,
    *   document?: Document,
@@ -217,29 +218,6 @@
       toggle();
     }
 
-    // The button sits on the shortcut strip's row, which moves when a row below it, the
-    // scan's progress or a mirror's freshness, shows or hides: centered on the strip, which
-    // starts where the pane starts, as the frame does.
-    /** @type {ResizeObserver | null} */
-    let alignment = null;
-    const anchor = options.anchor ?? null;
-    if (anchor && typeof global.ResizeObserver === "function") {
-      alignment = new global.ResizeObserver(() => {
-        const top = anchor.offsetTop + (anchor.offsetHeight - button.offsetHeight) / 2;
-        button.style.top = `${Math.round(top)}px`;
-        button.style.bottom = "auto";
-      });
-      alignment.observe(pane);
-      alignment.observe(button);
-      for (
-        let node = /** @type {Element | null} */ (anchor);
-        node;
-        node = node.nextElementSibling
-      ) {
-        alignment.observe(node);
-      }
-    }
-
     button.addEventListener("click", onClick);
     renderButton();
 
@@ -255,7 +233,6 @@
       },
       dispose() {
         finishSlide();
-        alignment?.disconnect();
         button.removeEventListener("click", onClick);
         listeners.clear();
       },

@@ -20,7 +20,7 @@
   "mirror": {
     "kind": "git_revision",
     "title": "squares • Metabrowser",
-    "heading": "<span class=\"path\"><span class=\"path-base\">squares</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision git-commit-sha\">42382ea2303b</span>",
+    "heading": "<span class=\"path\"><span class=\"path-base\">squares</span></span>",
     "dataset": {
       "servedRoot": "squares",
       "mirrorLocation": "~/.cache/metabrowser/repository-stores/store-key-1/repository.git",
@@ -43,7 +43,7 @@
   "hostile": {
     "kind": "git_revision",
     "title": "a<b>&�x • Metabrowser",
-    "heading": "<span class=\"path\"><span class=\"path-base\">a&lt;b&gt;&amp;�x</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision git-commit-sha\">42382ea2303b</span>",
+    "heading": "<span class=\"path\"><span class=\"path-base\">a&lt;b&gt;&amp;�x</span></span>",
     "dataset": {
       "servedRoot": "a<b>&�x",
       "mirrorLocation": "~/odd\"<&>home/repository-stores/store-key-2/repository.git",

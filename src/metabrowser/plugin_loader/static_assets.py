@@ -160,6 +160,49 @@ def _resolve_sidekick(spec: str) -> Callable[[Request], Awaitable[Response] | Re
     return cast(Callable[[Request], Awaitable[Response] | Response], fn)
 
 
+FolderOffer = Callable[[Path], bool]
+
+
+def resolve_folder_offers(plugins: list[LoadedPlugin]) -> dict[str, FolderOffer | None]:
+    """Each offered folder view's predicate, by view id; ``None`` where it never applies.
+
+    A view whose predicate cannot be imported, or that an operator directory's
+    JavaScript-only plugin declares, maps to ``None``: the server then never offers it,
+    rather than offering it everywhere, and the log says why.
+    """
+
+    offers: dict[str, FolderOffer | None] = {}
+    for plugin in plugins:
+        for view in plugin.manifest.view:
+            if view.offer is None:
+                continue
+            if plugin.source.startswith("local:"):
+                LOG.warning(
+                    "metabrowser local plugin '%s' offers folder view %s through Python; "
+                    "operator-directory plugins are JavaScript-only, so it is never offered",
+                    plugin.name,
+                    view.id,
+                )
+                offers[view.id] = None
+                continue
+            module_name, _, attr = view.offer.partition(":")
+            try:
+                predicate = getattr(importlib.import_module(module_name), attr)
+                if not callable(predicate):
+                    raise TypeError(f"{view.offer} is not callable")
+            except (ImportError, AttributeError, TypeError) as exc:
+                LOG.warning(
+                    "metabrowser plugin '%s' folder view %s is never offered: %s",
+                    plugin.name,
+                    view.id,
+                    exc,
+                )
+                offers[view.id] = None
+                continue
+            offers[view.id] = cast(FolderOffer, predicate)
+    return offers
+
+
 def _make_data_hook_handler(
     plugin: LoadedPlugin,
     route: str,

@@ -31,6 +31,7 @@ from httpx2 import ASGITransport, AsyncClient
 
 from metabrowser import frontmatter_yaml, jsonl_view, kpress_adapter
 from metabrowser.capabilities import Capabilities, set_capabilities
+from metabrowser.commit_ids import short_commit
 from metabrowser.diff.format import validate_document
 from metabrowser.diff.markdown_projection_worker import InertRender, ProjectionWorker
 from metabrowser.git.content_routes import split_git_container_wire
@@ -254,7 +255,7 @@ def test_git_directory_with_no_blob_and_rollup_of_a_subtree(tmp_path: Path) -> N
             assert [view["id"] for view in folder["views"]] == ["overview", "treemap"]
             assert (await client.get("/raw", params={"path": dep})).status_code == 404
             # Nor is it content for a hook, though the store holds the commit it names.
-            for hook in ("binary/chunk", "structured/parsed", "agent-log/charts"):
+            for hook in ("binary/chunk", "structured/parsed", "agents/charts"):
                 refused = await client.get(f"/api/plugin/{hook}", params={"path": dep})
                 assert refused.status_code == 404, hook
             # The index counts the directories its blobs are in: docs/, and not vendor/.
@@ -968,7 +969,7 @@ def test_git_plugin_sidekicks_follow_in_tree_symlinks(tmp_path: Path) -> None:
     async def _run() -> None:
         async with _pinned_client(store, commit) as (client, _subject):
             charts = await client.get(
-                "/api/plugin/agent-log/charts",
+                "/api/plugin/agents/charts",
                 params={"path": _wire(b"log")},
             )
             assert charts.status_code == 200
@@ -1027,7 +1028,7 @@ def test_git_plugin_sidekicks_follow_in_tree_symlinks(tmp_path: Path) -> None:
 
             dangling = _wire(b"dangling")
             assert (
-                await client.get("/api/plugin/agent-log/charts", params={"path": dangling})
+                await client.get("/api/plugin/agents/charts", params={"path": dangling})
             ).status_code == 404
             assert (
                 await client.get("/api/plugin/structured/parsed", params={"path": dangling})
@@ -1298,7 +1299,7 @@ def test_git_agent_log_charts_and_adapter_kind(tmp_path: Path) -> None:
             assert any(view["id"] == "charts" for view in body["views"])
 
             charts = await client.get(
-                "/api/plugin/agent-log/charts",
+                "/api/plugin/agents/charts",
                 params={"path": log_wire},
             )
             assert charts.status_code == 200
@@ -1307,20 +1308,20 @@ def test_git_agent_log_charts_and_adapter_kind(tmp_path: Path) -> None:
             assert str(store) not in charts.text
 
             relative = await client.get(
-                "/api/plugin/agent-log/charts",
+                "/api/plugin/agents/charts",
                 params={"path": "session.jsonl"},
             )
             assert relative.status_code == 404
 
             unsupported = await client.get(
-                "/api/plugin/agent-log/charts",
+                "/api/plugin/agents/charts",
                 params={"path": _wire(b"README.md")},
             )
             assert unsupported.status_code == 400
             assert unsupported.json()["error"] == "Not a JSONL file"
 
             missing = await client.get(
-                "/api/plugin/agent-log/charts",
+                "/api/plugin/agents/charts",
                 params={"path": _wire(b"absent.jsonl")},
             )
             assert missing.status_code == 404
@@ -1558,7 +1559,7 @@ def test_git_view_shell_honors_gitpath_and_refuses_filesystem_spelling(tmp_path:
             assert root.status_code == 200
             assert "text/html" in root.headers.get("content-type", "")
             assert str(store) not in root.text
-            assert commit[:12] in root.text
+            assert short_commit(commit) in root.text
             assert "METABROWSER_REPOSITORY_CONTEXT=null" in root.text
             assert 'METABROWSER_SOURCE_KIND="git_revision"' in root.text
             blob = await client.get(f"/view/{readme}")

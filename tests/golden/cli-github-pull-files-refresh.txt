@@ -322,6 +322,7 @@ status: 200
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "size_route": "/api/plugin/github/pull-size?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -1073,7 +1074,7 @@ status: 200
   "refreshing": false,
   "last_refresh": {
     "outcome": "network_error",
-    "message": "gh could not reach api.github.com",
+    "message": "GitHub could not be reached because api.github.com did not resolve (DNS)",
     "reset_at": null,
     "at": "2026-09-17T12:02:00Z"
   },
@@ -1115,7 +1116,7 @@ status: 200
   "refreshing": false,
   "last_refresh": {
     "outcome": "network_error",
-    "message": "gh could not reach api.github.com",
+    "message": "GitHub could not be reached because api.github.com did not resolve (DNS)",
     "reset_at": null,
     "at": "2026-09-17T12:02:00Z"
   },
