@@ -3,9 +3,9 @@ type: is
 id: is-01m7x3g8rdhbeh7f0j0j7nz4sq
 title: "Guided PR walkthroughs (PR #599, outside contributor): bring current with main, fold review A, make ready to merge"
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 9
+version: 10
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/599
@@ -24,8 +24,12 @@ dependencies:
 hold: null
 hold_until: null
 created_at: 2026-11-20T18:29:05.420Z
-updated_at: 2026-11-20T22:47:03.626Z
+updated_at: 2026-11-20T22:53:20.341Z
 started_at: 2026-11-20T18:32:15.781Z
+closed_at: 2026-11-20T22:53:20.340Z
+close_reason: "Guided PR implementation and review fixes recovered in draft #677. Tab, D shortcut, and lazy-mount coverage landed on the draft branch, and all applicable checks passed on run 44831509620. The draft awaits the owner’s merge decision."
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 9a57f679-f6d9-4559-a70c-540295dbc707
