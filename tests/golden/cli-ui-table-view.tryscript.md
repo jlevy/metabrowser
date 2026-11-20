@@ -463,6 +463,18 @@ $ node tests/dom/table-view-session.js
     },
     "header controls out of the Tab order": 13
   },
+  "a header's menu: closed when the focus leaves it, and by Escape, to its button": {
+    "role": "dialog",
+    "label": "name: sort, filter, or hide",
+    "closed when the focus left": true,
+    "open after Escape": false,
+    "focus": {
+      "on": "button",
+      "row": null,
+      "text": "▾",
+      "tabStops": 1
+    }
+  },
   "the age header's menu, and a filter from its form": {
     "role": "dialog",
     "menu items": [

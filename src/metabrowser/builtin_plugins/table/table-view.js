@@ -329,6 +329,12 @@ export function mountTable(container, ctx, host = {}) {
   container.replaceChildren(root);
   /** The open menu, and the control that opened it. @type {{menu: HTMLElement, opener: HTMLElement} | null} */
   let openMenu = null;
+  /**
+   * Whether the last press was on the open menu's opener: its click toggles the menu, so
+   * the focus leaving for it does not close the menu first. WebKit does not focus a button
+   * a press lands on, so there the focus leaves for nothing.
+   */
+  let pressOnOpener = false;
 
   // ── The address ──────────────────────────────────────────────
 
@@ -1770,12 +1776,16 @@ export function mountTable(container, ctx, host = {}) {
    */
   function showMenu(menu, opener) {
     openMenu = { menu, opener };
+    pressOnOpener = false;
     opener.setAttribute("aria-expanded", "true");
     // Focusable itself, so a press on its text keeps the focus in it; it closes when the
     // focus leaves it for anything but its opener, as Tab past its last control does.
     menu.setAttribute("tabindex", "-1");
     menu.addEventListener("focusout", (event) => {
       const to = /** @type {Node | null} */ (/** @type {FocusEvent} */ (event).relatedTarget);
+      if (pressOnOpener) {
+        return;
+      }
       if (openMenu?.menu === menu && !(to && (menu.contains(to) || opener.contains(to)))) {
         closeMenu(false);
       }
@@ -1800,6 +1810,7 @@ export function mountTable(container, ctx, host = {}) {
     }
     const { menu, opener } = openMenu;
     openMenu = null;
+    pressOnOpener = false;
     opener.setAttribute("aria-expanded", "false");
     menu.remove();
     if (restore && opener.isConnected) {
@@ -1810,6 +1821,7 @@ export function mountTable(container, ctx, host = {}) {
   /** @param {PointerEvent} event */
   function onPointerDown(event) {
     releasePlace();
+    pressOnOpener = Boolean(openMenu?.opener.contains(/** @type {Node} */ (event.target)));
     if (openMenu) {
       const target = /** @type {Node} */ (event.target);
       if (!openMenu.menu.contains(target) && !openMenu.opener.contains(target)) {

@@ -574,6 +574,24 @@ async function wholeTable() {
   key(documentStandIn.activeElement, "ArrowLeft");
   key(documentStandIn.activeElement, "ArrowLeft");
 
+  // A header's menu is a dialog: the focus leaving it closes it, and Escape returns the
+  // focus to its button.
+  click(headerButton(view, "name", "table-head-menu"));
+  const dialog = find(view.container, hasClass("table-menu"));
+  dispatch(find(dialog, hasClass("menu-item")), "focusout", {
+    relatedTarget: find(view.container, hasClass("table-search")),
+  });
+  const closedOnLeave = find(view.container, hasClass("table-menu")) === null;
+  click(headerButton(view, "name", "table-head-menu"));
+  key(documentStandIn.activeElement, "Escape");
+  step("a header's menu: closed when the focus leaves it, and by Escape, to its button", {
+    role: dialog.attributes.get("role"),
+    label: dialog.attributes.get("aria-label"),
+    "closed when the focus left": closedOnLeave,
+    "open after Escape": find(view.container, hasClass("table-menu")) !== null,
+    focus: describeFocus(view),
+  });
+
   // The header menu: a filter typed into its form, and a column hidden.
   click(headerButton(view, "age", "table-head-menu"));
   const menu = find(view.container, hasClass("table-menu"));
