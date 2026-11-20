@@ -50,6 +50,15 @@ profile described in
 The diff, API, acquire, and show modes import their modules inside their branch, so a
 mode on a local folder does not load the Git revision machinery it never uses.
 
+`--event-log` is no mode but a way to name ROOT, for every mode that takes a local
+folder (serve, `--api`, `--show`, `--walk`, and `--check-api`): `_metab` replaces ROOT
+with the directory the event log lives in (`cli/event_log_cli.py`, over
+`event_log.log_directory`), refuses a ROOT beside it, and, when serving without
+`--path`, selects the newest segment, so `metab --event-log` opens the log in the
+event-log plugin ([Real-Time Debugging](../../realtime-debugging.md#browsing-the-log)).
+A server whose folder holds the log opens no log of its own (`event_log.open_log`’s
+`served_directory`), so browsing it does not write to it.
+
 `--present` is a client mode, and reads ROOT without `_classified_root`, because a
 target it cannot present is a refusal it reports as data, with
 `PRESENT_REFUSED_EXIT_CODE`, rather than an `Error:` line;

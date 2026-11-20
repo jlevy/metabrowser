@@ -144,6 +144,7 @@ nonisolated enum ContractGolden {
         "present-dry-run/repository", "present-dry-run/pull-request", "present-dry-run/commit",
         "present-dry-run/tree", "present-dry-run/file", "present-dry-run/refused",
         "cache-sources/none", "cache-sources/held", "cache-sources/first-page", "cache-sources/next-page",
+        "event-log/found", "event-log/empty",
         "doctor/clean", "doctor/as-the-app", "acquire/in-terminal",
     ]
 
@@ -400,6 +401,24 @@ nonisolated enum ContractGolden {
         let next = try block("cache-sources/next-page")
         #expect(next.words == short(RepositoryCache.arguments(folder: folder, after: cursor)))
         #expect(RepositoryCache.read(next.result, looking: demo) == .found)
+    }
+
+    // MARK: - The event log
+
+    @Test func theEventLogIsFoundByItsNewestSegment() throws {
+        let folder = ContractGolden.sandbox + "/support"
+        // The golden's state directory holds two segments, listed newest first.
+        let found = try block("event-log/found")
+        #expect(found.words == EventLogLocation.arguments(folder: folder))
+        let directory = ContractGolden.sandbox + "/events-state/events"
+        #expect(EventLogLocation.read(found.result) == .found(
+            URL(filePath: directory + "/events-20261119T210201Z-p4242-000.jsonl")))
+
+        // A log directory with no segment is an answer, and the app says there is none yet.
+        let empty = try block("event-log/empty")
+        #expect(empty.words == EventLogLocation.arguments(folder: folder))
+        #expect(EventLogLocation.read(empty.result) == .empty(
+            URL(filePath: ContractGolden.sandbox + "/quiet-state/events", directoryHint: .isDirectory)))
     }
 
     // MARK: - Check Setup

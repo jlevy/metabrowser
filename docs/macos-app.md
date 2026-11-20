@@ -228,8 +228,10 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
 The menus add what a browser would: File > Restart Server, Open in Default Browser,
 Reveal Server Log (each folder has its own log), and Print; View > Back, Forward, Reload
 Page, and zoom, which the app remembers; Edit > Find; and Help > Metabrowser
-Documentation, Check Setup…, and Reveal Logs Folder.
-The mark at the title bar’s trailing end opens the project on GitHub.
+Documentation, Check Setup…, Reveal Logs Folder, and Open Event Log, which opens
+Metabrowser’s own [event log](realtime-debugging.md#browsing-the-log), the record of
+what the servers it runs did and how long each took, at its newest segment in a window
+on its folder. The mark at the title bar’s trailing end opens the project on GitHub.
 
 Edit > Find (Command-F) opens a find bar above the page.
 It searches as a browser’s find does: the whole page, the navigation pane included,

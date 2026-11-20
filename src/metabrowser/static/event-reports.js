@@ -910,7 +910,7 @@
    *
    * @param {HTMLElement} panel
    * @param {MetabrowserEventDetailsQuery} query
-   * @param {{fetch?: typeof fetch, signal?: AbortSignal, slowMs?: number, log?: boolean}} [options]
+   * @param {{fetch?: typeof fetch, signal?: AbortSignal, slowMs?: number, log?: boolean, openCommand?: string}} [options]
    *   `log` false: this server writes no log, so the panel says so and reads nothing, since
    *   what a log directory still holds is from an earlier server and not about this.
    */
@@ -955,7 +955,21 @@
       link(routes.failures, "Failures as JSON"),
       ...(query.client ? [" · ", link(routes.page, "This page’s records as JSON")] : []),
     ]);
-    panel.replaceChildren(...sections, links);
+    // The whole log is a Metabrowser window on a directory of the server's machine, which a
+    // page cannot open, so the panel names the command that does.
+    const command = options.openCommand ?? window.METABROWSER_SETTINGS?.EVENT_REPORTS?.open_command;
+    panel.replaceChildren(
+      ...sections,
+      links,
+      ...(command
+        ? [
+            element("p", "event-log-details-open", [
+              "Browse the whole log in Metabrowser: ",
+              element("code", "", [command]),
+            ]),
+          ]
+        : []),
+    );
   }
 
   /** The reporter this page runs, or null where there is no namespace to attach to. */

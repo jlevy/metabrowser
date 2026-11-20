@@ -41,6 +41,7 @@ const SETTINGS = Object.freeze({
   per_minute: 30,
   long_lived: ["/api/events", "/api/tail", "/api/stream"],
   failure_window_s: 3600,
+  open_command: "metab --event-log",
 });
 
 /** A node, enough of one for the Details panel's paint. */
@@ -745,7 +746,7 @@ async function details(api) {
   const painting = api.showDetails(
     panel,
     { client: PAGE, since: FAILURES.since },
-    { fetch: fetchImpl, slowMs: 2000 },
+    { fetch: fetchImpl, slowMs: 2000, openCommand: SETTINGS.open_command },
   );
   const note = panel.outline();
   await painting;

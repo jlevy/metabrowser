@@ -117,6 +117,13 @@ opaque = ["next_after"]
 note = "Whether the cache holds a repository, asked before a link clones one. The app's limit is `RepositoryCache.pageLimit`; a smaller one in the golden shows the cursor."
 
 [[command]]
+id = "event-log"
+argv = ["{folder}", "--api", "/api/event-log?limit=1", "--format", "json"]
+source = "Sources/ShellCore/Folders/EventLogLocation.swift"
+json = ["directory", "files[].name"]
+note = "Help > Open Event Log: where Metabrowser's own event log is and which segment is newest, asked of the route that lists it, newest first. `{folder}` is any folder, whose server is never started, and `--api` writes the folder it serves as `<ROOT>`, so the app passes its own support folder, which is not the log's directory."
+
+[[command]]
 id = "doctor"
 argv = ["--doctor", "--json"]
 source = "Sources/ShellCore/Setup/DoctorReport.swift"
@@ -514,6 +521,7 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 "Sources/ShellCore/Supervision/ServerLaunch.swift" = { sites = 1, runs = ["serve"] }
 "Sources/ShellCore/Folders/PresentPlan.swift" = { sites = 1, runs = ["present-dry-run"] }
 "Sources/ShellCore/Folders/RecentTargets.swift" = { sites = 1, runs = ["recent-list", "recent-add", "recent-forget", "recent-clear"] }
+"Sources/ShellCore/Folders/EventLogLocation.swift" = { sites = 1, runs = ["event-log"] }
 "Sources/ShellCore/Folders/RepositoryCache.swift" = { sites = 1, runs = ["cache-sources"] }
 "Sources/ShellCore/Setup/DoctorReport.swift" = { sites = 1, runs = ["doctor"] }
 
@@ -523,6 +531,7 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 [files.json]
 "Sources/ShellCore/Folders/PresentPlan.swift" = ["present-dry-run"]
 "Sources/ShellCore/Folders/RecentTargets.swift" = ["recent-list"]
+"Sources/ShellCore/Folders/EventLogLocation.swift" = ["event-log"]
 "Sources/ShellCore/Folders/RepositoryCache.swift" = ["cache-sources"]
 "Sources/ShellCore/Folders/FolderIdentity.swift" = ["identity"]
 "Sources/ShellCore/Folders/LinkSelection.swift" = ["source-status"]

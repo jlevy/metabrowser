@@ -1151,6 +1151,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(directory)
     }
 
+    /// Help > Open Event Log: Metabrowser's own log of what its servers did, in a Metabrowser
+    /// window. `metab` says where the log is and which segment is newest
+    /// (`EventLogLocation`), and the segment opens as any file does, in a window on its
+    /// folder. A log that does not exist yet, or a `metab` that cannot say, is told in an
+    /// alert, not left as a menu item that does nothing.
+    @objc func openEventLog(_ sender: Any?) {
+        guard let setup = selection.setup else {
+            if !selection.isBusy { showSettings(nil) }
+            return
+        }
+        let folder = appIdentity.supportDirectory()
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        Task {
+            let answer = await EventLogLocation.locate(
+                folder: folder.path(percentEncoded: false), with: setup,
+                inherited: ProcessInfo.processInfo.environment)
+            onRunLoop { [weak self] in
+                switch answer {
+                case .found(let segment):
+                    self?.request(segment)
+                case .empty(let directory):
+                    self?.refuse(
+                        "There is no event log yet",
+                        "\(directory.path(percentEncoded: false)) holds no log. A folder Metabrowser serves writes one as it answers requests.")
+                case .unavailable(let reason):
+                    AppLog.app.error("could not ask metab where the event log is: \(reason, privacy: .public)")
+                    self?.refuse(
+                        "Could not open the event log",
+                        "\(reason)\n\nHelp > Check Setup… shows which metab the app runs.")
+                }
+            }
+        }
+    }
+
     @objc func openDocumentation(_ sender: Any?) {
         NSWorkspace.shared.open(ProjectLinks.readme)
     }

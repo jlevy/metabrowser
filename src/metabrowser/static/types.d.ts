@@ -3073,6 +3073,8 @@ declare global {
     per_minute: number;
     long_lived: string[];
     failure_window_s: number;
+    /** The command that opens the whole log in Metabrowser, which Details names. */
+    open_command: string;
   };
 
   type MetabrowserEventOutcome = "ok" | "failed" | "cancelled" | "never_completed";

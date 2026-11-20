@@ -113,6 +113,12 @@ _REPORT_KEYS: Final = frozenset({"type", "event", "name", "client", "dur_ms", "o
 _BODY_KEYS: Final = frozenset({"page", "path", "reports", "dropped"})
 
 
+# What a person runs to open the whole log: the flag that names the log's directory as ROOT
+# (``cli/event_log_cli.py``). A page's Details says it, since a page cannot open a window
+# on a directory of the server's machine.
+OPEN_COMMAND: Final = "metab --event-log"
+
+
 def browser_settings(*, long_lived: tuple[str, ...]) -> dict[str, Any]:
     """What ``static/event-reports.js`` reads as ``METABROWSER_SETTINGS.EVENT_REPORTS``.
 
@@ -133,6 +139,7 @@ def browser_settings(*, long_lived: tuple[str, ...]) -> dict[str, Any]:
         "per_minute": PAGE_REPORTS_PER_MINUTE,
         "long_lived": list(long_lived),
         "failure_window_s": event_log.RECENT_WINDOW_S,
+        "open_command": OPEN_COMMAND,
     }
 
 
