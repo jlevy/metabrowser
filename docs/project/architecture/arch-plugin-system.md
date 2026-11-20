@@ -173,9 +173,10 @@ guard. The shell addresses those files under a stamp of the whole directory, whi
 
 ## Table Sources
 
-The built-in `table` plugin owns the routes every tabular source answers through, and has
-no kind of its own. A source plugin claims a kind, requires `table`, and names the Python
-adapter that answers for that kind:
+The built-in `table` plugin owns the routes every tabular source answers through, and
+has no kind of its own.
+A source plugin claims a kind, requires `table`, and names the Python adapter that
+answers for that kind:
 
 ```toml
 [plugin]
@@ -202,16 +203,15 @@ adapter = "metabrowser.builtin_plugins.delimited.source:adapter"
   does not import. A later declaration for a kind replaces an earlier one.
 - **Dispatch.** Each route takes `?path=`. `open_table_source` resolves it through the
   content reader, classifies it as `/api/file` does (the full classifier on a served
-  folder, the extension and basename rules on a Git pin), imports that kind’s adapter
-  on first use, and hands it a `TableHandle`: the `ContentRef`, the file’s name, and its
+  folder, the extension and basename rules on a Git pin), imports that kind’s adapter on
+  first use, and hands it a `TableHandle`: the `ContentRef`, the file’s name, and its
   resolved real path on a served folder.
 - **The adapter** is a callable from a handle to a `TableSource`, whose methods are
   synchronous and run on the route threadpool under one request’s `Budget`. A source
-  reads through `TableHandle.read_window`, which runs the content read on the event
-  loop and waits for it, and keeps any cache in its own module, keyed by its
-  `generation()`.
-- **The wire.** `tables_wire`, `schema_wire`, `page_wire`, `record_wire`, `card_wire`, and
-  `error_wire` are every route’s answer, so two sources cannot drift apart.
+  reads through `TableHandle.read_window`, which runs the content read on the event loop
+  and waits for it, and keeps any cache in its own module, keyed by its `generation()`.
+- **The wire.** `tables_wire`, `schema_wire`, `page_wire`, `record_wire`, `card_wire`,
+  and `error_wire` are every route’s answer, so two sources cannot drift apart.
   The query grammar (`parse_table_query`, checked against the schema by
   `check_table_query`), the cell envelopes, and the key, position, and cursor tokens are
   defined there as well, with the bounds every route applies beside the measurements

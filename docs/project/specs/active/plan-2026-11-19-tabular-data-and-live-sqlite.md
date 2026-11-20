@@ -960,13 +960,29 @@ on everything else. Each source brings its generation token in the phase that ad
 
 Accepted from the CLI, before any browser view.
 
-- [ ] Source protocol types and wire contract in core; `[[table_source]]` declarations
-- [ ] The five routes, the envelope, keys and positions, bounds measured and recorded
-- [ ] Delimited source and kind, with its generation; the kind keeps Source as its only
+- [x] Source protocol types and wire contract in core; `[[table_source]]` declarations
+- [x] The five routes, the envelope, keys and positions, bounds measured and recorded
+- [x] Delimited source and kind, with its generation; the kind keeps Source as its only
   view until Phase 3
-- [ ] Parity rows, `--show` and `--api` goldens, the map in
+- [x] Parity rows, `--show` and `--api` goldens, the map in
   [Views, Models, and Routes](../../architecture/arch-views-models-routes.md), changelog
   fragment
+
+As built, where this plan left a choice open:
+
+- A position counts from 1, the first row after a delimited file’s header, and a blank
+  line is not a row. An empty value is null in a column of any type but text.
+- A source that is its own single table names it `""`, addressed by the file’s own path;
+  a path naming a table inside a file waits for the first multi-table source (Phase 5),
+  as do the segment escape, the count cap, the unindexed-sort threshold, references
+  resolved per page, and the opcode budget, which only SQLite needs.
+- A record request may name the `generation` its key was read under, and the answer’s
+  `generation_moved` says whether the content changed since; comparing the cells is the
+  view’s.
+- A keyless row breaks sort ties by its position, so a row inserted above it in the file
+  moves it, and a cursor continues from the sort position it names.
+- `requires = ["table"]` is declared because the table plugin’s routes serve the source;
+  a manifest with a `[[table_source]]` that does not require `table` is refused.
 
 ### Phase 3: The Table View
 

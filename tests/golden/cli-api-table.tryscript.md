@@ -21,8 +21,8 @@ The built-in `table` plugin serves every tabular source through five routes unde
 These transcripts run them over the `delimited` source, `.csv` and `.tsv` files, which
 are each one table whose rows are named by their position in the file.
 
-A generation is the file’s identity, size, and modification time, so it differs from
-one checkout to the next and the transcripts elide it.
+A generation is the file’s identity, size, and modification time, so it differs from one
+checkout to the next and the transcripts elide it.
 
 ## Test: a delimited file is its own single table
 
@@ -61,8 +61,9 @@ status: 200
 ## Test: the schema infers each column’s type from its values
 
 `age` holds `unknown` among its first rows, so it is text; `score` and `active` are
-typed. Rows longer than the header add one `extra` field, a list, which neither sorts
-nor filters. No field is a key, so rows are named by position.
+typed.
+Rows longer than the header add one `extra` field, a list, which neither sorts nor
+filters. No field is a key, so rows are named by position.
 
 ```console
 $ metab tableroot --api '/api/plugin/table/schema?path=people.csv' | grep -E '^      "(name|type|numeric|list|sortable|filterable)":|^  "key":'
