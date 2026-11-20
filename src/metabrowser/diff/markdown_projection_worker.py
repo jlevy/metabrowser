@@ -1035,14 +1035,20 @@ class ProjectionWorker:
                 task.cancel()
             if flights:
                 await asyncio.gather(*flights, return_exceptions=True)
+        starting = self._starting if self._loop is loop else None
         self.stop()
         dying = [each for each, at in self._dying.items() if at is loop and each.returncode is None]
         self._dying = {}
         self._tails = {}
-        if dying:
+        if starting is not None or dying:
             with contextlib.suppress(TimeoutError):
                 async with asyncio.timeout(_REAP_S):
-                    await asyncio.gather(*(each.wait() for each in dying))
+                    if starting is not None:
+                        # asyncio may have spawned the child without returning its Process
+                        # yet. Let the cancelled start finish reaping it on this loop.
+                        await asyncio.wait((starting,))
+                    if dying:
+                        await asyncio.gather(*(each.wait() for each in dying))
 
     async def prepare(
         self, *, old: bytes | None, new: bytes | None, patch: FilePatch, namespace: str
