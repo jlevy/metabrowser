@@ -335,11 +335,19 @@ class SqliteSource:
                 )
         answer = cast(dict[str, Any], self._call("sqlite_rows", {"spec": spec}, deadline))
         if answer.get("toobig"):
-            raise TableQueryError(
-                f"field {query.sort!r} holds a value longer than {VALUE_MAX_BYTES:,} bytes, "
-                "so it cannot be sorted",
-                param="sort",
-                field=query.sort,
+            if query.sort is not None:
+                raise TableQueryError(
+                    f"field {query.sort!r} holds a value longer than {VALUE_MAX_BYTES:,} "
+                    "bytes, so it cannot be sorted",
+                    param="sort",
+                    field=query.sort,
+                )
+            # A keyless object is numbered in its own order by a statement that holds
+            # every value of each row, so one past the limit stops it.
+            raise SourceUnreadableError(
+                f"a row holds a value longer than {VALUE_MAX_BYTES:,} bytes, so rows with "
+                "no key can be read only in their own order, unfiltered",
+                table=table,
             )
         found = cast(list[dict[str, Any]], answer["rows"])
         counted = cast(dict[str, Any] | None, answer.get("count"))
