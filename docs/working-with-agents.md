@@ -187,10 +187,9 @@ Coding-agent session logs are JSONL files, and Metabrowser opens them as timelin
   chips; **Charts**, the session’s events by kind over time; and **Raw JSON**. The
   header names the agent and the run’s state.
   - **Claude Code:** both the session transcripts under `~/.claude/projects` and the
-    `--output-format stream-json` stream.
-  - **Codex:** both the rollout files under `~/.codex/sessions` and the
-    `codex exec --json` stream.
-    Compressed rollouts (`.jsonl.zst`) do not open yet.
+    JSON stream a non-interactive run writes.
+  - **Codex:** both the rollout files under `~/.codex/sessions` and the JSON stream of
+    `codex exec`. Rollouts Codex has compressed with zstd do not open yet.
 - **Other JSONL:** any other `.jsonl` file opens with Log and Raw JSON.
 - **While the agent runs:** a log under a `.logs` or `.state` folder that is being
   written tails in the Log view as events arrive
