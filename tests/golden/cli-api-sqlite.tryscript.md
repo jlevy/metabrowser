@@ -171,7 +171,12 @@ Its log holds no frames, so the main file is read with `immutable=1`; opening it
 `mode=ro` would leave a `-wal` and a `-shm` beside it.
 
 ```console
-$ metab sqlroot --api '/api/plugin/sqlite/info?path=History' | sed '/"library"/,$d'
+$ metab sqlroot --api '/api/plugin/sqlite/info?path=History' > history.txt
+? 0
+```
+
+```console
+$ sed '/"library"/,$d' history.txt
 api: /api/plugin/sqlite/info?path=History
 status: 200
 {
@@ -209,7 +214,12 @@ status: 200
 The owner committed five rows to its log and was killed, leaving `-wal` and `-shm`.
 
 ```console
-$ metab sqlroot --api '/api/plugin/sqlite/info?path=live.db' | sed '/"library"/,$d'
+$ metab sqlroot --api '/api/plugin/sqlite/info?path=live.db' > live.txt
+? 0
+```
+
+```console
+$ sed '/"library"/,$d' live.txt
 api: /api/plugin/sqlite/info?path=live.db
 status: 200
 {
@@ -258,7 +268,12 @@ Opening it in place would create a `-shm` beside it, so the database and its log
 copied to a private folder and read there.
 
 ```console
-$ metab sqlroot --api '/api/plugin/sqlite/info?path=copied.sqlite3' | sed '/"library"/,$d'
+$ metab sqlroot --api '/api/plugin/sqlite/info?path=copied.sqlite3' > copied.txt
+? 0
+```
+
+```console
+$ sed '/"library"/,$d' copied.txt
 api: /api/plugin/sqlite/info?path=copied.sqlite3
 status: 200
 {
@@ -300,7 +315,12 @@ status: 200
 ## Test: the library block names the reader’s minimum
 
 ```console
-$ metab sqlroot --api '/api/plugin/sqlite/info?path=app.db' | grep -E '"(minimum|meaning)"'
+$ metab sqlroot --api '/api/plugin/sqlite/info?path=app.db' > library.txt
+? 0
+```
+
+```console
+$ grep -E '"(minimum|meaning)"' library.txt
     "minimum": "3.43.0",
         "meaning": "write-ahead-log databases",
         "meaning": "WITHOUT ROWID tables",

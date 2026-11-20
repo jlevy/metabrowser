@@ -46,7 +46,9 @@ def main() -> None:
     notes.executescript("CREATE TABLE note(text TEXT); INSERT INTO note VALUES ('kept');")
     notes.close()
     (root / "fake.db").write_bytes(b"not a database, though it is named like one\n\x00")
-    (root / "packed.sqlite.gz").write_bytes(gzip.compress((root / "notes.dat").read_bytes(), mtime=0))
+    (root / "packed.sqlite.gz").write_bytes(
+        gzip.compress((root / "notes.dat").read_bytes(), mtime=0)
+    )
     for path in root.iterdir():
         os.utime(path, (INSTANT, INSTANT))
 

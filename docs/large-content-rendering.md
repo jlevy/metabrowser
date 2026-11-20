@@ -339,6 +339,10 @@ this standard. Paths are under `src/metabrowser/`.
 | `DELIMITED_CACHE_MAX_ENTRIES`, `DELIMITED_CACHE_MAX_BYTES` | `builtin_plugins/delimited/source.py` | Server memory for parsed delimited files |
 | `WHOLE_TABLE_MAX_ROWS` | `builtin_plugins/table/table-view.js` | The rows a table may hold and still be drawn whole, keeping the browser’s find, select all, copy, and print; a larger one is a window with Search, row selection that copies as tab-separated values, and print of the rows held in their place |
 | `FIRST_PAGE_ROWS`, `NEXT_PAGE_ROWS`, `ROWS_OVERSCAN`, `ROW_HEIGHT_ESTIMATE_PX` | `builtin_plugins/table/table-view.js` | The table view’s first and later requests, the rows its window draws past the view, and a row’s height before one is measured |
+| `VALUE_MAX_BYTES`, `READ_OPCODE_BUDGET` | `sqlite_access.py` | The longest value one SQLite statement may produce, and the virtual-machine steps one read may run, beside a wall-clock deadline its watchdog interrupts at |
+| `COPY_MAX_BYTES` | `sqlite_access.py` | A database and its log copied privately for one read, when its log has no index or the file has a second name; past it the main file is read alone and says so |
+| `READER_POOL_SIZE`, `READER_QUEUE_MAX`, `SQLITE_REQUEST_DEADLINE_SECONDS`, `READER_KILL_GRACE_SECONDS`, `READER_ADDRESS_SPACE_BYTES` | `sqlite_readers.py` | SQLite reader processes alive and requests waiting for one, a request’s deadline and the grace before its reader is killed, and a reader’s address space |
+| `BLOB_MAX_BYTES` | `sqlite_readers.py` | A database on a Git pin, written once to a private file to be read |
 | `SUMMARY_ROWS_OVERSCAN` | `builtin_plugins/diff/diff-summary.js` | Diff summary rows mounted on either side of the window’s view of its tree, which has no scroll of its own and no length bound beyond `MAX_MANIFEST_FILES` |
 
 ## References

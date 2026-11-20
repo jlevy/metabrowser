@@ -333,6 +333,7 @@ GOLDEN_RECORDERS := \
 	tests/test_key_reveal_session.py \
 	tests/test_event_log_view_session.py \
 	tests/test_table_view_session.py \
+	tests/test_sqlite_info_session.py \
 	tests/test_diff_view_file_session.py \
 	tests/test_diff_markdown_session.py \
 	tests/test_diff_structured_session.py \
