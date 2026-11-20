@@ -3067,6 +3067,8 @@ declare global {
   type MetabrowserEventReportSettings = {
     /** Whether the server writes an event log; without one nothing is tagged or sent. */
     log: boolean;
+    /** When `log` is false, the server's own words for why, which Details shows. */
+    off_reason?: string | null;
     route: string;
     header: string;
     slow_ms: number;
@@ -3179,6 +3181,8 @@ declare global {
   type MetabrowserEventDetails = {
     /** `off`: this server writes no log, so whatever an older one wrote is not shown. */
     log: "present" | "absent" | "unreadable" | "off";
+    /** With `off`, why this server writes no log, in its own words. */
+    reason?: string | null;
     running: Array<{ kind: string; name: string; age_ms: number; mine: boolean }>;
     causes: Array<{
       cause: string;
@@ -4487,7 +4491,13 @@ declare global {
       showDetails(
         panel: HTMLElement,
         query: MetabrowserEventDetailsQuery,
-        options?: { fetch?: typeof fetch; signal?: AbortSignal; slowMs?: number; log?: boolean },
+        options?: {
+          fetch?: typeof fetch;
+          signal?: AbortSignal;
+          slowMs?: number;
+          log?: boolean;
+          offReason?: string | null;
+        },
       ): Promise<void>;
       serverMs(raw: string | null | undefined): number | null;
     }>;

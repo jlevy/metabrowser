@@ -22,9 +22,10 @@ Metabrowser’s own event log is a JSON Lines file per served process, `events-*
 (`metabrowser.event_log`), and the event-log plugin reads one as spans: each unit of
 work with the work it started under it, how long it took, and how it ended.
 `/api/plugin/event-log/` has a route for each view of it: `timeline`, `slowest`,
-`kinds`, and `errors`. Each reads the file named by `path` through the content reader,
-so a folder and a pinned revision answer alike, and takes the filters `/api/event-log`
-takes.
+`kinds`, and `errors`. Each reads the file named by `path` through the content reader
+and takes the filters `/api/event-log` takes.
+The kind is picked for a file of an attached folder only (its name match is a filesystem
+one), so these views open there.
 
 The fixture segment is a server’s first four minutes serving a GitHub repository while
 `api.github.com`’s DNS answered with an address the network could not reach, as on the
@@ -205,6 +206,14 @@ status: 200
       "abandoned",
       "never_completed"
     ],
+    "edges_ms": [
+      1.0,
+      10.0,
+      100.0,
+      500.0,
+      2000.0,
+      10000.0
+    ],
     "bytes": 14917,
     "records": 58,
     "skipped": 2,
@@ -215,7 +224,8 @@ status: 200
     "extent_ms": 229903.0,
     "pids": [
       7007
-    ]
+    ],
+    "continues": false
   },
   "query": {
     "kind": [],
@@ -225,6 +235,7 @@ status: 200
     "cause": null,
     "min_ms": null
   },
+  "order": "oldest",
   "parent": null,
   "total": 44,
   "offset": 22,
@@ -314,6 +325,14 @@ status: 200
       "abandoned",
       "never_completed"
     ],
+    "edges_ms": [
+      1.0,
+      10.0,
+      100.0,
+      500.0,
+      2000.0,
+      10000.0
+    ],
     "bytes": 14917,
     "records": 58,
     "skipped": 2,
@@ -324,7 +343,8 @@ status: 200
     "extent_ms": 229903.0,
     "pids": [
       7007
-    ]
+    ],
+    "continues": false
   },
   "query": {
     "kind": [],
@@ -334,6 +354,7 @@ status: 200
     "cause": null,
     "min_ms": null
   },
+  "order": "oldest",
   "parent": "7007:23",
   "total": 2,
   "offset": 0,
@@ -447,6 +468,14 @@ status: 200
       "abandoned",
       "never_completed"
     ],
+    "edges_ms": [
+      1.0,
+      10.0,
+      100.0,
+      500.0,
+      2000.0,
+      10000.0
+    ],
     "bytes": 14917,
     "records": 58,
     "skipped": 2,
@@ -457,7 +486,8 @@ status: 200
     "extent_ms": 229903.0,
     "pids": [
       7007
-    ]
+    ],
+    "continues": false
   },
   "query": {
     "kind": [
@@ -472,6 +502,7 @@ status: 200
     "cause": null,
     "min_ms": null
   },
+  "order": "oldest",
   "parent": null,
   "total": 2,
   "offset": 0,
@@ -561,6 +592,14 @@ status: 200
       "abandoned",
       "never_completed"
     ],
+    "edges_ms": [
+      1.0,
+      10.0,
+      100.0,
+      500.0,
+      2000.0,
+      10000.0
+    ],
     "bytes": 14917,
     "records": 58,
     "skipped": 2,
@@ -571,7 +610,8 @@ status: 200
     "extent_ms": 229903.0,
     "pids": [
       7007
-    ]
+    ],
+    "continues": false
   },
   "query": {
     "kind": [],
@@ -728,6 +768,14 @@ status: 200
       "abandoned",
       "never_completed"
     ],
+    "edges_ms": [
+      1.0,
+      10.0,
+      100.0,
+      500.0,
+      2000.0,
+      10000.0
+    ],
     "bytes": 14917,
     "records": 58,
     "skipped": 2,
@@ -738,7 +786,8 @@ status: 200
     "extent_ms": 229903.0,
     "pids": [
       7007
-    ]
+    ],
+    "continues": false
   },
   "query": {
     "kind": [
@@ -883,6 +932,14 @@ status: 200
       "abandoned",
       "never_completed"
     ],
+    "edges_ms": [
+      1.0,
+      10.0,
+      100.0,
+      500.0,
+      2000.0,
+      10000.0
+    ],
     "bytes": 14917,
     "records": 58,
     "skipped": 2,
@@ -893,7 +950,8 @@ status: 200
     "extent_ms": 229903.0,
     "pids": [
       7007
-    ]
+    ],
+    "continues": false
   },
   "query": {
     "kind": [
@@ -1074,6 +1132,14 @@ status: 200
       "abandoned",
       "never_completed"
     ],
+    "edges_ms": [
+      1.0,
+      10.0,
+      100.0,
+      500.0,
+      2000.0,
+      10000.0
+    ],
     "bytes": 14917,
     "records": 58,
     "skipped": 2,
@@ -1084,7 +1150,8 @@ status: 200
     "extent_ms": 229903.0,
     "pids": [
       7007
-    ]
+    ],
+    "continues": false
   },
   "kinds": [],
   "failures": 5,
@@ -1112,13 +1179,14 @@ status: 200
       "examples": [
         {
           "ts": "2026-11-19T22:01:02.051Z",
+          "key": "7007:25",
+          "pid": 7007,
           "span": 25,
           "kind": "probe",
           "name": "probe api.github.com:443",
           "outcome": "failed",
           "dur_ms": 2031.2,
           "address": null,
-          "key": "7007:25",
           "path": [
             {
               "key": "7007:22",
@@ -1134,13 +1202,14 @@ status: 200
         },
         {
           "ts": "2026-11-19T22:01:02.051Z",
+          "key": "7007:23",
+          "pid": 7007,
           "span": 23,
           "kind": "job",
           "name": "mirror_refresh.MirrorSession._pull_job",
           "outcome": "failed",
           "dur_ms": 32050.0,
           "address": null,
-          "key": "7007:23",
           "path": [
             {
               "key": "7007:22",
@@ -1151,13 +1220,14 @@ status: 200
         },
         {
           "ts": "2026-11-19T22:01:00.016Z",
+          "key": "7007:24",
+          "pid": 7007,
           "span": 24,
           "kind": "subprocess",
           "name": "gh api",
           "outcome": "failed",
           "dur_ms": 30006.4,
           "address": "20.172.24.160",
-          "key": "7007:24",
           "path": [
             {
               "key": "7007:22",
@@ -1192,13 +1262,14 @@ status: 200
       "examples": [
         {
           "ts": "2026-11-19T22:02:01.331Z",
+          "key": "7007:39",
+          "pid": 7007,
           "span": 39,
           "kind": "job",
           "name": "pull_files_refresh.refresh_files",
           "outcome": "failed",
           "dur_ms": 1330.6,
           "address": null,
-          "key": "7007:39",
           "path": [
             {
               "key": "7007:38",
@@ -1209,13 +1280,14 @@ status: 200
         },
         {
           "ts": "2026-11-19T22:02:01.328Z",
+          "key": "7007:41",
+          "pid": 7007,
           "span": 41,
           "kind": "subprocess",
           "name": "gh api",
           "outcome": "failed",
           "dur_ms": 688.9,
           "address": null,
-          "key": "7007:41",
           "path": [
             {
               "key": "7007:38",
@@ -1234,6 +1306,7 @@ status: 200
   ],
   "probe": {
     "ts": "2026-11-19T22:01:02.051Z",
+    "key": "7007:25",
     "span": 25,
     "timeout_s": 3.0,
     "via_proxy": false,
@@ -1265,6 +1338,8 @@ status: 200
     "examples": [
       {
         "ts": "2026-11-19T22:03:50.000Z",
+        "key": "7007@57",
+        "pid": 7007,
         "client": "k3v9q2zx-90",
         "name": "fetch GET /api/plugin/github/pull-comparison",
         "outcome": "never_completed",
@@ -1380,6 +1455,14 @@ status: 200
       "abandoned",
       "never_completed"
     ],
+    "edges_ms": [
+      1.0,
+      10.0,
+      100.0,
+      500.0,
+      2000.0,
+      10000.0
+    ],
     "bytes": 104,
     "records": 1,
     "skipped": 0,
@@ -1390,7 +1473,8 @@ status: 200
     "extent_ms": 0.0,
     "pids": [
       9
-    ]
+    ],
+    "continues": false
   },
   "kinds": [],
   "failures": 0,
@@ -1410,6 +1494,331 @@ status: 200
   "not_failures": {}
 }
 ? 0
+```
+
+## Test: the roots newest first, and where a row is
+
+`order=newest` lists the roots last first, for a person who comes to a long log for its
+latest requests; what a span started stays in time order.
+`focus` names a row by its key, and the answer’s `focus` gives each step from a root
+down to it with its place among its parent’s rows, in this order and under this filter,
+so a page can open each span above it at the page that holds the next.
+A row the filter does not show, or the file does not hold, says so.
+
+```console
+$ metab root --api '/api/plugin/event-log/timeline?path=events-20261119T220000Z-p7007-000.jsonl&order=newest&limit=1&focus=7007:25'
+api: /api/plugin/event-log/timeline?path=events-20261119T220000Z-p7007-000.jsonl&order=newest&limit=1&focus=7007:25
+status: 200
+{
+  "view": "timeline",
+  "log": {
+    "schema_version": 1,
+    "kinds": [
+      "request",
+      "job",
+      "subprocess",
+      "browser",
+      "lifecycle",
+      "loop",
+      "probe"
+    ],
+    "outcomes": [
+      "ok",
+      "failed",
+      "timeout",
+      "cancelled",
+      "abandoned",
+      "never_completed"
+    ],
+    "edges_ms": [
+      1.0,
+      10.0,
+      100.0,
+      500.0,
+      2000.0,
+      10000.0
+    ],
+    "bytes": 14917,
+    "records": 58,
+    "skipped": 2,
+    "spans": 46,
+    "unfinished": 2,
+    "started": "2026-11-19T22:00:00.100Z",
+    "ended": "2026-11-19T22:03:50.003Z",
+    "extent_ms": 229903.0,
+    "pids": [
+      7007
+    ],
+    "continues": false
+  },
+  "query": {
+    "kind": [],
+    "outcome": [],
+    "name": null,
+    "client": null,
+    "cause": null,
+    "min_ms": null
+  },
+  "order": "newest",
+  "parent": null,
+  "total": 44,
+  "offset": 0,
+  "limit": 1,
+  "max_limit": 1000,
+  "has_more": true,
+  "rows": [
+    {
+      "type": "report",
+      "key": "7007@57",
+      "kind": "browser",
+      "name": "fetch GET /api/plugin/github/pull-comparison",
+      "start_ms": 199900.0,
+      "dur_ms": 30000.0,
+      "outcome": "never_completed",
+      "state": "report",
+      "client": "k3v9q2zx-90",
+      "pid": 7007,
+      "span": null,
+      "parent": null,
+      "attrs": {
+        "threshold_ms": 2000.0,
+        "path": "/pull/615"
+      },
+      "elapsed_ms": 30000.0,
+      "event": "end",
+      "children": 0,
+      "below": 0,
+      "matched": true
+    }
+  ],
+  "focus": {
+    "key": "7007:25",
+    "found": true,
+    "steps": [
+      {
+        "parent": null,
+        "key": "7007:22",
+        "index": 21
+      },
+      {
+        "parent": "7007:22",
+        "key": "7007:23",
+        "index": 0
+      },
+      {
+        "parent": "7007:23",
+        "key": "7007:25",
+        "index": 1
+      }
+    ]
+  }
+}
+? 0
+```
+
+```console
+$ metab root --api '/api/plugin/event-log/timeline?path=events-20261119T220000Z-p7007-000.jsonl&limit=1&focus=7007:25&kind=request'
+api: /api/plugin/event-log/timeline?path=events-20261119T220000Z-p7007-000.jsonl&limit=1&focus=7007:25&kind=request
+status: 200
+{
+  "view": "timeline",
+  "log": {
+    "schema_version": 1,
+    "kinds": [
+      "request",
+      "job",
+      "subprocess",
+      "browser",
+      "lifecycle",
+      "loop",
+      "probe"
+    ],
+    "outcomes": [
+      "ok",
+      "failed",
+      "timeout",
+      "cancelled",
+      "abandoned",
+      "never_completed"
+    ],
+    "edges_ms": [
+      1.0,
+      10.0,
+      100.0,
+      500.0,
+      2000.0,
+      10000.0
+    ],
+    "bytes": 14917,
+    "records": 58,
+    "skipped": 2,
+    "spans": 46,
+    "unfinished": 2,
+    "started": "2026-11-19T22:00:00.100Z",
+    "ended": "2026-11-19T22:03:50.003Z",
+    "extent_ms": 229903.0,
+    "pids": [
+      7007
+    ],
+    "continues": false
+  },
+  "query": {
+    "kind": [
+      "request"
+    ],
+    "outcome": [],
+    "name": null,
+    "client": null,
+    "cause": null,
+    "min_ms": null
+  },
+  "order": "oldest",
+  "parent": null,
+  "total": 36,
+  "offset": 0,
+  "limit": 1,
+  "max_limit": 1000,
+  "has_more": true,
+  "rows": [
+    {
+      "type": "span",
+      "key": "7007:1",
+      "kind": "request",
+      "name": "GET /view/",
+      "start_ms": 899.2,
+      "dur_ms": 11.8,
+      "outcome": "ok",
+      "state": "ended",
+      "client": "k3v9q2zx-1",
+      "pid": 7007,
+      "span": 1,
+      "parent": null,
+      "attrs": {
+        "status": 200,
+        "bytes": 4300,
+        "start_ms": 11.5
+      },
+      "elapsed_ms": 11.8,
+      "children": 0,
+      "below": 0,
+      "matched": true
+    }
+  ],
+  "focus": {
+    "key": "7007:25",
+    "found": false,
+    "reason": "filtered",
+    "steps": []
+  }
+}
+? 0
+```
+
+```console
+$ metab root --api '/api/plugin/event-log/timeline?path=events-20261119T220000Z-p7007-000.jsonl&limit=1&focus=7007:999'
+api: /api/plugin/event-log/timeline?path=events-20261119T220000Z-p7007-000.jsonl&limit=1&focus=7007:999
+status: 200
+{
+  "view": "timeline",
+  "log": {
+    "schema_version": 1,
+    "kinds": [
+      "request",
+      "job",
+      "subprocess",
+      "browser",
+      "lifecycle",
+      "loop",
+      "probe"
+    ],
+    "outcomes": [
+      "ok",
+      "failed",
+      "timeout",
+      "cancelled",
+      "abandoned",
+      "never_completed"
+    ],
+    "edges_ms": [
+      1.0,
+      10.0,
+      100.0,
+      500.0,
+      2000.0,
+      10000.0
+    ],
+    "bytes": 14917,
+    "records": 58,
+    "skipped": 2,
+    "spans": 46,
+    "unfinished": 2,
+    "started": "2026-11-19T22:00:00.100Z",
+    "ended": "2026-11-19T22:03:50.003Z",
+    "extent_ms": 229903.0,
+    "pids": [
+      7007
+    ],
+    "continues": false
+  },
+  "query": {
+    "kind": [],
+    "outcome": [],
+    "name": null,
+    "client": null,
+    "cause": null,
+    "min_ms": null
+  },
+  "order": "oldest",
+  "parent": null,
+  "total": 44,
+  "offset": 0,
+  "limit": 1,
+  "max_limit": 1000,
+  "has_more": true,
+  "rows": [
+    {
+      "type": "mark",
+      "key": "7007@1",
+      "kind": "lifecycle",
+      "name": "server.start",
+      "start_ms": 0.0,
+      "dur_ms": null,
+      "outcome": null,
+      "state": "mark",
+      "client": null,
+      "pid": 7007,
+      "span": null,
+      "parent": null,
+      "attrs": {
+        "served": "https://github.com/octo/demo",
+        "version": "0.13.0"
+      },
+      "elapsed_ms": null,
+      "children": 0,
+      "below": 0,
+      "matched": true
+    }
+  ],
+  "focus": {
+    "key": "7007:999",
+    "found": false,
+    "reason": "missing",
+    "steps": []
+  }
+}
+? 0
+```
+
+```console
+$ metab root --api '/api/plugin/event-log/timeline?path=events-20261119T220000Z-p7007-000.jsonl&order=sideways'
+api: /api/plugin/event-log/timeline?path=events-20261119T220000Z-p7007-000.jsonl&order=sideways
+status: 400
+{
+  "error": "order must be one of oldest, newest; not sideways",
+  "code": "invalid_query"
+}
+Error: /api/plugin/event-log/timeline?path=events-20261119T220000Z-p7007-000.jsonl&order=sideways returned HTTP 400
+? 1
 ```
 
 ## Test: what the routes refuse

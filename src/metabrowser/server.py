@@ -1254,9 +1254,14 @@ class _SlowRequestLogMiddleware:
         # the application runs, so a job the request starts names it as its parent, and
         # carries the page's ID for it, which a page's reports name too.
         method = scope.get("method", "")
+        # A request for something inside the events directory is not recorded, when this
+        # server's folder holds the directory (event_log.quiet_request says why).
         request_span = (
             event_log.begin("request", f"{method} {path}", client=_request_client(scope))
             if event_log.enabled()
+            and not event_log.quiet_request(
+                path, (scope.get("query_string") or b"").decode("latin-1")
+            )
             else event_log.NULL_SPAN
         )
 

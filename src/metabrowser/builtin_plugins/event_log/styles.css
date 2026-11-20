@@ -203,8 +203,29 @@
 }
 
 .event-log-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
   padding: 0 4px 4px 28px;
   color: var(--muted);
+}
+
+/* The way from a row seen out of its place to its place in the Timeline: a small button
+   beside the path, which wraps under it where the pane is narrow. */
+.event-log-show {
+  min-height: 0;
+  padding: 0 8px;
+}
+
+/* The row a person asked the Timeline to show: its tint is the selection's, held until
+   the next row is asked for or the log is read again. */
+.event-log-row[data-revealed] {
+  background: var(--highlight-bg);
+}
+
+.event-log-reveal-note {
+  margin-top: 8px;
 }
 
 .event-log-detail {

@@ -286,18 +286,25 @@ two spans of one number), and a span with no `end` is *unfinished*, aged to the 
 last record.
 The file’s name picks the kind (`events-*.jsonl`, a filesystem `path_glob`),
 so a segment is an event log wherever it is served or copied, and each view is a route
-of the plugin that reads the file through the content reader, so a folder and a pinned
-revision answer alike: `timeline` (a page of the roots, or the children of a `parent`,
-in time order), `slowest`, `kinds`, and `errors`. They take `/api/event-log`’s filters
-(`kind`, `outcome`, `name`, `client`, `cause`, `min_ms`); a filtered timeline keeps the
-spans that match and the spans above them.
+of the plugin that reads the file through the content reader, which is the same bounded
+read for every source.
+The kind is picked only for a file of an attached folder, since a `path_glob` is a
+filesystem match: the same name in a pinned revision is a generic JSONL file, with no
+event-log views. The routes are `timeline` (a page of the roots, or the children of a
+`parent`, in time order), `slowest`, `kinds`, and `errors`. They take `/api/event-log`’s
+filters (`kind`, `outcome`, `name`, `client`, `cause`, `min_ms`); a filtered timeline
+keeps the spans that match and the spans above them.
 Errors is the failures route’s grouping (`event_log_route.FailureTally`) over one file,
 plus the unfinished work.
 A segment is read whole up to `MAX_VIEW_BYTES`, the size the writer rolls at, and the
 table built from it is kept by the content’s fingerprint; each constant records its
 measurement beside it.
-A server that serves the folder the log lives in opens no log of its own, since its
-requests for the files on screen would change one of them.
+A server whose folder is the events directory, or inside it, opens no log of its own,
+since its requests for the files on screen would change one of them, and says why: as a
+warning, in Details, and in `metab --doctor`. A server whose folder only holds the
+directory (`metab ~`) logs as usual and records no request whose target resolves inside
+it (`event_log.quiet_request`), which is what breaks the loop without losing the rest of
+that server’s latency.
 
 ## Implementation Plan
 

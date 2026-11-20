@@ -13,12 +13,16 @@ and measures what no browserless DOM computes:
   that was cancelled in three that differ, and the Errors view's cause in the failure ink;
 - a job nests under its request and a process under its job, each one indent from the
   last, its chevron turned and its detail shown;
-- a row a key reaches has a focus ring, and Enter on it opens it;
+- a row a key reaches has a focus ring, and Enter on it opens it and leaves the keyboard on
+  it;
+- Show in timeline on an example in Errors opens the Timeline with the spans above the row
+  open, the row in view and tinted, and the keyboard on it;
 - the distribution's tallest column is the full height of its track and the others are
   their counts' shares of it;
 - nothing overflows the pane at the default width, and in a pane of 260 px, which a window
   of 560 px leaves beside the navigation pane, a row drops its bar and its offset and
-  keeps its name and its ending, with nothing overflowing;
+  keeps its name and its ending, with nothing overflowing, and the filter bar's every chip,
+  the last of the least times among them, is inside the pane;
 - a chip of the filter bar narrows the timeline to the jobs and the requests that started
   them, which are drawn in the muted ink as context; and Raw JSON is the JSONL view.
 
@@ -131,7 +135,9 @@ def _check_a_row_is_the_shells_row_height_and_its_bar_is_on_the_time_axis(
     assert timeline["barWidthShare"] == pytest.approx(2.4125 / 229.9, abs=0.005)
     assert timeline["hairline"] > 0, "a request of a few milliseconds is still drawn"
     assert timeline["noOverflow"] is True
-    assert timeline["chipsDrawn"] == 7 + 6 + 6
+    # The kinds, the outcomes, the least times (Any and each edge of the distribution), and
+    # the two orders.
+    assert timeline["chipsDrawn"] == 7 + 6 + 7 + 2
     assert timeline["noticeSeverity"] == "warning"
 
 
@@ -162,6 +168,9 @@ def _check_a_row_a_key_reaches_has_a_focus_ring_and_enter_opens_it(
     assert keyboard["outlineStyle"] != "none"
     assert float(keyboard["outlineWidth"].removesuffix("px")) > 0
     assert (keyboard["expanded"], keyboard["afterEnter"]) == ("false", "true")
+    # Opening a row draws it again as a new node; the keyboard is on the new node (A2 of
+    # review A of #633: it had been left on the page's body).
+    assert keyboard["keptFocus"] is True
 
 
 def _check_the_distribution_is_drawn_in_proportion(measured: dict[str, Any]) -> None:
@@ -195,12 +204,31 @@ def _check_the_errors_view_has_no_filter_bar_and_four_parts(measured: dict[str, 
 def _check_a_narrow_pane_drops_the_bar_and_the_offset_and_keeps_the_name(
     measured: dict[str, Any],
 ) -> None:
-    assert measured["narrow"] == {
+    narrow = dict(measured["narrow"])
+    bar = narrow.pop("filterBar")
+    assert narrow == {
         "barShown": False,
         "whenShown": False,
         "noOverflow": True,
         "nameShown": True,
     }
+    # The filter bar, in the same pane: every chip inside it, and the slowest least time
+    # reachable (the "At least" group clipped at its edge before it wrapped, and the choices
+    # of 2 s and more were out of reach).
+    assert bar["chips"] == 7 + 6 + 7 + 2
+    assert bar["width"] < 400, "measured in a narrow pane"
+    assert (bar["everyChipInside"], bar["noOverflow"], bar["lastLeastChip"]) == (True, True, True)
+
+
+def _check_show_in_timeline_opens_the_spans_above_a_row_and_focuses_it(
+    measured: dict[str, Any],
+) -> None:
+    shown = measured["shown"]
+    assert shown["tab"] == "Timeline"
+    assert (shown["focusedKey"], shown["revealed"]) == ("7007:25", True)
+    assert shown["ancestorsOpen"] == ["true", "true"]
+    assert shown["inView"] is True
+    assert shown["tint"] != shown["plain"], "the row asked for is tinted"
 
 
 def _check_a_chip_narrows_the_timeline_and_the_requests_above_a_match_are_context(
@@ -226,5 +254,6 @@ def test_the_event_log_views_in_chrome(tmp_path: Path, chrome_profile: Path) -> 
     _check_by_kind_tables_fit_and_numbers_align_right(measured)
     _check_the_errors_view_has_no_filter_bar_and_four_parts(measured)
     _check_a_narrow_pane_drops_the_bar_and_the_offset_and_keeps_the_name(measured)
+    _check_show_in_timeline_opens_the_spans_above_a_row_and_focuses_it(measured)
     _check_a_chip_narrows_the_timeline_and_the_requests_above_a_match_are_context(measured)
     _check_raw_json_is_the_jsonl_view(measured)

@@ -23,6 +23,14 @@
             "abandoned",
             "never_completed"
           ],
+          "edges_ms": [
+            1.0,
+            10.0,
+            100.0,
+            500.0,
+            2000.0,
+            10000.0
+          ],
           "bytes": 14917,
           "records": 58,
           "skipped": 2,
@@ -33,7 +41,8 @@
           "extent_ms": 229903.0,
           "pids": [
             7007
-          ]
+          ],
+          "continues": false
         },
         "query": {
           "kind": [],
@@ -450,6 +459,14 @@
             "abandoned",
             "never_completed"
           ],
+          "edges_ms": [
+            1.0,
+            10.0,
+            100.0,
+            500.0,
+            2000.0,
+            10000.0
+          ],
           "bytes": 14917,
           "records": 58,
           "skipped": 2,
@@ -460,7 +477,8 @@
           "extent_ms": 229903.0,
           "pids": [
             7007
-          ]
+          ],
+          "continues": false
         },
         "query": {
           "kind": [],
@@ -624,6 +642,14 @@
             "abandoned",
             "never_completed"
           ],
+          "edges_ms": [
+            1.0,
+            10.0,
+            100.0,
+            500.0,
+            2000.0,
+            10000.0
+          ],
           "bytes": 14917,
           "records": 58,
           "skipped": 2,
@@ -634,7 +660,8 @@
           "extent_ms": 229903.0,
           "pids": [
             7007
-          ]
+          ],
+          "continues": false
         },
         "kinds": [],
         "failures": 5,
@@ -662,13 +689,14 @@
             "examples": [
               {
                 "ts": "2026-11-19T22:01:02.051Z",
+                "key": "7007:25",
+                "pid": 7007,
                 "span": 25,
                 "kind": "probe",
                 "name": "probe api.github.com:443",
                 "outcome": "failed",
                 "dur_ms": 2031.2,
                 "address": null,
-                "key": "7007:25",
                 "path": [
                   {
                     "key": "7007:22",
@@ -684,13 +712,14 @@
               },
               {
                 "ts": "2026-11-19T22:01:02.051Z",
+                "key": "7007:23",
+                "pid": 7007,
                 "span": 23,
                 "kind": "job",
                 "name": "mirror_refresh.MirrorSession._pull_job",
                 "outcome": "failed",
                 "dur_ms": 32050.0,
                 "address": null,
-                "key": "7007:23",
                 "path": [
                   {
                     "key": "7007:22",
@@ -701,13 +730,14 @@
               },
               {
                 "ts": "2026-11-19T22:01:00.016Z",
+                "key": "7007:24",
+                "pid": 7007,
                 "span": 24,
                 "kind": "subprocess",
                 "name": "gh api",
                 "outcome": "failed",
                 "dur_ms": 30006.4,
                 "address": "20.172.24.160",
-                "key": "7007:24",
                 "path": [
                   {
                     "key": "7007:22",
@@ -742,13 +772,14 @@
             "examples": [
               {
                 "ts": "2026-11-19T22:02:01.331Z",
+                "key": "7007:39",
+                "pid": 7007,
                 "span": 39,
                 "kind": "job",
                 "name": "pull_files_refresh.refresh_files",
                 "outcome": "failed",
                 "dur_ms": 1330.6,
                 "address": null,
-                "key": "7007:39",
                 "path": [
                   {
                     "key": "7007:38",
@@ -759,13 +790,14 @@
               },
               {
                 "ts": "2026-11-19T22:02:01.328Z",
+                "key": "7007:41",
+                "pid": 7007,
                 "span": 41,
                 "kind": "subprocess",
                 "name": "gh api",
                 "outcome": "failed",
                 "dur_ms": 688.9,
                 "address": null,
-                "key": "7007:41",
                 "path": [
                   {
                     "key": "7007:38",
@@ -784,6 +816,7 @@
         ],
         "probe": {
           "ts": "2026-11-19T22:01:02.051Z",
+          "key": "7007:25",
           "span": 25,
           "timeout_s": 3.0,
           "via_proxy": false,
@@ -815,6 +848,8 @@
           "examples": [
             {
               "ts": "2026-11-19T22:03:50.000Z",
+              "key": "7007@57",
+              "pid": 7007,
               "client": "k3v9q2zx-90",
               "name": "fetch GET /api/plugin/github/pull-comparison",
               "outcome": "never_completed",

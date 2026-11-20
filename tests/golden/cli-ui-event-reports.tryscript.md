@@ -648,7 +648,12 @@ $ node tests/dom/event-reports-session.js
           "  Nothing this server does is recorded, so there is nothing to show here."
         ],
         "asked": 0
-      }
+      },
+      "the log off with its reason": [
+        "The event log is off on this server",
+        "  Nothing this server does is recorded, so there is nothing to show here.",
+        "  Why: the folder this server shows is the event log's own, and recording its requests would change the files on screen"
+      ]
     }
   },
   "serverTiming": {

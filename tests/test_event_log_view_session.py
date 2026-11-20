@@ -6,7 +6,7 @@ page and the next, a row opening to the spans it started, a filter rebuilding th
 timeline, the three other views, a refusal, and a view replaced or disposed while an
 answer was on its way. ``tests/golden/cli-ui-event-log-view.tryscript.md`` pins its
 transcript. So that the conversation is the server's and not envelopes a test wrote by
-hand, the session plays the answers in the three
+hand, the session plays the answers in the four
 ``tests/fixtures/event-log-view-*-responses.json`` recordings: what the in-process
 application answered for each request the page makes, and for a file it does not have,
 over the segment ``cli-api-event-log-views.tryscript.md`` pins. The first test here
@@ -36,6 +36,7 @@ RECORDINGS = {
     "timeline": "event-log-view-timeline-responses.json",
     "latency": "event-log-view-latency-responses.json",
     "summary": "event-log-view-summary-responses.json",
+    "reveal": "event-log-view-reveal-responses.json",
 }
 TRANSCRIPT = "cli-ui-event-log-view.tryscript.md"
 LOG = "events-20261119T220000Z-p7007-000.jsonl"
@@ -46,8 +47,10 @@ HOOK = "/api/plugin/event-log"
 # in the recording that holds its answer. The page asks for a first page with no limit;
 # the session answers it with the server's page of 20 (``FIRST_PAGE``), so the second,
 # which the page asks for with the limit the first answered with, is a page the server has.
-# Three recordings, because the answers are long and each stays within the fixtures'
-# review budget (``devtools/check_goldens.py``).
+# Four recordings, because the answers are long and each stays within the fixtures'
+# review budget (``devtools/check_goldens.py``). ``reveal`` holds what Show in timeline asks:
+# where a row is (``focus``, a page of one), the roots through a row's place (the page of 23
+# that reaches the 43rd after the first 20), and the roots newest first.
 REQUESTS: dict[str, list[tuple[str, dict[str, str]]]] = {
     "timeline": [
         ("timeline", {"limit": "20"}),
@@ -60,6 +63,14 @@ REQUESTS: dict[str, list[tuple[str, dict[str, str]]]] = {
         ("timeline", {"kind": "job", "outcome": "failed"}),
     ],
     "latency": [("slowest", {}), ("slowest", {"kind": "subprocess"})],
+    "reveal": [
+        ("timeline", {"focus": "7007:46", "limit": "1"}),
+        ("timeline", {"offset": "20", "limit": "23"}),
+        ("timeline", {"parent": "7007:44"}),
+        ("timeline", {"parent": "7007:45"}),
+        ("timeline", {"focus": "7007:25", "limit": "1"}),
+        ("timeline", {"order": "newest", "limit": "20"}),
+    ],
     "summary": [
         ("kinds", {}),
         ("kinds", {"outcome": "failed"}),

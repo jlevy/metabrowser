@@ -9,6 +9,7 @@ what a filter keeps, how the distribution is cut, and what a hand-edited file ma
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -113,6 +114,63 @@ def test_lines_that_are_not_records_of_this_version_are_counted_not_read() -> No
     assert (table.records, table.skipped) == (1, 3)
 
 
+@pytest.mark.parametrize(
+    ("claimed", "kept"),
+    [
+        (5.0, 5.0),
+        (-3.0, 0.0),
+        (1e18, event_log_views.MAX_DURATION_MS),
+        (1e300, event_log_views.MAX_DURATION_MS),
+        (float("inf"), None),
+        (True, None),
+        ("5", None),
+    ],
+)
+def test_a_duration_a_file_claims_is_kept_within_what_a_calendar_can_hold(
+    claimed: object, kept: float | None
+) -> None:
+    table = _table(_line(1, "end", "job", "x", span=1, dur_ms=claimed, outcome="ok"))
+    assert table.spans["1:1"].dur_ms == kept
+    log = event_log_views.log_summary(table)
+    assert log["started"] and log["ended"], "a start the calendar can show"
+
+
+@pytest.mark.parametrize(
+    "stamp", ["0001-01-01T00:00:00Z", "1969-12-31T23:59:59Z", "9999-12-31T23:59:59Z", "nonsense"]
+)
+def test_a_time_outside_the_years_the_writer_could_have_stamped_is_no_time(stamp: str) -> None:
+    table = event_log_views.build_table(
+        json.dumps(
+            {"v": 1, "ts": stamp, "event": "end", "kind": "job", "name": "x", "span": 1, "pid": 1}
+        ).encode()
+    )
+    assert (table.records, table.skipped, table.items) == (0, 1, [])
+
+
+def test_an_attribute_a_file_nests_past_the_bound_or_makes_not_finite_is_cut() -> None:
+    nested: dict[str, Any] = {"deep": 1}
+    for _ in range(event_log_views.MAX_ATTR_DEPTH + 3):
+        nested = {"in": nested}
+    table = _table(
+        _line(
+            1,
+            "end",
+            "job",
+            "x",
+            span=1,
+            dur_ms=1.0,
+            attrs={"nested": nested, "kept": [1, {"a": 2}]},
+        )
+    )
+    attrs = table.spans["1:1"].attrs
+    assert attrs["kept"] == [1, {"a": 2}]
+    json.dumps(attrs, allow_nan=False)
+    cut = attrs["nested"]
+    for _ in range(event_log_views.MAX_ATTR_DEPTH - 2):
+        cut = cut["in"]
+    assert cut == {"in": None}
+
+
 def test_a_record_with_no_usable_time_is_left_out() -> None:
     table = _table(
         '{"v":1,"event":"mark","kind":"lifecycle","name":"no time"}',
@@ -203,6 +261,38 @@ def test_spans_nested_in_a_circle_are_all_shown() -> None:
         )["rows"]
     ]
     assert sorted(reachable | set(below)) == ["a", "b", "self"]
+
+
+def test_a_deep_chain_is_put_together_in_time_linear_in_its_length() -> None:
+    """A segment holds at most about 8,000 spans, and one chain of them cost 14 s to read
+    when each span's depth was walked to the root and each link checked for a circle by
+    walking all the way up (review A of #633). Now each is settled once."""
+
+    count = 8_000
+    lines = [
+        _line(1, "end", "job", f"s{n}", span=n, parent=n - 1 if n > 1 else None, dur_ms=1.0)
+        for n in range(1, count + 1)
+    ]
+    started = time.perf_counter()
+    table = _table(*lines)
+    answer = _roots(table)
+    took = time.perf_counter() - started
+    assert took < 3.0, f"{count} spans nested in a chain took {took:.1f} s"
+    assert table.depth["1:1"] == 0 and table.depth[f"1:{count}"] == count - 1
+    (root,) = answer["rows"]
+    assert (root["children"], root["below"]) == (1, count - 1)
+
+
+def test_a_long_circle_is_cut_once_and_every_span_is_still_shown() -> None:
+    count = 4_000
+    lines = [
+        _line(1, "end", "job", f"s{n}", span=n, parent=n % count + 1, dur_ms=1.0)
+        for n in range(1, count + 1)
+    ]
+    table = _table(*lines)
+    roots = [span for span in table.spans.values() if span.parent_key is None]
+    assert len(roots) == 1, "one link closes the circle, and only one is cut"
+    assert sorted(table.depth.values()) == list(range(count))
 
 
 def test_two_processes_in_one_file_keep_their_span_numbers_apart() -> None:
@@ -406,6 +496,78 @@ def test_failures_are_grouped_by_cause_with_the_page_apart(story: event_log_view
     # A page's never_completed fetch is not counted among the causes.
     assert answer["page_reports"]["count"] == 1
     assert answer["page_reports"]["outcomes"] == {"never_completed": 1}
+
+
+def test_an_example_is_opened_where_it_happened_when_two_processes_share_a_span_number() -> None:
+    """Both processes failed a ``refresh`` numbered 2 under a request numbered 1; the
+    examples open the span of their own process, not the first with that number."""
+
+    table = _table(
+        _line(1, "end", "request", "GET /a", span=1, pid=1, dur_ms=5.0, outcome="ok"),
+        _line(
+            2,
+            "end",
+            "job",
+            "refresh",
+            span=2,
+            parent=1,
+            pid=1,
+            dur_ms=5.0,
+            outcome="failed",
+            attrs={"cause": "connect_timeout"},
+        ),
+        _line(61, "end", "request", "GET /b", span=1, pid=2, dur_ms=5.0, outcome="ok"),
+        _line(
+            62,
+            "end",
+            "job",
+            "refresh",
+            span=2,
+            parent=1,
+            pid=2,
+            dur_ms=5.0,
+            outcome="failed",
+            attrs={"cause": "connect_timeout"},
+        ),
+    )
+    (group,) = event_log_views.errors(table, ())["causes"]
+    assert [(e["pid"], e["span"], e["key"]) for e in group["examples"]] == [
+        (2, 2, "2:2"),
+        (1, 2, "1:2"),
+    ]
+    assert [[step["name"] for step in e["path"]] for e in group["examples"]] == [
+        ["GET /b"],
+        ["GET /a"],
+    ]
+
+
+def test_a_failure_the_page_reported_is_opened_where_it_sits_among_the_roots() -> None:
+    table = _table(
+        _line(
+            1,
+            "end",
+            "browser",
+            "fetch /api/x",
+            client="abcd1234-1",
+            pid=3,
+            dur_ms=4000.0,
+            outcome="never_completed",
+            attrs={"status": None, "path": "/api/x"},
+        ),
+    )
+    (example,) = event_log_views.errors(table, ())["page_reports"]["examples"]
+    assert example["client"] == "abcd1234-1" and example["pid"] == 3 and example["ts"]
+    assert table.points[example["key"]].kind == "browser"
+    answer = event_log_views.timeline(
+        table,
+        event_log_views.parse_filter({}),
+        parent=None,
+        offset=0,
+        limit=9,
+        focus=example["key"],
+    )
+    assert answer["focus"]["found"] is True
+    assert answer["focus"]["steps"] == [{"parent": None, "key": example["key"], "index": 0}]
 
 
 def test_work_with_no_end_is_listed_apart_longest_first(story: event_log_views.Table) -> None:

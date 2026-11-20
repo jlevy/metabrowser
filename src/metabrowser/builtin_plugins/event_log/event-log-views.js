@@ -11,6 +11,7 @@ import {
   beginPage,
   bucketLabels,
   chooseMinimum,
+  createShared,
   createTimeline,
   emptyFilters,
   failPage,
@@ -19,7 +20,9 @@ import {
   flatten,
   formatDuration,
   formatOffset,
+  holds,
   lengthShare,
+  minimumChoices,
   outcomeLabel,
   outcomeTone,
   pageParams,
@@ -33,26 +36,55 @@ import {
 /** @typedef {import("./event-log-model.js").Filters} Filters */
 /** @typedef {import("./event-log-model.js").TimelineState} TimelineState */
 /** @typedef {import("./event-log-model.js").TimelineLine} TimelineLine */
+/** @typedef {import("./event-log-model.js").Order} Order */
+/** @typedef {import("./event-log-model.js").Shared} Shared */
 /** @typedef {"timeline" | "latency" | "kinds" | "errors"} ViewName */
 
 // The least width a span's bar is drawn, as a fraction of the log's whole time axis: a
 // request of a few milliseconds in a log of minutes is a hairline, and a bar that is not
 // drawn at all would say nothing happened.
 const MIN_BAR = 0.003;
-// The `min_ms` choices, in milliseconds, each an edge of the server's distribution (the
-// answer's `edges_ms`), so that "slow" means the one thing. The labels are the words.
-const MIN_CHOICES = [null, 10, 100, 1000, 2000, 10_000];
 const FILTER_KIND = "event-log-kind";
 const FILTER_OUTCOME = "event-log-outcome";
 const FILTER_MINIMUM = "event-log-minimum";
+const FILTER_ORDER = "event-log-order";
 /**
  * @typedef {Object} Mount One view mounted in one container.
  * @property {AbortController} abort
  * @property {number} generation Bumped by each render, so an answer to an old one is dropped.
+ * @property {() => void} [stop] Ends what the mount subscribed to.
  */
 
 /** @type {WeakMap<HTMLElement, Mount>} */
 const mounts = new WeakMap();
+
+/**
+ * What the views of one file share, held while any is mounted: the filters, so a choice
+ * made in one view is the next view's, and the request to show a row in the Timeline.
+ *
+ * @type {Map<string, {shared: Shared, users: number}>}
+ */
+const sharing = new Map();
+
+/** @param {string} path */
+function acquireShared(path) {
+  const held = sharing.get(path) ?? { shared: createShared(), users: 0 };
+  held.users += 1;
+  sharing.set(path, held);
+  return held.shared;
+}
+
+/** @param {string} path */
+function releaseShared(path) {
+  const held = sharing.get(path);
+  if (held === undefined) {
+    return;
+  }
+  held.users -= 1;
+  if (held.users <= 0) {
+    sharing.delete(path);
+  }
+}
 
 /** @param {unknown} value @returns {Record<string, unknown>} */
 const record = (value) =>
@@ -159,7 +191,8 @@ function summaryStrip(log, mb) {
   stat("Spans", mb.formatInteger(count(log.spans)));
   const unfinished = count(log.unfinished);
   if (unfinished > 0) {
-    stat("Unfinished", mb.formatInteger(unfinished));
+    // A span with no end here may have ended in the segment that follows (`continues`).
+    stat(log.continues === true ? "No end here" : "Unfinished", mb.formatInteger(unfinished));
   }
   stat("Covers", formatDuration(figure(log.extent_ms)));
   const started = text(log.started);
@@ -182,7 +215,8 @@ function skippedNotice(log, mb) {
   }
   return notice(
     `${mb.formatInteger(skipped)} ${skipped === 1 ? "line was" : "lines were"} not read: ` +
-      "a torn last line, or a record of another schema version. Raw JSON shows every line.",
+      "a torn last line, a record of another schema version, a record with no usable time, " +
+      "or a line that is not a record. Raw JSON shows every line.",
   );
 }
 
@@ -190,16 +224,18 @@ function skippedNotice(log, mb) {
 
 /**
  * Draw the filter bar and answer its choices. A chip is a choice among the words the
- * server names (the answer's `kinds` and `outcomes`), and the minimum time is one of the
- * edges of its distribution.
+ * server names (the answer's `kinds` and `outcomes`), and the least time is one of the
+ * edges of its distribution (`edges_ms`). Every group wraps: the bar is as narrow as the
+ * pane, and a joined group wider than it would clip the choices past its edge.
  *
  * @param {HTMLElement} host
  * @param {MetabrowserPublicSdk} mb
  * @param {Filters} filters
- * @param {{kinds: string[], outcomes: string[]}} vocabulary
+ * @param {{kinds: string[], outcomes: string[], edges: number[]}} vocabulary
+ * @param {Order | null} order The roots' order, for the Timeline's bar; null for the others.
  * @returns {void}
  */
-function drawFilters(host, mb, filters, vocabulary) {
+function drawFilters(host, mb, filters, vocabulary, order) {
   const controls = mb.filterControls;
   if (!controls) {
     return;
@@ -225,14 +261,27 @@ function drawFilters(host, mb, filters, vocabulary) {
     controls.groupHtml({
       key: FILTER_MINIMUM,
       select: "one",
-      layout: "joined",
+      layout: "wrap",
       label: "At least",
-      options: MIN_CHOICES.map((ms) => ({
+      options: minimumChoices(vocabulary.edges).map((ms) => ({
         value: ms === null ? "" : String(ms),
         label: ms === null ? "Any" : formatDuration(ms),
       })),
       value: filters.minMs === null ? "" : String(filters.minMs),
-    });
+    }) +
+    (order === null
+      ? ""
+      : controls.groupHtml({
+          key: FILTER_ORDER,
+          select: "one",
+          layout: "wrap",
+          label: "Order",
+          options: [
+            { value: "oldest", label: "Oldest first" },
+            { value: "newest", label: "Newest first" },
+          ],
+          value: order,
+        }));
   restore();
 }
 
@@ -291,16 +340,53 @@ function detail(row) {
 }
 
 /**
- * The spans above a row, outermost first, as one line.
+ * The button that takes a row seen out of its place to its place in the Timeline.
+ *
+ * @param {string} key The row's key, which the Timeline finds it by.
+ * @param {(key: string) => void} onShow
+ */
+function showButton(key, onShow) {
+  const button = make("button", "btn event-log-show", ["Show in timeline"]);
+  button.setAttribute("type", "button");
+  button.addEventListener("click", () => onShow(key));
+  return button;
+}
+
+/**
+ * The line under a row seen out of its place: the spans above it, outermost first, and the
+ * way to its place in the Timeline.
  *
  * @param {EventRow} row
+ * @param {((key: string) => void) | undefined} onShow
  */
-function pathLine(row) {
+function contextLine(row, onShow) {
   const above = row.path ?? [];
-  if (above.length === 0) {
+  if (above.length === 0 && onShow === undefined) {
     return null;
   }
-  return make("div", "event-log-path", [`in ${above.map((span) => span.name).join(" > ")}`]);
+  return make("div", "event-log-path", [
+    ...(above.length > 0 ? [`in ${above.map((span) => span.name).join(" > ")}`] : []),
+    ...(onShow === undefined ? [] : [showButton(row.key, onShow)]),
+  ]);
+}
+
+/**
+ * Focus a row's head, which a repaint made a new node: the key that was on it is the
+ * identity that was kept, so a person who opened a row by keyboard is still on it.
+ *
+ * @param {HTMLElement | undefined} node A row's node, as `rowElement` builds it.
+ */
+function focusHead(node) {
+  /** @type {HTMLElement | undefined} */ (node?.childNodes[0])?.focus();
+}
+
+/**
+ * Whether a row's head, or the node, has the keyboard.
+ *
+ * @param {Node | undefined} node
+ */
+function hasFocus(node) {
+  return node !== undefined && globalThis.document?.activeElement === node;
 }
 
 /**
@@ -314,6 +400,7 @@ function pathLine(row) {
  *   bar: {left: number, width: number},
  *   showPath: boolean,
  *   onToggle: (row: EventRow) => void,
+ *   onShow?: (key: string) => void,
  * }} options
  */
 function rowElement(mb, row, options) {
@@ -335,6 +422,18 @@ function rowElement(mb, row, options) {
   const elapsed = make("span", "event-log-dur", [formatDuration(row.elapsed_ms)]);
   const outcome = make("span", "event-log-outcome", [outcomeLabel(row)]);
   head.append(chevron, kind, name, track, when, elapsed, outcome);
+  // The parts are columns, which a screen reader reads as one run of words: say which is which.
+  head.setAttribute(
+    "aria-label",
+    [
+      `${row.kind} ${row.name}`,
+      `began ${formatOffset(row.start_ms)}`,
+      row.elapsed_ms === null ? "" : `took ${formatDuration(row.elapsed_ms)}`,
+      outcomeLabel(row),
+    ]
+      .filter(Boolean)
+      .join(", "),
+  );
   head.addEventListener("click", () => options.onToggle(row));
   const shown = make("div", "event-log-row");
   shown.setAttribute("data-tone", tone);
@@ -346,7 +445,7 @@ function rowElement(mb, row, options) {
   }
   shown.append(head);
   if (options.showPath) {
-    const above = pathLine(row);
+    const above = contextLine(row, options.onShow);
     if (above) {
       shown.append(above);
     }
@@ -402,20 +501,60 @@ function showFailure(parts, error) {
  */
 export function mountEventLogView(container, ctx, mb, view) {
   disposeEventLogView(container);
+  /** @type {Mount} */
   const mount = { abort: new AbortController(), generation: 0 };
   mounts.set(container, mount);
   const path = ctx.path ?? "";
+  const shared = acquireShared(path);
   const filterable = view !== "errors";
   const parts = frame(container, filterable);
-  const filters = emptyFilters();
-  /** @type {{kinds: string[], outcomes: string[]}} */
-  let vocabulary = { kinds: [], outcomes: [] };
+  // The views of one file choose their filters together: this object is theirs, and
+  // `applied` is the choice this view last drew, so a view shown again after another
+  // changed it knows it is stale.
+  const filters = shared.filters;
+  let applied = shared.version;
+  /** @type {{kinds: string[], outcomes: string[], edges: number[]}} */
+  let vocabulary = { kinds: [], outcomes: [], edges: [] };
+  /** @type {Order} */
+  let order = "oldest";
   /** @type {TimelineState} */
-  let timeline = createTimeline();
+  let timeline = createTimeline(order);
   /** @type {Record<string, unknown>} */
   let head = {};
+  /** The most rows the server answers with, which a longer reach is made in pages of. */
+  let maxLimit = 1000;
   /** @type {Set<string>} */
   const opened = new Set();
+  /**
+   * The rows the Latency and Errors views drew, by key: a repaint makes each a new node,
+   * and a person on one by keyboard is put back on the new node of the same row.
+   *
+   * @type {Map<string, HTMLElement>}
+   */
+  let rowNodes = new Map();
+  /** @type {Promise<void>} */
+  let firstPage = Promise.resolve();
+  /** @type {HTMLElement | null} */
+  let revealNote = null;
+
+  /**
+   * Take a row seen here to its place in the Timeline: the view opens, the log is asked
+   * where the row is, and the Timeline opens each span above it, reads the pages that
+   * hold them, and focuses it.
+   *
+   * @param {string} key
+   */
+  const showInTimeline = async (key) => {
+    shared.focus = key;
+    try {
+      await mb.navigation.open({ path }, { viewId: "timeline" });
+    } catch {
+      // The shell says why a view could not open; the request is dropped with it.
+      shared.focus = null;
+      return;
+    }
+    shared.reveal?.();
+  };
 
   /** @param {string} route @param {Record<string, string>} extra */
   const read = (route, extra) =>
@@ -426,7 +565,7 @@ export function mountEventLogView(container, ctx, mb, view) {
   /** Draw the filter bar from what the last answer said the words are. */
   const paintFilters = () => {
     if (filterable && vocabulary.kinds.length > 0) {
-      drawFilters(parts.filters, mb, filters, vocabulary);
+      drawFilters(parts.filters, mb, filters, vocabulary, view === "timeline" ? order : null);
     }
   };
 
@@ -438,6 +577,7 @@ export function mountEventLogView(container, ctx, mb, view) {
     vocabulary = {
       kinds: list(log.kinds).map(text),
       outcomes: list(log.outcomes).map(text),
+      edges: list(log.edges_ms).map(count),
     };
     parts.summary.replaceChildren(summaryStrip(log, mb));
     const skipped = skippedNotice(log, mb);
@@ -513,7 +653,10 @@ export function mountEventLogView(container, ctx, mb, view) {
       if (line.loading) {
         more.setAttribute("disabled", "");
       }
-      more.addEventListener("click", () => void loadLevel(line.parent));
+      more.addEventListener(
+        "click",
+        () => void loadLevel(line.parent, { keepFocus: hasFocus(more) }),
+      );
       return more;
     }
     const failed = notice(line.message, "error");
@@ -570,14 +713,23 @@ export function mountEventLogView(container, ctx, mb, view) {
     drawn = now;
   };
 
-  /** @param {string | null} parent */
-  const loadLevel = async (parent) => {
+  /**
+   * Read the next page of a level, and draw it.
+   *
+   * @param {string | null} parent
+   * @param {{keepFocus?: boolean, through?: number}} [reach] `keepFocus`: the keyboard was on
+   *   the control that asked, which the page replaces, so it goes to the first row the page
+   *   added (or the control's replacement). `through`: the place of a row the level has to
+   *   hold, so the page is as long as that takes, to the server's most.
+   */
+  const loadLevel = async (parent, reach = {}) => {
     if (!wantsPage(timeline, parent)) {
       return;
     }
     const generation = mount.generation;
     const state = timeline;
-    const params = pageParams(state, parent, filters);
+    const params = pageParams(state, parent, filters, { through: reach.through, maxLimit });
+    const held = state.levels.get(parent ?? "")?.rows.length ?? 0;
     beginPage(state, parent);
     if (head.records !== undefined) {
       paintTimeline();
@@ -592,6 +744,7 @@ export function mountEventLogView(container, ctx, mb, view) {
         takeHead(record(answer.log));
         paintFilters();
       }
+      maxLimit = count(answer.max_limit) || maxLimit;
       takePage(state, parent, {
         rows: /** @type {EventRow[]} */ (list(answer.rows)),
         total: count(answer.total),
@@ -614,24 +767,165 @@ export function mountEventLogView(container, ctx, mb, view) {
       );
     }
     paintTimeline();
+    if (reach.keepFocus === true) {
+      const added = state.levels.get(parent ?? "")?.rows[held];
+      const next =
+        (added === undefined ? undefined : drawn.get(`row:${added.key}`)?.node) ??
+        drawn.get(`more:${parent ?? ""}`)?.node ??
+        drawn.get(`error:${parent ?? ""}`)?.node;
+      if (added === undefined) {
+        next?.focus();
+      } else {
+        focusHead(next);
+      }
+    }
   };
 
   /** @param {EventRow} row */
   const toggleTimelineRow = (row) => {
+    const kept = hasFocus(drawn.get(`row:${row.key}`)?.node.childNodes[0]);
     const open = toggleRow(timeline, row.key);
     if (open && (row.children ?? 0) > 0 && wantsPage(timeline, row.key)) {
       void loadLevel(row.key);
     }
     paintTimeline();
+    if (kept) {
+      focusHead(drawn.get(`row:${row.key}`)?.node);
+    }
   };
 
+  /**
+   * Read pages of a level until it holds the row at *index*.
+   *
+   * @param {string | null} parent
+   * @param {number} index
+   * @param {number} generation The reading this is for; a newer one ends it.
+   */
+  const holdThrough = async (parent, index, generation) => {
+    while (!holds(timeline, parent, index)) {
+      const before = timeline.levels.get(parent ?? "")?.rows.length ?? 0;
+      if (!wantsPage(timeline, parent)) {
+        return false;
+      }
+      await loadLevel(parent, { through: index });
+      const after = timeline.levels.get(parent ?? "")?.rows.length ?? 0;
+      if (!current() || generation !== mount.generation || after <= before) {
+        return holds(timeline, parent, index);
+      }
+    }
+    return true;
+  };
+
+  /** Wait until this view is the one shown: a hidden one has nothing to scroll or focus. */
+  const whenShown = () =>
+    new Promise((resolve) => {
+      if (!mb.viewState || mb.viewState.isActive(container)) {
+        resolve(undefined);
+        return;
+      }
+      const done = () => {
+        off();
+        resolve(undefined);
+      };
+      const off = mb.viewState.subscribeActive(container, (active) => active && done());
+      mount.abort.signal.addEventListener("abort", done, { once: true });
+    });
+
+  /** @param {string} message */
+  const sayWhyNotShown = (message) => {
+    revealNote ??= make("div", "event-log-reveal-note");
+    revealNote.replaceChildren(notice(message));
+    parts.summary.append(revealNote);
+  };
+
+  /**
+   * Show the row *key* in the timeline: asked where it is under no filter, each span above
+   * it opened with the page that holds the next, and the row itself scrolled to and focused.
+   *
+   * @param {string} key
+   */
+  const reveal = async (key) => {
+    await firstPage;
+    await whenShown();
+    if (!current() || head.records === undefined) {
+      return;
+    }
+    revealNote?.remove();
+    if (filtersActive(filters)) {
+      // The row may be one the filter hides, and a row asked for is shown, so the log is
+      // shown whole; the bar says what is chosen.
+      Object.assign(filters, emptyFilters());
+      shared.version += 1;
+      applied = shared.version;
+      paintFilters();
+      await startTimeline();
+      if (!current()) {
+        return;
+      }
+    }
+    const generation = mount.generation;
+    /** @type {Record<string, unknown>} */
+    let answer;
+    try {
+      answer = await read("timeline", {
+        ...filterParams(filters),
+        ...(order === "newest" ? { order } : {}),
+        focus: key,
+        limit: "1",
+      });
+    } catch {
+      sayWhyNotShown("The log could not be asked where that row is.");
+      return;
+    }
+    if (!current() || generation !== mount.generation) {
+      return;
+    }
+    const where = record(answer.focus);
+    if (where.found !== true) {
+      sayWhyNotShown("That row is not in this log’s timeline.");
+      return;
+    }
+    const steps = list(where.steps).map(record);
+    for (const [place, step] of steps.entries()) {
+      const above = typeof step.parent === "string" ? step.parent : null;
+      if (!(await holdThrough(above, count(step.index), generation))) {
+        sayWhyNotShown("The rows above that one could not all be read.");
+        return;
+      }
+      if (place < steps.length - 1) {
+        timeline.open.add(text(step.key));
+      }
+    }
+    paintTimeline();
+    for (const line of drawn.values()) {
+      line.node.removeAttribute("data-revealed");
+    }
+    const node = drawn.get(`row:${key}`)?.node;
+    if (node !== undefined) {
+      node.setAttribute("data-revealed", "");
+      node.scrollIntoView?.({ block: "center" });
+      focusHead(node);
+    }
+  };
+
+  /** Show the row another view asked for, once, when this is the Timeline. */
+  const showAsked = () => {
+    const key = shared.focus;
+    if (key !== null) {
+      shared.focus = null;
+      void reveal(key);
+    }
+  };
+
+  /** @returns {Promise<void>} */
   const startTimeline = () => {
     mount.generation += 1;
     drawn = new Map();
     loading();
-    timeline = createTimeline();
+    timeline = createTimeline(order);
     head = {};
-    void loadLevel(null);
+    firstPage = loadLevel(null);
+    return firstPage;
   };
 
   // ── Latency ───────────────────────────────────────────────────────────────────
@@ -656,8 +950,26 @@ export function mountEventLogView(container, ctx, mb, view) {
     return bars;
   };
 
+  /**
+   * Open or close a row of a list, and draw the list again, with the keyboard where it was.
+   *
+   * @param {EventRow} picked
+   * @param {() => void} repaint
+   */
+  const toggleListed = (picked, repaint) => {
+    const kept = hasFocus(rowNodes.get(picked.key)?.childNodes[0]);
+    if (opened.delete(picked.key) === false) {
+      opened.add(picked.key);
+    }
+    repaint();
+    if (kept) {
+      focusHead(rowNodes.get(picked.key));
+    }
+  };
+
   /** @param {Record<string, unknown>} answer */
   const paintLatency = (answer) => {
+    rowNodes = new Map();
     const items = /** @type {EventRow[]} */ (list(answer.items));
     const labels = bucketLabels(list(answer.edges_ms).map(count));
     const longest = Math.max(0, ...items.map((row) => row.elapsed_ms ?? 0));
@@ -680,20 +992,16 @@ export function mountEventLogView(container, ctx, mb, view) {
       return;
     }
     for (const row of items) {
-      parts.body.append(
-        rowElement(mb, row, {
-          depth: 0,
-          open: opened.has(row.key),
-          bar: { left: 0, width: Math.max(MIN_BAR, lengthShare(row.elapsed_ms, longest)) },
-          showPath: true,
-          onToggle: (picked) => {
-            if (opened.delete(picked.key) === false) {
-              opened.add(picked.key);
-            }
-            paintLatency(answer);
-          },
-        }),
-      );
+      const node = rowElement(mb, row, {
+        depth: 0,
+        open: opened.has(row.key),
+        bar: { left: 0, width: Math.max(MIN_BAR, lengthShare(row.elapsed_ms, longest)) },
+        showPath: true,
+        onToggle: (picked) => toggleListed(picked, () => paintLatency(answer)),
+        onShow: showInTimeline,
+      });
+      rowNodes.set(row.key, node);
+      parts.body.append(node);
     }
     if (items.length < count(answer.timed)) {
       parts.body.append(
@@ -795,8 +1103,22 @@ export function mountEventLogView(container, ctx, mb, view) {
 
   // ── Errors ────────────────────────────────────────────────────────────────────
 
+  /**
+   * One example of a failure, as a line: what it was and how it ended, where it ran, and
+   * the way to its place in the Timeline.
+   *
+   * @param {Record<string, unknown>} example
+   * @param {string} summary
+   */
+  const exampleLine = (example, summary) => {
+    const key = text(example.key);
+    return make("li", "", [summary, ...(key ? [" ", showButton(key, showInTimeline)] : [])]);
+  };
+
   /** @param {Record<string, unknown>} answer */
   const paintErrors = (answer) => {
+    rowNodes = new Map();
+    const continues = record(answer.log).continues === true;
     const causes = list(answer.causes).map(record);
     const unfinished = record(answer.unfinished);
     const reports = record(answer.page_reports);
@@ -839,11 +1161,16 @@ export function mountEventLogView(container, ctx, mb, view) {
         const items = make("ul", "event-log-examples");
         for (const example of examples) {
           const above = list(example.path).map((span) => text(record(span).name));
+          // A probe's name already begins with its kind; saying both is "probe probe ...".
+          const kind = text(example.kind);
+          const name = text(example.name);
+          const called = name.startsWith(`${kind} `) ? name : `${kind} ${name}`;
           items.append(
-            make("li", "", [
-              `${text(example.kind)} ${text(example.name)} — ${text(example.outcome)} after ${formatDuration(figure(example.dur_ms))}` +
+            exampleLine(
+              example,
+              `${called} — ${text(example.outcome)} after ${formatDuration(figure(example.dur_ms))}` +
                 (above.length > 0 ? ` (in ${above.join(" > ")})` : ""),
-            ]),
+            ),
           );
         }
         box.append(items);
@@ -868,27 +1195,35 @@ export function mountEventLogView(container, ctx, mb, view) {
       );
     }
     const stuck = /** @type {EventRow[]} */ (list(unfinished.rows));
+    // A later segment of the same process may hold the end of what this one did not: the
+    // work is not known to be stuck, and the heading does not say it was.
     parts.body.append(
-      heading("Still running when the log ended", mb.formatInteger(count(unfinished.total))),
+      heading(
+        continues ? "Not ended in this segment" : "Still running when the log ended",
+        mb.formatInteger(count(unfinished.total)),
+      ),
     );
     if (stuck.length === 0) {
       parts.body.append(notice("Everything that started had ended.", "neutral"));
+    } else if (continues) {
+      parts.body.append(
+        notice(
+          "The server went on logging in a later segment, which may hold the end of this work.",
+          "neutral",
+        ),
+      );
     }
     for (const row of stuck) {
-      parts.body.append(
-        rowElement(mb, row, {
-          depth: 0,
-          open: opened.has(row.key),
-          bar: { left: 0, width: 1 },
-          showPath: true,
-          onToggle: (picked) => {
-            if (opened.delete(picked.key) === false) {
-              opened.add(picked.key);
-            }
-            paintErrors(answer);
-          },
-        }),
-      );
+      const node = rowElement(mb, row, {
+        depth: 0,
+        open: opened.has(row.key),
+        bar: { left: 0, width: 1 },
+        showPath: true,
+        onToggle: (picked) => toggleListed(picked, () => paintErrors(answer)),
+        onShow: showInTimeline,
+      });
+      rowNodes.set(row.key, node);
+      parts.body.append(node);
     }
     parts.body.append(heading("What the pages reported", mb.formatInteger(count(reports.count))));
     const reported = list(reports.examples).map(record);
@@ -907,10 +1242,14 @@ export function mountEventLogView(container, ctx, mb, view) {
           "ul",
           "event-log-examples",
           reported.map((example) =>
-            make("li", "", [
+            exampleLine(
+              example,
               `${text(example.name)} — ${text(example.outcome).replace(/_/g, " ")} after ${formatDuration(figure(example.dur_ms))}` +
-                (text(example.path) ? ` on ${text(example.path)}` : ""),
-            ]),
+                (text(example.path) ? ` on ${text(example.path)}` : "") +
+                // When it was reported and by which page, as the timeline's detail says.
+                ` · ${text(example.ts).slice(11, 23)} UTC` +
+                (text(example.client) ? ` · page ${text(example.client)}` : ""),
+            ),
           ),
         ),
       );
@@ -928,7 +1267,7 @@ export function mountEventLogView(container, ctx, mb, view) {
 
   const startReading = async () => {
     if (view === "timeline") {
-      startTimeline();
+      await startTimeline();
       return;
     }
     mount.generation += 1;
@@ -965,16 +1304,43 @@ export function mountEventLogView(container, ctx, mb, view) {
   if (filterable && mb.filterControls) {
     mb.filterControls.bind(parts.filters, {
       onChange(key, value) {
+        if (key === FILTER_ORDER && view === "timeline") {
+          order = value === "newest" ? "newest" : "oldest";
+          filtersChanged();
+          return;
+        }
         const next = chosen(filters, key, value);
         if (next === null) {
           return;
         }
         Object.assign(filters, next);
+        shared.version += 1;
+        applied = shared.version;
         filtersChanged();
       },
     });
   }
+  // A view that was not shown while another chose a filter reads again when it is.
+  const stopWatching = filterable
+    ? mb.viewState?.subscribeActive(container, (active) => {
+        if (active && applied !== shared.version) {
+          applied = shared.version;
+          filtersChanged();
+        }
+      })
+    : undefined;
+  if (view === "timeline") {
+    shared.reveal = showAsked;
+  }
+  mount.stop = () => {
+    stopWatching?.();
+    if (shared.reveal === showAsked) {
+      shared.reveal = null;
+    }
+    releaseShared(path);
+  };
   void startReading();
+  showAsked();
 }
 
 /** @param {HTMLElement} container */
@@ -984,5 +1350,6 @@ export function disposeEventLogView(container) {
     return;
   }
   mount.abort.abort();
+  mount.stop?.();
   mounts.delete(container);
 }
