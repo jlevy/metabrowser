@@ -74,8 +74,10 @@ plugin requirements:
   agent-log: requires structured
   delimited: requires table
   diff: requires structured
+  event-log: requires agent-log
   folder: requires markdown
   github: requires markdown
+  unknown-jsonl: requires agent-log
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -97,7 +99,7 @@ $ metab --doctor --plugins-dir pair 2>/dev/null
 $ metab --doctor --json --plugins-dir pair 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 15,
+  "plugin_count": 16,
   "problems": [
     "plugin 'beta': view 'more' of kind 'myk' declares key 'm', but view 'main' (plugin 'alpha') already holds it; the view is served without a key"
   ],
@@ -139,7 +141,7 @@ so `N` alone is free in every kind, a pull request’s included, and the plugin 
 $ metab --doctor --json --plugins-dir stack 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 14,
+  "plugin_count": 15,
   "problems": [],
   "open_in": {
     "value": "browser",
@@ -179,7 +181,7 @@ refuses a view that takes it, a Preview included.
 $ metab --doctor --json --plugins-dir pulls 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 13,
+  "plugin_count": 14,
   "problems": [
     "[CWD]/pulls/pullkey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'P' is reserved for the shell's Pulls tab [type=value_error, input_value='P', input_type=str]\n    For further information visit [PYDANTIC_URL]"
   ],
@@ -214,13 +216,13 @@ $ metab --doctor --json --plugins-dir pulls 2>/dev/null
 
 ## Test: a key the shell reserves everywhere is refused at load
 
-The plugin is not loaded, so `plugin_count` is the eleven built-in plugins alone.
+The plugin is not loaded, so `plugin_count` is the twelve built-in plugins alone.
 
 ```console
 $ metab --doctor --json --plugins-dir reserved 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 13,
+  "plugin_count": 14,
   "problems": [
     "[CWD]/reserved/reskey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'T' is reserved for the shell's Quick Search [type=value_error, input_value='T', input_type=str]\n    For further information visit [PYDANTIC_URL]"
   ],
@@ -281,8 +283,10 @@ plugin requirements:
   agent-log: requires structured
   delimited: requires table
   diff: requires structured
+  event-log: requires agent-log
   folder: requires markdown
   github: requires markdown
+  unknown-jsonl: requires agent-log
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)

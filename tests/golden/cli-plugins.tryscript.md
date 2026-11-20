@@ -28,20 +28,21 @@ The setup checks that end the report depend on the host, so they are elided here
 ```console
 $ metab --plugins
 NAME           SOURCE   KINDS             REQUIRES    VIEWS  HOOKS
--------------  -------  ----------------  ----------  -----  ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------  -------  ----------------  ----------  -----  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 agent-log      builtin  agent-log         structured  3      charts
 binary         builtin  -                 -           1      chunk
 delimited      builtin  delimited         table       1      -
 diff           builtin  diff              structured  1      document,children,comparison
+event-log      builtin  event-log         agent-log   5      timeline,slowest,kinds,errors
 folder         builtin  -                 markdown    2      -
-github         builtin  -                 markdown    2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
+github         builtin  -                 markdown    2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-size,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
 html           builtin  html              -           2      -
 image          builtin  -                 -           1      -
 markdown       builtin  markdown,mermaid  -           4      -
 structured     builtin  structured        -           2      parsed
 table          builtin  -                 -           0      tables,schema,rows,record,card
 text           builtin  -                 -           1      -
-unknown-jsonl  builtin  -                 -           2      -
+unknown-jsonl  builtin  -                 agent-log   2      -
 ? 0
 ```
 
@@ -134,6 +135,34 @@ $ metab --plugins --json
       "disabled_data_hooks": []
     },
     {
+      "name": "event-log",
+      "display_name": "Event log",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/event_log",
+      "kinds": [
+        "event-log"
+      ],
+      "requires": [
+        "agent-log"
+      ],
+      "views": [
+        "timeline",
+        "latency",
+        "kinds",
+        "errors",
+        "raw"
+      ],
+      "view_count": 5,
+      "data_hooks": [
+        "timeline",
+        "slowest",
+        "kinds",
+        "errors"
+      ],
+      "disabled_data_hooks": []
+    },
+    {
       "name": "folder",
       "display_name": "Folder",
       "version": "0.0.1",
@@ -173,6 +202,7 @@ $ metab --plugins --json
         "pull-comparison",
         "pull-image",
         "pull-rendered-diff",
+        "pull-size",
         "pull-timeline",
         "pull-markdown",
         "pulls",
@@ -306,7 +336,9 @@ $ metab --plugins --json
       "source": "builtin",
       "static_root": "[BUILTIN]/unknown_jsonl",
       "kinds": [],
-      "requires": [],
+      "requires": [
+        "agent-log"
+      ],
       "views": [
         "log",
         "raw"
@@ -507,13 +539,15 @@ recorded on its own: the answer is on stdout, and stderr is empty.
 ```console
 $ metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 13 plugin(s) OK
+metab --doctor: 14 plugin(s) OK
 plugin requirements:
   agent-log: requires structured
   delimited: requires table
   diff: requires structured
+  event-log: requires agent-log
   folder: requires markdown
   github: requires markdown
+  unknown-jsonl: requires agent-log
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -535,7 +569,7 @@ $ metab --doctor >/dev/null
 $ metab --doctor --json 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 13,
+  "plugin_count": 14,
   "problems": [],
   "open_in": {
     "value": "browser",

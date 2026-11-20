@@ -7370,9 +7370,9 @@ function toggleEvent(header) {
   parent.classList.toggle("expanded");
   if (parent.classList.contains("expanded")) {
     // First-expand mount: agent-log emits log-event-raw containers
-    // empty and registers mountLogEventRaw on window. When the
-    // structured plugin is loaded, this renders a collapsible inline
-    // tree; otherwise it falls back to a flat JSON block.
+    // empty and registers mountLogEventRaw on window. An object payload
+    // is the structured plugin's collapsible tree, drawn once that plugin
+    // loads (a flat JSON block if it cannot); a string is a flat block.
     var rawEl = parent.querySelector(".log-event-raw");
     if (
       rawEl &&
@@ -7615,10 +7615,14 @@ function openLiveStream(path, startCursor) {
   };
 }
 
+// Whether a live tail's rows went undrawn because the agent-log plugin did not load,
+// which is said once on the console rather than for every batch.
+var liveEventsUndrawnLogged = false;
+
 function appendLiveEvents(path, batch) {
-  return _perf.measure(
+  return _perf.measureAsync(
     "appendLiveEvents",
-    () => {
+    async () => {
       var cached = fileCache.get(path);
       if (!cached || !Array.isArray(batch.events)) {
         return;
@@ -7636,8 +7640,9 @@ function appendLiveEvents(path, batch) {
       const logPane = queryHtml('[data-tab-content="log"]');
       if (logPane && logPane.style.display !== "none") {
         var startIdx = cached.events.length - batch.events.length;
-        // The agent-log plugin, which drew this pane, exports renderLogEvent.
-        window.metabrowser.plugins.load("agent-log").then(
+        // The agent-log plugin, which drew this pane, exports renderLogEvent. Returning
+        // the load makes the measure cover the rows' render, not only the bookkeeping.
+        return window.metabrowser.plugins.load("agent-log").then(
           (agentLog) => {
             var tail = "";
             for (var j = 0; j < batch.events.length; j++) {
@@ -7645,7 +7650,15 @@ function appendLiveEvents(path, batch) {
             }
             logPane.insertAdjacentHTML("beforeend", tail);
           },
-          () => {},
+          (error) => {
+            if (!liveEventsUndrawnLogged) {
+              liveEventsUndrawnLogged = true;
+              console.warn(
+                "metabrowser: live events were not drawn: agent-log did not load",
+                error,
+              );
+            }
+          },
         );
       }
     },
@@ -9319,12 +9332,12 @@ async function applyNavigationTarget(target, context) {
     if (context.source === "user" && !target.fragment && !target.query) {
       await revealAddressedItem(route, { isCurrent: context.isCurrent, again: true });
     }
-    // A line anchor added to the file shown opens its Source tab, as opening it does.
+    // A line anchor opens its Source tab; a caller's `viewId` wins, as below.
     var shownView = anchorModule ? await addressedView(target, anchorModule) : null;
     if (!context.isCurrent()) {
       return { status: "cancelled" };
     }
-    showPreviewTab(path, shownView);
+    showPreviewTab(path, context.viewId || shownView);
     deliverNavigationFragment(target);
     return {
       focusTarget: document.getElementById("preview-pane") || undefined,

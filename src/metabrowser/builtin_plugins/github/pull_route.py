@@ -148,6 +148,8 @@ class PullEnvelope(TypedDict):
     comparison_route: str | None
     image_route: str | None
     rendered_route: str | None
+    # The size the comparison pushes, for the page's size line (:mod:`.pull_size`).
+    size_route: str | None
     record: dict[str, Any] | None
     core_preview: PullCorePreview | None
     # The repository's label set's entries for the labels the record or core names without
@@ -201,6 +203,7 @@ def _without_store(dumped: dict[str, Any]) -> dict[str, Any]:
 
 IMAGE_ROUTE: Final = "/api/plugin/github/pull-image"
 RENDERED_ROUTE: Final = "/api/plugin/github/pull-rendered-diff"
+SIZE_ROUTE: Final = "/api/plugin/github/pull-size"
 
 
 def image_route(number: int, base: str, head: str, *, store: str) -> str:
@@ -224,6 +227,13 @@ def rendered_route(number: int, base: str, head: str, *, store: str) -> str:
 
     query = urlencode({"number": number, "left": base, "right": head, "store": store})
     return f"{RENDERED_ROUTE}?{query}"
+
+
+def size_route(number: int, base: str, head: str, *, store: str) -> str:
+    """The route of the size a comparison pushes, measured against its merge base."""
+
+    query = urlencode({"number": number, "left": base, "right": head, "store": store})
+    return f"{SIZE_ROUTE}?{query}"
 
 
 def comparison_route(record: PullRecord, *, store: str) -> str | None:
@@ -461,6 +471,7 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
             comparison_route=None,
             image_route=None,
             rendered_route=None,
+            size_route=None,
             record=None,
             core_preview=None,
             repository_labels=[],
@@ -488,7 +499,7 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
     if not has_store and isinstance(record, PullRecord) and dumped is not None:
         dumped = _without_store(dumped)
         record = record.model_copy(update={"comparison": None})
-    route = images = rendered = None
+    route = images = rendered = sized = None
     if isinstance(record, PullRecord) and served.git_dir is not None:
         store = store_tag(served.git_dir)
         route = comparison_route(record, store=store)
@@ -496,6 +507,7 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
             ends = (record.number, record.comparison.base, record.comparison.head)
             images = image_route(*ends, store=store)
             rendered = rendered_route(*ends, store=store)
+            sized = size_route(*ends, store=store)
     preview = view.core_preview
     if view.core_admission is not None and not view.core_admission.catalog_matches(view.number):
         preview = None
@@ -538,6 +550,7 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
         comparison_route=route,
         image_route=images,
         rendered_route=rendered,
+        size_route=sized,
         record=dumped if isinstance(record, PullRecord) else None,
         core_preview=preview if not isinstance(record, PullRecord) else None,
         repository_labels=lookup.entries,
@@ -937,6 +950,7 @@ __all__ = [
     "record_stamp",
     "refresh_request",
     "rendered_route",
+    "size_route",
     "requested_number",
     "start_refresh",
     "status_route",

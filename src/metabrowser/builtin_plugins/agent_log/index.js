@@ -214,8 +214,10 @@ function mountLogEventRaw(rawEl) {
   mountFlatRaw(rawEl, raw);
 }
 
-// A single <pre><code> block. Highlight.js picks it up via the shell's highlightCode()
-// pass, which toggleEvent schedules after the mount.
+// A single <pre><code> block. Mounted at once, for a string payload, it is highlighted by
+// the shell's highlightCode() pass, which toggleEvent schedules after the mount. Mounted
+// after a structured tree failed to load, it comes after that pass and stays plain: an
+// error path, where readable text is what matters.
 function mountFlatRaw(rawEl, raw) {
   const text = typeof raw === "string" ? raw : JSON.stringify(raw, null, 2);
   rawEl.innerHTML = `<pre><code class="language-json">${mb.escapeHtml(text)}</code></pre>`;

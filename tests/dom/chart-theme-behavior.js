@@ -129,11 +129,23 @@ for (const relative of [
   "src/metabrowser/static/navigation.js",
   "src/metabrowser/static/plugin-sdk.js",
   "src/metabrowser/static/view-composition.js",
-  "src/metabrowser/static/charts.js",
 ]) {
   const filename = path.join(repoRoot, relative);
   const source = fs.readFileSync(filename, "utf8");
   vm.runInContext(source, sandbox, { filename });
+}
+
+// `metabrowser.chart` lives in the `chart` bundle's charts.js, off the startup scripts;
+// until that loads, the SDK's placeholder says what to await.
+let chartBeforeBundle = null;
+try {
+  sandbox.metabrowser.chart(new FakeCanvas(), "line", {}, {});
+} catch (error) {
+  chartBeforeBundle = String(error.message);
+}
+{
+  const filename = path.join(repoRoot, "src/metabrowser/static/charts.js");
+  vm.runInContext(fs.readFileSync(filename, "utf8"), sandbox, { filename });
 }
 
 const lazyMountCreatesNoChart = chartInstances.length === 0;
@@ -240,6 +252,7 @@ staticChart.destroy();
     `${JSON.stringify(
       {
         lazyMountCreatesNoChart,
+        chartBeforeBundle,
         directInitialColors,
         directDarkColors,
         directUpdatesAfterDestroy,

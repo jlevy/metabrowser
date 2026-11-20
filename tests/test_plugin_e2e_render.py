@@ -55,6 +55,7 @@ def test_shim_loads_every_builtin_plugin(shim_output: dict[str, Any]) -> None:
     assert set(shim_output["plugins"]) == {
         "agent_log",
         "diff",
+        "event_log",
         "binary",
         "delimited",
         "folder",

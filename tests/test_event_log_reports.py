@@ -27,10 +27,12 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from metabrowser import event_log, home, server
+from metabrowser import delivery, event_log, home, server
 from metabrowser.event_log_reports import (
     MAX_BODY_BYTES,
     MAX_REPORTS,
+    OPEN_COMMAND,
+    OPEN_MENU,
     RATE_REPORTS,
     REPORT_ROUTE,
     SLOW_MS,
@@ -454,6 +456,37 @@ def test_the_page_reads_its_thresholds_and_route_from_its_settings(
     assert match is not None
     served = json.loads(match.group(1))["EVENT_REPORTS"]
     assert served == browser_settings(long_lived=server.LONG_LIVED_PATHS)
+
+
+def test_details_name_the_apps_menu_only_for_a_server_the_app_started() -> None:
+    """A window of the app has no terminal in front of it, so Details name the menu item
+    (``Help > Open Event Log``) there and the command everywhere else."""
+
+    delivery.serve_locally(False)
+    try:
+        elsewhere = browser_settings(long_lived=())
+        delivery.serve_locally(True)
+        started_by_the_app = browser_settings(long_lived=())
+    finally:
+        delivery.serve_locally(False)
+    assert (elsewhere["open_menu"], elsewhere["open_command"]) == (None, OPEN_COMMAND)
+    assert (started_by_the_app["open_menu"], started_by_the_app["open_command"]) == (
+        OPEN_MENU,
+        OPEN_COMMAND,
+    )
+    assert OPEN_MENU == "Help > Open Event Log"
+
+
+def test_the_settings_say_why_there_is_no_log(tmp_path: Path) -> None:
+    environ = {"METABROWSER_STATE_DIR": str(tmp_path / "state"), "METABROWSER_EVENT_LOG": "0"}
+    assert event_log.open_log(served="/x", version="0", environ=environ) is None
+    try:
+        off = browser_settings(long_lived=())
+    finally:
+        event_log.close_log()
+    assert off["log"] is False
+    assert off["off_reason"] == "METABROWSER_EVENT_LOG turns it off"
+    assert browser_settings(long_lived=())["off_reason"] is None, "closed: no reason is kept"
 
 
 # ── the client ID joins the page's records to the server's ────

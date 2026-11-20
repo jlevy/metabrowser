@@ -10,6 +10,8 @@
 
 - Discovery refuses a plugin that requires one that was not discovered or was refused,
   and every plugin on a cycle of requirements, naming the cause.
+  An operator plugin that replaces another by name and is refused for its requirements
+  leaves the plugin it would have replaced in place, as an invalid manifest does.
   `metab --doctor` lists each refusal and reports the plugin dependency graph, and
   `metab --plugins` and `--plugin NAME` show each plugin’s `requires`.
 

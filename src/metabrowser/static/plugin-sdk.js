@@ -168,7 +168,9 @@
   /** @type {{snapshot: () => unknown, subscribe: (listener: () => void) => () => void} | null} */
   let _attachedFileCatalog = null;
   // The server's plugin table (`_build_plugin_asset_config_block`), by name and by kind.
+  /** @type {Map<string, MetabrowserPluginAssets>} */
   let _plugins = new Map();
+  /** @type {Map<string, string[]>} */
   let _pluginKinds = new Map();
   /** @type {Map<string, Promise<object>>} */
   const _pluginLoads = new Map();
@@ -310,9 +312,17 @@
     });
   }
 
+  /** @param {{plugins: Record<string, MetabrowserPluginAssets>, kinds: Record<string, string[]>}} config */
   function configureAssets(config) {
     _plugins = new Map(Object.entries(config.plugins));
     _pluginKinds = new Map(Object.entries(config.kinds));
+    for (const [kind, names] of _pluginKinds) {
+      for (const name of names) {
+        if (!_plugins.has(name)) {
+          throw new TypeError(`configureAssets: ${kind} names no plugin ${name}`);
+        }
+      }
+    }
   }
 
   /** @type {Map<string, Promise<unknown>>} */
@@ -378,7 +388,7 @@
   // The helpers gate each plugin's code, not its transfer. Rejects when they cannot
   // be loaded: no plugin's code has run then, and the next call tries again.
   async function loadPluginsForKind(kind) {
-    const descriptors = (_pluginKinds.get(kind) || []).map((name) => _plugins.get(name));
+    const descriptors = (_pluginKinds.get(kind) || []).flatMap((name) => _plugins.get(name) || []);
     const helpers = _ensureViewHelpers();
     for (const descriptor of descriptors) {
       if (!_pluginLoads.has(descriptor.name)) {
@@ -1506,98 +1516,6 @@
     return payload;
   }
 
-  function _resolveChartThemeValue(value) {
-    if (typeof value === "string") {
-      const match = value.match(/^var\(\s*(--[\w-]+)\s*\)$/);
-      if (!match || typeof global.getComputedStyle !== "function") {
-        return value;
-      }
-      const resolved = global
-        .getComputedStyle(global.document.documentElement)
-        .getPropertyValue(match[1])
-        .trim();
-      return resolved || value;
-    }
-    if (Array.isArray(value)) {
-      return value.map(_resolveChartThemeValue);
-    }
-    if (
-      value === null ||
-      typeof value !== "object" ||
-      Object.prototype.toString.call(value) !== "[object Object]"
-    ) {
-      return value;
-    }
-    var resolvedObject = {};
-    for (var key of Object.keys(value)) {
-      resolvedObject[key] = _resolveChartThemeValue(value[key]);
-    }
-    return resolvedObject;
-  }
-
-  function _hasChartThemeValue(value) {
-    if (typeof value === "string") {
-      return /^var\(\s*--[\w-]+\s*\)$/.test(value);
-    }
-    if (Array.isArray(value)) {
-      return value.some(_hasChartThemeValue);
-    }
-    if (
-      value === null ||
-      typeof value !== "object" ||
-      Object.prototype.toString.call(value) !== "[object Object]"
-    ) {
-      return false;
-    }
-    return Object.values(value).some(_hasChartThemeValue);
-  }
-
-  function chart(container, type, data, options) {
-    if (typeof global.Chart === "undefined") {
-      throw new Error(
-        'metabrowser.chart: Chart.js is on the on-demand tier; await metabrowser.ensureAsset("chart") first',
-      );
-    }
-    // Container can be either a <canvas> or a <div> we'll create a canvas in.
-    let canvas;
-    if (container instanceof HTMLCanvasElement) {
-      canvas = container;
-    } else {
-      canvas = global.document.createElement("canvas");
-      container.appendChild(canvas);
-    }
-    var dataTemplate = data;
-    var optionsTemplate = options || {};
-    var followsTheme = _hasChartThemeValue(dataTemplate) || _hasChartThemeValue(optionsTemplate);
-    var instance = new global.Chart(canvas, {
-      type: type,
-      data: followsTheme ? _resolveChartThemeValue(dataTemplate) : dataTemplate,
-      options: followsTheme ? _resolveChartThemeValue(optionsTemplate) : optionsTemplate,
-    });
-    if (!followsTheme || !global.MetabrowserTheme) {
-      return instance;
-    }
-    var destroyed = false;
-    var unsubscribeTheme = global.MetabrowserTheme.subscribe(() => {
-      if (destroyed) {
-        return;
-      }
-      instance.data = _resolveChartThemeValue(dataTemplate);
-      instance.options = _resolveChartThemeValue(optionsTemplate);
-      instance.update("none");
-    });
-    var destroyChart = instance.destroy.bind(instance);
-    instance.destroy = () => {
-      if (destroyed) {
-        return;
-      }
-      destroyed = true;
-      unsubscribeTheme();
-      destroyChart();
-    };
-    return instance;
-  }
-
   function formatSize(bytes) {
     return global.MetabrowserFormatters.formatBytes(Number(bytes) || 0);
   }
@@ -1872,7 +1790,10 @@
     whenIdle: whenIdle,
     kpressInitToc: kpressInitToc,
     formatKpressError: formatKpressError,
-    chart: chart,
+    // static/charts.js, in the `chart` bundle the wrapper needs, replaces this.
+    chart() {
+      throw new Error('metabrowser.chart: await metabrowser.ensureAsset("chart") first');
+    },
     formatSize: formatSize,
     formatInteger: formatInteger,
     formatFileCount: formatFileCount,

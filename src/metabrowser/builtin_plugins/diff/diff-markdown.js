@@ -640,7 +640,9 @@ export function createMarkdownViews(deps) {
   // preview.js, tree.js, index.js and styles.css: 37,324 bytes, 12,373 gzipped at
   // `delivery.GZIP_LEVEL` on 2026-11-18. Loaded inside the first-screen hold, as they were
   // before, the hold took a median 130 ms cold against 106 ms warm in the live app (mb-8274
-  // review C1). A failure is not kept: the next load asks again.
+  // review C1). A failure is not kept here, so the next load asks again, but the SDK
+  // answers a provider that failed to load with that failure until the page is reloaded
+  // ("Declared Dependencies" in docs/plugins.md).
   function ensureStructured() {
     structuredReady ??= Promise.resolve()
       .then(() => deps.ensureStructured?.())

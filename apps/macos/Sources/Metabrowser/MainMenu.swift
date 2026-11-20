@@ -96,6 +96,7 @@ enum MainMenu {
             .separator(),
             item("Check Setup…", #selector(AppDelegate.showCheckSetup(_:))),
             item("Reveal Logs Folder", #selector(AppDelegate.revealLogsFolder(_:))),
+            item("Open Event Log", #selector(AppDelegate.openEventLog(_:))),
         ])
         return main
     }

@@ -520,17 +520,34 @@ stylesheets, extra scripts, and `index.js` have run.
 It loads the provider on demand, the first time anything asks for it or selects one of
 its kinds, and once: every caller shares that load, so ask for it where you need it,
 usually in `render` or a handler, and the cost lands only on pages that use it.
-It rejects for a name that is not loaded, and when the provider’s module failed.
+It rejects for a name that is not loaded, and when the provider’s stylesheets, scripts,
+or module failed; that failure is the answer to every later call until the page is
+reloaded, so a view shows its own error rather than asking again.
+The namespace is what `import()` answers, so a provider must not export a function named
+`then`: the promise would treat the namespace as a thenable and call it.
 
 Discovery refuses a plugin whose `requires` names a plugin that was not discovered or
 was itself refused, and every plugin on a cycle of requirements, since two modules that
 each wait for the other’s exports never finish.
-`metab --doctor` lists each refusal as a problem and reports the graph it kept, and
-`metab --plugins` and `--plugin NAME` show each plugin’s `requires`. Declare every
-provider you load and load every provider you declare, except `table`, which a plugin
-with a
-[`[[table_source]]`](#table-sources) requires because the table plugin’s routes serve it: `tests/test_plugin_requirements.py`
-holds the built-in plugins to that.
+An operator plugin that replaces another by name and is refused for its requirements
+does not take the name away: like a replacement whose manifest is invalid, it is
+reported and the plugin it would have replaced is kept, so a typo in one manifest cannot
+refuse the built-ins that require the plugin it shadows.
+`metab --doctor` lists each refusal as a problem, causes before the refusals that follow
+from them, and reports the graph it kept, and `metab --plugins` and `--plugin NAME` show
+each plugin’s `requires`.
+
+Declare every provider you load and load every provider you declare, except `table`,
+which a plugin with a `[[table_source]]` requires because the table plugin’s routes
+serve it ([Table Sources](#table-sources)). `tests/test_plugin_requirements.py` holds
+the built-in plugins to that; nothing checks it for another plugin, because
+`mb.plugins.load` cannot tell which plugin called it, so an undeclared load works until
+the provider is missing and then fails at render instead of at discovery.
+`ensureKindAssets(kind)` and `getRegisteredView(kind, view)` reach a different thing: a
+kind’s view, from whichever plugin serves that kind, as the pull-request page draws the
+`diff` kind. That needs no declaration, and discovery and the doctor do not see it.
+To use one named plugin’s renderers, load its exports, as the generic JSONL and
+event-log views use agent-log’s `renderLog` and `renderRaw`.
 
 ### Rendering and Formatting
 
@@ -616,6 +633,13 @@ Useful helpers include:
   `label` in words; `changeLineNodes` paints it as the nodes of one `span.change-line`,
   with `{spoken: ", "}` on a line whose name does not say it in words
   ([Brief Change Line](design-system.md#brief-change-line));
+- `changeSizeLine(change)` and `changeSizeLineNodes(line)` for a change set’s size line,
+  “77 commits · 83 files changed · 2.3 MB compressed (14.0 MB raw diff)”:
+  `changeSizeLine` builds it from `{commits?, files, pushedBytes?, diffBytes?}`, a count
+  `null` where it is not known and left out where `undefined`, and the size group there
+  once `pushedBytes` is known, and returns its parts, `text`, `label`, and the size’s
+  `tooltip`; `changeSizeLineNodes` paints it as the nodes of one `span.change-size-line`
+  ([Change Size Line](design-system.md#change-size-line));
 - `countClass(value)` and `sizeClass(value)` for the magnitude-driven emphasis classes
   of core numeric readouts;
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and
@@ -770,7 +794,9 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   separators and no leading slash; the empty path selects the served root.
 - `navigation.open(target, options?)` performs normal user navigation and returns a
   promise. `{ viewId }` prefers a view the destination declares, falling back to its
-  default, without changing the URL.
+  default, without changing the URL. When the destination is the file already shown, it
+  selects that view of it, as its tab does, which is how a view takes a person to
+  another view of the same file.
 - `navigation.current()` returns the current target, or `null` on the landing URL.
 - `fileCatalog.snapshot()` returns an immutable view of the files the shell knows, as
   canonical logical-file paths ordered by UTF-16 code units, with no global path-length

@@ -950,9 +950,9 @@ on everything else. Each source brings its generation token in the phase that ad
 
 ### Phase 1: Declared Plugin Dependencies
 
-- [x] Manifest `requires`, loader validation and ordering, `mb.plugins.load`, doctor
-  report; move every `mb.builtins` consumer; update
-  [Plugin Authoring](../../../plugins.md) and
+- [x] Manifest `requires`, loader validation (load order left as discovered, by design:
+  a dependent loads its provider on demand), `mb.plugins.load`, doctor report; move
+  every `mb.builtins` consumer; update [Plugin Authoring](../../../plugins.md) and
   [Plugin System](../../architecture/arch-plugin-system.md)
 - [x] `PLUGIN_SDK_VERSION` bump with every built-in manifest updated
 

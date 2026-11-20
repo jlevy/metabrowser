@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import stat
 import sys
@@ -628,6 +629,129 @@ def test_open_log_is_owner_only_and_off_when_the_environment_says_so(tmp_path: P
     finally:
         event_log.close_log()
     assert not event_log.enabled()
+
+
+@pytest.mark.parametrize("below", ["", "nested"])
+def test_a_server_whose_folder_is_the_event_log_opens_none_and_says_why(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, below: str
+) -> None:
+    """Browsing the log from the folder it lives in must not write to the files it shows:
+    each request would be recorded in the segment on screen, which the page then asks again
+    for. A server in that position opens no log and says so, in the log and for the page."""
+
+    state = tmp_path / "state"
+    environ = {"METABROWSER_STATE_DIR": str(state), "METABROWSER_EVENT_LOG": "1"}
+    served = state / "events" / below
+    caplog.set_level(logging.WARNING, logger="metabrowser.event_log")
+    assert (
+        event_log.open_log(
+            served=str(served), version="0", served_directory=served, environ=environ
+        )
+        is None
+    )
+    assert not event_log.enabled()
+    reason = event_log.off_reason()
+    assert reason is not None and "event log's own" in reason
+    assert any(
+        record.levelno == logging.WARNING and "serving without an event log" in record.getMessage()
+        for record in caplog.records
+    )
+    assert not (state / "events").exists(), "nothing was created for a log that was not opened"
+    assert not event_log.quiet_request("/api/files", "path=/events")
+
+
+@pytest.mark.parametrize("ancestor", ["state", "tmp", "elsewhere"])
+def test_a_server_whose_folder_holds_the_event_log_records_but_not_reads_of_it(
+    tmp_path: Path, ancestor: str
+) -> None:
+    """``metab ~`` (any folder above the state directory) logs normally; only requests whose
+    target is inside the events directory write no record, which is what breaks the loop."""
+
+    state = tmp_path / "state"
+    root = {"state": state, "tmp": tmp_path, "elsewhere": tmp_path / "elsewhere"}[ancestor]
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    root.chmod(0o700)
+    environ = {"METABROWSER_STATE_DIR": str(state), "METABROWSER_EVENT_LOG": "1"}
+    opened = event_log.open_log(
+        served=str(root), version="0", served_directory=root, environ=environ
+    )
+    try:
+        assert opened is not None and event_log.enabled()
+        assert event_log.off_reason() is None
+        holds = ancestor != "elsewhere"
+        relative = state.relative_to(root).as_posix() if holds else "state"
+        events = f"/{relative}/events" if relative != "." else "/events"
+        segment = f"{events}/{opened.path.name}" if opened.path else events
+        assert event_log.quiet_request("/api/plugin/event-log/timeline", f"path={segment}") is holds
+        assert event_log.quiet_request("/api/files", f"path={events}") is holds
+        assert event_log.quiet_request(f"/raw/{segment.lstrip('/')}", "") is holds
+        assert event_log.quiet_request(f"/view/{segment.lstrip('/')}", "") is holds
+        # Everything else, even beside the log, is recorded as usual.
+        assert not event_log.quiet_request("/api/files", f"path=/{relative}")
+        assert not event_log.quiet_request("/api/files", "path=/notes/a.md")
+        assert not event_log.quiet_request("/api/info", "")
+        # A symlink inside the folder that leads into the events directory is the same target.
+        if holds:
+            (root / "link").symlink_to(state / "events")
+            assert event_log.quiet_request("/api/files", "path=/link")
+            assert event_log.quiet_request("/api/files", "path=/../../../../../..") is False
+    finally:
+        event_log.close_log()
+    assert not event_log.quiet_request("/api/files", "path=/events"), "closed: nothing is quiet"
+
+
+def test_the_request_log_skips_what_reads_the_log_and_records_the_rest(tmp_path: Path) -> None:
+    """The loop the narrowed rule breaks, end to end: a server in the folder above the state
+    directory shows the log it is writing, and its reads of it leave no record."""
+
+    root = tmp_path / "home"
+    root.mkdir(mode=0o700)
+    state = root / "state"
+    environ = {"METABROWSER_STATE_DIR": str(state), "METABROWSER_EVENT_LOG": "1"}
+    opened = event_log.open_log(
+        served=str(root), version="0", served_directory=root, environ=environ
+    )
+    assert opened is not None and opened.path is not None
+
+    async def answer(_request: Request) -> Response:
+        return Response("ok")
+
+    app = Starlette(
+        routes=[
+            Route("/api/plugin/event-log/timeline", answer),
+            Route("/api/info", answer),
+            Route("/raw/{name:path}", answer),
+        ],
+        middleware=[Middleware(_SlowRequestLogMiddleware, threshold_ms=60_000, verbose=False)],
+    )
+    try:
+        client = TestClient(app)
+        inside = f"/state/events/{opened.path.name}"
+        assert (
+            client.get("/api/plugin/event-log/timeline", params={"path": inside}).status_code == 200
+        )
+        assert client.get(f"/raw{inside}").status_code == 200
+        assert (
+            client.get("/api/plugin/event-log/timeline", params={"path": "/notes/a.md"}).status_code
+            == 200
+        )
+        assert client.get("/api/info").status_code == 200
+        names = [record["name"] for record in _records(opened) if record["kind"] == "request"]
+        assert names == ["GET /api/plugin/event-log/timeline", "GET /api/info"]
+    finally:
+        event_log.close_log()
+
+
+def test_a_log_turned_off_by_the_environment_says_so(tmp_path: Path) -> None:
+    environ = {"METABROWSER_STATE_DIR": str(tmp_path / "state"), "METABROWSER_EVENT_LOG": "0"}
+    assert event_log.open_log(served="/x", version="0", environ=environ) is None
+    assert event_log.off_reason() == "METABROWSER_EVENT_LOG turns it off"
+    environ["METABROWSER_EVENT_LOG"] = "1"
+    try:
+        assert event_log.open_log(served="/x", version="0", environ=environ) is not None
+        assert event_log.off_reason() is None
+    finally:
+        event_log.close_log()
 
 
 def test_a_stop_from_the_signal_handler_abandons_what_was_running(

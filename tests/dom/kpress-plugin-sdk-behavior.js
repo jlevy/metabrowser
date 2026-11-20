@@ -120,6 +120,10 @@ const orderedPluginModules = new Map([
 // A provider plugin with no kind of its own, which `metabrowser.plugins.load` reaches by
 // name, and one whose module fails.
 let providerImports = 0;
+// A provider that also serves a kind, and one with a stylesheet and a classic script that
+// must run before its exports are answered.
+let servedImports = 0;
+let assetsFirstImportedAt = -1;
 async function importKpressModule(specifier) {
   if (specifier === "/plugin-static/provider/index.js") {
     providerImports += 1;
@@ -128,6 +132,15 @@ async function importKpressModule(specifier) {
   }
   if (specifier === "/plugin-static/broken/index.js") {
     throw new Error("simulated provider module failure");
+  }
+  if (specifier === "/plugin-static/served/index.js") {
+    servedImports += 1;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return import("data:text/javascript,export const served = true;");
+  }
+  if (specifier === "/plugin-static/assets-first/index.js") {
+    assetsFirstImportedAt = appended.length;
+    return import("data:text/javascript,export const ready = true;");
   }
   const orderedPlugin = orderedPluginModules.get(specifier);
   if (orderedPlugin) {
@@ -902,6 +915,84 @@ async function check_plugins_load_returns_exports() {
   );
   if (!failures.every((failure) => failure.includes("simulated provider module failure"))) {
     return { ok: false, detail: `a failed provider module did not reject: ${failures}` };
+  }
+
+  // A kind's table names only plugins the table holds.
+  const badTable = (() => {
+    try {
+      sandbox.MetabrowserPluginHost.configureAssets({ plugins: {}, kinds: { k: ["ghost"] } });
+      return "accepted";
+    } catch (error) {
+      return String(error?.message);
+    }
+  })();
+  if (!badTable.includes("k names no plugin ghost")) {
+    return { ok: false, detail: `a kind naming no plugin was accepted: ${badTable}` };
+  }
+
+  sandbox.MetabrowserPluginHost.configureAssets({
+    plugins: {
+      served: { name: "served", module: "/plugin-static/served/index.js", scripts: [], styles: [] },
+      provider: {
+        name: "provider",
+        module: "/plugin-static/provider/index.js",
+        scripts: [],
+        styles: [],
+      },
+      broken: { name: "broken", module: "/plugin-static/broken/index.js", scripts: [], styles: [] },
+      "assets-first": {
+        name: "assets-first",
+        module: "/plugin-static/assets-first/index.js",
+        scripts: ["/plugin-static/assets-first/setup.js"],
+        styles: ["/plugin-static/assets-first/styles.css"],
+      },
+    },
+    kinds: { "served-kind": ["served"], "mixed-kind": ["broken", "provider"] },
+  });
+
+  // Loading a provider by name while its kind is selected is one import, and both settle.
+  const [byName] = await Promise.all([
+    plugins.load("served"),
+    sandbox.metabrowser.ensureKindAssets("served-kind"),
+  ]);
+  if (byName?.served !== true || servedImports !== 1) {
+    return { ok: false, detail: `a kind and a name did not share one load (${servedImports})` };
+  }
+
+  // A kind whose plugins include one that failed still resolves: its other plugins render.
+  const mixed = await Promise.race([
+    sandbox.metabrowser.ensureKindAssets("mixed-kind").then(
+      () => "resolved",
+      () => "rejected",
+    ),
+    new Promise((resolve) => setTimeout(() => resolve("timed-out"), 250)),
+  ]);
+  if (mixed !== "resolved") {
+    return { ok: false, detail: `a kind with a failed plugin module ${mixed}` };
+  }
+
+  // A provider's stylesheet and script run before its exports are answered.
+  const firstAppend = appended.length;
+  let answered = false;
+  const loading = plugins.load("assets-first").then((exports) => {
+    answered = true;
+    return exports;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const stylesheet = appended[firstAppend];
+  if (stylesheet?.getAttribute("rel") !== "stylesheet" || answered) {
+    return { ok: false, detail: "a provider was answered before its stylesheet loaded" };
+  }
+  stylesheet.onload();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const script = appended.at(-1);
+  if (script?.tagName !== "SCRIPT" || answered || assetsFirstImportedAt !== -1) {
+    return { ok: false, detail: "a provider's module ran before its script loaded" };
+  }
+  script.onload();
+  const exports = await loading;
+  if (exports?.ready !== true || assetsFirstImportedAt !== appended.length) {
+    return { ok: false, detail: "a provider's exports did not follow its assets" };
   }
   return { ok: true };
 }
