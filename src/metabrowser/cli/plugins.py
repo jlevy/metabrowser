@@ -109,8 +109,18 @@ def _plugin_details(plugin: LoadedPlugin) -> dict[str, object]:
         "sdk_version": plugin.manifest.plugin.sdk_version,
         "source": plugin.source,
         "static_root": str(plugin.static_root),
-        "kinds": [kind.model_dump(mode="json", exclude_none=True) for kind in plugin.manifest.kind],
-        "views": [view.model_dump(mode="json") for view in plugin.manifest.view],
+        # A field a manifest can leave out is shown only where the manifest declares it,
+        # so a plugin's details say what that plugin asks for.
+        "kinds": [
+            kind.model_dump(
+                mode="json", exclude_none=True, exclude=None if kind.binary else {"binary"}
+            )
+            for kind in plugin.manifest.kind
+        ],
+        "views": [
+            view.model_dump(mode="json", exclude=None if view.offer else {"offer"})
+            for view in plugin.manifest.view
+        ],
         "data_hooks": [hook.model_dump(mode="json") for hook in _active_data_hooks(plugin)],
         "disabled_data_hooks": [
             hook.model_dump(mode="json") for hook in _disabled_data_hooks(plugin)
