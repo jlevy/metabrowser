@@ -66,8 +66,16 @@ DISCOVER_LIMIT: Final = 5000
 # The most spawn edges one discovery reads.
 EDGE_LIMIT: Final = 200_000
 
-# The most history items one stream reads from a thread.
+# The most history items one stream reads from a thread, across all its segments.
 MAX_ITEMS: Final = 200_000
+
+# The most characters of one item's JSON a stream reads. SQLite counts a TEXT value's
+# characters, not bytes, so this is at most four times as many bytes. An item over it
+# decodes to nothing and keeps its kind from `item_type`.
+MAX_ITEM_CHARS: Final = 1024 * 1024
+
+# The most characters of item JSON one stream reads from a thread, across its segments.
+MAX_THREAD_CHARS: Final = 256 * 1024 * 1024
 
 # `active_chat_turns` is refreshed about every minute (research brief), so a row not
 # observed within three refreshes is stale.
@@ -80,6 +88,11 @@ RECENT_UPDATE_SECONDS: Final = 120.0
 LIVE_THREAD_LIMIT: Final = 50
 
 _FETCH: Final = 500
+
+# How many unmatched messages a rollout read remembers to catch a message written twice,
+# and how much of each it compares.
+_ECHO_WINDOW: Final = 64
+_ECHO_TEXT_CHARS: Final = 2000
 
 # The schemas this provider was written against, from the research brief's survey. A
 # column outside `expected` is drift; a missing column in `required` is drift too.
@@ -233,11 +246,19 @@ def _history_db(home: Home) -> Path | None:
 
 
 def _query(
-    conn: sqlite3.Connection, sql: str, args: tuple[object, ...] = ()
+    conn: sqlite3.Connection,
+    sql: str,
+    args: tuple[object, ...] = (),
+    drift: DriftCollector | None = None,
+    label: str = "",
 ) -> list[tuple[object, ...]]:
+    """Rows of a query; a failed query is a read error in *drift*, never silence."""
+
     try:
         return [tuple(row) for row in conn.execute(sql, args).fetchall()]  # pyright: ignore[reportAny]
     except sqlite3.Error:
+        if drift is not None:
+            drift.read_error(label or "query")
         return []
 
 
@@ -282,19 +303,23 @@ def _seconds(ms: object, seconds: object) -> float | None:
     return parse_timestamp(seconds)
 
 
-def discover(home: Home, limit: int = DISCOVER_LIMIT) -> list[SessionSummary]:
+def discover(
+    home: Home, limit: int = DISCOVER_LIMIT, drift: DriftCollector | None = None
+) -> list[SessionSummary]:
     """The fast pass: the newest *limit* threads by indexed read, with sizes by ``stat``.
 
     Children come from ``thread_spawn_edges``. Records and turns are ``None`` and status
-    is ``unknown`` until :func:`summarize`.
+    is ``unknown`` until :func:`summarize`. A caller that passes *drift* learns about a
+    store that failed to open or a query that failed, which would otherwise read as an
+    empty catalog.
     """
 
+    drift = drift if drift is not None else DriftCollector()
     path = _state_db(home)
-    conn = open_readonly(path) if path else None
+    conn = open_readonly(path, drift) if path else None
     if conn is None:
         return []
     try:
-        drift = DriftCollector()
         actual = check_table(conn, "state", "threads", THREADS_EXPECTED, THREADS_REQUIRED, drift)
         if actual is None:
             return []
@@ -304,6 +329,8 @@ def discover(home: Home, limit: int = DISCOVER_LIMIT) -> list[SessionSummary]:
             conn,
             f"SELECT {', '.join(wanted)} FROM threads ORDER BY {order} DESC LIMIT ?",
             (limit,),
+            drift,
+            "state.threads",
         )
         parents: dict[str, str] = {}
         children: dict[str, list[str]] = {}
@@ -315,6 +342,8 @@ def discover(home: Home, limit: int = DISCOVER_LIMIT) -> list[SessionSummary]:
                 conn,
                 "SELECT parent_thread_id, child_thread_id FROM thread_spawn_edges LIMIT ?",
                 (EDGE_LIMIT,),
+                drift,
+                "state.thread_spawn_edges",
             ):
                 if isinstance(parent, str) and isinstance(child, str):
                     parents[child] = parent
@@ -462,6 +491,9 @@ def _history_events(
     turn_cols = check_table(
         conn, "history", "thread_turns", TURNS_EXPECTED, TURNS_REQUIRED, scratch
     )
+    thread_items = 0
+    thread_chars = 0
+    stopped = False
     for segment in segments:
         errors: list[tuple[int, float | None, str]] = []
         if turn_cols is not None and turn_cols >= TURNS_REQUIRED:
@@ -472,48 +504,62 @@ def _history_events(
                 "WHERE thread_id = ? AND error_json IS NOT NULL AND error_json != '' "
                 "ORDER BY rollout_ordinal",
                 (segment,),
+                drift,
+                "history.thread_turns",
             ):
                 errors.append((as_int(ordinal) or 0, parse_timestamp(stamp), str(raw)))
         pending = iter(errors)
         next_error = next(pending, None)
-        cursor = conn.execute(
-            "SELECT rollout_ordinal, created_at_ms, item_json, item_type FROM thread_items "
-            "WHERE thread_id = ? ORDER BY rollout_ordinal LIMIT ?",
-            (segment, MAX_ITEMS + 1),
-        )
-        count = 0
-        while True:
-            rows = cursor.fetchmany(_FETCH)  # pyright: ignore[reportAny]
-            if not rows:
-                break
-            for ordinal_raw, created, raw_json, item_type in rows:  # pyright: ignore[reportAny]
-                count += 1
-                if count > MAX_ITEMS:
-                    if drift is not None:
-                        drift.truncated = True
+        try:
+            cursor = conn.execute(
+                "SELECT rollout_ordinal, created_at_ms, substr(item_json, 1, ?), item_type, "
+                "length(item_json) FROM thread_items WHERE thread_id = ? "
+                "ORDER BY rollout_ordinal LIMIT ?",
+                (MAX_ITEM_CHARS, segment, MAX_ITEMS - thread_items + 1),
+            )
+            while not stopped:
+                rows = cursor.fetchmany(_FETCH)  # pyright: ignore[reportAny]
+                if not rows:
                     break
-                ordinal = as_int(ordinal_raw) or 0
-                while next_error is not None and next_error[0] <= ordinal:
-                    yield _error_event(session_id, segment, next_error)
-                    next_error = next(pending, None)
-                item = _decode_item(raw_json)
-                kind_name = as_str(item_type) or as_str(item.get("type")) or "?"
-                yield _item_event(
-                    session_id, segment, ordinal, parse_timestamp(created), kind_name, item, drift
-                )
-            else:
-                continue
-            break
+                for ordinal_raw, created, raw_json, item_type, length in rows:  # pyright: ignore[reportAny]
+                    thread_items += 1
+                    thread_chars += min(as_int(length) or 0, MAX_ITEM_CHARS)
+                    if thread_items > MAX_ITEMS or thread_chars > MAX_THREAD_CHARS:
+                        if drift is not None:
+                            drift.truncated = True
+                        stopped = True
+                        break
+                    ordinal = as_int(ordinal_raw) or 0
+                    while next_error is not None and next_error[0] <= ordinal:
+                        yield _error_event(session_id, segment, next_error)
+                        next_error = next(pending, None)
+                    item = _decode_item(raw_json)
+                    kind_name = as_str(item_type) or as_str(item.get("type")) or "?"
+                    yield _item_event(
+                        session_id,
+                        segment,
+                        ordinal,
+                        parse_timestamp(created),
+                        kind_name,
+                        item,
+                        drift,
+                    )
+        except sqlite3.Error:
+            if drift is not None:
+                drift.read_error("history.thread_items")
+            stopped = True
         while next_error is not None:
             yield _error_event(session_id, segment, next_error)
             next_error = next(pending, None)
+        if stopped:
+            return
 
 
 def _decode_item(raw: object) -> dict[str, object]:
     if isinstance(raw, (str, bytes)):
         try:
             return as_dict(json.loads(raw)) or {}
-        except ValueError:
+        except (ValueError, RecursionError):
             return {}
     return {}
 
@@ -537,6 +583,7 @@ def _rollout_events(path: Path, session_id: str, drift: DriftCollector | None) -
 
     reader = JsonlReader(path)
     call_names: dict[str, str] = {}
+    echoes: dict[tuple[str, str], str] = {}
     for number, record in reader:
         if record is None:
             if drift is not None:
@@ -545,6 +592,8 @@ def _rollout_events(path: Path, session_id: str, drift: DriftCollector | None) -
         raw = as_str(record.get("type")) or "?"
         payload = as_dict(record.get("payload")) or {}
         subtype = as_str(payload.get("type"))
+        if _is_echo(echoes, raw, subtype, payload):
+            continue
         block: str | None = None
         tool: str | None = None
         label: str | None = None
@@ -611,6 +660,50 @@ def _rollout_events(path: Path, session_id: str, drift: DriftCollector | None) -
         drift.truncated = True
 
 
+def _message_key(
+    raw: str, subtype: str | None, payload: dict[str, object]
+) -> tuple[str, str, str] | None:
+    """(role, text, source) of a message that a rollout writes twice, else ``None``.
+
+    A rollout carries a message both as ``response_item/message`` and as
+    ``event_msg/user_message`` or ``agent_message``; the second must not be counted.
+    """
+
+    if raw == "response_item" and subtype == "message":
+        role = as_str(payload.get("role"))
+        parts = [as_dict(p) or {} for p in as_list(payload.get("content"))]
+        text = " ".join(str(p.get("text", "")) for p in parts).strip()
+        source = "response_item"
+    elif raw == "event_msg" and subtype in ("user_message", "agent_message"):
+        role = "user" if subtype == "user_message" else "assistant"
+        text = str(payload.get("message") or "").strip()
+        source = "event_msg"
+    else:
+        return None
+    if role not in ("user", "assistant") or not text:
+        return None
+    return role, text[:_ECHO_TEXT_CHARS], source
+
+
+def _is_echo(
+    echoes: dict[tuple[str, str], str], raw: str, subtype: str | None, payload: dict[str, object]
+) -> bool:
+    """True when this message repeats the other source's message seen just before it."""
+
+    key = _message_key(raw, subtype, payload)
+    if key is None:
+        return False
+    role, text, source = key
+    seen = echoes.get((role, text))
+    if seen is not None and seen != source:
+        del echoes[(role, text)]
+        return True
+    if len(echoes) >= _ECHO_WINDOW:
+        del echoes[next(iter(echoes))]
+    echoes[(role, text)] = source
+    return False
+
+
 def _ordinal(record: dict[str, object], line: int) -> int:
     value = as_int(record.get("ordinal"))
     return line if value is None else value
@@ -628,7 +721,7 @@ def _events(
 ) -> Iterator[Event]:
     emitted = False
     history = _history_db(home)
-    conn = open_readonly(history) if history else None
+    conn = open_readonly(history, drift) if history else None
     if conn is not None:
         try:
             for event in _history_events(conn, session_id, _history_ids(session_id, paths), drift):
@@ -653,7 +746,7 @@ def summarize(home: Home, session: SessionSummary) -> tuple[SessionSummary, Drif
     for event in _events(home, session.session_id, session.source_paths, drift):
         if event.raw_type != "thread_turn":
             records += 1
-    turns, status = _turns(home, session)
+    turns, status = _turns(home, session, drift)
     updated = dataclasses.replace(
         session,
         ended_at=session.last_activity if status in ("finished", "failed") else None,
@@ -665,24 +758,34 @@ def summarize(home: Home, session: SessionSummary) -> tuple[SessionSummary, Drif
     return updated, merge_drift([drift.freeze(), schema_drift(home)])
 
 
-def _turns(home: Home, session: SessionSummary) -> tuple[int, str]:
+def _turns(home: Home, session: SessionSummary, drift: DriftCollector) -> tuple[int, str]:
+    """(turn count, status) from the thread's turns, segment by segment.
+
+    Ordinals are not assumed to continue across segments, so turns are read per segment
+    in history-id order and each segment by ordinal; the last turn is the last segment's.
+    """
+
     history = _history_db(home)
-    conn = open_readonly(history) if history else None
+    conn = open_readonly(history, drift) if history else None
     if conn is None:
         return 0, "unknown"
+    rows: list[tuple[object, ...]] = []
     try:
         scratch = DriftCollector()
         cols = check_table(conn, "history", "thread_turns", TURNS_EXPECTED, TURNS_REQUIRED, scratch)
         if cols is None or not cols >= TURNS_REQUIRED:
             return 0, "unknown"
-        segments = _history_ids(session.session_id, session.source_paths)
-        marks = ", ".join("?" for _ in segments)
-        rows = _query(
-            conn,
-            f"SELECT status, error_json FROM thread_turns WHERE thread_id IN ({marks}) "
-            "ORDER BY rollout_ordinal",
-            tuple(segments),
-        )
+        for segment in _history_ids(session.session_id, session.source_paths):
+            rows.extend(
+                _query(
+                    conn,
+                    "SELECT status, error_json FROM thread_turns WHERE thread_id = ? "
+                    "ORDER BY rollout_ordinal",
+                    (segment,),
+                    drift,
+                    "history.thread_turns",
+                )
+            )
     finally:
         conn.close()
     if not rows:
@@ -712,50 +815,88 @@ def stream(home: Home, session_id: str) -> Iterator[Event]:
     yield from _events(home, session_id, paths, None)
 
 
-def live(home: Home, now: float) -> list[LiveSession]:
+def _thread_select(actual: frozenset[str]) -> str:
+    """The columns `live` reads from `threads`, with NULL for any this schema lacks."""
+
+    return ", ".join(
+        c if c in actual else "NULL"
+        for c in ("id", "cwd", "name", "title", "updated_at_ms", "updated_at")
+    )
+
+
+def live(home: Home, now: float, drift: DriftCollector | None = None) -> list[LiveSession]:
     """Threads the desktop store or a very recent update vouches for.
 
     ``active_chat_turns`` rows observed within :data:`ACTIVE_TURN_MAX_AGE_SECONDS` of
     *now* come first; then threads updated within :data:`RECENT_UPDATE_SECONDS`. A turn
-    row marked ``inProgress`` in the history store is never consulted.
+    row marked ``inProgress`` in the history store is never consulted. A time after
+    *now* vouches for nothing.
     """
 
+    collector = drift if drift is not None else DriftCollector()
     state = _state_db(home)
-    state_conn = open_readonly(state) if state else None
+    state_conn = open_readonly(state, collector) if state else None
     found: dict[str, LiveSession] = {}
-    details: dict[str, tuple[str | None, str | None, float | None]] = {}
+    actual = (
+        check_table(state_conn, "state", "threads", THREADS_EXPECTED, frozenset(), collector)
+        if state_conn is not None
+        else None
+    )
+    select = _thread_select(actual) if actual is not None else ""
+    order = "updated_at_ms" if actual and "updated_at_ms" in actual else "updated_at"
 
-    def detail(thread_id: str) -> tuple[str | None, str | None, float | None]:
-        if thread_id not in details and state_conn is not None:
-            rows = _query(
-                state_conn,
-                "SELECT cwd, COALESCE(name, title), updated_at_ms FROM threads WHERE id = ?",
-                (thread_id,),
-            )
-            details[thread_id] = (
-                (as_str(rows[0][0]), as_str(rows[0][1]), _seconds(rows[0][2], None))
-                if rows
-                else (None, None, None)
-            )
-        return details.get(thread_id, (None, None, None))
+    def thread_row(row: tuple[object, ...]) -> tuple[str | None, str | None, float | None]:
+        _, cwd, name, title, ms, sec = row
+        return as_str(cwd), as_str(name) or as_str(title), _seconds(ms, sec)
+
+    def detail(thread_id: str) -> tuple[str | None, str | None]:
+        if state_conn is None or actual is None:
+            return None, None
+        rows = _query(
+            state_conn,
+            f"SELECT {select} FROM threads WHERE id = ?",
+            (thread_id,),
+            collector,
+            "state.threads",
+        )
+        if not rows:
+            return None, None
+        cwd, name, _ = thread_row(rows[0])
+        return cwd, name
 
     try:
-        desktop = open_readonly(home.path / "sqlite" / "codex.db")
+        desktop = open_readonly(home.path / "sqlite" / "codex.db", collector)
         if desktop is not None:
             try:
-                for thread_id, observed in _query(
+                columns = check_table(
                     desktop,
-                    "SELECT thread_id, observed_at_ms FROM active_chat_turns "
-                    "ORDER BY observed_at_ms DESC LIMIT 200",
-                ):
+                    "desktop",
+                    "active_chat_turns",
+                    ACTIVE_EXPECTED,
+                    ACTIVE_REQUIRED,
+                    collector,
+                )
+                active = (
+                    _query(
+                        desktop,
+                        "SELECT thread_id, observed_at_ms FROM active_chat_turns "
+                        "ORDER BY observed_at_ms DESC LIMIT 200",
+                        (),
+                        collector,
+                        "desktop.active_chat_turns",
+                    )
+                    if columns is not None and columns >= ACTIVE_REQUIRED
+                    else []
+                )
+                for thread_id, observed in active:
                     seen = _seconds(observed, None)
                     if (
                         isinstance(thread_id, str)
                         and seen is not None
-                        and now - seen <= ACTIVE_TURN_MAX_AGE_SECONDS
+                        and 0 <= now - seen <= ACTIVE_TURN_MAX_AGE_SECONDS
                         and thread_id not in found
                     ):
-                        cwd, name, _ = detail(thread_id)
+                        cwd, name = detail(thread_id)
                         found[thread_id] = LiveSession(
                             agent=AGENT,
                             session_id=thread_id,
@@ -767,14 +908,16 @@ def live(home: Home, now: float) -> list[LiveSession]:
                         )
             finally:
                 desktop.close()
-        if state_conn is not None:
-            for thread_id, cwd, name, updated in _query(
+        if state_conn is not None and actual is not None and "id" in actual:
+            for row in _query(
                 state_conn,
-                "SELECT id, cwd, COALESCE(name, title), updated_at_ms FROM threads "
-                "ORDER BY updated_at_ms DESC LIMIT ?",
+                f"SELECT {select} FROM threads ORDER BY {order} DESC LIMIT ?",
                 (LIVE_THREAD_LIMIT,),
+                collector,
+                "state.threads",
             ):
-                stamp = _seconds(updated, None)
+                thread_id = row[0]
+                cwd, name, stamp = thread_row(row)
                 if (
                     isinstance(thread_id, str)
                     and stamp is not None
@@ -786,8 +929,8 @@ def live(home: Home, now: float) -> list[LiveSession]:
                         session_id=thread_id,
                         source="recent-update",
                         status="idle",
-                        cwd=as_str(cwd),
-                        name=as_str(name),
+                        cwd=cwd,
+                        name=name,
                         updated_at=stamp,
                     )
     finally:

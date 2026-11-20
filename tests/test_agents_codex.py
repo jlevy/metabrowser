@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from collections import Counter
+from contextlib import closing
 from pathlib import Path
 
 import pytest
 
 from metabrowser.builtin_plugins.agents import codex
-from metabrowser.builtin_plugins.agents.model import Home, SessionSummary, apply_live
+from metabrowser.builtin_plugins.agents.model import (
+    DriftCollector,
+    Home,
+    SessionSummary,
+    apply_live,
+)
 from tests import agents_synthetic_home as syn
 
 
@@ -134,10 +141,10 @@ def test_orphaned_in_progress_turn_is_not_running(home: Home) -> None:
 def test_plain_rollout_is_read_when_history_has_no_rows(home: Home) -> None:
     t8 = _by_id(home)[syn.T8]
     events = list(codex.stream(home, syn.T8))
-    assert len(events) == 20
+    assert len(events) == 21  # the `event_msg` copy of line 22 is not counted
     assert Counter(e.kind for e in events) == {
         "context": 6,
-        "prompt": 1,
+        "prompt": 2,
         "thinking": 1,
         "tool-call": 2,
         "tool-result": 2,
@@ -152,7 +159,7 @@ def test_plain_rollout_is_read_when_history_has_no_rows(home: Home) -> None:
     assert (by_ordinal[13].tool_name, by_ordinal[13].tool_family) == ("mcp:srv.lookup", "mcp")
     assert (by_ordinal[19].tool_name, by_ordinal[19].tool_family) == ("apply_patch", "edit")
     summary, drift = codex.summarize(home, t8)
-    assert (summary.records, summary.turns, summary.status) == (20, 0, "unknown")
+    assert (summary.records, summary.turns, summary.status) == (21, 0, "unknown")
     assert drift.unknown_types == {
         "<invalid-json>": 1,
         "event_msg/novel_event": 1,
@@ -212,3 +219,184 @@ def test_to_json_is_plain_and_ordered(home: Home) -> None:
     for value in (summary.to_json(), drift.to_json(), codex.live(home, syn.NOW)[0].to_json()):
         assert json.loads(json.dumps(value)) == value
     assert list(summary.to_json())[-3:] == ["status", "source_paths", "family_versions"]
+
+
+def _names(home: Home) -> set[str]:
+    return {p.name for p in home.path.rglob("*")}
+
+
+def test_the_synthetic_databases_are_wal_like_the_real_ones(home: Home) -> None:
+    for name in ("state_5.sqlite", "thread_history_1.sqlite", "sqlite/codex.db"):
+        header = (home.path / name).read_bytes()[:20]
+        assert header[18:20] == b"\x02\x02", name  # file format write/read version 2 = WAL
+
+
+def test_reading_an_idle_wal_database_creates_no_file(home: Home) -> None:
+    before = _names(home)
+    assert not any(n.endswith(("-wal", "-shm")) for n in before)
+    codex.discover(home)
+    list(codex.stream(home, syn.T4))
+    codex.live(home, syn.NOW)
+    assert _names(home) == before
+
+
+def test_reading_beside_a_live_writer_sees_its_commits_and_adds_nothing(home: Home) -> None:
+    writer = sqlite3.connect(home.path / "thread_history_1.sqlite")
+    try:
+        writer.execute("PRAGMA journal_mode = WAL")
+        writer.execute(
+            "INSERT INTO thread_items (thread_id, rollout_ordinal, created_at_ms, item_json, "
+            "item_type) VALUES (?, 2, 1, '{\"text\": \"live\"}', 'agentMessage')",
+            (syn.T2,),
+        )
+        writer.commit()
+        before = _names(home)
+        assert "thread_history_1.sqlite-wal" in before  # the writer's, not ours
+        events = list(codex.stream(home, syn.T2))
+        assert [e.summary for e in events] == ["child reply", "live"]
+        assert _names(home) == before
+    finally:
+        writer.close()
+
+
+def test_an_undecodable_text_value_does_not_fail_the_stream(home: Home) -> None:
+    with closing(sqlite3.connect(home.path / "thread_history_1.sqlite")) as conn:
+        conn.execute(
+            "INSERT INTO thread_items (thread_id, rollout_ordinal, created_at_ms, item_json, "
+            "item_type) VALUES (?, 2, 1, CAST(x'ff7b7d' AS TEXT), 'agentMessage')",
+            (syn.T2,),
+        )
+        conn.commit()
+    events = list(codex.stream(home, syn.T2))
+    assert [e.kind for e in events] == ["text", "text"]
+    assert events[1].summary == ""
+
+
+def test_a_failed_catalog_read_is_drift_not_an_empty_catalog(tmp_path: Path) -> None:
+    root = tmp_path / "home"
+    root.mkdir()
+    (root / "state_5.sqlite").write_bytes(b"this is not a database" * 100)
+    drift = DriftCollector()
+    assert codex.discover(Home("codex", root), drift=drift) == []
+    frozen = drift.freeze()
+    assert frozen.read_errors == {"state.threads": 1}
+    assert frozen.truncated
+
+
+class _FailingItems:
+    """A connection whose `thread_items` read fails after the schema checks."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def execute(self, sql: str, *args: object) -> sqlite3.Cursor:
+        if "FROM thread_items" in sql:
+            raise sqlite3.OperationalError("database is locked")
+        return self._conn.execute(sql, *args)  # pyright: ignore[reportArgumentType]
+
+    def close(self) -> None:
+        self._conn.close()
+
+
+def test_a_failing_item_read_is_drift_and_truncates_instead_of_raising(
+    home: Home, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = codex.open_readonly
+    monkeypatch.setattr(
+        codex,
+        "open_readonly",
+        lambda path, drift=None: (
+            _FailingItems(c) if (c := real(path, drift)) is not None else None  # pyright: ignore[reportReturnType]
+        ),
+    )
+    # No item is read; only the turn error, which a separate query supplies, survives.
+    assert [e.raw_type for e in codex.stream(home, syn.T1)] == ["thread_turn"]
+    summary, drift = codex.summarize(home, _by_id(home)[syn.T1])
+    assert summary.records == 0
+    assert drift.read_errors["history.thread_items"] >= 1
+    assert drift.truncated
+
+
+def test_the_item_cap_is_per_thread_not_per_segment(
+    home: Home, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(codex, "MAX_ITEMS", 3)
+    t4 = _by_id(home)[syn.T4]  # two items in each of two segments
+    assert [e.ordinal for e in codex.stream(home, syn.T4)] == [1, 2, 3]
+    summary, drift = codex.summarize(home, t4)
+    assert summary.records == 3
+    assert drift.truncated
+
+
+def test_the_character_cap_stops_a_thread_by_size(
+    home: Home, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(codex, "MAX_THREAD_CHARS", 1)
+    assert len(list(codex.stream(home, syn.T1))) < 11
+
+
+def test_an_oversize_item_keeps_its_kind_but_not_its_body(
+    home: Home, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(codex, "MAX_ITEM_CHARS", 10)
+    events = list(codex.stream(home, syn.T1))
+    assert events[0].kind == "prompt"
+    assert events[0].summary == ""
+
+
+def test_turns_are_ordered_by_segment_not_by_a_global_ordinal(home: Home) -> None:
+    with closing(sqlite3.connect(home.path / "thread_history_1.sqlite")) as conn:
+        # A first-segment turn whose ordinal is higher than the second segment's.
+        conn.execute(
+            "INSERT INTO thread_turns (thread_id, turn_id, rollout_ordinal, status) "
+            "VALUES (?, 'late', 99, 'failed')",
+            (syn.T4,),
+        )
+        conn.commit()
+    summary, _ = codex.summarize(home, _by_id(home)[syn.T4])
+    assert (summary.turns, summary.status) == (3, "finished")  # the last segment's turn wins
+
+
+def test_live_ignores_an_active_row_from_the_future(home: Home) -> None:
+    with closing(sqlite3.connect(home.path / "sqlite" / "codex.db")) as conn:
+        conn.execute(
+            "INSERT INTO active_chat_turns (thread_id, observed_at_ms) VALUES (?, ?)",
+            (syn.T3, int((syn.NOW + 500) * 1000)),
+        )
+        conn.commit()
+    assert syn.T3 not in {s.session_id for s in codex.live(home, syn.NOW)}
+
+
+def test_live_reports_a_drifted_active_table(home: Home) -> None:
+    with closing(sqlite3.connect(home.path / "sqlite" / "codex.db")) as conn:
+        conn.execute("ALTER TABLE active_chat_turns ADD COLUMN zz_extra TEXT")
+        conn.commit()
+    drift = DriftCollector()
+    assert codex.live(home, syn.NOW, drift)
+    assert drift.freeze().unexpected_columns["desktop.active_chat_turns.zz_extra"] == 1
+
+
+def test_live_works_without_the_millisecond_and_name_columns(tmp_path: Path) -> None:
+    built = syn.build(tmp_path, omit_thread_columns=("updated_at_ms", "name"))
+    assert [(s.session_id, s.source) for s in codex.live(built.codex, syn.NOW)] == [
+        (syn.T6, "active-chat-turn"),
+        (syn.T5, "recent-update"),
+    ]
+
+
+def test_a_message_written_twice_is_counted_once(home: Home) -> None:
+    events = [e for e in codex.stream(home, syn.T8) if e.ordinal in (22, 23)]
+    assert [(e.ordinal, e.raw_type, e.kind) for e in events] == [(22, "response_item", "prompt")]
+
+
+def test_a_repeated_message_from_one_source_is_not_an_echo() -> None:
+    echoes: dict[tuple[str, str], str] = {}
+    payload: dict[str, object] = {"type": "user_message", "message": "ok"}
+    assert not codex._is_echo(echoes, "event_msg", "user_message", payload)  # pyright: ignore[reportPrivateUsage]
+    assert not codex._is_echo(echoes, "event_msg", "user_message", payload)  # pyright: ignore[reportPrivateUsage]
+    other: dict[str, object] = {
+        "type": "message",
+        "role": "user",
+        "content": [{"type": "input_text", "text": "ok"}],
+    }
+    assert codex._is_echo(echoes, "response_item", "message", other)  # pyright: ignore[reportPrivateUsage]

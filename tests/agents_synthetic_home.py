@@ -395,6 +395,8 @@ def _build_claude(home: Path) -> None:
 def _db(path: Path) -> Generator[sqlite3.Connection]:
     conn = sqlite3.connect(path)
     try:
+        # Codex's databases are WAL, so the synthetic ones are too.
+        conn.execute("PRAGMA journal_mode = WAL")
         yield conn
         conn.commit()
     finally:
@@ -461,6 +463,13 @@ def _t8_rollout() -> list[object]:
         ),
         "{{{ not json",
         line(21, "event_msg", {"type": "error"}),
+        # One message written twice, as `response_item` and as `event_msg`: counted once.
+        line(
+            22,
+            "response_item",
+            {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "dup"}]},
+        ),
+        line(23, "event_msg", {"type": "user_message", "message": "dup"}),
     ]
 
 
