@@ -5933,7 +5933,7 @@ function renderNavFilterBar() {
   // "Keys in a Menu").
   var restoreFocus = fc.keepFocus(bar);
   // A page with the branch and tag chooser ships it leading the row, and its module owns
-  // it: it is carried over, not drawn (static/source-ref-selector.js#keepFocusAcross).
+  // it: it is carried over, not drawn (static/source-ref-selector.js#keepAcrossRefills).
   var chooser = document.getElementById("source-ref-selector");
   bar.innerHTML = main + drawer;
   if (chooser) {
