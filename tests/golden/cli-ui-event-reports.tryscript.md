@@ -68,7 +68,8 @@ $ node tests/dom/event-reports-session.js
       "/api/stream"
     ],
     "failure_window_s": 3600,
-    "open_command": "metab --event-log"
+    "open_command": "metab --event-log",
+    "open_menu": null
   },
   "tags": {
     "a read of a pull request": "k3v9q2zx-1 GET /api/plugin/github/pull",
@@ -637,6 +638,9 @@ $ node tests/dom/event-reports-session.js
         "  gh api · timeout · connect timeout · 15.0 s · <time>",
         "links: Failures as JSON -> /api/event-log/failures?since=2026-11-19T21%3A00%3A00Z (_blank, noopener); This page’s records as JSON -> /api/event-log?client=k3v9q2zx&limit=200 (_blank, noopener)",
         "event-log-details-open: Browse the whole log in Metabrowser: metab --event-log"
+      ],
+      "in the app, the menu item": [
+        "event-log-details-open: Browse the whole log in Metabrowser: Help > Open Event Log"
       ],
       "closed before the answers": [
         "event-log-details-note: Reading the event log…"

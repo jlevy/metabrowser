@@ -287,10 +287,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// and one that waits for a runtime still opens there (`WaitingWindows`). A link still
     /// opens in a window of its own: which repository it names is `metab`'s answer, which
     /// arrives later.
-    func request(_ url: URL, into window: BrowserWindowController? = nil) {
+    ///
+    /// With `inOwnFolder`, a file opens in its own folder even inside an open one, as
+    /// `metab FILE` would serve it (Help > Open Event Log, `EventLogLocation`). With
+    /// `remember` false, the folder is not added to Open Recent, by the app or by the
+    /// server it starts.
+    func request(
+        _ url: URL, into window: BrowserWindowController? = nil, inOwnFolder: Bool = false,
+        remember: Bool = true
+    ) {
         guard url.isFileURL else { return requestLink(url) }
         let path = FileChecks.canonicalPath(url.path(percentEncoded: false))
-        let openRoots = folderSessions.filter(\.isLocal).map(\.path)
+        let openRoots = inOwnFolder ? [String]() : folderSessions.filter(\.isLocal).map(\.path)
         guard let target = OpenTarget.resolve(path, kind: OpenTarget.Kind(of: path), openRoots: openRoots) else {
             return refuse(
                 "Metabrowser opens folders and files",
@@ -301,7 +309,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return refuse("Metabrowser cannot open this folder", "\(root.lastPathComponent) cannot be served: \(reason).")
         }
         let open = sessions[SessionRoot.folder(root).key] as? FolderSession
-        recentFolders.noteOpened(root, isOpen: open != nil)
+        if remember { recentFolders.noteOpened(root, isOpen: open != nil) }
         if let session = open {
             session.showFrontWindow(page: target.page)
             return
@@ -323,8 +331,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let switched = window.map { folderWindows.switchWindow($0, to: session, page: target.page) } ?? false
         if !switched { folderWindows.place(session.makeWindow(page: target.page)) }
         Task {
-            await session.startServer()
-            self.recentFolders.refreshAfterOpen()
+            await session.startServer(recording: remember)
+            if remember { self.recentFolders.refreshAfterOpen() }
         }
     }
 
@@ -1155,9 +1163,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Help > Open Event Log: Metabrowser's own log of what its servers did, in a Metabrowser
     /// window. `metab` says where the log is and which segment is newest
-    /// (`EventLogLocation`), and the segment opens as any file does, in a window on its
-    /// folder. A log that does not exist yet, or a `metab` that cannot say, is told in an
-    /// alert, not left as a menu item that does nothing.
+    /// (`EventLogLocation`), and the segment opens in a window on the log's own directory,
+    /// not inside an open folder that holds it, and without a place in Open Recent
+    /// (`EventLogLocation.Action`). A log that does not exist yet, or a `metab` that cannot
+    /// say, is told in an alert, not left as a menu item that does nothing.
     @objc func openEventLog(_ sender: Any?) {
         guard let setup = selection.setup else {
             if !selection.isBusy { showSettings(nil) }
@@ -1170,18 +1179,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 folder: folder.path(percentEncoded: false), with: setup,
                 inherited: ProcessInfo.processInfo.environment)
             onRunLoop { [weak self] in
-                switch answer {
-                case .found(let segment):
-                    self?.request(segment)
-                case .empty(let directory):
-                    self?.refuse(
-                        "There is no event log yet",
-                        "\(directory.path(percentEncoded: false)) holds no log. A folder Metabrowser serves writes one as it answers requests.")
-                case .unavailable(let reason):
-                    AppLog.app.error("could not ask metab where the event log is: \(reason, privacy: .public)")
-                    self?.refuse(
-                        "Could not open the event log",
-                        "\(reason)\n\nHelp > Check Setup… shows which metab the app runs.")
+                switch EventLogLocation.action(for: answer) {
+                case .open(let segment):
+                    self?.request(segment, inOwnFolder: true, remember: false)
+                case .tell(let title, let message):
+                    if case .unavailable(let reason) = answer {
+                        AppLog.app.error("could not ask metab where the event log is: \(reason, privacy: .public)")
+                    }
+                    self?.refuse(title, message)
                 }
             }
         }

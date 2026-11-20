@@ -56,8 +56,10 @@ with the directory the event log lives in (`cli/event_log_cli.py`, over
 `event_log.log_directory`), refuses a ROOT beside it, and, when serving without
 `--path`, selects the newest segment, so `metab --event-log` opens the log in the
 event-log plugin ([Real-Time Debugging](../../realtime-debugging.md#browsing-the-log)).
-A server whose folder holds the log opens no log of its own (`event_log.open_log`’s
-`served_directory`), so browsing it does not write to it.
+A server whose folder is the log’s directory opens no log of its own
+(`event_log.open_log`’s `served_directory`), so browsing it does not write to it, and
+says why; a server whose folder only holds the directory logs, and skips the requests
+for what is inside it (`event_log.quiet_request`).
 
 `--present` is a client mode, and reads ROOT without `_classified_root`, because a
 target it cannot present is a refusal it reports as data, with

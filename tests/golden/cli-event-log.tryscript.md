@@ -111,6 +111,14 @@ status: 200
       "abandoned",
       "never_completed"
     ],
+    "edges_ms": [
+      1.0,
+      10.0,
+      100.0,
+      500.0,
+      2000.0,
+      10000.0
+    ],
     "bytes": 3130,
     "records": 13,
     "skipped": 2,
@@ -121,7 +129,8 @@ status: 200
     "extent_ms": 98534.0,
     "pids": [
       4242
-    ]
+    ],
+    "continues": false
   },
   "kinds": [
     "job"
@@ -145,13 +154,14 @@ status: 200
       "examples": [
         {
           "ts": "2026-11-19T21:02:49.801Z",
+          "key": "4242:8",
+          "pid": 4242,
           "span": 8,
           "kind": "job",
           "name": "mirror_refresh.MirrorSession._pull_job",
           "outcome": "failed",
           "dur_ms": 15045.2,
           "address": null,
-          "key": "4242:8",
           "path": [
             {
               "key": "4242:7",

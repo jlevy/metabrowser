@@ -163,7 +163,9 @@ decide, is checked by hand against a built development app with the
   lifecycle events interleaved: start command, pid, announced URL, readiness time, stop,
   and exit status. File > Reveal Server Log opens it, and Help > Reveal Logs Folder opens
   the folder. Help > Open Event Log opens `metab`’s own event log (`EventLogLocation`), a
-  separate record of its requests and work that `metab` writes to its state directory.
+  separate record of its requests and work that `metab` writes to its state directory;
+  it opens in a window on the log’s own directory, not inside an open folder that holds
+  it, and stays out of Open Recent.
   A second running copy, or a folder opened again while its last server is still
   stopping, writes a log named for its own process beside it (`ServerLogLease`).
 - **App log:** `log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"'`

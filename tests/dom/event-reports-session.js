@@ -43,6 +43,7 @@ const SETTINGS = Object.freeze({
   long_lived: ["/api/events", "/api/tail", "/api/stream"],
   failure_window_s: 3600,
   open_command: "metab --event-log",
+  open_menu: null,
 });
 
 /** A node, enough of one for the Details panel's paint. */
@@ -756,6 +757,22 @@ async function details(api) {
     asked,
     painted: panel.outline().map((text) => text.replace(/ · \d{1,2}:\d\d:\d\d.*$/, " · <time>")),
   };
+  // A server the macOS app started: its window has no terminal, so Details names the menu.
+  const app = new Node("div");
+  await api.showDetails(
+    app,
+    { client: PAGE, since: FAILURES.since },
+    {
+      // Its own reads, which the list of requests above does not take on.
+      fetch: async (route) => ({ ok: true, json: async () => answers.get(route.split("?")[0]) }),
+      slowMs: 2000,
+      openCommand: SETTINGS.open_command,
+      openMenu: "Help > Open Event Log",
+    },
+  );
+  out.panel["in the app, the menu item"] = app
+    .outline()
+    .filter((line) => line.startsWith("event-log-details-open"));
   const aborted = new AbortController();
   const left = new Node("div");
   const leaving = api.showDetails(

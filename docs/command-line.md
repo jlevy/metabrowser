@@ -225,8 +225,8 @@ Timeline, Latency, By kind, and Errors.
 `--walk`, `--check-api`) reads the log as one.
 The flag names the folder, so it takes no `ROOT`, and a state directory with no log yet
 says where one is written.
-The server that shows the log writes none of its own.
-[Browsing the Log](realtime-debugging.md#browsing-the-log) describes the views.
+The server that shows the log writes none of its own, which its Details and `--doctor`
+say. [Browsing the Log](realtime-debugging.md#browsing-the-log) describes the views.
 
 ### GitHub URLs
 

@@ -155,8 +155,10 @@ end here may have ended there (`log.continues`).
 
 To open the log, run `metab --event-log`, which serves the directory it is in at its
 newest segment. The same flag names the directory for `--api`, `--show`, and the other
-modes that take a folder, and the macOS app’s Help menu has Open Event Log.
-A pull request page’s Details names the command too.
+modes that take a folder, and the macOS app’s Help menu has Open Event Log, which opens
+the log’s own directory in a window of its own, and not in Open Recent.
+A pull request page’s Details names the menu item for a server the app started, and the
+command for any other.
 
 A server whose folder holds the events directory, such as `metab ~`, writes its log as
 usual, except that a request for something inside the directory is not recorded: each

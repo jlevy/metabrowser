@@ -42,8 +42,14 @@ private func report(_ output: [String], code: Int32 = 0) throws -> DoctorReport 
         let report = try report(transcript("metab --doctor --json"))
         #expect(report.ok)
         #expect(report.hasChecks)
-        #expect(report.rows.map(\.id) == ["plugins", "open_in", "metab", "git", "config", "cache", "github"])
+        #expect(
+            report.rows.map(\.id)
+                == ["plugins", "open_in", "metab", "git", "config", "cache", "event_log", "github"])
         #expect(report.rows.allSatisfy { $0.state == .ok })
+        // A check the app has no special word for is one more row, from the structured entry.
+        let eventLog = try #require(report.rows.first { $0.id == "event_log" })
+        #expect(eventLog.title == "Event log")
+        #expect(eventLog.details.map(\.name).prefix(2) == ["directory", "source"])
         #expect(report.rows[0].summary == "12 plugins and the packaged cache record contracts check out")
         #expect(report.rows[1].title == "Opening from a terminal")
         let git = try #require(report.rows.first { $0.id == "git" })

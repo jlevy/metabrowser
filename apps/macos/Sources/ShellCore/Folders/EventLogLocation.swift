@@ -12,8 +12,13 @@ import Foundation
 /// the app passes its own support folder. A state directory with no log yet is an answer, a
 /// directory with no segment, and the app says so.
 ///
-/// The newest segment is opened as any file is, in a window on its folder: that folder's
-/// server writes no log of its own, which would change the files on screen.
+/// The newest segment opens in a window on the log's own directory, even when a folder that
+/// holds it, such as the home folder, is already open. A file would open in the most specific
+/// open folder that contains it (`OpenTarget`), which would put the log inside a window whose
+/// server records what it answers; the directory's own server writes no log
+/// (`metabrowser.event_log.open_log`), so showing the log changes none of its files, and the
+/// window shows only the log. The directory is not added to Open Recent, which lists what a
+/// person chose to open, and this was a menu item's way to a folder of the app's own.
 public nonisolated enum EventLogLocation {
     public enum Answer: Equatable, Sendable {
         /// The newest segment, a file in the log's directory.
@@ -24,7 +29,39 @@ public nonisolated enum EventLogLocation {
         case unavailable(String)
     }
 
+    /// What Help > Open Event Log does with an answer.
+    public enum Action: Equatable, Sendable {
+        /// Open the segment in a window on the log's own directory (`target(for:)`), and leave
+        /// the directory out of Open Recent.
+        case open(URL)
+        /// Say why there is nothing to open, in an alert: a menu item that does nothing is not
+        /// an answer.
+        case tell(title: String, message: String)
+    }
+
     static let route = "/api/event-log?limit=1"
+
+    /// What the menu item does for each answer `metab` can give.
+    public static func action(for answer: Answer) -> Action {
+        switch answer {
+        case .found(let segment):
+            return .open(segment)
+        case .empty(let directory):
+            return .tell(
+                title: "There is no event log yet",
+                message: "\(directory.path(percentEncoded: false)) holds no log. A folder Metabrowser serves writes one as it answers requests.")
+        case .unavailable(let reason):
+            return .tell(
+                title: "Could not open the event log",
+                message: "\(reason)\n\nHelp > Check Setup… shows which metab the app runs.")
+        }
+    }
+
+    /// Where `segment` opens: the log's directory is the root of its window, whatever folders
+    /// are open (`openRoots` empty), at the segment's own page.
+    public static func target(for segment: URL) -> OpenTarget? {
+        OpenTarget.resolve(segment.path(percentEncoded: false), kind: .file, openRoots: [String]())
+    }
 
     public static func arguments(folder: String) -> [String] {
         [folder, "--api", route, "--format", "json"]
