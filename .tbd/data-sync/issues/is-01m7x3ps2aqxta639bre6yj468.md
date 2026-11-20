@@ -3,9 +3,9 @@ type: is
 id: is-01m7x3ps2aqxta639bre6yj468
 title: "macOS title folder menu: the check mark of the current entry sits on the name's (first, bold) line, not centred across the two-line row, keeping the accessible checked state"
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 delegate: claude-code@spud10.local
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 hold: null
 hold_until: null
 created_at: 2026-11-20T18:32:38.727Z
-updated_at: 2026-11-20T19:56:08.046Z
+updated_at: 2026-11-20T22:57:21.196Z
 started_at: 2026-11-20T18:33:17.490Z
 closed_at: null
 close_reason: null
