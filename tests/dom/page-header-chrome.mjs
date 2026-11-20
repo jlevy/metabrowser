@@ -190,6 +190,11 @@ const MEASURE = `async (which, width) => {
     await frames();
     header = container.querySelector(".github-pull-header");
     summary = diff.mountDiffSummary(header.querySelector(".github-pull-summary"), changes, mb, mounts);
+    // The size line above it, drawn as the page draws it once its summary is (pull-page.js,
+    // paintSize), since this draws the summary in place of the page's own read.
+    header
+      .querySelector(".github-pull-size")
+      .replaceChildren(...mb.changeSizeLineNodes(mb.changeSizeLine({ commits: 2, files: 35, pushedBytes: 58_270, diffBytes: 198_540 })));
   }
   await document.fonts.ready;
   await frames();
@@ -380,8 +385,19 @@ async function main() {
             `${where}: the ${name}'s Diff summary is its last line, at the body size`,
             /(git-commit|github-pull)-(diff-)?summary/.test(summary.cls) &&
               summary.size === body &&
-              summary.runs.some((run) => run.text === "files changed" && run.size === body),
+              summary.runs.length > 0 &&
+              summary.runs.every((run) => run.size === body),
             JSON.stringify(summary),
+          );
+          // The size line is the line above it, and says the file count, at the body size
+          // (docs/design-system.md, "Change Size Line").
+          const size = page.lines.at(-2);
+          check(
+            `${where}: the ${name}'s size line is above its Diff summary, saying its file count`,
+            /(git-commit|github-pull)-size/.test(size?.cls ?? "") &&
+              size.size === body &&
+              size.runs.some((run) => run.text === "files changed" && run.size === body),
+            JSON.stringify(size),
           );
           const revision = page.lines
             .flatMap((line) => line.runs)
@@ -414,31 +430,35 @@ async function main() {
             [...commit.lines, ...pull.lines].map((line) => [line.cls, line.lineHeight]),
           ),
         );
-        // One structure: the author first under the title, the age before the Diff summary,
-        // which is last; the commit's revision where the pull request has its branches.
+        // One structure: the author first under the title, the age before the size line and
+        // the Diff summary, which is last; the commit's revision where the pull request has
+        // its branches.
         const order = (page, parts) =>
           parts.map((part) => page.lines.findIndex((line) => line.cls.includes(part)));
         const commitOrder = order(commit, [
           "git-commit-byline",
           "git-commit-revision-line",
           "git-commit-ages",
+          "git-commit-size",
           "git-commit-diff-summary",
         ]);
         const pullOrder = order(pull, [
           "github-pull-meta",
           "github-pull-branches",
           "github-pull-opened",
+          "github-pull-size",
           "github-pull-summary",
         ]);
         check(
-          `${where}: the commit's lines are its author, revision, age, and Diff summary`,
-          JSON.stringify(commitOrder) === "[0,1,2,3]" && commit.lines.length === 4,
+          `${where}: the commit's lines are its author, revision, age, size, and Diff summary`,
+          JSON.stringify(commitOrder) === "[0,1,2,3,4]" && commit.lines.length === 5,
           JSON.stringify(commit.lines.map((line) => line.cls)),
         );
         check(
-          `${where}: the pull request's are its author, branches, ages, ..., and Diff summary`,
+          `${where}: the pull request's are its author, branches, ages, ..., size, and Diff summary`,
           JSON.stringify(pullOrder.slice(0, 3)) === "[0,1,2]" &&
-            pullOrder[3] === pull.lines.length - 1,
+            pullOrder[3] === pull.lines.length - 2 &&
+            pullOrder[4] === pull.lines.length - 1,
           JSON.stringify(pull.lines.map((line) => line.cls)),
         );
         // The first line is a page title's gap under the title, the gap a view header leaves

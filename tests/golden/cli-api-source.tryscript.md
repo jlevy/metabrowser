@@ -10,7 +10,7 @@ env:
 patterns:
   TIMESTAMP: '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'
   APP_HOME: '[^\s"]+/home'
-  STORE_KEY: '[0-9a-f]{64}'
+  STORE_KEY: '[a-z0-9-]+--[0-9a-f]{16}'
 before: >-
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
   METABROWSER_CONFIG_DIR="$PWD/config"
@@ -432,6 +432,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "pull_requests": null,
   "refs": [
     {
       "name": "topic",
@@ -472,6 +473,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "pull_requests": null,
   "refs": [
     {
       "name": "v1",
@@ -505,6 +507,7 @@ status: 200
     "tag"
   ],
   "working_tree": null,
+  "pull_requests": null,
   "refs": [
     {
       "name": "feature",

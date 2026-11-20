@@ -264,6 +264,7 @@ def _absent(
         "deletions": None,
         "exact": False,
         "statuses": [],
+        "size": None,
     }
 
 
@@ -326,6 +327,8 @@ def test_a_whole_list_is_summed_by_status(
             {"status": "removed", "count": 1},
             {"status": "renamed", "count": 2},
         ],
+        # GitHub's list names no merge base, so no size.
+        "size": None,
     }
     assert not _gh_log().exists(), "a summary asked gh"
 
@@ -372,6 +375,8 @@ def test_a_count_the_local_comparison_lacks_counts_as_none_and_the_sums_are_not_
         "deletions": 1,
         "exact": False,
         "statuses": [{"status": "added", "count": 1}, {"status": "modified", "count": 2}],
+        # A list the store made, whose size this process has not measured.
+        "size": None,
     }
     eight = summed[8]
     assert (eight["files"], eight["additions"], eight["deletions"], eight["exact"]) == (

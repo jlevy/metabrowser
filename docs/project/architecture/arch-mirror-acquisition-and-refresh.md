@@ -372,9 +372,10 @@ Each handler’s docstring in `source_routes.py` holds its contract; the route i
   cost of listing every ref is beside the constants in `source_routes.py`. An answer the
   Git routes’ memo can keep is kept under the store’s ref state and the recorded default
   branch (`_refs_answer_key`), so asking again while no ref moved runs no Git.
-  The memo keeps no body over its `MAX_ENTRY_BYTES`, about 9,000 branches, and has no
-  key for a repository with more loose refs than `MAX_REF_ENTRIES`; a listing of either
-  runs Git every time.
+  The memo keeps no body over its `MAX_ENTRY_BYTES`, about 9,000 branches, or about
+  5,200 where each is a pull request’s head (`REF_PULLS_PER_ROW` in `source_routes.py`),
+  and has no key for a repository with more loose refs than `MAX_REF_ENTRIES`; a listing
+  of either runs Git every time.
   A folder that is a repository’s root answers it and the pin route for its own
   checkout;
   [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)

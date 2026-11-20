@@ -683,7 +683,7 @@ def test_the_api_mode_prints_where_the_mirror_is_kept(
 
     home = _home(tmp_path, monkeypatch)
     origin = _origin(tmp_path)
-    store_key = origin_identity(origin.url).store_id.removeprefix("sha256:")
+    store_key = origin_identity(origin.url).store_key
     location = str(home / "repository-stores" / store_key / "repository.git")
 
     status = ok([origin.url, "--api", "/api/source/status"])
@@ -757,13 +757,15 @@ def test_repository_content_cannot_read_where_the_mirror_is_kept(
             "<link",
             "<iframe",
             "style=",
-            "class=",
             "data-mirror",
             "onmouseover",
             "evil.example",
             "/api/source/status",
         ):
             assert gone not in html, gone
+        # No class the document wrote survives: the only one is the image fallback's own,
+        # which stands where the document's image of the application's route was.
+        assert set(re.findall(r'class="([^"]*)"', html)) <= {"mb-image-fallback"}
         # What is left is the document's words.
         assert "hover" in html and "status" in html
         loads = {asset["loading"] for asset in rendered["assets"]["assets"]}
@@ -783,7 +785,9 @@ def test_repository_content_cannot_read_where_the_mirror_is_kept(
                 kpress_adapter.kpress_static_url(module)
                 for module in kpress_adapter.DIAGRAM_MODULES
             ),
+            remote_images=True,
         )
+        assert shell.headers["referrer-policy"] == "no-referrer"
         for directive in (
             "img-src 'self' data:",
             "connect-src 'self'",
@@ -1148,7 +1152,7 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
     # The served store's bare repository, from the origin's address alone. The home is
     # not under the user's home directory here, so the location is absolute and the
     # sweep below would find the home in any answer that named it.
-    store_key = origin_identity(origin.url).store_id.removeprefix("sha256:")
+    store_key = origin_identity(origin.url).store_key
     location = str(home / "repository-stores" / store_key / "repository.git")
     assert Path(location, "HEAD").is_file()
     mirror = _ServedMirror(

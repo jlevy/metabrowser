@@ -309,6 +309,9 @@ sandbox.metabrowser = {
   // What renderCommitSummary reads of the SDK for the rest of the summary.
   delegateOwnerAttribute: () => "",
   actorIdentityHtml: (name) => `<span class="actor-identity">${name}</span>`,
+  // The size line, the SDK's, which this session does not read.
+  changeSizeLine: () => ({ parts: [], sizeParts: [], text: "", label: "", tooltip: null }),
+  changeSizeLineHtml: () => '<span class="change-size-line"></span>',
   icons: { copy: "" },
 };
 vm.createContext(sandbox);

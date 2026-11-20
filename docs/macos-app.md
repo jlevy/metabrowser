@@ -230,7 +230,10 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
 The menus add what a browser would: File > Restart Server, Open in Default Browser,
 Reveal Server Log (each folder has its own log), and Print; View > Back, Forward, Reload
 Page, and zoom, which the app remembers; Edit > Find; and Help > Metabrowser
-Documentation, Check Setup…, and Reveal Logs Folder.
+Documentation, Check Setup…, Reveal Logs Folder, and Open Event Log, which opens
+Metabrowser’s own [event log](realtime-debugging.md#browsing-the-log), the record of
+what the servers it runs did and how long each took, at its newest segment in a window
+on the log’s own folder, which Open Recent does not list.
 The mark at the title bar’s trailing end opens the project on GitHub.
 
 Edit > Find (Command-F) opens a find bar above the page.
@@ -380,12 +383,14 @@ which can take seconds.
 
 Help > Check Setup… runs `metab --doctor --json` with the `metab`, `git`, and `gh` the
 app hands its servers, and shows the report: one row each for the plugins, opening from
-a terminal, `metab`, Git, the configuration directory, the cache directory, and GitHub
-CLI, with its state, what it found, and the step that fixes it, a command to copy or a
-page to open.
-[Diagnostics](command-line.md#diagnostics-and-plugins) says what each check
-covers. Settings’ Check Setup… opens the same window.
+a terminal, `metab`, Git, the configuration directory, the cache directory, the event
+log, and GitHub CLI, with its state, what it found, and the step that fixes it, a
+command to copy or a page to open.
+[Diagnostics](command-line.md#diagnostics-and-plugins) says what each check covers.
+Settings’ Check Setup… opens the same window.
 The `metab` row compares with the oldest `metab` this build of the app runs.
+The Git row names that `git`, its version, and whether it reads file ages on a Git
+revision; a Git too old for them is a warning that says which release it needs.
 
 - **Check Again** runs it again, as after following a step or choosing a `metab` in
   Settings.

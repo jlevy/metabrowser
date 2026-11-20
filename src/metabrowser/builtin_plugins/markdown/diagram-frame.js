@@ -9,7 +9,9 @@
 // directive, or a `cursor: url()` in a `themeCSS`; a state diagram's `classDef`; a class
 // diagram's `style`; and a `block-beta` diagram's `style`, though only from the page's own
 // origin. A page under the untrusted policy (`untrusted_shell_csp` in capabilities.py)
-// bounds them by its `img-src`; a folder's page served trusted has no policy at all.
+// bounds them by its `img-src`, which admits https images unless the reader has blocked
+// them, so an image shape there loads, and its `Referrer-Policy: no-referrer` sends no page
+// address with it; a folder's page served trusted has no policy at all.
 //
 // So a diagram from untrusted text on any page is laid out here instead: in an
 // `about:srcdoc` frame whose own policy, set by a `<meta>` before anything in it loads,

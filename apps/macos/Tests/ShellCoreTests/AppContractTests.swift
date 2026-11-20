@@ -144,6 +144,7 @@ nonisolated enum ContractGolden {
         "present-dry-run/repository", "present-dry-run/pull-request", "present-dry-run/commit",
         "present-dry-run/tree", "present-dry-run/file", "present-dry-run/refused",
         "cache-sources/none", "cache-sources/held", "cache-sources/first-page", "cache-sources/next-page",
+        "event-log/found", "event-log/empty",
         "doctor/clean", "doctor/as-the-app", "acquire/in-terminal",
     ]
 
@@ -417,6 +418,24 @@ nonisolated enum ContractGolden {
         #expect(RepositoryCache.read(next.result, looking: demo) == .found)
     }
 
+    // MARK: - The event log
+
+    @Test func theEventLogIsFoundByItsNewestSegment() throws {
+        let folder = ContractGolden.sandbox + "/support"
+        // The golden's state directory holds two segments, listed newest first.
+        let found = try block("event-log/found")
+        #expect(found.words == EventLogLocation.arguments(folder: folder))
+        let directory = ContractGolden.sandbox + "/events-state/events"
+        #expect(EventLogLocation.read(found.result) == .found(
+            URL(filePath: directory + "/events-20261119T210201Z-p4242-000.jsonl")))
+
+        // A log directory with no segment is an answer, and the app says there is none yet.
+        let empty = try block("event-log/empty")
+        #expect(empty.words == EventLogLocation.arguments(folder: folder))
+        #expect(EventLogLocation.read(empty.result) == .empty(
+            URL(filePath: ContractGolden.sandbox + "/quiet-state/events", directoryHint: .isDirectory)))
+    }
+
     // MARK: - Check Setup
 
     /// Help > Check Setup… runs the doctor as `DoctorRun.spec` writes it, naming this
@@ -429,7 +448,7 @@ nonisolated enum ContractGolden {
                 runtime: Runtime(executable: "/opt/metab", version: MetabRequirement.minimum, source: .chosen),
                 tools: ToolPaths()),
             inherited: [:], appBundle: bundle)
-        let ids = ["plugins", "open_in", "metab", "git", "config", "cache", "github"]
+        let ids = ["plugins", "open_in", "metab", "git", "config", "cache", "event_log", "github"]
 
         let clean = try block("doctor/clean")
         #expect(clean.words == spec.arguments)
@@ -450,7 +469,7 @@ nonisolated enum ContractGolden {
         }
         #expect(!found.ok && found.hasChecks)
         #expect(found.rows.map(\.id) == ids)
-        #expect(found.rows.map(\.state) == [.ok, .ok, .warning, .ok, .warning, .problem, .warning])
+        #expect(found.rows.map(\.state) == [.ok, .ok, .warning, .ok, .warning, .problem, .ok, .warning])
         let fixes = Dictionary(uniqueKeysWithValues: found.rows.map { ($0.id, $0.remedy) })
         let step = DoctorReport.Remedy(text: ContractGolden.text, command: ContractGolden.text)
         #expect(fixes["metab"] == step, "the upgrade the app's minimum calls for")

@@ -677,8 +677,11 @@ def _check_functional_parity(doc: str) -> list[str]:
         if not row.command or row.command == "—":
             problems.append(f"{row.aspect}: covered behavior needs a CLI command")
             continue
-        command_parts = _command_parts(row.command)
-        if row.tier == "data" and (not command_parts or command_parts[0] != "metab"):
+        # A data command may start with environment assignments, as a transcript's does.
+        command_parts = (
+            _metab_parts(row.command) if row.tier == "data" else _command_parts(row.command)
+        )
+        if row.tier == "data" and not command_parts:
             problems.append(f"{row.aspect}: data semantics must run through metab")
         if model_owned:
             modes = [mode for mode, module in _MODEL_MODES.items() if owners == [module]]
