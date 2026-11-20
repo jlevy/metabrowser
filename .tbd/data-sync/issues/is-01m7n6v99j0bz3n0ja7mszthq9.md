@@ -5,13 +5,20 @@ title: "Diff summaries: prefetch eagerly and answer from the last persisted cach
 kind: task
 status: closed
 priority: 1
-version: 5
+version: 6
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/532
+    at: 2026-11-20T17:01:09.449Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/536
+    at: 2026-11-20T17:01:09.450Z
 labels:
   - linear
 dependencies: []
 parent_id: is-01m7n6v8n050erzeb13c5tasar
 created_at: 2026-11-17T16:53:36.689Z
-updated_at: 2026-11-20T17:00:14.479Z
+updated_at: 2026-11-20T17:01:09.450Z
 closed_at: 2026-11-18T17:44:10.315Z
 close_reason: "Merged in #536 (stack merge 86e083f35)."
 resolution: null

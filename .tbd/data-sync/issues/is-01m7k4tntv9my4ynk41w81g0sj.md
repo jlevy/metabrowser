@@ -5,7 +5,11 @@ title: The Files nav panel's '+ N ignored' summary line is laid out from first p
 kind: bug
 status: closed
 priority: 1
-version: 23
+version: 24
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/490
+    at: 2026-11-20T17:01:46.000Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -29,7 +33,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T21:39:50.746Z
-updated_at: 2026-11-20T17:00:12.948Z
+updated_at: 2026-11-20T17:01:46.013Z
 started_at: 2026-11-16T21:40:37.650Z
 closed_at: 2026-11-17T06:21:13.492Z
 close_reason: "PR #490 merged at 2c4692bd7: the Files nav's ignored-files line is laid out from first paint, so the tally row holds its settled shape while counts fill in (tests/test_files_totals_stable_chrome.py: 0 px movement after first paint across all loads). Reviews A, B, C dispositioned; CI green at 64aa838ab."

@@ -5,7 +5,11 @@ title: "Markdown: honor GitHub's allowed HTML attributes (align, width, height) 
 kind: bug
 status: closed
 priority: 2
-version: 7
+version: 8
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/626
+    at: 2026-11-20T17:01:53.210Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T00:35:36.365Z
-updated_at: 2026-11-20T17:00:12.558Z
+updated_at: 2026-11-20T17:01:53.212Z
 started_at: 2026-11-20T00:36:08.335Z
 closed_at: 2026-11-20T02:31:43.309Z
 close_reason: Merged in PR 626

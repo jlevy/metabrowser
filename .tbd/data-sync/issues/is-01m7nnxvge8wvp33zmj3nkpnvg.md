@@ -5,8 +5,12 @@ title: "Skill and docs: use --present, document sandbox settings"
 kind: task
 status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/562
+    at: 2026-11-20T17:01:31.613Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -15,7 +19,7 @@ parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 hold: null
 hold_until: null
 created_at: 2026-11-17T21:17:09.517Z
-updated_at: 2026-11-20T17:00:12.425Z
+updated_at: 2026-11-20T17:01:31.614Z
 started_at: 2026-11-18T17:26:05.252Z
 closed_at: 2026-11-18T18:16:43.914Z
 close_reason: "Done in #562 (merged 3c864fe88): the skill and docs use --present and document sandbox settings, with the full-access warning."

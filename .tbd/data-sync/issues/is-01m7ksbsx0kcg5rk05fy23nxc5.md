@@ -5,7 +5,11 @@ title: "PR #494 KPress 0.3.8: senior review with supply-chain depth (confirm 0.3
 kind: task
 status: closed
 priority: 1
-version: 10
+version: 11
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/494
+    at: 2026-11-20T17:01:26.419Z
 delegate: claude-code@vm
 labels:
   - linear
@@ -21,7 +25,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T03:38:43.488Z
-updated_at: 2026-11-20T17:00:12.096Z
+updated_at: 2026-11-20T17:01:26.422Z
 started_at: 2026-11-17T03:38:55.069Z
 closed_at: 2026-11-17T04:59:07.629Z
 close_reason: "PR #494 merged at f13967795 after Review A (senior, supply-chain depth) and Review B (follow-up); every finding dispositioned; CI green at 472523f00."

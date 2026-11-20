@@ -5,7 +5,11 @@ title: "Main red: source-freshness golden pins /api/event-logs to a stale commit
 kind: bug
 status: closed
 priority: 0
-version: 6
+version: 7
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/638
+    at: 2026-11-20T17:01:19.406Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-20T05:09:33.612Z
-updated_at: 2026-11-20T17:00:12.299Z
+updated_at: 2026-11-20T17:01:19.410Z
 started_at: 2026-11-20T05:09:36.454Z
 closed_at: 2026-11-20T05:27:39.182Z
 close_reason: "Merged in PR 638: golden line stale after a clean semantic merge of 629 and 632."

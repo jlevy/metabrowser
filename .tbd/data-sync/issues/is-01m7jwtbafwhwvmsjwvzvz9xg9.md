@@ -5,8 +5,12 @@ title: "The brief change line '10 A, 5 D, 4 M · +1,234 −567' is one component
 kind: feature
 status: closed
 priority: 1
-version: 26
+version: 27
 spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/484
+    at: 2026-11-20T17:01:30.404Z
 labels:
   - linear
 dependencies: []
@@ -35,7 +39,7 @@ child_order_hints:
   - is-01m7kfte0m3g6k2npawtja05ha
   - is-01m7kftf3s1vj6a9ssenmpht89
 created_at: 2026-11-16T19:19:51.374Z
-updated_at: 2026-11-20T17:00:12.726Z
+updated_at: 2026-11-20T17:01:30.405Z
 closed_at: 2026-11-17T02:31:35.727Z
 close_reason: "Stack headings' change line merged in #484 (accumulation of member PRs)"
 resolution: null

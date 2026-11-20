@@ -5,7 +5,17 @@ title: "PR view and Pulls: hunt a performance regression against v0.12.0 and rec
 kind: task
 status: closed
 priority: 1
-version: 5
+version: 6
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/524
+    at: 2026-11-20T17:01:42.956Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/525
+    at: 2026-11-20T17:01:42.975Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/526
+    at: 2026-11-20T17:01:42.975Z
 delegate: claude-code@spud10.local
 labels:
   - linear
@@ -14,7 +24,7 @@ parent_id: is-01m7n6v8n050erzeb13c5tasar
 hold: null
 hold_until: null
 created_at: 2026-11-17T17:19:32.281Z
-updated_at: 2026-11-20T17:00:23.700Z
+updated_at: 2026-11-20T17:01:42.976Z
 started_at: 2026-11-17T17:21:36.436Z
 closed_at: 2026-11-20T17:00:23.696Z
 close_reason: "Done: the regression step was found (#369's first-paint hold), the repeatable benchmark and exp-099 merged in #524, exp-100 in #525, and the fix (header painted at once) in #526"

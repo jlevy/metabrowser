@@ -5,7 +5,11 @@ title: CHANGELOG.md conflicts on every merge to main serialize landing
 kind: task
 status: closed
 priority: 2
-version: 8
+version: 9
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/585
+    at: 2026-11-20T17:01:15.434Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T07:00:11.492Z
-updated_at: 2026-11-20T17:00:12.767Z
+updated_at: 2026-11-20T17:01:15.436Z
 started_at: 2026-11-18T22:09:13.346Z
 closed_at: 2026-11-18T23:32:24.969Z
 close_reason: "Merged in #585"

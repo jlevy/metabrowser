@@ -5,7 +5,11 @@ title: "Files toolbar: move Show ignored into the filter drawer"
 kind: task
 status: closed
 priority: 2
-version: 4
+version: 5
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/601
+    at: 2026-11-20T17:01:16.793Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T06:18:59.883Z
-updated_at: 2026-11-20T17:00:12.889Z
+updated_at: 2026-11-20T17:01:16.810Z
 started_at: 2026-11-19T06:19:03.926Z
 closed_at: 2026-11-19T06:41:45.582Z
 close_reason: "PR #601 merged"

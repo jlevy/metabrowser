@@ -5,7 +5,11 @@ title: "Flake: test_golden_pull_files_failures saw no account_changed stamp on d
 kind: bug
 status: closed
 priority: 2
-version: 6
+version: 7
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/513
+    at: 2026-11-20T17:01:35.033Z
 delegate: claude-code@vm
 labels:
   - linear
@@ -16,7 +20,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T08:12:56.439Z
-updated_at: 2026-11-20T17:00:13.418Z
+updated_at: 2026-11-20T17:01:35.034Z
 started_at: 2026-11-17T08:16:02.342Z
 closed_at: 2026-11-17T17:48:13.230Z
 close_reason: "Fixed by #513 (review A addressed; A1 fixed with the reviewer's own verified form), merged 2026-11-17."

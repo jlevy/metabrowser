@@ -5,7 +5,11 @@ title: "Nav root row: vertical padding matches the tabs below it"
 kind: task
 status: closed
 priority: 3
-version: 6
+version: 7
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/608
+    at: 2026-11-20T17:01:33.614Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -13,7 +17,7 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T06:27:44.725Z
-updated_at: 2026-11-20T17:00:12.398Z
+updated_at: 2026-11-20T17:01:33.615Z
 started_at: 2026-11-19T06:31:14.223Z
 closed_at: 2026-11-19T08:59:17.485Z
 close_reason: "PR #608 merged"

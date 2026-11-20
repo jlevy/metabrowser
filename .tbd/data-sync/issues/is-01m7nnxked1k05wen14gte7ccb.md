@@ -5,8 +5,12 @@ title: "open_in preference: config.yml, METABROWSER_OPEN_IN, --open-in, reported
 kind: feature
 status: closed
 priority: 2
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/582
+    at: 2026-11-20T17:01:51.755Z
 delegate: claude-code@spud10
 labels:
   - linear
@@ -17,7 +21,7 @@ parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 hold: null
 hold_until: null
 created_at: 2026-11-17T21:17:01.261Z
-updated_at: 2026-11-20T17:00:12.932Z
+updated_at: 2026-11-20T17:01:51.762Z
 started_at: 2026-11-18T21:02:16.459Z
 closed_at: 2026-11-19T00:25:04.330Z
 close_reason: "Landed in #582 (14f9ec033)"

@@ -5,11 +5,15 @@ title: "Line totals (+N, −N) meet 4.5:1: --status-success in light and --statu
 kind: bug
 status: open
 priority: 2
-version: 1
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 created_at: 2026-11-16T23:36:23.312Z
-updated_at: 2026-11-16T23:36:23.312Z
+updated_at: 2026-11-20T17:01:41.980Z
 ---
 From #489 review A5 (measured from tokens at 8-bit sRGB). Changes every tree row's and file bar's stats too, so it needs the owner's choice of ink. --git-status-added/-deleted share the hues and measure >= 5.46:1 light, 5.89:1 dark on all four grounds.
+
+## Notes
+
+2026-11-20 audit: absorbs mb-c2li (found by the #555 agent in headless Chrome, closed as a duplicate): in the dark theme the diff line totals' -N (.diff-stat-del, --status-error, no dark override) measure 3.27:1 on --sidebar-bg, below 4.5:1. This is the same ink in the dark case.
