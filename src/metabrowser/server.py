@@ -1753,11 +1753,11 @@ async def index(
         and {tip_context["owner"], tip_context["name"]}.isdisjoint({".", ".."})
         else None
     )
-    root_repository_attr = (
-        f' data-repository-url="{html_escape(root_repository_url, quote=True)}"'
-        if root_repository_url is not None
-        else ""
-    )
+    root_repository_attr = root_repository_text = ""
+    if root_repository_url is not None:
+        safe_url = html_escape(root_repository_url, quote=True)
+        root_repository_attr = f' data-repository-url="{safe_url}"'
+        root_repository_text = f'<div class="root-details-location">{safe_url}</div>'
     root_checkout_meta = ""
     if root_kind == "git" and pin is None and tip_context is not None:
         branch = tip_context["branch"]
@@ -2501,6 +2501,7 @@ async def index(
             <div class="root-details-info">
               <strong>{root_kind_label}</strong>
               <div class="root-details-location">{initial_root}</div>
+              {root_repository_text}
               <div class="root-details-stats"></div>
               {root_checkout_meta}
               <div class="root-details-source" hidden></div>

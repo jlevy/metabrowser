@@ -2225,7 +2225,7 @@ function initRootDetails() {
   if (!details || !trigger || !source || !actions || !status) {
     return;
   }
-  trigger.innerHTML = ICONS.toggle ?? "";
+  trigger.innerHTML = `<span aria-hidden="true">${ICONS.toggle ?? ""}</span>`;
   const sourceText = queryHtml(".header-path")?.dataset.mirrorTip;
   if (sourceText) {
     source.textContent = sourceText;

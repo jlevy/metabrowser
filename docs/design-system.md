@@ -5574,23 +5574,11 @@ navigation tooltips such as Git commit summaries.
 Tooltip content therefore cannot be the only source of an accessible name, instruction,
 or state.
 
-**Two focuses are not transitions**, and leave the tooltip as the pointer has it
-(`hideTooltipOnFocus` in `static/app.js`):
-
-- The focus a press on the folder’s name gives it is the click itself ([Home](#home)).
-- Focus put back where it was.
-  A rebuild that replaces the focused control focuses its replacement, as the Files
-  filter bar does when new tallies arrive.
-  When the element that last had focus has left the document, and no key or pointer
-  press of the reader’s has come since, the focus that follows is that repair.
-  A rebuild that removes the focused control and focuses nothing, as pressing the bar’s
-  Clear does, leaves focus on the page, so the focus the reader’s next Tab or click
-  gives is focus moving and puts the tooltip away.
-  The repair still puts away a tooltip whose own anchor the rebuild removed, since that
-  tooltip would never hear the pointer leave.
-  Without the rule, the filter bar’s rebuild would put away a tree row’s tooltip,
-  waiting or shown, under a pointer that had not moved, and nothing would bring it back
-  until the pointer left the row.
+A rebuild may focus the replacement of a control that left the document.
+When the reader has pressed neither a key nor a pointer button since the old control
+lost focus, the replacement keeps the pointer’s tooltip if its anchor still exists.
+For example, refreshing the Files filter bar leaves a tree row’s tooltip in place while
+the pointer remains over that row (`hideTooltipOnFocus` in `static/app.js`).
 
 This is not a rule about accessible names.
 `aria-label` is unaffected and still required wherever it was: a screen reader does not

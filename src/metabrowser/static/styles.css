@@ -1846,10 +1846,13 @@ body {
 .root-details-trigger::-webkit-details-marker {
   display: none;
 }
-.root-details-trigger > svg {
+.root-details-trigger svg {
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+  display: block;
   rotate: 90deg;
 }
-.root-details[open] > .root-details-trigger > svg {
+.root-details[open] > .root-details-trigger svg {
   rotate: -90deg;
 }
 .root-details-panel {
