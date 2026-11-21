@@ -5,8 +5,12 @@ title: Validate ordinary SQLite browsing and report incomplete reads
 kind: task
 status: in_progress
 priority: 1
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/676
+    at: 2026-11-21T09:24:48.851Z
 delegate: codex@spud10
 labels: []
 dependencies: []
@@ -14,7 +18,7 @@ parent_id: is-01m7vtd2rax4r1pfqnb3q8f11v
 hold: null
 hold_until: null
 created_at: 2026-11-20T23:58:56.144Z
-updated_at: 2026-11-21T08:32:52.926Z
+updated_at: 2026-11-21T09:24:48.853Z
 started_at: 2026-11-21T08:32:52.925Z
 ---
 The core feature opens ordinary SQLite databases in place, including existing databases owned by other applications. It is independent of the fsqlite store plugin. Gate #676 on this path after integrating #674 and #675.

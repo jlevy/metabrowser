@@ -5,8 +5,12 @@ title: "Phase 2: The table protocol and delimited text"
 kind: feature
 status: in_progress
 priority: 2
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/656
+    at: 2026-11-21T09:24:43.430Z
 delegate: claude-code@vm
 labels: []
 dependencies:
@@ -22,7 +26,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-20T06:30:46.827Z
-updated_at: 2026-11-20T08:29:42.797Z
+updated_at: 2026-11-21T09:24:43.431Z
 started_at: 2026-11-20T07:44:34.935Z
 ---
 Implementation Plan, Phase 2 of the plan (The table protocol and delimited text). One layer of the tabular-data stack; see the plan's Phase 2 checklist for scope.

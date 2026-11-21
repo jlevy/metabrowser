@@ -5,8 +5,12 @@ title: "Phase 1: Declared plugin dependencies"
 kind: feature
 status: closed
 priority: 2
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/649
+    at: 2026-11-21T09:24:43.056Z
 delegate: claude-code@vm
 labels: []
 dependencies:
@@ -21,7 +25,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-20T06:30:46.348Z
-updated_at: 2026-11-20T07:42:21.348Z
+updated_at: 2026-11-21T09:24:43.057Z
 started_at: 2026-11-20T06:31:41.619Z
 closed_at: 2026-11-20T07:42:21.348Z
 close_reason: "Phase 1 built on claude/brave-rubin-ordjax (0ebe41616): manifest requires with discovery refusal, mb.plugins.load, doctor/--plugins report, every mb.builtins consumer moved, SDK 0.8 with every built-in manifest, docs and changelog fragment"

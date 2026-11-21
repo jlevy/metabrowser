@@ -5,8 +5,12 @@ title: "Phase 5: SQLite tables"
 kind: feature
 status: in_progress
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/676
+    at: 2026-11-21T09:24:47.257Z
 delegate: claude-code@spud10.local
 labels: []
 dependencies:
@@ -18,7 +22,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-20T06:30:49.354Z
-updated_at: 2026-11-21T08:55:51.541Z
+updated_at: 2026-11-21T09:24:47.266Z
 started_at: 2026-11-21T08:35:05.089Z
 ---
 Implementation Plan, Phase 5 of the plan (SQLite tables). One layer of the tabular-data stack; see the plan's Phase 5 checklist for scope.

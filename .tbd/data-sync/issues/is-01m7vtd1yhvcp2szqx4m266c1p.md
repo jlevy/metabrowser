@@ -5,8 +5,12 @@ title: "Phase 4: SQLite access"
 kind: feature
 status: in_progress
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/674
+    at: 2026-11-21T09:24:44.580Z
 delegate: claude-code@vm
 labels: []
 dependencies:
@@ -18,7 +22,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-20T06:30:48.529Z
-updated_at: 2026-11-20T22:52:53.433Z
+updated_at: 2026-11-21T09:24:44.581Z
 started_at: 2026-11-20T18:09:34.952Z
 ---
 Implementation Plan, Phase 4 of the plan (SQLite access). One layer of the tabular-data stack; see the plan's Phase 4 checklist for scope.

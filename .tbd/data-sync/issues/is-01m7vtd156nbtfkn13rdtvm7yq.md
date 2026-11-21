@@ -5,8 +5,12 @@ title: "Phase 3: The table view"
 kind: feature
 status: closed
 priority: 2
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/668
+    at: 2026-11-21T09:24:43.795Z
 delegate: claude-code@vm
 labels: []
 dependencies:
@@ -21,7 +25,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-20T06:30:47.718Z
-updated_at: 2026-11-20T18:08:03.725Z
+updated_at: 2026-11-21T09:24:43.797Z
 started_at: 2026-11-20T16:31:17.637Z
 closed_at: 2026-11-20T18:08:03.725Z
 close_reason: Phase 3 implemented on claude/brave-rubin-ordjax-3-table-view; make verify green but for the documented container-only failures
