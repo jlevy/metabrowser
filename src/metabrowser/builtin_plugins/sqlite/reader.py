@@ -1311,6 +1311,17 @@ def _backrefs(
 # ── Requests ───────────────────────────────────────────────────
 
 
+def _require_generation(path: Path, expected: str) -> None:
+    try:
+        current = sqlite_access.sqlite_generation(path)
+    except FileNotFoundError:
+        current = None
+    if current != expected:
+        raise sqlite_access.SqliteAccessError(
+            "refused", "The database changed while opening this position. Read the table again."
+        )
+
+
 def _read[T](
     args: dict[str, Any],
     deadline: float,
@@ -1339,8 +1350,12 @@ def _read[T](
                 sqlite_access.deny_reads(connection, denied)
         return fn(connection, denied)
 
+    path = Path(str(args["path"]))
+    expected_generation = args.get("expected_generation")
+    if expected_generation is not None:
+        _require_generation(path, str(expected_generation))
     value, access = sqlite_access.read(
-        Path(str(args["path"])),
+        path,
         guarded,
         deadline=deadline,
         scratch=Path(str(args["scratch"])),
@@ -1353,6 +1368,8 @@ def _read[T](
             f"Cannot browse tables or schema {access.plan.reason}. "
             "Open Info for the database's access details.",
         )
+    if expected_generation is not None:
+        _require_generation(path, str(expected_generation))
     return value, access
 
 

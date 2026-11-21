@@ -25,7 +25,7 @@ from starlette.testclient import TestClient
 
 from metabrowser import capabilities, server, sqlite_access, table_source
 from metabrowser.builtin_plugins.sqlite import reader, source
-from metabrowser.builtin_plugins.sqlite.database import segment_name, table_segment
+from metabrowser.builtin_plugins.sqlite.database import Database, segment_name, table_segment
 from metabrowser.source import reset_source_session
 from metabrowser.table_source import decode_key
 from tests.git_pin_harness import fast_import_store, pinned_client
@@ -478,6 +478,50 @@ def test_record_and_card(client: TestClient) -> None:
     order = _get(client, "rows", path="app.db/orders", limit=1)["rows"][0]
     assert decode_key(order["key"]) == [1]
     assert _get(client, "record", path="app.db/orders", key=order["key"])["cells"]["rowid"] == 1
+
+
+@pytest.mark.parametrize("replace", [False, True], ids=["commit", "replace-file"])
+def test_a_positional_record_refuses_a_change_after_sampling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replace: bool
+) -> None:
+    setup = """
+        CREATE TABLE items (id INTEGER PRIMARY KEY, label TEXT);
+        INSERT INTO items VALUES (1, 'old row'), (2, 'next row');
+        CREATE VIEW ordered AS SELECT label FROM items ORDER BY id;
+    """
+    database = build(tmp_path / "position.db", setup)
+    replacement = build(tmp_path / "replacement.db", setup + "DELETE FROM items WHERE id = 1;")
+    call = Database.call
+    changed = False
+
+    def call_after_write(
+        database_handle: Database, op: str, args: dict[str, Any], *, deadline: float
+    ) -> Any:
+        nonlocal changed
+        if op == "sqlite_record" and not changed:
+            changed = True
+            if replace:
+                replacement.replace(database)
+            else:
+                with closing(sqlite3.connect(database)) as writer, writer:
+                    writer.execute("DELETE FROM items WHERE id = 1")
+        return call(database_handle, op, args, deadline=deadline)
+
+    monkeypatch.setattr(Database, "call", call_after_write)
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as test_client:
+        path = "position.db/ordered"
+        page = _get(test_client, "rows", path=path, limit=1)
+        key = page["rows"][0]["key"]
+        assert key == "@1"
+        assert page["rows"][0]["cells"]["label"] == "old row"
+        refused = _get(test_client, "record", path=path, key=key, generation=page["generation"])
+        assert changed and refused["_status"] == 422 and refused["state"] == "refused", refused
+        assert "changed while opening this position" in refused["error"]
+        assert "cells" not in refused
+        current = _get(test_client, "record", path=path, key=key)
+        assert current["cells"]["label"] == "next row"
 
 
 def test_schema_route(client: TestClient) -> None:

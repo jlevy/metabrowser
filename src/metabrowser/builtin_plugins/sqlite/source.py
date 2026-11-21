@@ -635,7 +635,11 @@ class SqliteSource:
                 {"table": item["table"], "fields": item["from"], "to": item["to"]}
                 for item in description["referenced_by"]
             ]
-        found = self._call("sqlite_record", {"spec": spec}, deadline)
+        args: dict[str, Any] = {"spec": spec}
+        if position is not None and not self._open().immutable:
+            # A live positional key names a row only within the sampled generation.
+            args["expected_generation"] = self.generation()
+        found = self._call("sqlite_record", args, deadline)
         if found is None:
             raise RecordNotFoundError(f"{key!r} names no row of this table", key=key)
         record = cast(dict[str, Any], found)
