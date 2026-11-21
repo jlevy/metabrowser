@@ -288,6 +288,23 @@ def test_blob_keys_round_trip(client: TestClient) -> None:
     assert record["cells"]["v"] == "two"
 
 
+def test_large_sort_values_use_small_positional_cursors(client: TestClient, root: Path) -> None:
+    build(
+        root / "wide.sqlite",
+        "CREATE TABLE item (id INTEGER PRIMARY KEY, value BLOB);"
+        "INSERT INTO item VALUES (1, zeroblob(30000)), (2, zeroblob(10000));",
+    )
+    path = "wide.sqlite/item"
+    first = _get(client, "rows", path=path, cols="id", sort="value", limit=1)
+    assert first["next_after"].startswith("@1.")
+    assert [
+        row["cells"]["id"] for row in _walk(client, path, cols="id", sort="value", limit=1)
+    ] == [
+        2,
+        1,
+    ]
+
+
 def test_a_cursor_for_another_sort_is_refused(client: TestClient) -> None:
     page = _get(client, "rows", path="app.db/users", sort="email", limit=2)
     refused = _get(client, "rows", path="app.db/users", sort="age", after=page["next_after"])
@@ -395,6 +412,55 @@ def test_counts_are_capped(client: TestClient, monkeypatch: pytest.MonkeyPatch) 
     assert page["estimate"] == 6
     filtered = _get(client, "rows", path="app.db/users", **{"f.age": "gt:0"})
     assert filtered["count_complete"] is False
+
+
+def test_search_continues_past_empty_windows(
+    client: TestClient, root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build(
+        root / "history.sqlite",
+        "CREATE TABLE item (id INTEGER PRIMARY KEY, name TEXT);"
+        "INSERT INTO item VALUES (2, 'one'), (3, 'two'), (5, 'three'),"
+        "(1700000000000, 'needle');"
+        "CREATE INDEX by_name ON item(name);",
+    )
+    monkeypatch.setattr(reader, "FILTER_SCAN_ROWS", 2)
+    path = "history.sqlite/item"
+    tables = _get(client, "tables", path="history.sqlite")
+    assert tables["tables"][0]["estimate"] == 4
+
+    first = _get(client, "rows", path=path, q="needle", limit=1)
+    assert first["rows"] == [] and first["next_after"]
+    assert first["reason"] == "budget" and first["examined"] == 2
+    assert first["estimate"] is None
+    assert [row["cells"]["id"] for row in _walk(client, path, q="needle", limit=1)] == [
+        1700000000000
+    ]
+    assert _walk(client, path, q="missing", limit=1) == []
+    assert len(_walk(client, path, q="needle", sort="name", order="desc", limit=1)) == 1
+
+    # A forced positional cursor advances past the same examined rows.
+    monkeypatch.setattr(table_source, "TABLE_TOKEN_MAX_CHARS", 4)
+    first = _get(client, "rows", path=path, q="needle", limit=1)
+    assert first["next_after"].startswith("@2.")
+    second = _get(client, "rows", path=path, q="needle", limit=1, after=first["next_after"])
+    assert [row["cells"]["name"] for row in second["rows"]] == ["needle"]
+
+
+def test_large_keyless_reads_require_native_order(
+    client: TestClient, root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build(
+        root / "keyless.sqlite",
+        "CREATE TABLE item (name TEXT); INSERT INTO item VALUES ('one'), ('two'), ('three');"
+        "CREATE VIEW label AS SELECT name FROM item;",
+    )
+    monkeypatch.setattr(reader, "SORT_UNINDEXED_MAX_ROWS", 2)
+    path = "keyless.sqlite/label"
+    assert len(_walk(client, path, limit=1)) == 3
+    for param in ({"q": "three"}, {"order": "desc"}):
+        page = _get(client, "rows", path=path, **param)
+        assert page["_status"] == 422 and "no stable row key" in str(page)
 
 
 def test_record_and_card(client: TestClient) -> None:

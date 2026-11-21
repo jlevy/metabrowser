@@ -23,8 +23,10 @@ what a request answers into the protocol's descriptors, cells, keys, and cursors
   that, only the key and fields an index leads with, and the rest say why in
   ``sort_note``.
 - **Counts** are exact up to :data:`~metabrowser.builtin_plugins.sqlite.reader.COUNT_CAP`
-  and otherwise a lower bound, read apart from the page with no wait; when that read
-  fails, the page sends the catalog's estimate alone.
+  and otherwise a lower bound. The first page counts separately. If that count fails,
+  the filtered page reports the matches it found and the unfiltered page can use the
+  catalog's estimate. A search continues from the last row it examined, even if it
+  had no matches in that window.
 - **References** are the declared foreign keys, resolved for a page in one batch; a
   value no row of the referenced table holds is a reference drawn as missing.
 - **Values.** A text or blob past the inline bound is previewed through ``blobopen`` in
@@ -55,6 +57,7 @@ from metabrowser.plugin_api import (
     TABLE_CARD_MAX_FIELDS,
     TABLE_CELL_PREVIEW_CHARS,
     TABLE_RECORD_VALUE_BYTES,
+    TABLE_TOKEN_MAX_CHARS,
     BackrefCount,
     Budget,
     Cell,
@@ -277,9 +280,6 @@ class SqliteSource:
                 return cast(int | None, item["estimate"])
         return None
 
-    def _encoding(self, deadline: float) -> str:
-        return str(self._catalog(deadline)["encoding"])
-
     # ── The protocol ──
 
     def generation(self) -> str:
@@ -317,7 +317,7 @@ class SqliteSource:
                 "limit": limit,
                 "inline": PAGE_INLINE_BYTES,
                 "preview": {"text": _PAGE_TEXT_BYTES, "blob": _PAGE_BLOB_BYTES},
-                "count": True,
+                "count": query.after is None,
                 "cap": COUNT_CAP,
             }
         )
@@ -336,6 +336,20 @@ class SqliteSource:
         if query.ref is not None:
             spec["ref"] = self._ref_filter(
                 description, schema, query.ref.table, query.ref.key, deadline
+            )
+        filtered = bool(spec["filters"] or query.q is not None or query.ref is not None)
+        if filtered:
+            spec["scan_rows"] = reader.FILTER_SCAN_ROWS
+        rows_upto = description["rows_upto"]
+        if (
+            not description["key"]
+            and (filtered or query.order == "desc" or query.sort is not None)
+            and (rows_upto is None or rows_upto > reader.SORT_UNINDEXED_MAX_ROWS)
+        ):
+            raise SourceUnreadableError(
+                "This object has no stable row key and is too large to sort or filter "
+                "within one read. Open it in its original order without a filter.",
+                table=table,
             )
         served = 0
         if query.after is not None:
@@ -369,12 +383,14 @@ class SqliteSource:
             )
         found = cast(list[dict[str, Any]], answer["rows"])
         counted = cast(dict[str, Any] | None, answer.get("count"))
-        estimate = self._estimate(str(description["name"]), deadline)
+        estimate = None if filtered else self._estimate(str(description["name"]), deadline)
         count = counted["count"] if counted is not None else None
         count_complete = bool(counted and counted["complete"])
         skipped = int(counted["skipped"]) if counted is not None else 0
         stopped = bool(answer["stopped"])
-        if stopped and not found and query.sort is not None:
+        point = cast(dict[str, Any] | None, answer.get("point"))
+        examined = cast(int | None, answer.get("examined"))
+        if stopped and point is None and not found and query.sort is not None:
             # A sort cannot be returned in part.
             return _empty(
                 columns,
@@ -405,8 +421,14 @@ class SqliteSource:
             for index, row in enumerate(found)
         )
         next_after: str | None = None
-        if found and (answer["more"] or stopped):
-            next_after = _next_cursor(query, found[-1], served + len(found), generation)
+        if point is None and found:
+            point = found[-1]
+        reached = served + (examined if examined is not None else len(found))
+        if point is not None and (answer["more"] or stopped):
+            next_after = _next_cursor(query, point, reached, generation)
+        if filtered and counted is None and query.after is None:
+            count = len(found)
+            count_complete = not stopped and next_after is None
         return TablePage(
             rows=rows,
             columns=columns,
@@ -419,6 +441,7 @@ class SqliteSource:
             estimate=estimate,
             skipped=skipped,
             searched=searched,
+            examined=reached if filtered and (stopped or served) else None,
             reason="budget" if stopped else None,
             limit=limit,
         )
@@ -503,16 +526,13 @@ class SqliteSource:
         rowid that previews a long value, and the references to resolve."""
         refs: list[dict[str, Any]] = []
         wanted = set(names)
+        catalog = self._catalog(deadline)
+        by_name = {item["name"]: item for item in catalog["objects"]}
         for fk in description["foreign_keys"]:
             if not set(fk["from"]) <= wanted:
                 continue
-            try:
-                target = self._cached("describe", str(fk["table"]), deadline)
-            except SourceUnreadableError:
-                # A target that cannot be described leaves its values plain, as a join
-                # that fails does; it never fails the page that refers to it.
-                continue
-            if target is None or not target["readable"] or not target["key"]:
+            target = by_name.get(fk["table"])
+            if target is None or not target["key"]:
                 continue
             refs.append(
                 {
@@ -530,7 +550,8 @@ class SqliteSource:
                 str(column["name"]) for column in description["columns"]
             ),
             "columns": list(names),
-            "encoding": self._encoding(deadline),
+            "token_bytes": TABLE_TOKEN_MAX_CHARS,
+            "encoding": str(catalog["encoding"]),
             "refs": refs,
         }
 
@@ -858,6 +879,8 @@ def _is_value(item: Any) -> bool:
 
 
 def _next_cursor(query: TableQuery, last: dict[str, Any], served: int, generation: str) -> str:
+    if None in last["key"] or (last["region"] == "v" and last["sort"] is None):
+        return positional_cursor(served, generation)
     token = encode_cursor(
         [query.sort, query.order, last.get("region", "k"), last.get("sort"), last["key"], served]
     )

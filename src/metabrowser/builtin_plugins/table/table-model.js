@@ -709,9 +709,10 @@ export function rowsTsv(columns, rows, fields) {
 export function countText(page, filtered) {
   const noun = (/** @type {number} */ n) => (n === 1 ? "row" : "rows");
   if (page.count !== null && page.count !== undefined) {
-    const count = formatCount(page.count);
+    const shown = page.count_complete ? page.count : Math.max(page.count, page.rows.length);
+    const count = formatCount(shown);
     if (!page.count_complete) {
-      return `At least ${count} ${noun(page.count)}${filtered ? " match" : ""}`;
+      return `At least ${count} ${noun(shown)}${filtered ? " match" : ""}`;
     }
     if (filtered) {
       return `${count} ${noun(page.count)} ${page.count === 1 ? "matches" : "match"}`;

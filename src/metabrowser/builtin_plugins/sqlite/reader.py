@@ -79,6 +79,11 @@ SORT_UNINDEXED_MAX_ROWS: Final = 100_000
 # in 54 ms, within the budget a count has of its own, as it is read apart from the page.
 COUNT_CAP: Final = 1_000_000
 
+# Rows one filtered page may examine before it hands the caller a continuation.
+FILTER_SCAN_ROWS: Final = 8192
+# Exact small-table sizes for the overview, within one short scan per table.
+OVERVIEW_COUNT_ROWS: Final = 1000
+
 # Distinct referenced rows one page resolves, across its references: a page's most rows
 # (`TABLE_PAGE_ROWS_MAX`). Resolving that many by the referenced table's key, in one
 # statement per reference, added 8 ms to a 1,000-row page that took 2 ms without them.
@@ -339,13 +344,6 @@ def _group(item: dict[str, Any], application_id: int) -> str:
     return "tables"
 
 
-def _column_names(connection: sqlite3.Connection, name: str) -> list[str]:
-    return [
-        row[0].decode("utf-8", "replace") if isinstance(row[0], bytes) else str(row[0])
-        for row in connection.execute("SELECT name FROM pragma_table_xinfo(?)", (name,))
-    ]
-
-
 def rowid_alias(columns: Sequence[str]) -> str | None:
     """The first rowid alias no column shadows, or None when every one is shadowed."""
     taken = {column.lower() for column in columns}
@@ -358,31 +356,33 @@ def _estimates(
     deadline: float,
     denied: frozenset[str],
 ) -> dict[str, int]:
-    """A cheap row estimate per table: `sqlite_stat1`'s row count where `ANALYZE` left
-    one, else the largest rowid of a rowid table, a seek to its last row."""
+    """Small tables' actual sizes, or the row counts left by ANALYZE."""
     out: dict[str, int] = {}
     names = {str(item["name"]).lower() for item in objects}
     if "sqlite_stat1" in names:
-        rows, _ = _fetch(connection, "SELECT tbl, stat FROM sqlite_stat1", ())
+        rows, _ = _fetch(
+            connection,
+            "SELECT tbl, stat FROM sqlite_stat1 WHERE octet_length(stat) <= 128 LIMIT 4096",
+            (),
+        )
         for table, stat in rows:
             text = stat.decode("ascii", "replace") if isinstance(stat, bytes) else str(stat)
             first = text.split(" ", 1)[0]
-            if first.isdigit():
+            if first.isascii() and first.isdecimal() and len(first) <= 19:
                 key = table.decode("utf-8", "replace") if isinstance(table, bytes) else str(table)
                 out[key.lower()] = max(out.get(key.lower(), 0), int(first))
     for item in objects:
         name = str(item["name"])
-        if name.lower() in out or item["type"] != "table" or item["without_rowid"]:
-            continue
-        if name.casefold() in denied:
-            continue
-        alias = rowid_alias(_column_names(connection, name))
-        if alias is None:
+        if name.lower() in out or item["type"] != "table" or name.casefold() in denied:
             continue
         _budget(connection, deadline)
-        rows, stopped = _fetch(connection, f"SELECT max({alias}) FROM {quote(name)}", ())
-        if not stopped and rows and isinstance(rows[0][0], int):
-            out[name.lower()] = rows[0][0]
+        rows, stopped = _fetch(
+            connection,
+            f"SELECT count(*) FROM (SELECT 1 FROM {quote(name)} LIMIT ?)",
+            (OVERVIEW_COUNT_ROWS + 1,),
+        )
+        if not stopped and rows and int(rows[0][0]) <= OVERVIEW_COUNT_ROWS:
+            out[name.lower()] = int(rows[0][0])
     return out
 
 
@@ -398,12 +398,11 @@ def catalog(
         item["group"] = _group(item, application_id)
         item["estimate"] = estimates.get(str(item["name"]).lower())
         name = str(item["name"])
-        keyed = (
-            item["type"] == "table"
-            and name.casefold() not in denied
-            and bool(_key(connection, item, _columns(connection, name))[0])
-        )
-        item["keyed"] = keyed
+        key: list[str] = []
+        if item["type"] == "table" and name.casefold() not in denied:
+            key, _ = _key(connection, item, _columns(connection, name))
+        item["key"] = key
+        item["keyed"] = bool(key)
     return {"application_id": application_id, "encoding": encoding, "objects": objects}
 
 
@@ -899,7 +898,9 @@ def _select(spec: dict[str, Any], positioned: bool, inline: int) -> tuple[str, l
     sort = spec.get("sort")
     if sort is not None:
         q = quote(sort)
-        parts += [f"typeof({q})", f"CASE WHEN {_guard(sort)} THEN {q} END"]
+        # A sort value larger than a token can hold uses the positional cursor.
+        token_bytes = int(spec["token_bytes"])
+        parts += [f"typeof({q})", f"CASE WHEN octet_length({q}) <= {token_bytes} THEN {q} END"]
     if spec.get("rowid") is not None:
         parts.append(quote(spec["rowid"]))
     columns = [str(name) for name in spec["columns"]]
@@ -957,10 +958,62 @@ def _preview_cells(
                 cell[2] = previewer.preview(column, row["rowid"], kind, size, limits[kind])
 
 
+def _scan_matches(
+    connection: sqlite3.Connection,
+    spec: dict[str, Any],
+    select: str,
+    columns: list[str],
+    positioned: bool,
+) -> tuple[list[dict[str, Any]], bool, int, dict[str, Any] | None]:
+    """Keep the last examined row even when a window contains no matches."""
+    where, params, _ = _predicates(spec)
+    match = " AND ".join(where)
+    select = f"CASE WHEN {match} THEN 1 ELSE 0 END, {select}"
+    limit = int(spec["limit"])
+    scan_limit = int(spec["scan_rows"])
+    after = spec.get("after")
+    regions = _regions(spec)
+    if after is not None and "region" in after:
+        regions = regions[regions.index(after["region"]) :]
+
+    found: list[dict[str, Any]] = []
+    last: Row | None = None
+    examined = 0
+    stopped = False
+    try:
+        if after is not None and "offset" in after:
+            sql, values = _offset_sql(spec, select, [], params, positioned)
+            statements = [(sql, [*values, scan_limit, int(after["offset"])])]
+        else:
+            statements = [
+                _region_sql(spec, region, after, select, [], params, positioned)
+                for region in regions
+            ]
+        for sql, values in statements:
+            if after is None or "offset" not in after:
+                values.append(scan_limit - examined)
+            for matched, *row in connection.execute(sql, values):
+                last = tuple(row)
+                examined += 1
+                if matched:
+                    found.append(_split(last, spec, positioned, columns))
+                    if len(found) >= limit:
+                        break
+            if len(found) >= limit or examined >= scan_limit:
+                stopped = len(found) < limit
+                break
+    except sqlite3.OperationalError as exc:
+        if not _stopped(exc):
+            raise
+        stopped = True
+    point = _split(last, spec, positioned, []) if last is not None else None
+    return found, stopped, examined, point
+
+
 def _page(connection: sqlite3.Connection, spec: dict[str, Any], deadline: float) -> dict[str, Any]:
     connection.text_factory = bytes
     keyless = not spec["key"]
-    filtered = bool(spec.get("filters") or spec.get("search") or spec.get("ref"))
+    filtered = bool(spec.get("scan_rows"))
     sort = spec.get("sort")
     order = spec["order"]
     fast = keyless and sort is None and not filtered and order == "asc"
@@ -973,8 +1026,14 @@ def _page(connection: sqlite3.Connection, spec: dict[str, Any], deadline: float)
     found: list[dict[str, Any]] = []
     stopped = False
     toobig = False
+    examined: int | None = None
+    point: dict[str, Any] | None = None
     try:
-        if after is not None and "offset" in after:
+        if filtered:
+            found, stopped, examined, point = _scan_matches(
+                connection, spec, select, columns, positioned
+            )
+        elif after is not None and "offset" in after:
             # A cursor past the token bound: the rows already served, in one statement in
             # the query's order, which is the regions' order concatenated.
             sql, values = _offset_sql(spec, select, where, params, positioned)
@@ -1019,7 +1078,14 @@ def _page(connection: sqlite3.Connection, spec: dict[str, Any], deadline: float)
     )
     _preview_cells(found, previewer, inline, spec["preview"])
     refs = _resolve(connection, spec, found, deadline)
-    return {"rows": found, "stopped": stopped, "more": len(found) >= limit, "refs": refs}
+    return {
+        "rows": found,
+        "stopped": stopped,
+        "more": len(found) >= limit,
+        "examined": examined,
+        "point": point,
+        "refs": refs,
+    }
 
 
 def _offset_sql(

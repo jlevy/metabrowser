@@ -213,7 +213,7 @@ READ_OPCODE_BUDGET: Final = 10_000_000
 # (`row_number`). (The SQLite-tables layer's line: its merge with the SQLite-access layer
 # takes this set.)
 ADAPTER_FUNCTIONS: Final = frozenset(
-    {"count", "typeof", "octet_length", "max", "min", "sum", "like", "row_number"}
+    {"count", "typeof", "octet_length", "min", "sum", "like", "row_number"}
 )
 # Pragmas that describe the schema and take an argument, the object they describe, as a
 # statement (`PRAGMA table_xinfo(t)`) or a table-valued function

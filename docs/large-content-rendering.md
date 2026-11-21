@@ -345,6 +345,8 @@ this standard. Paths are under `src/metabrowser/`.
 | `RECORDS_TYPE_SAMPLE_ROWS` | `builtin_plugins/structured/records.py` | Records whose values decide each field’s type |
 | `RECORDS_CACHE_MAX_ENTRIES`, `RECORDS_CACHE_MAX_BYTES` | `builtin_plugins/structured/records.py` | Server memory for record lists read as tables and their sort indexes, estimated from each parse’s bytes and nodes |
 | `SORT_UNINDEXED_MAX_ROWS` | `builtin_plugins/sqlite/reader.py` | The rows of a SQLite table or view past which only its key and the fields an index leads with sort; the rest say why in `sort_note` |
+| `FILTER_SCAN_ROWS` | `builtin_plugins/sqlite/reader.py` | Rows a SQLite filter or search examines before returning a cursor, even when none of them match |
+| `OVERVIEW_COUNT_ROWS` | `builtin_plugins/sqlite/reader.py` | Rows counted for a SQLite overview table without ANALYZE statistics. A larger table’s size is omitted |
 | `COUNT_CAP` | `builtin_plugins/sqlite/reader.py` | The rows a SQLite page’s count reads; past it the count is a lower bound, drawn as “at least” |
 | `REFS_PER_PAGE` | `builtin_plugins/sqlite/reader.py` | Referenced rows one SQLite page resolves; a value past it is shown without its reference |
 | `PAGE_INLINE_BYTES` | `builtin_plugins/sqlite/reader.py` | A SQLite text or blob a page reads whole; a longer one is previewed from its stored bytes, or shown as its size where it has no rowid |
