@@ -300,6 +300,10 @@ for (const theme of ["light", "dark"]) {
       );
       check(`${where}: a root with no hosted URL has no link actions`, !hasActions, details);
     }
+    await browser.waitFor(
+      'document.querySelector(".custom-tooltip")?.style.display !== "block"',
+      STEP_MS,
+    );
     await screenshot(`root-kind-${kind}-${theme}-details.png`, 300);
     const dismissed = await browser.evaluate(`(() => {
       const root = document.getElementById("root-details");

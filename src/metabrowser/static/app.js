@@ -2249,7 +2249,17 @@ function initRootDetails() {
       details.open = false;
     }
   });
+  const mark = document.getElementById("header-root-kind");
+  const markTip = mark?.dataset.tipText;
   details.addEventListener("toggle", async () => {
+    if (mark && markTip) {
+      if (details.open) {
+        mark.removeAttribute("data-tip-text");
+        hideTooltipWithin(mark);
+      } else {
+        mark.dataset.tipText = markTip;
+      }
+    }
     const url = details.dataset.repositoryUrl;
     if (!details.open) {
       status.textContent = "";
