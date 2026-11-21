@@ -335,13 +335,14 @@ with no `gh`, or one not signed in, has nothing wrong with its plugins.
 ```console
 $ FAKE_GH_STATUS=signed-out metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 15 plugin(s) OK
+metab --doctor: 16 plugin(s) OK
 plugin requirements:
   agents: requires structured
   delimited: requires table
   diff: requires structured
   event-log: requires agents
   folder: requires markdown
+  fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
   structured: requires table
@@ -356,13 +357,14 @@ github: not_logged_in: GitHub CLI is not signed in to github.com. Run gh auth lo
 ```console
 $ FAKE_GH_STATUS=too-old metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 15 plugin(s) OK
+metab --doctor: 16 plugin(s) OK
 plugin requirements:
   agents: requires structured
   delimited: requires table
   diff: requires structured
   event-log: requires agents
   folder: requires markdown
+  fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
   structured: requires table
@@ -378,7 +380,7 @@ github: gh_too_old: GitHub CLI 2.20.2 cannot report the signed-in account, so Me
 $ FAKE_GH_STATUS=offline metab --doctor --json 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 15,
+  "plugin_count": 16,
   "problems": [],
   "open_in": {
     "value": "browser",
@@ -409,13 +411,14 @@ $ FAKE_GH_STATUS=offline metab --doctor --json 2>/dev/null
 ```console
 $ PATH=/nonexistent "$(command -v metab)" --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 15 plugin(s) OK
+metab --doctor: 16 plugin(s) OK
 plugin requirements:
   agents: requires structured
   delimited: requires table
   diff: requires structured
   event-log: requires agents
   folder: requires markdown
+  fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
   structured: requires table

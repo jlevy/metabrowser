@@ -27,23 +27,24 @@ The setup checks that end the report depend on the host, so they are elided here
 
 ```console
 $ metab --plugins
-NAME           SOURCE   KINDS                   REQUIRES    VIEWS  HOOKS
--------------  -------  ----------------------  ----------  -----  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-agents         builtin  agent-log,agent-thread  structured  8      charts,catalog,sessions,session,records,live
-binary         builtin  -                       -           1      chunk
-delimited      builtin  delimited               table       2      -
-diff           builtin  diff                    structured  1      document,children,comparison
-event-log      builtin  event-log               agents      5      timeline,slowest,kinds,errors
-folder         builtin  -                       markdown    2      -
-github         builtin  -                       markdown    2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-size,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
-html           builtin  html                    -           2      -
-image          builtin  -                       -           1      -
-markdown       builtin  markdown,mermaid        -           4      -
-sqlite         builtin  sqlite                  table       3      info,schema,children
-structured     builtin  structured              table       3      parsed
-table          builtin  -                       -           0      tables,schema,rows,record,card
-text           builtin  -                       -           1      -
-unknown-jsonl  builtin  -                       agents      2      -
+NAME           SOURCE   KINDS                   REQUIRES      VIEWS  HOOKS
+-------------  -------  ----------------------  ------------  -----  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+agents         builtin  agent-log,agent-thread  structured    8      charts,catalog,sessions,session,records,live
+binary         builtin  -                       -             1      chunk
+delimited      builtin  delimited               table         2      -
+diff           builtin  diff                    structured    1      document,children,comparison
+event-log      builtin  event-log               agents        5      timeline,slowest,kinds,errors
+folder         builtin  -                       markdown      2      -
+fsqlite        builtin  sqlite-store            sqlite,table  3      info,schema,children
+github         builtin  -                       markdown      2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-size,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
+html           builtin  html                    -             2      -
+image          builtin  -                       -             1      -
+markdown       builtin  markdown,mermaid        -             4      -
+sqlite         builtin  sqlite                  table         3      info,schema,children
+structured     builtin  structured              table         3      parsed
+table          builtin  -                       -             0      tables,schema,rows,record,card
+text           builtin  -                       -             1      -
+unknown-jsonl  builtin  -                       agents        2      -
 ? 0
 ```
 
@@ -191,6 +192,32 @@ $ metab --plugins --json
       ],
       "view_count": 2,
       "data_hooks": [],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "fsqlite",
+      "display_name": "fsqlite",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/fsqlite",
+      "kinds": [
+        "sqlite-store"
+      ],
+      "requires": [
+        "sqlite",
+        "table"
+      ],
+      "views": [
+        "table",
+        "schema",
+        "info"
+      ],
+      "view_count": 3,
+      "data_hooks": [
+        "info",
+        "schema",
+        "children"
+      ],
       "disabled_data_hooks": []
     },
     {
@@ -582,13 +609,14 @@ recorded on its own: the answer is on stdout, and stderr is empty.
 ```console
 $ metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 15 plugin(s) OK
+metab --doctor: 16 plugin(s) OK
 plugin requirements:
   agents: requires structured
   delimited: requires table
   diff: requires structured
   event-log: requires agents
   folder: requires markdown
+  fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
   structured: requires table
@@ -614,7 +642,7 @@ $ metab --doctor >/dev/null
 $ metab --doctor --json 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 15,
+  "plugin_count": 16,
   "problems": [],
   "open_in": {
     "value": "browser",

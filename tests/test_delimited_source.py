@@ -816,14 +816,19 @@ def test_every_table_source_kind_classifies_on_a_pin_by_name_alone() -> None:
     # and basename) and, for bytes that sniff as binary, a kind's magic number from the
     # blob's first bytes; a table source whose kind needed more would not be served there.
     pin_rules = {"ext", "exts", "basename", "magic"}
+    # An fsqlite store is read on a served folder only: its files are found beside its
+    # marker by path, which a pin's identities do not offer, so on a pin its marker is
+    # the JSON file it is, and its routes answer `unsupported_for_subject`.
+    served_folder_only = {"sqlite-store"}
     served = {
         declaration.kind
         for declaration in server._table_source_declarations()  # pyright: ignore[reportPrivateUsage]
     }
     assert "delimited" in served
+    assert served_folder_only <= served
     for plugin in server._LOADED_PLUGINS:  # pyright: ignore[reportPrivateUsage]
         for kind in plugin.manifest.kind:
-            if kind.id in served:
+            if kind.id in served - served_folder_only:
                 used = set(kind.match.model_dump(exclude_none=True))
                 assert used <= pin_rules, (plugin.name, kind.id, used)
 

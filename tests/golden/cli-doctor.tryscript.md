@@ -60,13 +60,14 @@ of low free space only on a full volume; `tests/test_doctor.py` covers that warn
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 15 plugin(s) OK
+metab --doctor: 16 plugin(s) OK
 plugin requirements:
   agents: requires structured
   delimited: requires table
   diff: requires structured
   event-log: requires agents
   folder: requires markdown
+  fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
   structured: requires table
@@ -108,7 +109,7 @@ This is the report the app’s Check Setup… reads.
 $ metab --doctor --json
 {
   "ok": true,
-  "plugin_count": 15,
+  "plugin_count": 16,
   "problems": [],
   "open_in": {
     "value": "browser",
@@ -139,11 +140,11 @@ $ metab --doctor --json
       "id": "plugins",
       "title": "Plugins",
       "state": "ok",
-      "summary": "15 plugins and the packaged cache record contracts check out",
+      "summary": "16 plugins and the packaged cache record contracts check out",
       "details": [
         {
           "name": "plugins",
-          "value": "15"
+          "value": "16"
         }
       ],
       "remedy": null
@@ -300,6 +301,7 @@ plugin requirements:
   diff: requires structured
   event-log: requires agents
   folder: requires markdown
+  fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
   structured: requires table
@@ -423,6 +425,7 @@ plugin requirements:
   diff: requires structured
   event-log: requires agents
   folder: requires markdown
+  fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
   structured: requires table
@@ -475,7 +478,7 @@ cache: ok: the cache directory is private and writable
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doctor --json 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 15,
+  "plugin_count": 16,
   "problems": [
     "cache: METABROWSER_CACHE_DIR must be a nonempty absolute path without '..' components."
   ],
@@ -508,11 +511,11 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doct
       "id": "plugins",
       "title": "Plugins",
       "state": "ok",
-      "summary": "15 plugins and the packaged cache record contracts check out",
+      "summary": "16 plugins and the packaged cache record contracts check out",
       "details": [
         {
           "name": "plugins",
-          "value": "15"
+          "value": "16"
         }
       ],
       "remedy": null

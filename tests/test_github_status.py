@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -332,7 +333,7 @@ def test_the_doctors_github_section_never_changes_its_exit_status(
     assert doctor.exit_code == 0, doctor.stderr
     assert doctor.stderr == ""
     lines = doctor.stdout.splitlines()
-    assert lines[1] == "metab --doctor: 15 plugin(s) OK"
+    assert re.fullmatch(r"metab --doctor: [1-9][0-9]* plugin\(s\) OK", lines[1])
     # The plugin requirements follow the verdict, then the GitHub section.
     start = lines.index(next(line for line in lines if line.startswith("github: ")))
     assert lines[start] == (

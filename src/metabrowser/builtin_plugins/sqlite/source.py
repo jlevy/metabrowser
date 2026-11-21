@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, Final, cast
 
 from metabrowser.builtin_plugins.sqlite import reader
@@ -217,12 +217,20 @@ def _held(declared: str, kind: FieldType) -> frozenset[str]:
 
 
 class SqliteSource:
-    """One database's tables, through reader processes."""
+    """One database's tables, through reader processes.
 
-    def __init__(self, handle: TableHandle) -> None:
+    The database is the file *handle* names, unless *opener* finds it: the fsqlite
+    plugin's store reads the snapshot its ``current`` names this way, under the store's
+    generation. An opener raises ``OSError`` for a file that is gone,
+    :class:`~metabrowser.sqlite_access.SqliteAccessError` for one a reader refused, or a
+    :class:`TableSourceError` of its own.
+    """
+
+    def __init__(self, handle: TableHandle, opener: Callable[[], Database] | None = None) -> None:
         self._handle = handle
         self._subject = subject_key()
         self._database: Database | None = None
+        self._opener = opener
 
     # ── The database ──
 
@@ -231,7 +239,9 @@ class SqliteSource:
             return self._database
         handle = self._handle
         try:
-            if handle.local_path is not None:
+            if self._opener is not None:
+                self._database = self._opener()
+            elif handle.local_path is not None:
                 self._database = served_database(handle.local_path, self._subject)
             else:
                 if handle.ref.stored_size is not None and handle.ref.stored_size > BLOB_MAX_BYTES:
@@ -288,17 +298,7 @@ class SqliteSource:
         return self._open().generation
 
     def tables(self) -> Sequence[TableInfo]:
-        catalog = self._catalog(request_deadline())
-        return tuple(
-            TableInfo(
-                id=table_segment(str(item["name"])),
-                label=str(item["name"]),
-                group=item["group"],
-                keyed=bool(item["keyed"]),
-                estimate=item["estimate"],
-            )
-            for item in catalog["objects"]
-        )
+        return catalog_tables(self._catalog(request_deadline()))
 
     def schema(self, table: str) -> TableSchema:
         return _schema(self._describe(table, request_deadline()), table)
@@ -688,6 +688,20 @@ class SqliteSource:
                     )
                 names[index] = position_key(position)
         return [name or "" for name in names]
+
+
+def catalog_tables(catalog: dict[str, Any]) -> tuple[TableInfo, ...]:
+    """The tables a reader's ``sqlite_catalog`` answer lists, each named by its segment."""
+    return tuple(
+        TableInfo(
+            id=table_segment(str(item["name"])),
+            label=str(item["name"]),
+            group=item["group"],
+            keyed=bool(item["keyed"]),
+            estimate=item["estimate"],
+        )
+        for item in catalog["objects"]
+    )
 
 
 def adapter(handle: TableHandle) -> SqliteSource:

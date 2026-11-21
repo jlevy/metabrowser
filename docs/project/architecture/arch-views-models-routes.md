@@ -59,6 +59,7 @@ route-backed selections of `cli/show_cli.py` register them.
 | `delimited` | `.csv`, `.tsv` | Table `V`, Source `S` | File envelope; one table through the `table/*` hooks, which the table plugin’s view draws ([Table Sources](arch-plugin-system.md#table-sources)) |
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
 | `sqlite` | Any file that would otherwise be binary and starts with SQLite’s magic number, whatever its name (`magic`); `.sqlite`, `.sqlite3`, `.db`, `.db3`, and `.s3db` give the tree its chevron | Table `V`, Schema `S`, Info `I` | A container: the `sqlite/children` hook lists its tables, each at `<database>/<segment>`. Table is the overview at the database’s address, from `table/tables`, and the table plugin’s view at a table’s, through the `table/*` hooks ([Table Sources](arch-plugin-system.md#table-sources)); Schema reads `sqlite/schema` and Info `sqlite/info`, each read in a reader process |
+| `sqlite-store` | An `fsqlite.json` whose `format` is `fsqlite`: an [fsqlite](https://github.com/jlevy/fsqlite) store’s marker, whose folder the tree badges (`folder_marker`) | Table `V`, Schema `S`, Info `I` | A container whose tables are the tables of the snapshot its `current` pointer names, each at `<marker>/<segment>` as a database’s are, listed by the `fsqlite/children` hook and read through the `table/*` hooks by the SQLite source over that snapshot (`builtin_plugins/fsqlite/source.py`). Table and Schema are the `sqlite` kind’s, Schema reading `fsqlite/schema`; Info reads `fsqlite/info`: the store’s marker, its version, its pending transaction envelopes, and that snapshot as the `sqlite/info` hook models a database. Every read is a guest’s (`builtin_plugins/fsqlite/store.py`) |
 | `agent-log` | `.jsonl` sniffed as an agent log | Session `E`, Log `V`, Charts `C`, Raw JSON `S` | File envelope and the `agents/charts` hook; Session reads `agents/session` and `agents/records` |
 | `agent-thread` | A compressed Codex rollout, `sessions/**/rollout-*.jsonl.zst`, claimed by its path | Session `E`, Log `V` | `agents/session` and `agents/records`, by the file’s path; the thread’s history store stands in for the unreadable rollout |
 | `unknown-jsonl` | Other `.jsonl` | Log `V`, Raw JSON `S` | File envelope |
@@ -88,11 +89,13 @@ plugin declares a `[[table_source]]` for, and the table view, which a source plu
 mounts for its kind’s Table view through `mb.plugins.load("table")`
 ([Table Sources](arch-plugin-system.md#table-sources)).
 
-Three kinds are also **containers**, folder-like entries whose children are addressable
+Four kinds are also **containers**, folder-like entries whose children are addressable
 ([Plugin System](arch-plugin-system.md)): `folder`, whose children are files and
-folders, `diff`, whose children are the files a patch changes, and `sqlite`, whose
-children are a database’s tables, views, and virtual tables.
-A kind declares one with `container = { children = "<data_hook route>" }`.
+folders, `diff`, whose children are the files a patch changes, `sqlite`, whose children
+are a database’s tables, views, and virtual tables, and `sqlite-store`, whose children
+are the tables of the snapshot its `current` names (the `fsqlite/children` hook, through
+`builtin_plugins/fsqlite/source.py`). A kind declares one with
+`container = { children = "<data_hook route>" }`.
 
 ### Shared Source Rendering
 
@@ -231,7 +234,8 @@ counts is missing here; the asset routes are not counted.
 | `/api/plugin/<plugin>/<route>` | A plugin’s `[[data_hook]]` | [Plugin System](arch-plugin-system.md) |
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, and
-`diff/comparison` ([Diff Pipeline](arch-diff-pipeline.md)); `binary/chunk`,
+`diff/comparison` ([Diff Pipeline](arch-diff-pipeline.md)); `fsqlite/info`,
+`fsqlite/schema`, and `fsqlite/children` (an fsqlite store, above); `binary/chunk`,
 `structured/parsed`, and `agents/charts` ([Plugin System](arch-plugin-system.md));
 `event-log/timeline`, `event-log/slowest`, `event-log/kinds`, and `event-log/errors`
 ([Real-Time Debugging](../../realtime-debugging.md#browsing-the-log)); `agents/catalog`,

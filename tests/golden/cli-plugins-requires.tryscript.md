@@ -70,13 +70,14 @@ assets in static_root:
 ```console
 $ metab --plugins-dir ok --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 16 plugin(s) OK
+metab --doctor: 17 plugin(s) OK
 plugin requirements:
   agents: requires structured
   delimited: requires table
   diff: requires structured
   event-log: requires agents
   folder: requires markdown
+  fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
   structured: requires table
@@ -122,6 +123,7 @@ plugin requirements:
   diff: requires structured
   event-log: requires agents
   folder: requires markdown
+  fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
   structured: requires table
@@ -147,6 +149,7 @@ plugin requirements:
   diff: requires structured
   event-log: requires agents
   folder: requires markdown
+  fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
   structured: requires table
