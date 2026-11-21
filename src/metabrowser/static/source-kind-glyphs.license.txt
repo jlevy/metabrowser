@@ -1,6 +1,7 @@
-source-kind-glyphs.json contains folder-dot.svg, folder-git-2.svg, and a cloud-folder
-drawing adapted from folder-git-2.svg and cloud.svg, all from Lucide 1.17.0 at upstream
-commit 896aba0d195a4fec38ad7c4a90d00cb3389ebfea:
+source-kind-glyphs.json and the macOS app use folder-dot.svg, folder-git-2.svg, and a
+cloud-folder drawing adapted from folder-git-2.svg and cloud.svg. The app also uses
+folder.svg. The artwork comes from Lucide 1.17.0 at upstream commit
+896aba0d195a4fec38ad7c4a90d00cb3389ebfea:
 https://github.com/lucide-icons/lucide/tree/896aba0d195a4fec38ad7c4a90d00cb3389ebfea/icons
 
 ISC License

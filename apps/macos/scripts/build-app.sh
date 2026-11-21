@@ -63,6 +63,9 @@ printf 'APPL????' >"$app/Contents/PkgInfo"
 # The variant's icon: the canary icon for dev, the published icon for release.
 [[ "${ICON:-1}" == 0 ]] || cp "$icon_source" "$app/Contents/Resources/AppIcon.icns"
 
+# Include the Lucide notice with the root glyphs compiled into the app.
+cp ../../src/metabrowser/static/source-kind-glyphs.license.txt "$app/Contents/Resources/"
+
 plutil -lint "$plist"
 
 # The hardened runtime needs no entitlements here: page JavaScript runs in Apple's
