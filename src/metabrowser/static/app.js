@@ -2237,6 +2237,9 @@ function initRootDetails() {
     }
   });
   details.addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
     if (details.open && event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();

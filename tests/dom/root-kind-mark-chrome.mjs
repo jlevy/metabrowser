@@ -308,8 +308,14 @@ for (const theme of ["light", "dark"]) {
     const dismissed = await browser.evaluate(`(() => {
       const root = document.getElementById("root-details");
       const summary = root.querySelector("summary");
+      const chords = ["altKey", "ctrlKey", "metaKey"].every((modifier) => {
+        const escape = new KeyboardEvent("keydown", {
+          key: "Escape", bubbles: true, cancelable: true, [modifier]: true,
+        });
+        return summary.dispatchEvent(escape) && root.open;
+      });
       summary.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-      return !root.open && document.activeElement === summary;
+      return chords && !root.open && document.activeElement === summary;
     })()`);
     check(`${where}: Escape closes the disclosure and returns focus`, dismissed, details);
     await browser.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 900, y: 400 });
