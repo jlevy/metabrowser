@@ -225,22 +225,6 @@ $ node tests/dom/tooltip-anchor-session.js
       "left": "",
       "top": ""
     }
-  },
-  "the folder name's own press leaves its tooltip": {
-    "pressed": {
-      "html": "<b>~/served</b>",
-      "display": "block",
-      "visible": true,
-      "left": "190px",
-      "top": "36px"
-    },
-    "moved": {
-      "html": "<b>~/served</b>",
-      "display": "none",
-      "visible": false,
-      "left": "190px",
-      "top": "36px"
-    }
   }
 }
 ? 0

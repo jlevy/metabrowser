@@ -209,7 +209,10 @@ const timers = [];
 const clipboard = { written: [], answer: "takes" };
 const sandbox = createSdkSandbox({
   document,
-  MetabrowserIcons: { toggle: '<svg data-icon="toggle"></svg>' },
+  MetabrowserIcons: {
+    toggle: '<svg data-icon="toggle"></svg>',
+    copy: '<svg data-icon="copy"></svg>',
+  },
   navigator: {
     clipboard: {
       writeText(text) {
@@ -231,7 +234,7 @@ function describe(element) {
   const said = { tag: element.tagName.toLowerCase(), class: element.className };
   for (const [name, value] of element.attributes) {
     if (name !== "class") {
-      said[name] = value;
+      said[name] = name === "data-mb-owner" ? "(page owner)" : value;
     }
   }
   for (const [name, value] of Object.entries(element.dataset)) {
@@ -265,6 +268,13 @@ const menu = button.querySelector(".counterpart-menu");
 const status = button.querySelector(".counterpart-status");
 const [copy, external] = menu.childNodes;
 const markup = describe(button);
+for (const item of [copy, external]) {
+  assert.equal(sandbox.MetabrowserPluginHost.ownsElement(item), true);
+  assert.equal(item.querySelector(".menu-item-icon").getAttribute("aria-hidden"), "true");
+}
+assert.equal(copy.querySelector(".menu-item-icon").html, sandbox.MetabrowserIcons.copy);
+assert.match(external.querySelector(".menu-item-icon").html, /M7 17 17 7/);
+assert.throws(() => mb.externalLinkMenuItems("javascript:alert(1)"), /needs an HTTP or HTTPS URL/);
 // The status line is a polite live region from the start, and empty.
 assert.equal(status.getAttribute("role"), "status");
 assert.equal(status.textContent, "");

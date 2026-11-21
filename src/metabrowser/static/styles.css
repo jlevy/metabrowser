@@ -1831,22 +1831,62 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* The control that copies the full commit stands right after the heading's name,
-   a mirror's or a checkout's revision's, so the heading ends at its text,
-   as every heading does, and the menu keeps the far end. It shows while the
-   pointer is over the header, as the file header's copy control does. */
-.header-copy {
+/* The root details disclosure sits beside Home and uses the shared menu rows. */
+.root-details {
+  margin-inline-start: -4px;
   flex: none;
-  margin-left: -4px;
 }
-.app-header:hover .header-copy {
-  opacity: 1;
-  pointer-events: auto;
+.root-details-trigger {
+  list-style: none;
 }
-.header-copy.copied {
-  color: var(--status-success-text);
-  opacity: 1;
-  pointer-events: auto;
+.root-details[open] > .root-details-trigger {
+  background: var(--hover-bg);
+  border-color: var(--border);
+}
+.root-details-trigger::-webkit-details-marker {
+  display: none;
+}
+.root-details-trigger > svg {
+  rotate: 90deg;
+}
+.root-details[open] > .root-details-trigger > svg {
+  rotate: -90deg;
+}
+.root-details-panel {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline: 8px;
+  max-height: min(60vh, 28rem);
+  overflow: auto;
+  color: var(--text);
+  font-weight: var(--weight-normal);
+  letter-spacing: normal;
+  text-transform: none;
+}
+.root-details:not([open]) > .root-details-panel,
+.root-details-panel [hidden] {
+  display: none;
+}
+.root-details-info,
+.root-details-status:not(:empty) {
+  padding: 6px var(--menu-row-inset);
+  overflow-wrap: anywhere;
+}
+.root-details-info {
+  display: grid;
+  gap: 4px;
+}
+.root-details-location,
+.root-details-source,
+.root-details-status {
+  color: var(--muted);
+}
+.root-details-actions {
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+}
+.app-header .root-details-panel a.menu-item {
+  color: var(--text);
 }
 /* ── Text buttons — shared labelled action primitive ─────────────
    A compact action with a persistent surface and border. Use-site
@@ -6278,23 +6318,6 @@ pre.code-block.metabrowser-source-lines > code {
 .custom-tooltip.visible {
   opacity: 1;
 }
-/* A served mirror's line of a tooltip: its origin, a commit ID, and a path whose
-   last part is a 64-digit key, each one unbroken run that is wider than the box.
-   Such a run breaks where the box ends. The rule is this line's alone: every
-   other tooltip is laid out as before, so none wraps or is placed differently.
-   `break-word` and not `anywhere`, which lets a run break when the box is
-   measured for its place and so narrows a tooltip near the window's edge.
-
-   Measured 2026-10-01 in Chrome 152 on a plain folder, against the branch
-   below this one: the tooltip of the crumb
-   a-rather-long-file-name-for-the-heading.md is one line, 277.56 by 33.59px,
-   at left 327.43, 286.71, 274.84, and 907.42px in windows 700, 620, 560, and
-   1280px wide, on both. With `anywhere` on the tooltip itself it was two
-   lines at 560px, 165.31px wide and flush against the window's edge. */
-.tip-mirror {
-  overflow-wrap: break-word;
-}
-
 /* ── Modal dialog — shared blocking overlay primitive ───────────
    Consumers supply content and dimensions. This primitive owns the
    raised surface, fixed scrim, labelled header, scrolling body, and

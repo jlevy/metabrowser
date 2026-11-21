@@ -226,6 +226,14 @@ def test_the_route_reaches_github_through_its_provider() -> None:
     assert counterpart_host_for(_context("gitlab.com")) is None
 
 
+def test_the_root_disclosure_reuses_the_shared_link_menu_rows() -> None:
+    static = DESIGN_SYSTEM.parents[1] / "src" / "metabrowser" / "static"
+    app = (static / "app.js").read_text(encoding="utf-8")
+    initializer = app.split("function initRootDetails() {", 1)[1].split("\n}", 1)[0]
+
+    assert "window.metabrowser.externalLinkMenuItems(" in initializer
+
+
 def test_the_button_is_one_menu_button_and_the_corner_follows_the_page() -> None:
     """``tests/dom/counterpart-session.js`` over the production SDK: the app's hooks, the
     menu's keyboard and pointer, Copy Link and its status line, and what a corner asks the

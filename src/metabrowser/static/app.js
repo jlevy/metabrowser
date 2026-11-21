@@ -1163,16 +1163,12 @@ async function loadTree(options = {}) {
         // tree refresh instead of leaving these new pending cells to the watchdog.
         startIndexProgressPolling();
       }
-      // Carry aggregates on the path link so the header tooltip handler
-      // can pull them on hover without rebuilding from DOM.
+      // Keep the disclosure's aggregates in step with the root inventory.
       if (pathEl) {
-        // The display form, so the tooltip and the file header's prefix say the
-        // same thing about the root — one of them abbreviating the home
-        // directory and the other not would read as two different roots.
-        pathEl.dataset.tipName = pathEl.dataset.servedRoot || data.root;
         pathEl.dataset.tipFiles = nullableDataValue(summaryFiles);
         pathEl.dataset.tipSize = nullableDataValue(summarySize);
         pathEl.dataset.tipMtime = nullableDataValue(newestMtime);
+        updateRootDetailsStats();
       }
       // The summary row stands in its band under the filter bar, out of the
       // tree's scroller, so it stays in view as the tree scrolls and its rule
@@ -2198,43 +2194,92 @@ function ensureTreeTruncationNote(maxFiles) {
   filesPanel.insertAdjacentHTML("afterbegin", treeTruncationNoteHtml(maxFiles));
 }
 
-// Header hover tooltip — same folder-tooltip HTML the tree uses, so
-// hovering the served-root path shows the same name / files / size /
-// mtime block a hovered folder row shows below. One helper, one design.
-//
-// It adds details and nothing else (docs/design-system.md, "Home"): the click is what the
-// name is for, and it reads as a link home without a line saying so. A press on the name
-// moves focus to it, in Chrome, and the focus transition that ends a tooltip would end
-// this one, or cancel it before it showed, so a click took it away. That focus is the
-// pointer's own click, not a reader moving focus, so it leaves the tooltip as the pointer
-// has it: shown while the pointer rests on the name, gone when it leaves.
-document.addEventListener("DOMContentLoaded", () => {
-  const headerPath = queryHtml(".header-path");
-  if (!headerPath) {
+// Populate the disclosure from the live root inventory.
+/** @param {DOMStringMap} dataset */
+function rootDetailsStats(dataset) {
+  return folderTooltipHtml(
+    "",
+    parseTipNumber(dataset.tipFiles),
+    parseTipNumber(dataset.tipSize),
+    parseTipNumber(dataset.tipMtime),
+    false,
+  );
+}
+
+function updateRootDetailsStats() {
+  const heading = queryHtml(".header-path");
+  const stats = queryHtml("#root-details .root-details-stats");
+  if (heading && stats) {
+    stats.innerHTML = rootDetailsStats(heading.dataset);
+  }
+}
+
+function initRootDetails() {
+  const details = /** @type {HTMLDetailsElement | null} */ (
+    document.getElementById("root-details")
+  );
+  const trigger = details?.querySelector("summary");
+  const source = details?.querySelector(".root-details-source");
+  const actions = details?.querySelector(".root-details-actions");
+  const status = details?.querySelector(".root-details-status");
+  if (!details || !trigger || !source || !actions || !status) {
     return;
   }
-  headerPath.addEventListener("mouseenter", () => {
-    var d = headerPath.dataset;
-    // The heading shows the folder name alone, so the whole served root lives
-    // here — as one tooltip. It used to be here and in a native `title` as
-    // well, which showed the reader two tooltips saying the same thing.
-    if (!d.tipName) {
-      showTooltip(`${esc(d.servedRoot || "")}${mirrorHeading("tip")}`, headerPath);
+  trigger.innerHTML = ICONS.toggle ?? "";
+  const sourceText = queryHtml(".header-path")?.dataset.mirrorTip;
+  if (sourceText) {
+    source.textContent = sourceText;
+    source.removeAttribute("hidden");
+  }
+  document.addEventListener("pointerdown", (event) => {
+    if (details.open && event.target instanceof Node && !details.contains(event.target)) {
+      details.open = false;
+    }
+  });
+  details.addEventListener("keydown", (event) => {
+    if (details.open && event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      details.open = false;
+      trigger.focus();
+    }
+  });
+  details.addEventListener("focusout", (event) => {
+    if (event.relatedTarget instanceof Node && !details.contains(event.relatedTarget)) {
+      details.open = false;
+    }
+  });
+  details.addEventListener("toggle", async () => {
+    const url = details.dataset.repositoryUrl;
+    if (!details.open) {
+      status.textContent = "";
       return;
     }
-    var folderTip = folderTooltipHtml(
-      d.tipName,
-      parseTipNumber(d.tipFiles),
-      parseTipNumber(d.tipSize),
-      parseTipNumber(d.tipMtime),
-    );
-    showTooltip(`${folderTip}${mirrorHeading("tip")}`, headerPath);
+    if (!url || actions.childElementCount) {
+      return;
+    }
+    try {
+      await window.MetabrowserAssets?.ensureAsset("sdk-views");
+      if (actions.childElementCount) {
+        return;
+      }
+      const items = window.metabrowser.externalLinkMenuItems(url, {
+        onCopyResult: (result) => {
+          status.textContent = result === "copied" ? "Link copied" : "Copy failed";
+        },
+      });
+      for (const item of items) {
+        item.removeAttribute("role");
+        item.removeAttribute("tabindex");
+      }
+      actions.append(...items);
+      actions.removeAttribute("hidden");
+    } catch (error) {
+      console.warn("Could not load repository link actions", error);
+      status.textContent = "Repository link actions are unavailable.";
+    }
   });
-  headerPath.addEventListener("mouseleave", hideTooltip);
-  headerPath.addEventListener("pointerdown", () => {
-    tooltipPressedAnchor = headerPath;
-  });
-});
+}
 
 // Lookup table from "page-more" sentinel id to the deferred slice.
 // Keeps the closure per-renderer minimal — the click handler reads
@@ -3255,26 +3300,13 @@ function hideTooltipWithin(within) {
   }
 }
 
-/**
- * The element whose own press is under way, when it is one whose tooltip a click must not
- * end: the folder's name (docs/design-system.md, "Home"). Set by its `pointerdown`, and
- * read and cleared by the focus that press gives it.
- *
- * @type {HTMLElement | null}
- */
-var tooltipPressedAnchor = null;
-
 // The element focus was last given to, which tells focus put back from focus moved.
 /** @type {Node | null} */
 var tooltipFocusOwner = null;
 
 /**
  * Focus moving puts a pointer's tooltip away (docs/design-system.md, "Tooltip Input
- * Modality"). Two focuses are not focus moving, and leave it:
- *
- * - the focus a press on the folder's name gives it, which is the pointer's click, and
- *   neither shows nor hides the name's tooltip ("Home");
- * - focus put back where it was. A rebuild that replaces the focused control focuses its
+ * Modality"). A rebuild can replace a focused control and focus its
  *   replacement, as the Files filter bar's does when new tallies arrive. The element that
  *   had focus is out of the document by then, so a focus that follows one that left the
  *   document, with no key or press of the reader's since (endTooltipFocusRepair), is that
@@ -3284,17 +3316,12 @@ var tooltipFocusOwner = null;
  * @param {FocusEvent} event
  */
 function hideTooltipOnFocus(event) {
-  var pressed = tooltipPressedAnchor;
   var previous = tooltipFocusOwner;
-  tooltipPressedAnchor = null;
   tooltipFocusOwner = /** @type {Node | null} */ (event.target);
   if (previous && previous.isConnected === false) {
     if (tooltipAnchor && !tooltipAnchor.isConnected) {
       hideTooltip();
     }
-    return;
-  }
-  if (pressed !== null && event.target === pressed) {
     return;
   }
   hideTooltip();
@@ -3460,8 +3487,7 @@ function hideTipText(e) {
 
 // mouseenter/mouseleave do not bubble, so these listen in the capture phase.
 // Any focus transition ends pointer-owned tooltip presentation without
-// creating a second visual layer around keyboard navigation; the two focuses
-// that are not one are hideTooltipOnFocus's.
+// creating a second visual layer around keyboard navigation. A rebuild can repair focus.
 document.addEventListener("mouseenter", showTipText, true);
 document.addEventListener("mouseleave", hideTipText, true);
 document.addEventListener("focusin", hideTooltipOnFocus);
@@ -3469,11 +3495,6 @@ document.addEventListener("focusin", hideTooltipOnFocus);
 // gives, ends a focus repair (endTooltipFocusRepair).
 document.addEventListener("keydown", endTooltipFocusRepair, true);
 document.addEventListener("pointerdown", endTooltipFocusRepair, true);
-// A press that gave no focus, as Safari's on a link, leaves nothing for the next focus.
-document.addEventListener("pointerup", () => {
-  tooltipPressedAnchor = null;
-});
-
 // Tooltip size/count rows reuse the shared .size / .count classes so
 // they match the hue of the same data everywhere else (tree column,
 // file header, app header). Tooltip still uses formatExactSize()
@@ -8544,6 +8565,7 @@ function updateRootAggregatePresentation(entry) {
     pathEl.dataset.tipFiles = nullableDataValue(totalFiles);
     pathEl.dataset.tipSize = nullableDataValue(totalSize);
     pathEl.dataset.tipMtime = nullableDataValue(newestMtime);
+    updateRootDetailsStats();
   }
 }
 
@@ -10193,6 +10215,7 @@ function startNavCollapse() {
     // A filter's menu and the branch chooser close, as hiding the Files panel closes them.
     onHide: () => {
       closeFilterMenu();
+      document.getElementById("root-details")?.removeAttribute("open");
       window.MetabrowserSourceRefSelector?.mounted()?.close();
     },
     pane: pane,
@@ -10205,6 +10228,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initSettingsControl();
   initNavTabs();
   initHomeHeading();
+  initRootDetails();
   initFilterBar();
   initNavScrollShadow();
   // Only a /view/ pathname selects a file; a hash is document state, never identity.
