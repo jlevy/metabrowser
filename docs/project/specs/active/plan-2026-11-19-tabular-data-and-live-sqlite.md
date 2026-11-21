@@ -1342,10 +1342,13 @@ As built, where this plan left a choice open:
   `builtin_plugins/fsqlite/store.py`) is `unsupported`, never `corrupt`.
 - **The pointer and the snapshot.** A missing or malformed pointer is `corrupt`, as is a
   pointer that still names a missing snapshot after one retry.
-  Before serving snapshot data, the reader checks the SQLite application ID `FSQL` and
-  matches `store_id` and `format_version` in `fsqlite_meta` against the marker.
-  Invalid or mismatched stamps are `corrupt`.
-  [fsqlite format requirements M4, S2 and S3](https://github.com/jlevy/fsqlite/blob/e8fd2b2297ab84d31963f95cd0c340d4b6c165e9/docs/fsql-format-spec.md#L127-L190).
+  The marker and pointer must resolve to regular files.
+  The reader requires a file at the exact snapshot name and refuses linked snapshot
+  files or SQLite `-wal` or `-shm` companions.
+  Before serving snapshot data it checks the SQLite application ID `FSQL`, both reserved
+  table layouts, and the four required `fsqlite_meta` fields.
+  The `store_id` and `format_version` stamps must match the marker.
+  [fsqlite format requirements M4, S2, S3, and S5](https://github.com/jlevy/fsqlite/blob/e8fd2b2297ab84d31963f95cd0c340d4b6c165e9/docs/fsql-format-spec.md#L127-L235).
 - **Generation** is `<version>-<hash>`: the version, so a reader sees which head a table
   shows, and a hash of the identity, size, and time of `fsqlite.json` and `current`.
   Pending envelopes change no snapshot and are not in it.

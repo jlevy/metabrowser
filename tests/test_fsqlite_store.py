@@ -204,6 +204,19 @@ def test_an_oversized_marker_is_invalid_without_parsing() -> None:
 # ── Pending envelopes ────────────────────────────────────────
 
 
+@pytest.mark.parametrize(("name", "state"), [("fsqlite.json", "invalid"), ("current", "corrupt")])
+@pytest.mark.timeout(5)
+def test_store_metadata_read_refuses_a_fifo(tmp_path: Path, name: str, state: str) -> None:
+    fifo = tmp_path / name
+    os.mkfifo(fifo)
+    with pytest.raises(StoreError, match="not a regular file") as refused:
+        if name == "fsqlite.json":
+            store.read_marker(fifo)
+        else:
+            store.read_current(fifo)
+    assert refused.value.state == state
+
+
 def test_pending_envelopes_are_counted_by_their_commit_marker(tmp_path: Path) -> None:
     pending = tmp_path / "tx" / "pending"
     for name in ("1-a.txn", "2-b.txn", "3-c.txn"):
@@ -574,7 +587,15 @@ def test_every_snapshot_read_retries_once_when_the_reader_finds_it_gone(
             "UPDATE fsqlite_meta SET value = 'f2.0' WHERE key = 'format_version'",
             "store_id or format_version",
         ),
-        ("DROP TABLE fsqlite_meta", "no fsqlite_meta table"),
+        ("DROP TABLE fsqlite_meta", "valid fsqlite_meta table"),
+        ("DROP TABLE applied_tx", "valid applied_tx table"),
+        ("ALTER TABLE applied_tx ADD COLUMN extra TEXT", "valid applied_tx table"),
+        ("DELETE FROM fsqlite_meta WHERE key = 'schema_hash'", "schema_hash"),
+        (
+            "UPDATE fsqlite_meta SET value = 'ABCDEFGH01234567' WHERE key = 'schema_hash'",
+            "schema_hash",
+        ),
+        ("DELETE FROM fsqlite_meta WHERE key = 'tool_version'", "tool_version"),
     ],
 )
 def test_an_unverified_snapshot_is_refused_by_every_store_route(
@@ -604,6 +625,59 @@ def test_an_unverified_snapshot_is_refused_by_every_store_route(
         status, body = _table(app_client, route, path=path)
         assert (status, body["code"], body["state"]) == (422, "source_unreadable", "corrupt")
         assert message in body["error"]
+
+
+def test_a_pointer_can_resolve_through_an_in_store_symlink(
+    app_client: TestClient, tmp_path: Path
+) -> None:
+    root = _store(tmp_path / "s")
+    pointer = root / "current"
+    pointer.rename(root / "pointer")
+    pointer.symlink_to("pointer")
+    status, body = _get(app_client, "info", "s/fsqlite.json")
+    assert status == 200, body
+    assert body["store"]["version"] == 1
+    assert "error" not in body
+
+
+def test_a_numbered_snapshot_cannot_link_to_another_generation(
+    app_client: TestClient, tmp_path: Path
+) -> None:
+    root = _store(tmp_path / "s", versions=(1, 2))
+    named = root / "snapshots" / snapshot_name(1)
+    named.unlink()
+    named.symlink_to(snapshot_name(2))
+    status, body = _get(app_client, "info", "s/fsqlite.json")
+    assert status == 200, body
+    assert body["error"]["state"] == "corrupt"
+    assert "linked snapshot" in body["error"]["message"]
+    assert "snapshot" not in body
+    status, body = _table(app_client, "rows", path="s/fsqlite.json/notes")
+    assert (status, body["code"], body["state"]) == (422, "source_unreadable", "corrupt")
+
+
+def test_a_published_snapshot_with_wal_frames_is_refused(
+    app_client: TestClient, tmp_path: Path
+) -> None:
+    root = _store(tmp_path / "s")
+    path = root / "snapshots" / snapshot_name(1)
+    connection = sqlite3.connect(path, isolation_level=None)
+    try:
+        assert connection.execute("PRAGMA journal_mode = WAL").fetchone() == ("wal",)
+        connection.execute("INSERT INTO notes VALUES (1, 'committed in the log')")
+        assert path.with_name(path.name + "-wal").stat().st_size > 32
+        before = _listing(root)
+
+        status, body = _get(app_client, "info", "s/fsqlite.json")
+        assert status == 200, body
+        assert body["error"]["state"] == "corrupt"
+        assert "-wal side file" in body["error"]["message"]
+        assert "snapshot" not in body
+        status, body = _table(app_client, "rows", path="s/fsqlite.json/notes")
+        assert (status, body["code"], body["state"]) == (422, "source_unreadable", "corrupt")
+        assert _listing(root) == before
+    finally:
+        connection.close()
 
 
 @pytest.mark.parametrize(

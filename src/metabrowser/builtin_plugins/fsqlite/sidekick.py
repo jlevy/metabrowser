@@ -90,12 +90,6 @@ def _store_info(found: StoreFiles, path: str, *, deadline: float, subject: str) 
     except store.StoreError as exc:
         payload["error"] = {"state": exc.state, "message": str(exc)}
         return payload
-    except OSError as exc:
-        payload["error"] = {
-            "state": "invalid",
-            "message": f"fsqlite.json cannot be read: {exc.strerror}",
-        }
-        return payload
     described |= {
         "format_version": marker.format_version,
         "store_id": marker.store_id,

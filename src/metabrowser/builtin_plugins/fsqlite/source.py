@@ -19,6 +19,7 @@ the caller can retry the whole request.
 from __future__ import annotations
 
 import dataclasses
+import os
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -39,7 +40,7 @@ from metabrowser.builtin_plugins.fsqlite.store import (
 from metabrowser.builtin_plugins.sqlite.database import Database, cached, subject_key
 from metabrowser.builtin_plugins.sqlite.source import SqliteSource, catalog_tables
 from metabrowser.capabilities import capabilities_for
-from metabrowser.plugin_api import SourceUnreadableError, TableHandle, TableInfo
+from metabrowser.plugin_api import TableHandle, TableInfo
 from metabrowser.source import resolve_session_identity
 from metabrowser.sqlite_access import SqliteAccessError
 from metabrowser.sqlite_readers import register_worker_module, request_deadline
@@ -77,7 +78,14 @@ class StoreFiles:
         return resolve_session_identity(identity)
 
     def snapshot(self, name: str) -> Path | None:
-        return self.locate(f"{SNAPSHOTS_DIR}/{name}")
+        directory = self.locate(SNAPSHOTS_DIR)
+        if directory is None:
+            return None
+        expected = directory / name
+        resolved = self.locate(f"{SNAPSHOTS_DIR}/{name}")
+        if expected.is_symlink() or (resolved is not None and resolved != expected):
+            raise StoreError("corrupt", "The current pointer names a linked snapshot file.")
+        return resolved
 
 
 class SnapshotDatabase(Database):
@@ -85,9 +93,20 @@ class SnapshotDatabase(Database):
 
     __slots__ = ()
 
+    def _require_snapshot_layout(self) -> None:
+        if self.file.is_symlink():
+            raise StoreError("corrupt", "The current pointer names a linked snapshot file.")
+        for suffix in ("-wal", "-shm"):
+            sidecar = self.file.with_name(self.file.name + suffix)
+            if os.path.lexists(sidecar):
+                raise StoreError(
+                    "corrupt", f"The published snapshot has a SQLite {suffix} side file."
+                )
+
     def call(self, op: str, args: dict[str, Any], *, deadline: float) -> Any:
+        self._require_snapshot_layout()
         try:
-            return super().call(op, args, deadline=deadline)
+            result = super().call(op, args, deadline=deadline)
         except SqliteAccessError as exc:
             if exc.state == "unreadable":
                 try:
@@ -97,6 +116,8 @@ class SnapshotDatabase(Database):
                 except OSError:
                     pass
             raise
+        self._require_snapshot_layout()
+        return result
 
 
 def group_reserved(tables: Iterable[TableInfo]) -> list[TableInfo]:
@@ -125,7 +146,7 @@ def snapshot_database(files: StoreFiles, snapshot: Snapshot, *, subject: str) ->
 
 
 def validate_snapshot(database: Database, marker: Marker, *, deadline: float) -> None:
-    """Require the snapshot's f1.0 application ID and its two marker stamps (M4, S2–S3)."""
+    """Require the f1.0 application ID, reserved tables, and metadata (M4, S2–S3)."""
     application_id, error = database.call(
         "fsqlite_identity",
         {"store_id": marker.store_id, "format_version": marker.format_version},
@@ -150,7 +171,7 @@ def open_store(files: StoreFiles, *, deadline: float, subject: str) -> OpenedSto
 
     Raises :class:`~metabrowser.builtin_plugins.fsqlite.store.StoreError` for a store
     that cannot be read, :class:`~metabrowser.sqlite_access.SqliteAccessError` for a
-    snapshot a reader refused, and ``OSError`` for a marker that cannot be read.
+    snapshot a reader refused, and ``OSError`` if the generation cannot be obtained.
     """
     marker = read_marker(files.marker)
 
@@ -179,9 +200,6 @@ def adapter(handle: TableHandle) -> StoreSource:
 
     def opener() -> Database:
         files = StoreFiles.at(handle.ref.identity)
-        try:
-            return open_store(files, deadline=request_deadline(), subject=subject).database
-        except StoreError as exc:
-            raise SourceUnreadableError(str(exc), state=exc.state) from exc
+        return open_store(files, deadline=request_deadline(), subject=subject).database
 
     return StoreSource(handle, opener)

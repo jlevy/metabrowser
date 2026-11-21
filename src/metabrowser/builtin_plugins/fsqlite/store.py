@@ -29,7 +29,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal
 
-from metabrowser.plugin_api import TableSourceError
+from metabrowser.plugin_api import SourceUnreadableError, TableSourceError
+from metabrowser.sqlite_access import _open_regular
 
 # ── The format ─────────────────────────────────────────────────
 
@@ -83,7 +84,7 @@ _QUOTE_CHARS: Final = 32
 type StoreState = Literal["invalid", "unsupported", "corrupt"]
 
 
-class StoreError(Exception):
+class StoreError(SourceUnreadableError):
     """A store that cannot be read, and the state it is shown as (the spec's section 11).
 
     ``invalid``: the marker is malformed or names another format. ``unsupported``: a
@@ -92,7 +93,7 @@ class StoreError(Exception):
     """
 
     def __init__(self, state: StoreState, message: str) -> None:
-        super().__init__(message)
+        super().__init__(message, state=state)
         self.state: StoreState = state
 
 
@@ -193,14 +194,18 @@ def snapshot_name(version: int) -> str:
 
 
 def _read_bounded(path: Path, limit: int) -> bytes:
-    """At most ``limit + 1`` bytes of *path*, so a longer file shows as longer."""
-    with path.open("rb") as handle:
+    """Read at most ``limit + 1`` bytes from the already resolved regular file."""
+    with os.fdopen(_open_regular(path), "rb") as handle:
         return handle.read(limit + 1)
 
 
 def read_marker(path: Path) -> Marker:
-    """Read and parse the marker at *path*. Raises :class:`StoreError` or ``OSError``."""
-    return parse_marker(_read_bounded(path, MARKER_MAX_BYTES))
+    """Read and parse the marker at *path*. Raises :class:`StoreError`."""
+    try:
+        raw = _read_bounded(path, MARKER_MAX_BYTES)
+    except OSError as exc:
+        raise StoreError("invalid", f"fsqlite.json cannot be read: {exc.strerror}") from exc
+    return parse_marker(raw)
 
 
 def read_current(path: Path | None) -> int:
