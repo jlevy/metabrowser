@@ -245,13 +245,29 @@ def _fetch(
 
 _VIRTUAL_DDL: Final = re.compile(rb"\s*CREATE\s+VIRTUAL\s+TABLE\b", re.IGNORECASE)
 
+# A quoted name can itself contain a USING token, so match it as one identifier.
+_FTS_DDL: Final = re.compile(
+    rb"""\s*CREATE\s+VIRTUAL\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"""
+    rb"""(?:"(?:[^"]|"")*"|'(?:[^']|'')*'|`[^`]*`|\[[^\]]*\]|[^\s.'"\x60\[\]();]+)"""
+    rb"""\s+USING\s+(fts[345])\s*(?:\(|$)""",
+    re.IGNORECASE,
+)
+# SQLite's fts3ShadowName and fts5ShadowName callbacks define these suffixes.
+_FTS34_SHADOWS: Final = frozenset({"content", "docsize", "segdir", "segments", "stat"})
+_FTS_SHADOWS: Final = {
+    b"fts3": _FTS34_SHADOWS,
+    b"fts4": _FTS34_SHADOWS,
+    b"fts5": frozenset({"config", "content", "data", "docsize", "idx"}),
+}
+
 
 def _guest_denied(connection: sqlite3.Connection) -> frozenset[str]:
-    """The virtual tables, and every table that may be one of their shadow tables, by
-    SQLite's own rule: a shadow table's name is its virtual table's name, `_`, and a
-    suffix the module names (`sqlite3ShadowTableName`). An ordinary table whose name
-    has that shape is refused with them, since telling it apart takes the module."""
-    virtual: set[str] = set()
+    """Refuse virtual tables and possible shadows before connecting any module.
+
+    SQLite identifies the built-in FTS modules' shadows by exact suffix. For other
+    modules or ambiguous declarations, refuse every possible shadow.
+    """
+    virtual: dict[str, frozenset[str] | None] = {}
     tables: list[str] = []
     for name, sql in connection.execute(
         "SELECT name, sql FROM sqlite_schema WHERE type = 'table'"
@@ -259,15 +275,18 @@ def _guest_denied(connection: sqlite3.Connection) -> frozenset[str]:
         text = _text(name) or ""
         ddl = sql if isinstance(sql, bytes) else str(sql or "").encode("utf-8", "replace")
         if _VIRTUAL_DDL.match(ddl):
-            virtual.add(text.casefold())
+            module = _FTS_DDL.match(ddl)
+            virtual[text.casefold()] = _FTS_SHADOWS[module[1].lower()] if module else None
         else:
-            tables.append(text)
-    shadows = {
-        name.casefold()
-        for name in tables
-        if "_" in name and name.rsplit("_", 1)[0].casefold() in virtual
-    }
-    return frozenset(virtual | shadows)
+            tables.append(text.casefold())
+    denied = set(virtual)
+    for name in tables:
+        prefix, separator, suffix = name.rpartition("_")
+        if separator and prefix in virtual:
+            suffixes = virtual[prefix]
+            if suffixes is None or suffix in suffixes:
+                denied.add(name)
+    return frozenset(denied)
 
 
 def _objects(connection: sqlite3.Connection) -> list[dict[str, Any]]:
@@ -1237,6 +1256,13 @@ def _read[T](
     are read (``virtual_ok``, sent with every request and false when absent), and
     otherwise the virtual tables and their possible shadow tables, refused before *fn*
     runs its first statement."""
+    if sqlite_access.library_version() < sqlite_access.READER_MINIMUM_LIBRARY:
+        library = sqlite_access.library_report()
+        raise sqlite_access.SqliteAccessError(
+            "unsupported",
+            f"Browsing tables and schema requires SQLite {library['minimum']} or later "
+            f"for bounded value reads. This reader uses SQLite {library['version']}.",
+        )
     virtual_ok = bool(args.get("virtual_ok"))
 
     def guarded(connection: sqlite3.Connection) -> T:
@@ -1247,7 +1273,7 @@ def _read[T](
                 sqlite_access.deny_reads(connection, denied)
         return fn(connection, denied)
 
-    return sqlite_access.read(
+    value, access = sqlite_access.read(
         Path(str(args["path"])),
         guarded,
         deadline=deadline,
@@ -1255,6 +1281,13 @@ def _read[T](
         immutable_content=bool(args.get("immutable_content")),
         attempts=attempts,
     )
+    if access.plan.state == "without_log":
+        raise sqlite_access.SqliteAccessError(
+            "without_log",
+            f"Cannot browse tables or schema {access.plan.reason}. "
+            "Open Info for the database's access details.",
+        )
+    return value, access
 
 
 def _access(access: sqlite_access.Access) -> dict[str, Any]:

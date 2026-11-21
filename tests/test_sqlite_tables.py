@@ -12,9 +12,11 @@ import ast
 import asyncio
 import os
 import re
+import shutil
 import sqlite3
 import time
 from collections.abc import Iterator
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -496,8 +498,10 @@ def test_tokens_past_the_bound_are_positions(
 # FTS3, FTS4, FTS5, and R-tree, with views and references over them. Where virtual
 # tables are not read, none of these may run a module's query code, whatever reaches it.
 _VIRTUAL = """
-CREATE VIRTUAL TABLE docs USING fts5(title, body);
+CREATE VIRTUAL TABLE "docs" USING FTS5(title, body);
 INSERT INTO docs VALUES ('a', 'hello world'), ('b', 'other');
+CREATE TABLE docs_notes (id INTEGER PRIMARY KEY, note TEXT);
+INSERT INTO docs_notes VALUES (1, 'ordinary table');
 CREATE VIRTUAL TABLE d3 USING fts3(body);
 INSERT INTO d3 VALUES ('three');
 CREATE VIRTUAL TABLE d4 USING fts4(body);
@@ -520,6 +524,7 @@ _GUEST_READS = {
     "spatial": False,
     "spatial_node": False,
     "docs_config": False,
+    "docs_notes": True,
     "over_docs": False,
     "joins_docs": False,
     "plain": True,
@@ -585,7 +590,7 @@ def test_the_guest_refusal_holds_inside_the_reader(tmp_path: Path) -> None:
 
     def attempt(sql: str) -> str:
         def fn(connection: sqlite3.Connection) -> Any:
-            reader.deny_reads(connection, reader._guest_denied(connection))  # pyright: ignore[reportPrivateUsage]
+            sqlite_access.deny_reads(connection, reader._guest_denied(connection))  # pyright: ignore[reportPrivateUsage]
             return connection.execute(sql).fetchall()
 
         try:
@@ -599,6 +604,8 @@ def test_the_guest_refusal_holds_inside_the_reader(tmp_path: Path) -> None:
     assert attempt("SELECT * FROM docs WHERE docs MATCH 'hello'") == "refused"
     assert attempt("SELECT * FROM pragma_table_xinfo('spatial')") == "refused"
     assert attempt("SELECT count(*) FROM spatial_node") == "refused"
+    assert attempt("SELECT count(*) FROM docs_config") == "refused"
+    assert attempt("SELECT note FROM docs_notes") == "read"
     assert attempt("SELECT count(*) FROM plain") == "read"
 
 
@@ -620,6 +627,76 @@ def test_virtual_tables_and_their_views_are_refused_on_a_pin(tmp_path: Path) -> 
             return pages
 
     _assert_guest_refusals(asyncio.run(run()))
+
+
+def test_checkpointer_only_read_is_refused_outside_info(tmp_path: Path) -> None:
+    original = tmp_path / "owner.db"
+    target = tmp_path / "copied.db"
+    with closing(sqlite3.connect(original)) as owner:
+        owner.execute("PRAGMA journal_mode=WAL")
+        owner.execute("CREATE TABLE items (id INTEGER PRIMARY KEY)")
+        owner.commit()
+        owner.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        owner.execute("INSERT INTO items VALUES (1)")
+        owner.commit()
+        shutil.copyfile(original, target)
+        log = sqlite_access.sidecar(target, "-wal")
+        shutil.copyfile(sqlite_access.sidecar(original, "-wal"), log)
+        # The private-copy cap is based on file length. A sparse tail forces the
+        # existing fallback without writing a large test database.
+        os.truncate(log, sqlite_access.COPY_MAX_BYTES + 1)
+    assert not sqlite_access.sidecar(target, "-shm").exists()
+
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as test_client:
+        info = test_client.get("/api/plugin/sqlite/info", params={"path": "copied.db"})
+        assert info.json()["access"]["state"] == "without_log"
+        schema = test_client.get("/api/plugin/sqlite/schema", params={"path": "copied.db"})
+        assert schema.json()["error"]["state"] == "without_log"
+        for route, path in [("tables", "copied.db"), ("rows", "copied.db/items")]:
+            answer = _get(test_client, route, path=path)
+            assert answer["_status"] == 422 and answer["state"] == "without_log", answer
+            assert "Open Info" in answer["error"]
+    assert not sqlite_access.sidecar(target, "-shm").exists()
+
+
+def test_unreadable_wal_is_not_a_missing_database(
+    root: Path, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = root / "app.db"
+    log = sqlite_access.sidecar(database, "-wal")
+    log.write_bytes(b"test log")
+    read_head = sqlite_access._read_head  # pyright: ignore[reportPrivateUsage]
+
+    def deny_log(path: Path, size: int) -> bytes:
+        if path == log:
+            raise PermissionError(13, "Permission denied", path)
+        return read_head(path, size)
+
+    monkeypatch.setattr(sqlite_access, "_read_head", deny_log)
+    info = client.get("/api/plugin/sqlite/info", params={"path": "app.db"})
+    assert info.status_code == 200
+    assert info.json()["error"]["state"] == "unreadable"
+    assert "log cannot be read" in info.json()["error"]["message"]
+    tables = _get(client, "tables", path="app.db")
+    assert tables["_status"] == 422 and tables["state"] == "unreadable", tables
+
+
+def test_pre_octet_length_library_still_has_info(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = build(tmp_path / "old-reader.db", "CREATE TABLE t (id INTEGER PRIMARY KEY)")
+    monkeypatch.setattr(sqlite3, "sqlite_version", "3.42.0")
+    args = {"path": str(path), "scratch": str(tmp_path)}
+    ask = sqlite_access._handle  # pyright: ignore[reportPrivateUsage]
+    info = ask({"op": "info", "seconds": 2, "args": args})
+    assert info["ok"] and not info["result"]["library"]["meets_minimum"]
+    for op in ("sqlite_catalog", "sqlite_ddl"):
+        refusal = ask({"op": op, "seconds": 2, "args": args})
+        assert refusal["state"] == "unsupported"
+        assert "requires SQLite 3.43.0" in refusal["error"]
+        assert "uses SQLite 3.42.0" in refusal["error"]
 
 
 def test_every_admitted_function_is_one_the_adapter_calls() -> None:

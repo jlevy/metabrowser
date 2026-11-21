@@ -537,7 +537,8 @@ def sqlite_generation(path: Path) -> str:
     move on every commit, even one that overwrites a restarted log in place within one
     tick of the file clock. That header is read without a lock, so a read torn by a
     commit gives a token that changes once more than it had to, never one that misses
-    the commit. Raises ``OSError`` when the file is gone.
+    the commit. Raises ``OSError`` when the file is gone, or
+    :class:`SqliteAccessError` when its log cannot be read.
     """
     real = Path(os.path.realpath(path))
     info = os.stat(real)
@@ -550,6 +551,10 @@ def sqlite_generation(path: Path) -> str:
         parts += [wal.st_size, wal.st_mtime_ns, wal_salts]
     except FileNotFoundError:
         parts.append("-")
+    except OSError as exc:
+        raise SqliteAccessError(
+            "unreadable", f"This database's log cannot be read: {exc.strerror}"
+        ) from exc
     try:
         # The server holds no connection to a database it does not own, so opening and
         # closing its `-shm` here drops no lock.
