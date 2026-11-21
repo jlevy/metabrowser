@@ -76,6 +76,54 @@ export HOME="$work/home"
 mkdir -p "$HOME/Library/Keychains"
 unset SIGN_KEYCHAIN SIGN_IDENTITY APPLE_KEYCHAIN_PROFILE APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER ONLINE
 
+# A commit stamp accounts for assets outside apps/macos when they ship in the bundle.
+test_bundle_input_provenance() {
+  # A hook in a linked worktree may export a Git location. This fixture owns its own.
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
+  unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES
+  local repo="$work/provenance" commit notice
+  local floor="Sources/ShellCore/Setup/MetabVersion.swift"
+  mkdir -p "$repo/apps/macos/scripts" "$repo/apps/macos/$(dirname "$floor")" \
+    "$repo/$(dirname "$app_glyph_license")" ||
+    die "could not create the app provenance fixture"
+  cp scripts/common.sh scripts/release.sh "$repo/apps/macos/scripts/" ||
+    die "could not copy the release scripts"
+  cp VERSION "$repo/apps/macos/" || die "could not copy VERSION"
+  cp "$floor" "$repo/apps/macos/$floor" || die "could not copy the version requirement"
+  notice="$repo/$app_glyph_license"
+  printf 'committed license\n' >"$notice"
+  git -C "$repo" init -q --template= || die "could not initialize the app provenance fixture"
+  git -C "$repo" add . || die "could not stage the fixture"
+  git -C "$repo" -c user.name=Fixture -c user.email=fixture@example.invalid \
+    -c commit.gpgsign=false commit -qm "Fixture app bundle inputs" ||
+    die "could not commit the fixture"
+  commit="$(git -C "$repo" rev-parse HEAD)" || die "could not read the fixture's commit"
+  cd "$repo/apps/macos" || die "could not open the fixture app directory"
+
+  [[ "$(source_commit)" == "$commit" ]] || die "clean bundle inputs were marked dirty"
+  printf 'unrelated file\n' >"$repo/README.md"
+  [[ "$(source_commit)" == "$commit" ]] || die "an unrelated path was marked as a bundle input"
+  printf 'working copy license\n' >"$notice"
+  [[ "$(source_commit)" == "$commit-dirty" ]] || die "an edited shared notice left a clean stamp"
+
+  local preflight_status=0
+  VARIANT=release NOTARIZE=1 bash scripts/release.sh >"$work/preflight" 2>&1 || preflight_status=$?
+  ((preflight_status != 0)) || die "the official preflight accepted the dirty notice"
+  grep -qF "app bundle inputs have uncommitted changes" "$work/preflight" &&
+    grep -qF "$app_glyph_license" "$work/preflight" ||
+    die "the official preflight did not name the dirty notice: $(cat "$work/preflight")"
+
+  git add -- "../../$app_glyph_license" || die "could not stage the edited notice"
+  [[ "$(source_commit)" == "$commit-dirty" ]] || die "a staged shared notice left a clean stamp"
+}
+
+run test_bundle_input_provenance
+if ((status == 0)); then
+  pass "the app's commit stamp and release preflight account for the bundled Lucide notice"
+else
+  fail "app bundle provenance: $(cat "$work/out")"
+fi
+
 # ── sign ─────────────────────────────────────────────────────
 # Ad hoc signing gets no keychain and no timestamp; a Developer ID identity is looked
 # for only in the release keychain, SIGN_KEYCHAIN or its default.
