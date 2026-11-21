@@ -63,6 +63,7 @@ def test_shim_loads_every_builtin_plugin(shim_output: dict[str, Any]) -> None:
         "html",
         "image",
         "markdown",
+        "sqlite",
         "structured",
         "table",
         "text",

@@ -12,6 +12,10 @@ patterns:
   COUNT: '\d+'
 before: >-
   mkdir -p shellroot &&
+  mkdir -p gitroot/.git/refs/heads gitroot/docs &&
+  printf 'ref: refs/heads/main\n' > gitroot/.git/HEAD &&
+  printf '1111111111111111111111111111111111111111\n' > gitroot/.git/refs/heads/main &&
+  printf '[remote "origin"]\n\turl = git@github.com:Octo/Demo.git\n' > gitroot/.git/config &&
   mkdir "$(printf 'odd\342\200\256name')" &&
   printf '# Sample\n\nHello.\n' > shellroot/README.md &&
   printf '{"path": "README.md", "view": "document", "source_text": "# Overridden\\n\\nBody.\\n"}\n'
@@ -158,6 +162,7 @@ status: 200
   "kind": "folder",
   "kind_label": "Local folder",
   "title": "shellroot • Metabrowser",
+  "kind_tip": "Local folder",
   "repository": null
 }
 ? 0
@@ -175,6 +180,7 @@ status: 200
   "kind": "folder",
   "kind_label": "Local folder",
   "title": "shellroot • Metabrowser",
+  "kind_tip": "Local folder",
   "repository": null
 }
 ? 0
@@ -190,6 +196,7 @@ status: 200
   "kind": "folder",
   "kind_label": "Local folder",
   "title": "~ • Metabrowser",
+  "kind_tip": "Local folder",
   "repository": null
 }
 ? 0
@@ -209,7 +216,55 @@ status: 200
   "kind": "folder",
   "kind_label": "Local folder",
   "title": "odd�name • Metabrowser",
+  "kind_tip": "Local folder",
   "repository": null
+}
+? 0
+```
+
+## Test: a window says which of three kinds of root it shows
+
+`kind` is `folder` for a plain folder, `git` for a folder that holds a `.git` entry, and
+`mirror` for a cached repository, and `kind_label` is the words for it.
+`kind_tip` is the one sentence the mark beside the root’s name carries as its tooltip
+and its accessible name, which also names the repository a checkout’s `origin` has on
+github.com, as the owner spells it.
+The page writes the same sentence into its first paint, so the mark and this route
+cannot disagree (`tests/test_root_identity.py`). `metab shellroot --api /api/identity`
+above is the plain folder, and a mirror’s is in `cli-api-source.tryscript.md`.
+
+```console
+$ metab gitroot --api /api/identity
+api: /api/identity
+status: 200
+{
+  "short_name": "gitroot",
+  "full_name": "<ROOT>",
+  "kind": "git",
+  "kind_label": "Local Git checkout",
+  "title": "gitroot • Metabrowser",
+  "kind_tip": "Local Git checkout (GitHub: Octo/Demo)",
+  "repository": "https://github.com/octo/demo"
+}
+? 0
+```
+
+A folder served exactly below the checkout’s root is a plain folder: the checkout is its
+repository’s root, and the folder has no Git features of its own.
+It still belongs to the repository its checkout’s `origin` names.
+
+```console
+$ metab gitroot/docs --api /api/identity
+api: /api/identity
+status: 200
+{
+  "short_name": "docs",
+  "full_name": "<ROOT>",
+  "kind": "folder",
+  "kind_label": "Local folder",
+  "title": "docs • Metabrowser",
+  "kind_tip": "Local folder",
+  "repository": "https://github.com/octo/demo"
 }
 ? 0
 ```
@@ -454,6 +509,13 @@ status: 200
       "methods": [
         "GET",
         "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/events/watch",
+      "methods": [
+        "POST"
       ],
       "kind": "api"
     },
@@ -842,6 +904,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/sqlite/info",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/structured/parsed",
       "methods": [
         "GET",
@@ -1060,7 +1130,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 90
+  "count": 92
 }
 ? 0
 ```

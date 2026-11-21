@@ -11,8 +11,9 @@
 // timers and animation frames the session runs; a history Back walks; and a DOM of just
 // enough nodes to read the view back (pulls-test-dom.js). The answers are the server's,
 // recorded in tests/fixtures/table-view-responses.json,
-// tests/fixtures/table-view-long-responses.json, and
-// tests/fixtures/table-view-bounds-responses.json by tests/test_table_view_session.py,
+// tests/fixtures/table-view-long-responses.json,
+// tests/fixtures/table-view-bounds-responses.json, and
+// tests/fixtures/table-view-records-responses.json by tests/test_table_view_session.py,
 // which fails when they drift; a request the recordings do not hold fails the session. A
 // generation, which names a file's identity and time, is recorded as `G`. The bounds
 // recording's answers are the server's with a bound lowered for one small file, as that
@@ -34,12 +35,30 @@ for (const name of [
   "table-view-responses.json",
   "table-view-long-responses.json",
   "table-view-bounds-responses.json",
+  "table-view-records-responses.json",
 ]) {
   Object.assign(
     answers,
     JSON.parse(fs.readFileSync(path.join(repoRoot, "tests/fixtures", name), "utf8")).answers,
   );
 }
+
+// The live table's answers at each version of its file (tests/test_table_view_session.py
+// `LIVE`), and the version on disk now; a step that changes the file moves it.
+const liveVersions = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, "tests/fixtures/table-view-live-responses.json"), "utf8"),
+).versions;
+let liveVersion = "G1";
+// The windowed live table's answers at each version (`LIVE_WINDOW`), and the one on disk.
+const windowVersions = JSON.parse(
+  fs.readFileSync(
+    path.join(repoRoot, "tests/fixtures/table-view-live-window-responses.json"),
+    "utf8",
+  ),
+).versions;
+let windowVersion = "W1";
+/** How long each read of the live file takes; a step makes it slow. */
+let liveReadMs = 0;
 
 // ── A DOM of just enough nodes ─────────────────────────────────
 
@@ -75,11 +94,30 @@ class Element extends FakeElement {
   }
 }
 
+const documentListeners = new Map();
 const documentStandIn = {
   createElement: (tag) => new Element(tag),
   body: new Element("body"),
   activeElement: null,
+  // A step hides and shows the page as a browser's visibilitychange does.
+  visibilityState: "visible",
+  addEventListener(type, listener) {
+    documentListeners.set(type, [...(documentListeners.get(type) ?? []), listener]);
+  },
+  removeEventListener(type, listener) {
+    documentListeners.set(
+      type,
+      (documentListeners.get(type) ?? []).filter((item) => item !== listener),
+    );
+  },
 };
+/** The page becomes *state*, "hidden" or "visible". */
+function visibility(state) {
+  documentStandIn.visibilityState = state;
+  for (const listener of documentListeners.get("visibilitychange") ?? []) {
+    listener({ type: "visibilitychange" });
+  }
+}
 globalThis.document = documentStandIn;
 
 /** Every element under *node*, in document order. */
@@ -172,6 +210,8 @@ const pageWindow = {
     pageWindow.clearTimeout(timer);
   },
   getSelection: () => ({ isCollapsed: true, toString: () => "" }),
+  // The session's clock, which a live read's cost advances.
+  performance: { now: () => clock },
 };
 
 function emit(type) {
@@ -194,19 +234,35 @@ function tick(ms) {
   }
 }
 
-/** The address's history: the shell's navigation as a plugin sees it. */
+/**
+ * The address's history: the shell's navigation as a plugin sees it, and the browser's
+ * address. `writes` counts the view's own history writes (its place). A push the browser
+ * drops, as Chrome drops every history call past 200 in 10 seconds, is `dropPushes`: the
+ * shell's target moves (`shellTarget`), and the browser's entries and address do not.
+ */
 const entries = [];
 let position = -1;
+let writes = 0;
+let dropPushes = 0;
+let shellTarget = null;
 const history = {
   state: null,
   back() {
     position -= 1;
+    shellTarget = null;
     history.state = entries[position].state;
     emit("popstate");
   },
   replaceState(state) {
+    writes += 1;
     history.state = state;
     entries[position].state = state;
+  },
+};
+const location = {
+  get search() {
+    const query = entries[position]?.target.query ?? "";
+    return query ? `?${query}` : "";
   },
 };
 
@@ -234,10 +290,16 @@ const sdk = {
     hide: (within) => tooltips.push({ hide: within?.className ?? null }),
   },
   navigation: {
-    current: () => (position >= 0 ? entries[position].target : null),
+    current: () => shellTarget ?? (position >= 0 ? entries[position].target : null),
     href: (target) => `/view/${target.path}${target.query ? `?${target.query}` : ""}`,
     async open(target, how = {}) {
       const entry = { target: { path: target.path, query: target.query ?? "" }, state: null };
+      shellTarget = null;
+      if (!how.replace && dropPushes > 0) {
+        dropPushes -= 1;
+        shellTarget = entry.target;
+        return;
+      }
       if (how.replace && position >= 0) {
         entries[position] = { ...entry, state: entries[position].state };
       } else {
@@ -260,7 +322,16 @@ const sdk = {
       error.name = "AbortError";
       throw error;
     }
-    const answer = answers[key];
+    if (params.path === "live.csv") {
+      // What a read of the live file costs the server, in the session's clock.
+      clock += liveReadMs;
+    }
+    const answer =
+      params.path === "live.csv"
+        ? liveVersions[liveVersion][key]
+        : params.path === "live-window.csv"
+          ? windowVersions[windowVersion].answers[key]
+          : answers[key];
     if (!answer) {
       unrecorded.push(key);
       throw Object.assign(new Error(`unrecorded ${key}`), { status: 599 });
@@ -409,8 +480,10 @@ function step(name, value) {
 
 let model;
 let mountTable;
+let LIVE_COALESCE;
+let placeSaveMs;
 
-function mount(file, query = "") {
+function mount(file, query = "", context = {}) {
   entries.splice(0);
   position = -1;
   void sdk.navigation.open({ path: file, query });
@@ -418,11 +491,12 @@ function mount(file, query = "") {
   documentStandIn.body.append(container);
   const handle = mountTable(
     container,
-    { path: file },
+    { path: file, ...context },
     {
       sdk,
       window: pageWindow,
       history,
+      location,
       document: documentStandIn,
     },
   );
@@ -527,10 +601,52 @@ async function wholeTable() {
     ...shown(view, { rows: 0 }),
   });
 
+  // The header is in the grid's one Tab stop: Up from the first row, across its controls
+  // with Right, and Down to the first row's cell in the column left.
+  key(documentStandIn.activeElement, "k");
+  key(documentStandIn.activeElement, "k");
+  const onHeader = describeFocus(view);
+  key(documentStandIn.activeElement, "ArrowRight");
+  const onMenu = describeFocus(view);
+  key(documentStandIn.activeElement, "ArrowRight");
+  const onNext = describeFocus(view);
+  key(documentStandIn.activeElement, "ArrowDown");
+  step("the header: k from the first row, Right across its controls, Down to the row", {
+    "after k, k": onHeader,
+    "after Right": onMenu,
+    "after Right again": onNext,
+    "after Down": describeFocus(view),
+    "header controls out of the Tab order": findAll(
+      view.container,
+      (node) => node.localName === "button" && node.attributes.get("tabindex") === "-1",
+    ).length,
+  });
+  key(documentStandIn.activeElement, "ArrowLeft");
+  key(documentStandIn.activeElement, "ArrowLeft");
+
+  // A header's menu is a dialog: the focus leaving it closes it, and Escape returns the
+  // focus to its button.
+  click(headerButton(view, "name", "table-head-menu"));
+  const dialog = find(view.container, hasClass("table-menu"));
+  dispatch(find(dialog, hasClass("menu-item")), "focusout", {
+    relatedTarget: find(view.container, hasClass("table-search")),
+  });
+  const closedOnLeave = find(view.container, hasClass("table-menu")) === null;
+  click(headerButton(view, "name", "table-head-menu"));
+  key(documentStandIn.activeElement, "Escape");
+  step("a header's menu: closed when the focus leaves it, and by Escape, to its button", {
+    role: dialog.attributes.get("role"),
+    label: dialog.attributes.get("aria-label"),
+    "closed when the focus left": closedOnLeave,
+    "open after Escape": find(view.container, hasClass("table-menu")) !== null,
+    focus: describeFocus(view),
+  });
+
   // The header menu: a filter typed into its form, and a column hidden.
   click(headerButton(view, "age", "table-head-menu"));
   const menu = find(view.container, hasClass("table-menu"));
   const items = findAll(menu, hasClass("menu-item")).map(text);
+  const menuRole = menu.attributes.get("role");
   const form = find(menu, hasClass("table-filter-form"));
   const ops = find(form, hasClass("table-filter-op"));
   ops.value = "contains";
@@ -538,6 +654,7 @@ async function wholeTable() {
   dispatch(form, "submit");
   await settle();
   step("the age header's menu, and a filter from its form", {
+    role: menuRole,
     "menu items": items,
     operators: ops.options.map((option) => option.attributes.get("value")),
     requests: takeRequests(),
@@ -657,7 +774,7 @@ async function windowedTable() {
     requests: takeRequests(),
     ...shown(view, { rows: 2 }),
   });
-  view.scroller.scrollTop = 150 * 33;
+  view.scroller.scrollTop = 150 * 32;
   dispatch(view.scroller, "scroll");
   tick(16);
   await settle();
@@ -740,6 +857,482 @@ async function windowedTable() {
   view.container.remove();
 }
 
+// ── The live table ─────────────────────────────────────────────
+//
+// metabrowser.watchFile is the page's: here, a stand-in that records the watch and lets a
+// step say the file changed, as a `file.changed` on the page's event stream would.
+
+const fileWatches = [];
+function watchFile(file, options) {
+  const watch = { file, options, disposed: false };
+  fileWatches.push(watch);
+  requests.push(`watch ${file} at ${options.generation}`);
+  void Promise.resolve().then(() => options.onState?.("live", null));
+  return () => {
+    watch.disposed = true;
+    requests.push(`unwatch ${file}`);
+  };
+}
+
+/** The file moves to *version*, and its watch says so *times* times. */
+function fileChanges(version, times = 1) {
+  liveVersion = version;
+  for (let n = 0; n < times; n++) {
+    for (const watch of fileWatches.filter((item) => !item.disposed)) {
+      watch.options.onChange({ path: watch.file, generation: version });
+    }
+  }
+}
+
+function pill(view) {
+  const found = find(view.container, hasClass("table-live-pill"));
+  return found.hidden ? null : text(found);
+}
+
+function flashing(view) {
+  return rowsOf(view)
+    .filter((tr) => tr.classes.has("table-row-flash"))
+    .map((tr) => text(tr.firstChild));
+}
+
+function liveShown(view, extra = {}) {
+  const page = shown(view, { rows: 10 });
+  const offer = find(view.container, hasClass("table-offer"));
+  return {
+    requests: takeRequests(),
+    pill: pill(view),
+    offer: offer.hidden ? null : text(offer),
+    flashing: flashing(view),
+    announced: text(find(view.container, (node) => node.attributes.get("aria-live") === "polite")),
+    status: page.status,
+    notes: page.notes,
+    address: page.address,
+    rows: page.table === "hidden" ? "hidden" : page.table.rows,
+    focus: page.focus,
+    ...extra,
+  };
+}
+
+async function liveTable() {
+  sdk.watchFile = watchFile;
+  liveVersion = "G1";
+  const view = mount("live.csv");
+  await ready(view);
+  step("live: a table read, its file watched with the generation it read", liveShown(view));
+
+  // A filter half typed in the qty header's menu, not sent.
+  click(headerButton(view, "qty", "table-head-menu"));
+  find(find(view.container, hasClass("table-menu")), hasClass("table-filter-value")).value = "4";
+  fileChanges("G2", 3);
+  tick(100);
+  await settle();
+  const early = takeRequests();
+  tick(LIVE_COALESCE);
+  await settle();
+  const menu = find(view.container, hasClass("table-menu"));
+  step("live: three changes in a burst, one read again: a cell changed, a row arrived below", {
+    "requests before the window ends": early,
+    ...liveShown(view),
+    "menu open, its unsent filter kept": menu
+      ? find(menu, hasClass("table-filter-value")).value
+      : null,
+  });
+  key(find(menu, hasClass("table-filter-value")), "Escape");
+  tick(1000);
+  const first = rowsOf(view)[0];
+  first.focus();
+  key(first, "j");
+  key(documentStandIn.activeElement, "Enter");
+  await settle();
+  takeRequests();
+  fileChanges("G3");
+  tick(LIVE_COALESCE);
+  await settle();
+  const record = shown(view).record;
+  step("live: the open record, named by position, read again: another row is there now", {
+    requests: takeRequests(),
+    record,
+    notices: findAll(find(view.container, hasClass("table-record")), hasClass("table-notice")).map(
+      text,
+    ),
+  });
+  click(find(view.container, hasClass("table-back")));
+  await settle();
+  takeRequests();
+  step("live: back to the table, which was read again behind the record", liveShown(view));
+
+  click(headerButton(view, "qty"));
+  await settle();
+  click(headerButton(view, "qty"));
+  await settle();
+  takeRequests();
+  view.scroller.scrollTop = 2 * 33;
+  const top = rowsOf(view)[0];
+  top.focus();
+  for (let n = 0; n < 3; n++) {
+    key(documentStandIn.activeElement, "j");
+  }
+  click(find(view.container, hasClass("table-live-pill")));
+  fileChanges("G4", 2);
+  tick(LIVE_COALESCE);
+  await settle();
+  step(
+    "live: sorted, scrolled two rows down, a row focused, and paused: changes counted, not read",
+    {
+      scrollTop: view.scroller.scrollTop,
+      ...liveShown(view),
+    },
+  );
+  click(find(view.container, hasClass("table-live-pill")));
+  tick(LIVE_COALESCE);
+  await settle();
+  step(
+    "live: resumed: the row that sorts above the reader's place offered, the one below drawn, the focus kept",
+    { scrollTop: view.scroller.scrollTop, ...liveShown(view) },
+  );
+  click(find(view.container, hasClass("table-offer")));
+  await settle();
+  step("live: the offer taken: the new row drawn, the view at it, and the keyboard on it", {
+    scrollTop: view.scroller.scrollTop,
+    ...liveShown(view),
+  });
+
+  // Every write to the live region, so a step can say what was announced and how often.
+  const announcements = [];
+  const region = find(view.container, (node) => node.attributes.get("aria-live") === "polite");
+  let owner = Object.getPrototypeOf(region);
+  while (owner && !Object.getOwnPropertyDescriptor(owner, "textContent")) {
+    owner = Object.getPrototypeOf(owner);
+  }
+  const regionText = Object.getOwnPropertyDescriptor(owner, "textContent");
+  Object.defineProperty(region, "textContent", {
+    get: () => regionText.get.call(region),
+    set: (value) => {
+      announcements.push(value);
+      regionText.set.call(region, value);
+    },
+  });
+
+  // Two rows selected, and a row element marked, so a step can tell it was not drawn again.
+  key(documentStandIn.activeElement, "ArrowDown", { shiftKey: true });
+  rowsOf(view)[0].kept = true;
+  fileChanges("G5");
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live: the file touched, its rows as they were: nothing drawn again, the selection kept", {
+    requests: takeRequests(),
+    flashing: flashing(view),
+    focus: shown(view).focus,
+    selected: rowsOf(view)
+      .filter((tr) => tr.attributes.get("aria-selected") === "true")
+      .map((tr) => text(tr.firstChild)),
+    "first row element kept": Boolean(rowsOf(view)[0].kept),
+  });
+
+  liveReadMs = 400;
+  fileChanges("G6");
+  tick(LIVE_COALESCE);
+  await settle();
+  liveReadMs = 0;
+  step("live: a cell changed under the selection, read slowly: the selection stays on its rows", {
+    requests: takeRequests(),
+    flashing: flashing(view),
+    focus: shown(view).focus,
+    selected: rowsOf(view)
+      .filter((tr) => tr.attributes.get("aria-selected") === "true")
+      .map((tr) => text(tr.firstChild)),
+  });
+
+  fileChanges("G7");
+  tick(LIVE_COALESCE);
+  await settle();
+  const early7 = takeRequests();
+  tick(2 * 400 - LIVE_COALESCE);
+  await settle();
+  step("live: after a read that took 400 ms, the next waits twice that, not the window", {
+    "requests once the window ends": early7,
+    "requests at twice the last read": takeRequests(),
+  });
+
+  visibility("hidden");
+  fileChanges("G8");
+  tick(10 * LIVE_COALESCE);
+  await settle();
+  const whileHidden = takeRequests();
+  visibility("visible");
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live: a change while the page is hidden: nothing read until it is shown, then once", {
+    "requests while hidden": whileHidden,
+    requests: takeRequests(),
+    flashing: flashing(view),
+  });
+
+  for (const watch of fileWatches.filter((item) => !item.disposed)) {
+    watch.options.onState("refused", "too_many_watches");
+  }
+  const refusedNotes = shown(view).notes;
+  for (const watch of fileWatches.filter((item) => !item.disposed)) {
+    watch.options.onState("live", null);
+  }
+  step("live: a watch refused says the table is not following its file, until it is live again", {
+    "notes while refused": refusedNotes,
+    "notes once live": shown(view).notes,
+    pill: pill(view),
+  });
+
+  // The focused row's record, open with the keyboard on its own Live control.
+  key(documentStandIn.activeElement, "Enter");
+  await settle();
+  takeRequests();
+  const recordPill = find(
+    find(view.container, hasClass("table-record")),
+    hasClass("table-live-pill"),
+  );
+  recordPill.focus();
+  const recordBody = find(view.container, hasClass("table-record-fields"));
+  fileChanges("G9");
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live: a record read again unchanged: not drawn again, the keyboard on its Live control", {
+    requests: takeRequests(),
+    "record pane drawn again": find(view.container, hasClass("table-record-fields")) !== recordBody,
+    focus: documentStandIn.activeElement === recordPill ? "the record's Live control" : "elsewhere",
+    "record pill": recordPill.hidden ? null : text(recordPill),
+  });
+  click(recordPill);
+  fileChanges("G10");
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live: the record's Live control pressed: paused there, a change held back", {
+    requests: takeRequests(),
+    "record pill": text(recordPill),
+  });
+  click(recordPill);
+  tick(LIVE_COALESCE);
+  await settle();
+  click(find(view.container, hasClass("table-back")));
+  await settle();
+  takeRequests();
+
+  fileChanges("G11");
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live: the sorted column removed: dropped from the address, with a notice", liveShown(view));
+
+  announcements.splice(0);
+  fileChanges("G12");
+  tick(LIVE_COALESCE);
+  await settle();
+  fileChanges("G13");
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live: the file removed: the rows last read kept, and said to be", {
+    ...liveShown(view),
+    "announced, each time": [...announcements],
+  });
+
+  view.handle.dispose();
+  step("live: disposed: the watch released", { requests: takeRequests() });
+  view.container.remove();
+  delete sdk.watchFile;
+}
+
+/** The windowed table's first row drawn, and each drawn whose value is not its position. */
+function windowShown(view) {
+  const drawn = rowsOf(view).map((tr) => tr.childNodes.map((cell) => text(cell)));
+  return {
+    first: drawn[0]?.join(" | ") ?? null,
+    "rows changed": drawn.filter(([at, value]) => at !== value).map((cells) => cells.join(" | ")),
+  };
+}
+
+async function liveWindowTable() {
+  sdk.watchFile = watchFile;
+  windowVersion = "W1";
+  const view = mount("live-window.csv");
+  await ready(view);
+  const scrollTo = async (row) => {
+    view.scroller.scrollTop = row * 33;
+    dispatch(view.scroller, "scroll");
+    tick(16);
+    await settle();
+    tick(16);
+    await settle();
+  };
+  await scrollTo(40);
+  step("live window: sixty rows read in pages of ten, scrolled to row 40", {
+    requests: takeRequests().length,
+    ...windowShown(view),
+  });
+  windowVersion = "W2";
+  for (const watch of fileWatches.filter((item) => !item.disposed)) {
+    watch.options.onChange({ path: watch.file, generation: "W2" });
+  }
+  tick(LIVE_COALESCE);
+  await settle();
+  step(
+    "live window: rows 5 and 45 changed: read again from the start as far as the reader reached",
+    {
+      requests: takeRequests(),
+      ...windowShown(view),
+    },
+  );
+  await scrollTo(0);
+  const scrolledUp = { requests: takeRequests(), ...windowShown(view) };
+  tick(LIVE_COALESCE);
+  await settle();
+  step("live window: back at the top: row 5 as read with the rest, nothing stale to read again", {
+    "requests as the window arrives": scrolledUp.requests,
+    "rows changed as it arrives": scrolledUp["rows changed"],
+    requests: takeRequests(),
+    ...windowShown(view),
+  });
+  view.handle.dispose();
+  takeRequests();
+  view.container.remove();
+  delete sdk.watchFile;
+}
+
+function liveInvariants() {
+  const row = (key, value) => ({ key, cells: { v: value } });
+  const before = [row("a", 1), row("b", 2), row("c", 3), row("d", 4)];
+  // A row before the reader's place arrives offered; one after it, drawn; a changed one flashes.
+  const merged = model.liveMerge({
+    before,
+    after: [row("n", 0), row("a", 1), row("b", 2), row("c", 30), row("m", 9), row("d", 4)],
+    anchor: 2,
+  });
+  assert.deepEqual(
+    merged.rows.map((item) => item.key),
+    ["a", "b", "c", "m", "d"],
+  );
+  assert.deepEqual([merged.changed, merged.arrived, merged.offered], [["c"], ["m"], 1]);
+  // At the top nothing is above the reader: every new row is drawn.
+  assert.equal(
+    model.liveMerge({ before, after: [row("n", 0), ...before], anchor: null }).offered,
+    0,
+  );
+  // The anchor row gone: the next row still there places "above".
+  const gone = model.liveMerge({
+    before,
+    after: [row("n", 0), row("a", 1), row("d", 4)],
+    anchor: 1,
+  });
+  assert.deepEqual([gone.offered, gone.removed], [1, 2]);
+  // Accepted, the offered rows are drawn.
+  assert.equal(
+    model.liveMerge({ before, after: [row("n", 0), ...before], anchor: 2, accept: true })
+      .arrived[0],
+    "n",
+  );
+  assert.equal(model.livePillText(false, 4), "Live");
+  assert.equal(model.livePillText(true, 0), "Paused");
+  assert.equal(model.livePillText(true, 1), "Paused · 1 change");
+  // A busy source's refusal keeps the rows and says why, as every other refusal does.
+  assert.match(model.liveFailure("busy"), /writer is busy/);
+  assert.match(model.liveFailure(null), /rows last read/);
+}
+
+async function placeAndHistory() {
+  // The place is written once a pause after the keys stop, never a key press each, so a
+  // held key cannot use up the browser's history writes and make it drop the record's
+  // push (Chrome ignores history calls past 200 in 10 seconds, WebKit throws past 100 in
+  // 30); tests/test_table_view_chrome.py presses on past Chrome's bound.
+  const view = mount("long.csv");
+  view.scroller.clientHeight = 363;
+  await ready(view);
+  takeRequests();
+  rowsOf(view)[0].focus();
+  writes = 0;
+  for (let press = 0; press < 150; press++) {
+    key(documentStandIn.activeElement, "j");
+  }
+  await settle();
+  const during = writes;
+  tick(placeSaveMs - 1);
+  const before = writes;
+  tick(1);
+  step("150 presses of j: no history write while the keys come, one a pause after", {
+    "writes while pressing": during,
+    "writes just before the pause ends": before,
+    "writes after it": writes,
+    requests: takeRequests(),
+    focus: describeFocus(view),
+  });
+  const added = entries.length;
+  key(documentStandIn.activeElement, "Enter");
+  await settle();
+  const opened = shown(view, { rows: 0 });
+  step("Enter after them: the record's entry pushed, its address the record's", {
+    "entries added": entries.length - added,
+    "browser's address": location.search,
+    title: opened.record?.title,
+    requests: takeRequests(),
+  });
+  const at = position;
+  click(find(view.container, hasClass("table-back")));
+  await settle();
+  const back = shown(view, { rows: 0 });
+  step("its Back link: Back, to the grid at the place the keys left", {
+    "went back": position === at - 1,
+    "browser's address": location.search,
+    record: back.record,
+    scrollTop: view.scroller.scrollTop,
+    focus: back.focus,
+  });
+
+  // A push the browser dropped anyway: the record is drawn, and its Back link replaces the
+  // table's address rather than going Back, which would leave the table.
+  dropPushes = 1;
+  key(documentStandIn.activeElement, "Enter");
+  await settle();
+  const dropped = shown(view, { rows: 0 });
+  step("a push the browser dropped: the record drawn, the browser's address unchanged", {
+    "shell's address": sdk.navigation.current()?.query,
+    "browser's address": location.search,
+    title: dropped.record?.title,
+    requests: takeRequests(),
+  });
+  const before2 = { position, entries: entries.length };
+  click(find(view.container, hasClass("table-back")));
+  await settle();
+  const replaced = shown(view, { rows: 0 });
+  step("its Back link: the table's address replaces the entry, and Back is not taken", {
+    "went back": position !== before2.position,
+    "entries added": entries.length - before2.entries,
+    "browser's address": location.search,
+    record: replaced.record,
+    focus: replaced.focus,
+  });
+
+  // A new answer to the same question keeps the reader's place by key.
+  view.scroller.scrollTop = 100 * 32 + 5;
+  dispatch(view.scroller, "scroll");
+  tick(16);
+  key(documentStandIn.activeElement, "ArrowDown", { shiftKey: true });
+  const kept = {
+    scrollTop: view.scroller.scrollTop,
+    focus: describeFocus(view),
+    selected: findAll(view.container, (node) => node.attributes.get("aria-selected") === "true")
+      .length,
+  };
+  await view.handle.refresh();
+  await settle();
+  step("refresh: the question asked again, its answer drawn with the place kept by key", {
+    requests: takeRequests(),
+    before: kept,
+    after: {
+      scrollTop: view.scroller.scrollTop,
+      focus: describeFocus(view),
+      selected: findAll(view.container, (node) => node.attributes.get("aria-selected") === "true")
+        .length,
+    },
+  });
+  view.handle.dispose();
+  view.container.remove();
+}
+
 function modelInvariants() {
   const state = model.parseState(
     "sort=score&order=desc&f.active=eq%3Atrue&q=x&cols=name&cols=a%2C+b&plain=1&record=%404",
@@ -778,6 +1371,63 @@ function modelInvariants() {
     chosen: true,
   });
   assert.equal(model.stateQuery(model.parseState(roundTrip)), roundTrip);
+  // A question's later pages: the last one says whether it is complete and why, and a
+  // page from a table that changed under the cursor ends it as `cursor_expired`.
+  const firstPage = {
+    rows: [{ key: "@1", cells: {} }],
+    columns: ["a"],
+    next_after: "c1",
+    complete: true,
+    truncated: false,
+    reason: null,
+    count: 3,
+    count_complete: true,
+    generation: "g1",
+  };
+  const joined = model.joinPage(
+    { ...firstPage, rows: [...firstPage.rows] },
+    {
+      ...firstPage,
+      rows: [{ key: "@2", cells: {} }],
+      next_after: null,
+      complete: false,
+      reason: "budget",
+      examined: 9,
+    },
+  );
+  assert.deepEqual(
+    [joined.rows.length, joined.next_after, joined.complete, joined.reason, joined.examined],
+    [2, null, false, "budget", 9],
+  );
+  const expired = model.joinPage(
+    { ...firstPage, rows: [...firstPage.rows] },
+    { ...firstPage, rows: [{ key: "@2", cells: {} }], generation: "g2" },
+  );
+  assert.deepEqual(
+    [expired.rows.length, expired.next_after, expired.complete, expired.reason],
+    [1, null, false, "cursor_expired"],
+  );
+  // The header is part of the grid's roving focus: k from the first row onto the focused
+  // column's first control, Right across controls, Down to that column's cell.
+  const head = { rows: 5, cols: 3, pageRows: 4, heads: 5, headStarts: [0, 2, 4] };
+  assert.deepEqual(model.keyStep({ row: 0, col: 1 }, { key: "k" }, head).focus, {
+    row: -1,
+    col: 2,
+  });
+  assert.deepEqual(
+    model.keyStep({ row: 0, col: -1 }, { key: "ArrowUp", shiftKey: true }, head).action,
+    "extend",
+  );
+  assert.deepEqual(model.keyStep({ row: -1, col: 3 }, { key: "ArrowDown" }, head).focus, {
+    row: 0,
+    col: 1,
+  });
+  assert.deepEqual(model.keyStep({ row: -1, col: 4 }, { key: "ArrowRight" }, head).focus, {
+    row: -1,
+    col: 4,
+  });
+  assert.equal(model.keyStep({ row: -1, col: 0 }, { key: "Enter" }, head).action, "none");
+  assert.equal(model.keyStep({ row: 1, col: -1 }, { key: "k" }, head).focus.row, 0);
   assert.deepEqual(fit.hidden, ["c"]);
   assert.equal(chosen.pinned, true);
   step("the model: an address round trip, cells a delimited file cannot hold, and column fit", {
@@ -789,6 +1439,14 @@ function modelInvariants() {
     "stored type": { text: stored.text, stored: stored.stored, tip: stored.tip },
     "default columns in 210 px": fit,
     "chosen columns in 210 px": chosen,
+    "a later page: the question's end, and a changed table's": {
+      joined: { rows: joined.rows.length, complete: joined.complete, reason: joined.reason },
+      expired: { rows: expired.rows.length, complete: expired.complete, reason: expired.reason },
+    },
+    "no rows match, said of a scan the budget stopped": [
+      model.noMatchText({ ...firstPage, reason: null }),
+      model.noMatchText({ ...firstPage, reason: "budget", examined: 4096 }),
+    ],
     "window at 1,000 px of 31 px rows": model.windowRange({
       scrollTop: 1000,
       viewport: 310,
@@ -806,7 +1464,9 @@ async function bounds() {
   await ready(paged);
   const whole = shown(paged, { rows: 8 });
   assert.equal(whole.table.drawn, 8);
-  assert.equal(whole.table.role, "table");
+  // Drawn whole: every row, no spacers, and no row count for rows not drawn.
+  assert.deepEqual(whole.table.spacers, []);
+  assert.equal(whole.table.rowcount, null);
   step("pages shorter than asked: read on from each cursor, the table drawn whole", {
     requests: takeRequests(),
     ...whole,
@@ -835,7 +1495,7 @@ async function bounds() {
     requests: takeRequests(),
     ...shown(searched, { rows: 2 }),
   });
-  searched.scroller.scrollTop = 150 * 33;
+  searched.scroller.scrollTop = 150 * 32;
   dispatch(searched.scroller, "scroll");
   tick(16);
   await settle();
@@ -881,17 +1541,95 @@ async function bounds() {
   }
 }
 
+// The structured kind's Table view: a JSON list of mappings, whose record draws each nested
+// value with the renderer its view hands the table (structured/index.js passes the
+// structured plugin's inline tree; this stand-in writes the value it was given), and a
+// JSON mapping, which is not a list of records.
+async function recordLists() {
+  const drawnTrees = [];
+  let released = 0;
+  const renderJson = (host, value) => {
+    const tree = new Element("div");
+    tree.textContent = `tree ${JSON.stringify(value)}`;
+    host.append(tree);
+    drawnTrees.push(value);
+    return {
+      dispose() {
+        released += 1;
+      },
+    };
+  };
+  const view = mount("records.json", "", { renderJson });
+  await ready(view);
+  step("a JSON list of mappings: a table of its records", {
+    requests: takeRequests(),
+    ...shown(view),
+  });
+  const ada = rowsOf(view)[0];
+  ada.focus();
+  key(ada, "Enter");
+  await settle();
+  const opened = shown(view, { rows: 0 });
+  step("a record: each nested value drawn as a tree, an absent field said", {
+    requests: takeRequests(),
+    record: opened.record,
+    trees: drawnTrees.length,
+  });
+  assert.equal(drawnTrees.length, 2, "one tree for each nested value of the record");
+  key(documentStandIn.activeElement, "Escape");
+  await settle();
+  step("Back to the table: the trees released", {
+    requests: takeRequests(),
+    released,
+  });
+  assert.equal(released, drawnTrees.length, "every tree a record drew is released with it");
+  click(headerButton(view, "age"));
+  await settle();
+  step("a field of values of several types, sorted: numbers, then text", {
+    requests: takeRequests(),
+    ...shown(view),
+  });
+  view.handle.dispose();
+  view.container.remove();
+
+  const mapping = mount("config.json", "", { renderJson });
+  await ready(mapping);
+  const said = shown(mapping);
+  step("a JSON mapping: not a list of records, said in place of the table", {
+    requests: takeRequests(),
+    toolbar: find(mapping.container, hasClass("table-toolbar")).hidden ? "hidden" : "shown",
+    notes: said.notes,
+    table: said.table,
+    links: findAll(mapping.container, hasClass("table-reset")).length,
+  });
+  mapping.handle.dispose();
+  mapping.container.remove();
+}
+
 async function main() {
   model = await import(pathToFileURL(path.join(plugin, "table-model.js")).href);
-  ({ mountTable } = await import(pathToFileURL(path.join(plugin, "table-view.js")).href));
+  const view = await import(pathToFileURL(path.join(plugin, "table-view.js")).href);
+  ({ mountTable, LIVE_COALESCE_MS: LIVE_COALESCE } = view);
+  placeSaveMs = view.PLACE_SAVE_MS;
   modelInvariants();
+  liveInvariants();
   await wholeTable();
   await refusals();
   await windowedTable();
+  await placeAndHistory();
   await bounds();
+  await recordLists();
+  await liveTable();
+  await liveWindowTable();
   step("requests asked of the server", { unrecorded });
   assert.deepEqual(unrecorded, [], "every request the page made is recorded");
-  process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
+  // Every scenario runs either way; the transcript prints the live table's steps as a
+  // command of their own (`live`), and the rest without an argument.
+  const live = process.argv[2] === "live";
+  const printed = Object.fromEntries(
+    Object.entries(transcript).filter(([name]) => name.startsWith("live") === live),
+  );
+  process.stdout.write(`${JSON.stringify(printed, null, 2)}\n`);
 }
 
 main().catch((error) => {

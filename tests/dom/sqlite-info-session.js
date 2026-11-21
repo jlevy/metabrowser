@@ -45,8 +45,9 @@ function shown(container) {
   const out = { notices: [], sections: {} };
   for (const element of walk(container)) {
     if (element.classes.has("notice")) {
+      const parts = [...walk(element)].map((part) => part.textContent);
       out.notices.push(
-        `[${element.dataset.severity}, ${element.getAttribute("role")}] ${element.textContent}`,
+        `[${element.dataset.severity}, ${element.getAttribute("role")}] ${parts.join(": ")}`,
       );
     }
     if (element.localName === "section") {

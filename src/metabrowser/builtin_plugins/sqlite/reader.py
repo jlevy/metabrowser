@@ -270,32 +270,6 @@ def _guest_denied(connection: sqlite3.Connection) -> frozenset[str]:
     return frozenset(virtual | shadows)
 
 
-def deny_reads(connection: sqlite3.Connection, names: Iterable[str]) -> None:
-    """Stand-in for ``sqlite_access.deny_reads`` (the SQLite-access layer's commit
-    9ccf3f3a8), with its name, signature, and rules; delete it for that one when the
-    layers merge. Refuse every read of a table named in *names* (casefolded), in any
-    statement or view, and any schema pragma describing one, at prepare time."""
-    denied = frozenset(name.casefold() for name in names)
-
-    def authorizer(
-        action: int, arg1: str | None, arg2: str | None, db: str | None, inside: str | None
-    ) -> int:
-        if action == sqlite3.SQLITE_READ and (arg1 or "").casefold() in denied:
-            return sqlite3.SQLITE_DENY
-        if (
-            action == sqlite3.SQLITE_PRAGMA
-            and (arg1 or "").lower() in sqlite_access.ADAPTER_SCHEMA_PRAGMAS
-            and (arg2 or "").casefold() in denied
-        ):
-            return sqlite3.SQLITE_DENY
-        return sqlite_access._authorizer(action, arg1, arg2, db, inside)  # pyright: ignore[reportPrivateUsage]
-
-    connection.set_authorizer(authorizer)
-
-
-# ── The catalog ────────────────────────────────────────────────
-
-
 def _objects(connection: sqlite3.Connection) -> list[dict[str, Any]]:
     """The main schema's tables, views, and virtual tables, by `table_list`, with their
     DDL. `sqlite_schema` itself is not listed."""
@@ -1270,7 +1244,7 @@ def _read[T](
         if not virtual_ok:
             denied = _guest_denied(connection)
             if denied:
-                deny_reads(connection, denied)
+                sqlite_access.deny_reads(connection, denied)
         return fn(connection, denied)
 
     return sqlite_access.read(

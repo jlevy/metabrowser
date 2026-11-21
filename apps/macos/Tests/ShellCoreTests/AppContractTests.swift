@@ -36,6 +36,7 @@ nonisolated enum ContractGolden {
     /// Where the golden's sandbox and the folder it serves are, here.
     static let sandbox = "/ROOT"
     static let served = "/ROOT/served"
+    static let checkout = "/ROOT/checkout"
     /// What stands for output the app shows a person and reads nothing of.
     static let shown = "<shown as written, not read>"
     /// What the golden holds for text the app shows and never reads: a message, or the
@@ -138,7 +139,7 @@ nonisolated enum ContractGolden {
         "serve/folder", "serve/not-an-open", "serve/repository-cloned", "serve/repository-cached",
         "serve-path/file",
         "recent-list/empty", "recent-list/after-an-open", "recent-list/listed", "recent-list/problem",
-        "recent-add/repository", "recent-forget/folder", "recent-clear",
+        "recent-add/repository", "recent-add/checkout", "recent-forget/folder", "recent-clear",
         "identity/folder", "identity/under-home", "identity/checkout", "identity/mirror",
         "source-status/folder", "source-status/mirror", "source-link/repository", "source-link/elsewhere",
         "present-dry-run/repository", "present-dry-run/pull-request", "present-dry-run/commit",
@@ -261,8 +262,10 @@ nonisolated enum ContractGolden {
         let opened = ContractGolden.opaque
         let folder = RecentTarget(mode: .folder, root: ContractGolden.served, openedAt: opened)
         let mirror = RecentTarget(mode: .mirror, root: demo.absoluteString, openedAt: opened)
+        let checkout = RecentTarget(mode: .folder, root: ContractGolden.checkout, openedAt: opened, git: true)
         let listings: [(String, [RecentTarget])] = [
-            ("recent-list/empty", []), ("recent-list/after-an-open", [folder]), ("recent-list/listed", [mirror, folder]),
+            ("recent-list/empty", []), ("recent-list/after-an-open", [folder]),
+            ("recent-list/listed", [checkout, mirror, folder]),
         ]
         for (scenario, targets) in listings {
             let block = try block(scenario)
@@ -271,6 +274,8 @@ nonisolated enum ContractGolden {
         }
         let rows = RecentTargets.items([mirror, folder], opensURLs: true, home: "/Volumes/Home")
         #expect(rows.map(\.url) == [demo, URL(filePath: ContractGolden.served, directoryHint: .isDirectory)])
+        // Each kind of root has its own mark, from what the list says of it.
+        #expect([checkout, mirror, folder].map { RootMark($0) } == [.gitCheckout, .mirror, .plainFolder])
 
         // A list this `metab` cannot read lists as empty, and says why.
         guard case .listing(let unread) = RecentTargets.answer(try block("recent-list/problem").result) else {
@@ -285,6 +290,7 @@ nonisolated enum ContractGolden {
         let add = try block("recent-add/repository")
         let target = try #require(add.words.first)
         #expect(add.words == RecentTargets.addArguments(target))
+        #expect(try block("recent-add/checkout").words == RecentTargets.addArguments(ContractGolden.checkout))
         let forget = try block("recent-forget/folder")
         #expect(forget.words == RecentTargets.forgetArguments(ContractGolden.served))
         let clear = try block("recent-clear")
@@ -311,7 +317,10 @@ nonisolated enum ContractGolden {
             Issue.record("a checkout's identity was not read")
             return
         }
-        #expect(checkout.kind == .folder)
+        // A folder with a `.git` entry is the `git` kind, which the app draws its own mark for.
+        #expect(checkout.kind == .git)
+        #expect(checkout.kindLabel == FolderIdentity.localFolder(served, git: true).kindLabel)
+        #expect(RootMark(checkout.kind) == .gitCheckout)
         #expect(checkout.repository == demo)
         guard case .plan(let plan) = PresentDryRun.answer(try block("present-dry-run/repository").result) else {
             Issue.record("a repository link was not resolved")

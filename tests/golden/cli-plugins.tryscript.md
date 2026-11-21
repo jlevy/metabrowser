@@ -39,7 +39,8 @@ github         builtin  -                       markdown    2      pull,pull-ref
 html           builtin  html                    -           2      -
 image          builtin  -                       -           1      -
 markdown       builtin  markdown,mermaid        -           4      -
-structured     builtin  structured              -           2      parsed
+sqlite         builtin  sqlite                  -           1      info
+structured     builtin  structured              table       3      parsed
 table          builtin  -                       -           0      tables,schema,rows,record,card
 text           builtin  -                       -           1      -
 unknown-jsonl  builtin  -                       agents      2      -
@@ -288,6 +289,25 @@ $ metab --plugins --json
       "disabled_data_hooks": []
     },
     {
+      "name": "sqlite",
+      "display_name": "SQLite",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/sqlite",
+      "kinds": [
+        "sqlite"
+      ],
+      "requires": [],
+      "views": [
+        "info"
+      ],
+      "view_count": 1,
+      "data_hooks": [
+        "info"
+      ],
+      "disabled_data_hooks": []
+    },
+    {
       "name": "structured",
       "display_name": "Structured Data",
       "version": "0.0.1",
@@ -296,12 +316,15 @@ $ metab --plugins --json
       "kinds": [
         "structured"
       ],
-      "requires": [],
+      "requires": [
+        "table"
+      ],
       "views": [
         "tree",
+        "table",
         "source"
       ],
-      "view_count": 2,
+      "view_count": 3,
       "data_hooks": [
         "parsed"
       ],
@@ -411,6 +434,7 @@ assets in static_root:
   - package.json
   - place-rendered.js
   - print-indicator.js
+  - print-ready.js
   - project-adapters.js
   - reconciliation-coordinator.js
   - render-refusal.js
@@ -526,6 +550,7 @@ $ metab --plugin markdown --json
       "package.json",
       "place-rendered.js",
       "print-indicator.js",
+      "print-ready.js",
       "project-adapters.js",
       "reconciliation-coordinator.js",
       "render-refusal.js",
@@ -551,7 +576,7 @@ recorded on its own: the answer is on stdout, and stderr is empty.
 ```console
 $ metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 14 plugin(s) OK
+metab --doctor: 15 plugin(s) OK
 plugin requirements:
   agents: requires structured
   delimited: requires table
@@ -560,6 +585,7 @@ plugin requirements:
   folder: requires markdown
   github: requires markdown
   sqlite: requires table
+  structured: requires table
   unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
@@ -582,7 +608,7 @@ $ metab --doctor >/dev/null
 $ metab --doctor --json 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 14,
+  "plugin_count": 15,
   "problems": [],
   "open_in": {
     "value": "browser",

@@ -13,7 +13,7 @@ patterns:
   ROOTS: '[^\s"]+/roots'
   ROOT_ARG: '\[ROOT\]'
 before: >-
-  mkdir -p roots/alpha roots/beta roots/gamma/sub roots/leaving &&
+  mkdir -p roots/alpha roots/beta roots/gamma/sub roots/leaving roots/checkout/.git &&
   printf 'note\n' > roots/gamma/sub/note.txt
 ---
 # Golden tests: recent targets
@@ -93,6 +93,49 @@ folder  [TIMESTAMP]  [ROOTS]/alpha
 ? 0
 ```
 
+## Test: a checkout is recorded as one
+
+A folder that holds a `.git` entry is the `git` kind `GET /api/identity` reports, and
+its entry says so, `"git": true`, so a menu can draw the Git checkout’s mark for it
+without looking at the folder, which on macOS can raise a privacy prompt.
+Any other folder, and every repository opened by its address, is `"git": false`. The
+text listing is unchanged.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/checkouts metab roots/alpha --recent-add
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/checkouts metab roots/checkout --recent-add
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/checkouts metab --recent --json
+{
+  "limit": 50,
+  "targets": [
+    {
+      "mode": "folder",
+      "root": "[ROOTS]/checkout",
+      "opened_at": "[TIMESTAMP]",
+      "target": null,
+      "git": true
+    },
+    {
+      "mode": "folder",
+      "root": "[ROOTS]/alpha",
+      "opened_at": "[TIMESTAMP]",
+      "target": null,
+      "git": false
+    }
+  ],
+  "problem": null
+}
+? 0
+```
+
 ## Test: opening a root again moves its one entry to the front
 
 `roots/./alpha/` is the same folder, and another URL into the repository is the same
@@ -117,25 +160,29 @@ $ METABROWSER_CONFIG_DIR=$PWD/config metab --recent --json
       "mode": "mirror",
       "root": "https://github.com/jlevy/tbd",
       "opened_at": "[TIMESTAMP]",
-      "target": null
+      "target": null,
+      "git": false
     },
     {
       "mode": "folder",
       "root": "[ROOTS]/alpha",
       "opened_at": "[TIMESTAMP]",
-      "target": null
+      "target": null,
+      "git": false
     },
     {
       "mode": "folder",
       "root": "[ROOTS]/gamma/sub",
       "opened_at": "[TIMESTAMP]",
-      "target": "[ROOTS]/gamma/sub/note.txt"
+      "target": "[ROOTS]/gamma/sub/note.txt",
+      "git": false
     },
     {
       "mode": "folder",
       "root": "[ROOTS]/beta",
       "opened_at": "[TIMESTAMP]",
-      "target": null
+      "target": null,
+      "git": false
     }
   ],
   "problem": null
@@ -433,7 +480,8 @@ $ METABROWSER_CONFIG_DIR=$PWD/config metab --recent --json
       "mode": "mirror",
       "root": "https://github.com/jlevy/tbd",
       "opened_at": "[TIMESTAMP]",
-      "target": "https://github.com/jlevy/tbd/pull/12"
+      "target": "https://github.com/jlevy/tbd/pull/12",
+      "git": false
     }
   ],
   "problem": null

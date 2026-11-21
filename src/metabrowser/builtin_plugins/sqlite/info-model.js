@@ -89,6 +89,7 @@ export const STATES = {
   unreadable: { title: "Unreadable", severity: "error" },
   refused: { title: "Refused", severity: "error" },
   reader_stopped: { title: "Reader stopped", severity: "error" },
+  too_large: { title: "Answer too large", severity: "error" },
 };
 
 /** How each access mode opened the database. */
@@ -111,6 +112,7 @@ const OBJECT_NOUNS = {
   view: ["view", "views"],
   index: ["index", "indexes"],
   trigger: ["trigger", "triggers"],
+  other: ["other schema entry", "other schema entries"],
 };
 
 /**

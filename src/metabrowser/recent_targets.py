@@ -23,6 +23,15 @@ optionally where in the root the open pointed. The words are the open-modes desi
 - ``target``, optional, is where the open pointed when that is not the root itself: the
   file or folder named inside a folder's root. A mirror's is to be its web URL, which
   this release does not write yet. It is not part of the key.
+- ``git``, optional, is whether a folder root was a checkout when it was opened: it held a
+  ``.git`` entry (:func:`~metabrowser.repository_context.is_checkout_root`), which is the
+  ``git`` kind ``GET /api/identity`` gives it, and a shell draws the Git checkout's mark
+  for it where a plain folder's would otherwise be (docs/design-system-icons.md, "Source
+  Kinds"). It is written when true, only for a folder, at the open, because a shell
+  draws the list without looking at a listed folder: a look can raise a privacy prompt,
+  and the list holds the answer from when the folder was last opened. An entry with none,
+  one an earlier release wrote, is a plain folder until it is opened again. It is not
+  part of the key.
 
 ``mode`` with ``root`` is the key of the macOS app's session for the root, so one entry
 is one window. No entry records a view, what a server shows at a given moment: a recent
@@ -172,7 +181,7 @@ MODES: Final[tuple[TargetMode, ...]] = ("folder", "mirror")
 _TIMESTAMP: Final = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _ENTRY_KEYS: Final = frozenset({"mode", "root", "opened_at"})
 # The fields an entry may hold beside those, which this release knows and checks.
-_OPTIONAL_KEYS: Final = frozenset({"target"})
+_OPTIONAL_KEYS: Final = frozenset({"target", "git"})
 # What a mode is spelled like. A mode this release does not know is a newer release's;
 # anything else in a mode's place is damage.
 _MODE_NAME: Final = re.compile(r"[a-z][a-z0-9_-]{0,31}")
@@ -195,6 +204,9 @@ class RecentTarget:
     target: str | None = None
     """Where in the root the open pointed, when not at the root itself: for a folder,
     the file or folder named inside it. Not part of :attr:`key`, and never a view."""
+    git: bool = False
+    """Whether a folder root was a checkout when it was opened, as the module's docstring
+    says. Never true for a mirror. Not part of :attr:`key`."""
     extra: Mapping[str, Any] = field(default_factory=dict[str, Any])
     """The fields of the entry this release does not know, as the file spelled them: a
     later release's, kept so that rewriting the list does not lose them."""
@@ -205,26 +217,30 @@ class RecentTarget:
 
         return (self.mode, self.root)
 
-    def as_json(self) -> dict[str, str | None]:
+    def as_json(self) -> dict[str, str | bool | None]:
         """What a listing says of the entry: the fields this release knows, ``target``
-        ``null`` when the open pointed at the root."""
+        ``null`` when the open pointed at the root, and ``git`` false for an entry that
+        has none."""
 
         return {
             "mode": self.mode,
             "root": self.root,
             "opened_at": self.opened_at,
             "target": self.target,
+            "git": self.git,
         }
 
     def as_stored(self) -> dict[str, Any]:
         """The entry as the file holds it: the known fields, then any it carries along.
 
-        ``target`` is written only when there is one.
+        ``target`` and ``git`` are written only when there is one, and when it is true.
         """
 
         known: dict[str, Any] = {"mode": self.mode, "root": self.root, "opened_at": self.opened_at}
         if self.target is not None:
             known["target"] = self.target
+        if self.git:
+            known["git"] = True
         return {**known, **self.extra}
 
 
@@ -432,12 +448,18 @@ def _parse(payload: bytes) -> tuple[RecentTarget, ...]:
                 raise _Damaged(f"entry {position} has a target that is not text")
             if (reason := _checked_target(mode, root, target)) is not None:
                 raise _Damaged(f"entry {position} cannot have that target: {reason}")
+        # The base loader reads every scalar as text, so a flag is the word the dump wrote.
+        git = values.get("git")
+        if git is not None and (git != "true" or mode != "folder"):
+            raise _Damaged(f"entry {position} has a git flag that is not true, or is of a mirror")
         if (mode, root) in seen:
             raise _Damaged(f"entry {position} repeats an earlier one")
         seen.add((mode, root))
         known = _ENTRY_KEYS | _OPTIONAL_KEYS
         extra = {name: value for name, value in values.items() if name not in known}
-        targets.append(RecentTarget(cast(TargetMode, mode), root, opened_at, target, extra))
+        targets.append(
+            RecentTarget(cast(TargetMode, mode), root, opened_at, target, git is not None, extra)
+        )
     return tuple(targets)
 
 
@@ -628,15 +650,17 @@ def record(
     root: str,
     *,
     target: str | None = None,
+    git: bool = False,
     directory: Path | None = None,
     opened_at: str | None = None,
 ) -> RecentTarget:
     """Put *root*, opened in *mode*, at the front of the list; return its entry.
 
-    An entry the list already holds for the root moves to the front with the new time
-    and this open's *target*, and the oldest entry past :data:`MAX_RECENT_TARGETS` falls
-    off. *root* is a folder's :func:`recorded_path` or a source's normalized address, and
-    *target* where in it the open pointed. A *target* that is the root, or that the list
+    An entry the list already holds for the root moves to the front with the new time,
+    this open's *target*, and whether this open found a checkout (*git*, a folder's alone:
+    a mirror is recorded without it), and the oldest entry past :data:`MAX_RECENT_TARGETS`
+    falls off. *root* is a folder's :func:`recorded_path` or a source's normalized address,
+    and *target* where in it the open pointed. A *target* that is the root, or that the list
     cannot hold, is recorded as none: where an open pointed is never worth losing the
     open. A root the list cannot hold raises :class:`UnrecordableRootError`, and a list
     that cannot be written raises :class:`RecentTargetsError`.
@@ -652,7 +676,9 @@ def record(
         target = None
     if opened_at is not None and _TIMESTAMP.fullmatch(opened_at) is None:
         raise UnrecordableRootError("the time opened is not a UTC time to the second")
-    entry = RecentTarget(mode, root, now() if opened_at is None else opened_at, target)
+    entry = RecentTarget(
+        mode, root, now() if opened_at is None else opened_at, target, git and mode == "folder"
+    )
 
     def to_front(before: tuple[RecentTarget, ...]) -> tuple[RecentTarget, ...]:
         others = (other for other in before if other.key != entry.key)
@@ -682,8 +708,11 @@ def clear(*, directory: Path | None = None) -> int:
     return len(_change(directory, lambda before: () if before else None))
 
 
-def record_quietly(mode: TargetMode, root: str, *, target: str | None = None) -> None:
-    """Record a root a server is about to serve, and where it opens, and never raise.
+def record_quietly(
+    mode: TargetMode, root: str, *, target: str | None = None, git: bool = False
+) -> None:
+    """Record a root a server is about to serve, where it opens, and whether it is a
+    checkout (*git*), and never raise.
 
     A failure is logged once as a warning that says what to do, without the root or a
     path, and the server starts regardless. With :data:`RECORD_ENV` off, nothing is
@@ -694,7 +723,7 @@ def record_quietly(mode: TargetMode, root: str, *, target: str | None = None) ->
         log.debug("not recording a recent target: %s is off", RECORD_ENV)
         return
     try:
-        record(mode, root, target=target)
+        record(mode, root, target=target, git=git)
     except UnrecordableRootError as error:
         log.info("this root is not recorded as a recent target: %s", error)
     except RecentTargetsError as error:

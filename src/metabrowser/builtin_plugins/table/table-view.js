@@ -16,19 +16,33 @@
 // browser opens one.
 //
 // Drawn whole or windowed (plan Decision 11). A table of at most WHOLE_TABLE_MAX_ROWS rows
-// is read whole and drawn as a plain <table>, so find in page, select all, copy, and print
-// are the browser's. A larger one is a role="grid" whose body draws only the rows near the
-// view over two spacers, at one fixed row height, reading the next page as the reader
-// nears the last row held. There, Search stands in for find in page, Shift with Up, Down,
-// Home, or End selects rows that copy as tab-separated values (a chord such as Command-A
-// stays the browser's), and print draws every row held, as docs/large-content-rendering.md
-// asks of a windowed view.
+// is read whole and every row drawn, so find in page, select all, copy, and print are the
+// browser's. A larger one draws only the rows near the view over two spacers, at one fixed
+// row height, reading the next page as the reader nears the last row held. There, Search
+// stands in for find in page, Shift with Up, Down, Home, or End selects rows that copy as
+// tab-separated values (a chord such as Command-A stays the browser's), and print draws
+// every row held, saying on the page when rows past them were not read, as
+// docs/large-content-rendering.md asks of a windowed view. Either way the table is a
+// role="grid", since its rows take focus and can be selected.
 //
 // The keyboard. The grid is one Tab stop with roving focus: Up and Down, or `k` and `j`,
 // move a row; Left and Right move from the row to its cells, so a link in a cell is
-// reachable; Enter on the row opens its record, and on a cell follows its link.
+// reachable; Enter on the row opens its record, and on a cell follows its link. Up from
+// the first row moves to the header, whose sort and menu buttons Left and Right cross, so
+// a column's controls add no Tab stop (keyStep in table-model.js).
+//
+// The place. Each history entry keeps its scroll and focused row, so Back to the table and
+// a reload return to them. The browser bounds history writes (Chrome ignores those past
+// 200 in 10 seconds, pushes too, and WebKit throws past 100 in 30), so the place is written
+// only when it matters: before the view navigates, when the page is hidden, and once a
+// pause after the last move or scroll (PLACE_SAVE_MS), never a key press each.
+//
+// A new answer to the same question (`refresh()`, for a source that changes under the
+// view) keeps the reader where they were, by row key: the focused row, the row at the top
+// of the view, and the selection.
 
 import {
+  ABSENT_TEXT,
   columnWidths,
   countText,
   EMPTY_STATE,
@@ -38,8 +52,14 @@ import {
   fitColumns,
   formatCount,
   isFiltered,
+  joinPage,
+  jsonValue,
   keyStep,
   literalField,
+  liveFailure,
+  liveMerge,
+  livePillText,
+  noMatchText,
   pageNotes,
   parseState,
   presentCell,
@@ -99,10 +119,12 @@ export const FIRST_PAGE_ROWS = 200;
 export const NEXT_PAGE_ROWS = 1000;
 
 // A row's height before the first drawn row is measured, by its line count, so the
-// window's first draw places its spacers near where they end up: one line of the 14 px
-// body text with the cell's padding measured 33.2 px, and two lines 52.2 px. The view
-// measures its first drawn row and uses that.
-export const ROW_HEIGHT_ESTIMATE_PX = Object.freeze({ 1: 33, 2: 52 });
+// window's first draw places its spacers where they end up: one line of the 14 px body
+// text with the cell's padding measured 32.2 px in Chrome 152 (2026-11-20), and two lines
+// 52.2 px. The view measures its first drawn row and uses that, drawing the window again
+// when the estimate was more than half a pixel off, so tests/test_table_view_chrome.py
+// checks that each estimate is within that of what Chrome measures.
+export const ROW_HEIGHT_ESTIMATE_PX = Object.freeze({ 1: 32, 2: 52 });
 
 // Rows the window draws past each edge of the view, so a scroll the compositor moves
 // ahead of the page's own redraw shows rows already drawn: twelve rows is about a third
@@ -114,6 +136,26 @@ export const ROWS_OVERSCAN = 12;
 // How near the last row held, in rows, the window comes before the next page is read.
 export const READ_AHEAD_ROWS = 100;
 
+// Rows held. A windowed table keeps every page it reads, so what it holds grows as the
+// reader scrolls on, up to what its source parses; the view sets no bound of its own,
+// because at the delimited source's own bounds the cost stayed small and flat. Measured
+// with tests/dom/table-view-measure.mjs's `held` mode in headless Chrome 152 on the
+// shared 4-processor container at a load average of 8 to 14 (2026-11-20), scrolling a
+// 12-column table to its byte bound and a 2-column one to its row bound: at 139,676 rows
+// of 12 columns, the most the source parses of that shape, the JavaScript heap after a
+// collection was 38.8 MB and a window's redraw while scrolling 1.7 to 14.2 ms, as at
+// 10,200 rows (2 to 8.6 ms); at 500,000 rows of 2 columns, DELIMITED_MAX_ROWS, 83.5 MB
+// and 0.9 to 1.3 ms, its scroll box 16 million pixels tall. A source that parses more
+// than these brings a bound for it with it.
+
+// The most rows a printout of a windowed table draws: about what a table drawn whole may
+// be, a few times over. Drawing every row held for print is linear in them and stops the
+// page while it runs, as drawing a table whole is (WHOLE_TABLE_MAX_ROWS): in the
+// measurement above, 10,200 rows took 3.4 s from `beforeprint` to laid out, 50,200 rows
+// 6.8 to 15.7 s, and 500,000 rows of 2 columns 21.5 s, where 2,000 rows drawn whole took
+// 0.28 to 0.33 s. Past it the printout says which rows it holds and how to print others.
+export const PRINT_MAX_ROWS = 2000;
+
 // The pause after the reader stops typing in Search before the table asks again: the same
 // a quarter-second the shell's filter fields wait.
 export const SEARCH_DEBOUNCE_MS = 250;
@@ -122,13 +164,55 @@ export const SEARCH_DEBOUNCE_MS = 250;
 // after it leaves before the card is put away.
 export const CARD_DELAY_MS = 300;
 
+// The pause after the last move of the focus or scroll before the place is written to the
+// history entry. A held key or a long scroll restarts it, so it writes once, after it
+// stops: well under WebKit's 100 history writes in 30 seconds, the stricter of the two
+// engines' bounds, however long the reader keeps moving. Half a second is past a key's
+// repeat interval (about 33 ms at a fast rate) and a wheel's gaps, and short of the time
+// a reader takes to reach for Reload; the page's hiding writes it at once too.
+export const PLACE_SAVE_MS = 500;
+
+// How long the view gathers `file.changed` events before it reads its rows again. The
+// window is bounded, as createInventoryWatch's is (static/inventory-scope.js): the first
+// change starts it and later ones join it without extending it, so a writer that never
+// pauses still gets a refresh every window. The server polls a watched file at most
+// every FILE_WATCH_MIN_SPACING_S (metabrowser.file_watches), so two polls a window apart
+// make one read here; a refresh reads the rows held, which for a table drawn whole is up
+// to WHOLE_TABLE_MAX_ROWS rows in two requests.
+export const LIVE_COALESCE_MS = 300;
+
+// How far apart two live refreshes are, in multiples of what the last one took: the next
+// starts no sooner than this many times the last's duration after a change, nor sooner
+// than LIVE_COALESCE_MS. A refresh's cost is the server's, and for a delimited file it is
+// a parse of the whole file at each new generation (the parse cache is keyed by it):
+// measured for review A of #675 on a shared 4-core container at a load near 8, the read
+// after one line appended to a 15 MB, 199,096-row CSV took 0.47 to 0.66 s, and to a 1 MB
+// one 0.05 s. At twice the duration a writer that never pauses keeps the server reading
+// for a tab at most a third of the time, and a cheap file still refreshes every window.
+export const LIVE_COST_SPACING = 2;
+
+// How long a changed or arrived row keeps its flash: the length of the shared
+// `tree-row-flash-in` animation in static/styles.css, after which a row drawn again by a
+// scroll is drawn plainly.
+export const LIVE_FLASH_MS = 900;
+
 /** The history state key under which the view keeps its scroll and focused row. */
 const PLACE_KEY = "metabrowserTablePlace";
+/**
+ * Frames a saved place is tried for before it is given up: a fresh load lays the scroll
+ * box out within a frame or two of the first draw, and a place the box can no longer
+ * reach (a table that shrank) is not chased.
+ */
+const PLACE_TRIES = 10;
 /** Links made and kept for reuse, a few dozen, the filter values of a drawing's columns. */
 const HREFS_KEPT = 64;
 /** A key no source mints, which a row's record link holds until its key replaces it. */
 const RECORD_SLOT = "__record__";
-/** A cell's horizontal padding, both sides: --panel-cell-padding's 0.6rem twice, rounded up. */
+/**
+ * A cell's horizontal padding, both sides, where nothing is laid out to measure it, as in
+ * the browserless session: --panel-cell-padding's 0.6rem twice, rounded up. A browser
+ * measures it from a probe that carries that padding (measureCh).
+ */
 const CELL_PAD_PX = 20;
 
 /**
@@ -140,14 +224,15 @@ const CELL_PAD_PX = 20;
  *   navigation: Window["metabrowser"]["navigation"],
  *   tooltip?: Window["metabrowser"]["tooltip"],
  *   escapeHtml: Window["metabrowser"]["escapeHtml"],
- *   formatInteger?: Window["metabrowser"]["formatInteger"],
+ *   watchFile?: Window["metabrowser"]["watchFile"],
  * }} TableSdk
  */
 /**
  * @typedef {{
  *   sdk?: TableSdk,
- *   window?: Pick<Window, "addEventListener" | "removeEventListener" | "requestAnimationFrame" | "cancelAnimationFrame" | "setTimeout" | "clearTimeout" | "getSelection">,
+ *   window?: Pick<Window, "addEventListener" | "removeEventListener" | "requestAnimationFrame" | "cancelAnimationFrame" | "setTimeout" | "clearTimeout" | "getSelection"> & {performance?: Pick<Performance, "now">},
  *   history?: Pick<History, "back" | "replaceState" | "state">,
+ *   location?: Pick<Location, "search">,
  *   document?: Document,
  * }} TableHost
  */
@@ -156,14 +241,25 @@ const CELL_PAD_PX = 20;
  *   ready: Promise<void>,
  *   dispose(): void,
  *   state(): TableState,
+ *   refresh(): Promise<void>,
  * }} TableHandle
+ */
+/**
+ * What a source's view hands the table: the address of the table, and how to draw a
+ * JSON value in a record, which the table plugin, needing no other plugin, cannot. The
+ * structured plugin passes its inline tree; without it a JSON value is its text.
+ *
+ * @typedef {{
+ *   path: string,
+ *   renderJson?: (container: HTMLElement, value: unknown) => ({dispose?: () => void} | void),
+ * }} TableContext
  */
 
 /**
  * Mount the table at *ctx.path*, the address of one table, into *container*.
  *
  * @param {HTMLElement} container
- * @param {{path: string}} ctx
+ * @param {TableContext} ctx
  * @param {TableHost} [host]
  * @returns {TableHandle}
  */
@@ -171,6 +267,7 @@ export function mountTable(container, ctx, host = {}) {
   const sdk = /** @type {TableSdk} */ (host.sdk ?? window.metabrowser);
   const win = host.window ?? window;
   const history = host.history ?? window.history;
+  const loc = host.location ?? window.location;
   const doc = host.document ?? container.ownerDocument ?? document;
   const path = ctx.path;
   const abort = new AbortController();
@@ -185,8 +282,10 @@ export function mountTable(container, ctx, host = {}) {
   let fieldsByName = new Map();
   /** The rows held for the current question, in order. @type {TableRow[]} */
   let rows = [];
-  /** @type {TablePage | null} */
+  /** The answer held: the first page's count and columns, the last's cursor, every page's rows (`rows`). @type {(TablePage & {rows: TableRow[]}) | null} */
   let page = null;
+  /** The table id the schema answered for, "" for a source that is its own table. */
+  let tableId = "";
   /** The question `page` answers, whose rows its `next_after` continues. @type {TableState} */
   let answered = state;
   /** @type {string[]} */
@@ -213,8 +312,12 @@ export function mountTable(container, ctx, host = {}) {
   /** Whether reading the next page failed, so scrolling does not ask again. */
   let moreFailed = false;
   let printing = false;
-  /** Whether this view pushed the open record's history entry, so Back returns. */
-  let recordOpenedHere = false;
+  /**
+   * The query of the record entry this view pushed, so its Back link returns to the
+   * table entry behind it; null when the record was not opened from this table's grid.
+   * @type {string | null}
+   */
+  let pushedRecord = null;
   /** @type {Map<number, HTMLTableRowElement>} */
   const rowElements = new Map();
   /** @type {Map<string, Promise<unknown>>} */
@@ -223,6 +326,40 @@ export function mountTable(container, ctx, host = {}) {
   const hrefs = new Map();
   /** @type {string | null} */
   let recordTemplate = null;
+
+  // Live: the file watch, and what a change does while it is on or paused.
+  /** @type {(() => void) | null} */
+  let unwatch = null;
+  let paused = false;
+  /** Changes held back while paused. */
+  let heldBack = 0;
+  /** @type {ReturnType<typeof setTimeout> | 0} */
+  let liveTimer = 0;
+  let refreshing = false;
+  let refreshAgain = false;
+  /** Keys of rows that flash when they are next drawn. @type {Set<string>} */
+  let flashing = new Set();
+  /** @type {ReturnType<typeof setTimeout> | 0} */
+  let flashTimer = 0;
+  /** A notice that outlives a redraw: a live refresh that failed, or a column the view dropped. @type {HTMLElement | null} */
+  let liveNotice = null;
+  /** @type {HTMLElement | null} */
+  let stateNotice = null;
+  /** The open record's cells as last drawn, and whether it may now be another row. */
+  let shownRecord = { key: "", cells: "", moved: false };
+  /** How long the last live refresh took, in ms: the next is spaced by it. */
+  let liveCost = 0;
+  /** A change arrived while the page was hidden: one refresh when it is shown. */
+  let hiddenHeld = false;
+  /** What the live region last said of the offer and of a failed refresh, so neither repeats. */
+  let offerAnnounced = false;
+  let failureAnnounced = false;
+  /** A notice that the file's watch was refused, so the table does not follow it. @type {HTMLElement | null} */
+  let watchNotice = null;
+  /** The open record's controls by a name that survives a redraw, to put focus back on. @type {Map<string, HTMLElement>} */
+  let recordControls = new Map();
+  /** What the open record's JSON values drew, released when the record goes. @type {Array<{dispose?: () => void}>} */
+  let recordMounts = [];
 
   // ── Markup ───────────────────────────────────────────────────
   const root = el("div", { class: "table-view" });
@@ -244,13 +381,25 @@ export function mountTable(container, ctx, host = {}) {
     {
       type: "button",
       class: "btn table-columns-button",
-      "aria-haspopup": "true",
+      "aria-haspopup": "dialog",
       "aria-expanded": "false",
     },
     "Columns",
   );
-  toolbar.append(search, chips, status, fitNote, columnsButton);
+  // Shown once the file's watch is live; pressing it pauses the table, and again resumes
+  // it. Its label is its state, and its accessible name the action. The record pane has
+  // its own, since the toolbar is hidden while a record shows.
+  const livePill = el("button", { type: "button", class: "btn table-live-pill", hidden: "" });
+  const recordPill = el("button", { type: "button", class: "btn table-live-pill", hidden: "" });
+  // New rows that would land above the reader's place, offered rather than drawn.
+  const offer = el("button", { type: "button", class: "btn table-offer", hidden: "" });
+  // After the fit note, and before Columns, which its own margin holds at the toolbar's
+  // end, so neither moves as these come and go; once shown, each keeps its slot while
+  // hidden (styles.css).
+  toolbar.append(search, chips, status, fitNote, offer, livePill, columnsButton);
   const notes = el("div", { class: "table-notes" });
+  /** On paper only: which rows a windowed table printed, when rows past them were not read. */
+  const printNote = el("p", { class: "table-print-note" });
   const scroller = el("div", { class: "table-scroll" });
   const table = /** @type {HTMLTableElement} */ (el("table", { class: "data-grid" }));
   const colgroup = el("colgroup", {});
@@ -260,11 +409,16 @@ export function mountTable(container, ctx, host = {}) {
   scroller.append(table);
   const recordPane = el("div", { class: "table-record", hidden: "" });
   const live = el("div", { class: "sr-only", "aria-live": "polite" });
-  const fitStyle = el("style", {});
-  root.append(fitStyle, toolbar, notes, scroller, recordPane, live);
+  root.append(toolbar, notes, printNote, scroller, recordPane, live);
   container.replaceChildren(root);
   /** The open menu, and the control that opened it. @type {{menu: HTMLElement, opener: HTMLElement} | null} */
   let openMenu = null;
+  /**
+   * Whether the last press was on the open menu's opener: its click toggles the menu, so
+   * the focus leaving for it does not close the menu first. WebKit does not focus a button
+   * a press lands on, so there the focus leaves for nothing.
+   */
+  let pressOnOpener = false;
 
   // ── The address ──────────────────────────────────────────────
 
@@ -285,6 +439,13 @@ export function mountTable(container, ctx, host = {}) {
    * @param {{replace?: boolean}} [how]
    */
   function go(next, how = {}) {
+    // The place belongs to the entry the reader leaves: written to it now, or, for an entry
+    // replaced, not at all.
+    if (how.replace) {
+      cancelPlace();
+    } else {
+      flushPlace();
+    }
     const query = stateQuery(next);
     void sdk.navigation
       .open(query ? { path, query } : { path }, { replace: Boolean(how.replace) })
@@ -317,7 +478,10 @@ export function mountTable(container, ctx, host = {}) {
    */
   function recordHref(key) {
     recordTemplate ??= href(withRecord(state, RECORD_SLOT));
-    return recordTemplate.replace(RECORD_SLOT, new URLSearchParams({ k: key }).toString().slice(2));
+    // `record` is the query's last parameter (stateQuery), so its slot is the last
+    // occurrence: a search or filter value spelled the same comes before it.
+    const at = recordTemplate.lastIndexOf(RECORD_SLOT);
+    return `${recordTemplate.slice(0, at)}${new URLSearchParams({ k: key }).toString().slice(2)}${recordTemplate.slice(at + RECORD_SLOT.length)}`;
   }
 
   function onPopState() {
@@ -326,7 +490,7 @@ export function mountTable(container, ctx, host = {}) {
     }
     const current = sdk.navigation.current();
     if (current && normalPath(current.path) === normalPath(path)) {
-      recordOpenedHere = false;
+      cancelPlace();
       apply(parseState(current.query ?? ""));
     }
   }
@@ -340,6 +504,7 @@ export function mountTable(container, ctx, host = {}) {
   function apply(next) {
     const previous = state;
     state = next;
+    stateNotice = null;
     recordTemplate = null;
     if (doc.activeElement !== search) {
       search.value = state.q;
@@ -367,19 +532,23 @@ export function mountTable(container, ctx, host = {}) {
   }
 
   async function loadSchema() {
-    const schema = /** @type {{fields: TableField[]}} */ (
+    const schema = /** @type {{table?: unknown, fields: TableField[]}} */ (
       /** @type {unknown} */ (await ask("schema", {}, abort.signal))
     );
+    // The table this view shows, from the answer awaited before anything is drawn, so a
+    // record's links are right before, and whatever, the rows answer.
+    tableId = typeof schema.table === "string" ? schema.table : "";
     fields = schema.fields;
     fieldsByName = new Map(fields.map((field) => [field.name, field]));
     const reconciled = reconcileState(state, fields);
     if (reconciled.dropped.length) {
       state = reconciled.state;
       recordTemplate = null;
-      notice(
+      stateNotice = noticeBox(
         "warning",
         `This table has no ${reconciled.dropped.map((name) => `“${name}”`).join(", ")} now, so the view no longer uses it.`,
       );
+      notes.append(stateNotice);
       const query = stateQuery(state);
       void sdk.navigation
         .open(query ? { path, query } : { path }, { replace: true })
@@ -387,14 +556,36 @@ export function mountTable(container, ctx, host = {}) {
     }
   }
 
-  /** Read the first page of the current question, and the rest of a table small enough to draw whole. */
-  async function loadRows() {
+  /**
+   * Read the first page of the current question, and the rest of a table small enough to
+   * draw whole. With *keep*, the question is the one answered and this is its new answer
+   * (a refresh): it reads as far as the rows the reader has reached, and the drawing keeps
+   * their place by key. A question whose history entry holds a place (Back, or a reload)
+   * reads as far as that place, so its row and scroll are held to return to.
+   *
+   * A live refresh (*live*, liveRefresh) is a refresh that merges the new answer with
+   * the rows held (table-model.js's liveMerge): rows that would land above the reader's
+   * place are offered rather than drawn unless *accept*, what changed or arrived flashes,
+   * an answer whose rows are the same draws nothing, and a failure is the caller's, after
+   * the schema is read again in case the question moved.
+   *
+   * @param {{keep?: boolean, live?: {accept: boolean}}} [how]
+   */
+  async function loadRows(how = {}) {
     const seq = ++loadSeq;
     loading?.abort();
     const controller = new AbortController();
     loading = controller;
     moreFailed = false;
     const question = state;
+    const refresh = Boolean(how.keep) && page !== null && sameRows(answered, question);
+    const place = refresh ? null : savedPlace(question);
+    const reached = refresh
+      ? Math.max(drawn.end, focus.row + 1) + READ_AHEAD_ROWS
+      : place
+        ? Math.max(place.row + 1, Math.ceil(place.top / ROW_HEIGHT_ESTIMATE_PX[1])) +
+          READ_AHEAD_ROWS
+        : 0;
     root.setAttribute("aria-busy", "true");
     try {
       const first = /** @type {TablePage} */ (
@@ -402,34 +593,56 @@ export function mountTable(container, ctx, host = {}) {
           await ask("rows", rowsParams(question, { limit: FIRST_PAGE_ROWS }), controller.signal)
         )
       );
-      /** @type {TableRow[]} */
-      const held = [...first.rows];
-      let last = first;
+      let held = { ...first, rows: [...first.rows] };
       const whole =
         first.count_complete && first.count !== null && first.count <= WHOLE_TABLE_MAX_ROWS;
-      while (whole && last.next_after && held.length < WHOLE_TABLE_MAX_ROWS) {
-        last = /** @type {TablePage} */ (
+      const wanted = whole ? WHOLE_TABLE_MAX_ROWS : reached;
+      while (held.next_after && held.rows.length < wanted) {
+        const next = /** @type {TablePage} */ (
           /** @type {unknown} */ (
             await ask(
               "rows",
-              rowsParams(question, { after: last.next_after, limit: NEXT_PAGE_ROWS }),
+              rowsParams(question, { after: held.next_after, limit: NEXT_PAGE_ROWS }),
               controller.signal,
             )
           )
         );
-        held.push(...last.rows);
+        held = joinPage(held, next);
       }
       if (seq !== loadSeq || disposed) {
         return;
       }
-      rows = held;
-      page = { ...first, next_after: last.next_after };
+      if (how.live && refresh && held.columns.join("\n") !== columns.join("\n")) {
+        // The columns moved: the schema again, and the question with it if one it names
+        // is gone.
+        if (await questionMoved(seq)) {
+          return;
+        }
+      }
+      const kept = refresh ? keptPlace() : null;
+      if (how.live && kept && rows.length > 0 && held.rows.length > 0) {
+        const merged = liveDrawn(held, kept, how.live.accept);
+        if (merged === null) {
+          rows = held.rows;
+          page = held;
+          windowed = !whole || Boolean(held.next_after);
+          return;
+        }
+        held = { ...held, rows: merged };
+      }
+      rows = held.rows;
+      page = held;
       answered = question;
-      windowed = !whole || Boolean(last.next_after);
-      drawTable();
+      windowed = !whole || Boolean(held.next_after);
+      drawTable(kept);
+      watchFile();
     } catch (error) {
       if (seq === loadSeq && !disposed && !isAbort(error)) {
-        failed(error);
+        if (!how.live) {
+          failed(error);
+        } else if (!(await questionMoved(seq))) {
+          throw error;
+        }
       }
     } finally {
       if (seq === loadSeq) {
@@ -461,17 +674,11 @@ export function mountTable(container, ctx, host = {}) {
           )
         )
       );
-      if (seq !== loadSeq || disposed) {
+      if (seq !== loadSeq || disposed || !page) {
         return;
       }
-      rows.push(...next.rows);
-      page = {
-        ...page,
-        next_after: next.next_after,
-        complete: next.complete,
-        reason: next.reason,
-        examined: next.examined,
-      };
+      page = joinPage(page, next);
+      rows = page.rows;
       read = true;
     } catch (error) {
       if (seq === loadSeq && !disposed && !isAbort(error)) {
@@ -490,15 +697,331 @@ export function mountTable(container, ctx, host = {}) {
     }
   }
 
+  // ── Live ─────────────────────────────────────────────────────
+  //
+  // The view watches its file through the page's event stream (metabrowser.watchFile).
+  // A change, gathered for LIVE_COALESCE_MS and spaced by LIVE_COST_SPACING, asks the
+  // question again as refresh() does (loadRows with keep), reading as far as the reader
+  // has reached, and table-model.js's liveMerge says what changed: the rows under the
+  // reader stay where they were, rows that would land above them are offered, and the
+  // focus and the selection follow their rows by key. A read that fails keeps the rows on
+  // screen and says so. Nothing is read while the page is hidden.
+
+  function watchFile() {
+    if (unwatch || disposed || typeof sdk.watchFile !== "function") {
+      return;
+    }
+    unwatch = sdk.watchFile(path, {
+      generation: page?.generation ?? null,
+      onChange: onFileChange,
+      onState: (watchState, reason) => {
+        const shown = watchState === "live" || paused;
+        for (const pill of [livePill, recordPill]) {
+          pill.hidden = !shown;
+          if (shown) {
+            pill.dataset.slot = "";
+          }
+        }
+        drawPill();
+        // A refused watch is asked again when the page's other watches make room.
+        watchNotice =
+          watchState === "refused"
+            ? noticeBox(
+                "warning",
+                `This table is not following changes to its file now${reason === "too_many_watches" ? ": this page watches as many files as it may" : ""}.`,
+              )
+            : null;
+        drawNotes();
+      },
+    });
+  }
+
+  /** @param {{path: string, generation: string | null}} change */
+  function onFileChange(change) {
+    if (disposed || (page && change.generation === page.generation)) {
+      return;
+    }
+    if (paused) {
+      heldBack += 1;
+      drawPill();
+      return;
+    }
+    scheduleLive();
+  }
+
+  /** Whether the page is hidden, when nothing reads a refresh. */
+  function pageHidden() {
+    return doc.visibilityState === "hidden";
+  }
+
+  function scheduleLive() {
+    if (liveTimer || disposed || paused) {
+      return;
+    }
+    if (pageHidden()) {
+      hiddenHeld = true;
+      return;
+    }
+    liveTimer = win.setTimeout(
+      () => {
+        liveTimer = 0;
+        if (pageHidden()) {
+          hiddenHeld = true;
+        } else {
+          void liveRefresh();
+        }
+      },
+      Math.max(LIVE_COALESCE_MS, LIVE_COST_SPACING * liveCost),
+    );
+  }
+
+  /** The page was shown: one refresh for whatever changed while it was hidden. */
+  function onVisibility() {
+    if (!pageHidden() && hiddenHeld) {
+      hiddenHeld = false;
+      scheduleLive();
+    }
+  }
+
+  /** @returns {number} */
+  function now() {
+    return win.performance?.now() ?? Date.now();
+  }
+
+  function drawPill() {
+    for (const pill of [livePill, recordPill]) {
+      pill.textContent = livePillText(paused, heldBack);
+      pill.setAttribute(
+        "aria-label",
+        `${pill.textContent}: ${paused ? "resume live updates" : "pause live updates"}`,
+      );
+      pill.dataset.tipText = paused
+        ? "Changes to the file are held back; press to show them"
+        : "The table follows changes to its file; press to pause it";
+    }
+  }
+
+  function togglePaused() {
+    paused = !paused;
+    const held = heldBack;
+    if (!paused) {
+      heldBack = 0;
+      if (held) {
+        scheduleLive();
+      }
+    }
+    drawPill();
+    live.textContent = paused ? "Paused" : "Live";
+  }
+
+  /**
+   * Ask the question again, as refresh() does, and draw what changed. With *accept*, new
+   * rows above the reader's place are drawn too, and the view goes to the first of them.
+   *
+   * @param {boolean} [accept]
+   */
+  async function liveRefresh(accept = false) {
+    if (disposed || !page) {
+      return;
+    }
+    if (refreshing) {
+      refreshAgain = true;
+      return;
+    }
+    refreshing = true;
+    const began = now();
+    try {
+      if (state.record && !recordPane.hidden) {
+        void showRecord(state.record, true);
+      }
+      await loadRows({ keep: true, live: { accept } });
+    } catch (error) {
+      if (!disposed && !isAbort(error)) {
+        liveFailed(error);
+      }
+    } finally {
+      refreshing = false;
+      liveCost = now() - began;
+      if (refreshAgain) {
+        refreshAgain = false;
+        scheduleLive();
+      }
+    }
+  }
+
+  /**
+   * Merge a live refresh's answer, *held*, into the rows drawn: the rows to draw, or null
+   * when they read the same and need no drawing. Rows that would land above the first
+   * row on screen are offered, and left out, unless *accept*; with *accept*, *kept* puts
+   * the view and the keyboard on the first row that arrived.
+   *
+   * @param {TablePage} held
+   * @param {ReturnType<typeof keptPlace>} kept
+   * @param {boolean} accept
+   * @returns {TableRow[] | null}
+   */
+  function liveDrawn(held, kept, accept) {
+    const atTop = scroller.scrollTop <= 0;
+    const anchorAt = atTop ? -1 : rows.findIndex((row) => row.key === kept.anchorKey);
+    const merged = liveMerge({
+      before: rows,
+      after: held.rows,
+      anchor: anchorAt >= 0 ? anchorAt : null,
+      accept,
+    });
+    const same =
+      held.columns.join("\n") === columns.join("\n") &&
+      merged.changed.length === 0 &&
+      merged.arrived.length === 0 &&
+      merged.offered === 0 &&
+      merged.rows.length === rows.length &&
+      merged.rows.every((row, index) => row.key === rows[index].key);
+    liveNotice = null;
+    failureAnnounced = false;
+    drawOffer(merged.offered);
+    if (same) {
+      // Nothing the grid shows changed (a touched file, or a change outside the
+      // question): the rows, the selection, and any text selected in them stay drawn.
+      status.textContent = countText(held, isFiltered(state));
+      drawNotes();
+      return null;
+    }
+    flashing = new Set([...merged.changed, ...merged.arrived]);
+    win.clearTimeout(flashTimer);
+    flashTimer = win.setTimeout(() => {
+      flashTimer = 0;
+      flashing = new Set();
+    }, LIVE_FLASH_MS);
+    kept.live = true;
+    const arrived = accept ? merged.arrived[0] : undefined;
+    if (arrived !== undefined) {
+      // The offer's button is gone: the keyboard goes to the first row it drew.
+      kept.header = null;
+      kept.focusKey = arrived;
+      kept.anchorKey = arrived;
+      kept.offset = 0;
+      kept.hadFocus = true;
+    } else if (atTop) {
+      // At the top nothing is above the reader: rows that arrived first are in view.
+      kept.anchorKey = null;
+      kept.top = 0;
+    }
+    return merged.rows;
+  }
+
+  /**
+   * Read the schema again: whether the question the rows answer moved, as when a column
+   * it named is gone, in which case its rows are read afresh.
+   *
+   * @param {number} seq the load the refresh began in
+   */
+  async function questionMoved(seq) {
+    await loadSchema();
+    if (seq !== loadSeq || disposed) {
+      return true;
+    }
+    if (sameRows(answered, state)) {
+      return false;
+    }
+    await loadRows();
+    return true;
+  }
+
+  /** @param {number} count */
+  function drawOffer(count) {
+    offer.hidden = count === 0;
+    // Hidden, it keeps its last words, so its slot keeps their width.
+    if (count) {
+      offer.textContent = `${formatCount(count)} new ${count === 1 ? "row" : "rows"}`;
+      offer.dataset.slot = "";
+      offer.dataset.tipText = "Rows that arrived above this place; press to show them";
+      // Said when the offer appears, not again as its count grows while rows arrive.
+      if (!offerAnnounced) {
+        live.textContent = offer.textContent;
+      }
+    }
+    offerAnnounced = count > 0;
+  }
+
+  /**
+   * A live read failed: keep the rows on screen, and say why they may be old.
+   *
+   * @param {unknown} error
+   */
+  function liveFailed(error) {
+    const payload = /** @type {{payload?: {code?: unknown}}} */ (error)?.payload;
+    const code = typeof payload?.code === "string" ? payload.code : null;
+    liveNotice = noticeBox("warning", liveFailure(code));
+    drawNotes();
+    // Said once, until a refresh reads the file again.
+    if (!failureAnnounced) {
+      failureAnnounced = true;
+      live.textContent = liveNotice.textContent ?? "";
+    }
+  }
+
   // ── Drawing the grid ─────────────────────────────────────────
 
-  function drawTable() {
+  /**
+   * Where the reader is in the answer held, by row key, so a new answer to the same
+   * question can put them back: the focused row (or header control), the row at the top
+   * of the view and how far into it the view is scrolled, and the selection's ends.
+   */
+  function keptPlace() {
+    const top = scroller.scrollTop;
+    const anchor = Math.max(0, Math.min(rows.length - 1, Math.floor(top / rowHeight)));
+    return {
+      header: focus.row < 0 ? focus.col : null,
+      focusKey: focus.row >= 0 ? (rows[focus.row]?.key ?? null) : null,
+      col: focus.col,
+      anchorKey: /** @type {string | null} */ (rows[anchor]?.key ?? null),
+      offset: top - anchor * rowHeight,
+      top,
+      selection: selection
+        ? { anchor: rows[selection.anchor]?.key ?? null, head: rows[selection.head]?.key ?? null }
+        : null,
+      hadFocus: scroller.contains(doc.activeElement),
+      // A live refresh's (liveDrawn), which says nothing of the count in the live region.
+      live: false,
+    };
+  }
+
+  /**
+   * Draw the answer held. A new question's answer starts at its first row, unless Back
+   * restores a place below; a new answer to the same question (*kept*, from keptPlace)
+   * keeps the reader's rows by key, and the first row in view where it was.
+   *
+   * @param {ReturnType<typeof keptPlace> | null} [kept]
+   */
+  function drawTable(kept = null) {
     if (!page) {
       return;
     }
-    // A new answer starts at its first row, unless Back restores a place below.
-    scroller.scrollTop = 0;
-    focus = { row: 0, col: -1 };
+    // A place held for the last answer is not this one's; restorePlace holds this one's.
+    releasePlace();
+    // A header control the keyboard was on (a sort just pressed) keeps the keyboard there.
+    const headAt = headControls().indexOf(/** @type {HTMLElement} */ (doc.activeElement));
+    const linesBefore = rowLines;
+    if (kept) {
+      const at = keyIndex();
+      const row = kept.focusKey !== null ? (at.get(kept.focusKey) ?? -1) : -1;
+      focus =
+        kept.header !== null
+          ? { row: -1, col: kept.header }
+          : row >= 0
+            ? { row, col: kept.col }
+            : { row: Math.max(0, Math.min(focus.row, rows.length - 1)), col: -1 };
+      const ends = kept.selection;
+      const anchor = ends?.anchor != null ? (at.get(ends.anchor) ?? -1) : -1;
+      const head = ends?.head != null ? (at.get(ends.head) ?? -1) : -1;
+      selection = anchor >= 0 && head >= 0 ? { anchor, head } : null;
+    } else {
+      scroller.scrollTop = 0;
+      focus = headAt >= 0 ? { row: -1, col: headAt } : { row: 0, col: -1 };
+      selection = null;
+      // Nothing in a new answer flashes: only a live read again says what changed.
+      flashing = new Set();
+    }
     const sample = rows.slice(0, FIRST_PAGE_ROWS);
     columns = [...page.columns];
     // Widths hold for the table's life, from the first rows that showed each column.
@@ -507,11 +1030,16 @@ export function mountTable(container, ctx, host = {}) {
     if (sample.length) {
       widths = measured.widths;
     }
-    rowHeight = ROW_HEIGHT_ESTIMATE_PX[rowLines];
-    rowHeightMeasured = false;
-    selection = null;
+    // A refresh keeps the height measured while the rows' lines are the same.
+    if (!kept || rowLines !== linesBefore) {
+      rowHeight = ROW_HEIGHT_ESTIMATE_PX[rowLines];
+      rowHeightMeasured = false;
+    }
     status.textContent = countText(page, isFiltered(state));
-    live.textContent = status.textContent;
+    // A live refresh says only what it offers or what failed, each once.
+    if (!kept?.live) {
+      live.textContent = status.textContent;
+    }
     drawNotes();
     if (rows.length === 0) {
       thead.replaceChildren();
@@ -524,19 +1052,76 @@ export function mountTable(container, ctx, host = {}) {
       return;
     }
     table.hidden = false;
+    if (recordPane.hidden) {
+      toolbar.hidden = false;
+    }
     table.classList.toggle("table-lines-2", rowLines === 2);
+    // A grid whether drawn whole or windowed: its rows take focus and can be selected.
+    table.setAttribute("role", "grid");
+    table.setAttribute("aria-multiselectable", "true");
     if (windowed) {
-      table.setAttribute("role", "grid");
       table.setAttribute(
         "aria-rowcount",
         page.count_complete && page.count !== null ? String(page.count + 1) : "-1",
       );
     } else {
-      table.removeAttribute("role");
       table.removeAttribute("aria-rowcount");
     }
+    if (kept) {
+      const anchor = kept.anchorKey !== null ? (keyIndex().get(kept.anchorKey) ?? -1) : -1;
+      refit(true);
+      scroller.scrollTop = anchor >= 0 ? anchor * rowHeight + kept.offset : kept.top;
+      if (windowed) {
+        drawWindow(true);
+      }
+      syncFocusable();
+      if (kept.hadFocus) {
+        focusElement()?.focus({ preventScroll: true });
+      }
+      return;
+    }
     refit(true);
-    restorePlace();
+    if (!restorePlace() && focus.row < 0) {
+      syncFocusable();
+      focusElement()?.focus({ preventScroll: true });
+    }
+  }
+
+  /** Each held row's index by its key. */
+  function keyIndex() {
+    return new Map(rows.map((row, index) => [row.key, index]));
+  }
+
+  /**
+   * The header's controls, in order: each column's sort button, if it sorts, then its
+   * menu button. They are the header's stops in the grid's roving focus.
+   *
+   * @returns {HTMLElement[]}
+   */
+  function headControls() {
+    /** @type {HTMLElement[]} */
+    const found = [];
+    const row = /** @type {HTMLElement | null} */ (thead.firstChild);
+    for (const th of /** @type {HTMLElement[]} */ (Array.from(row?.childNodes ?? []))) {
+      for (const node of /** @type {HTMLElement[]} */ (Array.from(th.childNodes ?? []))) {
+        if (node.localName === "button") {
+          found.push(node);
+        }
+      }
+    }
+    return found;
+  }
+
+  /** Each shown column's first header control, as headControls counts them. */
+  function headStarts() {
+    /** @type {number[]} */
+    const starts = [];
+    let count = 0;
+    for (const name of fit.visible) {
+      starts.push(count);
+      count += fieldsByName.get(name)?.sortable ? 2 : 1;
+    }
+    return starts;
   }
 
   /**
@@ -566,6 +1151,16 @@ export function mountTable(container, ctx, host = {}) {
       fitNote.dataset.tipText = `Hidden at this width: ${fit.hidden.join(", ")}. Widen the pane, or choose columns.`;
     }
     table.classList.toggle("table-pinned", fit.pinned);
+    // Columns hidden to fit are hidden from the right, so each drawn cell's index is its
+    // place among all of them, and the count says there are more.
+    if (fit.hidden.length) {
+      table.setAttribute(
+        "aria-colcount",
+        String(fit.visible.length + fit.hidden.length + (positional() ? 1 : 0)),
+      );
+    } else {
+      table.removeAttribute("aria-colcount");
+    }
     if (changed || force) {
       drawHeader();
       if (windowed && !printing) {
@@ -577,7 +1172,7 @@ export function mountTable(container, ctx, host = {}) {
     }
   }
 
-  /** One character's width in the table's face, and in a literal value's. @type {{sans: number, mono: number} | null} */
+  /** One character's width in the table's face, and in a literal value's, and a cell's padding. @type {{sans: number, mono: number, pad: number} | null} */
   let chPx = null;
   function measureCh() {
     if (chPx) {
@@ -595,7 +1190,12 @@ export function mountTable(container, ctx, host = {}) {
       probe.remove();
       return measured > 0 ? measured / 10 : 8;
     };
-    chPx = { sans: width(""), mono: width("data-literal") };
+    // A cell's padding, both sides: a probe carrying it and nothing else is that wide.
+    const padProbe = el("span", { class: "table-pad-probe", "aria-hidden": "true" });
+    table.append(padProbe);
+    const pad = padProbe.getBoundingClientRect?.().width ?? 0;
+    padProbe.remove();
+    chPx = { sans: width(""), mono: width("data-literal"), pad: pad > 0 ? pad : CELL_PAD_PX };
     return chPx;
   }
 
@@ -609,7 +1209,7 @@ export function mountTable(container, ctx, host = {}) {
     const ch = measureCh();
     return (
       Math.ceil((widths[name] ?? 8) * (literalField(fieldsByName.get(name)) ? ch.mono : ch.sans)) +
-      CELL_PAD_PX
+      ch.pad
     );
   }
 
@@ -624,7 +1224,7 @@ export function mountTable(container, ctx, host = {}) {
       page?.count ?? 0,
       ...rows.slice(0, FIRST_PAGE_ROWS).map((row) => rowPosition(row.key) ?? 0),
     );
-    return Math.ceil((String(largest).length + 2) * measureCh().sans) + CELL_PAD_PX;
+    return Math.ceil((String(largest).length + 2) * measureCh().sans) + measureCh().pad;
   }
 
   /** Whether rows are named by position, so the row's own column shows its number. */
@@ -679,14 +1279,14 @@ export function mountTable(container, ctx, host = {}) {
       const arrow = sorted ? (state.order === "desc" ? " ↓" : " ↑") : "";
       const button = el(
         "button",
-        { type: "button", class: "table-sort", "data-field": name },
+        { type: "button", class: "table-sort", "data-field": name, tabindex: "-1" },
         el("span", { class: "table-head-label" }, title),
         el("span", { class: "table-sort-arrow", "aria-hidden": "true" }, arrow),
       );
       button.dataset.tipText = sorted
         ? state.order === "asc"
           ? `Sorted ascending; press to sort descending`
-          : `Sorted descending; press to show the file's order`
+          : `Sorted descending; press to show the table's own order`
         : "Sort ascending";
       th.append(button);
     } else {
@@ -703,7 +1303,9 @@ export function mountTable(container, ctx, host = {}) {
           type: "button",
           class: "table-head-menu",
           "data-field": name,
-          "aria-haspopup": "true",
+          tabindex: "-1",
+          "aria-haspopup": "dialog",
+          "aria-expanded": "false",
           "aria-label": `${title}: sort, filter, or hide`,
         },
         "▾",
@@ -712,11 +1314,16 @@ export function mountTable(container, ctx, host = {}) {
     return th;
   }
 
+  /** Draw every row held, or for print, the first PRINT_MAX_ROWS of them. */
   function drawAllRows() {
     rowElements.clear();
-    const drawnRows = rows.map((row, index) => rowElement(row, index));
+    const end = printing ? Math.min(rows.length, PRINT_MAX_ROWS) : rows.length;
+    const drawnRows = [];
+    for (let index = 0; index < end; index++) {
+      drawnRows.push(rowElement(rows[index], index));
+    }
     tbody.replaceChildren(...drawnRows);
-    drawn = { start: 0, end: rows.length };
+    drawn = { start: 0, end };
     syncFocusable();
     measureRowHeight();
   }
@@ -743,7 +1350,8 @@ export function mountTable(container, ctx, host = {}) {
       maybeReadMore(range);
       return;
     }
-    const hadFocus = root.contains(doc.activeElement) && doc.activeElement !== search;
+    // The keyboard in the grid, on a row this draw replaces; not in a menu or the toolbar.
+    const hadFocus = scroller.contains(doc.activeElement);
     drawn = range;
     rowElements.clear();
     const span = fit.visible.length + (positional() ? 1 : 0);
@@ -821,6 +1429,9 @@ export function mountTable(container, ctx, host = {}) {
     );
     if (windowed) {
       tr.setAttribute("aria-rowindex", String(index + 2));
+    }
+    if (flashing.has(row.key)) {
+      tr.classList.add("table-row-flash");
     }
     if (
       selection &&
@@ -924,9 +1535,9 @@ export function mountTable(container, ctx, host = {}) {
     return { path: address, query: stateQuery(withRecord(EMPTY_STATE, ref.key)) };
   }
 
-  /** The table id the rows route answered for, "" for a source that is its own table. */
+  /** The table id the schema answered for, "" for a source that is its own table. */
   function tableOf() {
-    return /** @type {{table?: string} | null} */ (page)?.table ?? "";
+    return tableId;
   }
 
   function drawEmpty() {
@@ -934,22 +1545,26 @@ export function mountTable(container, ctx, host = {}) {
     if (refused !== null) {
       // A sort that could not be done in time answers no rows; the table has them.
       const name = fieldsByName.get(refused)?.title || refused;
-      notice(
+      // Asking again may succeed: a source can spend the time on something other than
+      // the sort, as the delimited source's parse of the file does on its first request.
+      const box = noticeBox(
         "warning",
         `This table is too large to sort by “${name}” in the time a request may take.`,
         el(
           "a",
           { href: href(withSort(state, refused, null)), class: "table-unsort" },
-          "Show the file’s order",
+          "Show the table’s own order",
         ),
       );
+      box.append(" or ", el("a", { href: href(state), class: "table-retry" }, "try again"), ".");
+      notes.append(box);
       return;
     }
     const filtered = isFiltered(state);
     const message = el(
       "p",
       { class: "table-empty" },
-      filtered ? "No rows match. " : "This table has no rows.",
+      filtered && page ? `${noMatchText(page)} ` : "This table has no rows.",
     );
     if (filtered) {
       const clear = el(
@@ -966,6 +1581,11 @@ export function mountTable(container, ctx, host = {}) {
     notes.replaceChildren();
     for (const text of page ? pageNotes(page) : []) {
       notice("warning", text);
+    }
+    for (const kept of [stateNotice, liveNotice, watchNotice]) {
+      if (kept) {
+        notes.append(kept);
+      }
     }
   }
 
@@ -1011,6 +1631,13 @@ export function mountTable(container, ctx, host = {}) {
     table.hidden = true;
     status.textContent = "";
     notes.replaceChildren();
+    if (errorCode(error) === "source_unreadable") {
+      // The file is there but holds no table, as a JSON document that is not a list of
+      // records: the source's own words say why, and no query of the view can change it.
+      toolbar.hidden = true;
+      notice("warning", errorText(error));
+      return;
+    }
     notice(
       "error",
       `The table could not be read. ${errorText(error)}`,
@@ -1063,6 +1690,9 @@ export function mountTable(container, ctx, host = {}) {
 
   /** The element the focus stands on, if it is drawn. */
   function focusElement() {
+    if (focus.row < 0) {
+      return headControls()[focus.col] ?? null;
+    }
     const tr = rowElements.get(focus.row);
     if (!tr) {
       return null;
@@ -1090,6 +1720,9 @@ export function mountTable(container, ctx, host = {}) {
     for (const [index, tr] of rowElements) {
       tr.setAttribute("tabindex", index === focus.row && focus.col < 0 ? "0" : "-1");
     }
+    for (const control of headControls()) {
+      control.setAttribute("tabindex", "-1");
+    }
     const target = focusElement();
     if (target) {
       target.setAttribute("tabindex", "0");
@@ -1107,19 +1740,20 @@ export function mountTable(container, ctx, host = {}) {
       previous.setAttribute("tabindex", "-1");
     }
     focus = next;
-    if (windowed && !printing) {
+    if (windowed && !printing && next.row >= 0) {
       revealRow(next.row);
     }
     syncFocusable();
     const target = focusElement();
     if (target) {
       target.focus({ preventScroll: true });
-      if (!windowed) {
+      // The header stays at the top of the box as it scrolls, so it needs no scroll.
+      if (!windowed && next.row >= 0) {
         target.scrollIntoView?.({ block: "nearest" });
       }
       showCardFor(target);
     }
-    rememberPlace();
+    schedulePlace();
   }
 
   /**
@@ -1161,6 +1795,7 @@ export function mountTable(container, ctx, host = {}) {
 
   /** @param {KeyboardEvent} event */
   function onKeyDown(event) {
+    releasePlace();
     // A chord is the browser's: Command-R reloads, Command-A selects (tests/test_modified_keys.py).
     if (event.altKey || event.ctrlKey || event.metaKey) {
       return;
@@ -1184,6 +1819,8 @@ export function mountTable(container, ctx, host = {}) {
       rows: rows.length,
       cols: fit.visible.length,
       pageRows: Math.max(1, Math.floor((scroller.clientHeight || rowHeight * 10) / rowHeight) - 1),
+      heads: headControls().length,
+      headStarts: headStarts(),
     });
     if (step.action === "none") {
       return;
@@ -1199,13 +1836,15 @@ export function mountTable(container, ctx, host = {}) {
         moveFocus({ row: step.focus.row, col: -1 });
         break;
       case "open":
-        openRecord(rows[focus.row].key);
+        if (rows[focus.row]) {
+          openRecord(rows[focus.row].key);
+        }
         break;
       case "follow": {
         const link = focusElement();
         if (link?.localName === "a") {
           activateLink(/** @type {HTMLAnchorElement} */ (link));
-        } else {
+        } else if (rows[focus.row]) {
           openRecord(rows[focus.row].key);
         }
         break;
@@ -1305,6 +1944,9 @@ export function mountTable(container, ctx, host = {}) {
       go(EMPTY_STATE);
     } else if (link.classList.contains("table-unsort")) {
       go(withSort(state, state.sort ?? "", null));
+    } else if (link.classList.contains("table-retry")) {
+      // The same question again, from its first page.
+      void loadRows();
     } else if (link.classList.contains("table-position")) {
       const tr = ancestor(link, (node) => node.localName === "tr");
       const index = Number(tr?.dataset.index ?? 0);
@@ -1344,7 +1986,11 @@ export function mountTable(container, ctx, host = {}) {
     }
     scheduleWindow();
     hideCard();
-    schedulePlace();
+    if (pendingPlace) {
+      holdPlace();
+    } else {
+      schedulePlace();
+    }
   }
 
   let frame = 0;
@@ -1390,7 +2036,7 @@ export function mountTable(container, ctx, host = {}) {
     }
     closeMenu(false);
     const shown = new Set(state.cols ?? fit.visible);
-    const menu = el("div", { class: "menu table-menu", role: "group", "aria-label": "Columns" });
+    const menu = el("div", { class: "menu table-menu", role: "dialog", "aria-label": "Columns" });
     const plain = fields.filter((field) => !field.ref);
     const refs = fields.filter((field) => field.ref);
     for (const [heading, group] of /** @type {Array<[string, TableField[]]>} */ ([
@@ -1447,14 +2093,15 @@ export function mountTable(container, ctx, host = {}) {
     closeMenu(false);
     const name = button.dataset.field ?? "";
     const field = fieldsByName.get(name);
+    // A dialog, not a menu: it holds a form, and Tab, not the arrows, moves through it.
     const menu = el("div", {
       class: "menu table-menu",
-      role: "menu",
-      "aria-label": `${field?.title || name}`,
+      role: "dialog",
+      "aria-label": `${field?.title || name}: sort, filter, or hide`,
     });
     /** @param {string} label @param {() => void} run */
     const item = (label, run) => {
-      const control = el("button", { type: "button", class: "menu-item", role: "menuitem" }, label);
+      const control = el("button", { type: "button", class: "menu-item" }, label);
       control.addEventListener("click", () => {
         closeMenu(true);
         run();
@@ -1465,7 +2112,7 @@ export function mountTable(container, ctx, host = {}) {
       item("Sort ascending", () => go(withSort(state, name, "asc")));
       item("Sort descending", () => go(withSort(state, name, "desc")));
       if (state.sort === name) {
-        item("The file's order", () => go(withSort(state, name, null)));
+        item("The table's own order", () => go(withSort(state, name, null)));
       }
     } else if (field?.sort_note) {
       menu.append(el("div", { class: "table-menu-note" }, `Not sortable: ${field.sort_note}`));
@@ -1473,10 +2120,12 @@ export function mountTable(container, ctx, host = {}) {
     if (field?.filterable) {
       menu.append(filterForm(name, field));
     }
+    // Which columns show is how the table is viewed, not a step Back walks: the address
+    // is replaced, as the Columns menu replaces it.
     item("Hide column", () => {
       const current = state.cols ? [...state.cols] : [...fit.visible];
       const next = current.filter((item) => item !== name);
-      go(withColumns(state, next.length ? next : null));
+      go(withColumns(state, next.length ? next : null), { replace: true });
     });
     showMenu(menu, button);
   }
@@ -1532,7 +2181,20 @@ export function mountTable(container, ctx, host = {}) {
    */
   function showMenu(menu, opener) {
     openMenu = { menu, opener };
+    pressOnOpener = false;
     opener.setAttribute("aria-expanded", "true");
+    // Focusable itself, so a press on its text keeps the focus in it; it closes when the
+    // focus leaves it for anything but its opener, as Tab past its last control does.
+    menu.setAttribute("tabindex", "-1");
+    menu.addEventListener("focusout", (event) => {
+      const to = /** @type {Node | null} */ (/** @type {FocusEvent} */ (event).relatedTarget);
+      if (pressOnOpener) {
+        return;
+      }
+      if (openMenu?.menu === menu && !(to && (menu.contains(to) || opener.contains(to)))) {
+        closeMenu(false);
+      }
+    });
     root.append(menu);
     const anchor = opener.getBoundingClientRect?.();
     const frameBox = root.getBoundingClientRect?.();
@@ -1553,6 +2215,7 @@ export function mountTable(container, ctx, host = {}) {
     }
     const { menu, opener } = openMenu;
     openMenu = null;
+    pressOnOpener = false;
     opener.setAttribute("aria-expanded", "false");
     menu.remove();
     if (restore && opener.isConnected) {
@@ -1562,6 +2225,8 @@ export function mountTable(container, ctx, host = {}) {
 
   /** @param {PointerEvent} event */
   function onPointerDown(event) {
+    releasePlace();
+    pressOnOpener = Boolean(openMenu?.opener.contains(/** @type {Node} */ (event.target)));
     if (openMenu) {
       const target = /** @type {Node} */ (event.target);
       if (!openMenu.menu.contains(target) && !openMenu.opener.contains(target)) {
@@ -1574,34 +2239,61 @@ export function mountTable(container, ctx, host = {}) {
 
   /** @param {string} key */
   function openRecord(key) {
-    recordOpenedHere = true;
-    rememberPlace();
-    go(withRecord(state, key));
+    const next = withRecord(state, key);
+    // go writes the place to the table's entry before it pushes the record's.
+    go(next);
+    pushedRecord = stateQuery(next);
   }
 
+  /**
+   * Back to the table. When the browser's address is the record entry this view pushed
+   * from the grid, the table's entry is the one behind it, so this is Back. Otherwise (a
+   * record opened from its link, one a link inside a record opened, or a push the browser
+   * dropped, which left the address as it was) the table's address replaces the entry, so
+   * the reader never leaves the table for whatever page came before it.
+   */
   function closeRecord() {
-    if (recordOpenedHere) {
-      recordOpenedHere = false;
+    const behind = pushedRecord !== null && addressQuery() === pushedRecord;
+    pushedRecord = null;
+    if (behind) {
       history.back();
       return;
     }
     go(withRecord(state, null), { replace: true });
   }
 
+  /**
+   * The query the browser's address holds, as the view writes it, or null when it cannot
+   * be read. The shell's own target follows the view even when the browser drops a
+   * history write; the address does not.
+   */
+  function addressQuery() {
+    try {
+      return stateQuery(parseState((loc.search ?? "").replace(/^\?/, "")));
+    } catch {
+      return null;
+    }
+  }
+
   let recordSeq = 0;
-  /** @param {string} key */
-  async function showRecord(key) {
+  /**
+   * @param {string} key
+   * @param {boolean} [again] a live refresh of the record on screen
+   */
+  async function showRecord(key, again = false) {
     const seq = ++recordSeq;
-    hideCard();
-    closeMenu(false);
-    toolbar.hidden = true;
-    notes.hidden = true;
-    scroller.hidden = true;
-    recordPane.hidden = false;
-    recordPane.setAttribute("aria-busy", "true");
+    if (!again) {
+      hideCard();
+      closeMenu(false);
+      toolbar.hidden = true;
+      notes.hidden = true;
+      scroller.hidden = true;
+      recordPane.hidden = false;
+      recordPane.setAttribute("aria-busy", "true");
+    }
     /** @type {Record<string, string>} */
     const params = { key };
-    if (page?.generation && rowPosition(key) !== null) {
+    if (!again && page?.generation && rowPosition(key) !== null) {
       params.generation = page.generation;
     }
     try {
@@ -1614,11 +2306,34 @@ export function mountTable(container, ctx, host = {}) {
       if (fields.length === 0) {
         await schemaReady;
       }
-      drawRecord(record);
+      // A row named by position may be another row once its file changed: the server
+      // says so for a key read under an older generation, and the view when a live
+      // refresh finds other cells at the position.
+      const cells = JSON.stringify(record.cells);
+      const shown = shownRecord;
+      if (shownRecord.key !== key) {
+        shownRecord = { key, cells, moved: false };
+      } else if (again && record.positional && cells !== shownRecord.cells) {
+        shownRecord = { key, cells, moved: true };
+      } else if (again) {
+        shownRecord = { ...shownRecord, cells };
+      }
+      if (
+        again &&
+        shown.key === key &&
+        shown.cells === cells &&
+        shown.moved === shownRecord.moved
+      ) {
+        // Read again and the same: the pane, its focus, its scroll, and any text selected
+        // in it stay as they are.
+        return;
+      }
+      drawRecord(shownRecord.moved ? { ...record, generation_moved: true } : record, again);
     } catch (error) {
       if (seq !== recordSeq || disposed || isAbort(error)) {
         return;
       }
+      releaseRecord();
       recordPane.replaceChildren(
         backLink(),
         noticeBox("error", `This record could not be read. ${errorText(error)}`),
@@ -1640,8 +2355,27 @@ export function mountTable(container, ctx, host = {}) {
    * }} RecordAnswer
    */
 
-  /** @param {RecordAnswer} record */
-  function drawRecord(record) {
+  /** Dispose of what the open record's JSON values drew. */
+  function releaseRecord() {
+    const mounts = recordMounts;
+    recordMounts = [];
+    for (const mount of mounts) {
+      mount.dispose?.();
+    }
+  }
+
+  /**
+   * @param {RecordAnswer} record
+   * @param {boolean} [again] a live redraw, which keeps the focus on its control and the
+   *   pane's scroll, where a record opened puts the focus on Back
+   */
+  function drawRecord(record, again = false) {
+    const focused = again
+      ? [...recordControls].find(([, control]) => control === doc.activeElement)?.[0]
+      : undefined;
+    const scrolled = recordPane.scrollTop;
+    recordControls = new Map();
+    releaseRecord();
     const position = rowPosition(record.key);
     const heading = el(
       "h2",
@@ -1649,18 +2383,20 @@ export function mountTable(container, ctx, host = {}) {
       position !== null ? `Row ${formatCount(position)}` : recordLabel(record),
     );
     const back = backLink();
-    const head = el("div", { class: "table-record-head" }, back, heading);
+    recordControls.set("back", back);
+    recordControls.set("live", recordPill);
+    const head = el("div", { class: "table-record-head" }, back, heading, recordPill);
     const parts = [head];
     if (record.positional) {
       parts.push(
-        el("p", { class: "table-record-note" }, "This row is named by its position in the file."),
+        el("p", { class: "table-record-note" }, "This row is named by its position in the table."),
       );
     }
     if (record.generation_moved) {
       parts.push(
         noticeBox(
           "warning",
-          "The file changed since this row was read, so the row at this position may be a different one.",
+          "This table changed since this row was read, so the row at this position may be a different one.",
         ),
       );
     }
@@ -1679,35 +2415,39 @@ export function mountTable(container, ctx, host = {}) {
         class: `table-record-value table-cell-${view.kind}${view.literal ? " data-literal" : ""}${field.numeric ? " data-num-value" : ""}`,
       });
       if (view.kind === "ref" && view.ref) {
-        value.append(
-          el(
-            "a",
-            {
-              class: "table-ref",
-              href: sdk.navigation.href(referenceTarget(view.ref)),
-              "data-ref-table": view.ref.table,
-              "data-ref-key": view.ref.key,
-            },
-            view.text,
-          ),
+        const link = el(
+          "a",
+          {
+            class: "table-ref",
+            href: sdk.navigation.href(referenceTarget(view.ref)),
+            "data-ref-table": view.ref.table,
+            "data-ref-key": view.ref.key,
+          },
+          view.text,
         );
+        recordControls.set(`field:${field.name}`, link);
+        value.append(link);
       } else if (view.filter) {
-        value.append(
-          el(
-            "a",
-            {
-              class: "table-value-filter",
-              href: href(withRecord(withFilter(state, view.filter), null)),
-              "data-filter-field": view.filter.field,
-              "data-filter-value": view.filter.value ?? "",
-            },
-            view.text,
-          ),
+        const link = el(
+          "a",
+          {
+            class: "table-value-filter",
+            href: href(withRecord(withFilter(state, view.filter), null)),
+            "data-filter-field": view.filter.field,
+            "data-filter-value": view.filter.value ?? "",
+          },
+          view.text,
         );
+        recordControls.set(`field:${field.name}`, link);
+        value.append(link);
+      } else if (view.kind === "json" && ctx.renderJson && jsonValue(cell)) {
+        value.classList.add("table-record-json");
+        const mount = ctx.renderJson(value, jsonValue(cell)?.value);
+        if (mount) {
+          recordMounts.push(mount);
+        }
       } else {
-        value.append(
-          view.kind === "absent" ? "No value: this row is shorter than the header." : view.text,
-        );
+        value.append(view.kind === "absent" ? `${ABSENT_TEXT}.` : view.text);
       }
       dd.append(value);
       if (view.cut !== null && view.kind === "text") {
@@ -1762,28 +2502,37 @@ export function mountTable(container, ctx, host = {}) {
           path: referenceAddress(path, tableOf(), ref.table),
           query: stateQuery(withRef(EMPTY_STATE, `${tableOf()}:${record.key}`)),
         };
+        const open = el(
+          "a",
+          {
+            class: "table-open-ref",
+            href: sdk.navigation.href(target),
+            "data-path": target.path,
+            "data-query": target.query,
+          },
+          "Open as table",
+        );
+        recordControls.set(`referenced:${ref.table}:${ref.fields.join(",")}`, open);
         section.append(
           el(
             "p",
             { class: "table-record-backref" },
             `${ref.table} (${ref.fields.join(", ")}): ${count} `,
-            el(
-              "a",
-              {
-                class: "table-open-ref",
-                href: sdk.navigation.href(target),
-                "data-path": target.path,
-                "data-query": target.query,
-              },
-              "Open as table",
-            ),
+            open,
           ),
         );
       }
       parts.push(section);
     }
     recordPane.replaceChildren(...parts);
-    back.focus({ preventScroll: true });
+    if (!again) {
+      back.focus({ preventScroll: true });
+      return;
+    }
+    recordPane.scrollTop = scrolled;
+    if (focused !== undefined) {
+      (recordControls.get(focused) ?? back).focus({ preventScroll: true });
+    }
   }
 
   /** @param {RecordAnswer} record */
@@ -1803,6 +2552,8 @@ export function mountTable(container, ctx, host = {}) {
 
   function showGrid() {
     recordSeq += 1;
+    shownRecord = { key: "", cells: "", moved: false };
+    releaseRecord();
     // The keyboard was in the record: it goes back to the row the record was opened from.
     const refocus = recordPane.contains(doc.activeElement);
     recordPane.hidden = true;
@@ -1921,45 +2672,138 @@ export function mountTable(container, ctx, host = {}) {
 
   /** @type {ReturnType<typeof setTimeout> | 0} */
   let placeTimer = 0;
+  /**
+   * A place read from the history entry, held until the reader acts (a key, a press, a
+   * wheel, or a touch in the view). While it is held a scroll the reader did not make is
+   * put back, and no place is written, so a scroll the browser clamped or reset does not
+   * replace it: on a fresh load the shell takes the view's host out of the page and puts
+   * it back after the first draw, which resets every scroll in it to the top (seen in
+   * Chrome 152, 2026-11-20), and a box not yet as tall as the place clamps it.
+   * @type {{query: string, top: number, row: number} | null}
+   */
+  let pendingPlace = null;
+  let placeTries = 0;
+  let placeFrame = 0;
+
+  /** The reader acted: the place is theirs from here, and is written as it moves. */
+  function releasePlace() {
+    pendingPlace = null;
+    if (placeFrame) {
+      win.cancelAnimationFrame(placeFrame);
+      placeFrame = 0;
+    }
+  }
+
+  /** Write the place once a pause after the last move or scroll (PLACE_SAVE_MS). */
   function schedulePlace() {
     if (placeTimer) {
-      return;
+      win.clearTimeout(placeTimer);
     }
     placeTimer = win.setTimeout(() => {
       placeTimer = 0;
       rememberPlace();
-    }, SEARCH_DEBOUNCE_MS);
+    }, PLACE_SAVE_MS);
+  }
+
+  function cancelPlace() {
+    if (placeTimer) {
+      win.clearTimeout(placeTimer);
+      placeTimer = 0;
+    }
+  }
+
+  /** Write the place now, if it moved since it was written: before navigating, or hiding. */
+  function flushPlace() {
+    cancelPlace();
+    rememberPlace();
   }
 
   function rememberPlace() {
-    if (disposed || !recordPane.hidden) {
+    if (disposed || !recordPane.hidden || pendingPlace || !page) {
       return;
     }
     const place = {
       query: stateQuery(withRecord(state, null)),
       top: scroller.scrollTop,
-      row: focus.row,
+      row: Math.max(0, focus.row),
     };
+    const saved = /** @type {{query?: string, top?: number, row?: number} | undefined} */ (
+      history.state?.[PLACE_KEY]
+    );
+    if (
+      saved &&
+      saved.query === place.query &&
+      saved.top === place.top &&
+      saved.row === place.row
+    ) {
+      return;
+    }
     try {
       history.replaceState({ ...(history.state ?? {}), [PLACE_KEY]: place }, "");
     } catch {
-      // A browser that refuses the write (Safari past its rate) keeps the place unsaved.
+      // A browser that refuses the write (WebKit past its rate) keeps the place unsaved.
     }
   }
 
-  function restorePlace() {
+  /**
+   * The place the history entry holds for *question*, if it holds one.
+   *
+   * @param {TableState} question
+   * @returns {{query: string, top: number, row: number} | null}
+   */
+  function savedPlace(question) {
     const place = /** @type {{query: string, top: number, row: number} | undefined} */ (
       history.state?.[PLACE_KEY]
     );
-    if (!place || place.query !== stateQuery(withRecord(state, null)) || rows.length === 0) {
-      return;
+    return place && place.query === stateQuery(withRecord(question, null)) ? place : null;
+  }
+
+  /** Put the reader back where the history entry says they were. Returns whether it had a place. */
+  function restorePlace() {
+    const place = savedPlace(state);
+    if (!place || rows.length === 0) {
+      return false;
     }
     focus = { row: Math.min(place.row, rows.length - 1), col: -1 };
+    pendingPlace = place;
+    placeTries = 0;
+    applyPlace();
+    return true;
+  }
+
+  /**
+   * Scroll to the held place. A box that cannot reach it yet (not laid out, or not as
+   * tall) is tried again on the next frames, and when it is resized, for PLACE_TRIES
+   * frames, and then let go.
+   */
+  function applyPlace() {
+    placeFrame = 0;
+    const place = pendingPlace;
+    if (!place || disposed) {
+      return;
+    }
     scroller.scrollTop = place.top;
     if (windowed) {
       drawWindow(true);
     }
     syncFocusable();
+    if (Math.abs(scroller.scrollTop - place.top) < 1) {
+      placeTries = 0;
+      return;
+    }
+    if (placeTries >= PLACE_TRIES) {
+      releasePlace();
+      return;
+    }
+    placeTries += 1;
+    placeFrame = win.requestAnimationFrame(applyPlace);
+  }
+
+  /** A scroll while a place is held that the reader did not make: back to the place. */
+  function holdPlace() {
+    if (pendingPlace && !placeFrame && Math.abs(scroller.scrollTop - pendingPlace.top) >= 1) {
+      placeFrame = win.requestAnimationFrame(applyPlace);
+    }
   }
 
   // ── Print ────────────────────────────────────────────────────
@@ -1968,14 +2812,41 @@ export function mountTable(container, ctx, host = {}) {
     if (windowed && page) {
       printing = true;
       drawAllRows();
+      // The toolbar, with the count, is not printed: the page says which rows are, when
+      // rows past them were not read or past the most a printout draws.
+      const printed = drawn.end;
+      if (page.next_after || printed < rows.length) {
+        const total =
+          page.count_complete && page.count !== null
+            ? ` of ${formatCount(page.count)}`
+            : page.count !== null
+              ? ` of at least ${formatCount(page.count)}`
+              : "";
+        const why =
+          printed < rows.length
+            ? `A printout holds at most ${formatCount(PRINT_MAX_ROWS)} rows; search or filter for the ones to print.`
+            : "The rows after them were not read, so they are not printed.";
+        printNote.textContent = `Rows 1 to ${formatCount(printed)}${total}. ${why}`;
+      }
     }
   }
 
   function onAfterPrint() {
     if (printing) {
       printing = false;
+      printNote.textContent = "";
       drawn = { start: 0, end: 0 };
       drawWindow(true);
+    }
+  }
+
+  function onPageHide() {
+    flushPlace();
+  }
+
+  function onVisibilityChange() {
+    if (doc.visibilityState === "hidden") {
+      flushPlace();
     }
   }
 
@@ -1988,6 +2859,7 @@ export function mountTable(container, ctx, host = {}) {
       if (page && rows.length) {
         refit(false);
         scheduleWindow();
+        applyPlace();
       }
     });
     resize.observe(scroller);
@@ -1998,15 +2870,33 @@ export function mountTable(container, ctx, host = {}) {
   root.addEventListener("pointerdown", onPointerDown);
   root.addEventListener("pointerover", onPointerOver);
   root.addEventListener("pointerout", onPointerOut);
-  root.addEventListener("focusin", (event) =>
-    showCardFor(/** @type {HTMLElement} */ (event.target)),
-  );
+  root.addEventListener("focusin", (event) => {
+    const target = /** @type {HTMLElement} */ (event.target);
+    // A header control the pointer focused is where the keyboard's roving focus stands.
+    const head = headControls().indexOf(target);
+    if (head >= 0 && (focus.row >= 0 || focus.col !== head)) {
+      focus = { row: -1, col: head };
+      syncFocusable();
+    }
+    showCardFor(target);
+  });
   scroller.addEventListener("scroll", onScroll, { passive: true });
+  scroller.addEventListener("wheel", releasePlace, { passive: true });
+  scroller.addEventListener("touchstart", releasePlace, { passive: true });
   search.addEventListener("input", onSearchInput);
   search.addEventListener("keydown", onSearchKey);
   win.addEventListener("popstate", onPopState);
   win.addEventListener("beforeprint", onBeforePrint);
   win.addEventListener("afterprint", onAfterPrint);
+  livePill.addEventListener("click", togglePaused);
+  recordPill.addEventListener("click", togglePaused);
+  offer.addEventListener("click", () => {
+    drawOffer(0);
+    void liveRefresh(true);
+  });
+  doc.addEventListener?.("visibilitychange", onVisibility);
+  win.addEventListener("pagehide", onPageHide);
+  win.addEventListener("visibilitychange", onVisibilityChange);
   scroller.setAttribute("tabindex", "-1");
   search.value = state.q;
   drawChips();
@@ -2031,6 +2921,17 @@ export function mountTable(container, ctx, host = {}) {
   return {
     ready,
     state: () => state,
+    /**
+     * Ask the current question again and draw its new answer in place: the focused row,
+     * the row at the top of the view, and the selection stay, by key, when the answer
+     * still holds them. For a source whose content changes under the view.
+     */
+    refresh() {
+      if (disposed) {
+        return Promise.resolve();
+      }
+      return loadRows({ keep: true });
+    },
     dispose() {
       if (disposed) {
         return;
@@ -2044,12 +2945,21 @@ export function mountTable(container, ctx, host = {}) {
       }
       win.clearTimeout(searchTimer);
       win.clearTimeout(placeTimer);
+      win.clearTimeout(liveTimer);
+      win.clearTimeout(flashTimer);
+      unwatch?.();
+      unwatch = null;
+      releasePlace();
       hideCard();
       sdk.tooltip?.hide(root);
       closeMenu(false);
       win.removeEventListener("popstate", onPopState);
       win.removeEventListener("beforeprint", onBeforePrint);
       win.removeEventListener("afterprint", onAfterPrint);
+      doc.removeEventListener?.("visibilitychange", onVisibility);
+      win.removeEventListener("pagehide", onPageHide);
+      win.removeEventListener("visibilitychange", onVisibilityChange);
+      releaseRecord();
       rowElements.clear();
     },
   };
@@ -2132,6 +3042,16 @@ function plainClick(event) {
 /** @param {unknown} error */
 function isAbort(error) {
   return /** @type {{name?: string}} */ (error)?.name === "AbortError";
+}
+
+/**
+ * A refusal's code, from the route's `table_error` body, or "".
+ *
+ * @param {unknown} error
+ */
+function errorCode(error) {
+  const payload = /** @type {{payload?: {code?: unknown}}} */ (error)?.payload;
+  return typeof payload?.code === "string" ? payload.code : "";
 }
 
 /**

@@ -48,6 +48,7 @@ from metabrowser.builtin_plugins.sqlite.database import (
     served_database,
     subject_key,
     table_segment,
+    written_pinned_database,
 )
 from metabrowser.builtin_plugins.sqlite.reader import COUNT_CAP, PAGE_INLINE_BYTES
 from metabrowser.plugin_api import (
@@ -230,8 +231,10 @@ class SqliteSource:
             else:
                 if handle.ref.stored_size is not None and handle.ref.stored_size > BLOB_MAX_BYTES:
                     raise blob_too_large()
-                window = handle.read_window(max_bytes=BLOB_MAX_BYTES + 1)
-                self._database = pinned_database(handle.ref, window.data, self._subject)
+                self._database = written_pinned_database(handle.ref, self._subject)
+                if self._database is None:
+                    window = handle.read_window(max_bytes=BLOB_MAX_BYTES + 1)
+                    self._database = pinned_database(handle.ref, window.data, self._subject)
         except OSError as exc:
             raise SourceUnreadableError("This file is no longer available.") from exc
         except SqliteAccessError as exc:

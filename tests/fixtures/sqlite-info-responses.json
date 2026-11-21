@@ -158,7 +158,90 @@
         "access": {
           "mode": "read_only",
           "state": "current",
-          "reason": "the write-ahead log holds frames and its index is present, so it is read through them as every reader does",
+          "reason": "the write-ahead log holds frames and an application has it open, so it is read through them as every reader does",
+          "attempts": 1,
+          "notices": []
+        },
+        "journal_mode": "wal",
+        "links": 1,
+        "size": 8192,
+        "sidecars": [
+          {
+            "name": "-wal",
+            "size": 20632,
+            "frames": 5
+          },
+          {
+            "name": "-shm",
+            "size": 32768
+          }
+        ],
+        "database": {
+          "page_size": 4096,
+          "page_count": 2,
+          "encoding": "UTF-8",
+          "user_version": 0,
+          "application_id": 0,
+          "application_name": null,
+          "freelist_count": 0,
+          "objects": {
+            "table": 1
+          }
+        },
+        "library": {
+          "version": "L",
+          "minimum": "3.43.0",
+          "meets_minimum": true,
+          "versions": [
+            {
+              "version": "3.7.0",
+              "meaning": "write-ahead-log databases",
+              "available": true
+            },
+            {
+              "version": "3.8.2",
+              "meaning": "WITHOUT ROWID tables",
+              "available": true
+            },
+            {
+              "version": "3.26.0",
+              "meaning": "SQLITE_DBCONFIG_DEFENSIVE and PRAGMA table_xinfo",
+              "available": true
+            },
+            {
+              "version": "3.31.0",
+              "meaning": "PRAGMA trusted_schema and generated columns",
+              "available": true
+            },
+            {
+              "version": "3.37.0",
+              "meaning": "STRICT tables",
+              "available": true
+            },
+            {
+              "version": "3.43.0",
+              "meaning": "octet_length(), the reader's minimum for reading tables",
+              "available": true
+            },
+            {
+              "version": "3.45.0",
+              "meaning": "JSONB values",
+              "available": true
+            }
+          ]
+        }
+      }
+    },
+    "crashed.db": {
+      "status": 200,
+      "body": {
+        "type": "sqlite_info",
+        "path": "crashed.db",
+        "generation": "G",
+        "access": {
+          "mode": "private_copy",
+          "state": "current",
+          "reason": "the write-ahead log holds frames and no application has it open, so the database and its log are read through a private copy",
           "attempts": 1,
           "notices": []
         },

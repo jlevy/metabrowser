@@ -341,13 +341,23 @@ this standard. Paths are under `src/metabrowser/`.
 | `DELIMITED_MAX_COLUMNS` | `builtin_plugins/delimited/source.py` | The cells of one row of a delimited file read, the header’s among them; past it the table says it was cut |
 | `DELIMITED_TYPE_SAMPLE_ROWS` | `builtin_plugins/delimited/source.py` | Rows of a delimited file whose values decide each column’s type |
 | `DELIMITED_CACHE_MAX_ENTRIES`, `DELIMITED_CACHE_MAX_BYTES` | `builtin_plugins/delimited/source.py` | Server memory for parsed delimited files and their sort indexes, estimated from each file’s rows, cells, and text |
+| `RECORDS_MAX_ROWS`, `RECORDS_MAX_CELLS`, `RECORDS_MAX_FIELDS` | `builtin_plugins/structured/records.py` | The records, top-level values, and fields of a JSON or YAML list read as a table, from the structured plugin’s parse under `STRUCTURED_PARSE_MAX_BYTES`; past any of them the table holds the leading rows or fields and says so |
+| `RECORDS_TYPE_SAMPLE_ROWS` | `builtin_plugins/structured/records.py` | Records whose values decide each field’s type |
+| `RECORDS_CACHE_MAX_ENTRIES`, `RECORDS_CACHE_MAX_BYTES` | `builtin_plugins/structured/records.py` | Server memory for record lists read as tables and their sort indexes, estimated from each parse’s bytes and nodes |
 | `SORT_UNINDEXED_MAX_ROWS` | `builtin_plugins/sqlite/reader.py` | The rows of a SQLite table or view past which only its key and the fields an index leads with sort; the rest say why in `sort_note` |
 | `COUNT_CAP` | `builtin_plugins/sqlite/reader.py` | The rows a SQLite page’s count reads; past it the count is a lower bound, drawn as “at least” |
 | `REFS_PER_PAGE` | `builtin_plugins/sqlite/reader.py` | Referenced rows one SQLite page resolves; a value past it is shown without its reference |
 | `PAGE_INLINE_BYTES` | `builtin_plugins/sqlite/reader.py` | A SQLite text or blob a page reads whole; a longer one is previewed from its stored bytes, or shown as its size where it has no rowid |
 | `DESCRIPTION_CACHE_ENTRIES` | `builtin_plugins/sqlite/database.py` | Server memory for SQLite catalogs and table descriptions, by database and generation |
 | `WHOLE_TABLE_MAX_ROWS` | `builtin_plugins/table/table-view.js` | The rows a table may hold and still be drawn whole, keeping the browser’s find, select all, copy, and print; a larger one is a window with Search, row selection that copies as tab-separated values, and print of the rows held in their place |
+| `FILE_WATCH_MAX_PATHS` | `file_watches.py` | Files one page may watch on its event stream, which every poll reads the generation of; a watch past it is refused and its view is not live |
 | `FIRST_PAGE_ROWS`, `NEXT_PAGE_ROWS`, `ROWS_OVERSCAN`, `ROW_HEIGHT_ESTIMATE_PX` | `builtin_plugins/table/table-view.js` | The rows the table view’s first and later requests ask for, which a page of wide rows may answer with fewer, the rows its window draws past the view, and a row’s height before one is measured |
+| `PRINT_MAX_ROWS` | `builtin_plugins/table/table-view.js` | The rows a printout of a windowed table draws; past it, or when rows after those held were not read, the printout says which rows it holds. The comment above it records why the rows a window holds have no bound of their own |
+| `VALUE_MAX_BYTES`, `READ_OPCODE_BUDGET` | `sqlite_access.py` | The longest value one SQLite statement may produce, and the virtual-machine steps one read may run, beside a wall-clock deadline its watchdog interrupts at |
+| `COPY_MAX_BYTES` | `sqlite_access.py` | A database and its log copied privately for one read, when its log has no index or the file has a second name; past it the main file is read alone and says so |
+| `READER_POOL_SIZE`, `READER_QUEUE_MAX`, `SQLITE_REQUEST_DEADLINE_SECONDS`, `READER_KILL_GRACE_SECONDS`, `READER_ADDRESS_SPACE_BYTES` | `sqlite_readers.py` | SQLite reader processes alive and requests waiting for one, a request’s deadline and the grace before its reader is killed, and a reader’s address space |
+| `BLOB_MAX_BYTES`, `BLOBS_MAX_BYTES` | `sqlite_readers.py` | A database on a Git pin, written once to a private file to be read, and the written blobs one process keeps, the least recently used removed past it |
+| `ANSWER_MAX_BYTES`, `HEAP_LIMIT_BYTES` | `sqlite_access.py` | The longest answer a SQLite reader process returns, past which it answers `too_large`, and the heap SQLite may allocate in one, which bounds it where the address-space limit is not enforced |
 | `SUMMARY_ROWS_OVERSCAN` | `builtin_plugins/diff/diff-summary.js` | Diff summary rows mounted on either side of the window’s view of its tree, which has no scroll of its own and no length bound beyond `MAX_MANIFEST_FILES` |
 
 ## References

@@ -516,7 +516,7 @@ export function presentCell(cell, field) {
     };
   }
   if (cell === undefined) {
-    return { ...view, kind: "absent", tip: "No value: this row is shorter than the header" };
+    return { ...view, kind: "absent", tip: ABSENT_TEXT };
   }
   if (cell === null) {
     return { ...view, kind: "null", text: "null", literal: true };
@@ -623,6 +623,30 @@ export function presentCell(cell, field) {
   return { ...view, kind: "json", literal: true, text, tip: text };
 }
 
+/**
+ * What an absent cell says: the row has no value at all for the field, as a delimited
+ * row shorter than its header has none, or a record that lacks the key.
+ */
+export const ABSENT_TEXT = "No value: this row does not have this field";
+
+/**
+ * The JSON value a cell carries whole, which a record draws as a tree: a `{json}` cell's,
+ * also inside a `{value, stored}` one, or null when the cell carries none, as a nested
+ * value past the record's bound, which arrives as its JSON text cut.
+ *
+ * @param {unknown} cell
+ * @returns {{value: unknown} | null}
+ */
+export function jsonValue(cell) {
+  if (!isEnvelope(cell)) {
+    return null;
+  }
+  if ("stored" in cell && "value" in cell) {
+    return jsonValue(cell.value);
+  }
+  return "json" in cell ? { value: cell.json } : null;
+}
+
 /** @param {TableField} field @param {string} value @returns {TableFilter} */
 function eqFilter(field, value) {
   return Object.freeze({ field: field.name, op: "eq", value });
@@ -635,8 +659,9 @@ function joinTips(...parts) {
 }
 
 /**
- * A count with the host's thousands separators, without the SDK, which the model does
- * not reach.
+ * A count with a comma between each three digits, in every locale. The host's
+ * `formatInteger` follows the reader's locale, but the model does not reach the SDK, and
+ * one fixed form keeps what the browserless session prints the same on every machine.
  *
  * @param {number} value
  */
@@ -716,8 +741,10 @@ export function sortRefused(page) {
  * content changed, and values a search or filter could not read. Each is a sentence. A
  * refused sort is the view's own notice, with the way back (`sortRefused`).
  *
- * The rows route says a source was cut (`truncated`) without saying where; an exact
- * count says every row was read, so what was cut is cells past a column bound.
+ * The rows route says a source was cut (`truncated`) without saying where, so the words
+ * say only what the answer itself shows: an exact count says every row was read, so what
+ * was cut is values within them; a lower bound says the rows go on past what was read.
+ * Neither names a file, since a table's source need not be one.
  *
  * @param {TablePage} page
  * @returns {string[]}
@@ -728,15 +755,15 @@ export function pageNotes(page) {
   if (page.truncated || page.reason === "source_truncated") {
     if (page.count_complete) {
       notes.push(
-        "Some rows of this file have more cells than the table reads; the cells past them are not shown.",
+        "Every row of this table was read, but some of their values were not; those are not shown.",
       );
     } else if (page.reason === "budget") {
       notes.push(
-        "This file is larger than the table reads: rows, counts, sorts, and filters cover the part it read.",
+        "This table is larger than its source reads: rows, counts, sorts, and filters cover the part it read.",
       );
     } else {
       notes.push(
-        "This file is larger than the table reads: rows, counts, sorts, and filters cover its leading part only.",
+        "This table is larger than its source reads: rows, counts, sorts, and filters cover its leading part only.",
       );
     }
   }
@@ -746,7 +773,7 @@ export function pageNotes(page) {
       `The table stopped looking after ${examined} rows, at the time a request may take; these are the matches among them.`,
     );
   } else if (page.reason === "cursor_expired") {
-    notes.push("The file changed while the table was being read; reload the table to continue.");
+    notes.push("This table changed while it was being read; reload it to continue.");
   }
   if (page.skipped) {
     notes.push(
@@ -754,6 +781,52 @@ export function pageNotes(page) {
     );
   }
   return notes;
+}
+
+/**
+ * What an empty answer to a filtered question says: no rows match, or, when the scan ran
+ * out of time before it found any, none among the rows it reached, which is all it knows.
+ *
+ * @param {TablePage} page
+ */
+export function noMatchText(page) {
+  if (page.reason === "budget") {
+    return typeof page.examined === "number"
+      ? `No matches among the first ${formatCount(page.examined)} rows.`
+      : "No matches among the rows read.";
+  }
+  return "No rows match.";
+}
+
+/**
+ * The answer a question's pages make together, as the view holds it: the rows of every
+ * page, the first page's count and columns, and the last page's word on whether the
+ * question is complete, why not, how far a scan reached, and where to read on. A page
+ * whose generation differs from the first's continues a table that changed under the
+ * cursor, so its rows are not taken and the answer ends there, as `cursor_expired`.
+ *
+ * @param {TablePage & {rows: TableRow[]}} held The answer so far, its rows a list this appends to.
+ * @param {TablePage} next The page read from its `next_after`.
+ * @returns {TablePage & {rows: TableRow[]}}
+ */
+export function joinPage(held, next) {
+  if (held.generation && next.generation && next.generation !== held.generation) {
+    return {
+      ...held,
+      next_after: null,
+      complete: false,
+      reason: "cursor_expired",
+    };
+  }
+  held.rows.push(...next.rows);
+  return {
+    ...held,
+    next_after: next.next_after,
+    complete: next.complete,
+    reason: next.reason ?? null,
+    examined: next.examined ?? held.examined,
+    truncated: held.truncated || next.truncated,
+  };
 }
 
 /**
@@ -893,7 +966,9 @@ export function wantsMore(range, held, ahead) {
 // ── The keyboard ───────────────────────────────────────────────
 
 /**
- * Where the focus is: a row (`col` -1, the row itself) or one of its cells.
+ * Where the focus is: a row (`col` -1, the row itself) or one of its cells, or, at `row`
+ * -1, the header, where `col` is one of the header's controls (each column's sort button,
+ * if it sorts, then its menu button), in order.
  *
  * @typedef {{row: number, col: number}} GridFocus
  */
@@ -909,9 +984,16 @@ export function wantsMore(range, held, ahead) {
  * selection, so Home and then Shift-End selects every row held. A key held with Command,
  * Control, or Option is the browser's (tests/test_modified_keys.py).
  *
+ * The header is part of the grid's one Tab stop, so its controls do not add a Tab stop a
+ * column: Up, or `k`, from the first row moves to the header, onto the focused column's
+ * first control; Left and Right move across the header's controls; Down, or `j`, returns
+ * to the first row, on the column of the control left. Enter and Space on a header control
+ * are the button's own, so they are nothing here. *heads* is how many controls the header
+ * has, and *headStarts* each column's first control.
+ *
  * @param {GridFocus} focus
  * @param {{key: string, shiftKey?: boolean, ctrlKey?: boolean, metaKey?: boolean, altKey?: boolean}} event
- * @param {{rows: number, cols: number, pageRows: number}} bounds
+ * @param {{rows: number, cols: number, pageRows: number, heads?: number, headStarts?: ReadonlyArray<number>}} bounds
  * @returns {{action: "move" | "extend" | "open" | "follow" | "none", focus: GridFocus}}
  */
 export function keyStep(focus, event, bounds) {
@@ -919,12 +1001,55 @@ export function keyStep(focus, event, bounds) {
   if (event.altKey || event.ctrlKey || event.metaKey || bounds.rows === 0) {
     return none;
   }
+  const heads = bounds.heads ?? 0;
+  const starts = bounds.headStarts ?? [];
+  if (focus.row < 0) {
+    if (event.shiftKey) {
+      return none;
+    }
+    switch (event.key) {
+      case "ArrowLeft":
+        return {
+          action: /** @type {const} */ ("move"),
+          focus: { row: -1, col: Math.max(0, focus.col - 1) },
+        };
+      case "ArrowRight":
+        return {
+          action: /** @type {const} */ ("move"),
+          focus: { row: -1, col: Math.min(heads - 1, focus.col + 1) },
+        };
+      case "ArrowDown":
+      case "j":
+      case "J": {
+        let column = -1;
+        for (let index = 0; index < starts.length; index++) {
+          if (starts[index] <= focus.col) {
+            column = index;
+          }
+        }
+        return {
+          action: /** @type {const} */ ("move"),
+          focus: { row: 0, col: Math.min(column, bounds.cols - 1) },
+        };
+      }
+      default:
+        return none;
+    }
+  }
   const lastRow = bounds.rows - 1;
   const clampRow = (/** @type {number} */ row) => Math.max(0, Math.min(lastRow, row));
   const move = (/** @type {number} */ row, col = focus.col) => ({
     action: /** @type {const} */ ("move"),
     focus: { row: clampRow(row), col },
   });
+  /** From the first row, the header, if it has a control. */
+  const toHead = () =>
+    heads > 0 && focus.row === 0
+      ? {
+          action: /** @type {const} */ ("move"),
+          focus: { row: -1, col: starts[Math.max(0, focus.col)] ?? 0 },
+        }
+      : null;
   /** Move to *row*, or with Shift, extend the selection to it. @param {number} row */
   const moveOrExtend = (row) =>
     event.shiftKey
@@ -934,13 +1059,13 @@ export function keyStep(focus, event, bounds) {
     case "ArrowDown":
       return moveOrExtend(focus.row + 1);
     case "ArrowUp":
-      return moveOrExtend(focus.row - 1);
+      return (!event.shiftKey && toHead()) || moveOrExtend(focus.row - 1);
     case "j":
     case "J":
       return move(focus.row + 1);
     case "k":
     case "K":
-      return move(focus.row - 1);
+      return toHead() ?? move(focus.row - 1);
     case "ArrowRight":
       return move(focus.row, Math.min(bounds.cols - 1, focus.col + 1));
     case "ArrowLeft":
@@ -968,4 +1093,120 @@ export function keyStep(focus, event, bounds) {
 export function rowPosition(key) {
   const match = /^@(\d+)$/.exec(key);
   return match ? Number(match[1]) : null;
+}
+
+// ── Live ──────────────────────────────────────────────────────
+//
+// When its file changes, the view reads the rows it holds again with the same question
+// and merges the answer here: what changed, what arrived, what left, and which rows stay
+// out of the drawing because they would land above the reader's place.
+
+/**
+ * A row's cells as one comparable string.
+ *
+ * @param {TableRow} row
+ */
+function cellsOf(row) {
+  return JSON.stringify(row.cells);
+}
+
+/**
+ * Merge a live re-read into the rows held.
+ *
+ * *before* is the rows held over the range read again, *after* the rows the read
+ * answered over it, and *anchor* the index in *before* of the first row on screen, or
+ * null when the reader is at the top, where nothing is above them. A row is the same row
+ * when its key is: a source's key, or a keyless row's position in the file.
+ *
+ * New rows that would land above the anchor are offered, not drawn, so the rows under the
+ * reader stay where they are (docs/design-system.md, "Live Row Arrivals"); `accept`
+ * draws them. Every other new row is drawn and flashes, as does each row whose cells
+ * changed.
+ *
+ * @param {{
+ *   before: ReadonlyArray<TableRow>,
+ *   after: ReadonlyArray<TableRow>,
+ *   anchor: number | null,
+ *   accept?: boolean,
+ * }} input
+ * @returns {{
+ *   rows: TableRow[],
+ *   changed: string[],
+ *   arrived: string[],
+ *   offered: number,
+ *   removed: number,
+ * }}
+ */
+export function liveMerge(input) {
+  const { before, after, anchor } = input;
+  /** @type {Map<string, TableRow>} */
+  const held = new Map(before.map((row) => [row.key, row]));
+  const read = new Set(after.map((row) => row.key));
+  // The anchor row, or the first row after it still there, places "above".
+  let anchorKey = null;
+  if (anchor !== null) {
+    for (let index = anchor; index < before.length; index++) {
+      if (read.has(before[index].key)) {
+        anchorKey = before[index].key;
+        break;
+      }
+    }
+  }
+  const anchorAt = anchorKey === null ? (anchor === null ? 0 : after.length) : -1;
+  /** @type {TableRow[]} */
+  const rows = [];
+  const changed = [];
+  const arrived = [];
+  let offered = 0;
+  let above = anchor !== null;
+  for (const [index, row] of after.entries()) {
+    if (row.key === anchorKey || (anchorAt >= 0 && index >= anchorAt)) {
+      above = false;
+    }
+    const old = held.get(row.key);
+    if (old === undefined) {
+      if (above && !input.accept) {
+        offered += 1;
+        continue;
+      }
+      arrived.push(row.key);
+    } else if (cellsOf(old) !== cellsOf(row)) {
+      changed.push(row.key);
+    }
+    rows.push(row);
+  }
+  const removed = before.filter((row) => !read.has(row.key)).length;
+  return { rows, changed, arrived, offered, removed };
+}
+
+/**
+ * The Live/Paused pill's words: Live, or Paused with the changes it is holding back.
+ *
+ * @param {boolean} paused
+ * @param {number} held
+ */
+export function livePillText(paused, held) {
+  if (!paused) {
+    return "Live";
+  }
+  return held ? `Paused · ${formatCount(held)} ${held === 1 ? "change" : "changes"}` : "Paused";
+}
+
+/**
+ * What a failed live refresh says, keeping the rows on screen: a source that reports its
+ * writer busy, a file that is gone, a table no longer in its file, or any other refusal.
+ *
+ * @param {string | null} code the refusal's `code`, when the route sent one
+ */
+export function liveFailure(code) {
+  if (code === "busy") {
+    return "The file’s writer is busy, so these are the rows last read; the table refreshes once it can.";
+  }
+  if (code === "not_found") {
+    return "This file is no longer there, so these are the rows last read.";
+  }
+  if (code === "table_not_found") {
+    return "This table is no longer in its file, so these are the rows last read.";
+  }
+  return "The table could not be refreshed, so these are the rows last read.";
 }

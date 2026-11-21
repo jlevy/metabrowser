@@ -121,6 +121,16 @@ def pinned_database(ref: ContentRef, data: bytes, subject: str) -> Database:
     if len(data) > BLOB_MAX_BYTES:
         raise blob_too_large()
     file = reader_pool().blob(ref.fingerprint, lambda: data)
+    return _pinned_database(ref, file, subject)
+
+
+def written_pinned_database(ref: ContentRef, subject: str) -> Database | None:
+    """Find the pin's private file before reading its blob from Git again."""
+    file = reader_pool().written_blob(ref.fingerprint)
+    return _pinned_database(ref, file, subject) if file is not None else None
+
+
+def _pinned_database(ref: ContentRef, file: Path, subject: str) -> Database:
     generation = re.sub(r"[^A-Za-z0-9_-]", "_", ref.fingerprint) or "0"
     return Database(
         file=file, immutable=True, subject=subject, generation=generation, virtual_ok=False

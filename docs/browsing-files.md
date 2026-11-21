@@ -136,16 +136,22 @@ tabs, and `V` and `S` switch to the rendered view and the source wherever both e
 | --- | --- |
 | Markdown (`.md`) | Document, rendered by KPress, and Source |
 | Mermaid diagrams (`.mmd`, `.mermaid`) | Diagram and Source |
-| JSON and YAML | Tree, a collapsible view of the parsed structure, and Source |
+| JSON and YAML | Tree, a collapsible view of the parsed structure; Table, a list of records as a table; and Source |
 | JSONL logs | Log, a timeline of events, and Raw JSON; coding-agent logs add Charts |
 | Event logs (`events-*.jsonl`) | Timeline, Latency, By kind, Errors, and Raw JSON: Metabrowser’s own log of what it served and how long each took |
 | Code and text | Source, with syntax highlighting where a grammar exists |
 | Images | Image |
 | HTML | Preview, in a sandboxed frame, and Source |
 | Patches (`.patch`, `.diff`) | Diff, the same view commits and pull requests use |
+| SQLite databases, whatever their name | Info: how the database was read and why, its pages, encoding, journal or log, and the SQLite library |
 | Other binary files | Bytes, a view of the file’s bytes |
 
 A patch file also expands in the tree like a folder, with one row per changed file.
+A SQLite database is read as a guest, in a separate reader process: Metabrowser never
+writes to it, never leaves a file beside it, and never takes a lock that could make the
+application that owns it fail to save.
+When it cannot read one at a given moment, as when its owner is in the middle of
+writing, the Info view says so.
 A compressed copy of a supported file, whose name ends in `.gz` or `.zlib`, opens as the
 file it holds. A large source file opens with its beginning and a **Load more** button.
 Plugins add views for other formats ([plugin authoring](plugins.md)).
@@ -239,6 +245,10 @@ folder’s Markdown is not changed.
   **Source** shows the file’s text.
 - **JSON and YAML:** Tree shows the parsed document with collapsible levels and draws
   only the rows in view.
+  **Table** (`A`) shows a file whose top level is a list of mappings as a table, one row
+  a mapping and one column a key, with the CSV table’s sort, filters, search, and
+  records; a nested value is its JSON in the table and a collapsible tree in the record.
+  Any other document says there that it is not a list of records.
 - **JSONL:** Log lists one row per event, with filter chips by kind of event, such as
   text, tool calls, and tool results, and each row expands to its raw JSON. For the
   session logs of Claude Code, Codex, Gemini CLI, and Pi, Metabrowser shows the agent in
@@ -267,7 +277,15 @@ The server watches the served folder and streams changes to the page.
 - **The tree, counts, and Recent** update as files are created, changed, and removed; a
   newly arrived row is highlighted briefly.
 - **Overview and Treemap** recount when the folder’s contents change.
-- **An open file** shows its new content the next time you open it, or when you reload.
+- **An open table** (a CSV or TSV file, and any other table) refreshes when its file
+  changes, whether or not the file is ignored or deep in the folder: changed rows flash
+  once, new rows above where you are reading are offered rather than pushed in, and your
+  scroll position, focused row, open menus, and unsent filter text stay.
+  The **Live** button above the table pauses it, and counts the changes it holds back.
+- **A container’s entries**, such as a patch file’s changed paths, are read again when
+  the file changes.
+- **Any other open file** shows its new content the next time you open it, or when you
+  reload.
 
 Files that a running process writes get more.
 Metabrowser watches the files in a folder named `.logs` or `.state` whose names end in
