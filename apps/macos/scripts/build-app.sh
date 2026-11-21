@@ -56,6 +56,10 @@ plutil -replace CFBundleVersion -string "$build" "$plist"
 # these (AppIdentity in ShellCore).
 plutil -replace MetabrowserBuildVariant -string "$variant" "$plist"
 commit="$(source_commit)"
+if [[ "$variant" == release && "${NOTARIZE:-0}" == 1 ]]; then
+  [[ -n "$commit" && "$commit" != *-dirty ]] ||
+    die "the app bundle inputs must match a Git commit for an official release"
+fi
 [[ -z "$commit" ]] || plutil -replace MetabrowserSourceCommit -string "$commit" "$plist"
 [[ -z "$scheme_suffix" ]] || suffix_url_schemes "$plist" "$scheme_suffix" "$bundle_id"
 printf 'APPL????' >"$app/Contents/PkgInfo"
@@ -63,8 +67,13 @@ printf 'APPL????' >"$app/Contents/PkgInfo"
 # The variant's icon: the canary icon for dev, the published icon for release.
 [[ "${ICON:-1}" == 0 ]] || cp "$icon_source" "$app/Contents/Resources/AppIcon.icns"
 
-# Include the Lucide notice with the root glyphs compiled into the app.
-cp ../../src/metabrowser/static/source-kind-glyphs.license.txt "$app/Contents/Resources/"
+# A clean build ships the notice at its stamped commit. A development build can
+# ship a local edit with the -dirty stamp.
+if [[ -n "$commit" && "$commit" != *-dirty ]]; then
+  git cat-file blob "$commit:$app_glyph_license" >"$app/Contents/Resources/${app_glyph_license##*/}"
+else
+  cp "../../$app_glyph_license" "$app/Contents/Resources/"
+fi
 
 plutil -lint "$plist"
 

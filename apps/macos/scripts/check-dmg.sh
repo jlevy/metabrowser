@@ -77,9 +77,14 @@ flags="$(xattr -px com.apple.FinderInfo "$mounted" 2>/dev/null | tr -d ' \n' | c
 ((0x${flags:-00} & 0x04)) || die "the volume root does not show its custom icon"
 ok "contents: $name, Applications -> /Applications, and the volume icon"
 
-# Check the notice from the checkout that built the image, as for the icons below.
-cmp -s ../../src/metabrowser/static/source-kind-glyphs.license.txt \
-  "$app/Contents/Resources/source-kind-glyphs.license.txt" ||
+# A tagged release must carry the notice from that commit.
+expected_notice="../../$app_glyph_license"
+if [[ -n "${EXPECTED_COMMIT:-}" ]]; then
+  expected_notice="$work/glyph-license.txt"
+  git cat-file blob "$EXPECTED_COMMIT:$app_glyph_license" >"$expected_notice" ||
+    die "could not read the glyph notice at $EXPECTED_COMMIT; check out the release commit"
+fi
+cmp -s "$expected_notice" "$app/Contents/Resources/${app_glyph_license##*/}" ||
   die "$name is missing the Lucide source kind glyph notice, or its contents differ"
 ok "$name includes the Lucide source kind glyph notice"
 

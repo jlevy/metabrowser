@@ -6,6 +6,9 @@
 # tool, must not change what a release runs, or break it.
 export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
+# Repository-relative path of the bundle's shared Lucide license notice.
+app_glyph_license="src/metabrowser/static/source-kind-glyphs.license.txt"
+
 die() {
   echo "error: $*" >&2
   exit 1
@@ -134,14 +137,18 @@ dmg_path() {
   echo "build/$(artifact_label_of_variant "$1")-$2-$3.dmg"
 }
 
-# The commit the build comes from: HEAD's full ID, with -dirty when apps/macos has
-# uncommitted changes. Prints nothing outside a Git checkout. The full ID, so a release
-# check compares the whole commit with the tag's (gatekeeper-lib.sh); the About box cuts
-# it to a short commit ID as it shows it (AppIdentity.shortCommit).
+# Changes to the native package and the shared license that ships with it.
+app_build_input_status() {
+  git status --porcelain --untracked-files=all -- . "../../$app_glyph_license"
+}
+
+# The build's full HEAD ID with -dirty when any bundle input has uncommitted changes.
+# Prints nothing outside a Git checkout. The release check compares the full ID with the
+# tag's (gatekeeper-lib.sh). The About box displays its short form.
 source_commit() {
   local commit changes
   commit="$(git rev-parse HEAD 2>/dev/null)" || return 0
-  changes="$(git status --porcelain -- . 2>&1)" || die "git status failed: $changes"
+  changes="$(app_build_input_status 2>&1)" || die "git status failed: $changes"
   if [[ -n "$changes" ]]; then
     echo "$commit-dirty"
   else
