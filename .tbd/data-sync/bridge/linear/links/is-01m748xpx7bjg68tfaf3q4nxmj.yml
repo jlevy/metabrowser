@@ -5,8 +5,8 @@ base:
     - linear
     - Feature
   priority: 1
-  slot: todo
-  status: open
+  slot: in_progress
+  status: in_progress
   title: "Native macOS app: thin AppKit shell over metab"
 bead_id: is-01m748xpx7bjg68tfaf3q4nxmj
 external_id: 92793121-e71d-4d48-964f-9c3f40100392
@@ -14,7 +14,7 @@ external_key: OS-611
 external_url: https://linear.app/finterm-ai/issue/OS-611/native-macos-app-thin-appkit-shell-over-metab
 refinement_slot: todo
 refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-20T23:00:31.083Z
+remote_updated_at: 2026-11-21T19:01:56.687Z
 state: linked
-synced_at: 2026-11-20T23:11:48.374Z
+synced_at: 2026-11-21T19:01:56.960Z
 type: lk
