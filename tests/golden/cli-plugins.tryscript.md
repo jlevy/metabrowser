@@ -41,7 +41,7 @@ html           builtin  html                    -             2      -
 image          builtin  -                       -             1      -
 markdown       builtin  markdown,mermaid        -             4      -
 sqlite         builtin  sqlite                  table         3      info,schema,children
-structured     builtin  structured              -             2      parsed
+structured     builtin  structured              table         3      parsed
 table          builtin  -                       -             0      tables,schema,rows,record,card
 text           builtin  -                       -             1      -
 unknown-jsonl  builtin  -                       agents        2      -
@@ -349,12 +349,15 @@ $ metab --plugins --json
       "kinds": [
         "structured"
       ],
-      "requires": [],
+      "requires": [
+        "table"
+      ],
       "views": [
         "tree",
+        "table",
         "source"
       ],
-      "view_count": 2,
+      "view_count": 3,
       "data_hooks": [
         "parsed"
       ],
@@ -464,6 +467,7 @@ assets in static_root:
   - package.json
   - place-rendered.js
   - print-indicator.js
+  - print-ready.js
   - project-adapters.js
   - reconciliation-coordinator.js
   - render-refusal.js
@@ -579,6 +583,7 @@ $ metab --plugin markdown --json
       "package.json",
       "place-rendered.js",
       "print-indicator.js",
+      "print-ready.js",
       "project-adapters.js",
       "reconciliation-coordinator.js",
       "render-refusal.js",
@@ -614,6 +619,7 @@ plugin requirements:
   fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
+  structured: requires table
   unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)

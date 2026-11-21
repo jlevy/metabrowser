@@ -40,8 +40,6 @@ def _unprivileged() -> tuple[list[str], int | None]:
     """The command prefix that runs a scenario unprivileged, and the uid it runs as."""
     if os.geteuid() != 0:
         return [], None
-    if shutil.which("su") is None:
-        pytest.skip("running as root with no su to drop to an unprivileged user")
     try:
         nobody = pwd.getpwnam("nobody")
     except KeyError:

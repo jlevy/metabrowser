@@ -50,8 +50,9 @@ from __future__ import annotations
 import codecs
 import json
 import math
+import re
 import sqlite3
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any, Final
 
@@ -78,6 +79,11 @@ SORT_UNINDEXED_MAX_ROWS: Final = 100_000
 # in 54 ms, within the budget a count has of its own, as it is read apart from the page.
 COUNT_CAP: Final = 1_000_000
 
+# Rows one filtered page may examine before it hands the caller a continuation.
+FILTER_SCAN_ROWS: Final = 8192
+# Exact small-table sizes for the overview, within one short scan per table.
+OVERVIEW_COUNT_ROWS: Final = 1000
+
 # Distinct referenced rows one page resolves, across its references: a page's most rows
 # (`TABLE_PAGE_ROWS_MAX`). Resolving that many by the referenced table's key, in one
 # statement per reference, added 8 ms to a 1,000-row page that took 2 ms without them.
@@ -92,11 +98,12 @@ REFS_PER_PAGE: Final = 1000
 # dearer preview to values whose whole read would cost more still.
 PAGE_INLINE_BYTES: Final = 4096
 
-# The name a keyless object's row position takes in the statements below; a column of
-# that name is read under its own quoted name all the same.
+# The name a keyless object's row position takes in the statements below, with `_`
+# appended until no column of the object has it (`position_name`).
 POSITION: Final = "__metabrowser_position"
 
 _TOOBIG: Final = 18  # SQLITE_TOOBIG
+_AUTH: Final = 23  # SQLITE_AUTH
 _INTERRUPT: Final = sqlite3.SQLITE_INTERRUPT
 _ROWID_ALIASES: Final = ("rowid", "_rowid_", "oid")
 _FSQLITE_ID: Final = 0x4653514C
@@ -181,6 +188,14 @@ def _decode(raw: bytes, encoding: str) -> tuple[str, bool]:
         return lenient.decode(raw, final=False), True
 
 
+def _refused(exc: sqlite3.Error) -> bool:
+    """Whether the authorizer refused *exc*'s statement: ``SQLITE_AUTH``, or a function
+    it refused, which SQLite reports as an error naming it ("not authorized to use
+    function"), as ``sqlite_access`` classifies a refusal."""
+    code = getattr(exc, "sqlite_errorcode", 0) & 0xFF
+    return code == _AUTH or "not authorized" in str(exc)
+
+
 def _stopped(exc: sqlite3.Error) -> bool:
     return (getattr(exc, "sqlite_errorcode", 0) & 0xFF) == _INTERRUPT
 
@@ -215,7 +230,68 @@ def _fetch(
     return rows, False
 
 
-# ── The catalog ────────────────────────────────────────────────
+# ── Virtual tables on a guest read ─────────────────────────────
+#
+# Where virtual tables are not read (a Git pin, the untrusted profile), every request
+# refuses, at prepare time, any read of a virtual table or of a table that may be one of
+# its shadow tables, in its own statements and inside any view, and any schema pragma
+# that describes one. The names come from `sqlite_schema` in the request's own
+# transaction, which connects no module, so the refusal is in place before anything
+# could. A view over a virtual table is then refused when it is read, so the module's
+# query code (`xBestIndex`, `xFilter`, `xNext` over its shadow tables) never runs.
+#
+# What remains: SQLite computes a view's column names with no authorizer (measured on
+# SQLite 3.53), so listing the objects (`pragma_table_list`) or describing or reading a
+# view that names a virtual table still connects that table: its module's `xConnect`
+# runs and reads its configuration (FTS5's `<table>_config`; R-tree the size of its
+# root node). Only `sqlite3_drop_modules` would stop that, and Python's `sqlite3` does
+# not expose it. Shadow tables are refused too, so that a statement naming a virtual
+# table directly, which connects it with the authorizer in place, fails at the connect.
+
+_VIRTUAL_DDL: Final = re.compile(rb"\s*CREATE\s+VIRTUAL\s+TABLE\b", re.IGNORECASE)
+
+# A quoted name can itself contain a USING token, so match it as one identifier.
+_FTS_DDL: Final = re.compile(
+    rb"""\s*CREATE\s+VIRTUAL\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"""
+    rb"""(?:"(?:[^"]|"")*"|'(?:[^']|'')*'|`[^`]*`|\[[^\]]*\]|[^\s.'"\x60\[\]();]+)"""
+    rb"""\s+USING\s+(fts[345])\s*(?:\(|$)""",
+    re.IGNORECASE,
+)
+# SQLite's fts3ShadowName and fts5ShadowName callbacks define these suffixes.
+_FTS34_SHADOWS: Final = frozenset({"content", "docsize", "segdir", "segments", "stat"})
+_FTS_SHADOWS: Final = {
+    b"fts3": _FTS34_SHADOWS,
+    b"fts4": _FTS34_SHADOWS,
+    b"fts5": frozenset({"config", "content", "data", "docsize", "idx"}),
+}
+
+
+def _guest_denied(connection: sqlite3.Connection) -> frozenset[str]:
+    """Refuse virtual tables and possible shadows before connecting any module.
+
+    SQLite identifies the built-in FTS modules' shadows by exact suffix. For other
+    modules or ambiguous declarations, refuse every possible shadow.
+    """
+    virtual: dict[str, frozenset[str] | None] = {}
+    tables: list[str] = []
+    for name, sql in connection.execute(
+        "SELECT name, sql FROM sqlite_schema WHERE type = 'table'"
+    ).fetchall():
+        text = _text(name) or ""
+        ddl = sql if isinstance(sql, bytes) else str(sql or "").encode("utf-8", "replace")
+        if _VIRTUAL_DDL.match(ddl):
+            module = _FTS_DDL.match(ddl)
+            virtual[text.casefold()] = _FTS_SHADOWS[module[1].lower()] if module else None
+        else:
+            tables.append(text.casefold())
+    denied = set(virtual)
+    for name in tables:
+        prefix, separator, suffix = name.rpartition("_")
+        if separator and prefix in virtual:
+            suffixes = virtual[prefix]
+            if suffixes is None or suffix in suffixes:
+                denied.add(name)
+    return frozenset(denied)
 
 
 def _objects(connection: sqlite3.Connection) -> list[dict[str, Any]]:
@@ -268,13 +344,6 @@ def _group(item: dict[str, Any], application_id: int) -> str:
     return "tables"
 
 
-def _column_names(connection: sqlite3.Connection, name: str) -> list[str]:
-    return [
-        row[0].decode("utf-8", "replace") if isinstance(row[0], bytes) else str(row[0])
-        for row in connection.execute("SELECT name FROM pragma_table_xinfo(?)", (name,))
-    ]
-
-
 def rowid_alias(columns: Sequence[str]) -> str | None:
     """The first rowid alias no column shadows, or None when every one is shadowed."""
     taken = {column.lower() for column in columns}
@@ -282,47 +351,64 @@ def rowid_alias(columns: Sequence[str]) -> str | None:
 
 
 def _estimates(
-    connection: sqlite3.Connection, objects: list[dict[str, Any]], deadline: float
+    connection: sqlite3.Connection,
+    objects: list[dict[str, Any]],
+    deadline: float,
+    denied: frozenset[str],
 ) -> dict[str, int]:
-    """A cheap row estimate per table: `sqlite_stat1`'s row count where `ANALYZE` left
-    one, else the largest rowid of a rowid table, a seek to its last row."""
+    """Small tables' actual sizes, or the row counts left by ANALYZE."""
     out: dict[str, int] = {}
     names = {str(item["name"]).lower() for item in objects}
     if "sqlite_stat1" in names:
-        rows, _ = _fetch(connection, "SELECT tbl, stat FROM sqlite_stat1", ())
+        rows, _ = _fetch(
+            connection,
+            "SELECT tbl, stat FROM sqlite_stat1 WHERE octet_length(stat) <= 128 LIMIT 4096",
+            (),
+        )
         for table, stat in rows:
             text = stat.decode("ascii", "replace") if isinstance(stat, bytes) else str(stat)
             first = text.split(" ", 1)[0]
-            if first.isdigit():
+            if first.isascii() and first.isdecimal() and len(first) <= 19:
                 key = table.decode("utf-8", "replace") if isinstance(table, bytes) else str(table)
                 out[key.lower()] = max(out.get(key.lower(), 0), int(first))
     for item in objects:
         name = str(item["name"])
-        if name.lower() in out or item["type"] != "table" or item["without_rowid"]:
-            continue
-        alias = rowid_alias(_column_names(connection, name))
-        if alias is None:
+        if name.lower() in out or item["type"] != "table" or name.casefold() in denied:
             continue
         _budget(connection, deadline)
-        rows, stopped = _fetch(connection, f"SELECT max({alias}) FROM {quote(name)}", ())
-        if not stopped and rows and isinstance(rows[0][0], int):
-            out[name.lower()] = rows[0][0]
+        try:
+            rows, stopped = _fetch(
+                connection,
+                f"SELECT count(*) FROM (SELECT 1 FROM {quote(name)} LIMIT ?)",
+                (OVERVIEW_COUNT_ROWS + 1,),
+            )
+        except sqlite3.OperationalError as exc:
+            if item["without_rowid"] and str(exc) == "no query solution":
+                # Its primary key may use a collation available only to its owner.
+                continue
+            raise
+        if not stopped and rows and int(rows[0][0]) <= OVERVIEW_COUNT_ROWS:
+            out[name.lower()] = int(rows[0][0])
     return out
 
 
-def catalog(connection: sqlite3.Connection, deadline: float) -> dict[str, Any]:
+def catalog(
+    connection: sqlite3.Connection, deadline: float, denied: frozenset[str] = frozenset()
+) -> dict[str, Any]:
     connection.text_factory = bytes
     application_id = int(_pragma(connection, "application_id"))
     encoding = str(_pragma(connection, "encoding"))
     objects = _objects(connection)
-    estimates = _estimates(connection, objects, deadline)
+    estimates = _estimates(connection, objects, deadline, denied)
     for item in objects:
         item["group"] = _group(item, application_id)
         item["estimate"] = estimates.get(str(item["name"]).lower())
-        keyed = item["type"] == "table" and bool(
-            _key(item, _columns(connection, str(item["name"])))[0]
-        )
-        item["keyed"] = keyed
+        name = str(item["name"])
+        key: list[str] = []
+        if item["type"] == "table" and name.casefold() not in denied:
+            key, _ = _key(connection, item, _columns(connection, name))
+        item["key"] = key
+        item["keyed"] = bool(key)
     return {"application_id": application_id, "encoding": encoding, "objects": objects}
 
 
@@ -336,6 +422,8 @@ def _text(value: Any) -> str | None:
 
 
 def _find(objects: list[dict[str, Any]], name: str) -> dict[str, Any] | None:
+    """The object a foreign key names, as SQLite finds it: by its exact name, else
+    ignoring case. An address names its object exactly (:func:`describe`)."""
     exact = next((item for item in objects if item["name"] == name), None)
     if exact is not None:
         return exact
@@ -348,12 +436,18 @@ def _primary_key(columns: list[dict[str, Any]]) -> list[str]:
 
 
 def _foreign_keys(
-    connection: sqlite3.Connection, name: str, objects: list[dict[str, Any]]
+    connection: sqlite3.Connection,
+    name: str,
+    objects: list[dict[str, Any]],
+    denied: frozenset[str] = frozenset(),
 ) -> list[dict[str, Any]]:
     """A table's declared foreign keys, one per constraint, with its target named as the
     catalog names it and an omitted target column list read as the target's primary
     key. A key whose target does not exist, or has no primary key to stand for an
-    omitted list, is left out: SQLite refuses it too, when it is enforced."""
+    omitted list, is left out: SQLite refuses it too, when it is enforced. So is one
+    whose omitted list would be read from a target this read may not describe."""
+    if name.casefold() in denied:
+        return []
     grouped: dict[int, dict[str, Any]] = {}
     for fk_id, _seq, target, source, to in connection.execute(
         'SELECT id, seq, "table", "from", "to" FROM pragma_foreign_key_list(?) ORDER BY id, seq',
@@ -371,6 +465,8 @@ def _foreign_keys(
             continue
         to = entry["to"]
         if any(item is None for item in to):
+            if str(found["name"]).casefold() in denied:
+                continue
             columns = _columns(connection, str(found["name"]))
             key = _primary_key(columns)
             if not key and not found["without_rowid"]:
@@ -432,19 +528,30 @@ def _indexes(connection: sqlite3.Connection, name: str) -> list[dict[str, Any]]:
     return out
 
 
-def _key(item: dict[str, Any], columns: list[dict[str, Any]]) -> tuple[list[str], str | None]:
+def _key(
+    connection: sqlite3.Connection, item: dict[str, Any], columns: list[dict[str, Any]]
+) -> tuple[list[str], str | None]:
     """An object's key columns and, for a rowid table whose rowid is not a column, the
     alias that names it: the rowid, the integer primary key that is its alias, or a
     `WITHOUT ROWID` table's primary key. A view's or a virtual table's rows have none,
     and nor does a table whose every rowid alias a column shadows and that has no
-    integer primary key."""
+    integer primary key.
+
+    An `INTEGER PRIMARY KEY` is the rowid's alias unless it was declared
+    `INTEGER PRIMARY KEY DESC` in its column, SQLite's documented exception, which is an
+    ordinary column that may hold nulls and has an index of its own: so a primary key
+    with an index (`origin = 'pk'`) is no alias, and the table is keyed by its rowid."""
     if item["type"] != "table":
         return [], None
     if item["without_rowid"]:
         return _primary_key(columns), None
     keyed = [column for column in columns if column["pk"]]
     if len(keyed) == 1 and keyed[0]["declared"].upper() == "INTEGER":
-        return [keyed[0]["name"]], None
+        indexed = connection.execute(
+            "SELECT 1 FROM pragma_index_list(?) WHERE origin = 'pk'", (str(item["name"]),)
+        ).fetchone()
+        if indexed is None:
+            return [keyed[0]["name"]], None
     alias = rowid_alias([column["name"] for column in columns])
     return ([alias], alias) if alias is not None else ([], None)
 
@@ -454,28 +561,46 @@ def describe(
     name: str,
     deadline: float,
     *,
-    virtual_ok: bool,
+    denied: frozenset[str] = frozenset(),
     sort_rows: int = SORT_UNINDEXED_MAX_ROWS,
 ) -> dict[str, Any] | None:
+    """One object's description. Where *denied* names it (a virtual table, or a table
+    that may be one's shadow table, on a guest read) it is described from the catalog
+    alone, unread; a view that reads one is found so when its rows are counted."""
     connection.text_factory = bytes
     objects = _objects(connection)
-    item = _find(objects, name)
+    # One name, one address: a case variant of a table's segment names nothing.
+    item = next((item for item in objects if item["name"] == name), None)
     if item is None:
         return None
     application_id = int(_pragma(connection, "application_id"))
     exact = str(item["name"])
-    columns = _columns(connection, exact)
-    key, alias = _key(item, columns)
-    readable = item["type"] != "virtual" or virtual_ok
-    outgoing = _foreign_keys(connection, exact, objects) if item["type"] == "table" else []
+    # Why the object is not read here: `virtual` (it is a virtual table), `shadow` (it
+    # may be a virtual table's shadow table), `reads_virtual` (a view that reads one),
+    # `module` (a virtual table whose module does more than read to open it: R-tree
+    # prepares writes to its shadow tables when it connects, which a reader refuses).
+    unread: str | None = None
+    if exact.casefold() in denied:
+        unread = "virtual" if item["type"] == "virtual" else "shadow"
+    columns: list[dict[str, Any]] = []
+    if not unread:
+        try:
+            columns = _columns(connection, exact)
+        except sqlite3.DatabaseError as exc:
+            if not (item["type"] == "virtual" and _refused(exc)):
+                raise
+            unread = "module"
+    key, alias = _key(connection, item, columns) if not unread else ([], None)
+    tabled = item["type"] == "table" and not unread
+    outgoing = _foreign_keys(connection, exact, objects, denied) if tabled else []
     incoming: list[dict[str, Any]] = []
     for other in objects:
         if other["type"] != "table":
             continue
-        for fk in _foreign_keys(connection, str(other["name"]), objects):
+        for fk in _foreign_keys(connection, str(other["name"]), objects, denied):
             if fk["table"] == exact:
                 incoming.append({"table": other["name"], "from": fk["from"], "to": fk["to"]})
-    indexes = _indexes(connection, exact) if item["type"] == "table" else []
+    indexes = _indexes(connection, exact) if tabled else []
     triggers = [
         {"name": _text(trigger), "sql": _text(sql)}
         for trigger, sql in connection.execute(
@@ -485,14 +610,24 @@ def describe(
         )
     ]
     rows_upto: int | None = None
-    if readable:
+    if not unread:
         _budget(connection, deadline)
-        rows, stopped = _fetch(
-            connection,
-            f"SELECT count(*) FROM (SELECT 1 FROM {quote(exact)} LIMIT ?)",
-            (sort_rows + 1,),
-        )
+        try:
+            rows, stopped = _fetch(
+                connection,
+                f"SELECT count(*) FROM (SELECT 1 FROM {quote(exact)} LIMIT ?)",
+                (sort_rows + 1,),
+            )
+        except sqlite3.DatabaseError as exc:
+            if denied and _refused(exc):
+                unread = "reads_virtual"
+            elif item["without_rowid"] and str(exc) == "no query solution":
+                unread = "key_collation"
+            else:
+                raise
+            rows, stopped = [], True
         rows_upto = None if stopped or not rows else int(rows[0][0])
+    readable = unread is None
     return {
         "name": exact,
         "type": item["type"],
@@ -501,6 +636,7 @@ def describe(
         "strict": item["strict"],
         "sql": item["sql"],
         "readable": readable,
+        "unread": unread,
         "columns": columns,
         "key": key,
         "rowid_alias": alias,
@@ -512,7 +648,9 @@ def describe(
     }
 
 
-def ddl(connection: sqlite3.Connection, name: str | None) -> dict[str, Any]:
+def ddl(
+    connection: sqlite3.Connection, name: str | None, denied: frozenset[str] = frozenset()
+) -> dict[str, Any]:
     """Every object's DDL, or one table's and its indexes' and triggers', with every
     table's foreign keys."""
     connection.text_factory = bytes
@@ -530,7 +668,7 @@ def ddl(connection: sqlite3.Connection, name: str | None) -> dict[str, Any]:
     keys: dict[str, list[dict[str, Any]]] = {}
     for item in objects:
         if item["type"] == "table" and (name is None or item["name"] == name):
-            found = _foreign_keys(connection, str(item["name"]), objects)
+            found = _foreign_keys(connection, str(item["name"]), objects, denied)
             if found:
                 keys[str(item["name"])] = found
     return {"objects": entries, "foreign_keys": keys}
@@ -651,25 +789,68 @@ def _predicates(spec: dict[str, Any]) -> tuple[list[str], list[Any], list[str]]:
     if ref is not None:
         options: list[str] = []
         for option in ref:
-            fields = [str(name) for name in option["fields"]]
-            marks, values = _binds(option["values"])
-            guards = " AND ".join(_guard(column) for column in fields)
-            options.append(f"({guards} AND {_row_value(fields)} = ({', '.join(marks)}))")
+            match, values = _references(
+                str(option["table"]),
+                [str(name) for name in option["to"]],
+                [str(name) for name in option["fields"]],
+                option["values"],
+            )
+            options.append(match)
             params.extend(values)
         clauses.append("(" + " OR ".join(options) + ")" if options else "0")
     return clauses, params, skips
 
 
+def position_name(columns: Iterable[str]) -> str:
+    """The name of a keyless object's row position: :data:`POSITION`, with `_` appended
+    until it is none of *columns*, compared as SQLite compares names."""
+    taken = {column.casefold() for column in columns}
+    name = POSITION
+    while name.casefold() in taken:
+        name += "_"
+    return name
+
+
+def _position(spec: dict[str, Any]) -> str:
+    return str(spec.get("position_name") or POSITION)
+
+
+# The alias of the object a statement reads rows of, so a correlated subquery can name
+# its columns past a table of the same name inside it.
+ROW: Final = quote("__metabrowser_row")
+# The alias of a referenced table inside such a subquery.
+_TARGET: Final = quote("__metabrowser_target")
+
+
+def _references(
+    target: str, to: Sequence[str], fields: Sequence[str], values: Sequence[Wire]
+) -> tuple[str, list[Any]]:
+    """Whether the row's *fields* name the *target* row whose *to* columns hold *values*,
+    decided as a page's references resolve: by the target's columns, on the left, so
+    their affinity and collation decide a match as they would for the foreign key."""
+    marks, bound = _binds(values)
+    joins = " AND ".join(
+        f"{_TARGET}.{quote(column)} = {ROW}.{quote(field)}"
+        for column, field in zip(to, fields, strict=True)
+    )
+    named = ", ".join(f"{_TARGET}.{quote(column)}" for column in to)
+    sql = (
+        f"EXISTS (SELECT 1 FROM {quote(target)} AS {_TARGET} WHERE {joins} "
+        f"AND ({named}) = ({', '.join(marks)}))"
+    )
+    return sql, bound
+
+
 def _relation(spec: dict[str, Any], positioned: bool) -> str:
     table = quote(str(spec["table"]))
     if positioned:
-        return f"(SELECT row_number() OVER () AS {quote(POSITION)}, * FROM {table})"
-    return table
+        return f"(SELECT row_number() OVER () AS {quote(_position(spec))}, * FROM {table}) AS {ROW}"
+    return f"{table} AS {ROW}"
 
 
 def _key_columns(spec: dict[str, Any], positioned: bool) -> list[str]:
     key = [str(name) for name in spec["key"]]
-    return key if key else ([POSITION] if positioned else [])
+    return key if key else ([_position(spec)] if positioned else [])
 
 
 def _regions(spec: dict[str, Any]) -> list[str]:
@@ -726,7 +907,9 @@ def _select(spec: dict[str, Any], positioned: bool, inline: int) -> tuple[str, l
     sort = spec.get("sort")
     if sort is not None:
         q = quote(sort)
-        parts += [f"typeof({q})", f"CASE WHEN {_guard(sort)} THEN {q} END"]
+        # A sort value larger than a token can hold uses the positional cursor.
+        token_bytes = int(spec["token_bytes"])
+        parts += [f"typeof({q})", f"CASE WHEN octet_length({q}) <= {token_bytes} THEN {q} END"]
     if spec.get("rowid") is not None:
         parts.append(quote(spec["rowid"]))
     columns = [str(name) for name in spec["columns"]]
@@ -784,10 +967,62 @@ def _preview_cells(
                 cell[2] = previewer.preview(column, row["rowid"], kind, size, limits[kind])
 
 
+def _scan_matches(
+    connection: sqlite3.Connection,
+    spec: dict[str, Any],
+    select: str,
+    columns: list[str],
+    positioned: bool,
+) -> tuple[list[dict[str, Any]], bool, int, dict[str, Any] | None]:
+    """Keep the last examined row even when a window contains no matches."""
+    where, params, _ = _predicates(spec)
+    match = " AND ".join(where)
+    select = f"CASE WHEN {match} THEN 1 ELSE 0 END, {select}"
+    limit = int(spec["limit"])
+    scan_limit = int(spec["scan_rows"])
+    after = spec.get("after")
+    regions = _regions(spec)
+    if after is not None and "region" in after:
+        regions = regions[regions.index(after["region"]) :]
+
+    found: list[dict[str, Any]] = []
+    last: Row | None = None
+    examined = 0
+    stopped = False
+    try:
+        if after is not None and "offset" in after:
+            sql, values = _offset_sql(spec, select, [], params, positioned)
+            statements = [(sql, [*values, scan_limit, int(after["offset"])])]
+        else:
+            statements = [
+                _region_sql(spec, region, after, select, [], params, positioned)
+                for region in regions
+            ]
+        for sql, values in statements:
+            if after is None or "offset" not in after:
+                values.append(scan_limit - examined)
+            for matched, *row in connection.execute(sql, values):
+                last = tuple(row)
+                examined += 1
+                if matched:
+                    found.append(_split(last, spec, positioned, columns))
+                    if len(found) >= limit:
+                        break
+            if len(found) >= limit or examined >= scan_limit:
+                stopped = len(found) < limit
+                break
+    except sqlite3.OperationalError as exc:
+        if not _stopped(exc):
+            raise
+        stopped = True
+    point = _split(last, spec, positioned, []) if last is not None else None
+    return found, stopped, examined, point
+
+
 def _page(connection: sqlite3.Connection, spec: dict[str, Any], deadline: float) -> dict[str, Any]:
     connection.text_factory = bytes
     keyless = not spec["key"]
-    filtered = bool(spec.get("filters") or spec.get("search") or spec.get("ref"))
+    filtered = bool(spec.get("scan_rows"))
     sort = spec.get("sort")
     order = spec["order"]
     fast = keyless and sort is None and not filtered and order == "asc"
@@ -800,8 +1035,14 @@ def _page(connection: sqlite3.Connection, spec: dict[str, Any], deadline: float)
     found: list[dict[str, Any]] = []
     stopped = False
     toobig = False
+    examined: int | None = None
+    point: dict[str, Any] | None = None
     try:
-        if after is not None and "offset" in after:
+        if filtered:
+            found, stopped, examined, point = _scan_matches(
+                connection, spec, select, columns, positioned
+            )
+        elif after is not None and "offset" in after:
             # A cursor past the token bound: the rows already served, in one statement in
             # the query's order, which is the regions' order concatenated.
             sql, values = _offset_sql(spec, select, where, params, positioned)
@@ -846,7 +1087,14 @@ def _page(connection: sqlite3.Connection, spec: dict[str, Any], deadline: float)
     )
     _preview_cells(found, previewer, inline, spec["preview"])
     refs = _resolve(connection, spec, found, deadline)
-    return {"rows": found, "stopped": stopped, "more": len(found) >= limit, "refs": refs}
+    return {
+        "rows": found,
+        "stopped": stopped,
+        "more": len(found) >= limit,
+        "examined": examined,
+        "point": point,
+        "refs": refs,
+    }
 
 
 def _offset_sql(
@@ -971,7 +1219,7 @@ def _count(
     examine are counted among the same rows."""
     connection.text_factory = bytes
     where, params, skips = _predicates(spec)
-    table = quote(str(spec["table"]))
+    table = f"{quote(str(spec['table']))} AS {ROW}"
     cap = int(spec.get("cap") or COUNT_CAP)
     if not where:
         rows, stopped = _fetch(
@@ -1044,7 +1292,7 @@ def _backrefs(
     deadline: float,
 ) -> list[dict[str, Any]]:
     """For each foreign key that points at this table, how many of its table's rows name
-    this record, capped as a page's count is."""
+    this record, capped as a page's count is, matched as a page's references are."""
     out: list[dict[str, Any]] = []
     for incoming in spec.get("referenced_by") or []:
         to = [str(name) for name in incoming["to"]]
@@ -1053,12 +1301,12 @@ def _backrefs(
             out.append({"count": 0, "complete": True})
             continue
         fields = [str(name) for name in incoming["fields"]]
-        marks, params = _binds(values)
+        match, params = _references(str(spec["table"]), to, fields, values)
         _budget(connection, deadline)
         rows, stopped = _fetch(
             connection,
-            f"SELECT count(*) FROM (SELECT 1 FROM {quote(str(incoming['table']))} "
-            f"WHERE {_row_value(fields)} = ({', '.join(marks)}) LIMIT ?)",
+            f"SELECT count(*) FROM (SELECT 1 FROM {quote(str(incoming['table']))} AS {ROW} "
+            f"WHERE {match} LIMIT ?)",
             [*params, COUNT_CAP + 1],
         )
         if stopped or not rows:
@@ -1072,21 +1320,66 @@ def _backrefs(
 # ── Requests ───────────────────────────────────────────────────
 
 
+def _require_generation(path: Path, expected: str) -> None:
+    try:
+        current = sqlite_access.sqlite_generation(path)
+    except FileNotFoundError:
+        current = None
+    if current != expected:
+        raise sqlite_access.SqliteAccessError(
+            "refused", "The database changed while opening this position. Read the table again."
+        )
+
+
 def _read[T](
     args: dict[str, Any],
     deadline: float,
-    fn: Callable[[sqlite3.Connection], T],
+    fn: Callable[[sqlite3.Connection, frozenset[str]], T],
     *,
     attempts: int | None = None,
 ) -> tuple[T, sqlite_access.Access]:
-    return sqlite_access.read(
-        Path(str(args["path"])),
-        fn,
+    """Run *fn* in one read, with the names this read refuses: none where virtual tables
+    are read (``virtual_ok``, sent with every request and false when absent), and
+    otherwise the virtual tables and their possible shadow tables, refused before *fn*
+    runs its first statement."""
+    if sqlite_access.library_version() < sqlite_access.READER_MINIMUM_LIBRARY:
+        library = sqlite_access.library_report()
+        raise sqlite_access.SqliteAccessError(
+            "unsupported",
+            f"Browsing tables and schema requires SQLite {library['minimum']} or later "
+            f"for bounded value reads. This reader uses SQLite {library['version']}.",
+        )
+    virtual_ok = bool(args.get("virtual_ok"))
+
+    def guarded(connection: sqlite3.Connection) -> T:
+        denied: frozenset[str] = frozenset()
+        if not virtual_ok:
+            denied = _guest_denied(connection)
+            if denied:
+                sqlite_access.deny_reads(connection, denied)
+        return fn(connection, denied)
+
+    path = Path(str(args["path"]))
+    expected_generation = args.get("expected_generation")
+    if expected_generation is not None:
+        _require_generation(path, str(expected_generation))
+    value, access = sqlite_access.read(
+        path,
+        guarded,
         deadline=deadline,
         scratch=Path(str(args["scratch"])),
         immutable_content=bool(args.get("immutable_content")),
         attempts=attempts,
     )
+    if access.plan.state == "without_log":
+        raise sqlite_access.SqliteAccessError(
+            "without_log",
+            f"Cannot browse tables or schema {access.plan.reason}. "
+            "Open Info for the database's access details.",
+        )
+    if expected_generation is not None:
+        _require_generation(path, str(expected_generation))
+    return value, access
 
 
 def _access(access: sqlite_access.Access) -> dict[str, Any]:
@@ -1099,7 +1392,9 @@ def _access(access: sqlite_access.Access) -> dict[str, Any]:
 
 
 def _catalog_op(args: dict[str, Any], deadline: float) -> dict[str, Any]:
-    value, access = _read(args, deadline, lambda connection: catalog(connection, deadline))
+    value, access = _read(
+        args, deadline, lambda connection, denied: catalog(connection, deadline, denied)
+    )
     return {**value, "access": _access(access)}
 
 
@@ -1107,11 +1402,11 @@ def _describe_op(args: dict[str, Any], deadline: float) -> dict[str, Any] | None
     value, _unused = _read(
         args,
         deadline,
-        lambda connection: describe(
+        lambda connection, denied: describe(
             connection,
             str(args["table"]),
             deadline,
-            virtual_ok=bool(args.get("virtual_ok")),
+            denied=denied,
             sort_rows=int(args.get("sort_rows") or SORT_UNINDEXED_MAX_ROWS),
         ),
     )
@@ -1121,19 +1416,26 @@ def _describe_op(args: dict[str, Any], deadline: float) -> dict[str, Any] | None
 def _ddl_op(args: dict[str, Any], deadline: float) -> dict[str, Any]:
     table = args.get("table")
     value, _unused = _read(
-        args, deadline, lambda connection: ddl(connection, str(table) if table else None)
+        args,
+        deadline,
+        lambda connection, denied: ddl(connection, str(table) if table else None, denied),
     )
     return value
 
 
 def _rows_op(args: dict[str, Any], deadline: float) -> dict[str, Any]:
     spec = dict(args["spec"])
-    page, _unused = _read(args, deadline, lambda connection: _page(connection, spec, deadline))
+    page, _unused = _read(
+        args, deadline, lambda connection, _denied: _page(connection, spec, deadline)
+    )
     if page.get("toobig") or not spec.get("count"):
         return {**page, "count": None}
     try:
         counted, _unused = _read(
-            args, deadline, lambda connection: _count(connection, spec, deadline), attempts=1
+            args,
+            deadline,
+            lambda connection, _denied: _count(connection, spec, deadline),
+            attempts=1,
         )
     except sqlite_access.SqliteAccessError:
         counted = None
@@ -1143,14 +1445,16 @@ def _rows_op(args: dict[str, Any], deadline: float) -> dict[str, Any]:
 def _positions_op(args: dict[str, Any], deadline: float) -> list[int | None]:
     spec = dict(args["spec"])
     value, _unused = _read(
-        args, deadline, lambda connection: _positions(connection, spec, deadline)
+        args, deadline, lambda connection, _denied: _positions(connection, spec, deadline)
     )
     return value
 
 
 def _record_op(args: dict[str, Any], deadline: float) -> dict[str, Any] | None:
     spec = dict(args["spec"])
-    value, _unused = _read(args, deadline, lambda connection: _record(connection, spec, deadline))
+    value, _unused = _read(
+        args, deadline, lambda connection, _denied: _record(connection, spec, deadline)
+    )
     return value
 
 

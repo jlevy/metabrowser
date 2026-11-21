@@ -30,18 +30,25 @@ request's deadline; then a rollback-journal database is ``writer_busy`` and any 
 from __future__ import annotations
 
 import contextlib
+import errno
 import hashlib
 import json
 import os
 import sqlite3
 import stat
+import struct
 import sys
 import threading
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Literal, get_args
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows has no POSIX locks; see `_index_in_use`
+    fcntl = None
 
 # ── The file format ────────────────────────────────────────────
 
@@ -55,6 +62,16 @@ WAL_HEADER_BYTES: Final = 32
 # live: a writer is inside a transaction, or one died there.
 JOURNAL_HEADER_BYTES: Final = 28
 SIDECAR_SUFFIXES: Final = ("-journal", "-wal", "-shm")
+# The `-shm` byte every connection to a write-ahead-log database holds a shared lock on
+# while it is open (SQLite's `UNIX_SHM_DMS`, its "dead-man switch": the 8 lock bytes from
+# offset 120, then this one). A lock held there is a live connection; none is an owner
+# that crashed or a folder copied with its sidecars, whose index the next connection
+# rebuilds by rewriting `-shm`.
+SHM_DMS_BYTE: Final = 128
+# The wal-index header at the start of `-shm`: its change counter, frame count, page
+# count, salts, and checksums (https://sqlite.org/walformat.html, section 2.1). A commit
+# changes it even when the log is overwritten in place and keeps its size and salts.
+SHM_HEADER_BYTES: Final = 48
 
 type JournalKind = Literal["rollback", "wal"]
 type AccessMode = Literal["immutable", "read_only", "private_copy"]
@@ -71,6 +88,7 @@ type ErrorState = Literal[
     "without_log",
     "refused",
     "reader_stopped",
+    "too_large",
 ]
 ERROR_STATES: Final[frozenset[str]] = frozenset(get_args(ErrorState.__value__))
 
@@ -161,12 +179,26 @@ SQL_MAX_BYTES: Final = 100_000
 # the schema is parsed.
 COLUMN_LIMIT: Final = 2000
 EXPR_DEPTH_LIMIT: Final = 1000
+# Terms in a compound SELECT, a LIKE or GLOB pattern's bytes, and opcodes in one compiled
+# statement, at SQLite's compiled defaults for the same reason: a schema's views are
+# compiled under them, and a library built with larger ones cannot widen them.
+COMPOUND_SELECT_LIMIT: Final = 500
+LIKE_PATTERN_LIMIT: Final = 50_000
+VDBE_OP_LIMIT: Final = 250_000_000
 # No database may be attached; the authorizer refuses ATTACH too.
 ATTACHED_LIMIT: Final = 0
 # The progress handler runs every this many virtual-machine opcodes, as `pull_catalog`
 # sets it. A `count(*)` runs a handful of opcodes and never reaches it, which is why a
 # watchdog interrupts at the deadline as well (the exploration's Budget record).
 PROGRESS_OPCODES: Final = 1000
+# The most heap SQLite may allocate in a reader process (`PRAGMA hard_heap_limit`, which
+# is process-wide, so a reader process sets it once as it starts, in `serve`). A failed
+# allocation is `SQLITE_NOMEM`, answered `busy`. It bounds SQLite's own memory on
+# macOS, where the reader's `RLIMIT_AS` (`READER_ADDRESS_SPACE_BYTES`) is not enforced:
+# half of that address space, with the other half for Python's heap and the reader's
+# mapped interpreter, whose measured share (112 MiB mapped after 50 Info reads, peaking
+# at 176 MiB) sits beside that constant.
+HEAP_LIMIT_BYTES: Final = 512 * 1024 * 1024
 # The opcodes one request may run. The exploration's Budget record: a 100-row page in
 # key order costs about 700 opcodes, an indexed sort about 1,200, an unindexed sort over
 # 200,000 rows 1.4 to 1.9 million, and a capped count of a million rows 7 million. Ten
@@ -177,10 +209,11 @@ READ_OPCODE_BUDGET: Final = 10_000_000
 # (the authorizer names the view), since `trusted_schema=OFF` already refuses there
 # every function not marked innocuous (the exploration's Encoding record).
 # The table reads (`builtin_plugins/sqlite/reader.py`) also sum a page's count and what it
-# skipped (`sum`), cut a value (`substr`), search (`like`), and number a keyless object's
-# rows in its own order (`row_number`).
+# skipped (`sum`), search (`like`), and number a keyless object's rows in its own order
+# (`row_number`). (The SQLite-tables layer's line: its merge with the SQLite-access layer
+# takes this set.)
 ADAPTER_FUNCTIONS: Final = frozenset(
-    {"count", "typeof", "octet_length", "max", "min", "sum", "substr", "like", "row_number"}
+    {"count", "typeof", "octet_length", "min", "sum", "like", "row_number"}
 )
 # Pragmas that describe the schema and take an argument, the object they describe, as a
 # statement (`PRAGMA table_xinfo(t)`) or a table-valued function
@@ -291,6 +324,9 @@ class Observation:
     wal: FileState | None
     wal_header: bytes
     shm: FileState | None
+    # Whether a live connection holds `-shm` (:func:`_index_in_use`); asked only when the
+    # log holds frames, the one state it decides.
+    shm_in_use: bool
     observed_ns: int
 
     @property
@@ -335,12 +371,17 @@ class Observation:
 
     def racy(self) -> bool:
         """Whether a write-ahead-log database's main file or log was modified within
-        :data:`RACY_MTIME_SECONDS` of this look, so a checkpoint could hide in it."""
+        :data:`RACY_MTIME_SECONDS` of this look, so a checkpoint could hide in it.
+
+        A time further than the window ahead of the clock (skew, a restored or synced
+        file) is not racy: any write sets the time to now, which differs from it, so
+        validation sees the change.
+        """
         if self.journal_kind != "wal":
             return False
         window = int(RACY_MTIME_SECONDS * 1e9)
         stamps = [self.main.mtime_ns] + ([self.wal.mtime_ns] if self.wal is not None else [])
-        return any(self.observed_ns - stamp < window for stamp in stamps)
+        return any(-window < self.observed_ns - stamp < window for stamp in stamps)
 
 
 def _stat(path: Path) -> FileState | None:
@@ -350,10 +391,69 @@ def _stat(path: Path) -> FileState | None:
         return None
 
 
+class NotRegularFileError(OSError):
+    """A database or sidecar name that is not a regular file: a FIFO, a device, a folder."""
+
+
+def _open_regular(path: Path) -> int:
+    """Open *path* to read it, never following a symlink and never blocking on a FIFO,
+    and refuse anything but a regular file. The caller closes the descriptor."""
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise NotRegularFileError(errno.EINVAL, "not a regular file", path.name)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
 def _read_head(path: Path, size: int) -> bytes:
-    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    fd = _open_regular(path)
     try:
         return os.pread(fd, size, 0)
+    finally:
+        os.close(fd)
+
+
+# `struct flock` as `F_GETLK` takes it: Linux orders it type, whence, start, length, pid
+# (32 bytes with its padding); macOS and the BSDs start, length, pid, type, whence. A
+# platform not named here is never asked, and its index is taken as unused.
+_FLOCK_LAYOUTS: Final = {"linux": "hhqqi4x", "darwin": "qqihh"}
+
+
+def _index_in_use(fd: int) -> bool:
+    """Whether any other process holds a lock on the `-shm` byte :data:`SHM_DMS_BYTE`
+    through *fd*, which this process opened read-only and holds no lock through.
+
+    ``F_GETLK`` only asks: it takes no lock and changes nothing. When the platform's
+    layout is unknown or the question fails, the answer is no, so the reader takes the
+    private copy, which writes nothing beside the database.
+    """
+    layout = _FLOCK_LAYOUTS.get(sys.platform)
+    if fcntl is None or layout is None:
+        return False
+    if layout.startswith("hh"):
+        query = struct.pack(layout, fcntl.F_WRLCK, os.SEEK_SET, SHM_DMS_BYTE, 1, 0)
+    else:
+        query = struct.pack(layout, SHM_DMS_BYTE, 1, 0, fcntl.F_WRLCK, os.SEEK_SET)
+    try:
+        answer = struct.unpack(layout, fcntl.fcntl(fd, fcntl.F_GETLK, query))
+    except OSError:
+        return False
+    kind = answer[0] if layout.startswith("hh") else answer[3]
+    return kind != fcntl.F_UNLCK
+
+
+def _shm_in_use(path: Path) -> bool:
+    """Whether a live connection holds the `-shm` at *path*: opened read-only, asked with
+    ``F_GETLK``, and closed, with no connection open in this process."""
+    try:
+        fd = _open_regular(path)
+    except OSError:
+        return False
+    try:
+        return _index_in_use(fd)
     finally:
         os.close(fd)
 
@@ -406,6 +506,9 @@ def observe(path: Path) -> Observation:
             raise SqliteAccessError(
                 "unreadable", f"This database's log cannot be read: {exc.strerror}"
             ) from exc
+    shm_path = sidecar(path, "-shm")
+    shm = _stat(shm_path)
+    with_frames = wal is not None and wal.size > WAL_HEADER_BYTES
     return Observation(
         path=path,
         main=FileState.of(info),
@@ -414,7 +517,8 @@ def observe(path: Path) -> Observation:
         journal_live=journal_live,
         wal=wal,
         wal_header=wal_header,
-        shm=_stat(sidecar(path, "-shm")),
+        shm=shm,
+        shm_in_use=shm is not None and with_frames and _shm_in_use(shm_path),
         observed_ns=time.time_ns(),
     )
 
@@ -428,8 +532,13 @@ def sqlite_generation(path: Path) -> str:
     From stats and headers alone, never a connection: the main file's identity, size,
     modification time, and change counter, plus the log's size, modification time, and
     checkpoint sequence and salts (header bytes 12 to 24), which change every time the
-    log restarts even when its size repeats (the exploration's Generation record).
-    Raises ``OSError`` when the file is gone.
+    log restarts even when its size repeats (the exploration's Generation record), and
+    the wal-index header (:data:`SHM_HEADER_BYTES`), whose change counter and frame count
+    move on every commit, even one that overwrites a restarted log in place within one
+    tick of the file clock. That header is read without a lock, so a read torn by a
+    commit gives a token that changes once more than it had to, never one that misses
+    the commit. Raises ``OSError`` when the file is gone, or
+    :class:`SqliteAccessError` when its log cannot be read.
     """
     real = Path(os.path.realpath(path))
     info = os.stat(real)
@@ -441,6 +550,16 @@ def sqlite_generation(path: Path) -> str:
         wal_salts = _read_head(wal_path, 24)[12:24].hex() if wal.st_size else ""
         parts += [wal.st_size, wal.st_mtime_ns, wal_salts]
     except FileNotFoundError:
+        parts.append("-")
+    except OSError as exc:
+        raise SqliteAccessError(
+            "unreadable", f"This database's log cannot be read: {exc.strerror}"
+        ) from exc
+    try:
+        # The server holds no connection to a database it does not own, so opening and
+        # closing its `-shm` here drops no lock.
+        parts.append(_read_head(sidecar(real, "-shm"), SHM_HEADER_BYTES).hex())
+    except OSError:
         parts.append("-")
     material = ":".join(str(part) for part in parts)
     return hashlib.sha256(material.encode()).hexdigest()[:16]
@@ -502,20 +621,25 @@ def choose(obs: Observation, *, immutable_content: bool, copy_failures: int) -> 
             "validated against a new frame or checkpoint",
             validate=True,
         )
-    if obs.shm is not None:
+    if obs.shm is not None and obs.shm_in_use:
         return Plan(
             "read_only",
             "current",
-            "the write-ahead log holds frames and its index is present, so it is read "
-            "through them as every reader does",
+            "the write-ahead log holds frames and an application has it open, so it is "
+            "read through them as every reader does",
             validate=False,
         )
+    if obs.shm is None:
+        why = "the write-ahead log holds frames and has no index beside it"
+    else:
+        # No connection holds the index: a crashed owner or a copied folder. Opening it
+        # would rebuild the index by rewriting `-shm`.
+        why = "the write-ahead log holds frames and no application has it open"
     if copyable and copy_failures < COPY_ATTEMPTS:
         return Plan(
             "private_copy",
             "current",
-            "the write-ahead log holds frames and has no index beside it, so the database "
-            "and its log are read through a private copy",
+            f"{why}, so the database and its log are read through a private copy",
             validate=True,
         )
     size = obs.wal.size if obs.wal is not None else 0
@@ -552,6 +676,42 @@ def _authorizer(
     return sqlite3.SQLITE_DENY
 
 
+def deny_reads(connection: sqlite3.Connection, names: Iterable[str]) -> None:
+    """Refuse, from now on, every read of a table named in *names* on *connection*, a
+    guest connection :func:`read` hands its ``fn``.
+
+    A connection has one authorizer, so this installs :func:`_authorizer` composed with
+    the denial: a column read or a whole-table read such as `count(*)` of a named table
+    (compared casefolded, as SQLite compares names) in any statement or inside any view,
+    and a schema pragma describing one, as a statement or a table-valued function, are
+    refused at prepare time (``refused``). Call it inside ``fn``, after reading the schema
+    in the same transaction, so the names come from the schema the read sees. A later
+    call replaces the earlier names.
+
+    It stops the query, not the virtual table's module: SQLite computes a view's column
+    names with no authorizer (``xAuth = 0``, measured on SQLite 3.53), so preparing a
+    statement over a view that names a virtual table still connects that table (FTS5's
+    ``xConnect`` reads ``<table>_config``). Only ``sqlite3_drop_modules`` would stop
+    that, and Python's ``sqlite3`` does not expose it.
+    """
+    denied = frozenset(name.casefold() for name in names)
+
+    def authorizer(
+        action: int, arg1: str | None, arg2: str | None, db: str | None, inside: str | None
+    ) -> int:
+        if action == sqlite3.SQLITE_READ and (arg1 or "").casefold() in denied:
+            return sqlite3.SQLITE_DENY
+        if (
+            action == sqlite3.SQLITE_PRAGMA
+            and (arg1 or "").lower() in ADAPTER_SCHEMA_PRAGMAS
+            and (arg2 or "").casefold() in denied
+        ):
+            return sqlite3.SQLITE_DENY
+        return _authorizer(action, arg1, arg2, db, inside)
+
+    connection.set_authorizer(authorizer)
+
+
 def apply_settings(
     connection: sqlite3.Connection,
     *,
@@ -567,6 +727,9 @@ def apply_settings(
     connection.setlimit(sqlite3.SQLITE_LIMIT_COLUMN, COLUMN_LIMIT)
     connection.setlimit(sqlite3.SQLITE_LIMIT_EXPR_DEPTH, EXPR_DEPTH_LIMIT)
     connection.setlimit(sqlite3.SQLITE_LIMIT_ATTACHED, ATTACHED_LIMIT)
+    connection.setlimit(sqlite3.SQLITE_LIMIT_COMPOUND_SELECT, COMPOUND_SELECT_LIMIT)
+    connection.setlimit(sqlite3.SQLITE_LIMIT_LIKE_PATTERN_LENGTH, LIKE_PATTERN_LIMIT)
+    connection.setlimit(sqlite3.SQLITE_LIMIT_VDBE_OP, VDBE_OP_LIMIT)
     connection.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, True)
     connection.execute("PRAGMA trusted_schema=OFF")
     connection.execute("PRAGMA cell_size_check=ON")
@@ -589,11 +752,16 @@ def bound_work(connection: sqlite3.Connection, *, opcodes: int, deadline: float 
 
 
 def configure(connection: sqlite3.Connection, *, deadline: float, opcodes: int) -> None:
-    """Apply the guest connection settings, `query_only`, the work budget, and the
-    reads-only authorizer."""
+    """Apply the work budget, the guest connection settings, `query_only`, and the
+    reads-only authorizer.
+
+    The budget comes first: `PRAGMA cache_size` loads the schema, so a crafted schema is
+    parsed under it as well as under the watchdog. The authorizer comes last, since it
+    refuses the settings' own pragmas.
+    """
+    bound_work(connection, opcodes=opcodes, deadline=deadline)
     apply_settings(connection)
     connection.execute("PRAGMA query_only=ON")
-    bound_work(connection, opcodes=opcodes, deadline=deadline)
     connection.set_authorizer(_authorizer)
 
 
@@ -614,6 +782,11 @@ class _ProcessHandles:
     process, where one thread's handle may close while another thread's connection
     holds a lock; this defers that close until the last connection in the process to
     the same file has closed, as SQLite defers its own.
+
+    Deferred handles accumulate while connections to one file overlap without a moment
+    at zero, as SQLite's own deferred closes do: each request adds the few it opened (the
+    catalog opens the file and two sidecars), bounded only by the process's descriptor
+    limit, and all close when the last overlapping connection does.
     """
 
     def __init__(self) -> None:
@@ -690,7 +863,8 @@ def _copy_file(source: Path, target: Path, limit: int) -> int:
     """Copy at most *limit* bytes; the copy opens and closes the source with no
     connection open in this process."""
     copied = 0
-    with open(source, "rb") as reader, open(target, "xb") as writer:
+    source_fd = _open_regular(source)
+    with os.fdopen(source_fd, "rb") as reader, open(target, "xb") as writer:
         while copied <= limit:
             chunk = reader.read(min(_COPY_CHUNK, limit + 1 - copied))
             if not chunk:
@@ -731,13 +905,18 @@ def _fresh_folder(scratch: Path, prefix: str) -> str:
 _DAMAGED_CODES: Final = frozenset({sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB})
 
 
+def _error_code(exc: sqlite3.Error) -> int:
+    """*exc*'s primary result code."""
+    return getattr(exc, "sqlite_errorcode", 0) & 0xFF
+
+
 def _classify(exc: sqlite3.Error) -> SqliteAccessError:
     """The state an SQLite error on a read that was not in doubt is shown as.
 
     Only SQLite's own codes for a damaged file are damage; an authorizer's denial is
     reported at prepare time as a plain error naming it.
     """
-    code = getattr(exc, "sqlite_errorcode", 0) & 0xFF
+    code = _error_code(exc)
     if code in _DAMAGED_CODES:
         return SqliteAccessError("damaged", f"This database is damaged: {exc}")
     if code in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED, sqlite3.SQLITE_NOMEM):
@@ -746,6 +925,9 @@ def _classify(exc: sqlite3.Error) -> SqliteAccessError:
         return SqliteAccessError("busy", "The read ran past its deadline or its work budget.")
     if code == sqlite3.SQLITE_AUTH or "not authorized" in str(exc):
         return SqliteAccessError("refused", f"The read was refused: {exc}")
+    if str(exc).startswith("no such collation sequence: "):
+        name = str(exc).removeprefix("no such collation sequence: ")
+        return SqliteAccessError("unreadable", f"This read needs the SQLite collation {name!r}.")
     return SqliteAccessError("unreadable", f"This database could not be read: {exc}")
 
 
@@ -786,15 +968,20 @@ def read[T](
     copy_failures = 0
     wait = RETRY_FIRST_SECONDS
     last_kind: JournalKind = "rollback"
+    transient: _Transient | None = None
     while True:
         attempts += 1
         obs = observe(real)
         last_kind = obs.journal_kind
+        transient = None
         plan = choose(obs, immutable_content=immutable_content, copy_failures=copy_failures)
         if plan is not None and not (plan.validate and plan.mode != "private_copy" and obs.racy()):
-            outcome = _attempt(
-                real, obs, plan, fn, deadline=deadline, scratch=scratch, opcodes=opcodes
-            )
+            try:
+                outcome = _attempt(
+                    real, obs, plan, fn, deadline=deadline, scratch=scratch, opcodes=opcodes
+                )
+            except _Transient as exc:
+                transient, outcome = exc, None
             if outcome is not None:
                 value, notices = outcome
                 return value, Access(plan, obs, attempts, notices)
@@ -806,6 +993,8 @@ def read[T](
             break
         time.sleep(wait)
         wait = min(wait * 2, RETRY_MAX_SECONDS)
+    if transient is not None:
+        raise transient.error from transient.__cause__
     if last_kind == "rollback":
         raise SqliteAccessError(
             "writer_busy", "The application that owns this database is writing to it."
@@ -815,6 +1004,21 @@ def read[T](
 
 class _LookAgain(Exception):
     """The files changed under this attempt; the caller looks again and chooses again."""
+
+
+class _Transient(Exception):
+    """A read through a live log met a passing state: looked at again until the
+    deadline, then answered as *error*."""
+
+    def __init__(self, error: SqliteAccessError) -> None:
+        super().__init__(str(error))
+        self.error = error
+
+
+# What a `mode=ro` read through a live log can meet for a moment: the owner's recovery or
+# a checkpoint's exclusive moment outlasting `BUSY_TIMEOUT_SECONDS` (`SQLITE_BUSY`), or
+# the owner removing its log while the read opens it (`SQLITE_CANTOPEN`).
+_TRANSIENT_CODES: Final = frozenset({sqlite3.SQLITE_BUSY, sqlite3.SQLITE_CANTOPEN})
 
 
 def _attempt[T](
@@ -854,6 +1058,8 @@ def _attempt[T](
         if lock_free and not obs.unchanged(observe(real)):
             # An error from a read that failed validation is the change, not damage.
             return None
+        if plan.mode == "read_only" and _error_code(exc) in _TRANSIENT_CODES:
+            raise _Transient(error) from exc
         if error.state == "damaged" and plan.state != "current":
             raise SqliteAccessError(plan.state, f"{plan.reason}; reading it failed: {exc}") from exc
         raise error from exc
@@ -873,7 +1079,9 @@ def _read_through_log[T](
 ) -> T:
     """A `mode=ro` read through a live log, with the race check.
 
-    The `-shm` this look saw is opened before connecting and held until the connection
+    Only a log that a live connection holds is read this way (:func:`_index_in_use`): with
+    no owner, the first connection rebuilds the index by rewriting `-shm`. The `-shm` this
+    look saw is opened before connecting and held until the connection
     has closed, so nothing in this process closes a handle on it while SQLite holds its
     locks there (the exploration's Process record). After connecting, its identity is
     compared with the path's: an owner that exited in between removed it, and this open
@@ -881,14 +1089,25 @@ def _read_through_log[T](
     """
     shm_path = sidecar(real, "-shm")
     try:
-        held = os.open(shm_path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        held = _open_regular(shm_path)
     except FileNotFoundError as exc:
         # Gone since the look: the owner closed, and opening now would create the log
         # and its index.
         raise _LookAgain from exc
+    except OSError as exc:
+        raise SqliteAccessError(
+            "unreadable", f"This database's log index cannot be read: {exc.strerror}"
+        ) from exc
     try:
         held_state = FileState.of(os.fstat(held))
         if obs.shm is None or (held_state.dev, held_state.ino) != (obs.shm.dev, obs.shm.ino):
+            raise _LookAgain
+        if not _index_in_use(held):
+            # The owner closed or crashed since the look. Connecting now would make this
+            # read the first connection, which rebuilds the index by rewriting `-shm`;
+            # the next look sees no owner and takes the private copy. An owner that
+            # crashes between this question and the connection is the one window left,
+            # as narrow as the one the notice below reports.
             raise _LookAgain
         with _connection(_uri(real, "read_only"), deadline=deadline, opcodes=opcodes) as connection:
             value = fn(connection)
@@ -926,6 +1145,13 @@ _INFO_PRAGMAS: Final = (
 )
 
 
+# Schema objects by kind, every `type` outside the four SQLite writes counted as `other`.
+_OBJECT_KINDS_SQL: Final = (
+    "SELECT CASE WHEN typeof(type) = 'text' AND type IN ('table', 'index', 'view', 'trigger') "
+    "THEN type ELSE 'other' END AS kind, count(*) FROM sqlite_schema GROUP BY kind ORDER BY kind"
+)
+
+
 def _application_name(value: int) -> str | None:
     if value in APPLICATION_IDS:
         return APPLICATION_IDS[value]
@@ -945,12 +1171,9 @@ def info(
         pragmas: dict[str, Any] = {
             name: connection.execute(f"PRAGMA {name}").fetchone()[0] for name in _INFO_PRAGMAS
         }
-        objects = {
-            str(kind): int(count)
-            for kind, count in connection.execute(
-                "SELECT type, count(*) FROM sqlite_schema GROUP BY type ORDER BY type"
-            )
-        }
+        # Grouped by a closed set in SQL: SQLite accepts a schema row whose `type` reads
+        # as `table` up to a NUL, so a crafted file could otherwise name a group per row.
+        objects = {str(kind): int(count) for kind, count in connection.execute(_OBJECT_KINDS_SQL)}
         return pragmas, objects
 
     (pragmas, objects), access = read(
@@ -993,6 +1216,18 @@ def info(
 
 # ── The reader process ─────────────────────────────────────────
 
+# The longest answer, as one JSON line, a reader returns; a longer one is answered
+# `too_large` in its place, and the parent stops a reader that sends more
+# (`_Worker.ask`) with the same state. Unlike `busy`, it is not worth asking again: the
+# same request answers the same length. The parent parses an answer whole in the server:
+# `uv run python -m devtools.bench_sqlite_access` (2026-11-20, 4 CPUs at a load of 6)
+# measured a page-shaped answer's round trip at a median 50 ms for 8 MiB and 196 ms for
+# 30 MiB, the parent's peak growing 17 and 53 MiB. The largest page the table bounds
+# admit encoded as 5.3 MB (`TABLE_PAGE_CELLS_MAX` in `table_source.py`), so this leaves it
+# six times that for escaping while keeping one answer near a tenth of a request's
+# deadline and its parse near 60 MiB of the server's memory.
+ANSWER_MAX_BYTES: Final = 32 * 1024 * 1024
+
 
 def _limit_address_space(limit: int) -> None:
     """Bound this process's address space where the platform enforces one (Linux)."""
@@ -1004,6 +1239,15 @@ def _limit_address_space(limit: int) -> None:
         resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
     except (ImportError, ValueError, OSError):
         return
+
+
+def _limit_heap(limit: int) -> None:
+    """Bound SQLite's heap in this whole process (`PRAGMA hard_heap_limit`)."""
+    connection = sqlite3.connect(":memory:")
+    try:
+        connection.execute(f"PRAGMA hard_heap_limit={int(limit)}")
+    finally:
+        connection.close()
 
 
 def _info_op(args: dict[str, Any], deadline: float) -> dict[str, Any]:
@@ -1078,6 +1322,7 @@ def serve() -> None:
     how a worker whose parent died exits."""
     if len(sys.argv) > 2:
         _limit_address_space(int(sys.argv[2]))
+    _limit_heap(HEAP_LIMIT_BYTES)
     if len(sys.argv) > 3:
         _load_worker_modules(json.loads(sys.argv[3]))
     stdin = sys.stdin.buffer
@@ -1092,6 +1337,20 @@ def serve() -> None:
                 "error": "malformed request",
             }
         else:
-            response = _handle(request) | {"id": request.get("id")}
-        stdout.write(json.dumps(response, allow_nan=False, separators=(",", ":")).encode() + b"\n")
+            response = _handle(request)
+        stdout.write(_encode_answer(response) + b"\n")
         stdout.flush()
+
+
+def _encode_answer(response: dict[str, Any]) -> bytes:
+    """*response* as one JSON line's bytes, or a ``too_large`` answer in its place when it
+    is longer than :data:`ANSWER_MAX_BYTES`."""
+    encoded = json.dumps(response, allow_nan=False, separators=(",", ":")).encode()
+    if len(encoded) <= ANSWER_MAX_BYTES:
+        return encoded
+    refusal = {
+        "ok": False,
+        "state": "too_large",
+        "error": f"The answer was longer than the {ANSWER_MAX_BYTES:,} bytes a reader returns.",
+    }
+    return json.dumps(refusal, separators=(",", ":")).encode()

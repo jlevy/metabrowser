@@ -142,8 +142,8 @@ STRICT_SKIPS := $(if $(CI),METABROWSER_STRICT_SKIPS=1)
 # (a shared 4-processor machine) and four (CI's runners), as the fast CI plan's Phase 1
 # Measurements record; a machine with more processors may want a cap.
 PYTEST_WORKERS ?= logical
-# `SHARD=I/N` runs the Ith of N disjoint parts of a pytest tier (tests/suite_tiers.py);
-# empty runs the whole tier.
+# `SHARD=I/N` runs the Ith of N disjoint parts of a pytest tier (tests/suite_tiers.py) or
+# of the goldens (devtools/run_goldens.py); empty runs the whole tier.
 SHARD ?=
 # -rs names every skipped test with its reason, so a skip is read rather than counted,
 # and --durations and --file-durations list the slowest tests and test files
@@ -180,7 +180,7 @@ test-chrome:
 	$(PYTEST) -m "$(CHROME_TIER)"
 
 test-goldens:
-	$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) '$(GOLDENS)' -- $(TRYSCRIPT)
+	$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) $(if $(SHARD),--shard $(SHARD)) '$(GOLDENS)' -- $(TRYSCRIPT)
 
 # The size of the suite by area, at the working tree or at the commits in REFS, and with
 # LOG the time each test file and golden took in that CI job log:

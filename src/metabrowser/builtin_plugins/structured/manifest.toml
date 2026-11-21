@@ -4,6 +4,9 @@ display_name = "Structured Data"
 version = "0.0.1"
 sdk_version = "0.8"
 extra_scripts = ["preview.js", "tree.js"]
+# The table plugin's routes serve this plugin's [[table_source]], and its view draws the
+# Table view (mb.plugins.load("table") in index.js).
+requires = ["table"]
 
 # Generic JSON / YAML browser. Renders the parsed structure as a
 # virtualized, YAML-styled tree (default) with the original raw text
@@ -23,6 +26,19 @@ label = "Tree"
 key = "v"
 default = true
 
+# A JSON or YAML list of mappings as a table (plan Decision 12): every structured file
+# has the tab, and one that is not a list of records says so there. Tree stays the
+# default. `t`, the label's first letter, is Quick Search's, so the tab takes `a`.
+[[view]]
+kind = "structured"
+id = "table"
+label = "Table"
+key = "a"
+container_class = "content-body table-view-host"
+printable = true
+print_profile = "table"
+render_runtime = "client"
+
 [[view]]
 kind = "structured"
 id = "source"
@@ -36,3 +52,7 @@ render_runtime = "client"
 route = "parsed"
 sidekick = "metabrowser.builtin_plugins.structured:parsed_handler"
 methods = ["GET"]
+
+[[table_source]]
+kind = "structured"
+adapter = "metabrowser.builtin_plugins.structured.records:adapter"

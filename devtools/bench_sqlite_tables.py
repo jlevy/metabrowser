@@ -33,6 +33,7 @@ from typing import Any
 
 from metabrowser import sqlite_access
 from metabrowser.builtin_plugins.sqlite import reader
+from metabrowser.plugin_api import TABLE_TOKEN_MAX_CHARS
 
 _RUNS = 5
 
@@ -112,6 +113,7 @@ def _page_spec(columns: list[str], **extra: Any) -> dict[str, Any]:
         "key": ["id"],
         "rowid": "id",
         "columns": columns,
+        "token_bytes": TABLE_TOKEN_MAX_CHARS,
         "order": "asc",
         "limit": 100,
         "inline": reader.PAGE_INLINE_BYTES,

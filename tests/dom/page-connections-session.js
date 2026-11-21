@@ -48,6 +48,7 @@ const SHELL_VARIABLES = [
   "inventoryEventSource",
   "lastInventorySnapshot",
   "catalogFeedCanStart",
+  "containerHtml",
 ];
 
 const SHELL_FUNCTIONS = [
@@ -65,6 +66,8 @@ const SHELL_FUNCTIONS = [
   "_createInventoryEventSource",
   "startInventoryEventStream",
   "announceUnchangedSnapshot",
+  "watchContainer",
+  "loadContainerChildren",
 ];
 
 const shellSource = [
@@ -77,7 +80,7 @@ const shellSource = [
   ),
   ...SHELL_FUNCTIONS.map((name) =>
     appDeclaration(
-      new RegExp(`^function ${name}\\([^)]*\\) \\{[\\s\\S]*?^\\}`, "m"),
+      new RegExp(`^(?:async )?function ${name}\\([^)]*\\) \\{[\\s\\S]*?^\\}`, "m"),
       `function ${name}`,
     ),
   ),
@@ -127,6 +130,16 @@ function retryUnreachablePreview() {}
 // These stream-only pages have no failed mounted folder. The folder loader's
 // recovery boundary runs against production code in page-reconnect-behavior.js.
 function retryFailedExpandedSubtrees() {}
+// A container's children as the tree draws them: their names.
+function renderContainerChildren(rows) {
+  return rows.map((row) => row.name).join(" | ");
+}
+function applyTreeFilters() {
+  __did("tree: filters applied");
+}
+function synchronizeTreeNow() {
+  __did("tree: keyboard synchronized");
+}
 function flagRunEndedBadge() {
   __did("live log: marked ended");
 }
@@ -182,6 +195,25 @@ function createPage(sourceKind) {
   const listeners = new Map();
   let nextTimer = 0;
   let catalogRequests = 0;
+  // The server's side of file watches: the connections it holds, the paths each watches
+  // up to its bound, and each file's generation now. A restart forgets the connections.
+  // While `holding`, a watch request waits for `answerHeld`, as a slow server's does.
+  const server = {
+    connections: new Set(),
+    generations: new Map(),
+    watched: new Map(),
+    maxPaths: 32,
+    holding: false,
+    held: [],
+    // A container's children: the names its file holds now, and a read held until
+    // `answerChildren` while `holdingChildren`.
+    children: new Map(),
+    holdingChildren: false,
+    heldChildren: [],
+  };
+  /** What the server's watches for *connection* are now, as a line of the page's record. */
+  const watchedLine = (connection) =>
+    `server: ${connection} watches [${[...(server.watched.get(connection) ?? [])].join(", ")}]`;
 
   class RecordingEventSource {
     constructor(url) {
@@ -244,6 +276,55 @@ function createPage(sourceKind) {
     },
     console,
     encodeURIComponent,
+    // Only file-watches.js fetches through the global: POST /api/events/watch.
+    async fetch(url, init) {
+      did.push(`request: POST ${url} ${init.body}`);
+      if (server.holding) {
+        await new Promise((resolve) => server.held.push(resolve));
+      }
+      const body = JSON.parse(init.body);
+      const answer = (status, payload) => ({ status, json: async () => payload });
+      if (!server.connections.has(body.connection)) {
+        return answer(409, { type: "watch_error", code: "unknown_connection" });
+      }
+      const watched = server.watched.get(body.connection) ?? new Set();
+      server.watched.set(body.connection, watched);
+      if (body.watch === false) {
+        watched.delete(body.path);
+        did.push(watchedLine(body.connection));
+        return answer(200, { type: "file_watch", watching: false });
+      }
+      if (!watched.has(body.path) && watched.size >= server.maxPaths) {
+        return answer(409, { type: "watch_error", code: "too_many_watches" });
+      }
+      watched.add(body.path);
+      did.push(watchedLine(body.connection));
+      const generation = server.generations.get(body.path) ?? null;
+      return answer(200, {
+        type: "file_watch",
+        watching: true,
+        generation,
+        changed: "generation" in body ? generation !== body.generation : null,
+      });
+    },
+    // The asset loader, which watchContainer asks for file-watches.js.
+    MetabrowserAssets: {
+      ensureAsset(name) {
+        did.push(`asset: ${name}`);
+        page.loadFileWatches();
+        return Promise.resolve();
+      },
+    },
+    // The SDK's data hook, which loadContainerChildren reads a container's children with.
+    metabrowser: {
+      async fetchPluginData(plugin, hook, params) {
+        did.push(`request: GET /api/plugin/${plugin}/${hook}?path=${params.path}`);
+        if (server.holdingChildren) {
+          await new Promise((resolve) => server.heldChildren.push(resolve));
+        }
+        return { children: (server.children.get(params.path) ?? []).map((name) => ({ name })) };
+      },
+    },
     setTimeout(callback, delayMs) {
       nextTimer += 1;
       timers.set(nextTimer, { callback, delayMs });
@@ -312,11 +393,58 @@ function createPage(sourceKind) {
           streams: streams.filter((item) => !item.closed).map((item) => item.url),
           timers: [...timers.values()].map((timer) => `${timer.delayMs} ms`),
           parked: run("pageConnections.parked()"),
+          // Once a view has asked for file watches: each as the page holds it.
+          ...(sandbox.MetabrowserFileWatches
+            ? { watches: sandbox.MetabrowserFileWatches.shared().describe() }
+            : {}),
         },
       });
     },
     run,
+    server,
+    sandbox,
+    note: (line) => did.push(line),
+    /** Answer every watch request the server held. */
+    answerHeld() {
+      server.holding = false;
+      for (const resolve of server.held.splice(0)) {
+        resolve();
+      }
+    },
+    /** Answer every children read the server held. */
+    answerChildren() {
+      server.holdingChildren = false;
+      for (const resolve of server.heldChildren.splice(0)) {
+        resolve();
+      }
+    },
     start: () => run("startInventoryEventStream()"),
+    /** Load file-watches.js, as metabrowser.watchFile does on its first call. */
+    loadFileWatches() {
+      const absolute = path.join(staticDir, "file-watches.js");
+      vm.runInContext(fs.readFileSync(absolute, "utf8"), sandbox, { filename: absolute });
+      return sandbox.MetabrowserFileWatches.shared();
+    },
+    /** A view's listener on a watch: what it is told, recorded as the page's. */
+    listener(name) {
+      return {
+        onChange: (change) => did.push(`${name}: ${change.path} is now ${change.generation}`),
+        onState: (state, reason) =>
+          did.push(`${name}: watch ${state}${reason ? ` (${reason})` : ""}`),
+      };
+    },
+    /** Let the pending timer of *delayMs* fire. */
+    elapse(delayMs) {
+      for (const [handle, timer] of timers) {
+        if (timer.delayMs === delayMs) {
+          timers.delete(handle);
+          did.push(`timer ${handle}: fired`);
+          timer.callback();
+          return;
+        }
+      }
+      throw new Error(`no timer of ${delayMs} ms is pending`);
+    },
     opens(id) {
       const target = stream(id);
       if (target) {
@@ -357,7 +485,7 @@ async function folderRestored() {
   await page.step("the page starts", () => page.start());
   await page.step("stream 1 opens and sends its snapshot", () => {
     page.opens(1);
-    page.delivers(1, "fs.snapshot", SNAPSHOT);
+    page.delivers(1, "fs.snapshot", snapshotOf(page, "c1"));
   });
   await page.step("pagehide, kept for Back", () => page.dispatch("pagehide", true));
   await page.step("a duplicate pagehide preserves the parked connections", () =>
@@ -367,7 +495,7 @@ async function folderRestored() {
   await page.step("pageshow, restored", () => page.dispatch("pageshow", true));
   await page.step("stream 2 opens and sends its snapshot", () => {
     page.opens(2);
-    page.delivers(2, "fs.snapshot", SNAPSHOT);
+    page.delivers(2, "fs.snapshot", snapshotOf(page, "c2"));
   });
   await page.step("a file changes", () => {
     page.delivers(2, "fs.change", { ops: [{ op: "upsert", entry: { path: "b.md" } }] });
@@ -379,7 +507,7 @@ async function folderRestored() {
   await page.step("pageshow, restored again", () => page.dispatch("pageshow", true));
   await page.step("stream 3 sends the original snapshot after a change was undone", () => {
     page.opens(3);
-    page.delivers(3, "fs.snapshot", SNAPSHOT);
+    page.delivers(3, "fs.snapshot", snapshotOf(page, "c3"));
   });
   return { scenario: "a folder's page is kept for Back and restored", steps: page.steps };
 }
@@ -476,6 +604,76 @@ async function delayedInitialStreams() {
   return { scenario: "initial streams become ready while the page is parked", steps: page.steps };
 }
 
+/** The snapshot of the connection *id*: the server opens it as it sends it. */
+function snapshotOf(page, id) {
+  page.server.connections.add(id);
+  return { connection: id, ...SNAPSHOT };
+}
+
+async function fileWatches() {
+  const page = createPage("filesystem");
+  page.server.generations.set("people.csv", "g1");
+  page.server.generations.set("deep/notes.txt", "n1");
+  await page.step("the page starts, and stream 1 sends the snapshot of connection c1", () => {
+    page.start();
+    page.opens(1);
+    page.delivers(1, "fs.snapshot", snapshotOf(page, "c1"));
+  });
+  let disposeTable = null;
+  await page.step("a table read at g1 watches its file: registered on c1", () => {
+    const watches = page.loadFileWatches();
+    disposeTable = watches.watch("people.csv", page.listener("table"), "g1");
+  });
+  await page.step("the file changes: file.changed on stream 1 tells the table once", () => {
+    page.server.generations.set("people.csv", "g2");
+    page.delivers(1, "file.changed", { path: "people.csv", generation: "g2" });
+    page.delivers(1, "file.changed", { path: "people.csv", generation: "g2" });
+  });
+  await page.step("a resync: stream 1 ends and the page waits to reconnect", () => {
+    page.delivers(1, "fs.resync_required", { reason: "connection_queue_overflow" });
+  });
+  await page.step("the file changes while no stream is open", () => {
+    page.server.generations.set("people.csv", "g3");
+  });
+  await page.step(
+    "stream 2 sends the same tree for c2: the watch registers again with g2, and hears g3",
+    () => {
+      page.elapse(2000);
+      page.opens(2);
+      page.delivers(2, "fs.snapshot", snapshotOf(page, "c2"));
+    },
+  );
+  await page.step("the server restarts: it holds no connection", () => {
+    page.server.connections.clear();
+    page.fails(2, true);
+  });
+  await page.step("a tree's container watches a deep file: c2 is refused, so it waits", () => {
+    page.run(`MetabrowserFileWatches.shared().watch("deep/notes.txt", {
+      onChange: (change) => __did("tree: " + change.path + " is now " + change.generation),
+      onState: (state, reason) => __did("tree: watch " + state + (reason ? " (" + reason + ")" : "")),
+    }, "n1")`);
+  });
+  await page.step("the reconnected stream 3 sends c3: both watches register on it", () => {
+    for (let failure = 0; failure < 4; failure += 1) {
+      page.fails(2);
+    }
+    page.elapse(4000);
+    page.opens(3);
+    page.delivers(3, "fs.snapshot", snapshotOf(page, "c3"));
+  });
+  await page.step("pagehide, kept for Back", () => page.dispatch("pagehide", true));
+  await page.step("pageshow, restored: stream 4 sends c4, and the watches move to it", () => {
+    page.dispatch("pageshow", true);
+    page.opens(4);
+    page.delivers(4, "fs.snapshot", snapshotOf(page, "c4"));
+  });
+  await page.step("the table is disposed: its file is unregistered", () => disposeTable());
+  return {
+    scenario: "a page's file watches follow its event stream's connection",
+    steps: page.steps,
+  };
+}
+
 async function main() {
   const transcript = [
     await folderRestored(),
@@ -485,11 +683,17 @@ async function main() {
     await unloaded(),
     await connectingRestored(),
     await delayedInitialStreams(),
+    await fileWatches(),
   ];
   console.log(JSON.stringify(transcript, null, 2));
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+// file-watches-session.js runs its scenarios on this page.
+module.exports = { createPage, snapshotOf };
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

@@ -9,6 +9,14 @@ workers:
 
     python -m devtools.run_goldens --jobs 4 'tests/golden/*.tryscript.md' -- <tryscript>
 
+``--shard I/N`` runs the Ith of N disjoint parts of the matched files, so CI can split the
+goldens across runners as it does the pytest tiers (``make test-goldens SHARD=1/2``):
+files are dealt largest first, by size, each to the part with the least so far. A file's
+size stands in for its time, which a run cannot know before it starts: on the 119 files
+of run 44788663205's four jobs, the parts of two held 356 and 316 s of mean file time by
+size, against 336 and 336 by the time itself and 341 and 331 by alternate name. The same
+files always make the same parts, and every file is in exactly one.
+
 Everything after ``--`` is the tryscript command. The ``Makefile``'s ``TRYSCRIPT`` holds
 it with its environment, so ``make golden-update`` and this run the same command.
 
@@ -76,6 +84,30 @@ def matched(patterns: Sequence[str]) -> list[str]:
     return sorted(name for name in found if Path(name).is_file())
 
 
+def parse_shard(value: str) -> tuple[int, int]:
+    """The ``(index, count)`` of ``I/N``, such as ``2/3``, with ``1 <= I <= N``."""
+
+    match = re.fullmatch(r"(\d+)/(\d+)", value)
+    if match is None or not 1 <= int(match[1]) <= int(match[2]):
+        raise argparse.ArgumentTypeError(
+            f"--shard takes I/N with 1 <= I <= N, such as 2/3, not {value!r}"
+        )
+    return int(match[1]), int(match[2])
+
+
+def dealt(paths: Sequence[str], index: int, count: int) -> list[str]:
+    """The files of part *index* of *count*, dealt largest first to the lightest part."""
+
+    sizes = {path: Path(path).stat().st_size for path in paths}
+    loads = [0] * count
+    part_of: dict[str, int] = {}
+    for path in sorted(paths, key=lambda path: (-sizes[path], path)):
+        part = min(range(count), key=lambda part: (loads[part], part))
+        part_of[path] = part
+        loads[part] += sizes[path]
+    return [path for path in paths if part_of[path] == index - 1]
+
+
 def read_output(path: str, output: str) -> tuple[str, int]:
     """The verdict tryscript printed for *path*, and how many commands it counted."""
 
@@ -137,6 +169,9 @@ def main(arguments: Sequence[str] | None = None) -> int:
     split = given.index("--")
     parser = argparse.ArgumentParser(description=(__doc__ or "").partition("\n")[0])
     parser.add_argument("--jobs", type=_jobs, default=1, help="files to run at a time")
+    parser.add_argument(
+        "--shard", type=parse_shard, default=None, help="run part I of N, as 1/2, of the files"
+    )
     parser.add_argument("patterns", nargs="+", help="golden files or glob patterns")
     args = parser.parse_args(given[:split])
     command = given[split + 1 :]
@@ -144,6 +179,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
     if not paths:
         print(f"{PREFIX} no file matches {' '.join(args.patterns)}", file=sys.stderr)
         return 1
+    if args.shard is not None:
+        paths = dealt(paths, *args.shard)
     started = time.monotonic()
     results: list[Result] = []
     for result in run_all(command, paths, args.jobs):

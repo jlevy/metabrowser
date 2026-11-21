@@ -38,8 +38,8 @@ READER_MODULE: Final = "metabrowser.builtin_plugins.sqlite.reader"
 register_worker_module(READER_MODULE, Path(__file__).with_name("reader.py"))
 
 # What one server process keeps of databases' catalogs and descriptions, keyed by the
-# database and its generation, so the schema a page is checked against, and its
-# references' targets, cost no request after the first. A description is one object's
+# database, its generation, and whether it reads virtual tables, so the schema a page is
+# checked against, and its references' targets, cost no request after the first. A description is one object's
 # columns, keys, foreign keys, and indexes: the nine-column `users` table of the test
 # fixtures (tests/fixtures/sqlite-tables/app.sql) is 1.5 KB of JSON and a table of 200
 # columns 21 KB, so a full cache of the widest tables a reader is likely to meet holds a
@@ -76,7 +76,8 @@ class Database:
     subject: str
     generation: str
     # Whether a virtual table may be queried: never under the untrusted profile, which a
-    # pinned revision always runs under.
+    # pinned revision always runs under. Sent with every request, where the reader
+    # refuses, for the whole read, the virtual tables and their shadow tables when false.
     virtual_ok: bool
 
     def call(self, op: str, args: dict[str, Any], *, deadline: float) -> Any:
@@ -89,6 +90,7 @@ class Database:
                     "path": str(self.file),
                     "scratch": str(scratch),
                     "immutable_content": self.immutable,
+                    "virtual_ok": self.virtual_ok,
                     **args,
                 },
                 deadline=deadline,
@@ -119,6 +121,16 @@ def pinned_database(ref: ContentRef, data: bytes, subject: str) -> Database:
     if len(data) > BLOB_MAX_BYTES:
         raise blob_too_large()
     file = reader_pool().blob(ref.fingerprint, lambda: data)
+    return _pinned_database(ref, file, subject)
+
+
+def written_pinned_database(ref: ContentRef, subject: str) -> Database | None:
+    """Find the pin's private file before reading its blob from Git again."""
+    file = reader_pool().written_blob(ref.fingerprint)
+    return _pinned_database(ref, file, subject) if file is not None else None
+
+
+def _pinned_database(ref: ContentRef, file: Path, subject: str) -> Database:
     generation = re.sub(r"[^A-Za-z0-9_-]", "_", ref.fingerprint) or "0"
     return Database(
         file=file, immutable=True, subject=subject, generation=generation, virtual_ok=False
@@ -162,7 +174,7 @@ _CACHE: Final = _Cache(DESCRIPTION_CACHE_ENTRIES)
 def cached(database: Database, what: str, name: str, *, deadline: float) -> Any:
     """The catalog (*what* ``catalog``) or one object's description (``describe``) of a
     database, from the cache while its generation holds."""
-    key = (str(database.file), database.generation, what, name)
+    key = (str(database.file), database.generation, str(database.virtual_ok), what, name)
     found = _CACHE.get(key)
     if found is not None:
         return found
@@ -171,11 +183,7 @@ def cached(database: Database, what: str, name: str, *, deadline: float) -> Any:
     else:
         value = database.call(
             "sqlite_describe",
-            {
-                "table": name,
-                "virtual_ok": database.virtual_ok,
-                "sort_rows": reader.SORT_UNINDEXED_MAX_ROWS,
-            },
+            {"table": name, "sort_rows": reader.SORT_UNINDEXED_MAX_ROWS},
             deadline=deadline,
         )
         if value is None:

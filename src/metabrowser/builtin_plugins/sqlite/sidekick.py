@@ -21,7 +21,8 @@ the file; only a path with nothing readable there is 404.
 On a served folder the reader opens the file's real path. On a Git pin the blob is
 written once to a private file named by its object id, under
 :data:`~metabrowser.sqlite_readers.BLOB_MAX_BYTES`, and read with ``immutable=1``: a
-committed write-ahead-log database is shown without its log.
+committed write-ahead-log database is shown without its log. A blob already written is
+not read from Git again.
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ from metabrowser.builtin_plugins.sqlite.database import (
     served_database,
     subject_key,
     table_segment,
+    written_pinned_database,
 )
 from metabrowser.builtin_plugins.sqlite.source import catalog_tables
 from metabrowser.content_errors import ContentReadError
@@ -95,6 +97,9 @@ async def _database(ref: ContentRef) -> Database | None:
             return None
     if ref.stored_size is not None and ref.stored_size > BLOB_MAX_BYTES:
         raise blob_too_large(BLOB_MAX_BYTES)
+    written = await run_in_threadpool(written_pinned_database, ref, subject)
+    if written is not None:
+        return written
     window = await read_content_window(ref, max_bytes=BLOB_MAX_BYTES + 1)
     if len(window.data) > BLOB_MAX_BYTES:
         raise blob_too_large(BLOB_MAX_BYTES)

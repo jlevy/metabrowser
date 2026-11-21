@@ -39,6 +39,16 @@ The transcript pins these behaviors:
 - A `pagehide` that does not keep the page tears the keyboard and Quick File down, as
   before, and closes nothing.
   A restore rebuilds them only if a teardown removed them.
+- Each snapshot names its connection, first in the frame, so a snapshot that differs
+  from the last only in its connection is still the same tree.
+  The page’s file watches (`static/file-watches.js`, loaded when a view first watches a
+  file) register on the connection the last snapshot named, with the generation the
+  reader holds; a `file.changed` tells each watch’s listeners once.
+  Every new connection, after a resync, a server restart, or a restore from Back,
+  registers every watch again with the generation it holds, and the server’s answer
+  tells a listener of a change it missed while no stream was open.
+  A registration on a connection the server does not hold waits for the next snapshot,
+  and a disposed watch is unregistered.
 
 ```console
 $ node tests/dom/page-connections-session.js
@@ -546,6 +556,340 @@ $ node tests/dom/page-connections-session.js
           ],
           "timers": [],
           "parked": 0
+        }
+      }
+    ]
+  },
+  {
+    "scenario": "a page's file watches follow its event stream's connection",
+    "steps": [
+      {
+        "step": "the page starts, and stream 1 sends the snapshot of connection c1",
+        "did": [
+          "stream 1: opened /api/events?scope=root-depth-2",
+          "timer 1: set for 10000 ms",
+          "request: GET /api/catalog",
+          "tree: snapshot of 1 entries applied"
+        ],
+        "after": {
+          "streams": [
+            "/api/events?scope=root-depth-2"
+          ],
+          "timers": [
+            "10000 ms"
+          ],
+          "parked": 0
+        }
+      },
+      {
+        "step": "a table read at g1 watches its file: registered on c1",
+        "did": [
+          "request: POST /api/events/watch {\"connection\":\"c1\",\"path\":\"people.csv\",\"generation\":\"g1\"}",
+          "server: c1 watches [people.csv]",
+          "table: watch live"
+        ],
+        "after": {
+          "streams": [
+            "/api/events?scope=root-depth-2"
+          ],
+          "timers": [
+            "10000 ms"
+          ],
+          "parked": 0,
+          "watches": [
+            {
+              "path": "people.csv",
+              "state": "live",
+              "reason": null,
+              "generation": "g1",
+              "listeners": 1
+            }
+          ]
+        }
+      },
+      {
+        "step": "the file changes: file.changed on stream 1 tells the table once",
+        "did": [
+          "table: people.csv is now g2"
+        ],
+        "after": {
+          "streams": [
+            "/api/events?scope=root-depth-2"
+          ],
+          "timers": [
+            "10000 ms"
+          ],
+          "parked": 0,
+          "watches": [
+            {
+              "path": "people.csv",
+              "state": "live",
+              "reason": null,
+              "generation": "g2",
+              "listeners": 1
+            }
+          ]
+        }
+      },
+      {
+        "step": "a resync: stream 1 ends and the page waits to reconnect",
+        "did": [
+          "request: GET /api/catalog",
+          "timer 1: cancelled",
+          "stream 1: closed",
+          "timer 2: set for 2000 ms"
+        ],
+        "after": {
+          "streams": [],
+          "timers": [
+            "2000 ms"
+          ],
+          "parked": 0,
+          "watches": [
+            {
+              "path": "people.csv",
+              "state": "live",
+              "reason": null,
+              "generation": "g2",
+              "listeners": 1
+            }
+          ]
+        }
+      },
+      {
+        "step": "the file changes while no stream is open",
+        "did": [],
+        "after": {
+          "streams": [],
+          "timers": [
+            "2000 ms"
+          ],
+          "parked": 0,
+          "watches": [
+            {
+              "path": "people.csv",
+              "state": "live",
+              "reason": null,
+              "generation": "g2",
+              "listeners": 1
+            }
+          ]
+        }
+      },
+      {
+        "step": "stream 2 sends the same tree for c2: the watch registers again with g2, and hears g3",
+        "did": [
+          "timer 2: fired",
+          "stream 2: opened /api/events?scope=root-depth-2",
+          "timer 3: set for 10000 ms",
+          "request: GET /api/catalog",
+          "tree: snapshot of 1 entries applied",
+          "request: POST /api/events/watch {\"connection\":\"c2\",\"path\":\"people.csv\",\"generation\":\"g2\"}",
+          "server: c2 watches [people.csv]",
+          "table: people.csv is now g3"
+        ],
+        "after": {
+          "streams": [
+            "/api/events?scope=root-depth-2"
+          ],
+          "timers": [
+            "10000 ms"
+          ],
+          "parked": 0,
+          "watches": [
+            {
+              "path": "people.csv",
+              "state": "live",
+              "reason": null,
+              "generation": "g3",
+              "listeners": 1
+            }
+          ]
+        }
+      },
+      {
+        "step": "the server restarts: it holds no connection",
+        "did": [
+          "timer 3: cancelled"
+        ],
+        "after": {
+          "streams": [
+            "/api/events?scope=root-depth-2"
+          ],
+          "timers": [],
+          "parked": 0,
+          "watches": [
+            {
+              "path": "people.csv",
+              "state": "live",
+              "reason": null,
+              "generation": "g3",
+              "listeners": 1
+            }
+          ]
+        }
+      },
+      {
+        "step": "a tree's container watches a deep file: c2 is refused, so it waits",
+        "did": [
+          "request: POST /api/events/watch {\"connection\":\"c2\",\"path\":\"deep/notes.txt\",\"generation\":\"n1\"}",
+          "tree: watch waiting (unknown_connection)"
+        ],
+        "after": {
+          "streams": [
+            "/api/events?scope=root-depth-2"
+          ],
+          "timers": [],
+          "parked": 0,
+          "watches": [
+            {
+              "path": "people.csv",
+              "state": "live",
+              "reason": null,
+              "generation": "g3",
+              "listeners": 1
+            },
+            {
+              "path": "deep/notes.txt",
+              "state": "waiting",
+              "reason": "unknown_connection",
+              "generation": "n1",
+              "listeners": 1
+            }
+          ]
+        }
+      },
+      {
+        "step": "the reconnected stream 3 sends c3: both watches register on it",
+        "did": [
+          "stream 2: closed",
+          "timer 4: set for 4000 ms",
+          "timer 4: fired",
+          "stream 3: opened /api/events?scope=root-depth-2",
+          "timer 5: set for 10000 ms",
+          "request: GET /api/catalog",
+          "event: metabrowser:inventory-change snapshot anything may have changed",
+          "request: POST /api/events/watch {\"connection\":\"c3\",\"path\":\"people.csv\",\"generation\":\"g3\"}",
+          "server: c3 watches [people.csv]",
+          "request: POST /api/events/watch {\"connection\":\"c3\",\"path\":\"deep/notes.txt\",\"generation\":\"n1\"}",
+          "server: c3 watches [people.csv, deep/notes.txt]",
+          "tree: watch live"
+        ],
+        "after": {
+          "streams": [
+            "/api/events?scope=root-depth-2"
+          ],
+          "timers": [
+            "10000 ms"
+          ],
+          "parked": 0,
+          "watches": [
+            {
+              "path": "people.csv",
+              "state": "live",
+              "reason": null,
+              "generation": "g3",
+              "listeners": 1
+            },
+            {
+              "path": "deep/notes.txt",
+              "state": "live",
+              "reason": null,
+              "generation": "n1",
+              "listeners": 1
+            }
+          ]
+        }
+      },
+      {
+        "step": "pagehide, kept for Back",
+        "did": [
+          "timer 5: cancelled",
+          "stream 3: closed"
+        ],
+        "after": {
+          "streams": [],
+          "timers": [],
+          "parked": 1,
+          "watches": [
+            {
+              "path": "people.csv",
+              "state": "live",
+              "reason": null,
+              "generation": "g3",
+              "listeners": 1
+            },
+            {
+              "path": "deep/notes.txt",
+              "state": "live",
+              "reason": null,
+              "generation": "n1",
+              "listeners": 1
+            }
+          ]
+        }
+      },
+      {
+        "step": "pageshow, restored: stream 4 sends c4, and the watches move to it",
+        "did": [
+          "stream 4: opened /api/events?scope=root-depth-2",
+          "timer 6: set for 10000 ms",
+          "request: GET /api/catalog",
+          "event: metabrowser:inventory-change snapshot anything may have changed",
+          "request: POST /api/events/watch {\"connection\":\"c4\",\"path\":\"people.csv\",\"generation\":\"g3\"}",
+          "server: c4 watches [people.csv]",
+          "request: POST /api/events/watch {\"connection\":\"c4\",\"path\":\"deep/notes.txt\",\"generation\":\"n1\"}",
+          "server: c4 watches [people.csv, deep/notes.txt]"
+        ],
+        "after": {
+          "streams": [
+            "/api/events?scope=root-depth-2"
+          ],
+          "timers": [
+            "10000 ms"
+          ],
+          "parked": 0,
+          "watches": [
+            {
+              "path": "people.csv",
+              "state": "live",
+              "reason": null,
+              "generation": "g3",
+              "listeners": 1
+            },
+            {
+              "path": "deep/notes.txt",
+              "state": "live",
+              "reason": null,
+              "generation": "n1",
+              "listeners": 1
+            }
+          ]
+        }
+      },
+      {
+        "step": "the table is disposed: its file is unregistered",
+        "did": [
+          "request: POST /api/events/watch {\"connection\":\"c4\",\"path\":\"people.csv\",\"watch\":false}",
+          "server: c4 watches [deep/notes.txt]"
+        ],
+        "after": {
+          "streams": [
+            "/api/events?scope=root-depth-2"
+          ],
+          "timers": [
+            "10000 ms"
+          ],
+          "parked": 0,
+          "watches": [
+            {
+              "path": "deep/notes.txt",
+              "state": "live",
+              "reason": null,
+              "generation": "n1",
+              "listeners": 1
+            }
+          ]
         }
       }
     ]

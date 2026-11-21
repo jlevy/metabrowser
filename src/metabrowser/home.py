@@ -686,8 +686,14 @@ class PrivateDirectory:
         self._generation: int = generation
 
     @_without_file_names
-    def open(self, name: str, flags: int) -> int:
-        """Open the owner-only file *name* in this directory; see :func:`open_private_file`."""
+    def open(self, name: str, flags: int, *, close: Callable[[int], None] = os.close) -> int:
+        """Open the owner-only file *name* in this directory; see :func:`open_private_file`.
+
+        *close* closes the descriptor when the open is refused after the file was opened.
+        A caller whose process may hold a lock on the file through another descriptor
+        passes one that defers the close, since closing any descriptor on a file drops
+        every POSIX lock the process holds there.
+        """
 
         if self._fd is None:
             raise ValueError("the private directory was used after its block ended")
@@ -698,7 +704,9 @@ class PrivateDirectory:
             raise ValueError("a private directory opens its own entries; name one without '/'")
         require_canonical_inventory_path(name, "application-home path", allow_root=False)
         _require_file_flags(flags)
-        return _open_file_entry(self._fd, name, flags, self._path / name, shared=self._shared)
+        return _open_file_entry(
+            self._fd, name, flags, self._path / name, shared=self._shared, close=close
+        )
 
 
 @contextlib.contextmanager
@@ -1949,9 +1957,16 @@ def _open_directory_entry(
 
 
 def _open_file_entry(
-    parent_fd: int, name: str, flags: int, path: Path, *, shared: SharedEntryPolicy = "repair"
+    parent_fd: int,
+    name: str,
+    flags: int,
+    path: Path,
+    *,
+    shared: SharedEntryPolicy = "repair",
+    close: Callable[[int], None] = os.close,
 ) -> int:
-    """Open a verified owner-only descriptor on the file *name* inside *parent_fd*."""
+    """Open a verified owner-only descriptor on the file *name* inside *parent_fd*;
+    *close* closes it if it is then refused."""
 
     location = PrivateStorageLocation.ENTRY
     creating = bool(flags & os.O_CREAT)
@@ -1976,14 +1991,22 @@ def _open_file_entry(
                 if exclusive:
                     raise
                 continue
-            return _finish_created_file(parent_fd, name, fd, flags, path)
-        return _open_existing_file(parent_fd, name, flags, before, path, shared=shared)
+            return _finish_created_file(parent_fd, name, fd, flags, path, close=close)
+        return _open_existing_file(parent_fd, name, flags, before, path, shared=shared, close=close)
     # Replaced: the file appeared between inspection and creation in both passes, so a
     # call made again judges whatever is there then.
     raise _replaced_during_check(location, path)
 
 
-def _finish_created_file(parent_fd: int, name: str, fd: int, flags: int, path: Path) -> int:
+def _finish_created_file(
+    parent_fd: int,
+    name: str,
+    fd: int,
+    flags: int,
+    path: Path,
+    *,
+    close: Callable[[int], None] = os.close,
+) -> int:
     """Verify a file this call created, removing it again if it is refused."""
 
     location = PrivateStorageLocation.ENTRY
@@ -1994,7 +2017,7 @@ def _finish_created_file(parent_fd: int, name: str, fd: int, flags: int, path: P
         _restore_blocking(fd, flags)
     except BaseException:
         _remove_created_file(parent_fd, name, fd)
-        os.close(fd)
+        close(fd)
         raise
     return fd
 
@@ -2007,6 +2030,7 @@ def _open_existing_file(
     path: Path,
     *,
     shared: SharedEntryPolicy = "repair",
+    close: Callable[[int], None] = os.close,
 ) -> int:
     location = PrivateStorageLocation.ENTRY
     writes = bool(flags & _WRITE_ACCESS_FLAGS)
@@ -2053,7 +2077,7 @@ def _open_existing_file(
             os.ftruncate(fd, 0)
         _restore_blocking(fd, flags)
     except BaseException:
-        os.close(fd)
+        close(fd)
         raise
     repair.log(path)
     return fd

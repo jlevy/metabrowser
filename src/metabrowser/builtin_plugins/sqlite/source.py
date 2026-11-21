@@ -23,8 +23,10 @@ what a request answers into the protocol's descriptors, cells, keys, and cursors
   that, only the key and fields an index leads with, and the rest say why in
   ``sort_note``.
 - **Counts** are exact up to :data:`~metabrowser.builtin_plugins.sqlite.reader.COUNT_CAP`
-  and otherwise a lower bound, read apart from the page with no wait; when that read
-  fails, the page sends the catalog's estimate alone.
+  and otherwise a lower bound. The first page counts separately. If that count fails,
+  the filtered page reports the matches it found and the unfiltered page can use the
+  catalog's estimate. A search continues from the last row it examined, even if it
+  had no matches in that window.
 - **References** are the declared foreign keys, resolved for a page in one batch; a
   value no row of the referenced table holds is a reference drawn as missing.
 - **Values.** A text or blob past the inline bound is previewed through ``blobopen`` in
@@ -35,6 +37,7 @@ what a request answers into the protocol's descriptors, cells, keys, and cursors
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable, Sequence
 from typing import Any, Final, cast
 
@@ -48,12 +51,14 @@ from metabrowser.builtin_plugins.sqlite.database import (
     served_database,
     subject_key,
     table_segment,
+    written_pinned_database,
 )
 from metabrowser.builtin_plugins.sqlite.reader import COUNT_CAP, PAGE_INLINE_BYTES
 from metabrowser.plugin_api import (
     TABLE_CARD_MAX_FIELDS,
     TABLE_CELL_PREVIEW_CHARS,
     TABLE_RECORD_VALUE_BYTES,
+    TABLE_TOKEN_MAX_CHARS,
     BackrefCount,
     Budget,
     Cell,
@@ -105,13 +110,30 @@ _RECORD_BLOB_BYTES: Final = TABLE_RECORD_VALUE_BYTES // 2
 
 _BUSY_STATES: Final = frozenset({"busy", "writer_busy", "changing", "reader_stopped"})
 
+# Why a described object is not read, as its refusal says it (`reader.describe`).
+_GUEST: Final = (
+    "which is listed but not read here: a virtual table's module code would run on this "
+    "file's content, which is not trusted"
+)
+_UNREAD: Final = {
+    "virtual": f"is a virtual table, {_GUEST}",
+    "shadow": f"may be a virtual table's shadow table, {_GUEST}",
+    "reads_virtual": f"reads a virtual table, {_GUEST}",
+    "key_collation": "has a primary key that uses an unavailable SQLite collation",
+    "module": (
+        "is a virtual table whose module prepares write statements when it opens, as "
+        "SQLite's R-tree module does, and this reader allows read statements only; an "
+        "R-tree is an index over tables that are read"
+    ),
+}
+
 
 class SourceBusyError(TableSourceError):
-    """The database could not be read now: its owner is writing, it changed during every
-    read, or every reader was busy. The view keeps the rows it has."""
+    """An expected conflict with the database or reader's current state."""
 
     code = "source_busy"
-    http_status = 503
+    # Data hooks reserve 5xx statuses for failures of the plugin itself.
+    http_status = 409
 
 
 def access_error(exc: SqliteAccessError) -> TableSourceError:
@@ -224,8 +246,10 @@ class SqliteSource:
             else:
                 if handle.ref.stored_size is not None and handle.ref.stored_size > BLOB_MAX_BYTES:
                     raise blob_too_large()
-                window = handle.read_window(max_bytes=BLOB_MAX_BYTES + 1)
-                self._database = pinned_database(handle.ref, window.data, self._subject)
+                self._database = written_pinned_database(handle.ref, self._subject)
+                if self._database is None:
+                    window = handle.read_window(max_bytes=BLOB_MAX_BYTES + 1)
+                    self._database = pinned_database(handle.ref, window.data, self._subject)
         except OSError as exc:
             raise SourceUnreadableError("This file is no longer available.") from exc
         except SqliteAccessError as exc:
@@ -257,8 +281,7 @@ class SqliteSource:
         description = cast(dict[str, Any], found)
         if not description["readable"]:
             raise SourceUnreadableError(
-                f"{description['name']!r} is a virtual table, which is listed but not read "
-                "here: its module's code would run on this file's content",
+                f"{description['name']!r} {_UNREAD[str(description['unread'])]}.",
                 table=table,
             )
         return description
@@ -268,9 +291,6 @@ class SqliteSource:
             if item["name"] == name:
                 return cast(int | None, item["estimate"])
         return None
-
-    def _encoding(self, deadline: float) -> str:
-        return str(self._catalog(deadline)["encoding"])
 
     # ── The protocol ──
 
@@ -299,7 +319,7 @@ class SqliteSource:
                 "limit": limit,
                 "inline": PAGE_INLINE_BYTES,
                 "preview": {"text": _PAGE_TEXT_BYTES, "blob": _PAGE_BLOB_BYTES},
-                "count": True,
+                "count": query.after is None,
                 "cap": COUNT_CAP,
             }
         )
@@ -318,6 +338,20 @@ class SqliteSource:
         if query.ref is not None:
             spec["ref"] = self._ref_filter(
                 description, schema, query.ref.table, query.ref.key, deadline
+            )
+        filtered = bool(spec["filters"] or query.q is not None or query.ref is not None)
+        if filtered:
+            spec["scan_rows"] = reader.FILTER_SCAN_ROWS
+        rows_upto = description["rows_upto"]
+        if (
+            not description["key"]
+            and (filtered or query.order == "desc" or query.sort is not None)
+            and (rows_upto is None or rows_upto > reader.SORT_UNINDEXED_MAX_ROWS)
+        ):
+            raise SourceUnreadableError(
+                "This object has no stable row key and is too large to sort or filter "
+                "within one read. Open it in its original order without a filter.",
+                table=table,
             )
         served = 0
         if query.after is not None:
@@ -351,12 +385,14 @@ class SqliteSource:
             )
         found = cast(list[dict[str, Any]], answer["rows"])
         counted = cast(dict[str, Any] | None, answer.get("count"))
-        estimate = self._estimate(str(description["name"]), deadline)
+        estimate = None if filtered else self._estimate(str(description["name"]), deadline)
         count = counted["count"] if counted is not None else None
         count_complete = bool(counted and counted["complete"])
         skipped = int(counted["skipped"]) if counted is not None else 0
         stopped = bool(answer["stopped"])
-        if stopped and not found and query.sort is not None:
+        point = cast(dict[str, Any] | None, answer.get("point"))
+        examined = cast(int | None, answer.get("examined"))
+        if stopped and point is None and not found and query.sort is not None:
             # A sort cannot be returned in part.
             return _empty(
                 columns,
@@ -387,8 +423,14 @@ class SqliteSource:
             for index, row in enumerate(found)
         )
         next_after: str | None = None
-        if found and (answer["more"] or stopped):
-            next_after = _next_cursor(query, found[-1], served + len(found), generation)
+        if point is None and found:
+            point = found[-1]
+        reached = served + (examined if examined is not None else len(found))
+        if point is not None and (answer["more"] or stopped):
+            next_after = _next_cursor(query, point, reached, generation)
+        if filtered and counted is None and query.after is None:
+            count = len(found)
+            count_complete = not stopped and next_after is None
         return TablePage(
             rows=rows,
             columns=columns,
@@ -401,6 +443,7 @@ class SqliteSource:
             estimate=estimate,
             skipped=skipped,
             searched=searched,
+            examined=reached if filtered and (stopped or served) else None,
             reason="budget" if stopped else None,
             limit=limit,
         )
@@ -485,10 +528,12 @@ class SqliteSource:
         rowid that previews a long value, and the references to resolve."""
         refs: list[dict[str, Any]] = []
         wanted = set(names)
+        catalog = self._catalog(deadline)
+        by_name = {item["name"]: item for item in catalog["objects"]}
         for fk in description["foreign_keys"]:
             if not set(fk["from"]) <= wanted:
                 continue
-            target = self._cached("describe", str(fk["table"]), deadline)
+            target = by_name.get(fk["table"])
             if target is None or not target["key"]:
                 continue
             refs.append(
@@ -503,8 +548,12 @@ class SqliteSource:
             "table": description["name"],
             "key": description["key"],
             "rowid": _rowid(description),
+            "position_name": reader.position_name(
+                str(column["name"]) for column in description["columns"]
+            ),
             "columns": list(names),
-            "encoding": self._encoding(deadline),
+            "token_bytes": TABLE_TOKEN_MAX_CHARS,
+            "encoding": str(catalog["encoding"]),
             "refs": refs,
         }
 
@@ -542,7 +591,14 @@ class SqliteSource:
                 for value in values
             ):
                 continue
-            options.append({"fields": list(ref.fields), "values": values})
+            options.append(
+                {
+                    "table": target["name"],
+                    "to": list(ref.to),
+                    "fields": list(ref.fields),
+                    "values": values,
+                }
+            )
         return options
 
     def _read_record(
@@ -581,7 +637,11 @@ class SqliteSource:
                 {"table": item["table"], "fields": item["from"], "to": item["to"]}
                 for item in description["referenced_by"]
             ]
-        found = self._call("sqlite_record", {"spec": spec}, deadline)
+        args: dict[str, Any] = {"spec": spec}
+        if position is not None and not self._open().immutable:
+            # A live positional key names a row only within the sampled generation.
+            args["expected_generation"] = self.generation()
+        found = self._call("sqlite_record", args, deadline)
         if found is None:
             raise RecordNotFoundError(f"{key!r} names no row of this table", key=key)
         record = cast(dict[str, Any], found)
@@ -839,6 +899,8 @@ def _is_value(item: Any) -> bool:
 
 
 def _next_cursor(query: TableQuery, last: dict[str, Any], served: int, generation: str) -> str:
+    if None in last["key"] or (last["region"] == "v" and last["sort"] is None):
+        return positional_cursor(served, generation)
     token = encode_cursor(
         [query.sort, query.order, last.get("region", "k"), last.get("sort"), last["key"], served]
     )
@@ -962,6 +1024,44 @@ def _cell(
     return cell
 
 
+_NOT_JSON: Final = object()
+# Match the structured diff projection's nesting limit for a bounded preview tree.
+_JSON_CELL_MAX_DEPTH: Final = 64
+
+
+def _refuse_constant(name: str) -> Any:
+    raise ValueError(f"{name} is not JSON")
+
+
+def _json_value_fits(value: Any, remaining_depth: int) -> bool:
+    if isinstance(value, dict):
+        return remaining_depth > 0 and all(
+            _json_value_fits(item, remaining_depth - 1) for item in value.values()
+        )
+    if isinstance(value, list):
+        return remaining_depth > 0 and all(
+            _json_value_fits(item, remaining_depth - 1) for item in value
+        )
+    return not isinstance(value, float) or math.isfinite(value)
+
+
+def _json(text: str) -> Any:
+    """Keep malformed, overly nested, or nonfinite values as text."""
+    try:
+        value = json.loads(text, parse_constant=_refuse_constant)
+    except (ValueError, RecursionError):
+        return _NOT_JSON
+    return value if _json_value_fits(value, _JSON_CELL_MAX_DEPTH) else _NOT_JSON
+
+
+def _fits(text: str, *, max_chars: int | None, max_bytes: int | None) -> bool:
+    """Whether *text* is shown whole under the cell's bound, the only case its JSON is
+    parsed: a page's characters or a record's bytes."""
+    if max_chars is not None and len(text) > max_chars:
+        return False
+    return max_bytes is None or len(text.encode("utf-8", "surrogatepass")) <= max_bytes
+
+
 def _plain(
     stored: str,
     size: int,
@@ -978,11 +1078,10 @@ def _plain(
         return wire  # a finite real, or already `{real: ...}`
     if stored == "text":
         if isinstance(wire, str):
-            if kind == "json" and (max_chars is None or len(wire) <= max_chars):
-                try:
-                    return {"json": json.loads(wire), "preview": wire}
-                except ValueError:
-                    pass  # Not JSON after all: shown as the text it is.
+            if kind == "json" and _fits(wire, max_chars=max_chars, max_bytes=max_bytes):
+                parsed = _json(wire)
+                if parsed is not _NOT_JSON:
+                    return {"json": parsed, "preview": wire}
             return text_cell(wire, max_chars=max_chars, max_bytes=max_bytes)
         if isinstance(wire, dict):
             envelope = cast(dict[str, Any], wire)

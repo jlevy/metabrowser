@@ -1769,6 +1769,9 @@ type MetabrowserSdk = {
     onUpdate: (envelope: MetabrowserRollupEnvelope) => void,
   ): MetabrowserRollupWatch;
   onInventoryChange(listener: (paths: ReadonlyArray<string> | null) => void): () => void;
+  /** Hear when *path* changes, through the page's event stream; returns a disposer. A page
+   *  with no stream, such as a pinned revision's, never calls back. */
+  watchFile(path: string, options: MetabrowserFileWatchOptions): () => void;
   fetchKpressRender(
     ctx: MetabrowserRenderContext,
     viewId?: string,
@@ -3160,6 +3163,39 @@ type MetabrowserTreeKeyboardRuntime = Readonly<{
 }>;
 
 declare global {
+  /** A watched file's new generation (`file.changed`); null when nothing readable is there. */
+  type MetabrowserFileChange = { path: string; generation: string | null };
+  /** Where a file watch stands: waiting for a connection (or for a hidden page to be shown,
+   *  reason `hidden`), live, or refused (its reason says why). */
+  type MetabrowserFileWatchState = "waiting" | "live" | "refused";
+  type MetabrowserFileWatchListener = {
+    onChange(change: MetabrowserFileChange): void;
+    onState?(state: MetabrowserFileWatchState, reason: string | null): void;
+  };
+  type MetabrowserFileWatchOptions = MetabrowserFileWatchListener & {
+    /** The generation the reader read, so a change before the watch is registered reaches it. */
+    generation?: string | null;
+  };
+  type MetabrowserFileWatchRegistry = Readonly<{
+    watch(
+      path: string,
+      listener: MetabrowserFileWatchListener,
+      generation?: string | null,
+    ): () => void;
+    connected(id: string | null): void;
+    hidden(now: boolean): void;
+    changed(change: MetabrowserFileChange): void;
+    describe(): ReadonlyArray<
+      Readonly<{
+        path: string;
+        state: MetabrowserFileWatchState;
+        reason: string | null;
+        generation: string | null;
+        listeners: number;
+      }>
+    >;
+  }>;
+
   /** What static/event-reports.js reads: event_log_reports.browser_settings. */
   type MetabrowserEventReportSettings = {
     /** Whether the server writes an event log; without one nothing is tagged or sent. */
@@ -4774,6 +4810,38 @@ declare global {
     }>;
     MetabrowserViewState: MetabrowserViewStateRuntime;
     MetabrowserViewComposition: MetabrowserViewCompositionRuntime;
+    /** static/file-watches.js, the on-demand bundle `metabrowser.watchFile` fetches. */
+    MetabrowserFileWatches?: Readonly<{
+      createFileWatches(deps: {
+        post(body: Record<string, unknown>): Promise<{ status: number; body: unknown }>;
+        connection?: string | null;
+        hidden?: boolean;
+      }): MetabrowserFileWatchRegistry;
+      createContainerFollower(deps: {
+        watches: Pick<MetabrowserFileWatchRegistry, "watch">;
+        setTimeout(callback: () => void, delayMs: number): ReturnType<typeof setTimeout>;
+        clearTimeout(handle: ReturnType<typeof setTimeout>): void;
+        observe(onMutation: () => void): () => void;
+      }): Readonly<{
+        follow(
+          row: HTMLElement,
+          children: HTMLElement,
+          load: (row: HTMLElement, children: HTMLElement) => Promise<unknown>,
+        ): void;
+        sweep(): void;
+        describe(): ReadonlyArray<Readonly<{ path: string; pending: boolean; running: boolean }>>;
+      }>;
+      shared(): MetabrowserFileWatchRegistry;
+      followContainer(
+        row: HTMLElement,
+        children: HTMLElement,
+        load: (row: HTMLElement, children: HTMLElement) => Promise<unknown>,
+      ): void;
+      connected(id: string | null): void;
+      changed(change: MetabrowserFileChange): void;
+    }>;
+    /** The connection the page's /api/events stream named in its last snapshot (app.js). */
+    metabrowserEventConnection?: string | null;
     /** static/view-header.js, an on-demand bundle loadViewComposition fetches. */
     MetabrowserViewHeader?: Readonly<{
       create(shell: MetabrowserViewHeaderShell): Readonly<MetabrowserViewHeaderBuilders>;

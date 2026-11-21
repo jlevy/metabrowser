@@ -88,6 +88,9 @@ with its verdict and time, and fails unless every file the pattern matches print
 own `PASS` verdict. A file that printed no verdict fails the run, and so does a pattern
 that matches nothing.
 `make test GOLDEN_JOBS=1` runs them one at a time.
+`make test-goldens SHARD=I/N` runs the Ith of N parts, which CI uses to split the
+goldens across jobs; the runner’s docstring says how the files are dealt and why by
+size.
 
 ### One Harness and One Update Command
 
@@ -320,7 +323,7 @@ says why each check runs where it does.
 | --- | --- | --- |
 | `plan` | `devtools/ci_plan.sh`: reads `main`’s state, and decides the Chrome tier’s interpreters and whether `stack-integration` has anything to check | every run; its summary says what it decided and from what |
 | `unit` | `make test-parallel`, in parts by `SHARD` | each supported Python and the free-threaded build |
-| `goldens and serial` | `make test-goldens`, then `make test-serial` | the same interpreters |
+| `goldens and serial` | `make test-goldens`, then `make test-serial`, each in parts by `SHARD` | the same interpreters |
 | `chrome` | `make test-chrome`, in parts by `SHARD` | `PR_CHROME_PYTHON` for a pull request while `main` is green; every interpreter for a push to `main`, and for a pull request while `main` is red |
 | `admitted-git` | `make test-admitted-git` | the three admitted Git releases |
 | `stack-integration` | `make lint-check` and the four tiers, on the head merged with `main` | a stacked pull request whose tested commit lacks `main`’s head and whose merge with `main` changes the tree: in practice an informal chain, since a formal GitHub stack’s merge commit already holds `main` |
@@ -367,7 +370,8 @@ or the test fails:
 - macOS tier: a test with the `macos_tier` marker.
   Its reasons are `extended ACLs are inspected only on macOS`,
   `the file system is case-sensitive`, `the store's filesystem tells letter case apart`,
-  and `Apple's git shim is macOS's, and needs Xcode or its Command Line Tools`;
+  `Apple's git shim is macOS's, and needs Xcode or its Command Line Tools`, and
+  `Linux answers a zombie like a live process`;
 - Live GitHub tier: a test with the `live_github` marker, with
   `set METABROWSER_LIVE_GITHUB=1 to run`;
 - Admitted-Git tier: `needs a Git the acquisition floor admits`, where the runner’s own

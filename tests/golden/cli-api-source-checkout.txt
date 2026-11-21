@@ -578,9 +578,10 @@ status: 200
 {
   "short_name": "checkout",
   "full_name": "~/checkout@v1",
-  "kind": "folder",
-  "kind_label": "Local folder",
+  "kind": "git",
+  "kind_label": "Local Git checkout",
   "title": "checkout • Metabrowser",
+  "kind_tip": "Local Git checkout",
   "repository": null
 }
 --- stderr ---
@@ -593,9 +594,10 @@ status: 200
 {
   "short_name": "checkout",
   "full_name": "~/checkout@origin/feature",
-  "kind": "folder",
-  "kind_label": "Local folder",
+  "kind": "git",
+  "kind_label": "Local Git checkout",
   "title": "checkout • Metabrowser",
+  "kind_tip": "Local Git checkout",
   "repository": null
 }
 --- stderr ---
@@ -662,9 +664,10 @@ status: 200
 {
   "short_name": "checkout",
   "full_name": "<ROOT>",
-  "kind": "folder",
-  "kind_label": "Local folder",
+  "kind": "git",
+  "kind_label": "Local Git checkout",
   "title": "checkout • Metabrowser",
+  "kind_tip": "Local Git checkout",
   "repository": null
 }
 --- stderr ---

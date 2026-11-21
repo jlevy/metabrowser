@@ -8,23 +8,29 @@ held to SQLite's own order in both directions, across types and collations.
 
 from __future__ import annotations
 
+import ast
 import asyncio
+import os
+import re
+import shutil
 import sqlite3
+import time
 from collections.abc import Iterator
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
 import pytest
 from starlette.testclient import TestClient
 
-from metabrowser import server, table_source
+from metabrowser import capabilities, server, sqlite_access, table_source
 from metabrowser.builtin_plugins.sqlite import reader, source
-from metabrowser.builtin_plugins.sqlite.database import segment_name, table_segment
+from metabrowser.builtin_plugins.sqlite.database import Database, segment_name, table_segment
 from metabrowser.source import reset_source_session
 from metabrowser.table_source import decode_key
 from tests.git_pin_harness import fast_import_store, pinned_client
 from tests.required_tools import needs_git
-from tests.sqlite_fixture import build
+from tests.sqlite_fixture import FIXED_MTIME, build
 
 FIXTURES = Path(__file__).parent / "fixtures" / "sqlite-tables"
 
@@ -104,6 +110,11 @@ def _direct(root: Path, sql: str) -> list[Any]:
 def test_every_name_has_exactly_one_segment(name: str, segment: str) -> None:
     assert table_segment(name) == segment
     assert segment_name(segment) == name
+
+
+def test_a_case_variant_of_a_segment_names_nothing(client: TestClient) -> None:
+    assert _get(client, "rows", path="app.db/users")["_status"] == 200
+    assert _get(client, "rows", path="app.db/USERS")["code"] == "table_not_found"
 
 
 def test_a_segment_no_name_encodes_to_names_nothing() -> None:
@@ -277,6 +288,23 @@ def test_blob_keys_round_trip(client: TestClient) -> None:
     assert record["cells"]["v"] == "two"
 
 
+def test_large_sort_values_use_small_positional_cursors(client: TestClient, root: Path) -> None:
+    build(
+        root / "wide.sqlite",
+        "CREATE TABLE item (id INTEGER PRIMARY KEY, value BLOB);"
+        "INSERT INTO item VALUES (1, zeroblob(30000)), (2, zeroblob(10000));",
+    )
+    path = "wide.sqlite/item"
+    first = _get(client, "rows", path=path, cols="id", sort="value", limit=1)
+    assert first["next_after"].startswith("@1.")
+    assert [
+        row["cells"]["id"] for row in _walk(client, path, cols="id", sort="value", limit=1)
+    ] == [
+        2,
+        1,
+    ]
+
+
 def test_a_cursor_for_another_sort_is_refused(client: TestClient) -> None:
     page = _get(client, "rows", path="app.db/users", sort="email", limit=2)
     refused = _get(client, "rows", path="app.db/users", sort="age", after=page["next_after"])
@@ -364,6 +392,13 @@ def test_references_resolve_by_the_target_columns_collation(client: TestClient) 
     assert tags[0]["ref"]["table"] == "tags" and tags[0]["ref"]["label"] == "ADMIN"
     assert decode_key(tags[0]["ref"]["key"]) == [1, "admin"]
     assert tags[2]["ref"] == {"table": "tags", "key": None, "label": "gamma", "missing": True}
+    # The record's back-references and `ref=` match as the page resolves: by the target's
+    # NOCASE collation, so `ADMIN` names `admin`.
+    admin = tags[0]["ref"]["key"]
+    record = _get(client, "record", path="app.db/tags", key=admin)
+    assert [(item["table"], item["count"]) for item in record["referenced_by"]] == [("grants", 1)]
+    named = _get(client, "rows", path="app.db/grants", ref=f"tags:{admin}")
+    assert [row["cells"]["tag"]["ref"]["label"] for row in named["rows"]] == ["ADMIN"]
     orders = _get(client, "rows", path="app.db/orders")["rows"]
     dangling = orders[3]["cells"]["user_id"]
     assert dangling == {"ref": {"table": "users", "key": None, "label": 99, "missing": True}}
@@ -377,6 +412,74 @@ def test_counts_are_capped(client: TestClient, monkeypatch: pytest.MonkeyPatch) 
     assert page["estimate"] == 6
     filtered = _get(client, "rows", path="app.db/users", **{"f.age": "gt:0"})
     assert filtered["count_complete"] is False
+
+
+def test_search_continues_past_empty_windows(
+    client: TestClient, root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build(
+        root / "history.sqlite",
+        "CREATE TABLE item (id INTEGER PRIMARY KEY, name TEXT);"
+        "INSERT INTO item VALUES (2, 'one'), (3, 'two'), (5, 'three'),"
+        "(1700000000000, 'needle');"
+        "CREATE INDEX by_name ON item(name);",
+    )
+    monkeypatch.setattr(reader, "FILTER_SCAN_ROWS", 2)
+    path = "history.sqlite/item"
+    tables = _get(client, "tables", path="history.sqlite")
+    assert tables["tables"][0]["estimate"] == 4
+
+    first = _get(client, "rows", path=path, q="needle", limit=1)
+    assert first["rows"] == [] and first["next_after"]
+    assert first["reason"] == "budget" and first["examined"] == 2
+    assert first["estimate"] is None
+    assert [row["cells"]["id"] for row in _walk(client, path, q="needle", limit=1)] == [
+        1700000000000
+    ]
+    assert _walk(client, path, q="missing", limit=1) == []
+    assert len(_walk(client, path, q="needle", sort="name", order="desc", limit=1)) == 1
+
+    # A forced positional cursor advances past the same examined rows.
+    monkeypatch.setattr(table_source, "TABLE_TOKEN_MAX_CHARS", 4)
+    first = _get(client, "rows", path=path, q="needle", limit=1)
+    assert first["next_after"].startswith("@2.")
+    second = _get(client, "rows", path=path, q="needle", limit=1, after=first["next_after"])
+    assert [row["cells"]["name"] for row in second["rows"]] == ["needle"]
+
+
+def test_large_keyless_reads_require_native_order(
+    client: TestClient, root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build(
+        root / "keyless.sqlite",
+        "CREATE TABLE item (name TEXT); INSERT INTO item VALUES ('one'), ('two'), ('three');"
+        "CREATE VIEW label AS SELECT name FROM item;",
+    )
+    monkeypatch.setattr(reader, "SORT_UNINDEXED_MAX_ROWS", 2)
+    path = "keyless.sqlite/label"
+    assert len(_walk(client, path, limit=1)) == 3
+    for param in ({"q": "three"}, {"order": "desc"}):
+        page = _get(client, "rows", path=path, **param)
+        assert page["_status"] == 422 and "no stable row key" in str(page)
+
+
+def test_custom_collation_does_not_hide_other_tables(client: TestClient, root: Path) -> None:
+    path = root / "app-collation.sqlite"
+    with sqlite3.connect(path) as connection:
+        connection.create_collation("app_natural", lambda a, b: (a > b) - (a < b))
+        connection.executescript(
+            "CREATE TABLE names (name TEXT COLLATE app_natural PRIMARY KEY) WITHOUT ROWID;"
+            "INSERT INTO names VALUES ('one');"
+            "CREATE TABLE messages (id INTEGER PRIMARY KEY, note TEXT COLLATE app_natural);"
+            "INSERT INTO messages VALUES (1, 'hello');"
+        )
+    tables = _get(client, "tables", path=path.name)
+    assert {table["id"] for table in tables["tables"]} == {"names", "messages"}
+    names = _get(client, "rows", path=f"{path.name}/names")
+    assert names["_status"] == 422 and "unavailable SQLite collation" in str(names)
+    assert _get(client, "rows", path=f"{path.name}/messages")["rows"]
+    sorted_notes = _get(client, "rows", path=f"{path.name}/messages", sort="note")
+    assert sorted_notes["_status"] == 422 and "app_natural" in str(sorted_notes)
 
 
 def test_record_and_card(client: TestClient) -> None:
@@ -394,6 +497,50 @@ def test_record_and_card(client: TestClient) -> None:
     order = _get(client, "rows", path="app.db/orders", limit=1)["rows"][0]
     assert decode_key(order["key"]) == [1]
     assert _get(client, "record", path="app.db/orders", key=order["key"])["cells"]["rowid"] == 1
+
+
+@pytest.mark.parametrize("replace", [False, True], ids=["commit", "replace-file"])
+def test_a_positional_record_refuses_a_change_after_sampling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replace: bool
+) -> None:
+    setup = """
+        CREATE TABLE items (id INTEGER PRIMARY KEY, label TEXT);
+        INSERT INTO items VALUES (1, 'old row'), (2, 'next row');
+        CREATE VIEW ordered AS SELECT label FROM items ORDER BY id;
+    """
+    database = build(tmp_path / "position.db", setup)
+    replacement = build(tmp_path / "replacement.db", setup + "DELETE FROM items WHERE id = 1;")
+    call = Database.call
+    changed = False
+
+    def call_after_write(
+        database_handle: Database, op: str, args: dict[str, Any], *, deadline: float
+    ) -> Any:
+        nonlocal changed
+        if op == "sqlite_record" and not changed:
+            changed = True
+            if replace:
+                replacement.replace(database)
+            else:
+                with closing(sqlite3.connect(database)) as writer, writer:
+                    writer.execute("DELETE FROM items WHERE id = 1")
+        return call(database_handle, op, args, deadline=deadline)
+
+    monkeypatch.setattr(Database, "call", call_after_write)
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as test_client:
+        path = "position.db/ordered"
+        page = _get(test_client, "rows", path=path, limit=1)
+        key = page["rows"][0]["key"]
+        assert key == "@1"
+        assert page["rows"][0]["cells"]["label"] == "old row"
+        refused = _get(test_client, "record", path=path, key=key, generation=page["generation"])
+        assert changed and refused["_status"] == 422 and refused["state"] == "refused", refused
+        assert "changed while opening this position" in refused["error"]
+        assert "cells" not in refused
+        current = _get(test_client, "record", path=path, key=key)
+        assert current["cells"]["label"] == "next row"
 
 
 def test_schema_route(client: TestClient) -> None:
@@ -473,3 +620,325 @@ def test_tokens_past_the_bound_are_positions(
     stale = _get(client, "rows", path="app.db/users", limit=2, after="@2.stale")
     assert page["next_after"].startswith("@2.")
     assert (stale["reason"], stale["rows"]) == ("cursor_expired", [])
+
+
+# ── Virtual tables ─────────────────────────────────────────────
+
+# FTS3, FTS4, FTS5, and R-tree, with views and references over them. Where virtual
+# tables are not read, none of these may run a module's query code, whatever reaches it.
+_VIRTUAL = """
+CREATE VIRTUAL TABLE "docs" USING FTS5(title, body);
+INSERT INTO docs VALUES ('a', 'hello world'), ('b', 'other');
+CREATE TABLE docs_notes (id INTEGER PRIMARY KEY, note TEXT);
+INSERT INTO docs_notes VALUES (1, 'ordinary table');
+CREATE VIRTUAL TABLE d3 USING fts3(body);
+INSERT INTO d3 VALUES ('three');
+CREATE VIRTUAL TABLE d4 USING fts4(body);
+INSERT INTO d4 VALUES ('four');
+CREATE VIRTUAL TABLE spatial USING rtree(id, min_x, max_x);
+INSERT INTO spatial VALUES (1, 0, 1), (2, 5, 6);
+CREATE TABLE plain (id INTEGER PRIMARY KEY, name TEXT);
+INSERT INTO plain VALUES (1, 'kept');
+CREATE VIEW over_docs AS SELECT rowid AS r, title, body FROM docs;
+CREATE VIEW joins_docs AS SELECT plain.name FROM plain LEFT JOIN docs ON 0;
+CREATE TABLE located (id INTEGER PRIMARY KEY, place REFERENCES spatial(id));
+INSERT INTO located VALUES (1, 2);
+"""
+
+# Each object, and whether it is read where virtual tables are not.
+_GUEST_READS = {
+    "docs": False,
+    "d3": False,
+    "d4": False,
+    "spatial": False,
+    "spatial_node": False,
+    "docs_config": False,
+    "docs_notes": True,
+    "over_docs": False,
+    "joins_docs": False,
+    "plain": True,
+    "located": True,
+}
+
+
+def test_virtual_tables_and_their_views_are_read_on_a_trusted_folder(tmp_path: Path) -> None:
+    build(tmp_path / "vt.db", _VIRTUAL)
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as trusted:
+        for name in _GUEST_READS:
+            if name == "spatial":
+                continue
+            page = _get(trusted, "rows", path=f"vt.db/{name}")
+            assert page["_status"] == 200, (name, page)
+        assert _get(trusted, "rows", path="vt.db/d3")["rows"][0]["cells"]["body"] == "three"
+        assert _get(trusted, "rows", path="vt.db/over_docs")["rows"][0]["cells"]["title"] == "a"
+        # R-tree prepares writes to its shadow tables when it connects, which the
+        # reads-only authorizer refuses everywhere; it is listed, and refused by name.
+        spatial = _get(trusted, "rows", path="vt.db/spatial")
+        assert "prepares write statements when it opens" in spatial["error"], spatial
+        # A reference to a target that cannot be read is left plain, never a failed page.
+        located = _get(trusted, "rows", path="vt.db/located")
+        assert located["rows"][0]["cells"]["place"] == 2
+
+
+def _assert_guest_refusals(pages: dict[str, dict[str, Any]]) -> None:
+    for name, read in _GUEST_READS.items():
+        page = pages[name]
+        if read:
+            assert page["_status"] == 200, (name, page)
+        else:
+            assert page["_status"] != 200, (name, page)
+            assert "not read here" in page["error"], (name, page)
+            assert "not authorized" not in page["error"], (name, page)
+    assert pages["located"]["rows"][0]["cells"]["place"] == 2
+
+
+def test_virtual_tables_and_their_views_are_refused_untrusted(tmp_path: Path) -> None:
+    build(tmp_path / "vt.db", _VIRTUAL)
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    capabilities.set_capabilities(capabilities.UNTRUSTED_CAPABILITIES)
+    with TestClient(server.app) as untrusted:
+        pages = {name: _get(untrusted, "rows", path=f"vt.db/{name}") for name in _GUEST_READS}
+        schema = {name: _get(untrusted, "schema", path=f"vt.db/{name}") for name in _GUEST_READS}
+        listed = _get(untrusted, "tables", path="vt.db")
+        ddl = untrusted.get("/api/plugin/sqlite/schema", params={"path": "vt.db"})
+    _assert_guest_refusals(pages)
+    for name, read in _GUEST_READS.items():
+        assert (schema[name]["_status"] == 200) is read, (name, schema[name])
+    assert listed["_status"] == 200
+    assert {item["label"] for item in listed["tables"]} >= set(_GUEST_READS)
+    assert ddl.status_code == 200
+
+
+def test_the_guest_refusal_holds_inside_the_reader(tmp_path: Path) -> None:
+    """The authorizer, not the adapter's own check, refuses: a statement over a view of
+    a virtual table, or naming one, fails at prepare."""
+    database = build(tmp_path / "vt.db", _VIRTUAL)
+
+    def attempt(sql: str) -> str:
+        def fn(connection: sqlite3.Connection) -> Any:
+            sqlite_access.deny_reads(connection, reader._guest_denied(connection))  # pyright: ignore[reportPrivateUsage]
+            return connection.execute(sql).fetchall()
+
+        try:
+            sqlite_access.read(database, fn, deadline=time.monotonic() + 5, scratch=tmp_path)
+        except sqlite_access.SqliteAccessError as exc:
+            return exc.state
+        return "read"
+
+    assert attempt("SELECT count(*) FROM over_docs") == "refused"
+    assert attempt("SELECT name FROM joins_docs") == "refused"
+    assert attempt("SELECT * FROM docs WHERE docs MATCH 'hello'") == "refused"
+    assert attempt("SELECT * FROM pragma_table_xinfo('spatial')") == "refused"
+    assert attempt("SELECT count(*) FROM spatial_node") == "refused"
+    assert attempt("SELECT count(*) FROM docs_config") == "refused"
+    assert attempt("SELECT note FROM docs_notes") == "read"
+    assert attempt("SELECT count(*) FROM plain") == "read"
+
+
+@needs_git
+def test_virtual_tables_and_their_views_are_refused_on_a_pin(tmp_path: Path) -> None:
+    built = build(tmp_path / "vt.db", _VIRTUAL)
+    store, commit = fast_import_store(tmp_path, {b"vt.db": built.read_bytes()})
+
+    async def run() -> dict[str, dict[str, Any]]:
+        async with pinned_client(store, commit) as (pinned, _subject):
+            listed = (
+                await pinned.get("/api/plugin/table/tables", params={"path": "g1-dnQuZGI"})
+            ).json()
+            paths = {item["label"]: item["path"] for item in listed["tables"]}
+            pages: dict[str, dict[str, Any]] = {}
+            for name in _GUEST_READS:
+                response = await pinned.get("/api/plugin/table/rows", params={"path": paths[name]})
+                pages[name] = {**response.json(), "_status": response.status_code}
+            return pages
+
+    _assert_guest_refusals(asyncio.run(run()))
+
+
+def test_checkpointer_only_read_is_refused_outside_info(tmp_path: Path) -> None:
+    original = tmp_path / "owner.db"
+    target = tmp_path / "copied.db"
+    with closing(sqlite3.connect(original)) as owner:
+        owner.execute("PRAGMA journal_mode=WAL")
+        owner.execute("CREATE TABLE items (id INTEGER PRIMARY KEY)")
+        owner.commit()
+        owner.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        owner.execute("INSERT INTO items VALUES (1)")
+        owner.commit()
+        shutil.copyfile(original, target)
+        log = sqlite_access.sidecar(target, "-wal")
+        shutil.copyfile(sqlite_access.sidecar(original, "-wal"), log)
+        # The private-copy cap is based on file length. A sparse tail forces the
+        # existing fallback without writing a large test database.
+        os.truncate(log, sqlite_access.COPY_MAX_BYTES + 1)
+    assert not sqlite_access.sidecar(target, "-shm").exists()
+
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as test_client:
+        info = test_client.get("/api/plugin/sqlite/info", params={"path": "copied.db"})
+        assert info.json()["access"]["state"] == "without_log"
+        schema = test_client.get("/api/plugin/sqlite/schema", params={"path": "copied.db"})
+        assert schema.json()["error"]["state"] == "without_log"
+        for route, path in [("tables", "copied.db"), ("rows", "copied.db/items")]:
+            answer = _get(test_client, route, path=path)
+            assert answer["_status"] == 422 and answer["state"] == "without_log", answer
+            assert "Open Info" in answer["error"]
+    assert not sqlite_access.sidecar(target, "-shm").exists()
+
+
+def test_unreadable_wal_is_not_a_missing_database(
+    root: Path, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = root / "app.db"
+    log = sqlite_access.sidecar(database, "-wal")
+    log.write_bytes(b"test log")
+    read_head = sqlite_access._read_head  # pyright: ignore[reportPrivateUsage]
+
+    def deny_log(path: Path, size: int) -> bytes:
+        if path == log:
+            raise PermissionError(13, "Permission denied", path)
+        return read_head(path, size)
+
+    monkeypatch.setattr(sqlite_access, "_read_head", deny_log)
+    info = client.get("/api/plugin/sqlite/info", params={"path": "app.db"})
+    assert info.status_code == 200
+    assert info.json()["error"]["state"] == "unreadable"
+    assert "log cannot be read" in info.json()["error"]["message"]
+    tables = _get(client, "tables", path="app.db")
+    assert tables["_status"] == 422 and tables["state"] == "unreadable", tables
+
+
+@pytest.mark.parametrize("state", ["writer_busy", "changing", "reader_stopped", "busy"])
+def test_expected_reader_refusal_reaches_the_table_api(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, state: sqlite_access.ErrorState
+) -> None:
+    def busy(
+        _database: Database, _operation: str, _args: dict[str, Any], *, deadline: float
+    ) -> Any:
+        raise sqlite_access.SqliteAccessError(state, "The requested database read can be retried.")
+
+    monkeypatch.setattr(Database, "call", busy)
+    for route, path in (("tables", "app.db"), ("rows", "app.db/users")):
+        answer = _get(client, route, path=path)
+        assert answer["_status"] == 409, answer
+        assert (answer["type"], answer["code"], answer["state"]) == (
+            "table_error",
+            "source_busy",
+            state,
+        )
+        assert answer["error"] == "The requested database read can be retried."
+
+
+def test_pre_octet_length_library_still_has_info(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = build(tmp_path / "old-reader.db", "CREATE TABLE t (id INTEGER PRIMARY KEY)")
+    monkeypatch.setattr(sqlite3, "sqlite_version", "3.42.0")
+    args = {"path": str(path), "scratch": str(tmp_path)}
+    ask = sqlite_access._handle  # pyright: ignore[reportPrivateUsage]
+    info = ask({"op": "info", "seconds": 2, "args": args})
+    assert info["ok"] and not info["result"]["library"]["meets_minimum"]
+    for op in ("sqlite_catalog", "sqlite_ddl"):
+        refusal = ask({"op": op, "seconds": 2, "args": args})
+        assert refusal["state"] == "unsupported"
+        assert "requires SQLite 3.43.0" in refusal["error"]
+        assert "uses SQLite 3.42.0" in refusal["error"]
+
+
+def test_every_admitted_function_is_one_the_adapter_calls() -> None:
+    """The authorizer's function allowlist is exactly what the reader's own SQL calls:
+    each name appears called in a string the worker modules hold (`like` as the
+    operator that calls it)."""
+    texts: list[str] = []
+    for module in (reader, sqlite_access):
+        tree = ast.parse(Path(str(module.__file__)).read_text(encoding="utf-8"))
+        texts += [
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        ]
+    sql = "\n".join(texts)
+    # `min` came with the access layer's own set, which no statement here calls; that
+    # layer decides it.
+    for name in sorted(sqlite_access.ADAPTER_FUNCTIONS - {"min"}):
+        pattern = r"\bLIKE\b" if name == "like" else rf"\b{name}\s*\("
+        assert re.search(pattern, sql, re.IGNORECASE), name
+
+
+def test_json_that_is_not_strict_json_is_shown_as_text(tmp_path: Path) -> None:
+    """Nonfinite and overly nested JSON values remain text in pages and records."""
+    deep = "[" * 20_000 + "]" * 20_000
+    database = build(
+        tmp_path / "j.db",
+        "CREATE TABLE j (id INTEGER PRIMARY KEY, doc JSON);"
+        "INSERT INTO j VALUES (1, 'NaN'), (2, '[Infinity]'), (3, '{\"a\": 1}'), "
+        "(4, '-Infinity'), (5, '[1e1000]');",
+    )
+    connection = sqlite3.connect(database)
+    connection.execute("INSERT INTO j VALUES (6, ?)", (deep,))
+    connection.commit()
+    connection.close()
+    os.utime(database, (FIXED_MTIME, FIXED_MTIME))
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as test_client:
+        page = _get(test_client, "rows", path="j.db/j")
+        assert page["_status"] == 200, page
+        docs = [row["cells"]["doc"] for row in page["rows"]]
+        assert docs[:5] == [
+            "NaN",
+            "[Infinity]",
+            {"json": {"a": 1}, "preview": '{"a": 1}'},
+            "-Infinity",
+            "[1e1000]",
+        ]
+        for key in ("k.WzFd", "k.WzJd", "k.WzVd", "k.WzZd"):
+            record = _get(test_client, "record", path="j.db/j", key=key)
+            assert record["_status"] == 200, record
+        record = _get(test_client, "record", path="j.db/j", key="k.WzVd")
+        assert record["cells"]["doc"] == "[1e1000]"
+        record = _get(test_client, "record", path="j.db/j", key="k.WzZd")
+        assert record["cells"]["doc"] == deep
+
+
+def test_integer_primary_key_desc_is_no_rowid_alias(tmp_path: Path) -> None:
+    """SQLite's documented exception: `INTEGER PRIMARY KEY DESC` is an ordinary column
+    that may hold nulls, so the table is keyed by its rowid."""
+    build(
+        tmp_path / "d.db",
+        "CREATE TABLE t (k INTEGER PRIMARY KEY DESC, v TEXT);"
+        "INSERT INTO t VALUES (NULL, 'n1'), (NULL, 'n2'), (3, 'c'), (1, 'a');"
+        "CREATE TABLE alias (k INTEGER, v TEXT, PRIMARY KEY (k DESC));"
+        "INSERT INTO alias VALUES (7, 'x');",
+    )
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as test_client:
+        page = _get(test_client, "rows", path="d.db/t", order="desc")
+        assert page["_status"] == 200, page
+        assert [decode_key(row["key"]) for row in page["rows"]] == [[4], [3], [2], [1]]
+        assert [row["cells"]["k"] for row in page["rows"]] == [1, 3, None, None]
+        assert _fields(test_client, "d.db/t")["rowid"]["key"] is True
+        aliased = _get(test_client, "rows", path="d.db/alias")
+        assert [decode_key(row["key"]) for row in aliased["rows"]] == [[7]]
+
+
+@pytest.mark.parametrize("params", [{"order": "desc"}, {"q": "a"}])
+def test_a_column_named_like_the_position_shows_its_value(
+    tmp_path: Path, params: dict[str, str]
+) -> None:
+    build(
+        tmp_path / "p.db",
+        "CREATE VIEW v AS SELECT 10 AS __metabrowser_position, 'a' AS t "
+        "UNION ALL SELECT 20, 'a' UNION ALL SELECT 30, 'a';",
+    )
+    reset_source_session()
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as test_client:
+        page = _get(test_client, "rows", path="p.db/v", **params)
+        values = [row["cells"]["__metabrowser_position"] for row in page["rows"]]
+        assert sorted(values) == [10, 20, 30], page

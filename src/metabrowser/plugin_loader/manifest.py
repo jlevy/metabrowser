@@ -565,6 +565,11 @@ class PluginManifest(BaseModel):
                     f"kind '{kr.id}' claims binary files but matches on content "
                     f"({', '.join(content)}); a binary rule matches by path only"
                 )
+            if kr.binary and kr.match.magic is not None:
+                problems.append(
+                    f"kind '{kr.id}' sets binary with match.magic; a magic rule already "
+                    "matches only binary files, by their bytes"
+                )
             if kr.binary and kr.container is not None:
                 problems.append(f"kind '{kr.id}' claims binary files and cannot be a container")
 

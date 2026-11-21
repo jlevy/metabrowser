@@ -472,6 +472,8 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
             env={recent_targets.RECORD_ENV: "0"},
         ),
         run("recent-add/repository", {"target": "https://github.com/Octo/Demo/pull/12"}),
+        # A checkout is recorded as one, so a menu can draw its mark without a look at it.
+        run("recent-add/checkout", {"target": str(sandbox.checkout)}),
         run("recent-list/listed"),
         run("recent-forget/folder", {"root": served}),
         run("recent-clear"),

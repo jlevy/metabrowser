@@ -38,18 +38,18 @@ $ node tests/dom/sqlite-tables-session.js
 {
   "overview of app.db": {
     "Tables": [
-      "blobs → /view/app.db/blobs",
+      "blobs → /view/app.db/blobs  about 3 rows",
       "counters → /view/app.db/counters  about 2 rows",
-      "g1-like → /view/app.db/~67312d6c696b65",
+      "g1-like → /view/app.db/~67312d6c696b65  about 0 rows",
       "grants → /view/app.db/grants  about 3 rows",
       "huge → /view/app.db/huge  about 2 rows",
       "order items → /view/app.db/~6f72646572206974656d73  about 1 row",
       "orders → /view/app.db/orders  about 5 rows",
       "prices → /view/app.db/prices  about 2 rows",
-      "shadows → /view/app.db/shadows  (no key)",
-      "tags → /view/app.db/tags",
+      "shadows → /view/app.db/shadows  (no key)  about 2 rows",
+      "tags → /view/app.db/tags  about 3 rows",
       "users → /view/app.db/users  about 6 rows",
-      "~tilde → /view/app.db/~7e74696c6465"
+      "~tilde → /view/app.db/~7e74696c6465  about 0 rows"
     ],
     "Views": [
       "shouting → /view/app.db/shouting"
@@ -77,8 +77,8 @@ $ node tests/dom/sqlite-tables-session.js
       "items → /view/snapshot.db/items  about 1 row"
     ],
     "Internal tables": [
-      "applied_tx → /view/snapshot.db/applied_tx",
-      "fsqlite_meta → /view/snapshot.db/fsqlite_meta"
+      "applied_tx → /view/snapshot.db/applied_tx  about 0 rows",
+      "fsqlite_meta → /view/snapshot.db/fsqlite_meta  about 0 rows"
     ]
   },
   "schema of app.db": {

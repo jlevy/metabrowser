@@ -34,8 +34,8 @@ $ node tests/dom/fsqlite-tables-session.js
       "notes → /view/notes/fsqlite.json/notes  about 2 rows"
     ],
     "Internal tables": [
-      "applied_tx → /view/notes/fsqlite.json/applied_tx  ",
-      "fsqlite_meta → /view/notes/fsqlite.json/fsqlite_meta  "
+      "applied_tx → /view/notes/fsqlite.json/applied_tx  about 0 rows",
+      "fsqlite_meta → /view/notes/fsqlite.json/fsqlite_meta  about 4 rows"
     ]
   },
   "Table view of torn/fsqlite.json": {

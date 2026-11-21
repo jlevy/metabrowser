@@ -95,3 +95,22 @@ def test_the_hazard_is_real(repository: ListedRepository) -> None:
             handle.read(100)
         assert _another_process_locks(path) == "locked"
         writer.execute("ROLLBACK")
+
+
+def test_a_refused_read_keeps_the_writers_lock(repository: ListedRepository) -> None:
+    """A read whose admission refuses the catalog after opening it (here because another
+    user could read it) closes that handle through the same deferral."""
+    path = repository.home / pull_catalog._relative(repository.slug)  # pyright: ignore[reportPrivateUsage]
+    with pull_catalog._database(repository.home, repository.slug, write=True) as writer:  # pyright: ignore[reportPrivateUsage]
+        writer.isolation_level = None
+        writer.execute("BEGIN IMMEDIATE")
+        writer.execute("INSERT INTO pulls VALUES (1, 'open', '2026-01-01T00:00:00Z', '{}')")
+        assert _another_process_locks(path) == "refused"
+        path.chmod(0o644)
+        try:
+            assert pull_catalog.read_catalog(repository.home, repository.slug) is None
+            assert _another_process_locks(path) == "refused"
+        finally:
+            path.chmod(0o600)
+        writer.execute("COMMIT")
+    assert _another_process_locks(path) == "locked"

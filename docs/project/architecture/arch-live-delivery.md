@@ -1,8 +1,9 @@
 # Architecture: Live Delivery
 
 **Status:** Built: the coordinator’s change relay, the event bus and `/api/events`
-(`events_route.py`, `events.py`), the Quick File catalog feed, live log tailing on
-`/api/stream` (`sse.py`), and the browser’s stores.
+(`events_route.py`, `events.py`), file watches registered on a connection
+(`file_watches.py`, `static/file-watches.js`), the Quick File catalog feed, live log
+tailing on `/api/stream` (`sse.py`), and the browser’s stores.
 Planned: pushed aggregates, so that Overview and Treemap stop polling during a scan
 ([load-time plan](../specs/active/plan-2026-08-21-load-time-performance.md)).
 
@@ -112,11 +113,12 @@ compressed.
 
 | Event | Carries |
 | --- | --- |
-| `fs.snapshot` | The connection’s scope, its entries, and whether coverage is complete |
+| `fs.snapshot` | The connection’s id, first in the frame, then its scope, its entries, and whether coverage is complete |
 | `fs.change` | Ordered upsert and remove operations |
 | `catalog.change` | Quick File upserts and removals derived from the same operations, unscoped |
 | `fs.resync_required` | A reason; the stream has a gap, so drop derived state and reconnect |
 | `capability.update` | Watcher mode and state, index completeness, indexed files, and the cap |
+| `file.changed` | A path this connection watches and its new generation, or null when nothing is there |
 
 `fs.change` is the one changed-path invalidation for file previews, directory
 projections, SDK rollup watches, and the catalog delta beside it; the bus sends no
@@ -124,6 +126,73 @@ second per-path event.
 `events.py` also defines a `Heartbeat` event and tail events (`file.append`,
 `file.truncate`, `file.rotate`, `file.closed`, `file.coalesced`, `parser.reset`) that no
 route constructs; live log tailing uses `/api/stream`, below.
+
+## File Watches
+
+The stream carries tree entries only to depth two and the catalog only for unignored
+files, and a source’s content can change where no inventory path does, as a database’s
+does through its `-wal`. So a view that shows a live file registers that file on its
+page’s own connection, and hears of a change on the stream it already holds rather than
+on a second one: a browser opens six connections to a host, and a stream per view would
+spend them
+([Decision 4](../specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md#decision-4-how-an-open-file-learns-it-changed)).
+
+- **The connection.** `snapshot_and_attach` gives each connection an id, which its
+  `fs.snapshot` carries as its first key; the browser compares two snapshots without it,
+  so a reconnect to an unchanged tree still skips the repaint.
+- **Registration.** `POST /api/events/watch` with `{connection, path, generation}`
+  registers the path and answers its generation now, the baseline later polls compare
+  with, and `changed` when it differs from the generation the page holds, so a change
+  between the page’s read and the registration is not lost.
+  `watch: false` unregisters it.
+  With no connection the route registers nothing and answers the generation a watch
+  would compare, which is what `metab --api` reaches.
+  A connection id the process does not hold, as after a restart, is refused with
+  `unknown_connection`; past `FILE_WATCH_MAX_PATHS` paths, with `too_many_watches`. A
+  Git pin answers `unsupported_for_subject`, as `/api/events` does.
+- **The generation** (`watch_generation`) is the table source’s own `generation()` for a
+  path whose kind has one, the token every read of it samples, and the file’s identity,
+  size, and modification time for any other path.
+- **The poll.** `FileWatches.run` asks each distinct watched path’s generation every
+  `FILE_WATCH_POLL_INTERVAL_S`, and sooner after the relay sees an inventory change at a
+  watched path, an ancestor, or a `-suffix` sidecar, but never within
+  `FILE_WATCH_MIN_SPACING_S` of the end of the last poll.
+  The relay asks that of every inventory change on the event loop, so `FileWatches`
+  keeps an index of every watched path and its ancestors, and the question is two
+  lookups for each changed path, measured beside the index.
+  Each connection that saw another generation gets one `file.changed`, so a burst
+  between two polls is one event.
+  A path is compared as soon as it is sampled, and only with an entry written before the
+  sample, so a registration answered meanwhile is never sent an older generation.
+  Every watched path is polled, the ones the inventory reports too, since which paths
+  the inventory covers depends on its ignore rules and its watcher’s state; the cost per
+  path is measured beside `FILE_WATCH_MAX_PATHS`.
+- **Delivery.** A `file.changed` is queued on its one connection under the overflow rule
+  every event follows, and a connection that ends, or is sent `fs.resync_required`,
+  drops its watches.
+- **The page.** `static/file-watches.js`, loaded on demand by `metabrowser.watchFile`,
+  keeps the page’s watches.
+  `app.js` hands it each snapshot’s connection and each `file.changed`. Every new
+  connection, after a resync, a server restart, or a page restored from Back
+  (`createPageConnections`), registers every watch again with the generation it holds; a
+  registration refused for an unknown connection waits for the next snapshot
+  (`tests/dom/page-connections-session.js`). A watch released is unregistered whenever a
+  registration of it was sent on the connection now open, answered or not, so leaving
+  views faster than the server answers never fills the bound; a watch refused for
+  another reason, such as `too_many_watches`, registers again once another watch has
+  been unregistered. While the page is hidden its watches are unregistered, so a tab
+  nobody looks at costs the server no polls, and shown again each registers with the
+  generation it holds (`tests/dom/file-watches-session.js`).
+- **Containers.** A container in the tree whose children were read follows its file
+  (`createContainerFollower`): changes gather for `CONTAINER_COALESCE_MS`, one read of
+  its children runs at a time with one more if a change came during it, the children are
+  drawn again only when they differ, a collapsed container reads them on its next
+  expand, and a row the tree drops releases its watch.
+
+The table view refreshes on a change
+([Data Tables](../../design-system.md#data-tables)), and a container in the tree reads
+its children again
+([Navigation Containers](arch-plugin-system.md#navigation-containers)).
 
 ## The Catalog Feed
 
@@ -298,6 +367,8 @@ Each has a test that fails when it breaks.
    (`tests/test_http_caching.py::test_no_module_builds_its_own_validator`).
 7. A watch that fails announces it rather than ending quietly
    (`tests/test_browser_watch_backends.py::test_watcher_announces_a_failed_watch_instead_of_dying_silently`).
+8. A change between a page’s read and its file watch’s registration reaches the page
+   (`tests/test_file_watches.py::test_a_change_before_registering_is_answered_not_lost`).
 
 ## References
 

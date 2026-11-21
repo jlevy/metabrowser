@@ -80,6 +80,7 @@ plugin requirements:
   fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
+  structured: requires table
   unknown-jsonl: requires agents
   uses-md: requires markdown
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
@@ -125,6 +126,7 @@ plugin requirements:
   fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
+  structured: requires table
   unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
 ...
@@ -150,6 +152,7 @@ plugin requirements:
   fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
+  structured: requires table
   unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
 ...

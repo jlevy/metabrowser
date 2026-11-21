@@ -79,6 +79,7 @@ plugin requirements:
   fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
+  structured: requires table
   unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
@@ -218,7 +219,7 @@ $ metab --doctor --json --plugins-dir pulls 2>/dev/null
 
 ## Test: a key the shell reserves everywhere is refused at load
 
-The plugin is not loaded, so `plugin_count` is the built-in plugins alone.
+The plugin is not loaded, so `plugin_count` counts the built-in plugins alone.
 
 ```console
 $ metab --doctor --json --plugins-dir reserved 2>/dev/null
@@ -290,6 +291,7 @@ plugin requirements:
   fsqlite: requires sqlite, table
   github: requires markdown
   sqlite: requires table
+  structured: requires table
   unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)

@@ -107,6 +107,7 @@ WHEEL_SMOKE_SCRIPT = dedent(
         "html",
         "image",
         "markdown",
+        "sqlite",
         "structured",
         "table",
         "text",

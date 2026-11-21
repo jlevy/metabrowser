@@ -12,7 +12,7 @@
             "label": "applied_tx",
             "group": "internal",
             "keyed": true,
-            "estimate": null,
+            "estimate": 0,
             "path": "notes/fsqlite.json/applied_tx"
           },
           {
@@ -20,7 +20,7 @@
             "label": "fsqlite_meta",
             "group": "internal",
             "keyed": true,
-            "estimate": null,
+            "estimate": 4,
             "path": "notes/fsqlite.json/fsqlite_meta"
           },
           {
