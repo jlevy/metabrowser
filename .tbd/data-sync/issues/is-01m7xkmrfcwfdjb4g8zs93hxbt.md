@@ -3,9 +3,9 @@ type: is
 id: is-01m7xkmrfcwfdjb4g8zs93hxbt
 title: Resume the SQLite tables and fsqlite drafts
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
 refs:
   - kind: pr
@@ -14,11 +14,15 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/678
     at: 2026-11-20T23:11:10.487Z
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m7tv7gz4yk6tygqfexgtw0s2
+hold: null
+hold_until: null
 created_at: 2026-11-20T23:11:09.803Z
-updated_at: 2026-11-20T23:11:10.487Z
+updated_at: 2026-11-21T08:35:05.079Z
+started_at: 2026-11-21T08:35:05.070Z
 ---
 The saved drafts are in GitHub stack 657. GitHub base order is #649 plugin dependencies, #656 table protocol/CSV, #668 table view, #673 record lists, #674 SQLite access, #675 live tables, #676 SQLite tables, #678 fsqlite stores. Preserve all drafts and update refs by fast-forward only. The cloud Claude session is linked in the commits as session_01E8g3iN44KuoyWNe9T3xmGt. No unpushed local implementation worktree was found.
 
