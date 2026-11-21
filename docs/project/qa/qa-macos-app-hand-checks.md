@@ -852,8 +852,8 @@ It opens the copy with a scratch `HOME`, which hides only what is under it: disc
 and the first-run screen still look in the Homebrew prefixes and on the login shell’s
 `PATH`, which with a scratch `HOME` is the system’s own (`/etc/paths` and
 `/etc/paths.d`). So the script refuses to run where a `metab` in any of those would be
-found, and `no-metab` also where a uv in one would; on a Mac with Homebrew’s uv,
-`no-metab` cannot run, and `old-metab` covers the screen with uv.
+found, and `no-metab` also where a uv in one would.
+Use `old-metab` on a Mac with Homebrew’s uv.
 It downloads and installs nothing: “installing” uv or `metab` links the uv on `PATH` and
 this checkout’s `.venv/bin/metab` into the scratch `~/.local/bin`. On exit it quits the
 copy with SIGTERM, detaches its image, unregisters the copy, and deletes its defaults,
@@ -864,13 +864,13 @@ exits nonzero. `scripts/test-scripts.sh` checks that accounting on stand-in proc
 
 | Case | What it checks |
 | --- | --- |
-| `no-metab` | No uv and no `metab`: the uv install and the source checkout step are shown, then only the checkout step, still for a new Terminal window, once uv appears, then the waiting folder opens by itself once `metab` does |
-| `old-metab` | A stand-in below the floor (`scripts/setup-check/metab-0.12.0`): the checkout step naming it and no server (the script checks); replacing it opens the folder by itself; a wrapper reporting a newer version under the running server brings the restart offer, and Restart Servers reloads the window on a new port |
+| `no-metab` | Settings shows the minimum and links to the README’s installation guide. Check its uv instructions for a released minimum and its developer preview instructions when the minimum is pending. With only uv installed, Find Again still reports no usable runtime. Once `metab` appears, the waiting folder opens by itself |
+| `old-metab` | Settings explains why the stand-in (`scripts/setup-check/metab-0.12.0`) is incompatible. The script checks that no server starts. Replacing the stand-in opens the waiting folder by itself. A wrapper reporting a newer version under the running server brings the restart offer, and Restart Servers reloads the window on a new port |
 | `disk-image` | The copy on a read-only image of its own shows “Move Metabrowser to Applications”, naming the image |
 
 A choice rejected during the first search is checked by hand within `no-metab`, whose
 search waits on the login shell: as soon as the copy opens, Settings > Choose metab… and
-`/bin/ls`. Settings names the rejection and goes on looking, then shows the steps, and
+`/bin/ls`. Settings names the rejection and goes on looking, then shows the minimum, and
 the waiting folder still opens by itself once `metab` appears.
 
 Not covered: a translocated launch, which needs a quarantined copy that Gatekeeper
