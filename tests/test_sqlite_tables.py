@@ -812,6 +812,27 @@ def test_unreadable_wal_is_not_a_missing_database(
     assert tables["_status"] == 422 and tables["state"] == "unreadable", tables
 
 
+@pytest.mark.parametrize("state", ["writer_busy", "changing", "reader_stopped", "busy"])
+def test_expected_reader_refusal_reaches_the_table_api(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, state: sqlite_access.ErrorState
+) -> None:
+    def busy(
+        _database: Database, _operation: str, _args: dict[str, Any], *, deadline: float
+    ) -> Any:
+        raise sqlite_access.SqliteAccessError(state, "The requested database read can be retried.")
+
+    monkeypatch.setattr(Database, "call", busy)
+    for route, path in (("tables", "app.db"), ("rows", "app.db/users")):
+        answer = _get(client, route, path=path)
+        assert answer["_status"] == 409, answer
+        assert (answer["type"], answer["code"], answer["state"]) == (
+            "table_error",
+            "source_busy",
+            state,
+        )
+        assert answer["error"] == "The requested database read can be retried."
+
+
 def test_pre_octet_length_library_still_has_info(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -129,11 +129,11 @@ _UNREAD: Final = {
 
 
 class SourceBusyError(TableSourceError):
-    """The database could not be read now: its owner is writing, it changed during every
-    read, or every reader was busy. The view keeps the rows it has."""
+    """An expected conflict with the database or reader's current state."""
 
     code = "source_busy"
-    http_status = 503
+    # Data hooks reserve 5xx statuses for failures of the plugin itself.
+    http_status = 409
 
 
 def access_error(exc: SqliteAccessError) -> TableSourceError:
