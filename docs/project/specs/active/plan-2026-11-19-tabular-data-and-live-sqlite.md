@@ -1344,7 +1344,7 @@ As built, where this plan left a choice open:
   pointer that still names a missing snapshot after one retry.
   The marker and pointer must resolve to regular files.
   The reader requires a file at the exact snapshot name and refuses linked snapshot
-  files or SQLite `-wal` or `-shm` companions.
+  files, SQLite `-wal` or `-shm` companions, or a live rollback journal.
   Before serving snapshot data it checks the SQLite application ID `FSQL`, both reserved
   table layouts, and the four required `fsqlite_meta` fields.
   The `store_id` and `format_version` stamps must match the marker.

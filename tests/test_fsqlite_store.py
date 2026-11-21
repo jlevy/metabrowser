@@ -19,7 +19,7 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from metabrowser import server
-from metabrowser.builtin_plugins.fsqlite import source, store
+from metabrowser.builtin_plugins.fsqlite import reader, source, store
 from metabrowser.builtin_plugins.fsqlite.store import (
     CURRENT_MAX_BYTES,
     CURRENT_MAX_VERSION,
@@ -39,7 +39,9 @@ from metabrowser.builtin_plugins.sqlite.database import Database
 from metabrowser.plugin_loader.classify import collect_folder_markers
 from metabrowser.plugin_loader.static_assets import build_plugin_routes
 from metabrowser.source import reset_source_session
+from metabrowser.sqlite_access import SqliteAccessError
 from metabrowser.table_source import TableInfo
+from tests.sqlite_guest_scenarios import create, hot_journal
 
 STORE_ID = "550e8400-e29b-41d4-a716-446655440000"
 MARKER = (
@@ -678,6 +680,47 @@ def test_a_published_snapshot_with_wal_frames_is_refused(
         assert _listing(root) == before
     finally:
         connection.close()
+
+
+def test_a_published_snapshot_with_a_hot_rollback_journal_is_refused(
+    app_client: TestClient, tmp_path: Path
+) -> None:
+    root = _store(tmp_path / "s")
+    path = root / "snapshots" / snapshot_name(1)
+    # A killed writer can leave its uncommitted changes in the main file.
+    create(path, mode="delete", rows=20_000)
+    hot_journal(path)
+    before = _listing(root)
+
+    status, body = _get(app_client, "info", "s/fsqlite.json")
+    assert status == 200, body
+    assert body["error"]["state"] == "corrupt"
+    assert "live SQLite -journal" in body["error"]["message"]
+    assert "snapshot" not in body
+    status, body = _table(app_client, "rows", path="s/fsqlite.json/t")
+    assert (status, body["code"], body["state"]) == (422, "source_unreadable", "corrupt")
+    assert _listing(root) == before
+
+
+def test_a_zeroed_rollback_journal_does_not_hide_a_clean_snapshot(
+    app_client: TestClient, tmp_path: Path
+) -> None:
+    root = _store(tmp_path / "s")
+    snapshot = snapshot_name(1)
+    (root / "snapshots" / (snapshot + "-journal")).write_bytes(bytes(512))
+    status, body = _get(app_client, "info", "s/fsqlite.json")
+    assert status == 200, body
+    assert "error" not in body
+    assert body["store"]["version"] == 1
+
+
+def test_snapshot_identity_reports_an_older_sqlite_library_as_unsupported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(reader.sqlite_access, "library_version", lambda: (3, 42, 0))
+    with pytest.raises(SqliteAccessError, match="requires SQLite 3.43.0 or later") as refused:
+        reader._identity_op({}, deadline=0)
+    assert refused.value.state == "unsupported"
 
 
 @pytest.mark.parametrize(

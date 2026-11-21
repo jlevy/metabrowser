@@ -67,6 +67,13 @@ def _stamp(
 
 
 def _identity_op(args: dict[str, Any], deadline: float) -> tuple[int, str | None]:
+    if sqlite_access.library_version() < sqlite_access.READER_MINIMUM_LIBRARY:
+        library = sqlite_access.library_report()
+        raise sqlite_access.SqliteAccessError(
+            "unsupported",
+            f"Browsing fsqlite stores requires SQLite {library['minimum']} or later "
+            f"for bounded value reads. This reader uses SQLite {library['version']}.",
+        )
     value, _ = sqlite_access.read(
         Path(str(args["path"])),
         lambda connection: _stamp(connection, str(args["store_id"]), str(args["format_version"])),

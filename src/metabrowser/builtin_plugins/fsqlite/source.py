@@ -42,7 +42,7 @@ from metabrowser.builtin_plugins.sqlite.source import SqliteSource, catalog_tabl
 from metabrowser.capabilities import capabilities_for
 from metabrowser.plugin_api import TableHandle, TableInfo
 from metabrowser.source import resolve_session_identity
-from metabrowser.sqlite_access import SqliteAccessError
+from metabrowser.sqlite_access import JOURNAL_HEADER_BYTES, SqliteAccessError, _read_head
 from metabrowser.sqlite_readers import register_worker_module, request_deadline
 
 register_worker_module(
@@ -102,6 +102,19 @@ class SnapshotDatabase(Database):
                 raise StoreError(
                     "corrupt", f"The published snapshot has a SQLite {suffix} side file."
                 )
+        journal = self.file.with_name(self.file.name + "-journal")
+        try:
+            live = any(_read_head(journal, JOURNAL_HEADER_BYTES))
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            raise StoreError(
+                "corrupt", "The published snapshot's SQLite journal is unreadable."
+            ) from exc
+        if live:
+            raise StoreError(
+                "corrupt", "The published snapshot has a live SQLite -journal side file."
+            )
 
     def call(self, op: str, args: dict[str, Any], *, deadline: float) -> Any:
         self._require_snapshot_layout()

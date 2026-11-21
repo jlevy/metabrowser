@@ -12,8 +12,8 @@
   Metabrowser reads a store as a guest: the snapshot with `immutable=1` in a reader
   process with no writes, locks, or leases.
   It checks the snapshot’s identity and required metadata before showing its contents.
-  The published snapshot must be a regular file without SQLite WAL or shared-memory
-  companions. If garbage collection removes the snapshot during the initial read,
+  It refuses SQLite WAL files, shared-memory files, and live rollback journals next to a
+  published snapshot. If garbage collection removes the snapshot during the initial read,
   Metabrowser follows the pointer again.
   If a later table operation needs the collected file, it returns `snapshot_moved` so
   the reader can refresh.
