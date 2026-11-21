@@ -925,6 +925,9 @@ def _classify(exc: sqlite3.Error) -> SqliteAccessError:
         return SqliteAccessError("busy", "The read ran past its deadline or its work budget.")
     if code == sqlite3.SQLITE_AUTH or "not authorized" in str(exc):
         return SqliteAccessError("refused", f"The read was refused: {exc}")
+    if str(exc).startswith("no such collation sequence: "):
+        name = str(exc).removeprefix("no such collation sequence: ")
+        return SqliteAccessError("unreadable", f"This read needs the SQLite collation {name!r}.")
     return SqliteAccessError("unreadable", f"This database could not be read: {exc}")
 
 

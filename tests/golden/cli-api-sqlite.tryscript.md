@@ -34,7 +34,7 @@ $ metab sqlroot --show app.db
 show: app.db
 route: /view/app.db
 kind: sqlite
-views: info (default)
+views: table (default, key V), schema (key S), info (key I)
 model: binary envelope; size=16384
 ? 0
 ```
@@ -130,7 +130,7 @@ $ metab sqlroot --show History
 show: History
 route: /view/History
 kind: sqlite
-views: info (default)
+views: table (default, key V), schema (key S), info (key I)
 model: binary envelope; size=8192
 ? 0
 ```
@@ -140,7 +140,7 @@ $ metab sqlroot --show notes.dat
 show: notes.dat
 route: /view/notes.dat
 kind: sqlite
-views: info (default)
+views: table (default, key V), schema (key S), info (key I)
 model: binary envelope; size=8192
 ? 0
 ```

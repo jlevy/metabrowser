@@ -119,6 +119,7 @@ _UNREAD: Final = {
     "virtual": f"is a virtual table, {_GUEST}",
     "shadow": f"may be a virtual table's shadow table, {_GUEST}",
     "reads_virtual": f"reads a virtual table, {_GUEST}",
+    "key_collation": "has a primary key that uses an unavailable SQLite collation",
     "module": (
         "is a virtual table whose module prepares write statements when it opens, as "
         "SQLite's R-tree module does, and this reader allows read statements only; an "

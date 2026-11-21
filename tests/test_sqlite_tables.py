@@ -463,6 +463,25 @@ def test_large_keyless_reads_require_native_order(
         assert page["_status"] == 422 and "no stable row key" in str(page)
 
 
+def test_custom_collation_does_not_hide_other_tables(client: TestClient, root: Path) -> None:
+    path = root / "app-collation.sqlite"
+    with sqlite3.connect(path) as connection:
+        connection.create_collation("app_natural", lambda a, b: (a > b) - (a < b))
+        connection.executescript(
+            "CREATE TABLE names (name TEXT COLLATE app_natural PRIMARY KEY) WITHOUT ROWID;"
+            "INSERT INTO names VALUES ('one');"
+            "CREATE TABLE messages (id INTEGER PRIMARY KEY, note TEXT COLLATE app_natural);"
+            "INSERT INTO messages VALUES (1, 'hello');"
+        )
+    tables = _get(client, "tables", path=path.name)
+    assert {table["id"] for table in tables["tables"]} == {"names", "messages"}
+    names = _get(client, "rows", path=f"{path.name}/names")
+    assert names["_status"] == 422 and "unavailable SQLite collation" in str(names)
+    assert _get(client, "rows", path=f"{path.name}/messages")["rows"]
+    sorted_notes = _get(client, "rows", path=f"{path.name}/messages", sort="note")
+    assert sorted_notes["_status"] == 422 and "app_natural" in str(sorted_notes)
+
+
 def test_record_and_card(client: TestClient) -> None:
     user = _get(client, "rows", path="app.db/users", limit=1)["rows"][0]["key"]
     record = _get(client, "record", path="app.db/users", key=user)

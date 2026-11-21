@@ -12,7 +12,7 @@
             "label": "blobs",
             "group": "tables",
             "keyed": true,
-            "estimate": null,
+            "estimate": 3,
             "path": "app.db/blobs"
           },
           {
@@ -28,7 +28,7 @@
             "label": "g1-like",
             "group": "tables",
             "keyed": true,
-            "estimate": null,
+            "estimate": 0,
             "path": "app.db/~67312d6c696b65"
           },
           {
@@ -124,7 +124,7 @@
             "label": "shadows",
             "group": "tables",
             "keyed": false,
-            "estimate": null,
+            "estimate": 2,
             "path": "app.db/shadows"
           },
           {
@@ -148,7 +148,7 @@
             "label": "tags",
             "group": "tables",
             "keyed": true,
-            "estimate": null,
+            "estimate": 3,
             "path": "app.db/tags"
           },
           {
@@ -164,7 +164,7 @@
             "label": "~tilde",
             "group": "tables",
             "keyed": true,
-            "estimate": null,
+            "estimate": 0,
             "path": "app.db/~7e74696c6465"
           }
         ]
@@ -182,7 +182,7 @@
             "label": "applied_tx",
             "group": "internal",
             "keyed": true,
-            "estimate": null,
+            "estimate": 0,
             "path": "snapshot.db/applied_tx"
           },
           {
@@ -190,7 +190,7 @@
             "label": "fsqlite_meta",
             "group": "internal",
             "keyed": true,
-            "estimate": null,
+            "estimate": 0,
             "path": "snapshot.db/fsqlite_meta"
           },
           {

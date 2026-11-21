@@ -24,7 +24,9 @@ shell's own page, and measures what no browserless DOM computes:
   left; and a reload returns there too.
 - the structured kind's Table tab draws a JSON list of records, a record's nested values
   as the structured plugin's own tree, through the view it hands the table, and a JSON
-  mapping as a notice that it is not a list of records.
+  mapping as a notice that it is not a list of records;
+- a real SQLite table refreshes after a WAL-only commit and after its file is replaced at
+  the same path.
 
 What the address holds, which rows and cells exist, and what a key does run browserless
 in ``tests/dom/table-view-session.js``. Without Chrome this skips (``require_chrome`` in
@@ -259,6 +261,7 @@ def test_the_table_view_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
     assert toolbar["pillLive"] is True, toolbar
     assert toolbar["live"] == toolbar["waiting"] == toolbar["offered"] == toolbar["taken"], toolbar
     assert measured["exceptions"] == []
+    assert measured["sqliteRefresh"] is True
     _check_rows_are_one_line_and_a_long_value_is_cut_with_its_tooltip(measured)
     _check_null_numbers_and_literals_are_painted_apart(measured)
     _check_two_line_rows_are_one_height_and_clamp(measured)

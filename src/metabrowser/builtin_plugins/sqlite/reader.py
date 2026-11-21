@@ -376,11 +376,17 @@ def _estimates(
         if name.lower() in out or item["type"] != "table" or name.casefold() in denied:
             continue
         _budget(connection, deadline)
-        rows, stopped = _fetch(
-            connection,
-            f"SELECT count(*) FROM (SELECT 1 FROM {quote(name)} LIMIT ?)",
-            (OVERVIEW_COUNT_ROWS + 1,),
-        )
+        try:
+            rows, stopped = _fetch(
+                connection,
+                f"SELECT count(*) FROM (SELECT 1 FROM {quote(name)} LIMIT ?)",
+                (OVERVIEW_COUNT_ROWS + 1,),
+            )
+        except sqlite3.OperationalError as exc:
+            if item["without_rowid"] and str(exc) == "no query solution":
+                # Its primary key may use a collation available only to its owner.
+                continue
+            raise
         if not stopped and rows and int(rows[0][0]) <= OVERVIEW_COUNT_ROWS:
             out[name.lower()] = int(rows[0][0])
     return out
@@ -613,10 +619,13 @@ def describe(
                 (sort_rows + 1,),
             )
         except sqlite3.DatabaseError as exc:
-            # The only reads refused inside a readable object are the denied ones.
-            if not (denied and _refused(exc)):
+            if denied and _refused(exc):
+                unread = "reads_virtual"
+            elif item["without_rowid"] and str(exc) == "no query solution":
+                unread = "key_collation"
+            else:
                 raise
-            unread, rows, stopped = "reads_virtual", [], True
+            rows, stopped = [], True
         rows_upto = None if stopped or not rows else int(rows[0][0])
     readable = unread is None
     return {

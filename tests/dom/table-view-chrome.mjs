@@ -28,9 +28,11 @@
 // Key presses in a run: past the 200 history calls Chrome allows in 10 seconds.
 const PRESSES = 260;
 
+import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { launchChrome } from "./chrome-session.mjs";
 
 const [metab, root, port, state, shots] = process.argv.slice(2);
@@ -429,6 +431,49 @@ async function main() {
       links: __t().qa(".table-reset").length,
     })`);
     phase("records");
+    const waitForCell = (text) =>
+      chrome.waitFor(
+        `__t().qa(".table-cell").some((cell) => cell.textContent === ${JSON.stringify(text)})`,
+      );
+    const initialise = (db, text) => {
+      db.exec("CREATE TABLE events (id INTEGER PRIMARY KEY, note TEXT NOT NULL)");
+      db.prepare("INSERT INTO events VALUES (?, ?)").run(1, text);
+    };
+    const livePath = path.join(root, "active.sqlite");
+    const writer = new DatabaseSync(livePath);
+    try {
+      writer.exec("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0");
+      initialise(writer, "first WAL entry");
+      await open("active.sqlite/events", 1);
+      await waitForCell("first WAL entry");
+      const checkpoint = fs.readFileSync(livePath);
+      const walBytes = fs.statSync(`${livePath}-wal`).size;
+      writer.prepare("INSERT INTO events VALUES (?, ?)").run(2, "WAL-only update");
+      assert.ok(fs.statSync(`${livePath}-wal`).size > walBytes);
+      assert.deepEqual(fs.readFileSync(livePath), checkpoint);
+      await waitForCell("WAL-only update");
+    } finally {
+      writer.close();
+    }
+
+    const ordinaryPath = path.join(root, "ordinary.sqlite");
+    const build = (file, text) => {
+      const db = new DatabaseSync(file);
+      try {
+        initialise(db, text);
+      } finally {
+        db.close();
+      }
+    };
+    build(ordinaryPath, "ordinary original");
+    await open("ordinary.sqlite/events", 1);
+    await waitForCell("ordinary original");
+    const replacement = path.join(state, "replacement.sqlite");
+    build(replacement, "ordinary replacement");
+    fs.renameSync(replacement, ordinaryPath);
+    await waitForCell("ordinary replacement");
+    measured.sqliteRefresh = true;
+    phase("sqlite-refresh");
     measured.exceptions = problems;
   } finally {
     if (chrome) {

@@ -143,18 +143,26 @@ tabs, and `V` and `S` switch to the rendered view and the source wherever both e
 | Images | Image |
 | HTML | Preview, in a sandboxed frame, and Source |
 | Patches (`.patch`, `.diff`) | Diff, the same view commits and pull requests use |
-| SQLite databases, whatever their name | Info: how the database was read and why, its pages, encoding, journal or log, and the SQLite library |
+| SQLite databases, whatever their name | Table lists tables and views and opens their rows. Schema shows definitions and relationships. Info shows the access mode, database details, and SQLite version. |
 | Other binary files | Bytes, a view of the file’s bytes |
 
 A patch file also expands in the tree like a folder, with one row per changed file.
-A SQLite database is read as a guest, in a separate reader process: Metabrowser never
-writes to it, never leaves a file beside it, and never takes a lock that could make the
-application that owns it fail to save.
-When it cannot read one at a given moment, as when its owner is in the middle of
-writing, the Info view says so.
 A compressed copy of a supported file, whose name ends in `.gz` or `.zlib`, opens as the
 file it holds. A large source file opens with its beginning and a **Load more** button.
 Plugins add views for other formats ([plugin authoring](plugins.md)).
+
+### SQLite
+
+Metabrowser opens SQLite databases read-only in a separate process.
+When committed write-ahead log (WAL) frames cannot be read, Table and Schema refuse the
+incomplete read. Info shows the access state and reason.
+
+SQLite can create a new log or index file if a live owner closes between the final check
+and the reader opening its connection.
+Info reports the race when detected.
+A read in progress when the owner closes can also leave the existing log and index files
+in place.
+[SQLite guest-read measurements](../explorations/sqlite-guest-reads/README.md#process)
 
 ### Markdown
 
