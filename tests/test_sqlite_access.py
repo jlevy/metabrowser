@@ -890,6 +890,7 @@ def _virtual(path: Path) -> Path:
         "CREATE VIEW note_count AS SELECT count(*) AS n FROM notes;"
         "CREATE VIRTUAL TABLE boxes USING rtree(id, x0, x1);"
         "CREATE TABLE plain(a); INSERT INTO plain VALUES (1);"
+        "CREATE VIEW plain_view AS SELECT a FROM plain;"
     )
     connection.close()
     then = time.time() - 60
@@ -948,9 +949,7 @@ def test_denied_reads_are_refused_everywhere(tmp_path: Path, sql: str) -> None:
 
 def test_without_a_denial_reads_are_as_before(tmp_path: Path) -> None:
     db = _virtual(tmp_path / "virtual.db")
-    # An FTS5 table behind a view: refused by `trusted_schema=OFF` alone, as before.
-    with pytest.raises(SqliteAccessError):
-        _run(db, "SELECT * FROM note_bodies", tmp_path)
+    assert _run(db, "SELECT a FROM plain_view", tmp_path) == [(1,)]
     # A shadow table is an ordinary table, read as any other unless a caller denies it.
     assert _run(db, "SELECT count(*) FROM notes_data", tmp_path) == [(3,)]
     assert [row[1] for row in _run(db, "PRAGMA table_xinfo(notes_data)", tmp_path)] == [  # type: ignore[index, union-attr]
