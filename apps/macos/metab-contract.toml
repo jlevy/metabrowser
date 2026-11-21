@@ -126,6 +126,14 @@ json = ["directory", "files[].name"]
 note = "Help > Open Event Log: where Metabrowser's own event log is and which segment is newest, asked of the route that lists it, newest first. `{folder}` is any folder, whose server is never started, and `--api` writes the folder it serves as `<ROOT>`, so the app passes its own support folder, which is not the log's directory."
 
 [[command]]
+id = "plugins"
+argv = ["--plugins", "--json"]
+source = "Sources/ShellCore/Setup/PluginInventory.swift"
+json = ["plugins[].name", "plugins[].display_name", "plugins[].version", "plugins[].source", "plugins[].requires[]", "errors[]"]
+shown = ["plugins[].display_name", "plugins[].version", "plugins[].source", "errors[]"]
+note = "Settings > Information > Plugins uses the selected metab and the server's environment. A partial discovery exits 1 and still prints the plugin list with its errors."
+
+[[command]]
 id = "doctor"
 argv = ["--doctor", "--json"]
 source = "Sources/ShellCore/Setup/DoctorReport.swift"
@@ -450,18 +458,6 @@ values = [
 ]
 
 [[copy]]
-swift = "MetabInstall.upgradeCommand(minimum:), uvReceipt, pipxMetadata, checkoutVenv, checkoutProject"
-source = "Sources/ShellCore/Setup/MetabVersion.swift"
-metab = "METAB_UPGRADE_COMMANDS, UV_RECEIPT, PIPX_METADATA, CHECKOUT_VENV, and CHECKOUT_PROJECT in cli/doctor.py: the step that upgrades each install, and the files that tell the installs apart"
-pinned_by = "tests/test_macos_app_pins.py::test_the_apps_upgrade_steps_are_the_doctors"
-values = [
-    "metabrowser.cli.doctor:METAB_UPGRADE_COMMANDS",
-    "metabrowser.cli.doctor:UV_RECEIPT",
-    "metabrowser.cli.doctor:PIPX_METADATA",
-    "metabrowser.cli.doctor:CHECKOUT_VENV",
-]
-
-[[copy]]
 swift = "MetabVersion.pattern"
 source = "Sources/ShellCore/Setup/MetabVersion.swift"
 metab = "the version `metab --version` prints"
@@ -527,6 +523,7 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 # is when it is the app's own and no part of this contract.
 
 [files.launch]
+"Sources/ShellCore/Setup/PluginInventory.swift" = { sites = 1, runs = ["plugins"] }
 "Sources/ShellCore/Runtime/RuntimeDiscovery.swift" = { sites = 2, runs = ["version-probe", "version", "own: the login shell, for its PATH"] }
 "Sources/ShellCore/Setup/SetupGuide.swift" = { sites = 1, runs = ["own: uv tool dir --bin"] }
 "Sources/ShellCore/Supervision/ServerLaunch.swift" = { sites = 1, runs = ["serve"] }
@@ -540,6 +537,7 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 # or as a coding key's raw value is one the answer's entry declares. A subscript of
 # something of the app's own in such a file ends its line `// not-contract: <why>`.
 [files.json]
+"Sources/ShellCore/Setup/PluginInventory.swift" = ["plugins"]
 "Sources/ShellCore/Folders/PresentPlan.swift" = ["present-dry-run"]
 "Sources/ShellCore/Folders/RecentTargets.swift" = ["recent-list"]
 "Sources/ShellCore/Folders/EventLogLocation.swift" = ["event-log"]

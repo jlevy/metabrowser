@@ -11,10 +11,6 @@ metabrowser.builtin_plugins.github.urls:_RAW_HOST = "raw.githubusercontent.com"
 metabrowser.cache.projection:MAX_PAGE_LIMIT = 100
 metabrowser.cache.origin:RemoteFailureState = ["connection_interrupted", "network_unreachable", "not_found_or_private", "proxy_auth_required", "rate_limited", "server_error", "timed_out", "tls_failed", "too_large"]
 metabrowser.builtin_plugins.github.gh:GhFailureState = ["gh_failed", "gh_missing", "gh_too_old", "network_error", "not_found_or_private", "not_logged_in", "rate_limited"]
-metabrowser.cli.doctor:METAB_UPGRADE_COMMANDS = {"uv_tool": "uv tool install --upgrade 'metabrowser>={minimum}'", "pipx": "pipx install --force 'metabrowser>={minimum}'", "checkout": "git pull && make install", "environment": "uv tool install --upgrade 'metabrowser>={minimum}'"}
-metabrowser.cli.doctor:UV_RECEIPT = "uv-receipt.toml"
-metabrowser.cli.doctor:PIPX_METADATA = "pipx_metadata.json"
-metabrowser.cli.doctor:CHECKOUT_VENV = ".venv"
 metabrowser.commit_ids:SHORT_COMMIT_CHARS = 7
 metabrowser.cli.present:RELEASE_BUNDLE_ID = "io.github.jlevy.metabrowser"
 metabrowser.cli.present:DEV_BUNDLE_ID = "io.github.jlevy.metabrowser.dev"

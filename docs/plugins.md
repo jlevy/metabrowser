@@ -35,12 +35,15 @@ already belong to the active Python environment.
 When Metabrowser runs through uvx or as a uv tool, install the plugin distribution into
 that same isolated environment with uv’s `--with` option.
 
-Inspect discovery without starting the server:
+## Inspecting Plugins
+
+Use the plugin modes without starting a server.
 
 ```shell
-metab --plugins
-metab --plugin markdown
-metab --doctor
+metab --plugins                   # plugins accepted by discovery and any refusals
+metab --plugin agents             # resolved manifest for Agent Session Browser
+metab --doctor                    # check plugins and the rest of the setup
+metab --plugins --json            # inventory and discovery errors for scripts
 metab --doctor --plugins-dir ./examples
 ```
 
@@ -52,6 +55,31 @@ After the verdict it reports GitHub CLI’s state, which never changes the exit 
 write data to standard output and errors to standard error, and exit nonzero on any
 problem, including a discovery error beside plugins that loaded, so a script cannot
 mistake a partial registry for a complete one.
+
+The Mac app shows the same discovery inventory for its selected runtime under **Settings
+→ Information → Plugins**. This is what a new app server discovers.
+Browser renderers load as their views are needed.
+See [Mac app settings](macos-app.md#choosing-a-metab).
+
+## Built-in Agent Support
+
+**Agent Session Browser** is the built-in plugin with the ID `agents`. It owns Claude
+Code and Codex home detection, log adapters, session readers, the catalog, and the
+browsing views. Each reader interprets its provider’s on-disk formats and passes
+normalized session records and events to the shared views.
+The host supplies the plugin loader, scoped file access, and a generic JSONL parser
+registry. The same registry lets installed plugins register their own
+[JSONL adapters](#plugin-owned-jsonl-adapters).
+
+The manifest’s `requires = ["structured"]` declares the plugin used to render event
+payloads. The Codex provider reads known tables using Python’s SQLite library.
+The `sqlite` plugin separately provides general-purpose database browsing and requires
+`table`. The optional `fsqlite` plugin requires both `sqlite` and `table`.
+`metab --plugins` lists these edges in its `REQUIRES` column.
+The Mac app shows them in Settings alongside each plugin.
+
+The [agent browsing guide](working-with-agents.md#browsing-agent-history) explains what
+Agents reads and how the session lists work.
 
 ## Path Identity
 

@@ -29,7 +29,7 @@ Paths are under `apps/macos/`.
 | --- | --- |
 | `Sources/ShellCore/Supervision/` | Spawning a server, what it says as it starts, recognizing it as ready, checking its health, and stopping it |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, settling which one runs, and the child environment |
-| `Sources/ShellCore/Setup/` | The version floor and how a `metab` was installed, the first-run steps, the doctor’s report for Check Setup…, file watches, the restart offer after an upgrade, and the launch notice |
+| `Sources/ShellCore/Setup/` | The version floor, the first-run discovery status, the doctor’s report for Check Setup…, file watches, the restart offer after an upgrade, and the launch notice |
 | `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links, their failures, and File > Open URL…, tab placement, and the saved session; the navigation policy, web view configuration, tab discards, reloads, downloads, and the web panes’ sites, policy, state, popover layout, and data store |
 | `Sources/ShellCore/App/` | Which build is running (`AppIdentity`), and the title-bar mark |
 | `Sources/ShellViews/` | `DropAwareWebView` and `WebContainerView`, a library of their own so that the WebKit gate’s driver builds the same views, and `TitleLineMenuItem`, the chooser’s menu item, which the tests reach here because `ShellCore` imports no AppKit |
@@ -263,11 +263,10 @@ and the server, which resolves the link against its mirror, announces the right 
   no start’s `Error:` line, so the Swift samples of both are placeholders until the
   status check (`mb-si2g`) decides how a start reports them.
   They show `metab`’s message, the `gh` commands that fix it or show what is wrong, each
-  with Copy, as the first-run steps do, and Retry; Copy Message copies the failure, the
-  message, and the commands together.
-  Any other failure, `too_large` among them, shows its summary and the server’s output.
-  `tests/test_macos_app_pins.py` holds the states the app maps, and the lines its tests
-  diagnose, to what `metab` prints.
+  with Copy, and Retry; Copy Message copies the failure, the message, and the commands
+  together. Any other failure, `too_large` among them, shows its summary and the server’s
+  output. `tests/test_macos_app_pins.py` holds the states the app maps, and the lines its
+  tests diagnose, to what `metab` prints.
   A clone cannot tell a signed-out `gh`, an account without access, or a sign-in without
   the `repo` scope from a repository that does not exist, since GitHub answers all four
   alike, so today each is `not_found_or_private`, and its steps start with
@@ -445,21 +444,12 @@ alone does not prove the flags, and `RuntimeDiscovery.validate` runs
 number; exit status 2 naming any of the flags means a build that predates it, which is
 too old whatever its number; anything else rejects the `metab` with the probe’s last
 line. Below the floor, discovery tries the next place.
-`MetabRequirement.upgradeCommand(for:)` upgrades a `metab` with the tool that installed
-it, which `MetabInstall` reads from beside the canonical executable: uv’s receipt,
-pipx’s metadata, or a checkout’s `.venv` beside a `pyproject.toml` with the line
-`name = "metabrowser"`. uv and pipx are asked for a floor rather than a pin, because uv
-keeps the requirement in the tool’s receipt, and a checkout runs
-`git pull && make install` at its root.
-`metab --doctor` reads its own install from the same files the same way and names the
-same steps (`metab_install` and `METAB_UPGRADE_COMMANDS` in `cli/doctor.py`);
-`tests/test_macos_app_pins.py` holds each case’s command and each file’s name to these.
-The doctor’s PyPI step for a uv or pipx install cannot succeed while the floor is
-unreleased (`isReleased`), where the app offers `make install` instead: the doctor
-cannot tell, and the app’s first-run steps are where that case is met.
-The app’s `Info.plist` declares the floor as `MetabrowserMinimumMetab`, which the same
-test holds to `minimumRelease`, so the doctor in a terminal can compare its `metab` with
-the app `--present` would open, and Check Setup… with the app that runs it.
+Setup identifies incompatible runtimes and links to the README for installation and
+troubleshooting. `MetabRequirement.isReleased` determines whether the first-run status
+says the required version is pending on PyPI. The app’s `Info.plist` declares the floor
+as `MetabrowserMinimumMetab`, which the same test holds to `minimumRelease`, so the
+doctor in a terminal can compare its `metab` with the app `--present` would open, and
+Check Setup… with the app that runs it.
 
 The floor is a minor release, raised as
 [Choosing a Version](../../publishing.md#choosing-a-version) says.
@@ -477,22 +467,11 @@ running servers’ environment before the app notices.
 
 ### First Run
 
-When a search finds no usable `metab`, Settings shows only the missing steps, each a
-command to copy (`SetupGuide`):
-
-| Found | Steps shown |
-| --- | --- |
-| No uv | uv’s installer, then the `metab` step in a new Terminal window |
-| uv, no `metab` | `RuntimeDiscovery.installCommand` |
-| A `metab` in uv’s tool directory that does not run | A reinstall |
-| A `metab` below the floor, or built before the flag | `MetabRequirement.upgradeCommand(for:)`, by how it was installed; no uv step for pipx |
-
-Until the floor is on PyPI (`MetabRequirement.isReleased`), every case ends instead in
-`make install` at the source checkout the app was built from, then Choose metab…. The
-app asks a uv that passes `ExecutableTrust` where `metab` will appear
-(`uv tool dir --bin`), watches there and every place discovery looks, and when `metab`
-appears searches again and opens the folders that were waiting.
-It never runs an installer itself.
+When a search finds no usable `metab`, Settings shows the required version, any
+discovery issues, and a link to the README (`SetupGuide` and `ProjectLinks`). The app
+asks a uv that passes `ExecutableTrust` where `metab` will appear (`uv tool dir --bin`),
+watches there and every place discovery looks, and when `metab` appears searches again
+and opens the folders that were waiting.
 
 ### Check Setup…
 
@@ -501,11 +480,12 @@ from the accepted runtime in a server’s environment (`DoctorRun`, `ChildEnviro
 bounded by `RuntimeDiscovery.doctorTimeout`, and show the report as rows
 (`DoctorReport`): each entry of `checks`, the plugins and `open_in` among them, then the
 `github` object, whose shapes `cli/doctor.py` documents.
-Every row and step comes from those objects and their `remedy`, decoded by `CodingKeys`
-that spell each key as `metab` does; the app never sorts a problem by its words or
-treats a sentence as a command.
-`DoctorRun.spec` names the app’s own bundle in `METABROWSER_DOCTOR_APP`, so the `metab`
-row compares with this build’s floor rather than the app LaunchServices finds first.
+The app decodes these objects and their `remedy` fields using `CodingKeys`. The runtime
+row uses the README link for setup.
+The report window also offers that link when a check cannot run or an older runtime
+provides no checks. `DoctorRun.spec` names the app’s own bundle in
+`METABROWSER_DOCTOR_APP`, so the `metab` row compares with this build’s floor rather
+than the app LaunchServices finds first.
 The doctor reads only that bundle’s `Info.plist`; the `open_in` row keeps a terminal’s
 lookup.
 The app reads `gh`’s and `git`’s path, version, and minimum only from the report,
@@ -520,7 +500,7 @@ and how it found it, which head Copy Report’s text.
   `id` when it has one, and the rest of the report still shows.
 - **No `checks`:** a development build of the floor from before the setup checks meets
   the floor, so the window lists its `problems` as it words them in one row, says the
-  checks are missing, and offers the upgrade for its install.
+  checks are missing, and links to the README.
 - **No report:** a `metab` that cannot start, runs out the deadline, or prints no single
   JSON object (`JSONAnswer`) is shown with the reason and its output.
 

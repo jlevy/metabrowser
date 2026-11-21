@@ -354,12 +354,21 @@ minimized windows, or each tab’s Back and Forward history.
 
 ## Choosing a metab
 
-Metabrowser > Settings… shows the `metab` in use, its path, how the app found it, and
-the `git` and `gh` it hands each server.
-Its buttons are **Find Again**, **Choose metab…**, **Check Setup…**
-([Checking the Setup](#checking-the-setup)), and **Reveal Logs**; **Places looked**
-lists each place the last search tried and what it found; and below them are Open
-folders in and the session setting.
+**Metabrowser → Settings…** groups runtime information above preferences.
+
+- **Information** shows the selected `metab`, its path, how the app found it, and the
+  `git` and `gh` it hands each server.
+  Expand **Plugins** to see the plugin names, versions, sources, required plugins, and
+  discovery errors for new servers started with this runtime.
+  The app runs [the CLI’s plugin inventory](plugins.md#inspecting-plugins) with the same
+  environment it uses to start its servers.
+  **Places looked** shows the last runtime search.
+  **Check Setup…** opens the [full diagnostic report](#checking-the-setup).
+- **Preferences** lets you find or choose a different runtime and change how folders
+  open and whether the last session reopens.
+
+**Metabrowser → About Metabrowser** shows the app build and links to the
+[Metabrowser GitHub repository](https://github.com/jlevy/metabrowser).
 
 At first launch, and again on Find Again, the app looks for `metab` in several places,
 among them the one it used last, `METABROWSER_METAB`, and where uv and Homebrew install
@@ -389,8 +398,9 @@ which can take seconds.
 Help > Check Setup… runs `metab --doctor --json` with the `metab`, `git`, and `gh` the
 app hands its servers, and shows the report: one row each for the plugins, opening from
 a terminal, `metab`, Git, the configuration directory, the cache directory, the event
-log, and GitHub CLI, with its state, what it found, and the step that fixes it, a
-command to copy or a page to open.
+log, and GitHub CLI. Each row shows its state and what it found.
+**Setup Help** opens the
+[README’s installation and troubleshooting section](https://github.com/jlevy/metabrowser#installation).
 [Diagnostics](command-line.md#diagnostics-and-plugins) says what each check covers.
 Settings’ Check Setup… opens the same window.
 The `metab` row compares with the oldest `metab` this build of the app runs.
@@ -402,7 +412,8 @@ revision; a Git too old for them is a warning that says which release it needs.
 - **Copy Report** copies the report as text, headed by the app’s build and the `metab`
   it ran, for a bug report.
 - **A `metab` built before the setup checks** shows its problems as it words them, says
-  the checks are missing, and offers the upgrade for how it was installed.
+  the checks are missing.
+  Use **Setup Help** to choose a newer runtime.
 - **A row this app cannot read,** such as a check from a later `metab`, says so, and the
   other rows still show.
 - **No report:** when `metab` cannot run, does not finish within a minute, or prints
@@ -412,32 +423,17 @@ The check changes nothing, and only GitHub CLI’s sign-in check reaches the net
 
 ## What the App Shows Without a Usable metab
 
-If the app finds no `metab` it can run, Settings opens and lists only the steps still
-missing, each a command with a Copy button, and a link to the installation guide.
-The screen names any older `metab` it found.
-
-While no release meets the minimum ([Release Status](installation.md#release-status)),
-the steps end in the source checkout the app was built from: install uv if it is missing
-(`brew install uv` is offered when Homebrew is installed), run `make install` at the
-root of that checkout, and use Choose metab… to pick its `.venv/bin/metab`.
-
-Once a release meets it, the steps end in uv:
-
-- without uv, uv’s installer and then `uv tool install metabrowser`, in a new Terminal
-  window so that it finds uv;
-- with uv, `uv tool install metabrowser`;
-- with a `metab` in uv’s tool directory that does not run,
-  `uv tool install --reinstall metabrowser`;
-- with an older `metab`, the upgrade by the tool that installed it: uv or pipx, asking
-  for the minimum or later rather than an exact version, so a later upgrade can move
-  past it, or `git pull && make install` at the root of a source checkout.
+If discovery finds no usable `metab`, Settings shows the required version and why it
+skipped or rejected any runtimes it found.
+**Installation and troubleshooting on GitHub** opens the
+[README](https://github.com/jlevy/metabrowser#installation) for installing or updating
+the CLI and for preview builds whose runtime is pending on PyPI. After setup, use **Find
+Again** or **Choose metab…** to select your runtime.
 
 The app keeps watching, and when a usable `metab` appears, it opens the folders you
 asked for by itself.
-It never runs an installer.
-It runs a uv only to ask where uv installs tools, and only a uv no other account can
-change. If uv’s tool directory is not on your login shell’s `PATH`, the screen suggests
-`uv tool update-shell` so that `metab` also runs in Terminal; the app does not need it.
+It only runs uv to locate the tool directory, using an executable that passes its trust
+check.
 
 ## Moving the App to Applications
 

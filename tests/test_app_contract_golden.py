@@ -462,6 +462,7 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         run("version-probe"),
         run("version"),
         run("unknown-option", status=2),
+        run("plugins"),
         # File > Open Recent, around the servers that fill it.
         run("recent-list/empty"),
         run("serve/folder", folder),

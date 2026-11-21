@@ -56,7 +56,7 @@ $ metab --plugins --json
   "plugins": [
     {
       "name": "agents",
-      "display_name": "Agents (Claude Code, Codex, Gemini, Pi logs)",
+      "display_name": "Agent Session Browser",
       "version": "0.0.1",
       "source": "builtin",
       "static_root": "[BUILTIN]/agents",

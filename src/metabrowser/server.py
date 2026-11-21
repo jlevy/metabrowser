@@ -88,10 +88,6 @@ from metabrowser.capabilities import (
     raw_sandbox_csp,
     untrusted_shell_csp,
 )
-
-# Cache invalidator: clear_charts_cache is invoked by the root-change
-# handler so chart memos don't stick across served-root swaps.
-from metabrowser.charts import clear_charts_cache
 from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.commit_ids import short_commit
@@ -796,6 +792,9 @@ def _clear_browser_caches() -> None:
     _subtree_summary.cache_clear()
     _has_any_leaf.cache_clear()
     _has_any_nongitignored.cache_clear()
+
+    from metabrowser.charts import clear_charts_cache
+
     clear_charts_cache()
 
 
@@ -5098,7 +5097,7 @@ def _classify_with_plugins(
     """Classify a file. Plugin rules take precedence; legacy detector chain is the fallback.
 
     Returns the winning kind id. The legacy chain still drives the
-    built-in kinds (markdown, text, binary, agent-log, unknown-jsonl).
+    built-in kinds (markdown, text, binary, unknown-jsonl).
 
     *file_ctx* is optional — pass an existing :class:`FileContext` to
     avoid re-parsing frontmatter in callers that need both classification

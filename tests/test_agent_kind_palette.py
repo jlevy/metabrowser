@@ -30,7 +30,7 @@ from tests.test_agent_log_theme import (
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_JS = PLUGIN_CSS.with_name("agent-log.js")
-CHARTS_PY = ROOT / "src" / "metabrowser" / "charts.py"
+CHARTS_PY = ROOT / "src" / "metabrowser" / "builtin_plugins" / "agents" / "charts.py"
 
 # The least Euclidean distance in OKLab between two fills of one theme. Measured on the
 # palette as shipped: the closest pair is 0.095 in the dark theme and 0.105 in the light one
