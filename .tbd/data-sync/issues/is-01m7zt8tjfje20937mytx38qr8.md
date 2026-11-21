@@ -5,7 +5,11 @@ title: Share external and copy action icons across menus
 kind: task
 status: in_progress
 priority: 2
-version: 3
+version: 4
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/685
+    at: 2026-11-21T19:56:48.810Z
 delegate: codex@spud10
 labels: []
 dependencies:
@@ -15,7 +19,7 @@ parent_id: is-01m7wyrvxk2xx44pqtqmy5cq5g
 hold: null
 hold_until: null
 created_at: 2026-11-21T19:45:27.630Z
-updated_at: 2026-11-21T19:45:29.810Z
+updated_at: 2026-11-21T19:56:48.811Z
 started_at: 2026-11-21T19:45:29.810Z
 ---
 Reuse consistent external-open and copy glyphs for matching menu actions, including Open Repository and Copy Repository URL in the root disclosure. Preserve action labels and accessible names and register the glyphs in the design system. Review existing menu actions for shared replacements within this change.

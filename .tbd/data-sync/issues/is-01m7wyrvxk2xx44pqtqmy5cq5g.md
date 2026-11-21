@@ -5,11 +5,17 @@ title: "Source and checkout kinds: one mode and one icon for a cloud mirror, a G
 kind: epic
 status: in_progress
 priority: 1
-version: 12
+version: 14
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/667
     at: 2026-11-20T19:14:58.719Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/684
+    at: 2026-11-21T19:56:49.374Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/685
+    at: 2026-11-21T19:56:50.023Z
 labels:
   - linear
   - Improvement
@@ -22,7 +28,7 @@ child_order_hints:
   - is-01m7zt8s6hyeah3vfpm02rb6zf
   - is-01m7zt8tjfje20937mytx38qr8
 created_at: 2026-11-20T17:06:24.306Z
-updated_at: 2026-11-21T19:45:27.630Z
+updated_at: 2026-11-21T19:56:50.043Z
 extensions:
   linear:
     id: 74de802a-b5dd-4672-8169-c0ba864abbc5
