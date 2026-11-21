@@ -970,6 +970,7 @@ class _Registry:
         default_factory=dict[str, TableSourceDeclaration]
     )
     classify: ContentKindClassifier | None = None
+    container_kinds: frozenset[str] = frozenset()
     adapters: dict[str, TableSourceAdapter] = field(default_factory=dict[str, TableSourceAdapter])
 
 
@@ -977,17 +978,22 @@ _REGISTRY = _Registry()
 
 
 def install_table_sources(
-    declarations: Iterable[TableSourceDeclaration], classify: ContentKindClassifier
+    declarations: Iterable[TableSourceDeclaration],
+    classify: ContentKindClassifier,
+    *,
+    container_kinds: Iterable[str] = (),
 ) -> None:
     """Install the sources the server serves and the classifier that picks one.
 
     The server calls this once, after discovery, with the declarations of every plugin
     allowed to run Python. A later declaration for a kind replaces an earlier one, as a
-    later view with an id replaces an earlier one.
+    later view with an id replaces an earlier one. Only declared container kinds can
+    address tables as file children.
     """
 
     _REGISTRY.declarations = {item.kind: item for item in declarations}
     _REGISTRY.classify = classify
+    _REGISTRY.container_kinds = frozenset(container_kinds)
     _REGISTRY.adapters = {}
 
 
@@ -1029,8 +1035,8 @@ async def open_table_source(path: str) -> OpenedTableSource:
     """Resolve *path* to a table source: the content there, the kind it classifies as,
     and that kind's adapter applied to a handle on it.
 
-    A path that names no file but extends one, `<file>/<table>`, names a table inside
-    that file, a container child as the tree addresses one: the file's kind picks the
+    A path under a file of a declared container kind, `<file>/<table>`, names a table
+    inside that file as the tree addresses it. The file's kind picks the
     source, whatever its extension, and the source answers for `<table>` or refuses it
     with :class:`TableNotFoundError`. Raises :class:`TablePathNotFoundError` when nothing
     readable is there and :class:`NoTableSourceError` when its kind has no source, and
@@ -1048,9 +1054,9 @@ async def open_table_source(path: str) -> OpenedTableSource:
     classify = _REGISTRY.classify
     kind = await classify(ref) if classify is not None else None
     declaration = _REGISTRY.declarations.get(kind or "")
+    if table and (declaration is None or declaration.kind not in _REGISTRY.container_kinds):
+        raise TablePathNotFoundError("Not found")
     if declaration is None:
-        if table:
-            raise TablePathNotFoundError("Not found")
         raise NoTableSourceError(f"files of kind {kind!r} are not tables", kind=kind)
     adapter = load_adapter(declaration)
     handle = TableHandle(

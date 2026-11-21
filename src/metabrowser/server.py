@@ -5304,7 +5304,9 @@ async def _table_content_kind(ref: ContentRef) -> str | None:
     return classify_by_ext(ref.logical_ext)
 
 
-install_table_sources(_table_source_declarations(), _table_content_kind)
+install_table_sources(
+    _table_source_declarations(), _table_content_kind, container_kinds=_container_kinds()
+)
 
 
 def _views_for_kind(

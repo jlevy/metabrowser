@@ -36,6 +36,15 @@ function element(tag, className, text) {
   return node;
 }
 
+/** @param {HTMLElement} root @param {string} message */
+function drawError(root, message) {
+  const box = element("div", undefined, message);
+  box.className = "notice sqlite-error";
+  box.setAttribute("data-severity", "error");
+  box.setAttribute("role", "alert");
+  root.replaceChildren(box);
+}
+
 /** @param {MouseEvent} event */
 function plainClick(event) {
   return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
@@ -156,11 +165,7 @@ export function mountOverview(container, ctx, sdk) {
         }),
         sdk,
       ),
-    (root, error) => {
-      root.replaceChildren(
-        element("p", "notice sqlite-error", refusal(error, "Could not read this database.")),
-      );
-    },
+    (root, error) => drawError(root, refusal(error, "Could not read this database.")),
   );
 }
 
@@ -171,13 +176,11 @@ export function mountOverview(container, ctx, sdk) {
  * @param {import("./tables-model.js").SchemaModel} model
  */
 export function drawSchema(root, model) {
-  root.replaceChildren();
   if (model.error) {
-    const box = element("div", "notice sqlite-error", model.error);
-    box.setAttribute("role", "alert");
-    root.append(box);
+    drawError(root, model.error);
     return;
   }
+  root.replaceChildren();
   for (const section of model.sections) {
     const block = element("section", "sqlite-schema-section");
     block.append(element("h2", "data-label sqlite-heading", section.title));
