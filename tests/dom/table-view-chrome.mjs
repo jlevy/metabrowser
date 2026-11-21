@@ -474,6 +474,25 @@ async function main() {
     await waitForCell("ordinary replacement");
     measured.sqliteRefresh = true;
     phase("sqlite-refresh");
+
+    const searchDb = new DatabaseSync(path.join(root, "search.sqlite"));
+    try {
+      searchDb.exec(
+        "CREATE TABLE notes (id INTEGER PRIMARY KEY, text TEXT); " +
+          "WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<16400) " +
+          "INSERT INTO notes SELECT i, CASE WHEN i=16400 THEN 'last needle' ELSE 'other' END FROM n",
+      );
+    } finally {
+      searchDb.close();
+    }
+    await open("search.sqlite/notes?q=needle", 0);
+    await chrome.waitFor(`__t().q(".table-continue")?.textContent === "Continue search"`);
+    await chrome.evaluate(`__t().q(".table-continue").click()`);
+    await chrome.waitFor(`__t().q(".table-empty")?.textContent.includes("16,384")`);
+    await chrome.evaluate(`__t().q(".table-continue").click()`);
+    await waitForCell("last needle");
+    measured.sqliteSearch = await chrome.evaluate(`!__t().q(".table-continue")`);
+    phase("sqlite-search");
     measured.exceptions = problems;
   } finally {
     if (chrome) {
