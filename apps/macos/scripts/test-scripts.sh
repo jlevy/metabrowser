@@ -352,18 +352,20 @@ else
 fi
 
 # ── The quarantine helper ──────────────────────────────────────
-# scripts/quarantine.swift, on a scratch file: it quarantines a file that is not, through
-# the supported interface, leaves one that is, and describe_quarantine reads what it set.
+# The first call sets a quarantine attribute. A second call leaves its bytes intact.
 quietly swiftc -O scripts/quarantine.swift -o "$work/quarantine"
 printf x >"$work/download"
-first="$("$work/quarantine" "$work/download" 2>&1)" || true
-second="$("$work/quarantine" "$work/download" 2>&1)" || true
-attribute="$(xattr -p com.apple.quarantine "$work/download" 2>/dev/null)" || attribute=""
-if [[ "$first $second" == "simulated already" &&
-  "$(describe_quarantine "$attribute")" == *"by Metabrowser check-release (simulated download)"* ]]; then
-  pass "the quarantine helper quarantines a file once: $(describe_quarantine "$attribute")"
+if first="$("$work/quarantine" "$work/download" 2>&1)" &&
+  [[ "$first" == simulated ]] &&
+  initial_attribute="$(xattr -px com.apple.quarantine "$work/download")" &&
+  [[ -n "$initial_attribute" ]] &&
+  second="$("$work/quarantine" "$work/download" 2>&1)" &&
+  [[ "$second" == already ]] &&
+  final_attribute="$(xattr -px com.apple.quarantine "$work/download")" &&
+  [[ "$final_attribute" == "$initial_attribute" ]]; then
+  pass "the quarantine helper sets the attribute once and leaves it unchanged"
 else
-  fail "the quarantine helper said '$first', then '$second', and left: $attribute"
+  fail "expected 'simulated' then 'already' with unchanged quarantine; got '${first:-no output}', then '${second:-no output}'"
 fi
 
 # ── The release scripts' decisions ─────────────────────────────
