@@ -5,7 +5,7 @@ title: Agent operations views for Claude Code and Codex
 kind: epic
 status: in_progress
 priority: 2
-version: 12
+version: 14
 spec_path: docs/project/specs/active/plan-2026-11-19-agent-operations-views.md
 refs:
   - kind: pr
@@ -45,8 +45,10 @@ child_order_hints:
   - is-01m7vr3zn31cz93jckrtmgw7hh
   - is-01m7vkyp4r0rtmjjee8bq16frf
   - is-01m7twcn3tvnassmqymn7aask8
+  - is-01m7zk4qfyb6ep79p81gwdj87q
+  - is-01m7zktgz6zp5s6ny6dkmxm5m7
 created_at: 2026-11-20T17:06:40.914Z
-updated_at: 2026-11-20T19:21:13.460Z
+updated_at: 2026-11-21T17:52:47.588Z
 duplicate_of: null
 extensions:
   linear:

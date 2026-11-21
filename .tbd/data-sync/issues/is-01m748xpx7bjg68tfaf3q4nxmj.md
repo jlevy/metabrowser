@@ -3,9 +3,9 @@ type: is
 id: is-01m748xpx7bjg68tfaf3q4nxmj
 title: "Native macOS app: thin AppKit shell over metab"
 kind: epic
-status: open
+status: in_progress
 priority: 1
-version: 144
+version: 146
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 refs:
   - kind: pr
@@ -175,8 +175,9 @@ child_order_hints:
   - is-01m7sabvh4ny49k80xtqvcdxrf
   - is-01m7rmjmzgk91n9czy6g19qk75
   - is-01m7rj9pgz3qf89emdaz0rbenn
+  - is-01m7zkv1jbvg6gt4sw55ec9rqg
 created_at: 2026-11-11T03:02:47.974Z
-updated_at: 2026-11-20T22:58:32.316Z
+updated_at: 2026-11-21T17:55:13.642Z
 extensions:
   linear:
     id: 92793121-e71d-4d48-964f-9c3f40100392
