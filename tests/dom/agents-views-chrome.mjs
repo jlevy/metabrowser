@@ -190,7 +190,11 @@ try {
     "its summary pass completes and the page says so",
     await until(
       chrome,
-      `${SHOWN}?.view.querySelector(".agents-progress")?.dataset.phase === "complete"`,
+      `(() => {
+        const progress = ${SHOWN}?.view.querySelector(".agents-progress");
+        return progress?.dataset.phase === "complete" &&
+          !progress.querySelector(".index-progress-spinner");
+      })()`,
       30000,
     ),
   );

@@ -395,6 +395,10 @@ async function main() {
     { state: "idle", total: 10, summarized: 10, failed: 0, complete: true },
     formatInteger,
   );
+  derived["progress when complete with an unreadable session"] = model.progressView(
+    { state: "idle", total: 10, summarized: 9, failed: 1, complete: true },
+    formatInteger,
+  );
   derived["the session page while the catalog's first pass runs"] = [
     session.waitingText(null, formatInteger),
     session.waitingText(

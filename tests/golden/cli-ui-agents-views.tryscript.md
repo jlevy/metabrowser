@@ -228,23 +228,24 @@ $ node tests/dom/agents-views-session.js
     },
     "progress while summarizing": {
       "phase": "summarizing",
-      "text": "Summarizing sessions: 5 of 10",
-      "fraction": 0.5
+      "text": "Indexing session details… 5 of 10 checked."
     },
     "progress at first, with nothing found yet": {
       "phase": "scanning",
-      "text": "Looking for sessions…",
-      "fraction": null
+      "text": "Looking for sessions…"
     },
     "progress when complete": {
       "phase": "complete",
-      "text": "All sessions are summarized.",
-      "fraction": 1
+      "text": "Session details indexed."
+    },
+    "progress when complete with an unreadable session": {
+      "phase": "complete",
+      "text": "Session indexing finished. 1 could not be read."
     },
     "the session page while the catalog's first pass runs": [
       "Reading the session catalog…",
       "Looking for sessions…",
-      "Summarizing sessions: 0 of 12"
+      "Indexing session details… 0 of 12 checked."
     ],
     "what the events say": {
       "none match, the scan reached the end": {

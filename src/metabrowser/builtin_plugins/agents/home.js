@@ -213,16 +213,13 @@ export function mountHome(container, ctx, mb) {
     const view = progressView(answer.progress, mb.formatInteger);
     const esc = (/** @type {string} */ value) => mb.escapeHtml(value);
     const fresh = answer.freshness.summary_pass_at;
+    const busy = view.phase === "scanning" || view.phase === "summarizing";
+    const freshness =
+      view.phase === "complete" && fresh ? ` Checked ${ageText(fresh, answer.now)}.` : "";
     const parts = [
-      view.phase === "complete"
-        ? `<span>${esc(view.text)}${fresh ? ` Checked ${esc(ageText(fresh, answer.now))}.` : ""}</span>`
-        : `<span>${esc(view.text)}</span>`,
+      busy ? '<span class="index-progress-spinner" aria-hidden="true"></span>' : "",
+      `<span>${esc(view.text + freshness)}</span>`,
     ];
-    if (view.fraction !== null && view.phase === "summarizing") {
-      parts.push(
-        `<progress class="agents-progress-bar" max="1" value="${view.fraction.toFixed(3)}">${esc(view.text)}</progress>`,
-      );
-    }
     if (answer.cache.state === "unavailable") {
       parts.push(
         '<span class="agents-muted">No private cache folder is available, so summaries are kept in memory and read again after a restart.</span>',
