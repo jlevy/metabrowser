@@ -71,6 +71,10 @@
   color: var(--muted);
 }
 
+.agents-live-note {
+  margin: 0 0 8px;
+}
+
 .agents-empty {
   color: var(--muted);
   margin: 0;
@@ -107,14 +111,8 @@
 
 .agents-progress {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
-}
-
-.agents-progress-bar {
-  inline-size: 200px;
-  max-inline-size: 100%;
+  gap: 8px;
 }
 
 /* A session's link: the design's Link, in every view that draws one (docs/design-system.md,

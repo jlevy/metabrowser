@@ -23,10 +23,10 @@ visibility moved by hand:
 - **What the home derives.** The activity window, the size histogram, the progress
   sentence, and the ages and durations.
 - **The markup.** A session table, whose sorted column says so and whose titles are
-  escaped, a two-line session row, as the home’s Running now and Recent sessions draw it
-  (the agent, the title link, and the age on the first line, the project and the model
-  on the second, parted by the design’s separator), and an event row in its kind’s and
-  its tool family’s color class.
+  escaped, a two-line session row, as the home’s Active sessions and Latest sessions
+  draw it (the agent, the title link, and the age on the first line, the project and the
+  model on the second, parted by the design’s separator), and an event row in its kind’s
+  and its tool family’s color class.
 
 ```console
 $ node tests/dom/agents-views-session.js
@@ -228,23 +228,24 @@ $ node tests/dom/agents-views-session.js
     },
     "progress while summarizing": {
       "phase": "summarizing",
-      "text": "Summarizing sessions: 5 of 10",
-      "fraction": 0.5
+      "text": "Indexing session details… 5 of 10 checked."
     },
     "progress at first, with nothing found yet": {
       "phase": "scanning",
-      "text": "Looking for sessions…",
-      "fraction": null
+      "text": "Looking for sessions…"
     },
     "progress when complete": {
       "phase": "complete",
-      "text": "All sessions are summarized.",
-      "fraction": 1
+      "text": "Session details indexed."
+    },
+    "progress when complete with an unreadable session": {
+      "phase": "complete",
+      "text": "Session indexing finished. 1 could not be read."
     },
     "the session page while the catalog's first pass runs": [
       "Reading the session catalog…",
       "Looking for sessions…",
-      "Summarizing sessions: 0 of 12"
+      "Indexing session details… 0 of 12 checked."
     ],
     "what the events say": {
       "none match, the scan reached the end": {

@@ -96,28 +96,36 @@ export function sizeBars(buckets, formatSize) {
  */
 
 /**
- * What the summary pass says about itself: the phase, the sentence, and how far it is.
+ * The indexing phase and status text shared by the home, list, and session views.
  * `complete` is the route's own verdict, which the poll stops on.
  *
  * @param {Progress} progress
  * @param {(value: number) => string} formatInteger
- * @returns {{phase: "scanning" | "summarizing" | "complete" | "error", text: string, fraction: number | null}}
+ * @returns {{phase: "scanning" | "summarizing" | "complete" | "error", text: string}}
  */
 export function progressView(progress, formatInteger) {
   if (progress.state === "error") {
-    return { phase: "error", text: "Reading the sessions failed.", fraction: null };
+    return { phase: "error", text: "Reading the sessions failed." };
   }
   if (progress.complete) {
-    return { phase: "complete", text: "All sessions are summarized.", fraction: 1 };
+    return {
+      phase: "complete",
+      text:
+        progress.failed > 0
+          ? `Session indexing finished. ${formatInteger(progress.failed)} could not be read.`
+          : "Session details indexed.",
+    };
   }
   if (progress.state === "scanning" && progress.total === 0) {
-    return { phase: "scanning", text: "Looking for sessions…", fraction: null };
+    return { phase: "scanning", text: "Looking for sessions…" };
   }
   const done = progress.summarized + progress.failed;
   return {
     phase: "summarizing",
-    text: `Summarizing sessions: ${formatInteger(done)} of ${formatInteger(progress.total)}`,
-    fraction: progress.total > 0 ? Math.min(1, done / progress.total) : null,
+    text:
+      progress.total > 0
+        ? `Indexing session details… ${formatInteger(done)} of ${formatInteger(progress.total)} checked.`
+        : "Indexing session details…",
   };
 }
 

@@ -14,7 +14,7 @@ import Testing
     @Test func theOtherLinksAreUnderTheRepository() {
         #expect(ProjectLinks.readme.absoluteString == "https://github.com/jlevy/metabrowser#readme")
         #expect(ProjectLinks.installationGuide.absoluteString
-            == "https://github.com/jlevy/metabrowser/blob/main/docs/installation.md")
+            == "https://github.com/jlevy/metabrowser#installation")
     }
 }
 

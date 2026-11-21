@@ -42,8 +42,8 @@ struct StatusView: View {
             case .waitingForRuntime:
                 VStack(spacing: 12) {
                     Text("Metabrowser opens \(folderName) once it has a metab it can run.").font(.headline)
-                    Text("Settings says what it found and what to install.")
                     Button("Open Settings…", action: showSettings)
+                    Link("Installation and troubleshooting on GitHub", destination: ProjectLinks.installationGuide)
                 }
                 .padding(32)
             case .reloading:
@@ -117,6 +117,7 @@ private struct FailureView: View {
                     .font(.title3.weight(.semibold))
                     .symbolRenderingMode(.multicolor)
                 Text(failure.summary).textSelection(.enabled)
+                Link("Installation and troubleshooting on GitHub", destination: ProjectLinks.installationGuide)
                 Text("Recent server output").font(.caption).foregroundStyle(.secondary)
                 RecentOutput(lines: failure.recentOutput)
             }
@@ -138,9 +139,8 @@ private struct FailureView: View {
     }
 }
 
-/// A GitHub failure: what went wrong, `metab`'s message, and the commands that fix it,
-/// each with Copy, as the first-run steps show theirs (`SetupGuideView`), and, for one
-/// that a sign-in can fix, that switching back tries again.
+/// Shows the failure and any commands to copy. For sign-in failures, switching back to
+/// the app retries the request.
 private struct GitHubFailureDetails: View {
     let failure: GitHubFailure
 

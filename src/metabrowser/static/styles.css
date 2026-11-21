@@ -1273,12 +1273,6 @@
   --badge-running-text: oklch(50% 0.1071 88.17);
   --badge-pending-bg: oklch(94.5% 0.005 247.9);
   --badge-pending-text: oklch(42.4% 0.015 248.2);
-  --badge-claude-bg: var(--status-info-bg);
-  --badge-claude-text: oklch(48.3% 0.145 257);
-  --badge-gemini-bg: oklch(96.2% 0.057 95.6);
-  --badge-gemini-text: oklch(50% 0.1136 92.83);
-  --badge-pi-bg: oklch(93.7% 0.031 294.2);
-  --badge-pi-text: oklch(43% 0.209 292.4);
   --badge-adapter-bg: oklch(93.13% 0.0327 272.26);
   --badge-adapter-text: oklch(44% 0.146 267.3);
   --badge-compressed-bg: oklch(93.9% 0 89.9);
@@ -1640,11 +1634,6 @@
   --badge-running-text: oklch(86% 0.12 88.17);
   --badge-pending-bg: oklch(32% 0.01 247.9);
   --badge-pending-text: oklch(84% 0.015 248.2);
-  --badge-claude-text: oklch(84% 0.1 257);
-  --badge-gemini-bg: oklch(33% 0.07 95.6);
-  --badge-gemini-text: oklch(86% 0.12 92.83);
-  --badge-pi-bg: oklch(32% 0.09 294.2);
-  --badge-pi-text: oklch(85% 0.1 292.4);
   --badge-adapter-bg: oklch(32% 0.08 272.26);
   --badge-adapter-text: oklch(85% 0.1 267.3);
   --badge-compressed-bg: oklch(32% 0 89.9);
@@ -5278,18 +5267,6 @@ a.tab-btn {
 .badge-pending {
   background: var(--badge-pending-bg);
   color: var(--badge-pending-text);
-}
-.badge-claude {
-  background: var(--badge-claude-bg);
-  color: var(--badge-claude-text);
-}
-.badge-gemini {
-  background: var(--badge-gemini-bg);
-  color: var(--badge-gemini-text);
-}
-.badge-pi {
-  background: var(--badge-pi-bg);
-  color: var(--badge-pi-text);
 }
 .badge-adapter {
   background: var(--badge-adapter-bg);

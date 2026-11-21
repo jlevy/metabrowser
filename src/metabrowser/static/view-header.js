@@ -287,17 +287,7 @@
           esc(label) +
           "</span>";
       }
-      const kind = data.kind;
-      if (kind === "agent-log" && data.summary) {
-        const summary = data.summary;
-        if (summary.adapter === "claude") {
-          badges += '<span class="file-header-badge badge-claude">Claude</span>';
-        } else if (summary.adapter === "gemini") {
-          badges += '<span class="file-header-badge badge-gemini">Gemini</span>';
-        } else if (summary.adapter === "pi") {
-          badges += '<span class="file-header-badge badge-pi">Pi</span>';
-        }
-      } else if (data.summary?.adapter && data.summary.adapter !== "unknown") {
+      if (data.summary?.adapter && data.summary.adapter !== "unknown") {
         const adapterLabel = String(data.summary.adapter)
           .replace(/[-_]+/g, " ")
           .replace(/\b\w/g, (letter) => letter.toUpperCase());

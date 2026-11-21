@@ -501,16 +501,18 @@ metab ./repo --diff <revision> --diff-check               # rebuild and verify
 
 ```shell
 metab ./notes --check-api    # pass or fail for the navigation requests
-metab --plugins              # every discovered plugin
-metab --plugin markdown      # one plugin's resolved manifest
-metab --doctor               # check the plugins and the setup; non-zero exit on a problem
+metab --plugins              # list accepted plugins and discovery errors
+metab --plugin agents        # show Agent Session Browser's resolved manifest
+metab --doctor               # validate plugins and check the rest of the setup
 ```
 
 `--check-api` runs the browser’s navigation sequence against `ROOT`, prints each step,
 and ends with `result: pass` or a failure.
 For the underlying data, `--api` is more direct.
-The plugin modes take `--plugins-dir` and `--json`; [plugins](plugins.md) says where
-plugins are discovered.
+All three plugin modes accept `--plugins-dir` and `--json`. The JSON inventory includes
+both `plugins` and `errors`. Discovery errors leave the accepted plugins in the output
+and set a nonzero exit status.
+See [inspecting plugins](plugins.md#inspecting-plugins).
 
 After its verdict, `--doctor` reports what GitHub work needs from `gh`: the `gh` on
 `PATH` and its version, the account it is signed in to, that account’s token scopes, and

@@ -216,7 +216,7 @@ def test_an_error_notice_is_an_alert() -> None:
 # -- Agent-log kind hues -------------------------------------------------------------------
 
 AGENT_LOG_CSS = PLUGINS_DIR / "agents" / "agent-log.css"
-CHARTS_PY = REPO_ROOT / "src" / "metabrowser" / "charts.py"
+CHARTS_PY = REPO_ROOT / "src" / "metabrowser" / "builtin_plugins" / "agents" / "charts.py"
 # How far apart two hues of one kind may sit, in degrees: the chart's tool result is a
 # lighter step of the badge's amber, not the same value.
 HUE_TOLERANCE = 20

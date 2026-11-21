@@ -19,6 +19,150 @@ exit: 2
 <text>--no-such-option-for-the-app-contract<text>
 --- contract ---
 unknown-option
+# metab --plugins --json
+exit: 0
+--- stdout ---
+{
+  "plugins": [
+    {
+      "name": "agents",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "structured"
+      ]
+    },
+    {
+      "name": "binary",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": []
+    },
+    {
+      "name": "delimited",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "table"
+      ]
+    },
+    {
+      "name": "diff",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "structured"
+      ]
+    },
+    {
+      "name": "event-log",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "agents"
+      ]
+    },
+    {
+      "name": "folder",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "markdown"
+      ]
+    },
+    {
+      "name": "fsqlite",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "sqlite",
+        "table"
+      ]
+    },
+    {
+      "name": "github",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "markdown"
+      ]
+    },
+    {
+      "name": "html",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": []
+    },
+    {
+      "name": "image",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": []
+    },
+    {
+      "name": "markdown",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": []
+    },
+    {
+      "name": "sqlite",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "table"
+      ]
+    },
+    {
+      "name": "structured",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "table"
+      ]
+    },
+    {
+      "name": "table",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": []
+    },
+    {
+      "name": "text",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": []
+    },
+    {
+      "name": "unknown-jsonl",
+      "display_name": "<text>",
+      "version": "<text>",
+      "source": "<text>",
+      "requires": [
+        "agents"
+      ]
+    }
+  ],
+  "errors": []
+}
+--- stderr ---
+--- contract ---
+plugins
 # metab --recent --json
 exit: 0
 --- stdout ---

@@ -11,10 +11,6 @@ import SwiftUI
     var answer: DoctorAnswer?
     /// No `metab` is selected, so nothing ran.
     var hasRuntime = true
-    /// The step that upgrades the selected `metab` by the tool that installed it, for a
-    /// report without setup checks.
-    var upgrade: (command: String, note: String?)?
-
     var copyText: String? {
         answer.map { DoctorRun.text(header: header, answer: $0) }
     }
@@ -56,6 +52,7 @@ struct CheckSetupView: View {
                     Text("Running metab --doctor…").foregroundStyle(.secondary)
                 }
                 Spacer()
+                Link("Setup Help", destination: ProjectLinks.installationGuide)
                 Button("Settings…", action: actions.openSettings)
             }
         }
@@ -91,13 +88,7 @@ struct CheckSetupView: View {
             )
             .font(.headline)
             if !report.hasChecks {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(DoctorRun.noChecks).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
-                    if let upgrade = model.upgrade {
-                        if let note = upgrade.note { Text(note).foregroundStyle(.secondary) }
-                        CopyableCommand(text: upgrade.command)
-                    }
-                }
+                Text(DoctorRun.noChecks).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
             ForEach(Array(report.rows.enumerated()), id: \.offset) { _, row in
                 CheckRowView(row: row)

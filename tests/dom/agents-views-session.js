@@ -395,6 +395,10 @@ async function main() {
     { state: "idle", total: 10, summarized: 10, failed: 0, complete: true },
     formatInteger,
   );
+  derived["progress when complete with an unreadable session"] = model.progressView(
+    { state: "idle", total: 10, summarized: 9, failed: 1, complete: true },
+    formatInteger,
+  );
   derived["the session page while the catalog's first pass runs"] = [
     session.waitingText(null, formatInteger),
     session.waitingText(
@@ -492,7 +496,7 @@ async function main() {
         status: null,
       },
     ],
-    { label: "Running now" },
+    { label: "Active sessions" },
   );
   // Every value a row shows comes from a session's own files, so each is escaped.
   const hostile = rows.sessionRowsHtml(
@@ -527,7 +531,7 @@ async function main() {
       '<span class="agents-session-link agents-row-title agents-no-file">No file</span>',
     ),
     "the list names itself": items.startsWith(
-      '<ul class="agents-session-rows" aria-label="Running now">',
+      '<ul class="agents-session-rows" aria-label="Active sessions">',
     ),
     "the sorted column says so": /aria-sort="descending"/.test(table),
     "an unsorted column offers its sort": /aria-sort="none"/.test(table),

@@ -4294,9 +4294,6 @@ _BADGE_TONES = (
     "failed",
     "running",
     "pending",
-    "claude",
-    "gemini",
-    "pi",
     "adapter",
     "compressed",
 )

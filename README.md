@@ -43,9 +43,98 @@ metab https://github.com/owner/repo/pull/123
 ```
 
 Repositories need Git, and pull requests also need a signed-in GitHub CLI (`gh`).
-[Installation](docs/installation.md) covers every requirement, upgrades, the Mac app,
-and the agent skill.
 `metab --help` lists every mode and option.
+
+## Installation
+
+### Command line and web browser
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and open a new
+terminal. On macOS with Homebrew, you can use `brew install uv`. Install Metabrowser and
+check that the command works:
+
+```shell
+uv tool install metabrowser
+metab --version
+metab --doctor
+```
+
+If the shell cannot find `metab`, run `uv tool update-shell` and open a new terminal.
+Use `uv tool dir --bin` to find the executable.
+To update an existing uv installation of Metabrowser, run `uv tool upgrade metabrowser`.
+If you installed it with pipx, run `pipx upgrade metabrowser`. If a Metabrowser
+installation managed by uv is damaged, run `uv tool install --reinstall metabrowser`.
+Use `metab --doctor` again after a repair.
+You can run `uvx metabrowser@latest .` to open the current folder without adding a
+persistent command.
+
+Local file browsing only needs `metab`. Install [Git](https://git-scm.com/install/) for
+repositories and the [GitHub CLI](https://github.com/cli/cli#installation) for pull
+requests or private GitHub repositories.
+On macOS with Homebrew, run `brew install git gh`. Sign in with
+`gh auth login --hostname github.com` and check the active account with
+`gh auth status --hostname github.com`. Run `metab --doctor` for unsupported tool
+versions, sign-in problems, or trouble reading or writing the configuration and cache
+directories.
+
+### Native macOS app
+
+The optional app requires an Apple silicon Mac with macOS 26 or later and uses the
+separately installed `metab` command.
+The public CLI is available from PyPI. The native app is a developer preview.
+When a signed disk image appears on
+[GitHub Releases](https://github.com/jlevy/metabrowser/releases), open it and drag
+Metabrowser to Applications after installing a compatible `metab`.
+
+If the app cannot start a folder, open **Settings**. It shows the required version and
+any rejected runtimes.
+After installing or updating `metab`, use **Find Again** or **Choose metab…** to select
+the executable.
+If Settings says the required version is pending on PyPI, use the preview
+runtime described below or run the public CLI in your web browser.
+**Check Setup…** checks the tools and paths the app actually uses, which can differ from
+the ones in your terminal.
+Restart an open folder’s server if the app offers to after an upgrade.
+See [Choosing a metab](docs/macos-app.md#choosing-a-metab) for runtime discovery and the
+app’s trust checks.
+
+#### Developer preview
+
+The current preview requires `metab` 0.13.0 or later, which is pending on PyPI. To try
+the preview, install Xcode 26.6 or later, uv, and
+[the repository’s pinned Node version](docs/development.md#set-up).
+In Terminal:
+
+~~~shell
+git clone https://github.com/jlevy/metabrowser.git
+cd metabrowser
+make install
+make macos-app
+~~~
+
+Open the app at the path printed by the build.
+In **Settings → Choose metab…**, select `.venv/bin/metab` inside that checkout.
+If the build fails or the runtime is rejected, check the
+[development prerequisites](docs/development.md#set-up) and
+[preview setup guide](docs/installation.md#the-macos-app) for the checkout and version
+the app expects.
+
+### Plugins and agent skill
+
+Use `metab --plugins` to list discovered plugins with their sources and dependencies, or
+add `--json` to read that report programmatically.
+The Mac app lists the selected runtime’s plugins under **Settings → Information →
+Plugins**. Run `metab --doctor` for discovery errors.
+Built-in plugins ship with `metab`. For external plugins, see
+[plugin discovery and dependency checks](docs/plugins.md#trust-model-and-discovery).
+
+To give a coding agent the Metabrowser skill, run
+`npx skills add jlevy/metabrowser --skill metabrowser`, then check that the agent can
+run `metab --version`. The skill uses the same CLI installation described here.
+See [Working with agents](docs/working-with-agents.md) for usage.
+
+[Detailed installation and requirements](docs/installation.md) covers version pinning,
+GitHub access, and the developer preview.
 
 ## What You Can Do
 
@@ -84,9 +173,8 @@ and the agent skill.
 The optional macOS app opens each folder in its own window or tab, with recent items,
 session restore, and folders dropped on its Dock icon.
 It runs the `metab` you installed, so it shows the same pages.
-It is an alpha, built from source and not yet a signed release.
-See [the Mac app](docs/macos-app.md) for using it and
-[installation](docs/installation.md) for installing it.
+See [the Mac app guide](docs/macos-app.md) for using it and
+[Installation](#installation) for setup and troubleshooting.
 
 ## Scale
 
