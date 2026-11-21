@@ -3,9 +3,9 @@ type: is
 id: is-01m7vtd1yhvcp2szqx4m266c1p
 title: "Phase 4: SQLite access"
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
 refs:
   - kind: pr
@@ -22,7 +22,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-20T06:30:48.529Z
-updated_at: 2026-11-21T09:24:44.581Z
+updated_at: 2026-11-21T10:04:02.744Z
 started_at: 2026-11-20T18:09:34.952Z
+closed_at: 2026-11-21T10:04:02.744Z
+close_reason: "Merged the seven ordinary tabular layers through #676 as 74cba363. Exact branch CI, isolated artifact checks, ordinary database browser acceptance, and post-merge main and macOS CI passed. The separate fsqlite validation remains tracked under #678."
+resolution: null
+duplicate_of: null
 ---
 Implementation Plan, Phase 4 of the plan (SQLite access). One layer of the tabular-data stack; see the plan's Phase 4 checklist for scope.

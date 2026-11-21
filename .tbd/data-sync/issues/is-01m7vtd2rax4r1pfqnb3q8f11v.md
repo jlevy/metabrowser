@@ -3,9 +3,9 @@ type: is
 id: is-01m7vtd2rax4r1pfqnb3q8f11v
 title: "Phase 5: SQLite tables"
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
 refs:
   - kind: pr
@@ -22,8 +22,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-20T06:30:49.354Z
-updated_at: 2026-11-21T09:24:47.266Z
+updated_at: 2026-11-21T10:04:02.757Z
 started_at: 2026-11-21T08:35:05.089Z
+closed_at: 2026-11-21T10:04:02.757Z
+close_reason: "Merged the seven ordinary tabular layers through #676 as 74cba363. Exact branch CI, isolated artifact checks, ordinary database browser acceptance, and post-merge main and macOS CI passed. The separate fsqlite validation remains tracked under #678."
+resolution: null
+duplicate_of: null
 ---
 Implementation Plan, Phase 5 of the plan (SQLite tables). One layer of the tabular-data stack; see the plan's Phase 5 checklist for scope.
 
