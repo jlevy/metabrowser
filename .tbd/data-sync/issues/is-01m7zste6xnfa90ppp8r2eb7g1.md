@@ -3,9 +3,9 @@ type: is
 id: is-01m7zste6xnfa90ppp8r2eb7g1
 title: Use a cloud overlay on the cloud mirror folder icon
 kind: task
-status: in_progress
+status: closed
 priority: 3
-version: 3
+version: 4
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/684
@@ -13,6 +13,10 @@ refs:
 labels: []
 dependencies: []
 created_at: 2026-11-21T19:37:36.204Z
-updated_at: 2026-11-21T19:56:47.192Z
+updated_at: 2026-11-21T20:00:02.258Z
+closed_at: 2026-11-21T20:00:02.246Z
+close_reason: "Reviewed and merged in Metabrowser #684, including the verified native attribution."
+resolution: null
+duplicate_of: null
 ---
 Match the local Git folder mark with a cloud overlay for a mirror. Keep web and native root drawings identical and document and verify the icon at menu size.
