@@ -10,8 +10,12 @@
   a SQLite database’s Info view shows one, or the state of a store it cannot show
   (invalid, unsupported, or corrupt).
   Metabrowser reads a store as a guest: the snapshot with `immutable=1` in a reader
-  process, no read lease, no lock, and no file written, and it reads the pointer again
-  once when garbage collection removed the snapshot it named.
+  process with no writes, locks, or leases.
+  It checks the snapshot’s fsqlite identity and format against the marker before showing
+  its contents. If garbage collection removes the snapshot during the initial read,
+  Metabrowser follows the pointer again.
+  If a later table operation needs the collected file, it returns `snapshot_moved` so
+  the reader can refresh.
   `metab --api` reaches the same models at `/api/plugin/fsqlite/info`,
   `/api/plugin/fsqlite/schema`, and `/api/plugin/fsqlite/children`, and the tables
   through `/api/plugin/table/*` at the marker’s path

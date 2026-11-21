@@ -638,9 +638,10 @@ of the file clock.
 `folder_marker = "fsqlite.json"` with `json_has_key = "format"` and
 `json_value_prefix = "fsqlite"`, so the folder gets its badge and opening the marker
 opens the store, with no core change.
-It reads the snapshot `current` names, `immutable=1`, retrying when garbage collection
-removes it between the two reads, and shows the generation number, which `current` gives
-its `generation()`. Pending transaction envelopes are counted in its Info view.
+It reads the snapshot `current` names with `immutable=1` after checking its store
+identity and format.
+The reader follows the pointer again if the initial snapshot was collected.
+The Info view shows the snapshot version and counts pending transaction envelopes.
 It is a thin source over the SQLite adapter and a container like any database, with its
 own `children` hook.
 
@@ -1339,11 +1340,12 @@ As built, where this plan left a choice open:
   format is `invalid`, and a format version or required feature this reader does not
   know (`SUPPORTED_FORMAT_VERSIONS`, `SUPPORTED_FEATURES` in
   `builtin_plugins/fsqlite/store.py`) is `unsupported`, never `corrupt`.
-- **The pointer and the snapshot.** A pointer that is not trimmed ASCII digits within
-  its bounds, is missing, or names a snapshot missing at both of two reads is `corrupt`;
-  a snapshot whose `application_id` is not fsqlite’s is `corrupt` and still shown.
-  The snapshot read through the reader pool goes back to the pointer when the reader
-  finds the file gone (`unreadable` with nothing at the path), as when the lookup does.
+- **The pointer and the snapshot.** A missing or malformed pointer is `corrupt`, as is a
+  pointer that still names a missing snapshot after one retry.
+  Before serving snapshot data, the reader checks the SQLite application ID `FSQL` and
+  matches `store_id` and `format_version` in `fsqlite_meta` against the marker.
+  Invalid or mismatched stamps are `corrupt`.
+  [fsqlite format requirements M4, S2 and S3](https://github.com/jlevy/fsqlite/blob/e8fd2b2297ab84d31963f95cd0c340d4b6c165e9/docs/fsql-format-spec.md#L127-L190).
 - **Generation** is `<version>-<hash>`: the version, so a reader sees which head a table
   shows, and a hash of the identity, size, and time of `fsqlite.json` and `current`.
   Pending envelopes change no snapshot and are not in it.
@@ -1358,16 +1360,14 @@ As built, where this plan left a choice open:
   Phase 5’s `SqliteSource` with an opener: the database is the snapshot `current` names,
   read with `immutable_content` under the store’s generation, and its `tables()` pass
   through `group_reserved`, which groups `applied_tx` and `fsqlite_meta` as internal.
-  The SQLite reader already groups them so in any snapshot carrying fsqlite’s
-  `application_id`, so a snapshot opened by itself as the `sqlite` kind shows them
-  internal too, and `group_reserved` keeps them so in a store whose snapshot lacks it.
-  A table is `<marker>/<segment>` with the SQLite plugin’s segment escaping; the
-  `table/*` routes reach it as `<file>/<table>`, since the marker is the file.
-- **One open, every route.** The children and schema hooks and the table source each
-  open the snapshot through `open_store`, which reads the snapshot’s catalog inside the
-  pointer retry, so a snapshot garbage collection removed before a reader opened it
-  sends every route back to the pointer once.
-  A later read in the same request that finds it gone answers as the reader refused it.
+  The SQLite reader also groups them as internal when a snapshot is opened directly as
+  the `sqlite` kind. A table is `<marker>/<segment>` with the SQLite plugin’s segment
+  escaping; the `table/*` routes reach it as `<file>/<table>`, since the marker is the
+  file.
+- **One snapshot per request.** Info, Schema, children, and the table source follow
+  `current` once more if garbage collection removes the snapshot during the initial
+  read. If a later table operation needs the collected file, the route returns HTTP 409
+  with code `snapshot_moved`. A fresh request follows `current` again.
   An `invalid`, `unsupported`, or `corrupt` store is `source_unreadable` (422) on the
   table routes, naming its state.
 - **Views.** The kind’s views are the `sqlite` kind’s, Table (the default) and Schema,
