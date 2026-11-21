@@ -77,6 +77,12 @@ flags="$(xattr -px com.apple.FinderInfo "$mounted" 2>/dev/null | tr -d ' \n' | c
 ((0x${flags:-00} & 0x04)) || die "the volume root does not show its custom icon"
 ok "contents: $name, Applications -> /Applications, and the volume icon"
 
+# Check the notice from the checkout that built the image, as for the icons below.
+cmp -s ../../src/metabrowser/static/source-kind-glyphs.license.txt \
+  "$app/Contents/Resources/source-kind-glyphs.license.txt" ||
+  die "$name is missing the Lucide source kind glyph notice, or its contents differ"
+ok "$name includes the Lucide source kind glyph notice"
+
 plutil -lint -s "$app/Contents/Info.plist"
 codesign --verify --deep --strict "$app"
 require_no_entitlements "$app"

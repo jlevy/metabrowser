@@ -74,13 +74,11 @@ independent of Metabrowser’s license.
   avatar shows in the same script uses `circle-user-round.svg`, all from release 1.17.0
   at upstream commit `896aba0d195a4fec38ad7c4a90d00cb3389ebfea`. Their copyright and
   license accompany the glyphs in the distributed script.
-  The three marks for a kind of root, in
-  `src/metabrowser/static/source-kind-glyphs.json` and the macOS app’s `RootMark.swift`,
-  are `cloud.svg`, `folder-git-2.svg`, and `folder-dot.svg` from the same release and
-  commit, and the ordinary folder’s `folder.svg` is in both the registry and
-  `RootMark.swift`. The notice that must accompany them is beside the glyph file
-  (`source-kind-glyphs.license.txt`) and above the glyphs in `RootMark.swift`, and is
-  this:
+  The browser and macOS app use `folder-git-2.svg`, `folder-dot.svg`, and a cloud-folder
+  mark adapted from `folder-git-2.svg` and `cloud.svg` from the same release and commit.
+  The ordinary folder’s `folder.svg` appears in the browser’s icon registry and in
+  `RootMark.swift`. `source-kind-glyphs.license.txt` accompanies the glyphs in the
+  distributed browser assets and macOS app resources:
 
   > ISC License
   > 
