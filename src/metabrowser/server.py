@@ -2496,7 +2496,7 @@ async def index(
            data-served-root="{initial_root}"{mirror_attrs}>{initial_path}</a>
         <span id="header-home-label" hidden>Home:</span>
         <details id="root-details" class="root-details"{root_repository_attr}>
-          <summary class="icon-btn root-details-trigger" aria-label="{root_kind_label} details"></summary>
+          <summary class="icon-btn root-details-trigger disclosure-toggle" aria-label="{root_kind_label} details"></summary>
           <div class="menu root-details-panel">
             <div class="root-details-info">
               <strong>{root_kind_label}</strong>

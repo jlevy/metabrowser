@@ -1965,6 +1965,7 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
         'className: "filter-drawer-toggle disclosure-toggle"',
         '"icon-btn nav-collapse-toggle disclosure-toggle"',
     ),
+    "server.py": ('class="icon-btn root-details-trigger disclosure-toggle"',),
     "charts.js": ("'<div class=\"tally-node disclosure-toggle'",),
     "filter-controls.js": ('class="chip chip-menu-trigger disclosure-toggle"',),
     "source-ref-selector.js": (
@@ -2014,7 +2015,6 @@ _NOT_TOGGLES: dict[str, str] = {
     "search-palette.js": "the search field is a combobox, and its text stays editable",
     "shell-keymap.js": "reads which filter dropdown is open, for its rows' letters",
     "nav-collapse.js": "reflects aria-expanded on the chevron server.py writes and app.js draws",
-    "server.py": "the gear has no chevron; the navigation chevron is .disclosure-toggle",
     "table/table-view.js": "the Columns button and a header's menu button open dialogs, not disclosures",
 }
 # Each chevron and `summary` a source builds, in source order, with the builder whose
@@ -2027,6 +2027,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ("ICONS.toggle +", "'<div class=\"tree-item tree-folder disclosure-toggle collapsed'"),
         ("${ICONS.toggle}", '"icon-btn nav-collapse-toggle disclosure-toggle"'),
     ),
+    "server.py": (("<summary", 'class="icon-btn root-details-trigger disclosure-toggle"'),),
     "charts.js": (("ICONS.toggle +", "'<div class=\"tally-node disclosure-toggle'"),),
     "filter-controls.js": (("${menuChevron}", 'class="chip chip-menu-trigger disclosure-toggle"'),),
     "source-ref-selector.js": (
