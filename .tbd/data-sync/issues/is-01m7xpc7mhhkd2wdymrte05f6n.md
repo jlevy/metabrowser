@@ -3,15 +3,19 @@ type: is
 id: is-01m7xpc7mhhkd2wdymrte05f6n
 title: Validate ordinary SQLite browsing and report incomplete reads
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
+delegate: codex@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7vtd2rax4r1pfqnb3q8f11v
+hold: null
+hold_until: null
 created_at: 2026-11-20T23:58:56.144Z
-updated_at: 2026-11-20T23:58:56.144Z
+updated_at: 2026-11-21T08:32:52.926Z
+started_at: 2026-11-21T08:32:52.925Z
 ---
 The core feature opens ordinary SQLite databases in place, including existing databases owned by other applications. It is independent of the fsqlite store plugin. Gate #676 on this path after integrating #674 and #675.
 
