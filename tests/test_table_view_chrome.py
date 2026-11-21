@@ -262,6 +262,7 @@ def test_the_table_view_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
     assert toolbar["live"] == toolbar["waiting"] == toolbar["offered"] == toolbar["taken"], toolbar
     assert measured["exceptions"] == []
     assert measured["sqliteRefresh"] is True
+    assert measured["sqliteSearch"] is True
     _check_rows_are_one_line_and_a_long_value_is_cut_with_its_tooltip(measured)
     _check_null_numbers_and_literals_are_painted_apart(measured)
     _check_two_line_rows_are_one_height_and_clamp(measured)

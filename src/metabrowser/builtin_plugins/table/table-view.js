@@ -309,6 +309,8 @@ export function mountTable(container, ctx, host = {}) {
   /** @type {AbortController | null} */
   let loading = null;
   let readingMore = false;
+  // A scan with no matches pauses so automatic read-ahead cannot chase it indefinitely.
+  let scanPaused = false;
   /** Whether reading the next page failed, so scrolling does not ask again. */
   let moreFailed = false;
   let printing = false;
@@ -597,7 +599,8 @@ export function mountTable(container, ctx, host = {}) {
       const whole =
         first.count_complete && first.count !== null && first.count <= WHOLE_TABLE_MAX_ROWS;
       const wanted = whole ? WHOLE_TABLE_MAX_ROWS : reached;
-      while (held.next_after && held.rows.length < wanted) {
+      let paused = first.reason === "budget" && first.rows.length === 0;
+      while (held.next_after && held.rows.length < wanted && !paused) {
         const next = /** @type {TablePage} */ (
           /** @type {unknown} */ (
             await ask(
@@ -607,6 +610,7 @@ export function mountTable(container, ctx, host = {}) {
             )
           )
         );
+        paused = next.reason === "budget" && next.rows.length === 0;
         held = joinPage(held, next);
       }
       if (seq !== loadSeq || disposed) {
@@ -619,6 +623,7 @@ export function mountTable(container, ctx, host = {}) {
           return;
         }
       }
+      scanPaused = paused;
       const kept = refresh ? keptPlace() : null;
       if (how.live && kept && rows.length > 0 && held.rows.length > 0) {
         const merged = liveDrawn(held, kept, how.live.accept);
@@ -661,6 +666,7 @@ export function mountTable(container, ctx, host = {}) {
       return;
     }
     readingMore = true;
+    const wasEmpty = rows.length === 0;
     const seq = loadSeq;
     const signal = loading?.signal ?? abort.signal;
     let read = false;
@@ -677,6 +683,7 @@ export function mountTable(container, ctx, host = {}) {
       if (seq !== loadSeq || disposed || !page) {
         return;
       }
+      scanPaused = next.reason === "budget" && next.rows.length === 0;
       page = joinPage(page, next);
       rows = page.rows;
       read = true;
@@ -689,7 +696,10 @@ export function mountTable(container, ctx, host = {}) {
     } finally {
       readingMore = false;
     }
-    if (read) {
+    if (read && wasEmpty) {
+      drawTable();
+    } else if (read && page) {
+      status.textContent = countText(page, isFiltered(state));
       // Drawn once the read is over, so a page shorter than the window's need, as a page
       // of wide rows is, reads the next at once.
       drawNotes();
@@ -1382,7 +1392,7 @@ export function mountTable(container, ctx, host = {}) {
 
   /** @param {{start: number, end: number}} range */
   function maybeReadMore(range) {
-    if (wantsMore(range, rows.length, READ_AHEAD_ROWS)) {
+    if (!scanPaused && wantsMore(range, rows.length, READ_AHEAD_ROWS)) {
       void readMore();
     }
   }
@@ -1581,6 +1591,18 @@ export function mountTable(container, ctx, host = {}) {
     notes.replaceChildren();
     for (const text of page ? pageNotes(page) : []) {
       notice("warning", text);
+    }
+    if (scanPaused && page?.next_after) {
+      const resume = el(
+        "button",
+        { type: "button", class: "btn table-continue" },
+        isFiltered(state) ? "Continue search" : "Continue reading",
+      );
+      resume.addEventListener("click", () => {
+        resume.setAttribute("disabled", "disabled");
+        void readMore();
+      });
+      notes.append(resume);
     }
     for (const kept of [stateNotice, liveNotice, watchNotice]) {
       if (kept) {
