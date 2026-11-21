@@ -552,7 +552,7 @@ def test_load_tree_renders_single_file_tally() -> None:
     # The scanning-state pending gate stays.
     assert 'data.tally_cache_status === "scanning"' in fn_block
     scanning_start = fn_block.index('if (data.tally_cache_status === "scanning")')
-    scanning_end = fn_block.index("// Carry aggregates", scanning_start)
+    scanning_end = fn_block.index("pathEl.dataset.tipFiles", scanning_start)
     assert "startIndexProgressPolling();" in fn_block[scanning_start:scanning_end]
 
 
@@ -884,39 +884,14 @@ def test_a_mirrors_note_takes_nothing_from_the_address_and_is_whole_or_absent() 
     # A mirror's navigation heading and a checkout's revision's are the name alone, so no
     # rule styles a ref beside a name. A pin with no mirror's ref is its name, which
     # narrows, and its commit never does.
-    # The copy control keeps its size, and shows as the file header's does.
     assert ".header-ref" not in css
     assert "min-width: 0;" in block(".header-path:has(> .header-revision) > .path")
     assert "flex: none;" in block(".header-revision")
-    assert "flex: none;" in block(".header-copy")
-    assert "opacity: 1;" in block(".app-header:hover .header-copy")
-
-
-def test_only_a_mirrors_line_of_a_tooltip_wraps_and_every_other_tooltip_is_as_it_was() -> None:
-    """A served mirror's tooltip holds runs wider than its box; no other tooltip changes.
-
-    The origin, a commit ID, and a path ending in a 64-digit key are each one unbroken
-    run, so the mirror's line breaks where the box ends. The rule is that line's alone.
-    Put on the tooltip itself, with ``anywhere``, it changed every folder's tooltip: a
-    run could then break while the box was measured for its place, so a long file name's
-    tooltip near the window's edge became two lines flush against the edge. Where a
-    tooltip lands is layout, measured in Chrome and recorded beside the rule; this pins
-    that the one tooltip every page uses declares nothing about wrapping.
-    """
-
-    css = _read_styles_css()
-    start = css.index("\n.custom-tooltip {")
-    tooltip = css[start : css.index("}", start)]
-    for wrapping in ("overflow-wrap", "word-break", "word-wrap", "white-space", "hyphens"):
-        assert wrapping not in tooltip, wrapping
-    assert "max-width: 360px;" in tooltip
-    # ``break-word`` breaks a run that does not fit; ``anywhere`` also lets it break
-    # while the box is measured, which is what narrowed a tooltip.
-    start = css.index("\n.tip-mirror {")
-    assert css[start : css.index("}", start)].split("{")[1].split() == [
-        "overflow-wrap:",
-        "break-word;",
-    ]
+    assert "flex: none;" in block(".root-details")
+    assert "\n.header-copy " not in css
+    assert "overflow-wrap: anywhere;" in block(
+        ".root-details-info,\n.root-details-status:not(:empty)"
+    )
 
 
 def test_navigation_heading_shows_only_the_root_name() -> None:
@@ -948,9 +923,7 @@ def test_navigation_heading_shows_only_the_root_name() -> None:
     ) in heading
     tree_start = js.index("renderServedRootHeading(pathEl, data.root)")
     assert "setServedRoot" not in js
-    assert (
-        "pathEl.dataset.tipName = pathEl.dataset.servedRoot" in js[tree_start : tree_start + 2600]
-    )
+    assert "updateRootDetailsStats()" in js[tree_start : tree_start + 2600]
 
 
 def test_scan_completion_is_announced_on_the_inventory_change_channel() -> None:

@@ -677,8 +677,7 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
             f'data-served-root="origin" data-mirror-location="{location}" '
             f'data-mirror-tip="{tip(origin.second)}">'
         ) in page.text
-        # A mirror's page is marked as one, and carries the module that draws the note
-        # and the commit's copy control, inline and whole.
+        # A mirror's page carries the module that draws the note inline.
         assert '<main class="container mirror-source">' in page.text
         module = (server.STATIC_DIR / "mirror-heading.js").read_text(encoding="utf-8")
         assert page.text.count(f">{module}</script>") == 1

@@ -213,6 +213,7 @@ from metabrowser.recent import (
 from metabrowser.repository_context import discover_repository_context, is_checkout_root
 from metabrowser.root_identity import (
     IDENTITY_ROUTES,
+    canonical_repository_url,
     identity_kind_tip,
     root_identity,
     served_repository_context,
@@ -1409,7 +1410,7 @@ def _pin_label_html(status: SourceStatus) -> str:
     the same `.path-base` emphasis: a served mirror by the repository's name, as a
     checkout of it would be called, and a revision a folder's server shows of its own
     checkout by the folder's name. The ref selector in the Files toolbar names the ref,
-    and the heading's tooltip (`_mirror_tip`) the full commit, so the heading repeats
+    and the root details (`_mirror_tip`) the full commit, so the heading repeats
     neither: the owner found them clutter beside the name (mb-qq4e).
 
     A pin with no mirror has no origin to take a name from, and no ref selector, so its
@@ -1435,7 +1436,7 @@ def _pin_label_html(status: SourceStatus) -> str:
 
 
 def _mirror_tip(status: SourceStatus) -> str | None:
-    """What a served mirror's heading says of itself on hover, or ``None`` for any other subject.
+    """The location and commit the root details show for a mirror or a pinned checkout.
 
     A page of a mirror looks like a page of a folder, and is not one: nothing is
     checked out, and each file is read from a Git object at the pinned commit. So the
@@ -1486,9 +1487,7 @@ def _mirror_heading_attrs(status: SourceStatus) -> str:
 def _mirror_heading_script() -> str:
     """`static/mirror-heading.js`, as a served mirror's shell carries it inline.
 
-    Only a mirror's page has a note, a location, or a commit to copy, so the code for
-    them is written into that page and is no startup script of a folder's. Read where a
-    mirror is first served, so a folder's server never reads it.
+    Mirrors and pinned checkouts can show a location note in their view header.
     """
 
     script = STATIC_DIR.joinpath("mirror-heading.js").read_text(encoding="utf-8")
@@ -1712,7 +1711,7 @@ async def index(
         initial_root = html_escape(status["name"] or pin_oid, quote=True)
         mirror_attrs = _mirror_heading_attrs(status)
         # What styles a mirror's headings apart from a folder's: its root is a name,
-        # which is cut at its end, and a control after the name copies its commit.
+        # which is cut at its end, and the details disclosure shows its commit.
         mirror_class = " mirror-source" if mirror_attrs else ""
         # Core holds no provider URL grammar: the served mirror asks the installed
         # providers, and only a hosted repository's has an answer (a GitHub mirror's
@@ -1746,6 +1745,26 @@ async def index(
     root_kind = identity["kind"]
     root_kind_svg = source_kind_svg(root_kind)
     root_kind_tip = html_escape(identity_kind_tip(identity, tip_context), quote=True)
+    root_kind_label = html_escape(identity["kind_label"], quote=True)
+    root_repository_url = (
+        canonical_repository_url(tip_context)
+        if root_kind != "folder"
+        and tip_context is not None
+        and {tip_context["owner"], tip_context["name"]}.isdisjoint({".", ".."})
+        else None
+    )
+    root_repository_attr = root_repository_text = ""
+    if root_repository_url is not None:
+        safe_url = html_escape(root_repository_url, quote=True)
+        root_repository_attr = f' data-repository-url="{safe_url}"'
+        root_repository_text = f'<div class="root-details-location">{safe_url}</div>'
+    root_checkout_meta = ""
+    if root_kind == "git" and pin is None and tip_context is not None:
+        branch = tip_context["branch"]
+        if branch is not None:
+            root_checkout_meta += f"<div>Branch: {html_escape(branch)}</div>"
+        revision = html_escape(tip_context["revision"])
+        root_checkout_meta += f"<div>Commit: <code>{revision}</code></div>"
     version_line = html_escape(display_version_line("metab", __version__))
     styles_url = _static_asset_url("styles.css")
     asset_loader_url = _static_asset_url("asset-loader.js")
@@ -2456,15 +2475,8 @@ async def index(
       <header class="app-header" data-kbd-badge-anchor>
         <!-- data-served-root is the one place the absolute root is written:
              the file header reads it back to render its dimmed prefix, so
-             the two headers cannot disagree about what the root is. It is also
-             what this heading's tooltip is built from.
-
-             No data-tip-text here, deliberately. This element has a tooltip of
-             its own in app.js — the folder's counts and age, not just its
-             path — and an element carrying both would announce through two
-             mechanisms at once, which is the bug the one-tooltip rule exists
-             to prevent. See "One Tooltip, and It Is Ours" in
-             docs/design-system.md.
+             the two headers cannot disagree about what the root is. The
+             details disclosure uses it for the root's address.
 
              The folder's name is Home (docs/design-system.md, "Home"): app.js keeps a
              plain activation in the page and shows the folder's home view as a fresh load
@@ -2483,6 +2495,21 @@ async def index(
            aria-labelledby="header-home-label header-home"
            data-served-root="{initial_root}"{mirror_attrs}>{initial_path}</a>
         <span id="header-home-label" hidden>Home:</span>
+        <details id="root-details" class="root-details"{root_repository_attr}>
+          <summary class="icon-btn root-details-trigger disclosure-toggle" aria-label="{root_kind_label} details"></summary>
+          <div class="menu root-details-panel">
+            <div class="root-details-info">
+              <strong>{root_kind_label}</strong>
+              <div class="root-details-location">{initial_root}</div>
+              {root_repository_text}
+              <div class="root-details-stats"></div>
+              {root_checkout_meta}
+              <div class="root-details-source" hidden></div>
+            </div>
+            <div class="root-details-actions" hidden></div>
+            <div class="root-details-status" role="status"></div>
+          </div>
+        </details>
         <!-- The Metabrowser menu. The gear names the product rather than
              standing as an unlabelled settings control: the wordmark that
              used to sit on its own line above the path is this menu's title,

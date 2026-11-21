@@ -197,7 +197,7 @@ route may say only where `tests/test_serve_pin.py` allows.
 
 | Surface | Draws |
 | --- | --- |
-| The navigation column’s heading, before the root’s name | The root’s kind mark, `.header-root-kind`, at `--icon-glyph` in `--muted`, outside the name’s link so the name’s hover surface, focus ring, and tooltip stay its own. The server writes the kind, its glyph, and its sentence into the first paint (`source_kind_marks.py`) |
+| The navigation column’s heading, before the root’s name | The root’s kind mark, `.header-root-kind`, at `--icon-glyph` in `--muted`, outside the name’s link and next to the root details disclosure. The server writes the kind, its glyph, and its sentence into the first paint (`source_kind_marks.py`) |
 | The main pane’s header for the root, at the title’s size | The same mark: the glyph is copied from the navigation’s (`view-header.js`, `folderGlyphHtml`), so a root’s name has one icon wherever it stands. A pinned revision of a checkout, whose root is still the root, keeps it. A folder inside the root leads with the ordinary folder |
 | The macOS title’s folder chooser and the Switch Folder panel, each row | The row’s kind mark, from its window’s `/api/identity` or its recent entry |
 | File > Open Recent and the Dock menu, each row | The row’s kind mark, from the entry’s `mode` and `git` in `metab --recent --json`, never from a look at the folder, which can raise a privacy prompt |
@@ -238,6 +238,7 @@ in `/`, so neither draws a folder icon.
 | `pull`, Lucide `git-pull-request` | View bundle | A link to a pull request whose state the page does not know | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `issue`, Lucide `circle-dot` | View bundle | A link to a GitHub issue | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `github`, Octicons `mark-github-16` | View bundle | GitHub: the View on GitHub button’s mark, and a link to any other GitHub page | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
+| `arrowUpRight`, Lucide `arrow-up-right` | View bundle | Open in Browser menu action | `static/plugin-sdk-views.js` | `--muted` | `--icon-glyph` in `.menu-item-icon` |
 | `layers`, Lucide `layers` | Registry | A stack of pull requests: a stack’s row, the page’s stack button, and another stack a member is in | `static/icons.js` | `--muted` on a row, the button’s text ink on the stack button | `--icon-glyph`; the text’s `1em` in a member’s place |
 | `PERSON_GLYPH`, Lucide `circle-user-round` | View bundle | A person with no avatar, in an actor identity’s box | `static/plugin-sdk-views.js` | `--muted` | `--actor-avatar-size`, the avatar it stands in for |
 

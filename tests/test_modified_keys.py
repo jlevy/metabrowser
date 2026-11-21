@@ -124,6 +124,11 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             ),
         ),
         Listener(
+            "Escape closing the root details disclosure",
+            _GUARD,
+            checks=("tests/dom/root-kind-mark-chrome.mjs",),
+        ),
+        Listener(
             "the reader's key ending a tooltip's focus repair, which only notes it",
             None,
             via=("endTooltipFocusRepair",),

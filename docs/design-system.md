@@ -1015,6 +1015,20 @@ host turns on.
 Until then `builtin_plugins/markdown/print-indicator.js` draws it, and its
 header says what KPress lacks.
 
+## Repository Details
+
+The root name in the navigation column opens Home.
+The chevron beside it opens the root’s details.
+The folder glyph identifies a local folder, a Git checkout, or a cloud mirror.
+The disclosure shows the root’s location, file count, size, and latest file timestamp
+when available. Mirrors and pinned checkouts show the full commit and where the files
+come from.
+
+If the root has a recognized GitHub repository, **Copy Link** copies the repository URL
+and **Open in Browser** opens it in the default browser.
+A page’s **View on GitHub** menu uses the same action rows and icons with the current
+page’s URL.
+
 ## View on GitHub
 
 Every page that github.com has a page for has one **View on GitHub** button, in the same
@@ -4017,8 +4031,8 @@ and without an avatar.
 ### Source Kind Marks
 
 **The root’s name at the top of the navigation leads with a mark for what is open: a
-cloud for a mirror, a folder with Git’s branch for a Git checkout, and a folder with its
-root node for a plain folder.** The three are the source kinds of the
+folder with a cloud for a mirror, a folder with Git’s branch for a Git checkout, and a
+folder with its root node for a plain folder.** The three are the source kinds of the
 [Icon Catalog](design-system-icons.md#source-kinds), which says what each means, how the
 kind is decided, and where else each is drawn.
 The rules for the page are:
@@ -4041,7 +4055,8 @@ The rules for the page are:
   ([Tooltips Add Information](#tooltips-add-information), for a glyph-only mark).
   It is no control, and takes no focus.
 - **It stands outside the name’s link.** The name is [Home](#home), with its own hover
-  surface, focus ring, and tooltip, and the mark’s tooltip is the mark’s.
+  surface and focus ring.
+  The chevron opens [Repository Details](#repository-details).
 - **It is drawn at `--icon-glyph` in `--muted`**, so the bold name stays the heading,
   like a folder’s glyph in a view header, and it shortens nothing: the name still ends
   in an ellipsis where the column is narrow.
@@ -4944,15 +4959,7 @@ It stays a link to `/view/`, so a modified or middle click and its context menu 
 they do on any link.
 A plain click, or Enter on it, stays in the page.
 
-Its tooltip adds details and nothing else
-([Tooltips Add Information](#tooltips-add-information)): the full path of the served
-root, its files, size, and newest change, and on a mirror what the mirror is.
-It does not say that the name goes home, which the click and the name already say.
-A click neither shows nor hides it.
-A press on the name moves focus to it in Chrome, and that focus is the pointer’s own
-click rather than a reader moving focus
-([Tooltip Input Modality](#tooltip-input-modality)), so the tooltip stays as the pointer
-has it: shown while the pointer rests on the name, and gone when it leaves.
+[Repository Details](#repository-details) opens from the adjacent chevron.
 
 `0` runs the name’s own click path, from anywhere a shell letter works, and never in a
 text field ([Keyboard Shortcuts](#keyboard-shortcuts)). `static/main-tabs.js` (`goHome`)
@@ -5567,23 +5574,11 @@ navigation tooltips such as Git commit summaries.
 Tooltip content therefore cannot be the only source of an accessible name, instruction,
 or state.
 
-**Two focuses are not transitions**, and leave the tooltip as the pointer has it
-(`hideTooltipOnFocus` in `static/app.js`):
-
-- The focus a press on the folder’s name gives it is the click itself ([Home](#home)).
-- Focus put back where it was.
-  A rebuild that replaces the focused control focuses its replacement, as the Files
-  filter bar does when new tallies arrive.
-  When the element that last had focus has left the document, and no key or pointer
-  press of the reader’s has come since, the focus that follows is that repair.
-  A rebuild that removes the focused control and focuses nothing, as pressing the bar’s
-  Clear does, leaves focus on the page, so the focus the reader’s next Tab or click
-  gives is focus moving and puts the tooltip away.
-  The repair still puts away a tooltip whose own anchor the rebuild removed, since that
-  tooltip would never hear the pointer leave.
-  Without the rule, the filter bar’s rebuild would put away a tree row’s tooltip,
-  waiting or shown, under a pointer that had not moved, and nothing would bring it back
-  until the pointer left the row.
+A rebuild may focus the replacement of a control that left the document.
+When the reader has pressed neither a key nor a pointer button since the old control
+lost focus, the replacement keeps the pointer’s tooltip if its anchor still exists.
+For example, refreshing the Files filter bar leaves a tree row’s tooltip in place while
+the pointer remains over that row (`hideTooltipOnFocus` in `static/app.js`).
 
 This is not a rule about accessible names.
 `aria-label` is unaffected and still required wherever it was: a screen reader does not
@@ -5625,7 +5620,7 @@ A tooltip shown with no anchor is inside no element, so only a bare `hide()` put
 away. `MetabrowserTooltip.hide(within)` is the shell’s form of the same call.
 Without `within`, `hide()` puts away whatever tooltip there is, which is what a pointer
 leaving a surface means, but one in the nav’s header: the header is the shell’s chrome,
-which no view draws, so a view’s hide never takes the folder’s name’s tooltip
+which no view draws, so a view’s hide never takes the root kind mark’s tooltip
 ([Home](#home)).
 
 The page has one tooltip, so a surface that calls `hide()` to clear its own puts away

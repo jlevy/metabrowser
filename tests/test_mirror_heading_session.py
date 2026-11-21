@@ -268,20 +268,13 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
     assert directory != location
     assert mirror["mainHeading"]["file"]["text"] == f"\u2191 squares / docs mirror in {directory}"
     assert mirror["mainHeading"]["root"] == f"\u2191 mirror in {directory} squares"
-    assert mirror["tooltips"] == {
-        "navigationHeading": {
-            "served": f"squares {sentence}",
-            "afterTreeLoad": f"squares 3 files 140 bytes {sentence}",
-        },
-        "rootName": sentence,
-        "note": sentence,
+    assert mirror["details"] == {
+        "location": "squares",
+        "source": sentence,
+        "before": "",
+        "after": "3 files 140 bytes",
     }
-    # The full commit is copied from the control after the name.
-    copy = mirror["navigationHeading"]["commitCopy"]
-    assert copy["copied"] == [pin] and copy["ownerStamped"] is True
-    assert copy["attributes"]["aria-label"] == f"Copy commit {pin}"
-    assert folder["navigationHeading"]["commitCopy"] is None
-    assert folder["tooltips"]["rootName"] is None and folder["tooltips"]["note"] is None
+    assert folder["details"]["source"] is None
     assert hostile["mainHeading"]["file"]["text"].startswith("\u2191 a<b>&\ufffdx / docs ")
     for page, title in (
         (folder, "squares \u2022 Metabrowser"),

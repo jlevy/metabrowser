@@ -1701,6 +1701,14 @@ type MetabrowserSdk = {
   /** A page's external counterpart as a split button: its link, and a menu of Copy Link
    *  and Open in Browser (docs/design-system.md, "View on GitHub"). */
   counterpartButton(counterpart: MetabrowserCounterpart): HTMLElement;
+  /** Copy Link and Open in Browser rows for a trusted HTTP or HTTPS URL. */
+  externalLinkMenuItems(
+    url: string,
+    options?: {
+      onActivate?: () => void;
+      onCopyResult?: (result: "copied" | "failed") => void;
+    },
+  ): [HTMLButtonElement, HTMLAnchorElement];
   /** Ask `GET /api/counterpart` for `page`'s counterpart and put its button in `corner`,
    *  a header's `.view-header-end`; resolves to the button, or null when there is none. */
   mountCounterpart(corner: Element, page: string): Promise<HTMLElement | null>;
@@ -4802,12 +4810,8 @@ declare global {
     /** Present on a checkout's page, a folder that is a repository's root: on its working
      * tree (`working_tree` true) and on each revision it shows. */
     METABROWSER_SOURCE_CHECKOUT?: { working_tree: boolean };
-    /** static/mirror-heading.js, which only a served mirror's page carries. */
-    MetabrowserMirrorHeading?: Readonly<{
-      mountCommitCopy(): void;
-      note(): string;
-      tip(detail?: string): string;
-    }>;
+    /** The location note a mirror or pinned checkout carries in its view header. */
+    MetabrowserMirrorHeading?: Readonly<{ note(): string }>;
     MetabrowserViewState: MetabrowserViewStateRuntime;
     MetabrowserViewComposition: MetabrowserViewCompositionRuntime;
     /** static/file-watches.js, the on-demand bundle `metabrowser.watchFile` fetches. */

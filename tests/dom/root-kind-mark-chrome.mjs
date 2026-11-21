@@ -21,7 +21,7 @@
 // - the main pane's header for the root leads with that same glyph, and the header of a folder
 //   inside the root with the ordinary folder's, so a root is never drawn as an ordinary folder;
 // - its tooltip shows over it, and is its accessible name; and
-// - the name's own tooltip is still the name's, not the mark's.
+// - the adjacent disclosure opens details for the source and dismisses with Escape.
 //
 // It saves one screenshot of the navigation's top for each kind in each theme. Each step
 // writes `phase <name> <ms since start>` to stderr, so a slow run says where.
@@ -149,8 +149,11 @@ const TOOLTIP = `(() => {
   return tip && tip.classList.contains("visible") ? tip.innerText.trim() : null;
 })()`;
 
-async function screenshot(file) {
-  const { data } = await browser.send("Page.captureScreenshot", { format: "png", clip: CLIP });
+async function screenshot(file, height = CLIP.height) {
+  const { data } = await browser.send("Page.captureScreenshot", {
+    format: "png",
+    clip: { ...CLIP, height },
+  });
   fs.writeFileSync(path.join(shots, file), Buffer.from(data, "base64"));
 }
 
@@ -237,20 +240,85 @@ for (const theme of ["light", "dark"]) {
     );
     await screenshot(`root-kind-${kind}-${theme}-tooltip.png`);
 
-    // The name's tooltip is the name's: moving onto it takes the mark's away.
     await hover(".header-path");
+    await browser.waitFor(`(${TOOLTIP}) === null`, STEP_MS);
+    const details = await browser.evaluate(`(() => {
+      const root = document.getElementById("root-details");
+      const summary = root.querySelector("summary");
+      summary.focus();
+      summary.click();
+      return {
+        open: root.open,
+        text: root.querySelector(".root-details-info").innerText,
+        removed: document.querySelector(".header-copy") === null,
+      };
+    })()`);
+    check(
+      `${where}: the disclosure has checkout details and replaces the hover copy control`,
+      details.open && details.removed && details.text.includes(at.label.split(" (")[0]),
+      JSON.stringify(details),
+    );
+    if (kind === "git") {
+      await browser.waitFor(
+        'document.querySelector("#root-details a[data-web-view=external]") !== null',
+        STEP_MS,
+      );
+      const links = await browser.evaluate(`(async () => {
+        const panel = document.querySelector(".root-details-panel");
+        const copy = panel.querySelector("button");
+        const link = panel.querySelector("a");
+        let copied;
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: { writeText: async (text) => { copied = text; } },
+        });
+        copy.click();
+        await Promise.resolve();
+        delete navigator.clipboard;
+        return {
+          copied,
+          href: link.href,
+          labels: [copy.innerText, link.innerText],
+          glyphs: [copy, link].map(item => item.querySelector(".menu-item-icon svg") !== null),
+          owner: [copy, link].every(window.MetabrowserPluginHost.isOwnedDelegate),
+          result: panel.querySelector('[role="status"]').textContent,
+        };
+      })()`);
+      check(
+        `${where}: both link actions use the repository URL and shared icons`,
+        links.copied === "https://github.com/octo/demo" &&
+          links.href === links.copied &&
+          links.labels.join("|") === "Copy Link|Open in Browser" &&
+          links.glyphs.every(Boolean) &&
+          links.owner &&
+          links.result === "Link copied",
+        JSON.stringify(links),
+      );
+    } else {
+      const hasActions = await browser.evaluate(
+        'document.querySelector("#root-details").hasAttribute("data-repository-url")',
+      );
+      check(`${where}: a root with no hosted URL has no link actions`, !hasActions, details);
+    }
     await browser.waitFor(
-      `(${TOOLTIP}) !== null && (${TOOLTIP}) !== ${JSON.stringify(at.tip)}`,
+      'document.querySelector(".custom-tooltip")?.style.display !== "block"',
       STEP_MS,
     );
-    const named = await browser.evaluate(TOOLTIP);
-    check(
-      `${where}: the tooltip over the name is not the mark's`,
-      named !== at.tip && named.length > 0,
-      named,
-    );
+    await screenshot(`root-kind-${kind}-${theme}-details.png`, 300);
+    const dismissed = await browser.evaluate(`(() => {
+      const root = document.getElementById("root-details");
+      const summary = root.querySelector("summary");
+      const chords = ["altKey", "ctrlKey", "metaKey"].every((modifier) => {
+        const escape = new KeyboardEvent("keydown", {
+          key: "Escape", bubbles: true, cancelable: true, [modifier]: true,
+        });
+        return summary.dispatchEvent(escape) && root.open;
+      });
+      summary.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      return chords && !root.open && document.activeElement === summary;
+    })()`);
+    check(`${where}: Escape closes the disclosure and returns focus`, dismissed, details);
     await browser.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 900, y: 400 });
-    await browser.waitFor(`(${TOOLTIP}) === null`, STEP_MS);
     await screenshot(`root-kind-${kind}-${theme}.png`);
   }
 }

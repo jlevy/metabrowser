@@ -378,25 +378,4 @@ const transcript = {};
   transcript["focus moving during the delay puts the tooltip away"] = { atDelay };
 }
 
-// A press on the folder's name focuses it, and that focus is the click itself, not focus
-// moving: the name's tooltip stays as the pointer has it (docs/design-system.md, "Home").
-// The press is spent by that focus, so the next one moves focus as any other does.
-{
-  const { clock, read, sandbox } = page();
-  sandbox.hideTooltipOnFocus({ target: control() });
-  const name = row(10);
-  sandbox.showTooltip("<b>~/served</b>", name);
-  clock.advance(300 + 16);
-  sandbox.tooltipPressedAnchor = name;
-  sandbox.hideTooltipOnFocus({ target: name });
-  clock.advance(150);
-  const pressed = read();
-  assert(pressed.display === "block" && pressed.visible, "the name's own press took its tooltip");
-  sandbox.hideTooltipOnFocus({ target: control() });
-  clock.advance(150);
-  const moved = read();
-  assert(moved.display === "none" && !moved.visible, "focus moved after the press and it stayed");
-  transcript["the folder name's own press leaves its tooltip"] = { pressed, moved };
-}
-
 process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
