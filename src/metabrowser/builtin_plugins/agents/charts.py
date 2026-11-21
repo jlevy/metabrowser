@@ -22,12 +22,11 @@ from typing import Any
 
 from cachetools import LRUCache
 
-# The built-in chart projection shares the host's generic parser factory.
-from metabrowser.logutil.parsing import create_parser
 from metabrowser.plugin_api import (
     ArtifactPath,
     JsonlParseLimitError,
     LogEvent,
+    create_parser,
     detect_adapter,
     jsonl_parse_max_bytes,
 )

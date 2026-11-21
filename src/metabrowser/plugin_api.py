@@ -25,6 +25,7 @@ from metabrowser.jsonl_view import JsonlParseLimitError
 from metabrowser.logutil.parsing import (
     LogEvent,
     LogParser,
+    create_parser,
     detect_adapter,
     register_log_adapter,
     registered_log_adapters,
@@ -289,6 +290,7 @@ __all__ = [
     "blob_cell",
     "coerce_filter_value",
     "content_generation",
+    "create_parser",
     "cut_utf8",
     "decode_cursor",
     "decode_key",

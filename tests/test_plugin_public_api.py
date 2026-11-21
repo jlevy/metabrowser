@@ -18,6 +18,7 @@ from metabrowser import (
     ArtifactDecompressionTimeoutError,
     ArtifactPath,
     JsonlParseLimitError,
+    create_parser,
     detect_adapter,
     extract_agent_charts_cached,
     paths_safe,
@@ -43,6 +44,7 @@ PLUGIN_API_EXPORTS = {
     "LogParser",
     "SourceCapabilities",
     "UnsupportedSourceCapabilityError",
+    "create_parser",
     "detect_adapter",
     "extract_agent_charts_cached",
     "read_content_window",
@@ -156,6 +158,7 @@ def test_sidekick_runtime_helpers_are_public() -> None:
     assert issubclass(ArtifactDecompressionTimeoutError, ArtifactDecompressionLimitError)
     assert issubclass(ArtifactDecompressionLimitError, ArtifactCompressionError)
     assert issubclass(JsonlParseLimitError, ValueError)
+    assert create_parser("unknown").adapter_name == "unknown"
     assert callable(detect_adapter)
     assert callable(extract_agent_charts_cached)
     assert callable(register_root_callback)

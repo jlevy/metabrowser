@@ -1298,8 +1298,9 @@ which a CLI integration can catch to keep a command’s message and exit code, a
   transparently, within decompression limits, and raises `ArtifactCompressionError`,
   `ArtifactDecompressionLimitError`, or `ArtifactDecompressionTimeoutError` to separate
   malformed data from size and time limits.
-- **JSONL:** `LogEvent`, `LogParser`, `detect_adapter(lines)`, `register_log_adapter`,
-  and `registered_log_adapters()` are the adapter contract above.
+- **JSONL:** `LogEvent`, `LogParser`, `detect_adapter(lines)`, `create_parser(adapter)`,
+  `register_log_adapter`, and `registered_log_adapters()` are the adapter contract
+  above. Use `create_parser` to instantiate a registered adapter for each stream.
   Built-in `agents` imports these from `metabrowser.plugin_api`, and
   `tests/test_agents_import_boundary.py` holds it to that.
   `jsonl_parse_max_bytes()` is the parser’s decompressed input limit, so a hook reads at
