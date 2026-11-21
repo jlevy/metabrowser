@@ -41,9 +41,6 @@ struct RuntimeView: View {
                     isSearching: model.isSearching, isChoosing: model.isChoosing,
                     isPreparingGuide: model.isPreparingGuide))
             }
-            if model.setup == nil {
-                Link("Installation and troubleshooting on GitHub", destination: ProjectLinks.installationGuide)
-            }
             if let notice = model.notice {
                 Text(notice).foregroundStyle(.orange).textSelection(.enabled)
             }
@@ -62,6 +59,7 @@ struct RuntimeView: View {
             HStack {
                 Button("Check Setup…", action: actions.checkSetup)
                 Button("Reveal Logs", action: actions.revealLogs)
+                Link("Installation and troubleshooting on GitHub", destination: ProjectLinks.installationGuide)
             }
             Divider()
             Text("Preferences").font(.headline)

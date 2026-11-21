@@ -275,6 +275,23 @@ try {
     rowsLong.every((r, i) => r.height === rowsBefore[i].height),
     { before: rowsBefore[0], after: rowsLong[0] },
   );
+  await chrome.evaluate(`(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (input, ...options) => {
+      const response = await originalFetch.call(window, input, ...options);
+      if (!response.ok || !response.url.includes("/api/plugin/agents/live")) return response;
+      window.fetch = originalFetch;
+      return Response.json({ ...(await response.json()), total: 47 });
+    };
+  })()`);
+  check(
+    "the active count follows a live poll after indexing, including sessions outside the list",
+    await until(
+      chrome,
+      `${SHOWN}?.view.querySelector(".agents-active-count")?.textContent === "47"`,
+      8000,
+    ),
+  );
   step("home");
 
   // -- leaving the home stops its poll ------------------------------------------------

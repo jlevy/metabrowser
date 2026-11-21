@@ -93,6 +93,8 @@ export function mountHome(container, ctx, mb) {
   let recent = [];
   /** @type {ReadonlyArray<LiveRow>} */
   let live = [];
+  /** @type {number | null} */
+  let liveTotal = null;
   let liveKnown = false;
   let liveNow = Date.now() / 1000;
 
@@ -167,7 +169,10 @@ export function mountHome(container, ctx, mb) {
     slot("totals", "agents-totals").innerHTML =
       '<div class="agents-stats">' +
       stat("Sessions", esc(mb.formatInteger(totals.sessions))) +
-      stat("Active", esc(mb.formatInteger(totals.running))) +
+      stat(
+        "Active",
+        `<span class="agents-active-count">${liveTotal === null ? "—" : esc(mb.formatInteger(liveTotal))}</span>`,
+      ) +
       stat("Size on disk", esc(mb.formatSize(totals.size_bytes))) +
       (byAgent ? stat("By agent", byAgent) : "") +
       "</div>";
@@ -273,12 +278,16 @@ export function mountHome(container, ctx, mb) {
       })),
       { label: "Active sessions" },
     );
+    const emptyText =
+      liveTotal === 0
+        ? "No active sessions detected."
+        : liveKnown
+          ? "Activity unavailable."
+          : "Checking…";
     element.innerHTML =
       '<h3 class="section-heading agents-heading">Active sessions</h3>' +
       '<p class="agents-muted agents-live-note">Claude Code processes and recent Codex activity.</p>' +
-      (live.length === 0
-        ? `<p class="agents-empty">${liveKnown ? "No active sessions detected." : "Checking…"}</p>`
-        : rows);
+      (live.length === 0 ? `<p class="agents-empty">${emptyText}</p>` : rows);
     reorder();
   }
 
@@ -340,6 +349,11 @@ export function mountHome(container, ctx, mb) {
       return;
     }
     live = /** @type {ReadonlyArray<LiveRow>} */ (answer.sessions ?? []);
+    liveTotal = typeof answer.total === "number" ? answer.total : live.length;
+    const activeCount = slots.get("totals")?.querySelector(".agents-active-count");
+    if (activeCount) {
+      activeCount.textContent = mb.formatInteger(liveTotal);
+    }
     liveKnown = true;
     liveNow = typeof answer.now === "number" ? answer.now : Date.now() / 1000;
     paintLive();

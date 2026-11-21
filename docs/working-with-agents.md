@@ -198,6 +198,7 @@ beside it. Any other folder keeps its Overview.
   It shows how many sessions there are, how many show signs of activity, and the size on
   disk; the sessions started per day, and a histogram of session sizes.
   **Active sessions** uses live provider signals.
+  The Active count follows the same poll.
   Claude Code sessions qualify while their registered process is alive.
   Codex threads qualify when the desktop records a fresh active turn or when the thread
   was updated in the last two minutes.

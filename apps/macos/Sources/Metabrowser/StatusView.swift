@@ -117,6 +117,7 @@ private struct FailureView: View {
                     .font(.title3.weight(.semibold))
                     .symbolRenderingMode(.multicolor)
                 Text(failure.summary).textSelection(.enabled)
+                Link("Installation and troubleshooting on GitHub", destination: ProjectLinks.installationGuide)
                 Text("Recent server output").font(.caption).foregroundStyle(.secondary)
                 RecentOutput(lines: failure.recentOutput)
             }
@@ -138,9 +139,8 @@ private struct FailureView: View {
     }
 }
 
-/// A GitHub failure: what went wrong, `metab`'s message, and the commands that fix it,
-/// each with Copy, and, for one
-/// that a sign-in can fix, that switching back tries again.
+/// Shows the failure and any commands to copy. For sign-in failures, switching back to
+/// the app retries the request.
 private struct GitHubFailureDetails: View {
     let failure: GitHubFailure
 

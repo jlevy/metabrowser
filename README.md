@@ -81,25 +81,43 @@ directories.
 
 The optional app requires an Apple silicon Mac with macOS 26 or later and uses the
 separately installed `metab` command.
-The public package is available today.
-Check [GitHub Releases](https://github.com/jlevy/metabrowser/releases) for a native Mac
-download.
-Open the disk image and drag Metabrowser to Applications when a signed download
-is available. The Mac app is currently a developer preview.
-See its [runtime requirement](docs/installation.md#release-status) and
-[developer preview setup](docs/installation.md#the-macos-app).
+The public CLI is available from PyPI. The native app is a developer preview.
+When a signed disk image appears on
+[GitHub Releases](https://github.com/jlevy/metabrowser/releases), open it and drag
+Metabrowser to Applications after installing a compatible `metab`.
 
 If the app cannot start a folder, open **Settings**. It shows the required version and
 any rejected runtimes.
 After installing or updating `metab`, use **Find Again** or **Choose metab…** to select
-the executable. If a preview needs a version that has yet to reach PyPI, updating the
-public package cannot meet that requirement.
-Follow the preview setup linked above or use the public CLI in your web browser.
+the executable.
+If Settings says the required version is pending on PyPI, use the preview
+runtime described below or run the public CLI in your web browser.
 **Check Setup…** checks the tools and paths the app actually uses, which can differ from
 the ones in your terminal.
 Restart an open folder’s server if the app offers to after an upgrade.
 See [Choosing a metab](docs/macos-app.md#choosing-a-metab) for runtime discovery and the
 app’s trust checks.
+
+#### Developer preview
+
+The current preview requires `metab` 0.13.0 or later, which is pending on PyPI. To try
+the preview, install Xcode 26.6 or later, uv, and
+[the repository’s pinned Node version](docs/development.md#set-up).
+In Terminal:
+
+~~~shell
+git clone https://github.com/jlevy/metabrowser.git
+cd metabrowser
+make install
+make macos-app
+~~~
+
+Open the app at the path printed by the build.
+In **Settings → Choose metab…**, select `.venv/bin/metab` inside that checkout.
+If the build fails or the runtime is rejected, check the
+[development prerequisites](docs/development.md#set-up) and
+[preview setup guide](docs/installation.md#the-macos-app) for the checkout and version
+the app expects.
 
 ### Plugins and agent skill
 

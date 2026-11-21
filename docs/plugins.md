@@ -74,8 +74,8 @@ registry. The same registry lets installed plugins register their own
 The manifest’s `requires = ["structured"]` declares the plugin used to render event
 payloads. The Codex provider reads known tables using Python’s SQLite library.
 The `sqlite` plugin separately provides general-purpose database browsing and requires
-`table`. The optional `fsqlite` plugin requires both `sqlite` and `table`.
-`metab --plugins` lists these edges in its `REQUIRES` column.
+`table`. The bundled `fsqlite` plugin adds store-specific views and requires both
+`sqlite` and `table`. `metab --plugins` lists these edges in its `REQUIRES` column.
 The Mac app shows them in Settings alongside each plugin.
 
 The [agent browsing guide](working-with-agents.md#browsing-agent-history) explains what
