@@ -98,6 +98,7 @@ WHEEL_SMOKE_SCRIPT = dedent(
     required = {
         "agents",
         "binary",
+        "delimited",
         "diff",
         "event-log",
         "folder",
@@ -105,7 +106,9 @@ WHEEL_SMOKE_SCRIPT = dedent(
         "html",
         "image",
         "markdown",
+        "sqlite",
         "structured",
+        "table",
         "text",
         "unknown-jsonl",
     }

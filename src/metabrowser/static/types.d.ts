@@ -268,6 +268,8 @@ type MetabrowserViewCompositionRuntime = Readonly<{
 type MetabrowserNavigationOpenOptions = {
   /** Activate this view when the destination declares it; otherwise use its default. */
   viewId?: string;
+  /** Replace the current history entry rather than push one. */
+  replace?: boolean;
 };
 
 type MetabrowserNavigationApi = Readonly<{
@@ -1316,7 +1318,7 @@ type StructuredExpansion = Readonly<{
   indentChars: number;
 }>;
 
-type StructuredBuiltins = {
+type StructuredExports = {
   calculateOptimalExpansion: (
     parsed: unknown,
     options: { maxLines?: number; maxExpandThreshold?: number; indentChars?: number },
@@ -1339,7 +1341,8 @@ type StructuredBuiltins = {
   renderTree: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
 
-type AgentLogBuiltins = {
+/** agent-log.js's exports, which the agents plugin's `loadLogRenderers` answers. */
+type AgentLogRenderers = {
   disposeCharts: (container?: HTMLElement) => void;
   disposeLog: (container?: HTMLElement) => void;
   renderCharts: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
@@ -1348,12 +1351,13 @@ type AgentLogBuiltins = {
   renderRaw: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
 
-type TextBuiltins = {
-  renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
+type AgentsExports = {
+  /** The agent-log renderers and their stylesheet, loaded on demand, once. */
+  loadLogRenderers: () => Promise<AgentLogRenderers>;
 };
 
-/** What the GitHub plugin publishes for the shell, once its assets have loaded. */
-type GithubBuiltins = {
+/** What the GitHub plugin exports for the shell. */
+type GithubExports = {
   /** A pull request's state as the Pulls tab draws it: its icon, named for assistive
    * technology unless `named` is false. */
   pullStateIcon: (
@@ -1362,7 +1366,7 @@ type GithubBuiltins = {
   ) => HTMLElement;
 };
 
-type MarkdownBuiltins = {
+type MarkdownExports = {
   mountRendered: (
     container: HTMLElement,
     ctx: MetabrowserRenderContext,
@@ -1386,20 +1390,35 @@ type MarkdownBuiltins = {
    * nothing when `isolated: true` says nothing else bounds them. Null when *root* holds
    * no diagram, so nothing is fetched; otherwise `dispose` stops drawing and leaves the
    * figures. */
-  drawDiagrams?: (
+  drawDiagrams: (
     root: ParentNode,
     options?: { inert?: boolean; isolated?: boolean },
   ) => { dispose(): void; ready: Promise<void> } | null;
 };
 
-type MetabrowserBuiltins = {
-  agentLog?: AgentLogBuiltins;
-  github?: GithubBuiltins;
-  markdown?: MarkdownBuiltins;
-  structured?: StructuredBuiltins;
-  text?: TextBuiltins;
-  [name: string]: unknown;
+/** A provider plugin's exports, the namespace of its index.js, by the plugin's name. */
+type MetabrowserPluginExports = {
+  agents: AgentsExports;
+  github: GithubExports;
+  markdown: MarkdownExports;
+  structured: StructuredExports;
 };
+
+/** One plugin's assets, as the server's plugin table (`_build_plugin_asset_config_block`) names them. */
+type PluginAssets = Readonly<{
+  name: string;
+  module: string;
+  scripts: string[];
+  styles: string[];
+}>;
+
+/** `metabrowser.plugins`: a plugin's declared providers ("Declared Dependencies"). */
+type MetabrowserPlugins = Readonly<{
+  load<Name extends keyof MetabrowserPluginExports>(
+    name: Name,
+  ): Promise<MetabrowserPluginExports[Name]>;
+  load(name: string): Promise<object>;
+}>;
 
 type MetabrowserRollupEnvelope = {
   root: string;
@@ -1608,13 +1627,13 @@ type MetabrowserSdk = {
   ageBucket(mtimeSeconds: number | null | undefined): MetabrowserAgeBucket | null;
   ageLabelHtml(mtimeSeconds: number | null | undefined): string;
   bench?: MetabrowserBench;
-  builtins: MetabrowserBuiltins;
   debug?: MetabrowserDebug;
   errors: MetabrowserRequestErrorRuntime;
   /** What the page reports to the event log, and its Details panel (static/event-reports.js). */
   eventReports?: MetabrowserEventReports;
   directoryTotals: MetabrowserDirectoryTotalsStore;
   filters: MetabrowserFilterState;
+  plugins: MetabrowserPlugins;
   folderOverview?: FolderOverviewRegistry;
   folderContext: Readonly<{
     refresh(path: string): Promise<void>;
@@ -1750,11 +1769,15 @@ type MetabrowserSdk = {
     onUpdate: (envelope: MetabrowserRollupEnvelope) => void,
   ): MetabrowserRollupWatch;
   onInventoryChange(listener: (paths: ReadonlyArray<string> | null) => void): () => void;
+  /** Hear when *path* changes, through the page's event stream; returns a disposer. A page
+   *  with no stream, such as a pinned revision's, never calls back. */
+  watchFile(path: string, options: MetabrowserFileWatchOptions): () => void;
   fetchKpressRender(
     ctx: MetabrowserRenderContext,
     viewId?: string,
     options?: Record<string, unknown>,
   ): Promise<KpressRenderPayload>;
+  /** GET a data hook; an array value repeats its parameter, one value each. */
   fetchPluginData(
     plugin: string,
     endpoint: string,
@@ -1837,15 +1860,15 @@ type MetabrowserSdk = {
 };
 
 type StructuredPreviewGlobal = {
-  calculateOptimalExpansion: StructuredBuiltins["calculateOptimalExpansion"];
+  calculateOptimalExpansion: StructuredExports["calculateOptimalExpansion"];
   formatValue: (...args: Array<unknown>) => unknown;
   generateStructuredPreview: (...args: Array<unknown>) => unknown;
 };
 
 type StructuredTreeGlobal = {
   expansion: StructuredExpansion;
-  materializeRows: StructuredBuiltins["materializeRows"];
-  renderRowHtml: StructuredBuiltins["renderRowHtml"];
+  materializeRows: StructuredExports["materializeRows"];
+  renderRowHtml: StructuredExports["renderRowHtml"];
   renderInlineTree: (
     container: HTMLElement,
     data: unknown,
@@ -2491,17 +2514,11 @@ type MetabrowserPluginHostRuntime = Readonly<{
   ownsElement(element: Element | null | undefined): boolean;
   /** Keys still held from before static/plugin-shortcuts.js loaded; it empties this. */
   shortcutQueue: Set<MetabrowserQueuedShortcut>;
-  configureAssets(
-    assetsByKind: Record<
-      string,
-      Array<{
-        name: string;
-        module: string;
-        scripts: string[];
-        styles: string[];
-      }>
-    >,
-  ): void;
+  /** Each plugin's assets by name, and the plugins each kind's views come from. */
+  configureAssets(config: {
+    plugins: Record<string, PluginAssets>;
+    kinds: Record<string, string[]>;
+  }): void;
   loadPluginsForKind(kind: string): Promise<void>;
 }>;
 
@@ -3146,6 +3163,39 @@ type MetabrowserTreeKeyboardRuntime = Readonly<{
 }>;
 
 declare global {
+  /** A watched file's new generation (`file.changed`); null when nothing readable is there. */
+  type MetabrowserFileChange = { path: string; generation: string | null };
+  /** Where a file watch stands: waiting for a connection (or for a hidden page to be shown,
+   *  reason `hidden`), live, or refused (its reason says why). */
+  type MetabrowserFileWatchState = "waiting" | "live" | "refused";
+  type MetabrowserFileWatchListener = {
+    onChange(change: MetabrowserFileChange): void;
+    onState?(state: MetabrowserFileWatchState, reason: string | null): void;
+  };
+  type MetabrowserFileWatchOptions = MetabrowserFileWatchListener & {
+    /** The generation the reader read, so a change before the watch is registered reaches it. */
+    generation?: string | null;
+  };
+  type MetabrowserFileWatchRegistry = Readonly<{
+    watch(
+      path: string,
+      listener: MetabrowserFileWatchListener,
+      generation?: string | null,
+    ): () => void;
+    connected(id: string | null): void;
+    hidden(now: boolean): void;
+    changed(change: MetabrowserFileChange): void;
+    describe(): ReadonlyArray<
+      Readonly<{
+        path: string;
+        state: MetabrowserFileWatchState;
+        reason: string | null;
+        generation: string | null;
+        listeners: number;
+      }>
+    >;
+  }>;
+
   /** What static/event-reports.js reads: event_log_reports.browser_settings. */
   type MetabrowserEventReportSettings = {
     /** Whether the server writes an event log; without one nothing is tagged or sent. */
@@ -4539,7 +4589,10 @@ declare global {
   }>;
 
   type MetabrowserPublicSdk = MetabrowserSdk;
-  type MetabrowserStructuredBuiltins = StructuredBuiltins;
+  type MetabrowserPluginAssets = PluginAssets;
+  type MetabrowserAgentLogRenderers = AgentLogRenderers;
+  type MetabrowserGithubPullStateIcon = GithubExports["pullStateIcon"];
+  type MetabrowserStructuredExports = StructuredExports;
   type MetabrowserStructuredTreeRow = StructuredTreeRow;
   type MetabrowserPublicViewDescriptor = MetabrowserViewDescriptor;
   type MetabrowserPublicViewSpec = MetabrowserViewSpec;
@@ -4757,6 +4810,38 @@ declare global {
     }>;
     MetabrowserViewState: MetabrowserViewStateRuntime;
     MetabrowserViewComposition: MetabrowserViewCompositionRuntime;
+    /** static/file-watches.js, the on-demand bundle `metabrowser.watchFile` fetches. */
+    MetabrowserFileWatches?: Readonly<{
+      createFileWatches(deps: {
+        post(body: Record<string, unknown>): Promise<{ status: number; body: unknown }>;
+        connection?: string | null;
+        hidden?: boolean;
+      }): MetabrowserFileWatchRegistry;
+      createContainerFollower(deps: {
+        watches: Pick<MetabrowserFileWatchRegistry, "watch">;
+        setTimeout(callback: () => void, delayMs: number): ReturnType<typeof setTimeout>;
+        clearTimeout(handle: ReturnType<typeof setTimeout>): void;
+        observe(onMutation: () => void): () => void;
+      }): Readonly<{
+        follow(
+          row: HTMLElement,
+          children: HTMLElement,
+          load: (row: HTMLElement, children: HTMLElement) => Promise<unknown>,
+        ): void;
+        sweep(): void;
+        describe(): ReadonlyArray<Readonly<{ path: string; pending: boolean; running: boolean }>>;
+      }>;
+      shared(): MetabrowserFileWatchRegistry;
+      followContainer(
+        row: HTMLElement,
+        children: HTMLElement,
+        load: (row: HTMLElement, children: HTMLElement) => Promise<unknown>,
+      ): void;
+      connected(id: string | null): void;
+      changed(change: MetabrowserFileChange): void;
+    }>;
+    /** The connection the page's /api/events stream named in its last snapshot (app.js). */
+    metabrowserEventConnection?: string | null;
     /** static/view-header.js, an on-demand bundle loadViewComposition fetches. */
     MetabrowserViewHeader?: Readonly<{
       create(shell: MetabrowserViewHeaderShell): Readonly<MetabrowserViewHeaderBuilders>;

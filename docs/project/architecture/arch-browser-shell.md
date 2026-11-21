@@ -126,10 +126,14 @@ inert while the next view prepares, and `dispose()` follows the actual replaceme
 
 ### Plugin Assets
 
-The server writes `MetabrowserPluginHost.configureAssets` with each kind’s plugin
-descriptors (`_build_plugin_asset_config_block`), so no plugin asset is a startup
-dependency. The first selection of a kind, or a call to `ensureKindAssets`, loads its
-plugins once: styles in parallel, then extra scripts in manifest order, then `index.js`.
+The server writes `MetabrowserPluginHost.configureAssets` with each plugin’s assets by
+name and the plugins each kind’s views come from (`_build_plugin_asset_config_block`),
+so no plugin asset is a startup dependency.
+The first selection of a kind, or a call to `ensureKindAssets`, loads its plugins once:
+styles in parallel, then extra scripts in manifest order, then `index.js`.
+`metabrowser.plugins.load(name)` shares that load and resolves to the plugin’s
+`index.js` exports, which is how a plugin reaches a provider it declares in `requires`,
+and how a plugin with no kind of its own is reached at all.
 [Plugin Authoring](../../plugins.md#plugin-asset-lifecycle) states the guarantees a
 plugin relies on.
 
@@ -137,8 +141,9 @@ plugin relies on.
 
 `window.metabrowser` is defined by `plugin-sdk.js`, eager, and extended by
 `plugin-sdk-views.js` with the view-phase helpers before any plugin code runs, by
-`filter-controls.js` with `filterControls`, and by the built-in folder and Markdown
-plugins with `folderOverview` and `builtins.markdown`.
+`filter-controls.js` with `filterControls`, and by the built-in folder plugin with
+`folderOverview`. A plugin’s helpers for other plugins are its module’s exports, which
+`plugins.load` answers, never a property of this object.
 [Plugin Authoring](../../plugins.md#browser-sdk) documents it.
 It is also the one console entry point, so diagnostics extend it instead of adding
 globals:
@@ -310,6 +315,7 @@ them; the note beside the budget says why.
 | The plugin shortcut queue | Eager, since a plugin can attach a key before the registry exists | `queueShortcut` in `plugin-sdk.js` | The comment beside it |
 | Line gutter, SDK view helpers, and the syntax service | On demand, beside the view compositor and before any plugin code | `sdk-views` | [exp-037](../../../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | A file’s and a folder’s view header | On demand, beside the view compositor and the SDK view helpers | `view-header` | The comment beside the bundle in `server.py` |
+| A page’s file watches on its event stream | On demand, at a view’s first `metabrowser.watchFile` (a table, or a container whose children the tree read); `app.js` keeps only the stream’s connection and forwards `file.changed` | `file-watches` in `on_demand_script_bundles` | The comment beside the bundle in `server.py`; the startup budget had 295 bytes left when it was written (2026-11-20) |
 | Pull-request routes and page host | Eager at a `/pull/` address; on demand otherwise | `PULL_PAGE_STARTUP_SCRIPTS`, `pull-route` | exp-037 |
 | The watch on a revision’s file ages, and the clause it adds to a filtered count | On demand, the first time a response says the ages are not all in (`dating`, `partial`, `failed`); not offered to a page whose Git cannot read them | `revision-ages` in `on_demand_script_bundles`, when the pin’s Git can date files | The comment beside the bundle in `server.py`: it was a startup script of every pin’s shell, 4,940 bytes (1,896 gzipped) |
 | GitPath wire codec | Eager on a pin’s shell, the only page whose addresses spell it | `PIN_STARTUP_SCRIPTS` | exp-037 |
@@ -320,7 +326,8 @@ them; the note beside the budget says why.
 | The Diff summary’s tree | On demand, at the summary’s first opening, asked for on the header’s hover or focus | `renderDiffSummary` in `builtin_plugins/diff/diff-view.js` | The comment at the head of `builtin_plugins/diff/diff-summary.js` |
 | Inert Markdown render with its table of contents, and the step that places a render | On demand: the first at the first inert render, the second at the first Markdown render | `builtin_plugins/markdown/place-rendered.js` | exp-037 and the comment at its head |
 | A refused Markdown render’s source and notice | On demand, at a Markdown view’s first refused render | `builtin_plugins/markdown/rendered.js` | The comment beside the import |
-| A pull request’s rendered layer for Markdown, YAML, and JSON | On demand, beside a comparison that names a rendered route; the structured plugin’s tree, through `ensureKindAssets("structured")`, with the first screen’s prefetch and when the first YAML or JSON file is added | `markdownLayer` and `prefetchMarkdown` in `builtin_plugins/diff/index.js`, `ensureStructured` in `builtin_plugins/diff/diff-markdown.js` | The comments beside `markdownLayer` and `ensureStructured` |
+| A pull request’s rendered layer for Markdown, YAML, and JSON | On demand, beside a comparison that names a rendered route; the structured plugin’s tree, through `plugins.load("structured")`, with the first screen’s prefetch and when the first YAML or JSON file is added | `markdownLayer` and `prefetchMarkdown` in `builtin_plugins/diff/index.js`, `ensureStructured` in `builtin_plugins/diff/diff-markdown.js` | The comments beside `markdownLayer` and `ensureStructured` |
+| The table view: the table plugin’s module and stylesheet | On demand, at the first file of a kind with a Table view; the delimited plugin starts the load as its own module is evaluated, ahead of the view’s render, since its kind always opens in the Table view | `loadTable` in `builtin_plugins/delimited/index.js`, through `mb.plugins.load("table")` | 23.6 KB, 10.4 KB, and 2.9 KB compressed (gzip -9) for the view, its model, and its stylesheet (2026-11-20), more than a page that shows no table should carry; the comment at the head of `builtin_plugins/delimited/index.js` |
 
 Measured on 2026-10-01 as compressed bytes saved, these would move next if the budget
 tightens:

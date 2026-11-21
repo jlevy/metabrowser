@@ -797,8 +797,8 @@ def test_provider_fingerprint_drift_fails_reads_and_resets_stream_consumers(
         await asyncio.sleep(0)
 
         changed_registry = handle.config.registry_document.replace(
-            "registry_revision = 3",
             "registry_revision = 4",
+            "registry_revision = 5",
             1,
         )
         handle.config = InventoryConfig(registry_document=changed_registry)

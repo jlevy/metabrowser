@@ -232,7 +232,7 @@ def test_binary_content_under_a_text_extension_is_still_text(tmp_path: Path) -> 
 def _thread_manifest(match: dict[str, Any], **kind: Any) -> PluginManifest:
     return PluginManifest.model_validate(
         {
-            "plugin": {"name": "threads", "version": "0.0.1", "sdk_version": "0.7"},
+            "plugin": {"name": "threads", "version": "0.0.1", "sdk_version": "0.8"},
             "kind": [{"id": "agent-thread", "match": match, "binary": True, **kind}],
         }
     )

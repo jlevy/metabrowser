@@ -3841,6 +3841,59 @@ async function toggleTreeFolder(row, options) {
 // Container expansion mirrors lazy folder expansion: fetch children on
 // first open, then toggle visibility. Failures state themselves in the
 // group rather than leaving an empty box.
+// A container's children follow its file, as a database's tables do (file-watches.js,
+// followContainer): a change reads them again, coalesced, or on the next expand.
+var containerHtml = new WeakMap();
+function watchContainer(row, children) {
+  if (!isGitRevisionSource()) {
+    void window.MetabrowserAssets?.ensureAsset("file-watches").then(() =>
+      window.MetabrowserFileWatches?.followContainer(row, children, loadContainerChildren),
+    );
+  }
+}
+
+async function loadContainerChildren(row, children) {
+  // A refresh keeps the children drawn until their replacement arrives.
+  children.innerHTML ||=
+    '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-label="Loading">' +
+    '<span class="spinner spinner-sm" aria-hidden="true"></span></div>';
+  var level = Number(row.dataset.treeLevel || "1") + 1;
+  var childrenStartedAt = Date.now();
+  var html;
+  try {
+    var payload = await window.metabrowser.fetchPluginData(
+      row.dataset.containerPlugin,
+      row.dataset.containerChildren,
+      { path: row.dataset.path || "" },
+    );
+    var rows = Array.isArray(payload?.children) ? payload.children : [];
+    html = rows.length
+      ? renderContainerChildren(rows, { level: level })
+      : '<div class="tree-empty-note">No entries in this file.</div>';
+    children.dataset.loaded = "1";
+    watchContainer(row, children);
+  } catch (error) {
+    console.error(
+      "metabrowser tree: container children failed",
+      {
+        path: row.dataset.path,
+        plugin: row.dataset.containerPlugin,
+        hook: row.dataset.containerChildren,
+        elapsedMs: Date.now() - childrenStartedAt,
+      },
+      error,
+    );
+    html = '<div class="tree-empty-note nav-error">Could not load these entries.</div>';
+  }
+  // Drawn again only when they differ, so a refresh keeps a child's focus and hover.
+  if (containerHtml.get(children) !== html) {
+    containerHtml.set(children, html);
+    children.innerHTML = html;
+    applyTreeFilters();
+    synchronizeTreeNow();
+  }
+}
+
 async function toggleTreeContainer(row) {
   var children = /** @type {HTMLElement | null} */ (row.nextElementSibling);
   if (!children?.classList.contains("tree-children")) {
@@ -3860,37 +3913,7 @@ async function toggleTreeContainer(row) {
   row.classList.remove("collapsed");
   children.classList.remove("tree-children-collapsed");
   if (!children.dataset.loaded) {
-    children.innerHTML =
-      '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-label="Loading">' +
-      '<span class="spinner spinner-sm" aria-hidden="true"></span></div>';
-    var level = Number(row.dataset.treeLevel || "1") + 1;
-    var childrenStartedAt = Date.now();
-    try {
-      var payload = await window.metabrowser.fetchPluginData(
-        row.dataset.containerPlugin,
-        row.dataset.containerChildren,
-        { path: row.dataset.path || "" },
-      );
-      var rows = Array.isArray(payload?.children) ? payload.children : [];
-      children.innerHTML = rows.length
-        ? renderContainerChildren(rows, { level: level })
-        : '<div class="tree-empty-note">No entries in this file.</div>';
-      children.dataset.loaded = "1";
-    } catch (error) {
-      console.error(
-        "metabrowser tree: container children failed",
-        {
-          path: row.dataset.path,
-          plugin: row.dataset.containerPlugin,
-          hook: row.dataset.containerChildren,
-          elapsedMs: Date.now() - childrenStartedAt,
-        },
-        error,
-      );
-      children.innerHTML =
-        '<div class="tree-empty-note nav-error">Could not load these entries.</div>';
-    }
-    applyTreeFilters();
+    await loadContainerChildren(row, children);
   }
   synchronizeTreeNow();
   return row;
@@ -7356,9 +7379,9 @@ function toggleEvent(header) {
   parent.classList.toggle("expanded");
   if (parent.classList.contains("expanded")) {
     // First-expand mount: agent-log emits log-event-raw containers
-    // empty and registers mountLogEventRaw on window. When the
-    // structured plugin is loaded, this renders a collapsible inline
-    // tree; otherwise it falls back to a flat JSON block.
+    // empty and registers mountLogEventRaw on window. An object payload
+    // is the structured plugin's collapsible tree, drawn once that plugin
+    // loads (a flat JSON block if it cannot); a string is a flat block.
     var rawEl = parent.querySelector(".log-event-raw");
     if (
       rawEl &&
@@ -7601,10 +7624,14 @@ function openLiveStream(path, startCursor) {
   };
 }
 
+// Whether a live tail's rows went undrawn because the agent-log renderers did not load,
+// which is said once on the console rather than for every batch.
+var liveEventsUndrawnLogged = false;
+
 function appendLiveEvents(path, batch) {
-  return _perf.measure(
+  return _perf.measureAsync(
     "appendLiveEvents",
-    () => {
+    async () => {
       var cached = fileCache.get(path);
       if (!cached || !Array.isArray(batch.events)) {
         return;
@@ -7619,21 +7646,33 @@ function appendLiveEvents(path, batch) {
       }
       // Append to the currently-rendered log tab if it's visible. Charts are
       // not extended: they show the events there were when the file loaded.
-      var logPane = queryHtml('[data-tab-content="log"]');
+      const logPane = queryHtml('[data-tab-content="log"]');
       if (logPane && logPane.style.display !== "none") {
-        var tail = "";
         var startIdx = cached.events.length - batch.events.length;
-        // The agent-log built-in plugin owns renderLogEvent and exposes it
-        // through the public namespace. If the plugin isn't loaded
-        // (shouldn't happen for built-ins), the live tail is silently
-        // skipped — the static log render still shows up on full reload.
-        var renderEvt = window.metabrowser?.builtins?.agentLog?.renderLogEvent;
-        if (renderEvt) {
-          for (var j = 0; j < batch.events.length; j++) {
-            tail += renderEvt(logPane, batch.events[j], startIdx + j);
-          }
-        }
-        logPane.insertAdjacentHTML("beforeend", tail);
+        // The agents plugin's agent-log renderers, which drew this pane, export
+        // renderLogEvent. Returning the load makes the measure cover the rows' render, not
+        // only the bookkeeping.
+        return window.metabrowser.plugins
+          .load("agents")
+          .then((agents) => agents.loadLogRenderers())
+          .then(
+            (agentLog) => {
+              var tail = "";
+              for (var j = 0; j < batch.events.length; j++) {
+                tail += agentLog.renderLogEvent(logPane, batch.events[j], startIdx + j);
+              }
+              logPane.insertAdjacentHTML("beforeend", tail);
+            },
+            (error) => {
+              if (!liveEventsUndrawnLogged) {
+                liveEventsUndrawnLogged = true;
+                console.warn(
+                  "metabrowser: live events were not drawn: agent-log did not load",
+                  error,
+                );
+              }
+            },
+          );
       }
     },
     {
@@ -7653,14 +7692,7 @@ function flagRunEndedBadge() {
 }
 
 // ── FileStore + /api/events EventSource ────────────────────────
-//
-// Single source of truth for live tree decoration. Populated from
-// /api/events:
-//   1. fs.snapshot (id=0 sentinel) — initial snapshot at the
-//      requested scope.
-//   2. fs.change ops — walker / watcher updates; each upsert
-//      replaces an FsEntry in the store and triggers
-//      applyCellPatch() to update the rendered tree row.
+// arch-live-delivery.md, "The Browser's Stores" and "Recovery".
 var fileStore = new Map(); // path -> FsEntry
 var fileStoreSubscribers = [];
 var inventoryEventSource = null;
@@ -8835,13 +8867,18 @@ function _createInventoryEventSource() {
   }
   inventoryEventSource.addEventListener("fs.snapshot", (e) => {
     try {
+      // The connection leads the frame; file watches register on it (file-watches.js).
+      var named = /^\{"connection":(?:"([^"]*)"|null),/.exec(e.data);
+      var body = named ? e.data.slice(named[0].length) : e.data;
+      window.metabrowserEventConnection = named?.[1] ?? null;
+      window.MetabrowserFileWatches?.connected(window.metabrowserEventConnection);
       // Equality of this scoped snapshot avoids parsing and repainting it.
       // It cannot prove deep files unchanged: retain the normal revalidation
       // and Recent repair boundary even when the shallow tree is identical.
-      if (lastInventorySnapshot !== e.data) {
+      if (lastInventorySnapshot !== body) {
         var data = JSON.parse(e.data);
         fileStoreApplySnapshot(data.scope, data.entries || []);
-        lastInventorySnapshot = e.data;
+        lastInventorySnapshot = body;
         if (data.complete === true) {
           inventoryChangeHighlightingActive = true;
         }
@@ -8875,6 +8912,13 @@ function _createInventoryEventSource() {
       var data = JSON.parse(e.data);
       fileStoreApplyChange(data.ops || []);
       _scheduleRecentRecompute();
+    } catch (_e) {
+      /* ignore */
+    }
+  });
+  inventoryEventSource.addEventListener("file.changed", (e) => {
+    try {
+      window.MetabrowserFileWatches?.changed(JSON.parse(e.data));
     } catch (_e) {
       /* ignore */
     }
@@ -8929,17 +8973,11 @@ function _createInventoryEventSource() {
   });
   inventoryEventSource.addEventListener("fs.resync_required", (_e) => {
     lastInventorySnapshot = null;
-    // A resync marks a gap in the ordered delta stream. Clear derived state,
-    // then replace this connection so the server sends an authoritative
-    // snapshot before live updates resume.
+    // A gap: clear derived state, keep FileStore and its rows as the baseline, and
+    // reconnect for a snapshot (arch-live-delivery.md, "Recovery", says why).
     recentRecompute.cancel();
     scheduleRecentAuthoritativeRefetch();
     knownFileCatalog?.clear();
-    // Keep FileStore and its rendered rows as the baseline. The reconnect
-    // snapshot retires only rows that are really gone and patches the rest in
-    // place; emptying the store here would collapse the tree for the whole
-    // reconnect backoff and lose expanded folders. The server sends this on
-    // queue overflow, which is exactly when changes are arriving in bursts.
     notifyFileStoreSubscribers({ kind: "resync" });
     startIndexProgressPolling();
     quickFileCatalogFeed?.onResync();
@@ -8947,9 +8985,7 @@ function _createInventoryEventSource() {
   });
   inventoryEventSource.onopen = () => {
     catalogFeedCanStart = true;
-    // Do not erase accumulated failure state as soon as a socket opens. A
-    // connection that survives this interval is healthy enough to reset the
-    // exponential backoff; repeated overflow/resync cycles keep backing off.
+    // The backoff resets only once the connection has lasted ("Recovery").
     _scheduleEsStableReset();
     // The first open starts the bulk catalog fetch after subscription;
     // later opens refetch to cover deltas lost while disconnected.
@@ -8961,10 +8997,6 @@ function _createInventoryEventSource() {
     _cancelEsStableReset();
     _esConsecutiveErrors += 1;
     if (_esConsecutiveErrors >= _ES_MAX_CONSECUTIVE_ERRORS) {
-      // Circuit breaker: too many consecutive errors without a
-      // successful open or message. Close and recreate with
-      // exponential backoff. A fresh connection gets a snapshot
-      // via the existing fs.snapshot/resync flow.
       _scheduleInventoryReconnect();
     }
   };

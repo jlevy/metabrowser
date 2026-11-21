@@ -873,8 +873,8 @@
 
   // The group's key in the shared chip controls' markup and events.
   const KIND_GROUP = "source-ref-kind";
-  // The kind whose assets are the GitHub plugin's, which draws a pull request's state; the
-  // Pulls tab loads the plugin for the same kind (static/pulls-nav.js). The plugin is 15
+  // The plugin that draws a pull request's state, whose exports the rows load; the Pulls
+  // tab loads the same plugin for its kind (static/pulls-nav.js). The plugin is 15
   // requests and about 240 KB transferred, of which the four icons are `pull-state.js`'s 3 KB,
   // and nothing loads them alone. Measured 2026-11-20 in headless Chrome against this
   // repository's mirror, 137 branches of which most head a pull request, with the cache off:
@@ -883,7 +883,13 @@
   // load costs the icons 129 ms and the rows nothing, their slots being as wide as the
   // icons; opened after 5 s the plugin is there and the icons come with the rows, in 93 ms;
   // opened at once with the cache warm, rows 75 ms and icons 82 ms.
-  const PULL_ICON_KIND = "pull-request-list";
+  const PULL_ICON_PLUGIN = "github";
+  /**
+   * The GitHub plugin's `pullStateIcon`, once its exports have loaded.
+   *
+   * @type {MetabrowserGithubPullStateIcon | null}
+   */
+  let drawPullState = null;
 
   /** The shared chip controls, which the shell loads before anything lazy. */
   function chipControls() {
@@ -991,9 +997,8 @@
   function pullIcon(state) {
     const slot = document.createElement("span");
     slot.className = "source-ref-selector-pull-icon";
-    const draw = window.metabrowser?.builtins?.github?.pullStateIcon;
-    if (typeof draw === "function") {
-      slot.append(draw(state));
+    if (drawPullState !== null) {
+      slot.append(drawPullState(state));
     }
     return slot;
   }
@@ -1430,13 +1435,13 @@
    */
   function drawIcons(parts) {
     const rows = parts.rows;
-    const mb = window.metabrowser;
-    if (rows.iconsAsked || typeof mb?.builtins?.github?.pullStateIcon === "function") {
+    if (rows.iconsAsked || drawPullState !== null) {
       return;
     }
     rows.iconsAsked = true;
-    void mb.ensureKindAssets(PULL_ICON_KIND).then(
-      () => {
+    void window.metabrowser.plugins.load(PULL_ICON_PLUGIN).then(
+      (github) => {
+        drawPullState = github.pullStateIcon;
         if (!parts.disposed && rows.model !== null) {
           // Drawn with an empty slot where the icon goes, so every row is drawn again.
           rows.rebuild = true;

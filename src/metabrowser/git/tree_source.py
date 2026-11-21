@@ -1265,7 +1265,7 @@ class GitTreeSource:
         return await self._open_ref_path(path)
 
     async def open_container(
-        self, identity: str, *, suffixes: tuple[str, ...]
+        self, identity: str, *, suffixes: tuple[str, ...] | None
     ) -> tuple[ContentRef, str] | None:
         """Split a GitPath prefix from a container inner. See `ContentSource`."""
 
@@ -1276,7 +1276,7 @@ class GitTreeSource:
         if inner and inner.count("/") + 1 > MAX_CONTAINER_INNER_DEPTH:
             return None
         ref = await self._open_ref_path(path)
-        if ref is None or ref.logical_ext not in suffixes:
+        if ref is None or (suffixes is not None and ref.logical_ext not in suffixes):
             return None
         return ref, inner
 

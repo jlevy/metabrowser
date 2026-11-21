@@ -188,6 +188,15 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
         ),
     ),
     "builtin_plugins/github/pulls-panel.js": (Listener("the reader's last input time", None),),
+    "builtin_plugins/table/table-view.js": (
+        Listener(
+            "a table's rows and cells, a column menu's Escape, and Escape in a record",
+            _GUARD,
+            via=("onKeyDown",),
+            checks=("tests/dom/table-view-session.js",),
+        ),
+        Listener("Enter in a table's Search, which asks at once", None, via=("onSearchKey",)),
+    ),
     "builtin_plugins/github/pull-page.js": (
         Listener(
             "the stack menu's trigger and rows",

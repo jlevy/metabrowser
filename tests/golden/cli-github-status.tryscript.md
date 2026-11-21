@@ -335,7 +335,17 @@ with no `gh`, or one not signed in, has nothing wrong with its plugins.
 ```console
 $ FAKE_GH_STATUS=signed-out metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 12 plugin(s) OK
+metab --doctor: 15 plugin(s) OK
+plugin requirements:
+  agents: requires structured
+  delimited: requires table
+  diff: requires structured
+  event-log: requires agents
+  folder: requires markdown
+  github: requires markdown
+  sqlite: requires table
+  structured: requires table
+  unknown-jsonl: requires agents
 github: not_logged_in: GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   fix: gh auth login --hostname github.com
@@ -346,7 +356,17 @@ github: not_logged_in: GitHub CLI is not signed in to github.com. Run gh auth lo
 ```console
 $ FAKE_GH_STATUS=too-old metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 12 plugin(s) OK
+metab --doctor: 15 plugin(s) OK
+plugin requirements:
+  agents: requires structured
+  delimited: requires table
+  diff: requires structured
+  event-log: requires agents
+  folder: requires markdown
+  github: requires markdown
+  sqlite: requires table
+  structured: requires table
+  unknown-jsonl: requires agents
 github: gh_too_old: GitHub CLI 2.20.2 cannot report the signed-in account, so Metabrowser opens no pull request it has not cached; that needs gh 2.81.0 or later. To update it: https://cli.github.com/.
   gh: [FAKE_GH] (version 2.20.2; needs 2.81.0 or later)
   fix: https://cli.github.com/
@@ -358,7 +378,7 @@ github: gh_too_old: GitHub CLI 2.20.2 cannot report the signed-in account, so Me
 $ FAKE_GH_STATUS=offline metab --doctor --json 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 12,
+  "plugin_count": 15,
   "problems": [],
   "open_in": {
     "value": "browser",
@@ -389,7 +409,17 @@ $ FAKE_GH_STATUS=offline metab --doctor --json 2>/dev/null
 ```console
 $ PATH=/nonexistent "$(command -v metab)" --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 12 plugin(s) OK
+metab --doctor: 15 plugin(s) OK
+plugin requirements:
+  agents: requires structured
+  delimited: requires table
+  diff: requires structured
+  event-log: requires agents
+  folder: requires markdown
+  github: requires markdown
+  sqlite: requires table
+  structured: requires table
+  unknown-jsonl: requires agents
 github: gh_missing: Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.
   gh: not found on PATH
   fix: https://cli.github.com/

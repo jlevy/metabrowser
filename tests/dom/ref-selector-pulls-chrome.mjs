@@ -289,7 +289,8 @@ try {
   // and how long each took (mb-tjbm review A6).
   await chrome.evaluate(`(() => {
     const t = performance.now();
-    window.__opened = { at: t, plugin: typeof window.metabrowser.builtins?.github?.pullStateIcon === "function" };
+    const plugin = performance.getEntriesByType("resource").some((e) => e.name.includes("/plugin-static/github/") && e.name.endsWith("/index.js"));
+    window.__opened = { at: t, plugin };
     ${ROOT}.querySelector(".source-ref-selector-toggle").click();
     return true;
   })()`);

@@ -95,7 +95,13 @@ from metabrowser.charts import clear_charts_cache
 from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.commit_ids import short_commit
-from metabrowser.content_sniff import ContentClass, sniff_artifact
+from metabrowser.content_sniff import (
+    SNIFF_PREFIX_BYTES,
+    ContentClass,
+    classify_prefix,
+    sniff_artifact,
+    sniff_artifact_prefix,
+)
 from metabrowser.counterpart import COUNTERPART_ROUTES
 from metabrowser.diff.markdown_projection_worker import (
     InertRender,
@@ -240,11 +246,13 @@ from metabrowser.settings import (
     client_settings_dict,
 )
 from metabrowser.source import (
+    ContentRef,
     SubjectNotOpenError,
     UnsupportedSourceCapabilityError,
     as_git_revision_subject,
     get_source_session,
     lifespan_subject,
+    read_content_window,
     require_filesystem_hooks,
     require_filter_capabilities,
     require_source_capability,
@@ -261,6 +269,7 @@ from metabrowser.source_routes import (
     source_status,
 )
 from metabrowser.sse import api_stream
+from metabrowser.table_source import TableSourceDeclaration, install_table_sources
 from metabrowser.tree import (
     _IGNORE_CACHE,
     DEFAULT_TREE_DEPTH,
@@ -693,6 +702,17 @@ def _prefers_text_body(target: Path) -> bool:
     where the byte view would answer a broken file with an empty dump.
     """
     return sniff_artifact(target) is not ContentClass.BINARY
+
+
+def _sniff_text_body(target: Path) -> tuple[bool, bytes | None]:
+    """:func:`_prefers_text_body`, with the bytes on disk the sniff read.
+
+    The bytes are the file's own leading bytes, which a ``magic`` kind rule is matched
+    against when the file falls to the ``binary`` fallback (:func:`_magic_kind`); they
+    are None for a compressed artifact, whose sniff read decompressed bytes.
+    """
+    content_class, prefix = sniff_artifact_prefix(target)
+    return content_class is not ContentClass.BINARY, prefix
 
 
 # Defaults live in settings.py, which is also what the client reads, so the
@@ -2221,6 +2241,13 @@ async def index(
         # and stayed at 58 ms on a file.
         "view-header": [
             {"src": _static_asset_url("view-header.js"), "provides": "MetabrowserViewHeader"}
+        ],
+        # The page's file watches on its event stream (static/file-watches.js), fetched
+        # the first time a view calls metabrowser.watchFile: a table, or a container
+        # whose children the tree shows. Most pages watch nothing, so it is no startup
+        # script; app.js only hands it each snapshot's connection and each change.
+        "file-watches": [
+            {"src": _static_asset_url("file-watches.js"), "provides": "MetabrowserFileWatches"}
         ],
         # What a view's renderer calls: the line-number gutter with its `#L` anchors,
         # and the SDK helpers a renderer builds its markup with (the Source surface,
@@ -3958,8 +3985,12 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             headers=etag_headers,
         )
 
+    disk_prefix: bytes | None = None
     with server_timing.phase("read"):
-        text_body = ext in BROWSER_TEXT_EXTS or await asyncio.to_thread(_prefers_text_body, target)
+        if ext in BROWSER_TEXT_EXTS:
+            text_body = True
+        else:
+            text_body, disk_prefix = await asyncio.to_thread(_sniff_text_body, target)
     if text_body:
         try:
             content_has_more = False
@@ -4093,7 +4124,9 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         # document in the normal file response.
         return JSONResponse(result, headers=etag_headers)
 
-    binary_kind = _binary_kind(target, ext)
+    # A plugin kind that claims a binary format by its magic number, whatever the
+    # file's name, then a plugin's claim by path; the model stays the file's bytes.
+    binary_kind = _magic_kind(disk_prefix) or _binary_kind(target, ext)
     return JSONResponse(
         {
             "type": "binary",
@@ -4978,6 +5011,7 @@ async def raw_file(request: Request) -> Response:
 from metabrowser.plugin_loader.classify import (
     CompiledKindRule,
     build_classifier,
+    classify_magic,
     collect_folder_markers,
 )
 from metabrowser.plugin_loader.discovery import (
@@ -5077,6 +5111,30 @@ def _classify_with_plugins(
     return classify_file_kind(target, ext, adapter)
 
 
+def _magic_kind(disk_prefix: bytes | None) -> str | None:
+    """The plugin kind whose ``magic`` bytes a file's leading bytes on disk hold.
+
+    Checked only where a file would otherwise be ``binary``, from the sniff prefix the
+    caller already read; None for no prefix (a compressed artifact) or no match.
+    """
+    if disk_prefix is None:
+        return None
+    return classify_magic(_PLUGIN_KIND_RULES, disk_prefix)
+
+
+def _classify_content_kind(target: Path, ext: str) -> str:
+    """The kind ``/api/file`` gives a file on the served folder, for a caller with no
+    envelope of its own: an image extension, then text or JSONL through the plugin
+    classifier, then a ``magic`` kind, a ``binary = true`` claim, or ``binary`` for bytes that sniff as binary."""
+    if ext in BROWSER_IMAGE_EXTS:
+        return "image"
+    if ext != ".jsonl" and ext not in BROWSER_TEXT_EXTS:
+        text_body, disk_prefix = _sniff_text_body(target)
+        if not text_body:
+            return _magic_kind(disk_prefix) or _binary_kind(target, ext)
+    return _classify_with_plugins(target, ext)
+
+
 def _binary_kind(target: Path, ext: str) -> str:
     """The kind of a served file found to be binary: a plugin's binary claim, or ``binary``.
 
@@ -5160,7 +5218,7 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
             continue
         artifact = ArtifactPath(target)
         ext = artifact.logical_ext
-        kind = _classify_with_plugins(target, ext)
+        kind = _classify_content_kind(target, ext)
         info = kinds.get(kind)
         if info is None:
             return None
@@ -5189,6 +5247,66 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
             }
         )
     return None
+
+
+def _table_source_declarations() -> list[TableSourceDeclaration]:
+    """Every ``[[table_source]]`` the server serves, in discovery order.
+
+    An operator-directory plugin runs no Python, so its declarations are ignored with a
+    log line, as its data hooks are (``build_plugin_routes``).
+    """
+    out: list[TableSourceDeclaration] = []
+    for plugin in _LOADED_PLUGINS:
+        if not plugin.manifest.table_source:
+            continue
+        if plugin.source.startswith("local:"):
+            LOG.warning(
+                "metabrowser local plugin '%s' declares table sources; operator-directory "
+                "plugins are JavaScript-only, so they are ignored",
+                plugin.name,
+            )
+            continue
+        out.extend(
+            TableSourceDeclaration(plugin=plugin.name, kind=spec.kind, adapter=spec.adapter)
+            for spec in plugin.manifest.table_source
+        )
+    return out
+
+
+def _classify_served_file(ref: ContentRef) -> str | None:
+    target = resolve_session_identity(ref.identity)
+    if target is None or not target.is_file():
+        return None
+    return _classify_content_kind(target, ref.logical_ext)
+
+
+async def _table_content_kind(ref: ContentRef) -> str | None:
+    """The kind of the content a table route names, as ``/api/file`` classifies it.
+
+    On a served folder it runs the plugin classifier and the fallback chain on the file;
+    on a pin it applies the Git-blob subset of the rules (extension and basename), which
+    is every rule a table source's kind uses.
+    """
+    if get_source_session().subject.filesystem_root is not None:
+        # Resolving and statting the file runs off the event loop, with the classifier.
+        return await asyncio.to_thread(_classify_served_file, ref)
+    from metabrowser.git.content_routes import plugin_kind_for_git_wire, plugin_magic_kind
+
+    kind = plugin_kind_for_git_wire(ref.identity)
+    if kind is not None or ref.logical_ext in BROWSER_IMAGE_EXTS:
+        return kind or "image"
+    head = await read_content_window(ref, max_bytes=SNIFF_PREFIX_BYTES)
+    content_class = classify_prefix(head.data)
+    if content_class is ContentClass.BINARY or (
+        ref.logical_ext not in BROWSER_TEXT_EXTS and content_class is not ContentClass.TEXT
+    ):
+        return plugin_magic_kind(head.data)
+    return classify_by_ext(ref.logical_ext)
+
+
+install_table_sources(
+    _table_source_declarations(), _table_content_kind, container_kinds=_container_kinds()
+)
 
 
 def _views_for_kind(
@@ -5323,18 +5441,21 @@ async def _shell_asset_prefixes() -> tuple[dict[str, str], str]:
 
 
 def _build_plugin_asset_config_block(prefixes: Mapping[str, str]) -> str:
-    """Configure manifest-owned assets by the kinds that consume them.
+    """Configure manifest-owned assets by plugin, and the plugins each kind consumes.
 
     No plugin asset is an eager shell dependency. The private plugin host
-    loads one descriptor at most once when ``app.js`` selects any kind in its
-    manifest. Extra classic scripts retain manifest order before ``index.js``;
-    styles load in parallel and settle before the plugin renderer mounts.
+    loads one plugin at most once, when ``app.js`` selects any kind in its
+    manifest or code asks for its exports by name (``metabrowser.plugins.load``),
+    which is how a plugin with no kind of its own is reached. Extra classic
+    scripts retain manifest order before ``index.js``; styles load in parallel
+    and settle before the plugin renderer mounts.
 
     Every URL is under the plugin's stamped prefix (*prefixes*, from
     :func:`_shell_asset_prefixes`, which takes them off the event loop), so its
     relative imports, worker, and stylesheet references inherit the stamp.
     """
-    assets_by_kind: dict[str, list[dict[str, object]]] = {}
+    plugins: dict[str, dict[str, object]] = {}
+    kinds: dict[str, list[str]] = {}
     for plugin in _LOADED_PLUGINS:
         prefix = prefixes.get(plugin.name, f"/plugin-static/{plugin.name}")
         styles: list[str] = []
@@ -5344,17 +5465,17 @@ def _build_plugin_asset_config_block(prefixes: Mapping[str, str]) -> str:
             url = f"{prefix}/{extra}"
             if url not in styles:
                 styles.append(url)
-        descriptor: dict[str, object] = {
+        plugins[plugin.name] = {
             "name": plugin.name,
             "module": f"{prefix}/index.js",
             "scripts": [f"{prefix}/{extra}" for extra in plugin.manifest.plugin.extra_scripts],
             "styles": styles,
         }
-        kinds = {view.kind for view in plugin.manifest.view}
-        kinds.update(kind.id for kind in plugin.manifest.kind)
-        for kind in sorted(kinds):
-            assets_by_kind.setdefault(kind, []).append(descriptor)
-    encoded = _json.dumps(assets_by_kind).replace("<", "\\u003c")
+        owned = {view.kind for view in plugin.manifest.view}
+        owned.update(kind.id for kind in plugin.manifest.kind)
+        for kind in sorted(owned):
+            kinds.setdefault(kind, []).append(plugin.name)
+    encoded = _json.dumps({"plugins": plugins, "kinds": kinds}).replace("<", "\\u003c")
     return f"<script>window.MetabrowserPluginHost.configureAssets({encoded});</script>"
 
 

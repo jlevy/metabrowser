@@ -163,6 +163,13 @@ def check_recording(name: str, recorded: Any, *, transcript: str, indent: int = 
     """
 
     rendered = json.dumps(recorded, indent=indent, ensure_ascii=False) + "\n"
+    check_recording_text(name, rendered, transcript=transcript)
+
+
+def check_recording_text(name: str, rendered: str, *, transcript: str) -> None:
+    """As :func:`check_recording`, for a recording the caller rendered itself, such as one
+    that writes each of many rows on one line to stay inside the review budget."""
+
     _compare(
         FIXTURES_DIR / name,
         rendered,

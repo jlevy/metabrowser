@@ -27,20 +27,23 @@ The setup checks that end the report depend on the host, so they are elided here
 
 ```console
 $ metab --plugins
-NAME           SOURCE   KINDS                   VIEWS  HOOKS
--------------  -------  ----------------------  -----  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-agents         builtin  agent-log,agent-thread  8      charts,catalog,sessions,session,records,live
-binary         builtin  -                       1      chunk
-diff           builtin  diff                    1      document,children,comparison
-event-log      builtin  event-log               5      timeline,slowest,kinds,errors
-folder         builtin  -                       2      -
-github         builtin  -                       2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-size,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
-html           builtin  html                    2      -
-image          builtin  -                       1      -
-markdown       builtin  markdown,mermaid        4      -
-structured     builtin  structured              2      parsed
-text           builtin  -                       1      -
-unknown-jsonl  builtin  -                       2      -
+NAME           SOURCE   KINDS                   REQUIRES    VIEWS  HOOKS
+-------------  -------  ----------------------  ----------  -----  ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+agents         builtin  agent-log,agent-thread  structured  8      charts,catalog,sessions,session,records,live
+binary         builtin  -                       -           1      chunk
+delimited      builtin  delimited               table       2      -
+diff           builtin  diff                    structured  1      document,children,comparison
+event-log      builtin  event-log               agents      5      timeline,slowest,kinds,errors
+folder         builtin  -                       markdown    2      -
+github         builtin  -                       markdown    2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-size,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
+html           builtin  html                    -           2      -
+image          builtin  -                       -           1      -
+markdown       builtin  markdown,mermaid        -           4      -
+sqlite         builtin  sqlite                  table       3      info,schema,children
+structured     builtin  structured              table       3      parsed
+table          builtin  -                       -           0      tables,schema,rows,record,card
+text           builtin  -                       -           1      -
+unknown-jsonl  builtin  -                       agents      2      -
 ? 0
 ```
 
@@ -59,6 +62,9 @@ $ metab --plugins --json
       "kinds": [
         "agent-log",
         "agent-thread"
+      ],
+      "requires": [
+        "structured"
       ],
       "views": [
         "agents",
@@ -88,6 +94,7 @@ $ metab --plugins --json
       "source": "builtin",
       "static_root": "[BUILTIN]/binary",
       "kinds": [],
+      "requires": [],
       "views": [
         "bytes"
       ],
@@ -98,6 +105,26 @@ $ metab --plugins --json
       "disabled_data_hooks": []
     },
     {
+      "name": "delimited",
+      "display_name": "Delimited Text",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/delimited",
+      "kinds": [
+        "delimited"
+      ],
+      "requires": [
+        "table"
+      ],
+      "views": [
+        "table",
+        "source"
+      ],
+      "view_count": 2,
+      "data_hooks": [],
+      "disabled_data_hooks": []
+    },
+    {
       "name": "diff",
       "display_name": "Diff",
       "version": "0.0.1",
@@ -105,6 +132,9 @@ $ metab --plugins --json
       "static_root": "[BUILTIN]/diff",
       "kinds": [
         "diff"
+      ],
+      "requires": [
+        "structured"
       ],
       "views": [
         "diff"
@@ -125,6 +155,9 @@ $ metab --plugins --json
       "static_root": "[BUILTIN]/event_log",
       "kinds": [
         "event-log"
+      ],
+      "requires": [
+        "agents"
       ],
       "views": [
         "timeline",
@@ -149,6 +182,9 @@ $ metab --plugins --json
       "source": "builtin",
       "static_root": "[BUILTIN]/folder",
       "kinds": [],
+      "requires": [
+        "markdown"
+      ],
       "views": [
         "overview",
         "treemap"
@@ -164,6 +200,9 @@ $ metab --plugins --json
       "source": "builtin",
       "static_root": "[BUILTIN]/github",
       "kinds": [],
+      "requires": [
+        "markdown"
+      ],
       "views": [
         "pull-request",
         "pull-request-list"
@@ -204,6 +243,7 @@ $ metab --plugins --json
       "kinds": [
         "html"
       ],
+      "requires": [],
       "views": [
         "preview",
         "source"
@@ -219,6 +259,7 @@ $ metab --plugins --json
       "source": "builtin",
       "static_root": "[BUILTIN]/image",
       "kinds": [],
+      "requires": [],
       "views": [
         "preview"
       ],
@@ -236,6 +277,7 @@ $ metab --plugins --json
         "markdown",
         "mermaid"
       ],
+      "requires": [],
       "views": [
         "rendered",
         "source",
@@ -247,6 +289,31 @@ $ metab --plugins --json
       "disabled_data_hooks": []
     },
     {
+      "name": "sqlite",
+      "display_name": "SQLite",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/sqlite",
+      "kinds": [
+        "sqlite"
+      ],
+      "requires": [
+        "table"
+      ],
+      "views": [
+        "table",
+        "schema",
+        "info"
+      ],
+      "view_count": 3,
+      "data_hooks": [
+        "info",
+        "schema",
+        "children"
+      ],
+      "disabled_data_hooks": []
+    },
+    {
       "name": "structured",
       "display_name": "Structured Data",
       "version": "0.0.1",
@@ -255,13 +322,36 @@ $ metab --plugins --json
       "kinds": [
         "structured"
       ],
+      "requires": [
+        "table"
+      ],
       "views": [
         "tree",
+        "table",
         "source"
       ],
-      "view_count": 2,
+      "view_count": 3,
       "data_hooks": [
         "parsed"
+      ],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "table",
+      "display_name": "Tables",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/table",
+      "kinds": [],
+      "requires": [],
+      "views": [],
+      "view_count": 0,
+      "data_hooks": [
+        "tables",
+        "schema",
+        "rows",
+        "record",
+        "card"
       ],
       "disabled_data_hooks": []
     },
@@ -272,6 +362,7 @@ $ metab --plugins --json
       "source": "builtin",
       "static_root": "[BUILTIN]/text",
       "kinds": [],
+      "requires": [],
       "views": [
         "source"
       ],
@@ -286,6 +377,9 @@ $ metab --plugins --json
       "source": "builtin",
       "static_root": "[BUILTIN]/unknown_jsonl",
       "kinds": [],
+      "requires": [
+        "agents"
+      ],
       "views": [
         "log",
         "raw"
@@ -307,9 +401,10 @@ $ metab --plugin markdown
 name:         markdown
 display_name: Markdown
 version:      0.0.1
-sdk_version:  0.7
+sdk_version:  0.8
 source:       builtin
 static_root:  [BUILTIN]/markdown
+requires:     (none)
 
 kinds:
   - id=markdown priority=0 match={'ext': '.md'}
@@ -368,9 +463,10 @@ $ metab --plugin markdown --json
     "name": "markdown",
     "display_name": "Markdown",
     "version": "0.0.1",
-    "sdk_version": "0.7",
+    "sdk_version": "0.8",
     "source": "builtin",
     "static_root": "[BUILTIN]/markdown",
+    "requires": [],
     "kinds": [
       {
         "id": "markdown",
@@ -438,6 +534,7 @@ $ metab --plugin markdown --json
     ],
     "data_hooks": [],
     "disabled_data_hooks": [],
+    "table_sources": [],
     "assets": [
       "diagram-frame-entry.js",
       "diagram-frame.css",
@@ -485,7 +582,17 @@ recorded on its own: the answer is on stdout, and stderr is empty.
 ```console
 $ metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 12 plugin(s) OK
+metab --doctor: 15 plugin(s) OK
+plugin requirements:
+  agents: requires structured
+  delimited: requires table
+  diff: requires structured
+  event-log: requires agents
+  folder: requires markdown
+  github: requires markdown
+  sqlite: requires table
+  structured: requires table
+  unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -507,7 +614,7 @@ $ metab --doctor >/dev/null
 $ metab --doctor --json 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 12,
+  "plugin_count": 15,
   "problems": [],
   "open_in": {
     "value": "browser",

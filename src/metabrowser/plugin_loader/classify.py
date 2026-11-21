@@ -260,7 +260,13 @@ class CompiledKindRule:
 
 
 def _match_one(rule: KindMatch, ctx: FileContext) -> bool:
-    """Evaluate a single declarative match predicate against a FileContext."""
+    """Evaluate a single declarative match predicate against a FileContext.
+
+    A ``magic`` rule never matches here: it claims only a file that would otherwise be
+    ``binary``, through :func:`classify_magic`.
+    """
+    if rule.magic is not None:
+        return False
     artifact = ArtifactPath(ctx.path)
     logical_path = ctx.path.with_name(artifact.logical_name)
     if rule.ext is not None and ctx.ext != rule.ext:
@@ -348,6 +354,8 @@ def classify_identity(
 
     for compiled in sorted(rules, key=lambda item: item.sort_key):
         match = compiled.rule.match
+        if match.magic is not None:
+            continue
         if any(getattr(match, field) is not None for field in _IDENTITY_ONLY_SKIP_FIELDS):
             continue
         if match.ext is not None and ext != match.ext:
@@ -409,6 +417,23 @@ def classify_identity(
         ):
             continue
         return compiled.rule.id
+    return None
+
+
+def classify_magic(rules: list[CompiledKindRule], prefix: bytes) -> str | None:
+    """The kind whose ``magic`` bytes *prefix* holds, or None.
+
+    *prefix* is the leading bytes of a file, on disk, that every other rule left to the
+    ``binary`` fallback: the sniff prefix the caller already read
+    (``SNIFF_PREFIX_BYTES``), never decompressed, so ``x.sqlite.gz`` stays binary. Every
+    magic rule is checked whatever the file's name; its ``ext`` or ``exts`` decide only
+    the tree's chevron. Higher priority wins, then discovery order.
+    """
+
+    for compiled in sorted(rules, key=lambda item: item.sort_key):
+        magic = compiled.rule.match.magic
+        if magic is not None and magic.matches(prefix):
+            return compiled.rule.id
     return None
 
 

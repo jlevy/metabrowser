@@ -2,7 +2,9 @@
 name = "unknown-jsonl"
 display_name = "Unknown JSONL"
 version = "0.0.1"
-sdk_version = "0.7"
+sdk_version = "0.8"
+# Both views are the agents plugin's agent-log renderers, loaded through its exports.
+requires = ["agents"]
 
 # Catch-all for .jsonl files where adapter sniffing returns no known
 # adapter. The imperative detector returns "unknown-jsonl" for this case;

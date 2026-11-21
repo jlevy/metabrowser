@@ -303,6 +303,7 @@ The state’s word beside the row’s title carries the meaning without the colo
 | `↑` | Text | The parent folder, in the parent navigation button | `static/view-header.js`, `builtin_plugins/folder/treemap.js` | `--muted` | `--ui-small-font-size` |
 | `✓` | Text | A chosen value in a filter chip’s menu, and the current member in a stack’s menu | `static/filter-controls.js`, `builtin_plugins/github/pull-page.js` | `--link`, in `.chip-menu-check` | The text’s, in a fixed column |
 | `→` | Text | From one to the other: a rename, a mode or type change, and a merge’s source and target | `builtin_plugins/diff/diff-model.js`, `static/git-panel.js`, `static/plugin-sdk-views.js` | The text’s | The text’s |
+| `→` | Text | A SQLite foreign key from its columns to the referenced table | `builtin_plugins/sqlite/tables-model.js` | The text’s | The text’s |
 | `→` | Text | An agent log’s tool call, going out, in an event’s kind | `builtin_plugins/agents/agent-log.js` | The kind badge’s | The text’s |
 | `←` | Text | An agent log’s tool result, coming back, in an event’s kind | `builtin_plugins/agents/agent-log.js` | The kind badge’s | The text’s |
 | `↑` | Text | A session table’s sorted column, ascending, after its header’s label | `builtin_plugins/agents/agents-views.css` | The header’s | The header’s |
@@ -312,6 +313,11 @@ The state’s word beside the row’s title carries the meaning without the colo
 | `‹` | Text | Opens the hex code the binary view shows for a byte that is not printable ASCII, such as `‹FF›` | `builtin_plugins/binary/byte-format.js` | `--muted`, the code’s | `--mono-block-font-size`, the code block’s |
 | `›` | Text | Closes a byte’s hex code in the binary view | `builtin_plugins/binary/byte-format.js` | `--muted`, the code’s | `--mono-block-font-size`, the code block’s |
 | `☰` | Text | The table of contents toggle in an untrusted document’s render | `builtin_plugins/markdown/inert-toc.js` | KPress’s muted document ink | The text’s |
+| `↑` | Text | A table column sorted ascending, after its header’s label | `builtin_plugins/table/table-view.js` | `--link` | The header’s |
+| `↓` | Text | A table column sorted descending, after its header’s label | `builtin_plugins/table/table-view.js` | `--link` | The header’s |
+| `▾` | Text | A table column’s menu, to sort, filter, or hide it, after its header’s label | `builtin_plugins/table/table-view.js` | The header’s, `--text` on hover | The header’s |
+| `×` | Text | Removes a table’s filter, at the end of its chip | `builtin_plugins/table/table-view.js` | `--muted`, `--text` on hover | The chip’s |
+| `←` | Text | Back to the table, before a record’s link | `builtin_plugins/table/table-view.js` | The link’s | The link’s |
 
 ### Keyboard Hints
 

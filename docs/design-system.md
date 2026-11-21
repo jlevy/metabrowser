@@ -3084,8 +3084,8 @@ The shapes differ. In the list, the icon’s accessible name gives the state.
 On the page, the same glyph sits beside the title and the text badge below names the
 state. Everything goes through `pullStateIcon` and `displayState` in
 `builtin_plugins/github/pull-state.js`, so a row and its page cannot disagree: the ref
-selector’s rows, in the shell, draw the same icon through the plugin’s
-`mb.builtins.github.pullStateIcon` ([The Ref Selector](#the-ref-selector)).
+selector’s rows, in the shell, draw the same icon through the plugin’s exported
+`pullStateIcon` ([The Ref Selector](#the-ref-selector)).
 `test_pull_state_colors_keep_their_hue_and_read_on_both_grounds` holds the hue and a
 4.5:1 contrast on both grounds, because a badge sets its word in that color.
 
@@ -3901,7 +3901,8 @@ acknowledgement.
 The component owns this focused behavior; it is not a document-level application
 shortcut. The maintained registry in
 `test_nav_like_row_sets_share_the_vertical_keyboard_contract` covers the file tree, Git
-history, pull-request rows, and their changed-file trees.
+history, pull-request rows, their changed-file trees, and the table view’s grid
+([Data Tables](#data-tables)), whose arrows move without opening.
 The adjacent `test_git_row_selection_avoids_full_collection_mutation` pins Git’s
 interaction cost. Register every new navigational row collection in the shared check so
 its Tab order and vertical navigation cannot silently fork this contract.
@@ -6075,14 +6076,123 @@ Use structured rows rather than syntax-colored walls of punctuation when the use
 inspecting object relationships.
 Keys, scalar values, array counts, and expansion controls each have consistent roles.
 
-Tables should:
+## Data Tables
 
-- align numeric columns to the right;
-- keep headers visible where practical;
-- use restrained row striping and hover states;
-- preserve copyable text;
-- wrap or scroll long paths without widening the entire page;
-- expose an explicit empty state instead of rendering a blank panel.
+Every table of data the app draws is one component, with one definition of each rule in
+`static/styles.css`: the table plugin’s grid (`builtin_plugins/table/`), which every
+tabular source draws through, and the folder’s Distribution and totals tables, which
+take its numeric and label rules.
+The view is drawn after the knowledge-base browser in
+[paraverse](https://github.com/jlevy/paraverse) and adapted to these tokens.
+
+| Class | Rule |
+| --- | --- |
+| `.data-grid` | The table: chrome in `--font-sans` at the body size, a hairline in `--border` under each row, the header in the resting label type and on `--bg`, staying at the top of its scroll box, and `--hover-bg` under the pointer |
+| `.data-num` | A number, or a numeric column’s cell or header: right-aligned, in `--tabular-numerals`, never wrapped |
+| `.data-literal` | A literal value, a key, timestamp, hex, JSON, or `null`, in `--font-mono` at `--mono-block-font-size` |
+| `.data-label` | The resting label type a header has, for a heading that is not a `.data-grid` header, as a Distribution group’s is |
+
+**Every value is visible, and none is mistaken for another.**
+
+- `null` is drawn as the word, muted and monospaced; the empty string is an empty cell;
+  a short row’s missing cell is a muted dash whose tooltip says the row is shorter than
+  the header.
+- A number keeps its digits: an integer past what a browser number holds arrives as text
+  and is drawn as text, and an infinite or undefined real says `Infinity` or `NaN`.
+- A value whose stored type differs from its column’s, which SQLite allows, carries a
+  small outlined badge naming the stored type, in `--status-warning`, beside the value
+  rather than in its place.
+- A value the server cut for the page ends in a muted ellipsis, and its tooltip gives
+  its length, or its size in bytes where the source read only its first bytes, and says
+  the record shows more; the record says how much of it it shows.
+- A reference to a row that is not there is drawn as its value, not a chip, with the
+  same outlined badge saying `missing`, and its tooltip says no row of the referenced
+  table holds it.
+
+**Rows are one height, and cells are cut, never wrapped past it.** A table’s rows are
+one line, or two when a value it holds is longer than its column or holds a line break;
+a longer value is cut with an ellipsis, and its whole text is the shared tooltip, which
+shows only while the value is cut
+([Tooltips Add Information](#tooltips-add-information)). Each column is as wide as its
+header and its first values in the face they are drawn in, up to `COLUMN_MAX_CH`
+characters (`builtin_plugins/table/table-model.js`), and keeps that width as more rows
+arrive or a filter narrows them, so columns do not move under the reader.
+Numbers are right-aligned only in a column the source says is numeric.
+
+**Columns fit the pane.** With a source’s default columns, those from the right hide
+until the rest fit, and a note in the toolbar says how many are hidden and opens the
+Columns menu; columns the reader chose never hide, and when they overflow, the table
+scrolls sideways with its first column in place.
+
+**Values that mean a choice are links.** A boolean or enum value adds a filter on its
+column; a reference is a chip, a rounded box rather than the filter pill, whose card is
+the shared tooltip, and which opens the record it names.
+Every filter is a removable chip in the filter pill, `--radius-pill`; a header’s menu
+sorts its column either way, filters it by an operator and a value, and hides it.
+Search is one field, which asks the server once the typing pauses.
+
+**One Tab stop.** The grid is a row collection under
+[Navigational Row Collections](#navigational-row-collections): one element of the grid
+is in the Tab order, a row, a cell’s link, or a header’s button.
+Up and Down or `J` and `K` move a row, Left and Right move between the row and its
+cells, so a link in a cell is reachable, and Enter on the row opens its record in place
+of the grid; Back returns the keyboard to that row.
+Up from the first row moves to the header, where Left and Right cross each column’s sort
+and menu buttons and Down returns to the rows, so a column adds no Tab stop.
+Arrows do not open a row here, because a record replaces the grid the reader is reading.
+A header’s menu and the Columns menu are labelled dialogs: Tab moves through them, and
+they close when the focus leaves them or on Escape, which returns it to their button.
+
+**Small tables are drawn whole; large ones are windows.** Either is `role="grid"`,
+multiselectable, with `scope="col"` headers and `aria-sort`, and `aria-colcount` while
+columns are hidden to fit.
+A table of at most `WHOLE_TABLE_MAX_ROWS` (`builtin_plugins/table/table-view.js`) draws
+every row and keeps the browser’s find, select all, copy, and print.
+A larger one adds `aria-rowcount` and `aria-rowindex`, and draws only the rows near the
+view at one fixed row height; there, Search stands in for find in page, Shift with Up,
+Down, Home, or End selects rows that copy as tab-separated values, since a chord such as
+Command-A stays the browser’s, and print draws the rows held, up to `PRINT_MAX_ROWS`,
+with a line on the paper saying which rows it printed when it did not print them all
+([Rendering Large Content](large-content-rendering.md)).
+
+**The reader’s place is kept.** Back to the table, and a reload, return to the row that
+had focus and the scroll it had.
+The view writes its place to the history entry only when it matters, before it
+navigates, when the page is hidden, and once a pause after the last move or scroll
+(`PLACE_SAVE_MS`), because browsers bound history writes and a write a key press would
+use up the one a record’s address needs.
+
+**A live table moves nothing under the reader.** When its file changes, the table reads
+the rows it holds again with the same question, gathering a burst of changes for
+`LIVE_COALESCE_MS` (`builtin_plugins/table/table-view.js`). A row whose cells changed,
+and a row that arrived where the reader is, flash once in `--row-flash-bg`, as
+[Live Row Arrivals](#live-row-arrivals) do; a row that would land above the first row on
+screen is offered as a “3 new rows” `.btn` in the toolbar rather than drawn, and taking
+it draws the rows, goes to the first, and puts the keyboard on it.
+The scroll position, the focused row and the selected rows (by key, or by position where
+rows have none), an open menu, and what is typed but not sent stay as they were, and a
+read whose rows are the same draws nothing.
+A **Live** `.btn` beside it, whose label is its state and whose accessible name is the
+action, pauses the table and then reads **Paused · 2 changes**; pressing it again reads
+once. An open record has its own, since the toolbar is hidden while it shows, and is
+drawn again only when its cells change, keeping the keyboard on its control.
+Both the offer and the Live control sit between the fit note and Columns, and once shown
+keep their slot while hidden, so the toolbar keeps its box
+([Regions Keep Their Boxes](#regions-keep-their-boxes)). A read is spaced from the last
+by `LIVE_COST_SPACING` times what that one took, and none is made while the page is
+hidden; it reads once when shown.
+A read that fails keeps the rows on screen with a notice saying they are the last read,
+a watch the page could not register says the table is not following its file, and a
+column the address named that is gone is dropped from the address with a notice.
+The offer when it appears, Paused, and a failure until a read succeeds are each
+announced once in the view’s one polite live region.
+
+`tests/dom/table-view-session.js` runs the view’s behavior from the command line, and
+`tests/test_table_view_chrome.py` checks in Chrome what only layout and the browser’s
+history show: one row height, which the view’s estimates match, cutting and its tooltip,
+the inks and faces, the header that stays put, the pinned first column, the printed
+line, and a run of key presses past Chrome’s bound on history writes followed by a
+record, its Back, and a reload.
 
 ## Source and Syntax Colors
 
@@ -6248,8 +6358,9 @@ rule’s animation and uses the near-instant reduced-motion treatment.
 The highlight leaves the row’s size and controls in place.
 
 Initial snapshots, older rows revealed by paging, and edits to existing rows use their
-regular presentation.
-Each data source decides which rows arrived.
+regular presentation, except in a [data table](#data-tables), which flashes a row whose
+cells a live refresh changed as it flashes one that arrived (`.table-row-flash`). Each
+data source decides which rows arrived.
 A live list fed by another provider can apply the same treatment when it inserts a new
 item.
 

@@ -2,7 +2,9 @@
 name = "agents"
 display_name = "Agents (Claude Code, Codex, Gemini, Pi logs)"
 version = "0.0.1"
-sdk_version = "0.7"
+sdk_version = "0.8"
+# Each event's payload in the Log is drawn as the structured plugin's tree.
+requires = ["structured"]
 register = "metabrowser.builtin_plugins.agents.adapters"
 
 # Coding-agent JSONL session logs from Claude Code, Codex, Gemini, or Pi CLI.

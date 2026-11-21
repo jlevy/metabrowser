@@ -44,7 +44,7 @@ function createMetricCell() {
   fill.className = "file-type-summary-fill";
   track.append(fill);
   const percent = document.createElement("span");
-  percent.className = "file-type-summary-percent";
+  percent.className = "file-type-summary-percent data-num";
   contents.append(value, track, percent);
   cell.append(contents);
   return { cell, fill, percent, value };
@@ -63,6 +63,8 @@ function createGroupBody(className, label, iconSvg) {
   headingRow.className = "file-type-summary-group-row";
   const heading = document.createElement("th");
   heading.scope = "rowgroup";
+  // The table's resting label type (docs/design-system.md, "Data Tables").
+  heading.className = "data-label";
   heading.colSpan = 2;
   // The icon's markup is the shell's own icon registry's, never the folder's data.
   heading.innerHTML = iconSvg;
@@ -405,7 +407,7 @@ function updateMetricValue(element, metric, value, text, metricClasses) {
   const baseClass = metric === "files" ? "count" : "size";
   const emphasisClass =
     metric === "files" ? metricClasses.countClass(value) : metricClasses.sizeClass(value);
-  element.className = `file-type-summary-value ${baseClass} ${emphasisClass}`.trim();
+  element.className = `file-type-summary-value data-num ${baseClass} ${emphasisClass}`.trim();
   element.textContent = text;
 }
 

@@ -206,14 +206,15 @@ function createPage() {
     /** One plugin for *kind*: a stylesheet and the fixture's module. */
     configure(kind) {
       sandbox.MetabrowserPluginHost.configureAssets({
-        [kind]: [
-          {
-            module: `${fixtureUrl}?page=${pages}&kind=${kind}`,
+        plugins: {
+          [`${kind}-plugin`]: {
             name: `${kind}-plugin`,
+            module: `${fixtureUrl}?page=${pages}&kind=${kind}`,
             scripts: [],
             styles: [`/plugin-static/${kind}/styles.css`],
           },
-        ],
+        },
+        kinds: { [kind]: [`${kind}-plugin`] },
       });
     },
     /** How many of the documented view helpers the SDK object has. */

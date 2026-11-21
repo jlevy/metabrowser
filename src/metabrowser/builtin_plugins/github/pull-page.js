@@ -4824,11 +4824,11 @@ export function mountPullPage(container, ctx, mb) {
    * source.
    *
    * The Markdown plugin owns the host for KPress's diagrams (markdown/diagrams.js) and
-   * publishes it as `mb.builtins.markdown.drawDiagrams`, read at render time once its kind's
-   * assets are in (docs/plugins.md, "Render-Time-Only Namespace Rule"), so this plugin
-   * neither imports another plugin's files nor keeps a second copy of the adapter. That
-   * plugin's static modules come with the first diagram, beside KPress's diagram modules
-   * and Mermaid, which are far larger.
+   * exports it as `drawDiagrams`, which this plugin, declaring `requires = ["markdown"]`,
+   * gets from `mb.plugins.load("markdown")` (docs/plugins.md, "Declared Dependencies"),
+   * so it neither imports another plugin's files nor keeps a second copy of the adapter.
+   * That plugin's static modules come with the first diagram, beside KPress's diagram
+   * modules and Mermaid, which are far larger.
    *
    * @param {Element} element
    * @param {HTMLElement} article
@@ -4848,11 +4848,11 @@ export function mountPullPage(container, ctx, mb) {
         drawn = null;
       },
     });
-    void mb
-      .ensureKindAssets("markdown")
-      .then(() => {
+    void mb.plugins
+      .load("markdown")
+      .then((markdown) => {
         if (!disposed && !listening.signal.aborted) {
-          drawn = mb.builtins.markdown?.drawDiagrams?.(article, { isolated: true }) ?? null;
+          drawn = markdown.drawDiagrams(article, { isolated: true });
         }
       })
       .catch((error) => {

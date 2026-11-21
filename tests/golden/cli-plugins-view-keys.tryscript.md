@@ -16,12 +16,12 @@ before: >-
   mkdir -p viewroot mdroot pair/alpha pair/beta stack/prnotes pulls/pullkey reserved/reskey override/steal &&
   printf 'mine\n' > viewroot/b.myk &&
   printf '# Notes\n' > mdroot/a.md &&
-  printf '[plugin]\nname = "alpha"\nsdk_version = "0.7"\n[[kind]]\nid = "myk"\nmatch = { ext = ".myk" }\n[[view]]\nkind = "myk"\nid = "main"\nlabel = "Main"\nkey = "m"\ndefault = true\n' > pair/alpha/manifest.toml &&
-  printf '[plugin]\nname = "beta"\nsdk_version = "0.7"\n[[view]]\nkind = "myk"\nid = "more"\nlabel = "More"\nkey = "M"\n' > pair/beta/manifest.toml &&
-  printf '[plugin]\nname = "prnotes"\nsdk_version = "0.7"\n[[view]]\nkind = "pull-request"\nid = "notes"\nlabel = "Notes"\nkey = "N"\n' > stack/prnotes/manifest.toml &&
-  printf '[plugin]\nname = "pullkey"\nsdk_version = "0.7"\n[[view]]\nkind = "markdown"\nid = "preview"\nlabel = "Preview"\nkey = "P"\n' > pulls/pullkey/manifest.toml &&
-  printf '[plugin]\nname = "reskey"\nsdk_version = "0.7"\n[[view]]\nkind = "markdown"\nid = "outline"\nlabel = "Outline"\nkey = "T"\n' > reserved/reskey/manifest.toml &&
-  printf '[plugin]\nname = "steal"\nsdk_version = "0.7"\n[[view]]\nkind = "markdown"\nid = "rendered"\nlabel = "Document"\nkey = "s"\ndefault = true\n' > override/steal/manifest.toml &&
+  printf '[plugin]\nname = "alpha"\nsdk_version = "0.8"\n[[kind]]\nid = "myk"\nmatch = { ext = ".myk" }\n[[view]]\nkind = "myk"\nid = "main"\nlabel = "Main"\nkey = "m"\ndefault = true\n' > pair/alpha/manifest.toml &&
+  printf '[plugin]\nname = "beta"\nsdk_version = "0.8"\n[[view]]\nkind = "myk"\nid = "more"\nlabel = "More"\nkey = "M"\n' > pair/beta/manifest.toml &&
+  printf '[plugin]\nname = "prnotes"\nsdk_version = "0.8"\n[[view]]\nkind = "pull-request"\nid = "notes"\nlabel = "Notes"\nkey = "N"\n' > stack/prnotes/manifest.toml &&
+  printf '[plugin]\nname = "pullkey"\nsdk_version = "0.8"\n[[view]]\nkind = "markdown"\nid = "preview"\nlabel = "Preview"\nkey = "P"\n' > pulls/pullkey/manifest.toml &&
+  printf '[plugin]\nname = "reskey"\nsdk_version = "0.8"\n[[view]]\nkind = "markdown"\nid = "outline"\nlabel = "Outline"\nkey = "T"\n' > reserved/reskey/manifest.toml &&
+  printf '[plugin]\nname = "steal"\nsdk_version = "0.8"\n[[view]]\nkind = "markdown"\nid = "rendered"\nlabel = "Document"\nkey = "s"\ndefault = true\n' > override/steal/manifest.toml &&
   for dir in pair/alpha pair/beta stack/prnotes pulls/pullkey reserved/reskey override/steal; do printf '// No renderer: these plugins exist for their manifests.\n' > "$dir/index.js"; done
 ---
 # Golden tests: view keys across plugin manifests
@@ -70,6 +70,16 @@ The problem is on stderr.
 $ metab --doctor --plugins-dir pair >/dev/null
 metab --doctor: 1 problem(s):
   • plugin 'beta': view 'more' of kind 'myk' declares key 'm', but view 'main' (plugin 'alpha') already holds it; the view is served without a key
+plugin requirements:
+  agents: requires structured
+  delimited: requires table
+  diff: requires structured
+  event-log: requires agents
+  folder: requires markdown
+  github: requires markdown
+  sqlite: requires table
+  structured: requires table
+  unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -91,7 +101,7 @@ $ metab --doctor --plugins-dir pair 2>/dev/null
 $ metab --doctor --json --plugins-dir pair 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 14,
+  "plugin_count": 17,
   "problems": [
     "plugin 'beta': view 'more' of kind 'myk' declares key 'm', but view 'main' (plugin 'alpha') already holds it; the view is served without a key"
   ],
@@ -133,7 +143,7 @@ so `N` alone is free in every kind, a pull request’s included, and the plugin 
 $ metab --doctor --json --plugins-dir stack 2>/dev/null
 {
   "ok": true,
-  "plugin_count": 13,
+  "plugin_count": 16,
   "problems": [],
   "open_in": {
     "value": "browser",
@@ -173,7 +183,7 @@ refuses a view that takes it, a Preview included.
 $ metab --doctor --json --plugins-dir pulls 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 12,
+  "plugin_count": 15,
   "problems": [
     "[CWD]/pulls/pullkey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'P' is reserved for the shell's Pulls tab [type=value_error, input_value='P', input_type=str]\n    For further information visit [PYDANTIC_URL]"
   ],
@@ -208,13 +218,13 @@ $ metab --doctor --json --plugins-dir pulls 2>/dev/null
 
 ## Test: a key the shell reserves everywhere is refused at load
 
-The plugin is not loaded, so `plugin_count` is the twelve built-in plugins alone.
+The plugin is not loaded, so `plugin_count` counts the built-in plugins alone.
 
 ```console
 $ metab --doctor --json --plugins-dir reserved 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 12,
+  "plugin_count": 15,
   "problems": [
     "[CWD]/reserved/reskey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'T' is reserved for the shell's Quick Search [type=value_error, input_value='T', input_type=str]\n    For further information visit [PYDANTIC_URL]"
   ],
@@ -271,6 +281,16 @@ The problem names the built-in `markdown` plugin, whose Source lost the key, and
 $ metab --doctor --plugins-dir override >/dev/null
 metab --doctor: 1 problem(s):
   • plugin 'markdown': view 'source' of kind 'markdown' declares key 's', but view 'rendered' (plugin 'steal') already holds it; the view is served without a key
+plugin requirements:
+  agents: requires structured
+  delimited: requires table
+  diff: requires structured
+  event-log: requires agents
+  folder: requires markdown
+  github: requires markdown
+  sqlite: requires table
+  structured: requires table
+  unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
