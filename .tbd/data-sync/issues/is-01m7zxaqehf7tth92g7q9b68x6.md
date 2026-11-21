@@ -3,9 +3,9 @@ type: is
 id: is-01m7zxaqehf7tth92g7q9b68x6
 title: Assess first macOS release readiness and the open Metabrowser PRs
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 5
+version: 6
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/520
@@ -32,8 +32,12 @@ parent_id: is-01m7hgpc9550w78kmwqsvv64xh
 hold: null
 hold_until: null
 created_at: 2026-11-21T20:38:55.695Z
-updated_at: 2026-11-21T20:54:39.216Z
+updated_at: 2026-11-21T20:58:08.757Z
 started_at: 2026-11-21T20:40:37.197Z
+closed_at: 2026-11-21T20:58:08.752Z
+close_reason: Assessed all 14 original open PRs, verified release prerequisites, compared Kerm’s historical download, and recorded the launch and publication gates. Each implementation fix has its own bead.
+resolution: null
+duplicate_of: null
 ---
 Review all open Metabrowser PRs at pinned heads for standalone stabilization changes. Hold FDU and the document model redesign. Compare the native packaging and publication path with Kerm, run the signing doctor, and record the gates for signing, Gatekeeper, and a clean-user download.
 
