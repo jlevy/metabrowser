@@ -218,7 +218,7 @@
       "body": {
         "type": "fsqlite_info",
         "path": "foreign/fsqlite.json",
-        "generation": "G",
+        "generation": null,
         "store": {
           "format_version": "f1.0",
           "store_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -227,77 +227,6 @@
             "committed": 0,
             "uncommitted": 0,
             "complete": true
-          },
-          "version": 1,
-          "snapshot": "000000000001.fsqlite.sqlite",
-          "attempts": 1
-        },
-        "snapshot": {
-          "access": {
-            "mode": "immutable",
-            "state": "current",
-            "reason": "content that cannot change is read as it is",
-            "attempts": 1,
-            "notices": []
-          },
-          "journal_mode": "rollback",
-          "links": 1,
-          "size": 24576,
-          "sidecars": [],
-          "database": {
-            "page_size": 4096,
-            "page_count": 6,
-            "encoding": "UTF-8",
-            "user_version": 3,
-            "application_id": 0,
-            "application_name": null,
-            "freelist_count": 0,
-            "objects": {
-              "index": 2,
-              "table": 3
-            }
-          },
-          "library": {
-            "version": "L",
-            "minimum": "3.43.0",
-            "meets_minimum": true,
-            "versions": [
-              {
-                "version": "3.7.0",
-                "meaning": "write-ahead-log databases",
-                "available": true
-              },
-              {
-                "version": "3.8.2",
-                "meaning": "WITHOUT ROWID tables",
-                "available": true
-              },
-              {
-                "version": "3.26.0",
-                "meaning": "SQLITE_DBCONFIG_DEFENSIVE and PRAGMA table_xinfo",
-                "available": true
-              },
-              {
-                "version": "3.31.0",
-                "meaning": "PRAGMA trusted_schema and generated columns",
-                "available": true
-              },
-              {
-                "version": "3.37.0",
-                "meaning": "STRICT tables",
-                "available": true
-              },
-              {
-                "version": "3.43.0",
-                "meaning": "octet_length(), the reader's minimum for reading tables",
-                "available": true
-              },
-              {
-                "version": "3.45.0",
-                "meaning": "JSONB values",
-                "available": true
-              }
-            ]
           }
         },
         "error": {

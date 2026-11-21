@@ -29,6 +29,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal
 
+from metabrowser.plugin_api import TableSourceError
+
 # ── The format ─────────────────────────────────────────────────
 
 MARKER_NAME: Final = "fsqlite.json"
@@ -298,8 +300,18 @@ class Snapshot:
     attempts: int
 
 
-class SnapshotGone(Exception):
-    """The snapshot a read was given disappeared before it was opened."""
+class SnapshotGone(TableSourceError):
+    """A collected snapshot prompts a fresh pointer read or a full request retry."""
+
+    code = "snapshot_moved"
+    http_status = 409
+
+    def __init__(self) -> None:
+        super().__init__(
+            "The store's snapshot was collected while it was being read. Retry to open "
+            "the current snapshot.",
+            state="changing",
+        )
 
 
 type Locate = Callable[[str], Path | None]

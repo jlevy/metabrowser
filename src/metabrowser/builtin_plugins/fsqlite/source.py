@@ -9,28 +9,29 @@ reserved tables grouped as internal (:func:`group_reserved`). Each table is
 (:func:`~metabrowser.builtin_plugins.sqlite.database.table_segment`), so the store's
 tables are addressed as a database's are, with its marker standing for the database.
 
-This module is the one place the store meets that adapter: the store's ``children`` and
-``schema`` hooks (``sidekick.py``) and its ``[[table_source]]`` (:func:`adapter`) each
-open the snapshot through :func:`open_store`, which reads the pointer again once when
-garbage collection removed the snapshot it named before a reader opened it
-(:class:`~metabrowser.builtin_plugins.fsqlite.store.SnapshotGone`). Nothing here writes,
-locks, or leases anything in the store.
+The store's routes and adapter verify the snapshot's f1.0 identity. Each request fixes
+its snapshot version at the first successful open. If garbage collection removes the
+snapshot before the initial read finishes, the reader follows the pointer once more.
+If a later table operation needs the collected file, it reports a moved snapshot so
+the caller can retry the whole request.
 """
 
 from __future__ import annotations
 
 import dataclasses
-import os
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 from metabrowser.builtin_plugins.fsqlite.store import (
     CURRENT_NAME,
     RESERVED_TABLES,
     SNAPSHOTS_DIR,
+    Marker,
     Snapshot,
     SnapshotGone,
     StoreError,
+    check_application_id,
     read_marker,
     read_snapshot,
     store_generation,
@@ -41,7 +42,11 @@ from metabrowser.capabilities import capabilities_for
 from metabrowser.plugin_api import SourceUnreadableError, TableHandle, TableInfo
 from metabrowser.source import resolve_session_identity
 from metabrowser.sqlite_access import SqliteAccessError
-from metabrowser.sqlite_readers import request_deadline
+from metabrowser.sqlite_readers import register_worker_module, request_deadline
+
+register_worker_module(
+    "metabrowser.builtin_plugins.fsqlite.reader", Path(__file__).with_name("reader.py")
+)
 
 
 class StoreFiles:
@@ -75,22 +80,28 @@ class StoreFiles:
         return self.locate(f"{SNAPSHOTS_DIR}/{name}")
 
 
-def gone_or(exc: SqliteAccessError, snapshot: Snapshot) -> Exception:
-    """A reader's failure on *snapshot*: :class:`SnapshotGone` when the file is no longer
-    there, which sends the read back to the pointer, or the failure itself."""
-    if exc.state == "unreadable" and not os.path.lexists(snapshot.path):
-        return SnapshotGone()
-    return exc
+class SnapshotDatabase(Database):
+    """An immutable snapshot whose disappearance can invalidate any worker call."""
+
+    __slots__ = ()
+
+    def call(self, op: str, args: dict[str, Any], *, deadline: float) -> Any:
+        try:
+            return super().call(op, args, deadline=deadline)
+        except SqliteAccessError as exc:
+            if exc.state == "unreadable":
+                try:
+                    self.file.lstat()
+                except FileNotFoundError:
+                    raise SnapshotGone() from exc
+                except OSError:
+                    pass
+            raise
 
 
 def group_reserved(tables: Iterable[TableInfo]) -> list[TableInfo]:
     """*tables* with the format's reserved tables (:data:`RESERVED_TABLES`) grouped as
-    ``internal``, as the plan's "What it shows" lists them for an fsqlite snapshot.
-
-    The SQLite reader groups them so already in a snapshot carrying fsqlite's
-    ``application_id``; this keeps them internal in a store whose snapshot lacks it,
-    which the store's Info view calls corrupt and still shows.
-    """
+    ``internal``, as the plan's "What it shows" lists them for an fsqlite snapshot."""
     return [
         dataclasses.replace(table, group="internal") if table.id in RESERVED_TABLES else table
         for table in tables
@@ -104,7 +115,7 @@ def snapshot_database(files: StoreFiles, snapshot: Snapshot, *, subject: str) ->
     current = files.locate(CURRENT_NAME)
     if current is None:
         raise FileNotFoundError(CURRENT_NAME)
-    return Database(
+    return SnapshotDatabase(
         file=snapshot.path,
         immutable=True,
         subject=subject,
@@ -113,13 +124,16 @@ def snapshot_database(files: StoreFiles, snapshot: Snapshot, *, subject: str) ->
     )
 
 
-def call_snapshot[T](snapshot: Snapshot, read: Callable[[], T]) -> T:
-    """Run *read*, a reader request on *snapshot*, raising :class:`SnapshotGone` when it
-    failed because the file is gone."""
-    try:
-        return read()
-    except SqliteAccessError as exc:
-        raise gone_or(exc, snapshot) from exc
+def validate_snapshot(database: Database, marker: Marker, *, deadline: float) -> None:
+    """Require the snapshot's f1.0 application ID and its two marker stamps (M4, S2–S3)."""
+    application_id, error = database.call(
+        "fsqlite_identity",
+        {"store_id": marker.store_id, "format_version": marker.format_version},
+        deadline=deadline,
+    )
+    check_application_id(application_id)
+    if error is not None:
+        raise StoreError("corrupt", error)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -138,13 +152,12 @@ def open_store(files: StoreFiles, *, deadline: float, subject: str) -> OpenedSto
     that cannot be read, :class:`~metabrowser.sqlite_access.SqliteAccessError` for a
     snapshot a reader refused, and ``OSError`` for a marker that cannot be read.
     """
-    read_marker(files.marker)
+    marker = read_marker(files.marker)
 
     def read(snapshot: Snapshot) -> tuple[Database, tuple[TableInfo, ...]]:
         database = snapshot_database(files, snapshot, subject=subject)
-        catalog = call_snapshot(
-            snapshot, lambda: cached(database, "catalog", "", deadline=deadline)
-        )
+        validate_snapshot(database, marker, deadline=deadline)
+        catalog = cached(database, "catalog", "", deadline=deadline)
         return database, tuple(group_reserved(catalog_tables(catalog)))
 
     (database, tables), snapshot = read_snapshot(files.locate(CURRENT_NAME), files.snapshot, read)

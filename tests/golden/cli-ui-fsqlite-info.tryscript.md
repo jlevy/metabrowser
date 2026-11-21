@@ -24,7 +24,7 @@ pins these behaviors:
   the count stopped at its bound.
 - A store that cannot be shown says its state in an alert: a pointer that is not ASCII
   digits is corrupt, a format version the reader does not know is unsupported, and a
-  snapshot without fsqlite’s `application_id` is corrupt and still shown.
+  snapshot without fsqlite’s `application_id` is corrupt.
 - A snapshot the reader cannot read keeps the store’s section and says the reader’s
   state.
 - A pointer read again after garbage collection says so.
@@ -117,34 +117,7 @@ $ node tests/dom/fsqlite-info-session.js
       "## Store",
       "Format: fsqlite f1.0  (literal)",
       "Store: 550e8400-e29b-41d4-a716-446655440000  (literal)",
-      "Version: 1  (number)",
-      "Snapshot: snapshots/000000000001.fsqlite.sqlite  (literal)",
-      "Pending: None  (muted)",
-      "## Access",
-      "State: Current",
-      "Opened: Read as it is, with no lock",
-      "Why: content that cannot change is read as it is",
-      "## Database",
-      "Journal: Rollback journal",
-      "Page size: 4,096 bytes  (number)",
-      "Pages: 6  (number)",
-      "Free pages: 0  (number)",
-      "Encoding: UTF-8  (literal)",
-      "User version: 3  (number)",
-      "Application: None declared  (muted)",
-      "Schema: 2 indexes, 3 tables",
-      "## Files",
-      "Main file: 24,576 bytes  (number)",
-      "Beside it: No journal or log  (muted)",
-      "## Library",
-      "SQLite: L  (literal)",
-      "3.7.0: write-ahead-log databases",
-      "3.8.2: WITHOUT ROWID tables",
-      "3.26.0: SQLITE_DBCONFIG_DEFENSIVE and PRAGMA table_xinfo",
-      "3.31.0: PRAGMA trusted_schema and generated columns",
-      "3.37.0: STRICT tables",
-      "3.43.0: octet_length(), the reader's minimum for reading tables",
-      "3.45.0: JSONB values"
+      "Pending: None  (muted)"
     ],
     "garbled/fsqlite.json": [
       "[error alert] Not a SQLite database: This file is not a SQLite database.",

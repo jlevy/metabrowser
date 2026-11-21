@@ -505,7 +505,8 @@ status: 200
 ? 0
 ```
 
-A snapshot without fsqlite’s `application_id` is shown, and the store is corrupt.
+A snapshot without fsqlite’s `application_id` is corrupt.
+Info shows the store error.
 
 ```console
 $ metab storeroot --api '/api/plugin/fsqlite/info?path=foreign/fsqlite.json' > foreign.json
@@ -513,12 +514,7 @@ $ metab storeroot --api '/api/plugin/fsqlite/info?path=foreign/fsqlite.json' > f
 ```
 
 ```console
-$ grep -E -A3 '"(error|application_name)"' foreign.json
-      "application_name": null,
-      "freelist_count": 0,
-      "objects": {
-        "index": 2,
---
+$ grep -A3 '"error"' foreign.json
   "error": {
     "state": "corrupt",
     "message": "The snapshot's application_id is 0x00000000, not fsqlite's 0x4653514c (“FSQL”)."

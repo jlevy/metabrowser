@@ -34,7 +34,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from metabrowser.builtin_plugins.fsqlite import source, store
-from metabrowser.builtin_plugins.fsqlite.source import StoreFiles, call_snapshot
+from metabrowser.builtin_plugins.fsqlite.source import StoreFiles
 from metabrowser.builtin_plugins.sqlite.database import segment_name
 from metabrowser.builtin_plugins.sqlite.sidekick import child_rows, schema_objects
 from metabrowser.content_errors import ContentReadError
@@ -45,7 +45,7 @@ from metabrowser.source import (
     resolve_session_identity,
 )
 from metabrowser.sqlite_access import SqliteAccessError
-from metabrowser.sqlite_readers import reader_pool, request_deadline
+from metabrowser.sqlite_readers import request_deadline
 
 
 def _error(kind: str, path: str, code: str, message: str, status: int) -> JSONResponse:
@@ -81,21 +81,6 @@ async def _open(
     return StoreFiles(ref.identity, marker), inner
 
 
-def _snapshot_info(snapshot: store.Snapshot, *, deadline: float, subject: str) -> dict[str, Any]:
-    pool = reader_pool()
-    with pool.scratch() as scratch:
-        result: dict[str, Any] = call_snapshot(
-            snapshot,
-            lambda: pool.call(
-                "info",
-                {"path": str(snapshot.path), "scratch": str(scratch), "immutable_content": True},
-                deadline=deadline,
-                subject=subject,
-            ),
-        )
-    return result
-
-
 def _store_info(found: StoreFiles, path: str, *, deadline: float, subject: str) -> dict[str, Any]:
     payload: dict[str, Any] = {"type": "fsqlite_info", "path": path, "generation": None}
     described: dict[str, Any] = {}
@@ -127,7 +112,10 @@ def _store_info(found: StoreFiles, path: str, *, deadline: float, subject: str) 
 
     def read(snapshot: store.Snapshot) -> dict[str, Any]:
         tried.append(snapshot)
-        return _snapshot_info(snapshot, deadline=deadline, subject=subject)
+        database = source.snapshot_database(found, snapshot, subject=subject)
+        source.validate_snapshot(database, marker, deadline=deadline)
+        result: dict[str, Any] = database.call("info", {}, deadline=deadline)
+        return result
 
     snapshot_payload: dict[str, Any] | None = None
     try:
@@ -140,6 +128,12 @@ def _store_info(found: StoreFiles, path: str, *, deadline: float, subject: str) 
         # says which, and the snapshot section shows the reader's state.
         snapshot = tried[-1]
         payload["snapshot"] = {"error": {"state": exc.state, "message": str(exc)}}
+    except OSError as exc:
+        payload["error"] = {
+            "state": "invalid",
+            "message": f"The store cannot be read: {exc.strerror or exc}",
+        }
+        return payload
     described |= {
         "version": snapshot.version,
         "snapshot": snapshot.name,
@@ -152,10 +146,6 @@ def _store_info(found: StoreFiles, path: str, *, deadline: float, subject: str) 
             payload["generation"] = None
     if snapshot_payload is not None:
         payload["snapshot"] = snapshot_payload
-        try:
-            store.check_application_id(int(snapshot_payload["database"]["application_id"]))
-        except store.StoreError as exc:
-            payload["error"] = {"state": exc.state, "message": str(exc)}
     return payload
 
 
@@ -179,14 +169,12 @@ def _store_schema(
     """The Schema view's model, or None when the table *name* is not in the snapshot."""
     payload: dict[str, Any] = {"type": "fsqlite_schema", "path": path, "generation": None}
     try:
-        store.read_marker(found.marker)
+        marker = store.read_marker(found.marker)
 
         def read(snapshot: store.Snapshot) -> tuple[dict[str, Any], str]:
             database = source.snapshot_database(found, snapshot, subject=subject)
-            answer: dict[str, Any] = call_snapshot(
-                snapshot,
-                lambda: database.call("sqlite_ddl", {"table": name}, deadline=deadline),
-            )
+            source.validate_snapshot(database, marker, deadline=deadline)
+            answer: dict[str, Any] = database.call("sqlite_ddl", {"table": name}, deadline=deadline)
             return answer, database.generation
 
         (answer, generation), _snapshot = store.read_snapshot(

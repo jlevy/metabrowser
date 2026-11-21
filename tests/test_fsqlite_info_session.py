@@ -31,9 +31,12 @@ TRANSCRIPT = "cli-ui-fsqlite-info.tryscript.md"
 GENERATION = "G"
 LIBRARY = "L"
 STORE_ID = "550e8400-e29b-41d4-a716-446655440000"
-SNAPSHOT_SQL = """
+SNAPSHOT_SQL = f"""
 CREATE TABLE applied_tx (tx_id TEXT PRIMARY KEY NOT NULL, applied_at TEXT NOT NULL);
 CREATE TABLE fsqlite_meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
+INSERT INTO fsqlite_meta VALUES
+  ('store_id', '{STORE_ID}'), ('format_version', 'f1.0'),
+  ('schema_hash', '0123456789abcdef'), ('tool_version', 'fixture');
 CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL);
 INSERT INTO notes VALUES (1, 'first'), (2, 'second');
 """

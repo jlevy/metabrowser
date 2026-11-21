@@ -19,7 +19,7 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from metabrowser import server
-from metabrowser.builtin_plugins.fsqlite import sidekick, source, store
+from metabrowser.builtin_plugins.fsqlite import source, store
 from metabrowser.builtin_plugins.fsqlite.store import (
     CURRENT_MAX_BYTES,
     CURRENT_MAX_VERSION,
@@ -48,15 +48,24 @@ MARKER = (
 )
 
 
-def _snapshot(path: Path, *, application_id: int = store.FSQLITE_APPLICATION_ID) -> None:
+def _snapshot(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path, isolation_level=None)
     try:
         connection.executescript(
-            f"PRAGMA application_id = {application_id};"
+            f"PRAGMA application_id = {store.FSQLITE_APPLICATION_ID};"
             "CREATE TABLE applied_tx (tx_id TEXT PRIMARY KEY NOT NULL, applied_at TEXT NOT NULL);"
             "CREATE TABLE fsqlite_meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);"
             "CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL);"
+        )
+        connection.executemany(
+            "INSERT INTO fsqlite_meta VALUES (?, ?)",
+            [
+                ("format_version", "f1.0"),
+                ("store_id", STORE_ID),
+                ("schema_hash", "0123456789abcdef"),
+                ("tool_version", "fixture"),
+            ],
         )
     finally:
         connection.close()
@@ -370,56 +379,28 @@ def test_info_reads_the_snapshot_current_names_and_touches_nothing(
     assert _listing(root) == before
 
 
-def test_info_retries_once_when_the_reader_finds_the_snapshot_gone(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    root = _store(tmp_path / "s", current="1", versions=(1, 2))
-    real = sidekick._snapshot_info
-    calls: list[int] = []
-
-    def collect_then_read(snapshot: Snapshot, *, deadline: float, subject: str) -> dict[str, Any]:
-        calls.append(snapshot.version)
-        if snapshot.version == 1:
-            # The pointer moved and garbage collection took version 1 after the server
-            # read the pointer, before the reader opened the file.
-            (root / "current").write_text("2")
-            (root / "snapshots" / snapshot_name(1)).unlink()
-        return real(snapshot, deadline=deadline, subject=subject)
-
-    monkeypatch.setattr(sidekick, "_snapshot_info", collect_then_read)
-    status, body = _get(client, "info", "s/fsqlite.json")
-    assert status == 200, body
-    assert calls == [1, 2]
-    assert (body["store"]["version"], body["store"]["attempts"]) == (2, 2)
-    assert "error" not in body
-
-
 @pytest.mark.parametrize(
-    ("change", "state", "has_snapshot"),
+    ("change", "state"),
     [
-        ("pointer", "corrupt", False),
-        ("missing", "corrupt", False),
-        ("application", "corrupt", True),
-        ("marker", "unsupported", False),
+        ("pointer", "corrupt"),
+        ("missing", "corrupt"),
+        ("marker", "unsupported"),
     ],
 )
 def test_info_names_the_state_of_a_store_it_cannot_show(
-    client: TestClient, tmp_path: Path, change: str, state: str, has_snapshot: bool
+    client: TestClient, tmp_path: Path, change: str, state: str
 ) -> None:
     root = _store(tmp_path / "s")
     if change == "pointer":
         (root / "current").write_text("one")
     elif change == "missing":
         (root / "current").write_text("9")
-    elif change == "application":
-        (root / "snapshots" / snapshot_name(1)).unlink()
-        _snapshot(root / "snapshots" / snapshot_name(1), application_id=0)
     else:
         (root / "fsqlite.json").write_text(MARKER.replace("f1.0", "f9.0"))
     status, body = _get(client, "info", "s/fsqlite.json")
     assert status == 200, body
     assert body["error"]["state"] == state
-    assert ("snapshot" in body) is has_snapshot
+    assert "snapshot" not in body
 
 
 def test_children_are_the_snapshot_tables_with_the_reserved_ones_muted(
@@ -442,17 +423,6 @@ def test_children_are_the_snapshot_tables_with_the_reserved_ones_muted(
     assert status == 200
     assert body["children"] == []
     assert body["error"]["state"] == "corrupt"
-
-
-def test_a_snapshot_without_fsqlite_application_id_still_groups_its_reserved_tables(
-    client: TestClient, tmp_path: Path
-) -> None:
-    root = _store(tmp_path / "s")
-    (root / "snapshots" / snapshot_name(1)).unlink()
-    _snapshot(root / "snapshots" / snapshot_name(1), application_id=0)
-    status, body = _get(client, "children", "s/fsqlite.json")
-    assert status == 200, body
-    assert [row.get("muted", False) for row in body["children"]] == [True, True, False]
 
 
 def test_schema_answers_for_the_snapshot_or_one_table(client: TestClient, tmp_path: Path) -> None:
@@ -551,6 +521,7 @@ def test_the_table_routes_refuse_a_store_they_cannot_read(
 @pytest.mark.parametrize(
     ("route", "path"),
     [
+        ("fsqlite/info", "s/fsqlite.json"),
         ("fsqlite/children", "s/fsqlite.json"),
         ("fsqlite/schema", "s/fsqlite.json/notes"),
         ("table/tables", "s/fsqlite.json"),
@@ -583,7 +554,109 @@ def test_every_snapshot_read_retries_once_when_the_reader_finds_it_gone(
     response = app_client.get(f"/api/plugin/{route}", params={"path": path})
     assert response.status_code == 200, response.json()
     assert opened == [1, 2]
-    assert "error" not in response.json()
+    body = response.json()
+    assert "error" not in body
+    if route == "fsqlite/info":
+        assert (body["store"]["version"], body["store"]["attempts"]) == (2, 2)
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ("PRAGMA application_id = 0", "application_id"),
+        ("DELETE FROM fsqlite_meta WHERE key = 'store_id'", "store_id or format_version"),
+        (
+            "UPDATE fsqlite_meta SET value = '630e8400-e29b-41d4-a716-446655440000'"
+            " WHERE key = 'store_id'",
+            "store_id or format_version",
+        ),
+        (
+            "UPDATE fsqlite_meta SET value = 'f2.0' WHERE key = 'format_version'",
+            "store_id or format_version",
+        ),
+        ("DROP TABLE fsqlite_meta", "no fsqlite_meta table"),
+    ],
+)
+def test_an_unverified_snapshot_is_refused_by_every_store_route(
+    app_client: TestClient, tmp_path: Path, change: str, message: str
+) -> None:
+    root = _store(tmp_path / "s")
+    connection = sqlite3.connect(root / "snapshots" / snapshot_name(1), isolation_level=None)
+    try:
+        connection.execute(change)
+    finally:
+        connection.close()
+
+    for route, path in (
+        ("info", "s/fsqlite.json"),
+        ("schema", "s/fsqlite.json/notes"),
+        ("children", "s/fsqlite.json"),
+    ):
+        status, body = _get(app_client, route, path)
+        assert status == 200, body
+        assert body["error"]["state"] == "corrupt"
+        assert message in body["error"]["message"]
+        assert "snapshot" not in body and "objects" not in body
+        if route == "children":
+            assert body["children"] == []
+
+    for route, path in (("tables", "s/fsqlite.json"), ("rows", "s/fsqlite.json/notes")):
+        status, body = _table(app_client, route, path=path)
+        assert (status, body["code"], body["state"]) == (422, "source_unreadable", "corrupt")
+        assert message in body["error"]
+
+
+@pytest.mark.parametrize(
+    ("route", "operation"), [("rows", "sqlite_rows"), ("record", "sqlite_record")]
+)
+def test_collection_after_catalog_reports_a_retryable_error_for_the_whole_request(
+    app_client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    operation: str,
+) -> None:
+    root = _store(tmp_path / "s", current="1", versions=(1, 2))
+    old_snapshot = root / "snapshots" / snapshot_name(1)
+    for version, title in ((1, "old"), (2, "new")):
+        connection = sqlite3.connect(
+            root / "snapshots" / snapshot_name(version), isolation_level=None
+        )
+        try:
+            connection.execute("INSERT INTO notes VALUES (1, ?)", (title,))
+        finally:
+            connection.close()
+
+    calls: list[str] = []
+    real = Database.call
+
+    def collect_then_query(
+        database: Database, op: str, args: dict[str, Any], *, deadline: float
+    ) -> Any:
+        if database.file == old_snapshot:
+            calls.append(op)
+            if op == operation:
+                assert "sqlite_catalog" in calls
+                (root / "current").write_text("2")
+                old_snapshot.unlink()
+        return real(database, op, args, deadline=deadline)
+
+    monkeypatch.setattr(Database, "call", collect_then_query)
+    params = {"path": "s/fsqlite.json/notes"}
+    if route == "record":
+        params["key"] = "k.WzFd"
+    status, body = _table(app_client, route, **params)
+    assert (status, body["code"], body["state"]) == (409, "snapshot_moved", "changing")
+    assert "Retry to open the current snapshot" in body["error"]
+    assert "rows" not in body and "record" not in body
+
+    status, body = _table(app_client, route, **params)
+    assert status == 200, body
+    assert body["generation"].startswith("2-")
+    if route == "rows":
+        assert body["rows"][0]["cells"]["title"] == "new"
+    else:
+        assert body["cells"]["title"] == "new"
 
 
 def test_a_snapshot_opened_as_a_database_groups_the_reserved_tables_too(
