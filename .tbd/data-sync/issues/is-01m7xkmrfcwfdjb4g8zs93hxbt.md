@@ -5,7 +5,7 @@ title: Resume the SQLite tables and fsqlite drafts
 kind: task
 status: in_progress
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
 refs:
   - kind: pr
@@ -21,7 +21,7 @@ parent_id: is-01m7tv7gz4yk6tygqfexgtw0s2
 hold: null
 hold_until: null
 created_at: 2026-11-20T23:11:09.803Z
-updated_at: 2026-11-21T08:35:05.079Z
+updated_at: 2026-11-21T08:55:51.849Z
 started_at: 2026-11-21T08:35:05.070Z
 ---
 The saved drafts are in GitHub stack 657. GitHub base order is #649 plugin dependencies, #656 table protocol/CSV, #668 table view, #673 record lists, #674 SQLite access, #675 live tables, #676 SQLite tables, #678 fsqlite stores. Preserve all drafts and update refs by fast-forward only. The cloud Claude session is linked in the commits as session_01E8g3iN44KuoyWNe9T3xmGt. No unpushed local implementation worktree was found.
@@ -33,3 +33,7 @@ The saved drafts are in GitHub stack 657. GitHub base order is #649 plugin depen
 #678 (mb-zzxf) is at e62226463a2dcfbc0daceb9a0de683f85192ca11 and directly targets #676. Its current head contains a92251faa, two commits behind the saved #676 head. After #676 is integrated and checked, merge it into #678 by fast-forwarding the draft ref to a merge commit. Verify fsqlite read-only snapshot behavior and run tests/test_fsqlite_store.py, its CLI and browserless goldens, the packaged-wheel plugin smoke, and the focused real-browser view check. Its current CI used the older lower-layer benchmark and plugin set. It still needs its first senior review.
 
 Concrete local blocker on 2026-11-20: /Volumes/spud-ext2 was absent, so the required scratch workspace, dependency setup, golden regeneration and full local verification cannot run on this Mac. Fetching and the read-only merge preview succeeded. A Linux or macOS environment with approved scratch can resume the resolved checkout. No unreviewed high-conflict API edit or landing was attempted.
+
+## Notes
+
+External scratch was mounted and verified writable on 2026-11-21. The verified #676 merge and review follow-ups are committed on codex/metab-sqlite-676-recovery at 3cbc7b8624942020d4dfc1f760686c34bca725d5. #678 recovery is assigned separately against this base. Keep this task open until both workstreams finish their PR gates.
