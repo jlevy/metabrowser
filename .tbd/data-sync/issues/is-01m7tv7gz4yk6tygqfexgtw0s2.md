@@ -3,9 +3,9 @@ type: is
 id: is-01m7tv7gz4yk6tygqfexgtw0s2
 title: Tabular data browsing and live SQLite
 kind: epic
-status: in_progress
+status: open
 priority: 2
-version: 28
+version: 29
 spec_path: docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md
 refs:
   - kind: pr
@@ -56,7 +56,7 @@ child_order_hints:
   - is-01m7v9mwy0ye52geq4eqdxwz5a
   - is-01m7xkmrfcwfdjb4g8zs93hxbt
 created_at: 2026-11-19T21:26:01.444Z
-updated_at: 2026-11-21T09:14:30.348Z
+updated_at: 2026-11-21T11:26:01.151Z
 extensions:
   linear:
     id: da4dab2f-0682-4c31-8c9a-29da1bda661e
@@ -67,3 +67,5 @@ Generic table plugin (UI, query model, source protocol) with source plugins for 
 ## Notes
 
 2026-11-20 audit: Plan merged (#617); the owner adopted each key decision's recommendation on 2026-11-20 (mb-nv9k), and Decision 12 can be revisited before Phase 7. Stack PRs #649 (Phase 1, declared plugin dependencies) and #656 (Phase 2, table protocol and CSV/TSV) are open drafts; Phases 3 to 8 have no PR yet. mb-cggp (SQLite POSIX locks) was added.
+
+All eight implementation pull requests landed. The ordinary tabular layers landed through #676 at 74cba363; the optional fsqlite layer #678 landed at 98c2dffd, with final main and macOS workflows green. The remaining design follow-ups are separate from the released stack.
