@@ -5,7 +5,7 @@ title: Assess first macOS release readiness and the open Metabrowser PRs
 kind: task
 status: closed
 priority: 1
-version: 6
+version: 7
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/520
@@ -25,6 +25,12 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/380
     at: 2026-11-21T20:54:39.216Z
+  - kind: other
+    url: https://github.com/jlevy/metabrowser/actions/runs/44952503499
+    at: 2026-11-21T21:42:53.101Z
+  - kind: other
+    url: https://github.com/jlevy/metabrowser/actions/runs/44952503515
+    at: 2026-11-21T21:42:53.102Z
 delegate: codex@spud10
 labels: []
 dependencies: []
@@ -32,7 +38,7 @@ parent_id: is-01m7hgpc9550w78kmwqsvv64xh
 hold: null
 hold_until: null
 created_at: 2026-11-21T20:38:55.695Z
-updated_at: 2026-11-21T20:58:08.757Z
+updated_at: 2026-11-21T21:42:53.102Z
 started_at: 2026-11-21T20:40:37.197Z
 closed_at: 2026-11-21T20:58:08.752Z
 close_reason: Assessed all 14 original open PRs, verified release prerequisites, compared Kerm’s historical download, and recorded the launch and publication gates. Each implementation fix has its own bead.
