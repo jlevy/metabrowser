@@ -5,13 +5,17 @@ title: Clarify session indexing progress on Agents Overview
 kind: task
 status: in_progress
 priority: 3
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-19-agent-operations-views.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/683
+    at: 2026-11-21T19:01:28.578Z
 labels: []
 dependencies: []
 parent_id: is-01m7wysc4mfcdyek4vgsexz8y9
 created_at: 2026-11-21T17:40:53.361Z
-updated_at: 2026-11-21T18:17:38.266Z
+updated_at: 2026-11-21T19:01:28.585Z
 ---
 Clarify what Agents Overview counts during catalog indexing. Reuse the file-crawl spinner with the completed and total session count and show failures accurately. Keep provider behavior unchanged.
 

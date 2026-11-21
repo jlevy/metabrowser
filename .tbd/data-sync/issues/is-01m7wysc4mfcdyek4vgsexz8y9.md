@@ -5,7 +5,7 @@ title: Agent operations views for Claude Code and Codex
 kind: epic
 status: in_progress
 priority: 2
-version: 14
+version: 15
 spec_path: docs/project/specs/active/plan-2026-11-19-agent-operations-views.md
 refs:
   - kind: pr
@@ -35,6 +35,9 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/663
     at: 2026-11-20T19:14:54.489Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/683
+    at: 2026-11-21T19:01:25.522Z
 labels:
   - linear
   - Feature
@@ -48,7 +51,7 @@ child_order_hints:
   - is-01m7zk4qfyb6ep79p81gwdj87q
   - is-01m7zktgz6zp5s6ny6dkmxm5m7
 created_at: 2026-11-20T17:06:40.914Z
-updated_at: 2026-11-21T17:52:47.588Z
+updated_at: 2026-11-21T19:01:25.550Z
 duplicate_of: null
 extensions:
   linear:
