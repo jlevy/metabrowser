@@ -6315,6 +6315,10 @@ pre.code-block.metabrowser-source-lines > code {
   transition: opacity var(--transition-fast);
   box-shadow: var(--shadow-lg);
 }
+/* While the details are open, the root glyph's hover tip would cover the panel. */
+body:has(.root-details[open]) .custom-tooltip {
+  visibility: hidden;
+}
 .custom-tooltip.visible {
   opacity: 1;
 }

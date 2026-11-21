@@ -149,8 +149,11 @@ const TOOLTIP = `(() => {
   return tip && tip.classList.contains("visible") ? tip.innerText.trim() : null;
 })()`;
 
-async function screenshot(file) {
-  const { data } = await browser.send("Page.captureScreenshot", { format: "png", clip: CLIP });
+async function screenshot(file, height = CLIP.height) {
+  const { data } = await browser.send("Page.captureScreenshot", {
+    format: "png",
+    clip: { ...CLIP, height },
+  });
   fs.writeFileSync(path.join(shots, file), Buffer.from(data, "base64"));
 }
 
@@ -297,7 +300,7 @@ for (const theme of ["light", "dark"]) {
       );
       check(`${where}: a root with no hosted URL has no link actions`, !hasActions, details);
     }
-    await screenshot(`root-kind-${kind}-${theme}-details.png`);
+    await screenshot(`root-kind-${kind}-${theme}-details.png`, 300);
     const dismissed = await browser.evaluate(`(() => {
       const root = document.getElementById("root-details");
       const summary = root.querySelector("summary");

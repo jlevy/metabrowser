@@ -498,12 +498,13 @@ def test_a_checkout_belongs_to_the_github_repository_its_origin_names(
         assert answer["kind"] == ("git" if is_root else "folder"), served
         assert answer["kind_label"] == KIND_LABELS["git" if is_root else "folder"], served
         assert answer["kind_tip"] == (tip if is_root else "Local folder"), served
-        shell = client.get("/view/").text
-        details = re.search(r'<details id="root-details"[^>]*>', shell)
-        assert details is not None
-        assert ("data-repository-url=" in details[0]) == (is_root and repository is not None)
-        if is_root and repository is not None:
-            assert f'data-repository-url="{repository}"' in details[0]
+        for address in ("/view/", "/view/README.md", "/pull/7"):
+            shell = client.get(address).text
+            details = re.search(r'<details id="root-details"[^>]*>', shell)
+            assert details is not None
+            assert ("data-repository-url=" in details[0]) == (is_root and repository is not None)
+            if is_root and repository is not None:
+                assert f'data-repository-url="{repository}"' in details[0]
 
 
 def _mark(shell: str) -> tuple[str, str]:
