@@ -167,7 +167,7 @@ export function mountHome(container, ctx, mb) {
     slot("totals", "agents-totals").innerHTML =
       '<div class="agents-stats">' +
       stat("Sessions", esc(mb.formatInteger(totals.sessions))) +
-      stat("Running now", esc(mb.formatInteger(totals.running))) +
+      stat("Active", esc(mb.formatInteger(totals.running))) +
       stat("Size on disk", esc(mb.formatSize(totals.size_bytes))) +
       (byAgent ? stat("By agent", byAgent) : "") +
       "</div>";
@@ -249,16 +249,16 @@ export function mountHome(container, ctx, mb) {
               models: row.models,
               status: row.status,
             })),
-            { label: "Most recent sessions" },
+            { label: "Latest sessions" },
           );
     element.innerHTML =
-      '<div class="agents-heading-row"><h3 class="section-heading agents-heading">Recent sessions</h3>' +
+      '<div class="agents-heading-row"><h3 class="section-heading agents-heading">Latest sessions</h3>' +
       `<button type="button" class="btn" data-agents-all-sessions>All sessions</button></div>${rows}`;
   }
 
   function paintLive() {
     const element = slot("live", "agents-live");
-    element.setAttribute("aria-label", "Running now");
+    element.setAttribute("aria-label", "Active sessions");
     const rows = sessionRowsHtml(
       mb,
       live.map((row) => ({
@@ -271,12 +271,13 @@ export function mountHome(container, ctx, mb) {
         models: row.models,
         status: null,
       })),
-      { label: "Running now" },
+      { label: "Active sessions" },
     );
     element.innerHTML =
-      '<h3 class="section-heading agents-heading">Running now</h3>' +
+      '<h3 class="section-heading agents-heading">Active sessions</h3>' +
+      '<p class="agents-muted agents-live-note">Claude Code processes and recent Codex activity.</p>' +
       (live.length === 0
-        ? `<p class="agents-empty">${liveKnown ? "No session is running." : "Checking…"}</p>`
+        ? `<p class="agents-empty">${liveKnown ? "No active sessions detected." : "Checking…"}</p>`
         : rows);
     reorder();
   }

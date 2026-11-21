@@ -23,10 +23,10 @@ visibility moved by hand:
 - **What the home derives.** The activity window, the size histogram, the progress
   sentence, and the ages and durations.
 - **The markup.** A session table, whose sorted column says so and whose titles are
-  escaped, a two-line session row, as the home’s Running now and Recent sessions draw it
-  (the agent, the title link, and the age on the first line, the project and the model
-  on the second, parted by the design’s separator), and an event row in its kind’s and
-  its tool family’s color class.
+  escaped, a two-line session row, as the home’s Active sessions and Latest sessions
+  draw it (the agent, the title link, and the age on the first line, the project and the
+  model on the second, parted by the design’s separator), and an event row in its kind’s
+  and its tool family’s color class.
 
 ```console
 $ node tests/dom/agents-views-session.js

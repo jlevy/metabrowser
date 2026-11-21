@@ -1,5 +1,5 @@
-// Lists of sessions: the session list's table, and the two-line rows the home's Running now
-// and Recent sessions draw.
+// Lists of sessions: the session list's table, and the two-line rows the home's Active sessions
+// and Latest sessions draw.
 //
 // The route's rows are the data (membership, order, counts); this paints them. A column
 // that can be sorted is a button in its header with `aria-sort`, so the table is operable
@@ -163,7 +163,7 @@ export function sessionTableHtml(mb, rows, options) {
  */
 
 /**
- * A session as a two-line row, as the home's Running now and Recent sessions list them.
+ * A session as a two-line row, as the home's Active sessions and Latest sessions list them.
  * The first line is the agent, the title link, and the age at its end, which never wraps;
  * the second, muted line is a status badge when there is one, the project, and the model,
  * each cut short with an ellipsis rather than wrapped, so a long path never pushes the age

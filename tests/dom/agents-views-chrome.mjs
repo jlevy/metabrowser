@@ -220,7 +220,7 @@ try {
   check("the recent table lists a page of sessions", totals.recent === 8, totals);
   check("both homes are listed", totals.homes.length === 2, totals);
   check("the size histogram has rows", totals.bars > 0, totals);
-  check("the live strip answers", /Running now/.test(totals.live ?? ""), totals);
+  check("the live strip answers", /Active sessions/.test(totals.live ?? ""), totals);
   check(
     "the stylesheet loaded once",
     (await chrome.evaluate(COUNT_REQUESTS("agents-views.css"))) === 1,

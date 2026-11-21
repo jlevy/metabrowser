@@ -195,13 +195,13 @@ A folder that is, or holds, a home opens on its **Agents** page, with **Sessions
 beside it. Any other folder keeps its Overview.
 
 - **Agents:** one page for each home and the two together.
-  It shows how many sessions there are, how many are running now, and the size on disk;
-  the sessions started per day, and a histogram of session sizes.
-  **Running now** uses live provider signals.
+  It shows how many sessions there are, how many show signs of activity, and the size on
+  disk; the sessions started per day, and a histogram of session sizes.
+  **Active sessions** uses live provider signals.
   Claude Code sessions qualify while their registered process is alive.
   Codex threads qualify when the desktop records a fresh active turn or when the thread
   was updated in the last two minutes.
-  **Recent sessions** shows the latest eight sessions by recorded activity and can
+  **Latest sessions** shows the latest eight sessions by recorded activity and can
   include sessions from the live list.
   On first load the plugin discovers sessions, then reads local records to fill in
   details such as turn counts and status.

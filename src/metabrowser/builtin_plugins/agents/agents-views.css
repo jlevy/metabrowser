@@ -71,6 +71,10 @@
   color: var(--muted);
 }
 
+.agents-live-note {
+  margin: 0 0 8px;
+}
+
 .agents-empty {
   color: var(--muted);
   margin: 0;

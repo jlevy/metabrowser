@@ -364,15 +364,8 @@ pinned_by = "apps/macos/Tests/ShellCoreTests/RuntimeDiscoveryTests.swift::keepsI
 id = "executable-name"
 source = "Sources/ShellCore/Runtime/RuntimeDiscovery.swift"
 what = "The package installs a console script named `metab`, which is the file the app looks for in each place it searches."
-pinned_by = "tests/test_app_contract_golden.py::test_the_names_the_app_runs_and_installs_are_the_packages"
+pinned_by = "tests/test_app_contract_golden.py::test_the_apps_executable_name_matches_the_console_script"
 values = ["pyproject.toml:project.scripts.metab"]
-
-[[behavior]]
-id = "distribution-name"
-source = "Sources/ShellCore/Runtime/RuntimeDiscovery.swift"
-what = "The distribution is `metabrowser`, which the install and upgrade commands the app shows name to uv, the upgrade with a PEP 440 floor."
-pinned_by = "tests/test_app_contract_golden.py::test_the_names_the_app_runs_and_installs_are_the_packages"
-values = ["pyproject.toml:project.name"]
 
 [[behavior]]
 id = "stdin-lifeline"
@@ -569,9 +562,6 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 [other]
 flags = [
     "--bin",       # uv tool dir --bin
-    "--upgrade",   # uv tool install --upgrade, shown at setup
-    "--reinstall", # uv tool install --reinstall, shown at setup
-    "--force",     # pipx install --force, shown for a pipx metab too old to run
     "--hostname",  # gh auth login, status, and refresh, shown when GitHub refuses
     "--scopes",    # gh auth refresh --scopes, shown when GitHub refuses
 ]
