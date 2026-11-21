@@ -830,16 +830,16 @@ def test_every_admitted_function_is_one_the_adapter_calls() -> None:
 
 
 def test_json_that_is_not_strict_json_is_shown_as_text(tmp_path: Path) -> None:
-    """`NaN`, `Infinity`, and a value nested past the parser are text, on a page and in a
-    record, and never fail the answer."""
+    """Nonfinite and overly nested JSON values remain text in pages and records."""
     deep = "[" * 20_000 + "]" * 20_000
     database = build(
         tmp_path / "j.db",
         "CREATE TABLE j (id INTEGER PRIMARY KEY, doc JSON);"
-        "INSERT INTO j VALUES (1, 'NaN'), (2, '[Infinity]'), (3, '{\"a\": 1}'), (4, '-Infinity');",
+        "INSERT INTO j VALUES (1, 'NaN'), (2, '[Infinity]'), (3, '{\"a\": 1}'), "
+        "(4, '-Infinity'), (5, '[1e1000]');",
     )
     connection = sqlite3.connect(database)
-    connection.execute("INSERT INTO j VALUES (5, ?)", (deep,))
+    connection.execute("INSERT INTO j VALUES (6, ?)", (deep,))
     connection.commit()
     connection.close()
     os.utime(database, (FIXED_MTIME, FIXED_MTIME))
@@ -849,16 +849,19 @@ def test_json_that_is_not_strict_json_is_shown_as_text(tmp_path: Path) -> None:
         page = _get(test_client, "rows", path="j.db/j")
         assert page["_status"] == 200, page
         docs = [row["cells"]["doc"] for row in page["rows"]]
-        assert docs[:4] == [
+        assert docs[:5] == [
             "NaN",
             "[Infinity]",
             {"json": {"a": 1}, "preview": '{"a": 1}'},
             "-Infinity",
+            "[1e1000]",
         ]
-        for key in ("k.WzFd", "k.WzJd", "k.WzVd"):
+        for key in ("k.WzFd", "k.WzJd", "k.WzVd", "k.WzZd"):
             record = _get(test_client, "record", path="j.db/j", key=key)
             assert record["_status"] == 200, record
         record = _get(test_client, "record", path="j.db/j", key="k.WzVd")
+        assert record["cells"]["doc"] == "[1e1000]"
+        record = _get(test_client, "record", path="j.db/j", key="k.WzZd")
         assert record["cells"]["doc"] == deep
 
 

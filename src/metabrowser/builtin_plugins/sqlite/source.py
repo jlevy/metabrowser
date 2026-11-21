@@ -37,6 +37,7 @@ what a request answers into the protocol's descriptors, cells, keys, and cursors
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Sequence
 from typing import Any, Final, cast
 
@@ -1009,20 +1010,33 @@ def _cell(
 
 
 _NOT_JSON: Final = object()
+# Match the structured diff projection's nesting limit for a bounded preview tree.
+_JSON_CELL_MAX_DEPTH: Final = 64
 
 
 def _refuse_constant(name: str) -> Any:
     raise ValueError(f"{name} is not JSON")
 
 
+def _json_value_fits(value: Any, remaining_depth: int) -> bool:
+    if isinstance(value, dict):
+        return remaining_depth > 0 and all(
+            _json_value_fits(item, remaining_depth - 1) for item in value.values()
+        )
+    if isinstance(value, list):
+        return remaining_depth > 0 and all(
+            _json_value_fits(item, remaining_depth - 1) for item in value
+        )
+    return not isinstance(value, float) or math.isfinite(value)
+
+
 def _json(text: str) -> Any:
-    """*text* parsed as strict JSON, or :data:`_NOT_JSON`: `NaN` and `Infinity`, which
-    Python's parser admits and no response may carry, are not JSON, and nor is a value
-    nested past the parser's recursion."""
+    """Keep malformed, overly nested, or nonfinite values as text."""
     try:
-        return json.loads(text, parse_constant=_refuse_constant)
+        value = json.loads(text, parse_constant=_refuse_constant)
     except (ValueError, RecursionError):
         return _NOT_JSON
+    return value if _json_value_fits(value, _JSON_CELL_MAX_DEPTH) else _NOT_JSON
 
 
 def _fits(text: str, *, max_chars: int | None, max_bytes: int | None) -> bool:
