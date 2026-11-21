@@ -21,7 +21,7 @@ patterns:
   METAB_VERSION: '[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+]*'
   EXECUTABLE: '[^\s"]+/bin/metab'
   PYTHON: '[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+]* at [^\s"]+'
-  ENVIRONMENT: '[^\s"]+'
+  INSTALL_LOCATION: '(?:from the source checkout|in the Python environment) [^\s"]+'
   SANDBOX: '[^\s"]+/tryscript-[A-Za-z0-9]+'
   FREE: '[0-9]+\.[0-9] GB'
 before: >-
@@ -50,7 +50,8 @@ this user cannot create.
 minimum to compare; `tests/test_doctor.py` covers that comparison.
 `METABROWSER_EVENT_LOG` is set on, as the Makefile’s goldens otherwise turn it off.
 The patterns elide what the host decides: the `metab` version and executable, the
-Python, the checkout it runs from, and the free space.
+Python, the install location, and the free space.
+A source checkout may keep its Python virtual environment on an external scratch volume.
 `METABROWSER_MAX_FIRST_CLONE_KB` admits a first clone of 1 KB, so the cache check warns
 of low free space only on a full volume; `tests/test_doctor.py` covers that warning.
 
@@ -78,7 +79,7 @@ metab: ok: metab [METAB_VERSION]
   version: [METAB_VERSION]
   executable: [EXECUTABLE]
   python: [PYTHON]
-  installed: from the source checkout [ENVIRONMENT]
+  installed: [INSTALL_LOCATION]
   app: not looked for
 git: ok: git version 2.56.1, which meets every floor
   executable: [FAKE_GIT]
@@ -188,7 +189,7 @@ $ metab --doctor --json
         },
         {
           "name": "installed",
-          "value": "from the source checkout [ENVIRONMENT]"
+          "value": "[INSTALL_LOCATION]"
         },
         {
           "name": "app",
@@ -311,7 +312,7 @@ metab: ok: metab [METAB_VERSION]
   version: [METAB_VERSION]
   executable: [EXECUTABLE]
   python: [PYTHON]
-  installed: from the source checkout [ENVIRONMENT]
+  installed: [INSTALL_LOCATION]
   app: not looked for
 git: ok: git version 2.56.1, which meets every floor
   executable: [FAKE_GIT]
@@ -434,7 +435,7 @@ metab: ok: metab [METAB_VERSION]
   version: [METAB_VERSION]
   executable: [EXECUTABLE]
   python: [PYTHON]
-  installed: from the source checkout [ENVIRONMENT]
+  installed: [INSTALL_LOCATION]
   app: not looked for
 git: ok: git version 2.56.1, which meets every floor
   executable: [FAKE_GIT]
@@ -557,7 +558,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doct
         },
         {
           "name": "installed",
-          "value": "from the source checkout [ENVIRONMENT]"
+          "value": "[INSTALL_LOCATION]"
         },
         {
           "name": "app",

@@ -39,7 +39,7 @@ github         builtin  -                       markdown    2      pull,pull-ref
 html           builtin  html                    -           2      -
 image          builtin  -                       -           1      -
 markdown       builtin  markdown,mermaid        -           4      -
-sqlite         builtin  sqlite                  -           1      info
+sqlite         builtin  sqlite                  table       3      info,schema,children
 structured     builtin  structured              table       3      parsed
 table          builtin  -                       -           0      tables,schema,rows,record,card
 text           builtin  -                       -           1      -
@@ -297,13 +297,19 @@ $ metab --plugins --json
       "kinds": [
         "sqlite"
       ],
-      "requires": [],
+      "requires": [
+        "table"
+      ],
       "views": [
+        "table",
+        "schema",
         "info"
       ],
-      "view_count": 1,
+      "view_count": 3,
       "data_hooks": [
-        "info"
+        "info",
+        "schema",
+        "children"
       ],
       "disabled_data_hooks": []
     },

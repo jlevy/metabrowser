@@ -904,7 +904,23 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/sqlite/children",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/sqlite/info",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/sqlite/schema",
       "methods": [
         "GET",
         "HEAD"
@@ -1130,7 +1146,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 92
+  "count": 94
 }
 ? 0
 ```
