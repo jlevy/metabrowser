@@ -3,7 +3,7 @@
 A root is a plain folder, a Git checkout, or a mirror
 (:data:`~metabrowser.root_identity.IdentityKind`), and the mark before the root's name at the
 top of the navigation draws one glyph for the kind (docs/design-system-icons.md, "Source
-Kinds"). The glyphs are Lucide's, v1.17.0 (ISC; its notice is beside the file, in
+Kinds"). The glyphs are Lucide's or derived from their v1.17.0 artwork (ISC notice in
 ``static/source-kind-glyphs.license.txt``), kept in ``static/source-kind-glyphs.json``,
 which is also what the macOS app's ``RootMark`` is held to (``RootMarkTests``), so the page
 and the app's menus draw one set.
@@ -42,7 +42,7 @@ def _glyphs() -> dict[str, dict[str, str]]:
 def source_kind_svg(kind: IdentityKind) -> str:
     """The inline SVG for a root of *kind*: the glyph file's elements in Lucide's 24-point box.
 
-    The file is the package's own and holds only Lucide's path data, so the markup is trusted;
+    The file is the package's own and holds only bundled SVG paths, so the markup is trusted;
     no part of it comes from the folder or the repository being served.
     """
 

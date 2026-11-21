@@ -563,11 +563,10 @@ def test_the_source_kinds_are_the_identity_routes_kinds_each_with_its_own_glyph(
     )
     assert set(KIND_LABELS) == set(glyphs), "every kind of root has its words"
     rows = [row for row in _catalog() if row.kind == "Source Kinds" and row.source == "Shell"]
-    assert sorted(row.upstream or "" for row in rows) == sorted(
-        g["lucide"] for g in glyphs.values()
-    ), "the catalog's Shell rows are the glyph file's glyphs, each under its Lucide id"
+    assert sorted(row.icon for row in rows) == sorted(g["id"] for g in glyphs.values())
     for kind, glyph in glyphs.items():
-        (row,) = (row for row in rows if row.upstream == glyph["lucide"])
+        (row,) = (row for row in rows if row.icon == glyph["id"])
+        assert row.upstream == glyph.get("lucide")
         assert row.defined_in == ("static/source-kind-glyphs.json",)
         assert f"`{kind}` kind" in row.meaning, f"{row.icon}'s row names the {kind} kind"
     registry = _svg_definitions(REGISTRY.read_text(encoding="utf-8"))
@@ -609,18 +608,17 @@ def test_the_apps_root_marks_are_the_same_glyphs_and_words_as_the_page() -> None
     """`RootMark` pairs each kind with the page's glyph and says it in the page's words."""
     swift = ROOT_MARK_SWIFT.read_text(encoding="utf-8")
     glyphs = _kind_glyphs()
-    ids = _swift_cases(swift, "lucideID", "label")
-    assert {
-        ROOT_MARK_KINDS[case]: lucide for case, lucide in ids.items() if case in ROOT_MARK_KINDS
-    } == {kind: glyph["lucide"] for kind, glyph in glyphs.items()}, (
-        "RootMark.lucideID is the page's glyph for each kind"
-    )
+    ids = _swift_cases(swift, "glyphID", "label")
+    assert {ROOT_MARK_KINDS[case]: ids[case] for case in ROOT_MARK_KINDS} == {
+        kind: glyph["id"] for kind, glyph in glyphs.items()
+    }, "RootMark.glyphID is the page's glyph for each kind"
     assert ids["folder"] == "folder", "the app's ordinary folder is the registry's `folder`"
     # The app's marks are the catalog's App glyph rows, one for each, the ordinary folder included.
     app_rows = _rows("App glyph")
-    assert sorted(row.upstream or "" for row in app_rows) == sorted(
-        ["folder", *(glyph["lucide"] for glyph in glyphs.values())]
-    )
+    assert {row.icon: row.upstream for row in app_rows} == {
+        "folder": "folder",
+        **{glyph["id"]: glyph.get("lucide") for glyph in glyphs.values()},
+    }
     assert {row.defined_in for row in app_rows} == {
         ("apps/macos/Sources/ShellCore/Folders/RootMark.swift",)
     }

@@ -1,5 +1,6 @@
-source-kind-glyphs.json holds three glyphs from Lucide 1.17.0 (cloud.svg, folder-git-2.svg,
-and folder-dot.svg), at upstream commit 896aba0d195a4fec38ad7c4a90d00cb3389ebfea:
+source-kind-glyphs.json contains folder-dot.svg, folder-git-2.svg, and a cloud-folder
+drawing adapted from folder-git-2.svg and cloud.svg, all from Lucide 1.17.0 at upstream
+commit 896aba0d195a4fec38ad7c4a90d00cb3389ebfea:
 https://github.com/lucide-icons/lucide/tree/896aba0d195a4fec38ad7c4a90d00cb3389ebfea/icons
 
 ISC License

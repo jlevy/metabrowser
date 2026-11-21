@@ -22,7 +22,7 @@ import Testing
 
     /// The page's glyph for each kind of root, by `kind` in `GET /api/identity`: what the
     /// server writes into the page's first paint (`source-kind-glyphs.json`).
-    private static let kindGlyphs: [String: (lucide: String, elements: String)] = {
+    private static let kindGlyphs: [String: (id: String, elements: String)] = {
         let package = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent()
         let file = package.appending(path: "../../src/metabrowser/static/source-kind-glyphs.json").standardizedFileURL
@@ -30,8 +30,8 @@ import Testing
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: [String: String]]
         else { return [:] }
         return object.compactMapValues { entry in
-            guard let lucide = entry["lucide"], let elements = entry["elements"] else { return nil }
-            return (lucide, elements)
+            guard let id = entry["id"], let elements = entry["elements"] else { return nil }
+            return (id, elements)
         }
     }()
 
@@ -43,8 +43,8 @@ import Testing
             let page = try #require(Self.kindGlyphs[kind.rawValue], "the page has a glyph for \(kind)")
             let mark = RootMark(kind)
             #expect(mark.kind == kind)
-            #expect(page.elements == mark.markup, "RootMark.\(mark) matches the page's \(page.lucide)")
-            #expect(page.lucide == mark.lucideID)
+            #expect(page.elements == mark.markup, "RootMark.\(mark) matches the page's \(page.id)")
+            #expect(page.id == mark.glyphID)
         }
     }
 
@@ -53,7 +53,7 @@ import Testing
         #expect(Self.icons.contains("Lucide v1.17.0"), "the page's glyphs are the version the marks copy")
         let page = try #require(Self.pageMarkup("folder"), "icons.js has a `folder` entry")
         #expect(page == RootMark.folder.markup)
-        #expect(Self.icons.contains("// Lucide `\(RootMark.folder.lucideID)`"))
+        #expect(Self.icons.contains("// Lucide `\(RootMark.folder.glyphID)`"))
         #expect(RootMark.folder.kind == nil)
     }
 

@@ -132,7 +132,7 @@ and `metab` say it alike:
 
 - **Cloud mirror**, `mirror`: a repository opened by its address and read from
   Metabrowser’s own copy of it ([Open Modes](project/architecture/arch-open-modes.md)).
-  Its icon is a cloud.
+  Its icon is a folder with a cloud in the lower right.
 - **Local Git checkout**, `git`: a folder on this computer that holds a `.git` entry,
   whatever its remote, and so a folder that has Commits and the checkout’s revisions.
   It stays a checkout while it shows one of its revisions.
@@ -149,17 +149,18 @@ comes later, and a repository Git refuses is still a checkout on disk.
 Each kind’s icon is a different shape from every other kind’s and from the ordinary
 folder’s ([The Ordinary Folder](#the-ordinary-folder)), so the one row that is a root
 stands out among folders, wherever the two are listed together.
-The cloud is the one that is not a folder, because a mirror has no folder to open: it
-stands for the repository’s copy that Metabrowser keeps.
+The cloud overlay identifies Metabrowser’s cached copy of a remote repository.
+Its folder outline follows the local Git checkout’s. The cloud fits in the opening in
+the outline, using artwork adapted from Lucide’s folder and cloud glyphs.
 
 | Icon | Source | Meaning | Defined in | Ink | Size |
 | --- | --- | --- | --- | --- | --- |
 | `folderDot`, Lucide `folder-dot` | Shell | A local folder, the `folder` kind: a plain folder, with no Git features | `static/source-kind-glyphs.json` | `--muted` | `--icon-glyph` |
 | `folderGit2`, Lucide `folder-git-2` | Shell | A local Git checkout, the `git` kind | `static/source-kind-glyphs.json` | `--muted` | `--icon-glyph` |
-| `cloud`, Lucide `cloud` | Shell | A cloud mirror, the `mirror` kind | `static/source-kind-glyphs.json` | `--muted` | `--icon-glyph` |
+| `folderCloud` | Shell | A cloud mirror, the `mirror` kind | `static/source-kind-glyphs.json` | `--muted` | `--icon-glyph` |
 | `folderDot`, Lucide `folder-dot` | App glyph | A local folder, in the app’s title chooser and path menu, Switch Folder panel, Open Recent, and Dock menu | `apps/macos/Sources/ShellCore/Folders/RootMark.swift` | The menu’s, as a template image | `RootMark.menuSize` |
 | `folderGit2`, Lucide `folder-git-2` | App glyph | A local Git checkout, in the same menus | `apps/macos/Sources/ShellCore/Folders/RootMark.swift` | The menu’s, as a template image | `RootMark.menuSize` |
-| `cloud`, Lucide `cloud` | App glyph | A cloud mirror, in the same menus | `apps/macos/Sources/ShellCore/Folders/RootMark.swift` | The menu’s, as a template image | `RootMark.menuSize` |
+| `folderCloud` | App glyph | A cloud mirror, in the same menus | `apps/macos/Sources/ShellCore/Folders/RootMark.swift` | The menu’s, as a template image | `RootMark.menuSize` |
 
 **One drawing in two places.** The server draws a kind’s icon into the page: it knows
 the kind when it writes the first paint and writes that one glyph, from
@@ -178,7 +179,7 @@ folder’s to the registry’s.
 
 | Kind | Words (`kind_label`) | Page glyph | macOS mark |
 | --- | --- | --- | --- |
-| `mirror` | Cloud mirror | `cloud` | `RootMark.mirror` |
+| `mirror` | Cloud mirror | `folderCloud` | `RootMark.mirror` |
 | `git` | Local Git checkout | `folderGit2` | `RootMark.gitCheckout` |
 | `folder` | Local folder | `folderDot` | `RootMark.plainFolder` |
 
