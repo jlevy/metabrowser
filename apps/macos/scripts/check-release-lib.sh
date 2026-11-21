@@ -19,12 +19,16 @@ version_of_tag() {
 
 # Reads `gh release view TAG --json tagName,isDraft,isImmutable,assets` on stdin and
 # prints "draft=true|false", "immutable=true|false", and one "digest NAME=VALUE" line
-# for each asset. Stops when it is not that tag's release.
+# for each asset. Requires the release for tag "$1" with exactly the image "$2" and
+# checksum "$3" attached.
 release_facts() {
-  local tag="$1" json
+  local tag="$1" image="$2" sums="$3" json
   json="$(cat)"
   jq -e --arg tag "$tag" '.tagName == $tag' <<<"$json" >/dev/null 2>&1 ||
     die "the release read is not $tag's: $(head -c 200 <<<"$json")"
+  jq -e --arg image "$image" --arg sums "$sums" \
+    '([.assets[].name] | sort) == ([$image, $sums] | sort)' <<<"$json" >/dev/null ||
+    die "$tag must attach exactly $image and $sums"
   jq -r '"draft=\(.isDraft)", "immutable=\(.isImmutable)", (.assets[] | "digest \(.name)=\(.digest // "")")' <<<"$json"
 }
 
@@ -33,7 +37,7 @@ release_facts() {
 # `shasum -a 256` line naming the asset, `shasum -a 256 -c` must pass, and the digest must
 # be the same SHA-256. Prints nothing when all three agree.
 asset_problems() {
-  local file="$1" sums="$2" digest="$3" name lines line actual
+  local file="$1" sums="$2" digest="$3" name lines line
   local pattern='^[0-9a-f]{64}  (.+)$'
   name="$(basename "$file")"
   lines="$(wc -l <"$sums" | tr -d ' ')"
@@ -43,7 +47,14 @@ asset_problems() {
   elif ! (cd "$(dirname "$file")" && shasum -a 256 -c "$(basename "$sums")" >/dev/null 2>&1); then
     echo "$name does not match $(basename "$sums")"
   fi
-  actual="$(shasum -a 256 "$file" | cut -d' ' -f1)"
+  github_digest_problem "$file" "$digest"
+}
+
+# Prints a problem if GitHub's digest "$2" does not match the downloaded file "$1".
+github_digest_problem() {
+  local file="$1" digest="$2" name actual
+  name="$(basename "$file")"
+  actual="$(shasum -a 256 "$file" | cut -d' ' -f1)" || die "could not hash $name"
   if [[ -z "$digest" ]]; then
     echo "GitHub gives no digest for $name"
   elif [[ "$digest" != "sha256:$actual" ]]; then

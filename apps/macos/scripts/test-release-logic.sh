@@ -902,17 +902,36 @@ release_json() {
          digest: $sums_digest, name: ($image + ".sha256"), size: 96, state: "uploaded"}
       ]}'
 }
-facts="$(release_json "$release_tag" true false "sha256:$image_sha" | release_facts "$release_tag")"
+facts="$(release_json "$release_tag" true false "sha256:$image_sha" | release_facts "$release_tag" "$image_name" "$image_name.sha256")"
 if [[ "$facts" == *"draft=true"* && "$facts" == *"immutable=false"* && "$facts" == *"digest $image_name=sha256:$image_sha"* ]]; then
   pass "a draft release's state and its assets' digests are read"
 else
   fail "release_facts read: $facts"
 fi
-run bash -c 'source scripts/common.sh; source scripts/check-release-lib.sh; release_facts macos-v9.9.9' <<<"$(release_json "$release_tag" true false x)"
+run release_facts macos-v9.9.9 "$image_name" "$image_name.sha256" <<<"$(release_json "$release_tag" true false x)"
 if ((status != 0)) && said "is not macos-v9.9.9's"; then
   pass "another tag's release is refused"
 else
   fail "another tag's release: $(cat "$work/out")"
+fi
+
+for change in '.assets += [{name: "Unexpected.dmg"}]' '.assets |= .[:1]' '.assets[1] = .assets[0]'; do
+  run release_facts "$release_tag" "$image_name" "$image_name.sha256" \
+    <<<"$(release_json "$release_tag" true false "sha256:$image_sha" | jq "$change")"
+  if ((status != 0)) && said "must attach exactly $image_name and $image_name.sha256"; then
+    pass "the draft must have the exact asset set ($change)"
+  else
+    fail "an unexpected asset set passed ($change): $(cat "$work/out")"
+  fi
+done
+
+sums_digest="sha256:$(shasum -a 256 "$downloads/$image_name.sha256" | cut -d' ' -f1)"
+if [[ -z "$(github_digest_problem "$downloads/$image_name.sha256" "$sums_digest")" &&
+  "$(github_digest_problem "$downloads/$image_name.sha256" "sha256:$image_sha")" == *"GitHub's digest for $image_name.sha256 is"* &&
+  "$(github_digest_problem "$downloads/$image_name.sha256" "")" == *"GitHub gives no digest for $image_name.sha256"* ]]; then
+  pass "the downloaded checksum requires its own matching GitHub digest"
+else
+  fail "the downloaded checksum did not validate GitHub's digest correctly"
 fi
 
 if [[ -z "$(asset_problems "$downloads/$image_name" "$downloads/$image_name.sha256" "sha256:$image_sha")" ]]; then

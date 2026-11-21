@@ -11,9 +11,9 @@
 # attestation, so the Developer ID team is what ties the image to the owner. In order,
 # stopping at the first failure:
 #   1. reads the release with gh, a draft or published, and the commit its tag points at;
-#   2. downloads its assets (release_assets in common.sh) into a scratch folder;
-#   3. checks each against its .sha256 file with `shasum -a 256 -c`, and against the
-#      SHA-256 digest GitHub gives for it;
+#   2. requires exactly the assets named by release_assets and downloads them;
+#   3. checks the image against its checksum file and both files against the SHA-256
+#      digests GitHub gives for them;
 #   4. checks the build provenance BUILT names: with BUILT=ci, the release workflow's
 #      attestation for the tag, which `gh attestation verify` must accept; with
 #      BUILT=local, none. BUILT is an input, never inferred, so a CI build that lost its
@@ -62,25 +62,26 @@ sums="$(sed -n 2p <<<"$assets")"
 # 1. The release, and its tag's commit.
 json="$(gh release view "$tag" --repo "$release_repository" --json tagName,isDraft,isImmutable,assets)" ||
   die "could not read the release $tag"
-facts="$(release_facts "$tag" <<<"$json")"
+facts="$(release_facts "$tag" "$image" "$sums" <<<"$json")"
 draft="$(sed -n 's/^draft=//p' <<<"$facts")"
 immutable="$(sed -n 's/^immutable=//p' <<<"$facts")"
 commit="$(tag_commit "$tag")"
 echo "Release $tag: $([[ "$draft" == true ]] && echo draft || echo published), $([[ "$immutable" == true ]] && echo immutable || echo "not immutable"), at $commit"
 
-# 2. The assets, and nothing else expected of it.
+# 2. The assets.
 mkdir -p "$work/download"
 while IFS= read -r asset; do
-  [[ $'\n'"$facts" == *$'\n'"digest $asset="* ]] || die "$tag has no asset $asset"
   gh release download "$tag" --repo "$release_repository" --pattern "$asset" --dir "$work/download" ||
     die "could not download $asset"
 done <<<"$assets"
 echo "Downloaded $(tr '\n' ' ' <<<"$assets")"
 
-# 3. The checksum and GitHub's digest.
+# 3. The checksum and GitHub's digests.
+problems="$(github_digest_problem "$work/download/$sums" "$(sed -n "s/^digest $sums=//p" <<<"$facts")")"
+[[ -z "$problems" ]] || die "$sums:"$'\n'"$problems"
 problems="$(asset_problems "$work/download/$image" "$work/download/$sums" "$(sed -n "s/^digest $image=//p" <<<"$facts")")"
 [[ -z "$problems" ]] || die "$image:"$'\n'"$problems"
-echo "checksum: $image matches $sums and GitHub's digest, sha256:$(cut -d' ' -f1 "$work/download/$sums")"
+echo "checksum: $image matches $sums and GitHub's digests verify both downloads; image sha256:$(cut -d' ' -f1 "$work/download/$sums")"
 
 # 4 and 5. Provenance.
 build_provenance="$(check_build_provenance "$built" "$tag" "$work/download/$image")"
