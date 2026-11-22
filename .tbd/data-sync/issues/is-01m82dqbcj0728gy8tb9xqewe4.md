@@ -5,7 +5,7 @@ title: Open pull request page shows GitHub changes within seconds, not up to 90 
 kind: feature
 status: in_progress
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 refs:
   - kind: pr
@@ -15,10 +15,12 @@ delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m82h0qrnw9vg6vrj597asgpv
+child_order_hints:
+  - is-01m82s73za15hfvfw96fdn9e19
 hold: null
 hold_until: null
 created_at: 2026-11-22T20:03:55.409Z
-updated_at: 2026-11-22T22:59:21.858Z
+updated_at: 2026-11-22T23:24:46.440Z
 started_at: 2026-11-22T20:04:03.347Z
 ---
 A merge on github.com took 48 s to show on an open, visible pull request page (fdu #214, 2026-11-22: merged 19:29:37, shown 19:30:25). The page polls the server every SLOW_POLL_MS (30 s) and the server treats a record as fresh for FRESHNESS_WINDOW_S (60 s), so a change can take up to ~90 s. Goal: while a pull request page is visible, check GitHub for that pull request every few seconds with a cheap conditional request, refresh the record when it changed, and show it at once.
