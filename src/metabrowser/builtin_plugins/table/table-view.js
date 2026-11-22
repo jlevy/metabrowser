@@ -1591,7 +1591,8 @@ export function mountTable(container, ctx, host = {}) {
     for (const text of page ? pageNotes(page) : []) {
       notice("warning", text);
     }
-    if (scanPaused && page?.next_after) {
+    const currentPage = sameRows(answered, state) ? page : null;
+    if (scanPaused && currentPage?.next_after) {
       const resume = el(
         "button",
         { type: "button", class: "btn table-continue" },
@@ -1608,7 +1609,7 @@ export function mountTable(container, ctx, host = {}) {
         notes.append(kept);
       }
     }
-    if (page && rows.length === 0) {
+    if (currentPage && rows.length === 0) {
       drawEmpty();
     }
   }
