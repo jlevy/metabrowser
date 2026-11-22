@@ -96,9 +96,13 @@ flush error at exit.
    from `--port` and returns a listening socket on the first free port, which Uvicorn
    later serves on. The server holds its port from here, so the banner never names a port
    another server can take while startup finishes.
-   The root attaches, and a concrete `--host` joins the Host allowlist.
+   The socket’s family is the host’s, so an IPv6 `--host` is served, and `::` listens
+   for both families. The root attaches, and a concrete `--host` joins the Host
+   allowlist, an IPv6 literal in the brackets a `Host` header carries.
 7. **Banner and browser.** The banner prints the canonical `/view/` URL, never the bare
    origin, which only redirects.
+   `url_host` (`server_utils.py`) chooses its host: loopback for a wildcard bind, and an
+   IPv6 literal in brackets.
    A daemon thread runs `wait_for_http_ok_then` (`cli/http_readiness.py`), which polls
    that URL and opens the browser only after it returns an HTTP success; an accepted TCP
    connection or the origin’s redirect is not readiness.
