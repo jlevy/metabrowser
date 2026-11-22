@@ -5,7 +5,7 @@ title: "Branches follow the repository: a view of a branch tracks it in mirror a
 kind: epic
 status: open
 priority: 1
-version: 17
+version: 19
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/631
@@ -24,10 +24,11 @@ child_order_hints:
   - is-01m7v8cvnhxhpd84rsjmtqqrm3
   - is-01m7v8d2dzrf8cg3wrxezg9bh1
   - is-01m7v8prb166f74m9855fmntda
+  - is-01m82j9mkc8hxbezzc94rn8ndc
 hold: null
 hold_until: null
 created_at: 2026-11-20T01:15:32.417Z
-updated_at: 2026-11-22T21:18:39.891Z
+updated_at: 2026-11-22T21:25:00.142Z
 started_at: 2026-11-20T01:17:55.715Z
 duplicate_of: null
 extensions:
@@ -49,7 +50,8 @@ Where it stands (2026-11-22):
 * Done, #631 (mb-30xb): one mirror per repository, so opening a pull request or any URL inside a repository reuses that repository's mirror.
 * Correct as it was: a folder's working tree is live through the watcher.
 * Not built: a revision of a checkout's branch in folder mode does not follow the branch (mb-0qgm).
-* Waiting on the owner: whether Refresh in folder mode may fetch (mb-gkq1), and whether a pull request's served head and its Changes diff follow new pushes (mb-qp3s).
+* Decided 2026-11-22 (mb-gkq1): Refresh in folder mode re-reads the checkout's refs and never fetches, as today.
+* Decided 2026-11-22 (mb-qp3s), not built: a pull request's served head follows new pushes, and Changes follows with a note naming the old and new head and a way back (mb-6a6w).
 * How soon a followed branch follows: a mirror refreshes only once its last fetch is a freshness window (60 s) old, so a push shows up to about 90 s later. mb-6pzh, under the update cadence epic mb-dip2 (OS-627), brings that to seconds.
 
 ## Notes
@@ -59,3 +61,5 @@ Where it stands (2026-11-22):
 2026-11-20 audit: #631 (one mirror per repository) and #632 (a served mirror branch follows its ref) are merged. Open: folder mode's branch follow (mb-0qgm) and two owner decisions (mb-gkq1: may Refresh fetch in folder mode; mb-qp3s: do a pull request's head and Changes follow new pushes).
 
 2026-11-22 check: nothing under this epic is active (no claimed bead, no open pull request), so it is open again rather than in progress, per docs/development.md. Description brought up to date. Added mb-6pzh (under mb-dip2) for how soon a mirror branch follows a push.
+
+2026-11-22: the owner took both recommendations ("Take both" in chat). mb-gkq1 closed: folder Refresh never fetches. mb-qp3s closed: a pull request head follows new pushes, built in mb-6a6w.

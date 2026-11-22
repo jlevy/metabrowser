@@ -3,14 +3,18 @@ type: is
 id: is-01m7v8d2dzrf8cg3wrxezg9bh1
 title: "Decide: under branch-follow, do a pull request's served head and its Changes diff follow new pushes?"
 kind: task
-status: open
+status: closed
 priority: 2
-version: 2
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m7v8bs62dz0nqmqb9rnhgsdb
 created_at: 2026-11-20T01:16:14.654Z
-updated_at: 2026-11-22T21:17:54.141Z
+updated_at: 2026-11-22T21:24:40.234Z
+closed_at: 2026-11-22T21:24:40.225Z
+close_reason: "Decided by the owner 2026-11-22 (\"Take both\" in chat, accepting the recommendation): a pull request's served head follows new pushes like a branch, and Changes follows too, with a one-line note naming the old and new head and a way back to the old diff. Implementation: mb-6a6w."
+resolution: null
+duplicate_of: null
 ---
 Today, on a repository URL, the served code stays on the head a pull request had until **Switch to the head**, and Changes keeps its diff with "New commits were pushed; updating." and **Show the newer changes** (docs/reviewing-pull-requests.md; pull-page.js).
 
