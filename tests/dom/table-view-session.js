@@ -721,11 +721,22 @@ async function refusals() {
   bad.handle.dispose();
   bad.container.remove();
 
+  let watchState;
+  sdk.watchFile = (_file, options) => {
+    watchState = options.onState;
+    return () => {};
+  };
   const none = mount("people.csv", "f.name=eq:Zed");
   await ready(none);
   step("a filter no row matches", { requests: takeRequests(), ...shown(none) });
+  watchState("live", null);
+  const empty = find(none.container, hasClass("table-empty"));
+  assert.ok(empty, "watch confirmation preserves the empty state");
+  assert.match(text(empty), /^No rows match\./);
+  assert.ok(find(empty, hasClass("table-clear")));
   none.handle.dispose();
   none.container.remove();
+  delete sdk.watchFile;
 
   const opened = mount("people.csv", "record=%404");
   await ready(opened);

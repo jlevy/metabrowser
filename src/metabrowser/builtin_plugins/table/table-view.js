@@ -1058,7 +1058,6 @@ export function mountTable(container, ctx, host = {}) {
       rowElements.clear();
       table.hidden = true;
       fitNote.hidden = true;
-      drawEmpty();
       return;
     }
     table.hidden = false;
@@ -1608,6 +1607,9 @@ export function mountTable(container, ctx, host = {}) {
       if (kept) {
         notes.append(kept);
       }
+    }
+    if (page && rows.length === 0) {
+      drawEmpty();
     }
   }
 
