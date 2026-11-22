@@ -253,7 +253,7 @@ gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
 gh auth status
-## 7's page asks for its automatic refresh, which reads its checks on their own: the pull, its check runs, and its status, each with its ETag, and no fetch into the store.
+## 7's page asks for its automatic refresh. Its checks alone are due, but its last full read was two hours ago, past FULL_REFRESH_S, and a visible page's record is read in full that often: every part is asked with its ETag, and GitHub answers 304 for all that did not change. A record read in full within that interval reads its checks alone.
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -291,6 +291,9 @@ gh auth status
 gh api repos/octo/demo/pulls/7 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
 gh auth status
 # metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=7'
 exit: 0

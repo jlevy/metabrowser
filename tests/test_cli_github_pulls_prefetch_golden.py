@@ -294,13 +294,17 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     assert (report["records"]["hour_used"], report["files"]["hour_used"]) == (1, 0)
 
     session.say(
-        "7's page asks for its automatic refresh, which reads its checks on their own: the "
-        "pull, its check runs, and its status, each with its ETag, and no fetch into the store."
+        "7's page asks for its automatic refresh. Its checks alone are due, but its last full "
+        "read was two hours ago, past FULL_REFRESH_S, and a visible page's record is read in "
+        "full that often: every part is asked with its ETag, and GitHub answers 304 for all "
+        "that did not change. A record read in full within that interval reads its checks alone."
     )
     checks = session.run(CANONICAL, "--api", f"{PULL}-refresh", body={"number": 7})
     assert checks.exit_code == 0, checks.stderr
     calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
-    assert not any("comments" in call or "reviews" in call for call in calls), calls
+    api = [call for call in calls if call.startswith("gh api repos/")]
+    assert any("comments" in call for call in api), calls
+    assert all(call.endswith("(If-None-Match)") for call in api), calls
     read = session.run(CANONICAL, "--api", f"{PULL}?number=7").payload()
     assert (read["state"], read["fetched_at"]) == ("current", _stamp(session.now))
 
