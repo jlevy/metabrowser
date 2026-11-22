@@ -52,6 +52,13 @@ Any identity it names, of whatever kind, is looked for only in the release keych
 `SIGN_KEYCHAIN` (by default `release_keychain` in `scripts/common.sh`). Its header
 documents `BUILD`, `ARCHES`, `ICON`, and `SIGN_KEYCHAIN`.
 
+`ARCHES` is read in one place, `normalize_arches` in `scripts/common.sh`, which every
+script’s build, image name, and checks go through.
+Order, repeats, and stray whitespace do not change what it means, and a name outside
+`supported_arches` stops the script before anything is built.
+The build then requires the executable’s slices, as `lipo` reads them, to be the ones
+asked for.
+
 ### Versions
 
 `VERSION` holds the version, `MAJOR.MINOR.PATCH`, and nothing overrides it; a release is
@@ -413,7 +420,11 @@ In this order. The owner’s approvals, O7, come at steps 1, 3, and 8, and O8 is
       `spctl --assess --type open`, and its checksum is written again, since stapling
       changes it.
    6. **Check:** `check-dmg.sh` checks the image as a downloader meets it
-      ([The Checks](#the-checks)).
+      ([The Checks](#the-checks)). The image’s name is predicted from `ARCHES` before
+      the build, so the release removes any earlier image under that name, stops unless
+      the built app has exactly those slices and `make-dmg.sh` writes that name, and has
+      `check-dmg.sh` require the slices and the name again in the mounted image
+      (`EXPECTED_ARCHES`), with the version and commit when the build matches a commit.
    7. **Cask:** `build/metabrowser-app.rb`, the cask template in `packaging/` with the
       version, the checksum, and the image’s architecture filled in: `-arm64.dmg`
       declares `depends_on arch: :arm64`, `-x86_64.dmg` declares `:x86_64`, and
@@ -505,7 +516,7 @@ Each script’s header lists what it checks.
 | --- | --- | --- |
 | `scripts/check-signing.sh` (`make macos-signing-check`) | The release keychain, the identity, its expiry and issuer, the G2 intermediate, Xcode and notarytool, and the notary credentials; read-only | The build Mac, and each release’s preflight; macOS CI against a throwaway keychain |
 | `scripts/notarize.sh` | `syspolicy_check notary-submission` before each submission, and the notary log after it | Each submission |
-| `scripts/check-dmg.sh` | The image and its contents, the icons, the hardened runtime, and for a Developer ID build the secure timestamp, the Team ID, the chain, the stapled tickets, `spctl`, `syspolicy_check distribution`, and `codesign --check-notarization` | Every image built; macOS CI on both its images; the download check |
+| `scripts/check-dmg.sh` | The image and its contents, the executable’s slices against the image’s name (and `EXPECTED_ARCHES`), the icons, the hardened runtime, and for a Developer ID build the secure timestamp, the Team ID, the chain, the stapled tickets, `spctl`, `syspolicy_check distribution`, and `codesign --check-notarization` | Every image built; macOS CI on both its images; the download check |
 | `scripts/check-release.sh` (`make macos-check-release`) | A draft or published release as downloaded: the exact attachments, the image checksum, both GitHub digests, the build provenance `BUILT` names, immutable releases on for a draft, and the immutable release and Latest once published, `check-dmg.sh` with `NOTARIZE=1` and `EXPECTED_TEAM_ID`, and that the app is the release variant, the tag’s version, and built from the tag’s commit; it quarantines a download that has none, for `LAUNCH=1` | Step 6 and step 8 of each release |
 | `scripts/launch-release.sh` (`LAUNCH=1`) | The first launch, which must be translocated, the relaunch and a move from Terminal, recorded, and a move in Finder, after which it must not be; the person’s confirmations | At the Mac only, never in CI |
 

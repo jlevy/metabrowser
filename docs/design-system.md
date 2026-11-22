@@ -2177,11 +2177,11 @@ and that no plugin writes its classes itself.
 
 ### Change Size Line
 
-**A change set’s size, “**77** commits · **83** files changed · **2.3 MB** compressed
-(**14.0 MB** raw diff)”, is one component, the change size line, on its own line above
-the [Diff summary](#diff-summary).** The Diff summary under it then says only what kinds
-of change and how many lines, its [brief change line](#brief-change-line), so every
-change set says its statuses one way and its scale on the line above.
+**A change set’s size, “77 commits · 83 files changed · 2.3 MB compressed (14.0 MB raw
+diff)”, is one component, the change size line, on its own line above the
+[Diff summary](#diff-summary).** The Diff summary under it then says only what kinds of
+change and how many lines, its [brief change line](#brief-change-line), so every change
+set says its statuses one way and its scale on the line above.
 It has one builder and one painter, `changeSizeLine` and `changeSizeLineNodes` or
 `changeSizeLineHtml`, view helpers of the SDK (`static/plugin-sdk-views.js`) rather than
 a startup script, since only these pages and the hover card draw it; each paints through
@@ -2196,11 +2196,13 @@ A plugin reaches them as `metabrowser.changeSizeLine` and
   ([Change Sizes](project/architecture/arch-git.md#change-sizes)). A count not known is
   “?”; a size not known, or not yet answered, is left out, and the line says its counts
   until it comes.
-- **How it is painted.** A [count summary](#count-summaries-bold-their-numbers): each
-  number bold in the line’s own ink, a size’s unit with its number, “2.3 MB”, and the
-  words and parentheses at the line’s weight, never a status’s color; each dot muted,
-  kept with the group before it by a no-break space so no line starts with one, and said
-  as a comma to a screen reader.
+- **How it is painted.** The commit and file counts use the
+  [count summary](#count-summaries-bold-their-numbers) style.
+  The compressed and raw values use the Files navigation’s blue size style, including
+  its weight threshold.
+  The words and parentheses keep the line’s ink and weight.
+  Each muted dot stays with the group before it by a no-break space, and a screen reader
+  says a comma.
 - **Its tooltip.** The size says what each size is, “2.3 MB compressed: what Git pushes
   for this change…”, which its words cannot
   ([Tooltips Add Information](#tooltips-add-information)).

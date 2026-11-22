@@ -238,6 +238,14 @@ type MetabrowserViewLifecycleStage = Readonly<{
 
 type MetabrowserViewCompositionRuntime = Readonly<{
   FACE_WAIT_MS: number;
+  /** Give every view tab under `root` its click. */
+  bindTabs(root: ParentNode): void;
+  /** Select one tab of a view tab bar; false when the bar lacks it. */
+  selectTab(bar: HTMLElement, tabId: string): boolean;
+  /** Say which of a host's views is in front, and its print state. */
+  setActiveView(host: HTMLElement, viewId: string | null | undefined): void;
+  /** The stage of `path` in the pane, while that file holds its first paint. */
+  stagedFile(pane: HTMLElement, path: string | undefined): HTMLElement | null;
   /** Wait, at most FACE_WAIT_MS, for the faces a staged view's text is set in; `null` when they are there. */
   settleFaces(root: Element | null | undefined): Promise<void> | null;
   createLifecycle(options?: { onDisposeError?: (error: unknown) => void }): Readonly<{
@@ -938,6 +946,7 @@ type MetabrowserSourceLineAnchorsRuntime = Readonly<{
     },
   ): void;
   nextFragment(current: string | null | undefined, line: number, extend: boolean): string;
+  normalizeLineEndings(text: string, afterCarriageReturn?: boolean): string;
   parse(fragment: string | null | undefined): Readonly<{ start: number; end: number }> | null;
   preferredView(target: MetabrowserNavigationTarget | null | undefined): "source" | null;
   refresh(root: ParentNode, loaded: { content_truncated?: boolean }): void;
@@ -946,7 +955,7 @@ type MetabrowserSourceLineAnchorsRuntime = Readonly<{
 
 type MetabrowserSourceAppendRuntime = Readonly<{
   TEXT_NODE_MAX_LENGTH: number;
-  appendSourceText(root: ParentNode | null, text: string): boolean;
+  appendSourceText(root: ParentNode | null, text: string, before?: string): boolean;
   commitChunkCache(options: {
     cached: Record<string, unknown>;
     cachedForPath: Record<string, unknown> | undefined;
@@ -1729,7 +1738,8 @@ type MetabrowserSdk = {
    *  element of class `git-commit-sha`, the commit-ID face. */
   shortCommit(commit: string): string;
   /** A count summary as nodes for its element, painted as the shell paints every count
-   *  summary: each number in `span.summary-number`, each mark in `span.summary-punctuation`,
+   *  summary: each count in `span.summary-number`, byte values in the shared size style,
+   *  each mark in `span.summary-punctuation`,
    *  a separator hidden from assistive technology and its `spoken` in `span.visually-hidden`,
    *  each status count, "21 A", its number and letter in one
    *  `span.summary-status-count.file-change-status`, bold in its status's ink, and the words
@@ -4425,7 +4435,7 @@ declare global {
    */
   type MetabrowserCountPart =
     | string
-    | { readonly number: string }
+    | { readonly number: string; readonly sizeStyle?: "size" | "size size-large" }
     | { readonly punctuation: string }
     | { readonly separator: string; readonly spoken?: string }
     | { readonly status: string; readonly letter: string; readonly count: string };

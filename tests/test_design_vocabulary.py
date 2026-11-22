@@ -2553,7 +2553,7 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
     pull request numbers' rules alone. One shell class, `.summary-number`, takes the token
     and nothing else, so a number keeps its line's ink and size, and no stylesheet restyles
     it, by its own class or by a class a source gives it beside that one. Each surface that
-    paints a count summary puts its numbers in it: the browserless sessions named in the
+    paints a count summary puts its counts in it: the browserless sessions named in the
     design system hold the markup, and tests/test_changed_file_rows_chrome.py and
     tests/test_nav_metadata_chrome.py read 700 for the numbers and 400 for the words in
     Chrome.
@@ -2594,7 +2594,7 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
             if re.search(r"\.github-pull-quiet(?![\w-])\s*[\s>+~]\s*\S", selector):
                 assert "font-weight" not in declarations, (sheet, selector)
     painters = {
-        "static/formatters.js": "{ className: SUMMARY_NUMBER_CLASS, text: part.number",
+        "static/formatters.js": "{ className: part.sizeStyle ?? SUMMARY_NUMBER_CLASS, text: part.number",
         "static/navigation.js": "window.MetabrowserFormatters.countPartsHtml(parts)",
         "static/app.js": "window.MetabrowserFormatters.countPartsNodes(document, parts)",
         "static/git-panel.js": "window.MetabrowserFormatters.countPartsNodes(document, [",
