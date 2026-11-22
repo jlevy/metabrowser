@@ -54,7 +54,7 @@ pytestmark = pytest.mark.skipif(
     ),
 )
 
-PRIVATE_SLUG = "github-com--acme--private-roadmap--0123abcd4567"
+PRIVATE_SLUG = "github-com-acme-private-roadmap-0123abcd456"
 
 
 # ── Helpers ────────────────────────────────────────────────────────
@@ -219,11 +219,11 @@ def test_created_home_entries_and_files_are_owner_only_under_any_umask(
     home: Path, umask: int
 ) -> None:
     with _umask(umask):
-        store = ensure_private_directory(home, f"cache/repository-stores/{PRIVATE_SLUG}")
-        _write_file(home, f"cache/repository-stores/{PRIVATE_SLUG}/store.yml", b"store: {}\n")
+        store = ensure_private_directory(home, f"cache/repos/{PRIVATE_SLUG}")
+        _write_file(home, f"cache/repos/{PRIVATE_SLUG}/store.yml", b"store: {}\n")
 
-    assert store == home / "cache" / "repository-stores" / PRIVATE_SLUG
-    for directory in (home, home / "cache", home / "cache" / "repository-stores", store):
+    assert store == home / "cache" / "repos" / PRIVATE_SLUG
+    for directory in (home, home / "cache", home / "cache" / "repos", store):
         assert _mode(directory) == PRIVATE_DIRECTORY_MODE, directory
     assert _mode(store / "store.yml") == PRIVATE_FILE_MODE
     assert (store / "store.yml").read_bytes() == b"store: {}\n"
@@ -797,8 +797,8 @@ def test_a_git_store_written_under_umask_077_validates_without_repair(
 ) -> None:
     """Git child processes run with umask 077, which yields 0700 directories and 0400 objects."""
 
-    ensure_private_directory(home, "cache/repository-stores/store")
-    store = home / "cache" / "repository-stores" / "store"
+    ensure_private_directory(home, "cache/repos/store")
+    store = home / "cache" / "repos" / "store"
     environment = {
         key: value for key, value in os.environ.items() if not key.startswith("GIT_")
     } | {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
@@ -1156,7 +1156,7 @@ def test_cache_storage_beside_a_user_checkout_leaves_the_checkout_unchanged(
     before = {path: os.lstat(path) for path in (workspace, checkout, checkout / "README.md")}
     home = workspace / "home"
 
-    ensure_private_directory(home, "cache/repository-stores/store-key/repository.git")
+    ensure_private_directory(home, "cache/repos/store-key/repository.git")
     ensure_private_directory(home, "cache/sources/source-slug")
     _write_file(home, "cache/sources/source-slug/source.yml", b"source\n")
     with pytest.raises(ValueError):
@@ -1336,6 +1336,34 @@ def test_a_hard_link_appearing_during_creation_is_refused_untouched(
     assert error.violation is PrivateStorageViolation.HARD_LINK
     assert outside.read_bytes() == b"outside data that must survive\n"
     assert _mode(outside) == 0o644
+
+
+def test_open_or_create_retries_if_an_entry_disappears_after_inspection(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ensure_private_directory(home)
+    _write_file(home, "temporary.lock", b"old")
+    path = home / "temporary.lock"
+    _swap_after_nofollow_stat(monkeypatch, path.name, path.unlink)
+
+    fd = open_private_file(home, path.name, os.O_RDWR | os.O_CREAT)
+    with os.fdopen(fd, "rb") as handle:
+        assert handle.read() == b""
+        assert stat.S_IMODE(os.fstat(handle.fileno()).st_mode) == PRIVATE_FILE_MODE
+    assert path.is_file()
+
+
+def test_open_without_create_reports_an_entry_removed_after_inspection(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ensure_private_directory(home)
+    _write_file(home, "temporary.lock", b"old")
+    path = home / "temporary.lock"
+    _swap_after_nofollow_stat(monkeypatch, path.name, path.unlink)
+
+    with pytest.raises(FileNotFoundError):
+        open_private_file(home, path.name, os.O_RDONLY)
+    assert not path.exists()
 
 
 @pytest.mark.parametrize("flags", [os.O_RDONLY, os.O_WRONLY], ids=["read", "write"])
@@ -1548,8 +1576,8 @@ def test_an_inheritable_acl_above_the_home_is_cleared_from_created_entries(
     _add_acl(parent, "group:everyone allow read,list,search,file_inherit,directory_inherit")
     home = parent / "home"
 
-    store = ensure_private_directory(home, f"cache/repository-stores/{PRIVATE_SLUG}")
-    _write_file(home, f"cache/repository-stores/{PRIVATE_SLUG}/store.yml", b"store\n")
+    store = ensure_private_directory(home, f"cache/repos/{PRIVATE_SLUG}")
+    _write_file(home, f"cache/repos/{PRIVATE_SLUG}/store.yml", b"store\n")
 
     assert _acl_lines(parent) != []
     for path in (home, home / "cache", store, store / "store.yml"):

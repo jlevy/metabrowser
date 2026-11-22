@@ -1,4 +1,4 @@
-"""Strict records for the application home and the ``f02`` repository cache.
+"""Strict records for the application home and the ``f03`` repository cache.
 
 Each YAML family has one Pydantic model and one versioned SoftSchema contract, bound in
 :mod:`metabrowser.cache.contracts`. Machine-owned records forbid undeclared fields and
@@ -30,6 +30,7 @@ from pydantic import (
 )
 
 from metabrowser.cache.identity import (
+    NAME_MAX_BYTES,
     SOURCE_ADDRESS_MAX_BYTES,
     GitTransport,
     ObjectFormat,
@@ -41,7 +42,11 @@ from metabrowser.open_in import OpenInChoice
 
 CONFIG_CONTRACT_ID: Final = "metabrowser.config:ApplicationConfig/v1"
 CACHE_LAYOUT_CONTRACT_ID: Final = "metabrowser.cache:CacheLayout/v1"
-REPOSITORY_SOURCE_CONTRACT_ID: Final = "metabrowser.cache:RepositorySource/v1"
+# `v1` is what `f01` and `f02` wrote: a slug of words joined by `--` and hexadecimal digits.
+# `f03` spells it with single dashes and a base-36 suffix, which a `v1` reader would
+# reject, so it is a new contract and the migration rewrites each record
+# (``store_rename.LEGACY_SOURCE_CONTRACT_ID``). No `v1` reader is kept.
+REPOSITORY_SOURCE_CONTRACT_ID: Final = "metabrowser.cache:RepositorySource/v2"
 REPOSITORY_SOURCE_STATE_CONTRACT_ID: Final = "metabrowser.cache:RepositorySourceState/v1"
 REPOSITORY_STORE_ALIAS_CONTRACT_ID: Final = "metabrowser.cache:RepositoryStoreAlias/v1"
 REPOSITORY_STORE_CONTRACT_ID: Final = "metabrowser.cache:RepositoryStore/v1"
@@ -86,7 +91,7 @@ def _require_timestamp(value: str) -> str:
 
 def _require_slug(value: str) -> str:
     if not is_slug(value):
-        raise ValueError("a source slug is bounded lowercase ASCII tokens joined by '--'")
+        raise ValueError("a source slug is bounded lowercase ASCII tokens joined by '-'")
     return value
 
 
@@ -106,8 +111,8 @@ type SourceSlug = Annotated[
     str,
     StringConstraints(
         min_length=1,
-        max_length=162,
-        pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*(?:--[a-z0-9]+(?:-[a-z0-9]+)*)*$",
+        max_length=NAME_MAX_BYTES,
+        pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)+$",
     ),
     AfterValidator(_require_slug),
 ]
@@ -247,7 +252,7 @@ class RepositorySource(_MachineRecord):
         if source_identity(self.transport, self.clone_url) != self.id:
             raise ValueError("source id does not match its transport and clone URL")
         if not slug_matches_identity(self.slug, self.id):
-            raise ValueError("source slug does not end in a digest suffix of its id")
+            raise ValueError("source slug does not end in a base-36 digest suffix of its id")
         return self
 
 
@@ -266,7 +271,7 @@ class RepositoryStoreAlias(_MachineRecord):
     updated_at: CanonicalTimestamp
 
 
-# ── repository-stores/<store-key>/ ───────────────────────────
+# ── repos/<store-key>/ ───────────────────────────────────────
 
 
 class StoreAcquisition(_MachineRecord):

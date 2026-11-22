@@ -2,7 +2,9 @@
 name = "event-log"
 display_name = "Event log"
 version = "0.0.1"
-sdk_version = "0.7"
+sdk_version = "0.8"
+# Raw JSON is the agents plugin's JSONL renderer, loaded through its exports.
+requires = ["agents"]
 
 # Metabrowser's own structured event log (metabrowser.event_log): the segments a served
 # process writes, `events-<UTC start>-p<pid>-<NNN>.jsonl`, one JSON record per line. The

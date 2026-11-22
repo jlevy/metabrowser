@@ -188,11 +188,8 @@ def test_fixture_is_what_the_server_serves_for_a_folder_and_for_a_mirror(
         # The page and the status say the same thing: one is rendered from the other.
         assert page["dataset"]["servedRoot"] == status["name"]
         assert page["dataset"]["mirrorLocation"] == status["location"]
-        assert status["location"] == f"~/{home}/repository-stores/{key}/repository.git"
-        assert page["dataset"]["mirrorTip"] == (
-            f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}: "
-            "a bare Git repository, with no checked-out files."
-        )
+        assert status["location"] == f"~/{home}/repos/{key}/repository.git"
+        assert page["dataset"]["mirrorTip"] == "Bare Git mirror with no checked-out files."
         assert page["pagePin"]["pin"] == status["pin"]
         assert (page["mainClass"], page["mirrorModule"]) == ("container mirror-source", True)
     assert mirror["status"]["name"] == "squares"
@@ -255,33 +252,22 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
     assert folder["mainHeading"]["file"]["text"] == "\u2191 ~/wrk/squares / docs"
     assert folder["mainHeading"]["file"]["title"] == "guide.md"
     assert folder["mainHeading"]["root"] == "\u2191 ~/wrk squares"
-    location = f"~/.cache/metabrowser/repository-stores/{STORE_KEY_STAND_INS[0]}/repository.git"
-    pin = mirror["status"]["pin"]
-    sentence = (
-        f"Mirror of file://~/git/squares.git at {pin}, stored in {location}: "
-        "a bare Git repository, with no checked-out files."
-    )
-    # The name alone: the ref selector names the ref, and the tooltip the commit (mb-qq4e).
+    location = f"~/.cache/metabrowser/repos/{STORE_KEY_STAND_INS[0]}/repository.git"
+    sentence = "Bare Git mirror with no checked-out files."
+    # The ref selector names the ref and the heading stays focused on the name.
     assert mirror["navigationHeading"]["text"] == "squares"
     # The note names the store's directory, and the tooltip the bare repository inside it.
     directory = location.removesuffix("/repository.git")
     assert directory != location
     assert mirror["mainHeading"]["file"]["text"] == f"\u2191 squares / docs mirror in {directory}"
     assert mirror["mainHeading"]["root"] == f"\u2191 mirror in {directory} squares"
-    assert mirror["tooltips"] == {
-        "navigationHeading": {
-            "served": f"squares {sentence}",
-            "afterTreeLoad": f"squares 3 files 140 bytes {sentence}",
-        },
-        "rootName": sentence,
-        "note": sentence,
+    assert mirror["details"] == {
+        "location": location,
+        "source": sentence,
+        "before": "",
+        "after": "3 files 140 bytes",
     }
-    # The full commit is copied from the control after the name.
-    copy = mirror["navigationHeading"]["commitCopy"]
-    assert copy["copied"] == [pin] and copy["ownerStamped"] is True
-    assert copy["attributes"]["aria-label"] == f"Copy commit {pin}"
-    assert folder["navigationHeading"]["commitCopy"] is None
-    assert folder["tooltips"]["rootName"] is None and folder["tooltips"]["note"] is None
+    assert folder["details"]["source"] is None
     assert hostile["mainHeading"]["file"]["text"].startswith("\u2191 a<b>&\ufffdx / docs ")
     for page, title in (
         (folder, "squares \u2022 Metabrowser"),

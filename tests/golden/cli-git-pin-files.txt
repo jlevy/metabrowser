@@ -277,7 +277,7 @@ status: 200
     {
       "kind": "unknown",
       "summary": "[unknown] {'e': 1}",
-      "adapter": "claude",
+      "adapter": "unknown",
       "provider": null,
       "timestamp": null,
       "is_error": false,
@@ -292,7 +292,7 @@ status: 200
     {
       "kind": "unknown",
       "summary": "[unknown] {'e': 2}",
-      "adapter": "claude",
+      "adapter": "unknown",
       "provider": null,
       "timestamp": null,
       "is_error": false,
@@ -485,6 +485,16 @@ status: 200
       "printable": false,
       "print_profile": "plain",
       "render_runtime": null
+    },
+    {
+      "id": "table",
+      "label": "Table",
+      "key": "a",
+      "default": false,
+      "container_class": "content-body table-view-host",
+      "printable": true,
+      "print_profile": "table",
+      "render_runtime": "client"
     },
     {
       "id": "source",

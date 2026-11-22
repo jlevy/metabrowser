@@ -1,0 +1,1299 @@
+{
+  "answers": {
+    "overview app.db": {
+      "status": 200,
+      "body": {
+        "type": "table_list",
+        "path": "app.db",
+        "generation": "G",
+        "tables": [
+          {
+            "id": "blobs",
+            "label": "blobs",
+            "group": "tables",
+            "keyed": true,
+            "estimate": 3,
+            "path": "app.db/blobs"
+          },
+          {
+            "id": "counters",
+            "label": "counters",
+            "group": "tables",
+            "keyed": true,
+            "estimate": 2,
+            "path": "app.db/counters"
+          },
+          {
+            "id": "~67312d6c696b65",
+            "label": "g1-like",
+            "group": "tables",
+            "keyed": true,
+            "estimate": 0,
+            "path": "app.db/~67312d6c696b65"
+          },
+          {
+            "id": "grants",
+            "label": "grants",
+            "group": "tables",
+            "keyed": true,
+            "estimate": 3,
+            "path": "app.db/grants"
+          },
+          {
+            "id": "huge",
+            "label": "huge",
+            "group": "tables",
+            "keyed": true,
+            "estimate": 2,
+            "path": "app.db/huge"
+          },
+          {
+            "id": "notes",
+            "label": "notes",
+            "group": "virtual",
+            "keyed": false,
+            "estimate": null,
+            "path": "app.db/notes"
+          },
+          {
+            "id": "notes_config",
+            "label": "notes_config",
+            "group": "internal",
+            "keyed": false,
+            "estimate": null,
+            "path": "app.db/notes_config"
+          },
+          {
+            "id": "notes_content",
+            "label": "notes_content",
+            "group": "internal",
+            "keyed": false,
+            "estimate": null,
+            "path": "app.db/notes_content"
+          },
+          {
+            "id": "notes_data",
+            "label": "notes_data",
+            "group": "internal",
+            "keyed": false,
+            "estimate": null,
+            "path": "app.db/notes_data"
+          },
+          {
+            "id": "notes_docsize",
+            "label": "notes_docsize",
+            "group": "internal",
+            "keyed": false,
+            "estimate": null,
+            "path": "app.db/notes_docsize"
+          },
+          {
+            "id": "notes_idx",
+            "label": "notes_idx",
+            "group": "internal",
+            "keyed": false,
+            "estimate": null,
+            "path": "app.db/notes_idx"
+          },
+          {
+            "id": "~6f72646572206974656d73",
+            "label": "order items",
+            "group": "tables",
+            "keyed": true,
+            "estimate": 1,
+            "path": "app.db/~6f72646572206974656d73"
+          },
+          {
+            "id": "orders",
+            "label": "orders",
+            "group": "tables",
+            "keyed": true,
+            "estimate": 5,
+            "path": "app.db/orders"
+          },
+          {
+            "id": "prices",
+            "label": "prices",
+            "group": "tables",
+            "keyed": true,
+            "estimate": 2,
+            "path": "app.db/prices"
+          },
+          {
+            "id": "shadows",
+            "label": "shadows",
+            "group": "tables",
+            "keyed": false,
+            "estimate": 2,
+            "path": "app.db/shadows"
+          },
+          {
+            "id": "shouting",
+            "label": "shouting",
+            "group": "views",
+            "keyed": false,
+            "estimate": null,
+            "path": "app.db/shouting"
+          },
+          {
+            "id": "sqlite_sequence",
+            "label": "sqlite_sequence",
+            "group": "internal",
+            "keyed": true,
+            "estimate": 1,
+            "path": "app.db/sqlite_sequence"
+          },
+          {
+            "id": "tags",
+            "label": "tags",
+            "group": "tables",
+            "keyed": true,
+            "estimate": 3,
+            "path": "app.db/tags"
+          },
+          {
+            "id": "users",
+            "label": "users",
+            "group": "tables",
+            "keyed": true,
+            "estimate": 6,
+            "path": "app.db/users"
+          },
+          {
+            "id": "~7e74696c6465",
+            "label": "~tilde",
+            "group": "tables",
+            "keyed": true,
+            "estimate": 0,
+            "path": "app.db/~7e74696c6465"
+          }
+        ]
+      }
+    },
+    "overview snapshot.db": {
+      "status": 200,
+      "body": {
+        "type": "table_list",
+        "path": "snapshot.db",
+        "generation": "G",
+        "tables": [
+          {
+            "id": "applied_tx",
+            "label": "applied_tx",
+            "group": "internal",
+            "keyed": true,
+            "estimate": 0,
+            "path": "snapshot.db/applied_tx"
+          },
+          {
+            "id": "fsqlite_meta",
+            "label": "fsqlite_meta",
+            "group": "internal",
+            "keyed": true,
+            "estimate": 0,
+            "path": "snapshot.db/fsqlite_meta"
+          },
+          {
+            "id": "items",
+            "label": "items",
+            "group": "tables",
+            "keyed": true,
+            "estimate": 1,
+            "path": "snapshot.db/items"
+          }
+        ]
+      }
+    },
+    "schema app.db": {
+      "status": 200,
+      "body": {
+        "type": "sqlite_schema",
+        "path": "app.db",
+        "table": null,
+        "generation": "G",
+        "objects": [
+          {
+            "type": "table",
+            "name": "blobs",
+            "table": "blobs",
+            "sql": "CREATE TABLE blobs (k BLOB PRIMARY KEY, v TEXT) WITHOUT ROWID",
+            "segment": "blobs"
+          },
+          {
+            "type": "table",
+            "name": "counters",
+            "table": "counters",
+            "sql": "CREATE TABLE counters (id INTEGER PRIMARY KEY AUTOINCREMENT, n INTEGER)",
+            "segment": "counters"
+          },
+          {
+            "type": "table",
+            "name": "g1-like",
+            "table": "g1-like",
+            "sql": "CREATE TABLE \"g1-like\" (id INTEGER PRIMARY KEY)",
+            "segment": "~67312d6c696b65"
+          },
+          {
+            "type": "table",
+            "name": "grants",
+            "table": "grants",
+            "sql": "CREATE TABLE grants (\n  id INTEGER PRIMARY KEY,\n  owner INTEGER,\n  tag TEXT,\n  FOREIGN KEY (owner, tag) REFERENCES tags(owner, tag)\n)",
+            "segment": "grants"
+          },
+          {
+            "type": "table",
+            "name": "huge",
+            "table": "huge",
+            "sql": "CREATE TABLE huge (id INTEGER PRIMARY KEY, body TEXT)",
+            "segment": "huge"
+          },
+          {
+            "type": "table",
+            "name": "notes",
+            "table": "notes",
+            "sql": "CREATE VIRTUAL TABLE notes USING fts5(body)",
+            "segment": "notes"
+          },
+          {
+            "type": "table",
+            "name": "notes_config",
+            "table": "notes_config",
+            "sql": "CREATE TABLE 'notes_config'(k PRIMARY KEY, v) WITHOUT ROWID",
+            "segment": "notes_config"
+          },
+          {
+            "type": "table",
+            "name": "notes_content",
+            "table": "notes_content",
+            "sql": "CREATE TABLE 'notes_content'(id INTEGER PRIMARY KEY, c0)",
+            "segment": "notes_content"
+          },
+          {
+            "type": "table",
+            "name": "notes_data",
+            "table": "notes_data",
+            "sql": "CREATE TABLE 'notes_data'(id INTEGER PRIMARY KEY, block BLOB)",
+            "segment": "notes_data"
+          },
+          {
+            "type": "table",
+            "name": "notes_docsize",
+            "table": "notes_docsize",
+            "sql": "CREATE TABLE 'notes_docsize'(id INTEGER PRIMARY KEY, sz BLOB)",
+            "segment": "notes_docsize"
+          },
+          {
+            "type": "table",
+            "name": "notes_idx",
+            "table": "notes_idx",
+            "sql": "CREATE TABLE 'notes_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID",
+            "segment": "notes_idx"
+          },
+          {
+            "type": "table",
+            "name": "order items",
+            "table": "order items",
+            "sql": "CREATE TABLE \"order items\" (id INTEGER PRIMARY KEY, what TEXT)",
+            "segment": "~6f72646572206974656d73"
+          },
+          {
+            "type": "table",
+            "name": "orders",
+            "table": "orders",
+            "sql": "CREATE TABLE orders (\n  user_id INTEGER REFERENCES users(id),\n  total REAL,\n  note TEXT\n)",
+            "segment": "orders"
+          },
+          {
+            "type": "table",
+            "name": "prices",
+            "table": "prices",
+            "sql": "CREATE TABLE prices (\n  item TEXT PRIMARY KEY,\n  cents INTEGER NOT NULL,\n  dollars REAL GENERATED ALWAYS AS (cents / 100.0) VIRTUAL,\n  label TEXT GENERATED ALWAYS AS (upper(item)) STORED\n) STRICT",
+            "segment": "prices"
+          },
+          {
+            "type": "index",
+            "name": "sqlite_autoindex_prices_1",
+            "table": "prices",
+            "sql": null,
+            "segment": "prices"
+          },
+          {
+            "type": "table",
+            "name": "shadows",
+            "table": "shadows",
+            "sql": "CREATE TABLE shadows (rowid TEXT, _rowid_ TEXT, oid TEXT)",
+            "segment": "shadows"
+          },
+          {
+            "type": "view",
+            "name": "shouting",
+            "table": "shouting",
+            "sql": "CREATE VIEW shouting AS SELECT upper(name) AS name, length(name) AS letters FROM users",
+            "segment": "shouting"
+          },
+          {
+            "type": "table",
+            "name": "sqlite_sequence",
+            "table": "sqlite_sequence",
+            "sql": "CREATE TABLE sqlite_sequence(name,seq)",
+            "segment": "sqlite_sequence"
+          },
+          {
+            "type": "table",
+            "name": "tags",
+            "table": "tags",
+            "sql": "CREATE TABLE tags (\n  owner INTEGER NOT NULL,\n  tag TEXT NOT NULL COLLATE NOCASE,\n  PRIMARY KEY (owner, tag)\n) WITHOUT ROWID",
+            "segment": "tags"
+          },
+          {
+            "type": "table",
+            "name": "users",
+            "table": "users",
+            "sql": "CREATE TABLE users (\n  id INTEGER PRIMARY KEY,\n  name TEXT NOT NULL,\n  email TEXT,\n  age INTEGER,\n  active BOOLEAN,\n  joined DATE,\n  prefs JSON,\n  avatar BLOB,\n  bio TEXT\n)",
+            "segment": "users"
+          },
+          {
+            "type": "index",
+            "name": "users_email",
+            "table": "users",
+            "sql": "CREATE INDEX users_email ON users(email)",
+            "segment": "users"
+          },
+          {
+            "type": "table",
+            "name": "~tilde",
+            "table": "~tilde",
+            "sql": "CREATE TABLE \"~tilde\" (id INTEGER PRIMARY KEY)",
+            "segment": "~7e74696c6465"
+          }
+        ],
+        "foreign_keys": [
+          {
+            "table": "grants",
+            "fields": [
+              "owner",
+              "tag"
+            ],
+            "references": "tags",
+            "to": [
+              "owner",
+              "tag"
+            ]
+          },
+          {
+            "table": "orders",
+            "fields": [
+              "user_id"
+            ],
+            "references": "users",
+            "to": [
+              "id"
+            ]
+          }
+        ]
+      }
+    },
+    "schema app.db/grants": {
+      "status": 200,
+      "body": {
+        "type": "sqlite_schema",
+        "path": "app.db/grants",
+        "table": "grants",
+        "generation": "G",
+        "objects": [
+          {
+            "type": "table",
+            "name": "grants",
+            "table": "grants",
+            "sql": "CREATE TABLE grants (\n  id INTEGER PRIMARY KEY,\n  owner INTEGER,\n  tag TEXT,\n  FOREIGN KEY (owner, tag) REFERENCES tags(owner, tag)\n)",
+            "segment": "grants"
+          }
+        ],
+        "foreign_keys": [
+          {
+            "table": "grants",
+            "fields": [
+              "owner",
+              "tag"
+            ],
+            "references": "tags",
+            "to": [
+              "owner",
+              "tag"
+            ]
+          }
+        ]
+      }
+    },
+    "schema fake.db": {
+      "status": 200,
+      "body": {
+        "type": "sqlite_schema",
+        "path": "fake.db",
+        "table": null,
+        "generation": "G",
+        "error": {
+          "state": "not_sqlite",
+          "message": "This file is not a SQLite database."
+        }
+      }
+    },
+    "rows app.db/users": {
+      "status": 200,
+      "body": {
+        "type": "table_rows",
+        "path": "app.db/users",
+        "table": "users",
+        "generation": "G",
+        "columns": [
+          "id",
+          "name",
+          "email",
+          "age",
+          "active",
+          "joined",
+          "prefs",
+          "avatar",
+          "bio"
+        ],
+        "rows": [
+          {
+            "key": "k.WzFd",
+            "cells": {
+              "id": 1,
+              "name": "Ada",
+              "email": "ada@example.com",
+              "age": 36,
+              "active": true,
+              "joined": "2020-01-02",
+              "prefs": {
+                "json": {
+                  "theme": "dark"
+                },
+                "preview": "{\"theme\":\"dark\"}"
+              },
+              "avatar": {
+                "blob": true,
+                "length": 3,
+                "hex": "00ff10"
+              },
+              "bio": null
+            }
+          },
+          {
+            "key": "k.WzJd",
+            "cells": {
+              "id": 2,
+              "name": "Bob",
+              "email": null,
+              "age": {
+                "value": "unknown",
+                "stored": "text"
+              },
+              "active": false,
+              "joined": "2021-03-04",
+              "prefs": "not json",
+              "avatar": null,
+              "bio": ""
+            }
+          },
+          {
+            "key": "k.WzNd",
+            "cells": {
+              "id": 3,
+              "name": "Cy",
+              "email": "cy@example.com",
+              "age": {
+                "int": "9007199254740993"
+              },
+              "active": true,
+              "joined": null,
+              "prefs": {
+                "json": [
+                  1,
+                  2
+                ],
+                "preview": "[1,2]"
+              },
+              "avatar": null,
+              "bio": {
+                "text": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                "bytes": 5200
+              }
+            }
+          },
+          {
+            "key": "k.WzRd",
+            "cells": {
+              "id": 4,
+              "name": "Dee",
+              "email": null,
+              "age": {
+                "int": "-9223372036854775808"
+              },
+              "active": {
+                "value": 2,
+                "stored": "integer"
+              },
+              "joined": "2019-12-31",
+              "prefs": null,
+              "avatar": {
+                "blob": true,
+                "length": 300,
+                "hex": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+              },
+              "bio": null
+            }
+          },
+          {
+            "key": "k.WzVd",
+            "cells": {
+              "id": 5,
+              "name": "Eve",
+              "email": "EVE@example.com",
+              "age": 41,
+              "active": true,
+              "joined": 20230101,
+              "prefs": null,
+              "avatar": null,
+              "bio": {
+                "text": "�A",
+                "invalid_utf8": true
+              }
+            }
+          },
+          {
+            "key": "k.WzZd",
+            "cells": {
+              "id": 6,
+              "name": "Fay",
+              "email": "7",
+              "age": 29,
+              "active": false,
+              "joined": "2018-05-06",
+              "prefs": null,
+              "avatar": null,
+              "bio": null
+            }
+          }
+        ],
+        "next_after": null,
+        "complete": true,
+        "truncated": false,
+        "reason": null,
+        "count": 6,
+        "count_complete": true,
+        "estimate": 6,
+        "skipped": 0,
+        "examined": null,
+        "searched": null,
+        "sort_refused": null,
+        "limit": 100
+      }
+    },
+    "rows app.db/orders": {
+      "status": 200,
+      "body": {
+        "type": "table_rows",
+        "path": "app.db/orders",
+        "table": "orders",
+        "generation": "G",
+        "columns": [
+          "user_id",
+          "total",
+          "note"
+        ],
+        "rows": [
+          {
+            "key": "k.WzFd",
+            "cells": {
+              "user_id": {
+                "ref": {
+                  "table": "users",
+                  "key": "k.WzFd",
+                  "label": 1
+                }
+              },
+              "total": 9.5,
+              "note": "first"
+            }
+          },
+          {
+            "key": "k.WzJd",
+            "cells": {
+              "user_id": {
+                "ref": {
+                  "table": "users",
+                  "key": "k.WzFd",
+                  "label": 1
+                }
+              },
+              "total": {
+                "real": "inf"
+              },
+              "note": null
+            }
+          },
+          {
+            "key": "k.WzNd",
+            "cells": {
+              "user_id": {
+                "ref": {
+                  "table": "users",
+                  "key": "k.WzJd",
+                  "label": 2
+                }
+              },
+              "total": {
+                "real": "-inf"
+              },
+              "note": "second"
+            }
+          },
+          {
+            "key": "k.WzRd",
+            "cells": {
+              "user_id": {
+                "ref": {
+                  "table": "users",
+                  "key": null,
+                  "label": 99,
+                  "missing": true
+                }
+              },
+              "total": 0.5,
+              "note": "dangling"
+            }
+          },
+          {
+            "key": "k.WzVd",
+            "cells": {
+              "user_id": null,
+              "total": null,
+              "note": "no user"
+            }
+          }
+        ],
+        "next_after": null,
+        "complete": true,
+        "truncated": false,
+        "reason": null,
+        "count": 5,
+        "count_complete": true,
+        "estimate": 5,
+        "skipped": 0,
+        "examined": null,
+        "searched": null,
+        "sort_refused": null,
+        "limit": 100
+      }
+    },
+    "rows app.db/grants": {
+      "status": 200,
+      "body": {
+        "type": "table_rows",
+        "path": "app.db/grants",
+        "table": "grants",
+        "generation": "G",
+        "columns": [
+          "id",
+          "owner",
+          "tag"
+        ],
+        "rows": [
+          {
+            "key": "k.WzFd",
+            "cells": {
+              "id": 1,
+              "owner": {
+                "ref": {
+                  "table": "tags",
+                  "key": "k.WzEsImFkbWluIl0",
+                  "label": 1
+                }
+              },
+              "tag": {
+                "ref": {
+                  "table": "tags",
+                  "key": "k.WzEsImFkbWluIl0",
+                  "label": "ADMIN"
+                }
+              }
+            }
+          },
+          {
+            "key": "k.WzJd",
+            "cells": {
+              "id": 2,
+              "owner": {
+                "ref": {
+                  "table": "tags",
+                  "key": "k.WzMsImJldGEiXQ",
+                  "label": 3
+                }
+              },
+              "tag": {
+                "ref": {
+                  "table": "tags",
+                  "key": "k.WzMsImJldGEiXQ",
+                  "label": "beta"
+                }
+              }
+            }
+          },
+          {
+            "key": "k.WzNd",
+            "cells": {
+              "id": 3,
+              "owner": {
+                "ref": {
+                  "table": "tags",
+                  "key": null,
+                  "label": 2,
+                  "missing": true
+                }
+              },
+              "tag": {
+                "ref": {
+                  "table": "tags",
+                  "key": null,
+                  "label": "gamma",
+                  "missing": true
+                }
+              }
+            }
+          }
+        ],
+        "next_after": null,
+        "complete": true,
+        "truncated": false,
+        "reason": null,
+        "count": 3,
+        "count_complete": true,
+        "estimate": 3,
+        "skipped": 0,
+        "examined": null,
+        "searched": null,
+        "sort_refused": null,
+        "limit": 100
+      }
+    },
+    "rows app.db/huge": {
+      "status": 200,
+      "body": {
+        "type": "table_rows",
+        "path": "app.db/huge",
+        "table": "huge",
+        "generation": "G",
+        "columns": [
+          "id",
+          "body"
+        ],
+        "rows": [
+          {
+            "key": "k.WzFd",
+            "cells": {
+              "id": 1,
+              "body": "small"
+            }
+          },
+          {
+            "key": "k.WzJd",
+            "cells": {
+              "id": 2,
+              "body": {
+                "text": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                "bytes": 1200000
+              }
+            }
+          }
+        ],
+        "next_after": null,
+        "complete": true,
+        "truncated": false,
+        "reason": null,
+        "count": 2,
+        "count_complete": true,
+        "estimate": 2,
+        "skipped": 0,
+        "examined": null,
+        "searched": null,
+        "sort_refused": null,
+        "limit": 100
+      }
+    },
+    "schema-of app.db/users": {
+      "status": 200,
+      "body": {
+        "type": "table_schema",
+        "path": "app.db/users",
+        "table": "users",
+        "generation": "G",
+        "key": [
+          "id"
+        ],
+        "default_columns": [
+          "id",
+          "name",
+          "email",
+          "age",
+          "active",
+          "joined",
+          "prefs",
+          "avatar",
+          "bio"
+        ],
+        "fields": [
+          {
+            "name": "id",
+            "title": null,
+            "type": "integer",
+            "declared_type": "INTEGER",
+            "nullable": false,
+            "key": true,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": true
+          },
+          {
+            "name": "name",
+            "title": null,
+            "type": "text",
+            "declared_type": "TEXT",
+            "nullable": false,
+            "key": false,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          },
+          {
+            "name": "email",
+            "title": null,
+            "type": "text",
+            "declared_type": "TEXT",
+            "nullable": true,
+            "key": false,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          },
+          {
+            "name": "age",
+            "title": null,
+            "type": "integer",
+            "declared_type": "INTEGER",
+            "nullable": true,
+            "key": false,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": true
+          },
+          {
+            "name": "active",
+            "title": null,
+            "type": "boolean",
+            "declared_type": "BOOLEAN",
+            "nullable": true,
+            "key": false,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          },
+          {
+            "name": "joined",
+            "title": null,
+            "type": "date",
+            "declared_type": "DATE",
+            "nullable": true,
+            "key": false,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          },
+          {
+            "name": "prefs",
+            "title": null,
+            "type": "json",
+            "declared_type": "JSON",
+            "nullable": true,
+            "key": false,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          },
+          {
+            "name": "avatar",
+            "title": null,
+            "type": "blob",
+            "declared_type": "BLOB",
+            "nullable": true,
+            "key": false,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": false,
+            "numeric": false
+          },
+          {
+            "name": "bio",
+            "title": null,
+            "type": "text",
+            "declared_type": "TEXT",
+            "nullable": true,
+            "key": false,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          }
+        ],
+        "references": [],
+        "referenced_by": [
+          {
+            "table": "orders",
+            "fields": [
+              "user_id"
+            ],
+            "to": [
+              "id"
+            ]
+          }
+        ]
+      }
+    },
+    "schema-of app.db/orders": {
+      "status": 200,
+      "body": {
+        "type": "table_schema",
+        "path": "app.db/orders",
+        "table": "orders",
+        "generation": "G",
+        "key": [
+          "rowid"
+        ],
+        "default_columns": [
+          "user_id",
+          "total",
+          "note"
+        ],
+        "fields": [
+          {
+            "name": "rowid",
+            "title": "rowid",
+            "type": "integer",
+            "declared_type": "INTEGER",
+            "nullable": false,
+            "key": true,
+            "hidden": true,
+            "generated": null,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": true
+          },
+          {
+            "name": "user_id",
+            "title": null,
+            "type": "integer",
+            "declared_type": "INTEGER",
+            "nullable": true,
+            "key": false,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": {
+              "table": "users",
+              "fields": [
+                "user_id"
+              ],
+              "to": [
+                "id"
+              ]
+            },
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": true
+          },
+          {
+            "name": "total",
+            "title": null,
+            "type": "real",
+            "declared_type": "REAL",
+            "nullable": true,
+            "key": false,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": true
+          },
+          {
+            "name": "note",
+            "title": null,
+            "type": "text",
+            "declared_type": "TEXT",
+            "nullable": true,
+            "key": false,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          }
+        ],
+        "references": [
+          {
+            "table": "users",
+            "fields": [
+              "user_id"
+            ],
+            "to": [
+              "id"
+            ]
+          }
+        ],
+        "referenced_by": []
+      }
+    },
+    "schema-of app.db/grants": {
+      "status": 200,
+      "body": {
+        "type": "table_schema",
+        "path": "app.db/grants",
+        "table": "grants",
+        "generation": "G",
+        "key": [
+          "id"
+        ],
+        "default_columns": [
+          "id",
+          "owner",
+          "tag"
+        ],
+        "fields": [
+          {
+            "name": "id",
+            "title": null,
+            "type": "integer",
+            "declared_type": "INTEGER",
+            "nullable": false,
+            "key": true,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": true
+          },
+          {
+            "name": "owner",
+            "title": null,
+            "type": "integer",
+            "declared_type": "INTEGER",
+            "nullable": true,
+            "key": false,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": {
+              "table": "tags",
+              "fields": [
+                "owner",
+                "tag"
+              ],
+              "to": [
+                "owner",
+                "tag"
+              ]
+            },
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": true
+          },
+          {
+            "name": "tag",
+            "title": null,
+            "type": "text",
+            "declared_type": "TEXT",
+            "nullable": true,
+            "key": false,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": {
+              "table": "tags",
+              "fields": [
+                "owner",
+                "tag"
+              ],
+              "to": [
+                "owner",
+                "tag"
+              ]
+            },
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          }
+        ],
+        "references": [
+          {
+            "table": "tags",
+            "fields": [
+              "owner",
+              "tag"
+            ],
+            "to": [
+              "owner",
+              "tag"
+            ]
+          }
+        ],
+        "referenced_by": []
+      }
+    },
+    "schema-of app.db/huge": {
+      "status": 200,
+      "body": {
+        "type": "table_schema",
+        "path": "app.db/huge",
+        "table": "huge",
+        "generation": "G",
+        "key": [
+          "id"
+        ],
+        "default_columns": [
+          "id",
+          "body"
+        ],
+        "fields": [
+          {
+            "name": "id",
+            "title": null,
+            "type": "integer",
+            "declared_type": "INTEGER",
+            "nullable": false,
+            "key": true,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": true
+          },
+          {
+            "name": "body",
+            "title": null,
+            "type": "text",
+            "declared_type": "TEXT",
+            "nullable": true,
+            "key": false,
+            "hidden": false,
+            "generated": false,
+            "list": false,
+            "enum": null,
+            "format": null,
+            "ref": null,
+            "sortable": true,
+            "sort_note": null,
+            "filterable": true,
+            "numeric": false
+          }
+        ],
+        "references": [],
+        "referenced_by": []
+      }
+    }
+  }
+}

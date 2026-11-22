@@ -11,6 +11,8 @@
 //   7. Manifest-owned plugin assets load in order and deduplicate by plugin
 //   8. Same-kind plugin modules evaluate in manifest order
 //   9. A cached manifest-owned stylesheet settles without a load event
+//  10. plugins.load answers a provider's exports from one shared load, and rejects an
+//      unknown name or a failed module
 //
 // Usage:
 //   node kpress-plugin-sdk-behavior.js <repo_root>
@@ -115,7 +117,31 @@ const orderedPluginModules = new Map([
   ["/plugin-static/order-first/index.js", { delayMs: 30, owner: "first" }],
   ["/plugin-static/order-second/index.js", { delayMs: 0, owner: "second" }],
 ]);
+// A provider plugin with no kind of its own, which `metabrowser.plugins.load` reaches by
+// name, and one whose module fails.
+let providerImports = 0;
+// A provider that also serves a kind, and one with a stylesheet and a classic script that
+// must run before its exports are answered.
+let servedImports = 0;
+let assetsFirstImportedAt = -1;
 async function importKpressModule(specifier) {
+  if (specifier === "/plugin-static/provider/index.js") {
+    providerImports += 1;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return import("data:text/javascript,export const answer = 42;");
+  }
+  if (specifier === "/plugin-static/broken/index.js") {
+    throw new Error("simulated provider module failure");
+  }
+  if (specifier === "/plugin-static/served/index.js") {
+    servedImports += 1;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return import("data:text/javascript,export const served = true;");
+  }
+  if (specifier === "/plugin-static/assets-first/index.js") {
+    assetsFirstImportedAt = appended.length;
+    return import("data:text/javascript,export const ready = true;");
+  }
   const orderedPlugin = orderedPluginModules.get(specifier);
   if (orderedPlugin) {
     await new Promise((resolve) => setTimeout(resolve, orderedPlugin.delayMs));
@@ -743,14 +769,15 @@ async function check_path_text_fetch() {
 async function check_selected_kind_plugin_assets() {
   const firstAppend = appended.length;
   sandbox.MetabrowserPluginHost.configureAssets({
-    "fixture-kind": [
-      {
+    plugins: {
+      fixture: {
         name: "fixture",
         module: "/plugin-static/fixture/index.js",
         scripts: ["/plugin-static/fixture/setup.js"],
         styles: ["/plugin-static/fixture/styles.css"],
       },
-    ],
+    },
+    kinds: { "fixture-kind": ["fixture"] },
   });
   if (typeof sandbox.metabrowser.ensureKindAssets !== "function") {
     return { ok: false, detail: "metabrowser.ensureKindAssets is not public" };
@@ -788,14 +815,15 @@ async function check_selected_kind_plugin_assets() {
 async function check_cached_plugin_stylesheet_settles_without_onload() {
   const firstAppend = appended.length;
   sandbox.MetabrowserPluginHost.configureAssets({
-    "cached-plugin-kind": [
-      {
+    plugins: {
+      "cached-plugin": {
         name: "cached-plugin",
         module: "/plugin-static/cached-plugin/index.js",
         scripts: [],
         styles: ["/plugin-static/cached-plugin/styles.css"],
       },
-    ],
+    },
+    kinds: { "cached-plugin-kind": ["cached-plugin"] },
   });
   cacheNextStylesheet = true;
   const outcome = await Promise.race([
@@ -814,20 +842,21 @@ async function check_cached_plugin_stylesheet_settles_without_onload() {
 
 async function check_same_kind_plugins_follow_manifest_order() {
   sandbox.MetabrowserPluginHost.configureAssets({
-    "ordered-kind": [
-      {
+    plugins: {
+      "order-first": {
         name: "order-first",
         module: "/plugin-static/order-first/index.js",
         scripts: [],
         styles: [],
       },
-      {
+      "order-second": {
         name: "order-second",
         module: "/plugin-static/order-second/index.js",
         scripts: [],
         styles: [],
       },
-    ],
+    },
+    kinds: { "ordered-kind": ["order-first", "order-second"] },
   });
   await sandbox.metabrowser.ensureKindAssets("ordered-kind");
   const registered = sandbox.metabrowser.getRegisteredView("ordered-kind", "main");
@@ -836,6 +865,134 @@ async function check_same_kind_plugins_follow_manifest_order() {
       ok: false,
       detail: `same-kind winner followed module timing: ${registered?.owner || "none"}`,
     };
+  }
+  return { ok: true };
+}
+
+// ── Contract: a declared provider's exports, by name ─────────────────────
+
+async function check_plugins_load_returns_exports() {
+  const plugins = sandbox.metabrowser.plugins;
+  if (typeof plugins?.load !== "function" || !Object.isFrozen(plugins)) {
+    return { ok: false, detail: "metabrowser.plugins.load is not public and fixed" };
+  }
+  if ("builtins" in sandbox.metabrowser) {
+    return { ok: false, detail: "the retired builtins namespace is still public" };
+  }
+  sandbox.MetabrowserPluginHost.configureAssets({
+    plugins: {
+      provider: {
+        name: "provider",
+        module: "/plugin-static/provider/index.js",
+        scripts: [],
+        styles: [],
+      },
+      broken: { name: "broken", module: "/plugin-static/broken/index.js", scripts: [], styles: [] },
+    },
+    kinds: {},
+  });
+  const [first, second] = await Promise.all([plugins.load("provider"), plugins.load("provider")]);
+  if (first.answer !== 42 || first !== second || providerImports !== 1) {
+    return { ok: false, detail: "callers did not share one load of the provider's exports" };
+  }
+  if ((await plugins.load("provider")) !== first || providerImports !== 1) {
+    return { ok: false, detail: "a settled provider was loaded again" };
+  }
+  const refusal = await plugins.load("absent").then(
+    () => "resolved",
+    (error) => String(error?.message),
+  );
+  if (!refusal.includes("no plugin absent")) {
+    return { ok: false, detail: `an unknown plugin did not reject: ${refusal}` };
+  }
+  const failures = await Promise.all(
+    [1, 2].map(() =>
+      plugins.load("broken").then(
+        () => "resolved",
+        (error) => String(error?.message),
+      ),
+    ),
+  );
+  if (!failures.every((failure) => failure.includes("simulated provider module failure"))) {
+    return { ok: false, detail: `a failed provider module did not reject: ${failures}` };
+  }
+
+  // A kind's table names only plugins the table holds.
+  const badTable = (() => {
+    try {
+      sandbox.MetabrowserPluginHost.configureAssets({ plugins: {}, kinds: { k: ["ghost"] } });
+      return "accepted";
+    } catch (error) {
+      return String(error?.message);
+    }
+  })();
+  if (!badTable.includes("k names no plugin ghost")) {
+    return { ok: false, detail: `a kind naming no plugin was accepted: ${badTable}` };
+  }
+
+  sandbox.MetabrowserPluginHost.configureAssets({
+    plugins: {
+      served: { name: "served", module: "/plugin-static/served/index.js", scripts: [], styles: [] },
+      provider: {
+        name: "provider",
+        module: "/plugin-static/provider/index.js",
+        scripts: [],
+        styles: [],
+      },
+      broken: { name: "broken", module: "/plugin-static/broken/index.js", scripts: [], styles: [] },
+      "assets-first": {
+        name: "assets-first",
+        module: "/plugin-static/assets-first/index.js",
+        scripts: ["/plugin-static/assets-first/setup.js"],
+        styles: ["/plugin-static/assets-first/styles.css"],
+      },
+    },
+    kinds: { "served-kind": ["served"], "mixed-kind": ["broken", "provider"] },
+  });
+
+  // Loading a provider by name while its kind is selected is one import, and both settle.
+  const [byName] = await Promise.all([
+    plugins.load("served"),
+    sandbox.metabrowser.ensureKindAssets("served-kind"),
+  ]);
+  if (byName?.served !== true || servedImports !== 1) {
+    return { ok: false, detail: `a kind and a name did not share one load (${servedImports})` };
+  }
+
+  // A kind whose plugins include one that failed still resolves: its other plugins render.
+  const mixed = await Promise.race([
+    sandbox.metabrowser.ensureKindAssets("mixed-kind").then(
+      () => "resolved",
+      () => "rejected",
+    ),
+    new Promise((resolve) => setTimeout(() => resolve("timed-out"), 250)),
+  ]);
+  if (mixed !== "resolved") {
+    return { ok: false, detail: `a kind with a failed plugin module ${mixed}` };
+  }
+
+  // A provider's stylesheet and script run before its exports are answered.
+  const firstAppend = appended.length;
+  let answered = false;
+  const loading = plugins.load("assets-first").then((exports) => {
+    answered = true;
+    return exports;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const stylesheet = appended[firstAppend];
+  if (stylesheet?.getAttribute("rel") !== "stylesheet" || answered) {
+    return { ok: false, detail: "a provider was answered before its stylesheet loaded" };
+  }
+  stylesheet.onload();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const script = appended.at(-1);
+  if (script?.tagName !== "SCRIPT" || answered || assetsFirstImportedAt !== -1) {
+    return { ok: false, detail: "a provider's module ran before its script loaded" };
+  }
+  script.onload();
+  const exports = await loading;
+  if (exports?.ready !== true || assetsFirstImportedAt !== appended.length) {
+    return { ok: false, detail: "a provider's exports did not follow its assets" };
   }
   return { ok: true };
 }
@@ -856,10 +1013,11 @@ async function check_same_kind_plugins_follow_manifest_order() {
   const selectedKindAssets = await check_selected_kind_plugin_assets();
   const cachedPluginStylesheet = await check_cached_plugin_stylesheet_settles_without_onload();
   const sameKindOrder = await check_same_kind_plugins_follow_manifest_order();
+  const pluginsLoad = await check_plugins_load_returns_exports();
   const loadMore = check_load_more_runs_only_registered_actions();
 
   process.stdout.write(
-    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText, selectedKindAssets, cachedPluginStylesheet, sameKindOrder, loadMore })}\n`,
+    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText, selectedKindAssets, cachedPluginStylesheet, sameKindOrder, pluginsLoad, loadMore })}\n`,
   );
 
   if (
@@ -876,6 +1034,7 @@ async function check_same_kind_plugins_follow_manifest_order() {
     !selectedKindAssets.ok ||
     !cachedPluginStylesheet.ok ||
     !sameKindOrder.ok ||
+    !pluginsLoad.ok ||
     !loadMore.ok
   ) {
     process.exit(1);

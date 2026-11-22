@@ -33,6 +33,7 @@ from metabrowser.source_routes import PIN_CHANGED_HEADER, PIN_HEADER
 from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, github_origin
 from tests.golden_harness import settle
+from tests.held_port import listener_on
 from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
@@ -98,7 +99,9 @@ def offline_gh(origin: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
 def _serve(url: str) -> Any:
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_class,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(_app, [url, "--no-open"])
     if result.exit_code == 0:

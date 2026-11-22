@@ -8,8 +8,7 @@ request's Changes tab, a file's Source view, Commits, and a Files tab with a gro
 filter, open folders, and a scroll, the page is what a fresh load of `/view/` shows; that
 Pulls then opens its list, and that a list whose Tab stop and rows' changed files the
 reader moved and opened is drawn as a fresh load draws it, `P` focusing its first row;
-that the name's tooltip neither appears nor goes because of a click; and that the name is
-named "Home: <folder>" to assistive technology.
+and that assistive technology announces the name as "Home: <folder>".
 
 So this serves a checkout of the GitHub stand-in with a fake ``gh``, and
 ``tests/dom/folder-home-chrome.mjs`` drives each route in the running app.

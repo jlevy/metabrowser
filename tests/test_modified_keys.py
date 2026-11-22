@@ -38,7 +38,9 @@ _PACKAGE = Path(server.__file__).parent
 _REPO = Path(__file__).resolve().parents[1]
 _SESSION = "tests/dom/key-reveal-session.js"
 # A listener registered by name, or through a list of event types it loops over.
-_KEYDOWN_LISTENER = re.compile(r'addEventListener\(\s*"keydown"|\[[^\]\[]*"keydown"[^\]\[]*\]')
+_KEYDOWN_LISTENER = re.compile(
+    r'addEventListener(?:\?\.)?\(\s*"keydown"|\[[^\]\[]*"keydown"[^\]\[]*\]'
+)
 _ADD_LISTENER = re.compile(r"addEventListener(?:\?\.)?\(")
 _GUARD = "if (event.altKey || event.ctrlKey || event.metaKey) { return; }"
 
@@ -124,6 +126,11 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             ),
         ),
         Listener(
+            "Escape closing the root details disclosure",
+            _GUARD,
+            checks=("tests/dom/root-kind-mark-chrome.mjs",),
+        ),
+        Listener(
             "the reader's key ending a tooltip's focus repair, which only notes it",
             None,
             via=("endTooltipFocusRepair",),
@@ -145,6 +152,16 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             unmounted="the gutter's own guard, which this PR did not change",
         ),
         Listener(
+            "the ref menu's navigation and Escape; Tab and Option-Tab leave it",
+            _GUARD,
+            checks=("tests/dom/checkout-ref-selector-chrome.mjs",),
+        ),
+        Listener(
+            "ArrowDown and ArrowUp opening a ref's action menu",
+            _GUARD,
+            checks=("tests/dom/checkout-ref-selector-chrome.mjs",),
+        ),
+        Listener(
             "the View on GitHub chevron's ArrowDown and ArrowUp, which open its menu",
             _GUARD,
             checks=("tests/dom/counterpart-session.js",),
@@ -162,7 +179,7 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             "the interaction probe, which only counts inputs", None, via=("recordInteractionInput",)
         ),
     ),
-    "builtin_plugins/agent_log/index.js": (
+    "builtin_plugins/agents/agent-log.js": (
         Listener(
             "an event row's Enter and Space toggle",
             "const plain = !(event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);",
@@ -188,6 +205,15 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
         ),
     ),
     "builtin_plugins/github/pulls-panel.js": (Listener("the reader's last input time", None),),
+    "builtin_plugins/table/table-view.js": (
+        Listener(
+            "a table's rows and cells, a column menu's Escape, and Escape in a record",
+            _GUARD,
+            via=("onKeyDown",),
+            checks=("tests/dom/table-view-session.js",),
+        ),
+        Listener("Enter in a table's Search, which asks at once", None, via=("onSearchKey",)),
+    ),
     "builtin_plugins/github/pull-page.js": (
         Listener(
             "the stack menu's trigger and rows",

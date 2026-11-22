@@ -770,8 +770,8 @@ async function textRefusal() {
 
 // A text's Mermaid blocks on the mounted page (A3 of the review of #597): github.com draws
 // them in a description and in comments, and so does the page, each as an image, since a
-// text is untrusted. The page reads the Markdown plugin's published host
-// (`mb.builtins.markdown.drawDiagrams`) once a text has a block, and a page with none asks
+// text is untrusted. The page loads the Markdown plugin's exported host
+// (`drawDiagrams`, through `mb.plugins.load`) once a text has a block, and a page with none asks
 // for nothing. A folder's page draws them as a pinned revision's does: on either, each
 // binding's Mermaid is the Markdown plugin's diagram frame's, whose own policy bounds what
 // Mermaid loads while it lays a diagram out, never the page's (markdown/diagram-frame.js).
@@ -926,25 +926,24 @@ async function textDiagrams() {
   let served = "git_revision";
   const sdk = {
     perf,
-    builtins: {},
     registerView() {},
     renderSourceView() {},
     ensureAsset: async () => {
       window.MetabrowserInertHtml = inert;
     },
     loadKpressAssets: () => Promise.resolve(),
-    ensureKindAssets(kind) {
-      asked.push(`${kind} plugin`);
-      if (kind !== "markdown") {
-        return Promise.resolve();
-      }
-      // The plugin's index.js publishes its namespace on the SDK it finds, this one.
-      const load = arrives.then(() => {
-        window.metabrowser = sdk;
-        return import(`${pathToFileURL(path.join(markdownPlugin, "index.js")).href}?pull-text`);
-      });
-      loads.push(load);
-      return load;
+    plugins: {
+      load(name) {
+        asked.push(`${name} plugin`);
+        // The plugin's index.js registers its views on the SDK it finds, this one, and
+        // its exports are the module's.
+        const load = arrives.then(() => {
+          window.metabrowser = sdk;
+          return import(`${pathToFileURL(path.join(markdownPlugin, "index.js")).href}?pull-text`);
+        });
+        loads.push(load);
+        return load;
+      },
     },
     async ensureModule(name) {
       asked.push(name);

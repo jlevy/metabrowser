@@ -367,7 +367,12 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
         [tallies],
         [],
         [tallies],
+        ["/api/source/pin null"],
+        ["/api/source/pin null"],
     ]
+    assert hold["a second source control cannot post while a ref switch is in flight"][
+        "refusal"
+    ] == ("selection_busy")
     assert hold["a request made while the switch is asked waits for the answer"]["bounds"] == [5000]
     assert hold["a request given up while it is held settles at once"]["settled"] == "AbortError"
 

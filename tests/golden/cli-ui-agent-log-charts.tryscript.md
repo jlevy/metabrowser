@@ -58,6 +58,7 @@ $ node tests/dom/agent-log-plugin-behavior.js
 $ node tests/dom/chart-theme-behavior.js
 {
   "lazyMountCreatesNoChart": true,
+  "chartBeforeBundle": "metabrowser.chart: await metabrowser.ensureAsset(\"chart\") first",
   "directInitialColors": {
     "series": "light-series",
     "label": "light-label"

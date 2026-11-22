@@ -20,6 +20,7 @@ stdlib ``tomllib`` reader and validated by the Pydantic models below.
 
 from __future__ import annotations
 
+import re
 import tomllib
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -27,6 +28,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from metabrowser.content_sniff import SNIFF_PREFIX_BYTES
 from metabrowser.keymap import view_key_error
 
 # SDK contract version
@@ -40,14 +42,55 @@ from metabrowser.keymap import view_key_error
 # built-in manifest in the same commit. The host ships no shims for older
 # values: an external plugin is expected to update and declare it. See
 # docs/development.md "Compatibility and Legacy Code".
-PLUGIN_SDK_VERSION = "0.7"
+PLUGIN_SDK_VERSION = "0.8"
 
 # Metabrowser 0.4.0 allowed manifests to omit sdk_version. Such a manifest
 # targets the only SDK that existed under that contract. Keep this value pinned
 # when PLUGIN_SDK_VERSION changes so omission fails the ordinary mismatch gate.
 _IMPLICIT_PLUGIN_SDK_VERSION = "0.1"
 
+# A plugin's name, which is also how another plugin's ``requires`` names it.
+_PLUGIN_NAME = re.compile(r"^[a-z][a-z0-9_-]*$")
+
 # ── Match predicate ────────────────────────────────────────────
+
+# The furthest byte a `magic` rule may name: the sniff prefix every classification site
+# already holds when it falls back to `binary` (`SNIFF_PREFIX_BYTES` in
+# `metabrowser.content_sniff`), so a magic check never costs a read of its own.
+MAGIC_MAX_END = SNIFF_PREFIX_BYTES
+
+
+class MagicMatch(BaseModel):
+    """Bytes a binary format holds at a fixed offset, as ``magic = {offset, hex}``.
+
+    ``hex`` spells the bytes in hexadecimal, since a format's magic is often not text
+    (and a TOML string would encode a byte past 0x7f as two).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    offset: int = Field(default=0, ge=0, description="Where the bytes start in the file.")
+    hex: str = Field(..., description="The bytes expected there, in hexadecimal.")
+
+    @field_validator("hex")
+    @classmethod
+    def _hex_bytes(cls, value: str) -> str:
+        try:
+            raw = bytes.fromhex(value)
+        except ValueError:
+            raise ValueError(f"magic.hex {value!r} is not hexadecimal bytes") from None
+        if not raw:
+            raise ValueError("magic.hex names no bytes")
+        return raw.hex()
+
+    @property
+    def expected(self) -> bytes:
+        return bytes.fromhex(self.hex)
+
+    def matches(self, prefix: bytes) -> bool:
+        """Whether *prefix*, a file's leading bytes on disk, holds these bytes."""
+        expected = self.expected
+        return prefix[self.offset : self.offset + len(expected)] == expected
 
 
 class KindMatch(BaseModel):
@@ -128,6 +171,14 @@ class KindMatch(BaseModel):
             "match.* fields by AND."
         ),
     )
+    magic: MagicMatch | None = Field(
+        default=None,
+        description=(
+            "Match a file that would otherwise be `binary` whose bytes on disk hold these "
+            "bytes at this offset, whatever its name. Only `ext` or `exts` may be set "
+            "beside it, and they decide only the tree's container chevron."
+        ),
+    )
 
     def is_empty(self) -> bool:
         """Return True if no predicate fields are set."""
@@ -179,6 +230,29 @@ class KindRule(BaseModel):
         default=None,
         description="Folder-like behavior for files of this kind; see ContainerSpec.",
     )
+    binary: bool = Field(
+        default=False,
+        description=(
+            "Claim files whose content is binary, by path alone: the rule is asked only "
+            "about a served file the server has already found to be binary, where it "
+            "would otherwise be the ``binary`` kind, and only path predicates (``ext``, "
+            "``exts``, ``basename``, ``folder_marker``, ``path_glob``) may match. A rule "
+            "without it is never asked about a binary file."
+        ),
+    )
+
+
+# The predicates that read a file's content. A ``binary`` rule may not use them, since
+# the content they would read is not text.
+CONTENT_MATCH_FIELDS: tuple[str, ...] = (
+    "adapter",
+    "frontmatter_has_key",
+    "frontmatter_schema_prefix",
+    "json_has_key",
+    "json_value_prefix",
+    "yaml_has_key",
+    "yaml_value_prefix",
+)
 
 
 class ViewSpec(BaseModel):
@@ -218,6 +292,18 @@ class ViewSpec(BaseModel):
     render_runtime: Literal["kpress", "client", "server", "plugin"] | None = Field(
         default=None,
         description="Descriptive runtime for the view renderer; JS registration still dispatches.",
+    )
+    offer: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z_][\w.]*:[A-Za-z_]\w*$",
+        description=(
+            "``module:function`` predicate, for a view of the ``folder`` kind only. The "
+            "function receives the folder's path and returns whether to offer the view "
+            "there; it runs for every folder page, off the event loop, so it reads no "
+            "more than a few directory entries. An offered view with ``default = true`` "
+            "is then the folder's only default. Python plugins only: an operator "
+            "directory's plugin never offers the view."
+        ),
     )
 
     @field_validator("key")
@@ -294,6 +380,31 @@ class DataHookSpec(BaseModel):
     )
 
 
+class TableSourceSpec(BaseModel):
+    """One ``[[table_source]]`` block — the adapter that serves a kind as tables.
+
+    The built-in ``table`` plugin owns the routes; this declares which Python adapter
+    answers them for files of one of this plugin's own kinds
+    (:mod:`metabrowser.table_source`). Like a data hook, it runs only from a built-in or
+    an installed distribution.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str = Field(..., description="A [[kind]].id this plugin declares.")
+    adapter: str = Field(
+        ...,
+        description=(
+            "Python callable in ``module.path:callable`` form that takes a TableHandle and "
+            "returns a TableSource. Recorded as text and imported on first use."
+        ),
+    )
+
+
+# The plugin that owns the table routes; a plugin declaring a [[table_source]] requires it.
+TABLE_PLUGIN = "table"
+
+
 # ── Plugin manifest ────────────────────────────────────────────
 
 
@@ -308,7 +419,7 @@ class PluginInfo(BaseModel):
             "Lowercase plugin name. Used as the URL path segment under "
             "/plugin-static/<name>/ and /api/plugin/<name>/."
         ),
-        pattern=r"^[a-z][a-z0-9_-]*$",
+        pattern=_PLUGIN_NAME.pattern,
     )
     display_name: str = Field(default="", description="Human-readable plugin name.")
     version: str = Field(default="0.0.0", description="Plugin version, semver-ish.")
@@ -320,6 +431,18 @@ class PluginInfo(BaseModel):
             "must equal the host's PLUGIN_SDK_VERSION; the host provides no "
             "compatibility path for older SDKs."
         ),
+    )
+    register_module: str | None = Field(
+        alias="register",
+        default=None,
+        description=(
+            "Dotted Python module imported once when the plugin is discovered, for "
+            "registrations such as ``register_log_adapter``. Built-in and entry-point "
+            "plugins only: an operator-directory plugin is JavaScript-only, so the "
+            "field is ignored there with a warning. An import failure is a plugin "
+            "load error."
+        ),
+        pattern=r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$",
     )
     extra_scripts: list[str] = Field(
         default_factory=list,
@@ -340,6 +463,26 @@ class PluginInfo(BaseModel):
             "is served from /plugin-static/<plugin>/<filename>."
         ),
     )
+    requires: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Names of the plugins whose exports this plugin's browser code loads with "
+            "``metabrowser.plugins.load(name)``, and ``table`` for a plugin that declares a "
+            "``[[table_source]]``, whose routes the table plugin serves. Discovery refuses this plugin when one "
+            "is not discovered or was refused, or when the requirements form a cycle "
+            "(:func:`metabrowser.plugin_loader.discovery.resolve_requirements`)."
+        ),
+    )
+
+    @field_validator("requires")
+    @classmethod
+    def _requires_names_plugins(cls, requires: list[str]) -> list[str]:
+        for name in requires:
+            if not _PLUGIN_NAME.fullmatch(name):
+                raise ValueError(f"requires entry {name!r} is not a plugin name")
+        if len(set(requires)) != len(requires):
+            raise ValueError(f"requires lists a plugin more than once: {requires}")
+        return requires
 
 
 class PluginManifest(BaseModel):
@@ -352,6 +495,9 @@ class PluginManifest(BaseModel):
     view: list[ViewSpec] = Field(default_factory=list, description="View bindings.")
     data_hook: list[DataHookSpec] = Field(
         default_factory=list, description="Python sidekick HTTP handlers."
+    )
+    table_source: list[TableSourceSpec] = Field(
+        default_factory=list, description="Table source adapters for this plugin's kinds."
     )
 
     def validate_consistency(self) -> list[str]:
@@ -374,6 +520,11 @@ class PluginManifest(BaseModel):
                 "and set sdk_version accordingly"
             )
 
+        # A plugin that requires itself is the shortest cycle; discovery refuses longer
+        # ones, which need every manifest to see.
+        if self.plugin.name in self.plugin.requires:
+            problems.append(f"plugin '{self.plugin.name}' requires itself")
+
         # A container kind's children hook must be one of this plugin's
         # declared data hooks — the capability is a contract, not a URL.
         hook_routes = {hook.route for hook in self.data_hook}
@@ -382,6 +533,53 @@ class PluginManifest(BaseModel):
                 problems.append(
                     f"kind '{kr.id}' declares container.children="
                     f"{kr.container.children!r} but no [[data_hook]] has that route"
+                )
+
+        # A table source serves one of this plugin's own kinds, once, through the table
+        # plugin's routes, so the dependency is declared and discovery can check it.
+        local_kinds = {kr.id for kr in self.kind}
+        source_kinds: set[str] = set()
+        for spec in self.table_source:
+            if spec.kind not in local_kinds:
+                problems.append(
+                    f"table_source kind '{spec.kind}' is not a [[kind]] this plugin declares"
+                )
+            if spec.kind in source_kinds:
+                problems.append(f"table_source kind '{spec.kind}' is declared more than once")
+            source_kinds.add(spec.kind)
+            if ":" not in spec.adapter:
+                problems.append(
+                    f"table_source '{spec.kind}' has malformed adapter "
+                    f"'{spec.adapter}'; expected module.path:callable"
+                )
+        if self.table_source and TABLE_PLUGIN not in self.plugin.requires:
+            problems.append(
+                f"plugin '{self.plugin.name}' declares a [[table_source]] but does not "
+                f"require '{TABLE_PLUGIN}', whose routes serve it"
+            )
+
+        for kr in self.kind:
+            content = [f for f in CONTENT_MATCH_FIELDS if getattr(kr.match, f) is not None]
+            if kr.binary and content:
+                problems.append(
+                    f"kind '{kr.id}' claims binary files but matches on content "
+                    f"({', '.join(content)}); a binary rule matches by path only"
+                )
+            if kr.binary and kr.match.magic is not None:
+                problems.append(
+                    f"kind '{kr.id}' sets binary with match.magic; a magic rule already "
+                    "matches only binary files, by their bytes"
+                )
+            if kr.binary and kr.container is not None:
+                problems.append(f"kind '{kr.id}' claims binary files and cannot be a container")
+
+        # An offer decides where a folder view appears; no other kind has a place to
+        # decide it from, since a file's kind already chose the file.
+        for view in self.view:
+            if view.offer is not None and view.kind != "folder":
+                problems.append(
+                    f"view '{view.id}' declares offer={view.offer!r}, but only a "
+                    "view of the folder kind can be offered"
                 )
 
         # Each kind needs a non-empty match predicate.
@@ -407,6 +605,23 @@ class PluginManifest(BaseModel):
                             f"kind '{kr.id}' match.exts entry {e!r} must be a string "
                             "starting with '.'"
                         )
+            if kr.match.magic is not None:
+                magic = kr.match.magic
+                if magic.offset + len(magic.expected) > MAGIC_MAX_END:
+                    problems.append(
+                        f"kind '{kr.id}' match.magic ends past byte {MAGIC_MAX_END}, "
+                        "the sniff prefix a classification site holds"
+                    )
+                beside = [
+                    name
+                    for name in type(kr.match).model_fields
+                    if name not in {"magic", "ext", "exts"} and getattr(kr.match, name) is not None
+                ]
+                if beside:
+                    problems.append(
+                        f"kind '{kr.id}' sets match.magic with {', '.join(beside)}; a magic "
+                        "rule takes only ext or exts, which decide the tree's chevron"
+                    )
             # yaml_value_prefix is only meaningful paired with yaml_has_key
             # (mirrors the json pair).
             if kr.match.yaml_value_prefix is not None and kr.match.yaml_has_key is None:

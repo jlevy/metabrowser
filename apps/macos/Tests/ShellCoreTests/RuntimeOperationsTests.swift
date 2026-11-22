@@ -272,10 +272,10 @@ private let folder = URL(filePath: "/tmp/notes", directoryHint: .isDirectory)
     }
 
     @Test func settingsSaysItIsLookingOnlyWhileASearchRuns() {
-        #expect(RuntimeActivity(isSearching: true, isChoosing: false, isPreparingSteps: true) == .searching)
-        #expect(RuntimeActivity(isSearching: false, isChoosing: true, isPreparingSteps: false) == .checkingChoice)
-        #expect(RuntimeActivity(isSearching: false, isChoosing: false, isPreparingSteps: true) == .preparingSteps)
-        #expect(RuntimeActivity(isSearching: false, isChoosing: false, isPreparingSteps: false) == .idle)
+        #expect(RuntimeActivity(isSearching: true, isChoosing: false, isPreparingGuide: true) == .searching)
+        #expect(RuntimeActivity(isSearching: false, isChoosing: true, isPreparingGuide: false) == .checkingChoice)
+        #expect(RuntimeActivity(isSearching: false, isChoosing: false, isPreparingGuide: true) == .preparingGuide)
+        #expect(RuntimeActivity(isSearching: false, isChoosing: false, isPreparingGuide: false) == .idle)
     }
 }
 

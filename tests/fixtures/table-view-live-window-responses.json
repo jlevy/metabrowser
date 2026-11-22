@@ -1,0 +1,448 @@
+{
+  "versions": {
+    "W1": {
+      "answers": {
+        "schema?path=live-window.csv": {
+          "status": 200,
+          "body": {
+            "type": "table_schema",
+            "path": "live-window.csv",
+            "table": "",
+            "generation": "W1",
+            "key": [],
+            "default_columns": ["n"],
+            "fields": [{"name": "n", "title": null, "type": "integer", "declared_type": null, "nullable": null, "key": false, "hidden": null, "generated": null, "list": false, "enum": null, "format": null, "ref": null, "sortable": true, "sort_note": null, "filterable": true, "numeric": true}],
+            "references": [],
+            "referenced_by": []
+          }
+        },
+        "rows?limit=200&path=live-window.csv": {
+          "status": 200,
+          "body": {
+            "type": "table_rows",
+            "path": "live-window.csv",
+            "table": "",
+            "generation": "W1",
+            "columns": ["n"],
+            "rows": [
+              {"key": "@1", "cells": {"n": 1}},
+              {"key": "@2", "cells": {"n": 2}},
+              {"key": "@3", "cells": {"n": 3}},
+              {"key": "@4", "cells": {"n": 4}},
+              {"key": "@5", "cells": {"n": 5}},
+              {"key": "@6", "cells": {"n": 6}},
+              {"key": "@7", "cells": {"n": 7}},
+              {"key": "@8", "cells": {"n": 8}},
+              {"key": "@9", "cells": {"n": 9}},
+              {"key": "@10", "cells": {"n": 10}}
+            ],
+            "next_after": "c.W251bGwsImFzYyIsMTBd",
+            "complete": false,
+            "truncated": true,
+            "reason": "source_truncated",
+            "count": 60,
+            "count_complete": false,
+            "estimate": null,
+            "skipped": 0,
+            "examined": null,
+            "searched": null,
+            "sort_refused": null,
+            "limit": 10
+          }
+        },
+        "rows?after=c.W251bGwsImFzYyIsMTBd&limit=1000&path=live-window.csv": {
+          "status": 200,
+          "body": {
+            "type": "table_rows",
+            "path": "live-window.csv",
+            "table": "",
+            "generation": "W1",
+            "columns": ["n"],
+            "rows": [
+              {"key": "@11", "cells": {"n": 11}},
+              {"key": "@12", "cells": {"n": 12}},
+              {"key": "@13", "cells": {"n": 13}},
+              {"key": "@14", "cells": {"n": 14}},
+              {"key": "@15", "cells": {"n": 15}},
+              {"key": "@16", "cells": {"n": 16}},
+              {"key": "@17", "cells": {"n": 17}},
+              {"key": "@18", "cells": {"n": 18}},
+              {"key": "@19", "cells": {"n": 19}},
+              {"key": "@20", "cells": {"n": 20}}
+            ],
+            "next_after": "c.W251bGwsImFzYyIsMjBd",
+            "complete": false,
+            "truncated": true,
+            "reason": "source_truncated",
+            "count": 60,
+            "count_complete": false,
+            "estimate": null,
+            "skipped": 0,
+            "examined": null,
+            "searched": null,
+            "sort_refused": null,
+            "limit": 10
+          }
+        },
+        "rows?after=c.W251bGwsImFzYyIsMjBd&limit=1000&path=live-window.csv": {
+          "status": 200,
+          "body": {
+            "type": "table_rows",
+            "path": "live-window.csv",
+            "table": "",
+            "generation": "W1",
+            "columns": ["n"],
+            "rows": [
+              {"key": "@21", "cells": {"n": 21}},
+              {"key": "@22", "cells": {"n": 22}},
+              {"key": "@23", "cells": {"n": 23}},
+              {"key": "@24", "cells": {"n": 24}},
+              {"key": "@25", "cells": {"n": 25}},
+              {"key": "@26", "cells": {"n": 26}},
+              {"key": "@27", "cells": {"n": 27}},
+              {"key": "@28", "cells": {"n": 28}},
+              {"key": "@29", "cells": {"n": 29}},
+              {"key": "@30", "cells": {"n": 30}}
+            ],
+            "next_after": "c.W251bGwsImFzYyIsMzBd",
+            "complete": false,
+            "truncated": true,
+            "reason": "source_truncated",
+            "count": 60,
+            "count_complete": false,
+            "estimate": null,
+            "skipped": 0,
+            "examined": null,
+            "searched": null,
+            "sort_refused": null,
+            "limit": 10
+          }
+        },
+        "rows?after=c.W251bGwsImFzYyIsMzBd&limit=1000&path=live-window.csv": {
+          "status": 200,
+          "body": {
+            "type": "table_rows",
+            "path": "live-window.csv",
+            "table": "",
+            "generation": "W1",
+            "columns": ["n"],
+            "rows": [
+              {"key": "@31", "cells": {"n": 31}},
+              {"key": "@32", "cells": {"n": 32}},
+              {"key": "@33", "cells": {"n": 33}},
+              {"key": "@34", "cells": {"n": 34}},
+              {"key": "@35", "cells": {"n": 35}},
+              {"key": "@36", "cells": {"n": 36}},
+              {"key": "@37", "cells": {"n": 37}},
+              {"key": "@38", "cells": {"n": 38}},
+              {"key": "@39", "cells": {"n": 39}},
+              {"key": "@40", "cells": {"n": 40}}
+            ],
+            "next_after": "c.W251bGwsImFzYyIsNDBd",
+            "complete": false,
+            "truncated": true,
+            "reason": "source_truncated",
+            "count": 60,
+            "count_complete": false,
+            "estimate": null,
+            "skipped": 0,
+            "examined": null,
+            "searched": null,
+            "sort_refused": null,
+            "limit": 10
+          }
+        },
+        "rows?after=c.W251bGwsImFzYyIsNDBd&limit=1000&path=live-window.csv": {
+          "status": 200,
+          "body": {
+            "type": "table_rows",
+            "path": "live-window.csv",
+            "table": "",
+            "generation": "W1",
+            "columns": ["n"],
+            "rows": [
+              {"key": "@41", "cells": {"n": 41}},
+              {"key": "@42", "cells": {"n": 42}},
+              {"key": "@43", "cells": {"n": 43}},
+              {"key": "@44", "cells": {"n": 44}},
+              {"key": "@45", "cells": {"n": 45}},
+              {"key": "@46", "cells": {"n": 46}},
+              {"key": "@47", "cells": {"n": 47}},
+              {"key": "@48", "cells": {"n": 48}},
+              {"key": "@49", "cells": {"n": 49}},
+              {"key": "@50", "cells": {"n": 50}}
+            ],
+            "next_after": "c.W251bGwsImFzYyIsNTBd",
+            "complete": false,
+            "truncated": true,
+            "reason": "source_truncated",
+            "count": 60,
+            "count_complete": false,
+            "estimate": null,
+            "skipped": 0,
+            "examined": null,
+            "searched": null,
+            "sort_refused": null,
+            "limit": 10
+          }
+        },
+        "rows?after=c.W251bGwsImFzYyIsNTBd&limit=1000&path=live-window.csv": {
+          "status": 200,
+          "body": {
+            "type": "table_rows",
+            "path": "live-window.csv",
+            "table": "",
+            "generation": "W1",
+            "columns": ["n"],
+            "rows": [
+              {"key": "@51", "cells": {"n": 51}},
+              {"key": "@52", "cells": {"n": 52}},
+              {"key": "@53", "cells": {"n": 53}},
+              {"key": "@54", "cells": {"n": 54}},
+              {"key": "@55", "cells": {"n": 55}},
+              {"key": "@56", "cells": {"n": 56}},
+              {"key": "@57", "cells": {"n": 57}},
+              {"key": "@58", "cells": {"n": 58}},
+              {"key": "@59", "cells": {"n": 59}},
+              {"key": "@60", "cells": {"n": 60}}
+            ],
+            "next_after": null,
+            "complete": false,
+            "truncated": true,
+            "reason": "source_truncated",
+            "count": 60,
+            "count_complete": false,
+            "estimate": null,
+            "skipped": 0,
+            "examined": null,
+            "searched": null,
+            "sort_refused": null,
+            "limit": 10
+          }
+        }
+      }
+    },
+    "W2": {
+      "answers": {
+        "schema?path=live-window.csv": {
+          "status": 200,
+          "body": {
+            "type": "table_schema",
+            "path": "live-window.csv",
+            "table": "",
+            "generation": "W2",
+            "key": [],
+            "default_columns": ["n"],
+            "fields": [{"name": "n", "title": null, "type": "integer", "declared_type": null, "nullable": null, "key": false, "hidden": null, "generated": null, "list": false, "enum": null, "format": null, "ref": null, "sortable": true, "sort_note": null, "filterable": true, "numeric": true}],
+            "references": [],
+            "referenced_by": []
+          }
+        },
+        "rows?limit=200&path=live-window.csv": {
+          "status": 200,
+          "body": {
+            "type": "table_rows",
+            "path": "live-window.csv",
+            "table": "",
+            "generation": "W2",
+            "columns": ["n"],
+            "rows": [
+              {"key": "@1", "cells": {"n": 1}},
+              {"key": "@2", "cells": {"n": 2}},
+              {"key": "@3", "cells": {"n": 3}},
+              {"key": "@4", "cells": {"n": 4}},
+              {"key": "@5", "cells": {"n": 500}},
+              {"key": "@6", "cells": {"n": 6}},
+              {"key": "@7", "cells": {"n": 7}},
+              {"key": "@8", "cells": {"n": 8}},
+              {"key": "@9", "cells": {"n": 9}},
+              {"key": "@10", "cells": {"n": 10}}
+            ],
+            "next_after": "c.W251bGwsImFzYyIsMTBd",
+            "complete": false,
+            "truncated": true,
+            "reason": "source_truncated",
+            "count": 60,
+            "count_complete": false,
+            "estimate": null,
+            "skipped": 0,
+            "examined": null,
+            "searched": null,
+            "sort_refused": null,
+            "limit": 10
+          }
+        },
+        "rows?after=c.W251bGwsImFzYyIsMTBd&limit=1000&path=live-window.csv": {
+          "status": 200,
+          "body": {
+            "type": "table_rows",
+            "path": "live-window.csv",
+            "table": "",
+            "generation": "W2",
+            "columns": ["n"],
+            "rows": [
+              {"key": "@11", "cells": {"n": 11}},
+              {"key": "@12", "cells": {"n": 12}},
+              {"key": "@13", "cells": {"n": 13}},
+              {"key": "@14", "cells": {"n": 14}},
+              {"key": "@15", "cells": {"n": 15}},
+              {"key": "@16", "cells": {"n": 16}},
+              {"key": "@17", "cells": {"n": 17}},
+              {"key": "@18", "cells": {"n": 18}},
+              {"key": "@19", "cells": {"n": 19}},
+              {"key": "@20", "cells": {"n": 20}}
+            ],
+            "next_after": "c.W251bGwsImFzYyIsMjBd",
+            "complete": false,
+            "truncated": true,
+            "reason": "source_truncated",
+            "count": 60,
+            "count_complete": false,
+            "estimate": null,
+            "skipped": 0,
+            "examined": null,
+            "searched": null,
+            "sort_refused": null,
+            "limit": 10
+          }
+        },
+        "rows?after=c.W251bGwsImFzYyIsMjBd&limit=1000&path=live-window.csv": {
+          "status": 200,
+          "body": {
+            "type": "table_rows",
+            "path": "live-window.csv",
+            "table": "",
+            "generation": "W2",
+            "columns": ["n"],
+            "rows": [
+              {"key": "@21", "cells": {"n": 21}},
+              {"key": "@22", "cells": {"n": 22}},
+              {"key": "@23", "cells": {"n": 23}},
+              {"key": "@24", "cells": {"n": 24}},
+              {"key": "@25", "cells": {"n": 25}},
+              {"key": "@26", "cells": {"n": 26}},
+              {"key": "@27", "cells": {"n": 27}},
+              {"key": "@28", "cells": {"n": 28}},
+              {"key": "@29", "cells": {"n": 29}},
+              {"key": "@30", "cells": {"n": 30}}
+            ],
+            "next_after": "c.W251bGwsImFzYyIsMzBd",
+            "complete": false,
+            "truncated": true,
+            "reason": "source_truncated",
+            "count": 60,
+            "count_complete": false,
+            "estimate": null,
+            "skipped": 0,
+            "examined": null,
+            "searched": null,
+            "sort_refused": null,
+            "limit": 10
+          }
+        },
+        "rows?after=c.W251bGwsImFzYyIsMzBd&limit=1000&path=live-window.csv": {
+          "status": 200,
+          "body": {
+            "type": "table_rows",
+            "path": "live-window.csv",
+            "table": "",
+            "generation": "W2",
+            "columns": ["n"],
+            "rows": [
+              {"key": "@31", "cells": {"n": 31}},
+              {"key": "@32", "cells": {"n": 32}},
+              {"key": "@33", "cells": {"n": 33}},
+              {"key": "@34", "cells": {"n": 34}},
+              {"key": "@35", "cells": {"n": 35}},
+              {"key": "@36", "cells": {"n": 36}},
+              {"key": "@37", "cells": {"n": 37}},
+              {"key": "@38", "cells": {"n": 38}},
+              {"key": "@39", "cells": {"n": 39}},
+              {"key": "@40", "cells": {"n": 40}}
+            ],
+            "next_after": "c.W251bGwsImFzYyIsNDBd",
+            "complete": false,
+            "truncated": true,
+            "reason": "source_truncated",
+            "count": 60,
+            "count_complete": false,
+            "estimate": null,
+            "skipped": 0,
+            "examined": null,
+            "searched": null,
+            "sort_refused": null,
+            "limit": 10
+          }
+        },
+        "rows?after=c.W251bGwsImFzYyIsNDBd&limit=1000&path=live-window.csv": {
+          "status": 200,
+          "body": {
+            "type": "table_rows",
+            "path": "live-window.csv",
+            "table": "",
+            "generation": "W2",
+            "columns": ["n"],
+            "rows": [
+              {"key": "@41", "cells": {"n": 41}},
+              {"key": "@42", "cells": {"n": 42}},
+              {"key": "@43", "cells": {"n": 43}},
+              {"key": "@44", "cells": {"n": 44}},
+              {"key": "@45", "cells": {"n": 4500}},
+              {"key": "@46", "cells": {"n": 46}},
+              {"key": "@47", "cells": {"n": 47}},
+              {"key": "@48", "cells": {"n": 48}},
+              {"key": "@49", "cells": {"n": 49}},
+              {"key": "@50", "cells": {"n": 50}}
+            ],
+            "next_after": "c.W251bGwsImFzYyIsNTBd",
+            "complete": false,
+            "truncated": true,
+            "reason": "source_truncated",
+            "count": 60,
+            "count_complete": false,
+            "estimate": null,
+            "skipped": 0,
+            "examined": null,
+            "searched": null,
+            "sort_refused": null,
+            "limit": 10
+          }
+        },
+        "rows?after=c.W251bGwsImFzYyIsNTBd&limit=1000&path=live-window.csv": {
+          "status": 200,
+          "body": {
+            "type": "table_rows",
+            "path": "live-window.csv",
+            "table": "",
+            "generation": "W2",
+            "columns": ["n"],
+            "rows": [
+              {"key": "@51", "cells": {"n": 51}},
+              {"key": "@52", "cells": {"n": 52}},
+              {"key": "@53", "cells": {"n": 53}},
+              {"key": "@54", "cells": {"n": 54}},
+              {"key": "@55", "cells": {"n": 55}},
+              {"key": "@56", "cells": {"n": 56}},
+              {"key": "@57", "cells": {"n": 57}},
+              {"key": "@58", "cells": {"n": 58}},
+              {"key": "@59", "cells": {"n": 59}},
+              {"key": "@60", "cells": {"n": 60}}
+            ],
+            "next_after": null,
+            "complete": false,
+            "truncated": true,
+            "reason": "source_truncated",
+            "count": 60,
+            "count_complete": false,
+            "estimate": null,
+            "skipped": 0,
+            "examined": null,
+            "searched": null,
+            "sort_refused": null,
+            "limit": 10
+          }
+        }
+      }
+    }
+  }
+}

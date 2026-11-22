@@ -79,11 +79,13 @@ values = { kind = ["repository", "pull_request", "commit", "tree", "file"] }
 shown = ["refusal.message"]
 note = "What a GitHub link opens, for a link sent to the app and for File > Open URL…. Exit 0 with a plan; a refusal exits nonzero and still prints the object."
 
+# `targets[].git` says a folder was a Git checkout when it was opened, which picks its mark
+# (`RootMark`) without a look at the folder, which can raise a privacy prompt.
 [[command]]
 id = "recent-list"
 argv = ["--recent", "--json"]
 source = "Sources/ShellCore/Folders/RecentTargets.swift"
-json = ["targets[].mode", "targets[].root", "targets[].opened_at", "problem"]
+json = ["targets[].mode", "targets[].root", "targets[].opened_at", "targets[].git", "problem"]
 values = { "targets[].mode" = ["folder", "mirror"] }
 shown = ["problem"]
 opaque = ["targets[].opened_at"]
@@ -122,6 +124,14 @@ argv = ["{folder}", "--api", "/api/event-log?limit=1", "--format", "json"]
 source = "Sources/ShellCore/Folders/EventLogLocation.swift"
 json = ["directory", "files[].name"]
 note = "Help > Open Event Log: where Metabrowser's own event log is and which segment is newest, asked of the route that lists it, newest first. `{folder}` is any folder, whose server is never started, and `--api` writes the folder it serves as `<ROOT>`, so the app passes its own support folder, which is not the log's directory."
+
+[[command]]
+id = "plugins"
+argv = ["--plugins", "--json"]
+source = "Sources/ShellCore/Setup/PluginInventory.swift"
+json = ["plugins[].name", "plugins[].display_name", "plugins[].version", "plugins[].source", "plugins[].requires[]", "errors[]"]
+shown = ["plugins[].display_name", "plugins[].version", "plugins[].source", "errors[]"]
+note = "Settings > Information > Plugins uses the selected metab and the server's environment. A partial discovery exits 1 and still prints the plugin list with its errors."
 
 [[command]]
 id = "doctor"
@@ -191,8 +201,8 @@ route = "/api/identity"
 literal = "api/identity"
 source = "Sources/ShellCore/Folders/FolderIdentity.swift"
 json = ["short_name", "full_name", "kind", "kind_label", "title", "repository"]
-values = { kind = ["folder", "mirror"] }
-note = "Names each window. Status 200, or the window keeps the name it derived. `repository` puts a link's new mirror window beside an open checkout of the same GitHub repository (`CheckoutWindow`)."
+values = { kind = ["folder", "git", "mirror"] }
+note = "Names each window, and which of the three kinds of root it shows, which picks its mark (`RootMark`). Status 200, or the window keeps the name it derived. `repository` puts a link's new mirror window beside an open checkout of the same GitHub repository (`CheckoutWindow`)."
 
 [[route]]
 id = "source-status"
@@ -332,11 +342,11 @@ note = "Set only by the app's live tests, so that a test's folder stays out of t
 # records, so that a changed value is a change to the contract.
 
 [[behavior]]
-id = "view-on-github-link"
-source = "Sources/ShellCore/Web/GitHubViewRequests.swift"
-what = "A page marks its View on GitHub button's main link `data-view-on-github=\"open\"`: an `a` whose `href` is the item's page on github.com, with `target=\"_blank\"` and `rel=\"noopener\"`. The app's script takes a plain click on that link and opens its popover there; any other click is the link's own, which opens a new window that the app hands to the default browser."
+id = "web-view-link"
+source = "Sources/ShellCore/Web/WebViewRequests.swift"
+what = "A page marks a link that opens in the app's web pane `data-web-view=\"open\"`, as the View on GitHub button's main link is: an `a` whose `href` is a page on a site the app knows (`WebSite.known`), with `target=\"_blank\"` and `rel=\"noopener\"`. The app's script takes a plain click on that link and opens its pane there, in a popover; any other click is the link's own, which opens a new window that the app hands to the default browser."
 pinned_by = "tests/golden/cli-ui-counterpart.tryscript.md"
-holds = '"data-view-on-github": "open"'
+holds = '"data-web-view": "open"'
 
 [[behavior]]
 id = "json-framing"
@@ -354,15 +364,8 @@ pinned_by = "apps/macos/Tests/ShellCoreTests/RuntimeDiscoveryTests.swift::keepsI
 id = "executable-name"
 source = "Sources/ShellCore/Runtime/RuntimeDiscovery.swift"
 what = "The package installs a console script named `metab`, which is the file the app looks for in each place it searches."
-pinned_by = "tests/test_app_contract_golden.py::test_the_names_the_app_runs_and_installs_are_the_packages"
+pinned_by = "tests/test_app_contract_golden.py::test_the_apps_executable_name_matches_the_console_script"
 values = ["pyproject.toml:project.scripts.metab"]
-
-[[behavior]]
-id = "distribution-name"
-source = "Sources/ShellCore/Runtime/RuntimeDiscovery.swift"
-what = "The distribution is `metabrowser`, which the install and upgrade commands the app shows name to uv, the upgrade with a PEP 440 floor."
-pinned_by = "tests/test_app_contract_golden.py::test_the_names_the_app_runs_and_installs_are_the_packages"
-values = ["pyproject.toml:project.name"]
 
 [[behavior]]
 id = "stdin-lifeline"
@@ -448,18 +451,6 @@ values = [
 ]
 
 [[copy]]
-swift = "MetabInstall.upgradeCommand(minimum:), uvReceipt, pipxMetadata, checkoutVenv, checkoutProject"
-source = "Sources/ShellCore/Setup/MetabVersion.swift"
-metab = "METAB_UPGRADE_COMMANDS, UV_RECEIPT, PIPX_METADATA, CHECKOUT_VENV, and CHECKOUT_PROJECT in cli/doctor.py: the step that upgrades each install, and the files that tell the installs apart"
-pinned_by = "tests/test_macos_app_pins.py::test_the_apps_upgrade_steps_are_the_doctors"
-values = [
-    "metabrowser.cli.doctor:METAB_UPGRADE_COMMANDS",
-    "metabrowser.cli.doctor:UV_RECEIPT",
-    "metabrowser.cli.doctor:PIPX_METADATA",
-    "metabrowser.cli.doctor:CHECKOUT_VENV",
-]
-
-[[copy]]
 swift = "MetabVersion.pattern"
 source = "Sources/ShellCore/Setup/MetabVersion.swift"
 metab = "the version `metab --version` prints"
@@ -485,8 +476,8 @@ pinned_by = "tests/test_macos_app_pins.py::test_the_about_box_cuts_a_commit_as_e
 values = ["metabrowser.commit_ids:SHORT_COMMIT_CHARS"]
 
 [[copy]]
-swift = "GitHubViewRequests.marker"
-source = "Sources/ShellCore/Web/GitHubViewRequests.swift"
+swift = "WebViewRequests.marker"
+source = "Sources/ShellCore/Web/WebViewRequests.swift"
 metab = "the hook `counterpartButton` in static/plugin-sdk-views.js gives the button's main link"
 pinned_by = "tests/test_macos_app_pins.py::test_the_link_the_apps_script_takes_is_the_one_the_page_marks"
 
@@ -525,6 +516,7 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 # is when it is the app's own and no part of this contract.
 
 [files.launch]
+"Sources/ShellCore/Setup/PluginInventory.swift" = { sites = 1, runs = ["plugins"] }
 "Sources/ShellCore/Runtime/RuntimeDiscovery.swift" = { sites = 2, runs = ["version-probe", "version", "own: the login shell, for its PATH"] }
 "Sources/ShellCore/Setup/SetupGuide.swift" = { sites = 1, runs = ["own: uv tool dir --bin"] }
 "Sources/ShellCore/Supervision/ServerLaunch.swift" = { sites = 1, runs = ["serve"] }
@@ -538,6 +530,7 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 # or as a coding key's raw value is one the answer's entry declares. A subscript of
 # something of the app's own in such a file ends its line `// not-contract: <why>`.
 [files.json]
+"Sources/ShellCore/Setup/PluginInventory.swift" = ["plugins"]
 "Sources/ShellCore/Folders/PresentPlan.swift" = ["present-dry-run"]
 "Sources/ShellCore/Folders/RecentTargets.swift" = ["recent-list"]
 "Sources/ShellCore/Folders/EventLogLocation.swift" = ["event-log"]
@@ -553,12 +546,12 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 "Sources/ShellCore/Folders/SourceLink.swift" = ["source-link"]
 "Sources/ShellCore/Supervision/ReadinessProbe.swift" = ["entry-page-answers"]
 "Sources/Metabrowser/FolderPage.swift" = ["own: the page a window loads, which the web view requests"]
-"Sources/Metabrowser/GitHubPopover.swift" = ["own: github.com, in the View on GitHub popover"]
+"Sources/Metabrowser/WebPane.swift" = ["own: a known site's pages, such as github.com's, in the web pane"]
 
 [files.script]
 "Sources/ShellCore/Web/PagePrint.swift" = ["own: window.print, which WebKit gives the app no public way to receive"]
-"Sources/ShellCore/Web/GitHubViewRequests.swift" = ["view-on-github-link"]
-"Sources/Metabrowser/GitHubPopover.swift" = ["own: whether the popover's github.com page holds text not yet sent"]
+"Sources/ShellCore/Web/WebViewRequests.swift" = ["web-view-link"]
+"Sources/Metabrowser/WebPane.swift" = ["own: whether the pane's page holds text not yet sent"]
 "Sources/ShellCore/Web/PageFind.swift" = ["own: the page's selection, which find reads and starts from, through the DOM's own Selection"]
 
 # ── What the scans pass over ────────────────────────────────────────────────────────────
@@ -569,9 +562,6 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 [other]
 flags = [
     "--bin",       # uv tool dir --bin
-    "--upgrade",   # uv tool install --upgrade, shown at setup
-    "--reinstall", # uv tool install --reinstall, shown at setup
-    "--force",     # pipx install --force, shown for a pipx metab too old to run
     "--hostname",  # gh auth login, status, and refresh, shown when GitHub refuses
     "--scopes",    # gh auth refresh --scopes, shown when GitHub refuses
 ]

@@ -108,9 +108,31 @@
    * @returns {typeof fetch}
    */
   function guardFetch(fetchImpl, pin, base, onPinChanged, waiting = () => null) {
+    let selecting = false;
     return async (input, init) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      if (!guardedRequest(url, base())) {
+      const address = base();
+      const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+      // Menus, the chooser, and PR/diff controls all post to this route. A second
+      // control must not change the session while the first is waiting for its answer.
+      if (method.toUpperCase() === "POST") {
+        const target = new URL(url, address);
+        if (target.origin === new URL(address).origin && target.pathname === "/api/source/pin") {
+          if (selecting) {
+            return Response.json(
+              { code: "selection_busy", error: "A ref switch is already in progress." },
+              { status: 409 },
+            );
+          }
+          selecting = true;
+          try {
+            return await fetchImpl(input, init);
+          } finally {
+            selecting = false;
+          }
+        }
+      }
+      if (!guardedRequest(url, address)) {
         return fetchImpl(input, init);
       }
       const wait = waiting();
@@ -304,8 +326,16 @@
     createSwitchHold,
     guardFetch,
     guardedRequest,
-    // This page's switch, which the selector asks for: its requests wait for it.
-    hold: switchHold.hold,
+    // A page can have several ways to change refs. Keep the first one's hold through
+    // navigation so another control cannot race the switch while its request is pending.
+    /** @param {Promise<boolean>} going */
+    hold(going) {
+      if (switchHold.waiting()) {
+        return false;
+      }
+      switchHold.hold(going);
+      return true;
+    },
     servesAnother,
     shownPin,
   });

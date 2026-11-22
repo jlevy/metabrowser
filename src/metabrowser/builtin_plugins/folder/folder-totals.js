@@ -539,7 +539,7 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric, hove
     const selected = selectFolderTotalsMetric(row, currentMetric);
     const displayKind = currentMetric === "files" ? "count" : "size";
     handle.metric.cell.className = `file-type-summary-metric file-type-summary-metric-${currentMetric}`;
-    handle.metric.value.className = `file-type-summary-value ${displayKind} ${
+    handle.metric.value.className = `file-type-summary-value data-num ${displayKind} ${
       currentMetric === "files" ? mb.countClass(selected.value) : mb.sizeClass(selected.value)
     }`.trim();
     handle.metric.value.textContent = selected.text;

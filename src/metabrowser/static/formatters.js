@@ -187,7 +187,7 @@
       return [part];
     }
     if ("number" in part) {
-      return [{ className: SUMMARY_NUMBER_CLASS, text: part.number }];
+      return [{ className: part.sizeStyle ?? SUMMARY_NUMBER_CLASS, text: part.number }];
     }
     if ("status" in part) {
       // A status count, "21 A": its number and its letter one span, bold, in the status's
@@ -251,7 +251,7 @@
       paint.children === undefined
         ? escaped(paint.text ?? "")
         : paint.children.map(paintHtml).join("");
-    return `<span class="${paint.className}"${attributes}>${content}</span>`;
+    return `<span class="${escaped(paint.className)}"${attributes}>${content}</span>`;
   }
 
   /**

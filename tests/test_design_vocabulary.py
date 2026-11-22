@@ -573,6 +573,11 @@ def test_nav_like_row_sets_share_the_vertical_keyboard_contract() -> None:
     pull_files = pulls + (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-files-view.js").read_text(
         encoding="utf-8"
     )
+    # The table view: its model says where a key moves, and the view moves the tab stop.
+    table = "".join(
+        (REPO_ROOT / BUILTIN_PLUGINS / f"table/{name}").read_text(encoding="utf-8")
+        for name in ("table-model.js", "table-view.js")
+    )
 
     assert "### Navigational Row Collections" in design
     assert "test_nav_like_row_sets_share_the_vertical_keyboard_contract" in design
@@ -581,6 +586,7 @@ def test_nav_like_row_sets_share_the_vertical_keyboard_contract() -> None:
         (git, "moveCommitRowFocus"),
         (pulls, "nav.move("),
         (pull_files, "nav.moveFile("),
+        (table, "moveFocus("),
     ):
         assert movement_helper in source
         assert '"ArrowUp"' in source
@@ -885,7 +891,6 @@ _CHIP_CLASSES = frozenset(
         "git-ref-tag",
         "git-ref-trunk",
         "git-ref-head",
-        "git-ref-copyable",
         "git-ref-label",
         "merge-refs-source",
         "merge-refs-target",
@@ -921,7 +926,7 @@ _CHIP_TYPE_AND_BOX = frozenset(
 )
 # A form's own room, on the chip itself and never from a context: the tag's notch and
 # the copyable chip's reserved control.
-_CHIP_FORM_ROOM = {".git-ref-tag": {"padding-left"}, ".git-ref-copyable": {"padding-right"}}
+_CHIP_FORM_ROOM = {".git-ref-tag": {"padding-left"}}
 
 
 # The boxes a chip sits in, in every context: a merge's grid, a history row's ref group, a commit summary's identity and ref groups, and
@@ -1022,12 +1027,12 @@ def test_each_context_assigns_its_chip_kind() -> None:
     # One mapping from a Git kind to a chip's: a tag, a remote branch, else a local branch.
     views = (STATIC / "plugin-sdk-views.js").read_text(encoding="utf-8")
     mapping = 'options.kind === "tag" ? "tag" : options.kind === "remote" ? "remote" : "local"'
-    assert views.count(mapping) == 2, "refChip and refChipHtml map kinds one way"
+    assert views.count(mapping) == 1, "refChip and refChipHtml share a kind mapping"
     # A history row, a commit's summary, and its tooltip draw the wire's refs, all three
     # marks included, through one function.
     panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     badges = re.search(
-        r"function renderRefBadges\(refs, copy = \"sibling\"\) \{(.*?)\n  \}", panel, re.S
+        r"function renderRefBadges\(refs, menu = \"sibling\"\) \{(.*?)\n  \}", panel, re.S
     )
     assert badges is not None
     for option in ("kind: ref.kind,", "trunk: ref.is_trunk,", "head: ref.is_head,"):
@@ -1330,15 +1335,12 @@ def test_navigation_tooltips_are_pointer_only() -> None:
     assert 'document.addEventListener("mouseleave", hideTipText, true)' in app
     assert 'document.addEventListener("focusin", showTipText)' not in app
     assert 'document.addEventListener("focusout", hideTipText)' not in app
-    # Any focus transition hides the tooltip, but the focus a press on the folder's name
-    # gives it: that is the pointer's click, which neither shows nor hides the name's
-    # tooltip (docs/design-system.md, "Home"; tests/test_folder_home_chrome.py).
+    # Moving focus dismisses a pointer tooltip. A rebuild can repair focus.
     assert 'document.addEventListener("focusin", hideTooltipOnFocus)' in app
     on_focus = app[app.index("function hideTooltipOnFocus(") :]
     on_focus = on_focus[: on_focus.index("\n}\n")]
-    assert "if (pressed !== null && event.target === pressed) {" in on_focus
+    assert "if (previous && previous.isConnected === false) {" in on_focus
     assert on_focus.rstrip().endswith("hideTooltip();")
-    assert app.count("tooltipPressedAnchor = headerPath;") == 1
     assert 'element.addEventListener("focus", () =>' not in panel
     assert "dismissHoverTooltip();" in panel
 
@@ -1572,6 +1574,7 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".parent-nav-arrow"): "a button's glyph",
     ("styles.css", ".fold-expander"): "a control row (Fold Expanders)",
     ("styles.css", ".menu-item"): "a menu",
+    ("styles.css", ".menu-link-url"): "the destination shown inside a menu",
     ("styles.css", ".menu-version"): "a menu's line",
     ("styles.css", ".menu-select"): "a menu's control",
     ("styles.css", ".menu-row"): "a menu's line",
@@ -1588,7 +1591,7 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
         ".mb-image-fallback",
     ): "the stand-in for a badge: an image the page does not load",
     ("styles.css", ".tree-container-badge"): "a tree row's leading letter, its slot's glyph",
-    ("agent_log/styles.css", ".log-event-kind"): "a badge",
+    ("agents/agent-log.css", ".log-event-kind"): "a badge",
     (
         "diff/styles.css",
         ".metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary",
@@ -1597,6 +1600,11 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("github/styles.css", ".github-pull-label"): "a label chip",
     ("github/styles.css", ".github-pull-stacks"): "the stack chip's slot",
     ("html/styles.css", ".metabrowser-html-host .file-html-preview-open"): "a control",
+    ("table/styles.css", ".table-chip"): "a filter chip",
+    ("table/styles.css", ".table-fit-note"): "a control: it opens the Columns menu",
+    ("table/styles.css", ".table-stored-mark"): "a badge",
+    ("table/styles.css", ".table-ref"): "a reference chip",
+    ("table/styles.css", ".table-menu-note"): "a menu's line",
 }
 # Who may set the micro size, a step under the controls': a mark, never running text.
 _MICRO_SIZE_ROLES: dict[tuple[str, str], str] = {
@@ -1724,7 +1732,7 @@ _TOGGLE_SOURCES: dict[str, str] = {
     "app.js": ".menu-seg's checked mark and the drawer's .icon-btn toggle",
     "server.py": ".menu-seg in the shell's menu",
     "source-ref-selector.js": "marks a chip of its groupHtml in place",
-    "agent_log/index.js": "marks a chip of its groupHtml in place",
+    "agents/agent-log.js": "marks a chip of its groupHtml in place",
     "folder/treemap.js": "marks a chip of its groupHtml in place",
     "github/pulls-panel.js": "marks a chip of its groupHtml in place",
     "shell-keymap.js": "reads a filter menu's checked row to focus it, and renders none",
@@ -1954,14 +1962,19 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
         'className: "filter-drawer-toggle disclosure-toggle"',
         '"icon-btn nav-collapse-toggle disclosure-toggle"',
     ),
+    "server.py": ('class="icon-btn root-details-trigger disclosure-toggle"',),
     "charts.js": ("'<div class=\"tally-node disclosure-toggle'",),
     "filter-controls.js": ('class="chip chip-menu-trigger disclosure-toggle"',),
     "source-ref-selector.js": (
         '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
     ),
     # The View on GitHub button's chevron, which opens its menu.
-    "plugin-sdk-views.js": ('"chip chip-menu-trigger counterpart-more disclosure-toggle"',),
-    "agent_log/index.js": ('class="log-event-header disclosure-toggle"',),
+    "plugin-sdk-views.js": (
+        '"git-ref-action", "disclosure-toggle"',
+        '"git-ref-menu-hit disclosure-toggle"',
+        '"chip chip-menu-trigger counterpart-more disclosure-toggle"',
+    ),
+    "agents/agent-log.js": ('class="log-event-header disclosure-toggle"',),
     "event_log/event-log-views.js": ('"disclosure-toggle event-log-row-head"',),
     "structured/tree.js": ('" srow-container disclosure-toggle"',),
     "markdown/inert-toc.js": ('"kpress-toc-toggle disclosure-toggle"',),
@@ -1997,12 +2010,13 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
 }
 # Sources with a marker that build no toggle of their own, and why.
 _NOT_TOGGLES: dict[str, str] = {
+    "file-watches.js": "reads aria-expanded on the tree rows app.js builds",
     "tree-keyboard-navigation.js": "reflects aria-expanded on the tree rows app.js builds",
     "overlay-layer.js": "a dialog's trigger, an icon or labelled button, is not a disclosure",
     "search-palette.js": "the search field is a combobox, and its text stays editable",
     "shell-keymap.js": "reads which filter dropdown is open, for its rows' letters",
     "nav-collapse.js": "reflects aria-expanded on the chevron server.py writes and app.js draws",
-    "server.py": "the gear has no chevron; the navigation chevron is .disclosure-toggle",
+    "table/table-view.js": "the Columns button and a header's menu button open dialogs, not disclosures",
 }
 # Each chevron and `summary` a source builds, in source order, with the builder whose
 # element it goes into. Whitespace in a glyph is collapsed to one space.
@@ -2014,6 +2028,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ("ICONS.toggle +", "'<div class=\"tree-item tree-folder disclosure-toggle collapsed'"),
         ("${ICONS.toggle}", '"icon-btn nav-collapse-toggle disclosure-toggle"'),
     ),
+    "server.py": (("<summary", 'class="icon-btn root-details-trigger disclosure-toggle"'),),
     "charts.js": (("ICONS.toggle +", "'<div class=\"tally-node disclosure-toggle'"),),
     "filter-controls.js": (("${menuChevron}", 'class="chip chip-menu-trigger disclosure-toggle"'),),
     "source-ref-selector.js": (
@@ -2023,12 +2038,13 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ),
     ),
     "plugin-sdk-views.js": (
+        ("MetabrowserIcons?.toggle ??", '"git-ref-action", "disclosure-toggle"'),
         (
             "MetabrowserIcons?.toggle ??",
             '"chip chip-menu-trigger counterpart-more disclosure-toggle"',
         ),
     ),
-    "agent_log/index.js": (("mb.icons.toggle +", 'class="log-event-header disclosure-toggle"'),),
+    "agents/agent-log.js": (("mb.icons.toggle +", 'class="log-event-header disclosure-toggle"'),),
     "structured/tree.js": (('srow-chevron"', '" srow-container disclosure-toggle"'),),
     "markdown/rendered.js": (
         ("<summary", 'class="section-disclosure-trigger disclosure-toggle">Diagnostics'),
@@ -2537,7 +2553,7 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
     pull request numbers' rules alone. One shell class, `.summary-number`, takes the token
     and nothing else, so a number keeps its line's ink and size, and no stylesheet restyles
     it, by its own class or by a class a source gives it beside that one. Each surface that
-    paints a count summary puts its numbers in it: the browserless sessions named in the
+    paints a count summary puts its counts in it: the browserless sessions named in the
     design system hold the markup, and tests/test_changed_file_rows_chrome.py and
     tests/test_nav_metadata_chrome.py read 700 for the numbers and 400 for the words in
     Chrome.
@@ -2578,7 +2594,7 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
             if re.search(r"\.github-pull-quiet(?![\w-])\s*[\s>+~]\s*\S", selector):
                 assert "font-weight" not in declarations, (sheet, selector)
     painters = {
-        "static/formatters.js": "{ className: SUMMARY_NUMBER_CLASS, text: part.number",
+        "static/formatters.js": "{ className: part.sizeStyle ?? SUMMARY_NUMBER_CLASS, text: part.number",
         "static/navigation.js": "window.MetabrowserFormatters.countPartsHtml(parts)",
         "static/app.js": "window.MetabrowserFormatters.countPartsNodes(document, parts)",
         "static/git-panel.js": "window.MetabrowserFormatters.countPartsNodes(document, [",
@@ -2786,11 +2802,8 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert group["grid-template-columns"] == (
         "minmax(0, max-content) max-content minmax(0, max-content)"
     ), "each name may shrink and the arrow never shrinks"
-    assert group["min-width"] == "calc(2 * (5px + 19px) + 3em)", "the merge's floor"
-    assert (shell[".git-ref"]["padding"], shell[".git-ref-copyable"]["padding-right"]) == (
-        "0 5px",
-        "19px",
-    ), "the floor counts each chip's padding and copy slot"
+    assert group["min-width"] == "calc(2 * 5px + 3em)", "the merge's floor"
+    assert shell[".git-ref"]["padding"] == "0 5px"
     assert "font-size" not in group, "the arrow and chips take the text around the merge"
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
@@ -3585,11 +3598,12 @@ def test_diff_text_and_reserved_geometry_use_the_dense_mono_token() -> None:
         assert f"var(--diff-{kind}-row-height)" in view
 
 
-def test_branch_copy_plate_has_readable_interactive_ink() -> None:
-    css = (STATIC / "styles.css").read_text(encoding="utf-8")
-    assert "color: var(--text)" in _rule(css, ".git-ref-copy:is(:hover, :focus-visible)")
+def test_ref_menu_chevron_uses_neutral_ink_without_reserving_space() -> None:
     rules = dict(_rules_of(STATIC / "styles.css"))
-    assert rules[".git-ref-copy-layer > .git-ref-copy"]["color"] == "var(--git-ref-copy-ink)"
+    caret = rules[".git-ref-menu-caret"]
+    assert caret["position"] == "absolute"
+    assert caret["color"] == "var(--muted)"
+    assert rules[".git-ref-menu-caret > svg"]["transform"] == "rotate(90deg)"
 
 
 # ── The Shift reveal's paint ────────────────────────────────────────
@@ -4206,6 +4220,8 @@ _FOCUS_RING_OUTSET = frozenset(
         ".filter-check:has(input:focus-visible)",
         ".help-project a:focus-visible",
         ".event-log-details a:focus-visible",
+        # A session's link in the agents views: a bare inline link, as the two above are.
+        "a.agents-session-link:focus-visible",
     }
 )
 
@@ -4241,6 +4257,32 @@ def test_the_outset_focus_ring_is_only_for_the_documented_controls() -> None:
     assert root["--focus-ring-offset-outset"][0].isdigit()
 
 
+def test_a_link_no_rule_colors_is_the_link_color() -> None:
+    """The shell sets the base anchor, so a new view's bare link is never the user agent's.
+
+    The base is zero-specificity (`:where`), so every context's own color, hover, and ring
+    still win; it covers a visited link too (`:any-link`); and it sets the color alone, so
+    the contexts that keep the user agent's underline at rest are unchanged. The Chrome
+    half, that a bare `<a href>` in a plugin view computes to `--link` and not the user
+    agent's blue or visited purple, is in `tests/dom/agents-views-chrome.mjs`.
+    """
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert dict(_declarations(_rule(styles, ":where(a:any-link)"))) == {"color": "var(--link)"}
+    # The rules the base made redundant stay gone: a context that colors every anchor in it
+    # with the link color is patching the user agent's fallback one context at a time.
+    for selector in (
+        ".help-project a",
+        ".event-log-details a",
+        ".md-body:not(.metabrowser-kpress-host) a",
+    ):
+        for sheet in _stylesheets():
+            for rule, declarations in _rules_of(sheet):
+                assert not (rule == selector and "color" in declarations), (
+                    f"{selector} recolors a link the base already colors"
+                )
+
+
 _STATUS_TEXT_TOKENS = (
     "--status-success-text",
     "--status-warning-text",
@@ -4253,9 +4295,6 @@ _BADGE_TONES = (
     "failed",
     "running",
     "pending",
-    "claude",
-    "gemini",
-    "pi",
     "adapter",
     "compressed",
 )

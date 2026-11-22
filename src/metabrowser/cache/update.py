@@ -76,7 +76,7 @@ from metabrowser.cache.origin import (
     pruned_ref_names,
     remote_tracking_ref,
 )
-from metabrowser.cache.paths import store_directory, store_record
+from metabrowser.cache.paths import store_git_directory, store_record
 from metabrowser.cache.records import (
     REPOSITORY_STORE_STATE_CONTRACT_ID,
     RecordedOutcome,
@@ -650,9 +650,7 @@ async def update_store(home: Path, store_key: str, *, remote_url: str) -> StoreU
     """
 
     try:
-        target = repository_store_target(
-            git_dir=home / store_directory(store_key) / "repository.git"
-        )
+        target = repository_store_target(git_dir=home / store_git_directory(store_key))
     except GitUnavailableError as exc:
         log.debug("refresh skipped: %s", exc)
         return StoreUpdate(RefreshOutcome.store_unavailable, canonical_now())

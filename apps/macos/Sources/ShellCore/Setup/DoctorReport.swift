@@ -109,7 +109,7 @@ public nonisolated struct DoctorReport: Equatable, Sendable {
                 text.append("  fix: \(remedy.text)" + (step.map { " \($0)" } ?? ""))
             }
         }
-        if !hasChecks { text.append(DoctorRun.noChecks) }
+        if !hasChecks { text += [DoctorRun.noChecks, ProjectLinks.installationGuide.absoluteString] }
         return text.joined(separator: "\n") + "\n"
     }
 }
@@ -131,7 +131,7 @@ public nonisolated enum DoctorRun {
     /// What the window says of a report without `checks`.
     public static let noChecks =
         "This metab reports no setup checks: it was built before metab --doctor checked Git and the "
-        + "configuration and cache directories. Upgrade it to see them."
+        + "configuration and cache directories. See Setup Help to choose a newer runtime."
 
     /// Names this app's bundle to the doctor, whose `metab` check then compares with this
     /// build's minimum (`DOCTOR_APP_ENV` in `src/metabrowser/cli/doctor.py`), not with
@@ -311,10 +311,19 @@ public nonisolated enum DoctorRun {
     }
 
     private static func checkRow(_ check: Check) -> DoctorReport.Row {
-        DoctorReport.Row(
-            id: check.id, title: check.title, state: DoctorReport.State(check.state), summary: check.summary,
-            details: (check.details ?? []).map { DoctorReport.Detail(name: $0.name, value: $0.value) },
-            remedy: check.remedy.map(remedyOf))
+        let state = DoctorReport.State(check.state)
+        // Older runtimes may suggest checkout commands. The app uses the README's setup guidance.
+        let remedy: DoctorReport.Remedy?
+        if check.id == "metab" {
+            remedy = state == .ok
+                ? nil
+                : DoctorReport.Remedy(text: "See the README for runtime setup.", url: ProjectLinks.installationGuide)
+        } else {
+            remedy = check.remedy.map(remedyOf)
+        }
+        return DoctorReport.Row(
+            id: check.id, title: check.title, state: state, summary: check.summary,
+            details: (check.details ?? []).map { DoctorReport.Detail(name: $0.name, value: $0.value) }, remedy: remedy)
     }
 
     private static func unreadableRow(id: String, title: String) -> DoctorReport.Row {

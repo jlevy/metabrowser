@@ -17,8 +17,9 @@ let package = Package(
         // child environment, logs, files opened in folders, tabs, the saved session, and
         // the navigation policy.
         .target(name: "ShellCore", swiftSettings: settings),
-        // The web view class a window holds and its container: a library of their own, so
-        // the WebKit measurement gate builds the same views as the app.
+        // The web view class a window holds and its container, and the title-line menu
+        // item: a library of their own, so the WebKit measurement gate builds the same views
+        // as the app, and the tests reach the AppKit that ShellCore never imports.
         .target(name: "ShellViews", dependencies: ["ShellCore"], swiftSettings: settings),
         // The AppKit app: lifecycle, menus, windows, and WKWebView.
         .executableTarget(
@@ -30,7 +31,7 @@ let package = Package(
             name: "WebKitDriver", dependencies: ["ShellCore", "ShellViews"],
             path: "webkit-gate/driver", swiftSettings: settings),
         .testTarget(
-            name: "ShellCoreTests", dependencies: ["ShellCore"], swiftSettings: settings),
+            name: "ShellCoreTests", dependencies: ["ShellCore", "ShellViews"], swiftSettings: settings),
     ],
     swiftLanguageModes: [.v6]
 )

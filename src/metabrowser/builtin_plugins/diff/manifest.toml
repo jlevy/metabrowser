@@ -2,7 +2,9 @@
 name = "diff"
 display_name = "Diff"
 version = "0.0.1"
-sdk_version = "0.7"
+sdk_version = "0.8"
+# A changed YAML or JSON file's Rendered view is the structured plugin's tree.
+requires = ["structured"]
 
 # Patch files are the no-repository diff source: the server parses them
 # into File Diff Format and the view renders that document — the same

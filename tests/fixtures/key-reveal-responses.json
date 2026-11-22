@@ -119,6 +119,16 @@
               "render_runtime": null
             },
             {
+              "id": "table",
+              "label": "Table",
+              "key": "a",
+              "default": false,
+              "container_class": "content-body table-view-host",
+              "printable": true,
+              "print_profile": "table",
+              "render_runtime": "client"
+            },
+            {
               "id": "source",
               "label": "Source",
               "key": "s",
@@ -138,10 +148,20 @@
           "path": "session.jsonl",
           "views": [
             {
+              "id": "session",
+              "label": "Session",
+              "key": "e",
+              "default": true,
+              "container_class": "content-body agents-session-host",
+              "printable": false,
+              "print_profile": "plain",
+              "render_runtime": null
+            },
+            {
               "id": "log",
               "label": "Log",
               "key": "v",
-              "default": true,
+              "default": false,
               "container_class": "content-body",
               "printable": false,
               "print_profile": "plain",

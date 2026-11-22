@@ -11,4 +11,5 @@
 - In the macOS app, signing in to github.com in the View on GitHub popover holds in
   every window and tab and after a relaunch: every popover shares one persistent store
   of its own, apart from Metabrowser’s pages and your browser.
-  Metabrowser > Clear GitHub Data… signs you out and removes what github.com stored.
+  Metabrowser > Clear Website Data… signs you out of github.com, or of every site, and
+  removes what it stored.

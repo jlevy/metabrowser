@@ -187,7 +187,7 @@ const MEASURE = `async (arrangement, width, theme) => {
       refChip: mb.refChip,
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
-      mountRefCopies: mb.mountRefCopies,
+      mountRefMenus: mb.mountRefMenus,
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
       shortCommit: mb.shortCommit,

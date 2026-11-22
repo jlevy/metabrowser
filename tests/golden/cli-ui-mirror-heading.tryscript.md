@@ -4,58 +4,13 @@ sandbox: false
 env:
   TZ: "UTC"
 ---
-# Golden Test: A Mirror’s Heading
+# Root details and mirror headings
 
-A folder’s page is headed by the folder’s name, and its main heading’s eyebrow starts
-with the folder’s path.
-A page served from a mirror showed the full commit ID in both places, and said nowhere
-that its files came out of the cache.
-It is now headed by the repository’s name alone, as a checkout of it would be called,
-with a control after it that copies the full commit, and its main heading’s eyebrow ends
-with a note that says where the mirror is kept.
-The ref and the short commit no longer follow the name: the ref selector in the Files
-toolbar names the ref, and the heading’s tooltip names the full commit.
-
-The mirror is a bare Git repository, and each page is read from a Git object at the
-pinned commit, so no folder holds these files.
-The note therefore stands after the address and never as its start, and the tooltip on
-the name and on the note says what the directory is: the origin, the full commit, the
-location, and that nothing is checked out.
-
-This browserless session is a page for each of three subjects the in-process application
-served: a folder, a mirror, and a mirror whose origin has markup and U+202E
-RIGHT-TO-LEFT OVERRIDE in its name and whose application home has markup in its own.
-That input is `tests/fixtures/mirror-heading-shell.json`: the tab title, the navigation
-heading and its data attributes, the commit the page was rendered for, whether the shell
-carried `static/mirror-heading.js`, and the `/api/source/status` fields the heading is
-rendered from.
-`tests/test_mirror_heading_session.py` serves all three and fails when the
-recording drifts.
-A store’s key is a stand-in there, because it is derived from the run’s
-own directory.
-
-Each page runs `static/mirror-heading.js` first when its shell carried it, then loads
-the production SDK whole, and runs the shell’s own heading code lifted verbatim from
-`app.js`: the folder’s view header, a file’s eyebrow and title, a file’s whole view
-header (`renderFileHeader` with `renderBadges`), and the block that wires the navigation
-heading’s tooltip. `fileHeaders` holds a file’s header for a served file, a compressed
-one, one whose time is pending, and a pin’s file: its icon’s name, its title, and its
-metadata line, badges then size then age, the age absent where the envelope has no time.
-No heading is composed here; every string is what that code returned or showed.
-The steps are a page load, which mounts the commit’s copy control on a mirror; the main
-heading at the root folder and at a nested file; the pointer entering the navigation
-heading before and after the tree loads, then the root’s name and the note; and a click
-on the copy control, through the SDK’s delegated listener.
-`title` shows the tab’s title as served and after every step, with each write to
-`document.title` the steps made, which must be none.
-
-The session fails unless a folder’s page is unchanged and shows nothing of a mirror, a
-mirror’s address starts with the repository’s name and names neither a commit nor a
-path, a root’s eyebrow is the directory that holds it (none for a mirror) under its name
-as the title, each heading holds one note after its last crumb, the three tooltips say
-what the mirror is in a line of their own, the click copies the full commit from an
-owner-stamped control, and the hostile name, origin, and location are escaped wherever
-they are written.
+The root menu shows file totals, the local path, and a short note about the mirror.
+The main heading shows where the mirror is kept.
+This session runs the production formatters and view headers on recorded server output
+for a folder, a mirror, and a mirror whose path contains markup and a directional
+control character.
 
 ```console
 $ node tests/dom/mirror-heading-session.js
@@ -77,8 +32,7 @@ $ node tests/dom/mirror-heading-session.js
     },
     "navigationHeading": {
       "html": "<span class=\"path\"><span class=\"path-base\">squares</span></span>",
-      "text": "squares",
-      "commitCopy": null
+      "text": "squares"
     },
     "mainHeading": {
       "root": "↑ ~/wrk squares",
@@ -121,13 +75,11 @@ $ node tests/dom/mirror-heading-session.js
         }
       }
     },
-    "tooltips": {
-      "navigationHeading": {
-        "served": "~/wrk/squares",
-        "afterTreeLoad": "~/wrk/squares 3 files 140 bytes"
-      },
-      "rootName": null,
-      "note": null
+    "details": {
+      "location": "~/wrk/squares",
+      "source": null,
+      "before": "",
+      "after": "3 files 140 bytes"
     }
   },
   {
@@ -136,7 +88,7 @@ $ node tests/dom/mirror-heading-session.js
     "status": {
       "name": "squares",
       "origin": "file://~/git/squares.git",
-      "location": "~/.cache/metabrowser/repository-stores/store-key-1/repository.git",
+      "location": "~/.cache/metabrowser/repos/store-key-1/repository.git",
       "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
       "ref_name": "topic"
     },
@@ -147,28 +99,13 @@ $ node tests/dom/mirror-heading-session.js
     },
     "navigationHeading": {
       "html": "<span class=\"path\"><span class=\"path-base\">squares</span></span>",
-      "text": "squares",
-      "commitCopy": {
-        "attributes": {
-          "type": "button",
-          "class": "icon-btn icon-btn-reveal header-copy copied",
-          "data-mb-copy": "text",
-          "data-mb-copy-text": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-          "data-mb-copy-label": "Copy commit",
-          "data-tip-text": "Copied!",
-          "aria-label": "Copy commit 42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
-        },
-        "ownerStamped": true,
-        "copied": [
-          "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
-        ]
-      }
+      "text": "squares"
     },
     "mainHeading": {
-      "root": "↑ mirror in ~/.cache/metabrowser/repository-stores/store-key-1 squares",
+      "root": "↑ mirror in ~/.cache/metabrowser/repos/store-key-1 squares",
       "file": {
-        "html": "<button type=\"button\" class=\"icon-btn folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/.cache/metabrowser/repository-stores/store-key-1</span></span></span>",
-        "text": "↑ squares / docs mirror in ~/.cache/metabrowser/repository-stores/store-key-1",
+        "html": "<button type=\"button\" class=\"icon-btn folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/.cache/metabrowser/repos/store-key-1</span></span></span>",
+        "text": "↑ squares / docs mirror in ~/.cache/metabrowser/repos/store-key-1",
         "title": "guide.md"
       },
       "fileHeaders": {
@@ -183,13 +120,11 @@ $ node tests/dom/mirror-heading-session.js
         }
       }
     },
-    "tooltips": {
-      "navigationHeading": {
-        "served": "squares Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files.",
-        "afterTreeLoad": "squares 3 files 140 bytes Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files."
-      },
-      "rootName": "Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files.",
-      "note": "Mirror of file://~/git/squares.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git: a bare Git repository, with no checked-out files."
+    "details": {
+      "location": "~/.cache/metabrowser/repos/store-key-1/repository.git",
+      "source": "Bare Git mirror with no checked-out files.",
+      "before": "",
+      "after": "3 files 140 bytes"
     }
   },
   {
@@ -198,7 +133,7 @@ $ node tests/dom/mirror-heading-session.js
     "status": {
       "name": "a<b>&�x",
       "origin": "file://~/git/a%3Cb%3E&%E2%80%AEx.git",
-      "location": "~/odd\"<&>home/repository-stores/store-key-2/repository.git",
+      "location": "~/odd\"<&>home/repos/store-key-2/repository.git",
       "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
       "ref_name": "topic"
     },
@@ -209,28 +144,13 @@ $ node tests/dom/mirror-heading-session.js
     },
     "navigationHeading": {
       "html": "<span class=\"path\"><span class=\"path-base\">a&lt;b&gt;&amp;�x</span></span>",
-      "text": "a<b>&�x",
-      "commitCopy": {
-        "attributes": {
-          "type": "button",
-          "class": "icon-btn icon-btn-reveal header-copy copied",
-          "data-mb-copy": "text",
-          "data-mb-copy-text": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
-          "data-mb-copy-label": "Copy commit",
-          "data-tip-text": "Copied!",
-          "aria-label": "Copy commit 42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
-        },
-        "ownerStamped": true,
-        "copied": [
-          "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
-        ]
-      }
+      "text": "a<b>&�x"
     },
     "mainHeading": {
-      "root": "↑ mirror in ~/odd\"<&>home/repository-stores/store-key-2 a<b>&�x",
+      "root": "↑ mirror in ~/odd\"<&>home/repos/store-key-2 a<b>&�x",
       "file": {
-        "html": "<button type=\"button\" class=\"icon-btn folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>a&lt;b&gt;&amp;�x</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/odd&quot;&lt;&amp;&gt;home/repository-stores/store-key-2</span></span></span>",
-        "text": "↑ a<b>&�x / docs mirror in ~/odd\"<&>home/repository-stores/store-key-2",
+        "html": "<button type=\"button\" class=\"icon-btn folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>a&lt;b&gt;&amp;�x</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/odd&quot;&lt;&amp;&gt;home/repos/store-key-2</span></span></span>",
+        "text": "↑ a<b>&�x / docs mirror in ~/odd\"<&>home/repos/store-key-2",
         "title": "guide.md"
       },
       "fileHeaders": {
@@ -245,13 +165,11 @@ $ node tests/dom/mirror-heading-session.js
         }
       }
     },
-    "tooltips": {
-      "navigationHeading": {
-        "served": "a<b>&�x Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files.",
-        "afterTreeLoad": "a<b>&�x 3 files 140 bytes Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files."
-      },
-      "rootName": "Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files.",
-      "note": "Mirror of file://~/git/a%3Cb%3E&%E2%80%AEx.git at 42382ea2303b733e1e21b4bd6ddb974ca4e775eb, stored in ~/odd\"<&>home/repository-stores/store-key-2/repository.git: a bare Git repository, with no checked-out files."
+    "details": {
+      "location": "~/odd\"<&>home/repos/store-key-2/repository.git",
+      "source": "Bare Git mirror with no checked-out files.",
+      "before": "",
+      "after": "3 files 140 bytes"
     }
   }
 ]

@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import json
 from collections import deque
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
 # Re-exported from `fs_record`, which the scanner imports without depending on this
@@ -68,8 +68,15 @@ FsChangeOp = FsUpsert | FsRemove
 
 @dataclass(slots=True, frozen=True)
 class FsSnapshot:
-    """Initial-connect dump of inventory state at a chosen scope."""
+    """Initial-connect dump of inventory state at a chosen scope.
 
+    ``connection`` names the ``/api/events`` connection the snapshot opens, which
+    ``POST /api/events/watch`` registers file watches on; it is the first key on the
+    wire, so the browser can compare two snapshots without it. A snapshot built for no
+    connection carries None.
+    """
+
+    connection: str | None = field(default=None, kw_only=True)
     scope: Literal["root-depth-2", "recent-top-N", "expanded-prefixes", "all-known"]
     entries: tuple[FsEntry, ...]
     complete: bool
@@ -149,6 +156,19 @@ class Heartbeat:
     type: Literal["heartbeat"] = "heartbeat"
 
 
+@dataclass(slots=True, frozen=True)
+class FileChanged:
+    """A watched path's generation moved (``metabrowser.file_watches``).
+
+    Sent only on the connection that registered the path, once per poll however many
+    writes the poll covers. ``generation`` is None when nothing readable is there now.
+    """
+
+    path: str
+    generation: str | None
+    type: Literal["file.changed"] = "file.changed"
+
+
 # ── Tail-event wire types ──────────────────────────────────────
 #
 # Defined and round-trip tested, but nothing constructs them: live log tailing is
@@ -212,6 +232,7 @@ StreamEvent = (
     | CatalogChange
     | FsResyncRequired
     | CapabilityUpdate
+    | FileChanged
     | Heartbeat
     | FileAppend
     | FileTruncate

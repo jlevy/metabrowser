@@ -515,8 +515,8 @@ def test_provider_derives_registry_identity_from_supplied_content(
 ) -> None:
     registry_document = load_file_type_registry_document()
     changed_registry = registry_document.replace(
-        "registry_revision = 3",
         "registry_revision = 4",
+        "registry_revision = 5",
         1,
     )
 

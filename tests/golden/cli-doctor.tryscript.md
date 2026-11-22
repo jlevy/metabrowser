@@ -21,7 +21,7 @@ patterns:
   METAB_VERSION: '[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+]*'
   EXECUTABLE: '[^\s"]+/bin/metab'
   PYTHON: '[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+]* at [^\s"]+'
-  ENVIRONMENT: '[^\s"]+'
+  INSTALL_LOCATION: '(?:from the source checkout|in the Python environment) [^\s"]+'
   SANDBOX: '[^\s"]+/tryscript-[A-Za-z0-9]+'
   FREE: '[0-9]+\.[0-9] GB'
 before: >-
@@ -50,7 +50,8 @@ this user cannot create.
 minimum to compare; `tests/test_doctor.py` covers that comparison.
 `METABROWSER_EVENT_LOG` is set on, as the Makefile’s goldens otherwise turn it off.
 The patterns elide what the host decides: the `metab` version and executable, the
-Python, the checkout it runs from, and the free space.
+Python, the install location, and the free space.
+A source checkout may keep its Python virtual environment on an external scratch volume.
 `METABROWSER_MAX_FIRST_CLONE_KB` admits a first clone of 1 KB, so the cache check warns
 of low free space only on a full volume; `tests/test_doctor.py` covers that warning.
 
@@ -59,7 +60,18 @@ of low free space only on a full volume; `tests/test_doctor.py` covers that warn
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/cache metab --doctor 2>/dev/null
 metab --doctor: open_in browser (environment); --present looks for no app
-metab --doctor: 12 plugin(s) OK
+metab --doctor: 16 plugin(s) OK
+plugin requirements:
+  agents: requires structured
+  delimited: requires table
+  diff: requires structured
+  event-log: requires agents
+  folder: requires markdown
+  fsqlite: requires sqlite, table
+  github: requires markdown
+  sqlite: requires table
+  structured: requires table
+  unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -68,7 +80,7 @@ metab: ok: metab [METAB_VERSION]
   version: [METAB_VERSION]
   executable: [EXECUTABLE]
   python: [PYTHON]
-  installed: from the source checkout [ENVIRONMENT]
+  installed: [INSTALL_LOCATION]
   app: not looked for
 git: ok: git version 2.56.1, which meets every floor
   executable: [FAKE_GIT]
@@ -97,7 +109,7 @@ This is the report the app’s Check Setup… reads.
 $ metab --doctor --json
 {
   "ok": true,
-  "plugin_count": 12,
+  "plugin_count": 16,
   "problems": [],
   "open_in": {
     "value": "browser",
@@ -128,11 +140,11 @@ $ metab --doctor --json
       "id": "plugins",
       "title": "Plugins",
       "state": "ok",
-      "summary": "12 plugins and the packaged cache record contracts check out",
+      "summary": "16 plugins and the packaged cache record contracts check out",
       "details": [
         {
           "name": "plugins",
-          "value": "12"
+          "value": "16"
         }
       ],
       "remedy": null
@@ -178,7 +190,7 @@ $ metab --doctor --json
         },
         {
           "name": "installed",
-          "value": "from the source checkout [ENVIRONMENT]"
+          "value": "[INSTALL_LOCATION]"
         },
         {
           "name": "app",
@@ -283,6 +295,17 @@ $ METABROWSER_CONFIG_DIR=/nonexistent/metabrowser-doctor-golden/config METABROWS
 metab --doctor: 2 problem(s):
   • config: the configuration directory does not exist, and metab cannot create it: / is not writable by this user
   • cache: the cache directory does not exist, and metab cannot create it: / is not writable by this user
+plugin requirements:
+  agents: requires structured
+  delimited: requires table
+  diff: requires structured
+  event-log: requires agents
+  folder: requires markdown
+  fsqlite: requires sqlite, table
+  github: requires markdown
+  sqlite: requires table
+  structured: requires table
+  unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -291,7 +314,7 @@ metab: ok: metab [METAB_VERSION]
   version: [METAB_VERSION]
   executable: [EXECUTABLE]
   python: [PYTHON]
-  installed: from the source checkout [ENVIRONMENT]
+  installed: [INSTALL_LOCATION]
   app: not looked for
 git: ok: git version 2.56.1, which meets every floor
   executable: [FAKE_GIT]
@@ -396,6 +419,17 @@ check notes that it did not read it there, so the problem is listed once, at its
 $ METABROWSER_CONFIG_DIR=$PWD/shared METABROWSER_CACHE_DIR=$PWD/cache metab --doctor 2>&1 >/dev/null
 metab --doctor: 1 problem(s):
   • config: The Metabrowser storage directory is accessible to other users (mode 0755). Run chmod 700 on it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own.
+plugin requirements:
+  agents: requires structured
+  delimited: requires table
+  diff: requires structured
+  event-log: requires agents
+  folder: requires markdown
+  fsqlite: requires sqlite, table
+  github: requires markdown
+  sqlite: requires table
+  structured: requires table
+  unknown-jsonl: requires agents
 github: ok: GitHub CLI is signed in to github.com as octo-reader.
   gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
   account: octo-reader (token from keyring)
@@ -404,7 +438,7 @@ metab: ok: metab [METAB_VERSION]
   version: [METAB_VERSION]
   executable: [EXECUTABLE]
   python: [PYTHON]
-  installed: from the source checkout [ENVIRONMENT]
+  installed: [INSTALL_LOCATION]
   app: not looked for
 git: ok: git version 2.56.1, which meets every floor
   executable: [FAKE_GIT]
@@ -444,7 +478,7 @@ cache: ok: the cache directory is private and writable
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doctor --json 2>/dev/null
 {
   "ok": false,
-  "plugin_count": 12,
+  "plugin_count": 16,
   "problems": [
     "cache: METABROWSER_CACHE_DIR must be a nonempty absolute path without '..' components."
   ],
@@ -477,11 +511,11 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doct
       "id": "plugins",
       "title": "Plugins",
       "state": "ok",
-      "summary": "12 plugins and the packaged cache record contracts check out",
+      "summary": "16 plugins and the packaged cache record contracts check out",
       "details": [
         {
           "name": "plugins",
-          "value": "12"
+          "value": "16"
         }
       ],
       "remedy": null
@@ -527,7 +561,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=relative metab --doct
         },
         {
           "name": "installed",
-          "value": "from the source checkout [ENVIRONMENT]"
+          "value": "[INSTALL_LOCATION]"
         },
         {
           "name": "app",

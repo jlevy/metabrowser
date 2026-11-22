@@ -24,7 +24,7 @@ from metabrowser.cache import acquire
 from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.atomic import RecordError, read_record
 from metabrowser.cache.locks import LockBusyError, store_fetch_lock
-from metabrowser.cache.paths import store_directory, store_record
+from metabrowser.cache.paths import store_git_directory, store_record
 from metabrowser.cache.providers import repository_context_for
 from metabrowser.cache.records import (
     REPOSITORY_STORE_STATE_CONTRACT_ID,
@@ -183,7 +183,7 @@ class StoreMirror:
 
     @property
     def _repository(self) -> Path:
-        return self.home / store_directory(self.store_key) / "repository.git"
+        return self.home / store_git_directory(self.store_key)
 
     def _target(self) -> RepositoryStoreTarget:
         return repository_store_target(git_dir=self._repository)
