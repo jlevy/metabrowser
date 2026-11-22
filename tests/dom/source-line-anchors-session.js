@@ -10,6 +10,8 @@
 // anchor on the focused gutter, a view mounted when its tab is first shown scrolls to the
 // anchor while a staged one waits, and a Markdown file with front matter renders
 // through the Markdown plugin's own Source renderer as two code blocks under one gutter.
+// Files with LF, CRLF, and lone CR line endings, and a CRLF cut where one loaded part
+// ends, go through Load more and must show the same lines under the same numbers.
 // Each step prints the address, the gutter and its spoken value, the highlighted lines,
 // the measured line pitch, the notice and the status line, and any scroll.
 //
@@ -899,6 +901,43 @@ async function main() {
   // in nodes within the same bound.
   host.remove();
   crlf.remove();
+
+  // Load more on files with each kind of line ending, as app.js's loadMoreCurrentText
+  // appends them: the part already loaded says whether the next one starts inside a
+  // CRLF. The last case cuts one between its CR and LF. Every case must show the same
+  // four lines under a gutter that numbers them once.
+  const lineEndings = {};
+  for (const [label, parts] of [
+    ["LF", ["one\ntwo\n", "three\nfour\n"]],
+    ["CRLF", ["one\r\ntwo\r\n", "three\r\nfour\r\n"]],
+    ["lone CR", ["one\rtwo\r", "three\rfour\r"]],
+    ["CRLF cut between CR and LF", ["one\r\ntwo\r", "\nthree\r\nfour\r\n"]],
+    ["CRLF cut twice", ["one\r", "\ntwo\r\nthree\r", "\nfour\r\n"]],
+  ]) {
+    const view = pane.appendChild(new FakeSourceHost("div", "content-body"));
+    let loaded = { path: "endings.txt", content: parts[0], content_truncated: true };
+    sandbox.metabrowser.renderSourceView(view, loaded);
+    const pre = view.querySelector("pre.metabrowser-source-lines");
+    const appended = [];
+    for (const [index, part] of parts.slice(1).entries()) {
+      appended.push(
+        sandbox.MetabrowserSourceAppend.appendSourceText(fakeDocument, part, loaded.content),
+      );
+      loaded = sandbox.MetabrowserSourceAppend.nextCacheValue(loaded, {
+        content: part,
+        content_truncated: index + 2 < parts.length,
+      });
+      anchors.refresh(fakeDocument, loaded);
+    }
+    const gutter = pre.querySelector(".source-line-numbers");
+    lineEndings[label] = {
+      appended,
+      gutter: ownText(gutter),
+      code: pre.querySelector("code").textContent,
+      value: `${gutter.getAttribute("aria-valuenow")} of ${gutter.getAttribute("aria-valuemax")}`,
+    };
+    view.remove();
+  }
   scrollLog.splice(0);
   const webkit = new FakeSourceHost("div", "content-body");
   webkit.parserTextLimit = 65_536;
@@ -950,7 +989,7 @@ async function main() {
   };
 
   process.stdout.write(
-    `${JSON.stringify({ grammar, lineCounts, describe, clicks, keys, spoken, preferredView, lineAt, steps, crlfLines, webkitParsedGutter, historyWrites }, null, 2)}\n`,
+    `${JSON.stringify({ grammar, lineCounts, describe, clicks, keys, spoken, preferredView, lineAt, steps, crlfLines, lineEndings, webkitParsedGutter, historyWrites }, null, 2)}\n`,
   );
 }
 
