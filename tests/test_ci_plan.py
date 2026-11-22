@@ -28,6 +28,9 @@ PYTHONS = ["3.12", "3.13", "3.14", "3.14t"]
 PR_CHROME_PYTHON = "3.13"
 WIDE = PYTHONS
 NARROW = [PR_CHROME_PYTHON]
+ADMITTED_GITS = ["2.43.7", "2.50.1", "2.56.1"]
+PR_ADMITTED_GIT = "2.43.7"
+TIERS = ("unit", "goldens", "chrome", "admitted-git")
 REPO = "example/project"
 Json = dict[str, object]
 # Well under the suite's per-test budget (pyproject.toml), as every bound here must be.
@@ -79,7 +82,12 @@ class Planned:
 
     @property
     def chrome(self) -> list[str]:
-        return json.loads(self.outputs["chrome-pythons"])
+        """The interpreters of every tier, the Chrome tier's among them."""
+
+        return json.loads(self.outputs["pythons"])
+
+    def parts(self, tier: str) -> list[str]:
+        return json.loads(self.outputs[f"{tier}-shards"])
 
 
 class Repositories:
@@ -129,6 +137,7 @@ class Repositories:
         elif self.git(self.work, "branch", "--list", branch):
             self.git(self.work, "checkout", "--quiet", branch)
         for name, text in files.items():
+            (self.work / name).parent.mkdir(parents=True, exist_ok=True)
             (self.work / name).write_text(text, encoding="utf-8")
         self.git(self.work, "add", "--all")
         self.git(self.work, "commit", "--quiet", "-m", f"{branch}: {', '.join(files)}")
@@ -162,6 +171,7 @@ def plan(
     attempts: dict[tuple[int, int], Json] | None = None,
     pythons: list[str] = PYTHONS,
     pr_chrome_python: str = PR_CHROME_PYTHON,
+    pr_admitted_git: str = PR_ADMITTED_GIT,
     env: dict[str, str] | None = None,
 ) -> Planned:
     """Run the plan job's step; *runs* is the recorded listing, ``None`` a failed read."""
@@ -193,6 +203,8 @@ def plan(
         "GH_TOKEN": "recorded",
         "PYTHONS": json.dumps(pythons),
         "PR_CHROME_PYTHON": pr_chrome_python,
+        "ADMITTED_GITS": json.dumps(ADMITTED_GITS),
+        "PR_ADMITTED_GIT": pr_admitted_git,
         "GITHUB_OUTPUT": str(output),
         "GITHUB_STEP_SUMMARY": str(summary),
     }
@@ -498,6 +510,181 @@ def test_an_unknown_pull_request_interpreter_fails_the_plan(
 
     assert result.returncode == 1
     assert "::error::PR_CHROME_PYTHON (3.11) must be one of PYTHONS" in result.log
+
+    result = plan(tmp_path, repos.work, event="push", pr_admitted_git="2.40.0", env=repos.env)
+
+    assert result.returncode == 1
+    assert "::error::PR_ADMITTED_GIT (2.40.0) must be one of ADMITTED_GITS" in result.log
+
+
+# ── The two paths: main's whole matrix, and a pull request's short one ─────────────
+
+
+def _whole_parts(result: Planned) -> None:
+    """Every tier is dealt into every part of some N, so no part of it is left out."""
+
+    for tier in TIERS:
+        parts = result.parts(tier)
+        assert parts == [f"{index}/{len(parts)}" for index in range(1, len(parts) + 1)], tier
+        assert parts, tier
+
+
+def test_a_push_to_main_runs_every_tier_whole_on_every_interpreter_and_git(
+    tmp_path: Path, repos: Repositories
+) -> None:
+    """What ``devtools/check_ci.py`` leaves to the script: nothing is narrowed on main."""
+
+    result = plan(tmp_path, repos.work, event="push", base="", runs=None, env=repos.env)
+
+    assert result.returncode == 0, result.log
+    assert result.outputs["path"] == "main"
+    assert result.chrome == PYTHONS
+    assert (result.outputs["chrome"], result.outputs["chrome-target"]) == ("whole", "test-chrome")
+    assert json.loads(result.outputs["admitted-gits"]) == ADMITTED_GITS
+    _whole_parts(result)
+    assert "| Chrome tier | whole (test-chrome): the whole tier, in " in result.summary
+
+
+def test_a_pull_request_while_main_is_red_runs_main_s_whole_matrix(
+    tmp_path: Path, repos: Repositories
+) -> None:
+    main = repos.git(repos.work, "rev-parse", "main")
+    result = _pull_request(tmp_path, repos, [_done(110, main, "failure")])
+
+    assert result.outputs["path"] == "main"
+    assert result.chrome == PYTHONS
+    assert (result.outputs["chrome"], result.outputs["chrome-target"]) == ("whole", "test-chrome")
+    assert json.loads(result.outputs["admitted-gits"]) == ADMITTED_GITS
+    _whole_parts(result)
+
+
+def _green_pull_request(tmp_path: Path, repos: Repositories, files: dict[str, str]) -> Planned:
+    """A pull request to a green main that changes *files*."""
+
+    main = repos.git(repos.work, "rev-parse", "main")
+    head = repos.commit("feature", files, start="main")
+    checkout = repos.check_out_merge(head, "main")
+    result = plan(tmp_path, checkout, runs=[_done(111, main, "success")], env=repos.env)
+    assert result.returncode == 0, result.log
+    return result
+
+
+def test_a_pull_request_while_main_is_green_takes_the_short_path(
+    tmp_path: Path, repos: Repositories
+) -> None:
+    result = _green_pull_request(tmp_path, repos, {"src/metabrowser/static/app.js": "x\n"})
+
+    assert result.outputs["path"] == "pull-request"
+    assert result.chrome == [PR_CHROME_PYTHON]
+    assert json.loads(result.outputs["admitted-gits"]) == [PR_ADMITTED_GIT]
+    _whole_parts(result)
+    # More, shorter parts than main's, on the one interpreter.
+    main = plan(tmp_path, repos.work, event="push", base="", runs=None, env=repos.env)
+    assert len(result.parts("unit")) > len(main.parts("unit"))
+    assert len(result.parts("admitted-git")) > len(main.parts("admitted-git"))
+
+
+BROWSER = "a browser path"
+NOT_BROWSER = ""
+
+
+@pytest.mark.parametrize(
+    ("files", "reason"),
+    [
+        # What the browser loads, and the Python that builds the page it loads.
+        ({"src/metabrowser/static/app.js": "x"}, "the shell"),
+        ({"src/metabrowser/static/vendor/lib.min.js": "x"}, "the shell"),
+        ({"src/metabrowser/builtin_plugins/diff/static/index.js": "x"}, "built-in plugins"),
+        ({"src/metabrowser/server.py": "x"}, "builds the shell page"),
+        ({"src/metabrowser/settings.py": "x"}, "METABROWSER_SETTINGS"),
+        ({"src/metabrowser/plugin_loader/manifest.py": "x"}, "the plugin manifest"),
+        # The Chrome tests, what they share, and what runs them.
+        ({"tests/test_nav_chrome.py": "def test(chrome_profile): ..."}, "asks for Chrome"),
+        (
+            {"tests/test_transitions.py": "from tests.required_tools import require_chrome"},
+            "Chrome",
+        ),
+        ({".github/workflows/nightly.yml": "x"}, "the soak"),
+        ({"tests/process_group.py": "x"}, "test support"),
+        ({"tests/conftest.py": "x"}, "test support"),
+        ({"tests/dom/session.js": "x"}, "test support"),
+        ({"tests/fixtures/corpus/a.md": "x"}, "test support"),
+        ({"package-lock.json": "{}"}, "Node packages"),
+        ({"uv.lock": "x"}, "Python packages"),
+        ({".github/workflows/ci.yml": "x"}, "the workflow"),
+        ({"Makefile": "x"}, "the targets"),
+        ({"devtools/ci_plan.sh": "x"}, "this decision"),
+        ({"devtools/shard_weights.json": "{}"}, "which Chrome tests are slow"),
+        # A mixed change: one browser path among others is enough.
+        (
+            {"docs/guide.md": "x", "src/metabrowser/cli/main.py": "x", "tests/dom/a.js": "x"},
+            "1 changed",
+        ),
+        # The CLI, backend routes, other tests, docs, devtools, and the macOS app.
+        ({"src/metabrowser/cli/main.py": "x"}, NOT_BROWSER),
+        (
+            {"src/metabrowser/source_routes.py": "x", "src/metabrowser/git/pins.py": "x"},
+            NOT_BROWSER,
+        ),
+        ({"tests/test_cli_golden.py": "def test_cli(): ...  # no Chrome here"}, NOT_BROWSER),
+        (
+            {".github/workflows/macos-app.yml": "x", ".github/workflows/publish.yml": "x"},
+            NOT_BROWSER,
+        ),
+        ({"tests/golden/cli-api-git.tryscript.md": "x"}, NOT_BROWSER),
+        ({"docs/e2e-testing.md": "x", "README.md": "x", "CHANGELOG.md": "x"}, NOT_BROWSER),
+        ({"devtools/check_goldens.py": "x"}, NOT_BROWSER),
+        ({"apps/macos/Sources/App.swift": "x"}, NOT_BROWSER),
+    ],
+    ids=lambda value: " + ".join(value) if isinstance(value, dict) else None,
+)
+def test_a_green_pull_request_runs_chrome_only_for_a_change_to_a_browser_path(
+    tmp_path: Path, repos: Repositories, files: dict[str, str], reason: str
+) -> None:
+    result = _green_pull_request(tmp_path, repos, files)
+
+    row = next(line for line in result.summary.splitlines() if line.startswith("| Chrome tier"))
+    if reason == NOT_BROWSER:
+        assert result.outputs["chrome"] == "none", row
+        assert "no changed path is a browser path" in row
+        assert "every push to main runs the whole tier" in row
+    else:
+        assert (result.outputs["chrome"], result.outputs["chrome-target"]) == (
+            "fast",
+            "test-chrome-fast",
+        ), row
+        # The summary names the paths that decided it, and why each counts.
+        assert reason in row and "without the slow tests" in row
+        assert any(f"`{name}`" in row for name in files)
+
+
+def test_a_change_to_many_browser_paths_names_the_first_and_counts_the_rest(
+    tmp_path: Path, repos: Repositories
+) -> None:
+    files = {f"src/metabrowser/static/part-{index:02}.js": "x" for index in range(11)}
+    result = _green_pull_request(tmp_path, repos, files)
+
+    assert result.outputs["chrome"] == "fast"
+    assert "for 11 changed browser path(s)" in result.summary
+    assert "; and 3 more" in result.summary
+    assert "part-07.js" in result.summary and "part-08.js" not in result.summary
+
+
+def test_a_path_git_quotes_and_a_commit_that_is_no_merge_run_chrome(
+    tmp_path: Path, repos: Repositories
+) -> None:
+    """What the plan cannot read as a change costs runner minutes, never coverage."""
+
+    result = _green_pull_request(tmp_path, repos, {"docs/na\u00efve.md": "x"})
+    assert result.outputs["chrome"] == "fast"
+    assert "a path git quotes" in result.summary
+
+    main = repos.git(repos.work, "rev-parse", "main")
+    repos.git(repos.checkout, "checkout", "--quiet", "--detach", "origin/feature")
+    result = plan(tmp_path, repos.checkout, runs=[_done(112, main, "success")], env=repos.env)
+    assert result.returncode == 0, result.log
+    assert result.outputs["chrome"] == "fast"
+    assert "is not a merge commit, so its change is not read" in result.summary
 
 
 # ── A stacked pull request: stack-integration by tree ──────────────────────────────

@@ -263,7 +263,7 @@ def test_the_file_is_written_sorted_with_its_source_first() -> None:
     assert text.endswith("}\n")
 
 
-def _gh(conclusions: dict[str, str], logs: dict[str, str]):
+def _gh(conclusions: dict[str, str], logs: dict[str, str], event: str = "push"):
     """A stand-in for ``gh``: one run, 7, with these jobs."""
 
     ids = {name: 100 + index for index, name in enumerate(conclusions)}
@@ -273,7 +273,7 @@ def _gh(conclusions: dict[str, str], logs: dict[str, str]):
             assert "branch=main&event=push&status=success" in arguments[1]
             return json.dumps({"workflow_runs": [{"id": 7}]})
         if arguments[0] == "api" and arguments[1].endswith("/runs/7"):
-            return json.dumps({"head_sha": "c" * 40})
+            return json.dumps({"head_sha": "c" * 40, "event": event})
         if arguments[0] == "api":
             assert "/runs/7/jobs" in arguments[1]
             jobs = [
@@ -318,6 +318,9 @@ def test_a_run_that_did_not_measure_every_tier_is_refused() -> None:
     without_unit = {name: "success" for name in JOB_LOGS if not name.startswith(UNIT_JOB)}
     with pytest.raises(RefreshError, match=r"no job named unit \("):
         refresh([7], _gh(without_unit, JOB_LOGS))
+    # A pull request's run may hold the Chrome tier without its slow tests.
+    with pytest.raises(RefreshError, match="run 7 is of a pull_request, not a push"):
+        refresh([7], _gh(green, JOB_LOGS, event="pull_request"))
     # A log from before the tiers printed their times lists none.
     silent = JOB_LOGS | {"unit (3.13, 1/2)": _log("unit (3.13, 1/2)", "5 passed in 1.00s")}
     with pytest.raises(RefreshError, match="list no time for: files"):

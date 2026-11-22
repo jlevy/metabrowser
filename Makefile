@@ -33,7 +33,7 @@ unexport NPM_CONFIG_MINIMUM_RELEASE_AGE
 # npm 11. Repository installs must use the reviewed .npmrc policy instead.
 unexport NPM_CONFIG_BEFORE
 
-.PHONY: default install hooks-install biome-fix browser-types format format-markdown lint lint-check test test-parallel test-serial test-chrome test-goldens test-admitted-git audit lock upgrade build verify clean
+.PHONY: default install hooks-install biome-fix browser-types format format-markdown lint lint-check test test-parallel test-serial test-chrome test-chrome-fast test-goldens test-admitted-git audit lock upgrade build verify clean
 
 default: install format lint test
 
@@ -55,7 +55,7 @@ browser-types:
 	npx --no-install tsc --noEmit -p apps/macos/webkit-gate/tsconfig.json
 
 # A CI job calls each test tier's target directly, so each installs first, as `test` does.
-format lint lint-check test test-parallel test-serial test-chrome test-goldens test-admitted-git audit build: | install
+format lint lint-check test test-parallel test-serial test-chrome test-chrome-fast test-goldens test-admitted-git audit build: | install
 
 lint:
 	$(UV_RUN) python -m devtools.lint
@@ -185,6 +185,12 @@ test-serial:
 
 test-chrome:
 	$(PYTEST) $(EVERY_TEST) -m "$(CHROME_TIER)"
+
+# The Chrome tier without the tests measured at SLOW_TEST_S or more (tests/suite_tiers.py),
+# which is what a pull request runs while main is green; `make test` and every push to
+# main run test-chrome, the whole tier (devtools/ci_plan.sh).
+test-chrome-fast:
+	$(PYTEST) $(EVERY_TEST) -m "$(CHROME_TIER)" --skip-slow
 
 test-goldens:
 	$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) $(if $(SHARD),--shard $(SHARD)) '$(GOLDENS)' -- $(TRYSCRIPT)
@@ -319,7 +325,7 @@ ADMITTED_GIT_TESTS := \
 
 test-admitted-git:
 	$(STRICT_SKIPS) $(UV_RUN) pytest -rs --file-durations=25 -n $(PYTEST_WORKERS) --dist loadfile \
-		$(ADMITTED_GIT_TESTS)
+		$(if $(SHARD),--shard=$(SHARD) --shard-by=file) $(ADMITTED_GIT_TESTS)
 
 # The outer tiers nothing in CI runs. docs/e2e-testing.md ("Test Tiers") says what each
 # covers and when to run it.

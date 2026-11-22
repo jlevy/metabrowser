@@ -31,7 +31,9 @@ ADMITTED_GIT_PIN = re.compile(
 ADMITTED_GIT_ROW = re.compile(
     r"^\| ([0-9]+\.[0-9]+\.[0-9]+) \|[^|\n]*\| `([0-9a-f]{64})` \|$", re.MULTILINE
 )
-ADMITTED_GIT_MATRIX = re.compile(r"^\s*git: \[([^\]]*)\]", re.MULTILINE)
+# The plan job's Gits in ci.yml: every release main builds, and a pull request's one.
+ADMITTED_GIT_MATRIX = re.compile(r"^\s*ADMITTED_GITS: '\[([^\]]*)\]'", re.MULTILINE)
+PR_ADMITTED_GIT = re.compile(r'^\s*PR_ADMITTED_GIT: "([0-9.]+)"', re.MULTILINE)
 
 
 def _read_json(path: Path) -> dict[str, object]:
@@ -157,7 +159,7 @@ def _check_admitted_git(root: Path, errors: list[str]) -> None:
     matrix = ADMITTED_GIT_MATRIX.search(workflow)
     tested: set[str] = set(re.findall(r'"([0-9.]+)"', matrix.group(1))) if matrix else set()
     if not tested or not tested <= pins.keys():
-        errors.append(f"ci.yml admitted-git matrix {sorted(tested)} must name pinned releases")
+        errors.append(f"ci.yml ADMITTED_GITS {sorted(tested)} must name pinned releases")
     gates = _read_json(root / "tests" / "fixtures" / "repository-cache" / "git-version-gates.json")
     for gate in cast(list[dict[str, object]], gates.get("gates", [])):
         if gate.get("name") != "acquisition":
@@ -165,9 +167,12 @@ def _check_admitted_git(root: Path, errors: list[str]) -> None:
         for field in ("minimum", "newest_patched"):
             floor = ".".join(str(part) for part in cast(list[int], gate.get(field, [])))
             if floor not in tested:
-                errors.append(
-                    f"ci.yml admitted-git matrix must test the acquisition {field} {floor}"
-                )
+                errors.append(f"ci.yml ADMITTED_GITS must test the acquisition {field} {floor}")
+        # A pull request builds one release while main is green: the floor itself.
+        minimum = ".".join(str(part) for part in cast(list[int], gate.get("minimum", [])))
+        on_pull_request = PR_ADMITTED_GIT.search(workflow)
+        if on_pull_request is None or on_pull_request.group(1) != minimum:
+            errors.append(f"ci.yml PR_ADMITTED_GIT must be the acquisition minimum {minimum}")
 
 
 def verify_supply_chain(root: Path = ROOT) -> None:

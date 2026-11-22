@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # The `ci-ok` job of .github/workflows/ci.yml: one verdict for the whole run.
 #
-# It fails unless every job it needs succeeded. It accepts `skipped` only for
-# stack-integration, and only when the plan job found no integration to run (`none`), or
-# one the other jobs already answer (`identical`, `contained`), and it says so in its log
-# and summary, which are the record of the skip with the plan job's summary; a
+# It fails unless every job it needs succeeded. It accepts `skipped` for
+# stack-integration only when the plan job found no integration to run (`none`), or one
+# the other jobs already answer (`identical`, `contained`), and for chrome only when the
+# plan job decided the pull request touches no browser path (`chrome=none`), and it says
+# so in its log and summary, which are the record of the skip with the plan job's
+# summary; a
 # `conflict` fails with the message the job printed before the plan job existed. It
 # never fails on main's state alone, which would keep a red main from being fixed under
 # a required check.
@@ -19,16 +21,17 @@
 # `gh run view <run id>` lists every job's annotations together.
 # tests/test_ci_verdict.py pins the format.
 #
-# Inputs, from the step's environment: RESULTS (`toJSON(needs)`), INTEGRATION,
+# Inputs, from the step's environment: RESULTS (`toJSON(needs)`), INTEGRATION, CHROME,
 # MAIN_STATE, MAIN_RUN, MAIN_RUN_SHA, TESTS_RED, and GITHUB_STEP_SUMMARY.
 
 set -euo pipefail
 
 : "${RESULTS:?}" "${GITHUB_STEP_SUMMARY:?}"
 INTEGRATION=${INTEGRATION:-}
+CHROME=${CHROME:-}
 MAIN_STATE=${MAIN_STATE:-}
 
-failed=() accepted=
+failed=() accepted=()
 rows=$(jq -r 'to_entries[] | [.key, (.value.result // "unknown")] | @tsv' <<<"$RESULTS")
 {
   echo "### ci-ok"
@@ -45,18 +48,22 @@ while IFS=$'\t' read -r job result; do
   if [ "$job" = stack-integration ] && [ "$result" = skipped ]; then
     case $INTEGRATION in
       none | identical | contained)
-        accepted="stack-integration skipped: integration=$INTEGRATION (the plan job's summary says why)"
+        accepted+=("stack-integration skipped: integration=$INTEGRATION (the plan job's summary says why)")
         continue
         ;;
     esac
   fi
+  if [ "$job" = chrome ] && [ "$result" = skipped ] && [ "$CHROME" = none ]; then
+    accepted+=("chrome skipped: chrome=none, the pull request touches no browser path (the plan job's summary says why)")
+    continue
+  fi
   failed+=("$job ($result)")
 done <<<"$rows"
 
-if [ -n "$accepted" ]; then
-  echo "$accepted"
-  printf '\n%s\n' "$accepted" >>"$GITHUB_STEP_SUMMARY"
-fi
+for line in ${accepted[@]+"${accepted[@]}"}; do
+  echo "$line"
+  printf '\n%s\n' "$line" >>"$GITHUB_STEP_SUMMARY"
+done
 
 if [ "${#failed[@]}" -eq 0 ] && [ -z "$rows" ]; then
   failed+=("no job results")

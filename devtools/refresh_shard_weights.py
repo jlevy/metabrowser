@@ -182,12 +182,18 @@ def newest_green_run(ask: Callable[..., str] = gh) -> int:
 def read_run(run: int, samples: Samples, ask: Callable[..., str] = gh) -> Json:
     """Add the times of *run*'s sharded jobs to *samples*; what ``source`` says of the run.
 
-    Every sharded job of the run has to have succeeded: one that failed or was cancelled
+    The run has to be of a push, which runs every tier whole on every interpreter, and
+    every sharded job of it has to have succeeded: one that failed or was cancelled
     ran only some of its units, and the rest would silently weigh the fallback.
     """
 
     path = f"repos/{{owner}}/{{repo}}/actions/runs/{run}"
     head = _json(ask("api", path), path)
+    if head.get("event") != "push":
+        raise RefreshError(
+            f"run {run} is of a {head.get('event')}, not a push: a pull request's run may "
+            "leave out the slow Chrome tests and all but one interpreter (devtools/ci_plan.sh)"
+        )
     jobs_path = f"{path}/jobs?per_page={JOBS_PER_PAGE}"
     answer = _json(ask("api", jobs_path), jobs_path)
     jobs = cast("list[Json]", answer.get("jobs") or [])

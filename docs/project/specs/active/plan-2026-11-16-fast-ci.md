@@ -180,6 +180,9 @@ either.
 
 ### Jobs
 
+*2026-11-22: for a pull request while `main` is green,
+[The Pull-Request Path](#the-pull-request-path) supersedes this table.*
+
 For a pull request to `main`:
 
 | Job | Count | What it runs | Minutes each |
@@ -421,6 +424,11 @@ tier whole at a median over the 4.5 minutes that splits it, on every interpreter
 (`--shard-by=file`), as a worker does.
 
 ### Path Classes
+
+*2026-11-22: decided for the Chrome tier, differently.*
+[The Pull-Request Path](#the-pull-request-path) skips the Chrome tier by the paths a
+change touches; the light class below, which would also skip `admitted-git` and three
+interpreters, was not built, since every pull request now runs one interpreter.
 
 Phase 3, and only if the owner wants it (Q7). The `plan` job classes a pull request as
 **light** when every changed path is under `docs/`, `apps/macos/`, or `.tbd/`, or is a
@@ -982,6 +990,78 @@ result the state rule gives:
   The shard count and the time limits are how the design absorbs that.
 - **A developer machine under xdist** runs one worker per processor, which is heavy
   where several agents share a machine; `PYTEST_WORKERS` lowers it.
+
+### The Pull-Request Path
+
+*Added 2026-11-22 (bead `mb-j5j2`).* A pull request’s run took 7.0 minutes (run
+45063672769), and the owner gave three directions that day, which this section carries
+out. They supersede [Jobs](#jobs) and the pull-request column of
+[How Coverage Is Kept](#how-coverage-is-kept) for a pull request while `main` is green,
+and they decide [Path Classes](#path-classes) for the Chrome tier.
+
+> We should aim to have a much faster routine CI cycle.
+> 6 minutes is too long.
+> It should be, ideally, more like 3. unless There’s a really strong reason that that’s
+> difficult.
+
+> can you be sure these longer-lived tests are only run occasionally, not blocking CI on
+> a routine basis?
+
+> we should not be paying Chrome testing costs on CI in terms of time if all we’re
+> changing is the CLI or backend things that may not need Chrome testing.
+
+The `plan` job now decides a **path** for the whole run, where before it decided only
+the Chrome tier’s interpreters:
+
+|  | Main path | Pull-request path |
+| --- | --- | --- |
+| When | a push to `main`; a pull request while `main` is red | a pull request while `main` is green |
+| Interpreters, every tier | `PYTHONS` | `PR_CHROME_PYTHON` |
+| Chrome tier | whole (`make test-chrome`) | without its slow tests (`make test-chrome-fast`), and only when the change touches a browser path |
+| `admitted-git` | every admitted release | the lowest, which is the security floor |
+| Parts | fewer, longer | more, shorter, on the one interpreter |
+
+- **Slow Chrome tests** are those measured at `SLOW_TEST_S` or more in
+  `devtools/shard_weights.json` (`tests/suite_tiers.py`, `--skip-slow`). The owner chose
+  that they run on every push to `main`, in the nightly soak, and in the release gate
+  (`make test`, `make verify`), and not on a pull request.
+  They are derived from the measurements, not marked, so a refresh keeps the set
+  current, and a test with no measurement yet runs on its own pull request.
+- **Browser paths** are `BROWSER_PATHS` in `devtools/ci_plan.sh`, each with its reason:
+  what the browser loads, the Python that builds the shell page and what it writes into
+  it, the Chrome tests and the support they share, and what decides and runs the tier.
+  A pull request that touches none of them runs no Chrome job, and `ci-ok` accepts that
+  skip only on the `plan` job’s `chrome=none`. A backend change can still break a Chrome
+  test, because each drives a real server.
+  The net is the one [The browser tier’s interpreters](#decisions-and-open-questions)
+  already relies on: every push to `main` runs the whole tier on every interpreter, and
+  while `main` is red every pull request does.
+- **One interpreter** for the unit, goldens, and serial tiers follows the precedent of
+  decision 3 for the Chrome tier, and for the same reason.
+  A break only another interpreter shows is found on `main`, as a Chrome one was.
+- **The parts** each path deals a tier into are constants in `devtools/ci_plan.sh`,
+  beside the measurements that set them.
+
+`devtools/check_ci.py` holds every tier’s interpreters, parts, and Gits to the `plan`
+job’s outputs and the Chrome job to the plan’s target and condition, and
+`tests/test_ci_plan.py` holds that the main path narrows nothing: all of `PYTHONS`,
+every part, the whole Chrome tier, and every admitted Git.
+
+**What three minutes needs.** A run’s wall clock is about 30 seconds to start, its
+slowest job, and 10 seconds of `ci-ok`. A job spends about 50 seconds before its first
+test: 16 on checkout and setup, then `make install` and pytest’s collection of the whole
+suite, which each pytest job repeats.
+Two things keep the slowest job above the 140 seconds that leaves:
+
+- One file, `tests/test_github_pulls.py`, takes about 112 seconds on its worker, in both
+  the `unit` and `admitted-git` jobs, and a file runs on one worker, in order.
+  No number of parts brings its part under that; splitting the file would.
+- Collection costs each pytest job 25 to 30 seconds, some 10 of them compiling bytecode.
+  Passing a part only its own files would need the plan to know every file a tier’s
+  tests live in before collecting, which only collection says; it is not done here.
+
+[The PR’s measurements](https://github.com/jlevy/metabrowser/pull/698) and
+`make ci-report` give the times the path reaches.
 
 ## Decisions and Open Questions
 
