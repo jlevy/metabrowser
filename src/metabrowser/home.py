@@ -1972,8 +1972,8 @@ def _open_file_entry(
     creating = bool(flags & os.O_CREAT)
     exclusive = creating and bool(flags & os.O_EXCL)
     before: os.stat_result | None
-    # Two passes: a file that appears between inspection and exclusive creation is judged
-    # once more as an existing file.
+    # An open-or-create can retry once if the file appears before creation or disappears
+    # between inspection and opening.
     for _ in range(2):
         try:
             before = _stat_no_follow(parent_fd, name, location, path)
@@ -1992,9 +1992,14 @@ def _open_file_entry(
                     raise
                 continue
             return _finish_created_file(parent_fd, name, fd, flags, path, close=close)
-        return _open_existing_file(parent_fd, name, flags, before, path, shared=shared, close=close)
-    # Replaced: the file appeared between inspection and creation in both passes, so a
-    # call made again judges whatever is there then.
+        try:
+            return _open_existing_file(
+                parent_fd, name, flags, before, path, shared=shared, close=close
+            )
+        except FileNotFoundError:
+            if not creating:
+                raise
+    # The entry changed during both attempts.
     raise _replaced_during_check(location, path)
 
 
