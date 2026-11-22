@@ -343,6 +343,7 @@ for (const theme of ["light", "dark"]) {
           configurable: true,
           value: { writeText: async (text) => { copied = text; } },
         });
+        copy.focus();
         copy.click();
         await Promise.resolve();
         delete navigator.clipboard;
@@ -353,6 +354,7 @@ for (const theme of ["light", "dark"]) {
           labels: [copy.innerText, link.innerText],
           glyphs: [copy, link].map(item => item.querySelector(".menu-item-icon svg") !== null),
           owner: [copy, link].every(window.MetabrowserPluginHost.isOwnedDelegate),
+          focusedInside: panel.closest("details").open && document.activeElement === copy,
           result: panel.querySelector('[role="status"]').textContent,
         };
       })()`);
@@ -364,6 +366,7 @@ for (const theme of ["light", "dark"]) {
           links.labels.join("|") === "Copy Link|Open in Browser" &&
           links.glyphs.every(Boolean) &&
           links.owner &&
+          links.focusedInside &&
           links.result === "Link copied",
         JSON.stringify(links),
       );
@@ -420,6 +423,18 @@ for (const selector of ["#header-root-kind", ".header-home-name"]) {
   await browser.waitFor('location.pathname === "/view/"', STEP_MS);
   check(`${selector} navigates Home and dismisses details`, !(await browser.evaluate(MENU_OPEN)));
 }
+
+// An HTML preview has its own browsing context and its clicks do not reach the shell.
+await open(`${pages.folder}preview.html`);
+await browser.waitFor('document.querySelector("iframe.file-html-preview") !== null', STEP_MS);
+await click(TRIGGER);
+check("the chevron opens beside a sandboxed HTML preview", await browser.evaluate(MENU_OPEN));
+await click("iframe.file-html-preview");
+await browser.waitFor('document.activeElement.matches("iframe.file-html-preview")', STEP_MS);
+check(
+  "a click in the preview dismisses the menu and leaves focus in the preview",
+  !(await browser.evaluate(MENU_OPEN)),
+);
 
 // The three kinds are three shapes, and none is the ordinary folder's.
 const shapes = Object.values(seen).map((at) => at.drawn);
