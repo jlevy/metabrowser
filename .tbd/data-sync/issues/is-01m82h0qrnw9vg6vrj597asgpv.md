@@ -3,9 +3,9 @@ type: is
 id: is-01m82h0qrnw9vg6vrj597asgpv
 title: "Live GitHub updates: what is on screen updates within seconds, everything else every minute or two, inside the rate limit"
 kind: epic
-status: open
+status: in_progress
 priority: 1
-version: 6
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 refs:
   - kind: pr
@@ -19,8 +19,9 @@ child_order_hints:
   - is-01m82dqbcj0728gy8tb9xqewe4
   - is-01m82h15ejqn4675xxm6c4xaz8
   - is-01m82h16wc07dbhpd3msz6w8wj
+  - is-01m82hx4dgadx9h9b789deab17
 created_at: 2026-11-22T21:01:28.721Z
-updated_at: 2026-11-22T21:02:20.354Z
+updated_at: 2026-11-22T21:18:45.936Z
 extensions:
   linear:
     id: 0c7789d9-960d-4814-a23b-d2a26e474369

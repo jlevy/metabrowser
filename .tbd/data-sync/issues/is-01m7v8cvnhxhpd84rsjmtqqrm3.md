@@ -5,12 +5,12 @@ title: "Decide: may Refresh in folder mode fetch from the origin, and where woul
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m7v8bs62dz0nqmqb9rnhgsdb
 created_at: 2026-11-20T01:16:07.729Z
-updated_at: 2026-11-20T01:16:07.729Z
+updated_at: 2026-11-22T21:18:00.657Z
 ---
 Owner, 2026-11-19: "if someone does a fetch, we would want the latest branch, and then separately, we could do fetches at different times."
 
@@ -22,3 +22,7 @@ Options:
 (c) Run git fetch in the checkout on an explicit Refresh. This changes the read-only rule.
 
 Recommendation: (a) now; (b) if a folder should show newer origin branches than the reader fetched.
+
+## Notes
+
+2026-11-22 check: still waiting on the owner. The recommendation stands: (a) Refresh re-reads refs only, never fetching into the checkout. mb-0qgm does not depend on this decision.
