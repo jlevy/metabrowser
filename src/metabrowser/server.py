@@ -1693,6 +1693,7 @@ async def index(
         # what the file header's prefix and this heading's tooltip call the root.
         initial_root = html_escape(status["name"] or pin_oid, quote=True)
         mirror_attrs = _mirror_heading_attrs(status)
+        root_source_tip = html_escape(_mirror_tip(status) or "")
         # A mirror's root is a name rather than a path, so the heading cuts it at its end.
         mirror_class = " mirror-source" if mirror_attrs else ""
         # Core holds no provider URL grammar: the served mirror asks the installed
@@ -1707,7 +1708,7 @@ async def index(
     else:
         initial_path = _initial_path_html()
         initial_root = html_escape(_display_root_str(), quote=True)
-        mirror_attrs = mirror_class = ""
+        mirror_attrs = mirror_class = root_source_tip = ""
         repository_context = await asyncio.to_thread(
             discover_repository_context, _shell_folder(folder_root)
         )
@@ -2486,13 +2487,13 @@ async def index(
           <div class="menu root-details-panel">
             <div class="root-details-info">
               <strong>{root_kind_label}</strong>
-              <div class="root-details-local"{" hidden" if git_pin else ""}>
+              <div class="root-details-local">
                 Local path
                 <div class="root-details-location">{"" if git_pin else initial_root}</div>
               </div>
               <div class="root-details-stats"></div>
               {root_checkout_meta}
-              <div class="root-details-source" hidden></div>
+              <div class="root-details-source">{root_source_tip}</div>
             </div>
             {root_repository_links}
             <div class="root-details-status" role="status"></div>

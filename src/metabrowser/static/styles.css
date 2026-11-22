@@ -1864,7 +1864,9 @@ body {
   text-transform: none;
 }
 .root-details:not([open]) > .root-details-panel,
-.root-details-panel [hidden] {
+.root-details-panel [hidden],
+.root-details-local:has(.root-details-location:empty),
+.root-details-source:empty {
   display: none;
 }
 .root-details-info,

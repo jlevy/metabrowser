@@ -2224,19 +2224,10 @@ function initRootDetails() {
     return;
   }
   trigger.innerHTML = `<span aria-hidden="true">${ICONS.toggle ?? ""}</span>`;
-  const heading = queryHtml(".header-path");
-  const source = details.querySelector(".root-details-source");
-  const sourceText = heading?.dataset.mirrorTip;
-  if (source && sourceText) {
-    source.textContent = sourceText;
-    source.removeAttribute("hidden");
-  }
-  const local = details.querySelector(".root-details-local");
-  const location = local?.querySelector(".root-details-location");
-  const mirrorLocation = heading?.dataset.mirrorLocation;
-  if (local && location && mirrorLocation) {
+  const location = details.querySelector(".root-details-location");
+  const mirrorLocation = queryHtml(".header-path")?.dataset.mirrorLocation;
+  if (location && mirrorLocation) {
     location.textContent = mirrorLocation;
-    local.removeAttribute("hidden");
   }
   const actions = details.querySelector(".root-details-actions");
   document.addEventListener("pointerdown", (event) => {
