@@ -21,6 +21,9 @@ The fake layout rounds each line’s height away from the computed `1lh`, as a b
 does, so the line pitch the highlight is placed by must be the one measured from the
 gutter, and a zoom change measures it again.
 Text with CR and CRLF line endings numbers the lines the browser shows.
+Load more shows a file with LF, CRLF, or lone CR line endings as the same lines,
+numbered once, as the first render does, and a CRLF cut between its CR and LF where one
+loaded part ends and the next starts is one line ending, not two.
 Load more appends the numbers it adds after the gutter’s own, in text nodes of at most
 65,536 code units as its text is; on a view WebKit’s HTML parser split into nodes of
 that size, the gutter then numbers every line once and its height still gives one line’s
@@ -798,6 +801,49 @@ $ node tests/dom/source-line-anchors-session.js
   "crlfLines": {
     "gutter": "1\n2\n3",
     "code": "one\ntwo\nthree\n"
+  },
+  "lineEndings": {
+    "LF": {
+      "appended": [
+        true
+      ],
+      "gutter": "1\n2\n3\n4",
+      "code": "one\ntwo\nthree\nfour\n",
+      "value": "1 of 4"
+    },
+    "CRLF": {
+      "appended": [
+        true
+      ],
+      "gutter": "1\n2\n3\n4",
+      "code": "one\ntwo\nthree\nfour\n",
+      "value": "1 of 4"
+    },
+    "lone CR": {
+      "appended": [
+        true
+      ],
+      "gutter": "1\n2\n3\n4",
+      "code": "one\ntwo\nthree\nfour\n",
+      "value": "1 of 4"
+    },
+    "CRLF cut between CR and LF": {
+      "appended": [
+        true
+      ],
+      "gutter": "1\n2\n3\n4",
+      "code": "one\ntwo\nthree\nfour\n",
+      "value": "1 of 4"
+    },
+    "CRLF cut twice": {
+      "appended": [
+        true,
+        true
+      ],
+      "gutter": "1\n2\n3\n4",
+      "code": "one\ntwo\nthree\nfour\n",
+      "value": "1 of 4"
+    }
   },
   "webkitParsedGutter": {
     "opened": {

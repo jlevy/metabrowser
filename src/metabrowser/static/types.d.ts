@@ -938,6 +938,7 @@ type MetabrowserSourceLineAnchorsRuntime = Readonly<{
     },
   ): void;
   nextFragment(current: string | null | undefined, line: number, extend: boolean): string;
+  normalizeLineEndings(text: string, afterCarriageReturn?: boolean): string;
   parse(fragment: string | null | undefined): Readonly<{ start: number; end: number }> | null;
   preferredView(target: MetabrowserNavigationTarget | null | undefined): "source" | null;
   refresh(root: ParentNode, loaded: { content_truncated?: boolean }): void;
@@ -946,7 +947,7 @@ type MetabrowserSourceLineAnchorsRuntime = Readonly<{
 
 type MetabrowserSourceAppendRuntime = Readonly<{
   TEXT_NODE_MAX_LENGTH: number;
-  appendSourceText(root: ParentNode | null, text: string): boolean;
+  appendSourceText(root: ParentNode | null, text: string, before?: string): boolean;
   commitChunkCache(options: {
     cached: Record<string, unknown>;
     cachedForPath: Record<string, unknown> | undefined;
