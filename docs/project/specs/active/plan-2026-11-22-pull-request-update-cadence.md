@@ -1,0 +1,377 @@
+# Plan: Pull Request Update Cadence and GitHub Budget
+
+**Date:** 2026-11-22
+
+**Status:** Draft, for review.
+Bead `mb-sjgl`.
+
+## Overview
+
+A merge on github.com should show on an open pull request page within seconds.
+On 2026-11-22 it took 48 s: fdu #214 merged at 19:29:37 and its page showed the merge at
+19:30:25. Nothing was broken.
+The page reads the server every `SLOW_POLL_MS` (`pull-page.js`), and the server reads
+GitHub again only once the record is older than `FRESHNESS_WINDOW_S`
+(`mirror_refresh.py`), so a change waits for both.
+The worst case is about 90 s.
+
+This plan sets one policy for every way a pull request view gets fresh data.
+What the reader is looking at is checked for changes every few seconds.
+Everything else the views show is refreshed in full once a minute or two.
+All of it stays inside a share of the account’s GitHub budget that leaves room for the
+reader’s other tools.
+
+## Goals
+
+- A change on GitHub to the pull request on screen (state, merge, title, body, labels,
+  reviews, comments, head, base) shows within `ATTENDED_PROBE_S` plus one refresh.
+- Check runs and statuses of an open pull request on screen show within `CHECKS_PROBE_S`
+  plus one checks refresh while they run.
+- A change to any pull request in a visible Pulls list shows within `LIST_PROBE_S` plus
+  one catalog scan.
+- Everything a visible view shows is read in full at least every `FULL_REFRESH_S`, so
+  anything change detection cannot see (an edited comment, a reaction, a mergeability
+  recomputation) is at most that late.
+- Nothing recurring runs for a hidden page.
+- An idle visible page costs no GitHub rate limit: change detection uses conditional
+  requests, which GitHub does not count when it answers `304`.
+- Background work yields to visible work and stops before the account’s budget runs low,
+  as `BACKGROUND_FLOOR` already does.
+
+## Non-Goals
+
+- Webhooks or a GitHub App.
+  A local tool has no public endpoint to receive them, and `gh` already holds the
+  reader’s credentials.
+- GitHub’s Events API. Its documentation says events can be delayed from 30 s to 6 h,
+  and it asks clients to poll no faster than its `X-Poll-Interval` (60 s).
+- A push channel from server to page for pull requests.
+  The page’s probe answer already says whether a refresh started (see
+  [Design](#design)).
+- Issues, which have no catalog yet.
+
+## Background
+
+### What GitHub Charges For
+
+Measured 2026-11-22 with gh 2.98.0 against `api.github.com`, reading `used` from
+`GET /rate_limit` (which is free) immediately before and after each call.
+Other clients spend from the same account at the same time, so each call was paired with
+an idle interval of the same length.
+
+| Call | Cost in `core` | Latency |
+| --- | --- | --- |
+| `gh api repos/o/r/pulls/N` with `If-None-Match` answered `304` | 0 in every trial whose idle pair was 0 (5 of 6; the sixth idle pair also moved) | 0.56 to 0.96 s, five calls |
+| `gh api repos/o/r/pulls/N`, `200` | 1 | about 0.7 s |
+| `gh auth status --active --hostname github.com --json hosts` | 1 in 3 of 3 trials | about 0.75 s |
+
+GitHub’s documentation agrees on the first row: a conditional request answered `304`
+does not count against the primary rate limit.
+The last row matters because `refresh_pull_request` checks the account twice per refresh
+(`pulls.py`), and from 19:00 to 20:00 UTC the six Metabrowser servers on this account
+ran `gh auth status` 235 times.
+
+GraphQL has no conditional requests, and every query costs at least one point.
+
+### How Much Budget Is Metabrowser’s
+
+The budget belongs to the account, not to Metabrowser (`gh_budget.py` says the same).
+From 19:00 to 20:00 UTC on 2026-11-22, the six Metabrowser servers’ event logs
+(`~/.local/state/metabrowser/events/`) record 360 REST calls, 235 account checks, and 62
+GraphQL queries. Over the same hour the account spent about 1,500 `core` calls of its
+5,000, so most of the budget went to other clients: coding agents and CI watchers using
+the same `gh` login.
+GraphQL had used 28 of 5,000 points.
+
+So REST is the scarce resource, and Metabrowser should spend it only on what the reader
+sees or will see next.
+
+### What One Refresh Costs Today
+
+Subprocesses under each job’s span in the same event logs (2026-11-21 and 2026-11-22):
+
+| Job | `gh` per run | `core` spent when every read answers `304` | Git |
+| --- | --- | --- | --- |
+| Pull request record (`_pull_job`) | 6 `gh api` and 2 `gh auth` | 2 | A fetch of `refs/pull/<n>/head` and 10 to 15 local commands |
+| The same, `checks_only` | 3 `gh api` and 2 `gh auth` | 2 | Local commands only |
+| Catalog scan (`pull_list_route._run_refresh`) | 1 GraphQL and 1 `gh auth` | 1, plus at least 1 GraphQL point | None |
+| Changed files (`_run_files_refresh`) | 1 `gh api` and 2 `gh auth` | 2 | None, or local diff when cached |
+| Mirror (`_refresh_job`) | None | 0 | `ls-remote` and a fetch |
+
+The account checks are what an unchanged refresh pays for.
+A conditional `gh api user` answered `304` in 4 of 4 trials and reports the login of the
+token `gh` uses, which is what the check needs to know.
+It cost 0 in 3 of them; the fourth moved `used` by 1 while its idle pair did not, which
+another client can explain but this measurement cannot rule out.
+
+### How Each View Is Updated Today
+
+No server timer starts GitHub work: every automatic read starts from a visible page’s
+request, except a stale mirror’s fetch at server startup.
+Each poller stops when `document.visibilityState` is not `visible`.
+
+| Path | What asks, and how often | Server gate | GitHub per run |
+| --- | --- | --- | --- |
+| Mirror fetch | Status poll every 30 s; one ask per visible period when stale | `FRESHNESS_WINDOW_S`; goes first at the store | None; `ls-remote` and a fetch |
+| Pull request record | Page poll every 30 s; an ask when the envelope says `stale`, at most once per `fresh_for_s` | `ServedPull.is_stale`; `MAX_PULL_JOBS`; store turn; network slot | 2 account checks, the pull, five parts, a head fetch |
+| Record, `checks_only` | The same ask, when the catalog’s verdict is `checks` | The same, once a window | 2 account checks, the pull, check runs, status |
+| Catalog delta scan | Pulls poll every 30 s, an ask once per 60 s; the page’s `catalogScanDue` | `refresh_is_due`, 60 s; no budget check | 1 account check, 1 GraphQL page per 100 changed rows |
+| Catalog backfill | The same job, after the reader’s prefix | `gh_budget.admission(("graphql",))` per page | 1 GraphQL page per 100 rows |
+| Cores | Visible rows, then a background walk, batches of 8 | Visible preempts background; no budget check | 1 GraphQL per batch |
+| Changed files | Expanded tree, an ask once per 60 s, and at once when the head moves | Head and base, then 60 s | Local diff, or 2 or more account checks and a page per 100 files |
+| Stacks | Shared poll every 30 s, an ask once per 300 s | `STACK_FRESHNESS_S`; no budget check | 2 account checks, up to 10 pages |
+| Labels | Once per page, when a label has no color | `LABEL_FRESHNESS_S`; no budget check | 2 account checks, up to 50 pages; 29 pages of `304` took 14 to 16 s |
+| Timeline | Once per record revision on Conversation | A sidecar by discussion revision; no budget check | Up to 2 GraphQL pages |
+| Prefetch | Once per published scan, and file asks after a dwell | `gh_budget.admission(("core",))`; 40 records and 100 lists an hour | As a record refresh or a files refresh |
+
+Three things in that table explain the 48 s and shape this plan:
+
+- **The page throttles itself.** The server makes a record due at once when the catalog
+  reports a change no attempt has seen (`ServedPull.is_stale`), but the page asks again
+  only once `fresh_for_s` has passed since its last automatic ask (`staleRefreshDue` in
+  `pull-page.js`). A merge just after an ask waits out the window.
+- **Staleness is noticed only at a poll.** The page checks whether to ask only after a
+  read, and it reads every 30 s.
+- **Only the backfill and prefetch ask the budget.** The cores walk, stacks, labels, and
+  the timeline run without `gh_budget.admission`, and the budget is known only from the
+  last response’s headers.
+
+### How Soon GitHub Reports a Change
+
+A script read jlevy/metabrowser’s most recently updated pull request
+(`pulls?state=all&sort=updated&direction=desc&per_page=1`) every 3 s with its last ETag,
+from 20:06 to 20:31 UTC on 2026-11-22, and logged each `200` against the row’s
+`updated_at`. When #695 changed at 20:11:05, the probe saw a new ETag 2.7 s later,
+inside the probe interval, so GitHub’s ETags move within seconds of a change.
+Twice, at 20:11:04 and 20:11:23, the ETag changed while the first row’s number and
+`updated_at` did not.
+So a `200` is a hint, not proof: the design compares the fields it depends on before
+starting a full read.
+
+One conditional `gh api` used 0.06 s of CPU and 45 MB of memory for 0.6 s (three runs,
+load average 295).
+
+## Design
+
+### Three Kinds of Read
+
+Every automatic read of GitHub is one of three kinds, and each has its own cadence.
+
+1. **A probe** asks whether something changed.
+   It is one conditional REST request carrying the ETag the last full read saved.
+   A `304` costs nothing and changes nothing.
+   A `200` costs one call; when the fields the view depends on differ from the record’s
+   (for a pull request: `updated_at`, `state`, `merged`, head, base, `mergeable`; for
+   the list: the first row’s number and `updated_at`), it starts the matching full read
+   at once, and otherwise it only saves the new ETag.
+   A probe needs no account check: it publishes nothing, and the full read it starts
+   checks the account as it does today.
+2. **A full read** is what runs today: the record refresh, the catalog scan, the files
+   refresh, stacks, and labels.
+   It runs when a probe saw a change, when a reader asks, and otherwise once every
+   `FULL_REFRESH_S` for what is visible.
+3. **Background preparation** is the prefetch of what the reader may open next.
+   It is unchanged: it runs only while the account is above `BACKGROUND_FLOOR` and
+   yields to the other two.
+
+### Cadence by What Is Visible
+
+| What | Probe | Probe cadence | Full read when nothing changed |
+| --- | --- | --- | --- |
+| The pull request on a visible page | `GET repos/o/r/pulls/<n>` with the record’s ETag | `ATTENDED_PROBE_S` | Record, every `FULL_REFRESH_S` |
+| Its checks, while open and `checks_pending` or inside `NO_CHECKS_GRACE_S` | First page of `commits/<head>/check-runs` and `commits/<head>/status`, with the record’s ETags | `CHECKS_PROBE_S` | `checks_only` record refresh, every `FULL_REFRESH_S` |
+| A visible Pulls list, or the repository of a visible page | `GET repos/o/r/pulls?state=all&sort=updated&direction=desc&per_page=1` with the last answer’s ETag | `LIST_PROBE_S` | Catalog delta scan, every `FULL_REFRESH_S` |
+| Its changed files and stacks | None; they follow the record and the catalog | — | Every `FULL_REFRESH_S`, and the files list whenever the head moves |
+| Its labels | None | — | `LABEL_FRESHNESS_S`, kept at 300 s: a full read of a large label set is 29 or more `gh` processes, and only chip colors depend on it |
+| Its timeline and cores | None; keyed by the record’s discussion revision and the catalog | — | When those change |
+| Anything on a hidden page | None | — | None; becoming visible probes at once |
+
+The list probe works because `sort=updated` puts the most recently changed pull request
+first, so its one-row page changes, and its ETag with it, whenever any pull request’s
+`updated_at` moves or a new one appears.
+The pull request probe covers what moves `updated_at` on one pull request: state, merge,
+title, body, labels, comments, reviews, and pushes.
+`mergeable` does not move `updated_at` either, but the probe’s `200` carries it and the
+comparison reads it.
+Check runs and statuses are not in the pull request at all, which is why checks have
+their own probe and `pull_freshness.py` has its `checks` verdict.
+
+Proposed values, each to be set by measurement beside its constant:
+
+- `ATTENDED_PROBE_S = 5.0`. A change then shows on average 2.5 s plus one probe (0.6 to
+  1.0 s) plus one record refresh (2 to 4 s) after GitHub reports it, about 6 s, and at
+  worst about 10 s. That is 720 probes an hour per visible page, all free while nothing
+  changes, at one `gh` process each.
+- `CHECKS_PROBE_S = 10.0`. While CI runs, check runs change every few seconds.
+  At most six checks refreshes a minute cost about 12 `core` a minute, about 120 for a
+  ten-minute run.
+- `LIST_PROBE_S = 10.0`. The list’s scan costs a GraphQL point and an account check, so
+  the list can afford a slower probe than the page.
+- `FULL_REFRESH_S = 90.0`, inside the “every minute or two” the reader asked for.
+  With conditional reads and a conditional account check, an unchanged full record
+  refresh costs about 0 `core`, so this bounds work and latency for what probes cannot
+  see, not rate limit.
+
+### Priority
+
+From first to last:
+
+1. A reader’s own action (Retry, Reload, Fetch), as today: never held by the floor, only
+   by a rate-limit hold.
+2. Probes and the full reads they start, for the attended pull request and then the
+   visible list. Probes do not take a turn at the store or one of
+   `MAX_CONCURRENT_REFRESHES`’ network slots: they run no Git and end within a second,
+   and a probe queued behind a 7 s refresh would defeat its purpose.
+   Each key (one number, or one repository’s list) has one probe in flight at a time,
+   and `ATTENDED_PROBE_S` or `LIST_PROBE_S` is the least time between two, however many
+   tabs ask.
+3. The `FULL_REFRESH_S` reads of what is visible, admitted by `gh_budget.admission` as
+   background work is.
+4. Background preparation, as today.
+
+### Budget
+
+The account’s budget is shared with the reader’s other tools, so the plan keeps two
+guards and adds one:
+
+- `BACKGROUND_FLOOR` (kept): full reads and preparation stop while less than a quarter
+  of a resource remains.
+  Probes keep running, since a `304` is free, but a probe that answers `200` below the
+  floor marks the record changed without starting its full read; the page says the
+  record is behind and offers Refresh.
+- The rate-limit hold (kept): nothing automatic runs before `reset_at`.
+- **Admission everywhere** (new): the cores walk, stacks, labels, and the timeline ask
+  `gh_budget.admission` before automatic work, as the backfill and prefetch already do.
+  A reader’s own action still never asks.
+- **A self-ceiling** (new), `AUTOMATIC_CORE_PER_HOUR`, in `gh_budget.py`: the `core`
+  this process’s automatic work may spend in a rolling hour, counted from the
+  `x-ratelimit-used` deltas it observes on its own responses.
+  Past it, probes slow to `FULL_REFRESH_S` and full reads to five minutes until the hour
+  rolls. Proposed: 600, about an eighth of the account’s 5,000, which leaves the rest of
+  the hour to the reader’s agents even with several servers on screen.
+
+Steady-state cost for one visible page with nothing changing on GitHub, from the
+measurements above: probes 0, full reads about 0 once the account check is conditional,
+and 40 record refreshes and 40 catalog scans an hour, at most 40 GraphQL points.
+Today the same page costs about 3 `core` a minute in account checks alone: two per
+record refresh and one per catalog scan, each about once a minute.
+
+### Server Changes
+
+- **`gh.py`:** a conditional account check.
+  `active_account` reads `gh api user` with the ETag of the last answer for that host,
+  and treats `304` as “the same login”.
+- **`served_pull.py`:** `ServedPull` keeps `probed_at` and the outcome of the last
+  probe. `is_stale` gains the probe rule: an automatic ask for a record probed or read
+  within `ATTENDED_PROBE_S` is fresh; one older than that but read within
+  `FULL_REFRESH_S` starts a probe job; one older than `FULL_REFRESH_S` starts the full
+  read as today. A probe that answers `200` sets the same “changed” state the catalog’s
+  verdict sets (`changed_row`), so the existing rules start the refresh and keep it from
+  looping.
+- **`pull_list_route.py`:** the catalog job probes first, and runs its GraphQL scan only
+  when the probe answered `200`, when the last scan is older than `FULL_REFRESH_S`, or
+  when a reader asked.
+- **The envelope:** `verified_by` gains `probe`, and `verified_at` moves with each
+  `304`, so the page’s age line says when GitHub last confirmed the record.
+  `fresh_for_s` becomes the time until the next probe is due, so the page knows when to
+  ask.
+
+The routes are internal contracts and change in one commit with the page, the CLI, and
+the transcripts, with no compatibility layer.
+
+### Page Changes
+
+- `pull-page.js`: while visible, the page schedules its next ask for when `fresh_for_s`
+  runs out, instead of noticing staleness only at its next 30 s poll, and it asks at
+  once whenever the envelope says the record changed, instead of holding every automatic
+  ask to one per window.
+  The server’s attempt rules already stop a changed record from looping.
+  It polls fast only while a refresh runs, as today.
+  An unchanged probe is one `POST` answered without a job and one `304` `GET`, both
+  local.
+- `pulls-panel.js`: the same, against `fresh_for_s` of the list envelope.
+- Visibility, focus, and coming back online wake both at once, as they do now.
+
+### Alternatives Considered
+
+- **Lower `FRESHNESS_WINDOW_S` and `SLOW_POLL_MS`.** Simple, but every check would be a
+  full refresh: eight `gh` processes, a Git fetch, and 2 `core` in account checks, every
+  few seconds. Probes give the same latency for one process and no budget.
+- **A push channel from server to page.** `/api/events` carries file-system changes
+  only. Pushing “record changed” would save the page’s local polls, which cost nothing
+  that matters, and would not reduce GitHub traffic, which is the cost that matters.
+- **GitHub’s Events API, or webhooks:** see [Non-Goals](#non-goals).
+
+## Implementation Plan
+
+Two phases, each one pull request.
+The first fixes what the reader saw; the second brings every other view under the same
+policy.
+
+### Phase 1: The Pull Request on Screen
+
+- [ ] A conditional account check in `gh.py`, which every job’s account check uses.
+- [ ] `ATTENDED_PROBE_S`, `CHECKS_PROBE_S`, and `FULL_REFRESH_S`, each beside its
+  measurement.
+- [ ] The pull request probe and the checks probe as `ServedPull` jobs outside the store
+  turn and the network slots, with the field comparison that ignores an ETag-only
+  change, `probed_at`, `verified_by: probe`, and `fresh_for_s` as the time to the next
+  probe.
+- [ ] The page’s ask scheduling in `pull-page.js`: asks timed from `fresh_for_s`, and at
+  once for a changed record.
+- [ ] The architecture documents: Serving Pull Requests and Freshness Verdicts in
+  `arch-github-pull-requests.md`, and Refresh Cadence in
+  `arch-mirror-acquisition-and-refresh.md`.
+
+### Phase 2: Lists and Everything Else
+
+- [ ] The list probe, which gates the catalog’s delta scan, and `LIST_PROBE_S`.
+- [ ] `FULL_REFRESH_S` for the catalog scan, the files list, and stacks.
+- [ ] Budget admission for the cores walk, stacks, labels, and the timeline.
+- [ ] `AUTOMATIC_CORE_PER_HOUR` in `gh_budget.py`.
+
+## Testing Strategy
+
+- **Server:** the fake `gh` the plugin’s server-flow tests put on `PATH` answers `304`,
+  `200` with the same fields, and `200` with changed fields.
+  Tests check that a probe starts a full read only for a real change, that a probe never
+  runs an account check, that two tabs asking at once get one probe, that a hold stops
+  probes, and that a probe below the floor marks the record changed without refreshing
+  it.
+- **Goldens:** `--api` transcripts for `pull-refresh` answered by a probe (unchanged,
+  changed, ETag-only), and the envelope’s `verified_by: probe`, as the parity registry
+  requires.
+- **Page:** the browserless session (`tests/dom/github-pull-page-session.js`) on a fake
+  clock: an unchanged page asks every `ATTENDED_PROBE_S` and reads GitHub data only when
+  a probe said so; a changed record is asked for at once; a hidden page asks nothing;
+  becoming visible asks at once.
+- **Live:** one real pull request page open in a browser, a change made on github.com,
+  and the time from GitHub’s `updated_at` to the page’s paint, from the event log.
+  Target: under 10 s. Also one hour of a visible, unchanged page, with `core` spent read
+  from `GET /rate_limit` before and after, against the steady-state cost above.
+
+## Open Questions
+
+- Is 5 s right for the page on screen, or should it be faster?
+  Each probe is one `gh` process (0.06 s of CPU, 45 MB for 0.6 s). Below about 2 s,
+  probes would overlap their own latency.
+- Is 600 `core` an hour the right self-ceiling for automatic work, given how much of the
+  account’s hour other tools use?
+- The live test needs a real change on GitHub.
+  A throwaway draft pull request in this repository, edited and closed by the test,
+  would do; that publishes to GitHub, so it needs the owner’s go-ahead.
+
+## References
+
+- [Plan for Watching GitHub Pull Requests](../done/plan-2026-11-06-pr-watch-and-reconnect.md),
+  which set today’s 30 s and 60 s cadences.
+- [GitHub Pull Requests](../../architecture/arch-github-pull-requests.md) and
+  [Mirror Acquisition and Refresh](../../architecture/arch-mirror-acquisition-and-refresh.md).
+- GitHub’s REST documentation on
+  [conditional requests](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#use-conditional-requests)
+  and
+  [rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->
