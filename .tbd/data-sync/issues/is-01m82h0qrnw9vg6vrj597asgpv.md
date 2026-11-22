@@ -5,7 +5,7 @@ title: "Live GitHub updates: what is on screen updates within seconds, everythin
 kind: epic
 status: in_progress
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 refs:
   - kind: pr
@@ -20,8 +20,9 @@ child_order_hints:
   - is-01m82h15ejqn4675xxm6c4xaz8
   - is-01m82h16wc07dbhpd3msz6w8wj
   - is-01m82hx4dgadx9h9b789deab17
+  - is-01m82jn9hd045gp3s3e24bygne
 created_at: 2026-11-22T21:01:28.721Z
-updated_at: 2026-11-22T21:18:45.936Z
+updated_at: 2026-11-22T21:30:10.859Z
 extensions:
   linear:
     id: 0c7789d9-960d-4814-a23b-d2a26e474369
