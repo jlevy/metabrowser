@@ -402,6 +402,8 @@ Strict mode is off on a developer machine, which can add these:
   admitted-git job does not select that module;
 - `the macOS filesystem rejects undecodable byte names`, on a Mac; CI runs that test;
 - `root is never denied by modes`, when the suite runs as root;
+- `this machine has no IPv6 loopback`, where `::1` cannot be bound, for the tests that
+  serve on an IPv6 host (`tests/ipv6_loopback.py`); CI’s runners have one and run them;
 - `symlinks are unavailable`, where the platform or the account cannot create one;
 - a POSIX-only reason, on a platform without POSIX modes, locks, signals, or FIFOs, and
   `could not import 'fcntl'` for the lock and atomic-write modules there;

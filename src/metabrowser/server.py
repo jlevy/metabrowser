@@ -218,6 +218,7 @@ from metabrowser.root_identity import (
     root_identity,
     served_repository_context,
 )
+from metabrowser.server_utils import ipv6_literal, wildcard_host
 from metabrowser.settings import (
     DOC_MAX_CHARS_DEFAULT,
     FOLDER_DISCOVERY_MAX_ENTRIES,
@@ -800,12 +801,10 @@ def _clear_browser_caches() -> None:
 
 
 # Concrete bind hosts registered by the CLI (``--host``). Wildcard binds
-# never land here; loopback names are always permitted by the middleware.
+# (``server_utils.wildcard_host``) never land here: they accept connections on
+# every interface and are not meaningful Host-header names. Loopback names are
+# always permitted by the middleware.
 _EXTRA_ALLOWED_HOSTS: set[str] = set()
-
-# Bind values that accept connections on every interface. They are not
-# meaningful Host-header names, so they are never added to the allowlist.
-_WILDCARD_BIND_HOSTS: frozenset[str] = frozenset({"", "0.0.0.0", "::", "[::]"})
 
 
 def _register_allowed_host(bind_host: str) -> None:
@@ -815,14 +814,20 @@ def _register_allowed_host(bind_host: str) -> None:
     browser would send, and allowing everything would defeat the
     DNS-rebinding check. Operators reaching a wildcard bind through a
     concrete name allow it explicitly with ``METABROWSER_ALLOWED_HOSTS``.
+
+    An IPv6 literal is registered in brackets, as a ``Host`` header carries
+    it, in the spelling given (the printed URL's) and in the compressed one
+    a browser rewrites it to.
     """
     raw = bind_host.strip().lower()
-    if raw in _WILDCARD_BIND_HOSTS:
-        # Check before normalizing: the Host-header port-strip heuristic
-        # would mangle a bare IPv6 wildcard ("::" -> ":").
+    if wildcard_host(raw):
+        return
+    address = ipv6_literal(raw)
+    if address is not None:
+        _EXTRA_ALLOWED_HOSTS.update({f"[{raw.strip('[]')}]", f"[{address.compressed}]"})
         return
     hostname = _HostValidationMiddleware._hostname(raw)
-    if hostname and hostname != ":" and hostname not in _WILDCARD_BIND_HOSTS:
+    if hostname and not wildcard_host(hostname):
         _EXTRA_ALLOWED_HOSTS.add(hostname)
 
 
