@@ -105,7 +105,7 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
             {
                 "step": "the head branch is renamed",
                 "header": "kept",
-                "rebuilt": ["branches", "copy buttons"],
+                "rebuilt": ["branches", "ref menu triggers"],
                 "built": 8,
                 "detached": 0,
                 "created": {"header": 0, "conversation": 0},

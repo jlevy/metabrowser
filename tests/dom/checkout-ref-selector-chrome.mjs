@@ -584,6 +584,45 @@ try {
   await openPanel("Tags");
   result.toTag = await switchBy(rowNamed("v1"));
   result.tag = await chrome.evaluate(PAGE);
+  result.tagMenu = await chrome.evaluate(`(async () => {
+    const chip = document.querySelector(".source-ref-selector-label [data-ref-menu]");
+    const before = chip.getBoundingClientRect().width;
+    chip.click();
+    const menu = document.querySelector(".git-ref-menu");
+    const copy = menu.querySelector("button");
+    let copied;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true, value: { writeText: async (name) => { copied = name; } },
+    });
+    copy.click();
+    await Promise.resolve();
+    delete navigator.clipboard;
+    const answer = {
+      context: menu.getAttribute("aria-label"),
+      items: [...menu.querySelectorAll(".menu-item")].map(item => item.textContent),
+      copied,
+      widthChanged: chip.getBoundingClientRect().width !== before,
+      caret: getComputedStyle(document.querySelector(".git-ref-menu-hit[aria-expanded=true] svg")).transform,
+    };
+    copy.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    answer.dismissed = document.querySelector(".git-ref-menu") === null;
+
+    const fork = window.metabrowser.refChip("topic/nested", {
+      label: "forker:topic/nested", kind: "remote", repository: "forker/demo",
+      ref: "refs/remotes/origin/topic/nested",
+    });
+    document.querySelector(".header-path").after(fork);
+    fork.click();
+    const forkMenu = document.querySelector(".git-ref-menu");
+    answer.fork = {
+      context: forkMenu.getAttribute("aria-label"),
+      url: forkMenu.querySelector("a").href,
+      actions: [...forkMenu.querySelectorAll(".menu-item")].map(item => item.textContent),
+    };
+    fork.click();
+    fork.remove();
+    return answer;
+  })()`);
   await openPanel();
   result.toWorkingTree = await switchBy(
     `document.querySelector(".source-ref-selector-working-tree")`,
@@ -654,7 +693,18 @@ try {
   result.commitsSwitched = { statuses, at: await chrome.evaluate(STALE_AT) };
   await capture("commits-stale");
 
-  result.documents = documents;
+  result.documents = documents.slice();
+  // The history chip selects its exact ref using the same source route as the chooser.
+  await chrome.evaluate(`[...document.querySelectorAll(".git-graph-row [data-ref-menu]")]
+    .find(chip => JSON.parse(chip.getAttribute("data-ref-menu")).ref === "refs/tags/v1").click();
+    [...document.querySelectorAll(".git-ref-menu button")]
+      .find(item => item.textContent === "View This Tag").click(); true`);
+  await chrome.waitFor(
+    `window.METABROWSER_SOURCE_PIN?.ref === "refs/tags/v1" && ${MOUNTED}`,
+    30000,
+  );
+  result.tagFromHistory = await chrome.evaluate(PAGE);
+
   console.log(JSON.stringify(result));
 } finally {
   await chrome.close();

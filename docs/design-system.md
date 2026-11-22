@@ -1967,7 +1967,7 @@ no size of its own, so the chip scales from the text beside it.
 | Weight | `--weight-bold` | The name carries the meaning |
 | Line height | A ratio of the chip’s size | The box scales with its text and keeps a `HEAD` ring inside a history row |
 | Corner | `--radius-tag` | Square-ish, so a ref and a filter never read as the same control |
-| Padding | In px | Room around the name, not text. A tag adds room on the left for its notch, and a copyable chip reserves a slot on the right for its copy control, a fixed-size icon ([One Glyph Size](#one-glyph-size)) |
+| Padding | In px | Room around the name, not text. A tag adds room on the left for its notch. The menu chevron overlays the chip ([Action Menu](#action-menu)) |
 | Width | A maximum in em, ellipsized, with the full name in its tooltip | In em so the bound keeps its meaning at any chip size; the measurement is beside it |
 
 `test_branch_chips_scale_with_their_text` in `tests/test_design_vocabulary.py` holds the
@@ -1997,14 +1997,14 @@ chip’s form alone.
 A chip’s kind says where the ref lives, and trunk and `HEAD` come only from the server,
 so a definition cannot differ between two places.
 
-| Context | Drawn from | Kind | Trunk | `HEAD` | Copy |
+| Context | Drawn from | Kind | Trunk | `HEAD` | Menu |
 | --- | --- | --- | --- | --- | --- |
 | A checkout’s history row | The history page’s refs (`renderRefBadges` in `static/git-panel.js`) | The wire’s `kind`: `refs/heads/` local, `refs/remotes/` remote, `refs/tags/` tag | The ref’s `is_trunk` | The ref’s `is_head` | Beside the row |
 | A mirror’s history row | The same | Its branches are `refs/remotes/origin/…`, so remote; its tags, tag | The ref’s `is_trunk` | None: a pin is detached | Beside the row |
 | A commit’s summary | Its detail’s refs, the same parser as the row | As its row | As its row | As its row | In the chip |
 | A commit’s tooltip | The same | As its row | As its row | As its row | None: a tooltip owns no action |
 | A pull request’s header | `mb.mergeRefs`, head → base | Remote: GitHub’s branches, a fork’s as `owner:branch` | Never | Never | In the chip |
-| The ref selector’s button and list | `mb.refChip` in `static/source-ref-selector.js` | Tag for a tag. A mirror’s branch is remote. A checkout’s own branch is local and its remote-tracking branch remote | Never; the list says “default” beside a mirror’s default branch | Never; the list says “checked out” beside the branch a checkout’s `HEAD` is on | Button beside it; list none |
+| The ref selector’s button and list | `mb.refChip` in `static/source-ref-selector.js` | Tag for a tag. A mirror’s branch is remote. A checkout’s own branch is local and its remote-tracking branch remote | Never; the list says “default” beside a mirror’s default branch | Never; the list says “checked out” beside the branch a checkout’s `HEAD` is on | Selected chip; chooser rows select their ref |
 
 The reasons:
 
@@ -2045,16 +2045,23 @@ and the figures are beside the tokens in `styles.css`.
 `tests/test_design_vocabulary.py` holds the contrast, the blue, and the distance from
 the merged purple.
 
-#### Copy
+#### Action Menu
 
-Copyable branch chips reserve a tiny copy control beside the label, revealed on hover or
-keyboard focus. The control copies the complete underlying branch or ref, regardless of
-label truncation or a displayed fork owner, and reports the normal copy feedback.
-Its click does not select a different row or follow its link.
-An outside pointer interaction hides active copy controls and restores the primary row’s
-focus before a pane drag can clip its focused button.
-Place copy controls beside a primary link or button rather than nesting interactive
-controls.
+Click a branch or tag chip to open its menu.
+A fixed down chevron overlays the trailing edge on hover, keyboard focus, and while the
+menu is open, so long names use the entire chip at rest.
+The chevron uses neutral ink like the folder details and **View on GitHub** chevrons.
+In a clickable history row or ref chooser, the chip’s menu trigger is a separate control
+above its visible chip.
+
+The menu names the ref and its kind.
+**Copy Branch Name** and **Copy Tag Name** copy the underlying name.
+**View This Branch** or **View This Tag** selects the full ref, including its Git
+namespace, through the same source-switch route as the chooser.
+A fork’s PR head can open the PR snapshot when it is available in the mirror.
+**Open on GitHub** shows the destination and uses the same external arrow as the
+repository menu. The remote action appears when the app can identify the matching GitHub
+repository and ref.
 
 ### Merge Direction
 
@@ -2071,11 +2078,11 @@ the same way, `old → new`.
 
 | Part | Rule |
 | --- | --- |
-| Markup | `mb.mergeRefs(source, target, options)` in `static/plugin-sdk-views.js` writes every merge; no surface places its own arrow. Each side is `{name, label}` and becomes a [branch chip](#branch-chips), and `options` (`kind`, `copy`) applies to both |
+| Markup | `mb.mergeRefs(source, target, options)` in `static/plugin-sdk-views.js` writes every merge; no surface places its own arrow. Each side is `{name, label}` and becomes a [branch chip](#branch-chips), and `options` (`kind`, `menu`) applies to both |
 | Arrow | `.merge-refs-arrow`: `→` (U+2192) in `--muted`, at the size of the text around the merge, which the group inherits; each chip is slightly smaller. The spaces around it are text, so a copied selection reads `wip → topic` |
 | Accessible name | The arrow is `role="img"` with `aria-label="merges into"`, so a screen reader reads “wip merges into topic” in document order. It has no tooltip: the names beside it say the merge, and a chip cut short carries its own full name ([Tooltips Add Information](#tooltips-add-information)) |
 | Right to left | The group is `dir="ltr"`, an isolated left-to-right run as a path or a branch name is. The arrow points from source to target whatever the surrounding direction, the glyph is never mirrored, and the document order, source first, is the order a screen reader reads |
-| Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding and copy slot, an ellipsis in each, and the arrow. The pull request header gives the merge a line of its own, under the author’s sentence, so only the names give way there |
+| Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding, an ellipsis in each, and the arrow. The pull request header gives the merge a line of its own, under the author’s sentence, so only the names give way there |
 
 A Pulls row names no branches: the pull request’s page names them, and the row’s room
 goes to its title.
@@ -2084,9 +2091,9 @@ The rendered group, for a pull request from `wip` into `topic`:
 
 ```html
 <span class="merge-refs" dir="ltr">
-  <span class="git-ref git-ref-remote git-ref-copyable merge-refs-source">…wip…</span>
+  <button class="git-ref git-ref-remote git-ref-action merge-refs-source">…wip…</button>
   <span class="merge-refs-arrow" role="img" aria-label="merges into"> → </span>
-  <span class="git-ref git-ref-remote git-ref-copyable merge-refs-target">…topic…</span>
+  <button class="git-ref git-ref-remote git-ref-action merge-refs-target">…topic…</button>
 </span>
 ```
 

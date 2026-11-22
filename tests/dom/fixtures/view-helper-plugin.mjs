@@ -6,7 +6,7 @@
 const mb = window.metabrowser;
 const log = window.viewHelperFixtureLog;
 if (
-  !mb.refChipHtml("<topic>", { copy: false }).includes("&lt;topic&gt;") ||
+  !mb.refChipHtml("<topic>", { menu: false }).includes("&lt;topic&gt;") ||
   mb.ageBucket(0) !== null ||
   mb.ageLabelHtml(0) !== ""
 ) {

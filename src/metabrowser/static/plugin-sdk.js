@@ -86,9 +86,9 @@
 //   Visual:
 //     icons.<name>                       — raw SVG strings for built-in icons
 //     icons.withClass(name, cls)         — returns SVG with extra class applied
-//     refChip/refChipHtml(name, opts?)    — structured refs with owned copy controls
+//     refChip/refChipHtml(name, opts?)    — structured refs with action menus
 //     mergeRefs(source, target, opts?)    — a merge as source → target, left to right
-//     mountRefCopies(primary, host)       — sibling controls; caller owns returned disposer
+//     mountRefMenus(primary, host)        — sibling controls; caller owns returned disposer
 //     actorIdentity(name, opts?)          — a person: an avatar's box, then the bold name,
 //                                          the person glyph in the box without an avatar
 //     actorIdentityHtml(name, opts?)      — its markup, the box holding the glyph
@@ -114,7 +114,7 @@
 //     debug                              — console-only shell troubleshooting helpers
 //
 // The helpers that build a view's markup -- renderSourceView, wrapWithCopy,
-// partialNoticeHtml, refChip/refChipHtml/mergeRefs/mountRefCopies,
+// partialNoticeHtml, refChip/refChipHtml/mergeRefs/mountRefMenus,
 // actorIdentity/actorIdentityHtml, counterpartButton/mountCounterpart,
 // ageBucket/ageLabelHtml,
 // renderTextTruncationWarning, renderTextLoadMoreFooter, langForPath

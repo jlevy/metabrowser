@@ -123,7 +123,7 @@ const PARTS = {
   identity: "github-pull-identity",
   action: "github-pull-action",
   branches: "merge-refs",
-  "copy buttons": "git-ref-copy",
+  "ref menu triggers": "git-ref-action",
   "opened row": "github-pull-quiet",
   labels: "github-pull-label",
   Refresh: "github-pull-refresh",

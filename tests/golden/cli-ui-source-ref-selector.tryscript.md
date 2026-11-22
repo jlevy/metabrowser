@@ -373,16 +373,19 @@ $ node tests/dom/source-ref-selector-session.js
     {
       "name": "topic",
       "label": "topic",
+      "ref": "refs/remotes/origin/topic",
       "kind": "remote"
     },
     {
       "name": "v1",
       "label": "v1",
+      "ref": "refs/tags/v1",
       "kind": "tag"
     },
     {
       "name": "feature/long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-←<literal>",
       "label": "feature/long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-←<literal>",
+      "ref": "refs/remotes/origin/feature/long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-←<literal>",
       "kind": "remote"
     }
   ],
@@ -873,7 +876,7 @@ $ node tests/dom/source-ref-selector-session.js
 ? 0
 ```
 
-## Copy a Ref Without Following Its Row
+## Open a Ref Menu Without Following Its Row
 
 The production SDK renders literal labels separately from raw copy values and keeps its
 copy buttons outside primary row links.
@@ -884,17 +887,12 @@ scroll/resize hiding and listener disposal.
 $ node tests/dom/sdk-copy-delegate-behavior.js
 {
   "ref": {
-    "raw": "feature/←<literal>",
+    "name": "feature/←<literal>",
     "label": "fork:display",
-    "payload": "feature/←<literal>",
-    "feedback": "Copied!",
+    "kind": "local",
+    "ref": "refs/heads/feature/←<literal>",
     "primary": "a",
     "nestedButtons": 0,
-    "scrolledFocus": "primary",
-    "resizedCopy": "hidden",
-    "outsidePointerFocus": "primary",
-    "insidePointerCopy": "feature/←<literal>",
-    "clippedCopy": true,
     "listenersAfterDispose": 0
   }
 }

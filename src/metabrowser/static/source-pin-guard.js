@@ -304,8 +304,14 @@
     createSwitchHold,
     guardFetch,
     guardedRequest,
-    // This page's switch, which the selector asks for: its requests wait for it.
-    hold: switchHold.hold,
+    // A page can have several ways to change refs. Keep the first one's hold through
+    // navigation so another control cannot race the switch while its request is pending.
+    /** @param {Promise<boolean>} going */
+    hold(going) {
+      if (switchHold.waiting()) return false;
+      switchHold.hold(going);
+      return true;
+    },
     servesAnother,
     shownPin,
   });

@@ -34,7 +34,7 @@ sandbox.setTimeout = (fn, _ms) => {
 sandbox.clearTimeout = () => {};
 sandbox.document = {
   addEventListener: (type, handler) => {
-    if (type === "click") {
+    if (type === "click" && clickHandler === null) {
       clickHandler = handler;
     }
   },
@@ -229,8 +229,8 @@ if (typeof clickHandler !== "function") {
       if (!mb.delegateOwnerAttribute().startsWith(' data-mb-owner="')) {
         failures.push("delegateOwnerAttribute does not spell the owner attribute");
       }
-      // Branch chips use this exact owner/delegate and keep secondary controls outside
-      // the row's primary link. Deterministic boxes exercise only the copy state machine.
+      // Menu triggers stay outside the primary row and cover only the visible chip.
+      // Deterministic boxes exercise the sibling overlay and its lifecycle.
       const assert = require("node:assert/strict");
       const { FakeElement } = require("./pulls-test-dom.js");
       const documentListeners = new Map();
@@ -295,128 +295,58 @@ if (typeof clickHandler !== "function") {
       sandbox.addEventListener = (type, fn) => windowListeners.set(type, fn);
       sandbox.removeEventListener = (type) => windowListeners.delete(type);
       const raw = "feature/←<literal>";
-      const html = mb.refChipHtml(raw, { label: "fork:display", kind: "remote" });
-      assert(html.includes('data-mb-copy-text="feature/←&lt;literal&gt;"'));
-      assert(html.includes("fork:display") && !html.includes("<literal>"));
-      const chip = mb.refChip(raw, { label: "fork:display", kind: "remote", copy: "sibling" });
+      const ref = "refs/heads/" + raw;
+      const html = mb.refChipHtml(raw, { label: "fork:display", ref });
+      assert(html.includes('aria-haspopup="menu"'));
+      assert(html.includes("&lt;literal&gt;") && !html.includes("<literal>"));
+      assert(!html.includes("data-mb-copy"));
+      const chip = mb.refChip(raw, { label: "fork:display", ref, menu: "sibling" });
       chip.box = { left: 20, right: 160, top: 3, width: 140, height: 16 };
-      const primary = new RefElement("a"),
-        host = new RefElement("li");
+      const primary = new RefElement("a");
+      const host = new RefElement("li");
       primary.append(chip);
       host.append(primary);
-      const release = mb.mountRefCopies(primary, host);
-      assert.equal(primary.querySelectorAll("button").length, 0, "no nested interactive control");
-      const copy = host.querySelector("button");
-      assert.equal(copy.tabIndex, -1);
+      const release = mb.mountRefMenus(primary, host);
+      assert.equal(primary.querySelectorAll("button").length, 0);
+      const trigger = host.querySelector("button");
+      assert.equal(trigger.tabIndex, -1);
       primary.focus();
-      assert.equal(copy.tabIndex, 0, "copy is keyboard reachable from the primary row");
-      assert.equal(copy.style.left, "144px");
-      assert.equal(copy.style["--git-ref-copy-ink"], "var(--git-ref-remote)");
-      for (const [kind, token] of [
-        ["local", "var(--git-ref-local)"],
-        ["tag", "var(--git-ref-tag)"],
-        ["remote", "var(--git-ref-remote)"],
-      ]) {
-        chip.classList.remove("git-ref-local", "git-ref-tag", "git-ref-remote");
-        chip.classList.add(`git-ref-${kind}`);
-        primary.focus();
-        assert.equal(copy.style["--git-ref-copy-ink"], token);
-      }
-      chip.classList.add("git-ref-trunk");
-      primary.focus();
-      assert.equal(
-        copy.style["--git-ref-copy-ink"],
-        "var(--git-ref-bg)",
-        "theme changes keep inverse trunk ink live",
-      );
-      clipboardShouldReject = false;
-      clickHandler({ target: copy });
-      assert.equal(clipboardWrites.at(-1), raw, "underlying ref rather than owner-qualified label");
-      copy.focus();
-      assert.equal(
-        typeof documentListeners.get("pointerdown"),
-        "function",
-        "shown copies own an outside-pointer listener",
-      );
-      documentListeners.get("pointerdown")({ target: copy });
-      assert.equal(doc.activeElement, copy, "inside pointer keeps copy focused");
-      const copiedBefore = clipboardWrites.length;
-      clickHandler({ target: copy });
-      assert.equal(
-        clipboardWrites.length,
-        copiedBefore + 1,
-        "inside pointer still reaches the real copy delegate",
-      );
-      assert.equal(clipboardWrites.at(-1), raw);
+      assert.equal(trigger.tabIndex, 0);
+      assert.equal(trigger.style.left, "20px");
+      assert.equal(trigger.style.width, "140px");
+      const action = JSON.parse(trigger.getAttribute("data-ref-menu"));
+      assert.equal(action.name, raw);
+      assert.equal(action.ref, ref);
+
+      trigger.focus();
+      documentListeners.get("pointerdown")({ target: trigger });
+      assert.equal(doc.activeElement, trigger);
       documentListeners.get("pointerdown")({ target: new RefElement("div") });
-      assert.equal(
-        doc.activeElement,
-        primary,
-        "splitter pointerdown restores the visible primary before dragging",
-      );
-      assert.equal(copy.tabIndex, -1);
-      assert.equal(
-        windowListeners.size + documentListeners.size,
-        0,
-        "outside pointer releases all active listeners",
-      );
-      chip.box.right = 400;
+      assert.equal(doc.activeElement, primary);
+      assert.equal(trigger.tabIndex, -1);
+
       primary.focus();
-      assert.equal(copy.hidden, true, "pane shrink cannot restore a clipped copy");
-      chip.box.right = 160;
-      primary.focus();
-      copy.focus();
+      trigger.focus();
       documentListeners.get("scroll")();
-      assert.equal(doc.activeElement, primary, "hiding a focused icon returns to its row");
-      assert.equal(copy.tabIndex, -1);
-      assert.equal(windowListeners.size + documentListeners.size, 0);
+      assert.equal(doc.activeElement, primary);
+      assert.equal(trigger.tabIndex, -1);
+      primary.box = { left: 0, right: 100, top: 0, width: 100, height: 22 };
       primary.focus();
-      windowListeners.get("resize")();
-      assert.equal(copy.tabIndex, -1, "resize cannot leave an old hit target");
-      chip.box.right = 400;
+      assert.equal(trigger.style.width, "80px");
+      primary.box.right = 15;
       primary.focus();
-      assert.equal(copy.hidden, true, "a clipped chip has no overlay hit target");
+      assert.equal(trigger.hidden, true);
       release();
-      const clippedPrimary = new RefElement("a"),
-        clippedHost = new RefElement("li"),
-        metadata = new RefElement("span"),
-        refs = new RefElement("span");
-      metadata.box = { left: 0, right: 150, top: 0, width: 150, height: 22 };
-      refs.box = { left: 0, right: 300, top: 0, width: 300, height: 22 };
-      const clippedChip = mb.refChip("topic", { copy: "sibling" });
-      clippedChip.box = { left: 20, right: 160, top: 3, width: 140, height: 16 };
-      refs.append(clippedChip);
-      metadata.append(refs);
-      clippedPrimary.append(metadata);
-      clippedHost.append(clippedPrimary);
-      const releaseClipped = mb.mountRefCopies(clippedPrimary, clippedHost);
-      clippedPrimary.focus();
-      assert.equal(
-        clippedHost.querySelector("button").hidden,
-        true,
-        "a larger ref group cannot escape a narrower metadata ancestor",
-      );
-      releaseClipped();
-      primary.focus();
       assert.equal(windowListeners.size + documentListeners.size, 0);
-      assert.equal(host.listeners.size, 0, "eviction releases all owned listeners");
-      await Promise.resolve();
-      assert.equal(copy.dataset.tipText, "Copied!");
+      assert.equal(host.listeners.size, 0);
+
       console.log(
         JSON.stringify(
           {
             ref: {
-              raw,
-              label: chip.querySelector(".git-ref-label").textContent,
-              payload: clipboardWrites.at(-1),
-              feedback: copy.dataset.tipText,
+              ...action,
               primary: primary.localName,
               nestedButtons: primary.querySelectorAll("button").length,
-              scrolledFocus: doc.activeElement === primary ? "primary" : "other",
-              resizedCopy: "hidden",
-              outsidePointerFocus: "primary",
-              insidePointerCopy: raw,
-              clippedCopy: copy.hidden,
               listenersAfterDispose: windowListeners.size + documentListeners.size,
             },
           },
