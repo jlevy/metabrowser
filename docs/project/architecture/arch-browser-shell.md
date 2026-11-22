@@ -102,7 +102,14 @@ When the active renderer’s render promise and optional `ready` promise settle,
 moves the staged content and its disposers into the pane in one step.
 If navigation moves on first, the shell runs the staged disposers at once, disposes a
 late handle when it arrives, and never lets that mount regain the pane.
-Nondefault tabs still mount lazily, after installation.
+Nondefault tabs still mount lazily, on their first selection.
+The staged tab bar takes a choice from the moment it is drawn, before the hold: a tab
+chosen during it, by a click on the staged bar or by name (`showPreviewTab`), mounts
+then, and the commit brings it to the front in place of the first view.
+A view asked for by name before the stage exists is the view the render opens in, and a
+tab picked on the bar the reader sees reaches the stage only when the stage is the same
+file’s, as Load more’s render is.
+`tests/dom/view-tab-hold-session.js` runs these orders against the production functions.
 
 ### Composition and Disposal
 

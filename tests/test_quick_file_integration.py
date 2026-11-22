@@ -362,7 +362,8 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
 
     render_start = js.index("function renderFile(data, preferredViewId, claim, options = {})")
     render = js[render_start : render_start + 5000]
-    assert "preferredViewId: preferredViewId" in render
+    # The caller's view, unless one was asked for by name while the file loaded.
+    assert 'preferredViewId: takeAwaitedPreviewView(data.path || "") ?? preferredViewId' in render
     assert "options.views.find((view) => view.id === options.preferredViewId)" in composition
     assert "options.views.find((view) => view.default)" in composition
 

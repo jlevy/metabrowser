@@ -201,6 +201,24 @@ const READ = `(async () => {
   };
 })()`;
 
+// Clicks the staged Treemap tab the moment the shell draws it, and says what it found:
+// the tab in an inert stage, no tab bar committed to the pane yet, and the Overview in
+// front on the staged bar.
+const EARLY_CHOICE = `(() => {
+  const observer = new MutationObserver(() => {
+    const tab = document.querySelector('#preview-pane > .preview-file-stage > .tab-bar > .tab-btn[data-tab="treemap"]');
+    if (!tab) return;
+    observer.disconnect();
+    window.__earlyTabChoice = {
+      staged: tab.closest(".preview-file-stage").inert === true,
+      committedTabs: document.querySelectorAll("#preview-pane > .tab-bar > .tab-btn").length,
+      front: tab.parentElement.querySelector(".tab-btn.active")?.dataset.tab ?? null,
+    };
+    tab.click();
+  });
+  observer.observe(document, { childList: true, subtree: true });
+})()`;
+
 const server = await serve();
 phase("served");
 let chrome = null;
@@ -215,21 +233,28 @@ try {
     features: [{ name: "prefers-color-scheme", value: "light" }],
   });
   await chrome.send("Page.enable");
+  /** @type {Record<string, any>} */
+  const result = {};
+  // The Treemap tab, by its own control, chosen while the folder's first view still holds
+  // its first paint (mb-s588): the click lands on the staged bar in the turn after the
+  // shell draws it, before the Overview has its data. The observer's callback is a
+  // microtask queued by the write that draws the stage, so it runs when the shell's render
+  // first waits, which is the hold, however slow the page is. The shell used to wire the
+  // staged bar after the hold, and this click did nothing.
+  await chrome.send("Page.addScriptToEvaluateOnNewDocument", { source: EARLY_CHOICE });
   await chrome.send("Page.navigate", { url: `${base}/view/` });
-  // The Treemap tab, by its own control, once the folder's first view is in front with its
-  // legend drawn: while the Overview holds its first paint no tab is active, and a click
-  // then is overridden when the Overview paints.
   const TABS = `[...document.querySelectorAll("#preview-pane > .tab-bar > .tab-btn")]`;
-  await chrome.waitFor(
-    `document.querySelector("#preview-pane > .tab-bar > .tab-btn.active") && document.querySelectorAll(".file-type-summary-legend-item").length > 0 && ${TABS}.some((tab) => tab.textContent.trim() === "Treemap")`,
-    30000,
+  await chrome.waitFor("window.__earlyTabChoice !== undefined", 30000);
+  result.earlyChoice = await chrome.evaluate("window.__earlyTabChoice");
+  // A click the shell did not take fails here, by name, rather than as the next wait: the
+  // folder commits with the tab chosen in front.
+  await chrome.waitFor(`${TABS}.some((tab) => tab.classList.contains("active"))`, 30000);
+  result.frontAtCommit = await chrome.evaluate(
+    `${TABS}.find((tab) => tab.classList.contains("active")).textContent.trim()`,
   );
-  await chrome.evaluate(`${TABS}.find((tab) => tab.textContent.trim() === "Treemap").click()`);
-  // A click the shell did not take fails here, by name, rather than as the next wait.
-  await chrome.waitFor(
-    `${TABS}.find((tab) => tab.textContent.trim() === "Treemap")?.classList.contains("active")`,
-    10000,
-  );
+  if (result.frontAtCommit !== "Treemap") {
+    throw new Error(`the tab chosen during the hold was lost: ${JSON.stringify(result)}`);
+  }
   await chrome.waitFor(
     `document.querySelectorAll(".tm-legend .file-type-summary-legend-item").length > 0 && document.querySelectorAll(".tm-cell").length > 0 && document.querySelectorAll(".folder-totals .file-type-summary-ignored-row [data-segment-key]").length > 0`,
     30000,
@@ -245,7 +270,6 @@ try {
   const away = async () => {
     await chrome.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 1270, y: 10 });
   };
-  const result = {};
   await away();
   result.atRest = await chrome.evaluate(READ);
   await move(ENTRY("Python"));

@@ -6672,6 +6672,7 @@ async function selectFile(path, preferredViewId) {
         // Chunk growth is per file: a fresh selection starts small again so
         // opening a file never inherits the last file's appetite.
         resetTextChunkGrowth();
+        awaitedPreviewView = null;
         currentPath = path;
         if (selectFileAbortController) {
           selectFileAbortController.abort();
@@ -6965,7 +6966,8 @@ function setActivePreviewView(tabId, preview) {
   preview = /** @type {HTMLElement} */ (preview);
   /** @type {HTMLElement | null} */
   var active = null;
-  var tabContents = queryHtmlAll("[data-tab-content]", preview);
+  // The host's own views: a file staged in the pane has views of its own under it.
+  var tabContents = queryHtmlAll(":scope > [data-tab-content]", preview);
   for (var i = 0; i < tabContents.length; i++) {
     var c = tabContents[i];
     var isActive = !!tabId && c.dataset.tabContent === tabId;
@@ -7134,7 +7136,9 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
       var composition = await viewComposition.composition.prepare({
         kind: compositionKind,
         views: Array.isArray(data.views) ? data.views : [],
-        preferredViewId: preferredViewId,
+        // A view asked for while this file was still loading wins over the one the
+        // selection began with (showPreviewTab).
+        preferredViewId: takeAwaitedPreviewView(data.path || "") ?? preferredViewId,
         ensureKindAssets(kind) {
           return _perf.measureAsync(
             "fileNavigation:assets",
@@ -7303,6 +7307,8 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         // transparent and inert while the prior useful surface stays visible.
         // The active renderer and its optional readiness promise settle before
         // the shell transfers the stage's children into the preview.
+        /** @type {(() => Promise<unknown>) | null} */
+        let mountInitialView = null;
         if (pluginRenders?.length) {
           var ctx = {
             path: data.path,
@@ -7330,11 +7336,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
                 })
             )(container, pr.view);
             if (initialActiveView && pr.tabId === initialActiveView.id) {
-              await _perf.measureAsync(
-                "fileNavigation:activeView",
-                mount,
-                filePerfMeta(data, { view: pr.tabId }),
-              );
+              mountInitialView = mount;
             } else {
               container._metabrowserMount = () => {
                 void mount();
@@ -7343,7 +7345,19 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           }
         }
 
+        // The staged bar takes a choice from here on, before the first view holds the
+        // paint for its data: every other view has its mount by now, and a tab chosen
+        // during the hold is the one the commit brings to the front (mb-s588). The
+        // listeners and the mounts used to arrive after the hold, so a choice made in it
+        // did nothing, and the commit put the first view in front whatever the bar said.
         _perf.measure("initTabs", () => initTabs(stage), filePerfMeta(data));
+        if (mountInitialView && initialActiveView) {
+          await _perf.measureAsync(
+            "fileNavigation:activeView",
+            mountInitialView,
+            filePerfMeta(data, { view: initialActiveView.id }),
+          );
+        }
         const arrivalContent =
           stage.querySelector('[data-active-view="true"]') ?? stage.querySelector(".content-body");
         // Shown once the faces its text is set in land (view-composition.js#settleFaces).
@@ -7354,6 +7368,9 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         if (!renderIsCurrent()) {
           return false;
         }
+        // The view in front is the staged bar's: the one this render chose, or the one a
+        // reader chose while it held (selectPreviewTab).
+        const frontViewId = stage.dataset.activeView || null;
         const replacementNodes = Array.from(stage.childNodes);
         stopFolderHeaderSubscription();
         if (
@@ -7375,17 +7392,15 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           pendingFilePreviewStageCleanup = null;
         }
         preview.dataset.renderedPath = data.path || "";
-        if (initialActiveView) {
-          setActivePreviewView(initialActiveView.id, preview);
-        } else {
-          setActivePreviewView(null, preview);
-        }
+        setActivePreviewView(frontViewId, preview);
         if (data.kind === "folder") {
           startFolderHeaderSubscription(data.path);
         }
         scheduleHighlightCode(preview);
-        if (arrivalContent instanceof HTMLElement) {
-          animatePreviewContentArrival(arrivalContent);
+        const arrived =
+          preview.querySelector(':scope > [data-active-view="true"]') ?? arrivalContent;
+        if (arrived instanceof HTMLElement) {
+          animatePreviewContentArrival(arrived);
         }
         await measureNextPaint("fileNavigation:paintReady", filePerfMeta(data));
         return true;
@@ -7448,22 +7463,67 @@ document.addEventListener("click", onHeaderNavigationClick);
 
 // ── Tab switching ───────────────────────────────────────────────
 
+// A view asked for by name while its file was still loading, before the file had a tab
+// bar to select it in. The render that stages the file takes it as the view to open in.
+// It belongs to one selection: selectFile clears it.
+/** @type {{path: string, viewId: string} | null} */
+var awaitedPreviewView = null;
+
+/**
+ * The view asked for while `path` was loading, read once by the render that stages it.
+ *
+ * @param {string} path
+ * @returns {string | undefined}
+ */
+function takeAwaitedPreviewView(path) {
+  var awaited = awaitedPreviewView;
+  awaitedPreviewView = null;
+  return awaited && awaited.path === path ? awaited.viewId : undefined;
+}
+
+/**
+ * The stage of `path`, while the pane holds that file's first paint (renderFile): its
+ * bar is drawn and takes a choice, and its commit puts the chosen view in front.
+ *
+ * @param {HTMLElement} preview
+ * @param {string | undefined} path
+ * @returns {HTMLElement | null}
+ */
+function stagedPreviewOf(preview, path) {
+  var stage = queryHtml(":scope > .preview-file-stage", preview);
+  return stage && path !== undefined && stage.dataset.renderedPath === path ? stage : null;
+}
+
 /**
  * Select a tab of the file the preview pane shows, as a click on it does, unless it is
- * already selected. A file still loading, or a view it lacks, has no tab to select.
+ * already selected. A file the pane is still bringing up takes the choice too: its
+ * staged bar while it holds its first paint, and before that the render that will stage
+ * it (mb-s588). A view the file lacks has no tab to select.
  *
  * @param {string} path
  * @param {string | null} tabId
  */
 function showPreviewTab(path, tabId) {
   var preview = document.getElementById("preview-pane");
-  if (!tabId || !preview || preview.dataset.renderedPath !== path) {
+  if (!tabId || !preview) {
     return;
   }
-  var button = queryHtml(`#preview-pane > .tab-bar > .tab-btn[data-tab="${tabId}"]`);
-  var bar = button?.parentElement;
-  if (button && bar && !button.classList.contains("active")) {
-    selectPreviewTab(bar, tabId);
+  var shown = preview.dataset.renderedPath === path ? preview : null;
+  var staged = stagedPreviewOf(preview, path);
+  if (!shown && !staged) {
+    var held = previewPane.snapshot();
+    if (held.owner === "file" && held.phase === "loading" && held.path === path) {
+      awaitedPreviewView = { path, viewId: tabId };
+    }
+    return;
+  }
+  // The pane's own bar first: selecting there selects in a stage of the same file.
+  for (const host of [shown, staged]) {
+    var button = host && queryHtml(`:scope > .tab-bar > .tab-btn[data-tab="${tabId}"]`, host);
+    var bar = button?.parentElement;
+    if (button && bar && !button.classList.contains("active")) {
+      selectPreviewTab(bar, tabId);
+    }
   }
 }
 
@@ -7491,17 +7551,31 @@ function selectPreviewTab(bar, tabId) {
   if (!container || !selected) {
     return false;
   }
-  queryHtmlAll("[data-tab-content]", container).forEach((c) => {
+  // The bar's own views, its siblings: a pane that stages another file holds that file's
+  // views too, and a tab chosen here is not theirs.
+  queryHtmlAll(":scope > [data-tab-content]", container).forEach((c) => {
     c.style.display = c.dataset.tabContent === tabId ? "" : "none";
   });
-  if (container.id === "preview-pane") {
+  // A stage says which view is in front as the pane does: its commit reads it there.
+  var staged = container.classList.contains("preview-file-stage");
+  if (container.id === "preview-pane" || staged) {
     setActivePreviewView(tabId, container);
   }
-  var activeContent = container.querySelector(`[data-tab-content="${tabId}"]`);
+  var activeContent = queryHtml(`:scope > [data-tab-content="${tabId}"]`, container);
   if (activeContent && typeof activeContent._metabrowserMount === "function") {
     var mount = activeContent._metabrowserMount;
     activeContent._metabrowserMount = null;
     mount();
+  }
+  // A render of the file shown that is still staged, as Load more's is, comes up in the
+  // tab chosen here and not in the one that was in front when it began.
+  var restaged =
+    container.id === "preview-pane"
+      ? stagedPreviewOf(container, container.dataset.renderedPath)
+      : null;
+  var restagedBar = restaged && queryHtml(":scope > .tab-bar", restaged);
+  if (restagedBar) {
+    selectPreviewTab(restagedBar, tabId);
   }
   return true;
 }
