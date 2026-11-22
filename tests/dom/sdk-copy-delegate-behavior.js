@@ -295,7 +295,7 @@ if (typeof clickHandler !== "function") {
       sandbox.addEventListener = (type, fn) => windowListeners.set(type, fn);
       sandbox.removeEventListener = (type) => windowListeners.delete(type);
       const raw = "feature/←<literal>";
-      const ref = "refs/heads/" + raw;
+      const ref = `refs/heads/${raw}`;
       const html = mb.refChipHtml(raw, { label: "fork:display", ref });
       assert(html.includes('aria-haspopup="menu"'));
       assert(html.includes("&lt;literal&gt;") && !html.includes("<literal>"));

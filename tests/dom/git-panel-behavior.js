@@ -812,11 +812,7 @@ async function run() {
     assertContains("badges: remote kind class", html, "git-ref-remote");
     assertContains("badges: tag kind class", html, "git-ref-tag");
     for (const ref of ["refs/heads/main", "refs/remotes/upstream/trunk", "refs/tags/v1"]) {
-      assertContains(
-        "badges: menu keeps exact ref",
-        html,
-        "&quot;ref&quot;:&quot;" + ref + "&quot;",
-      );
+      assertContains("badges: menu keeps exact ref", html, `&quot;ref&quot;:&quot;${ref}&quot;`);
     }
     assertNotContains("badges: no hover copy", html, "data-mb-copy");
     const longName = `feature/${"long-name-".repeat(30)}←<literal>`;

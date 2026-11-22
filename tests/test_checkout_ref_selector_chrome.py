@@ -265,6 +265,7 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
         "widthChanged": False,
         "caret": "matrix(0, 1, -1, 0, 0, 0)",
         "dismissed": True,
+        "chordsLeftAlone": True,
         "fork": {
             "context": "Remote branch forker:topic/nested",
             "url": "https://github.com/forker/demo/tree/refs/heads/topic/nested",

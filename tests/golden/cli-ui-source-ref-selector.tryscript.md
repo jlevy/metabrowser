@@ -869,6 +869,21 @@ $ node tests/dom/source-ref-selector-session.js
         "bounds": [
           5000
         ]
+      },
+      {
+        "step": "a second source control cannot post while a ref switch is in flight",
+        "sent": [
+          "/api/source/pin null"
+        ],
+        "bounds": [],
+        "refusal": "selection_busy"
+      },
+      {
+        "step": "another source control can post after the first settles",
+        "sent": [
+          "/api/source/pin null"
+        ],
+        "bounds": []
       }
     ]
   }

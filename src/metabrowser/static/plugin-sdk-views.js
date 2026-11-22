@@ -791,9 +791,15 @@
     const menu = options.menu ?? options.copy ?? "inline";
     const label = options.label ?? name;
     const classes = ["git-ref", `git-ref-${kind}`];
-    if (options.trunk) classes.push("git-ref-trunk");
-    if (options.head) classes.push("git-ref-head");
-    if (menu === "inline") classes.push("git-ref-action", "disclosure-toggle");
+    if (options.trunk) {
+      classes.push("git-ref-trunk");
+    }
+    if (options.head) {
+      classes.push("git-ref-head");
+    }
+    if (menu === "inline") {
+      classes.push("git-ref-action", "disclosure-toggle");
+    }
     return {
       tag: menu === "inline" ? "button" : "span",
       className: classes.join(" "),
@@ -849,7 +855,9 @@
     text.className = "git-ref-label";
     text.textContent = label;
     chip.append(text);
-    if (action) chip.setAttribute("data-ref-menu", action);
+    if (action) {
+      chip.setAttribute("data-ref-menu", action);
+    }
     if (tag === "button") {
       configureRefTrigger(/** @type {HTMLButtonElement} */ (chip), label);
       const caret = document.createElement("span");
@@ -934,7 +942,9 @@
       const menu = activeRefMenu;
       const owned = menu !== null && layer.contains(menu.trigger);
       const restore = layer.contains(active) || (owned && menu.menu.contains(active));
-      if (owned) menu.close(false);
+      if (owned) {
+        menu.close(false);
+      }
       if (restore) {
         primary.focus({ preventScroll: true });
       }
@@ -949,7 +959,9 @@
     }
     /** @param {Event} event */
     function hideOnScroll(event) {
-      if (!insideRefMenu(event?.target ?? null)) hide();
+      if (!insideRefMenu(event?.target ?? null)) {
+        hide();
+      }
     }
     /** A pane splitter may prevent focus movement while changing the clipping box.
      * Release the overlay before that drag. The open menu handles its own dismissal.
@@ -1018,7 +1030,9 @@
       const at = chips.findIndex((chip) =>
         chip.contains(/** @type {Node | null} */ (event.target)),
       );
-      if (at < 0) return;
+      if (at < 0) {
+        return;
+      }
       event.stopPropagation();
       event.preventDefault();
       position();
@@ -1068,10 +1082,10 @@
       );
     // A checkout's origin is the only remote in the shell context. Local tags carry
     // no remote provenance. A GitHub pull's sides supply their own repository.
-    const origin = context?.host === "github.com" ? context.owner + "/" + context.name : null;
+    const origin = context?.host === "github.com" ? `${context.owner}/${context.name}` : null;
     const originBranch = data.ref?.startsWith("refs/remotes/origin/");
     const checkedOriginBranch =
-      data.ref === "refs/heads/" + context?.branch && context?.branch_on_origin;
+      data.ref === `refs/heads/${context?.branch}` && context?.branch_on_origin;
     const hosted =
       data.repository !== undefined
         ? data.repository
@@ -1099,7 +1113,9 @@
 
   /** @param {RefMenuData} data @param {HTMLElement} status */
   async function visitRef(data, status) {
-    if (!data.ref || refMenuIsSwitching) return;
+    if (!data.ref || refMenuIsSwitching) {
+      return;
+    }
     refMenuIsSwitching = true;
     status.textContent = "Opening…";
     /** @type {(leaving: boolean) => void} */
@@ -1140,7 +1156,9 @@
       status.textContent = "Could not open this ref.";
     } finally {
       decided(leaving);
-      if (!leaving) refMenuIsSwitching = false;
+      if (!leaving) {
+        refMenuIsSwitching = false;
+      }
     }
   }
 
@@ -1152,7 +1170,9 @@
     }
     activeRefMenu?.close(false);
     const raw = trigger.getAttribute("data-ref-menu");
-    if (!raw) return;
+    if (!raw) {
+      return;
+    }
     const data = /** @type {RefMenuData} */ (JSON.parse(raw));
     const tag = data.kind === "tag";
     const kind = tag ? "Tag" : data.kind === "remote" ? "Remote branch" : "Local branch";
@@ -1166,13 +1186,13 @@
     const menu = doc.createElement("div");
     menu.className = "menu git-ref-menu";
     menu.setAttribute("role", "menu");
-    menu.setAttribute("aria-label", kind + " " + data.label);
+    menu.setAttribute("aria-label", `${kind} ${data.label}`);
     const context = doc.createElement("div");
     context.className = "menu-link-url";
-    const contextId = "git-ref-menu-" + ++refMenuContextId;
+    const contextId = `git-ref-menu-${++refMenuContextId}`;
     context.setAttribute("id", contextId);
     context.setAttribute("aria-hidden", "true");
-    context.textContent = kind + " · " + data.label;
+    context.textContent = `${kind} · ${data.label}`;
     const status = doc.createElement("div");
     status.className = "git-ref-menu-status";
     status.setAttribute("role", "status");
@@ -1185,7 +1205,9 @@
     );
     copy.addEventListener("click", async () => {
       try {
-        if (!global.navigator.clipboard) throw new Error("Clipboard unavailable");
+        if (!global.navigator.clipboard) {
+          throw new Error("Clipboard unavailable");
+        }
         await global.navigator.clipboard.writeText(name);
         status.textContent = tag ? "Tag name copied" : "Branch name copied";
       } catch {
@@ -1209,23 +1231,29 @@
     if (url) {
       destination.className = "menu-link-url";
       destination.textContent = url;
-      destination.setAttribute("id", contextId + "-url");
+      destination.setAttribute("id", `${contextId}-url`);
       destination.setAttribute("aria-hidden", "true");
       const open = externalLinkMenuItem(url, "Open on GitHub", () => close(true));
-      open.setAttribute("aria-describedby", contextId + "-url");
+      open.setAttribute("aria-describedby", `${contextId}-url`);
       items.push(open);
     }
     for (const item of items) {
-      if (!item.hasAttribute("aria-describedby")) item.setAttribute("aria-describedby", contextId);
+      if (!item.hasAttribute("aria-describedby")) {
+        item.setAttribute("aria-describedby", contextId);
+      }
     }
     menu.append(context, ...items, status);
-    if (url) menu.insertBefore(destination, items.at(-1) ?? status);
+    if (url) {
+      menu.insertBefore(destination, items.at(-1) ?? status);
+    }
     doc.body.append(menu);
 
     const controller = new AbortController();
     const signal = controller.signal;
     const observer = new MutationObserver(() => {
-      if (!trigger.isConnected) close(false);
+      if (!trigger.isConnected) {
+        close(false);
+      }
     });
     observer.observe(doc.body, { childList: true, subtree: true });
 
@@ -1236,7 +1264,9 @@
       activeRefMenu = null;
       menu.remove();
       trigger.setAttribute("aria-expanded", "false");
-      if (focus && trigger.isConnected) trigger.focus({ preventScroll: true });
+      if (focus && trigger.isConnected) {
+        trigger.focus({ preventScroll: true });
+      }
     }
     activeRefMenu = { trigger, menu, close };
     trigger.setAttribute("aria-expanded", "true");
@@ -1246,13 +1276,12 @@
     menu.style.left =
       Math.max(margin, Math.min(rect.left, viewport.clientWidth - menu.offsetWidth - margin)) +
       "px";
-    menu.style.top =
-      Math.max(
-        margin,
-        rect.bottom + margin + menu.offsetHeight <= viewport.clientHeight
-          ? rect.bottom + margin
-          : rect.top - menu.offsetHeight - margin,
-      ) + "px";
+    menu.style.top = `${Math.max(
+      margin,
+      rect.bottom + margin + menu.offsetHeight <= viewport.clientHeight
+        ? rect.bottom + margin
+        : rect.top - menu.offsetHeight - margin,
+    )}px`;
     items[last ? items.length - 1 : 0].focus({ preventScroll: true });
     const outside = (/** @type {PointerEvent | FocusEvent} */ event) => {
       if (
@@ -1268,7 +1297,9 @@
     doc.addEventListener(
       "scroll",
       (event) => {
-        if (!insideRefMenu(event.target)) close(true);
+        if (!insideRefMenu(event.target)) {
+          close(true);
+        }
       },
       { capture: true, signal },
     );
@@ -1278,7 +1309,9 @@
         close(true);
         return;
       }
-      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
       const index = items.indexOf(/** @type {HTMLElement} */ (doc.activeElement));
       const next =
         event.key === "ArrowDown"
@@ -1290,11 +1323,16 @@
               : event.key === "End"
                 ? items.length - 1
                 : null;
-      if (event.key !== "Escape" && next === null) return;
+      if (event.key !== "Escape" && next === null) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
-      if (next === null) close(true);
-      else items[next].focus({ preventScroll: true });
+      if (next === null) {
+        close(true);
+      } else {
+        items[next].focus({ preventScroll: true });
+      }
     });
   }
 
@@ -1309,18 +1347,28 @@
   }
   global.document?.addEventListener?.("click", (event) => {
     const trigger = refTrigger(event);
-    if (trigger) openRefMenu(trigger);
+    if (trigger) {
+      openRefMenu(trigger);
+    }
   });
   global.document?.addEventListener?.("keydown", (event) => {
-    if (event.altKey || event.ctrlKey || event.metaKey) return;
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    if (event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+      return;
+    }
     const trigger = refTrigger(event);
-    if (!trigger) return;
+    if (!trigger) {
+      return;
+    }
     event.preventDefault();
     openRefMenu(trigger, event.key === "ArrowUp");
   });
   global.addEventListener?.("pageshow", (event) => {
-    if (event.persisted) refMenuIsSwitching = false;
+    if (event.persisted) {
+      refMenuIsSwitching = false;
+    }
   });
 
   /**

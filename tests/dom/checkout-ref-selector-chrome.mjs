@@ -587,6 +587,13 @@ try {
   result.tagMenu = await chrome.evaluate(`(async () => {
     const chip = document.querySelector(".source-ref-selector-label [data-ref-menu]");
     const before = chip.getBoundingClientRect().width;
+    chip.closest("button").focus();
+    const trigger = document.querySelector(".source-ref-selector-button .git-ref-menu-hit");
+    const modifiedArrow = new KeyboardEvent("keydown", {
+      key: "ArrowDown", bubbles: true, cancelable: true, metaKey: true,
+    });
+    const arrowLeftAlone = trigger.dispatchEvent(modifiedArrow) &&
+      document.querySelector(".git-ref-menu") === null;
     chip.click();
     const menu = document.querySelector(".git-ref-menu");
     const copy = menu.querySelector("button");
@@ -604,6 +611,10 @@ try {
       widthChanged: chip.getBoundingClientRect().width !== before,
       caret: getComputedStyle(document.querySelector(".git-ref-menu-hit[aria-expanded=true] svg")).transform,
     };
+    const modifiedEscape = new KeyboardEvent("keydown", {
+      key: "Escape", bubbles: true, cancelable: true, metaKey: true,
+    });
+    answer.chordsLeftAlone = arrowLeftAlone && copy.dispatchEvent(modifiedEscape) && menu.isConnected;
     copy.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     answer.dismissed = document.querySelector(".git-ref-menu") === null;
 
