@@ -3322,6 +3322,31 @@ html.theme-anim .menu {
     transition: none;
   }
 }
+/* A reading column, centered while the pane is hidden (docs/design-system.md, "Hiding the
+   Navigation Pane"). The frame then has the window, and a capped column at the gutter
+   left the rest of it empty at its end: a 1,031 px document and its table of contents
+   left 876 px at 1920 px and 1,516 px at 2560 (Chrome 152, 2026-11-22). A view whose body
+   is such a column says how wide it is, gutters excluded, as `--reading-unit` on the main
+   view's children (`.preview-pane > *`), where `@container kpress-doc` reaches; the
+   Markdown and folder plugins do, in the wide band. `--reading-inset` is then what puts
+   the unit in the middle of the pane's content box, the scrollbar's gutter outside it,
+   beyond the gutter every view keeps; the header's rows, the tab bar, and the body add it
+   to their start, so the title, the tabs, and the column keep one edge, and the header's
+   corner stays at the frame's end. A view with no unit, source and tables among them,
+   gets 0, and so does every view while the pane is in the layout.
+
+   It is a registered length: computed on the main view's children, where `cqi` is the
+   pane's, it is pixels from there down, so a document's wide table reads the same value,
+   and static/nav-collapse.js reads it back to glide the content by its change as the
+   frame slides, rather than let the content jump as the layout changes. */
+@property --reading-inset {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+.container[data-nav-collapsed] .preview-pane > * {
+  --reading-inset: max(0px, (100cqi - var(--reading-unit, 100cqi)) / 2 - var(--content-padding-x));
+}
 
 .resizing {
   cursor: col-resize;
@@ -3862,7 +3887,7 @@ html[data-prose-font="sans"] .kpress-prose h2,
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   flex-shrink: 0;
-  padding-left: var(--content-padding-x);
+  padding-left: calc(var(--content-padding-x) + var(--reading-inset, 0px));
 }
 .tab-btn {
   padding: var(--file-tab-padding-top) var(--file-tab-padding-x) var(--file-tab-padding-bottom);
@@ -4784,7 +4809,8 @@ a.tab-btn {
   gap: 6px;
   min-width: 0;
   height: var(--pane-header-row-height);
-  padding-inline: var(--content-padding-x);
+  padding-inline: calc(var(--content-padding-x) + var(--reading-inset, 0px))
+    var(--content-padding-x);
   border-bottom: 1px solid var(--border);
   font-size: var(--nav-font-size);
 }
@@ -4829,6 +4855,7 @@ a.tab-btn {
   gap: 8px;
   min-width: 0;
   padding: var(--view-header-padding-top) var(--content-padding-x) 0;
+  padding-inline-start: calc(var(--content-padding-x) + var(--reading-inset, 0px));
 }
 /* The icon a navigation row draws for the item, at the title's size, as a pull
    request's state icon is in its title. */
@@ -5377,6 +5404,7 @@ a.tab-btn {
 .content-body {
   flex: 1;
   padding: var(--content-padding-y) var(--content-padding-x);
+  padding-inline-start: calc(var(--content-padding-x) + var(--reading-inset, 0px));
 }
 .metabrowser-kpress-host {
   background: var(--bg);

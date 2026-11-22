@@ -175,6 +175,25 @@
     .folder-overview-host {
       --folder-overview-column-inset: 2.5rem;
     }
+
+    /* The Overview is a reading column, which the shell centers while the navigation pane
+       is hidden (`--reading-unit`, static/styles.css): the panels' card, and a README's
+       table of contents rail beside it, as an opened document's (markdown.css). */
+    .preview-pane:has(> .folder-overview-host[data-active-view="true"]) > * {
+      --reading-unit: calc(var(--doc-measure) + 2 * 2.5rem);
+    }
+
+    .preview-pane:has(
+        > .folder-overview-host[data-active-view="true"]
+          .folder-overview-panel-document
+          > .folder-overview-panel-body
+          > .kpress-doc
+          > .kpress-doc-layout
+          > .kpress-toc
+      )
+      > * {
+      --reading-unit: calc(var(--doc-measure) + 2 * 2.5rem + 3rem + 15rem);
+    }
   }
 }
 

@@ -5043,10 +5043,34 @@ back from where the frame is, for the share of the time that distance is.
 Under reduced motion the page moves at once.
 The state belongs to the page and is not kept across a reload.
 
+**With the pane hidden, a reading column is centered in the frame.** A column left at
+the gutter put all the room the pane gave up at its end, beside the text, and the point
+of hiding the pane is a calmer page to read.
+A rendered document, with its table of contents when it has one, and a folder’s Overview
+sit in the middle of the pane, the same room before them as after.
+The header’s Up, icon, and title and the first tab move with the column, so the page
+keeps one reading edge, and what is flush right, the header’s corner and the eyebrow’s
+copy button, stays there.
+A view whose body is not a column, source, a table, a diff, or a log, keeps the gutter
+and the frame’s whole width.
+Only in the wide band, a main view wide enough for KPress to dock a document’s table of
+contents (`@container kpress-doc` in `markdown.css`): narrower, the card is nearly all
+the pane holds, and with the pane shown every column starts at the gutter, as before.
+The column glides to its place with the frame’s slide, from where it was drawn, rather
+than jumping when the layout changes, and moves at once under reduced motion.
+
+A view opts in by stating its column’s width as `--reading-unit` on the main view’s
+children; the shell turns it into `--reading-inset` (`static/styles.css`), which the
+header’s rows, the tab bar, and the body add to their start.
+The Markdown plugin (`markdown.css`) and the folder plugin’s Overview (`overview.css`)
+state theirs.
+
 `static/nav-collapse.js` owns it, and `static/shell-keymap.js` binds the key.
 `tests/dom/key-reveal-session.js`, pinned by `cli-ui-nav-collapse.tryscript.md`, runs
-both on the production code; `tests/test_nav_collapse_chrome.py` measures the chevron’s
-place and the slide in headless Chrome with real keys.
+both on the production code, the column’s glide included;
+`tests/test_nav_collapse_chrome.py` measures the chevron’s place and the slide in
+headless Chrome with real keys, and `tests/test_reading_column_chrome.py` where a
+centered column lands and how it glides.
 
 ### Navigation Reveals the Item
 
