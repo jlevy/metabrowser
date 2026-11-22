@@ -3,13 +3,16 @@ base:
   description_hash: sha256v7:234fd2b8c55883eeb5be77609365660d0442611eb3d4019c145f37b7360724b7
   labels: []
   priority: 0
+  slot: in_progress
   status: in_progress
   title: More gracefully responsive layout and padding for wider widths
 bead_id: is-01m82hy6zdk5e5zzmsan8xhw6q
 external_id: 79e3aeab-0661-464d-a802-5624c419ac9a
 external_key: OS-599
 external_url: https://linear.app/finterm-ai/issue/OS-599/more-gracefully-responsive-layout-and-padding-for-wider-widths
-remote_updated_at: 2026-11-22T20:59:42.179Z
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
+remote_updated_at: 2026-11-22T21:21:44.723Z
 state: linked
-synced_at: 2026-11-22T21:17:35.314Z
+synced_at: 2026-11-22T21:21:45.006Z
 type: lk

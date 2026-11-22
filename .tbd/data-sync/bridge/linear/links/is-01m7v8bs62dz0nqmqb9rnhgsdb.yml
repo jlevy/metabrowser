@@ -1,12 +1,12 @@
 base:
   assignee: null
-  description_hash: sha256v7:cb90379bca56e827011ea541fb060c8a10403a35f7e14f53198d977e7191ce89
+  description_hash: sha256v7:3f0517d22f3c994ebe1e035fd68c68bbc543cd484dbef97afa6414795368da94
   labels:
     - linear
     - Feature
   priority: 1
-  slot: in_progress
-  status: in_progress
+  slot: backlog
+  status: open
   title: "Branches follow the repository: a view of a branch tracks it in mirror and
     folder modes; a commit or the working tree stays put"
 bead_id: is-01m7v8bs62dz0nqmqb9rnhgsdb
@@ -15,7 +15,7 @@ external_key: OS-581
 external_url: https://linear.app/finterm-ai/issue/OS-581/branches-follow-the-repository-a-view-of-a-branch-tracks-it-in-mirror
 refinement_slot: in_progress
 refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
-remote_updated_at: 2026-11-20T19:20:31.389Z
+remote_updated_at: 2026-11-22T21:21:37.614Z
 state: linked
-synced_at: 2026-11-20T19:21:11.277Z
+synced_at: 2026-11-22T21:21:38.110Z
 type: lk
