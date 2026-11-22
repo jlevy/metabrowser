@@ -191,23 +191,23 @@ jobs:
         run: make test-parallel SHARD=${{ matrix.shard }}/2
 
   goldens:
-    # The goldens, then the serial tier, in two parts on every interpreter. The serial
+    # The goldens, then the serial tier, in three parts on every interpreter. The serial
     # tier rides here so that it has the machine to itself and adds no job, and it is
-    # dealt into the same two parts (by test), so each part runs its half of the goldens
-    # and then its half of the serial tier, which keeps the serial tests alone on the
-    # machine and keeps the parts the same length.
-    name: goldens and serial (${{ matrix.python-version }}, ${{ matrix.shard }}/2)
+    # dealt into the same number of parts (by test), so each part runs its third of the
+    # goldens and then its third of the serial tier, which keeps the serial tests alone
+    # on the machine and keeps the parts the same length.
+    name: goldens and serial (${{ matrix.python-version }}, ${{ matrix.shard }}/3)
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13", "3.14", "3.14t"]
-        shard: [1, 2]
+        shard: [1, 2, 3]
     runs-on: ubuntu-latest
-    # 2.7 to 3.3 minutes over the eight jobs of run 44795249295 (the longest the 3.14t
-    # second part's 200 seconds, the shortest the 3.13 first part's 161), against 5.0 to
-    # 5.8 at the 90th percentile (make ci-report, 2026-11-20) for the one job that ran
-    # both parts, which the 3.14t run 44788801411 hit the old 6 minutes with. A part
-    # holds about half the goldens and half the serial tests, by measured time.
+    # Three parts since 2026-11-22. In two, dealt evenly by measured time, the eight
+    # jobs of run 45066732637 took 2.8 to 3.9 minutes (165 to 234 seconds, the slowest
+    # on 3.12 and 3.14t), which is at the 4.0 the nightly check allows of this limit:
+    # the goldens had grown since the 2.7 to 3.3 of run 44795249295. A part now holds
+    # about a third of the goldens and of the serial tests, by measured time.
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -234,13 +234,13 @@ jobs:
         run: uv python install
 
       - name: Run the goldens
-        run: make test-goldens SHARD=${{ matrix.shard }}/2
+        run: make test-goldens SHARD=${{ matrix.shard }}/3
 
       # After the goldens, so the serial tier has the machine to itself; it runs when a
       # golden failed too, so the job reports both.
       - name: Run the serial tier
         if: ${{ !cancelled() }}
-        run: make test-serial SHARD=${{ matrix.shard }}/2
+        run: make test-serial SHARD=${{ matrix.shard }}/3
 
   chrome:
     # The Chrome tier in four parts: on PR_CHROME_PYTHON for a pull request while main
