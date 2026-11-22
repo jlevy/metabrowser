@@ -5,7 +5,7 @@ title: "Release 0.13: prepare the PyPI package and macOS app release (owner aske
 kind: epic
 status: in_progress
 priority: 1
-version: 62
+version: 63
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/485
@@ -96,8 +96,9 @@ child_order_hints:
   - is-01m82q9008bq07539gs8cmqdr7
   - is-01m82qyzs3fmjgk4j29zte0vt3
   - is-01m82qz2a4zjynjhtwt62v2b6w
+  - is-01m82re07zvxjp8qe94mtv0nzy
 created_at: 2026-11-16T06:28:43.940Z
-updated_at: 2026-11-22T23:02:54.011Z
+updated_at: 2026-11-22T23:11:03.413Z
 extensions:
   linear:
     id: a18aa3cd-0329-4c1c-bca3-17921fe6703e
