@@ -5,7 +5,7 @@ title: "Source view: appended text does not normalize CR or CRLF as the first re
 kind: bug
 status: in_progress
 priority: 3
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 delegate: claude-code@spud10.local
 labels: []
@@ -14,7 +14,11 @@ parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 hold: null
 hold_until: null
 created_at: 2026-11-12T06:45:04.891Z
-updated_at: 2026-11-22T21:03:30.227Z
+updated_at: 2026-11-22T21:31:53.446Z
 started_at: 2026-11-22T21:03:30.226Z
 ---
 Found while making #367: the source view's Load more path appends text without the line-ending normalization of the first render, so a file with lone CRs shows its appended part as one line, and copying it gives mixed line endings. Pre-existing on main.
+
+## Notes
+
+PR #704 (https://github.com/jlevy/metabrowser/pull/704), branch claude/source-crlf-append, open and not merged. Fix: normalizeLineEndings in static/plugin-sdk-views.js is the one normalization for the first render and for each part appendSourceText appends; appendSourceText takes the text loaded before the part, so a CRLF cut between CR and LF is one line ending. Evidence: tests/dom/source-append-behavior.js (every cut of LF, CRLF, lone CR, mixed texts) and the lineEndings section of cli-ui-source-line-anchors.tryscript.md. Close when #704 merges.
