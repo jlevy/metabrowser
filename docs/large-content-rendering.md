@@ -1,7 +1,8 @@
 # Rendering Large Content
 
 **Status:** Current.
-Every limit named below is in force, and no content view virtualizes its loaded text.
+Every limit named below is in force; no text view virtualizes its loaded text, and the
+table view windows the rows of a large table.
 Figures are Chromium 141 measurements with software raster unless a table names another
 engine. The diff view’s bounds are in
 [Diff Pipeline](project/architecture/arch-diff-pipeline.md), and the macOS app’s WebKit
@@ -193,9 +194,12 @@ It is flat at any size, 33 ms from 1 MiB through 8 GiB with 132 nodes, and the o
 option past a few tens of MB. It gives up find-in-page and select-all over the file,
 needs scrollbar downscaling past the height clamp, and is substantially more code.
 The source and binary views do not virtualize their loaded text; the Pulls panel, the
-Git history, and the branch and tag chooser virtualize their rows.
-For file content, reach for virtualization when the view must open files larger than
-memory allows, and say in the plan what replaces the native behaviors.
+Git history, the branch and tag chooser, and a table past `WHOLE_TABLE_MAX_ROWS`
+virtualize their rows.
+The table view states what replaces find, select all, copy, and print
+([Data Tables](design-system.md#data-tables)). For file content, reach for
+virtualization when the view must open files larger than memory allows, and say in the
+plan what replaces the native behaviors.
 
 Canvas rendering is not on this ladder: the design system reserves canvas for charts,
 because text must stay selectable.
@@ -327,6 +331,35 @@ this standard. Paths are under `src/metabrowser/`.
 | `INERT_RENDER_DEADLINE_MS` | `diff/markdown_projection_worker.py` | One untrusted Markdown document’s render in the server’s Markdown child; past it the child is stopped and the page shows the document’s source |
 | `_MAX_RENDERS` | `diff/markdown_projection_worker.py` | Distinct untrusted Markdown renders in flight at once, the one in the Markdown child among them; past it a render is answered `503` with the code `renderer_busy`, which is not kept |
 | `ROWS_OVERSCAN` | `static/source-ref-selector.js` | Rows the branch and tag chooser draws beyond its list’s view; the list holds every ref, so the window, not the repository, bounds the rows drawn |
+| `TABLE_PAGE_ROWS_DEFAULT`, `TABLE_PAGE_ROWS_MAX` | `table_source.py` | Rows in one page of a table, when a query names no `limit` and at most |
+| `TABLE_PAGE_CELLS_MAX` | `table_source.py` | Cells in one page of a table; a page of wide rows carries fewer of them, and its `limit` says how many |
+| `TABLE_CELL_PREVIEW_CHARS`, `TABLE_RECORD_VALUE_BYTES` | `table_source.py` | One text value in a page of rows, and in a record; a longer one is cut and says its length |
+| `TABLE_CARD_MAX_FIELDS` | `table_source.py` | Fields a table’s hover card shows besides its label |
+| `TABLE_TOKEN_MAX_CHARS` | `table_source.py` | A record key or a cursor in a link; a longer one is named by position, valid for one generation |
+| `TABLE_REQUEST_DEADLINE_SECONDS` | `table_source.py` | A table request’s work; past it a filter or search answers the rows it found with `complete: false`, and a sort not yet indexed is refused with `sort_budget` |
+| `DELIMITED_PARSE_MAX_BYTES`, `DELIMITED_MAX_ROWS`, `DELIMITED_MAX_CELLS` | `builtin_plugins/delimited/source.py` | The bytes, rows, and cells of a `.csv` or `.tsv` file read as a table; past any of them the table holds the leading rows and says so |
+| `DELIMITED_MAX_COLUMNS` | `builtin_plugins/delimited/source.py` | The cells of one row of a delimited file read, the header’s among them; past it the table says it was cut |
+| `DELIMITED_TYPE_SAMPLE_ROWS` | `builtin_plugins/delimited/source.py` | Rows of a delimited file whose values decide each column’s type |
+| `DELIMITED_CACHE_MAX_ENTRIES`, `DELIMITED_CACHE_MAX_BYTES` | `builtin_plugins/delimited/source.py` | Server memory for parsed delimited files and their sort indexes, estimated from each file’s rows, cells, and text |
+| `RECORDS_MAX_ROWS`, `RECORDS_MAX_CELLS`, `RECORDS_MAX_FIELDS` | `builtin_plugins/structured/records.py` | The records, top-level values, and fields of a JSON or YAML list read as a table, from the structured plugin’s parse under `STRUCTURED_PARSE_MAX_BYTES`; past any of them the table holds the leading rows or fields and says so |
+| `RECORDS_TYPE_SAMPLE_ROWS` | `builtin_plugins/structured/records.py` | Records whose values decide each field’s type |
+| `RECORDS_CACHE_MAX_ENTRIES`, `RECORDS_CACHE_MAX_BYTES` | `builtin_plugins/structured/records.py` | Server memory for record lists read as tables and their sort indexes, estimated from each parse’s bytes and nodes |
+| `SORT_UNINDEXED_MAX_ROWS` | `builtin_plugins/sqlite/reader.py` | The rows of a SQLite table or view past which only its key and the fields an index leads with sort; the rest say why in `sort_note` |
+| `FILTER_SCAN_ROWS` | `builtin_plugins/sqlite/reader.py` | Rows a SQLite filter or search examines before returning a cursor, even when none of them match |
+| `OVERVIEW_COUNT_ROWS` | `builtin_plugins/sqlite/reader.py` | Rows counted for a SQLite overview table without ANALYZE statistics. A larger table’s size is omitted |
+| `COUNT_CAP` | `builtin_plugins/sqlite/reader.py` | The rows a SQLite page’s count reads; past it the count is a lower bound, drawn as “at least” |
+| `REFS_PER_PAGE` | `builtin_plugins/sqlite/reader.py` | Referenced rows one SQLite page resolves; a value past it is shown without its reference |
+| `PAGE_INLINE_BYTES` | `builtin_plugins/sqlite/reader.py` | A SQLite text or blob a page reads whole; a longer one is previewed from its stored bytes, or shown as its size where it has no rowid |
+| `DESCRIPTION_CACHE_ENTRIES` | `builtin_plugins/sqlite/database.py` | Server memory for SQLite catalogs and table descriptions, by database and generation |
+| `WHOLE_TABLE_MAX_ROWS` | `builtin_plugins/table/table-view.js` | The rows a table may hold and still be drawn whole, keeping the browser’s find, select all, copy, and print; a larger one is a window with Search, row selection that copies as tab-separated values, and print of the rows held in their place |
+| `FILE_WATCH_MAX_PATHS` | `file_watches.py` | Files one page may watch on its event stream, which every poll reads the generation of; a watch past it is refused and its view is not live |
+| `FIRST_PAGE_ROWS`, `NEXT_PAGE_ROWS`, `ROWS_OVERSCAN`, `ROW_HEIGHT_ESTIMATE_PX` | `builtin_plugins/table/table-view.js` | The rows the table view’s first and later requests ask for, which a page of wide rows may answer with fewer, the rows its window draws past the view, and a row’s height before one is measured |
+| `PRINT_MAX_ROWS` | `builtin_plugins/table/table-view.js` | The rows a printout of a windowed table draws; past it, or when rows after those held were not read, the printout says which rows it holds. The comment above it records why the rows a window holds have no bound of their own |
+| `VALUE_MAX_BYTES`, `READ_OPCODE_BUDGET` | `sqlite_access.py` | The longest value one SQLite statement may produce, and the virtual-machine steps one read may run, beside a wall-clock deadline its watchdog interrupts at |
+| `COPY_MAX_BYTES` | `sqlite_access.py` | A database and its log copied privately for one read, when its log has no index or the file has a second name; past it the main file is read alone and says so |
+| `READER_POOL_SIZE`, `READER_QUEUE_MAX`, `SQLITE_REQUEST_DEADLINE_SECONDS`, `READER_KILL_GRACE_SECONDS`, `READER_ADDRESS_SPACE_BYTES` | `sqlite_readers.py` | SQLite reader processes alive and requests waiting for one, a request’s deadline and the grace before its reader is killed, and a reader’s address space |
+| `BLOB_MAX_BYTES`, `BLOBS_MAX_BYTES` | `sqlite_readers.py` | A database on a Git pin, written once to a private file to be read, and the written blobs one process keeps, the least recently used removed past it |
+| `ANSWER_MAX_BYTES`, `HEAP_LIMIT_BYTES` | `sqlite_access.py` | The longest answer a SQLite reader process returns, past which it answers `too_large`, and the heap SQLite may allocate in one, which bounds it where the address-space limit is not enforced |
 | `SUMMARY_ROWS_OVERSCAN` | `builtin_plugins/diff/diff-summary.js` | Diff summary rows mounted on either side of the window’s view of its tree, which has no scroll of its own and no length bound beyond `MAX_MANIFEST_FILES` |
 
 ## References

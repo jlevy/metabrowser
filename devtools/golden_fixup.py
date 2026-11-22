@@ -90,7 +90,7 @@ FIXUPS: list[tuple[str, str]] = [
     # the sandbox's `home`. Its own pattern, ahead of the sandbox rule: what follows it
     # is the layout under the home, which stays literal.
     (
-        r'("location": ")[^\s"]*/tryscript-[A-Za-z0-9]+/home(/repository-stores/)',
+        r'("location": ")[^\s"]*/tryscript-[A-Za-z0-9]+/home(/repos/)',
         r"\1[APP_HOME]\2",
     ),
     # The recent-targets transcript's folders, under the sandbox's `roots`: ahead of the
@@ -110,8 +110,8 @@ FIXUPS: list[tuple[str, str]] = [
     # address of the sandbox: the key is derived from the address, so no fixture can
     # pin it. A hosted origin's key is the same on every machine and stays literal.
     (
-        r'("origin": "file://\[CWD\][^"\n]*",\n\s*"location": "[^"\n]*/repository-stores/)'
-        r'[a-z0-9-]+--[0-9a-f]{16}(/repository\.git")',
+        r'("origin": "file://\[CWD\][^"\n]*",\n\s*"location": "[^"\n]*/repos/)'
+        r'[a-z0-9-]+-[0-9a-z]{11}(/repository\.git")',
         r"\1[STORE_KEY]\2",
     ),
     (r"/\S*/builtin_plugins", "[BUILTIN]"),

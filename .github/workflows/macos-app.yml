@@ -14,6 +14,8 @@ on:
       - "apps/macos/**"
       - "Makefile"
       - ".github/workflows/macos-app.yml"
+      # The shared Lucide notice copied into the signed app bundle.
+      - "src/metabrowser/static/source-kind-glyphs.license.txt"
       # metab's half of handing the app a target, whose LaunchServices lookup runs here.
       - "src/metabrowser/cli/present.py"
       - "tests/test_present.py"
@@ -25,6 +27,8 @@ on:
       - "apps/macos/**"
       - "Makefile"
       - ".github/workflows/macos-app.yml"
+      # The shared Lucide notice copied into the signed app bundle.
+      - "src/metabrowser/static/source-kind-glyphs.license.txt"
       # metab's half of handing the app a target, whose LaunchServices lookup runs here.
       - "src/metabrowser/cli/present.py"
       - "tests/test_present.py"

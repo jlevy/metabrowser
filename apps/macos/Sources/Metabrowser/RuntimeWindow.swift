@@ -10,10 +10,10 @@ import SwiftUI
     var isSearching = false
     /// A file chosen with Choose metab… is being checked.
     var isChoosing = false
-    /// A search found nothing, and the first-run steps are being worked out.
+    /// A search found nothing, and the app is locating the directory to watch.
     var isPreparingGuide = false
     var notice: String?
-    /// The first-run steps, once a search found no usable `metab`.
+    /// Discovery status, once a search found no usable metab.
     var guide: SetupGuide?
 }
 
@@ -30,25 +30,19 @@ struct RuntimeView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
+            Text("Information").font(.headline)
             if let setup = model.setup {
                 found(setup)
+                PluginInventoryView(setup: setup)
             } else if let guide = model.guide {
-                missing(guide)
+                SetupGuideView(guide: guide)
             } else {
                 activity(RuntimeActivity(
                     isSearching: model.isSearching, isChoosing: model.isChoosing,
-                    isPreparingSteps: model.isPreparingGuide))
+                    isPreparingGuide: model.isPreparingGuide))
             }
             if let notice = model.notice {
                 Text(notice).foregroundStyle(.orange).textSelection(.enabled)
-            }
-            Divider()
-            HStack {
-                Button("Find Again", action: actions.findAgain).disabled(model.isSearching)
-                Button("Choose metab…", action: actions.choose)
-                Button("Check Setup…", action: actions.checkSetup)
-                Spacer()
-                Button("Reveal Logs", action: actions.revealLogs)
             }
             if !model.tried.isEmpty {
                 DisclosureGroup("Places looked") {
@@ -62,7 +56,17 @@ struct RuntimeView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            HStack {
+                Button("Check Setup…", action: actions.checkSetup)
+                Button("Reveal Logs", action: actions.revealLogs)
+                Link("Installation and troubleshooting on GitHub", destination: ProjectLinks.installationGuide)
+            }
             Divider()
+            Text("Preferences").font(.headline)
+            HStack {
+                Button("Find Again", action: actions.findAgain).disabled(model.isSearching)
+                Button("Choose metab…", action: actions.choose)
+            }
             WindowPreferencesView()
         }
         .padding(20)
@@ -94,12 +98,12 @@ struct RuntimeView: View {
         }
     }
 
-    /// What is running while there is neither a runtime nor steps to show.
+    /// What is running before runtime discovery has produced a result.
     @ViewBuilder private func activity(_ activity: RuntimeActivity) -> some View {
         switch activity {
         case .searching: working("Looking for the metab command-line tool…")
         case .checkingChoice: working("Checking the chosen metab…")
-        case .preparingSteps: working("Working out the steps to install metab…")
+        case .preparingGuide: working("Checking where metab is installed…")
         case .idle: Text("No metab is selected. Find Again looks for one, and Choose metab… picks one.")
         }
     }
@@ -111,15 +115,6 @@ struct RuntimeView: View {
         }
     }
 
-    private func missing(_ guide: SetupGuide) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SetupGuideView(guide: guide)
-            Link(
-                "Installation guide",
-                destination: ProjectLinks.installationGuide)
-        }
-    }
-
     static func describe(_ result: CandidateResult) -> String {
         switch result {
         case .valid(let version): "metab \(version)"
@@ -128,6 +123,83 @@ struct RuntimeView: View {
             "metab \(version), \(MetabRequirement.flagShortfall(version) ?? "older than \(MetabRequirement.minimum)")"
         case .rejected(let reason): reason
         case .untrusted(let reason): "not run: \(reason)"
+        }
+    }
+}
+
+/// Reads plugin discovery only while the section is open, then rereads it if the
+/// selected runtime changes or the user refreshes the list.
+private struct PluginInventoryView: View {
+    let setup: RuntimeSetup
+    @State private var expanded = false
+    @State private var response: PluginInventory.Answer?
+    @State private var refresh = 0
+
+    private struct Request: Equatable {
+        var setup: RuntimeSetup
+        var refresh: Int
+    }
+
+    var body: some View {
+        DisclosureGroup("Plugins", isExpanded: $expanded) {
+            if expanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Discovery for new servers using the selected runtime.")
+                        .foregroundStyle(.secondary)
+                    inventory
+                    Button("Refresh Plugin List") { refresh += 1 }
+                        .disabled(response == nil)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .task(id: Request(setup: setup, refresh: refresh)) {
+                    response = nil
+                    let command = PluginInventory.spec(setup: setup, inherited: ProcessInfo.processInfo.environment)
+                    let result = await CommandRunner.run(command, timeout: PluginInventory.timeout)
+                    guard !Task.isCancelled else { return }
+                    response = PluginInventory.answer(result)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var inventory: some View {
+        switch response {
+        case nil:
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Discovering plugins…")
+            }
+        case .unavailable(let message):
+            Text(message).foregroundStyle(.secondary).textSelection(.enabled)
+        case .inventory(let result):
+            if result.plugins.isEmpty && result.errors.isEmpty {
+                Text("No plugins were discovered.").foregroundStyle(.secondary)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(result.plugins) { plugin in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(plugin.displayName).bold()
+                                Text("\(plugin.name) · \(plugin.version) · \(plugin.source)")
+                                    .foregroundStyle(.secondary)
+                                if let requires = plugin.requires, !requires.isEmpty {
+                                    Text("Requires \(requires.joined(separator: ", "))")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .textSelection(.enabled)
+                        }
+                        if !result.errors.isEmpty {
+                            Text("Discovery problems").bold()
+                            ForEach(Array(result.errors.enumerated()), id: \.offset) { _, error in
+                                Text(error).foregroundStyle(.orange).textSelection(.enabled)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(height: 180)
+            }
         }
     }
 }

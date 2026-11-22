@@ -77,7 +77,7 @@ def make_plugin_dir(tmp_path: Path):
 
 def test_deferred_plugin_asset_lifecycle_is_sdk_0_5() -> None:
     """Selected-kind loading is a released lifecycle break, not an additive 0.4 change."""
-    assert PLUGIN_SDK_VERSION == "0.7"
+    assert PLUGIN_SDK_VERSION == "0.8"
 
 
 def test_manifest_minimum_fields(make_plugin_dir) -> None:
@@ -86,7 +86,7 @@ def test_manifest_minimum_fields(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p1"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[kind]]
 id = "myk"
@@ -161,7 +161,7 @@ id = "myk"
 match = { ext = ".myk" }
 """,
     )
-    with pytest.raises(ValueError, match=r"targets browser SDK '0\.4'.*provides '0\.7'"):
+    with pytest.raises(ValueError, match=r"targets browser SDK '0\.4'.*provides '0\.8'"):
         load_manifest(plugin_dir / "manifest.toml")
 
 
@@ -171,7 +171,7 @@ def test_manifest_rejects_empty_match(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p2"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[kind]]
 id = "myk"
@@ -188,7 +188,7 @@ def test_manifest_rejects_duplicate_view_ids(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p3"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[kind]]
 id = "myk"
@@ -214,7 +214,7 @@ def test_manifest_rejects_multiple_defaults(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p4"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[kind]]
 id = "myk"
@@ -242,7 +242,7 @@ def test_manifest_rejects_bad_sidekick(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p5"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[kind]]
 id = "myk"
@@ -307,7 +307,7 @@ def test_discovery_reports_manifest_missing_index_js(make_plugin_dir, tmp_path: 
         """
 [plugin]
 name = "broken"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[kind]]
 id = "x"
@@ -333,7 +333,7 @@ def test_discovery_finds_extra_dir_plugin(make_plugin_dir, tmp_path: Path) -> No
         """
 [plugin]
 name = "myplug"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[kind]]
 id = "myk"
@@ -354,7 +354,7 @@ def test_entry_point_calls_documented_plugin_dir_factory(
         """
 [plugin]
 name = "entrypoint-plugin"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[kind]]
 id = "entrypoint-kind"
@@ -382,6 +382,116 @@ match = { ext = ".entrypoint" }
     assert isinstance(discovered[0], LoadedPlugin)
     assert discovered[0].static_root == plugin_dir.resolve()
     assert discovered[0].source == "entry-point:entrypoint-plugin"
+
+
+def _entry_point_plugin(
+    make_plugin_dir, monkeypatch: pytest.MonkeyPatch, register: str
+) -> list[LoadedPlugin | str]:
+    plugin_dir = make_plugin_dir(
+        "register-plugin",
+        f"""
+[plugin]
+name = "register-plugin"
+sdk_version = "0.8"
+register = "{register}"
+
+[[kind]]
+id = "register-kind"
+match = {{ ext = ".registerkind" }}
+""",
+    )
+    module_name = "metabrowser_test_register_entrypoint"
+    module = ModuleType(module_name)
+    cast(Any, module).plugin_dir = lambda: plugin_dir
+    monkeypatch.setitem(sys.modules, module_name, module)
+    entry_point = importlib.metadata.EntryPoint(
+        name="register-plugin", value=f"{module_name}:plugin_dir", group="metabrowser.plugins"
+    )
+    monkeypatch.setattr(importlib.metadata, "entry_points", lambda **_kwargs: [entry_point])
+    return _discover_entry_point_plugins()
+
+
+def test_register_module_is_imported_once_at_discovery(
+    make_plugin_dir, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    register = "metabrowser_test_register_module"
+    module = ModuleType(register)
+    cast(Any, module).imports = 0
+    monkeypatch.setitem(sys.modules, register, module)
+    imported: list[str] = []
+    real_import = importlib.import_module
+
+    def counting_import(name: str, package: str | None = None) -> ModuleType:
+        if name == register:
+            imported.append(name)
+        return real_import(name, package)
+
+    monkeypatch.setattr(importlib, "import_module", counting_import)
+
+    discovered = _entry_point_plugin(make_plugin_dir, monkeypatch, register)
+
+    assert [p.name for p in discovered if isinstance(p, LoadedPlugin)] == ["register-plugin"]
+    assert imported == [register]
+
+
+def test_register_module_import_failure_is_a_load_error(
+    make_plugin_dir, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    discovered = _entry_point_plugin(
+        make_plugin_dir, monkeypatch, "metabrowser_test_register_module_missing"
+    )
+
+    assert len(discovered) == 1
+    assert isinstance(discovered[0], str)
+    assert "metabrowser_test_register_module_missing" in discovered[0]
+    assert "failed to import" in discovered[0]
+
+
+def test_register_module_is_ignored_for_an_operator_directory_plugin(
+    make_plugin_dir, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    extra = tmp_path / "extra"
+    extra.mkdir()
+    plugin_dir = extra / "localplug"
+    plugin_dir.mkdir()
+    (plugin_dir / "manifest.toml").write_text(
+        """
+[plugin]
+name = "localplug"
+sdk_version = "0.8"
+register = "metabrowser_test_register_never_imported"
+
+[[kind]]
+id = "local-kind"
+match = { ext = ".localkind" }
+"""
+    )
+    (plugin_dir / "index.js").write_text("// ok\n")
+
+    with caplog.at_level("WARNING"):
+        result = discover_plugins(extra_dirs=[extra])
+
+    assert "localplug" in [p.name for p in result.plugins]
+    assert not [e for e in result.errors if "localplug" in e]
+    assert "JavaScript-only" in caplog.text
+
+
+def test_manifest_rejects_a_register_value_that_is_not_a_module_name(make_plugin_dir) -> None:
+    plugin_dir = make_plugin_dir(
+        "badregister",
+        """
+[plugin]
+name = "badregister"
+sdk_version = "0.8"
+register = "not a module"
+
+[[kind]]
+id = "k"
+match = { ext = ".k" }
+""",
+    )
+    with pytest.raises(ValidationError):
+        load_manifest(plugin_dir / "manifest.toml")
 
 
 def test_entry_point_reports_directory_without_manifest(
@@ -802,7 +912,7 @@ def test_manifest_with_a_reserved_view_key_is_refused_at_discovery(make_plugin_d
         """
 [plugin]
 name = "files-view"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[kind]]
 id = "myk"

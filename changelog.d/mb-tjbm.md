@@ -12,4 +12,4 @@
   the cache holds only some of them.
   `GET /api/source/refs` carries them as `pulls` and `pulls_total` on a row and
   `pull_requests` on the envelope, and `PLUGIN_SDK_VERSION` is unchanged: the GitHub
-  plugin publishes `mb.builtins.github.pullStateIcon` for the chooser.
+  plugin exports `pullStateIcon` for the chooser.

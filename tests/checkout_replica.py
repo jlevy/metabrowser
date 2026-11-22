@@ -271,7 +271,7 @@ def build_homes(directory: Path) -> None:
         shutil.move(other, directory / "moved")
         os.environ["METABROWSER_CACHE_DIR"] = str(directory / "home-damaged")
         _cli([pull, "--checkout", str(checkout), "--no-serve"])
-    for store in (directory / "home-damaged" / "repository-stores").iterdir():
+    for store in (directory / "home-damaged" / "repos").iterdir():
         (store / "repository.git" / "objects" / "info" / "alternates").write_text(
             f"{directory}/elsewhere/objects\n", encoding="utf-8"
         )

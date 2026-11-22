@@ -264,7 +264,7 @@ const MEASURE = `async (titles) => {
         refChip: mb.refChip,
         refChipHtml: mb.refChipHtml,
         mergeRefs: mb.mergeRefs,
-        mountRefCopies: mb.mountRefCopies,
+        mountRefMenus: mb.mountRefMenus,
         actorIdentity: mb.actorIdentity,
         titleNodes: mb.titleNodes,
         shortCommit: mb.shortCommit,

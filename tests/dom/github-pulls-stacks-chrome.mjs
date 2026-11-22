@@ -318,13 +318,13 @@ const SHELL_TIPS = `(async () => {
   };
   const long = "A pull request title far longer than the box it is drawn in";
   const branch = "feature/a-branch-name-longer-than-its-chip";
-  const chipCut = window.metabrowser.refChip(branch, { copy: false });
+  const chipCut = window.metabrowser.refChip(branch, { menu: false });
   chipCut.style.maxWidth = "80px";
   const anchors = {
     whole: h("button", { type: "button", "data-tip-text": "Reload" }, ["Reload"]),
     wholeSpaced: h("span", { "data-tip-text": "stack #286" }, ["  Stack   #286 "]),
     cut: h("span", { "data-tip-text": long, style: "display: block; width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" }, [long]),
-    chipWhole: window.metabrowser.refChip("main", { copy: false }),
+    chipWhole: window.metabrowser.refChip("main", { menu: false }),
     chipCut,
     glyph: h("button", { type: "button", "data-tip-text": "Copy path", "aria-label": "Copy path" }, ["↑"]),
   };

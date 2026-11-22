@@ -25,7 +25,7 @@ async function main() {
   assert.equal(full.label, "77 commits, 83 files changed, 2.3 MB compressed, 14.0 MB raw diff");
   assert.match(full.tooltip ?? "", /^2\.3 MB compressed: what Git pushes/);
   assert.match(full.tooltip ?? "", /14\.0 MB raw diff: its patch, uncompressed\.$/);
-  // Each number is a count summary's number: bold where it is painted, in the line's ink.
+  // Keep the same text for callers reading the line's numbers.
   // The sandbox's arrays are of another realm, so they are compared as JSON.
   assert.equal(
     JSON.stringify(
@@ -64,9 +64,36 @@ async function main() {
   assert.ok(
     html.includes(
       '<span class="change-size-line-size" data-tip-text="2.3 MB compressed: what Git pushes for this change. 14.0 MB raw diff: its patch, uncompressed.">' +
-        '<span class="summary-number">2.3 MB</span> compressed (<span class="summary-number">14.0 MB</span> raw diff)</span>',
+        '<span class="size size-large">2.3 MB</span> compressed (<span class="size size-large">14.0 MB</span> raw diff)</span>',
     ),
     html,
+  );
+  const overview = mb.changeSizeLine({
+    commits: 8,
+    files: 28,
+    pushedBytes: 64_410,
+    diffBytes: 217_600,
+  });
+  assert.equal(
+    overview.text,
+    "8 commits\u00a0· 28 files changed\u00a0· 62.9 KB compressed (212.5 KB raw diff)",
+  );
+  assert.equal(
+    overview.label,
+    "8 commits, 28 files changed, 62.9 KB compressed, 212.5 KB raw diff",
+  );
+  assert.ok(
+    mb
+      .changeSizeLineHtml(overview)
+      .includes(`${mb.sizeHtml(64_410)} compressed (${mb.sizeHtml(217_600)} raw diff)`),
+  );
+  const limit = 1024 * 1024;
+  const atLimit = mb.changeSizeLine({ files: 1, pushedBytes: limit });
+  const overLimit = mb.changeSizeLine({ files: 1, pushedBytes: limit + 1 });
+  assert.equal(atLimit.text, overLimit.text, "rounding conceals a one-byte threshold crossing");
+  assert.ok(mb.changeSizeLineHtml(atLimit).includes('<span class="size">1.0 MB</span>'));
+  assert.ok(
+    mb.changeSizeLineHtml(overLimit).includes('<span class="size size-large">1.0 MB</span>'),
   );
   assert.ok(!html.includes("file-change-status"), "never a status's color");
   assert.ok(!mb.changeSizeLineHtml(counts).includes("change-size-line-size"));

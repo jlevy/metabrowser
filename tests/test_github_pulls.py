@@ -111,6 +111,7 @@ from tests.github_pull_fixture import (
     scenario,
 )
 from tests.golden_harness import read_recording, settle
+from tests.held_port import listener_on
 from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
@@ -1614,7 +1615,9 @@ def _answering_head(stand: _Stand, head: str) -> dict[str, Any]:
 def _serve(url: str) -> Any:
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_class,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = CliRunner().invoke(_app, [url, "--no-open"])
     if result.exit_code == 0:

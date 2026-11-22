@@ -19,8 +19,8 @@ Each aim ships in part today; the planned rest links its plan.
   the macOS app, or serve it and hand you the page.
   `metab --api`, `--show`, and `--walk` give an agent the same data the page draws,
   which the [Parity Registry](project/architecture/arch-parity-registry.md) enforces,
-  the `agent-log` plugin draws coding-agent logs as timelines, and the `event-log`
-  plugin draws Metabrowser’s own event log as spans, latencies, and failures
+  the `agents` plugin draws coding-agent logs as timelines, and the `event-log` plugin
+  draws Metabrowser’s own event log as spans, latencies, and failures
   ([Real-Time Debugging](realtime-debugging.md#browsing-the-log)). `metab --present`
   hands a folder, a file, or a GitHub URL to the macOS app; planned: a reply from the
   app, and a browser when there is no app

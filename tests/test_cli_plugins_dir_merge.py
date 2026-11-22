@@ -25,7 +25,7 @@ def _make_plugin(root: Path, name: str, ext: str = ".demo") -> None:
     plug = root / name
     plug.mkdir(parents=True)
     (plug / "manifest.toml").write_text(
-        f'[plugin]\nname = "{name}"\nsdk_version = "0.7"\n'
+        f'[plugin]\nname = "{name}"\nsdk_version = "0.8"\n'
         f'[[kind]]\nid = "demo-{name}"\nmatch = {{ ext = "{ext}" }}\n'
     )
     (plug / "index.js").write_text("// stub\n")
@@ -144,12 +144,15 @@ def test_serve_expands_env_plugin_paths_before_server_import(tmp_path: Path) -> 
     wrapper = (
         "import json, os\n"
         "from pathlib import Path\n"
-        "from unittest.mock import patch\n"
+        "from unittest.mock import MagicMock, patch\n"
         f"served_root = Path({str(served_root)!r})\n"
         "from metabrowser.cli.serve import run_serve\n"
         "with (\n"
         "    patch('metabrowser.cli.serve._QuietForceExitServer'),\n"
-        "    patch('metabrowser.cli.serve.find_available_local_port', return_value=8411),\n"
+        "    patch(\n"
+        "        'metabrowser.cli.serve.listen_on_available_local_port',\n"
+        "        return_value=MagicMock(**{'getsockname.return_value': ('127.0.0.1', 8411)}),\n"
+        "    ),\n"
         "    patch('threading.Thread'),\n"
         "):\n"
         "    run_serve(\n"
@@ -211,13 +214,16 @@ def test_env_var_and_cli_configure_server_before_import(tmp_path: Path) -> None:
     wrapper = (
         "import os, sys, json, logging\n"
         "from pathlib import Path\n"
-        "from unittest.mock import patch\n"
+        "from unittest.mock import MagicMock, patch\n"
         f"served_root = Path({str(served_root)!r})\n"
         f"cli_root = Path({str(cli_root)!r})\n"
         "from metabrowser.cli.serve import run_serve\n"
         "with (\n"
         "    patch('metabrowser.cli.serve._QuietForceExitServer'),\n"
-        "    patch('metabrowser.cli.serve.find_available_local_port', return_value=8411),\n"
+        "    patch(\n"
+        "        'metabrowser.cli.serve.listen_on_available_local_port',\n"
+        "        return_value=MagicMock(**{'getsockname.return_value': ('127.0.0.1', 8411)}),\n"
+        "    ),\n"
         "    patch('threading.Thread'),\n"
         "):\n"
         "    run_serve(\n"
@@ -274,13 +280,16 @@ def test_cli_dedupes_overlap_with_env(tmp_path: Path) -> None:
     wrapper = (
         "import os, sys, json\n"
         "from pathlib import Path\n"
-        "from unittest.mock import patch\n"
+        "from unittest.mock import MagicMock, patch\n"
         f"served_root = Path({str(served_root)!r})\n"
         f"shared = Path({str(shared)!r})\n"
         "from metabrowser.cli.serve import run_serve\n"
         "with (\n"
         "    patch('metabrowser.cli.serve._QuietForceExitServer'),\n"
-        "    patch('metabrowser.cli.serve.find_available_local_port', return_value=8411),\n"
+        "    patch(\n"
+        "        'metabrowser.cli.serve.listen_on_available_local_port',\n"
+        "        return_value=MagicMock(**{'getsockname.return_value': ('127.0.0.1', 8411)}),\n"
+        "    ),\n"
         "    patch('threading.Thread'),\n"
         "):\n"
         "    run_serve(\n"

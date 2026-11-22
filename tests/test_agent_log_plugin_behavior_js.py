@@ -10,7 +10,7 @@ from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SHIM = Path(__file__).resolve().parent / "dom" / "agent-log-plugin-behavior.js"
-PLUGIN_JS = REPO_ROOT / "src/metabrowser/builtin_plugins/agent_log/index.js"
+PLUGIN_JS = REPO_ROOT / "src/metabrowser/builtin_plugins/agents/agent-log.js"
 VIEW_COMPOSITION_JS = REPO_ROOT / "src/metabrowser/static/view-composition.js"
 
 

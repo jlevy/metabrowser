@@ -209,7 +209,10 @@ const timers = [];
 const clipboard = { written: [], answer: "takes" };
 const sandbox = createSdkSandbox({
   document,
-  MetabrowserIcons: { toggle: '<svg data-icon="toggle"></svg>' },
+  MetabrowserIcons: {
+    toggle: '<svg data-icon="toggle"></svg>',
+    copy: '<svg data-icon="copy"></svg>',
+  },
   navigator: {
     clipboard: {
       writeText(text) {
@@ -231,7 +234,7 @@ function describe(element) {
   const said = { tag: element.tagName.toLowerCase(), class: element.className };
   for (const [name, value] of element.attributes) {
     if (name !== "class") {
-      said[name] = value;
+      said[name] = name === "data-mb-owner" ? "(page owner)" : value;
     }
   }
   for (const [name, value] of Object.entries(element.dataset)) {
@@ -263,16 +266,24 @@ const open = button.querySelector(".counterpart-open");
 const more = button.querySelector(".counterpart-more");
 const menu = button.querySelector(".counterpart-menu");
 const status = button.querySelector(".counterpart-status");
-const [copy, external] = menu.childNodes;
+const [destination, copy, external] = menu.childNodes;
+assert.equal(destination.textContent, URL_OF_PAGE);
 const markup = describe(button);
+for (const item of [copy, external]) {
+  assert.equal(sandbox.MetabrowserPluginHost.ownsElement(item), true);
+  assert.equal(item.querySelector(".menu-item-icon").getAttribute("aria-hidden"), "true");
+}
+assert.equal(copy.querySelector(".menu-item-icon").html, sandbox.MetabrowserIcons.copy);
+assert.match(external.querySelector(".menu-item-icon").html, /M7 17 17 7/);
+assert.throws(() => mb.externalLinkMenuItems("javascript:alert(1)"), /needs an HTTP or HTTPS URL/);
 // The status line is a polite live region from the start, and empty.
 assert.equal(status.getAttribute("role"), "status");
 assert.equal(status.textContent, "");
 // The app's hooks (mb-4wqh), exactly.
 assert.equal(button.getAttribute("data-view-on-github"), "");
-assert.equal(open.getAttribute("data-view-on-github"), "open");
+assert.equal(open.getAttribute("data-web-view"), "open");
 assert.equal(open.getAttribute("href"), URL_OF_PAGE);
-assert.equal(external.getAttribute("data-view-on-github"), "external");
+assert.equal(external.getAttribute("data-web-view"), "external");
 assert.equal(external.getAttribute("href"), URL_OF_PAGE);
 assert.equal(external.getAttribute("target"), "_blank");
 assert.equal(external.getAttribute("rel"), "noopener");

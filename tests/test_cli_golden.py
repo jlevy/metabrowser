@@ -34,6 +34,7 @@ from tests.golden_harness import (
     run_metab,
     stable_console,
 )
+from tests.held_port import listener_on
 from tests.required_tools import needs_git
 
 FIXED_MTIME = 1_700_000_000
@@ -104,7 +105,9 @@ def test_golden_serve_banner(golden: str, selection: str, tmp_path: Path) -> Non
     root = _make_walk_fixture(tmp_path)
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer"),
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(_app, [f"{root}{selection}", "--no-open"])
     rendered = block(

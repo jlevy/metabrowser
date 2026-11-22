@@ -25,7 +25,7 @@
     "src/metabrowser/static/icons.js",
     "src/metabrowser/static/perf.js",
     "src/metabrowser/static/plugin-sdk.js",
-    "src/metabrowser/builtin_plugins/agent_log/index.js",
+    "src/metabrowser/builtin_plugins/agents/agent-log.js",
     "src/metabrowser/builtin_plugins/markdown/index.js",
     "src/metabrowser/builtin_plugins/structured/index.js",
     "src/metabrowser/builtin_plugins/structured/preview.js",

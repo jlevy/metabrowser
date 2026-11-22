@@ -4221,6 +4221,7 @@ class _PythonInventoryStore:
                     total_size=self._descendant_file_sizes.get(cursor, 0),
                     unignored_files=self._descendant_unignored_file_counts.get(cursor, 0),
                     unignored_size=self._descendant_unignored_file_sizes.get(cursor, 0),
+                    mtime_ns=newest_mtime_ns,
                     newest_mtime_ns=newest_mtime_ns,
                     empty=self._descendant_leaf_counts.get(cursor, 0) == 0,
                     write_token=WriteToken(self._generation.get(cursor, 0)),

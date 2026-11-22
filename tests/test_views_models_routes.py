@@ -94,7 +94,7 @@ def test_container_kinds_match_the_map() -> None:
     }
     # `folder` is a container by construction, not by manifest.
     containers.add("folder")
-    section = doc.split("Two kinds are also **containers**", 1)
+    section = doc.split("kinds are also **containers**", 1)
     assert len(section) == 2, "the map lost its container paragraph"
     for kind in containers:
         assert f"`{kind}`" in section[1][:400], f"container kind {kind!r} missing from the map"

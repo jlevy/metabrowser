@@ -114,7 +114,7 @@ tested directly, as the paragraph after it says.
 | `fetching` | `fetch_succeeded` | `fetched` | staging entry | Objects are in the staging store or, for an overlay, its lender |
 | `fetched` | `validation_failed` | `abandoned` | staging entry | The default branch or object format did not validate; staging deleted |
 | `fetched` | `validated` | `validated` | staging entry | Write `store.yml`, with the lender if any, and `state.yml` |
-| `validated` | `publish_store` | `store_published` | alias, store, staging entry | Verify the store directory is absent and rename staging into `repository-stores/<store key>` |
+| `validated` | `publish_store` | `store_published` | alias, store, staging entry | Verify the store directory is absent and rename staging into `repos/<store key>` |
 | `validated` | `store_exists_same_identity` | `store_reused` | alias, store, staging entry | A concurrent acquisition published the same store first; staging is deleted after the locks are released |
 | `store_published` or `store_reused` | `publish_alias` | `alias_published` | alias, store, staging entry | Create `sources/<slug>/` with `source.yml` and `store-alias.yml`, the only visibility commit |
 | `store_published` or `store_reused` | `alias_exists_same_store` | `alias_published` | alias, store, staging entry | Another process committed the same alias first |
@@ -413,15 +413,13 @@ in sight:
   A pin with no mirror is headed by its ref and commit.
 - **Title:** `/api/identity` gives the tab and window title, and a `full_name` of the
   origin without its scheme and the pin, which never names the cache.
-- **Commit:** the heading is the name alone.
-  The ref selector in the Files toolbar names the ref, the heading’s tooltip names the
-  full commit, and a control after the name copies it (mb-qq4e).
-- **Location:** a note after the address names the store’s bare repository, with the
-  home directory as `~` when it is under it (`display_directory`). Nothing is checked
-  out, so the location is not drawn as the start of the address, and its tooltip says it
-  is a bare repository.
-  `static/mirror-heading.js` draws it, and the server writes it only into a mirror’s
-  page.
+- **Commit:** the navigation heading shows the name.
+  The ref selector in the Files toolbar names the ref and shows short commit IDs in its
+  rows.
+- **Location:** the root menu shows the local path to the bare repository with a short
+  source note. A separate note after the address shows the store directory.
+  Both abbreviate the home directory as `~` (`display_directory`).
+  `static/mirror-heading.js` draws the address note from data in the mirror’s page.
 
 An origin is untrusted: its name is display text that passes through `display_segment`,
 is cut when too long, and is escaped on the server and again in the page.

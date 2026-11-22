@@ -213,7 +213,9 @@ its `[tool.uv]`), so after `make install` it meets a minimum raised to that rele
 
 To raise the minimum, name the next minor release after the latest one, since no
 checkout reports a newer one, and leave `MetabRequirement.isReleased` false until that
-release is on PyPI, since the app’s upgrade command asks PyPI for it.
+release is on PyPI, so the app can accurately report whether its runtime is available.
+Update the [README’s preview requirement](../README.md#developer-preview) and
+[release status](installation.md#release-status) at the same time.
 `tests/test_macos_app_pins.py` checks the form, both bounds, the bump, and the cache
 keys.
 

@@ -36,6 +36,7 @@ nonisolated enum ContractGolden {
     /// Where the golden's sandbox and the folder it serves are, here.
     static let sandbox = "/ROOT"
     static let served = "/ROOT/served"
+    static let checkout = "/ROOT/checkout"
     /// What stands for output the app shows a person and reads nothing of.
     static let shown = "<shown as written, not read>"
     /// What the golden holds for text the app shows and never reads: a message, or the
@@ -134,11 +135,11 @@ nonisolated enum ContractGolden {
     /// Every scenario a test below reads. A scenario the golden gains must be read here,
     /// and one it loses must be taken out, so the two lists cannot drift.
     private static let read: Set<String> = [
-        "version-probe", "version", "unknown-option",
+        "version-probe", "version", "unknown-option", "plugins",
         "serve/folder", "serve/not-an-open", "serve/repository-cloned", "serve/repository-cached",
         "serve-path/file",
         "recent-list/empty", "recent-list/after-an-open", "recent-list/listed", "recent-list/problem",
-        "recent-add/repository", "recent-forget/folder", "recent-clear",
+        "recent-add/repository", "recent-add/checkout", "recent-forget/folder", "recent-clear",
         "identity/folder", "identity/under-home", "identity/checkout", "identity/mirror",
         "source-status/folder", "source-status/mirror", "source-link/repository", "source-link/elsewhere",
         "present-dry-run/repository", "present-dry-run/pull-request", "present-dry-run/commit",
@@ -198,6 +199,40 @@ nonisolated enum ContractGolden {
         let older = await validate(asked) { $0 == plain.words ? plain.result : rejection }
         #expect(older == .tooOld(version: MetabRequirement.minimum))
         #expect(asked.all == [probe.words, plain.words])
+    }
+
+
+    @Test func settingsReadsPluginDiscoveryIncludingAPartialResult() throws {
+        let block = try block("plugins")
+        let setup = RuntimeSetup(
+            runtime: Runtime(executable: "/opt/metab", version: MetabRequirement.minimum, source: .chosen),
+            tools: ToolPaths(git: "/opt/git/bin/git"))
+        let spec = PluginInventory.spec(
+            setup: setup, inherited: ["HOME": "/Volumes/Home", "METABROWSER_PLUGINS_DIRS": "/tmp/plugins"])
+        #expect(spec.executable == setup.runtime.executable)
+        #expect(spec.arguments == block.words)
+        #expect(spec.environment == ChildEnvironment.build(
+            inherited: ["HOME": "/Volumes/Home"], toolDirectories: setup.tools.directories))
+
+        guard case .inventory(let listed) = PluginInventory.answer(block.result) else {
+            Issue.record("Settings could not read the golden plugin inventory")
+            return
+        }
+        #expect(listed.plugins.first { $0.name == "agents" }?.requires == ["structured"])
+        #expect(listed.plugins.first { $0.name == "sqlite" }?.requires == ["table"])
+        #expect(listed.plugins.first { $0.name == "fsqlite" }?.requires == ["sqlite", "table"])
+        #expect(listed.errors.isEmpty)
+
+        let partial = CommandResult(status: 1 << 8, output: [
+            #"{"plugins":[{"name":"agents","display_name":"Agents","version":"0.0.1","source":"builtin"}],"errors":["A plugin was rejected"]}"#
+        ])
+        guard case .inventory(let available) = PluginInventory.answer(partial) else {
+            Issue.record("A discovery error hid the plugins that loaded")
+            return
+        }
+        #expect(available.plugins.map(\.name) == ["agents"])
+        #expect(available.plugins.first?.requires == nil)
+        #expect(available.errors == ["A plugin was rejected"])
     }
 
     // MARK: - Servers
@@ -261,8 +296,10 @@ nonisolated enum ContractGolden {
         let opened = ContractGolden.opaque
         let folder = RecentTarget(mode: .folder, root: ContractGolden.served, openedAt: opened)
         let mirror = RecentTarget(mode: .mirror, root: demo.absoluteString, openedAt: opened)
+        let checkout = RecentTarget(mode: .folder, root: ContractGolden.checkout, openedAt: opened, git: true)
         let listings: [(String, [RecentTarget])] = [
-            ("recent-list/empty", []), ("recent-list/after-an-open", [folder]), ("recent-list/listed", [mirror, folder]),
+            ("recent-list/empty", []), ("recent-list/after-an-open", [folder]),
+            ("recent-list/listed", [checkout, mirror, folder]),
         ]
         for (scenario, targets) in listings {
             let block = try block(scenario)
@@ -271,6 +308,8 @@ nonisolated enum ContractGolden {
         }
         let rows = RecentTargets.items([mirror, folder], opensURLs: true, home: "/Volumes/Home")
         #expect(rows.map(\.url) == [demo, URL(filePath: ContractGolden.served, directoryHint: .isDirectory)])
+        // Each kind of root has its own mark, from what the list says of it.
+        #expect([checkout, mirror, folder].map { RootMark($0) } == [.gitCheckout, .mirror, .plainFolder])
 
         // A list this `metab` cannot read lists as empty, and says why.
         guard case .listing(let unread) = RecentTargets.answer(try block("recent-list/problem").result) else {
@@ -285,6 +324,7 @@ nonisolated enum ContractGolden {
         let add = try block("recent-add/repository")
         let target = try #require(add.words.first)
         #expect(add.words == RecentTargets.addArguments(target))
+        #expect(try block("recent-add/checkout").words == RecentTargets.addArguments(ContractGolden.checkout))
         let forget = try block("recent-forget/folder")
         #expect(forget.words == RecentTargets.forgetArguments(ContractGolden.served))
         let clear = try block("recent-clear")
@@ -311,7 +351,10 @@ nonisolated enum ContractGolden {
             Issue.record("a checkout's identity was not read")
             return
         }
-        #expect(checkout.kind == .folder)
+        // A folder with a `.git` entry is the `git` kind, which the app draws its own mark for.
+        #expect(checkout.kind == .git)
+        #expect(checkout.kindLabel == FolderIdentity.localFolder(served, git: true).kindLabel)
+        #expect(RootMark(checkout.kind) == .gitCheckout)
         #expect(checkout.repository == demo)
         guard case .plan(let plan) = PresentDryRun.answer(try block("present-dry-run/repository").result) else {
             Issue.record("a repository link was not resolved")
@@ -472,7 +515,8 @@ nonisolated enum ContractGolden {
         #expect(found.rows.map(\.state) == [.ok, .ok, .warning, .ok, .warning, .problem, .ok, .warning])
         let fixes = Dictionary(uniqueKeysWithValues: found.rows.map { ($0.id, $0.remedy) })
         let step = DoctorReport.Remedy(text: ContractGolden.text, command: ContractGolden.text)
-        #expect(fixes["metab"] == step, "the upgrade the app's minimum calls for")
+        #expect(fixes["metab"] == DoctorReport.Remedy(
+            text: "See the README for runtime setup.", url: ProjectLinks.installationGuide))
         #expect(fixes["github"] == step, "signing in to GitHub CLI")
         #expect(fixes["config"] == DoctorReport.Remedy(text: ContractGolden.text))
     }

@@ -271,6 +271,43 @@ def test_closing_waits_for_every_child_it_stopped_to_exit() -> None:
     assert [child.returncode is not None for child in children] == [True, True]
 
 
+def test_closing_waits_for_a_replacement_spawn_to_finish_cancelling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        spawn_began = asyncio.Event()
+        spawn_cleaned_up = asyncio.Event()
+
+        async def spawn(*_args: str, **_kwargs: Any) -> asyncio.subprocess.Process:
+            # Pause before asyncio returns the Process to the worker.
+            spawn_began.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                await asyncio.sleep(0)
+                spawn_cleaned_up.set()
+                raise
+            raise AssertionError("expected the replacement spawn to be cancelled")
+
+        worker = ProjectionWorker()
+        try:
+            worker.start(renders=True)
+            assert await worker.started()
+            child = worker._process  # pyright: ignore[reportPrivateUsage]
+            assert child is not None
+            worker._kill(child)  # pyright: ignore[reportPrivateUsage]
+            await child.wait()
+            monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+            worker._replace()  # pyright: ignore[reportPrivateUsage]
+            await asyncio.wait_for(spawn_began.wait(), timeout=5)
+            assert worker._process is None  # pyright: ignore[reportPrivateUsage]
+        finally:
+            await worker.aclose()
+        assert spawn_cleaned_up.is_set()
+
+    asyncio.run(run())
+
+
 def test_the_child_renders_what_the_in_process_inert_render_would() -> None:
     async def run() -> dict[str, Any]:
         worker = ProjectionWorker()

@@ -78,9 +78,10 @@ extension NSMenuItem {
     /// Option alternate, whose title is longer, passes its primary's as `fittedUnder`, so
     /// the two show the same subtitle.
     ///
-    /// The check mark stays AppKit's, centered on the item: a custom `onStateImage` drops
-    /// the item's `AXMenuItemMarkChar` (checked on macOS 26.5), so VoiceOver would no
-    /// longer report the row as checked.
+    /// The check mark of a `TitleLineMenuItem` follows its subtitle, on the title's line
+    /// with one, and the item still reports itself checked to accessibility. Any other
+    /// item's check stays AppKit's, centered on the item, since a custom `onStateImage`
+    /// drops the item's `AXMenuItemMarkChar` (checked on macOS 26.5).
     func setMark(_ mark: RootMark, subtitle: String? = nil, fittedUnder title: String? = nil) {
         let shown = subtitle.map { SubtitleFit.oneLine($0, under: title ?? self.title) }
         self.subtitle = shown

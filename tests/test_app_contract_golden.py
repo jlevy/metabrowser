@@ -107,6 +107,7 @@ from tests.golden_harness import (
     run_metab,
     stable_console,
 )
+from tests.held_port import listener_on
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git, _git
 
@@ -178,27 +179,15 @@ def test_the_version_metab_prints_is_one_the_app_reads() -> None:
     assert not pattern.fullmatch("v0.13.0")
 
 
-def test_the_names_the_app_runs_and_installs_are_the_packages() -> None:
-    """The app looks for a file named ``metab``, and tells uv to install ``metabrowser``.
-
-    Neither name is a flag or a field, so no command shows it: the console script and the
-    distribution are named in ``pyproject.toml``, and the app spells both by itself.
-    """
+def test_the_apps_executable_name_matches_the_console_script() -> None:
+    """The app looks for the executable installed by the package's console script."""
 
     project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     discovery = [
         segment.text for segment in swift_text.strings(_swift("Runtime/RuntimeDiscovery.swift"))
     ]
-    requirement = [
-        segment.text for segment in swift_text.strings(_swift("Setup/MetabVersion.swift"))
-    ]
     assert "metab" in project["scripts"]
     assert "/metab" in discovery, "RuntimeDiscovery.swift no longer looks for a file named metab"
-    name = project["name"]
-    assert f"uv tool install {name}" in discovery
-    assert any(
-        literal.startswith(f"uv tool install --upgrade '{name}>=") for literal in requirement
-    )
 
 
 # ── What metab defines for each value the app copies ─────────────────
@@ -378,7 +367,10 @@ class _Sandbox:
         port = int(argv[argv.index("--port") + 1])
         with (
             patch("metabrowser.cli.serve._QuietForceExitServer") as server,
-            patch("metabrowser.cli.serve.find_available_local_port", return_value=port),
+            patch(
+                "metabrowser.cli.serve.listen_on_available_local_port",
+                return_value=listener_on(port),
+            ),
             patch("metabrowser.cli.main.stop_when_stdin_closes") as lifeline,
         ):
             result = run_metab(argv)
@@ -462,6 +454,7 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         run("version-probe"),
         run("version"),
         run("unknown-option", status=2),
+        run("plugins"),
         # File > Open Recent, around the servers that fill it.
         run("recent-list/empty"),
         run("serve/folder", folder),
@@ -472,6 +465,8 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
             env={recent_targets.RECORD_ENV: "0"},
         ),
         run("recent-add/repository", {"target": "https://github.com/Octo/Demo/pull/12"}),
+        # A checkout is recorded as one, so a menu can draw its mark without a look at it.
+        run("recent-add/checkout", {"target": str(sandbox.checkout)}),
         run("recent-list/listed"),
         run("recent-forget/folder", {"root": served}),
         run("recent-clear"),

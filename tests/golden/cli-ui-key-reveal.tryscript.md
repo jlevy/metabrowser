@@ -638,6 +638,7 @@ $ node tests/dom/key-reveal-session.js
         ["\\","shell.nav-toggle","Hide navigation"],
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Tree tab"],
+        ["A","view-tabs.a","Table tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
@@ -666,6 +667,7 @@ $ node tests/dom/key-reveal-session.js
         ["\\","shell.nav-toggle","Hide navigation"],
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Tree tab"],
+        ["A","view-tabs.a","Table tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
@@ -693,6 +695,7 @@ $ node tests/dom/key-reveal-session.js
         ["0","shell.home","squares"],
         ["\\","shell.nav-toggle","Hide navigation"],
         ["F","main-tabs.files","Files tab"],
+        ["E","view-tabs.e","Session tab"],
         ["V","view-tabs.v","Log tab"],
         ["C","view-tabs.c","Charts tab"],
         ["S","view-tabs.s","Raw JSON tab"],
@@ -718,6 +721,7 @@ $ node tests/dom/key-reveal-session.js
         ["\\","shell.nav-toggle","Hide navigation"],
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Tree tab"],
+        ["A","view-tabs.a","Table tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
@@ -843,6 +847,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["\\","shell.nav-toggle","Hide navigation"],
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Tree tab"],
+        ["A","view-tabs.a","Table tab"],
         ["S","view-tabs.s","Source tab"],
         ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
@@ -856,6 +861,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["3","File type"],
         ["U","beside, in file-header view-header"],
         ["V","Tree tab"],
+        ["A","Table tab"],
         ["S","Source tab"],
         ["\\","beside, in preview-frame"]
       ],
@@ -866,8 +872,8 @@ $ node tests/dom/key-reveal-session.js gestures
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "cost": {
         "publications": ["batch(target,registration)"],
-        "targetReads": 8,
-        "keycapsCreated": 11
+        "targetReads": 9,
+        "keycapsCreated": 12
       }
     },
     {

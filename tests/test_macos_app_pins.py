@@ -24,7 +24,7 @@ import plistlib
 import re
 import tomllib
 from pathlib import Path
-from typing import Any, Final, cast, get_args
+from typing import Any, cast, get_args
 
 import pytest
 
@@ -42,14 +42,7 @@ from metabrowser.cache.projection import MAX_PAGE_LIMIT, sources_response
 from metabrowser.cache.records import canonical_now
 from metabrowser.cli import clone_report
 from metabrowser.cli.clone_report import LOG_INTERVAL_S, CloneReport, saying_while_waiting
-from metabrowser.cli.doctor import (
-    CHECKOUT_PROJECT,
-    CHECKOUT_VENV,
-    METAB_UPGRADE_COMMANDS,
-    PIPX_METADATA,
-    STORAGE_OVERRIDES,
-    UV_RECEIPT,
-)
+from metabrowser.cli.doctor import STORAGE_OVERRIDES
 from metabrowser.cli.present import (
     MINIMUM_METAB_KEY,
     OPENS_URLS_KEY,
@@ -302,53 +295,6 @@ def test_the_apps_servers_get_no_storage_variable() -> None:
     assert not names & STORAGE_OVERRIDES
 
 
-# The MetabInstall case for each of the doctor's install methods.
-_SWIFT_INSTALL_CASES: Final = {
-    "uv_tool": ".uvTool",
-    "pipx": ".pipx",
-    "checkout": ".checkout",
-    "environment": ".other",
-}
-
-
-def test_the_apps_upgrade_steps_are_the_doctors() -> None:
-    """The app names the step that upgrades a ``metab`` too old to run (``MetabInstall``),
-    and ``metab --doctor`` names the same step for one older than the app it finds
-    (``METAB_UPGRADE_COMMANDS``): each install gets the same command on both sides, read
-    from the same files.
-    """
-
-    source = (SHELL_CORE / "Setup" / "MetabVersion.swift").read_text(encoding="utf-8")
-    body = re.search(
-        r"public func upgradeCommand\(minimum: String\) -> String \{\n(.*?)\n    \}\n",
-        source,
-        re.DOTALL,
-    )
-    assert body is not None, "MetabInstall.upgradeCommand(minimum:) not found"
-    commands: dict[str, str] = {}
-    for line in body.group(1).splitlines():
-        case = re.fullmatch(r'\s*case ([^:]+): "(.*)"', line)
-        if case is not None:
-            for name in case.group(1).split(","):
-                commands[name.strip()] = case.group(2)
-    assert set(commands) == set(_SWIFT_INSTALL_CASES.values())
-    for method, template in METAB_UPGRADE_COMMANDS.items():
-        swift = template.replace("{minimum}", "\\(minimum)")
-        assert commands[_SWIFT_INSTALL_CASES[method]] == swift, (
-            f"MetabInstall {_SWIFT_INSTALL_CASES[method]} is not the doctor's step for {method}"
-        )
-    for declaration, value in (
-        ("uvReceipt", UV_RECEIPT),
-        ("pipxMetadata", PIPX_METADATA),
-        ("checkoutVenv", CHECKOUT_VENV),
-    ):
-        assert _swift_value("Setup/MetabVersion.swift", declaration) == f'"{value}"'
-    project = _swift_value("Setup/MetabVersion.swift", "checkoutProject")
-    assert CHECKOUT_PROJECT.pattern.count(project) == 1, (
-        f"MetabInstall.checkoutProject {project} is not the project CHECKOUT_PROJECT names"
-    )
-
-
 def _elements(markup: dict[str, Any]) -> list[dict[str, Any]]:
     """An element of a session's transcript and every element under it."""
 
@@ -360,10 +306,10 @@ def _elements(markup: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def test_the_link_the_apps_script_takes_is_the_one_the_page_marks() -> None:
-    """``GitHubViewRequests.marker`` selects the View on GitHub button's main link.
+    """``WebViewRequests.marker`` selects the View on GitHub button's main link.
 
     The app's user script takes a plain click on the element its selector matches and
-    opens the popover; the page only marks its links and knows nothing of the app. So the
+    opens its web pane; the page only marks its links and knows nothing of the app. So the
     selector is a copy of the page's hook: renamed on one side alone, the button would
     open the default browser in the app with every test of either side green. The link
     is also what the script and the window expect of it: a page on github.com, and a
@@ -371,9 +317,9 @@ def test_the_link_the_apps_script_takes_is_the_one_the_page_marks() -> None:
     alone goes (``NavigationPolicy.decideNewWindow``).
     """
 
-    marker = _swift_value("Web/GitHubViewRequests.swift", "marker")
+    marker = _swift_value("Web/WebViewRequests.swift", "marker")
     selector = re.fullmatch(r'#"(\w+)\[([\w-]+)="(\w+)"\]"#', marker)
-    assert selector, f'GitHubViewRequests.marker is not tag[attribute="value"]: {marker}'
+    assert selector, f'WebViewRequests.marker is not tag[attribute="value"]: {marker}'
     tag, attribute, value = selector.groups()
 
     markup = run_session("counterpart-session.js")["markup"]

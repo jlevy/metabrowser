@@ -261,7 +261,7 @@ const MEASURE = `async (name, change, tab, width) => {
       refChip: mb.refChip,
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
-      mountRefCopies: mb.mountRefCopies,
+      mountRefMenus: mb.mountRefMenus,
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
       shortCommit: mb.shortCommit,
@@ -902,7 +902,7 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
       refChip: mb.refChip,
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
-      mountRefCopies: mb.mountRefCopies,
+      mountRefMenus: mb.mountRefMenus,
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
       shortCommit: mb.shortCommit,
@@ -1082,7 +1082,7 @@ const COLD_LANDING = `async (width, labelled, outcome, seeded) => {
     refChip: mb.refChip,
     refChipHtml: mb.refChipHtml,
     mergeRefs: mb.mergeRefs,
-    mountRefCopies: mb.mountRefCopies,
+    mountRefMenus: mb.mountRefMenus,
     actorIdentity: mb.actorIdentity,
     titleNodes: mb.titleNodes,
     shortCommit: mb.shortCommit,
@@ -1287,7 +1287,7 @@ const CORNER = `async (width, theme, longTitle, maxChars) => {
       refChip: mb.refChip,
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
-      mountRefCopies: mb.mountRefCopies,
+      mountRefMenus: mb.mountRefMenus,
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
       shortCommit: mb.shortCommit,
@@ -1331,8 +1331,8 @@ const CORNER = `async (width, theme, longTitle, maxChars) => {
   };
   const title = header.querySelector(".github-pull-title");
   const group = button.querySelector(".counterpart-group");
-  const open = button.querySelector('[data-view-on-github="open"]');
-  const external = button.querySelector('[data-view-on-github="external"]');
+  const open = button.querySelector('[data-web-view="open"]');
+  const external = button.querySelector('[data-web-view="external"]');
   const more = button.querySelector(".counterpart-more");
   const frame = getComputedStyle(group);
   const at = box(container);

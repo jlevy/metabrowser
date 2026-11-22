@@ -30,6 +30,7 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -44,7 +45,10 @@ from typing import IO
 TERM_GRACE_S = 3.0
 KILL_GRACE_S = 2.0
 # The least time one look at the process table is given, even past a deadline: a ``ps``
-# of every process took 20 to 40 ms on a 10-core Mac.
+# of every process took 20 to 40 ms on a 10-core Mac, 60 to 90 ms at a load average of
+# 110, and 1.3 to 2.7 s beside 250 busy loops (load 215 to 370), where ``ps`` is runnable
+# for its few milliseconds of work and waits for its turn among them. That is why a stop
+# does not look at the table on macOS (``_ZOMBIE_GROUP_REFUSES_SIGNALS``).
 SCAN_FLOOR_S = 0.5
 # Once the group is down: reaping its leader, and its pipes reaching their end.
 REAP_S = 2.0
@@ -53,8 +57,11 @@ REAP_S = 2.0
 GROUP_STOP_S = TERM_GRACE_S + KILL_GRACE_S + SCAN_FLOOR_S + REAP_S
 # The longest ``owned_profile`` takes after its block: one look for processes still on
 # the profile, and the removal. Removing the profile a killed session left, 190 files and
-# 8.8 MB, took 21 to 31 ms on a 10-core Mac.
-SCAN_S = 5.0
+# 8.8 MB, took 21 to 31 ms on a 10-core Mac. The look is a ``ps`` of every process, which
+# took 0.4 to 3.9 s (median 2.3 s) beside 400 busy loops at a load average of 400 to 450,
+# and once over the former 5 s bound, which failed a test; so the bound is three times
+# the slowest measured.
+SCAN_S = 15.0
 REMOVE_S = 2.0
 PROFILE_TEARDOWN_S = SCAN_S + REMOVE_S
 # How often a wait looks again.
@@ -102,10 +109,45 @@ def _processes(deadline: float) -> list[_Process]:
     return found
 
 
+def _any_member(group: int) -> bool:
+    """Whether *group* has a member that can be signalled, by signal 0 and no table."""
+
+    try:
+        os.killpg(group, 0)
+    except (ProcessLookupError, PermissionError):
+        return False
+    return True
+
+
+# macOS answers a signal to a group whose only members are zombies with EPERM, as it
+# answers one to an empty group with ESRCH, so there signal 0 tells a live member from
+# none exactly and a stop never reads the process table (a ``ps`` took up to 2.7 s beside
+# 250 busy loops, and a bound on one failed a test). Linux answers a zombie like a live
+# process, so there the table is read.
+_ZOMBIE_GROUP_REFUSES_SIGNALS = sys.platform == "darwin"
+
+
 def _live_members(group: int, deadline: float) -> list[_Process]:
     """The members of *group* still running: a zombie has stopped, whoever reaps it."""
 
     return [p for p in _processes(deadline) if p.pgid == group and not p.zombie]
+
+
+def _group_is_live(group: int, deadline: float) -> bool:
+    """Whether *group* has a member still running."""
+
+    if not _any_member(group):
+        return False
+    return _ZOMBIE_GROUP_REFUSES_SIGNALS or bool(_live_members(group, deadline))
+
+
+def _describe_live(group: int) -> str:
+    """The commands still running in *group*, for a failure; the look may itself fail."""
+
+    try:
+        return str([p.args[:100] for p in _live_members(group, time.monotonic())])
+    except Exception as error:
+        return f"(the process table could not be read: {error!r})"
 
 
 def stop_group(process: subprocess.Popen[str], *, deadline: float | None = None) -> None:
@@ -113,10 +155,10 @@ def stop_group(process: subprocess.Popen[str], *, deadline: float | None = None)
 
     *process* must not have been reaped yet: its entry is what keeps the group ID its
     own. A group with no live member, as after a run whose browser closed, or one whose
-    only members are zombies, gets no signal at all; macOS answers a signal to such a
-    group with EPERM. If the process table cannot be read, the group, still ours, is
-    killed outright and the error is raised. Everything finishes by *deadline*, or by
-    TERM_GRACE_S and KILL_GRACE_S from now, past it by at most one SCAN_FLOOR_S look.
+    only members are zombies, gets no signal at all. If the process table cannot be
+    read (off macOS), the group, still ours, is killed outright and the error is raised.
+    Everything finishes by *deadline*, or by TERM_GRACE_S and KILL_GRACE_S from now, past
+    it by at most one SCAN_FLOOR_S look.
     """
 
     if process.returncode is not None:
@@ -129,9 +171,9 @@ def stop_group(process: subprocess.Popen[str], *, deadline: float | None = None)
     end = deadline if deadline is not None else now + TERM_GRACE_S + KILL_GRACE_S
     phases = ((signal.SIGTERM, min(end, now + TERM_GRACE_S)), (signal.SIGKILL, end))
     try:
-        live: list[_Process] = []
+        live = False
         for signum, phase_end in phases:
-            live = _live_members(group, phase_end)
+            live = _group_is_live(group, phase_end)
             if not live:
                 return
             try:
@@ -140,16 +182,16 @@ def stop_group(process: subprocess.Popen[str], *, deadline: float | None = None)
                 return
             except PermissionError:
                 # Only zombies, whose last live member exited since the look.
-                if not _live_members(group, phase_end):
+                if not _group_is_live(group, phase_end):
                     return
                 raise
             while live and time.monotonic() < phase_end:
                 time.sleep(_POLL_S)
-                live = _live_members(group, phase_end)
+                live = _group_is_live(group, phase_end)
             if not live:
                 return
         raise AssertionError(
-            f"process group {group} still runs after SIGKILL: {[p.args[:100] for p in live]}"
+            f"process group {group} still runs after SIGKILL: {_describe_live(group)}"
         )
     except AssertionError:
         raise

@@ -24,7 +24,7 @@ const recording = JSON.parse(
 );
 
 // The tree helpers are classic scripts that publish on the global object, read here as
-// the page reads them from `mb.builtins.structured`.
+// the page reads them from the structured plugin's exports (`mb.plugins.load`).
 require(path.join(plugins, "structured/preview.js"));
 require(path.join(plugins, "structured/tree.js"));
 const tree = globalThis.__structuredTree;

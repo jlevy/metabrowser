@@ -150,7 +150,7 @@ async function prefetchMarkdown(markdown, payload, signal) {
     );
   });
   if (trees) {
-    mb.ensureKindAssets?.("structured").catch(() => {});
+    mb.plugins.load("structured").catch(() => {});
   }
   for (const fileId of first) {
     if (signal?.aborted) {

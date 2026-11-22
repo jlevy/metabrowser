@@ -26,6 +26,7 @@ from metabrowser.cli import remote
 from metabrowser.cli import serve as serve_module
 from metabrowser.cli.main import _app  # pyright: ignore[reportPrivateUsage]
 from metabrowser.encoded_assets import EncodedAssets
+from tests.held_port import listener_on
 
 GZIP = {"accept-encoding": "gzip, deflate, br, zstd"}
 
@@ -132,11 +133,13 @@ def _serves_locally(
     """Run *argv* through the CLI with uvicorn stubbed, and say what the server was told."""
     seen: list[bool] = []
 
-    def serve_in_place_of_uvicorn(_server: object) -> bool:
+    def serve_in_place_of_uvicorn(_server: object, _listener: object) -> bool:
         seen.append(delivery.serving_locally())
         return False
 
-    monkeypatch.setattr(serve_module, "find_available_local_port", lambda *_args: 8765)
+    monkeypatch.setattr(
+        serve_module, "listen_on_available_local_port", lambda *_args: listener_on(8765)
+    )
     monkeypatch.setattr(serve_module, "_QuietForceExitServer", MagicMock())
     monkeypatch.setattr(serve_module, "_run_until_interrupted", serve_in_place_of_uvicorn)
     # Opening a browser, and the stdin watch --exit-on-eof starts, are not under test.

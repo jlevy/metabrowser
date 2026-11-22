@@ -1,0 +1,420 @@
+/* The agents home, the session list, and the Session view. Loaded on demand by
+   support.js#ensureViewStyles, the first time one of them mounts, with agent-log.css, which
+   holds the kind colors and the Log's own rules. Color is the event kind or the tool family, nothing
+   else: an agent is a label, and a status uses the shell's badges. */
+
+.agents-home,
+.agents-list,
+.agents-session {
+  display: flex;
+  flex-direction: column;
+  gap: var(--content-padding-y);
+  padding: var(--content-padding-y) var(--content-padding-x);
+}
+
+.agents-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--content-padding-y);
+}
+
+.agents-sections[hidden],
+.agents-table-wrap[hidden],
+.agents-pager[hidden],
+.agents-more[hidden],
+.agents-empty[hidden] {
+  display: none;
+}
+
+.agents-loading {
+  min-height: 120px;
+}
+
+/* The page's title is the shell's `.page-heading`; this clears the heading's own margin. */
+.agents-title {
+  margin: 0;
+}
+
+/* A section's title is the shell's `.section-heading`, which owns its type and its rule;
+   this is the space under it, or beside a control at the end of its line. */
+.agents-heading {
+  margin: 0 0 8px;
+}
+
+.agents-heading-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-block-end: 8px;
+}
+
+.agents-heading-row .agents-heading {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.agents-homes,
+.agents-children {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agents-agent {
+  font-weight: var(--weight-bold);
+}
+
+.agents-muted {
+  color: var(--muted);
+}
+
+.agents-live-note {
+  margin: 0 0 8px;
+}
+
+.agents-empty {
+  color: var(--muted);
+  margin: 0;
+}
+
+.agents-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 12px var(--content-padding-x);
+  background: var(--agent-log-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-document);
+}
+
+.agents-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agents-stat-label {
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  text-transform: var(--label-text-transform);
+  letter-spacing: var(--label-letter-spacing);
+  color: var(--muted);
+}
+
+.agents-stat-value {
+  font-weight: var(--weight-bold);
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.agents-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* A session's link: the design's Link, in every view that draws one (docs/design-system.md,
+   the Link row of The Pull Request Page's chrome table): `--link` at rest and once visited,
+   an underline on hover, and the focus ring outside its text, which is its whole box. A title
+   with no file is a span with the class too, and stays muted. */
+a.agents-session-link {
+  color: var(--link);
+  text-decoration: none;
+}
+
+a.agents-session-link:hover {
+  text-decoration: underline;
+}
+
+a.agents-session-link:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset-outset);
+  border-radius: var(--radius-chrome);
+}
+
+/* A session as two lines (session-rows.js#sessionRowsHtml), in the manner of the Pulls tab's
+   rows: the first holds the agent, the title, and the age at its end; the second, muted,
+   holds a status badge where there is one, the project, and the model. Each part that can
+   run long is cut with an ellipsis, and the age never wraps or moves, so a long path never
+   pushes it onto a line of its own. */
+.agents-session-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.agents-session-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.agents-row-line,
+.agents-row-meta {
+  display: flex;
+  align-items: baseline;
+  min-inline-size: 0;
+}
+
+.agents-row-line {
+  gap: 8px;
+}
+
+.agents-row-line > .agents-agent,
+.agents-row-meta > .file-header-badge {
+  flex: none;
+}
+
+.agents-row-title {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agents-row-age {
+  flex: none;
+  margin-inline-start: auto;
+  color: var(--muted);
+  font-variant-numeric: var(--tabular-numerals);
+  white-space: nowrap;
+}
+
+/* The separator between the project and the model is a flex item, so the gap stands where
+   the spaces around it would. */
+.agents-row-meta {
+  gap: 0.5ch;
+  min-block-size: 1lh;
+}
+
+.agents-row-project,
+.agents-row-model {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agents-row-project {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+}
+
+/* The project gives way first; the model keeps its words unless it alone is long. */
+.agents-row-model {
+  flex: none;
+  max-inline-size: 45%;
+}
+
+/* Sessions per day: one bar a day, as tall as its share of the busiest day. */
+.agents-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  block-size: 96px;
+}
+
+.agents-bar {
+  flex: 1 1 0;
+  min-inline-size: 2px;
+  block-size: max(var(--agents-bar-size), 2px);
+  background: var(--chart-series-info);
+}
+
+/* Session sizes: one row a bucket, its bar as long as its share of the fullest bucket. */
+.agents-histogram {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agents-histogram-row {
+  display: grid;
+  grid-template-columns: minmax(8ch, 18ch) 1fr 6ch;
+  gap: 8px;
+  align-items: center;
+}
+
+.agents-histogram-track {
+  display: block;
+  block-size: 10px;
+}
+
+.agents-histogram-fill {
+  display: block;
+  block-size: 100%;
+  inline-size: var(--agents-bar-size);
+  min-inline-size: 2px;
+  background: var(--chart-series-info);
+}
+
+.agents-histogram-count {
+  text-align: end;
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.agents-sort:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* The tables. Eleven columns are wider than the pane, so the wrap scrolls, as the shell's
+   `.table-container` does for a wide table; it takes the keyboard's focus so every column
+   is reachable without a pointer, and the cells that can run long are capped below. */
+.agents-table-wrap {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow-x: auto;
+}
+
+.agents-table-wrap:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.agents-table {
+  inline-size: 100%;
+  border-collapse: collapse;
+}
+
+.agents-table th,
+.agents-table td {
+  padding: 4px 8px;
+  text-align: start;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.agents-table th {
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  text-transform: var(--label-text-transform);
+  letter-spacing: var(--label-letter-spacing);
+  color: var(--muted);
+}
+
+.agents-table .agents-numeric {
+  text-align: end;
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.agents-col-title,
+.agents-col-project,
+.agents-col-model {
+  max-inline-size: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agents-col-model {
+  max-inline-size: 24ch;
+}
+
+.agents-sort {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+
+.agents-sort:hover {
+  color: var(--text);
+}
+
+/* The sorted column's direction, drawn after its label; the cell's aria-sort says it too. */
+th[aria-sort="ascending"] .agents-sort::after {
+  content: " \2191";
+}
+
+th[aria-sort="descending"] .agents-sort::after {
+  content: " \2193";
+}
+
+.agents-no-file {
+  color: var(--muted);
+}
+
+.agents-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+
+.agents-list-summary {
+  color: var(--muted);
+  font-variant-numeric: var(--tabular-numerals);
+}
+
+.agents-pager {
+  display: flex;
+  gap: 8px;
+}
+
+/* The session page */
+.agents-session-head {
+  display: flex;
+  flex-direction: column;
+}
+
+.agents-session-line {
+  margin: 0;
+}
+
+.agents-relatives {
+  margin: 0;
+}
+
+.agents-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agents-event {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  background: var(--agent-log-surface);
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+}
+
+.agents-event-replay {
+  opacity: 0.7;
+}
+
+.agents-event-summary {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agents-event-time {
+  color: var(--muted);
+  font-variant-numeric: var(--tabular-numerals);
+  white-space: nowrap;
+}

@@ -114,7 +114,7 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "<ORIGIN>",
-  "location": "<HOME>/repository-stores/<STORE_KEY>/repository.git",
+  "location": "<HOME>/repos/<STORE_KEY>/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,

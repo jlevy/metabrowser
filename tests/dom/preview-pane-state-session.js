@@ -667,7 +667,7 @@ function createShell(pathname, network, options = {}) {
   }
   const writes = [];
   const listeners = new Set();
-  let keydown;
+  const keydown = [];
   const history = {
     state: null,
     pushState(state, _title, href) {
@@ -707,7 +707,7 @@ function createShell(pathname, network, options = {}) {
     document: {
       addEventListener(type, listener) {
         if (type === "keydown") {
-          keydown = listener;
+          keydown.push(listener);
         }
       },
       body: { append() {} },
@@ -930,13 +930,16 @@ function createShell(pathname, network, options = {}) {
     tabButtons,
     pressTabShortcut(key, options) {
       let consumed = false;
-      keydown({
+      const event = {
         key,
         ...options,
         preventDefault: () => {
           consumed = true;
         },
-      });
+      };
+      for (const listener of keydown) {
+        listener(event);
+      }
       return consumed;
     },
     clickTab: (panel) => tabClick({ target: tabButtons.find((btn) => btn.dataset.tab === panel) }),

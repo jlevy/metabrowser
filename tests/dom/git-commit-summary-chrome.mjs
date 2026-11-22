@@ -383,7 +383,7 @@ const MEASURE = `async (widths) => {
         document.getAnimations().filter((animation) => animation instanceof CSSTransition).map((animation) => animation.finished),
       );
       const tokens = {};
-      for (const name of ["--text", "--muted", "--git-status-added", "--git-status-deleted", "--git-status-modified"]) {
+      for (const name of ["--text", "--muted", "--size-color", "--git-status-added", "--git-status-deleted", "--git-status-modified"]) {
         tokens[name] = token(name);
       }
       out.tooltip.paint.push({
@@ -393,6 +393,7 @@ const MEASURE = `async (widths) => {
         words: ink(sizeLine),
         wordsWeight: weight(sizeLine),
         numbers: [...sizeLine.querySelectorAll(".summary-number")].map((node) => [node.textContent, ink(node), weight(node)]),
+        sizes: [...sizeLine.querySelectorAll(".size")].map((node) => [node.textContent, ink(node), weight(node)]),
         sizeMarks: [...sizeLine.querySelectorAll(".summary-punctuation")].map((node) => [node.textContent, ink(node), weight(node)]),
         counts: (${STATUS_COUNTS})(line),
         marks: [...line.querySelectorAll(".summary-punctuation")].map((node) => [node.textContent, node.getAttribute("aria-hidden"), ink(node), weight(node)]),
@@ -606,12 +607,20 @@ async function main() {
         );
         check(
           `${where}: its file count is bold, in the line's ink`,
-          JSON.stringify(paint.numbers.map(([text]) => text)) ===
-            JSON.stringify(["35", "56.9 KB", "193.9 KB"]) &&
+          JSON.stringify(paint.numbers.map(([text]) => text)) === JSON.stringify(["35"]) &&
             paint.numbers.every(
               ([, color, weight]) => color === paint.tokens["--text"] && weight === "700",
             ),
           JSON.stringify(paint.numbers),
+        );
+        check(
+          `${where}: compressed and raw bytes use the base file size ink and weight`,
+          JSON.stringify(paint.sizes) ===
+            JSON.stringify([
+              ["56.9 KB", paint.tokens["--size-color"], "400"],
+              ["193.9 KB", paint.tokens["--size-color"], "400"],
+            ]),
+          JSON.stringify(paint.sizes),
         );
         // Its words are regular: nothing sets a weight on the card or its change line, so a
         // rule that bolded either would show here.

@@ -6,10 +6,10 @@ api: /api/cache/layout
 status: 200
 {
   "home": "present",
-  "supported_format": "f02",
+  "supported_format": "f03",
   "state": "current",
   "layout": {
-    "format": "f02",
+    "format": "f03",
     "created_by": "0.11.0"
   },
   "config": {
@@ -29,10 +29,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "stores": [
     {
-      "key": "a--0000000000000000",
+      "key": "a-00000000000",
       "id": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
       "publication": "published",
       "mode": "full",
@@ -82,10 +82,10 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "stores": [
     {
-      "key": "a--0000000000000000",
+      "key": "a-00000000000",
       "id": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
       "publication": "published",
       "mode": "full",
@@ -157,10 +157,10 @@ api: /api/cache/layout
 status: 200
 {
   "home": "present",
-  "supported_format": "f02",
+  "supported_format": "f03",
   "state": "current",
   "layout": {
-    "format": "f02",
+    "format": "f03",
     "created_by": "0.11.0"
   },
   "config": {

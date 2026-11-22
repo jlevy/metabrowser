@@ -163,6 +163,13 @@ def check_recording(name: str, recorded: Any, *, transcript: str, indent: int = 
     """
 
     rendered = json.dumps(recorded, indent=indent, ensure_ascii=False) + "\n"
+    check_recording_text(name, rendered, transcript=transcript)
+
+
+def check_recording_text(name: str, rendered: str, *, transcript: str) -> None:
+    """As :func:`check_recording`, for a recording the caller rendered itself, such as one
+    that writes each of many rows on one line to stay inside the review budget."""
+
     _compare(
         FIXTURES_DIR / name,
         rendered,
@@ -470,7 +477,7 @@ _HOME_LINES: Final = (
     r"using the clone of \S+ cached in {home}"
     r"(?:, fetched (?:less than a minute ago|\d+ (?:minute|hour|day)s? ago|<AGE>))?"
     r"(?:, borrowing objects from .*)?",
-    r'\s*"location": "{home}/repository-stores/(?:<STORE_KEY[^>"]*>|[a-z0-9-]+--[0-9a-f]{{16}})'
+    r'\s*"location": "{home}/repos/(?:<STORE_KEY[^>"]*>|[a-z0-9-]+-[0-9a-z]{{11}})'
     r'/repository\.git",',
 )
 

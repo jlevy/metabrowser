@@ -85,6 +85,15 @@ Consequences worth knowing:
 `tests/test_design_vocabulary.py` enforces both halves: every color is `oklch`, and
 every chromatic token defined in both themes carries the same hue in each.
 
+The `agents` plugin keeps the one categorical palette a plugin owns: a color for each
+event kind and each tool family, `--agent-kind-<kind>-*` and `--agent-tool-<family>-*`
+in `builtin_plugins/agents/agent-log.css`, each with a `-bg` and `-text` for a badge and
+a `-fill` for a chart series, a tally bar, or a timeline segment.
+A kind is one color in every place it appears, and the agent and the origin are labels,
+never colors. `tests/test_agent_kind_palette.py` holds each `-text` to the contrast of
+its `-bg` in both themes, each token to its hue between themes, and every pair of fills
+in a theme to `MIN_FILL_DISTANCE`, since kinds and families are drawn together.
+
 ## File Age
 
 File age is one shared primitive across navigation rows, file headers, recent-filter
@@ -376,7 +385,7 @@ a pull request, and a commit.
 | Part | A file | A folder | A pull request | A commit |
 | --- | --- | --- | --- | --- |
 | 1. Eyebrow | Up, the address of the folder that holds it, and Copy path | Up, and the address of its parent; at the served root, the directory that holds the root | Only where it says something the rows under it do not (planned) | The same (planned) |
-| 2. Heading row | The navigation row’s icon for its type, and its name and the metadata after it | The folder icon, and its name and the metadata after it | Its state icon, its title, and its number | The commit icon, its subject (planned) |
+| 2. Heading row | The navigation row’s icon for its type, and its name and the metadata after it | The folder icon, or at the root its [kind mark](#source-kind-marks), and its name and the metadata after it | Its state icon, its title, and its number | The commit icon, its subject (planned) |
 | 3. Metadata | Its badges, size, and age, after its name | Its size, file count, and age, after its name | Its author line, branches, and ages, lines under the title ([Page Headers](#page-headers)) | Its author, revision, and age, lines under the title ([Page Headers](#page-headers)) |
 | 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Conversation, Changes, and Checks | None |
 | The corner | [View on GitHub](#view-on-github) | The same | The same | The same |
@@ -424,7 +433,10 @@ A file’s or a folder’s name is whole, never cut short: a name too long for t
 wraps, anywhere, so it has no tooltip, since none of it is hidden
 ([Tooltips Add Information](#tooltips-add-information)), and the icon stays beside its
 first line. A pull request’s title is cut short at two lines.
-The row holds no controls: the header’s are in its corner.
+The served root’s header leads with the root’s kind mark, the one the navigation’s
+heading draws, because the root is a root wherever its name stands; a folder inside it
+leads with the ordinary folder’s ([Source Kind Marks](#source-kind-marks)). The row
+holds no controls: the header’s are in its corner.
 The header has no print button ([Print](#print)).
 
 **The corner**, at the end of the title’s first line, holds the page’s
@@ -967,11 +979,57 @@ the toggle and the rail, the tooltip, a click, and print output, trusted and
 `--untrusted`, and `tests/dom/markdown-print-indicator-session.js` holds which mounts
 carry the button.
 
+A rendered document prints in KPress’s print model, the page KPress’s own PDF export
+draws: its `print.css` on white paper, its page margin and footer, and its static print
+faces. Its card, the app’s chrome, and the app’s theme do not print.
+
+- **Ready first.** A click on the button waits for the document before it prints
+  (`builtin_plugins/markdown/print-ready.js`, at most `PRINT_READY_BOUND_MS`): its
+  images not yet shown, which KPress loads lazily and WebKit prints as nothing; KPress’s
+  print sans, which loads only once print layout asks for it, so a print drew the
+  variable face’s Type3 outlines instead, as KPress’s export waits for it; and its
+  diagrams. Command-P waits on nothing: Chrome loads the images itself, and the app’s
+  File > Print prints what the page holds.
+- **Light paper.** While a rendered document is mounted, a print resolves the page light
+  and restores the theme after it (`holdLightPrintTheme` in `print-indicator.js`), and
+  the app’s color bridge to KPress is screen-only (`static/styles.css`), so text, links,
+  and code are KPress’s print ink whatever the theme.
+- **What WebKit leaves out.** The macOS app prints with WebKit, which resolves no custom
+  property in `@page`, applies no break rule inside a grid item or a size container, and
+  ignores `break-after: avoid`. So the page margin is KPress’s token written out
+  (`static/styles.css`, “Print adapter”); the document is one block column outside any
+  container in print; and a heading reserves room below it for the next lines, and for
+  an image under it the image’s own height, so it never ends a page alone
+  (`builtin_plugins/markdown/markdown.css`). WebKit draws no `@page` margin boxes, so
+  the app’s print has no footer or page numbers.
+- **Authored alignment.** A README’s `align="center"` logo and title stay centred, which
+  KPress’s print rule for paragraphs, justified, otherwise overrode.
+
+`tests/dom/document-print-chrome.mjs` holds the print model in Chrome, and
+`apps/macos/webkit-gate`’s driver (`webkit-driver print`) prints through the app’s own
+path for a check by hand.
+
 KPress’s `doc-actions` widget, an opt-in cluster pinned to its card’s corner, is where
 the button belongs once KPress can carry it in an embedded document, as an option the
 host turns on.
 Until then `builtin_plugins/markdown/print-indicator.js` draws it, and its
 header says what KPress lacks.
+
+## Repository Details
+
+The root name in the navigation column opens Home.
+The chevron beside it opens the root’s details.
+The folder glyph identifies a local folder, a Git checkout, or a cloud mirror.
+The menu shows the local path, file count, and size when available.
+Mirrors and pinned checkouts include a short note about where the files come from.
+A menu chevron points down at rest and while its menu is open.
+The trigger keeps its hover highlight while the menu is open.
+The macOS title-bar folder chooser follows the same convention with the platform’s
+chevron and fill.
+
+If the root has a recognized GitHub repository, its URL appears above **Copy Link** and
+**Open in Browser**. A page’s **View on GitHub** menu uses the same action rows and
+icons with the current page’s URL.
 
 ## View on GitHub
 
@@ -984,6 +1042,7 @@ to it from its metadata.
 ```text
  ( [GitHub] View on GitHub | v )
                           +-----------------+
+                          | Page URL        |
                           | Copy Link       |
                           | Open in Browser |
                           +-----------------+
@@ -996,7 +1055,8 @@ It is a split button, a [joined chip group](#control-families) of two parts:
   reader all get the address; in a browser it opens the page in a new tab, and its
   tooltip is the address.
 - **The chevron**, a chip menu’s trigger with the shell’s caret, muted until the pointer
-  is on it or its menu is open, whose menu holds **Copy Link** and **Open in Browser**.
+  is on it or its menu is open.
+  The menu shows the full destination URL above **Copy Link** and **Open in Browser**.
   Copy Link puts the address on the clipboard and says “Link copied”, or “Copy failed”,
   for a moment in a status line under the button, where the menu was, which a screen
   reader announces as a polite live region; Open in Browser is a link to the same
@@ -1028,13 +1088,15 @@ shows its last answer at once and replaces it only when the server’s new one d
 Another place that shows a page can hold the same button by giving it a corner.
 
 **The macOS app** shows a counterpart in a native popover of its own rather than leaving
-the app. The web page does nothing for it; the app reads three hooks in the button’s
-markup, which are a contract between the two: the root carries `data-view-on-github`,
-the link is `<a data-view-on-github="open" href="…" target="_blank" rel="noopener">`,
+the app. The web page does nothing for it.
+The root carries `data-view-on-<provider>`, as `data-view-on-github`, which names the
+button, and the app reads two hooks on its links, a contract between the two that names
+no site: the link is `<a data-web-view="open" href="…" target="_blank" rel="noopener">`,
 and Open in Browser is
-`<a data-view-on-github="external" href="…" target="_blank" rel="noopener">`. The app
-takes a trusted primary click on the link for its popover; Open in Browser, a modified
-click, and Copy Link do what they do in a browser.
+`<a data-web-view="external" href="…" target="_blank" rel="noopener">`. The app takes a
+trusted primary click on the link for its web pane, when the `href` is on a site it
+knows; Open in Browser, a modified click, and Copy Link do what they do in a browser.
+Any other control may mark a link `data-web-view="open"` the same way.
 
 ### Where It Appears
 
@@ -1111,6 +1173,12 @@ get the element they expect.
 The diff file bar’s [View file and View on branch](#diff-file-bar), and
 [Browse code, a review comment’s file, Refresh, and Switch to the head](#chrome) on a
 pull request’s page, are text actions.
+A sortable column header’s label, `.agents-sort` in the session table, is a text action
+in this sense: a bordered button inside a header would read as a different thing from
+the label it sits in.
+It is a real `<button>` with the cell’s `aria-sort`, takes the label’s type, muted at
+rest and `--text` on hover, shows the sorted direction as an arrow after the label, and
+has the one focus ring.
 Each context sets one look for the `<a>` and the `<button>`, box included: a `<button>`
 is always an atomic inline box, so where a label can wrap, the `<a>` is one too, and
 what follows a wrapped label starts on the next line in both forms.
@@ -1200,6 +1268,29 @@ A file that falls back permanently to Source has no format chooser.
 `test_a_toggle_cannot_fork_the_family` fails when a stylesheet or a source states a
 toggle’s ARIA outside this family, and
 `test_exclusive_choices_share_one_answer_to_each_state` holds the table above.
+
+### Links Have a Base Color
+
+A link is `--link`, and the shell says so once: `:where(a:any-link)` in
+`static/styles.css` sets `color: var(--link)`. Without it a link no rule colors falls
+through to the user agent’s blue, and its purple once visited, so a new view that forgot
+would read as a different app.
+The selector has zero specificity, so every context’s own color, hover, and ring wins
+without a fight, and `:any-link` covers a visited link as well as a fresh one.
+It sets the color and nothing else, deliberately: a context that keeps the user agent’s
+underline at rest (rendered Markdown, Help, an event’s details) is unchanged, and no
+ring is drawn that a context did not choose.
+
+A context that wants the link’s full treatment says so itself, as the
+[Link row](#chrome) of a pull request’s page does: `--link` and no underline at rest, an
+underline on hover, and the [focus ring](#focus-ring) with its outset offset, since a
+bare inline link’s box is its text.
+A link that sets its own ink, a Pulls row’s title, sets it on the link itself.
+A new context does not add a rule of its own that only colors its anchors `--link`: the
+base already does. `test_a_link_no_rule_colors_is_the_link_color` holds the base and
+holds the three patches it replaced gone (older GitHub plugin rules that also set other
+properties remain), and `tests/dom/agents-views-chrome.mjs` reads in Chrome that a bare
+`<a href>` in a plugin view computes to `--link`, in both themes.
 
 ### Focus Ring
 
@@ -1876,7 +1967,7 @@ no size of its own, so the chip scales from the text beside it.
 | Weight | `--weight-bold` | The name carries the meaning |
 | Line height | A ratio of the chip’s size | The box scales with its text and keeps a `HEAD` ring inside a history row |
 | Corner | `--radius-tag` | Square-ish, so a ref and a filter never read as the same control |
-| Padding | In px | Room around the name, not text. A tag adds room on the left for its notch, and a copyable chip reserves a slot on the right for its copy control, a fixed-size icon ([One Glyph Size](#one-glyph-size)) |
+| Padding | In px | Room around the name, not text. A tag adds room on the left for its notch. The menu chevron overlays the chip ([Action Menu](#action-menu)) |
 | Width | A maximum in em, ellipsized, with the full name in its tooltip | In em so the bound keeps its meaning at any chip size; the measurement is beside it |
 
 `test_branch_chips_scale_with_their_text` in `tests/test_design_vocabulary.py` holds the
@@ -1906,14 +1997,14 @@ chip’s form alone.
 A chip’s kind says where the ref lives, and trunk and `HEAD` come only from the server,
 so a definition cannot differ between two places.
 
-| Context | Drawn from | Kind | Trunk | `HEAD` | Copy |
+| Context | Drawn from | Kind | Trunk | `HEAD` | Menu |
 | --- | --- | --- | --- | --- | --- |
 | A checkout’s history row | The history page’s refs (`renderRefBadges` in `static/git-panel.js`) | The wire’s `kind`: `refs/heads/` local, `refs/remotes/` remote, `refs/tags/` tag | The ref’s `is_trunk` | The ref’s `is_head` | Beside the row |
 | A mirror’s history row | The same | Its branches are `refs/remotes/origin/…`, so remote; its tags, tag | The ref’s `is_trunk` | None: a pin is detached | Beside the row |
 | A commit’s summary | Its detail’s refs, the same parser as the row | As its row | As its row | As its row | In the chip |
 | A commit’s tooltip | The same | As its row | As its row | As its row | None: a tooltip owns no action |
 | A pull request’s header | `mb.mergeRefs`, head → base | Remote: GitHub’s branches, a fork’s as `owner:branch` | Never | Never | In the chip |
-| The ref selector’s button and list | `mb.refChip` in `static/source-ref-selector.js` | Tag for a tag. A mirror’s branch is remote. A checkout’s own branch is local and its remote-tracking branch remote | Never; the list says “default” beside a mirror’s default branch | Never; the list says “checked out” beside the branch a checkout’s `HEAD` is on | Button beside it; list none |
+| The ref selector’s button and list | `mb.refChip` in `static/source-ref-selector.js` | Tag for a tag. A mirror’s branch is remote. A checkout’s own branch is local and its remote-tracking branch remote | Never; the list says “default” beside a mirror’s default branch | Never; the list says “checked out” beside the branch a checkout’s `HEAD` is on | Selected chip; chooser rows select their ref |
 
 The reasons:
 
@@ -1954,16 +2045,23 @@ and the figures are beside the tokens in `styles.css`.
 `tests/test_design_vocabulary.py` holds the contrast, the blue, and the distance from
 the merged purple.
 
-#### Copy
+#### Action Menu
 
-Copyable branch chips reserve a tiny copy control beside the label, revealed on hover or
-keyboard focus. The control copies the complete underlying branch or ref, regardless of
-label truncation or a displayed fork owner, and reports the normal copy feedback.
-Its click does not select a different row or follow its link.
-An outside pointer interaction hides active copy controls and restores the primary row’s
-focus before a pane drag can clip its focused button.
-Place copy controls beside a primary link or button rather than nesting interactive
-controls.
+Click a branch or tag chip to open its menu.
+A fixed down chevron overlays the trailing edge on hover, keyboard focus, and while the
+menu is open, so long names use the entire chip at rest.
+The chevron uses neutral ink like the folder details and **View on GitHub** chevrons.
+In a clickable history row or ref chooser, the chip’s menu trigger is a separate control
+above its visible chip.
+
+The menu names the ref and its kind.
+**Copy Branch Name** and **Copy Tag Name** copy the underlying name.
+**View This Branch** or **View This Tag** selects the full ref, including its Git
+namespace, through the same source-switch route as the chooser.
+A fork’s PR head can open the PR snapshot when it is available in the mirror.
+**Open on GitHub** shows the destination and uses the same external arrow as the
+repository menu. The remote action appears when the app can identify the matching GitHub
+repository and ref.
 
 ### Merge Direction
 
@@ -1980,11 +2078,11 @@ the same way, `old → new`.
 
 | Part | Rule |
 | --- | --- |
-| Markup | `mb.mergeRefs(source, target, options)` in `static/plugin-sdk-views.js` writes every merge; no surface places its own arrow. Each side is `{name, label}` and becomes a [branch chip](#branch-chips), and `options` (`kind`, `copy`) applies to both |
+| Markup | `mb.mergeRefs(source, target, options)` in `static/plugin-sdk-views.js` writes every merge; no surface places its own arrow. Each side is `{name, label}` and becomes a [branch chip](#branch-chips), and `options` (`kind`, `menu`) applies to both |
 | Arrow | `.merge-refs-arrow`: `→` (U+2192) in `--muted`, at the size of the text around the merge, which the group inherits; each chip is slightly smaller. The spaces around it are text, so a copied selection reads `wip → topic` |
 | Accessible name | The arrow is `role="img"` with `aria-label="merges into"`, so a screen reader reads “wip merges into topic” in document order. It has no tooltip: the names beside it say the merge, and a chip cut short carries its own full name ([Tooltips Add Information](#tooltips-add-information)) |
 | Right to left | The group is `dir="ltr"`, an isolated left-to-right run as a path or a branch name is. The arrow points from source to target whatever the surrounding direction, the glyph is never mirrored, and the document order, source first, is the order a screen reader reads |
-| Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding and copy slot, an ellipsis in each, and the arrow. The pull request header gives the merge a line of its own, under the author’s sentence, so only the names give way there |
+| Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding, an ellipsis in each, and the arrow. The pull request header gives the merge a line of its own, under the author’s sentence, so only the names give way there |
 
 A Pulls row names no branches: the pull request’s page names them, and the row’s room
 goes to its title.
@@ -1993,9 +2091,9 @@ The rendered group, for a pull request from `wip` into `topic`:
 
 ```html
 <span class="merge-refs" dir="ltr">
-  <span class="git-ref git-ref-remote git-ref-copyable merge-refs-source">…wip…</span>
+  <button class="git-ref git-ref-remote git-ref-action merge-refs-source">…wip…</button>
   <span class="merge-refs-arrow" role="img" aria-label="merges into"> → </span>
-  <span class="git-ref git-ref-remote git-ref-copyable merge-refs-target">…topic…</span>
+  <button class="git-ref git-ref-remote git-ref-action merge-refs-target">…topic…</button>
 </span>
 ```
 
@@ -2079,11 +2177,11 @@ and that no plugin writes its classes itself.
 
 ### Change Size Line
 
-**A change set’s size, “**77** commits · **83** files changed · **2.3 MB** compressed
-(**14.0 MB** raw diff)”, is one component, the change size line, on its own line above
-the [Diff summary](#diff-summary).** The Diff summary under it then says only what kinds
-of change and how many lines, its [brief change line](#brief-change-line), so every
-change set says its statuses one way and its scale on the line above.
+**A change set’s size, “77 commits · 83 files changed · 2.3 MB compressed (14.0 MB raw
+diff)”, is one component, the change size line, on its own line above the
+[Diff summary](#diff-summary).** The Diff summary under it then says only what kinds of
+change and how many lines, its [brief change line](#brief-change-line), so every change
+set says its statuses one way and its scale on the line above.
 It has one builder and one painter, `changeSizeLine` and `changeSizeLineNodes` or
 `changeSizeLineHtml`, view helpers of the SDK (`static/plugin-sdk-views.js`) rather than
 a startup script, since only these pages and the hover card draw it; each paints through
@@ -2098,11 +2196,13 @@ A plugin reaches them as `metabrowser.changeSizeLine` and
   ([Change Sizes](project/architecture/arch-git.md#change-sizes)). A count not known is
   “?”; a size not known, or not yet answered, is left out, and the line says its counts
   until it comes.
-- **How it is painted.** A [count summary](#count-summaries-bold-their-numbers): each
-  number bold in the line’s own ink, a size’s unit with its number, “2.3 MB”, and the
-  words and parentheses at the line’s weight, never a status’s color; each dot muted,
-  kept with the group before it by a no-break space so no line starts with one, and said
-  as a comma to a screen reader.
+- **How it is painted.** The commit and file counts use the
+  [count summary](#count-summaries-bold-their-numbers) style.
+  The compressed and raw values use the Files navigation’s blue size style, including
+  its weight threshold.
+  The words and parentheses keep the line’s ink and weight.
+  Each muted dot stays with the group before it by a no-break space, and a screen reader
+  says a comma.
 - **Its tooltip.** The size says what each size is, “2.3 MB compressed: what Git pushes
   for this change…”, which its words cannot
   ([Tooltips Add Information](#tooltips-add-information)).
@@ -3011,8 +3111,8 @@ The shapes differ. In the list, the icon’s accessible name gives the state.
 On the page, the same glyph sits beside the title and the text badge below names the
 state. Everything goes through `pullStateIcon` and `displayState` in
 `builtin_plugins/github/pull-state.js`, so a row and its page cannot disagree: the ref
-selector’s rows, in the shell, draw the same icon through the plugin’s
-`mb.builtins.github.pullStateIcon` ([The Ref Selector](#the-ref-selector)).
+selector’s rows, in the shell, draw the same icon through the plugin’s exported
+`pullStateIcon` ([The Ref Selector](#the-ref-selector)).
 `test_pull_state_colors_keep_their_hue_and_read_on_both_grounds` holds the hue and a
 4.5:1 contrast on both grounds, because a badge sets its word in that color.
 
@@ -3126,6 +3226,58 @@ A closed row is one height whatever its line holds, so nothing moves when one ar
 
 New pull requests use the [shared arrival highlight](#live-row-arrivals), and the rows’
 keys are under [Navigational Row Collections](#navigational-row-collections).
+
+## The Agents Views
+
+The agents plugin’s home, session list, and Session view (`builtin_plugins/agents/`) are
+built from the shell’s parts, and add only what a session needs.
+The page’s title is `.page-heading`, a section’s title is `.section-heading` over its
+rule, a statistic’s label and a table’s headers are labels, and a status is the shell’s
+badge. Color is an event’s kind or a tool’s family, nothing else: an agent is a label,
+bold, never a color.
+
+### Session Rows
+
+The home’s Running now and Recent sessions are one list of two-line rows
+(`sessionRowsHtml` in `session-rows.js`), in the manner of
+[The Pulls Tab](#the-pulls-tab)’s rows.
+The first line is the agent, bold, the session’s title as a link, and the age at the
+line’s end, muted, in tabular numerals, never wrapping.
+The second line is muted: a status badge where the list has one, the project, then the
+model, parted by the design’s separator
+([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)). The title
+and the project are cut short with an ellipsis, the project first, and the model keeps
+its words unless it alone runs past its cap (`.agents-row-model`’s `max-inline-size` in
+`agents-views.css`), so a long path never pushes the age onto a line of its own, and a
+row is two lines whatever it holds.
+A row whose second line has nothing to say keeps the line’s height, so the rows of a
+list stand at one height.
+`tests/dom/agents-views-chrome.mjs` holds that the age stays at the end of the first
+line and the row keeps its height under a long title and a long path.
+
+An agent’s line on the home, “Claude Code · 2,202 sessions, 6.2 GB”, is a count summary:
+the dot is the design’s separator, the figures are bold, and the served folder’s own
+home names no path, so none is shown.
+
+### Session Links
+
+A session’s title is a link to its file, in every view that draws one, with the
+treatment of the [Link row](#chrome): `--link` at rest and once visited, no underline at
+rest, an underline on hover, and the focus ring with the outset offset
+(`a.agents-session-link`). A session with no file is plain muted text with the same
+class on a `<span>`. `tests/dom/agents-views-chrome.mjs` reads every anchor the three
+views render, in both themes.
+
+### The Session List’s Table
+
+Its columns (`COLUMNS` in `session-rows.js`) are wider than a normal pane, so the table
+scrolls inside its own wrap, as a wide table does elsewhere
+([Reading Width](#reading-width)), and the wrap is a keyboard stop (`tabindex="0"`, a
+region named “Sessions”) with the one focus ring, so a reader without a pointer reaches
+every column too.
+The cells that can run long, the title, the project, and the model, are
+capped and cut with an ellipsis, the whole value in a tooltip, so a long model list
+never pushes the columns after it out of reach.
 
 ## Stacks
 
@@ -3776,7 +3928,8 @@ acknowledgement.
 The component owns this focused behavior; it is not a document-level application
 shortcut. The maintained registry in
 `test_nav_like_row_sets_share_the_vertical_keyboard_contract` covers the file tree, Git
-history, pull-request rows, and their changed-file trees.
+history, pull-request rows, their changed-file trees, and the table view’s grid
+([Data Tables](#data-tables)), whose arrows move without opening.
 The adjacent `test_git_row_selection_avoids_full_collection_mutation` pins Git’s
 interaction cost. Register every new navigational row collection in the shared check so
 its Tab order and vertical navigation cannot silently fork this contract.
@@ -3887,6 +4040,45 @@ The person glyph in an [actor identity](#actor-identity)’s box,
 box, `--actor-avatar-size`, and not `--icon-glyph`: at the glyph size it would sit
 smaller than the avatar it replaces, and the box and the name after it would differ with
 and without an avatar.
+
+### Source Kind Marks
+
+**The root’s name at the top of the navigation leads with a mark for what is open: a
+folder with a cloud for a mirror, a folder with Git’s branch for a Git checkout, and a
+folder with its root node for a plain folder.** The three are the source kinds of the
+[Icon Catalog](design-system-icons.md#source-kinds), which says what each means, how the
+kind is decided, and where else each is drawn.
+The rules for the page are:
+
+- **A mark is a root’s and never an ordinary folder’s.** A source-kind glyph differs
+  from the ordinary `folder`, which a subfolder’s view header draws, so the root of a
+  window and any folder inside it never wear the same icon.
+  The root’s own header in the main pane draws the kind mark too (`folderGlyphHtml` in
+  `static/view-header.js` copies the navigation’s), so the one root has one icon in
+  both.
+- **The server writes the kind, its glyph, and its sentence.** The shell puts `kind` and
+  `kind_tip` of `GET /api/identity`, and the one glyph for the kind, into its first
+  paint, `.header-root-kind`, from `static/source-kind-glyphs.json`, so the mark is
+  there with no script and no request, in a box that is there from the markup.
+  The glyphs are not in the icon registry, which every page fetches before its first
+  tree under a gated budget, and the page draws one of three.
+- **A glyph-only mark names itself.** Its tooltip, `data-tip-text`, is its accessible
+  name too: the kind and what it is of, “Cloud mirror of owner/repo”, “Local Git
+  checkout (GitHub: owner/repo)”, or “Local folder”
+  ([Tooltips Add Information](#tooltips-add-information), for a glyph-only mark).
+  It is no control, and takes no focus.
+- **It stands outside the name’s link.** The name is [Home](#home), with its own hover
+  surface and focus ring.
+  The chevron opens [Repository Details](#repository-details).
+- **It is drawn at `--icon-glyph` in `--muted`**, so the bold name stays the heading,
+  like a folder’s glyph in a view header, and it shortens nothing: the name still ends
+  in an ellipsis where the column is narrow.
+
+`tests/test_root_identity.py` holds the page’s mark to the route for each kind,
+`tests/test_icon_catalog.py` holds the three glyphs, the ordinary folder’s, and where
+each is drawn to the catalog, and `tests/test_root_kind_mark_chrome.py` draws a folder,
+a checkout, and a mirror’s page in Chrome, and holds the root’s header in the main pane
+to the navigation’s mark and a folder inside it to the ordinary one.
 
 ### Every Icon-Only Control Is the Same Control
 
@@ -4772,21 +4964,15 @@ Home keeps what a fresh load would only fetch again, or keeps itself:
 The name reads as a link home.
 Its box is the name’s own, and it takes a folder crumb’s treatment: the hover surface
 under the name and the link-colored ring on keyboard focus.
-Its accessible name is “Home:” and the name it shows, read from its own content, so the
-ref and commit that head a pin with no mirror are in it too.
+The mark before it, for the kind of root, is outside the link
+([Source Kind Marks](#source-kind-marks)). Its accessible name is “Home:” and the name
+it shows, read from its own content, so the ref and commit that head a pin with no
+mirror are in it too.
 It stays a link to `/view/`, so a modified or middle click and its context menu do what
 they do on any link.
 A plain click, or Enter on it, stays in the page.
 
-Its tooltip adds details and nothing else
-([Tooltips Add Information](#tooltips-add-information)): the full path of the served
-root, its files, size, and newest change, and on a mirror what the mirror is.
-It does not say that the name goes home, which the click and the name already say.
-A click neither shows nor hides it.
-A press on the name moves focus to it in Chrome, and that focus is the pointer’s own
-click rather than a reader moving focus
-([Tooltip Input Modality](#tooltip-input-modality)), so the tooltip stays as the pointer
-has it: shown while the pointer rests on the name, and gone when it leaves.
+[Repository Details](#repository-details) opens from the adjacent chevron.
 
 `0` runs the name’s own click path, from anywhere a shell letter works, and never in a
 text field ([Keyboard Shortcuts](#keyboard-shortcuts)). `static/main-tabs.js` (`goHome`)
@@ -5401,23 +5587,11 @@ navigation tooltips such as Git commit summaries.
 Tooltip content therefore cannot be the only source of an accessible name, instruction,
 or state.
 
-**Two focuses are not transitions**, and leave the tooltip as the pointer has it
-(`hideTooltipOnFocus` in `static/app.js`):
-
-- The focus a press on the folder’s name gives it is the click itself ([Home](#home)).
-- Focus put back where it was.
-  A rebuild that replaces the focused control focuses its replacement, as the Files
-  filter bar does when new tallies arrive.
-  When the element that last had focus has left the document, and no key or pointer
-  press of the reader’s has come since, the focus that follows is that repair.
-  A rebuild that removes the focused control and focuses nothing, as pressing the bar’s
-  Clear does, leaves focus on the page, so the focus the reader’s next Tab or click
-  gives is focus moving and puts the tooltip away.
-  The repair still puts away a tooltip whose own anchor the rebuild removed, since that
-  tooltip would never hear the pointer leave.
-  Without the rule, the filter bar’s rebuild would put away a tree row’s tooltip,
-  waiting or shown, under a pointer that had not moved, and nothing would bring it back
-  until the pointer left the row.
+A rebuild may focus the replacement of a control that left the document.
+When the reader has pressed neither a key nor a pointer button since the old control
+lost focus, the replacement keeps the pointer’s tooltip if its anchor still exists.
+For example, refreshing the Files filter bar leaves a tree row’s tooltip in place while
+the pointer remains over that row (`hideTooltipOnFocus` in `static/app.js`).
 
 This is not a rule about accessible names.
 `aria-label` is unaffected and still required wherever it was: a screen reader does not
@@ -5459,7 +5633,7 @@ A tooltip shown with no anchor is inside no element, so only a bare `hide()` put
 away. `MetabrowserTooltip.hide(within)` is the shell’s form of the same call.
 Without `within`, `hide()` puts away whatever tooltip there is, which is what a pointer
 leaving a surface means, but one in the nav’s header: the header is the shell’s chrome,
-which no view draws, so a view’s hide never takes the folder’s name’s tooltip
+which no view draws, so a view’s hide never takes the root kind mark’s tooltip
 ([Home](#home)).
 
 The page has one tooltip, so a surface that calls `hide()` to clear its own puts away
@@ -5559,10 +5733,9 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
 
 - **The button names the ref and the heading does not.** A served mirror’s navigation
   heading is the repository’s name alone, and a checkout’s revision’s is the folder’s
-  (`_pin_label_html` in `server.py`): this button names the ref, and the heading’s
-  tooltip the full commit, so a ref and a commit beside the name only repeated them, and
-  the owner found them clutter.
-  A pin with no mirror has no selector, so its heading is its ref and its short commit.
+  (`_pin_label_html` in `server.py`). The selector names the ref and its rows show the
+  short commit IDs. A pin with no mirror has no selector, so its heading is its ref and
+  its short commit.
 
 - **A branch that is a pull request’s head shows the pull request, on a second line.**
   The row’s own line, the chip, its badge, its commit, and its age, is every row’s;
@@ -5642,7 +5815,7 @@ A checkout adds three things, and each uses a primitive the control already had:
   On a revision it is the ref’s chip, as on a mirror, so the button is what tells a
   revision’s page from the working tree’s before the list is opened: both are headed by
   the folder’s name. The main heading’s note says “committed revision of” the folder, and
-  the navigation heading’s tooltip names the full commit.
+  the root menu describes the pinned source beside its local path.
 
 - **A page the server has moved on from says so at the foot of the pane,** in the
   freshness row a mirror offers its reload in, with one `.btn`, “Reload”
@@ -5659,10 +5832,15 @@ A checkout adds three things, and each uses a primitive the control already had:
   drawn again whenever a filter or a tally changes, and it carries the selector over
   rather than drawing it, so an open list keeps what was typed and where it was scrolled
   to, and the control that had focus keeps it.
-  `tests/test_checkout_ref_selector_chrome.py` records the selector’s height and the
-  first tree row’s place in every frame of the working tree’s page and of a revision’s,
-  and each has one value; `tests/test_files_totals_stable_chrome.py` holds the same for
-  every box of the Files navigation on a folder that holds a `.git`.
+  A box taken out of the page loses its scroll position, and a scroll made a moment
+  before has sent no event to say where, so the page reads each scrolled box’s position
+  before it rebuilds the bar and sets it again after: no scroll the page or the browser
+  makes is put back at the position the last event named (`renderNavFilterBar` in
+  `static/app.js`; `tests/test_ref_selector_long_list_chrome.py` scrolls and redraws in
+  one task). `tests/test_checkout_ref_selector_chrome.py` records the selector’s height
+  and the first tree row’s place in every frame of the working tree’s page and of a
+  revision’s, and each has one value; `tests/test_files_totals_stable_chrome.py` holds
+  the same for every box of the Files navigation on a folder that holds a `.git`.
 
 What each state shows is pinned by
 `tests/golden/cli-ui-source-ref-selector.tryscript.md`, and
@@ -5905,14 +6083,123 @@ Use structured rows rather than syntax-colored walls of punctuation when the use
 inspecting object relationships.
 Keys, scalar values, array counts, and expansion controls each have consistent roles.
 
-Tables should:
+## Data Tables
 
-- align numeric columns to the right;
-- keep headers visible where practical;
-- use restrained row striping and hover states;
-- preserve copyable text;
-- wrap or scroll long paths without widening the entire page;
-- expose an explicit empty state instead of rendering a blank panel.
+Every table of data the app draws is one component, with one definition of each rule in
+`static/styles.css`: the table plugin’s grid (`builtin_plugins/table/`), which every
+tabular source draws through, and the folder’s Distribution and totals tables, which
+take its numeric and label rules.
+The view is drawn after the knowledge-base browser in
+[paraverse](https://github.com/jlevy/paraverse) and adapted to these tokens.
+
+| Class | Rule |
+| --- | --- |
+| `.data-grid` | The table: chrome in `--font-sans` at the body size, a hairline in `--border` under each row, the header in the resting label type and on `--bg`, staying at the top of its scroll box, and `--hover-bg` under the pointer |
+| `.data-num` | A number, or a numeric column’s cell or header: right-aligned, in `--tabular-numerals`, never wrapped |
+| `.data-literal` | A literal value, a key, timestamp, hex, JSON, or `null`, in `--font-mono` at `--mono-block-font-size` |
+| `.data-label` | The resting label type a header has, for a heading that is not a `.data-grid` header, as a Distribution group’s is |
+
+**Every value is visible, and none is mistaken for another.**
+
+- `null` is drawn as the word, muted and monospaced; the empty string is an empty cell;
+  a short row’s missing cell is a muted dash whose tooltip says the row is shorter than
+  the header.
+- A number keeps its digits: an integer past what a browser number holds arrives as text
+  and is drawn as text, and an infinite or undefined real says `Infinity` or `NaN`.
+- A value whose stored type differs from its column’s, which SQLite allows, carries a
+  small outlined badge naming the stored type, in `--status-warning`, beside the value
+  rather than in its place.
+- A value the server cut for the page ends in a muted ellipsis, and its tooltip gives
+  its length, or its size in bytes where the source read only its first bytes, and says
+  the record shows more; the record says how much of it it shows.
+- A reference to a row that is not there is drawn as its value, not a chip, with the
+  same outlined badge saying `missing`, and its tooltip says no row of the referenced
+  table holds it.
+
+**Rows are one height, and cells are cut, never wrapped past it.** A table’s rows are
+one line, or two when a value it holds is longer than its column or holds a line break;
+a longer value is cut with an ellipsis, and its whole text is the shared tooltip, which
+shows only while the value is cut
+([Tooltips Add Information](#tooltips-add-information)). Each column is as wide as its
+header and its first values in the face they are drawn in, up to `COLUMN_MAX_CH`
+characters (`builtin_plugins/table/table-model.js`), and keeps that width as more rows
+arrive or a filter narrows them, so columns do not move under the reader.
+Numbers are right-aligned only in a column the source says is numeric.
+
+**Columns fit the pane.** With a source’s default columns, those from the right hide
+until the rest fit, and a note in the toolbar says how many are hidden and opens the
+Columns menu; columns the reader chose never hide, and when they overflow, the table
+scrolls sideways with its first column in place.
+
+**Values that mean a choice are links.** A boolean or enum value adds a filter on its
+column; a reference is a chip, a rounded box rather than the filter pill, whose card is
+the shared tooltip, and which opens the record it names.
+Every filter is a removable chip in the filter pill, `--radius-pill`; a header’s menu
+sorts its column either way, filters it by an operator and a value, and hides it.
+Search is one field, which asks the server once the typing pauses.
+
+**One Tab stop.** The grid is a row collection under
+[Navigational Row Collections](#navigational-row-collections): one element of the grid
+is in the Tab order, a row, a cell’s link, or a header’s button.
+Up and Down or `J` and `K` move a row, Left and Right move between the row and its
+cells, so a link in a cell is reachable, and Enter on the row opens its record in place
+of the grid; Back returns the keyboard to that row.
+Up from the first row moves to the header, where Left and Right cross each column’s sort
+and menu buttons and Down returns to the rows, so a column adds no Tab stop.
+Arrows do not open a row here, because a record replaces the grid the reader is reading.
+A header’s menu and the Columns menu are labelled dialogs: Tab moves through them, and
+they close when the focus leaves them or on Escape, which returns it to their button.
+
+**Small tables are drawn whole; large ones are windows.** Either is `role="grid"`,
+multiselectable, with `scope="col"` headers and `aria-sort`, and `aria-colcount` while
+columns are hidden to fit.
+A table of at most `WHOLE_TABLE_MAX_ROWS` (`builtin_plugins/table/table-view.js`) draws
+every row and keeps the browser’s find, select all, copy, and print.
+A larger one adds `aria-rowcount` and `aria-rowindex`, and draws only the rows near the
+view at one fixed row height; there, Search stands in for find in page, Shift with Up,
+Down, Home, or End selects rows that copy as tab-separated values, since a chord such as
+Command-A stays the browser’s, and print draws the rows held, up to `PRINT_MAX_ROWS`,
+with a line on the paper saying which rows it printed when it did not print them all
+([Rendering Large Content](large-content-rendering.md)).
+
+**The reader’s place is kept.** Back to the table, and a reload, return to the row that
+had focus and the scroll it had.
+The view writes its place to the history entry only when it matters, before it
+navigates, when the page is hidden, and once a pause after the last move or scroll
+(`PLACE_SAVE_MS`), because browsers bound history writes and a write a key press would
+use up the one a record’s address needs.
+
+**A live table moves nothing under the reader.** When its file changes, the table reads
+the rows it holds again with the same question, gathering a burst of changes for
+`LIVE_COALESCE_MS` (`builtin_plugins/table/table-view.js`). A row whose cells changed,
+and a row that arrived where the reader is, flash once in `--row-flash-bg`, as
+[Live Row Arrivals](#live-row-arrivals) do; a row that would land above the first row on
+screen is offered as a “3 new rows” `.btn` in the toolbar rather than drawn, and taking
+it draws the rows, goes to the first, and puts the keyboard on it.
+The scroll position, the focused row and the selected rows (by key, or by position where
+rows have none), an open menu, and what is typed but not sent stay as they were, and a
+read whose rows are the same draws nothing.
+A **Live** `.btn` beside it, whose label is its state and whose accessible name is the
+action, pauses the table and then reads **Paused · 2 changes**; pressing it again reads
+once. An open record has its own, since the toolbar is hidden while it shows, and is
+drawn again only when its cells change, keeping the keyboard on its control.
+Both the offer and the Live control sit between the fit note and Columns, and once shown
+keep their slot while hidden, so the toolbar keeps its box
+([Regions Keep Their Boxes](#regions-keep-their-boxes)). A read is spaced from the last
+by `LIVE_COST_SPACING` times what that one took, and none is made while the page is
+hidden; it reads once when shown.
+A read that fails keeps the rows on screen with a notice saying they are the last read,
+a watch the page could not register says the table is not following its file, and a
+column the address named that is gone is dropped from the address with a notice.
+The offer when it appears, Paused, and a failure until a read succeeds are each
+announced once in the view’s one polite live region.
+
+`tests/dom/table-view-session.js` runs the view’s behavior from the command line, and
+`tests/test_table_view_chrome.py` checks in Chrome what only layout and the browser’s
+history show: one row height, which the view’s estimates match, cutting and its tooltip,
+the inks and faces, the header that stays put, the pinned first column, the printed
+line, and a run of key presses past Chrome’s bound on history writes followed by a
+record, its Back, and a reload.
 
 ## Source and Syntax Colors
 
@@ -6078,8 +6365,9 @@ rule’s animation and uses the near-instant reduced-motion treatment.
 The highlight leaves the row’s size and controls in place.
 
 Initial snapshots, older rows revealed by paging, and edits to existing rows use their
-regular presentation.
-Each data source decides which rows arrived.
+regular presentation, except in a [data table](#data-tables), which flashes a row whose
+cells a live refresh changed as it flashes one that arrived (`.table-row-flash`). Each
+data source decides which rows arrived.
 A live list fed by another provider can apply the same treatment when it inserts a new
 item.
 

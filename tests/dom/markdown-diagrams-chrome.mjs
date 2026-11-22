@@ -193,10 +193,10 @@ const HOSTILE = {
   plain: "sequenceDiagram\n  Alice->>Bob: Hello, Bob",
 };
 // In the page: set the sources as an inert text's blocks, draw them through the Markdown
-// plugin's published host, and describe each figure, the frames, and disposal.
+// plugin's exported host, and describe each figure, the frames, and disposal.
 const DRAW_TEXT = (options) => `(async () => {
   const mb = window.metabrowser;
-  await mb.ensureKindAssets("markdown");
+  const markdown = await mb.plugins.load("markdown");
   const root = document.createElement("article");
   root.className = "kpress kpress-inert";
   for (const source of ${JSON.stringify(Object.values(HOSTILE))}) {
@@ -208,7 +208,7 @@ const DRAW_TEXT = (options) => `(async () => {
     root.append(pre);
   }
   document.body.append(root);
-  const drawn = mb.builtins.markdown.drawDiagrams(root, ${JSON.stringify(options)});
+  const drawn = markdown.drawDiagrams(root, ${JSON.stringify(options)});
   await drawn.ready;
   await new Promise((resolve) => setTimeout(resolve, 500));
   const frames = () => document.querySelectorAll("iframe.metabrowser-diagram-frame").length;
@@ -235,7 +235,7 @@ const DRAW_TEXT = (options) => `(async () => {
 // after it is drawn, and the next isolated draw opens a new frame.
 const REMOVE_MID_DRAW = `(async () => {
   const mb = window.metabrowser;
-  await mb.ensureKindAssets("markdown");
+  const markdown = await mb.plugins.load("markdown");
   const text = (source) => {
     const root = document.createElement("article");
     root.className = "kpress kpress-inert";
@@ -254,7 +254,7 @@ const REMOVE_MID_DRAW = `(async () => {
     root.querySelector('[data-kpress-diagram="mermaid"]')?.dataset.kpressDiagramStatus ?? null;
   const frame = () => document.querySelector("iframe.metabrowser-diagram-frame");
   const lost = text("flowchart LR\\n  A --> B");
-  const lostDraw = mb.builtins.markdown.drawDiagrams(lost, { isolated: true });
+  const lostDraw = markdown.drawDiagrams(lost, { isolated: true });
   const started = Date.now();
   while (!frame()?.contentWindow?.metabrowserDiagramFrame && Date.now() - started < 10000) {
     await new Promise((resolve) => setTimeout(resolve, 2));
@@ -263,10 +263,10 @@ const REMOVE_MID_DRAW = `(async () => {
   frame()?.remove();
   const lostSettled = await within(lostDraw.ready);
   const later = text("flowchart LR\\n  C --> D");
-  const laterDraw = mb.builtins.markdown.drawDiagrams(later, { inert: true });
+  const laterDraw = markdown.drawDiagrams(later, { inert: true });
   const laterSettled = await within(laterDraw.ready);
   const again = text("flowchart LR\\n  E --> F");
-  const againDraw = mb.builtins.markdown.drawDiagrams(again, { isolated: true });
+  const againDraw = markdown.drawDiagrams(again, { isolated: true });
   const againSettled = await within(againDraw.ready);
   const result = {
     removed,

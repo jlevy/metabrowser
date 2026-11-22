@@ -179,6 +179,16 @@
 }
 
 @media print {
+  /* No container on paper, as the pane has none (static/styles.css, "Print adapter"):
+     WebKit applies no break rule inside one, and the README is a document that needs
+     them. */
+  .folder-overview-host {
+    container-type: normal;
+  }
+
+  /* The README's panel prints the document alone, as its own Document view does: its
+     heading, "README", is the page's label for it, not part of it. */
+  .folder-overview-panel-document > .folder-overview-panel-heading,
   .folder-overview-panel-surface,
   .folder-overview-panel-error,
   .folder-overview-loading {

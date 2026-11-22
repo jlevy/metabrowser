@@ -262,6 +262,30 @@ def test_a_plain_folder_and_a_subdirectory_of_a_checkout_have_no_selector(
         assert (pin.status_code, pin.json()["capability"]) == (409, "pin"), root
 
 
+def test_a_revision_of_a_checkout_keeps_the_mark_and_the_repository_the_route_names(
+    checkout: Path,
+) -> None:
+    """The shell's mark and `/api/identity` say the same on the working tree and on a revision.
+
+    A revision has no mirror session, so the page's own repository context is empty for it;
+    the sentence still names the repository the checkout's `origin` is on github.com.
+    """
+
+    git(checkout, "remote", "set-url", "origin", "git@github.com:Octo/Demo.git")
+    server._set_root_dir(checkout)
+    tip = "Local Git checkout (GitHub: Octo/Demo)"
+    with TestClient(server.app) as client:
+        for shown in ("working tree", "revision"):
+            if shown == "revision":
+                _pin(client, ref="refs/heads/feature", view="/view/README.md")
+            identity = client.get("/api/identity").json()
+            assert (identity["kind"], identity["kind_tip"]) == ("git", tip), shown
+            for address in ("/view/", "/pulls", "/commit/0123456789abcdef"):
+                page = client.get(address).text
+                assert 'data-root-kind="git"' in page, (shown, address)
+                assert f'data-tip-text="{tip}"' in page, (shown, address)
+
+
 # ── Showing a revision ───────────────────────────────────────
 
 
@@ -288,9 +312,9 @@ def test_a_branch_is_shown_from_its_commit_not_from_the_working_tree(
     assert readme["content"] == "# Mirror\n"
     raw = served.get("/raw", params={"path": _wire("FEATURE.md")})
     assert raw.text == "Only on feature.\n"
-    # The mode is still how the root was opened.
+    # The kind is still how the root was opened: a checkout, whichever revision it shows.
     identity = served.get("/api/identity").json()
-    assert (identity["kind"], identity["short_name"]) == ("folder", "checkout")
+    assert (identity["kind"], identity["short_name"]) == ("git", "checkout")
     assert identity["full_name"].endswith("/checkout@feature")
     assert _refs(served)["working_tree"]["current"] is False
     assert [row["name"] for row in _refs(served)["refs"] if row["current"]] == ["feature"]
@@ -692,10 +716,10 @@ def test_a_working_tree_page_is_refused_while_a_revision_is_served(served: TestC
     assert 'window.METABROWSER_SOURCE_CHECKOUT={"working_tree": false}' in revision_shell
     assert "MetabrowserSourcePinGuard" in revision_shell
     assert 'data-mirror-note="committed revision of"' in revision_shell
-    # Its heading is the folder's name alone, so the tooltip and the copy control after the
-    # name are what name its commit: the full ID in the sentence, and the inline module
-    # that mounts the control, which a working tree's page does not carry (mb-qq4e).
-    assert f'data-mirror-tip="Committed revision {pinned} of the checkout in ' in revision_shell
+    # The root menu describes the pinned source beside its local checkout path.
+    assert 'data-mirror-tip="Files come from a committed revision of this checkout."' in (
+        revision_shell
+    )
     assert "window.MetabrowserMirrorHeading" in revision_shell
     assert "window.MetabrowserMirrorHeading" not in shell
     # And the other way: the revision's page, once the working tree is served again.

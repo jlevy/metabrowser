@@ -559,7 +559,7 @@ Resolution, lifecycle, and safety rules are specified in
 │   ├── source.yml
 │   ├── state.yml
 │   └── store-alias.yml
-└── repository-stores/<store-key>/
+└── repos/<store-key>/
     ├── store.yml
     ├── state.yml
     └── repository.git/
@@ -582,7 +582,7 @@ Cache clearing and cache-layout changes preserve configuration.
 The `f01` marker and SoftSchema contract versions solve different problems:
 
 - `f01` names application-home directory semantics and migration order.
-- A contract such as `metabrowser.cache:RepositorySource/v1` names one YAML payload
+- A contract such as `metabrowser.cache:RepositorySource/v2` names one YAML payload
   shape.
 - A provider-record change does not force an application-home migration when the old
   provider cache can be retained, converted under a released-data obligation, or
@@ -751,8 +751,12 @@ The cache key is a SHA-256 digest of a credential-free source identity.
 The directory combines a readable slug with a short digest:
 
 ```text
-github-com--pallets--flask--e7b7fe0ffe8a
+github-com-pallets-flask-wl2qiw4376x
 ```
+
+(`f01` and `f02` spelled it `github-com--pallets--flask--e7b7fe0ffe8a`; `f03` joins the
+words with single dashes and writes the digest in base 36. See
+[Slugs](../../architecture/arch-repository-cache.md#slugs).)
 
 The full digest in `source.yml` is authoritative.
 If a path already contains a different digest, derivation extends the suffix
@@ -795,12 +799,12 @@ open or refresh:
 
 ```yaml
 softschema:
-  contract: metabrowser.cache:RepositorySource/v1
+  contract: metabrowser.cache:RepositorySource/v2
   envelope: source
   status: enforced
 source:
   id: sha256:<full-source-identity-digest>
-  slug: github-com--pallets--flask--7d5c1a2e4b90
+  slug: github-com-pallets-flask-wl2qiw4376x
   display_url: https://github.com/pallets/flask
   clone_url: https://github.com/pallets/flask
   transport: https
@@ -1612,7 +1616,7 @@ replay against production functions when they land.
 | URL grammar | `url-grammar.json` | Git’s HTTP client sent the same request with and without a trailing slash, and sent `//`, `%72`, and path case verbatim |
 | Source and store identity, aliases, slugs | `source-identity.json` | The home filesystem folded case and Unicode normalization, and `NAME_MAX` was 255 bytes |
 | Locks and state machines | `state-machines.json` for the lock order, the side locks, and the startup sweep, and the tables in [Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md#acquisition) for acquisition and refresh; publication verifies absence under the owning lock, with a platform no-replace rename as defense in depth | `flock` released 2.8 ms after its holder was killed; `lockf` vanished when an unrelated descriptor closed; `os.rename` replaced an empty directory and `renamex_np(RENAME_EXCL)` refused it. The interleaving check found the store-to-alias reclamation race in the previous design and none in this one |
-| Catalog layout | Flat `sources/` and `repository-stores/` directories | Scanning 10,000 flat entries and reading each record took 262 ms |
+| Catalog layout | Flat `sources/` and `repos/` directories | Scanning 10,000 flat entries and reading each record took 262 ms |
 
 Store and alias rules follow from those identities.
 A store acquired from a source before provider resolution takes a deterministic identity

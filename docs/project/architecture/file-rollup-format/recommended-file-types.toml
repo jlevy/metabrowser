@@ -26,7 +26,7 @@
 # devtools/check_file_type_colors.py holds these rules and reports the measurements.
 
 schema_version = 5
-registry_revision = 3
+registry_revision = 4
 max_extension_components = 2
 
 [[group]]
@@ -1030,7 +1030,7 @@ priority = 100
 id = "sqlite"
 family = "sqlite"
 content_family = "data"
-extensions = ["sqlite"]
+extensions = ["sqlite", "sqlite3", "db", "db3", "s3db"]
 filenames = []
 shebangs = []
 priority = 100
@@ -1138,7 +1138,7 @@ priority = 10
 id = "configuration"
 group = "data"
 content_family = "data"
-extensions = ["cfg", "conf", "properties", "db"]
+extensions = ["cfg", "conf", "properties"]
 filenames = []
 shebangs = []
 priority = 100

@@ -501,16 +501,18 @@ metab ./repo --diff <revision> --diff-check               # rebuild and verify
 
 ```shell
 metab ./notes --check-api    # pass or fail for the navigation requests
-metab --plugins              # every discovered plugin
-metab --plugin markdown      # one plugin's resolved manifest
-metab --doctor               # check the plugins and the setup; non-zero exit on a problem
+metab --plugins              # list accepted plugins and discovery errors
+metab --plugin agents        # show Agent Session Browser's resolved manifest
+metab --doctor               # validate plugins and check the rest of the setup
 ```
 
 `--check-api` runs the browser’s navigation sequence against `ROOT`, prints each step,
 and ends with `result: pass` or a failure.
 For the underlying data, `--api` is more direct.
-The plugin modes take `--plugins-dir` and `--json`; [plugins](plugins.md) says where
-plugins are discovered.
+All three plugin modes accept `--plugins-dir` and `--json`. The JSON inventory includes
+both `plugins` and `errors`. Discovery errors leave the accepted plugins in the output
+and set a nonzero exit status.
+See [inspecting plugins](plugins.md#inspecting-plugins).
 
 After its verdict, `--doctor` reports what GitHub work needs from `gh`: the `gh` on
 `PATH` and its version, the account it is signed in to, that account’s token scopes, and
@@ -884,6 +886,10 @@ metab --recent-clear                # empty the list
   `--no-serve`) record nothing.
 - **Each entry’s mode:** `folder` for your own files as they are on disk, or `mirror`
   for Metabrowser’s cached copy of a repository.
+  `--recent --json` also gives each entry’s `git`, true for a folder that held a `.git`
+  entry, a checkout, when it was last opened, so a menu can draw its Git checkout mark
+  without looking at the folder, and false for any other folder and for a mirror.
+  A folder opened before this field existed lists it as false until it is opened again.
   No entry records which branch or commit was shown, so a folder reopens on its files as
   they are on disk.
 - **Order and length:** opening something again moves its one entry to the front, and

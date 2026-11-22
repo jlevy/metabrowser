@@ -2606,16 +2606,16 @@
     const item = document.createElement("div");
     item.className = "git-graph-item";
     item.appendChild(element);
-    rowCopyReleases.add(window.metabrowser.mountRefCopies(element, item));
+    rowCopyReleases.add(window.metabrowser.mountRefMenus(element, item));
     return item;
   }
 
   /**
    * @param {MetabrowserGitRef[]} refs
-   * @param {"inline"|"sibling"|false} [copy]
+   * @param {"inline"|"sibling"|false} [menu]
    * @returns {string}
    */
-  function renderRefBadges(refs, copy = "sibling") {
+  function renderRefBadges(refs, menu = "sibling") {
     return refs
       .map((ref) =>
         window.metabrowser.refChipHtml(ref.name, {
@@ -2623,7 +2623,8 @@
           kind: ref.kind,
           trunk: ref.is_trunk,
           head: ref.is_head,
-          copy,
+          ref: ref.id,
+          menu,
         }),
       )
       .join("");

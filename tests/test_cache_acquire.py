@@ -402,7 +402,7 @@ def test_a_default_branch_that_does_not_resolve_to_the_observed_head_is_refused(
         asyncio.run(acquire_source(_file_source(origin), home=home))
     assert list((home / "staging").iterdir()) == []
     assert list((home / "sources").iterdir()) == []
-    assert list((home / "repository-stores").iterdir()) == []
+    assert list((home / "repos").iterdir()) == []
 
 
 @posix_only
@@ -543,7 +543,7 @@ def test_file_origin_without_filter_support_fetches_a_complete_staging_store(
             for lock in held_locks()
         )
         assert list((home / "sources").iterdir()) == []
-        assert list((home / "repository-stores").iterdir()) == []
+        assert list((home / "repos").iterdir()) == []
         assert _inodes(staged.git_dir).isdisjoint(_inodes(origin))
         leaked = [
             path
@@ -610,7 +610,7 @@ def test_a_partial_clone_source_is_refused_with_a_typed_error(
         asyncio.run(acquire_source(_file_source(partial), home=home))
     assert list((home / "staging").iterdir()) == []
     assert list((home / "sources").iterdir()) == []
-    assert list((home / "repository-stores").iterdir()) == []
+    assert list((home / "repos").iterdir()) == []
 
 
 @posix_only
@@ -693,7 +693,7 @@ def _occupy_store_key(home: Path, key: str, *, store_id: str) -> None:
 
 
 @posix_only
-def test_a_store_is_named_for_its_repository_and_a_prefix_of_its_identity(
+def test_a_store_is_named_for_its_repository_and_the_start_of_its_identity_in_base_36(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _allow_installed_git(monkeypatch)
@@ -703,10 +703,10 @@ def test_a_store_is_named_for_its_repository_and_a_prefix_of_its_identity(
     first = store_key_candidates(source.transport, source.normalized, published.store_id)[0]
     assert published.store_key == first
     assert is_store_key(first)
-    assert first.startswith("local--origin--")
-    assert len(first.rpartition("--")[2]) == 16
+    assert first.startswith("local-origin-")
+    assert len(first.rpartition("-")[2]) == 11
     assert store_key_matches_identity(first, published.store_id)
-    assert published.git_dir == published.home / "repository-stores" / first / "repository.git"
+    assert published.git_dir == published.home / "repos" / first / "repository.git"
     assert published.store_id.removeprefix("sha256:") not in str(published.git_dir)
 
 
@@ -716,7 +716,7 @@ def test_a_store_never_shares_a_name_another_store_holds(
 ) -> None:
     """The first-choice name is taken by a different store, so this one takes the next.
 
-    The odds of that are what ``STORE_KEY_SUFFIX_HEX_DIGITS`` sizes; this is what happens
+    The odds of that are what ``NAME_SUFFIX_CHARS`` sizes; this is what happens
     when they are beaten: nothing is shared, the other store is not touched, and the
     lookup that follows finds this store at the name it took.
     """
@@ -766,7 +766,7 @@ def test_an_alias_whose_store_is_at_no_key_is_a_miss_and_the_next_open_publishes
     home = tmp_path / "home"
     first = asyncio.run(acquire_source(source, home=home))
     digest = first.store_id.removeprefix("sha256:")
-    stores = home / "repository-stores"
+    stores = home / "repos"
     (stores / first.store_key).rename(stores / digest)
     alias = home / source_record(first.slug, "store-alias.yml")
     alias_before = alias.read_bytes()
@@ -829,7 +829,7 @@ def test_a_future_home_is_refused_before_opening_the_cache_for_write(
     source = _file_source(origin)
     asyncio.run(acquire_source(source, home=home))
     layout = home / "layout.yml"
-    layout.write_text(layout.read_text(encoding="utf-8").replace("format: f02", "format: f03", 1))
+    layout.write_text(layout.read_text(encoding="utf-8").replace("format: f03", "format: f04", 1))
 
     def refuse_write(home_path: Path | None = None, *, version: str | None = None) -> object:
         raise AssertionError("a future layout must not open the home for write")
