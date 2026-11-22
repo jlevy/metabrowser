@@ -151,18 +151,18 @@ async function hover(selector) {
   });
 }
 
-async function click(selector) {
+async function click(selector, button = "left") {
   const point = await pointFor(selector);
   await browser.send("Input.dispatchMouseEvent", {
     type: "mousePressed",
     ...point,
-    button: "left",
+    button,
     clickCount: 1,
   });
   await browser.send("Input.dispatchMouseEvent", {
     type: "mouseReleased",
     ...point,
-    button: "left",
+    button,
     clickCount: 1,
   });
 }
@@ -292,6 +292,21 @@ for (const theme of ["light", "dark"]) {
       );
       // Clear the newly opened Settings menu and return to the closed root menu.
       await click("#settings-btn");
+      await browser.evaluate(`(() => {
+        const outside = document.getElementById("settings-btn");
+        outside.addEventListener("pointerdown", (event) => event.preventDefault());
+        outside.addEventListener("contextmenu", (event) => event.preventDefault(), { once: true });
+      })()`);
+      for (const button of ["middle", "right"]) {
+        await browser.evaluate(`document.getElementById("root-details").open = false`);
+        await click(TRIGGER);
+        check(
+          `an outside ${button} click starts with the menu open`,
+          await browser.evaluate(MENU_OPEN),
+        );
+        await click("#settings-btn", button);
+        check(`an outside ${button} click closes the menu`, !(await browser.evaluate(MENU_OPEN)));
+      }
       await browser.evaluate(`document.getElementById("root-details").open = false`);
       await click(TRIGGER);
     }
@@ -425,8 +440,25 @@ for (const selector of ["#header-root-kind", ".header-home-name"]) {
 }
 
 // An HTML preview has its own browsing context and its clicks do not reach the shell.
+await browser.send("Page.enable");
+await browser.send("Page.addScriptToEvaluateOnNewDocument", {
+  source: `window.addEventListener("message", (event) => {
+    const frame = document.querySelector("iframe.file-html-preview");
+    if (event.data === "root-kind-preview-ready" && event.source === frame?.contentWindow) {
+      frame.dataset.loaded = "true";
+    }
+  });`,
+});
 await open(`${pages.folder}preview.html`);
-await browser.waitFor('document.querySelector("iframe.file-html-preview") !== null', STEP_MS);
+await browser.waitFor(
+  `(() => {
+    const frame = document.querySelector("iframe.file-html-preview[data-loaded]");
+    if (!frame) return false;
+    const box = frame.getBoundingClientRect();
+    return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === frame;
+  })()`,
+  STEP_MS,
+);
 await click(TRIGGER);
 check("the chevron opens beside a sandboxed HTML preview", await browser.evaluate(MENU_OPEN));
 await click("iframe.file-html-preview");

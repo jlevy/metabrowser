@@ -2226,7 +2226,7 @@ function initRootDetails() {
   }
   const actions = details.querySelector(".root-details-actions");
   document.addEventListener(
-    "click",
+    "pointerdown",
     (event) => {
       if (details.open && !event.composedPath().includes(details)) {
         details.open = false;

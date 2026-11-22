@@ -122,7 +122,9 @@ def test_each_kind_of_root_draws_its_mark_before_its_name_in_chrome(
     (plain / "docs").mkdir(parents=True)
     (plain / "README.md").write_text("# A plain folder\n", encoding="utf-8")
     (plain / "preview.html").write_text(
-        "<!doctype html><html><body><p>Preview content</p></body></html>\n",
+        "<!doctype html><html><body><p>Preview content</p>"
+        "<script>parent.postMessage('root-kind-preview-ready', '*')</script>"
+        "</body></html>\n",
         encoding="utf-8",
     )
     # A checkout whose `origin` is on github.com, written as Git writes one, so its tooltip
