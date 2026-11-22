@@ -166,7 +166,7 @@ jobs:
 
   unit:
     # The parallel tier, in parts of whole files: two on each interpreter on the main
-    # path, and three on one interpreter for a pull request while main is green (the
+    # path, and four on one interpreter for a pull request while main is green (the
     # plan job's pythons and unit-shards; devtools/ci_plan.sh says why those counts).
     # Whole, under xdist, it ran past the time at which the fast CI plan splits a job
     # (Time Limits), and xdist sped it up less than the factor below which the plan
@@ -185,6 +185,8 @@ jobs:
     # files; dealt by all of them the two parts hold the same seconds of tests
     # (devtools/shard_weights.json). Before the parts were dealt by time the second set
     # it: 90th percentile 4.2 minutes over 23 jobs in runs 44037230262 to 44046843606.
+    # The main path sets the limit: a pull request's parts took 2.5 to 3.2 minutes in
+    # three (run 45069289704).
     timeout-minutes: 7
     steps:
       - name: Checkout
@@ -287,7 +289,9 @@ jobs:
     # 4.0 to 4.4 minutes over the sixteen jobs of run 45066732637 (238 to 263 seconds),
     # every part alike, since the parts are dealt by measured time
     # (devtools/shard_weights.json). Dealt by rank in node-ID order, the first part took
-    # 6.0 to 6.6 minutes on run 45062416967 and the others 2.7 to 4.7.
+    # 6.0 to 6.6 minutes on run 45062416967 and the others 2.7 to 4.7. The main path
+    # sets the limit: a pull request's parts, without the slow tests, took 2.5 to 2.7
+    # minutes (run 45069289704).
     timeout-minutes: 7
     steps:
       - name: Checkout
@@ -346,7 +350,9 @@ jobs:
     runs-on: ubuntu-latest
     # 2.7 to 4.1 minutes under xdist over the six jobs of run 44026747033's first three
     # attempts and 2.7 to 3.9 over runs 44037230262 and 44038762653, with the build
-    # cached; building Git took 0.8 to 1.4 more on a cache miss (run 43576279668).
+    # cached; building Git took 0.8 to 1.4 more on a cache miss (run 43576279668). The
+    # main path sets the limit: a pull request's two parts of the lowest release took
+    # 2.4 and 2.7 minutes (run 45069289704).
     timeout-minutes: 8
     steps:
       - name: Checkout

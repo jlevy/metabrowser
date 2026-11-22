@@ -1047,21 +1047,34 @@ job’s outputs and the Chrome job to the plan’s target and condition, and
 `tests/test_ci_plan.py` holds that the main path narrows nothing: all of `PYTHONS`,
 every part, the whole Chrome tier, and every admitted Git.
 
-**What three minutes needs.** A run’s wall clock is about 30 seconds to start, its
-slowest job, and 10 seconds of `ci-ok`. A job spends about 50 seconds before its first
-test: 16 on checkout and setup, then `make install` and pytest’s collection of the whole
-suite, which each pytest job repeats.
-Two things keep the slowest job above the 140 seconds that leaves:
+**What it reaches, and what three minutes needs.** A run’s wall clock is about 30
+seconds to start, 10 for the `plan` job the tiers now wait for, its slowest job, and 10
+of `ci-ok`. On the pull-request path’s first run (45069289704, with `unit` in three
+parts):
+
+| Job | Seconds, each part | Was, per job (run 45063672769) |
+| --- | --- | --- |
+| `unit` | 150 to 189 | up to 316 |
+| `goldens and serial` | 115 to 133 | up to 279 |
+| `chrome`, without the slow tests | 148 to 160; none when no browser path changed | up to 372 |
+| `admitted-git`, lowest release | 146 and 163 | up to 250 |
+| `lint` | 136 | the same |
+
+That is about four minutes where it was seven, when no job waits for a runner.
+A job spends 45 to 60 seconds before its first test: 16 to 30 on checkout and setup,
+then `make install` and pytest’s collection of the whole suite, which each pytest job
+repeats.
+Two things keep the slowest job above the 130 seconds that three minutes leaves:
 
 - One file, `tests/test_github_pulls.py`, takes about 112 seconds on its worker, in both
   the `unit` and `admitted-git` jobs, and a file runs on one worker, in order.
-  No number of parts brings its part under that; splitting the file would.
-- Collection costs each pytest job 25 to 30 seconds, some 10 of them compiling bytecode.
+  No number of parts brings its part under about 175 seconds; splitting the file would
+  bring `unit` to about 140.
+- Collection costs each pytest job 27 to 40 seconds.
   Passing a part only its own files would need the plan to know every file a tier’s
   tests live in before collecting, which only collection says; it is not done here.
 
-[The PR’s measurements](https://github.com/jlevy/metabrowser/pull/698) and
-`make ci-report` give the times the path reaches.
+`make ci-report` gives the times the path reaches as they change.
 
 ## Decisions and Open Questions
 

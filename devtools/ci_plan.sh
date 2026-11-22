@@ -57,23 +57,25 @@ RUNS_PER_PAGE=30
 # pull request runs one interpreter, so it can afford more, shorter parts: the owner
 # asked for a routine cycle of about three minutes (the fast CI plan, 2026-11-22), which
 # is some 140 s for the slowest job after the 30 s a run takes to start and before
-# ci-ok. A job spends about 50 s before its first test: 16 s of checkout and setup, then
-# make install and pytest's collection of the whole suite (run 45062416967). The counts
-# are the fewest that fit, from the seconds in devtools/shard_weights.json, which also
-# deals the parts:
+# ci-ok. A job spends 45 to 60 s before its first test: 16 to 30 s of checkout and
+# setup, then make install and pytest's collection of the whole suite, 27 to 40 s (runs
+# 45062416967 and 45069289704). The pull-request counts, with what run 45069289704
+# measured of each, dealt by the seconds in devtools/shard_weights.json:
 #
-#   unit      3, not 2: about 1,200 s of tests on four workers. One file,
-#             tests/test_github_pulls.py, takes 112 s on its worker, so no count brings
-#             its part under about 175 s; more parts would only add jobs.
-#   goldens   3 on both paths: a third of the goldens (about 50 s at four at a time on
-#             the pull request's interpreter) and of the serial tier (about 20 s), with
-#             one collection between them. In two, the slower interpreters' parts took
-#             3.9 minutes of the job's 5 (run 45066732637).
-#   chrome    4 on both paths: the pull-request path's 350 s of tests without the slow
-#             ones is 88 s a part, and main's 778 s is 195 s.
-#   admitted-git  2, not 1, on the one release: 572 s of tests on four workers, of which
-#             tests/test_github_pulls.py is 108 s on its worker.
-UNIT_SHARDS_MAIN=2 UNIT_SHARDS_PR=3
+#   unit      4. In 3, the parts took 150 to 189 s: 480 s of tests on four workers in
+#             127 s, after 58 s. One file, tests/test_github_pulls.py, takes 112 s on its
+#             worker, so no count brings its part under about 175 s; 4 brings the others
+#             to about 140.
+#   goldens   3 on both paths: 115 to 133 s on the pull request's interpreter, a third
+#             of the goldens (63 s at four at a time) and of the serial tier, with one
+#             collection between them. In two, the slower interpreters' parts took 3.9
+#             minutes of the job's 5 on main (run 45066732637).
+#   chrome    4 on both paths: 148 to 160 s without the slow tests, 92 s of them tests;
+#             main's whole tier is 193 s of tests a part.
+#   admitted-git  2 on the one release: 146 to 163 s. Its 572 s of tests on four workers
+#             include tests/test_github_pulls.py at 108 s on its worker, so a third part
+#             would not shorten the longest.
+UNIT_SHARDS_MAIN=2 UNIT_SHARDS_PR=4
 GOLDENS_SHARDS_MAIN=3 GOLDENS_SHARDS_PR=3
 CHROME_SHARDS_MAIN=4 CHROME_SHARDS_PR=4
 ADMITTED_GIT_SHARDS_MAIN=1 ADMITTED_GIT_SHARDS_PR=2

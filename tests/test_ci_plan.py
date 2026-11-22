@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from tests.required_tools import require_git, require_jq
+from tests.suite_tiers import CHROME_FIXTURE
 
 ROOT = Path(__file__).resolve().parents[1]
 PLAN = ROOT / "devtools" / "ci_plan.sh"
@@ -599,7 +600,7 @@ NOT_BROWSER = ""
         ({"src/metabrowser/settings.py": "x"}, "METABROWSER_SETTINGS"),
         ({"src/metabrowser/plugin_loader/manifest.py": "x"}, "the plugin manifest"),
         # The Chrome tests, what they share, and what runs them.
-        ({"tests/test_nav_chrome.py": "def test(chrome_profile): ..."}, "asks for Chrome"),
+        ({"tests/test_nav_chrome.py": f"def test({CHROME_FIXTURE}): ..."}, "asks for Chrome"),
         (
             {"tests/test_transitions.py": "from tests.required_tools import require_chrome"},
             "Chrome",
