@@ -1270,8 +1270,8 @@ app_copy() {
 app_copy "$work/release-copy"
 cat >"$work/release-copy/scripts/check-dmg.sh" <<'EOF'
 #!/usr/bin/env bash
-printf 'NOTARIZE=%s EXPECTED_TEAM_ID=%s EXPECTED_VERSION=%s EXPECTED_COMMIT=%s image=%s\n' "${NOTARIZE:-}" \
-  "${EXPECTED_TEAM_ID:-}" "${EXPECTED_VERSION:-}" "${EXPECTED_COMMIT:-}" "$(basename "$1")" >"$check_dmg_record"
+printf 'NOTARIZE=%s EXPECTED_TEAM_ID=%s EXPECTED_VERSION=%s EXPECTED_COMMIT=%s EXPECTED_ARCHES=%s image=%s\n' "${NOTARIZE:-}" \
+  "${EXPECTED_TEAM_ID:-}" "${EXPECTED_VERSION:-}" "${EXPECTED_COMMIT:-}" "${EXPECTED_ARCHES:-}" "$(basename "$1")" >"$check_dmg_record"
 EOF
 chmod +x "$work/release-copy/scripts/check-dmg.sh"
 swiftc() {
@@ -1286,16 +1286,308 @@ rm -f "$check_dmg_record"
 # Values in its own environment that check-release.sh must override, as check-dmg.sh
 # would otherwise inherit them. EXPECTED_TEAM_ID is its input, passed on unchanged.
 run env TAG="$release_tag" BUILT=local EXPECTED_TEAM_ID="$team" LAUNCH=0 NOTARIZE=0 EXPECTED_VERSION=9.9.9 \
-  EXPECTED_COMMIT=89abcde "$work/release-copy/scripts/check-release.sh"
-want="NOTARIZE=1 EXPECTED_TEAM_ID=$team EXPECTED_VERSION=$version_now EXPECTED_COMMIT=0123456789abcdef0123456789abcdef01234567 image=$image_name"
+  EXPECTED_COMMIT=89abcde EXPECTED_ARCHES=x86_64 "$work/release-copy/scripts/check-release.sh"
+want="NOTARIZE=1 EXPECTED_TEAM_ID=$team EXPECTED_VERSION=$version_now EXPECTED_COMMIT=0123456789abcdef0123456789abcdef01234567 EXPECTED_ARCHES=arm64 image=$image_name"
 if ((status == 0)) && [[ "$(cat "$check_dmg_record" 2>/dev/null)" == "$want" ]] && said "quarantine: simulated" &&
   said "check-dmg.sh with NOTARIZE=1: passed, team $team, the release variant $version_now from 0123456789abcdef0123456789abcdef01234567"; then
-  pass "check-release.sh runs check-dmg.sh with NOTARIZE=1 and the team, version, and commit it then reports"
+  pass "check-release.sh runs check-dmg.sh with NOTARIZE=1 and the team, version, commit, and slices it then reports"
 else
   fail "check-release.sh's step 7: status $status; check-dmg.sh got: $(cat "$check_dmg_record" 2>/dev/null); output: $(cat "$work/out")"
 fi
 unset -f gh release_json swiftc
 unset check_dmg_record
+
+# ── Architectures ────────────────────────────────────────────
+# ARCHES is read once, by normalize_arches: the build's slices and the image's name both
+# come from what it prints, so a list written another way cannot give them two meanings.
+expect_arches() {
+  local given="$1" want="$2"
+  run normalize_arches "$given" ARCHES
+  if ((status == 0)) && [[ "$(cat "$work/out")" == "$want" ]]; then
+    pass "ARCHES '${given//$'\t'/<tab>}' is '$want'"
+  else
+    fail "ARCHES '$given': status $status: $(cat "$work/out")"
+  fi
+}
+expect_arches "arm64" "arm64"
+expect_arches "arm64 " "arm64"
+expect_arches "  x86_64" "x86_64"
+expect_arches "arm64 arm64" "arm64"
+expect_arches "x86_64 arm64" "arm64 x86_64"
+expect_arches "arm64  x86_64 arm64 " "arm64 x86_64"
+expect_arches $'arm64\tx86_64\n' "arm64 x86_64"
+for bad in "ppc" "arm64 ppc" "arm64,x86_64" "arm64e" "ARM64" "*" "universal"; do
+  run normalize_arches "$bad" ARCHES
+  if ((status != 0)) && said "ARCHES names '" && said "which is not a supported architecture; supported: arm64 x86_64"; then
+    pass "ARCHES '$bad' is refused, with the architectures that are supported"
+  else
+    fail "ARCHES '$bad': status $status: $(cat "$work/out")"
+  fi
+done
+run normalize_arches "  " ARCHES
+if ((status != 0)) && said "ARCHES names no architecture"; then
+  pass "an ARCHES of only whitespace is refused"
+else
+  fail "an ARCHES of only whitespace: status $status: $(cat "$work/out")"
+fi
+
+# The image a release expects, for each way of writing the list. A trailing space once
+# predicted the universal image for a build of one slice.
+expect_image() {
+  local given="$1" want_arches="$2" want_label="$3"
+  run env ARCHES="$given" bash -c 'source scripts/common.sh; variant_settings release; echo "$arches|$arch_label|$dmg"'
+  if ((status == 0)) && [[ "$(cat "$work/out")" == "$want_arches|$want_label|build/Metabrowser-$version_now-$want_label.dmg" ]]; then
+    pass "ARCHES '$given' builds '$want_arches' and expects the $want_label image"
+  else
+    fail "ARCHES '$given': status $status: $(cat "$work/out")"
+  fi
+}
+expect_image "" "arm64" arm64
+expect_image "arm64 " "arm64" arm64
+expect_image "arm64 arm64" "arm64" arm64
+expect_image " x86_64 " "x86_64" x86_64
+expect_image "x86_64 arm64" "arm64 x86_64" universal
+run env ARCHES="arm64 ppc" bash -c 'source scripts/common.sh; variant_settings release; echo reached'
+if ((status != 0)) && said "ARCHES names 'ppc'" && ! said reached; then
+  pass "variant_settings stops on an unsupported architecture"
+else
+  fail "variant_settings with ARCHES 'arm64 ppc': status $status: $(cat "$work/out")"
+fi
+# The checks of a finished image name its variant whatever ARCHES holds.
+run env ARCHES=ppc bash -c 'source scripts/common.sh; variant_of_bundle_id io.github.jlevy.metabrowser.dev; icon_of_variant release'
+if ((status == 0)) && [[ "$(tr '\n' ' ' <"$work/out")" == "dev Resources/AppIcon.icns " ]]; then
+  pass "a variant's identity does not depend on ARCHES"
+else
+  fail "variant_of_bundle_id and icon_of_variant with ARCHES=ppc: status $status: $(cat "$work/out")"
+fi
+
+# Stand-ins: a "binary" is a file that holds its slices as lipo -archs prints them, and
+# a property list is KEY=VALUE lines.
+lipo() {
+  [[ "$1" == -archs && -f "$2" ]] || {
+    echo "fatal error: lipo: can't open input file: $2" >&2
+    return 1
+  }
+  cat "$2"
+}
+plutil() {
+  # plutil -extract KEY raw -o - PLIST
+  [[ "$1" == -extract ]] || return 99
+  sed -n "s/^$2=//p" "${*: -1}" | grep .
+}
+export -f lipo plutil
+expect_slices() {
+  local label="$1" built="$2" asked="$3" want="$4"
+  printf '%s\n' "$built" >"$work/binary"
+  run require_slices "$work/binary" "$asked"
+  if [[ -z "$want" ]] && ((status == 0)); then
+    pass "$label"
+  elif [[ -n "$want" ]] && ((status != 0)) && said "$want"; then
+    pass "$label"
+  else
+    fail "$label: status $status: $(cat "$work/out")"
+  fi
+}
+expect_slices "a binary with the slice asked for passes" "arm64" "arm64 " ""
+expect_slices "a universal binary passes in either order" "x86_64 arm64" "arm64 x86_64" ""
+expect_slices "one slice where two were asked for stops" "arm64" "arm64 x86_64" \
+  "has the slices 'arm64', but 'arm64 x86_64' was asked for"
+expect_slices "two slices where one was asked for stops" "x86_64 arm64" "arm64" \
+  "has the slices 'arm64 x86_64', but 'arm64' was asked for"
+expect_slices "another slice than the one asked for stops" "x86_64" "arm64" \
+  "has the slices 'x86_64', but 'arm64' was asked for"
+expect_slices "a slice no release has stops" "arm64e" "arm64" "names 'arm64e', which is not a supported architecture"
+run require_slices "$work/no-binary" arm64
+if ((status != 0)) && said "lipo could not read the architectures"; then
+  pass "a binary lipo cannot read stops, rather than passing as having no slices"
+else
+  fail "require_slices on a missing binary: status $status: $(cat "$work/out")"
+fi
+
+# image_arch_problems: the slices in the image against the ones asked for, and against
+# the image's own name.
+expect_image_arch() {
+  local label="$1" want="$2" problems
+  shift 2
+  problems="$(image_arch_problems "$@")"
+  if [[ -z "$want" && -z "$problems" ]] || [[ -n "$want" && "$problems" == *"$want"* ]]; then
+    pass "$label"
+  else
+    fail "$label: the problems were: ${problems:-none}"
+  fi
+}
+expect_image_arch "an arm64 image named for arm64 passes" "" \
+  Metabrowser-1.2.3-arm64.dmg io.github.jlevy.metabrowser 1.2.3 arm64 "arm64 "
+expect_image_arch "a universal development image passes" "" \
+  Metabrowser-Dev-1.2.3-universal.dmg io.github.jlevy.metabrowser.dev 1.2.3 "arm64 x86_64" "x86_64 arm64"
+expect_image_arch "an image passes with no architectures asked for" "" \
+  Metabrowser-1.2.3-x86_64.dmg io.github.jlevy.metabrowser 1.2.3 x86_64 ""
+expect_image_arch "an arm64 app in an image named universal is refused" "is named Metabrowser-1.2.3-arm64.dmg" \
+  Metabrowser-1.2.3-universal.dmg io.github.jlevy.metabrowser 1.2.3 arm64 ""
+expect_image_arch "an arm64 app where a universal one was asked for is refused" "not 'arm64 x86_64', the architectures asked for" \
+  Metabrowser-1.2.3-arm64.dmg io.github.jlevy.metabrowser 1.2.3 arm64 "arm64 x86_64"
+expect_image_arch "an image named for another version is refused" "is named Metabrowser-1.2.3-arm64.dmg" \
+  Metabrowser-1.2.2-arm64.dmg io.github.jlevy.metabrowser 1.2.3 arm64 arm64
+expect_image_arch "a development app in an image with the release's name is refused" "is named Metabrowser-Dev-1.2.3-arm64.dmg" \
+  Metabrowser-1.2.3-arm64.dmg io.github.jlevy.metabrowser.dev 1.2.3 arm64 arm64
+
+# A stand-in bundle, as the stand-in build-app.sh below writes one.
+stub_bundle() {
+  local bundle="$1" id="$2" slices="$3"
+  mkdir -p "$bundle/Contents/MacOS"
+  printf '%s\n' "$slices" >"$bundle/Contents/MacOS/Metabrowser"
+  printf '%s\n' "CFBundleName=Metabrowser" "CFBundleExecutable=Metabrowser" "CFBundleIdentifier=$id" \
+    "CFBundleShortVersionString=$version_now" >"$bundle/Contents/Info.plist"
+}
+# make-dmg.sh, the real one: it names the image for the app's slices, and stops before
+# packaging when its caller expects another name.
+stub_bundle "$work/arm64-only/Metabrowser.app" io.github.jlevy.metabrowser arm64
+run scripts/make-dmg.sh "$work/arm64-only/Metabrowser.app" "build/Metabrowser-$version_now-universal.dmg"
+if ((status != 0)) && said "packages as build/Metabrowser-$version_now-arm64.dmg, not as build/Metabrowser-$version_now-universal.dmg"; then
+  pass "make-dmg.sh refuses to package an arm64 app where the universal image is expected"
+else
+  fail "make-dmg.sh with another image expected: status $status: $(cat "$work/out")"
+fi
+
+# release.sh, end to end, from a copy whose build-app.sh writes a stand-in bundle with
+# the slices stub_built names, and whose other steps record what they were given.
+release_copy() {
+  app_copy "$1"
+  cat >"$1/scripts/build-app.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+echo "ARCHES=${ARCHES:-}" >>"$release_record"
+if [[ "$VARIANT" == release ]]; then id=io.github.jlevy.metabrowser; else id=io.github.jlevy.metabrowser.dev; fi
+bundle="build/$VARIANT/Metabrowser.app"
+mkdir -p "$bundle/Contents/MacOS"
+printf '%s\n' "$stub_built" >"$bundle/Contents/MacOS/Metabrowser"
+printf '%s\n' "CFBundleName=Metabrowser" "CFBundleExecutable=Metabrowser" "CFBundleIdentifier=$id" \
+  "CFBundleShortVersionString=$(cat VERSION)" >"$bundle/Contents/Info.plist"
+EOF
+  cat >"$1/scripts/notarize.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "notarize $1" >>"$release_record"
+EOF
+  cat >"$1/scripts/make-dmg.sh" <<'EOF'
+#!/usr/bin/env bash
+cd "$(dirname "$0")/.."
+echo "make-dmg $*" >>"$release_record"
+echo "new image" >"$2"
+echo "0000  $(basename "$2")" >"$2.sha256"
+EOF
+  cat >"$1/scripts/check-dmg.sh" <<'EOF'
+#!/usr/bin/env bash
+cd "$(dirname "$0")/.."
+echo "check-dmg EXPECTED_ARCHES=${EXPECTED_ARCHES:-} EXPECTED_VERSION=${EXPECTED_VERSION:-} EXPECTED_COMMIT=${EXPECTED_COMMIT:-} $1: $(cat "$1")" >>"$release_record"
+EOF
+  mkdir -p "$1/build"
+}
+codesign() {
+  echo "Signature=adhoc" >&2
+}
+xcrun() {
+  return 1
+}
+stat() {
+  echo 0  # release.sh prints sizes with BSD stat's -f
+}
+release_record="$work/release-record"
+export -f codesign xcrun stat
+export release_record
+release_run() {
+  : >"$release_record"
+  run env -u SIGN_IDENTITY BUILD=7 NOTARIZE=0 EXPECTED_VERSION=9.9.9 EXPECTED_COMMIT=89abcde "$@"
+}
+recorded() {
+  grep -qxF -- "$1" "$release_record"
+}
+
+release_copy "$work/arch-release"
+dev_app="build/dev/Metabrowser.app"
+dev_arm64="build/Metabrowser-Dev-$version_now-arm64.dmg"
+dev_universal="build/Metabrowser-Dev-$version_now-universal.dmg"
+# The trailing space: the build is arm64, and so is the image every step is given. An
+# earlier universal image is left alone, and is not the one checked.
+echo "an earlier image" >"$work/arch-release/$dev_universal"
+echo "an earlier image" >"$work/arch-release/$dev_arm64"
+release_run VARIANT=dev ARCHES="arm64 " stub_built=arm64 "$work/arch-release/scripts/release.sh"
+if ((status == 0)) && recorded "make-dmg $dev_app $dev_arm64" && recorded "notarize $dev_arm64" &&
+  recorded "check-dmg EXPECTED_ARCHES=arm64 EXPECTED_VERSION= EXPECTED_COMMIT= $dev_arm64: new image" &&
+  said "the dev variant, arm64," && said "$dev_arm64"; then
+  pass "release.sh with ARCHES 'arm64 ' builds, packages, and checks the arm64 image, with the slices asked for"
+else
+  fail "release.sh with ARCHES 'arm64 ': status $status: $(cat "$release_record" "$work/out")"
+fi
+# A build with other slices than asked for stops before it is notarized or packaged, and
+# the image expected of it is no longer there to be taken for this run's.
+echo "an earlier image" >"$work/arch-release/$dev_universal"
+echo "0000  earlier" >"$work/arch-release/$dev_universal.sha256"
+release_run VARIANT=dev ARCHES="arm64 x86_64" stub_built=arm64 "$work/arch-release/scripts/release.sh"
+if ((status != 0)) && said "has the slices 'arm64', but 'arm64 x86_64' was asked for" &&
+  ! grep -qE '^(notarize|make-dmg|check-dmg) ' "$release_record" &&
+  [[ ! -e "$work/arch-release/$dev_universal" && ! -e "$work/arch-release/$dev_universal.sha256" ]]; then
+  pass "release.sh stops when the build has one slice and two were asked for, and leaves no earlier universal image"
+else
+  fail "release.sh with one slice built of two: status $status: $(cat "$release_record" "$work/out"); $(ls "$work/arch-release/build")"
+fi
+release_run VARIANT=dev ARCHES="arm64" stub_built="x86_64 arm64" "$work/arch-release/scripts/release.sh"
+if ((status != 0)) && said "has the slices 'arm64 x86_64', but 'arm64' was asked for" &&
+  ! grep -qE '^(notarize|make-dmg|check-dmg) ' "$release_record"; then
+  pass "release.sh stops when the build has two slices and one was asked for"
+else
+  fail "release.sh with two slices built of one: status $status: $(cat "$release_record" "$work/out")"
+fi
+release_run VARIANT=dev ARCHES="arm64 ppc" stub_built=arm64 "$work/arch-release/scripts/release.sh"
+if ((status != 0)) && said "ARCHES names 'ppc', which is not a supported architecture" && [[ ! -s "$release_record" ]]; then
+  pass "release.sh refuses an unsupported architecture before it builds"
+else
+  fail "release.sh with ARCHES 'arm64 ppc': status $status: $(cat "$release_record" "$work/out")"
+fi
+# A make-dmg.sh that writes no image under the expected name stops the release, though
+# an image was there before the run.
+printf '#!/usr/bin/env bash\necho "make-dmg $*" >>"$release_record"\n' >"$work/arch-release/scripts/make-dmg.sh"
+echo "an earlier image" >"$work/arch-release/$dev_arm64"
+echo "0000  earlier" >"$work/arch-release/$dev_arm64.sha256"
+release_run VARIANT=dev stub_built=arm64 "$work/arch-release/scripts/release.sh"
+if ((status != 0)) && said "scripts/make-dmg.sh did not write $dev_arm64" && ! grep -q '^check-dmg ' "$release_record"; then
+  pass "release.sh stops when make-dmg.sh writes no image, rather than checking an earlier one"
+else
+  fail "release.sh with no image written: status $status: $(cat "$release_record" "$work/out")"
+fi
+
+# The release variant, built from a commit: check-dmg.sh is given that commit and the
+# version, so an image from another commit under the same name does not pass. The copy
+# has no cask template, so the run stops at the cask, after the check this is about.
+test_release_commit_identity() {
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
+  unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES
+  local repo="$work/arch-repo" commit
+  mkdir -p "$repo/apps" "$repo/$(dirname "$app_glyph_license")"
+  release_copy "$repo/apps/macos"
+  rmdir "$repo/apps/macos/build"
+  printf 'license\n' >"$repo/$app_glyph_license"
+  printf 'apps/macos/build/\n' >"$repo/.gitignore"
+  git -C "$repo" init -q --template= || die "could not initialize the fixture"
+  git -C "$repo" add . || die "could not stage the fixture"
+  git -C "$repo" -c user.name=Fixture -c user.email=fixture@example.invalid \
+    -c commit.gpgsign=false commit -qm "Fixture release scripts" || die "could not commit the fixture"
+  commit="$(git -C "$repo" rev-parse HEAD)" || die "could not read the fixture's commit"
+  mkdir -p "$repo/apps/macos/build"
+  : >"$release_record"
+  env -u SIGN_IDENTITY -u ARCHES BUILD=7 NOTARIZE=0 EXPECTED_VERSION=9.9.9 EXPECTED_COMMIT=89abcde VARIANT=release \
+    stub_built=arm64 "$repo/apps/macos/scripts/release.sh" >"$work/commit-release" 2>&1 || true
+  grep -qxF "check-dmg EXPECTED_ARCHES=arm64 EXPECTED_VERSION=$version_now EXPECTED_COMMIT=$commit build/Metabrowser-$version_now-arm64.dmg: new image" "$release_record" ||
+    die "check-dmg.sh got: $(cat "$release_record"); release.sh said: $(cat "$work/commit-release")"
+}
+run test_release_commit_identity
+if ((status == 0)); then
+  pass "release.sh holds a release variant built from a commit to that commit, its version, and the default arm64"
+else
+  fail "release.sh's commit identity: $(cat "$work/out")"
+fi
+unset -f lipo plutil codesign xcrun stat
+unset release_record
 
 # ── The launch check's backup ────────────────────────────────
 # A defaults stand-in that keeps each domain as a file, and the release identity's

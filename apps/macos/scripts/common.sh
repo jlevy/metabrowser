@@ -40,8 +40,22 @@ quietly() {
 #            every URL scheme the property list declares with a -dev suffix
 #
 # Sets variant, product, bundle_id, icon_source, scheme_suffix, artifact_label, version,
-# arch_label, app, and dmg.
+# arches, arch_label, app, and dmg. ARCHES is read here and nowhere else, so the slices
+# a build makes and the image name a release expects come from one normalized value.
 variant_settings() {
+  variant_identity "$1"
+  artifact_label="$(artifact_label_of_variant "$variant")"
+  version="$(read_version)" || exit 1
+  arches="$(normalize_arches "${ARCHES:-$default_arches}" ARCHES)" || exit 1
+  arch_label="$(arch_label_for "$arches")" || exit 1
+  app="build/$variant/$product.app"
+  dmg="$(dmg_path "$variant" "$version" "$arch_label")"
+}
+
+# The part of a variant that no environment variable changes: sets variant, product,
+# bundle_id, icon_source, and scheme_suffix. The checks of a finished image read a
+# variant's identity through this, so they do not depend on ARCHES.
+variant_identity() {
   variant="$1"
   product="Metabrowser"
   case "$variant" in
@@ -57,11 +71,6 @@ variant_settings() {
       ;;
     *) die "VARIANT must be release or dev, not '$variant'" ;;
   esac
-  artifact_label="$(artifact_label_of_variant "$variant")"
-  version="$(read_version)" || exit 1
-  arch_label="$(arch_label_for "${ARCHES:-arm64}")"
-  app="build/$variant/$product.app"
-  dmg="$(dmg_path "$variant" "$version" "$arch_label")"
 }
 
 # The start of a variant's image and artifact names: Metabrowser, or Metabrowser-Dev.
@@ -77,14 +86,14 @@ artifact_label_of_variant() {
 variant_of_bundle_id() {
   local candidate
   for candidate in release dev; do
-    (variant_settings "$candidate" && [[ "$bundle_id" == "$1" ]]) && echo "$candidate"
+    (variant_identity "$candidate" && [[ "$bundle_id" == "$1" ]]) && echo "$candidate"
   done
   return 0
 }
 
 # Prints the icon a variant ships.
 icon_of_variant() {
-  (variant_settings "$1" && echo "$icon_source")
+  (variant_identity "$1" && echo "$icon_source")
 }
 
 # Gives each URL scheme in CFBundleURLTypes a suffix and each type the bundle's
@@ -124,12 +133,66 @@ build_number() {
   git rev-list --count HEAD 2>/dev/null || die "no Git history to count; set BUILD"
 }
 
-# "arm64", or "universal" when several architectures are merged.
+# The architectures a build can have, in the one order they are written in, and the
+# architecture a build has when ARCHES does not say: arm64, the one the app is built,
+# tested, and released for (tests/test_installation_requirements.py reads it here).
+supported_arches="arm64 x86_64"
+default_arches="arm64"
+
+# Prints the architectures "$1" names, separated by any whitespace, as one line: each
+# once, in supported_arches' order, with single spaces. Stops when it names none, or one
+# that is not supported; "$2" says whose list it is (ARCHES, or a file's slices). Every
+# reader of an architecture list goes through this, so "arm64 ", "arm64 arm64", and
+# "x86_64 arm64" mean one thing to the build, the image's name, and the checks. The
+# function's body is a subshell, so turning globbing off stays inside it.
+normalize_arches() (
+  set -f
+  what="${2:-the architecture list}"
+  result=""
+  # shellcheck disable=SC2086  # split on whitespace, which is the list's format
+  set -- $1
+  (($#)) || die "$what names no architecture; supported: $supported_arches"
+  for token in "$@"; do
+    case " $supported_arches " in
+      *" $token "*) ;;
+      *) die "$what names '$token', which is not a supported architecture; supported: $supported_arches" ;;
+    esac
+  done
+  for known in $supported_arches; do
+    case " $* " in
+      *" $known "*) result="$result${result:+ }$known" ;;
+    esac
+  done
+  echo "$result"
+)
+
+# "arm64" or "x86_64", or "universal" when several architectures are merged, for the
+# architecture list "$1", normalized or not.
 arch_label_for() {
-  case "$1" in
+  local list
+  list="$(normalize_arches "$1" "${2:-the architecture list}")" || exit 1
+  case "$list" in
     *" "*) echo universal ;;
-    *) echo "$1" ;;
+    *) echo "$list" ;;
   esac
+}
+
+# The architectures of the Mach-O file "$1", normalized, as lipo reads them.
+slices_of() {
+  local found
+  found="$(lipo -archs "$1" 2>&1)" || die "lipo could not read the architectures of $1: $found"
+  normalize_arches "$found" "$1's slices"
+}
+
+# Stops unless the Mach-O file "$1" has exactly the architectures "$2" asks for, so a
+# build that made other slices than it was asked for never reaches an image whose name
+# was predicted from the request.
+require_slices() {
+  local file="$1" wanted built
+  wanted="$(normalize_arches "$2" "the architectures asked for")" || exit 1
+  built="$(slices_of "$file")" || exit 1
+  [[ "$built" == "$wanted" ]] ||
+    die "$file has the slices '$built', but '$wanted' was asked for (ARCHES)"
 }
 
 # A variant's image: dmg_path VARIANT VERSION ARCH_LABEL.

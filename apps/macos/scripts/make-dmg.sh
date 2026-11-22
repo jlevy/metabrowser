@@ -5,27 +5,35 @@
 #
 #   scripts/make-dmg.sh build/release/Metabrowser.app  # build/Metabrowser-0.1.0-arm64.dmg
 #   scripts/make-dmg.sh build/dev/Metabrowser.app      # build/Metabrowser-Dev-0.1.0-arm64.dmg
+#   scripts/make-dmg.sh APP IMAGE   # stops, before packaging, unless it would write IMAGE
 #
 # The image's name, volume name, version, and architecture come from the app, and its
 # variant from the app's bundle identifier, since both variants are named Metabrowser.
 # SIGN_IDENTITY and SIGN_KEYCHAIN sign the image as scripts/build-app.sh signs the app;
 # "-" or empty (the default) signs it ad hoc. scripts/check-dmg.sh checks the result.
+# A caller that goes on to use the image, as scripts/release.sh does, passes the path it
+# expects, so an app with other slices than it asked for stops here, and the caller never
+# picks up an earlier image under the name it predicted.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=common.sh
 source scripts/common.sh
 
-app="${1:?usage: scripts/make-dmg.sh APP}"
+app="${1:?usage: scripts/make-dmg.sh APP [IMAGE]}"
+expected_dmg="${2:-}"
 [[ -f "$app/Contents/Info.plist" ]] || die "$app is not an app bundle"
 plist="$app/Contents/Info.plist"
 product="$(plutil -extract CFBundleName raw -o - "$plist")"
 version="$(plutil -extract CFBundleShortVersionString raw -o - "$plist")"
 bundle_id="$(plutil -extract CFBundleIdentifier raw -o - "$plist")"
 executable="$(plutil -extract CFBundleExecutable raw -o - "$plist")"
-arch_label="$(arch_label_for "$(lipo -archs "$app/Contents/MacOS/$executable")")"
+slices="$(slices_of "$app/Contents/MacOS/$executable")"
+arch_label="$(arch_label_for "$slices")"
 app_variant="$(variant_of_bundle_id "$bundle_id")"
 [[ -n "$app_variant" ]] || die "$app has the bundle identifier $bundle_id, which is neither variant's"
 dmg="$(dmg_path "$app_variant" "$version" "$arch_label")"
+[[ -z "$expected_dmg" || "$expected_dmg" == "$dmg" ]] ||
+  die "$app ($app_variant, $version, slices '$slices') packages as $dmg, not as $expected_dmg, the image expected of it"
 volume="$product $version"
 identity="${SIGN_IDENTITY:--}"
 

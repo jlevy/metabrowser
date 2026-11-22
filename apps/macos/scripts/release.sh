@@ -15,6 +15,12 @@
 # rehearses the same steps and says which it skipped; the dev variant defaults to
 # NOTARIZE=auto. SIGN_IDENTITY, SIGN_KEYCHAIN, the notary credentials, and ARCHES are
 # documented in build-app.sh and notarize.sh.
+#
+# The image's name is predicted from ARCHES before anything is built, so every later
+# step is held to it: an image already under that name is removed first, the built app
+# must have exactly the slices asked for, make-dmg.sh must write that name, and
+# check-dmg.sh checks the slices and the name again in the mounted image, with the
+# version and commit when the build matches one.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=common.sh
@@ -67,13 +73,25 @@ elif [[ -n "$tree_problem" ]]; then
   note "$tree_problem, so this build matches no commit"
 fi
 
+# An image left by an earlier run must not stand in for the one this run fails to write.
+rm -f "$dmg" "$dmg.sha256"
 scripts/build-app.sh
+executable="$app/Contents/MacOS/$(plutil -extract CFBundleExecutable raw -o - "$app/Contents/Info.plist")"
+require_slices "$executable" "$arches"
 # The app is notarized and stapled before it is packaged, so a copy dragged out of the
 # image carries its own ticket and opens without reaching Apple.
 scripts/notarize.sh "$app"
-scripts/make-dmg.sh "$app"
+scripts/make-dmg.sh "$app" "$dmg"
+[[ -f "$dmg" && -f "$dmg.sha256" ]] || die "scripts/make-dmg.sh did not write $dmg and its checksum"
 scripts/notarize.sh "$dmg"
-scripts/check-dmg.sh "$dmg"
+# A release variant built from a commit is held to that commit and version, as
+# scripts/check-release.sh holds a release to its tag's. An official build always is one.
+built_commit="$(source_commit)"
+if [[ "$variant" == release && -n "$built_commit" && "$built_commit" != *-dirty ]]; then
+  EXPECTED_ARCHES="$arches" EXPECTED_VERSION="$version" EXPECTED_COMMIT="$built_commit" scripts/check-dmg.sh "$dmg"
+else
+  env -u EXPECTED_VERSION -u EXPECTED_COMMIT EXPECTED_ARCHES="$arches" scripts/check-dmg.sh "$dmg"
+fi
 
 sha256="$(cut -d' ' -f1 "$dmg.sha256")"
 outputs=("$app" "$dmg" "$dmg.sha256")
