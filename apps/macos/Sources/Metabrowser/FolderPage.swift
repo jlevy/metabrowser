@@ -219,7 +219,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         guard showing else { return }
         let badge = NSHostingView(rootView: HStack(spacing: 8) {
             ProgressView().controlSize(.small).accessibilityHidden(true)
-            Text("Opening GitHub link…").font(.callout)
+            Text("Opening GitHub link…").font(.callout).foregroundStyle(.secondary)
         }
         .padding(8)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8)))
