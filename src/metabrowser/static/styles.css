@@ -1755,10 +1755,8 @@ body {
    mixed-case, sans-serif at the tree-row size. It is Home: a click shows
    the folder's home view as a fresh load does (docs/design-system.md,
    "Home"). So it is a link in the navigation's vocabulary, a folder
-   crumb's: the hover surface under the name and the link-colored ring on
-   keyboard focus. The box is the name's own, never the row's, so the hover
-   and the tooltip under it belong to the name, and its inline padding is
-   given back by the margin, so the name starts where it always has. */
+   crumb's: the hover and focus surfaces wrap the mark and name. The
+   negative margins give the inline padding back to the row. */
 .header-path {
   font-weight: var(--weight-bold);
   letter-spacing: 0;
@@ -1769,10 +1767,14 @@ body {
   padding: 2px 4px;
   margin-inline: -4px;
   border-radius: var(--radius-chrome);
-  /* Truncates exactly as .file-header-path does, so both headers shorten
-     the same way when the panes are resized; it does not grow past the
-     name, and the menu keeps the far end. */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   flex: 0 1 auto;
+  min-width: 0;
+}
+/* Shorten the name as the file heading does and keep the adjacent menu visible. */
+.header-home-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1786,11 +1788,8 @@ body {
    folder with Git's branch for a checkout, a folder with a dot for a plain folder
    (docs/design-system-icons.md, "Source Kinds"). The server writes its glyph into the
    markup (source_kind_marks.py), so it is there from the first paint with no script. It is a
-   glyph-only mark, not a control: its sentence is its tooltip and its accessible name, and
-   it sits outside the name's link, so the name's hover surface, focus ring, and tooltip
-   stay the name's own. The glyph size is --icon-glyph and its ink the muted one a folder's
-   header glyph takes, so the name stays the heading. The end margin takes 2px from the row's
-   gap, which the name's own padding adds to: the name starts 6px after the glyph. */
+   glyph-only mark within Home: its sentence is its tooltip and accessible name. It
+   uses the icon size and muted ink of a folder's header glyph. */
 .header-root-kind {
   flex: none;
   display: inline-flex;
@@ -1798,7 +1797,6 @@ body {
   justify-content: center;
   width: var(--icon-glyph);
   height: var(--icon-glyph);
-  margin-inline-end: -2px;
   color: var(--muted);
 }
 .header-root-kind > svg {
@@ -1822,11 +1820,11 @@ body {
 /* The commit is the identity and must stay visible, so on a narrow column the
    ref is what gives way. Its own rule: an engine without :has() drops a whole
    selector list, and then the heading simply truncates as before. */
-.header-path:has(> .header-revision) {
+.header-home-name:has(> .header-revision) {
   display: flex;
   align-items: baseline;
 }
-.header-path:has(> .header-revision) > .path {
+.header-home-name:has(> .header-revision) > .path {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

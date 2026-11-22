@@ -69,7 +69,9 @@ _PAGE_PIN = re.compile(
 )
 _MAIN_CLASS = re.compile(r'<main class="([^"]*)">')
 _MIRROR_MODULE = (server.STATIC_DIR / "mirror-heading.js").read_text(encoding="utf-8")
-_HEADING = re.compile(r'<a href="/view/" class="header-path"[^>]*>(.*?)</a>', re.S)
+_HEADING = re.compile(
+    r'<span class="header-home-name" id="header-home-name">(.*?)</span>\s*</a>', re.S
+)
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 pytestmark = [posix_only, needs_git]

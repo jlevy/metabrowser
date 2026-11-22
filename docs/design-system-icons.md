@@ -197,7 +197,7 @@ route may say only where `tests/test_serve_pin.py` allows.
 
 | Surface | Draws |
 | --- | --- |
-| The navigation column’s heading, before the root’s name | The root’s kind mark, `.header-root-kind`, at `--icon-glyph` in `--muted`, outside the name’s link and next to the root details disclosure. The server writes the kind, its glyph, and its sentence into the first paint (`source_kind_marks.py`) |
+| The navigation column’s heading, before the root’s name | The root’s kind mark, `.header-root-kind`, at `--icon-glyph` in `--muted`, inside the Home link and next to the root details disclosure. The server writes the kind, its glyph, and its sentence into the first paint (`source_kind_marks.py`) |
 | The main pane’s header for the root, at the title’s size | The same mark: the glyph is copied from the navigation’s (`view-header.js`, `folderGlyphHtml`), so a root’s name has one icon wherever it stands. A pinned revision of a checkout, whose root is still the root, keeps it. A folder inside the root leads with the ordinary folder |
 | The macOS title’s folder chooser and the Switch Folder panel, each row | The row’s kind mark, from its window’s `/api/identity` or its recent entry |
 | File > Open Recent and the Dock menu, each row | The row’s kind mark, from the entry’s `mode` and `git` in `metab --recent --json`, never from a look at the folder, which can raise a privacy prompt |

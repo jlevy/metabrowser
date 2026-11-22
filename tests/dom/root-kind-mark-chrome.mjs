@@ -14,14 +14,15 @@
 // (docs/design-system.md, "Source Kind Marks"):
 //
 // - the box is in the page from its markup, `--icon-glyph` square, before the name and
-//   outside its link, centered on the name's line, and its glyph arrives in that box
+//   in the same Home link, centered on the name's line, and its glyph arrives in that box
 //   without moving the name;
 // - the glyph is the one the server wrote for the kind (static/source-kind-glyphs.json), drawn
 //   in `--muted`, and the three kinds draw three shapes, none of them the ordinary folder's;
 // - the main pane's header for the root leads with that same glyph, and the header of a folder
 //   inside the root with the ordinary folder's, so a root is never drawn as an ordinary folder;
 // - its tooltip shows over it, and is its accessible name; and
-// - the adjacent disclosure opens details for the source and dismisses with Escape.
+// - the mark and name open Home; the adjacent chevron opens details and dismisses on a
+//   repeated click, an outside click, or Escape.
 //
 // It saves one screenshot of the navigation's top for each kind in each theme. Each step
 // writes `phase <name> <ms since start>` to stderr, so a slow run says where.
@@ -68,7 +69,7 @@ const check = (label, ok, detail = "") => {
 // kind. A glyph is compared as the browser serializes it, not as the file spells it.
 const READ = `(() => {
   const mark = document.getElementById("header-root-kind");
-  const name = document.querySelector(".header-path");
+  const name = document.querySelector(".header-home-name");
   const rect = (element) => {
     const box = element.getBoundingClientRect();
     return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height };
@@ -97,7 +98,7 @@ const READ = `(() => {
     label: mark.getAttribute("aria-label"),
     tip: mark.dataset.tipText,
     focusable: mark.tabIndex >= 0,
-    inLink: name.contains(mark),
+    inLink: name.closest("#header-home").contains(mark),
     box: rect(mark),
     name: rect(name),
     glyphPx: parseFloat(root.getPropertyValue("--icon-glyph")),
@@ -136,13 +137,38 @@ async function open(url) {
   );
 }
 
-async function hover(selector) {
-  const point = await browser.evaluate(`(() => {
+async function pointFor(selector) {
+  return browser.evaluate(`(() => {
     const box = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
     return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
   })()`);
-  await browser.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
 }
+
+async function hover(selector) {
+  await browser.send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    ...(await pointFor(selector)),
+  });
+}
+
+async function click(selector) {
+  const point = await pointFor(selector);
+  await browser.send("Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    ...point,
+    button: "left",
+    clickCount: 1,
+  });
+  await browser.send("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    ...point,
+    button: "left",
+    clickCount: 1,
+  });
+}
+
+const TRIGGER = "#root-details > summary";
+const MENU_OPEN = 'document.getElementById("root-details").open';
 
 const TOOLTIP = `(() => {
   const tip = document.querySelector(".custom-tooltip");
@@ -182,8 +208,8 @@ for (const theme of ["light", "dark"]) {
       JSON.stringify({ role: at.role, label: at.label, tip: at.tip, focusable: at.focusable }),
     );
     check(
-      `${where}: the mark is a box of its own, not inside the name's link`,
-      !at.inLink && at.box.right <= at.name.left + TOLERANCE_PX,
+      `${where}: the mark is before the name in the same Home link`,
+      at.inLink && at.box.right <= at.name.left + TOLERANCE_PX,
       JSON.stringify({ box: at.box, name: at.name }),
     );
     check(
@@ -240,18 +266,42 @@ for (const theme of ["light", "dark"]) {
     );
     await screenshot(`root-kind-${kind}-${theme}-tooltip.png`);
 
-    await hover(".header-path");
+    await hover(".header-home-name");
     await browser.waitFor(`(${TOOLTIP}) === null`, STEP_MS);
+    const closedRotation = await browser.evaluate(
+      'getComputedStyle(document.querySelector("#root-details summary svg")).rotate',
+    );
+    await click(TRIGGER);
+    if (kind === "folder" && theme === "light") {
+      check("the chevron opens the menu", await browser.evaluate(MENU_OPEN));
+      await click(TRIGGER);
+      check("clicking the same chevron closes the menu", !(await browser.evaluate(MENU_OPEN)));
+      await click(TRIGGER);
+      await browser.evaluate(`(() => {
+        const outside = document.getElementById("settings-btn");
+        outside.addEventListener("pointerdown", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }, { once: true });
+        outside.addEventListener("click", (event) => event.stopPropagation(), { once: true });
+      })()`);
+      await click("#settings-btn");
+      check(
+        "a click on another control closes the menu despite stopped propagation",
+        !(await browser.evaluate(MENU_OPEN)),
+      );
+      // Clear the newly opened Settings menu and return to the closed root menu.
+      await click("#settings-btn");
+      await browser.evaluate(`document.getElementById("root-details").open = false`);
+      await click(TRIGGER);
+    }
     const details = await browser.evaluate(`(() => {
       const root = document.getElementById("root-details");
       const summary = root.querySelector("summary");
       const caret = summary.querySelector("svg");
-      const closedRotation = getComputedStyle(caret).rotate;
-      summary.focus();
-      summary.click();
       return {
         open: root.open,
-        closedRotation,
+        closedRotation: ${JSON.stringify(closedRotation)},
         openRotation: getComputedStyle(caret).rotate,
         local: root.querySelector(".root-details-local").innerText,
         source: root.querySelector(".root-details-source").innerText,
@@ -355,6 +405,21 @@ check(
   inside.headerGlyph === inside.folderGlyph && inside.headerGlyph !== inside.drawn,
   JSON.stringify({ header: inside.headerGlyph, ordinary: inside.folderGlyph }),
 );
+
+for (const selector of ["#header-root-kind", ".header-home-name"]) {
+  await open(`${pages.folder}docs`);
+  const startingPath = await browser.evaluate("location.pathname");
+  await click(TRIGGER);
+  const afterMenu = await browser.evaluate(`({ path: location.pathname, open: ${MENU_OPEN} })`);
+  check(
+    `the chevron opens details without navigating before clicking ${selector}`,
+    afterMenu.open && startingPath !== "/view/" && afterMenu.path === startingPath,
+    JSON.stringify({ startingPath, afterMenu }),
+  );
+  await click(selector);
+  await browser.waitFor('location.pathname === "/view/"', STEP_MS);
+  check(`${selector} navigates Home and dismisses details`, !(await browser.evaluate(MENU_OPEN)));
+}
 
 // The three kinds are three shapes, and none is the ordinary folder's.
 const shapes = Object.values(seen).map((at) => at.drawn);
