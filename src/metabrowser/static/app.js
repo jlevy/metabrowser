@@ -6953,64 +6953,13 @@ function viewMetaAttrs(view) {
   return attrs;
 }
 
-// The preview's print state, which the print stylesheet reads: the active view prints
-// when it is printable, and otherwise the page prints a line saying it is not. Printing
-// itself is the browser's: Command-P (Control-P elsewhere), the app's File > Print, and a
-// rendered document's print button (builtin_plugins/markdown/print-indicator.js) all print
-// through it, so no shell control or command stands in front of it.
-function setActivePreviewView(tabId, preview) {
-  preview = preview || document.getElementById("preview-pane");
-  if (!preview) {
-    return;
-  }
-  preview = /** @type {HTMLElement} */ (preview);
-  /** @type {HTMLElement | null} */
-  var active = null;
-  // The host's own views: a file staged in the pane has views of its own under it.
-  var tabContents = queryHtmlAll(":scope > [data-tab-content]", preview);
-  for (var i = 0; i < tabContents.length; i++) {
-    var c = tabContents[i];
-    var isActive = !!tabId && c.dataset.tabContent === tabId;
-    if (window.MetabrowserViewState) {
-      window.MetabrowserViewState.setActive(c, isActive);
-    } else {
-      c.dataset.activeView = isActive ? "true" : "false";
-    }
-    if (isActive) {
-      active = c;
-    }
-  }
-  if (!active) {
-    delete preview.dataset.activeView;
-    preview.dataset.printable = "false";
-    preview.dataset.printProfile = "plain";
-    delete preview.dataset.renderRuntime;
-    delete preview.dataset.kpressEnabled;
-    return;
-  }
-  var printable = boolData(active.dataset.printable);
-  preview.dataset.activeView = tabId;
-  preview.dataset.printable = printable ? "true" : "false";
-  preview.dataset.printProfile = active.dataset.printProfile || "plain";
-  if (active.dataset.renderRuntime) {
-    preview.dataset.renderRuntime = active.dataset.renderRuntime;
-  } else {
-    delete preview.dataset.renderRuntime;
-  }
-  if (active.dataset.kpressEnabled) {
-    preview.dataset.kpressEnabled = active.dataset.kpressEnabled;
-  } else {
-    delete preview.dataset.kpressEnabled;
-  }
-}
-
 // The partial-content notice's Load more runs the shell's text loader by name.
 window.MetabrowserPluginHost?.registerLoadMoreAction?.("loadMoreCurrentText", loadMoreCurrentText);
 
 document.addEventListener("metabrowser:view-print-state", () => {
   var preview = document.getElementById("preview-pane");
   if (preview?.dataset.activeView) {
-    setActivePreviewView(preview.dataset.activeView, preview);
+    window.MetabrowserViewComposition.setActiveView(preview, preview.dataset.activeView);
   }
 });
 
@@ -7136,8 +7085,6 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
       var composition = await viewComposition.composition.prepare({
         kind: compositionKind,
         views: Array.isArray(data.views) ? data.views : [],
-        // A view asked for while this file was still loading wins over the one the
-        // selection began with (showPreviewTab).
         preferredViewId: takeAwaitedPreviewView(data.path || "") ?? preferredViewId,
         ensureKindAssets(kind) {
           return _perf.measureAsync(
@@ -7297,11 +7244,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         if (counterpartCorner) {
           void window.metabrowser?.mountCounterpart?.(counterpartCorner, location.pathname);
         }
-        if (initialActiveView) {
-          setActivePreviewView(initialActiveView.id, stage);
-        } else {
-          setActivePreviewView(null, stage);
-        }
+        viewComposition.composition.setActiveView(stage, initialActiveView?.id ?? null);
 
         // The stage is connected so renderers can measure layout, but remains
         // transparent and inert while the prior useful surface stays visible.
@@ -7345,12 +7288,13 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           }
         }
 
-        // The staged bar takes a choice from here on, before the first view holds the
-        // paint for its data: every other view has its mount by now, and a tab chosen
-        // during the hold is the one the commit brings to the front (mb-s588). The
-        // listeners and the mounts used to arrive after the hold, so a choice made in it
-        // did nothing, and the commit put the first view in front whatever the bar said.
-        _perf.measure("initTabs", () => initTabs(stage), filePerfMeta(data));
+        // The staged bar takes a choice before the first view holds the paint: a tab
+        // chosen in the hold is the one the commit brings to the front (mb-s588).
+        _perf.measure(
+          "initTabs",
+          () => viewComposition.composition.bindTabs(stage),
+          filePerfMeta(data),
+        );
         if (mountInitialView && initialActiveView) {
           await _perf.measureAsync(
             "fileNavigation:activeView",
@@ -7368,8 +7312,6 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         if (!renderIsCurrent()) {
           return false;
         }
-        // The view in front is the staged bar's: the one this render chose, or the one a
-        // reader chose while it held (selectPreviewTab).
         const frontViewId = stage.dataset.activeView || null;
         const replacementNodes = Array.from(stage.childNodes);
         stopFolderHeaderSubscription();
@@ -7392,7 +7334,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           pendingFilePreviewStageCleanup = null;
         }
         preview.dataset.renderedPath = data.path || "";
-        setActivePreviewView(frontViewId, preview);
+        viewComposition.composition.setActiveView(preview, frontViewId);
         if (data.kind === "folder") {
           startFolderHeaderSubscription(data.path);
         }
@@ -7463,42 +7405,22 @@ document.addEventListener("click", onHeaderNavigationClick);
 
 // ── Tab switching ───────────────────────────────────────────────
 
-// A view asked for by name while its file was still loading, before the file had a tab
-// bar to select it in. The render that stages the file takes it as the view to open in.
-// It belongs to one selection: selectFile clears it.
+// A view asked for by name while its file was loading, before it had a tab bar. The
+// render that stages the file opens in it, and the next selection forgets it.
 /** @type {{path: string, viewId: string} | null} */
 var awaitedPreviewView = null;
 
-/**
- * The view asked for while `path` was loading, read once by the render that stages it.
- *
- * @param {string} path
- * @returns {string | undefined}
- */
+/** @param {string} path */
 function takeAwaitedPreviewView(path) {
   var awaited = awaitedPreviewView;
   awaitedPreviewView = null;
-  return awaited && awaited.path === path ? awaited.viewId : undefined;
+  return awaited?.path === path ? awaited.viewId : undefined;
 }
 
 /**
- * The stage of `path`, while the pane holds that file's first paint (renderFile): its
- * bar is drawn and takes a choice, and its commit puts the chosen view in front.
- *
- * @param {HTMLElement} preview
- * @param {string | undefined} path
- * @returns {HTMLElement | null}
- */
-function stagedPreviewOf(preview, path) {
-  var stage = queryHtml(":scope > .preview-file-stage", preview);
-  return stage && path !== undefined && stage.dataset.renderedPath === path ? stage : null;
-}
-
-/**
- * Select a tab of the file the preview pane shows, as a click on it does, unless it is
- * already selected. A file the pane is still bringing up takes the choice too: its
- * staged bar while it holds its first paint, and before that the render that will stage
- * it (mb-s588). A view the file lacks has no tab to select.
+ * Select a tab of the file the preview pane shows or is staging, as a click on it does,
+ * unless it is already selected (view-composition.js#selectTab). A view the file lacks
+ * has no tab to select.
  *
  * @param {string} path
  * @param {string | null} tabId
@@ -7509,10 +7431,10 @@ function showPreviewTab(path, tabId) {
     return;
   }
   var shown = preview.dataset.renderedPath === path ? preview : null;
-  var staged = stagedPreviewOf(preview, path);
+  var staged = window.MetabrowserViewComposition?.stagedFile(preview, path) ?? null;
   if (!shown && !staged) {
     var held = previewPane.snapshot();
-    if (held.owner === "file" && held.phase === "loading" && held.path === path) {
+    if (held.phase === "loading" && held.path === path) {
       awaitedPreviewView = { path, viewId: tabId };
     }
     return;
@@ -7528,68 +7450,13 @@ function showPreviewTab(path, tabId) {
 }
 
 /**
- * Select one tab of a view tab bar: mark its button, show its content, mount a view
- * not shown before, and tell the shell which view is active. The tab's click, its
- * letter key, and showPreviewTab share this path, and none of them moves focus.
- * Reports whether the bar has that tab.
+ * Select one tab of a view tab bar, as its click and its letter key do.
  *
  * @param {HTMLElement} bar
  * @param {string} tabId
  */
 function selectPreviewTab(bar, tabId) {
-  var container = bar.parentElement;
-  /** @type {HTMLElement | null} */
-  var selected = null;
-  queryHtmlAll(".tab-btn", bar).forEach((b) => {
-    var on = b.dataset.tab === tabId;
-    b.classList.toggle("active", on);
-    b.setAttribute("aria-selected", on ? "true" : "false");
-    if (on) {
-      selected = b;
-    }
-  });
-  if (!container || !selected) {
-    return false;
-  }
-  // The bar's own views, its siblings: a pane that stages another file holds that file's
-  // views too, and a tab chosen here is not theirs.
-  queryHtmlAll(":scope > [data-tab-content]", container).forEach((c) => {
-    c.style.display = c.dataset.tabContent === tabId ? "" : "none";
-  });
-  // A stage says which view is in front as the pane does: its commit reads it there.
-  var staged = container.classList.contains("preview-file-stage");
-  if (container.id === "preview-pane" || staged) {
-    setActivePreviewView(tabId, container);
-  }
-  var activeContent = queryHtml(`:scope > [data-tab-content="${tabId}"]`, container);
-  if (activeContent && typeof activeContent._metabrowserMount === "function") {
-    var mount = activeContent._metabrowserMount;
-    activeContent._metabrowserMount = null;
-    mount();
-  }
-  // A render of the file shown that is still staged, as Load more's is, comes up in the
-  // tab chosen here and not in the one that was in front when it began.
-  var restaged =
-    container.id === "preview-pane"
-      ? stagedPreviewOf(container, container.dataset.renderedPath)
-      : null;
-  var restagedBar = restaged && queryHtml(":scope > .tab-bar", restaged);
-  if (restagedBar) {
-    selectPreviewTab(restagedBar, tabId);
-  }
-  return true;
-}
-
-/** @param {ParentNode} [root] */
-function initTabs(root = document) {
-  queryHtmlAll(".tab-btn", root).forEach((btn) => {
-    btn.addEventListener("click", () => {
-      var bar = /** @type {HTMLElement | null} */ (btn.closest(".tab-bar"));
-      if (bar && btn.dataset.tab) {
-        selectPreviewTab(bar, btn.dataset.tab);
-      }
-    });
-  });
+  return window.MetabrowserViewComposition.selectTab(bar, tabId);
 }
 
 // ── Pane resizing ───────────────────────────────────────────────

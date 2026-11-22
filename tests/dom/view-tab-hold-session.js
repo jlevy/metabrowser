@@ -7,13 +7,14 @@
 // file is staged again, as Load more does. The commit used to put the first view in
 // front whatever was chosen, and the chosen view never mounted (mb-s588).
 //
-// The functions that decide this run verbatim from app.js: renderFile, initTabs,
-// selectPreviewTab, showPreviewTab, setActivePreviewView and their helpers, over the
-// production compositor (view-composition.js), view state (view-state.js) and pane
-// lifecycle (navigation.js). The DOM is the stand-in in key-reveal-dom.js, which parses
-// the markup renderFile writes. The renderers, the view header, the performance probe
-// and the shell services renderFile only notifies are doubles. Nothing here restates
-// the order the production code runs in.
+// What decides this is production code: the compositor's tab functions (bindTabs,
+// selectTab, setActiveView and stagedFile in view-composition.js), run from the whole
+// file, and the app.js functions that order them, renderFile and showPreviewTab with
+// their helpers, extracted verbatim, over the production view state (view-state.js) and
+// pane lifecycle (navigation.js). The DOM is the stand-in in key-reveal-dom.js, which
+// parses the markup renderFile writes. The renderers, the view header, the performance
+// probe and the shell services renderFile only notifies are doubles. Nothing here
+// restates the order the production code runs in.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -47,13 +48,10 @@ const SHELL_FUNCTIONS = [
   "isPreviewClaimCurrent",
   "cancelPendingFilePreviewStage",
   "createFilePreviewStage",
-  "setActivePreviewView",
   "renderFile",
   "takeAwaitedPreviewView",
-  "stagedPreviewOf",
   "showPreviewTab",
   "selectPreviewTab",
-  "initTabs",
 ];
 
 const shellSource = [

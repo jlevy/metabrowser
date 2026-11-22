@@ -391,7 +391,6 @@ const SHELL_FUNCTIONS = [
   "settleCommitRoutePreview",
   "retryUnreachablePreview",
   "deliverNavigationFragment",
-  "stagedPreviewOf",
   "showPreviewTab",
   "renderPreviewHtml",
   "loadViewComposition",
@@ -531,7 +530,9 @@ function createShell(pathname, network, options = {}) {
   const tabClicks = [];
   const tabBar = fakeElement();
   const sourceTab = fakeElement({ parentElement: tabBar });
-  const preview = fakeElement();
+  // Nothing is staged in the pane in these scenarios, which is all the compositor's
+  // stagedFile asks of it (tests/dom/view-tab-hold-session.js stages a file).
+  const preview = fakeElement({ querySelector: () => null });
   const elements = new Map([
     ["preview-pane", preview],
     ["nav-filter-bar", fakeElement()],
@@ -757,8 +758,7 @@ function createShell(pathname, network, options = {}) {
     shellKeymap: null,
     pullHistoryGeneration: 0,
     navScrollShadowUpdate: null,
-    // The pane's own bar holds the Source tab; nothing is staged in these scenarios
-    // (tests/dom/view-tab-hold-session.js stages a file).
+    // The pane's own bar holds the Source tab.
     queryHtml: (selector, root) =>
       selector === ".nav-tab-bar"
         ? navBar

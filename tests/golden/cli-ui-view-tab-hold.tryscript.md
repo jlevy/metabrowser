@@ -10,8 +10,9 @@ The shell stages a file out of sight with its tab bar and holds the first paint 
 the view in front has its data.
 A tab chosen meanwhile wins: the commit brings it to the front, mounted once, and the
 first view stays mounted to go back to.
-The session runs `renderFile`, `initTabs`, `selectPreviewTab`, `showPreviewTab` and
-`setActivePreviewView` verbatim from `app.js` over the production compositor, view state
+The session runs the compositor’s tab functions (`bindTabs`, `selectTab`,
+`setActiveView` and `stagedFile` in `view-composition.js`) and, verbatim from `app.js`,
+the `renderFile` and `showPreviewTab` that order them, over the production view state
 and pane lifecycle.
 
 Each state reads `<path> in <view>` when the bar’s marked tab, its selected tab, the

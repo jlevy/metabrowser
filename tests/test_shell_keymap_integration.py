@@ -44,14 +44,22 @@ def _builder_source(js: str, name: str) -> str:
 
 def test_a_view_tab_is_selected_by_one_path_the_click_and_the_key_share() -> None:
     js = _read_app_js()
-    select = _function_source(js, "selectPreviewTab")
-    assert 'b.setAttribute("aria-selected", on ? "true" : "false")' in select
-    assert "setActivePreviewView(tabId, container)" in select
+    # The tab functions are the compositor's (static/view-composition.js); the shell's
+    # selectPreviewTab, which the keymap and showPreviewTab call, is its selectTab.
+    assert "MetabrowserViewComposition.selectTab(bar, tabId)" in _function_source(
+        js, "selectPreviewTab"
+    )
+    composition = proc_browser.STATIC_DIR.joinpath("view-composition.js").read_text()
+    select = composition[
+        composition.index("  function selectTab(") : composition.index("  function bindTabs(")
+    ]
+    assert 'button.setAttribute("aria-selected", on ? "true" : "false")' in select
+    assert "setActiveView(host, tabId)" in select
     assert "_metabrowserMount" in select
     assert ".focus(" not in select
 
-    init = _function_source(js, "initTabs")
-    assert "selectPreviewTab(bar, btn.dataset.tab)" in init
+    bind = composition[composition.index("  function bindTabs(") :]
+    assert "selectTab(bar, button.dataset.tab)" in bind
     show = _function_source(js, "showPreviewTab")
     assert "selectPreviewTab(bar, tabId)" in show
     assert ".click()" not in show

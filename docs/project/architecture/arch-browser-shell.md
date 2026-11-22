@@ -109,6 +109,9 @@ then, and the commit brings it to the front in place of the first view.
 A view asked for by name before the stage exists is the view the render opens in, and a
 tab picked on the bar the reader sees reaches the stage only when the stage is the same
 file’s, as Load more’s render is.
+The tab functions are the compositor’s (`bindTabs`, `selectTab`, `setActiveView` and
+`stagedFile` in `view-composition.js`), which reach a host’s own views only, since a
+stage sits inside the pane.
 `tests/dom/view-tab-hold-session.js` runs these orders against the production functions.
 
 ### Composition and Disposal
