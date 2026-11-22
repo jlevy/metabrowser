@@ -5,17 +5,17 @@ base:
     - linear
     - Improvement
   priority: 1
-  slot: todo
-  status: open
+  slot: in_progress
+  status: in_progress
   title: "Release 0.13: prepare the PyPI package and macOS app release (owner asked
     2026-11-15)"
 bead_id: is-01m7hgpc9550w78kmwqsvv64xh
 external_id: a18aa3cd-0329-4c1c-bca3-17921fe6703e
 external_key: OS-483
 external_url: https://linear.app/finterm-ai/issue/OS-483/release-013-prepare-the-pypi-package-and-macos-app-release-owner-asked
-refinement_slot: todo
-refinement_state_id: d24208e4-ebb9-4575-8c71-fcfec97ce82e
-remote_updated_at: 2026-11-22T20:43:50.428Z
+refinement_slot: in_progress
+refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
+remote_updated_at: 2026-11-22T21:13:15.807Z
 state: linked
-synced_at: 2026-11-22T20:43:50.799Z
+synced_at: 2026-11-22T21:15:37.428Z
 type: lk

@@ -4,7 +4,7 @@ base:
   labels:
     - linear
     - Feature
-  priority: 2
+  priority: 0
   slot: in_progress
   status: in_progress
   title: "Object data model and views: plan and decisions"
@@ -14,7 +14,7 @@ external_key: OS-615
 external_url: https://linear.app/finterm-ai/issue/OS-615/object-data-model-and-views-plan-and-decisions
 refinement_slot: in_progress
 refinement_state_id: 3d68307f-c21e-4fa1-a9e4-6e9b4f5f6e69
-remote_updated_at: 2026-11-20T19:20:30.981Z
+remote_updated_at: 2026-11-22T21:15:36.472Z
 state: linked
-synced_at: 2026-11-20T19:21:09.809Z
+synced_at: 2026-11-22T21:15:37.032Z
 type: lk
