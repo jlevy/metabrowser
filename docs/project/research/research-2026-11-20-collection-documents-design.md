@@ -252,15 +252,18 @@ author wrote them.
   and End go to the ends.
   Space toggles the box on the focused item, the key a checkbox already answers to.
   Tab letters: Cards `V` (as the rendered view), List `L`, Board `B`, Table `A` (`T` is
-  Quick Search’s), Source `S`.
+  Quick Search’s, and `A` is the structured plugin’s Table tab), Source `S`.
 - **Opening.** Local items open in the main pane and push history; Back restores the
   collection with focus on the card it left.
   Every card is a real `<a href>`, so Command-click and middle-click open a new tab.
-  URL items hand off to the web pane in the macOS app, or the system browser, marked
-  with the external glyph before the click.
+  URL items hand off to the macOS app’s web pane when the page is on a known site
+  (GitHub alone today), or else to the system browser, marked with the external glyph
+  before the click.
 - **Reading context.** An item opened from a collection shows one eyebrow line, “In Docs
   Site Research · 2 of 11”, and Control-N and Control-P walk the collection in author
-  order. Reviewing seven briefs becomes open, read, Control-N.
+  order. Reviewing seven briefs becomes open, read, Control-N. The shell already reserves
+  Control-N and Control-P for the next and previous item one level up, as in a pull
+  request stack (`src/metabrowser/keymap.py`), so this is that meaning, not a new one.
 - **No hover peek on cards**: the card is the peek.
   In List and Board, whose rows are compact, hovering a row for the tooltip delay shows
   the item’s `card` shape, which is what that shape was named for.
@@ -291,14 +294,17 @@ The few touches that make it feel effortless:
 
 1. **No trigger needed to look good.** Any Markdown file whose body is mostly local link
    items could offer a Cards tab; the frontmatter key only makes it the default.
-   (Phase 2, after measuring the cost of the body scan.)
+   (Phase 2, after measuring the cost of the body scan.
+   Views bind to a kind, so as with the Tabular plan’s Decision 12 the tab is on every
+   Markdown file or waits for a per-file view-availability hook.)
 2. **Shared metadata hoists** into the header, so seven identical dates become one.
 3. **Progress in the header** with bold numbers: “3 of 11 read”.
 4. **Control-N through the collection**, with “2 of 11” in the eyebrow.
 5. **“Updated since read”** when an agent rewrites a brief you already checked.
 6. **The featured card is a table of contents** for the main brief.
 7. **Live**: cards appear as the agent writes files, with the shell’s existing live-age
-   ink.
+   ink. `mb.watchFile` on the collection and its targets supplies the `file.changed`
+   events, as it does for the live table.
 
 What to leave out, so it stays a text file with a view:
 
@@ -339,6 +345,7 @@ The Source tab shows the whole file as the author writes it, in variant B.
 
 | Topic | This memo | The technical review |
 | --- | --- | --- |
+| The default layout | Cards | Rows until Recent’s R4 builds the `card` frame; hand-drawn cards are the drift Decision 12 names |
 | Nested `key: value` properties | Keep, rarely, for `status: doing` | Drop: it is not YAML and collides with nested link items |
 | Reading time on cards | Show it | It needs a body read per target; show size, which the file summary already has |
 | Summary from the first paragraph | Fall back to it | Frontmatter keys only at first; a body parse per target is not cheap |

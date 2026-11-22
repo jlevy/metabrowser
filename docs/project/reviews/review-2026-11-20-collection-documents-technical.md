@@ -11,6 +11,9 @@ Findings are folded into the brief as options and constraints; nothing is decide
 [Collection Documents](../research/research-2026-11-20-collection-documents.md),
 reviewed against the object model plans on `claude/object-model-plan-revision` and the
 code they describe. That draft was rewritten in response and is not in the history.
+The code claims were rechecked against `main` on 2026-11-22, after the table view, file
+watches, declared plugin dependencies, and the plugin cache directory landed; the
+findings below say where that changed the answer.
 
 ## How to Read This
 
@@ -97,7 +100,7 @@ Model, The List Host), and Decision 21’s keyboard contract is arrows plus J an
 | Cards | One `mountList` with `shape: card` |
 | Grid | A host-owned arrangement option of the `card` frame, decided when Recent’s R4 builds the frame, because it changes windowing and keys |
 | Board | A Decision 17 A page view that mounts one list host per lane, each a collection reference with `params = {group}`; it waits for view state that covers several lists |
-| Table | A `[[table_source]]` over the normalized items |
+| Table | A `[[table_source]]` over the normalized items, with `requires = ["table"]`; this is built and needs no core change |
 
 The draft’s true half is worth keeping: no type is asked to draw anything new, and the
 header fallback covers every type.
@@ -214,10 +217,13 @@ index”, are candidates.
 
 - `FRONTMATTER_MAX_BYTES` in `frontmatter_yaml.py` is generous for a batch; a comment in
   `server.py` records that parsing at that bound can take seconds.
-- The classifier’s `_YAML_PREFIX_BYTES` and `CONTENT_PREDICATE_MAX_BYTES` in
-  `plugin_loader/classify.py` are closer precedents for a prefix read.
+- The classifier’s `_YAML_PREFIX_BYTES` in `plugin_loader/classify.py` is a closer
+  precedent for a prefix read.
+  (`CONTENT_PREDICATE_MAX_BYTES` there is the largest of the predicate bounds, which is
+  `FRONTMATTER_MAX_BYTES`, so it is no smaller.)
 - The transclusion budget in the Markdown plugin’s `transclusion.js` has the right
-  dimensions for a batch: documents, aggregate bytes, and elapsed time.
+  dimensions for a batch: documents and aggregate bytes shared by one document, and a
+  time bound per embed.
 - An over-budget answer reports `truncated`; it does not fail.
 - An in-memory cache keys by the content fingerprint.
 
@@ -255,8 +261,9 @@ The reason to fetch on the server is privacy and consistency.
 **Where a cache would live.** It is keyed by URL, not by repository, so it belongs in
 the application home with owner-only storage, per
 [Repository Cache](../architecture/arch-repository-cache.md).
-It is either a plugin-private versioned format validated on every read and write, or an
-`enforced` contract in `cache/contracts.py`. It is persisted state, so it needs a
+It is either a plugin-private versioned format validated on every read and write, in the
+owner-only directory `metabrowser.plugin_api.plugin_cache_directory` gives a plugin, or
+an `enforced` contract in `cache/contracts.py`. It is persisted state, so it needs a
 `metab` equivalent, and the instruction to prefer a route means a POST route reached
 with `--api`, not a new command.
 
@@ -305,13 +312,16 @@ output as a bare code block: the text survives, the identity does not.
 Supporting it needs an allowlist change in `inert_html.py` and in its JavaScript twin.
 
 **“Mermaid becomes its first client” overclaims.** KPress itself marks and draws Mermaid
-figures. Metabrowser does not dispatch on fences.
+figures. Metabrowser dispatches on no fence; the Markdown plugin’s `diagrams.js` only
+hosts KPress’s Mermaid figures, turning `pre[lang="mermaid"]` back into figures.
 
-**A browser-side `registerFence` conflicts with the load model.** `mb.builtins` is
-render-time only, and plugin code loads by kind, so the collection plugin is not loaded
-when a plain `markdown` document renders.
-The consistent alternatives are a manifest declaration indexed like Plugin Authoring’s
-type index, or the Tabular plan’s `requires` and `mb.plugins.load`.
+**A browser-side `registerFence` conflicts with the load model.** Plugin code loads by
+kind, or through `mb.plugins.load` for a plugin named in the caller’s `requires`, so the
+collection plugin is not loaded when a plain `markdown` document renders.
+`requires` points from consumer to provider: for a fence it would have the Markdown
+plugin require the collection plugin, the inverted direction, so it does not solve fence
+dispatch. The consistent alternative is a manifest declaration indexed like Plugin
+Authoring’s type index.
 
 **Security.**
 
@@ -390,9 +400,11 @@ One built-in plugin, one route, one tab, and no core change:
    `{id, subject | web_url, title, note, done, group, state}`; per-target
    `document {title, description, date}` from bounded frontmatter under a documents,
    bytes, and time budget; the collection convention’s keys.
-3. **Views.** Cards by default, plus Document and Source through the Markdown plugin’s
-   exports; a named pure `describe` per item; the Decision 21 A keyboard; a disposal
-   path.
+3. **Views.** Rows by default, since cards before Recent’s R4 are the drift named under
+   Other Problems; a Table through a `[[table_source]]` adapter over the items; Document
+   and Source through the Markdown plugin’s exports (`requires = ["markdown"]`); a named
+   pure `describe` per item; the Decision 21 A keyboard; a disposal path; refresh on
+   `file.changed` through `mb.watchFile`.
 4. **Evidence.** An `--api` golden covering groups, a checkbox, a reference link, a URL
    item, a missing target, an escape attempt, and an over-budget file; a `--show`
    golden; a browserless describe session; parity rows, the map, and a changelog
@@ -403,13 +415,14 @@ What it would defer, and on what:
 | Deferred | Waits for |
 | --- | --- |
 | Fences and `from:` | An inert allowlist change and fence loading |
-| Table | The Tabular plan’s table source |
 | Grid arrangement and `mb.objects` | Recent’s R4 and the manifest blocks |
 | Board | View state for several lists, and the editor contract |
 | Unfurl | Its own plan |
 
 The same route internals with a different member source give a Documents view over a
 folder’s or a pull request’s changed Markdown files, with no file to write.
+On a folder, an `offer` predicate on the `[[view]]` limits it to folders that hold
+documents.
 
 ## Open Questions the Review Adds
 

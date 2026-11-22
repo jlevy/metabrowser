@@ -131,6 +131,10 @@ syntax and sources. Its findings in brief:
 ## Findings: What Metabrowser Has
 
 From the plans on this branch and the code.
+Object Model citations refer to its revision in
+[pull request 570](https://github.com/jlevy/metabrowser/pull/570); `main`’s copy is
+older. Code claims were rechecked against `main` on 2026-11-22, after the table view,
+file watches, and declared plugin dependencies landed.
 The [technical review](../reviews/review-2026-11-20-collection-documents-technical.md)
 has the evidence for each.
 
@@ -206,9 +210,23 @@ build would confirm it end to end.
 - A `[[kind]]` with `match = {ext = ".md", frontmatter_has_key = "<key>"}` at a priority
   above `markdown` works on Git pins too.
 - A Python data hook can answer the items as a route.
-- The Markdown plugin exports `mountRendered` for the prose.
+- The Markdown plugin exports `mountRendered` to a plugin that declares
+  `requires = ["markdown"]` and calls `mb.plugins.load("markdown")`.
+- A `[[table_source]]` adapter with `requires = ["table"]` gives a kind the table
+  plugin’s routes and its Table view: sort, filter, search, and a record view.
+- A folder `[[view]]` may set `offer = "module:function"`, a Python predicate that
+  decides which folders show it; Git revisions never offer one.
+- `mb.watchFile` registers a file on the page’s event stream and is told on
+  `file.changed`, within `FILE_WATCH_MAX_PATHS` per page.
 - A plugin cannot add a route-backed kind, an address space, or a navigation panel.
-- Python data hooks load only from installed packages and built-ins.
+- Python data hooks, table sources, and `offer` predicates load only from installed
+  packages and built-ins.
+
+**A YAML list of records already renders as a table.** Every JSON and YAML file has a
+Table tab (key `a`) beside the default Tree.
+A file whose root is a list of mappings gets sort, filter, search, and a record view
+with no new code; any other root says “not a list of records”.
+Link values are text cells, not links.
 
 **Nothing can write a file’s content.** The trusted local editing plan covers rename,
 move, and trash, and no write route exists yet.
@@ -307,7 +325,7 @@ Markdown list in the body between markers, as SoftSchema’s generated sections 
 | C. Fenced YAML | Several views in one prose document; holds queries; degrades to readable YAML on GitHub | Links are not clickable; the fence loses its language on the inert path, so it needs an allowlist change; needs a way to load the plugin when a plain Markdown file renders |
 | D1. A tag per item | Compact; Notion’s API uses it; a schema could validate attributes | The item vanishes on the inert path and on GitHub; attribute quoting is where agents slip |
 | D2. A tag around a list | The data stays in links, so it degrades to an ordinary list everywhere; passes through the trusted render with attributes; can mark one list among several | Still needs the body extraction of A; the hint is lost on the inert path unless the server parse supplies it; a custom tag name is a private convention |
-| E. A YAML file | A SoftSchema `pure-yaml` artifact, which the registry already admits; best for generated and query-defined collections; a board move is one scalar | Not prose; GitHub shows highlighted YAML; no clickable links; a second file beside the documents |
+| E. A YAML file | A SoftSchema `pure-yaml` artifact, which the registry already admits; best for generated and query-defined collections; a board move is one scalar; a list-of-mappings root already gets the structured plugin’s Table tab | Not prose; GitHub shows highlighted YAML; no clickable links; a second file beside the documents; a root that carries view settings or a `softschema:` header is a mapping, which loses the free Table, and a key predicate can claim only a mapping root |
 | F. Generated sections | Conforms to SoftSchema; readable and clickable body | The author maintains YAML and a tool rewrites the file; two copies of the list can disagree |
 
 These combine. The pairing the first draft proposed is A as the default with E (or B) as
@@ -331,7 +349,7 @@ a parser has to take items from the token stream, never from lines.
 | A SoftSchema contract, `softschema.contract` | Self-describing; a validator knows what it is | Three lines of ceremony; the classifier cannot match it today and would need a new core predicate |
 | A file suffix, such as `.collection.md` | Visible in a listing; no frontmatter needed | `path_glob` matches only on the filesystem, so it fails on pins and in pull request views; the logical extension is still `.md` |
 | A tag or comment in the body | Sits beside the list it governs | A comment is dropped on the inert path; a tag is a private convention |
-| Nothing: any Markdown file with link lists offers a Cards tab | Zero ceremony; old index files gain the view | Costs a body scan per Markdown file, which must be measured; the navigation plan requires that extensions activate only from explicit syntax or configuration |
+| Nothing: any Markdown file with link lists offers a Cards tab | Zero ceremony; old index files gain the view | Costs a body scan per Markdown file, which must be measured; the navigation plan requires that extensions activate only from explicit syntax or configuration; views bind to a kind, so per the Tabular plan’s Decision 12 the tab is either on every Markdown file, saying when it has no list, or waits for a per-file view-availability hook |
 
 ### 3. Per-Item Detail in Markdown
 
@@ -400,8 +418,9 @@ Other points any option has to settle:
   being an address in the browser and with the intent rule.
   A `web_url` field on the item avoids both, and the Object Model already has an open
   question on a header web address.
-- **Opening.** The macOS app’s web pane where it exists, otherwise the system browser,
-  with an external mark before the click.
+- **Opening.** The macOS app opens a web pane only for an `https` page on a known site’s
+  hosts, GitHub alone today, and sends every other link to the system browser; a page
+  marks links with `data-web-view`. An external mark shows before the click.
 - **Images.** The design memo argues for none at all, not even favicons: they need
   fetches, make row heights uneven, and pull the page toward a link aggregator.
 - **Known hosts.** A GitHub URL the localizer can prove belongs to the served repository
@@ -473,6 +492,9 @@ list host per lane, which waits for view state that covers several lists.
 The design memo adds “Updated since read”: a target modified after its box was checked.
 It needs the time the box was checked, which the file does not hold; Git blame on the
 line could supply it in a repository.
+Keeping an open page current needs no new machinery: `mb.watchFile` on the collection
+file and its targets refetches on `file.changed`, as the live table does, within the
+per-page watch bound.
 
 ### 9. Writing Back
 
@@ -515,6 +537,8 @@ view: table
 The implicit option is worth separating from the format question.
 The same route internals could serve a Documents view over a folder or over a pull
 request’s changed Markdown files, with a different member source.
+A folder `[[view]]` with an `offer` predicate shows that view only on folders that hold
+documents; it is never offered on a Git revision or by an operator-directory plugin.
 
 ### 11. Prose and Cards
 
@@ -543,7 +567,7 @@ place, using the server’s answer for which lists are items.
 | Option | For | Against |
 | --- | --- | --- |
 | A plugin-provided arrangement of host shapes | Plugins could add layouts; no type draws anything new | Arrangement is what Decision 11 reserves to the host: windowing, keyboard, and the list facet change with it |
-| List and cards as one list host with a shape; grid as a host arrangement of the `card` frame; board as a page of list hosts; table as a table source | Uses only what the plans already have or have deferred | Each waits on something: R4’s frame, view state for several lists, the Tabular plan |
+| List and cards as one list host with a shape; grid as a host arrangement of the `card` frame; board as a page of list hosts; table as a table source | Uses only what the plans already have or have deferred; the table source is built | The rest waits on something: R4’s frame, view state for several lists |
 | Draw privately inside one page view, as today’s plugins do | Buildable now with the current SDK | It is the drift Decision 12 names; it is rewritten when the object model lands |
 
 **When to build.** The object model is planned, not built.
@@ -571,7 +595,7 @@ loosen validation by itself; whether extra keys are kept is a property of the mo
 | --- | --- | --- |
 | A built-in plugin | Can use Python data hooks and the bounded frontmatter loader; covered by the parity checks | Ships in the package, so it is “core” in size if not in coupling |
 | An installed plugin | Truly outside core; the model for downstream formats | `metabrowser.plugin_api` exports no bounded frontmatter loader today |
-| An operator-directory plugin | No install | JavaScript only, so it cannot answer membership as a route |
+| An operator-directory plugin | No install | JavaScript only, so it cannot answer membership as a route, declare a table source, or offer a folder view |
 | In core | Fewest seams | Against the instruction to keep core consumer-agnostic |
 
 What core would have to add depends on the other choices:
@@ -585,7 +609,7 @@ What core would have to add depends on the other choices:
 | A core `document` facet | A per-kind describe hook and a `file` batch route |
 | A grid of the `card` frame | The frame and an arrangement option, with Recent’s R4 |
 | A board of list hosts | View state for a page of several lists |
-| A table | The Tabular plan’s table source |
+| A table | Nothing: a built-in or installed plugin declares a `[[table_source]]` over its items |
 | Checking a box or dragging a card | The editor contract’s structural edits |
 | Unfurling | A fetch policy, a cache format, and its route |
 
@@ -618,20 +642,21 @@ They also read as a sequence.
 
 **A. The link list alone.**
 
-- Markdown face only, a one-token frontmatter key, Cards and List.
+- Markdown face only, a one-token frontmatter key, List by default and Cards once
+  Recent’s R4 builds the `card` frame, plus a Table through a table source.
 - Card fields from target frontmatter; URLs draw from link text and host.
 - Read-only: checkboxes come from the file.
 - One built-in plugin, one route, no core change.
 - It delivers the seven-brief dashboard and a mixed reading list.
-- It leaves out boards, tables, embedding, queries, and any write.
+- It leaves out boards, embedding, queries, and any write.
 - This is the technical review’s first step.
 
 **B. Two faces and implicit collections.**
 
 - Adds a YAML face as a SoftSchema artifact for generated collections and boards.
 - Adds a Documents view over a folder and over a pull request’s changed files.
-- Adds a table through the Tabular plan’s table source, and a read-only board.
-- It needs the Tabular plan and view state for several lists.
+- Adds a read-only board.
+- It needs view state for several lists.
 
 **C. Notion-like blocks.**
 
@@ -710,7 +735,7 @@ For the design, whichever way those go:
 - [The Recent Tab](../specs/active/plan-2026-11-18-recent-tab-updates-and-events.md):
   the `update` type and the `card` frame’s first use
 - [Tabular Data and Live SQLite](../specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md):
-  the table source
+  the table source, now built
 - [Markdown Navigation Extensions](../specs/active/plan-2026-08-13-markdown-navigation-extensions.md):
   explicit activation, bounded transclusion, and frontmatter alias lookup
 - [Trusted Local File Editing](../specs/active/plan-2026-07-16-trusted-local-file-editing.md)
