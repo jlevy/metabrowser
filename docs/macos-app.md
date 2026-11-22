@@ -105,13 +105,10 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   GitHub URL for a pull request, commit, file, or folder.
   A space or a letter outside ASCII in the path is sent encoded, as a browser sends it,
   so a file named `Design Notes.md` opens as it does with `metab URL`. Open checks the
-  URL with `metab`, and a URL it accepts opens as a sent link does, below.
-  A URL it does not open keeps the panel open with the reason under the field: the app’s
-  own for anything but an `https` URL on GitHub, and `metab`’s for a GitHub page it does
-  not open, such as an issues page.
-  One exception: while Metabrowser is still finding its `metab`, or checking it again
-  after it changed, the panel closes at once, the URL is checked once `metab` is ready,
-  and a URL it does not open is reported in an alert.
+  URL with `metab`. The panel shows progress until the repository window or tab opens.
+  If Metabrowser is still finding or checking its server runtime, the panel waits for
+  it. If the URL cannot be opened, the panel keeps your text and shows the reason under
+  the field.
 - **Always the mirror:** a link opens Metabrowser’s own copy of the repository, its
   mirror in `metab`’s cache, never a checkout of it that you have open
   ([Open Modes](project/architecture/arch-open-modes.md)).

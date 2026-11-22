@@ -30,6 +30,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     private var policy = NavigationPolicy()
     private let container: WebContainerView
     private let status = WindowStatus()
+    private var linkProgress: NSView?
     /// Find on the page: WebKit's own find, run from the window's find bar (`PageFind`).
     private let find = PageFind()
     private lazy var findBar = makeFindBar()
@@ -208,6 +209,27 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     /// What a repository's start says it is doing, such as how far its clone has got.
     func showStartProgress(_ progress: StartProgress?) {
         status.progress = progress
+    }
+
+    /// An explicit link into a ready server leaves its current page visible while the
+    /// server resolves the new link.
+    func showOpeningLink(_ showing: Bool) {
+        linkProgress?.removeFromSuperview()
+        linkProgress = nil
+        guard showing else { return }
+        let badge = NSHostingView(rootView: HStack(spacing: 8) {
+            ProgressView().controlSize(.small).accessibilityHidden(true)
+            Text("Opening GitHub link…").font(.callout)
+        }
+        .padding(8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8)))
+        badge.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(badge)
+        NSLayoutConstraint.activate([
+            badge.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            badge.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
+        ])
+        linkProgress = badge
     }
 
     /// The page to save for the next launch.

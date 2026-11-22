@@ -105,10 +105,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var openURLWindow = OpenURLWindowController(
         onOpen: { [weak self] in self?.checkEnteredLink($0) },
         onDrop: { [weak self] in self?.stopCheckingEnteredLink($0) })
-    /// The dry run for the link File > Open URL… awaits, and the task that applies its
-    /// answer: at most one, since the panel awaits one answer and stops this one when it
-    /// drops it (`stopCheckingEnteredLink`).
-    private var enteredLinkCheck: (link: URL, task: Task<Void, Never>)?
+    /// The panel's one request, waiting for its own dry run or for a runtime to check it.
+    private var enteredLinkCheck: (request: OpenURLPanel.Request, task: Task<Void, Never>)?
+    private var waitingEnteredLink: OpenURLPanel.Request?
+    private var hasPendingEnteredLink: Bool { enteredLinkCheck != nil || waitingEnteredLink != nil }
     /// The runtime's file, or where `metab` may appear while there is none.
     private var watch: SetupWatch?
     private var watchedRuntime: Runtime?
@@ -179,7 +179,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// A launch or reopen with nothing to show offers the Open panel.
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
         if selection.setup != nil {
-            if sessions.openServers.isEmpty && selection.waitingFolders.isEmpty && linksAreIdle { openFolder(nil) }
+            if sessions.openServers.isEmpty && selection.waitingFolders.isEmpty && linksAreIdle && !hasPendingEnteredLink {
+                openFolder(nil)
+            }
         } else {
             showPanelAfterDiscovery = true
         }
@@ -430,34 +432,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         "metab \(setup.runtime.version) at \(setup.runtime.executable)"
     }
 
-    /// File > Open URL…: one field for a full GitHub URL, which opens as a link sent to
-    /// the app does, in the repository's mirror and never a checkout of it
-    /// (`OpenURLPanel`). The panel asks `metab` itself, with the command `resolveLink`
-    /// runs, so a refusal is said in the panel, which stays open to fix the text, and not
-    /// in the alert at the end of a burst.
+    /// File > Open URL…: a GitHub URL or repository shortcut, always opened in a mirror.
+    /// The panel owns the submission through the dry run and window placement, so a
+    /// refusal stays under the field and the app can stop work on a cancelled request.
     @objc func showOpenURL(_ sender: Any?) {
         openURLWindow.show()
     }
 
-    /// Asks `metab` about a link typed into File > Open URL…, and opens its plan as a
-    /// link sent to the app opens (`open(_:with:)`). With no `metab` the app can run now,
-    /// as while it finds or checks one, the link goes to the link queue instead, which
-    /// waits for one as it waits for any link (`requestLink`): the panel closes, and a
-    /// refusal comes as the alert at the end of the burst.
-    private func checkEnteredLink(_ link: URL) {
+    private func checkEnteredLink(_ request: OpenURLPanel.Request) {
+        guard !isQuitting else { return }
         if let current = selection.setup?.runtime, !selection.isUnverified,
            !current.isCurrent(fingerprint: FileFingerprint.of(current.executable)) {
             beginRecheck()
         }
         guard let setup = operations.launchableSetup() else {
-            if let waiting = openURLWindow.handOff() { requestLink(waiting) }
+            waitForEnteredRuntime(request)
             return
         }
+        guard openURLWindow.setWaitingForRuntime(false, for: request) else { return }
+        waitingEnteredLink = nil
         enteredLinkCheck?.task.cancel()
+        let link = request.link
         let task = Task {
             let answer = await askMetab(about: link, with: setup)
-            // Dropped by an edit, Cancel, or closing the panel, which cancelled this task
-            // and so killed the dry run (`CommandRunner.finish`): its answer is moot.
+            // Editing or closing the panel cancels this dry run.
             guard !Task.isCancelled else { return }
             enteredLinkCheck = nil
             let text = link.absoluteString
@@ -472,19 +470,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     "Open URL…: could not resolve \(text, privacy: .private): metab \(reason, privacy: .public); its last output: \(output.suffix(PresentDryRun.shownLines).joined(separator: " | "), privacy: .private)")
             }
             guard !isQuitting,
-                  let plan = openURLWindow.answered(answer, for: link, metab: Self.describe(setup))
+                  let plan = openURLWindow.answered(answer, for: request, metab: Self.describe(setup))
             else { return }
-            await open(plan, with: setup)
-            showNextLinkModal()
+            if openEntered(plan) {
+                openURLWindow.presented(for: request)
+            } else if selection.isBusy {
+                waitForEnteredRuntime(request)
+            } else {
+                openURLWindow.failed("Metabrowser could not open a repository window. Try again.", for: request)
+            }
         }
-        enteredLinkCheck = (link, task)
+        enteredLinkCheck = (request, task)
     }
 
-    /// The Open URL… panel no longer awaits the answer about `link`: cancelling its task
-    /// kills the dry run's process group at once (`CommandRunner.finish`), so an edit,
-    /// Cancel, or a closed panel leaves no `metab` running for it.
-    private func stopCheckingEnteredLink(_ link: URL) {
-        guard let check = enteredLinkCheck, check.link == link else { return }
+    private func waitForEnteredRuntime(_ request: OpenURLPanel.Request) {
+        if selection.isBusy {
+            if openURLWindow.setWaitingForRuntime(true, for: request) { waitingEnteredLink = request }
+        } else {
+            waitingEnteredLink = nil
+            openURLWindow.failed(Self.openURLRuntimeUnavailable, for: request)
+        }
+    }
+
+    private static let openURLRuntimeUnavailable =
+        "Metabrowser needs a server runtime to open this URL. Find or choose metab in Settings, then try again."
+
+    private func failEnteredRuntimeWait() {
+        guard let request = waitingEnteredLink else { return }
+        waitingEnteredLink = nil
+        openURLWindow.failed(Self.openURLRuntimeUnavailable, for: request)
+    }
+
+    /// The panel no longer awaits this submission, so it cannot open when a runtime is
+    /// found or after its current dry run returns.
+    private func stopCheckingEnteredLink(_ request: OpenURLPanel.Request) {
+        if waitingEnteredLink == request { waitingEnteredLink = nil }
+        guard let check = enteredLinkCheck, check.request == request else { return }
         check.task.cancel()
         enteredLinkCheck = nil
     }
@@ -574,7 +595,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func openRepository(_ root: SessionRoot, on link: URL, waitForRuntime: Bool = true) -> Bool {
         if let session = sessions[root.key] as? FolderSession {
             recentFolders.noteOpened(root.url, isOpen: true)
-            session.open(link: link)
+            session.open(link: link, showingProgress: !waitForRuntime)
             return true
         }
         let setup = waitForRuntime ? selection.setupForOpening(link) : operations.launchableSetup()
@@ -890,9 +911,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch (finish.operation, finish.outcome) {
         case (_, .adopted(let found)):
             adopted(found, opening: finish.released)
+            if let request = waitingEnteredLink { checkEnteredLink(request) }
             switch finish.operation {
             case .search:
-                if showPanelAfterDiscovery, sessions.openServers.isEmpty, selection.waitingFolders.isEmpty, linksAreIdle {
+                if showPanelAfterDiscovery, sessions.openServers.isEmpty, selection.waitingFolders.isEmpty,
+                   linksAreIdle, !hasPendingEnteredLink {
                     openFolder(nil)
                 }
                 showPanelAfterDiscovery = false
@@ -911,6 +934,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Folders already open keep their servers; new ones wait for a runtime.
             AppLog.app.error("no usable metab in \(report.tried.count) places")
             lastLoginPath = report.loginPath
+            failEnteredRuntimeWait()
             await prepareGuide()
             showSettings(nil)
         case (.recheck(let path, let result), .notFound):
@@ -921,8 +945,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             runtimeModel.notice = MetabRequirement.flagShortfall(version).map {
                 "\(path) is metab \(version), \($0), which Metabrowser needs."
             } ?? "\(path) is metab \(version), and Metabrowser needs \(MetabRequirement.minimum) or later."
+            if !selection.needsRecheck && !selection.needsSearch { failEnteredRuntimeWait() }
         case (.choice(let path), .rejected(let rejected)):
             runtimeModel.notice = "\(path) is not a working metab: \(RuntimeView.describe(rejected))."
+            if !selection.needsRecheck && !selection.needsSearch { failEnteredRuntimeWait() }
         case (.search, _):
             AppLog.app.info("a search finished after a newer choice; its result is dropped")
         case (.recheck, _):

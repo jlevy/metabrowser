@@ -233,12 +233,14 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
 /// The panel's states: what Open, an edit, `metab`'s answer, and Cancel do.
 @Suite struct OpenURLPanelTests {
     /// A panel asking `metab` about `text`, which `link` is.
-    private func checking(_ text: String, link: URL = pullRequest) -> OpenURLPanel {
+    private func checking(
+        _ text: String, link: URL = pullRequest
+    ) throws -> (OpenURLPanel, OpenURLPanel.Request) {
         var panel = OpenURLPanel()
         panel.edit(text)
-        let opened = panel.open()
-        #expect(opened == link)
-        return panel
+        let request = try #require(panel.open())
+        #expect(request.link == link)
+        return (panel, request)
     }
 
     @Test func openWaitsForText() {
@@ -276,14 +278,11 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         (" http://github.com/jlevy/metabrowser/pull/539\n", pullRequest),
         ("//github.com/jlevy/metabrowser/pull/539", pullRequest),
     ])
-    func openWritesAGitHubURLInFull(_ typed: String, _ expected: URL) {
-        var panel = OpenURLPanel()
-        panel.edit(typed)
-        let opened = panel.open()
-        #expect(opened == expected)
+    func openWritesAGitHubURLInFull(_ typed: String, _ expected: URL) throws {
+        let (panel, request) = try checking(typed, link: expected)
         #expect(panel.text == expected.absoluteString)
         #expect(panel.message == nil)
-        #expect(panel.phase == .checking(expected))
+        #expect(panel.phase == .checking(request))
     }
 
     /// The field holds the full URL, so a refusal of it, the panel's or `metab`'s, is about
@@ -298,56 +297,74 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
 
         let issues = try #require(URL(string: "https://github.com/jlevy/metabrowser/issues/1"))
         panel.edit("github.com/jlevy/metabrowser/issues/1")
-        let opened = panel.open()
-        #expect(opened == issues)
+        let request = try #require(panel.open())
+        #expect(request.link == issues)
         #expect(panel.text == issues.absoluteString)
         let refusal = PresentRefusal(code: "unsupported_github_url", message: "GitHub issues pages are not opened")
-        _ = panel.answered(.refused(refusal), for: issues, metab: metab)
+        _ = panel.answered(.refused(refusal), for: request, metab: metab)
         #expect(panel.text == issues.absoluteString)
         #expect(panel.message == refusal.message)
         let dropped = panel.edit("github.com/jlevy/metabrowser")
         #expect(dropped == nil)
         let reopened = panel.open()
-        #expect(reopened == repository)
+        #expect(reopened?.link == repository)
         #expect(panel.text == repository.absoluteString)
     }
 
-    /// Open sends the link once: a second press while `metab` is asked does nothing.
-    @Test func openSendsTheLinkOnce() {
-        var panel = checking("  \(pullRequest.absoluteString)\n")
-        #expect(panel.phase == .checking(pullRequest))
-        #expect(panel.isChecking)
+    @Test func openSendsTheLinkOnce() throws {
+        let (checkingPanel, request) = try checking("  \(pullRequest.absoluteString)\n")
+        var panel = checkingPanel
+        #expect(panel.phase == .checking(request))
+        #expect(panel.progress == "Checking URL…")
         #expect(!panel.canOpen)
         let openedAgain = panel.open()
         #expect(openedAgain == nil)
     }
 
-    /// A plan closes the panel and is opened; nothing changes the panel after that.
-    @Test func aPlanClosesThePanel() {
-        var panel = checking(pullRequest.absoluteString)
-        let opens = panel.answered(.plan(plan), for: pullRequest, metab: metab)
+    @Test func aPlanKeepsThePanelOpenUntilTheWindowIsPresented() throws {
+        let (checkingPanel, request) = try checking(pullRequest.absoluteString)
+        var panel = checkingPanel
+        let opens = panel.answered(.plan(plan), for: request, metab: metab)
         #expect(opens == plan)
-        #expect(panel.phase == .closed)
+        #expect(panel.phase == .opening(request))
+        #expect(panel.progress == "Opening repository…")
+        #expect(!panel.canEdit)
+        #expect(!panel.canOpen)
         panel.edit("https://github.com/jlevy/tbd")
         #expect(panel.text == pullRequest.absoluteString)
-        let opened = panel.open()
-        #expect(opened == nil)
-        let opensLate = panel.answered(.plan(plan), for: pullRequest, metab: metab)
-        #expect(opensLate == nil)
-        // The panel closing after its plan stops no dry run: the plan's is over.
+        let presented = panel.presented(for: request)
+        #expect(presented)
+        #expect(panel.phase == .closed)
+        #expect(panel.progress == nil)
         let dropped = panel.cancel()
         #expect(dropped == nil)
+    }
+
+    @Test func aWindowPlacementFailureLetsTheUserRetry() throws {
+        let (checkingPanel, request) = try checking(pullRequest.absoluteString)
+        var panel = checkingPanel
+        _ = panel.answered(.plan(plan), for: request, metab: metab)
+        panel.failed("Could not present a window.", for: request)
+        #expect(panel.phase == .editing)
+        #expect(panel.message == "Could not present a window.")
+        #expect(panel.canOpen)
+        #expect(panel.text == pullRequest.absoluteString)
+        let retry = try #require(panel.open())
+        #expect(retry.link == request.link)
+        #expect(retry != request)
+        #expect(panel.message == nil)
     }
 
     /// `metab`'s refusal is said in its own words, and the panel stays open with the text.
     @Test func aRefusalIsSaidAndThePanelStaysOpen() throws {
         let issues = "https://github.com/jlevy/metabrowser/issues/1"
         let link = try #require(URL(string: issues))
-        var panel = checking(issues, link: link)
+        let (checkingPanel, request) = try checking(issues, link: link)
+        var panel = checkingPanel
         let refusal = PresentRefusal(
             code: "unsupported_github_url",
             message: "GitHub issues pages are not opened; open the repository at https://github.com/jlevy/metabrowser")
-        let opens = panel.answered(.refused(refusal), for: link, metab: metab)
+        let opens = panel.answered(.refused(refusal), for: request, metab: metab)
         #expect(opens == nil)
         #expect(panel.message == refusal.message)
         #expect(panel.phase == .editing)
@@ -355,21 +372,23 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         #expect(panel.canOpen)
     }
 
-    @Test func aLongRefusalIsShortened() {
-        var panel = checking(pullRequest.absoluteString)
+    @Test func aLongRefusalIsShortened() throws {
+        let (checkingPanel, request) = try checking(pullRequest.absoluteString)
+        var panel = checkingPanel
         let long = String(repeating: "x", count: PresentAnswer.shownLineLength * 2)
-        _ = panel.answered(.refused(PresentRefusal(code: "c", message: long)), for: pullRequest, metab: metab)
+        _ = panel.answered(.refused(PresentRefusal(code: "c", message: long)), for: request, metab: metab)
         #expect(panel.message?.count == PresentAnswer.shownLineLength)
     }
 
     /// An answer the app cannot read names the `metab` and the reason, and never its
     /// output, which can hold a traceback or JSON.
     @Test func anUnreadableAnswerNamesMetabAndNotItsOutput() throws {
-        var panel = checking(pullRequest.absoluteString)
+        let (checkingPanel, request) = try checking(pullRequest.absoluteString)
+        var panel = checkingPanel
         let answer = PresentAnswer.unreadable(
             reason: "printed no answer (exit status 1)",
             output: ["Traceback (most recent call last):", #"{"kind": "#])
-        let opens = panel.answered(answer, for: pullRequest, metab: metab)
+        let opens = panel.answered(answer, for: request, metab: metab)
         #expect(opens == nil)
         let message = try #require(panel.message)
         #expect(message.contains(metab))
@@ -379,49 +398,58 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         #expect(panel.phase == .editing)
     }
 
-    /// An edit while `metab` is asked drops its answer: the text it answered about is gone.
-    /// It returns the link it stopped awaiting, whose dry run the app stops; an edit
-    /// with no answer awaited returns nothing.
-    @Test func anEditDropsTheAnswerAwaited() {
-        var panel = checking(pullRequest.absoluteString)
-        #expect(panel.awaited == pullRequest)
+    @Test func anEditDropsTheAnswerAwaited() throws {
+        let (checkingPanel, request) = try checking(pullRequest.absoluteString)
+        var panel = checkingPanel
+        #expect(panel.awaited == request)
         let dropped = panel.edit("https://github.com/jlevy/metabrowser/pull/540")
-        #expect(dropped == pullRequest)
+        #expect(dropped == request)
         #expect(panel.awaited == nil)
-        let droppedAgain = panel.edit("https://github.com/jlevy/metabrowser/pull/541")
-        #expect(droppedAgain == nil)
-        #expect(panel.phase == .editing)
-        let opensLate = panel.answered(.plan(plan), for: pullRequest, metab: metab)
+        let opensLate = panel.answered(.plan(plan), for: request, metab: metab)
         #expect(opensLate == nil)
         #expect(panel.phase == .editing)
         #expect(panel.message == nil)
     }
 
-    /// Cancel, or closing the panel, returns the link it stopped awaiting, as an edit does.
-    @Test func cancelDropsTheAnswerAwaited() {
-        var panel = checking(pullRequest.absoluteString)
+    @Test func aRuntimeWaitCanResumeOrBeCancelled() throws {
+        let (checkingPanel, request) = try checking(pullRequest.absoluteString)
+        var panel = checkingPanel
+        let waiting = panel.setWaitingForRuntime(true, for: request)
+        #expect(waiting)
+        #expect(panel.phase == .waitingForRuntime(request))
+        #expect(panel.progress == "Waiting for the server runtime…")
+        let openedAgain = panel.open()
+        #expect(openedAgain == nil)
+        let resumed = panel.setWaitingForRuntime(false, for: request)
+        #expect(resumed)
+        #expect(panel.phase == .checking(request))
+        // A runtime can also become unavailable between the plan and window placement.
+        _ = panel.answered(.plan(plan), for: request, metab: metab)
+        let waitingAgain = panel.setWaitingForRuntime(true, for: request)
+        #expect(waitingAgain)
         let dropped = panel.cancel()
-        #expect(dropped == pullRequest)
-        let droppedAgain = panel.cancel()
-        #expect(droppedAgain == nil)
-        let opensLate = panel.answered(.plan(plan), for: pullRequest, metab: metab)
-        #expect(opensLate == nil)
+        #expect(dropped == request)
+        let resumedAfterCancel = panel.setWaitingForRuntime(false, for: request)
+        #expect(!resumedAfterCancel)
         #expect(panel.phase == .closed)
-        let opened = panel.open()
-        #expect(opened == nil)
     }
 
-    /// With no `metab` to ask, the link goes to the link queue, which waits for one.
-    @Test func aLinkBeingCheckedCanBeHandedOn() {
-        var panel = checking(pullRequest.absoluteString)
-        let handed = panel.handOff()
-        #expect(handed == pullRequest)
-        #expect(panel.phase == .closed)
-        let handedAgain = panel.handOff()
-        #expect(handedAgain == nil)
-        var editing = OpenURLPanel()
-        editing.edit(pullRequest.absoluteString)
-        let editingHanded = editing.handOff()
-        #expect(editingHanded == nil)
+    @Test func aCancelledSubmissionCannotCloseANewerPanelForTheSameURL() throws {
+        let (firstCheckingPanel, firstRequest) = try checking(pullRequest.absoluteString)
+        var firstPanel = firstCheckingPanel
+        let dropped = firstPanel.cancel()
+        #expect(dropped == firstRequest)
+        let (checkingPanel, request) = try checking(pullRequest.absoluteString)
+        var panel = checkingPanel
+        #expect(request != firstRequest)
+        let opensLate = panel.answered(.plan(plan), for: firstRequest, metab: metab)
+        #expect(opensLate == nil)
+        panel.failed("Old failure.", for: firstRequest)
+        #expect(panel.message == nil)
+        let current = panel.answered(.plan(plan), for: request, metab: metab)
+        #expect(current == plan)
+        let oldPresentation = panel.presented(for: firstRequest)
+        #expect(!oldPresentation)
+        #expect(panel.phase == .opening(request))
     }
 }
