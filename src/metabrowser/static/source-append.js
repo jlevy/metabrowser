@@ -236,17 +236,30 @@
    * Returns false when the view is not in the expected shape, so the caller
    * falls back to a full render rather than silently dropping content. A
    * highlighted block is one such shape: it carries markup a raw text append
-   * would not survive.
+   * would not survive. A page without the line anchors is another: they hold the
+   * line-ending normalization the view's first render used (plugin-sdk-views.js,
+   * normalizeLineEndings), and text appended without it would show a file's lone CRs
+   * as no line break at all.
+   *
+   * `text` is the file's text as loaded, and `before` the text loaded before it, as
+   * loaded too. Only its last character matters: after a CR, an LF that starts `text`
+   * is the second half of a CRLF the last part showed as a line ending already.
    *
    * @param {ParentNode | null} root
    * @param {string} text
+   * @param {string} [before]
    * @returns {boolean}
    */
-  function appendSourceText(root, text) {
+  function appendSourceText(root, text, before = "") {
     if (!text) {
       return true;
     }
     if (!root) {
+      return false;
+    }
+    const anchors = /** @type {Window} */ (/** @type {unknown} */ (global))
+      .MetabrowserSourceLineAnchors;
+    if (!anchors) {
       return false;
     }
     const host = root.querySelector(".metabrowser-source-host");
@@ -261,7 +274,8 @@
     // it as markup would both corrupt the view and execute nothing good. They
     // go in as one fragment, so the tree changes once.
     const fragment = document.createDocumentFragment();
-    for (const piece of textPieces(text)) {
+    const shown = anchors.normalizeLineEndings(text, before.endsWith("\r"));
+    for (const piece of textPieces(shown)) {
       fragment.appendChild(document.createTextNode(piece));
     }
     code.appendChild(fragment);
