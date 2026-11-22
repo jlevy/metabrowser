@@ -6556,7 +6556,7 @@ async function loadMoreCurrentText() {
       return;
     }
     const nextCached = sourceAppend.nextCacheValue(cached, chunk);
-    if (sourceAppend.appendSourceText(document, chunk.content || "")) {
+    if (sourceAppend.appendSourceText(document, chunk.content || "", cached.content || "")) {
       // The append skipped the plugin's render, so the banner it emitted still
       // reports the byte counts from the previous chunk. Sync it rather than
       // leaving a "content truncated" notice over a fully loaded file.
