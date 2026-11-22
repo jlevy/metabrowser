@@ -496,7 +496,9 @@ status: 200
 GitHub’s explicit branch namespace distinguishes a same-named tag.
 
 ```console
-$ git -C branch tag feature/docs HEAD
+$ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
+>   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES \
+>   && git -C branch tag feature/docs HEAD
 ? 0
 ```
 
@@ -523,7 +525,15 @@ An unconfigured local branch uses that name only when the published tip matches 
 commit.
 
 ```console
-$ git -C branch branch --unset-upstream && git -C branch checkout -qb other && printf 'Different readme.\n' > branch/README.md && git -C branch add README.md && git -C branch commit -qm other && git -C branch update-ref refs/remotes/origin/local-docs HEAD && git -C branch checkout -q local-docs
+$ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
+>   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES \
+>   && git -C branch branch --unset-upstream \
+>   && git -C branch checkout -qb other \
+>   && printf 'Different readme.\n' > branch/README.md \
+>   && git -C branch add README.md \
+>   && git -C branch commit -qm other \
+>   && git -C branch update-ref refs/remotes/origin/local-docs HEAD \
+>   && git -C branch checkout -q local-docs
 ? 0
 ```
 
@@ -560,7 +570,9 @@ status: 200
 ```
 
 ```console
-$ git -C branch update-ref refs/remotes/origin/local-docs HEAD
+$ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
+>   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES \
+>   && git -C branch update-ref refs/remotes/origin/local-docs HEAD
 ? 0
 ```
 
@@ -587,7 +599,12 @@ The first ends in a nonbreaking space, and the second has a Unicode line separat
 the name.
 
 ```console
-$ name="$(printf 'unicode\302\240')" && git -C branch update-ref refs/remotes/origin/unicode HEAD && git -C branch update-ref "refs/remotes/origin/$name" HEAD && git -C branch branch --set-upstream-to="origin/$name" local-docs >/dev/null
+$ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
+>   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES \
+>   && name="$(printf 'unicode\302\240')" \
+>   && git -C branch update-ref refs/remotes/origin/unicode HEAD \
+>   && git -C branch update-ref "refs/remotes/origin/$name" HEAD \
+>   && git -C branch branch --set-upstream-to="origin/$name" local-docs >/dev/null
 ? 0
 ```
 
@@ -608,7 +625,11 @@ status: 200
 ```
 
 ```console
-$ name="$(printf 'line\342\200\250break')" && git -C branch update-ref "refs/remotes/origin/$name" HEAD && git -C branch branch --set-upstream-to="origin/$name" local-docs >/dev/null
+$ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
+>   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES \
+>   && name="$(printf 'line\342\200\250break')" \
+>   && git -C branch update-ref "refs/remotes/origin/$name" HEAD \
+>   && git -C branch branch --set-upstream-to="origin/$name" local-docs >/dev/null
 ? 0
 ```
 
