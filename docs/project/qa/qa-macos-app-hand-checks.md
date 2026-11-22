@@ -321,7 +321,9 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
 1. **The menu.** The File menu reads Open Folder… (Command-O), Open URL… (Command-L),
    then Open Recent. Command-L with a folder’s page focused, with a repository’s page
    focused, and with no window open shows a panel titled Open URL with its field
-   focused; Command-L again brings that panel forward and opens no second one.
+   focused. The three examples beneath the field read
+   `https://github.com/jlevy/metabrowser`, `github.com/jlevy/metabrowser`, and
+   `jlevy/metabrowser`. Command-L again brings the same panel forward.
 2. **A pull request.** Paste `$REPO/pull/517` and press Return: the panel closes, and
    the pull request opens as GitHub Links check 1 opens it, in the repository’s mirror:
    `pgrep -fl -- "metab $REPO/pull/517"` lists one server, and the title’s tooltip says
@@ -331,19 +333,21 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
 3. **Each kind.** `$REPO`, `$REPO/tree/main/docs`, `$REPO/blob/main/README.md`, and
    `$REPO/commit/dcf2bcfa8` each bring the repository’s window forward at that page, as
    GitHub Links check 2 does.
-4. **The app’s refusals.** `jlevy/metabrowser`, `gitlab.com/jlevy/metabrowser`,
-   `git@github.com:jlevy/metabrowser.git`, `http://gitlab.com/jlevy/metabrowser`,
+4. **The app’s refusals.** `./jlevy/metabrowser`, `jlevy/metabrowser#517`,
+   `gitlab.com/jlevy/metabrowser`, `git@github.com:jlevy/metabrowser.git`,
+   `http://gitlab.com/jlevy/metabrowser`,
    `https://user:secret@github.com/jlevy/metabrowser`,
    `https://github.com:8443/jlevy/metabrowser`, and
    `https://gitlab.com/jlevy/metabrowser` each show a reason under the field, with no
    alert and no window; the panel stays open with the text, editing it clears the
    reason, and `log show --last 2m --predicate "subsystem == '$APP_ID'"` has no
    `Open URL…` line for any of them, since no `metab` ran.
-5. **An obvious URL is written in full.** `github.com/jlevy/metabrowser`,
-   `http://github.com/jlevy/metabrowser`, and `//github.com/jlevy/metabrowser` each show
-   `https://github.com/jlevy/metabrowser` in the field when Return is pressed, all of it
-   selected and the field still focused, with no message, and open the repository as
-   check 3 does. `github.com/jlevy/metabrowser/issues/1` shows
+5. **The repository URL is written in full.** `github.com/jlevy/metabrowser`,
+   `jlevy/metabrowser`, `http://github.com/jlevy/metabrowser`, and
+   `//github.com/jlevy/metabrowser` each show `https://github.com/jlevy/metabrowser` in
+   the field when Return is pressed, all of it selected and the field still focused,
+   with no message, and open the repository as check 3 does.
+   `github.com/jlevy/metabrowser/issues/1` shows
    `https://github.com/jlevy/metabrowser/issues/1` in the field, selected, and `metab`’s
    message about issues pages under it.
 6. **`metab`’s refusals.** `$REPO/issues/1` shows `metab`’s message about issues pages,
@@ -483,10 +487,12 @@ window of its own. Each step starts where the one before it ends.
    Each row’s mark sits on the line of its name, centered on that line as on Open
    Recent’s one-line rows, never between the name and the subtitle, and the subtitle
    starts under the name, not under the mark: in light and dark mode, on the highlighted
-   row as white as its text, and on the checked row, whose check mark stays centered on
-   the row. `quarterly-reports`, after `c`, shows its path on one line, cut in the middle
-   with an ellipsis, its mark still on the name’s line, and resting the pointer on the
-   row shows the whole path in a tooltip.
+   row as white as its text, and on the checked row, whose check mark stands on the
+   name’s line too, level with the name and the mark, in the column AppKit gives a
+   check, not between the lines.
+   `quarterly-reports`, after `c`, shows its path on one line, cut in the middle with an
+   ellipsis, its mark still on the name’s line, and resting the pointer on the row shows
+   the whole path in a tooltip.
    Holding Option turns each row into “Open … in New Window”, its mark still on the
    name’s line and its subtitle the same.
    Escape closes it.
@@ -579,7 +585,8 @@ window of its own. Each step starts where the one before it ends.
     on the screen.
 17. **VoiceOver.** With VoiceOver on, the title reads as a pop-up button with the
     folder’s name; VO-Space and VO-Shift-M on it each open the chooser, and VoiceOver
-    lands in it; the Actions rotor offers Show Path, which opens the path menu.
+    lands in it and reads the open folder `a` as checked, and the others not; the
+    Actions rotor offers Show Path, which opens the path menu.
     In the Switch Folder panel, VoiceOver reads the selected row as the panel opens and
     each time Up, Down, or typing moves the selection: its name, its location or “In
     another window”, and “shown in this window” for this window’s folder.
@@ -849,8 +856,8 @@ It opens the copy with a scratch `HOME`, which hides only what is under it: disc
 and the first-run screen still look in the Homebrew prefixes and on the login shell’s
 `PATH`, which with a scratch `HOME` is the system’s own (`/etc/paths` and
 `/etc/paths.d`). So the script refuses to run where a `metab` in any of those would be
-found, and `no-metab` also where a uv in one would; on a Mac with Homebrew’s uv,
-`no-metab` cannot run, and `old-metab` covers the screen with uv.
+found, and `no-metab` also where a uv in one would.
+Use `old-metab` on a Mac with Homebrew’s uv.
 It downloads and installs nothing: “installing” uv or `metab` links the uv on `PATH` and
 this checkout’s `.venv/bin/metab` into the scratch `~/.local/bin`. On exit it quits the
 copy with SIGTERM, detaches its image, unregisters the copy, and deletes its defaults,
@@ -861,13 +868,13 @@ exits nonzero. `scripts/test-scripts.sh` checks that accounting on stand-in proc
 
 | Case | What it checks |
 | --- | --- |
-| `no-metab` | No uv and no `metab`: the uv install and the source checkout step are shown, then only the checkout step, still for a new Terminal window, once uv appears, then the waiting folder opens by itself once `metab` does |
-| `old-metab` | A stand-in below the floor (`scripts/setup-check/metab-0.12.0`): the checkout step naming it and no server (the script checks); replacing it opens the folder by itself; a wrapper reporting a newer version under the running server brings the restart offer, and Restart Servers reloads the window on a new port |
+| `no-metab` | Settings shows the minimum and links to the README’s installation guide. Check its uv instructions for a released minimum and its developer preview instructions when the minimum is pending. With only uv installed, Find Again still reports no usable runtime. Once `metab` appears, the waiting folder opens by itself |
+| `old-metab` | Settings explains why the stand-in (`scripts/setup-check/metab-0.12.0`) is incompatible. The script checks that no server starts. Replacing the stand-in opens the waiting folder by itself. A wrapper reporting a newer version under the running server brings the restart offer, and Restart Servers reloads the window on a new port |
 | `disk-image` | The copy on a read-only image of its own shows “Move Metabrowser to Applications”, naming the image |
 
 A choice rejected during the first search is checked by hand within `no-metab`, whose
 search waits on the login shell: as soon as the copy opens, Settings > Choose metab… and
-`/bin/ls`. Settings names the rejection and goes on looking, then shows the steps, and
+`/bin/ls`. Settings names the rejection and goes on looking, then shows the minimum, and
 the waiting folder still opens by itself once `metab` appears.
 
 Not covered: a translocated launch, which needs a quarantined copy that Gatekeeper

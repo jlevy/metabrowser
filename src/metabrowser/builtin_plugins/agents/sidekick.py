@@ -6,7 +6,7 @@ knows which one is active.
 
 The payload is memoized on the content's fingerprint rather than on a host
 path, so the Charts tab does not re-parse an unchanged log -- the property
-:mod:`metabrowser.charts` measures -- and a pinned blob gets the same
+:mod:`.charts` measures -- and a pinned blob gets the same
 treatment. Resolution establishes that fingerprint, so a cache hit costs no
 read at all.
 """
@@ -21,11 +21,8 @@ from starlette.responses import JSONResponse
 from metabrowser.plugin_api import (
     ContentReadError,
     JsonlParseLimitError,
-    extract_agent_charts_bytes,
     jsonl_parse_max_bytes,
-    lookup_agent_charts,
     read_content_window,
-    remember_agent_charts,
     resolve_content,
 )
 
@@ -43,6 +40,8 @@ async def charts_handler(request: Request) -> JSONResponse:
     The path is whatever identity the client holds: an inventory path under an
     attached folder, a GitPath wire on a pinned revision.
     """
+
+    from .charts import extract_agent_charts_bytes, lookup_agent_charts, remember_agent_charts
 
     subpath = request.query_params.get("path", "")
     parse_max_bytes = jsonl_parse_max_bytes()

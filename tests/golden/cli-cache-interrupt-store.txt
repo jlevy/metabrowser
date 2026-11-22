@@ -12,10 +12,10 @@ api: /api/cache/layout
 status: 200
 {
   "home": "present",
-  "supported_format": "f02",
+  "supported_format": "f03",
   "state": "current",
   "layout": {
-    "format": "f02",
+    "format": "f03",
     "created_by": "<VERSION>"
   },
   "config": {
@@ -35,7 +35,7 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "stores": [],
   "unrecognized_entries": 0,
   "limit": 25,
@@ -49,7 +49,7 @@ api: /api/cache/sources
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "sources": [],
   "unrecognized_entries": 0,
   "limit": 25,
@@ -74,10 +74,10 @@ api: /api/cache/layout
 status: 200
 {
   "home": "present",
-  "supported_format": "f02",
+  "supported_format": "f03",
   "state": "current",
   "layout": {
-    "format": "f02",
+    "format": "f03",
     "created_by": "<VERSION>"
   },
   "config": {
@@ -97,7 +97,7 @@ api: /api/cache/stores
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "stores": [
     {
       "key": "<STORE_KEY-A>",
@@ -144,7 +144,7 @@ api: /api/cache/sources
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "sources": [
     {
       "slug": "<SLUG-A>",

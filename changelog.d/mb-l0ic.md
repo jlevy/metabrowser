@@ -6,6 +6,6 @@
   ([Trust](docs/reviewing-pull-requests.md#trust)).
 
 - Plugin SDK: `metabrowser.moduleUrl(name)` returns an on-demand module bundle’s
-  absolute URL, for a frame that imports it in its own realm, and
-  `builtins.markdown.drawDiagrams(root, {isolated: true})` lays untrusted diagrams out
-  in that frame ([Browser SDK](docs/plugins.md#browser-sdk)).
+  absolute URL, for a frame that imports it in its own realm, and the Markdown plugin’s
+  `drawDiagrams(root, {isolated: true})` lays untrusted diagrams out in that frame
+  ([Browser SDK](docs/plugins.md#browser-sdk)).

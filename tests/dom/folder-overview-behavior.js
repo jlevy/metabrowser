@@ -154,20 +154,20 @@ global.window = { METABROWSER_SETTINGS: {} };
   let ensuredKind = null;
   let markdownMount = null;
   const readmeMb = {
-    builtins: {},
-    ensureKindAssets(kind) {
-      ensuredKind = kind;
-      return new Promise((resolve) => {
-        releaseMarkdownAssets = () => {
-          readmeMb.builtins.markdown = {
-            mountRendered(container, context, options) {
-              markdownMount = { container, context, options };
-              return { dispose() {} };
-            },
+    plugins: {
+      load(name) {
+        ensuredKind = name;
+        return new Promise((resolve) => {
+          releaseMarkdownAssets = () => {
+            resolve({
+              mountRendered(container, context, options) {
+                markdownMount = { container, context, options };
+                return { dispose() {} };
+              },
+            });
           };
-          resolve();
-        };
-      });
+        });
+      },
     },
   };
   const readmePanel = readmePanelModule.createReadmePanel(readmeMb);
@@ -184,13 +184,13 @@ global.window = { METABROWSER_SETTINGS: {} };
     {},
   );
   check(
-    "README requests Markdown assets before reading the deferred renderer",
+    "README asks for the Markdown plugin's exports before it mounts",
     ensuredKind === "markdown" && markdownMount === null,
   );
   releaseMarkdownAssets();
   const readmeHandle = await readmeMount;
   check(
-    "README mounts after Markdown assets become available",
+    "README mounts once the Markdown plugin's exports arrive",
     markdownMount?.container === readmeContainer &&
       markdownMount?.context?.kind === "markdown" &&
       markdownMount?.context?.path === "README.md" &&

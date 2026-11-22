@@ -95,10 +95,22 @@ def sniff_artifact(path: Path, *, max_bytes: int = SNIFF_PREFIX_BYTES) -> Conten
     without a second offloading layer. Returns :attr:`ContentClass.UNKNOWN`
     when the bytes cannot be obtained at all.
     """
+    return sniff_artifact_prefix(path, max_bytes=max_bytes)[0]
+
+
+def sniff_artifact_prefix(
+    path: Path, *, max_bytes: int = SNIFF_PREFIX_BYTES
+) -> tuple[ContentClass, bytes | None]:
+    """:func:`sniff_artifact`, with the bytes on disk it read when they are the file's own.
+
+    The bytes are None for a compressed artifact, whose prefix is decompressed and so
+    is not what a binary format's magic number is checked against, and when nothing
+    could be read.
+    """
     try:
         artifact = ArtifactPath(path)
         with artifact.open_binary(max_output_bytes=max_bytes) as stream:
             prefix = stream.read(max_bytes)
     except (ArtifactCompressionError, OSError):
-        return ContentClass.UNKNOWN
-    return classify_prefix(prefix)
+        return ContentClass.UNKNOWN, None
+    return classify_prefix(prefix), (None if artifact.is_compressed else prefix)

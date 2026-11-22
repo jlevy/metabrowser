@@ -200,8 +200,8 @@ status: 200
     "schema": "file-type-breakdown-v1",
     "registry": {
       "schema_version": 5,
-      "revision": 3,
-      "fingerprint": "78c00764ddfcb68cc0724f8b9801428f0d3fcb178d6ed5f29cc720ffbcfe7704"
+      "revision": 4,
+      "fingerprint": "0684a83a1e70e76215f7d65a2d49c0505c7135251e1e28fe26476a517e4e4a24"
     },
     "metrics": {
       "all": {

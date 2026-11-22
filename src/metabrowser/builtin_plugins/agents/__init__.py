@@ -6,7 +6,7 @@ the provider layer for Claude Code and Codex homes: the shared model (:mod:`.mod
 the event kinds and mapping tables (:mod:`.kinds`), and one provider per agent
 (:mod:`.claude`, :mod:`.codex`).
 The manifest's ``[plugin] register`` names :mod:`.adapters`, so plugin discovery imports
-it, which registers the adapters. Every module reaches Metabrowser only through
-``metabrowser.plugin_api``.
+it, which registers the adapters. The plugin uses ``metabrowser.plugin_api`` and the
+host's internal parser factory to project charts from registered adapters.
 See ``docs/project/specs/active/plan-2026-11-19-agent-operations-views.md``.
 """

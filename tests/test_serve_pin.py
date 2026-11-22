@@ -68,6 +68,7 @@ from tests.golden_harness import (
     origin_identity,
     pin_git_dates,
 )
+from tests.held_port import listener_on
 from tests.required_tools import needs_git, needs_node
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _git
 
@@ -179,7 +180,9 @@ def _serve(url: str, *extra: str) -> Any:
 
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_class,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(_app, [url, "--no-open", *extra])
     if result.exit_code == 0:
@@ -512,12 +515,11 @@ def test_the_shell_names_the_repository_and_its_pinned_revision(
     assert 'data-served-root="origin"' in shell.text
     assert '<span class="path-base">origin</span>' in shell.text
     assert f'data-served-root="{origin.second}"' not in shell.text
-    # The heading is the name alone: the ref selector names the ref, and the heading's
-    # tooltip the full commit, so neither follows the name (mb-qq4e).
+    # The ref selector names the ref and the heading stays focused on the name.
     assert '<span class="path"><span class="path-base">origin</span></span></a>' in shell.text
     assert "header-revision" not in shell.text
     tip = shell.text[shell.text.index('data-mirror-tip="') :].split('"', 2)[1]
-    assert tip.startswith("Mirror of ") and f" at {origin.second}, stored in " in tip, tip
+    assert tip == "Bare Git mirror with no checked-out files."
     assert '<span class="source-ref-selector-label">topic</span>' in shell.text, (
         "the ref selector names the ref the heading no longer does"
     )
@@ -635,18 +637,14 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
     result = _serve(origin.url)
     assert result.exit_code == 0, result.output
 
-    (store,) = (home / "repository-stores").iterdir()
-    location = f"~/.cache/metabrowser/repository-stores/{store.name}/repository.git"
+    (store,) = (home / "repos").iterdir()
+    location = f"~/.cache/metabrowser/repos/{store.name}/repository.git"
     shown_origin = "file://~/git/origin.git"
     # It is what it is said to be: a bare repository, with the pinned commit in it.
     assert (store / "repository.git" / "HEAD").is_file()
     assert not (store / "repository.git" / ".git").exists()
 
-    def tip(commit: str) -> str:
-        return (
-            f"Mirror of {shown_origin} at {commit}, stored in {location}: "
-            "a bare Git repository, with no checked-out files."
-        )
+    tip = "Bare Git mirror with no checked-out files."
 
     with TestClient(server.app) as client:
         answered = client.get("/api/source/status")
@@ -674,11 +672,9 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
         # The mark beside its name says the same: the route's kind and its sentence.
         assert 'data-root-kind="mirror" data-tip-text="Cloud mirror"' in page.text
         assert (
-            f'data-served-root="origin" data-mirror-location="{location}" '
-            f'data-mirror-tip="{tip(origin.second)}">'
+            f'data-served-root="origin" data-mirror-location="{location}" data-mirror-tip="{tip}">'
         ) in page.text
-        # A mirror's page is marked as one, and carries the module that draws the note
-        # and the commit's copy control, inline and whole.
+        # A mirror's page carries the module that draws the note inline.
         assert '<main class="container mirror-source">' in page.text
         module = (server.STATIC_DIR / "mirror-heading.js").read_text(encoding="utf-8")
         assert page.text.count(f">{module}</script>") == 1
@@ -694,15 +690,14 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
             assert str(user) not in response.text, response.url
             assert str(user) not in str(response.headers), response.url
 
-        # Another commit of the same repository is the same mirror in the same place,
-        # and the sentence names the commit now served.
+        # Another commit uses the same mirror, so the path and source tip stay the same.
         switched = client.post("/api/source/pin", json={"oid": origin.first})
         assert switched.status_code == 200, switched.text
         assert switched.json()["status"]["location"] == location
         assert switched.json()["status"]["origin"] == shown_origin
         assert switched.json()["status"]["name"] == "origin"
         assert str(user) not in switched.text
-        assert f'data-mirror-tip="{tip(origin.first)}">' in client.get("/view/").text
+        assert f'data-mirror-tip="{tip}">' in client.get("/view/").text
         # A commit pinned by its ID, which is no ref's tip, is named by its short commit.
         # The page the switch loads again keeps the repository's title.
         renamed = client.get("/api/identity").json()
@@ -725,7 +720,7 @@ def test_the_api_mode_prints_where_the_mirror_is_kept(
     home = _home(tmp_path, monkeypatch)
     origin = _origin(tmp_path)
     store_key = origin_identity(origin.url).store_key
-    location = str(home / "repository-stores" / store_key / "repository.git")
+    location = str(home / "repos" / store_key / "repository.git")
 
     status = ok([origin.url, "--api", "/api/source/status"])
     assert status.payload()["location"] == location
@@ -1100,19 +1095,13 @@ class _ServedMirror:
     # What /api/identity calls the served mirror in full: the origin's path, then the ref.
     full_name: str
 
-    def sentence(self, commit: str) -> str:
-        return (
-            f"Mirror of {self.origin} at {commit}, stored in {self.location}: "
-            "a bare Git repository, with no checked-out files."
-        )
-
     def remainder(self, path: str, response: Any, *, commit: str) -> tuple[str, bool]:
         """The answer, headers and body, without the mirror's origin and location.
 
         A served mirror says where it is kept and what it mirrors (mb-fndz), and the
         rule is exact about where: the ``origin`` and ``location`` of the status
-        envelope, wherever a source route answers with it, and the two attributes of the
-        page's navigation heading that carry the same text. ``/api/identity``'s
+        envelope, wherever a source route answers with it, and the location attribute of
+        the page's navigation heading. ``/api/identity``'s
         ``full_name`` names the origin too, as a window's full name, and not the location.
         Each is checked to be exactly that text and then taken out, so whatever is found
         in what is left stands somewhere the rule does not allow: another field, another
@@ -1139,7 +1128,8 @@ class _ServedMirror:
             return headers + json.dumps(identity), True
         if path in _PAGE_ROUTES and response.status_code == 200:
             heading = (
-                f' data-mirror-location="{self.location}" data-mirror-tip="{self.sentence(commit)}"'
+                f' data-mirror-location="{self.location}" '
+                'data-mirror-tip="Bare Git mirror with no checked-out files."'
             )
             assert text.count(heading) == 1, path
             return headers + text.replace(heading, ""), True
@@ -1153,7 +1143,9 @@ class _ServedMirror:
         """
 
         rest, named = self.remainder(path, response, commit=commit)
-        for private in (str(self.home), str(self.origin_path), self.store_key, "repository-stores"):
+        # The directory is probed as a path segment: "repos" is also the start of "repository",
+        # which pages say freely.
+        for private in (str(self.home), str(self.origin_path), self.store_key, "/repos/"):
             assert private not in rest, (private, where, response.status_code)
         return named
 
@@ -1223,7 +1215,7 @@ def test_a_served_pin_reads_nothing_outside_its_own_store(
     # not under the user's home directory here, so the location is absolute and the
     # sweep below would find the home in any answer that named it.
     store_key = origin_identity(origin.url).store_key
-    location = str(home / "repository-stores" / store_key / "repository.git")
+    location = str(home / "repos" / store_key / "repository.git")
     assert Path(location, "HEAD").is_file()
     mirror = _ServedMirror(
         origin=origin.url,

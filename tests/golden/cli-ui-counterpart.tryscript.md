@@ -112,13 +112,30 @@ $ node tests/dom/counterpart-session.js
         "hidden": true,
         "children": [
           {
+            "tag": "div",
+            "class": "menu-link-url",
+            "id": "counterpart-url-1",
+            "aria-hidden": "true",
+            "children": [
+              "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/README.md"
+            ]
+          },
+          {
             "tag": "button",
             "class": "menu-item",
             "role": "menuitem",
             "tabindex": "-1",
+            "data-mb-owner": "(page owner)",
             "type": "button",
+            "aria-describedby": "counterpart-url-1",
             "dataset.counterpartAction": "copy",
             "children": [
+              {
+                "tag": "span",
+                "class": "menu-item-icon",
+                "aria-hidden": "true",
+                "html": "<svg data-icon=\"copy\"></svg>"
+              },
               {
                 "tag": "span",
                 "class": "menu-item-label",
@@ -133,11 +150,19 @@ $ node tests/dom/counterpart-session.js
             "class": "menu-item",
             "role": "menuitem",
             "tabindex": "-1",
+            "data-mb-owner": "(page owner)",
             "data-web-view": "external",
             "href": "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/README.md",
             "target": "_blank",
             "rel": "noopener",
+            "aria-describedby": "counterpart-url-1",
             "children": [
+              {
+                "tag": "span",
+                "class": "menu-item-icon",
+                "aria-hidden": "true",
+                "html": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"cur…"
+              },
               {
                 "tag": "span",
                 "class": "menu-item-label",

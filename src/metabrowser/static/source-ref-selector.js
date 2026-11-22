@@ -239,6 +239,7 @@
           ? {
               name: label.name,
               label: label.name,
+              ref: state.shown?.ref ?? undefined,
               kind:
                 label.kind === "Tag"
                   ? "tag"
@@ -788,11 +789,18 @@
       // answer, and go with the page when it goes (static/source-pin-guard.js).
       /** @type {(gone: boolean) => void} */
       let decided = () => {};
-      deps.hold?.(
+      const held = deps.hold?.(
         new Promise((resolve) => {
           decided = resolve;
         }),
       );
+      if (held === false) {
+        decided(false);
+        state.switching = false;
+        state.error = "A ref switch is already in progress.";
+        render();
+        return;
+      }
       try {
         const response = await deps.request("POST", PIN_ROUTE, body);
         if (disposed) {
@@ -873,8 +881,8 @@
 
   // The group's key in the shared chip controls' markup and events.
   const KIND_GROUP = "source-ref-kind";
-  // The kind whose assets are the GitHub plugin's, which draws a pull request's state; the
-  // Pulls tab loads the plugin for the same kind (static/pulls-nav.js). The plugin is 15
+  // The plugin that draws a pull request's state, whose exports the rows load; the Pulls
+  // tab loads the same plugin for its kind (static/pulls-nav.js). The plugin is 15
   // requests and about 240 KB transferred, of which the four icons are `pull-state.js`'s 3 KB,
   // and nothing loads them alone. Measured 2026-11-20 in headless Chrome against this
   // repository's mirror, 137 branches of which most head a pull request, with the cache off:
@@ -883,7 +891,13 @@
   // load costs the icons 129 ms and the rows nothing, their slots being as wide as the
   // icons; opened after 5 s the plugin is there and the icons come with the rows, in 93 ms;
   // opened at once with the cache warm, rows 75 ms and icons 82 ms.
-  const PULL_ICON_KIND = "pull-request-list";
+  const PULL_ICON_PLUGIN = "github";
+  /**
+   * The GitHub plugin's `pullStateIcon`, once its exports have loaded.
+   *
+   * @type {MetabrowserGithubPullStateIcon | null}
+   */
+  let drawPullState = null;
 
   /** The shared chip controls, which the shell loads before anything lazy. */
   function chipControls() {
@@ -920,7 +934,8 @@
           window.metabrowser.refChip(model.selectedRef.name, {
             label: model.selectedRef.label,
             kind: model.selectedRef.kind,
-            copy: "sibling",
+            ref: model.selectedRef.ref,
+            menu: "sibling",
           }),
         );
       } else if (model.pullNumber !== null) {
@@ -938,7 +953,7 @@
       } else {
         parts.label.textContent = model.button;
       }
-      parts.releaseCopies = window.metabrowser.mountRefCopies(parts.toggle, parts.buttonHost);
+      parts.releaseCopies = window.metabrowser.mountRefMenus(parts.toggle, parts.buttonHost);
     }
     parts.toggle.setAttribute("aria-expanded", String(model.open));
     parts.panel.hidden = !model.open;
@@ -991,9 +1006,8 @@
   function pullIcon(state) {
     const slot = document.createElement("span");
     slot.className = "source-ref-selector-pull-icon";
-    const draw = window.metabrowser?.builtins?.github?.pullStateIcon;
-    if (typeof draw === "function") {
-      slot.append(draw(state));
+    if (drawPullState !== null) {
+      slot.append(drawPullState(state));
     }
     return slot;
   }
@@ -1140,7 +1154,7 @@
     // "checked out" for the branch a checkout's HEAD is on, in words
     // (docs/design-system.md, "Branch Chips").
     name.appendChild(
-      window.metabrowser.refChip(row.ref, { label: row.name, kind: row.chip, copy: false }),
+      window.metabrowser.refChip(row.ref, { label: row.name, kind: row.chip, menu: false }),
     );
     main.append(name);
     if (row.default || row.checkedOut) {
@@ -1430,13 +1444,13 @@
    */
   function drawIcons(parts) {
     const rows = parts.rows;
-    const mb = window.metabrowser;
-    if (rows.iconsAsked || typeof mb?.builtins?.github?.pullStateIcon === "function") {
+    if (rows.iconsAsked || drawPullState !== null) {
       return;
     }
     rows.iconsAsked = true;
-    void mb.ensureKindAssets(PULL_ICON_KIND).then(
-      () => {
+    void window.metabrowser.plugins.load(PULL_ICON_PLUGIN).then(
+      (github) => {
+        drawPullState = github.pullStateIcon;
         if (!parts.disposed && rows.model !== null) {
           // Drawn with an empty slot where the icon goes, so every row is drawn again.
           rows.rebuild = true;
@@ -1636,7 +1650,7 @@
       }
     });
     panel.append(workingTree, kinds, filter, list, note, error);
-    // The button's own box, which a ref chip's copy control is placed against, so that
+    // The button's own box, which a ref chip's menu trigger is placed against, so that
     // the list's containing block stays the toolbar and the list spans the pane. Drawn
     // by the server around its button, and adopted with it.
     const buttonHost =

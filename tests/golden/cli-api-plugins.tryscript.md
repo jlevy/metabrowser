@@ -18,7 +18,7 @@ env:
 before: >-
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
   mkdir -p hookroot rejplugin/rejdiff &&
-  printf '[plugin]\nname = "rejdiff"\nsdk_version = "0.7"\n[[kind]]\nid = "diff"\nmatch = { exts = [".rej"] }\npriority = 10\n' > rejplugin/rejdiff/manifest.toml &&
+  printf '[plugin]\nname = "rejdiff"\nsdk_version = "0.8"\n[[kind]]\nid = "diff"\nmatch = { exts = [".rej"] }\npriority = 10\n' > rejplugin/rejdiff/manifest.toml &&
   printf '// The built-in diff plugin draws the view.\n' > rejplugin/rejdiff/index.js &&
   cd hookroot &&
   printf '{"a": 1, "b": [2, 3]}\n' > data.json &&

@@ -231,14 +231,15 @@ class ContentSource(Protocol):
         """
 
     async def open_container(
-        self, identity: str, *, suffixes: tuple[str, ...]
+        self, identity: str, *, suffixes: tuple[str, ...] | None
     ) -> tuple[ContentRef, str] | None:
         """Split ``<content>/<inner>`` into readable content and its inner path.
 
         ``suffixes`` are the logical extensions the calling container claims;
         anything else resolves to None so one plugin cannot open another's
-        files. The inner path is empty when the identity names the content
-        itself.
+        files. None claims any extension, for a caller that classifies the
+        content itself, as the table routes do for a kind matched by its bytes.
+        The inner path is empty when the identity names the content itself.
         """
 
 
@@ -377,7 +378,7 @@ class FilesystemContentSource:
         return await asyncio.to_thread(self._open_ref, identity)
 
     async def open_container(
-        self, identity: str, *, suffixes: tuple[str, ...]
+        self, identity: str, *, suffixes: tuple[str, ...] | None
     ) -> tuple[ContentRef, str] | None:
         return await asyncio.to_thread(self._open_container, identity, suffixes)
 
@@ -401,7 +402,7 @@ class FilesystemContentSource:
         )
 
     def _open_container(
-        self, identity: str, suffixes: tuple[str, ...]
+        self, identity: str, suffixes: tuple[str, ...] | None
     ) -> tuple[ContentRef, str] | None:
         """Nearest-file-ancestor resolution, scoped to the caller's suffixes.
 
@@ -412,7 +413,7 @@ class FilesystemContentSource:
 
         direct = self._open_ref(identity)
         if direct is not None:
-            return (direct, "") if direct.logical_ext in suffixes else None
+            return (direct, "") if suffixes is None or direct.logical_ext in suffixes else None
         parts = identity.split("/")
         if len(parts) < 2:
             return None
@@ -434,7 +435,7 @@ class FilesystemContentSource:
             if inner is None:
                 return None
             ref = self._open_ref(prefix)
-            if ref is None or ref.logical_ext not in suffixes:
+            if ref is None or (suffixes is not None and ref.logical_ext not in suffixes):
                 return None
             return ref, inner
         return None
@@ -829,7 +830,7 @@ async def resolve_content(identity: str) -> ContentRef | None:
 
 
 async def resolve_content_container(
-    identity: str, *, suffixes: tuple[str, ...]
+    identity: str, *, suffixes: tuple[str, ...] | None
 ) -> tuple[ContentRef, str] | None:
     """Resolve ``<content>/<inner>`` for a container kind. See `ContentSource`."""
 

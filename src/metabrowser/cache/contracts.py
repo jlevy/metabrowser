@@ -118,7 +118,7 @@ CACHE_CONTRACTS: Final = tuple(
             CacheContract(
                 REPOSITORY_SOURCE_CONTRACT_ID,
                 RepositorySource,
-                "repository-source-v1.schema.yaml",
+                "repository-source-v2.schema.yaml",
                 "source",
                 SchemaStatus.enforced,
                 CACHE_RECORDS_CORPUS_ID,

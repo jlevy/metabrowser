@@ -173,7 +173,7 @@ def test_golden_a_checkouts_pull_requests(
     assert (_after(listed)["total"], _after(listed)["catalog_fetched"]) == (100, 102)
     source = session.home / "sources" / slug
     assert (source / "source.yml").is_file() and not (source / "store-alias.yml").exists()
-    assert not list((session.home / "repository-stores").iterdir())
+    assert not list((session.home / "repos").iterdir())
     cached = session.get(checkout, f"/api/cache/source/{slug}")
     assert _publication(cached) == "unattached"
 
@@ -306,7 +306,7 @@ def test_golden_idle_comparison_preparation_on_a_checkout(
         checkout, f"{PULL}-refresh", {"number": 10, "prepare_comparison": ten["record_revision"]}
     )
     assert idle.payload()["refresh"] == "not_due"
-    assert not list((session.home / "repository-stores").iterdir())
+    assert not list((session.home / "repos").iterdir())
 
     session.say("A reader's Changes on another pull request attaches a store")
     nine = _after(session.post(checkout, f"{PULL}-refresh", {"number": 9, "retry": True}))

@@ -158,7 +158,7 @@ def test_github_list_succeeds_for_a_source_with_no_store_and_runs_no_git(
 
     assert [row.path for row in listed.rows][:4] == hostile
     assert not git_log.exists()
-    assert not list((home / "repository-stores").iterdir())
+    assert not list((home / "repos").iterdir())
     added = {path for path in tmp_path.rglob("*") if path not in before}
     pulls = home / "sources" / SOURCE.slug / "pulls"
     assert {path for path in added if not path.name.startswith("fake-gh")} == {

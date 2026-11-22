@@ -49,7 +49,7 @@ final class TitleAccessoryController: NSTitlebarAccessoryViewController {
 ///
 /// It is drawn as macOS draws a title-bar control, not as the page draws one: the system
 /// title font, an SF Symbol chevron, and the system's fill for a control under the
-/// pointer, behind the title and chevron, which also shows how far the control reaches.
+/// pointer or while the chooser is open, behind the title and its fixed down chevron.
 final class TitleBarTitleView: NSView {
     /// Where AppKit draws a plain window's title without a proxy icon, from the
     /// accessory's leading edge, x 78, a button gap after the zoom button: the label at
@@ -87,6 +87,12 @@ final class TitleBarTitleView: NSView {
                 needsDisplay = true
                 render()
             }
+        }
+    }
+    private var chooserIsOpen = false {
+        didSet {
+            needsDisplay = true
+            render()
         }
     }
     /// The press a drag starts from.
@@ -220,7 +226,7 @@ final class TitleBarTitleView: NSView {
         var text = NSRect(x: Self.textInset, y: y, width: width, height: height)
         let size = Self.chevronImage?.size ?? .zero
         var mark = NSRect(
-            x: text.maxX + Self.chevronGap, y: ((bounds.height - size.height) / 2).rounded(), width: size.width,
+            x: text.maxX + Self.chevronGap, y: bounds.midY - size.height / 2, width: size.width,
             height: size.height)
         if isRightToLeft {
             text.origin.x = bounds.width - text.maxX
@@ -279,18 +285,18 @@ final class TitleBarTitleView: NSView {
         let active = isActive
         label.attributedStringValue = attributed(title.text, active: active)
         label.alignment = isRightToLeft ? .right : .left
-        // Tertiary at rest, as a pop-up button's indicator is beside its title; secondary
-        // under the pointer; dimmer with the title in a window that is not main.
+        // Match the shell's muted resting ink and stronger ink on hover or while open.
         chevron.contentTintColor =
-            !active ? .quaternaryLabelColor
-            : interaction.isHovered || interaction.isPressed ? .secondaryLabelColor : .tertiaryLabelColor
+            !active ? .tertiaryLabelColor
+            : interaction.isHovered || interaction.isPressed || chooserIsOpen
+                ? .labelColor : .secondaryLabelColor
     }
 
     /// The system's fill for a control under the pointer, deeper while pressed, resolved in
     /// the plain light or dark appearance as the mark's is (`TitleBarMarkButton.draw`): the
     /// title bar's own vibrant appearance gives fills meant for a visual effect view.
     override func draw(_ dirtyRect: NSRect) {
-        guard chooser != nil, interaction.isHovered || interaction.isPressed else { return }
+        guard chooser != nil, interaction.isHovered || interaction.isPressed || chooserIsOpen else { return }
         let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         var fill = NSColor.secondarySystemFill
         let pressed = interaction.isPressed
@@ -426,7 +432,9 @@ final class TitleBarTitleView: NSView {
 
     /// Opens the chooser under the hover surface, its leading corner at the surface's.
     private func showChooser() {
-        guard let menu = chooser?() else { return }
+        guard !chooserIsOpen, let menu = chooser?() else { return }
+        chooserIsOpen = true
+        defer { chooserIsOpen = false }
         let hover = hoverRect
         let anchor = NSPoint(x: isRightToLeft ? hover.maxX : hover.minX, y: hover.minY - 2)
         presentChooser(menu, anchor, self)

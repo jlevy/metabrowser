@@ -200,7 +200,7 @@ def test_missing_pinned_root_tree_refuses_startup_without_clone_or_traceback(
     pin = _Pin(tmp_path)
     pin.use(origin)
     pin.api("/api/tree")
-    store = next((home / "repository-stores").glob("*/repository.git"))
+    store = next((home / "repos").glob("*/repository.git"))
     _unpack(store, tmp_path)
     root = git(store, "rev-parse", f"{commit}^{{tree}}").decode().strip()
     (store / "objects" / root[:2] / root[2:]).unlink()

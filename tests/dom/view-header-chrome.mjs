@@ -367,8 +367,15 @@ const MENU_READ = `(() => {
   };
   const items = [...menu.querySelectorAll('.menu-item')];
   const active = document.activeElement;
+  const caret = more.querySelector(".chip-menu-caret svg");
+  const destination = menu.querySelector(".menu-link-url");
   return {
     hidden: menu.hidden,
+    triggerBox: box(more),
+    caretBox: box(caret),
+    caretTransform: getComputedStyle(caret).transform,
+    destination: menu.hidden ? null : { text: destination.innerText, box: box(destination) },
+    link: items[1].href,
     expanded: more.getAttribute('aria-expanded'),
     menu: menu.hidden ? null : box(menu),
     group: box(root.querySelector('.counterpart-group')),
@@ -377,7 +384,7 @@ const MENU_READ = `(() => {
       const b = box(item);
       const hit = menu.hidden ? null : document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
       const look = getComputedStyle(item);
-      return { text: item.textContent.trim(), role: item.getAttribute('role'), topmost: hit !== null && item.contains(hit), look: [look.color, look.textDecorationLine] };
+      return { text: item.textContent.trim(), role: item.getAttribute('role'), top: b.top, topmost: hit !== null && item.contains(hit), look: [look.color, look.textDecorationLine] };
     }),
     focus: active === more ? 'chevron' : items.includes(active) ? active.textContent.trim() : (active ? active.tagName : null),
   };

@@ -506,7 +506,7 @@ Each script’s header lists what it checks.
 | `scripts/check-signing.sh` (`make macos-signing-check`) | The release keychain, the identity, its expiry and issuer, the G2 intermediate, Xcode and notarytool, and the notary credentials; read-only | The build Mac, and each release’s preflight; macOS CI against a throwaway keychain |
 | `scripts/notarize.sh` | `syspolicy_check notary-submission` before each submission, and the notary log after it | Each submission |
 | `scripts/check-dmg.sh` | The image and its contents, the icons, the hardened runtime, and for a Developer ID build the secure timestamp, the Team ID, the chain, the stapled tickets, `spctl`, `syspolicy_check distribution`, and `codesign --check-notarization` | Every image built; macOS CI on both its images; the download check |
-| `scripts/check-release.sh` (`make macos-check-release`) | A draft or published release as downloaded: the checksum, GitHub’s digest, the build provenance `BUILT` names, immutable releases on for a draft, and the immutable release and Latest once published, `check-dmg.sh` with `NOTARIZE=1` and `EXPECTED_TEAM_ID`, and that the app is the release variant, the tag’s version, and built from the tag’s commit; it quarantines a download that has none, for `LAUNCH=1` | Step 6 and step 8 of each release |
+| `scripts/check-release.sh` (`make macos-check-release`) | A draft or published release as downloaded: the exact attachments, the image checksum, both GitHub digests, the build provenance `BUILT` names, immutable releases on for a draft, and the immutable release and Latest once published, `check-dmg.sh` with `NOTARIZE=1` and `EXPECTED_TEAM_ID`, and that the app is the release variant, the tag’s version, and built from the tag’s commit; it quarantines a download that has none, for `LAUNCH=1` | Step 6 and step 8 of each release |
 | `scripts/launch-release.sh` (`LAUNCH=1`) | The first launch, which must be translocated, the relaunch and a move from Terminal, recorded, and a move in Finder, after which it must not be; the person’s confirmations | At the Mac only, never in CI |
 
 `scripts/test-release-logic.sh` runs what these scripts decide on stand-ins for Apple’s
@@ -623,7 +623,7 @@ Do not hand one out as a release.
 
 | Path | Holds |
 | --- | --- |
-| `Sources/ShellCore/`, `Sources/ShellViews/`, `Sources/Metabrowser/` | The decisions testable without a window, the web view and its container, and the AppKit app |
+| `Sources/ShellCore/`, `Sources/ShellViews/`, `Sources/Metabrowser/` | The decisions testable without a window, the web view and its container and the chooser’s menu item, and the AppKit app |
 | `Tests/ShellCoreTests/` | Swift Testing tests of `ShellCore`, with fake processes and machines, plus real `posix_spawn` children and real `WKDownload`s from a local server |
 | `Resources/Info.plist` | The bundle’s property list |
 | `AppIcon/`, `scripts/build-icon.sh`, `Resources/AppIcon*.icns` | The icon’s SVG masters and renderer, and the icons they build ([AppIcon/README.md](AppIcon/README.md)) |

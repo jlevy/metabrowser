@@ -193,8 +193,8 @@ the app’s minimum ([Release Status](#release-status)), point the app at the ch
 Once a release meets it, install the CLI first with `uv tool install metabrowser`, then
 open the app. The app finds `metab` in uv’s tool directory without needing it on `PATH`,
 so `uv tool update-shell` is only for your terminal.
-Without a `metab` it can run, the app lists the steps still missing
-([what the app shows](macos-app.md#what-the-app-shows-without-a-usable-metab)).
+Without a usable `metab`, the app shows its runtime requirement and links to the
+[README for setup help](https://github.com/jlevy/metabrowser#installation).
 
 The app has no updater: rebuild it from a newer checkout.
 Upgrading `metab` is separate, and the app offers to restart its servers when it notices

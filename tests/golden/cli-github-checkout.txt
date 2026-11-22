@@ -169,16 +169,16 @@ gh auth status
 gh api graphql catalog state=open cursor=start
 gh api graphql catalog state=all cursor=start
 gh api graphql catalog state=all cursor=all-100
-# metab checkout --api /api/cache/source/github-com--octo--demo--46386669dc01
+# metab checkout --api /api/cache/source/github-com-octo-demo-9vhngza0oa1
 exit: 0
 --- stdout ---
-api: /api/cache/source/github-com--octo--demo--46386669dc01
+api: /api/cache/source/github-com-octo-demo-9vhngza0oa1
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "source": {
-    "slug": "github-com--octo--demo--46386669dc01",
+    "slug": "github-com-octo-demo-9vhngza0oa1",
     "publication": "unattached",
     "identity": {
       "id": "sha256:46386669dc018f7570de90cce6b7e97fcdcf2d10c5a4949e668d38336b0fb12e",
@@ -952,16 +952,16 @@ cloned https://github.com/octo/demo in 0.0 s
 --- gh ---
 gh auth status
 gh api repos/octo/demo --jq .size
-# metab checkout --api /api/cache/source/github-com--octo--demo--46386669dc01
+# metab checkout --api /api/cache/source/github-com-octo-demo-9vhngza0oa1
 exit: 0
 --- stdout ---
-api: /api/cache/source/github-com--octo--demo--46386669dc01
+api: /api/cache/source/github-com-octo-demo-9vhngza0oa1
 status: 200
 {
   "home": "present",
-  "layout_format": "f02",
+  "layout_format": "f03",
   "source": {
-    "slug": "github-com--octo--demo--46386669dc01",
+    "slug": "github-com-octo-demo-9vhngza0oa1",
     "publication": "published",
     "identity": {
       "id": "sha256:46386669dc018f7570de90cce6b7e97fcdcf2d10c5a4949e668d38336b0fb12e",
@@ -980,7 +980,7 @@ status: 200
     },
     "problems": [],
     "store": {
-      "key": "github-com--octo--demo--65157fba6c20ff90",
+      "key": "github-com-octo-demo-e7qjzskw2rq",
       "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
       "publication": "published",
       "mode": "full",

@@ -131,7 +131,7 @@ Every file is disposable and carries its own schema version.
 | `<n>.timeline.json` | The Conversation timeline projection | `pull_timeline.py` |
 | `catalog.sqlite3`, `list-<filter>.refresh.json` | The repository catalog, and how its refreshes ended | `pull_catalog.py`, `pull_list.py` |
 | `stacks.json` | The native stack snapshot | `pull_stacks.py` |
-| `repository-stores/<store key>/github-pull-manifests/pull-<n>.json`, `github-pull-manifest-<slot>.epoch` | Each pull request’s prepared comparison manifest, and the epochs, direct-mapped by comparison | `pull_manifest.py` |
+| `repos/<store key>/github-pull-manifests/pull-<n>.json`, `github-pull-manifest-<slot>.epoch` | Each pull request’s prepared comparison manifest, and the epochs, direct-mapped by comparison | `pull_manifest.py` |
 
 `cache/paths.py` spells the source-side names.
 
@@ -435,7 +435,7 @@ A text farther off keeps its plain text, which find in page reaches, and is aske
 it nears the view, so a jump straight to it shows that text until it is asked for.
 Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
 A text whose render keeps a `pre[lang="mermaid"]` is drawn as an image on every page,
-through the Markdown plugin’s `mb.builtins.markdown.drawDiagrams` with `isolated: true`
+through the Markdown plugin’s exported `drawDiagrams` with `isolated: true`
 (`drawTextDiagrams` in `pull-page.js`): the page then loads Metabrowser’s own KPress
 diagram modules and vendored Mermaid, none of which the text names.
 Mermaid lays a diagram out in a document before it becomes an image, and there the

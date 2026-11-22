@@ -6,20 +6,20 @@
 // Pulls tab, with its host, and in the pane at /pulls; pulls-panel.js holds it.
 // The URL reducer, the gh credential helper, and the records are Python.
 //
-// It also publishes `mb.builtins.github.pullStateIcon` for the shell: the ref selector draws
-// a branch's pull request, on its row, with the shapes and hues of the Pulls tab, and asks
-// for this plugin's assets to do it (static/source-ref-selector.js).
+// It also exports `pullStateIcon` for the shell: the ref selector draws a branch's pull
+// request, on its row, with the shapes and hues of the Pulls tab, and loads this plugin's
+// exports to do it (`metabrowser.plugins.load`, static/source-ref-selector.js).
 
 import { mountPullPage } from "./pull-page.js";
 import { pullStateIcon } from "./pull-state.js";
 import { mountPullsLanding, mountPullsPanel } from "./pulls-panel.js";
 
+export { pullStateIcon };
+
 const mb = window.metabrowser;
 if (!mb) {
   throw new Error("metabrowser github plugin: SDK is unavailable");
 }
-
-mb.builtins.github = Object.freeze({ pullStateIcon });
 
 mb.registerView("pull-request", "pull-request", {
   render: (container, ctx) => mountPullPage(container, ctx, mb),

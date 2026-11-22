@@ -21,18 +21,20 @@ work.
 | `F` | The Files tab | Always |
 | `P` | The Pulls tab | The Pulls tab is shown, for a GitHub repository |
 | `H` | The Commits tab: commit History | The served folder is a Git repository’s root, or a repository opened by its URL |
-| `J` or `K` | Down or up a row | A tree, Commits, Pulls, or changed-file row has focus |
+| `J` or `K` | Down or up a row | A tree, Commits, Pulls, changed-file, or table row has focus |
 | `Control-N` or `Control-P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open, outside text fields, on macOS and iOS |
 | `U` | Up: the parent folder | A file, or a folder below the root, is shown |
 | `W` | The branch or tag switcher | A repository opened by its URL, or a folder that is a repository’s root, is shown |
-| `V` | The rendered view: Document, Diagram, Preview, Tree, Timeline, or Log | A file’s tab bar is shown |
-| `S` | The source: Source, or Raw JSON; or the Sessions list of an agent home | A file’s tab bar is shown, or a folder that is or holds a Claude Code or Codex home |
+| `V` | The rendered view: Document, Diagram, Preview, Table, Tree, Timeline, or Log | A file’s tab bar is shown |
+| `A` | Table: a JSON or YAML list of records as a table | A JSON or YAML file is shown |
+| `S` | The source: Source, or Raw JSON; a SQLite database’s Schema; or the Sessions list of an agent home | A file’s tab bar is shown, or a folder that is or holds a Claude Code or Codex home |
 | `E` | Session, the session’s header and events | An agent log or a compressed Codex rollout is shown |
 | `A` | Agents, the home of a Claude Code or Codex history | A folder that is or holds a Claude Code or Codex home is shown |
 | `C` | Charts | An agent log is shown |
 | `L` | Latency | An event log is shown |
 | `B` | By kind | An event log is shown |
 | `E` | Errors | An event log is shown |
+| `I` | Info: how a SQLite database was read, its pages and log, and the SQLite library | A SQLite database or one of its tables is shown |
 | `O` | Overview | A folder is shown |
 | `M` | Treemap, from its map | A folder is shown |
 | `C` | Conversation | A pull request page is shown |

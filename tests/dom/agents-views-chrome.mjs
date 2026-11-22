@@ -190,7 +190,11 @@ try {
     "its summary pass completes and the page says so",
     await until(
       chrome,
-      `${SHOWN}?.view.querySelector(".agents-progress")?.dataset.phase === "complete"`,
+      `(() => {
+        const progress = ${SHOWN}?.view.querySelector(".agents-progress");
+        return progress?.dataset.phase === "complete" &&
+          !progress.querySelector(".index-progress-spinner");
+      })()`,
       30000,
     ),
   );
@@ -216,7 +220,7 @@ try {
   check("the recent table lists a page of sessions", totals.recent === 8, totals);
   check("both homes are listed", totals.homes.length === 2, totals);
   check("the size histogram has rows", totals.bars > 0, totals);
-  check("the live strip answers", /Running now/.test(totals.live ?? ""), totals);
+  check("the live strip answers", /Active sessions/.test(totals.live ?? ""), totals);
   check(
     "the stylesheet loaded once",
     (await chrome.evaluate(COUNT_REQUESTS("agents-views.css"))) === 1,
@@ -270,6 +274,23 @@ try {
     "a long path and title do not make a row taller",
     rowsLong.every((r, i) => r.height === rowsBefore[i].height),
     { before: rowsBefore[0], after: rowsLong[0] },
+  );
+  await chrome.evaluate(`(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (input, ...options) => {
+      const response = await originalFetch.call(window, input, ...options);
+      if (!response.ok || !response.url.includes("/api/plugin/agents/live")) return response;
+      window.fetch = originalFetch;
+      return Response.json({ ...(await response.json()), total: 47 });
+    };
+  })()`);
+  check(
+    "the active count follows a live poll after indexing, including sessions outside the list",
+    await until(
+      chrome,
+      `${SHOWN}?.view.querySelector(".agents-active-count")?.textContent === "47"`,
+      8000,
+    ),
   );
   step("home");
 

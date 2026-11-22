@@ -44,7 +44,7 @@ const recordedCheckout = JSON.parse(
 // The pin guard, which a checkout's working-tree page takes with the selector's bundle.
 // Its window here has no `fetch`, so it defines its functions and guards nothing.
 function loadPinGuard() {
-  const context = { window: {}, URL, Headers, Request, Promise, Object };
+  const context = { window: {}, URL, Headers, Request, Response, Promise, Object };
   context.window.window = context.window;
   vm.createContext(context);
   const file = path.join(staticDir, "source-pin-guard.js");
@@ -500,12 +500,18 @@ async function runHold(recording, onReadme, options) {
   const timers = [];
   const hold = pinGuard.createSwitchHold((callback, ms) => timers.push({ callback, ms }));
   const network = [];
+  let resumePin = null;
   const guarded = pinGuard.guardFetch(
     async (input, init) => {
       if (init?.signal?.aborted) {
         throw init.signal.reason;
       }
       network.push(`${input} ${new Headers(init?.headers).get(pinGuard.PIN_HEADER)}`);
+      if (input === "/api/source/pin") {
+        await new Promise((resume) => {
+          resumePin = resume;
+        });
+      }
       return { status: 200, headers: new Headers() };
     },
     pinGuard.WORKING_TREE_PIN,
@@ -623,6 +629,23 @@ async function runHold(recording, onReadme, options) {
   await note("and the second sends them when it is answered");
   spendBounds();
   selector.dispose();
+  const post = () => guarded("/api/source/pin", { method: "POST" });
+  const selecting = post();
+  const competing = await guarded(
+    new Request("http://127.0.0.1/api/source/pin", { method: "POST" }),
+  );
+  assert(competing.status === 409);
+  const refusal = (await competing.json()).code;
+  assert(refusal === "selection_busy");
+  await note("a second source control cannot post while a ref switch is in flight", () => ({
+    refusal,
+  }));
+  resumePin();
+  await selecting;
+  const retry = post();
+  resumePin();
+  assert((await retry).status === 200);
+  await note("another source control can post after the first settles");
   return observed;
 }
 

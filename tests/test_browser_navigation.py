@@ -19,6 +19,7 @@ from metabrowser.view_routes import (
     format_inventory_view_href,
     format_view_href,
 )
+from tests.held_port import listener_on
 from tests.required_tools import require_node
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -217,7 +218,7 @@ def test_header_shows_the_root_folder_name_and_keeps_the_whole_path(tmp_path: Pa
     every view, and the column is the narrowest in the app. Nothing is
     lost: ``data-served-root`` is both what the file header reads back to
     draw its dimmed prefix — so the two headers cannot disagree about the
-    root — and what this heading's own tooltip is built from in app.js.
+    root — and what the repository details show.
 
     The heading carries no tooltip attribute of its own, deliberately. It
     has a richer tooltip in app.js, and an element announcing through two
@@ -259,7 +260,9 @@ def test_serve_cli_emits_segment_encoded_direct_view_url(tmp_path: Path) -> None
 
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_class,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(
             _app,
@@ -294,7 +297,9 @@ def test_serve_cli_emits_the_canonical_root_url_without_a_selected_path(
 
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_class,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(_app, [str(tmp_path), "--no-open"])
 

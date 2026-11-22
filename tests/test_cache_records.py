@@ -32,7 +32,9 @@ from metabrowser.cache.contracts import (
 )
 from metabrowser.cache.identity import (
     SOURCE_ADDRESS_MAX_BYTES,
-    slug_readable_part,
+    name_suffixes,
+    readable_part,
+    slug_matches_identity,
     source_identity,
 )
 from metabrowser.cache.records import (
@@ -57,7 +59,7 @@ EXPECTED_CONTRACTS = {
     CONFIG_CONTRACT_ID: ("application-config-v1.schema.yaml", "config", SchemaStatus.permissive),
     CACHE_LAYOUT_CONTRACT_ID: ("cache-layout-v1.schema.yaml", "layout", SchemaStatus.enforced),
     REPOSITORY_SOURCE_CONTRACT_ID: (
-        "repository-source-v1.schema.yaml",
+        "repository-source-v2.schema.yaml",
         "source",
         SchemaStatus.enforced,
     ),
@@ -296,7 +298,8 @@ def test_a_source_record_is_bound_to_its_identity_material() -> None:
     record = _valid_record(REPOSITORY_SOURCE_CONTRACT_ID)
     source = RepositorySource.model_validate(record)
 
-    assert source.slug.endswith(source.id.removeprefix("sha256:")[:12])
+    assert slug_matches_identity(source.slug, source.id)
+    assert source.slug.rpartition("-")[2] == name_suffixes(source.id)[0]
     with pytest.raises(ValueError, match="does not match its transport"):
         RepositorySource.model_validate({**record, "clone_url": "https://github.com/pallets/Flask"})
 
@@ -342,6 +345,25 @@ def test_an_invalid_record_is_refused_with_bounded_rules_and_no_values(
     assert message.endswith(" more")
 
 
+def test_a_source_record_of_the_contract_f01_and_f02_wrote_is_not_read() -> None:
+    """``/v1`` spelled the slug another way, so it is a contract this release does not hold.
+
+    The layout migration reads such a record as plain YAML and rewrites it as ``/v2``; no
+    reader of the old contract is kept.
+    """
+
+    assert REPOSITORY_SOURCE_CONTRACT_ID.endswith("RepositorySource/v2")
+    record = _valid_record(REPOSITORY_SOURCE_CONTRACT_ID)
+    payload = _artifact(REPOSITORY_SOURCE_CONTRACT_ID, record).replace(
+        b"RepositorySource/v2", b"RepositorySource/v1"
+    )
+
+    with pytest.raises(RecordError):
+        parse_record(payload, REPOSITORY_SOURCE_CONTRACT_ID, Path("/does/not/matter"))
+    with pytest.raises(RecordError):
+        parse_record(payload, "metabrowser.cache:RepositorySource/v1", Path("/does/not/matter"))
+
+
 def test_identity_refuses_every_address_a_source_record_would_refuse() -> None:
     """An identity no record can hold is an entry that can be created but never read."""
 
@@ -352,7 +374,7 @@ def test_identity_refuses_every_address_a_source_record_would_refuse() -> None:
     with pytest.raises(ValueError, match="normalized source address"):
         source_identity("file", over)
     with pytest.raises(ValueError, match="normalized source address"):
-        slug_readable_part("file", over)
+        readable_part("file", over)
 
 
 def test_a_large_invalid_config_reports_bounded_value_free_reasons() -> None:

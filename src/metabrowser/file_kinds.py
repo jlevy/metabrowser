@@ -34,12 +34,6 @@ from metabrowser.gz_io import (
 # Third-party plugins contribute additional kinds and views through their
 # manifests without extending this registry.
 VIEW_REGISTRY: dict[str, list[dict[str, Any]]] = {
-    "agent-log": [
-        {"id": "session", "label": "Session", "default": True},
-        {"id": "log", "label": "Log"},
-        {"id": "charts", "label": "Charts"},
-        {"id": "raw", "label": "Raw JSON"},
-    ],
     "unknown-jsonl": [
         {"id": "log", "label": "Log"},
         {"id": "raw", "label": "Raw JSON"},
@@ -282,16 +276,9 @@ FileKindDetector = Callable[[FileContext], "str | None"]
 
 
 def _detect_jsonl(ctx: FileContext) -> str | None:
-    """Return the built-in kind for a JSONL file.
+    """Keep JSONL browsable when no plugin classifier claims it."""
 
-    Plugin classifiers run before this fallback and may claim additional
-    adapters. Unknown streams remain browsable as generic JSONL.
-    """
-    if ctx.ext != ".jsonl":
-        return None
-    if ctx.adapter in ("claude", "codex", "codex-rollout", "gemini", "pi"):
-        return "agent-log"
-    return "unknown-jsonl"
+    return "unknown-jsonl" if ctx.ext == ".jsonl" else None
 
 
 def _detect_markdown(ctx: FileContext) -> str | None:

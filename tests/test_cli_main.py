@@ -52,6 +52,7 @@ from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import MAX_TCP_PORT
 from tests.child_io import read_line
+from tests.held_port import listener_on
 
 runner = CliRunner()
 
@@ -613,11 +614,15 @@ def test_serving_installs_a_stopping_handler_for_uvicorn_to_restore() -> None:
     try:
         server = MagicMock()
         server.interrupted = False
-        server.run.side_effect = lambda: observed.append(signal.getsignal(signal.SIGINT))
+        listener = listener_on(8411)
+        server.run.side_effect = lambda sockets: observed.append(
+            (sockets, signal.getsignal(signal.SIGINT))
+        )
         observed: list[object] = []
 
-        assert _run_until_interrupted(server) is False
-        assert observed == [_stop_now]
+        assert _run_until_interrupted(server, listener) is False
+        # Uvicorn serves on the socket that holds the port, and binds none of its own.
+        assert observed == [([listener], _stop_now)]
         assert signal.getsignal(signal.SIGINT) is previous
     finally:
         signal.signal(signal.SIGINT, previous)
@@ -632,7 +637,7 @@ def test_interrupted_serving_leaves_the_stopping_handler_through_exit() -> None:
         server = MagicMock()
         server.interrupted = True
 
-        assert _run_until_interrupted(server) is True
+        assert _run_until_interrupted(server, listener_on(8411)) is True
         assert signal.getsignal(signal.SIGINT) is _stop_now
     finally:
         signal.signal(signal.SIGINT, previous)
@@ -655,7 +660,11 @@ def test_serve_mode_installs_the_stopping_handler_before_it_starts_threads() -> 
     assert body, "run_serve moved or was renamed"
 
     install = body.index("signal.signal(signal.SIGINT, _stop_now)")
-    for later_step in ("_load_dotenv_chain()", "apply_log_level(", "find_available_local_port"):
+    for later_step in (
+        "_load_dotenv_chain()",
+        "apply_log_level(",
+        "listen_on_available_local_port",
+    ):
         assert install < body.index(later_step), (
             f"the SIGINT handler must be installed before {later_step}"
         )
@@ -670,7 +679,7 @@ def test_serve_prepares_kpress_assets_before_uvicorn_can_start() -> None:
 
     server_import = body.index("from metabrowser import kpress_adapter, server")
     prepare = body.index("kpress_adapter.prepare_browser_assets()")
-    port_selection = body.index("find_available_local_port")
+    port_selection = body.index("listen_on_available_local_port")
     uvicorn_start = body.index("_QuietForceExitServer(")
 
     assert server_import < prepare < port_selection < uvicorn_start
@@ -811,7 +820,10 @@ def test_serve_reports_sigint_as_exit_130(tmp_path: Path) -> None:
     try:
         with (
             patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
-            patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+            patch(
+                "metabrowser.cli.serve.listen_on_available_local_port",
+                return_value=listener_on(8411),
+            ),
         ):
             server_cls.return_value.interrupted = True
             result = runner.invoke(_app, [str(tmp_path), "--no-open"])
@@ -1076,7 +1088,9 @@ def test_cli_opens_an_existing_file_whose_name_looks_like_a_source(
 
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(_app, ["me@host:notes.md", "--no-open"])
 
@@ -1133,7 +1147,10 @@ def test_cli_refuses_a_root_it_cannot_read(
     try:
         with (
             patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
-            patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+            patch(
+                "metabrowser.cli.serve.listen_on_available_local_port",
+                return_value=listener_on(8411),
+            ),
         ):
             folder = runner.invoke(_app, ["locked", *mode])
             file = runner.invoke(_app, ["secret.txt", *mode])
@@ -1189,7 +1206,9 @@ def test_serve_expands_home_relative_root(tmp_path: Path, monkeypatch) -> None:
 
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(_app, ["~/artifacts", "--no-open"])
 
@@ -1197,7 +1216,7 @@ def test_serve_expands_home_relative_root(tmp_path: Path, monkeypatch) -> None:
     server_cls.assert_called_once()
     config = server_cls.call_args.args[0]
     assert config.timeout_graceful_shutdown == 0
-    server_cls.return_value.run.assert_called_once_with()
+    server_cls.return_value.run.assert_called_once()
     assert _shutdown_noise_filter not in logging.getLogger("uvicorn.error").filters
     assert f"Serving {root.resolve()}" in result.output
 
@@ -1210,7 +1229,7 @@ def test_serve_restores_uvicorn_logging_state(tmp_path: Path, failure: RuntimeEr
     previous_level = uvicorn_logger.level
     uvicorn_logger.removeFilter(_shutdown_noise_filter)
 
-    def force_exit() -> None:
+    def force_exit(sockets: object) -> None:
         uvicorn_logger.setLevel(logging.CRITICAL)
         if failure is not None:
             raise failure
@@ -1219,7 +1238,10 @@ def test_serve_restores_uvicorn_logging_state(tmp_path: Path, failure: RuntimeEr
         uvicorn_logger.setLevel(logging.INFO)
         with (
             patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
-            patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+            patch(
+                "metabrowser.cli.serve.listen_on_available_local_port",
+                return_value=listener_on(8411),
+            ),
         ):
             server_cls.return_value.run.side_effect = force_exit
             result = runner.invoke(_app, [str(root), "--no-open"])
@@ -1325,7 +1347,9 @@ def test_serve_expands_home_from_the_process_environment(tmp_path: Path, monkeyp
 
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(_app, ["~/artifacts", "--no-open"])
 
@@ -1354,7 +1378,9 @@ def test_serve_mode_loads_the_dotenv_chain(tmp_path: Path, monkeypatch) -> None:
 
     with (
         patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        patch(
+            "metabrowser.cli.serve.listen_on_available_local_port", return_value=listener_on(8411)
+        ),
     ):
         result = runner.invoke(_app, [str(root), "--no-open"])
 
@@ -1373,7 +1399,10 @@ def test_serve_rejects_deep_links_outside_root(tmp_path: Path) -> None:
     for path in ("../outside.txt", "outside-link"):
         with (
             patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
-            patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+            patch(
+                "metabrowser.cli.serve.listen_on_available_local_port",
+                return_value=listener_on(8411),
+            ),
         ):
             result = runner.invoke(
                 _app,

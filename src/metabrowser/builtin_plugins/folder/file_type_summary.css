@@ -13,10 +13,6 @@
   animation: tally-pending-pulse 1.6s ease-in-out infinite;
 }
 
-.file-type-summary-table td {
-  font-variant-numeric: var(--tabular-numerals);
-}
-
 .file-type-summary-body {
   display: grid;
   gap: 12px;
@@ -220,11 +216,6 @@
 
 .file-type-summary-group-row th {
   padding: 8px 0 3px;
-  color: var(--label-color);
-  font-size: var(--label-font-size);
-  font-weight: var(--label-font-weight);
-  letter-spacing: var(--label-letter-spacing);
-  text-transform: var(--label-text-transform);
 }
 
 /* A group heading's category icon stands in its rows' icon box (.file-identity-icon,
@@ -262,11 +253,9 @@
   grid-template-columns: var(--file-type-summary-value-width) minmax(40px, 1fr);
 }
 
-.file-type-summary-value,
-.file-type-summary-percent {
-  text-align: right;
-  white-space: nowrap;
-}
+/* A value and its share are numbers in the Data Tables component's sense (.data-num in
+   static/styles.css: right-aligned, tabular, unwrapped), and a group's heading takes its
+   resting label type (.data-label); docs/design-system.md, "Data Tables". */
 
 .file-type-summary-track {
   height: var(--mb-distribution-track-height);

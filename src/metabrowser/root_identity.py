@@ -363,7 +363,7 @@ class IdentityEnvelope(RootIdentity):
     repository: str | None
 
 
-def _canonical_repository(context: RepositoryContext | None) -> str | None:
+def canonical_repository_url(context: RepositoryContext | None) -> str | None:
     """*context*'s repository as ``github/urls.py``'s ``repository_url`` spells it."""
 
     if context is None:
@@ -396,7 +396,7 @@ async def served_repository(
 ) -> str | None:
     """:func:`served_repository_context` as the canonical URL ``repository`` carries."""
 
-    return _canonical_repository(await served_repository_context(mirror, checkout))
+    return canonical_repository_url(await served_repository_context(mirror, checkout))
 
 
 def identity_kind_tip(identity: RootIdentity, repository: RepositoryContext | None) -> str:
@@ -425,7 +425,7 @@ async def api_identity(request: Request) -> JSONResponse:
             IdentityEnvelope(
                 **identity,
                 kind_tip=identity_kind_tip(identity, context),
-                repository=_canonical_repository(context),
+                repository=canonical_repository_url(context),
             )
         )
     )

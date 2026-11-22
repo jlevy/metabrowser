@@ -106,7 +106,7 @@ def test_the_pull_route_serves_the_shell_and_the_plugin_for_its_kind() -> None:
 
         # The shell loads a plugin's assets by the kinds its views consume.
         config = re.search(r"configureAssets\((\{.*?\})\);", shell.text)
-        assert config is not None and '"pull-request": [{"name": "github"' in config.group(1)
+        assert config is not None and '"pull-request": ["github"]' in config.group(1)
         assert client.get("/pull/7/checks").status_code == 200
         # One changed file's address is the same page, and its path is never looked up.
         assert client.get("/pull/7/files/no/such/file.py").status_code == 200

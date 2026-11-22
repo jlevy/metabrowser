@@ -93,6 +93,8 @@ export function mountHome(container, ctx, mb) {
   let recent = [];
   /** @type {ReadonlyArray<LiveRow>} */
   let live = [];
+  /** @type {number | null} */
+  let liveTotal = null;
   let liveKnown = false;
   let liveNow = Date.now() / 1000;
 
@@ -167,7 +169,10 @@ export function mountHome(container, ctx, mb) {
     slot("totals", "agents-totals").innerHTML =
       '<div class="agents-stats">' +
       stat("Sessions", esc(mb.formatInteger(totals.sessions))) +
-      stat("Running now", esc(mb.formatInteger(totals.running))) +
+      stat(
+        "Active",
+        `<span class="agents-active-count">${liveTotal === null ? "—" : esc(mb.formatInteger(liveTotal))}</span>`,
+      ) +
       stat("Size on disk", esc(mb.formatSize(totals.size_bytes))) +
       (byAgent ? stat("By agent", byAgent) : "") +
       "</div>";
@@ -213,16 +218,13 @@ export function mountHome(container, ctx, mb) {
     const view = progressView(answer.progress, mb.formatInteger);
     const esc = (/** @type {string} */ value) => mb.escapeHtml(value);
     const fresh = answer.freshness.summary_pass_at;
+    const busy = view.phase === "scanning" || view.phase === "summarizing";
+    const freshness =
+      view.phase === "complete" && fresh ? ` Checked ${ageText(fresh, answer.now)}.` : "";
     const parts = [
-      view.phase === "complete"
-        ? `<span>${esc(view.text)}${fresh ? ` Checked ${esc(ageText(fresh, answer.now))}.` : ""}</span>`
-        : `<span>${esc(view.text)}</span>`,
+      busy ? '<span class="index-progress-spinner" aria-hidden="true"></span>' : "",
+      `<span>${esc(view.text + freshness)}</span>`,
     ];
-    if (view.fraction !== null && view.phase === "summarizing") {
-      parts.push(
-        `<progress class="agents-progress-bar" max="1" value="${view.fraction.toFixed(3)}">${esc(view.text)}</progress>`,
-      );
-    }
     if (answer.cache.state === "unavailable") {
       parts.push(
         '<span class="agents-muted">No private cache folder is available, so summaries are kept in memory and read again after a restart.</span>',
@@ -252,16 +254,16 @@ export function mountHome(container, ctx, mb) {
               models: row.models,
               status: row.status,
             })),
-            { label: "Most recent sessions" },
+            { label: "Latest sessions" },
           );
     element.innerHTML =
-      '<div class="agents-heading-row"><h3 class="section-heading agents-heading">Recent sessions</h3>' +
+      '<div class="agents-heading-row"><h3 class="section-heading agents-heading">Latest sessions</h3>' +
       `<button type="button" class="btn" data-agents-all-sessions>All sessions</button></div>${rows}`;
   }
 
   function paintLive() {
     const element = slot("live", "agents-live");
-    element.setAttribute("aria-label", "Running now");
+    element.setAttribute("aria-label", "Active sessions");
     const rows = sessionRowsHtml(
       mb,
       live.map((row) => ({
@@ -274,13 +276,18 @@ export function mountHome(container, ctx, mb) {
         models: row.models,
         status: null,
       })),
-      { label: "Running now" },
+      { label: "Active sessions" },
     );
+    const emptyText =
+      liveTotal === 0
+        ? "No active sessions detected."
+        : liveKnown
+          ? "Activity unavailable."
+          : "Checking…";
     element.innerHTML =
-      '<h3 class="section-heading agents-heading">Running now</h3>' +
-      (live.length === 0
-        ? `<p class="agents-empty">${liveKnown ? "No session is running." : "Checking…"}</p>`
-        : rows);
+      '<h3 class="section-heading agents-heading">Active sessions</h3>' +
+      '<p class="agents-muted agents-live-note">Claude Code processes and recent Codex activity.</p>' +
+      (live.length === 0 ? `<p class="agents-empty">${emptyText}</p>` : rows);
     reorder();
   }
 
@@ -342,6 +349,11 @@ export function mountHome(container, ctx, mb) {
       return;
     }
     live = /** @type {ReadonlyArray<LiveRow>} */ (answer.sessions ?? []);
+    liveTotal = typeof answer.total === "number" ? answer.total : live.length;
+    const activeCount = slots.get("totals")?.querySelector(".agents-active-count");
+    if (activeCount) {
+      activeCount.textContent = mb.formatInteger(liveTotal);
+    }
     liveKnown = true;
     liveNow = typeof answer.now === "number" ? answer.now : Date.now() / 1000;
     paintLive();

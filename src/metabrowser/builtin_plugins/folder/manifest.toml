@@ -2,7 +2,9 @@
 name = "folder"
 display_name = "Folder"
 version = "0.0.1"
-sdk_version = "0.7"
+sdk_version = "0.8"
+# The Overview's README panel is the Markdown plugin's rendered document.
+requires = ["markdown"]
 extra_styles = ["overview.css", "file_type_summary.css"]
 
 # `folder` is the directory kind. A manifest [[kind]] predicate cannot

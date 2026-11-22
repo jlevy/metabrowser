@@ -55,7 +55,7 @@ MIRROR_FIXTURE = Path(__file__).resolve().parent / "source_mirror_fixture.py"
 _METAB = Path(sys.executable).with_name("metab")
 SHOTS_ENV = "METABROWSER_ROOT_KIND_SHOTS"
 # A cold Chrome start, which tests/dom/chrome-session.mjs bounds at 30 s, then three pages in
-# two themes, each with a tooltip waited for twice, and twelve screenshots.
+# two themes, each with a tooltip waited for twice, and eighteen screenshots.
 _MEASUREMENT_BUDGET_S = 120.0
 _SERVERS = 3
 LIFECYCLE_S = (
@@ -177,10 +177,10 @@ def test_each_kind_of_root_draws_its_mark_before_its_name_in_chrome(
     assert run.returncode == 0, f"{run.stderr[-6000:]}\nservers: {[_log_tail(log) for log in logs]}"
     passed = re.fullmatch(r"root kind marks in Chrome: (\d+) checks passed\n", run.stdout)
     assert passed is not None and int(passed.group(1)) > 0, run.stdout
-    # One screenshot of each kind's navigation heading in each theme, with and without a tooltip.
+    # One screenshot of each kind's navigation heading in each theme, with its tooltip, with details open, and at rest.
     assert sorted(path.name for path in shots.glob("root-kind-*.png")) == sorted(
         f"root-kind-{kind}-{theme}{suffix}.png"
         for kind in pages
         for theme in ("light", "dark")
-        for suffix in ("", "-tooltip")
+        for suffix in ("", "-tooltip", "-details")
     )

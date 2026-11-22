@@ -95,7 +95,7 @@ def test_a_failing_offer_leaves_its_view_out_and_the_page_up(
 def _manifest(view: dict[str, Any]) -> PluginManifest:
     return PluginManifest.model_validate(
         {
-            "plugin": {"name": "offers", "version": "0.0.1", "sdk_version": "0.7"},
+            "plugin": {"name": "offers", "version": "0.0.1", "sdk_version": "0.8"},
             "view": [view],
         }
     )

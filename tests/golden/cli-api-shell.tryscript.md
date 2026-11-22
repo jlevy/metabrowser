@@ -513,6 +513,13 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/events/watch",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/file",
       "methods": [
         "GET",
@@ -729,6 +736,30 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/fsqlite/children",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/fsqlite/info",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/fsqlite/schema",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/cache-clear",
       "methods": [
         "POST"
@@ -905,7 +936,71 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/sqlite/children",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/sqlite/info",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/sqlite/schema",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/structured/parsed",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/table/card",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/table/record",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/table/rows",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/table/schema",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/table/tables",
       "methods": [
         "GET",
         "HEAD"
@@ -1083,7 +1178,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 86
+  "count": 98
 }
 ? 0
 ```

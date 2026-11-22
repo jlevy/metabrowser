@@ -132,7 +132,7 @@ and `metab` say it alike:
 
 - **Cloud mirror**, `mirror`: a repository opened by its address and read from
   Metabrowser’s own copy of it ([Open Modes](project/architecture/arch-open-modes.md)).
-  Its icon is a cloud.
+  Its icon is a folder with a cloud in the lower right.
 - **Local Git checkout**, `git`: a folder on this computer that holds a `.git` entry,
   whatever its remote, and so a folder that has Commits and the checkout’s revisions.
   It stays a checkout while it shows one of its revisions.
@@ -149,17 +149,18 @@ comes later, and a repository Git refuses is still a checkout on disk.
 Each kind’s icon is a different shape from every other kind’s and from the ordinary
 folder’s ([The Ordinary Folder](#the-ordinary-folder)), so the one row that is a root
 stands out among folders, wherever the two are listed together.
-The cloud is the one that is not a folder, because a mirror has no folder to open: it
-stands for the repository’s copy that Metabrowser keeps.
+The cloud overlay identifies Metabrowser’s cached copy of a remote repository.
+Its folder outline follows the local Git checkout’s. The cloud fits in the opening in
+the outline, using artwork adapted from Lucide’s folder and cloud glyphs.
 
 | Icon | Source | Meaning | Defined in | Ink | Size |
 | --- | --- | --- | --- | --- | --- |
 | `folderDot`, Lucide `folder-dot` | Shell | A local folder, the `folder` kind: a plain folder, with no Git features | `static/source-kind-glyphs.json` | `--muted` | `--icon-glyph` |
 | `folderGit2`, Lucide `folder-git-2` | Shell | A local Git checkout, the `git` kind | `static/source-kind-glyphs.json` | `--muted` | `--icon-glyph` |
-| `cloud`, Lucide `cloud` | Shell | A cloud mirror, the `mirror` kind | `static/source-kind-glyphs.json` | `--muted` | `--icon-glyph` |
+| `folderCloud` | Shell | A cloud mirror, the `mirror` kind | `static/source-kind-glyphs.json` | `--muted` | `--icon-glyph` |
 | `folderDot`, Lucide `folder-dot` | App glyph | A local folder, in the app’s title chooser and path menu, Switch Folder panel, Open Recent, and Dock menu | `apps/macos/Sources/ShellCore/Folders/RootMark.swift` | The menu’s, as a template image | `RootMark.menuSize` |
 | `folderGit2`, Lucide `folder-git-2` | App glyph | A local Git checkout, in the same menus | `apps/macos/Sources/ShellCore/Folders/RootMark.swift` | The menu’s, as a template image | `RootMark.menuSize` |
-| `cloud`, Lucide `cloud` | App glyph | A cloud mirror, in the same menus | `apps/macos/Sources/ShellCore/Folders/RootMark.swift` | The menu’s, as a template image | `RootMark.menuSize` |
+| `folderCloud` | App glyph | A cloud mirror, in the same menus | `apps/macos/Sources/ShellCore/Folders/RootMark.swift` | The menu’s, as a template image | `RootMark.menuSize` |
 
 **One drawing in two places.** The server draws a kind’s icon into the page: it knows
 the kind when it writes the first paint and writes that one glyph, from
@@ -178,7 +179,7 @@ folder’s to the registry’s.
 
 | Kind | Words (`kind_label`) | Page glyph | macOS mark |
 | --- | --- | --- | --- |
-| `mirror` | Cloud mirror | `cloud` | `RootMark.mirror` |
+| `mirror` | Cloud mirror | `folderCloud` | `RootMark.mirror` |
 | `git` | Local Git checkout | `folderGit2` | `RootMark.gitCheckout` |
 | `folder` | Local folder | `folderDot` | `RootMark.plainFolder` |
 
@@ -196,7 +197,7 @@ route may say only where `tests/test_serve_pin.py` allows.
 
 | Surface | Draws |
 | --- | --- |
-| The navigation column’s heading, before the root’s name | The root’s kind mark, `.header-root-kind`, at `--icon-glyph` in `--muted`, outside the name’s link so the name’s hover surface, focus ring, and tooltip stay its own. The server writes the kind, its glyph, and its sentence into the first paint (`source_kind_marks.py`) |
+| The navigation column’s heading, before the root’s name | The root’s kind mark, `.header-root-kind`, at `--icon-glyph` in `--muted`, outside the name’s link and next to the root details disclosure. The server writes the kind, its glyph, and its sentence into the first paint (`source_kind_marks.py`) |
 | The main pane’s header for the root, at the title’s size | The same mark: the glyph is copied from the navigation’s (`view-header.js`, `folderGlyphHtml`), so a root’s name has one icon wherever it stands. A pinned revision of a checkout, whose root is still the root, keeps it. A folder inside the root leads with the ordinary folder |
 | The macOS title’s folder chooser and the Switch Folder panel, each row | The row’s kind mark, from its window’s `/api/identity` or its recent entry |
 | File > Open Recent and the Dock menu, each row | The row’s kind mark, from the entry’s `mode` and `git` in `metab --recent --json`, never from a look at the folder, which can raise a privacy prompt |
@@ -237,6 +238,7 @@ in `/`, so neither draws a folder icon.
 | `pull`, Lucide `git-pull-request` | View bundle | A link to a pull request whose state the page does not know | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `issue`, Lucide `circle-dot` | View bundle | A link to a GitHub issue | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `github`, Octicons `mark-github-16` | View bundle | GitHub: the View on GitHub button’s mark, and a link to any other GitHub page | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
+| `arrowUpRight`, Lucide `arrow-up-right` | View bundle | Open in Browser menu action | `static/plugin-sdk-views.js` | `--muted` | `--icon-glyph` in `.menu-item-icon` |
 | `layers`, Lucide `layers` | Registry | A stack of pull requests: a stack’s row, the page’s stack button, and another stack a member is in | `static/icons.js` | `--muted` on a row, the button’s text ink on the stack button | `--icon-glyph`; the text’s `1em` in a member’s place |
 | `PERSON_GLYPH`, Lucide `circle-user-round` | View bundle | A person with no avatar, in an actor identity’s box | `static/plugin-sdk-views.js` | `--muted` | `--actor-avatar-size`, the avatar it stands in for |
 
@@ -286,12 +288,13 @@ The state’s word beside the row’s title carries the meaning without the colo
 
 | Icon | Source | Meaning | Defined in | Ink | Size |
 | --- | --- | --- | --- | --- | --- |
-| `toggle`, Lucide `chevron-right` | Registry | Show or hide what a row holds: tree folders and containers, the tally tree, diff file bars, the Diff summary, Pulls rows, agent log events, fold expanders, the filter drawer, and a chip menu’s caret | `static/icons.js` | `--muted` | `--toggle-chevron-size`, centered in the `--tree-icon-slot` |
-| `chevron.down` | SF Symbol | A window’s title opens its folder chooser: after the title | `apps/macos/Sources/Metabrowser/TitleAccessory.swift` | Tertiary label color at rest, secondary under the pointer, quaternary in a window that is not main | Seven tenths of the title font’s point size, semibold |
+| `toggle`, Lucide `chevron-right` | Registry | Show or hide what a row holds: tree folders and containers, the tally tree, diff file bars, the Diff summary, Pulls rows, agent log events, fold expanders, the filter drawer, and menu triggers. In menus it points down and stays fixed while open | `static/icons.js` | Muted gray at rest, stronger neutral ink on interaction | Centered in its target. A branch or tag menu overlays the chip’s trailing edge |
+| `chevron.down` | SF Symbol | A window’s title opens its folder chooser | `apps/macos/Sources/Metabrowser/TitleAccessory.swift` | Secondary label color at rest, primary on hover or open, tertiary in an inactive window | Seven tenths of the title font’s point size, centered vertically |
 | `checkmark` | SF Symbol | The folder this window shows, in the Switch Folder panel’s list | `apps/macos/Sources/Metabrowser/SwitchFolderWindow.swift` | Secondary label color, or the selection’s ink on the selected row | The row’s default symbol size |
+| `checkmark` | SF Symbol | The folder this window shows, in the title’s folder chooser: AppKit’s own check mark for a menu item’s state, redrawn into a taller image so that it stands on the name’s line of a two-line row, beside the row’s mark | `apps/macos/Sources/ShellViews/TitleLineMenuItem.swift` | The menu’s ink and highlight, as a template image | The menu font’s 13 points, bold, small: AppKit’s own check, drawn at its size |
 | `.section-disclosure-trigger::after`, Lucide `chevron-right` | CSS mask | Show or hide a section, after its heading, and a rendered document’s `summary` | `static/styles.css` | `--section-disclosure-chevron-color` | `--section-disclosure-chevron-size`, in `em` of the heading |
 | `.mb-image-fallback::before`, Lucide `image` | CSS mask | An image a rendered document’s page does not load, drawn before its alt text | `static/styles.css` | The link’s own ink (`currentcolor`) | `1.1em` of the chip’s text |
-| `copy`, Lucide `copy` | Registry | Copy an identifier or a block’s content to the clipboard; also the Archives category’s shape | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph`; smaller in a branch chip (`.git-ref-copy`) |
+| `copy`, Lucide `copy` | Registry | Copy an identifier or a block’s content to the clipboard; also the Archives category’s shape | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
 | `print`, Lucide `printer` | Registry | Print the document | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
 | `gear`, Lucide `settings` | Registry | Open the Metabrowser menu | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
 | `monitor`, Lucide `monitor` | Registry | The system theme, in the menu’s theme chooser; also the Media category’s shape | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`: a segment’s glyph is its whole label (`.menu-seg svg`) |
@@ -302,6 +305,7 @@ The state’s word beside the row’s title carries the meaning without the colo
 | `↑` | Text | The parent folder, in the parent navigation button | `static/view-header.js`, `builtin_plugins/folder/treemap.js` | `--muted` | `--ui-small-font-size` |
 | `✓` | Text | A chosen value in a filter chip’s menu, and the current member in a stack’s menu | `static/filter-controls.js`, `builtin_plugins/github/pull-page.js` | `--link`, in `.chip-menu-check` | The text’s, in a fixed column |
 | `→` | Text | From one to the other: a rename, a mode or type change, and a merge’s source and target | `builtin_plugins/diff/diff-model.js`, `static/git-panel.js`, `static/plugin-sdk-views.js` | The text’s | The text’s |
+| `→` | Text | A SQLite foreign key from its columns to the referenced table | `builtin_plugins/sqlite/tables-model.js` | The text’s | The text’s |
 | `→` | Text | An agent log’s tool call, going out, in an event’s kind | `builtin_plugins/agents/agent-log.js` | The kind badge’s | The text’s |
 | `←` | Text | An agent log’s tool result, coming back, in an event’s kind | `builtin_plugins/agents/agent-log.js` | The kind badge’s | The text’s |
 | `↑` | Text | A session table’s sorted column, ascending, after its header’s label | `builtin_plugins/agents/agents-views.css` | The header’s | The header’s |
@@ -311,6 +315,11 @@ The state’s word beside the row’s title carries the meaning without the colo
 | `‹` | Text | Opens the hex code the binary view shows for a byte that is not printable ASCII, such as `‹FF›` | `builtin_plugins/binary/byte-format.js` | `--muted`, the code’s | `--mono-block-font-size`, the code block’s |
 | `›` | Text | Closes a byte’s hex code in the binary view | `builtin_plugins/binary/byte-format.js` | `--muted`, the code’s | `--mono-block-font-size`, the code block’s |
 | `☰` | Text | The table of contents toggle in an untrusted document’s render | `builtin_plugins/markdown/inert-toc.js` | KPress’s muted document ink | The text’s |
+| `↑` | Text | A table column sorted ascending, after its header’s label | `builtin_plugins/table/table-view.js` | `--link` | The header’s |
+| `↓` | Text | A table column sorted descending, after its header’s label | `builtin_plugins/table/table-view.js` | `--link` | The header’s |
+| `▾` | Text | A table column’s menu, to sort, filter, or hide it, after its header’s label | `builtin_plugins/table/table-view.js` | The header’s, `--text` on hover | The header’s |
+| `×` | Text | Removes a table’s filter, at the end of its chip | `builtin_plugins/table/table-view.js` | `--muted`, `--text` on hover | The chip’s |
+| `←` | Text | Back to the table, before a record’s link | `builtin_plugins/table/table-view.js` | The link’s | The link’s |
 
 ### Keyboard Hints
 

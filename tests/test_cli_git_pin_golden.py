@@ -530,7 +530,7 @@ def test_golden_pin_corrupt_blob_refusal(tmp_path: Path, monkeypatch: pytest.Mon
     pin.api(route)
     # Acquisition accepted a sound origin. The cached store is then damaged, without
     # modifying the origin or relying on acquisition to accept a malformed pack.
-    store = next((home / "repository-stores").glob("*/repository.git"))
+    store = next((home / "repos").glob("*/repository.git"))
     oid = hashlib.sha1(b"blob " + str(len(body)).encode() + b"\0" + body).hexdigest()
     loose = store / "objects" / oid[:2] / oid[2:]
     loose.parent.mkdir(exist_ok=True)

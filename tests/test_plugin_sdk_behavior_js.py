@@ -58,6 +58,7 @@ def test_plugin_sdk_behavior_contracts() -> None:
     assert payload["pathText"]["ok"] is True, payload["pathText"]
     assert payload["sameKindOrder"]["ok"] is True, payload["sameKindOrder"]
     assert payload["selectedKindAssets"]["ok"] is True, payload["selectedKindAssets"]
+    assert payload["pluginsLoad"]["ok"] is True, payload["pluginsLoad"]
     assert payload["cachedPluginStylesheet"]["ok"] is True, payload["cachedPluginStylesheet"]
     # Load more runs only the shell's registered loader, and only from a notice's button.
     assert payload["loadMore"] == {"ok": True, "calls": ["shell"]}, payload["loadMore"]

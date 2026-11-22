@@ -88,14 +88,16 @@ from metabrowser.capabilities import (
     raw_sandbox_csp,
     untrusted_shell_csp,
 )
-
-# Cache invalidator: clear_charts_cache is invoked by the root-change
-# handler so chart memos don't stick across served-root swaps.
-from metabrowser.charts import clear_charts_cache
 from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.commit_ids import short_commit
-from metabrowser.content_sniff import ContentClass, sniff_artifact
+from metabrowser.content_sniff import (
+    SNIFF_PREFIX_BYTES,
+    ContentClass,
+    classify_prefix,
+    sniff_artifact,
+    sniff_artifact_prefix,
+)
 from metabrowser.counterpart import COUNTERPART_ROUTES
 from metabrowser.diff.markdown_projection_worker import (
     InertRender,
@@ -211,6 +213,7 @@ from metabrowser.recent import (
 from metabrowser.repository_context import discover_repository_context, is_checkout_root
 from metabrowser.root_identity import (
     IDENTITY_ROUTES,
+    canonical_repository_url,
     identity_kind_tip,
     root_identity,
     served_repository_context,
@@ -240,11 +243,13 @@ from metabrowser.settings import (
     client_settings_dict,
 )
 from metabrowser.source import (
+    ContentRef,
     SubjectNotOpenError,
     UnsupportedSourceCapabilityError,
     as_git_revision_subject,
     get_source_session,
     lifespan_subject,
+    read_content_window,
     require_filesystem_hooks,
     require_filter_capabilities,
     require_source_capability,
@@ -261,6 +266,7 @@ from metabrowser.source_routes import (
     source_status,
 )
 from metabrowser.sse import api_stream
+from metabrowser.table_source import TableSourceDeclaration, install_table_sources
 from metabrowser.tree import (
     _IGNORE_CACHE,
     DEFAULT_TREE_DEPTH,
@@ -695,6 +701,17 @@ def _prefers_text_body(target: Path) -> bool:
     return sniff_artifact(target) is not ContentClass.BINARY
 
 
+def _sniff_text_body(target: Path) -> tuple[bool, bytes | None]:
+    """:func:`_prefers_text_body`, with the bytes on disk the sniff read.
+
+    The bytes are the file's own leading bytes, which a ``magic`` kind rule is matched
+    against when the file falls to the ``binary`` fallback (:func:`_magic_kind`); they
+    are None for a compressed artifact, whose sniff read decompressed bytes.
+    """
+    content_class, prefix = sniff_artifact_prefix(target)
+    return content_class is not ContentClass.BINARY, prefix
+
+
 # Defaults live in settings.py, which is also what the client reads, so the
 # chunk size cannot drift between the two planes. See
 # docs/large-content-rendering.md for the measurements behind them.
@@ -776,6 +793,9 @@ def _clear_browser_caches() -> None:
     _subtree_summary.cache_clear()
     _has_any_leaf.cache_clear()
     _has_any_nongitignored.cache_clear()
+
+    from metabrowser.charts import clear_charts_cache
+
     clear_charts_cache()
 
 
@@ -1390,8 +1410,7 @@ def _pin_label_html(status: SourceStatus) -> str:
     the same `.path-base` emphasis: a served mirror by the repository's name, as a
     checkout of it would be called, and a revision a folder's server shows of its own
     checkout by the folder's name. The ref selector in the Files toolbar names the ref,
-    and the heading's tooltip (`_mirror_tip`) the full commit, so the heading repeats
-    neither: the owner found them clutter beside the name (mb-qq4e).
+    so the heading can stay focused on the name (mb-qq4e).
 
     A pin with no mirror has no origin to take a name from, and no ref selector, so its
     heading is the only place that names it. Its ref stands as the name with the short
@@ -1416,37 +1435,22 @@ def _pin_label_html(status: SourceStatus) -> str:
 
 
 def _mirror_tip(status: SourceStatus) -> str | None:
-    """What a served mirror's heading says of itself on hover, or ``None`` for any other subject.
-
-    A page of a mirror looks like a page of a folder, and is not one: nothing is
-    checked out, and each file is read from a Git object at the pinned commit. So the
-    sentence says what the directory it names is, and does not leave the path to be
-    read as a folder of these files.
-    """
-
+    """Explain how the root's files are read, beside the separately displayed path."""
     if status["location"] is None:
         return None
     if status["origin"] is None:
-        # A revision of the served checkout: the directory is the reader's own folder, and
-        # the page is not the files in it.
-        return (
-            f"Committed revision {status['pin']} of the checkout in {status['location']}, "
-            "read from its Git objects: not the files in that folder now."
-        )
-    borrowing = f", borrowing objects from {status['borrows']}" if status["borrows"] else ""
-    return (
-        f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}"
-        f"{borrowing}: a bare Git repository, with no checked-out files."
-    )
+        return "Files come from a committed revision of this checkout."
+    if status["borrows"]:
+        return "Bare Git mirror that shares objects with a local checkout."
+    return "Bare Git mirror with no checked-out files."
 
 
 def _mirror_heading_attrs(status: SourceStatus) -> str:
     """The navigation heading's attributes that say where a served mirror is kept.
 
-    `data-mirror-location` is the status's `location` and `data-mirror-tip` the sentence
-    around it. `static/mirror-heading.js` reads both back, as the file header reads
-    `data-served-root`, which on a served mirror is the repository's name. These two
-    attributes of the page and the status envelope are the only places a response names
+    The root menu and the file header read `data-mirror-location`. The heading preserves
+    the same description in `data-mirror-tip` for the browserless shell fixture.
+    The location attribute and the status envelope are the only places a response names
     a path in the cache.
     """
 
@@ -1467,9 +1471,7 @@ def _mirror_heading_attrs(status: SourceStatus) -> str:
 def _mirror_heading_script() -> str:
     """`static/mirror-heading.js`, as a served mirror's shell carries it inline.
 
-    Only a mirror's page has a note, a location, or a commit to copy, so the code for
-    them is written into that page and is no startup script of a folder's. Read where a
-    mirror is first served, so a folder's server never reads it.
+    Mirrors and pinned checkouts can show a location note in their view header.
     """
 
     script = STATIC_DIR.joinpath("mirror-heading.js").read_text(encoding="utf-8")
@@ -1628,8 +1630,7 @@ def _source_ref_label_html(pin: GitRevisionSubject | None, *, checkout: bool) ->
         name = ref_short_name(pin.ref)
     if name:
         return html_escape(name)
-    # The short ID every line that names a commit shows (docs/design-system.md, "Short
-    # Commit IDs"); the navigation heading's tooltip has the full ID.
+    # Use the same short ID as the other commit labels (docs/design-system.md).
     return (
         f'Commit: <span class="git-commit-sha">{html_escape(short_commit(pin.commit_oid))}</span>'
     )
@@ -1692,8 +1693,8 @@ async def index(
         # what the file header's prefix and this heading's tooltip call the root.
         initial_root = html_escape(status["name"] or pin_oid, quote=True)
         mirror_attrs = _mirror_heading_attrs(status)
-        # What styles a mirror's headings apart from a folder's: its root is a name,
-        # which is cut at its end, and a control after the name copies its commit.
+        root_source_tip = html_escape(_mirror_tip(status) or "")
+        # A mirror's root is a name rather than a path, so the heading cuts it at its end.
         mirror_class = " mirror-source" if mirror_attrs else ""
         # Core holds no provider URL grammar: the served mirror asks the installed
         # providers, and only a hosted repository's has an answer (a GitHub mirror's
@@ -1707,7 +1708,7 @@ async def index(
     else:
         initial_path = _initial_path_html()
         initial_root = html_escape(_display_root_str(), quote=True)
-        mirror_attrs = mirror_class = ""
+        mirror_attrs = mirror_class = root_source_tip = ""
         repository_context = await asyncio.to_thread(
             discover_repository_context, _shell_folder(folder_root)
         )
@@ -1727,6 +1728,30 @@ async def index(
     root_kind = identity["kind"]
     root_kind_svg = source_kind_svg(root_kind)
     root_kind_tip = html_escape(identity_kind_tip(identity, tip_context), quote=True)
+    root_kind_label = html_escape(identity["kind_label"], quote=True)
+    root_repository_url = (
+        canonical_repository_url(tip_context)
+        if root_kind != "folder"
+        and tip_context is not None
+        and {tip_context["owner"], tip_context["name"]}.isdisjoint({".", ".."})
+        else None
+    )
+    root_repository_attr = root_repository_links = ""
+    if root_repository_url is not None:
+        safe_url = html_escape(root_repository_url, quote=True)
+        root_repository_attr = f' data-repository-url="{safe_url}"'
+        root_repository_links = f"""
+            <div class="root-details-links">
+              <div class="menu-link-url" id="root-repository-url">{safe_url}</div>
+              <div class="root-details-actions" hidden></div>
+            </div>"""
+    root_checkout_meta = ""
+    if root_kind == "git" and pin is None and tip_context is not None:
+        branch = tip_context["branch"]
+        if branch is not None:
+            root_checkout_meta += f"<div>Branch: {html_escape(branch)}</div>"
+        revision = html_escape(short_commit(tip_context["revision"]))
+        root_checkout_meta += f"<div>Commit: <code>{revision}</code></div>"
     version_line = html_escape(display_version_line("metab", __version__))
     styles_url = _static_asset_url("styles.css")
     asset_loader_url = _static_asset_url("asset-loader.js")
@@ -1831,8 +1856,8 @@ async def index(
     # adopts this button, so focus a reader put on it stays
     # (static/source-ref-selector.js#build), and app.js refills the row around it rather
     # than over it (renderNavFilterBar). It removes the button when Git says a checkout's
-    # root is no repository. The button has a span of its own, which a ref chip's copy
-    # control is placed against (`mountRefCopies`), so the list still has the toolbar for
+    # root is no repository. The button has a span of its own, which a ref chip's menu
+    # control is placed against (`mountRefMenus`), so the list still has the toolbar for
     # its containing block and spans the pane, on a ref's page as on the working tree's.
     source_ref_selector = ""
     if checkout is not None or (git_pin and mirror is not None):
@@ -2100,6 +2125,12 @@ async def index(
         )
         if mirror_attrs:
             repository_context_block += f"<script>{_mirror_heading_script()}</script>"
+
+    if pin is not None and checkout is not None and checkout.serves(pin) and tip_context:
+        ref_context = _json.dumps(tip_context).replace("<", "\\u003c")
+        repository_context_block += (
+            f"<script>window.METABROWSER_CHECKOUT_REF_CONTEXT={ref_context};</script>"
+        )
     if checkout is not None:
         # A checkout's page says so, and whether it shows the working tree: the ref
         # selector reads it for what it offers, and the pin guard, which the selector's
@@ -2221,6 +2252,13 @@ async def index(
         # and stayed at 58 ms on a file.
         "view-header": [
             {"src": _static_asset_url("view-header.js"), "provides": "MetabrowserViewHeader"}
+        ],
+        # The page's file watches on its event stream (static/file-watches.js), fetched
+        # the first time a view calls metabrowser.watchFile: a table, or a container
+        # whose children the tree shows. Most pages watch nothing, so it is no startup
+        # script; app.js only hands it each snapshot's connection and each change.
+        "file-watches": [
+            {"src": _static_asset_url("file-watches.js"), "provides": "MetabrowserFileWatches"}
         ],
         # What a view's renderer calls: the line-number gutter with its `#L` anchors,
         # and the SDK helpers a renderer builds its markup with (the Source surface,
@@ -2430,15 +2468,8 @@ async def index(
       <header class="app-header" data-kbd-badge-anchor>
         <!-- data-served-root is the one place the absolute root is written:
              the file header reads it back to render its dimmed prefix, so
-             the two headers cannot disagree about what the root is. It is also
-             what this heading's tooltip is built from.
-
-             No data-tip-text here, deliberately. This element has a tooltip of
-             its own in app.js — the folder's counts and age, not just its
-             path — and an element carrying both would announce through two
-             mechanisms at once, which is the bug the one-tooltip rule exists
-             to prevent. See "One Tooltip, and It Is Ours" in
-             docs/design-system.md.
+             the two headers cannot disagree about what the root is. The
+             details disclosure uses it for the root's address.
 
              The folder's name is Home (docs/design-system.md, "Home"): app.js keeps a
              plain activation in the page and shows the folder's home view as a fresh load
@@ -2457,6 +2488,23 @@ async def index(
            aria-labelledby="header-home-label header-home"
            data-served-root="{initial_root}"{mirror_attrs}>{initial_path}</a>
         <span id="header-home-label" hidden>Home:</span>
+        <details id="root-details" class="root-details"{root_repository_attr}>
+          <summary class="icon-btn root-details-trigger disclosure-toggle" aria-label="{root_kind_label} details"></summary>
+          <div class="menu root-details-panel">
+            <div class="root-details-info">
+              <strong>{root_kind_label}</strong>
+              <div class="root-details-local">
+                Local path
+                <div class="root-details-location">{"" if git_pin else initial_root}</div>
+              </div>
+              <div class="root-details-stats"></div>
+              {root_checkout_meta}
+              <div class="root-details-source">{root_source_tip}</div>
+            </div>
+            {root_repository_links}
+            <div class="root-details-status" role="status"></div>
+          </div>
+        </details>
         <!-- The Metabrowser menu. The gear names the product rather than
              standing as an unlabelled settings control: the wordmark that
              used to sit on its own line above the path is this menu's title,
@@ -3958,8 +4006,12 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             headers=etag_headers,
         )
 
+    disk_prefix: bytes | None = None
     with server_timing.phase("read"):
-        text_body = ext in BROWSER_TEXT_EXTS or await asyncio.to_thread(_prefers_text_body, target)
+        if ext in BROWSER_TEXT_EXTS:
+            text_body = True
+        else:
+            text_body, disk_prefix = await asyncio.to_thread(_sniff_text_body, target)
     if text_body:
         try:
             content_has_more = False
@@ -4093,7 +4145,9 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         # document in the normal file response.
         return JSONResponse(result, headers=etag_headers)
 
-    binary_kind = _binary_kind(target, ext)
+    # A plugin kind that claims a binary format by its magic number, whatever the
+    # file's name, then a plugin's claim by path; the model stays the file's bytes.
+    binary_kind = _magic_kind(disk_prefix) or _binary_kind(target, ext)
     return JSONResponse(
         {
             "type": "binary",
@@ -4978,6 +5032,7 @@ async def raw_file(request: Request) -> Response:
 from metabrowser.plugin_loader.classify import (
     CompiledKindRule,
     build_classifier,
+    classify_magic,
     collect_folder_markers,
 )
 from metabrowser.plugin_loader.discovery import (
@@ -5064,7 +5119,7 @@ def _classify_with_plugins(
     """Classify a file. Plugin rules take precedence; legacy detector chain is the fallback.
 
     Returns the winning kind id. The legacy chain still drives the
-    built-in kinds (markdown, text, binary, agent-log, unknown-jsonl).
+    built-in kinds (markdown, text, binary, unknown-jsonl).
 
     *file_ctx* is optional — pass an existing :class:`FileContext` to
     avoid re-parsing frontmatter in callers that need both classification
@@ -5075,6 +5130,30 @@ def _classify_with_plugins(
     if plugin_kind is not None:
         return plugin_kind
     return classify_file_kind(target, ext, adapter)
+
+
+def _magic_kind(disk_prefix: bytes | None) -> str | None:
+    """The plugin kind whose ``magic`` bytes a file's leading bytes on disk hold.
+
+    Checked only where a file would otherwise be ``binary``, from the sniff prefix the
+    caller already read; None for no prefix (a compressed artifact) or no match.
+    """
+    if disk_prefix is None:
+        return None
+    return classify_magic(_PLUGIN_KIND_RULES, disk_prefix)
+
+
+def _classify_content_kind(target: Path, ext: str) -> str:
+    """The kind ``/api/file`` gives a file on the served folder, for a caller with no
+    envelope of its own: an image extension, then text or JSONL through the plugin
+    classifier, then a ``magic`` kind, a ``binary = true`` claim, or ``binary`` for bytes that sniff as binary."""
+    if ext in BROWSER_IMAGE_EXTS:
+        return "image"
+    if ext != ".jsonl" and ext not in BROWSER_TEXT_EXTS:
+        text_body, disk_prefix = _sniff_text_body(target)
+        if not text_body:
+            return _magic_kind(disk_prefix) or _binary_kind(target, ext)
+    return _classify_with_plugins(target, ext)
 
 
 def _binary_kind(target: Path, ext: str) -> str:
@@ -5160,7 +5239,7 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
             continue
         artifact = ArtifactPath(target)
         ext = artifact.logical_ext
-        kind = _classify_with_plugins(target, ext)
+        kind = _classify_content_kind(target, ext)
         info = kinds.get(kind)
         if info is None:
             return None
@@ -5189,6 +5268,66 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
             }
         )
     return None
+
+
+def _table_source_declarations() -> list[TableSourceDeclaration]:
+    """Every ``[[table_source]]`` the server serves, in discovery order.
+
+    An operator-directory plugin runs no Python, so its declarations are ignored with a
+    log line, as its data hooks are (``build_plugin_routes``).
+    """
+    out: list[TableSourceDeclaration] = []
+    for plugin in _LOADED_PLUGINS:
+        if not plugin.manifest.table_source:
+            continue
+        if plugin.source.startswith("local:"):
+            LOG.warning(
+                "metabrowser local plugin '%s' declares table sources; operator-directory "
+                "plugins are JavaScript-only, so they are ignored",
+                plugin.name,
+            )
+            continue
+        out.extend(
+            TableSourceDeclaration(plugin=plugin.name, kind=spec.kind, adapter=spec.adapter)
+            for spec in plugin.manifest.table_source
+        )
+    return out
+
+
+def _classify_served_file(ref: ContentRef) -> str | None:
+    target = resolve_session_identity(ref.identity)
+    if target is None or not target.is_file():
+        return None
+    return _classify_content_kind(target, ref.logical_ext)
+
+
+async def _table_content_kind(ref: ContentRef) -> str | None:
+    """The kind of the content a table route names, as ``/api/file`` classifies it.
+
+    On a served folder it runs the plugin classifier and the fallback chain on the file;
+    on a pin it applies the Git-blob subset of the rules (extension and basename), which
+    is every rule a table source's kind uses.
+    """
+    if get_source_session().subject.filesystem_root is not None:
+        # Resolving and statting the file runs off the event loop, with the classifier.
+        return await asyncio.to_thread(_classify_served_file, ref)
+    from metabrowser.git.content_routes import plugin_kind_for_git_wire, plugin_magic_kind
+
+    kind = plugin_kind_for_git_wire(ref.identity)
+    if kind is not None or ref.logical_ext in BROWSER_IMAGE_EXTS:
+        return kind or "image"
+    head = await read_content_window(ref, max_bytes=SNIFF_PREFIX_BYTES)
+    content_class = classify_prefix(head.data)
+    if content_class is ContentClass.BINARY or (
+        ref.logical_ext not in BROWSER_TEXT_EXTS and content_class is not ContentClass.TEXT
+    ):
+        return plugin_magic_kind(head.data)
+    return classify_by_ext(ref.logical_ext)
+
+
+install_table_sources(
+    _table_source_declarations(), _table_content_kind, container_kinds=_container_kinds()
+)
 
 
 def _views_for_kind(
@@ -5323,18 +5462,21 @@ async def _shell_asset_prefixes() -> tuple[dict[str, str], str]:
 
 
 def _build_plugin_asset_config_block(prefixes: Mapping[str, str]) -> str:
-    """Configure manifest-owned assets by the kinds that consume them.
+    """Configure manifest-owned assets by plugin, and the plugins each kind consumes.
 
     No plugin asset is an eager shell dependency. The private plugin host
-    loads one descriptor at most once when ``app.js`` selects any kind in its
-    manifest. Extra classic scripts retain manifest order before ``index.js``;
-    styles load in parallel and settle before the plugin renderer mounts.
+    loads one plugin at most once, when ``app.js`` selects any kind in its
+    manifest or code asks for its exports by name (``metabrowser.plugins.load``),
+    which is how a plugin with no kind of its own is reached. Extra classic
+    scripts retain manifest order before ``index.js``; styles load in parallel
+    and settle before the plugin renderer mounts.
 
     Every URL is under the plugin's stamped prefix (*prefixes*, from
     :func:`_shell_asset_prefixes`, which takes them off the event loop), so its
     relative imports, worker, and stylesheet references inherit the stamp.
     """
-    assets_by_kind: dict[str, list[dict[str, object]]] = {}
+    plugins: dict[str, dict[str, object]] = {}
+    kinds: dict[str, list[str]] = {}
     for plugin in _LOADED_PLUGINS:
         prefix = prefixes.get(plugin.name, f"/plugin-static/{plugin.name}")
         styles: list[str] = []
@@ -5344,17 +5486,17 @@ def _build_plugin_asset_config_block(prefixes: Mapping[str, str]) -> str:
             url = f"{prefix}/{extra}"
             if url not in styles:
                 styles.append(url)
-        descriptor: dict[str, object] = {
+        plugins[plugin.name] = {
             "name": plugin.name,
             "module": f"{prefix}/index.js",
             "scripts": [f"{prefix}/{extra}" for extra in plugin.manifest.plugin.extra_scripts],
             "styles": styles,
         }
-        kinds = {view.kind for view in plugin.manifest.view}
-        kinds.update(kind.id for kind in plugin.manifest.kind)
-        for kind in sorted(kinds):
-            assets_by_kind.setdefault(kind, []).append(descriptor)
-    encoded = _json.dumps(assets_by_kind).replace("<", "\\u003c")
+        owned = {view.kind for view in plugin.manifest.view}
+        owned.update(kind.id for kind in plugin.manifest.kind)
+        for kind in sorted(owned):
+            kinds.setdefault(kind, []).append(plugin.name)
+    encoded = _json.dumps({"plugins": plugins, "kinds": kinds}).replace("<", "\\u003c")
     return f"<script>window.MetabrowserPluginHost.configureAssets({encoded});</script>"
 
 

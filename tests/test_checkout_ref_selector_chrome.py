@@ -258,6 +258,23 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     # A tag, and the way back by the Working tree row.
     tag = result["tag"]
     assert (tag["kind"], tag["button"], tag["tree"]) == ("git_revision", "v1", ["README.md"])
+    assert result["tagMenu"] == {
+        "context": "Tag v1",
+        "items": ["Copy Tag Name", "View This Tag"],
+        "copied": "v1",
+        "widthChanged": False,
+        "caret": "matrix(0, 1, -1, 0, 0, 0)",
+        "dismissed": True,
+        "chordsLeftAlone": True,
+        "fork": {
+            "context": "Remote branch forker:topic/nested",
+            "url": "https://github.com/forker/demo/tree/refs/heads/topic/nested",
+            "actions": ["Copy Branch Name", "Open on GitHub"],
+        },
+    }
+    from_menu = result["tagFromHistory"]
+    assert (from_menu["kind"], from_menu["button"]) == ("git_revision", "v1")
+    assert from_menu["capabilities"] == UNTRUSTED
     back = result["back"]
     assert (back["kind"], back["path"], back["button"]) == (
         "filesystem",

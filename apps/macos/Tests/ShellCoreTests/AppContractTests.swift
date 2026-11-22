@@ -135,7 +135,7 @@ nonisolated enum ContractGolden {
     /// Every scenario a test below reads. A scenario the golden gains must be read here,
     /// and one it loses must be taken out, so the two lists cannot drift.
     private static let read: Set<String> = [
-        "version-probe", "version", "unknown-option",
+        "version-probe", "version", "unknown-option", "plugins",
         "serve/folder", "serve/not-an-open", "serve/repository-cloned", "serve/repository-cached",
         "serve-path/file",
         "recent-list/empty", "recent-list/after-an-open", "recent-list/listed", "recent-list/problem",
@@ -199,6 +199,40 @@ nonisolated enum ContractGolden {
         let older = await validate(asked) { $0 == plain.words ? plain.result : rejection }
         #expect(older == .tooOld(version: MetabRequirement.minimum))
         #expect(asked.all == [probe.words, plain.words])
+    }
+
+
+    @Test func settingsReadsPluginDiscoveryIncludingAPartialResult() throws {
+        let block = try block("plugins")
+        let setup = RuntimeSetup(
+            runtime: Runtime(executable: "/opt/metab", version: MetabRequirement.minimum, source: .chosen),
+            tools: ToolPaths(git: "/opt/git/bin/git"))
+        let spec = PluginInventory.spec(
+            setup: setup, inherited: ["HOME": "/Volumes/Home", "METABROWSER_PLUGINS_DIRS": "/tmp/plugins"])
+        #expect(spec.executable == setup.runtime.executable)
+        #expect(spec.arguments == block.words)
+        #expect(spec.environment == ChildEnvironment.build(
+            inherited: ["HOME": "/Volumes/Home"], toolDirectories: setup.tools.directories))
+
+        guard case .inventory(let listed) = PluginInventory.answer(block.result) else {
+            Issue.record("Settings could not read the golden plugin inventory")
+            return
+        }
+        #expect(listed.plugins.first { $0.name == "agents" }?.requires == ["structured"])
+        #expect(listed.plugins.first { $0.name == "sqlite" }?.requires == ["table"])
+        #expect(listed.plugins.first { $0.name == "fsqlite" }?.requires == ["sqlite", "table"])
+        #expect(listed.errors.isEmpty)
+
+        let partial = CommandResult(status: 1 << 8, output: [
+            #"{"plugins":[{"name":"agents","display_name":"Agents","version":"0.0.1","source":"builtin"}],"errors":["A plugin was rejected"]}"#
+        ])
+        guard case .inventory(let available) = PluginInventory.answer(partial) else {
+            Issue.record("A discovery error hid the plugins that loaded")
+            return
+        }
+        #expect(available.plugins.map(\.name) == ["agents"])
+        #expect(available.plugins.first?.requires == nil)
+        #expect(available.errors == ["A plugin was rejected"])
     }
 
     // MARK: - Servers
@@ -481,7 +515,8 @@ nonisolated enum ContractGolden {
         #expect(found.rows.map(\.state) == [.ok, .ok, .warning, .ok, .warning, .problem, .ok, .warning])
         let fixes = Dictionary(uniqueKeysWithValues: found.rows.map { ($0.id, $0.remedy) })
         let step = DoctorReport.Remedy(text: ContractGolden.text, command: ContractGolden.text)
-        #expect(fixes["metab"] == step, "the upgrade the app's minimum calls for")
+        #expect(fixes["metab"] == DoctorReport.Remedy(
+            text: "See the README for runtime setup.", url: ProjectLinks.installationGuide))
         #expect(fixes["github"] == step, "signing in to GitHub CLI")
         #expect(fixes["config"] == DoctorReport.Remedy(text: ContractGolden.text))
     }

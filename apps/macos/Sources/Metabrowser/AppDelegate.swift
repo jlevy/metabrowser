@@ -111,7 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var watchedRuntime: Runtime?
     private var watchedPaths: [String] = []
     private var isOfferingRestart = false
-    /// The login shell's `PATH` from the last search that read it, for the first-run steps.
+    /// The login shell's `PATH` from the last search that read it, for locating uv.
     private var lastLoginPath: [String]?
     private var guideRequests = 0
 
@@ -977,8 +977,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.answer = nil
             return
         }
-        let install = MetabInstall.of(executable: setup.runtime.executable)
-        model.upgrade = (MetabRequirement.upgradeCommand(for: install), install.note)
         model.isRunning = true
         checkSetupRun = Task { [weak self] in
             let result = await CommandRunner.run(
@@ -1047,8 +1045,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Works out the first-run steps from the last search and what is installed now,
-    /// asking uv, when there is one, where it puts `metab`.
+    /// Reports the last search and asks uv, when available, where to watch for metab.
     private func prepareGuide() async {
         guideRequests += 1
         let request = guideRequests
@@ -1070,14 +1067,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // A runtime that arrived meanwhile, or a newer request, makes this one moot.
         guard request == guideRequests, selection.setup == nil else { return }
-        let hasHomebrew = RuntimeDiscovery.homebrewBins.contains { FileChecks.isExecutableFile($0 + "/brew") }
-        let guide = SetupGuide(
-            tried: selection.tried, uv: uv.found, binDirectory: uv.binDirectory, home: env.home,
-            loginPath: lastLoginPath, hasHomebrew: hasHomebrew, refusedUv: uv.refused)
-        AppLog.app.info(
-            "first-run steps: \(guide.steps.map(\.command).joined(separator: "; "), privacy: .public); waiting for metab in \(uv.binDirectory, privacy: .public)"
-        )
-        runtimeModel.guide = guide
+        runtimeModel.guide = SetupGuide(
+            tried: selection.tried, binDirectory: uv.binDirectory, home: env.home, refusedUv: uv.refused)
         rewatch()
     }
 
@@ -1133,16 +1124,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - About and Help
 
     /// The standard About panel, which reads the version and build from the bundle,
-    /// with a line saying which build this is: both variants are named Metabrowser.
+    /// with the build variant and a link to the repository.
     @objc func showAbout(_ sender: Any?) {
         let centered = NSMutableParagraphStyle()
         centered.alignment = .center
-        let line = NSAttributedString(string: appIdentity.buildLine, attributes: [
-            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+        let font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        let credits = NSMutableAttributedString(string: appIdentity.buildLine + "\n\n", attributes: [
+            .font: font,
             .foregroundColor: NSColor.secondaryLabelColor,
             .paragraphStyle: centered,
         ])
-        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: appIdentity.name, .credits: line])
+        let repository = ProjectLinks.repository
+        credits.append(NSAttributedString(string: repository.absoluteString, attributes: [
+            .font: font,
+            .link: repository,
+            .paragraphStyle: centered,
+        ]))
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: appIdentity.name, .credits: credits])
     }
 
     /// Creates the folder first, since it holds nothing until a folder has been served.

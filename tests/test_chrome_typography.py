@@ -56,6 +56,9 @@ MONO_ALLOWED_SELECTORS = frozenset(
         ".github-pull-guide-excerpt",
         # A JSON or YAML document's own structure, whose indent carries meaning.
         ".structured-tree",
+        # A table's literal values: keys, timestamps, hex, JSON, and null, the reader's own
+        # data (docs/design-system.md, "Data Tables").
+        ".data-literal",
         ".compression-badge",
         ".metabrowser-kpress-error-detail",
         ".log-event-header",

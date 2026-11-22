@@ -180,9 +180,10 @@ path, as it runs a separate checkout’s, needs that path in place of `metab`.
 
 ## Browsing Agent History
 
-Serve a Claude Code or Codex home and Metabrowser reads every session in it, without
-changing anything. A home is `~/.claude` or `~/.codex`, and serving a folder that holds
-either, such as `~`, reaches both:
+The built-in [Agent Session Browser](plugins.md#built-in-agent-support) browses the
+sessions in a Claude Code or Codex home read-only.
+A home is `~/.claude` or `~/.codex`, and serving a folder that holds either, such as
+`~`, reaches both:
 
 ```shell
 metab ~/.claude
@@ -194,13 +195,19 @@ A folder that is, or holds, a home opens on its **Agents** page, with **Sessions
 beside it. Any other folder keeps its Overview.
 
 - **Agents:** one page for each home and the two together.
-  It shows how many sessions there are, how many are running now, and the size on disk;
-  a strip of the sessions running now, each with its project and model and how long ago
-  it last wrote; the sessions started per day; a histogram of session sizes; and the
-  most recent sessions.
-  Reading a large history takes minutes the first time, so the page shows a progress
-  line while it summarizes sessions, asks again until it is done, and then stops.
-  It names the cache folder trouble when summaries cannot be kept between runs.
+  It shows how many sessions there are, how many show signs of activity, and the size on
+  disk; the sessions started per day, and a histogram of session sizes.
+  **Active sessions** uses live provider signals.
+  The Active count follows the same poll.
+  Claude Code sessions qualify while their registered process is alive.
+  Codex threads qualify when the desktop records a fresh active turn or when the thread
+  was updated in the last two minutes.
+  **Latest sessions** shows the latest eight sessions by recorded activity and can
+  include sessions from the live list.
+  On first load the plugin discovers sessions, then reads local records to fill in
+  details such as turn counts and status.
+  It reuses cached results when the source is unchanged.
+  The progress count tracks how many sessions have been checked.
   While the page is in front, the live strip asks again every few seconds
   (`LIVE_POLL_MS` in `poller.js`), and nothing is asked once you leave it or hide the
   tab.

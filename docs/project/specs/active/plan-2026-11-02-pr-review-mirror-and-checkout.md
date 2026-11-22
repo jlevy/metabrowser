@@ -175,9 +175,9 @@ in seconds, so every scenario above can become a test fixture.
 ### One Store Shape, Two Ways to Fill It
 
 A repository store stays what it is: one bare `repository.git` under
-`repository-stores/<store-key>/`, with Metabrowser’s configuration, the origin’s
-branches under `refs/remotes/origin/`, its tags, and `refs/pull/<n>/head` for each pull
-request opened. The served pin, the batch readers, `pull_refs.py`, `update.py`, the
+`repos/<store-key>/`, with Metabrowser’s configuration, the origin’s branches under
+`refs/remotes/origin/`, its tags, and `refs/pull/<n>/head` for each pull request opened.
+The served pin, the batch readers, `pull_refs.py`, `update.py`, the
 `RepositoryStoreTarget` and its `STORE_READ_POLICY`, the freshness window, the fetch
 lock, and the pull-request records are unchanged.
 The experiment ran the real `metab` on an overlay with no code change, and the
