@@ -1252,6 +1252,9 @@ async function tabKeys(page) {
   /** What a header number asked for: a request the page sent, a tab it opened, a page it
    * navigated to. Read and emptied by `numberResult`. */
   const asked = [];
+  // Served with no `probe_every_s`, a current page asks for nothing by itself, so what a
+  // number asked for is the number's alone; the session pins the probe asks (`probing`).
+  const unprobed = () => ({ ...answer, probe_every_s: null });
   globalThis.fetch = async (route, init = {}) => {
     if (init.method === "POST") {
       asked.push(`POST ${route.split("?")[0]} ${init.body}`);
@@ -1261,7 +1264,7 @@ async function tabKeys(page) {
       return {
         status: 202,
         headers: { get: () => null },
-        json: async () => ({ refresh: "started", pull: answer }),
+        json: async () => ({ refresh: "started", pull: unprobed() }),
       };
     }
     if (!route.startsWith("/api/plugin/github/pull?")) {
@@ -1269,7 +1272,7 @@ async function tabKeys(page) {
     }
     return failing
       ? { status: 503, headers: { get: () => null } }
-      : { status: 200, headers: { get: () => null }, json: async () => answer };
+      : { status: 200, headers: { get: () => null }, json: async () => unprobed() };
   };
   globalThis.window.open = (url, target, features) => {
     asked.push(`window.open ${url} ${target} ${features}`);
@@ -3491,7 +3494,9 @@ async function run() {
     assert.equal(mounted, 3, "a stale Retry cannot remount a disposed page");
   }
   for (const outcome of ["same", "moved", "failed"]) {
-    let current = structuredClone(initial.body);
+    // Without `probe_every_s` the current page asks nothing, so each `tick` fires the poll.
+    const unprobed = { ...initial, body: { ...initial.body, probe_every_s: null } };
+    let current = structuredClone(unprobed.body);
     let reply;
     const requests = [];
     const mounted = [];
@@ -3511,7 +3516,7 @@ async function run() {
       {
         number: 7,
         tab: "files",
-        reader: { initial, fetchAfterMs: 0 },
+        reader: { initial: unprobed, fetchAfterMs: 0 },
       },
       {
         perf,

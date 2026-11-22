@@ -212,10 +212,21 @@ The provider hands it `ServedPulls` (`served_pull.py`), a `PullRequestSet` that 
   Within a server, these jobs and the mirror’s fetch take turns at the store
   (`StoreTurn` in `mirror_refresh.py`).
 - **What starts one:** a reader’s own action (`"retry": true`); a visible page whose
-  record is stale and not tried within the window; and a
-  [prefetch](#background-prefetch) that names it.
-  A failed refresh is tried again after a window, and after `rate_limited` not before
-  `reset_at`. A branch or tag pin never runs `gh`.
+  record is stale and not tried within the window; a probe that finds a change; a
+  visible record read `FULL_REFRESH_S` ago; and a [prefetch](#background-prefetch) that
+  names it. A failed refresh is tried again after a window, and after `rate_limited` not
+  before `reset_at`. A branch or tag pin never runs `gh`.
+- **Probes:** a visible page asks every `probe_every_s` (`ATTENDED_PROBE_S`), and for a
+  current record the server answers with a probe (`ServedPull.probe`), a conditional
+  read of the pull request that GitHub answers `304` without spending its rate limit,
+  and, while checks are pending, of their first pages every `CHECKS_PROBE_S`. An
+  unchanged probe vouches for the record (`verified_by: "probe"`) and keeps it current
+  until the full read `FULL_REFRESH_S` asks; a change starts a refresh at once, a change
+  to checks alone reads only them, and a failed probe waits a window.
+  Two pages share one probe, and a rate-limit hold stops them all.
+  The
+  [update cadence plan](../specs/active/plan-2026-11-22-pull-request-update-cadence.md)
+  records the measurements and the design.
 - **One-shot commands:** the CLI fetches a pull request only when it has no usable
   record or its commit URL names a commit only `refs/pull/<n>/head` can bring;
   `--no-serve` refreshes it.
@@ -255,7 +266,9 @@ names another head, **current** while the scan that published the row is recent,
 `updated_at` does not move for check runs, statuses, or mergeability, and **unverified**
 otherwise; the module docstring states each rule.
 `verified_at` and `verified_by` say when and how the record was last known to describe
-GitHub. They move with every scan, so the entity tag leaves them out and
+GitHub: by the catalog’s scan, by its own fetch, or by a [probe](#serving-pull-requests)
+of the served pull request.
+They move with every scan and probe, so the entity tag leaves them out and
 `x-metabrowser-verified` carries them.
 `cli-github-pulls-prefetch.txt` pins each verdict.
 

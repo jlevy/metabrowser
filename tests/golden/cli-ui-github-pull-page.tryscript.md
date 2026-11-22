@@ -151,6 +151,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 1,
+      "askWaits": true,
       "paint": {
         "status": "current",
         "tab": "conversation",
@@ -198,6 +199,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 0,
+      "askWaits": true,
       "markdown": []
     },
     {
@@ -208,6 +210,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 0,
+      "askWaits": true,
       "markdown": [],
       "waiting": {
         "inFlight": 2,
@@ -225,6 +228,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 0,
+      "askWaits": true,
       "markdown": [
         "body: <div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>",
         "issue_comment/3341937855: <div><div><p>Thanks. CI is green; one question inline.</p></div></div>",
@@ -237,6 +241,7 @@ $ node tests/dom/github-pull-page-session.js
       "requests": [],
       "timer": "slow",
       "paints": 0,
+      "askWaits": true,
       "markdown": [
         "body: <div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>"
       ]
@@ -248,6 +253,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 0,
+      "askWaits": true,
       "markdown": []
     },
     {
@@ -257,6 +263,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 1,
+      "askWaits": true,
       "paint": {
         "status": "current",
         "tab": "conversation",
@@ -304,6 +311,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 0,
+      "askWaits": true,
       "navigated": [
         "/view/"
       ],
@@ -316,6 +324,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 1,
+      "askWaits": true,
       "paint": {
         "status": "current",
         "tab": "conversation",
@@ -361,6 +370,7 @@ $ node tests/dom/github-pull-page-session.js
       "requests": [],
       "timer": "slow",
       "paints": 0,
+      "askWaits": true,
       "markdown": []
     },
     {
@@ -368,6 +378,7 @@ $ node tests/dom/github-pull-page-session.js
       "requests": [],
       "timer": "slow",
       "paints": 1,
+      "askWaits": true,
       "paint": {
         "status": "current",
         "tab": "files",
@@ -412,6 +423,7 @@ $ node tests/dom/github-pull-page-session.js
       "requests": [],
       "timer": "slow",
       "paints": 1,
+      "askWaits": true,
       "paint": {
         "status": "current",
         "tab": "conversation",
@@ -565,6 +577,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 1,
+      "probeAskMs": 5000,
       "paint": {
         "status": "current",
         "tab": "conversation",
@@ -610,6 +623,7 @@ $ node tests/dom/github-pull-page-session.js
       "requests": [],
       "timer": "slow",
       "paints": 0,
+      "probeAskMs": 5000,
       "markdown": [
         "body: <div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>"
       ]
@@ -621,6 +635,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 1,
+      "probeAskMs": 5000,
       "paint": {
         "status": "current",
         "tab": "conversation",
@@ -669,6 +684,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 0,
+      "probeAskMs": 5000,
       "markdown": [
         "issue_comment/3341937856: <div><div><p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>\n\n<img loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://example.com/badge.png\" alt=\"build badge\"> <span class=\"mb-image-fallback\">image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p>\n</div></div>"
       ]
@@ -687,6 +703,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 0,
+      "probeAskMs": 5000,
       "markdown": []
     },
     {
@@ -788,6 +805,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 2,
+      "askWaits": true,
       "paint": {
         "status": "current",
         "message": null,
@@ -807,6 +825,7 @@ $ node tests/dom/github-pull-page-session.js
       ],
       "timer": "slow",
       "paints": 0,
+      "askWaits": true,
       "reloads": 1,
       "markdown": []
     },
@@ -1009,6 +1028,7 @@ $ node tests/dom/github-pull-page-second-session.js
       ],
       "timer": "slow",
       "paints": 1,
+      "probeAskMs": 5000,
       "paint": {
         "status": "current",
         "message": null,
@@ -1059,6 +1079,56 @@ $ node tests/dom/github-pull-page-second-session.js
         "headOffer": null
       },
       "conversation": "keep",
+      "markdown": []
+    }
+  ],
+  "probing": [
+    {
+      "step": "a current page asks once the reader stays, and a probe answers",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "probeAskMs": 5000,
+      "markdown": []
+    },
+    {
+      "step": "its interval later it asks again, and the probe vouches",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "probeAskMs": 5000,
+      "markdown": []
+    },
+    {
+      "step": "hidden, it asks nothing",
+      "requests": [],
+      "timer": null,
+      "paints": 0,
+      "markdown": []
+    },
+    {
+      "step": "shown again past its interval it asks at once, and a probe that found a change refreshes",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)",
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "timer": "fast",
+      "paints": 2,
+      "paint": {
+        "status": "current",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 1 min ago via GitHub CLI",
+        "revalidating": true,
+        "failure": null,
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "repaint",
       "markdown": []
     }
   ],

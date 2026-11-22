@@ -85,6 +85,8 @@ from metabrowser.builtin_plugins.github.pull_record import (
     read_pull_record,
 )
 from metabrowser.builtin_plugins.github.served_pull import (
+    ATTENDED_PROBE_S,
+    FULL_REFRESH_S,
     PullCorePreview,
     PullRefreshOutcome,
     ServedPull,
@@ -138,6 +140,10 @@ class PullEnvelope(TypedDict):
     checks_pending: bool
     record_revision: str | None
     fresh_for_s: float
+    # How often a visible page asks while it shows a record: the server then probes it
+    # (:data:`~.served_pull.ATTENDED_PROBE_S`) or reads it in full when that is due, and
+    # answers ``not_due`` otherwise. ``None`` with no record to probe.
+    probe_every_s: float | None
     refreshing: bool
     preparing_comparison: NotRequired[Literal[True]]
     # The server has no Git store to compare in, as a checkout has none until a reader's
@@ -466,6 +472,7 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
             checks_pending=False,
             record_revision=None,
             fresh_for_s=FRESHNESS_WINDOW_S,
+            probe_every_s=None,
             refreshing=False,
             last_refresh=None,
             comparison_route=None,
@@ -496,6 +503,13 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
     state, absence = pull_state(
         record, now=now, refreshing=view.refreshing, has_store=has_store, freshness=freshness
     )
+    verified_at = freshness.verified_at if freshness is not None else None
+    verified_by: VerifiedBy | None = freshness.verified_by if freshness is not None else None
+    probed = probed_at(view, record, now=now, has_store=has_store, freshness=freshness)
+    if probed is not None:
+        state = "current"
+        if verified_at is None or probed > verified_at:
+            verified_at, verified_by = probed, "probe"
     if not has_store and isinstance(record, PullRecord) and dumped is not None:
         dumped = _without_store(dumped)
         record = record.model_copy(update={"comparison": None})
@@ -537,12 +551,13 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
         pin=view.pin,
         pin_ref=view.pin_ref,
         fetched_at=record.fetched_at if isinstance(record, PullRecord) else None,
-        verified_at=freshness.verified_at if freshness is not None else None,
-        verified_by=freshness.verified_by if freshness is not None else None,
+        verified_at=verified_at,
+        verified_by=verified_by,
         head_moved=freshness is not None and freshness.head_moved,
         checks_pending=freshness is not None and freshness.checks_pending,
         record_revision=revision,
         fresh_for_s=FRESHNESS_WINDOW_S,
+        probe_every_s=ATTENDED_PROBE_S if isinstance(record, PullRecord) else None,
         refreshing=view.refreshing,
         last_refresh=(
             view.kept.outcome() if view.kept is not None else served.last_refresh(view.number)
@@ -561,6 +576,36 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
     if not has_store:
         envelope["no_store"] = True
     return envelope, freshness
+
+
+def probed_at(
+    view: PullView,
+    record: PullRecord | RecordAbsence,
+    *,
+    now: datetime,
+    has_store: bool,
+    freshness: RecordFreshness | None,
+) -> str | None:
+    """When a probe last found *record* unchanged, if that makes it current at *now*.
+
+    That is a probe of this very record within a freshness window, of a record read within
+    :data:`~.served_pull.FULL_REFRESH_S`, which the catalog does not say GitHub changed
+    since and which needs no store this server has. Otherwise ``None``, and the record's
+    state is the catalog's or the clock's (:func:`pull_state`).
+    """
+
+    kept = view.kept
+    if (
+        kept is None
+        or not isinstance(record, PullRecord)
+        or kept.fetched_at != record.fetched_at
+        or not kept.probe_vouches(now)
+        or now - _parse_stamp(record.fetched_at) > timedelta(seconds=FULL_REFRESH_S)
+        or (freshness is not None and freshness.verdict == "changed")
+        or (has_store and written_without_store(record))
+    ):
+        return None
+    return kept.probed_at
 
 
 def record_and_freshness(
@@ -891,7 +936,16 @@ async def _start_refresh(
             served.saw_record(
                 held.fetched_at, without_store=written_without_store(held), freshness=freshness
             )
-        if not served.is_stale(pulls.utc_now(), window_s=FRESHNESS_WINDOW_S):
+        due = served.automatic_due(pulls.utc_now())
+        if due == "probe" and held is not None and held.fetched_at == served.fetched_at:
+            # A visible page asks every ATTENDED_PROBE_S; most asks end here, in a free
+            # conditional read that finds nothing new (:meth:`ServedPull.probe`).
+            try:
+                await served.probe(held)
+            except TimeoutError:
+                return "not_due"
+            due = served.automatic_due(pulls.utc_now())
+        if due != "full":
             return "not_due"
     if adopt is not None:
         window, preview = adopt

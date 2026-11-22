@@ -6114,6 +6114,67 @@ def test_a_checks_only_refresh_reads_the_pull_its_checks_and_its_status_alone(
     assert stand.record(7) == conflict
 
 
+def _probe(
+    stand: _Stand, record: PullRecord, *, checks: bool, etags: dict[str, str] | None = None
+) -> pulls.PullProbe:
+    return asyncio.run(
+        pulls.probe_pull_request(stand.published, record, etags=etags or {}, checks=checks)
+    )
+
+
+def test_a_probe_asks_only_the_pull_and_never_the_account(stand: _Stand) -> None:
+    """An unchanged pull request is one conditional read that GitHub answers ``304``."""
+
+    record = stand.refresh(7)
+    stand.calls()
+    found = _probe(stand, record, checks=False)
+    assert found == pulls.PullProbe("unchanged", {})
+    calls = stand.calls()
+    assert [call["args"][-1] for call in calls] == ["repos/octo/demo/pulls/7"]
+    assert not any(call["args"][:2] == ["auth", "status"] for call in calls)
+
+
+def test_a_probe_tells_a_change_from_a_new_etag_for_the_same_pull(stand: _Stand) -> None:
+    """GitHub sometimes sends a new ETag for the same content (2026-11-22), and only a change
+    to what the record holds is ``changed``; the new ETag is kept for the next probe."""
+
+    answers = scenario(stand.origin)
+    pull_path = "repos/octo/demo/pulls/7"
+    record = stand.refresh(7)
+    body = answers["api"][pull_path]["body"]
+    same = ok(pull_path, body, {"Etag": 'W/"rotated"'})
+    stand.answer(_api(answers, pull_path, same))
+    found = _probe(stand, record, checks=False)
+    assert found == pulls.PullProbe("unchanged", {pull_path: 'W/"rotated"'})
+    # The next probe sends that ETag, and GitHub answers 304 again.
+    assert _probe(stand, record, checks=False, etags=found.etags) == pulls.PullProbe(
+        "unchanged", {}
+    )
+    merged = {**body, "state": "closed", "merged": True, "updated_at": "2026-09-17T11:00:00Z"}
+    stand.answer(_api(answers, pull_path, ok(pull_path, merged)))
+    assert _probe(stand, record, checks=True).outcome == "changed"
+
+
+def test_a_checks_probe_reads_the_first_pages_and_sees_a_rerun(stand: _Stand) -> None:
+    answers = scenario(stand.origin)
+    head = stand.origin["fork_head"]
+    runs_path = page(f"repos/octo/demo/commits/{head}/check-runs")
+    status_path = page(f"repos/octo/demo/commits/{head}/status")
+    record = stand.refresh(7)
+    assert pulls.checks_probe_paths(stand.published, record) == (runs_path, status_path)
+    stand.calls()
+    assert _probe(stand, record, checks=True) == pulls.PullProbe("unchanged", {})
+    assert _api_paths(stand) == sorted(["repos/octo/demo/pulls/7", runs_path, status_path])
+    rerun = copy.deepcopy(answers["api"][runs_path]["body"])
+    for run in rerun["check_runs"]:
+        run.update(status="in_progress", conclusion=None)
+    stand.answer(_api(answers, runs_path, ok(runs_path, rerun)))
+    assert _probe(stand, record, checks=True).outcome == "checks_changed"
+    # A part GitHub refused would read as a change on every probe, so it is not probed.
+    refused = record.model_copy(update={"status": None, "unavailable": {"status": "gh_failed"}})
+    assert pulls.checks_probe_paths(stand.published, refused) is None
+
+
 def test_a_checks_only_refresh_reads_everything_when_the_pull_moved(stand: _Stand) -> None:
     """A pull whose ``updated_at`` moved since the record is the full read, every part."""
 

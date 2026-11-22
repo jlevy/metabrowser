@@ -34,11 +34,11 @@ reader’s other tools.
 - Everything a visible view shows is read in full at least every `FULL_REFRESH_S`, so
   anything change detection cannot see (an edited comment, a reaction, a mergeability
   recomputation) is at most that late.
-- Nothing recurring runs for a hidden page.
-- An idle visible page costs almost no GitHub rate limit: change detection uses
-  conditional requests, which GitHub does not count when it answers `304`. A push to the
-  repository changes the answer, so each one costs a call, and that cost is bounded (see
-  [Budget](#budget)).
+- Nothing recurring that spends GitHub rate limit runs for a hidden page.
+  Metabrowser’s own stores are kept current whatever is visible, since fetching into
+  them spends none (see [Metabrowser’s Own Stores](#metabrowsers-own-stores)).
+- An idle visible page costs no GitHub rate limit: change detection uses conditional
+  requests, which GitHub does not count when it answers `304`.
 - Background work yields to visible work and stops before the account’s budget runs low,
   as `BACKGROUND_FLOOR` already does.
   A change found on the page on screen is still read below the floor.
@@ -148,8 +148,9 @@ Three things in that table explain the 48 s and shape this plan:
 A script read jlevy/metabrowser’s most recently updated pull request
 (`pulls?state=all&sort=updated&direction=desc&per_page=1`) every 3 s with its last ETag,
 from 20:06 to 20:31 UTC on 2026-11-22, and logged each `200` against the row’s
-`updated_at`. When #695 changed at 20:11:05, the probe saw a new ETag 2.7 s later,
-inside the probe interval, so GitHub’s ETags move within seconds of a change.
+`updated_at`. Over nine changes to four pull requests the probe saw the new ETag 1.3 to
+14.2 s after `updated_at`, with a median of 3.4 s and two changes past 10 s, so GitHub’s
+ETags usually move within a probe interval of a change.
 Twice, at 20:11:04 and 20:11:23, the ETag changed while the first row’s number and
 `updated_at` did not.
 Both were very likely pushes: a pull request’s REST representation embeds its base and
@@ -344,6 +345,45 @@ the transcripts, with no compatibility layer.
 - `pulls-panel.js`: the same, against `fresh_for_s` of the list envelope.
 - Visibility, focus, and coming back online wake both at once, as they do now.
 
+### Metabrowser’s Own Stores
+
+The owner set the rule on 2026-11-22: a store Metabrowser keeps is fetched as often as
+it usefully can, so what it shows is not out of date whenever that can be avoided.
+A fetch into its own store is safe to repeat: it is atomic, it removes no commit, the
+store is read-only to everything else, and a reader’s checkout is never written
+([What Is Never Written](../../architecture/arch-open-modes.md#what-is-never-written)).
+It spends no GitHub rate limit, since Git over HTTPS is not the REST or GraphQL API. So
+the limits on how often are its process time and network, not a budget.
+
+What a refresh costs when nothing changed, measured 2026-11-22 against the stores of
+jlevy/metabrowser (469 refs) and bluesky-social/social-app (3,053 refs), three runs
+each, at a load average of about 330:
+
+| Step | Wall time | CPU | Peak memory |
+| --- | --- | --- | --- |
+| `ls-remote` of one branch | 1.0 to 1.9 s | 0.07 s | 12 MB |
+| `ls-remote --symref HEAD`, the refresh’s first step | 1.0 to 1.7 s | 0.07 s | 12 MB |
+| The fetch with the store’s refspecs (`--dry-run`) | 1.7 to 5.3 s | 0.2 to 0.6 s | 28 to 35 MB |
+
+A probe of one branch costs about a tenth of a refresh’s CPU, so it is the probe that
+runs often and the fetch that runs when the probe saw a move or the interval is up:
+
+- **A visible page of a mirror on a branch:** probe the served branch every
+  `STORE_PROBE_S` (proposed 5 s) and fetch at once when its tip moved; fetch everything
+  every `FRESHNESS_WINDOW_S` as today.
+- **A served store with no visible page:** fetch every `STORE_IDLE_REFRESH_S` (proposed
+  300 s) while the server runs, as background work that yields to everything a reader
+  waits on, so a page opened later starts at most that old and its first ask catches up.
+  Today a hidden server never fetches.
+- **A store beside a checkout:** a repository folder shows its origin’s branches and
+  tags as Metabrowser last fetched them into its own store, which borrows the checkout’s
+  objects, and that store is fetched by the same rules; the checkout itself is still
+  never fetched into
+  ([Origin Branches in a Repository Folder](../../architecture/arch-open-modes.md#origin-branches-in-a-repository-folder)).
+- **The same guards as today:** one fetch per store at a time (its fetch lock), another
+  process’s fetch followed rather than repeated, a failed fetch tried again after a
+  window, and nothing while offline.
+
 ### Alternatives Considered
 
 - **Lower `FRESHNESS_WINDOW_S` and `SLOW_POLL_MS`.** Simple, but every check would be a
@@ -356,25 +396,28 @@ the transcripts, with no compatibility layer.
 
 ## Implementation Plan
 
-Two phases, each one pull request.
-The first fixes what the reader saw; the second brings every other view under the same
-policy.
+Three phases. The first fixes what the reader saw; the second brings every other GitHub
+view under the same policy; the third keeps Metabrowser’s own stores current.
 
 ### Phase 1: The Pull Request on Screen
 
-- [ ] A conditional account check in `gh_lists.active_account`, which every job’s
-  account check uses.
-- [ ] `ATTENDED_PROBE_S`, `CHECKS_PROBE_S`, and `FULL_REFRESH_S`, each beside its
-  measurement.
-- [ ] The pull request probe and the checks probe as `ServedPull` jobs outside the store
-  turn and the network slots, with the field comparison that ignores an ETag-only
-  change, `probed_at`, `verified_by: probe`, and `fresh_for_s` as the time to the next
-  probe.
-- [ ] The page’s ask scheduling in `pull-page.js`: asks timed from `fresh_for_s`, and at
-  once for a changed record.
-- [ ] The architecture documents: Serving Pull Requests and Freshness Verdicts in
+Phase 1 lands as two pull requests: the probes first, then the conditional account
+check.
+
+- [x] `ATTENDED_PROBE_S`, `CHECKS_PROBE_S`, `FULL_REFRESH_S`, and `PROBE_WAIT_S` in
+  `served_pull.py`, each beside its measurement.
+- [x] The pull request probe and the checks probe (`probe_pull_request` in `pulls.py`),
+  run by `ServedPull.probe` outside the store turn and the network slots, with the field
+  comparison that ignores an ETag-only change, `probed_at`, and `verified_by: probe`.
+- [x] The envelope’s `probe_every_s`, the interval of the page’s asks, rather than
+  `fresh_for_s`, which still says how long a record is fresh without probes.
+- [x] The page’s ask scheduling in `pull-page.js`: a current record is asked for every
+  `probe_every_s` while the page is visible, and a stale one a window after the last
+  ask.
+- [x] The architecture documents: Serving Pull Requests and Freshness Verdicts in
   `arch-github-pull-requests.md`, and Refresh Cadence in
   `arch-mirror-acquisition-and-refresh.md`.
+- [ ] A conditional account check in `gh.py`, which every job’s account check uses.
 
 ### Phase 2: Lists and Everything Else
 
@@ -382,6 +425,20 @@ policy.
 - [ ] `FULL_REFRESH_S` for the catalog scan, the files list, and stacks.
 - [ ] Budget admission for the cores walk, stacks, labels, and the timeline.
 - [ ] `AUTOMATIC_CORE_PER_HOUR` in `gh_budget.py`.
+
+### Phase 3: Metabrowser’s Own Stores
+
+- [ ] A visible mirror page on a branch probes that branch’s tip every `STORE_PROBE_S`
+  between fetches, so a followed branch follows a push within seconds rather than a
+  freshness window and a poll later.
+  Core stays provider-agnostic (`ls-remote` of the one ref); the GitHub plugin may use a
+  conditional read of the ref if it measures cheaper.
+- [ ] A served store with no visible page is fetched every `STORE_IDLE_REFRESH_S` as
+  background work.
+- [ ] A repository folder keeps a store beside its checkout and lists its origin’s
+  branches and tags from it
+  ([Origin Branches in a Repository Folder](../../architecture/arch-open-modes.md#origin-branches-in-a-repository-folder)).
+- [ ] Both measured again on an idle machine before their constants are set.
 
 ## Testing Strategy
 

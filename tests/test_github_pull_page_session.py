@@ -346,6 +346,16 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 "body": {"tree": html_tree(_prose(_kpress_render(HOSTILE_COMMENT)))},
             }
 
+            # Ten seconds on, the page's own ask for the current record is a probe: GitHub
+            # answers its conditional read 304, so nothing is refreshed, and the record is
+            # vouched for by the probe.
+            clock[0] = FETCHED_AT + timedelta(minutes=6, seconds=10)
+            recorded["probed"] = _answer(client.post(_REFRESH, json=read_7, headers=JSON_BODY))
+            assert recorded["probed"]["body"]["refresh"] == "not_due"
+            recorded["probed_current"] = _answer(client.get(_PULL, params=read_7))
+            assert recorded["probed_current"]["body"]["verified_by"] == "probe"
+            clock[0] = FETCHED_AT + timedelta(minutes=6)
+
             # The same server, asked for the stand-in's merged and then its closed pull
             # request, each read once: what the header says in a state other than open.
             for number, name in ((8, "merged"), (9, "closed")):

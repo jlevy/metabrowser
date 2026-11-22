@@ -73,6 +73,7 @@ status: 200
   "checks_pending": true,
   "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -543,6 +544,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -721,6 +723,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
@@ -786,6 +789,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
@@ -833,6 +837,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
@@ -908,6 +913,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -948,6 +954,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -988,6 +995,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -1206,6 +1214,7 @@ status: 202
     "checks_pending": false,
     "record_revision": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": {
       "outcome": "gh_failed",
@@ -1240,6 +1249,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -1283,6 +1293,7 @@ status: 202
     "checks_pending": false,
     "record_revision": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": {
       "outcome": "gh_failed",
@@ -1317,6 +1328,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_failed",
@@ -1361,6 +1373,7 @@ status: 200
     "checks_pending": false,
     "record_revision": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": false,
     "last_refresh": {
       "outcome": "gh_failed",

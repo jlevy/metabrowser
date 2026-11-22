@@ -794,11 +794,13 @@ $ node tests/dom/github-pulls-panel-second-session.js
       }
     },
     {
-      "name": "a row with a record fetches nothing",
+      "name": "a row with a current record is probed at once, and an unchanged probe fetches nothing",
       "asked": [
-        "GET /api/plugin/github/pull?number=7"
+        "GET /api/plugin/github/pull?number=7",
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
       ],
       "waits": [
+        0,
         30000
       ],
       "before": {

@@ -48,6 +48,7 @@ status: 200
   "checks_pending": false,
   "record_revision": null,
   "fresh_for_s": 60.0,
+  "probe_every_s": null,
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
@@ -217,6 +218,7 @@ status: 202
     "checks_pending": false,
     "record_revision": null,
     "fresh_for_s": 60.0,
+    "probe_every_s": null,
     "refreshing": true,
     "last_refresh": null,
     "comparison_route": null,
@@ -247,6 +249,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "307788c44b33463e9d30e83be9a0f29788a018868fef38ca96ff5cad356fef67",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -863,6 +866,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "307788c44b33463e9d30e83be9a0f29788a018868fef38ca96ff5cad356fef67",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -1029,6 +1033,7 @@ status: 202
     "checks_pending": false,
     "record_revision": "307788c44b33463e9d30e83be9a0f29788a018868fef38ca96ff5cad356fef67",
     "fresh_for_s": 60.0,
+    "probe_every_s": 5.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",
@@ -1130,6 +1135,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -1248,6 +1254,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",
@@ -1356,6 +1363,7 @@ status: 202
     "checks_pending": false,
     "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
     "fresh_for_s": 60.0,
+    "probe_every_s": 5.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "succeeded",
@@ -1458,6 +1466,7 @@ status: 200
   "checks_pending": false,
   "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",

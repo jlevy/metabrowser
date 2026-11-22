@@ -320,10 +320,11 @@ const TRUNCATED = Object.freeze({
  *   pin_ref: string | null,
  *   fetched_at: string | null,
  *   verified_at?: string | null,
- *   verified_by?: "catalog" | "fetch" | null,
+ *   verified_by?: "catalog" | "fetch" | "probe" | null,
  *   head_moved?: boolean,
  *   checks_pending?: boolean,
  *   fresh_for_s: number,
+ *   probe_every_s?: number | null,
  *   record_revision: string | null,
  *   refreshing: boolean,
  *   preparing_comparison?: true,
@@ -1903,7 +1904,7 @@ export function renderedTextsHeld() {
  * @typedef {{status: number, etag: string | null, body: unknown, verified?: string | null}} PullResponse
  * @typedef {{
  *   request(method: "GET" | "POST", route: string, options: {etag?: string | null, body?: unknown}): Promise<PullResponse>,
- *   schedule(callback: () => void, delayMs: number): unknown,
+ *   schedule(callback: () => void, delayMs: number, kind?: "ask"): unknown,
  *   cancel(handle: unknown): void,
  *   now(): number,
  *   isVisible(): boolean,
@@ -1958,15 +1959,19 @@ export function createPullController(deps, options) {
   let hasPolled = false;
   let inFlightRefreshes = 0;
   let disposed = false;
-  // When this page last sent a refresh of its own for a stale record, by `deps.now()`. It asks
-  // again once a freshness window has passed while the record is still or again stale, so a
-  // page left open keeps refreshing, and a stale page whose refresh cannot run does not ask
-  // on every poll; the server holds each number to one attempt a window as well.
+  // When this page last sent an automatic ask of its own, by `deps.now()`. While it shows a
+  // record it asks every `probe_every_s`, current or stale: the server probes the record, a
+  // free conditional read, or reads it in full when that is due, and holds each number to
+  // its own attempt windows, so a stale page whose refresh cannot run is not refreshed on
+  // every ask. Without `probe_every_s` it asks only for a stale record, once a window.
   /** @type {number | null} */
   let autoAskedAt = null;
   /** That ask: none, scheduled (waiting in `askTimer`), or sent and not yet answered. */
   /** @type {"none" | "scheduled" | "sent"} */
   let autoAsk = "none";
+  // Whether that ask was for a stale record, which the age line shows as refreshing, or a
+  // probe of a current one, which changes nothing the page shows unless it finds a change.
+  let autoAskStale = false;
   // Once the repository's list of pull requests has vouched for this record, the page keeps
   // that list scanned while it is visible, so the record stays current without being read
   // again: when the check lapses it asks for the next scan, once a window, before it reads.
@@ -2110,16 +2115,25 @@ export function createPullController(deps, options) {
   }
 
   /**
-   * Whether the page asks for its stale record's refresh now: visible, online, nothing on its
-   * way or running, not held, and not asked within a freshness window. A failure the reader
-   * must fix (no gh, an old gh, signed out) waits for the reader's Refresh after the first ask.
+   * How long until the page's next automatic ask, or null when none is due without another
+   * read: visible, online, nothing on its way or running, and not held. A stale record is
+   * asked for, and so is a current one while the envelope names `probe_every_s`; a later ask
+   * for a current record waits that long after the last, and one for a stale record a
+   * freshness window. A failure the
+   * reader must fix (no gh, an old gh, signed out) waits for the reader's Refresh after the
+   * first ask.
+   *
+   * @returns {number | null}
    */
-  function staleRefreshDue() {
+  function automaticAskWait() {
+    const probeMs =
+      typeof envelope?.probe_every_s === "number" ? envelope.probe_every_s * 1000 : null;
     if (
       disposed ||
       !deps.isVisible() ||
       !online() ||
-      envelope?.state !== "stale" ||
+      envelope === null ||
+      !(envelope.state === "stale" || (envelope.state === "current" && probeMs !== null)) ||
       envelope.refreshing ||
       fetching ||
       autoAsk !== "none" ||
@@ -2129,32 +2143,61 @@ export function createPullController(deps, options) {
         (tab === "files" ||
           (tab === "" && deps.ownsConversation?.() === true && hasFreshComparisonMetadata())))
     ) {
-      return false;
+      return null;
     }
     if (autoAskedAt === null) {
-      return true;
+      return 0;
     }
     const outcome = envelope.last_refresh?.outcome ?? "";
-    return (
-      !["gh_missing", "gh_too_old", "not_logged_in"].includes(outcome) &&
-      deps.now() - autoAskedAt >= envelope.fresh_for_s * 1000
-    );
+    if (["gh_missing", "gh_too_old", "not_logged_in"].includes(outcome)) {
+      return null;
+    }
+    if (envelope.state === "current" && probeMs !== null) {
+      return Math.max(0, autoAskedAt + probeMs - deps.now());
+    }
+    // A stale record asks again once a window has passed since the last ask, on the poll
+    // that finds it so: the server answers a probe ask that finds a change, or a record
+    // past its full-read interval, with a refresh at once, so a record still stale after
+    // an ask is one whose refresh failed or was not due.
+    return deps.now() - autoAskedAt >= envelope.fresh_for_s * 1000 ? 0 : null;
   }
 
   /**
-   * Ask for the stale record's refresh when it is due. The first ask of a page waits for the
-   * reader to stay on it, as long as the Pulls tab's opening said (none for a click) or
-   * `REFRESH_ASK_MS` for an address, which holding Back walks through; a later one, on a
-   * page left open, asks at once. Any of them waits while a key that opened the page is held.
+   * Schedule the page's next automatic ask (`automaticAskWait`). The first ask of a page
+   * waits for the reader to stay on it, as long as the Pulls tab's opening said (none for a
+   * click) or `REFRESH_ASK_MS` for an address, which holding Back walks through; a later one,
+   * on a page left open, asks when its interval has passed, and each answer schedules the
+   * next. Any of them waits while a key that opened the page is held.
    */
   function askIfStale() {
-    if (!staleRefreshDue()) {
+    if (autoAsk === "scheduled" && !autoAskStale && envelope?.state === "stale") {
+      // A probe ask was waiting for a current record that has since gone stale: the stale
+      // record asks when its own wait says, which is at once on a page left open.
+      cancelAsk();
+    }
+    const waitMs = automaticAskWait();
+    if (waitMs === null) {
       return;
     }
-    const delayMs = autoAskedAt !== null ? 0 : (reader?.fetchAfterMs ?? REFRESH_ASK_MS);
+    const delayMs =
+      autoAskedAt !== null ? waitMs : Math.max(waitMs, reader?.fetchAfterMs ?? REFRESH_ASK_MS);
     autoAsk = "scheduled";
+    const forStale = envelope?.state === "stale";
+    autoAskStale = forStale;
     askAfter(async () => {
+      autoAsk = "none";
+      if (!forStale) {
+        // A probe ask recurs, and what it waited for may have changed meanwhile: a refresh
+        // started, the page fetched, or a limit took hold. Then it asks again when that is
+        // due, not now. An ask for a stale record is sent as it was scheduled.
+        const stillWaitMs = automaticAskWait();
+        if (stillWaitMs === null || stillWaitMs > 0) {
+          askIfStale();
+          return;
+        }
+      }
       autoAsk = "sent";
+      autoAskStale = envelope?.state === "stale";
       autoAskedAt = deps.now();
       try {
         await askForRefresh({ number: options.number });
@@ -2163,6 +2206,7 @@ export function createPullController(deps, options) {
       }
       if (!disposed) {
         render();
+        askIfStale();
       }
     }, delayMs);
   }
@@ -2192,11 +2236,11 @@ export function createPullController(deps, options) {
    * @param {string | null | undefined} value
    */
   function adoptVerified(value) {
-    const found = /^(catalog|fetch) (\S+)(?: scanning)?$/u.exec(value ?? "");
+    const found = /^(catalog|fetch|probe) (\S+)(?: scanning)?$/u.exec(value ?? "");
     if (envelope === null || envelope.record === null || found === null) {
       return;
     }
-    const by = /** @type {"catalog" | "fetch"} */ (found[1]);
+    const by = /** @type {"catalog" | "fetch" | "probe"} */ (found[1]);
     envelope = { ...envelope, verified_by: by, verified_at: found[2] };
     catalogBacked = catalogBacked || by === "catalog";
   }
@@ -2212,7 +2256,7 @@ export function createPullController(deps, options) {
       fetching: fetching || refreshPending,
       fetchQueued: fetchQueued(),
       refreshPending,
-      refreshDue: autoAsk !== "none",
+      refreshDue: autoAsk !== "none" && autoAskStale,
       online: online(),
       ...(deps.formatHold === undefined ? {} : { formatHold: deps.formatHold }),
       ownsChanges: walkSettling || ownsChanges(),
@@ -2272,6 +2316,15 @@ export function createPullController(deps, options) {
     }
   }
 
+  /**
+   * Whether an ask for a stale record is waiting, so a refresh may follow. A waiting probe
+   * ask, for a current record, is not one: it waits on every visible current page, and
+   * the probe it asks for is answered without a refresh unless GitHub changed.
+   */
+  function refreshAskWaiting() {
+    return askTimer !== null && autoAskStale;
+  }
+
   function cancelAsk() {
     if (askTimer !== null) {
       deps.cancel(askTimer);
@@ -2291,14 +2344,18 @@ export function createPullController(deps, options) {
    * @param {number} delayMs
    */
   function askAfter(ask, delayMs) {
-    askTimer = deps.schedule(() => {
-      if (!disposed && reader?.walking?.() === true) {
-        askAfter(ask, delayMs);
-        return;
-      }
-      askTimer = null;
-      ask();
-    }, delayMs);
+    askTimer = deps.schedule(
+      () => {
+        if (!disposed && reader?.walking?.() === true) {
+          askAfter(ask, delayMs);
+          return;
+        }
+        askTimer = null;
+        ask();
+      },
+      delayMs,
+      "ask",
+    );
   }
 
   function scheduleNext(fastDelay = FAST_POLL_MS) {
@@ -2800,7 +2857,7 @@ export function createPullController(deps, options) {
       !hasPolled ||
       polling ||
       fetching ||
-      askTimer !== null ||
+      refreshAskWaiting() ||
       inFlightRefreshes > 0 ||
       error !== null ||
       envelope === null ||
@@ -3189,7 +3246,7 @@ export function createPullController(deps, options) {
     poll: () => poll(),
     timelineAllowed: () =>
       hasPolled &&
-      askTimer === null &&
+      !refreshAskWaiting() &&
       inFlightRefreshes === 0 &&
       (envelope?.refreshing === false || envelope?.preparing_comparison === true),
     fetchIdleChanges,
@@ -3308,7 +3365,7 @@ export function keyMovesPane(key, target) {
  *   apply(place: PanePlace): boolean,
  *   anchored(): boolean,
  *   toTop(): void,
- *   schedule(callback: () => void, delayMs: number): unknown,
+ *   schedule(callback: () => void, delayMs: number, kind?: "ask"): unknown,
  *   cancel(handle: unknown): void,
  * }} ScrollKeeperDependencies
  */

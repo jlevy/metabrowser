@@ -295,9 +295,9 @@ function createPage(runtime, options) {
       }
       return answer;
     },
-    schedule(callback, delayMs) {
+    schedule(callback, delayMs, kind) {
       const id = nextTimer++;
-      timers.set(id, { callback, delayMs });
+      timers.set(id, { callback, delayMs, kind });
       return id;
     },
     cancel(handle) {
@@ -329,7 +329,8 @@ function createPage(runtime, options) {
     onRestored: () => () => {},
   });
   const controller = runtime.createPullController(deps, options);
-  const isAskDelay = (delayMs) => delayMs === 0 || delayMs === runtime.REFRESH_ASK_MS;
+  // The page names its asks (`askAfter`), so a poll and an ask with the same delay differ.
+  const isAsk = (timer) => timer.kind === "ask";
 
   async function settle() {
     for (let turn = 0; turn < 20; turn += 1) {
@@ -358,7 +359,7 @@ function createPage(runtime, options) {
       navigations = [];
       await action();
       await settle();
-      const timer = [...timers.values()].find((each) => !isAskDelay(each.delayMs));
+      const timer = [...timers.values()].find((each) => !isAsk(each));
       const snapshot = controller.snapshot();
       const entry = {
         step: name,
@@ -373,8 +374,12 @@ function createPage(runtime, options) {
                 : timer.delayMs,
         paints: paints.length,
       };
-      if ([...timers.values()].some((each) => each.delayMs === runtime.REFRESH_ASK_MS)) {
+      const ask = [...timers.values()].find(isAsk);
+      if (ask?.delayMs === runtime.REFRESH_ASK_MS) {
         entry.askWaits = true;
+      } else if (ask !== undefined && ask.delayMs > 0) {
+        // A current record's next probe ask, every `probe_every_s` while the page is visible.
+        entry.probeAskMs = ask.delayMs;
       }
       if (reloads > 0) {
         entry.reloads = reloads;
@@ -399,13 +404,15 @@ function createPage(runtime, options) {
     },
     /** The poll that is due. */
     fire() {
-      const [id, timer] = [...timers.entries()].find(([, each]) => !isAskDelay(each.delayMs));
+      const [id, timer] = [...timers.entries()].find(([, each]) => !isAsk(each));
       timers.delete(id);
       timer.callback();
     },
     /** A cold page asks immediately; a stale page waits for the reader to stay. */
     fireAsk(delayMs = runtime.REFRESH_ASK_MS) {
-      const [[id, timer]] = [...timers.entries()].filter(([, each]) => each.delayMs === delayMs);
+      const [[id, timer]] = [...timers.entries()].filter(
+        ([, each]) => isAsk(each) && each.delayMs === delayMs,
+      );
       timers.delete(id);
       timer.callback();
     },
@@ -1039,6 +1046,63 @@ async function main() {
   );
   leftOpen.controller.dispose();
 
+  // A current page left open asks every `probe_every_s`, and the server answers each ask
+  // with a probe, a conditional read GitHub answers for free: unchanged, it is not due,
+  // and the record is vouched for by the probe, with the age line not pulsing. Hidden, the
+  // page asks nothing; shown again, it asks when its interval has passed. A probe that
+  // finds a change starts the refresh, which the page then follows.
+  const probing = createPage(runtime, { number: 7, tab: "", brief: true });
+  /** Printed with the second part, as `leftOpen` is. */
+  const probingStory = [];
+  probing.clock.now = Date.parse("2026-09-17T12:06:00Z");
+  probing.server.pull = recorded.refreshed;
+  await probing.controller.start();
+  probing.server.refresh.push(recorded.probed);
+  probingStory.push(
+    await probing.step("a current page asks once the reader stays, and a probe answers", () =>
+      probing.fireAsk(),
+    ),
+  );
+  const firstAsk = probingStory.at(-1);
+  assert(
+    firstAsk.probeAskMs === recorded.refreshed.body.probe_every_s * 1000 &&
+      firstAsk.paint?.revalidating !== true,
+    `a probed page does not ask again after probe_every_s: ${JSON.stringify(firstAsk)}`,
+  );
+  probing.clock.now += recorded.refreshed.body.probe_every_s * 1000;
+  probing.server.pull = recorded.probed_current;
+  probing.server.refresh.push(recorded.probed);
+  probingStory.push(
+    await probing.step("its interval later it asks again, and the probe vouches", async () =>
+      probing.fireAsk(recorded.refreshed.body.probe_every_s * 1000),
+    ),
+  );
+  probing.setVisible(false);
+  await probing.controller.onVisibilityChange();
+  probingStory.push(
+    await probing.step("hidden, it asks nothing", async () => {
+      probing.clock.now += 60_000;
+    }),
+  );
+  assert(probingStory.at(-1).probeAskMs === undefined, "a hidden page keeps a probe ask waiting");
+  probing.setVisible(true);
+  probing.server.refresh.push({
+    status: 202,
+    etag: null,
+    body: { pull: { ...recorded.probed_current.body, refreshing: true } },
+  });
+  probingStory.push(
+    await probing.step(
+      "shown again past its interval it asks at once, and a probe that found a change refreshes",
+      async () => {
+        await probing.controller.onVisibilityChange();
+        probing.fireAsk(0);
+      },
+    ),
+  );
+  probing.controller.dispose();
+  assert(probing.timersLeft() === 0, "a disposed probing page left a timer running");
+
   // GitHub's rate limit refused the page's refresh. It is a hold, not a failure: the page
   // offers no Refresh, names when it will ask again, which is not before `reset_at` and not
   // within a freshness window of the refused attempt, and asks at that time, at once.
@@ -1467,6 +1531,7 @@ async function main() {
   );
   const second = {
     leftOpen: leftOpenStory,
+    probing: probingStory,
     failing: failingStory,
     rateLimited: rateLimitedStory,
     checkActions,

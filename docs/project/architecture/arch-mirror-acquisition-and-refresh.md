@@ -295,7 +295,10 @@ network (`mirror_refresh.py`). A mirror is stale once its last fetch is older th
   A job takes its network slot only once its turn has come.
 - **When a refresh starts:** serve mode refreshes a stale mirror once at startup, and a
   page asks for one when it opens or becomes visible on a stale mirror.
-  A refresh that moves the served branch moves the pin with it
+  A visible pull request’s page asks more often, and its server probes GitHub between
+  full reads
+  ([Serving Pull Requests](arch-github-pull-requests.md#serving-pull-requests)). A
+  refresh that moves the served branch moves the pin with it
   ([Following a Branch](#following-a-branch)). When another process holds the fetch
   lock, a served mirror follows that refresh (`ELSEWHERE_POLL_S`, up to
   `ELSEWHERE_WAIT_S`) and observes the store when it ends.

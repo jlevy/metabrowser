@@ -40,7 +40,9 @@ if TYPE_CHECKING:
     from metabrowser.builtin_plugins.github.pull_record import PullRecord
 
 type Verdict = Literal["current", "changed", "checks", "unverified"]
-type VerifiedBy = Literal["catalog", "fetch"]
+# ``probe`` is never a verdict of this module's: the pull route reports it when a probe
+# found the record unchanged more recently than either (:func:`.pull_route.probed_at`).
+type VerifiedBy = Literal["catalog", "fetch", "probe"]
 
 # How long past the window a running scan keeps the last one vouching. A delta scan with
 # nothing new to page is one account check and one GraphQL page, 0.46-0.58 s and 0.48 s

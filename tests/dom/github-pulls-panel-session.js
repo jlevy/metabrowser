@@ -687,10 +687,12 @@ async function readerStory() {
     { fetchAfterMs: 0, initial: null },
     { pull: absent, refresh: tooMany },
   );
+  // A current record is probed at once (`probe_every_s`): GitHub answers the server's
+  // conditional read unchanged, so nothing is fetched.
   await opened(
-    "a row with a record fetches nothing",
+    "a row with a current record is probed at once, and an unchanged probe fetches nothing",
     { fetchAfterMs: 0, initial: { etag: current.etag, body: current.body } },
-    { pull: { status: 304, etag: current.etag, body: null } },
+    { pull: { status: 304, etag: current.etag, body: null }, refresh: pageRecorded.probed },
   );
   // A stale record is shown at once and refreshed behind it, with nothing to press: a click
   // asks at once, a key that stops on the row after the same wait as a fetch, and a key still

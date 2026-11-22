@@ -168,7 +168,7 @@ for that check, and not a second account.
 | Views | The working tree | The working tree, and revisions | Revisions |
 | Commits, diffs, and the ref chooser | No | Yes | Yes |
 | Pulls and View on GitHub | No, with one case [not decided](#not-decided) | When `origin` is on github.com | When the origin is on github.com |
-| Refresh from the origin | None | Never into the checkout | A background fetch into the store, which a served branch follows |
+| Refresh from the origin | None | Never into the checkout; a background fetch into Metabrowser’s store beside it, [not built](#origin-branches-in-a-repository-folder) | A background fetch into the store, which a served branch follows |
 | `kind` in `GET /api/identity` | `folder` | `folder` | `mirror` |
 
 - **Repository folder mode needs only Git.** Any repository gets its root opened,
@@ -260,6 +260,40 @@ as they do on a mirror.
 Opening the reader’s own working-tree copy of the file is a separate action with its own
 label, since the working tree can differ from the head and renders under the folder’s
 profile.
+
+### Origin Branches in a Repository Folder
+
+**Not built** (bead `mb-ay84`). The owner set the rule on 2026-11-22: a repository
+folder shows its origin’s branches and tags as Metabrowser last fetched them into a
+store of its own beside the checkout, kept current as a mirror’s store is, while the
+checkout is never fetched into.
+It carries out “in local mode, … the cache layers are still the same as mirror mode”
+(the owner, 2026-11-19): a folder’s revisions are a mirror’s, and the working tree and
+local branches are what it adds.
+Fetching into Metabrowser’s own store is safe to repeat, so how often is a matter of
+cost alone
+([Metabrowser’s Own Stores](../specs/active/plan-2026-11-22-pull-request-update-cadence.md#metabrowsers-own-stores)).
+
+- **The store** is the overlay that already serves a pull request’s Changes beside a
+  checkout, with the served checkout as its lender
+  ([The Lending Checkout](arch-mirror-acquisition-and-refresh.md#the-lending-checkout)),
+  so it holds only the objects the checkout lacks.
+  Core acquires it for any repository folder whose origin the lender checks accept, on
+  github.com or not, in the background after the folder’s first paint.
+- **The chooser** lists the checkout’s own branches from the checkout, the origin’s
+  branches and tags from the store, with when it was last fetched, and any ref only the
+  checkout has, such as a local tag or another remote’s branch, from the checkout.
+  The checkout’s own remote-tracking branches of the origin are not a second list.
+- **Showing an origin branch** serves a revision read from the store, inert as every
+  revision is, and it follows the branch when a fetch moves it, as a mirror’s does
+  ([Following a Branch](arch-mirror-acquisition-and-refresh.md#following-a-branch)).
+- **Refresh** fetches the store and re-reads the checkout’s refs.
+- **Without a store,** because the origin is refused, the reader is offline, or the
+  first fetch has not ended, the chooser lists the checkout’s refs as today and says
+  why.
+
+Open: whether a row marks where the reader’s own `origin/<branch>` differs from the
+origin’s, so a branch the reader has not pulled is visible.
 
 ## What Is Never Written
 
@@ -536,6 +570,7 @@ the design that carries it out.
 | Repository folder mode is for any Git repository; Pulls and View on GitHub are for github.com only | 2026-11-18 | [The Three Modes](#the-three-modes) |
 | One view for each server for now; links that select a branch are deferred under `mb-itzy` | 2026-11-18 | [Views](#views) |
 | A revision renders inert | 2026-11-09, confirmed 2026-11-18 | [Views](#views) |
+| A repository folder shows its origin’s branches and tags from Metabrowser’s own store beside the checkout, fetched as often as is useful; the checkout is never fetched into | 2026-11-22 | [Origin Branches in a Repository Folder](#origin-branches-in-a-repository-folder) |
 | Pulls and View on GitHub stay on a revision view, and it links to the commit viewed | 2026-11-18 | [Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder) |
 | View on branch and Browse code go to the pull request’s head as a revision view; the working-tree copy is a separate, labelled action | 2026-11-18 | [Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder) |
 | Open URL… opens the mirror, always, offers a known checkout, and never silently shows another revision | 2026-11-18 | [The File Menu](#the-file-menu) |
@@ -588,6 +623,7 @@ A pull request that builds a part updates its row.
 | GitHub links opened in the app, and `SessionRoot` | Built: one mirror per repository, which opens every link into it in its running server | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0`; `mb-30xb` |
 | A repository folder’s revision views, its chooser, and their command line, with the two revision requirements above | Built | [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout); [#559](https://github.com/jlevy/metabrowser/pull/559), `mb-8ob8` |
 | Pulls on a folder’s revision; View on branch and Browse code to the head as a revision | Not built | Follows `mb-8ob8` |
+| A repository folder’s origin branches and tags from Metabrowser’s store beside it | Not built | `mb-ay84` |
 | Recent targets kept by `metab`, behind File > Open Recent | Built; a mirror’s `target` waits for `ProviderUrlReducer.web_url` (`mb-8bds`), and the resolved root for the resolver | [Recent Targets](arch-recent-targets.md), `mb-40k4` |
 | File > Open URL… | Built, without the offer of a known checkout, which waits for a way to tell that an open folder is a checkout of the URL’s repository | [#560](https://github.com/jlevy/metabrowser/pull/560), `mb-m4mg`; the offer is `mb-bkk2` |
 | View on GitHub on files, folders, pull requests, and commits | Built; the app’s native popover is its own | `mb-4wqh` |

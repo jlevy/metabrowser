@@ -16,6 +16,7 @@
       "checks_pending": false,
       "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
       "fresh_for_s": 60.0,
+      "probe_every_s": 5.0,
       "refreshing": false,
       "last_refresh": {
         "outcome": "succeeded",
@@ -120,6 +121,7 @@
         "checks_pending": false,
         "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
         "fresh_for_s": 60.0,
+        "probe_every_s": 5.0,
         "refreshing": true,
         "last_refresh": {
           "outcome": "succeeded",
@@ -224,6 +226,7 @@
       "checks_pending": false,
       "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
       "fresh_for_s": 60.0,
+      "probe_every_s": 5.0,
       "refreshing": false,
       "last_refresh": {
         "outcome": "succeeded",

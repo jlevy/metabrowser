@@ -1214,6 +1214,125 @@ async def refresh_pull_request(
     return record
 
 
+# ── Probing ────────────────────────────────────────────────────
+
+type ProbeOutcome = Literal["unchanged", "changed", "checks_changed"]
+
+
+@dataclass(frozen=True, slots=True)
+class PullProbe:
+    """What one probe found: whether the record still describes GitHub, and newer ETags.
+
+    ``etags`` holds the ETag of each path GitHub answered ``200`` without changing anything
+    the record shows, for the next probe to send instead of the record's.
+    """
+
+    outcome: ProbeOutcome
+    etags: dict[str, str]
+
+
+def checks_probe_paths(
+    published: PublishedSource | ListedRepository, record: PullRecord
+) -> tuple[str, str] | None:
+    """The check-run and status pages a probe of *record*'s checks asks, or ``None``.
+
+    Only a record whose check runs fit on one page, since a ``304`` for page one then says
+    the whole list is unchanged, as :func:`_reusable_etag` relies on for the full read; and
+    only one that holds both parts, since a part GitHub refused would read as a change on
+    every probe.
+    """
+
+    if (
+        record.truncated.check_runs
+        or len(record.check_runs) >= API_PAGE_SIZE
+        or record.status is None
+        or "check_runs" in record.unavailable
+        or "status" in record.unavailable
+    ):
+        return None
+    owner, repo = _owner_and_repo(published)
+    head = f"repos/{owner}/{repo}/commits/{record.pull.head.sha}"
+    return _first_page(f"{head}/check-runs"), _first_page(f"{head}/status")
+
+
+def _same_check_runs(response: GhResponse, record: PullRecord) -> bool:
+    payload = response_json(response)
+    items = payload.get("check_runs") if isinstance(payload, dict) else None  # pyright: ignore[reportUnknownMemberType]
+    if not isinstance(items, list):
+        return False
+    read, dropped = readable_items(items, _check_run)  # pyright: ignore[reportUnknownArgumentType]
+    return not dropped and read == record.check_runs
+
+
+def _same_status(response: GhResponse, record: PullRecord) -> bool:
+    try:
+        status, dropped = _status(response_json(response))
+    except READ_FAILURES:
+        return False
+    return status == record.status and dropped == record.truncated.statuses
+
+
+async def probe_pull_request(
+    published: PublishedSource | ListedRepository,
+    record: PullRecord,
+    *,
+    etags: dict[str, str],
+    checks: bool,
+) -> PullProbe:
+    """Ask GitHub whether *record* still describes pull request ``record.number``.
+
+    Each request is conditional, on the ETag in *etags* or else the record's, and GitHub
+    does not count one it answers ``304`` against the rate limit (measured 2026-11-22; see
+    docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md). The pull is
+    asked first; with *checks*, so are the first pages of its head's check runs and
+    status (:func:`checks_probe_paths`). A ``200`` is compared with what the record holds,
+    since GitHub sometimes sends a new ETag for the same content, so only a real change is
+    ``changed`` (the pull) or ``checks_changed`` (only its checks). A path the record holds
+    no ETag for cannot be asked conditionally and counts as changed.
+
+    Runs no account check and writes nothing: the full read a change starts checks the
+    account and publishes. Raises only :class:`PullDataError`.
+    """
+
+    owner, repo = _owner_and_repo(published)
+    pull_path = f"repos/{owner}/{repo}/pulls/{record.number}"
+    newer: dict[str, str] = {}
+    etag = etags.get(pull_path) or record.etags.get(pull_path)
+    if etag is None:
+        return PullProbe("changed", newer)
+    try:
+        response = await _get(pull_path, etag=etag)
+    except PageTooLargeError as exc:
+        raise _unreadable_pull() from exc
+    if response.status != 304:
+        try:
+            pull = _pull(response_json(response), record.number)
+        except READ_FAILURES as exc:
+            raise _unreadable_pull() from exc
+        if pull != record.pull:
+            return PullProbe("changed", newer)
+        if response.etag is not None:
+            newer[pull_path] = response.etag
+    paths = checks_probe_paths(published, record) if checks else None
+    if paths is None:
+        return PullProbe("unchanged", newer)
+    for path, same in zip(paths, (_same_check_runs, _same_status), strict=True):
+        etag = etags.get(path) or record.etags.get(path)
+        if etag is None:
+            return PullProbe("checks_changed", newer)
+        try:
+            response = await _get(path, etag=etag)
+        except PageTooLargeError:
+            return PullProbe("checks_changed", newer)
+        if response.status == 304:
+            continue
+        if not same(response, record):
+            return PullProbe("checks_changed", newer)
+        if response.etag is not None:
+            newer[path] = response.etag
+    return PullProbe("unchanged", newer)
+
+
 def _keep_stamp(
     published: PublishedSource | ListedRepository,
     number: int,
@@ -1298,10 +1417,14 @@ async def open_pull_request(
 
 __all__ = [
     "NeedsDeepening",
+    "ProbeOutcome",
     "PullDataError",
     "PullDataState",
+    "PullProbe",
+    "checks_probe_paths",
     "last_refresh",
     "open_pull_request",
+    "probe_pull_request",
     "refresh_pull_request",
     "utc_now",
 ]

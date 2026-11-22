@@ -29,7 +29,12 @@ from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
 )
 from metabrowser.builtin_plugins.github.pull_route import pull_state
-from metabrowser.builtin_plugins.github.served_pull import ServedPull
+from metabrowser.builtin_plugins.github.served_pull import (
+    ATTENDED_PROBE_S,
+    CHECKS_PROBE_S,
+    FULL_REFRESH_S,
+    ServedPull,
+)
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 
 SOURCE = "https://github.com/octo/demo"
@@ -549,3 +554,165 @@ def test_the_verified_header_says_a_catalog_verdict_was_given_while_a_scan_ran()
     # The clock's verdict does not wait on the scan, and no record has no header.
     assert verified_header(envelope("fetch", at), scanning=True) == {VERIFIED_HEADER: f"fetch {at}"}
     assert verified_header(envelope(None, None), scanning=True) == {}
+
+
+# ── Probes ─────────────────────────────────────────────────────
+
+
+def _probing(
+    monkeypatch: pytest.MonkeyPatch, outcomes: list[pulls.PullProbe | pulls.PullDataError]
+) -> list[bool]:
+    """Answer each probe with the next of *outcomes*; return what each asked of its checks."""
+
+    asked: list[bool] = []
+
+    async def probe(_published: object, _record: object, **kwargs: Any) -> pulls.PullProbe:
+        asked.append(bool(kwargs["checks"]))
+        found = outcomes.pop(0)
+        if isinstance(found, pulls.PullDataError):
+            raise found
+        return found
+
+    monkeypatch.setattr(pulls, "probe_pull_request", probe)
+    return asked
+
+
+def test_a_visible_record_is_probed_every_few_seconds_and_read_in_full_every_minute_or_two(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Probes vouch for a record past the freshness window, up to FULL_REFRESH_S."""
+
+    record = _record(state="closed", fetched=NOW)
+    held = _held(record, tmp_path)
+    _probing(monkeypatch, [pulls.PullProbe("unchanged", {})] * 3)
+    clock = [NOW]
+    monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
+    assert held.automatic_due(NOW) == "probe"
+    asyncio.run(held.probe(record))
+    assert held.probed_at == _stamp(NOW)
+    # Not again within ATTENDED_PROBE_S, however many pages ask.
+    assert held.automatic_due(NOW + timedelta(seconds=ATTENDED_PROBE_S - 1)) is None
+    assert held.automatic_due(NOW + timedelta(seconds=ATTENDED_PROBE_S)) == "probe"
+    # Past the freshness window, the probe that vouched keeps it from a full read...
+    clock[0] = NOW + timedelta(seconds=FRESHNESS_WINDOW_S - 1)
+    asyncio.run(held.probe(record))
+    assert held.automatic_due(NOW + timedelta(seconds=FRESHNESS_WINDOW_S + 5)) == "probe"
+    # ...until FULL_REFRESH_S, whatever the probes say.
+    assert held.automatic_due(NOW + timedelta(seconds=FULL_REFRESH_S + 1)) == "full"
+    # With no probe within a window, the window decides, as before probes.
+    unprobed = _held(record, tmp_path)
+    assert unprobed.automatic_due(NOW + WINDOW + timedelta(seconds=1)) == "full"
+
+
+def test_a_change_a_probe_finds_is_due_at_once_and_does_not_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    record = _record(state="closed", fetched=NOW)
+    held = _held(record, tmp_path)
+    _probing(monkeypatch, [pulls.PullProbe("changed", {})])
+    monkeypatch.setattr(pulls, "utc_now", lambda: NOW)
+    asyncio.run(held.probe(record))
+    assert held.automatic_due(NOW) == "full"
+    # An attempt that starts after the probe consumes it; a failed one is not re-armed by
+    # the next probe for a window.
+    held._last_attempt = NOW + timedelta(seconds=1)  # pyright: ignore[reportPrivateUsage]
+    held.last = {"outcome": "gh_failed", "message": "x", "reset_at": None, "at": _stamp(NOW)}
+    later = NOW + timedelta(seconds=ATTENDED_PROBE_S + 2)
+    assert held.automatic_due(later) is None
+    assert not held.probe_due(later)
+
+
+def test_a_change_to_checks_alone_reads_them_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pending check run is probed with the pull, and a change reads only the checks."""
+
+    record = _record(state="open", runs=("in_progress",), fetched=NOW)
+    held = _held(record, tmp_path)
+    asked = _probing(
+        monkeypatch, [pulls.PullProbe("unchanged", {}), pulls.PullProbe("checks_changed", {})]
+    )
+    clock = [NOW]
+    monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
+    asyncio.run(held.probe(record))
+    # The checks are probed only once every CHECKS_PROBE_S.
+    clock[0] = NOW + timedelta(seconds=ATTENDED_PROBE_S)
+    asyncio.run(held.probe(record))
+    assert asked == [True, False]
+    clock[0] = NOW + timedelta(seconds=CHECKS_PROBE_S)
+    _probing(monkeypatch, [pulls.PullProbe("checks_changed", {})])
+    asyncio.run(held.probe(record))
+    assert held.automatic_due(clock[0]) == "full"
+    refreshed: list[dict[str, object]] = []
+
+    async def refresh(*_args: object, **kwargs: object) -> PullRecord:
+        refreshed.append(kwargs)
+        return record.model_copy(update={"fetched_at": _stamp(clock[0])})
+
+    monkeypatch.setattr(pulls, "refresh_pull_request", refresh)
+    asyncio.run(held.refresh())
+    assert refreshed == [{"adopt_current": False, "checks_only": True}]
+    # The new record is probed afresh, once ATTENDED_PROBE_S has passed since the last.
+    assert held.probed_at is None and held.automatic_due(clock[0]) is None
+    assert held.automatic_due(clock[0] + timedelta(seconds=ATTENDED_PROBE_S)) == "probe"
+
+
+def test_a_failed_probe_waits_a_window_and_a_rate_limit_holds_every_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    record = _record(state="closed", fetched=NOW)
+    held = _held(record, tmp_path)
+    _probing(monkeypatch, [pulls.PullDataError("network_error", "offline")])
+    monkeypatch.setattr(pulls, "utc_now", lambda: NOW)
+    asyncio.run(held.probe(record))
+    assert held.probed_at is None
+    assert not held.probe_due(NOW + timedelta(seconds=ATTENDED_PROBE_S + 1))
+    assert held.probe_due(NOW + WINDOW + timedelta(seconds=1))
+    held.last = {
+        "outcome": "rate_limited",
+        "message": None,
+        "reset_at": _stamp(NOW + timedelta(hours=1)),
+        "at": _stamp(NOW),
+    }
+    assert not held.probe_due(NOW + WINDOW + timedelta(seconds=1))
+
+
+def test_a_probe_of_an_older_record_says_nothing_of_the_newer_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    record = _record(state="closed", fetched=NOW)
+    held = _held(record, tmp_path)
+    newer = _stamp(NOW + timedelta(seconds=1))
+
+    async def probe(*_args: object, **_kwargs: object) -> pulls.PullProbe:
+        held.saw_record(newer)
+        return pulls.PullProbe("changed", {})
+
+    monkeypatch.setattr(pulls, "probe_pull_request", probe)
+    monkeypatch.setattr(pulls, "utc_now", lambda: NOW)
+    asyncio.run(held.probe(record))
+    # What it found is dropped: nothing is due until the next probe of the newer record.
+    assert held.fetched_at == newer and held.automatic_due(NOW) is None
+    assert held.automatic_due(NOW + timedelta(seconds=ATTENDED_PROBE_S)) == "probe"
+
+
+def test_two_pages_asking_at_once_share_one_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    record = _record(state="closed", fetched=NOW)
+    held = _held(record, tmp_path)
+    calls: list[int] = []
+
+    async def probe(*_args: object, **_kwargs: object) -> pulls.PullProbe:
+        calls.append(1)
+        await asyncio.sleep(0.01)
+        return pulls.PullProbe("unchanged", {})
+
+    monkeypatch.setattr(pulls, "probe_pull_request", probe)
+    monkeypatch.setattr(pulls, "utc_now", lambda: NOW)
+
+    async def run() -> None:
+        await asyncio.gather(held.probe(record), held.probe(record))
+
+    asyncio.run(run())
+    assert calls == [1] and held.probed_at == _stamp(NOW)

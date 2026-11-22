@@ -337,6 +337,7 @@ status: 200
   "checks_pending": true,
   "record_revision": "a619ab340be40ab8fd05eb4905d2177ec7594b9a4aa6c3806baa7d70b397ea4a",
   "fresh_for_s": 60.0,
+  "probe_every_s": 5.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "succeeded",

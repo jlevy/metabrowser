@@ -31,13 +31,15 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 
-from metabrowser.builtin_plugins.github import pulls
+from metabrowser.builtin_plugins.github import gh_budget, pulls
+from metabrowser.builtin_plugins.github.pull_freshness import checks_pending
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
@@ -55,6 +57,8 @@ if TYPE_CHECKING:
     from metabrowser.builtin_plugins.github.pull_freshness import RecordFreshness
     from metabrowser.cache.acquire import PublishedSource
 
+log = logging.getLogger(__name__)
+
 # Pull requests whose state is kept in memory. The numbers are request text, so this is a
 # bound, as ``MAX_REMEMBERED_MISSES`` is on the selections a session remembers. A
 # steady-state entry without a selected-core payload was about 1.1 KB; one dropped
@@ -68,6 +72,28 @@ MAX_KEPT_PULLS: Final = 64
 # Two 64-character IDs per entry keep this below 2 KiB per held PR even with SHA-256.
 MAX_ISSUED_COMPARISONS: Final = 8
 
+
+# How often a visible page's pull request is probed: one conditional ``GET`` of the pull
+# (:func:`.pulls.probe_pull_request`), which GitHub does not count against the rate limit
+# when it answers ``304``. GitHub's ETag moved 2.7 s after a change, and one probe took
+# 0.56 to 0.96 s with gh 2.98.0 and 0.06 s of CPU (2026-11-22, load average near 300), so
+# 5 s shows a change about 6 s after it on average, 10 s at worst, with one ``gh`` process
+# each time. See docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md.
+ATTENDED_PROBE_S: Final = 5.0
+# How often an open pull request's settling checks are probed with it: the first pages of
+# its head's check runs and status, two more conditional ``GET``s. While CI runs they
+# change every few seconds, and each change costs a ``checks_only`` read of about 2
+# ``core``; 10 s holds that to about 12 a minute.
+CHECKS_PROBE_S: Final = 10.0
+# How long a record the probes vouch for goes without a full read. A probe cannot see an
+# edited comment, a reaction, or a re-run check of a finished head, so a visible page's
+# record is read in full this often whatever the probes say: the "every minute or two"
+# the plan sets, and an unchanged full read is all ``304``s and its account checks.
+FULL_REFRESH_S: Final = 90.0
+# How long a ``POST`` that started a probe waits for it. A probe normally ends in about a
+# second; past this the request answers ``not_due`` and the probe ends on its own, so a
+# slow network never holds the page's request for gh's own 30 s deadline.
+PROBE_WAIT_S: Final = 3.0
 
 # A measured selected-core path is about 1.7 s. This bounds only the POST's wait,
 # never the provider job; a late core remains available through the ordinary GET.
@@ -241,6 +267,19 @@ class ServedPull:
     )
     _issued: OrderedDict[tuple[str, str], None] = field(default_factory=OrderedDict, repr=False)
     _displayed: tuple[str, str] | None = field(default=None, repr=False)
+    # Probes (:func:`.pulls.probe_pull_request`) of the record held: when one last found it
+    # unchanged (``probed_at``), when one was last tried, for the pull and for its checks,
+    # and when one last failed. ``_probe_etags`` are newer ETags GitHub sent for content
+    # the record already holds. ``_probe_saw`` is a change a probe found, ``pull`` or only
+    # ``checks``, and when, which makes the record due until an attempt starts after it.
+    probed_at: str | None = field(default=None, repr=False)
+    _probe_attempt: datetime | None = field(default=None, repr=False)
+    _checks_probe_attempt: datetime | None = field(default=None, repr=False)
+    _probe_failed: datetime | None = field(default=None, repr=False)
+    _probe_etags: dict[str, str] = field(default_factory=dict, repr=False)
+    _probe_saw: Literal["pull", "checks"] | None = field(default=None, repr=False)
+    _probe_saw_at: datetime | None = field(default=None, repr=False)
+    _probe_task: asyncio.Future[None] | None = field(default=None, repr=False)
 
     def note_comparison(self, pair: tuple[str, str], *, displayed: bool = False) -> None:
         """Remember a comparison this PR issued; metadata cannot evict the displayed pair."""
@@ -313,13 +352,16 @@ class ServedPull:
         window = timedelta(seconds=window_s)
         unserved = self.without_store and not isinstance(self.published, ListedRepository)
         last = self.last
-        held = (
-            last is not None
-            and last["outcome"] == "rate_limited"
-            and last["reset_at"] is not None
-            and now < _parse_stamp(last["reset_at"])
-        )
+        held = self._held(now)
         attempted_within = self._last_attempt is not None and now - self._last_attempt <= window
+        # A probe found GitHub changed since this record: due until an attempt follows.
+        if (
+            self._probe_saw_at is not None
+            and self.fetched_at is not None
+            and not held
+            and (self._last_attempt is None or self._last_attempt < self._probe_saw_at)
+        ):
+            return True
         if self.changed_row is not None and self.fetched_at is not None:
             # GitHub changed it after this record: due unless an attempt saw that very row.
             return not held and (self._attempted_row != self.changed_row or not attempted_within)
@@ -339,6 +381,128 @@ class ServedPull:
             return True
         return self._last_attempt is None or now - self._last_attempt > window
 
+    def _held(self, now: datetime) -> bool:
+        """Whether GitHub's rate limit holds an automatic read of this record at *now*."""
+
+        last = self.last
+        return (
+            last is not None
+            and last["outcome"] == "rate_limited"
+            and last["reset_at"] is not None
+            and now < _parse_stamp(last["reset_at"])
+        ) or gh_budget.held_until(now) is not None
+
+    def probe_vouches(self, now: datetime) -> bool:
+        """Whether a probe found the record held unchanged within a freshness window."""
+
+        return self.probed_at is not None and now - _parse_stamp(self.probed_at) <= timedelta(
+            seconds=FRESHNESS_WINDOW_S
+        )
+
+    def automatic_due(self, now: datetime) -> Literal["full", "probe"] | None:
+        """What a visible page's automatic ask is due to start at *now*, if anything.
+
+        ``full`` when the record is stale (:meth:`is_stale`), over a window of
+        :data:`FULL_REFRESH_S` while probes vouch for it and :data:`FRESHNESS_WINDOW_S`
+        otherwise, or when it was read longer ago than :data:`FULL_REFRESH_S` and not tried
+        since, so even a record the catalog vouches for is read in full that often while a
+        page shows it. ``probe`` when none of that holds and a probe is due
+        (:meth:`probe_due`).
+        """
+
+        window = FULL_REFRESH_S if self.probe_vouches(now) else FRESHNESS_WINDOW_S
+        if self.is_stale(now, window_s=window):
+            return "full"
+        full = timedelta(seconds=FULL_REFRESH_S)
+        if (
+            self.fetched_at is not None
+            and not self._held(now)
+            and now - _parse_stamp(self.fetched_at) > full
+            and (self._last_attempt is None or now - self._last_attempt > full)
+        ):
+            return "full"
+        return "probe" if self.probe_due(now) else None
+
+    def probe_due(self, now: datetime) -> bool:
+        """Whether a probe of the record held may start at *now*.
+
+        Not while a refresh or another probe runs, while GitHub's limit holds, within a
+        freshness window of a failed refresh or a failed probe (so a missing ``gh`` or a
+        lost network is asked once a window, not every few seconds), nor within
+        :data:`ATTENDED_PROBE_S` of the last probe, however many pages ask.
+        """
+
+        window = timedelta(seconds=FRESHNESS_WINDOW_S)
+        last = self.last
+        return not (
+            self.fetched_at is None
+            or self._refreshing
+            or (self._probe_task is not None and not self._probe_task.done())
+            or self._held(now)
+            or (
+                last is not None
+                and last["outcome"] != "succeeded"
+                and self._last_attempt is not None
+                and now - self._last_attempt <= window
+            )
+            or (self._probe_failed is not None and now - self._probe_failed <= window)
+            or (
+                self._probe_attempt is not None
+                and now - self._probe_attempt < timedelta(seconds=ATTENDED_PROBE_S)
+            )
+        )
+
+    async def probe(self, record: PullRecord) -> None:
+        """Probe *record*, the record held, joining a probe already running.
+
+        Waits at most :data:`PROBE_WAIT_S` and then raises :class:`TimeoutError`, leaving
+        the probe to end on its own; cancelling the wait never cancels the probe.
+        """
+
+        task = self._probe_task
+        if task is None or task.done():
+            task = asyncio.ensure_future(self._probe(record))
+            self._probe_task = task
+        await asyncio.wait_for(asyncio.shield(task), PROBE_WAIT_S)
+
+    async def _probe(self, record: PullRecord) -> None:
+        now = pulls.utc_now()
+        self._probe_attempt = now
+        checks = checks_pending(record) and (
+            self._checks_probe_attempt is None
+            or now - self._checks_probe_attempt >= timedelta(seconds=CHECKS_PROBE_S)
+        )
+        if checks:
+            self._checks_probe_attempt = now
+        try:
+            found = await pulls.probe_pull_request(
+                self.published, record, etags=dict(self._probe_etags), checks=checks
+            )
+        except pulls.PullDataError as exc:
+            self._probe_failed = now
+            log.debug("probing pull request %s failed: %s", self.number, exc)
+            return
+        if self.fetched_at != record.fetched_at:
+            # A newer record arrived while it ran; what it found is about the older one.
+            return
+        self._probe_failed = None
+        self._probe_etags.update(found.etags)
+        if found.outcome == "unchanged":
+            self.probed_at = _stamp(now)
+            return
+        self._probe_saw = (
+            "pull" if found.outcome == "changed" or self._probe_saw == "pull" else "checks"
+        )
+        self._probe_saw_at = now
+
+    def _forget_probes(self) -> None:
+        """A newer record is held: what probes found was about the one before it."""
+
+        self.probed_at = None
+        self._probe_etags = {}
+        self._probe_saw = self._probe_saw_at = None
+        self._checks_probe_attempt = None
+
     def saw_record(
         self,
         fetched_at: str | None,
@@ -355,6 +519,7 @@ class ServedPull:
         if fetched_at is not None and (self.fetched_at is None or fetched_at > self.fetched_at):
             self.fetched_at = fetched_at
             self.without_store = without_store
+            self._forget_probes()
             self.display_core = None
             self.verified_at = self.changed_row = None
             self.checks_due = False
@@ -484,7 +649,12 @@ class ServedPull:
                     self._core_ready.set()
 
                 progress = stage_core if self._core_requested and self.fetched_at is None else None
-                checks_only = self.checks_due and not recover and self.changed_row is None
+                checks_only = (
+                    (self.checks_due or self._probe_saw == "checks")
+                    and not recover
+                    and self.changed_row is None
+                    and self._probe_saw != "pull"
+                )
                 try:
                     if progress is not None or self._source_pulls is not None:
                         record = await pulls.refresh_pull_request(
@@ -522,6 +692,7 @@ class ServedPull:
                     # until this job's next refresh (see outcome()).
                     self.fetched_at = exc.current.fetched_at
                     self.without_store = written_without_store(exc.current)
+                    self._forget_probes()
                     self.verified_at = self.changed_row = None
                     self.checks_due = False
                     self.outcome_on_disk = True
@@ -537,6 +708,7 @@ class ServedPull:
                     self.outcome_on_disk = False
                     self.fetched_at = record.fetched_at
                     self.without_store = written_without_store(record)
+                    self._forget_probes()
                     self.verified_at = self.changed_row = None
                     self.checks_due = False
                     if record.comparison is not None:
@@ -762,7 +934,11 @@ class ServedPulls:
 
 
 __all__ = [
+    "ATTENDED_PROBE_S",
+    "CHECKS_PROBE_S",
+    "FULL_REFRESH_S",
     "MAX_KEPT_PULLS",
+    "PROBE_WAIT_S",
     "PullRefreshOutcome",
     "ServedPull",
     "ServedPulls",
