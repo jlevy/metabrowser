@@ -5,7 +5,11 @@ title: "Nightly soak 2026-11-21 (run 44905073328): nav-reveal Chrome address ste
 kind: bug
 status: closed
 priority: 1
-version: 4
+version: 5
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/699
+    at: 2026-11-22T21:09:45.160Z
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,7 +17,7 @@ parent_id: is-01m7hgpc9550w78kmwqsvv64xh
 hold: null
 hold_until: null
 created_at: 2026-11-22T19:38:14.258Z
-updated_at: 2026-11-22T20:55:16.670Z
+updated_at: 2026-11-22T21:09:45.163Z
 started_at: 2026-11-22T19:55:39.318Z
 closed_at: 2026-11-22T20:55:16.664Z
 close_reason: "Fixed by #699 (merged 3b2cfe142): serve mode now holds its listening socket from the port search through Uvicorn's start, so two servers started together can no longer both print one port. The failing run's logs showed both servers on 50071 and the checkout server losing the bind. Reproduced on main 10/10; 0/10 after the fix. Evidence is in the bead notes."

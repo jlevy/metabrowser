@@ -3,9 +3,9 @@ type: is
 id: is-01m7hgpc9550w78kmwqsvv64xh
 title: "Release 0.13: prepare the PyPI package and macOS app release (owner asked 2026-11-15)"
 kind: epic
-status: open
+status: in_progress
 priority: 1
-version: 50
+version: 53
 refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/485
@@ -43,6 +43,9 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/694
     at: 2026-11-22T19:57:13.963Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/699
+    at: 2026-11-22T21:09:44.442Z
 labels:
   - linear
   - Improvement
@@ -85,7 +88,7 @@ child_order_hints:
   - is-01m82efn1n1mqmeexzwh8gxdtw
   - is-01m82dcf8s4sjefzhkck18s4n6
 created_at: 2026-11-16T06:28:43.940Z
-updated_at: 2026-11-22T20:17:23.949Z
+updated_at: 2026-11-22T21:10:03.885Z
 extensions:
   linear:
     id: a18aa3cd-0329-4c1c-bca3-17921fe6703e
@@ -100,3 +103,5 @@ Plan: attic/coord/release-plan-0.13.md in the coordinator worktree. Owner decisi
 2026-11-17 handoff: Release status 2026-11-17: all UI PRs merging; owner-only before signing: install Developer ID G2 intermediate, create App Store Connect team API key, dedicated release keychain with -x import (offline .p12 kept), store metabrowser-notary profile, turn on immutable releases (plan-2026-11-16-macos-app-publishing O1-O9). Agent steps remain: make verify at candidate, perf comparison, release-prep PR (CHANGELOG 0.13.0, QA record), owner approval, publish v0.13.0, app floor 0.13.0 PR, WebKit rerun, signed DMG macos-v0.1.0.
 
 2026-11-20 audit: Release 0.13 preparation: the owner's chores (mb-0msg, mb-21t6), the candidate gates (mb-brvm, mb-icss, mb-b246, mb-1d8p), and the macOS release workflow and signing CI tasks (mb-3ey5, mb-eoez, mb-mww5, mb-yqrs, mb-epgm), now direct children. Added: mb-wfyt and mb-8f19 (rebuild and reinstall the dev app from main) and mb-9uyb (separate artifact construction from OIDC publishing).
+
+2026-11-22 status (owner asked for the remaining path to a first macOS release plus stable CLI updates): order is (A) stabilize main, (B) owner tests and merges jlevy/kpress#80 and releases KPress (mb-tbq9), then repin (mb-d515), (C) metab 0.13.0: mb-brvm, mb-icss, mb-b246, publish and verify, (D) owner signing setup in parallel (mb-0msg, mb-21t6, GitHub immutable releases and tag protection), (E) mb-1d8p: isReleased PR, VERSION 0.1.0, sign, draft, clean-account matrix mb-5fp7, publish with --latest=false. Done today: the three nightly-soak Chrome failures are closed. mb-vxvg duplicated mb-hujg (fixed by #610) and mb-e4rz was fixed by #658, both merged after the failing soak runs. mb-oru2 and mb-a124 were fixed by #699 (3b2cfe142, a real port race in serve mode). The soak's CI time check (mb-j5j2) moved to the CI speed epic mb-3mqe (#698 plus a stacked PR). Release-path bug mb-im90 is being fixed. Out of this release: the FDU stacks (#498-#520), the document-model stacks (#570, #679), #677 and #380.
