@@ -28,6 +28,10 @@ const repoRoot = path.resolve(__dirname, "../..");
 const recorded = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-page-responses.json"), "utf8"),
 );
+// What KPress alone made of the hostile comment, recorded beside the server's answers.
+const kpressTree = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-page-kpress-tree.json"), "utf8"),
+);
 // The recording holds each distinct record once: an answer whose record an earlier
 // pull-route answer carried names that answer, and reads here as that record.
 for (const answer of Object.values(recorded)) {
@@ -1365,7 +1369,7 @@ async function main() {
   // The page's own defense, played on what KPress alone made of the hostile comment: the
   // nodes rebuilt from the template the page parses it into.
   const inert = serialize(
-    inertHtml.sanitizeNodes(templateNodes(recorded["kpress added"].body.tree), pageDocument, base),
+    inertHtml.sanitizeNodes(templateNodes(kpressTree.tree), pageDocument, base),
   );
 
   // Files changed keeps the diff it opened: a record whose comparison moved offers it.

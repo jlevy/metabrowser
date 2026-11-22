@@ -2126,14 +2126,14 @@ export function createPullController(deps, options) {
    * @returns {number | null}
    */
   function automaticAskWait() {
-    const probeMs =
+    const probeIntervalMs =
       typeof envelope?.probe_every_s === "number" ? envelope.probe_every_s * 1000 : null;
     if (
       disposed ||
       !deps.isVisible() ||
       !online() ||
       envelope === null ||
-      !(envelope.state === "stale" || (envelope.state === "current" && probeMs !== null)) ||
+      !(envelope.state === "stale" || (envelope.state === "current" && probeIntervalMs !== null)) ||
       envelope.refreshing ||
       fetching ||
       autoAsk !== "none" ||
@@ -2152,8 +2152,8 @@ export function createPullController(deps, options) {
     if (["gh_missing", "gh_too_old", "not_logged_in"].includes(outcome)) {
       return null;
     }
-    if (envelope.state === "current" && probeMs !== null) {
-      return Math.max(0, autoAskedAt + probeMs - deps.now());
+    if (envelope.state === "current" && probeIntervalMs !== null) {
+      return Math.max(0, autoAskedAt + probeIntervalMs - deps.now());
     }
     // A stale record asks again once a window has passed since the last ask, on the poll
     // that finds it so: the server answers a probe ask that finds a change, or a record

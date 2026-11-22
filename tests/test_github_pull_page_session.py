@@ -12,7 +12,8 @@ responses. Serving began on the default branch, as it does when the pull request
 be opened at startup. The page opened with nothing cached, fetched the record, read its
 Markdown, switched the pin to the head the record names, went stale, refreshed to a
 record with the same text, and refreshed again to one with a hostile comment, recorded
-both as the hook answers it and as KPress alone renders it. The same server then fetched
+both as the hook answers it and, in ``tests/fixtures/github-pull-page-kpress-tree.json``,
+as KPress alone renders it. The same server then fetched
 pull requests 8 and 9, merged and closed, and read each once, for the header's wording
 in those states and a skipped check, then read 8 again once GitHub named no merger. With
 GitHub out of reach, a refresh of 8 failed and the page's own request found it not due,
@@ -338,13 +339,6 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             recorded["markdown added"] = _answer(
                 client.get(_MARKDOWN, params={**read_7, "part": f"issue_comment/{added['id']}"})
             )
-            # What KPress alone makes of the same text, before the hook hardens it: the
-            # input the page's own defense, neutralizeFragment, is played on.
-            recorded["kpress added"] = {
-                "status": 200,
-                "etag": None,
-                "body": {"tree": html_tree(_prose(_kpress_render(HOSTILE_COMMENT)))},
-            }
 
             # Ten seconds on, the page's own ask for the current record is a probe: GitHub
             # answers its conditional read 304, so nothing is refreshed, and the record is
@@ -490,7 +484,12 @@ def test_recording_is_what_a_served_pull_request_answers(
         unchanged["record"]["issue_comments"]
         == recorded["stale"]["body"]["record"]["issue_comments"]
     )
-    kept = json.dumps(recorded["kpress added"]["body"]["tree"])
+    # What KPress alone makes of the hostile comment, before the hook hardens it: the
+    # input the page's own defense, neutralizeFragment, is played on. It is no answer of
+    # the server, and at 245 lines it is a recording of its own, which keeps the server's
+    # inside the review budget.
+    kpress_tree = html_tree(_prose(_kpress_render(HOSTILE_COMMENT)))
+    kept = json.dumps(kpress_tree)
     for hazard in ('"link"', '"img"', '"svg"', '"data-kpress-video-id"', '"modal-overlay"'):
         assert hazard in kept, f"KPress alone no longer keeps {hazard}"
     assert allowlist_violations(recorded["markdown added"]["body"]["html"]) == []
@@ -505,6 +504,11 @@ def test_recording_is_what_a_served_pull_request_answers(
     check_recording(
         "github-pull-page-responses.json",
         _stored_once(recorded),
+        transcript="cli-ui-github-pull-page.tryscript.md",
+    )
+    check_recording(
+        "github-pull-page-kpress-tree.json",
+        {"tree": kpress_tree},
         transcript="cli-ui-github-pull-page.tryscript.md",
     )
 
