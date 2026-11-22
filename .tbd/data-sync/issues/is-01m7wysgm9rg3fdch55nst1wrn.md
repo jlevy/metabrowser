@@ -5,7 +5,7 @@ title: "CI speed: finish the Fast CI plan and verify its phases"
 kind: epic
 status: in_progress
 priority: 2
-version: 20
+version: 21
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 refs:
   - kind: pr
@@ -56,7 +56,7 @@ child_order_hints:
   - is-01m7pq9dk5hbfvrq38zv4v53zb
   - is-01m82c8bd5hw5cyz98wty5qm63
 created_at: 2026-11-20T17:06:45.512Z
-updated_at: 2026-11-22T21:10:11.066Z
+updated_at: 2026-11-22T23:30:43.004Z
 extensions:
   linear:
     id: 1ece55fe-0ac1-49d4-bf60-5ea298d7306c
@@ -69,3 +69,6 @@ What remains: finish Phase 1's 10-run acceptance (mb-g0xx), verify Phase 2 after
 ## Notes
 
 2026-11-22 owner decisions in chat, verbatim: (1) "can you be sure these longer-lived tests are only run occasionally, not blocking CI on a routine basis?": slow Chrome tests (measured at 20 s or more) run on pushes to main, in the nightly soak and in the release gate, not on pull requests. (2) "We should aim to have a much faster routine CI cycle. 6 minutes is too long. It should be, ideally, more like 3. unless There's a really strong reason that that's difficult." (3) "we should not be paying Chrome testing costs on CI in terms of time if all we're changing is the CLI or backend things that may not need Chrome testing.": a PR that touches no browser-affecting path skips the Chrome tier, and main always runs the full tier. (4) The owner chose measured-weights shard balancing over a minimal split. Measured on PR run 45063672769: 7.0 min wall, set by chrome 1/4 at 6.2 min, then unit up to 5.3, goldens and serial up to 4.6, and admitted-git 2.8 to 4.2. Work: #698 (measured weights, mb-j5j2) plus a stacked PR for the fast PR path.
+
+
+2026-11-22 landed: #698 (measured-seconds shard dealing, devtools/shard_weights.json) and #700 (PR path: one interpreter, slow Chrome tests skipped, Chrome only when BROWSER_PATHS change) merged as a stack into main fea5669; mb-j5j2 closed. The PR path now runs 18 checks and took about 3.5 min in its last measurement. The floor is tests/test_github_pulls.py (about 112 s on one worker) plus 45-60 s of setup and collection per job.
