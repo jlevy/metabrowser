@@ -25,12 +25,16 @@ import Testing
             {
               "mode": "mirror",
               "root": "https://github.com/jlevy/tbd",
-              "opened_at": "2026-11-18T03:14:15Z"
+              "opened_at": "2026-11-18T03:14:15Z",
+              "target": null,
+              "git": false
             },
             {
               "mode": "folder",
               "root": "/Volumes/Home/src/fdu",
-              "opened_at": "2026-11-17T22:01:09Z"
+              "opened_at": "2026-11-17T22:01:09Z",
+              "target": null,
+              "git": true
             }
           ],
           "problem": null
@@ -46,9 +50,23 @@ import Testing
     @Test func theAnswerIsReadInMetabsOrder() {
         let expected = RecentTargets.Listing(targets: [
             RecentTarget(mode: .mirror, root: "https://github.com/jlevy/tbd", openedAt: "2026-11-18T03:14:15Z"),
-            RecentTarget(mode: .folder, root: "/Volumes/Home/src/fdu", openedAt: "2026-11-17T22:01:09Z"),
+            RecentTarget(mode: .folder, root: "/Volumes/Home/src/fdu", openedAt: "2026-11-17T22:01:09Z", git: true),
         ])
         #expect(RecentTargets.answer(result(Self.answer)) == .listing(expected))
+    }
+
+    /// `metab` lists `git` for every target, so an entry without it is not a list this `metab`
+    /// wrote: the app reads it as unreadable and does not guess.
+    @Test func anEntryWithNoCheckoutFlagIsNotAList() {
+        let bare = """
+            {
+              "targets": [
+                {"mode": "folder", "root": "/a", "opened_at": "2026-11-18T03:14:15Z"}
+              ],
+              "problem": null
+            }
+            """
+        #expect(RecentTargets.answer(result(bare)) == .unreadable("printed JSON that is not a list of targets"))
     }
 
     @Test func aWarningAroundTheObjectIsSkipped() {
@@ -117,9 +135,14 @@ import Testing
     }
 
     @Test func aRowsToolTipSaysWhereItIsAndWhatItIs() {
+        let checkout = RecentTarget(mode: .folder, root: "/Volumes/Home/src/tbd2", openedAt: Self.stamp, git: true)
         let items = RecentTargets.items(
-            [folder("/Volumes/Home/src/fdu"), mirror("https://github.com/jlevy/tbd")], opensURLs: true, home: Self.home)
-        #expect(items.map(\.toolTip) == ["~/src/fdu · Local folder", "github.com/jlevy/tbd · Cached mirror"])
+            [folder("/Volumes/Home/src/fdu"), checkout, mirror("https://github.com/jlevy/tbd")], opensURLs: true,
+            home: Self.home)
+        #expect(
+            items.map(\.toolTip) == [
+                "~/src/fdu · Local folder", "~/src/tbd2 · Local Git checkout", "github.com/jlevy/tbd · Cloud mirror",
+            ])
     }
 
     @Test func rowsThatShareAShortNameAreTitledByTheirFullNames() {

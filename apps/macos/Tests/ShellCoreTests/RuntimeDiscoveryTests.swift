@@ -694,13 +694,9 @@ private func loginShellOutput(path: String) -> [String] {
         let alone = await RuntimeDiscovery.discover(machine.discovery(calls: Recorder()))
         #expect(alone.setup == nil)
         let guide = SetupGuide(
-            tried: alone.tried, uv: "/Volumes/Home/.local/bin/uv", binDirectory: "/Volumes/Home/.local/bin",
-            home: "/Volumes/Home", loginPath: ["/Volumes/Home/.local/bin"], hasHomebrew: false,
-            minimumIsReleased: false)
-        #expect(guide.steps == [.buildFromCheckout(
-            oldPath: local, oldVersion: "0.13.0.dev38+5f0c2a1 (+38 commits, 5f0c2a1)", inNewTerminal: false)])
-        #expect(guide.steps.first?.title(home: "/Volumes/Home").contains(
-            "~/.local/bin/metab is metab 0.13.0.dev38+5f0c2a1, built before --recent, and") == true)
+            tried: alone.tried, binDirectory: "/Volumes/Home/.local/bin", home: "/Volumes/Home")
+        #expect(guide.notices.first?.contains(
+            "~/.local/bin/metab is metab 0.13.0.dev38+5f0c2a1. It is incompatible: built before --recent.") == true)
     }
 
     /// Validates a script written to a fresh folder through the app's command runner, and

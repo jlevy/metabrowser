@@ -35,6 +35,7 @@ from metabrowser.cli.stdin_lifeline import (
 )
 from metabrowser.errors import CLIError
 from tests.child_io import read_line
+from tests.held_port import listener_on
 from tests.test_cli_main import _plain_output
 
 runner = CliRunner()
@@ -114,7 +115,10 @@ def test_serving_watches_stdin_only_when_asked(flag: bool, tmp_path: Path) -> No
     try:
         with (
             patch("metabrowser.cli.serve._QuietForceExitServer"),
-            patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+            patch(
+                "metabrowser.cli.serve.listen_on_available_local_port",
+                return_value=listener_on(8411),
+            ),
             patch("metabrowser.cli.main.stop_when_stdin_closes") as watch,
         ):
             args = [str(tmp_path), "--no-open"] + (["--exit-on-eof"] if flag else [])
@@ -452,7 +456,7 @@ def _group_gone_within(pgid: int, seconds: float = 5.0) -> bool:
         # After the server and its plugins are imported, before the banner.
         "metabrowser.kpress_adapter.prepare_browser_assets",
         # The last step before the banner.
-        "metabrowser.cli.serve.find_available_local_port",
+        "metabrowser.cli.serve.listen_on_available_local_port",
         # A Git source's acquisition, with a group of its own running.
         "metabrowser.cli.git_pin_cli._prove_servable",
     ],

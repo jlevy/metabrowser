@@ -591,7 +591,7 @@ def test_a_change_to_the_declared_surface_is_not_a_fix(tmp_path: Path) -> None:
 
     # A key the app begins to read is, and a fix does not name it.
     wider = declaration.replace(
-        '"targets[].opened_at", "problem"]', '"targets[].opened_at", "limit", "problem"]'
+        '"targets[].git", "problem"]', '"targets[].git", "limit", "problem"]'
     )
     assert wider != declaration
     _write(root, {DECLARATION: wider})
@@ -627,7 +627,7 @@ def test_a_copied_value_and_a_behavior_are_part_of_the_contract(tmp_path: Path) 
     assert len(problems) == 1 and "declares a different surface" in problems[0]
 
     # So is the text a pin file must hold: it is the page's marker that the app looks for.
-    marker = 'holds = \'"data-view-on-github": "open"\''
+    marker = 'holds = \'"data-web-view": "open"\''
     assert marker in declaration
     renamed = declaration.replace(marker, marker.replace('"open"', '"main"'))
     _write(root, {DECLARATION: renamed})

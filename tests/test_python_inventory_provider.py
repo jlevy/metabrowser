@@ -671,6 +671,43 @@ def test_filtered_directory_newest_time_uses_regular_files(tmp_path: Path) -> No
     asyncio.run(_filtered_directory_newest_time_uses_regular_files(tmp_path))
 
 
+def test_refresh_updates_directory_mtime_as_descendants_change(tmp_path: Path) -> None:
+    nested = tmp_path / "folder" / "nested"
+    nested.mkdir(parents=True)
+    old = nested / "old.txt"
+    new = nested / "new.txt"
+    old_time = 100_000_000_000
+    new_time = 200_000_000_000
+    old.write_text("old", encoding="utf-8")
+    os.utime(old, ns=(old_time, old_time))
+
+    async def run() -> None:
+        handle = await _open_settled(tmp_path, InventoryConfig(watch_mode="off"))
+        query = EntryQuery(query_id="folder", path="folder")
+        refresh = RefreshRequest(observations=(RefreshObservation(path="folder/nested/new.txt"),))
+
+        async def directory_times() -> tuple[int, int | None]:
+            result = await handle.read(ReadRequest(queries=(query,)))
+            projection = result.projection(query.query_id)
+            assert isinstance(projection, EntryProjection)
+            assert projection.entry is not None
+            return projection.entry.mtime_ns, projection.entry.newest_mtime_ns
+
+        try:
+            assert await directory_times() == (old_time, old_time)
+            new.write_text("new", encoding="utf-8")
+            os.utime(new, ns=(new_time, new_time))
+            await handle.refresh(refresh)
+            assert await directory_times() == (new_time, new_time)
+            new.unlink()
+            await handle.refresh(refresh)
+            assert await directory_times() == (old_time, old_time)
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
+
+
 def test_targeted_read_reports_bounded_work(tmp_path: Path) -> None:
     asyncio.run(_targeted_read_reports_bounded_work(tmp_path))
 

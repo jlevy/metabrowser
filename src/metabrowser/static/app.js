@@ -1163,16 +1163,12 @@ async function loadTree(options = {}) {
         // tree refresh instead of leaving these new pending cells to the watchdog.
         startIndexProgressPolling();
       }
-      // Carry aggregates on the path link so the header tooltip handler
-      // can pull them on hover without rebuilding from DOM.
+      // Keep the disclosure's aggregates in step with the root inventory.
       if (pathEl) {
-        // The display form, so the tooltip and the file header's prefix say the
-        // same thing about the root — one of them abbreviating the home
-        // directory and the other not would read as two different roots.
-        pathEl.dataset.tipName = pathEl.dataset.servedRoot || data.root;
         pathEl.dataset.tipFiles = nullableDataValue(summaryFiles);
         pathEl.dataset.tipSize = nullableDataValue(summarySize);
         pathEl.dataset.tipMtime = nullableDataValue(newestMtime);
+        updateRootDetailsStats();
       }
       // The summary row stands in its band under the filter bar, out of the
       // tree's scroller, so it stays in view as the tree scrolls and its rule
@@ -2198,43 +2194,105 @@ function ensureTreeTruncationNote(maxFiles) {
   filesPanel.insertAdjacentHTML("afterbegin", treeTruncationNoteHtml(maxFiles));
 }
 
-// Header hover tooltip — same folder-tooltip HTML the tree uses, so
-// hovering the served-root path shows the same name / files / size /
-// mtime block a hovered folder row shows below. One helper, one design.
-//
-// It adds details and nothing else (docs/design-system.md, "Home"): the click is what the
-// name is for, and it reads as a link home without a line saying so. A press on the name
-// moves focus to it, in Chrome, and the focus transition that ends a tooltip would end
-// this one, or cancel it before it showed, so a click took it away. That focus is the
-// pointer's own click, not a reader moving focus, so it leaves the tooltip as the pointer
-// has it: shown while the pointer rests on the name, gone when it leaves.
-document.addEventListener("DOMContentLoaded", () => {
-  const headerPath = queryHtml(".header-path");
-  if (!headerPath) {
+// Populate the menu's file count and size from the live root inventory.
+/** @param {DOMStringMap} dataset */
+function rootDetailsStats(dataset) {
+  return folderTooltipHtml(
+    "",
+    parseTipNumber(dataset.tipFiles),
+    parseTipNumber(dataset.tipSize),
+    undefined,
+    false,
+  );
+}
+
+function updateRootDetailsStats() {
+  const heading = queryHtml(".header-path");
+  const stats = queryHtml("#root-details .root-details-stats");
+  if (heading && stats) {
+    stats.innerHTML = rootDetailsStats(heading.dataset);
+  }
+}
+
+function initRootDetails() {
+  const details = /** @type {HTMLDetailsElement | null} */ (
+    document.getElementById("root-details")
+  );
+  const trigger = details?.querySelector("summary");
+  const status = details?.querySelector(".root-details-status");
+  if (!details || !trigger || !status) {
     return;
   }
-  headerPath.addEventListener("mouseenter", () => {
-    var d = headerPath.dataset;
-    // The heading shows the folder name alone, so the whole served root lives
-    // here — as one tooltip. It used to be here and in a native `title` as
-    // well, which showed the reader two tooltips saying the same thing.
-    if (!d.tipName) {
-      showTooltip(`${esc(d.servedRoot || "")}${mirrorHeading("tip")}`, headerPath);
+  trigger.innerHTML = `<span aria-hidden="true">${ICONS.toggle ?? ""}</span>`;
+  const location = details.querySelector(".root-details-location");
+  const mirrorLocation = queryHtml(".header-path")?.dataset.mirrorLocation;
+  if (location && mirrorLocation) {
+    location.textContent = mirrorLocation;
+  }
+  const actions = details.querySelector(".root-details-actions");
+  document.addEventListener("pointerdown", (event) => {
+    if (details.open && event.target instanceof Node && !details.contains(event.target)) {
+      details.open = false;
+    }
+  });
+  details.addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) {
       return;
     }
-    var folderTip = folderTooltipHtml(
-      d.tipName,
-      parseTipNumber(d.tipFiles),
-      parseTipNumber(d.tipSize),
-      parseTipNumber(d.tipMtime),
-    );
-    showTooltip(`${folderTip}${mirrorHeading("tip")}`, headerPath);
+    if (details.open && event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      details.open = false;
+      trigger.focus();
+    }
   });
-  headerPath.addEventListener("mouseleave", hideTooltip);
-  headerPath.addEventListener("pointerdown", () => {
-    tooltipPressedAnchor = headerPath;
+  details.addEventListener("focusout", (event) => {
+    if (event.relatedTarget instanceof Node && !details.contains(event.relatedTarget)) {
+      details.open = false;
+    }
   });
-});
+  const mark = document.getElementById("header-root-kind");
+  const markTip = mark?.dataset.tipText;
+  details.addEventListener("toggle", async () => {
+    if (mark && markTip) {
+      if (details.open) {
+        mark.removeAttribute("data-tip-text");
+        hideTooltipWithin(mark);
+      } else {
+        mark.dataset.tipText = markTip;
+      }
+    }
+    const url = details.dataset.repositoryUrl;
+    if (!details.open) {
+      status.textContent = "";
+      return;
+    }
+    if (!url || !actions || actions.childElementCount) {
+      return;
+    }
+    try {
+      await window.MetabrowserAssets?.ensureAsset("sdk-views");
+      if (actions.childElementCount) {
+        return;
+      }
+      const items = window.metabrowser.externalLinkMenuItems(url, {
+        onCopyResult: (result) => {
+          status.textContent = result === "copied" ? "Link copied" : "Copy failed";
+        },
+      });
+      for (const item of items) {
+        item.removeAttribute("role");
+        item.removeAttribute("tabindex");
+        item.setAttribute("aria-describedby", "root-repository-url");
+      }
+      actions.append(...items);
+      actions.removeAttribute("hidden");
+    } catch (error) {
+      console.warn("Could not load repository link actions", error);
+      status.textContent = "Repository link actions are unavailable.";
+    }
+  });
+}
 
 // Lookup table from "page-more" sentinel id to the deferred slice.
 // Keeps the closure per-renderer minimal — the click handler reads
@@ -3255,26 +3313,13 @@ function hideTooltipWithin(within) {
   }
 }
 
-/**
- * The element whose own press is under way, when it is one whose tooltip a click must not
- * end: the folder's name (docs/design-system.md, "Home"). Set by its `pointerdown`, and
- * read and cleared by the focus that press gives it.
- *
- * @type {HTMLElement | null}
- */
-var tooltipPressedAnchor = null;
-
 // The element focus was last given to, which tells focus put back from focus moved.
 /** @type {Node | null} */
 var tooltipFocusOwner = null;
 
 /**
  * Focus moving puts a pointer's tooltip away (docs/design-system.md, "Tooltip Input
- * Modality"). Two focuses are not focus moving, and leave it:
- *
- * - the focus a press on the folder's name gives it, which is the pointer's click, and
- *   neither shows nor hides the name's tooltip ("Home");
- * - focus put back where it was. A rebuild that replaces the focused control focuses its
+ * Modality"). A rebuild can replace a focused control and focus its
  *   replacement, as the Files filter bar's does when new tallies arrive. The element that
  *   had focus is out of the document by then, so a focus that follows one that left the
  *   document, with no key or press of the reader's since (endTooltipFocusRepair), is that
@@ -3284,17 +3329,12 @@ var tooltipFocusOwner = null;
  * @param {FocusEvent} event
  */
 function hideTooltipOnFocus(event) {
-  var pressed = tooltipPressedAnchor;
   var previous = tooltipFocusOwner;
-  tooltipPressedAnchor = null;
   tooltipFocusOwner = /** @type {Node | null} */ (event.target);
   if (previous && previous.isConnected === false) {
     if (tooltipAnchor && !tooltipAnchor.isConnected) {
       hideTooltip();
     }
-    return;
-  }
-  if (pressed !== null && event.target === pressed) {
     return;
   }
   hideTooltip();
@@ -3460,8 +3500,7 @@ function hideTipText(e) {
 
 // mouseenter/mouseleave do not bubble, so these listen in the capture phase.
 // Any focus transition ends pointer-owned tooltip presentation without
-// creating a second visual layer around keyboard navigation; the two focuses
-// that are not one are hideTooltipOnFocus's.
+// creating a second visual layer around keyboard navigation. A rebuild can repair focus.
 document.addEventListener("mouseenter", showTipText, true);
 document.addEventListener("mouseleave", hideTipText, true);
 document.addEventListener("focusin", hideTooltipOnFocus);
@@ -3469,11 +3508,6 @@ document.addEventListener("focusin", hideTooltipOnFocus);
 // gives, ends a focus repair (endTooltipFocusRepair).
 document.addEventListener("keydown", endTooltipFocusRepair, true);
 document.addEventListener("pointerdown", endTooltipFocusRepair, true);
-// A press that gave no focus, as Safari's on a link, leaves nothing for the next focus.
-document.addEventListener("pointerup", () => {
-  tooltipPressedAnchor = null;
-});
-
 // Tooltip size/count rows reuse the shared .size / .count classes so
 // they match the hue of the same data everywhere else (tree column,
 // file header, app header). Tooltip still uses formatExactSize()
@@ -3841,6 +3875,59 @@ async function toggleTreeFolder(row, options) {
 // Container expansion mirrors lazy folder expansion: fetch children on
 // first open, then toggle visibility. Failures state themselves in the
 // group rather than leaving an empty box.
+// A container's children follow its file, as a database's tables do (file-watches.js,
+// followContainer): a change reads them again, coalesced, or on the next expand.
+var containerHtml = new WeakMap();
+function watchContainer(row, children) {
+  if (!isGitRevisionSource()) {
+    void window.MetabrowserAssets?.ensureAsset("file-watches").then(() =>
+      window.MetabrowserFileWatches?.followContainer(row, children, loadContainerChildren),
+    );
+  }
+}
+
+async function loadContainerChildren(row, children) {
+  // A refresh keeps the children drawn until their replacement arrives.
+  children.innerHTML ||=
+    '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-label="Loading">' +
+    '<span class="spinner spinner-sm" aria-hidden="true"></span></div>';
+  var level = Number(row.dataset.treeLevel || "1") + 1;
+  var childrenStartedAt = Date.now();
+  var html;
+  try {
+    var payload = await window.metabrowser.fetchPluginData(
+      row.dataset.containerPlugin,
+      row.dataset.containerChildren,
+      { path: row.dataset.path || "" },
+    );
+    var rows = Array.isArray(payload?.children) ? payload.children : [];
+    html = rows.length
+      ? renderContainerChildren(rows, { level: level })
+      : '<div class="tree-empty-note">No entries in this file.</div>';
+    children.dataset.loaded = "1";
+    watchContainer(row, children);
+  } catch (error) {
+    console.error(
+      "metabrowser tree: container children failed",
+      {
+        path: row.dataset.path,
+        plugin: row.dataset.containerPlugin,
+        hook: row.dataset.containerChildren,
+        elapsedMs: Date.now() - childrenStartedAt,
+      },
+      error,
+    );
+    html = '<div class="tree-empty-note nav-error">Could not load these entries.</div>';
+  }
+  // Drawn again only when they differ, so a refresh keeps a child's focus and hover.
+  if (containerHtml.get(children) !== html) {
+    containerHtml.set(children, html);
+    children.innerHTML = html;
+    applyTreeFilters();
+    synchronizeTreeNow();
+  }
+}
+
 async function toggleTreeContainer(row) {
   var children = /** @type {HTMLElement | null} */ (row.nextElementSibling);
   if (!children?.classList.contains("tree-children")) {
@@ -3860,37 +3947,7 @@ async function toggleTreeContainer(row) {
   row.classList.remove("collapsed");
   children.classList.remove("tree-children-collapsed");
   if (!children.dataset.loaded) {
-    children.innerHTML =
-      '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-label="Loading">' +
-      '<span class="spinner spinner-sm" aria-hidden="true"></span></div>';
-    var level = Number(row.dataset.treeLevel || "1") + 1;
-    var childrenStartedAt = Date.now();
-    try {
-      var payload = await window.metabrowser.fetchPluginData(
-        row.dataset.containerPlugin,
-        row.dataset.containerChildren,
-        { path: row.dataset.path || "" },
-      );
-      var rows = Array.isArray(payload?.children) ? payload.children : [];
-      children.innerHTML = rows.length
-        ? renderContainerChildren(rows, { level: level })
-        : '<div class="tree-empty-note">No entries in this file.</div>';
-      children.dataset.loaded = "1";
-    } catch (error) {
-      console.error(
-        "metabrowser tree: container children failed",
-        {
-          path: row.dataset.path,
-          plugin: row.dataset.containerPlugin,
-          hook: row.dataset.containerChildren,
-          elapsedMs: Date.now() - childrenStartedAt,
-        },
-        error,
-      );
-      children.innerHTML =
-        '<div class="tree-empty-note nav-error">Could not load these entries.</div>';
-    }
-    applyTreeFilters();
+    await loadContainerChildren(row, children);
   }
   synchronizeTreeNow();
   return row;
@@ -5916,9 +5973,12 @@ function renderNavFilterBar() {
   // A page with the branch and tag chooser ships it leading the row, and its module owns
   // it: it is carried over, not drawn (static/source-ref-selector.js#keepAcrossRefills).
   var chooser = document.getElementById("source-ref-selector");
+  // The module puts back the scroll a moment's rebuild took (`keepScroll` there).
+  var keepScroll = chooser && window.MetabrowserSourceRefSelector?.mounted()?.holdScroll();
   bar.innerHTML = main + drawer;
   if (chooser) {
     bar.firstElementChild?.prepend(chooser);
+    keepScroll?.();
   }
   // An open menu is sized to its rows and the window now that it has geometry, before
   // the frame paints it.
@@ -7353,9 +7413,9 @@ function toggleEvent(header) {
   parent.classList.toggle("expanded");
   if (parent.classList.contains("expanded")) {
     // First-expand mount: agent-log emits log-event-raw containers
-    // empty and registers mountLogEventRaw on window. When the
-    // structured plugin is loaded, this renders a collapsible inline
-    // tree; otherwise it falls back to a flat JSON block.
+    // empty and registers mountLogEventRaw on window. An object payload
+    // is the structured plugin's collapsible tree, drawn once that plugin
+    // loads (a flat JSON block if it cannot); a string is a flat block.
     var rawEl = parent.querySelector(".log-event-raw");
     if (
       rawEl &&
@@ -7598,10 +7658,14 @@ function openLiveStream(path, startCursor) {
   };
 }
 
+// Whether a live tail's rows went undrawn because the agent-log renderers did not load,
+// which is said once on the console rather than for every batch.
+var liveEventsUndrawnLogged = false;
+
 function appendLiveEvents(path, batch) {
-  return _perf.measure(
+  return _perf.measureAsync(
     "appendLiveEvents",
-    () => {
+    async () => {
       var cached = fileCache.get(path);
       if (!cached || !Array.isArray(batch.events)) {
         return;
@@ -7616,21 +7680,33 @@ function appendLiveEvents(path, batch) {
       }
       // Append to the currently-rendered log tab if it's visible. Charts are
       // not extended: they show the events there were when the file loaded.
-      var logPane = queryHtml('[data-tab-content="log"]');
+      const logPane = queryHtml('[data-tab-content="log"]');
       if (logPane && logPane.style.display !== "none") {
-        var tail = "";
         var startIdx = cached.events.length - batch.events.length;
-        // The agent-log built-in plugin owns renderLogEvent and exposes it
-        // through the public namespace. If the plugin isn't loaded
-        // (shouldn't happen for built-ins), the live tail is silently
-        // skipped — the static log render still shows up on full reload.
-        var renderEvt = window.metabrowser?.builtins?.agentLog?.renderLogEvent;
-        if (renderEvt) {
-          for (var j = 0; j < batch.events.length; j++) {
-            tail += renderEvt(logPane, batch.events[j], startIdx + j);
-          }
-        }
-        logPane.insertAdjacentHTML("beforeend", tail);
+        // The agents plugin's agent-log renderers, which drew this pane, export
+        // renderLogEvent. Returning the load makes the measure cover the rows' render, not
+        // only the bookkeeping.
+        return window.metabrowser.plugins
+          .load("agents")
+          .then((agents) => agents.loadLogRenderers())
+          .then(
+            (agentLog) => {
+              var tail = "";
+              for (var j = 0; j < batch.events.length; j++) {
+                tail += agentLog.renderLogEvent(logPane, batch.events[j], startIdx + j);
+              }
+              logPane.insertAdjacentHTML("beforeend", tail);
+            },
+            (error) => {
+              if (!liveEventsUndrawnLogged) {
+                liveEventsUndrawnLogged = true;
+                console.warn(
+                  "metabrowser: live events were not drawn: agent-log did not load",
+                  error,
+                );
+              }
+            },
+          );
       }
     },
     {
@@ -7650,14 +7726,7 @@ function flagRunEndedBadge() {
 }
 
 // ── FileStore + /api/events EventSource ────────────────────────
-//
-// Single source of truth for live tree decoration. Populated from
-// /api/events:
-//   1. fs.snapshot (id=0 sentinel) — initial snapshot at the
-//      requested scope.
-//   2. fs.change ops — walker / watcher updates; each upsert
-//      replaces an FsEntry in the store and triggers
-//      applyCellPatch() to update the rendered tree row.
+// arch-live-delivery.md, "The Browser's Stores" and "Recovery".
 var fileStore = new Map(); // path -> FsEntry
 var fileStoreSubscribers = [];
 var inventoryEventSource = null;
@@ -8509,6 +8578,7 @@ function updateRootAggregatePresentation(entry) {
     pathEl.dataset.tipFiles = nullableDataValue(totalFiles);
     pathEl.dataset.tipSize = nullableDataValue(totalSize);
     pathEl.dataset.tipMtime = nullableDataValue(newestMtime);
+    updateRootDetailsStats();
   }
 }
 
@@ -8832,13 +8902,18 @@ function _createInventoryEventSource() {
   }
   inventoryEventSource.addEventListener("fs.snapshot", (e) => {
     try {
+      // The connection leads the frame; file watches register on it (file-watches.js).
+      var named = /^\{"connection":(?:"([^"]*)"|null),/.exec(e.data);
+      var body = named ? e.data.slice(named[0].length) : e.data;
+      window.metabrowserEventConnection = named?.[1] ?? null;
+      window.MetabrowserFileWatches?.connected(window.metabrowserEventConnection);
       // Equality of this scoped snapshot avoids parsing and repainting it.
       // It cannot prove deep files unchanged: retain the normal revalidation
       // and Recent repair boundary even when the shallow tree is identical.
-      if (lastInventorySnapshot !== e.data) {
+      if (lastInventorySnapshot !== body) {
         var data = JSON.parse(e.data);
         fileStoreApplySnapshot(data.scope, data.entries || []);
-        lastInventorySnapshot = e.data;
+        lastInventorySnapshot = body;
         if (data.complete === true) {
           inventoryChangeHighlightingActive = true;
         }
@@ -8872,6 +8947,13 @@ function _createInventoryEventSource() {
       var data = JSON.parse(e.data);
       fileStoreApplyChange(data.ops || []);
       _scheduleRecentRecompute();
+    } catch (_e) {
+      /* ignore */
+    }
+  });
+  inventoryEventSource.addEventListener("file.changed", (e) => {
+    try {
+      window.MetabrowserFileWatches?.changed(JSON.parse(e.data));
     } catch (_e) {
       /* ignore */
     }
@@ -8926,17 +9008,11 @@ function _createInventoryEventSource() {
   });
   inventoryEventSource.addEventListener("fs.resync_required", (_e) => {
     lastInventorySnapshot = null;
-    // A resync marks a gap in the ordered delta stream. Clear derived state,
-    // then replace this connection so the server sends an authoritative
-    // snapshot before live updates resume.
+    // A gap: clear derived state, keep FileStore and its rows as the baseline, and
+    // reconnect for a snapshot (arch-live-delivery.md, "Recovery", says why).
     recentRecompute.cancel();
     scheduleRecentAuthoritativeRefetch();
     knownFileCatalog?.clear();
-    // Keep FileStore and its rendered rows as the baseline. The reconnect
-    // snapshot retires only rows that are really gone and patches the rest in
-    // place; emptying the store here would collapse the tree for the whole
-    // reconnect backoff and lose expanded folders. The server sends this on
-    // queue overflow, which is exactly when changes are arriving in bursts.
     notifyFileStoreSubscribers({ kind: "resync" });
     startIndexProgressPolling();
     quickFileCatalogFeed?.onResync();
@@ -8944,9 +9020,7 @@ function _createInventoryEventSource() {
   });
   inventoryEventSource.onopen = () => {
     catalogFeedCanStart = true;
-    // Do not erase accumulated failure state as soon as a socket opens. A
-    // connection that survives this interval is healthy enough to reset the
-    // exponential backoff; repeated overflow/resync cycles keep backing off.
+    // The backoff resets only once the connection has lasted ("Recovery").
     _scheduleEsStableReset();
     // The first open starts the bulk catalog fetch after subscription;
     // later opens refetch to cover deltas lost while disconnected.
@@ -8958,10 +9032,6 @@ function _createInventoryEventSource() {
     _cancelEsStableReset();
     _esConsecutiveErrors += 1;
     if (_esConsecutiveErrors >= _ES_MAX_CONSECUTIVE_ERRORS) {
-      // Circuit breaker: too many consecutive errors without a
-      // successful open or message. Close and recreate with
-      // exponential backoff. A fresh connection gets a snapshot
-      // via the existing fs.snapshot/resync flow.
       _scheduleInventoryReconnect();
     }
   };
@@ -10158,6 +10228,7 @@ function startNavCollapse() {
     // A filter's menu and the branch chooser close, as hiding the Files panel closes them.
     onHide: () => {
       closeFilterMenu();
+      document.getElementById("root-details")?.removeAttribute("open");
       window.MetabrowserSourceRefSelector?.mounted()?.close();
     },
     pane: pane,
@@ -10170,6 +10241,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initSettingsControl();
   initNavTabs();
   initHomeHeading();
+  initRootDetails();
   initFilterBar();
   initNavScrollShadow();
   // Only a /view/ pathname selects a file; a hash is document state, never identity.

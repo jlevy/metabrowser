@@ -6,6 +6,7 @@ import contextlib
 import os
 import sys
 import tempfile
+import types
 from collections.abc import Generator
 from html.parser import HTMLParser
 from pathlib import Path
@@ -14,6 +15,7 @@ from urllib.parse import urljoin
 
 import pytest
 
+import metabrowser.builtin_plugins.agents.adapters  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from tests import chrome_starts, suite_gates, suite_tiers, suite_timing, suite_workers
 from tests.file_ages_git import (  # noqa: F401
@@ -583,3 +585,29 @@ def _reset_delivery() -> Generator[None, None, None]:  # pyright: ignore[reportU
     delivery.serve_locally(False)
     yield
     delivery.serve_locally(False)
+
+
+@pytest.fixture(autouse=True)
+def _one_module_per_name() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """A test leaves each ``metabrowser`` module as one object, however it is reached.
+
+    Importing a submodule sets it as an attribute of its package, so a test that forgot a
+    module from ``sys.modules`` and imported it again leaves the package holding the new
+    one when the old is put back, and ``from metabrowser.git import content_routes`` (a
+    test's patch) then reaches a module the server's own import does not (mb-6byq).
+    `tests/forgotten_module.py` forgets a module and leaves no such trace.
+    """
+
+    yield
+    split: list[str] = []
+    for name, module in list(sys.modules.items()):
+        if not name.startswith("metabrowser."):
+            continue
+        parent_name, _, child = name.rpartition(".")
+        held = getattr(sys.modules.get(parent_name), child, None)
+        if isinstance(held, types.ModuleType) and held is not module:
+            split.append(name)
+    assert not split, (
+        f"after this test {split} is one module in sys.modules and another as its package's "
+        "attribute: a test that forgets a module must put both back (tests/forgotten_module.py)"
+    )

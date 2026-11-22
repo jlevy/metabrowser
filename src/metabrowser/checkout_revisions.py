@@ -94,6 +94,7 @@ from metabrowser.mirror_refresh import (
     SelectionRefMovedError,
 )
 from metabrowser.paths_safe import register_root_callback, tilde_path
+from metabrowser.repository_context import is_checkout_root
 from metabrowser.source import (
     SourceSession,
     SubjectNotOpenError,
@@ -496,11 +497,7 @@ def checkout_revisions() -> CheckoutRevisions | None:
     if held is None or held.root != root or held.revisions is None:
         # A "no" is asked again each time, as the Commits tab's test is: a repository made
         # in a served folder gets its selector at the next page.
-        try:
-            is_checkout = (root / ".git").exists()
-        except OSError:
-            is_checkout = False
-        held = _held = _Held(root, CheckoutRevisions(root) if is_checkout else None)
+        held = _held = _Held(root, CheckoutRevisions(root) if is_checkout_root(root) else None)
     return held.revisions
 
 

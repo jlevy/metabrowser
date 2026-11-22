@@ -20,5 +20,5 @@
 - For plugin authors: `metabrowser.ensureModule(name)` imports a published ES module
   bundle once and resolves to its namespace, beside `ensureAsset` for script bundles.
   The inert render now keeps `lang="mermaid"` on a `pre`, and no other `lang` value.
-  `metabrowser.builtins.markdown.drawDiagrams(root, {inert})` draws the diagrams of a
-  KPress render another plugin placed, as images unless `inert: false`.
+  The Markdown plugin’s `drawDiagrams(root, {inert})` draws the diagrams of a KPress
+  render another plugin placed, as images unless `inert: false`.

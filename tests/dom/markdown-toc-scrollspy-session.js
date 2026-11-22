@@ -305,11 +305,10 @@ async function overviewReadmeSession({
   const opened = [];
   let mountOptions = null;
   const mb = {
-    builtins: {},
     decorateExternalLink: createSdkSandbox().metabrowser.decorateExternalLink,
-    ensureKindAssets: async () => {
+    plugins: {
       // index.js's mountRendered, with the session's stand-in for the Markdown Worker.
-      mb.builtins.markdown = {
+      load: async () => ({
         mountRendered: (container, ctx, options) => {
           mountOptions = options;
           return mountRenderedMarkdown(container, ctx, mb, {
@@ -320,7 +319,7 @@ async function overviewReadmeSession({
             },
           });
         },
-      };
+      }),
     },
     errors: { isAbortError: () => false },
     escapeHtml: (value) => value,

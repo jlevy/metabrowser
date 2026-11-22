@@ -4,7 +4,7 @@
 // tree paints. Two things are here instead, in one file because nothing uses either
 // without the other: a Source view's line gutter and `#L` anchors
 // (`window.MetabrowserSourceLineAnchors`), and the SDK helpers that build a view's
-// markup -- the Source surface, ref chips and their sibling copy controls, the copy
+// markup -- the Source surface, ref chips and their action menus, the copy
 // wrapper, age labels and the partial-content notice -- with
 // the syntax service, since nothing asks for a token until a view shows code.
 //
@@ -777,12 +777,19 @@
   const lineAnchors = definedLineAnchors;
   const { delegateOwnerAttribute, ownDelegate, escapeHtml, formatSize } = mb;
 
-  /** Shared branch/tag markup. `name` is the raw copy value, independent of its label.
-   * @param {string} name
-   * @param {{label?:string,kind?:string,trunk?:boolean,head?:boolean,copy?:"inline"|"sibling"|false}} [options]
+  /**
+   * @typedef {{
+   *   label?: string, kind?: string, trunk?: boolean, head?: boolean,
+   *   menu?: "inline" | "sibling" | false, copy?: "inline" | "sibling" | false,
+   *   ref?: string, repository?: string | null, snapshot?: string,
+   * }} RefChipOptions
    */
-  function refChipHtml(name, options = {}) {
+
+  /** @param {string} name @param {RefChipOptions} options */
+  function refChipParts(name, options) {
     const kind = options.kind === "tag" ? "tag" : options.kind === "remote" ? "remote" : "local";
+    const menu = options.menu ?? options.copy ?? "inline";
+    const label = options.label ?? name;
     const classes = ["git-ref", `git-ref-${kind}`];
     if (options.trunk) {
       classes.push("git-ref-trunk");
@@ -790,65 +797,74 @@
     if (options.head) {
       classes.push("git-ref-head");
     }
-    const copy = options.copy ?? "inline";
-    if (copy) {
-      classes.push("git-ref-copyable");
+    if (menu === "inline") {
+      classes.push("git-ref-action", "disclosure-toggle");
     }
+    return {
+      tag: menu === "inline" ? "button" : "span",
+      className: classes.join(" "),
+      label,
+      action: menu
+        ? JSON.stringify({
+            name,
+            label,
+            kind,
+            ref: options.ref,
+            repository: options.repository,
+            snapshot: options.snapshot,
+          })
+        : null,
+    };
+  }
+
+  const refCaret = () =>
+    `<span class="git-ref-menu-caret" aria-hidden="true">${global.MetabrowserIcons?.toggle ?? ""}</span>`;
+
+  /** @param {string} name @param {RefChipOptions} [options] */
+  function refChipHtml(name, options = {}) {
+    const { tag, className, label, action } = refChipParts(name, options);
+    const button = tag === "button";
     return (
-      `<span class="${classes.join(" ")}" data-tip-text="${escapeHtml(options.label ?? name)}"` +
-      (copy === "sibling" ? ` data-ref-copy="${escapeHtml(name)}"` : "") +
-      ">" +
-      `<span class="git-ref-label">${escapeHtml(options.label ?? name)}</span>` +
-      (copy === "inline" ? refCopyHtml(name) : "") +
-      "</span>"
+      `<${tag} class="${className}" data-tip-text="${escapeHtml(label)}"` +
+      (action ? ` data-ref-menu="${escapeHtml(action)}"` : "") +
+      (button
+        ? ` type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Actions for ${escapeHtml(label)}"${delegateOwnerAttribute()}`
+        : "") +
+      `><span class="git-ref-label">${escapeHtml(label)}</span>` +
+      (button ? refCaret() : "") +
+      `</${tag}>`
     );
   }
 
-  /** @param {string} name */
-  function refCopyHtml(name) {
-    const label = `Copy ref ${name}`;
-    return (
-      `<button type="button" class="icon-btn git-ref-copy" data-mb-copy="text"` +
-      ` data-mb-copy-text="${escapeHtml(name)}"${delegateOwnerAttribute()}` +
-      ` data-mb-copy-label="${escapeHtml(label)}" data-tip-text="${escapeHtml(label)}"` +
-      ` aria-label="${escapeHtml(label)}">${global.MetabrowserIcons?.copy ?? ""}</button>`
-    );
+  /** @param {HTMLButtonElement} button @param {string} label */
+  function configureRefTrigger(button, label) {
+    button.type = "button";
+    button.setAttribute("aria-haspopup", "menu");
+    button.setAttribute("aria-expanded", "false");
+    button.setAttribute("aria-label", `Actions for ${label}`);
+    ownDelegate(button);
   }
 
-  /** DOM form of the same owned, escaped chip; no repository text becomes markup.
-   * @param {string} name
-   * @param {Parameters<typeof refChipHtml>[1]} [options]
-   * @returns {HTMLElement}
-   */
+  /** @param {string} name @param {RefChipOptions} [options] @returns {HTMLElement} */
   function refChip(name, options = {}) {
-    const chip = document.createElement("span");
-    const kind = options.kind === "tag" ? "tag" : options.kind === "remote" ? "remote" : "local";
-    chip.className = `git-ref git-ref-${kind}${options.trunk ? " git-ref-trunk" : ""}${options.head ? " git-ref-head" : ""}`;
-    chip.dataset.tipText = options.label ?? name;
-    const label = document.createElement("span");
-    label.className = "git-ref-label";
-    label.textContent = options.label ?? name;
-    chip.append(label);
-    const copy = options.copy ?? "inline";
-    if (copy) {
-      chip.classList.add("git-ref-copyable");
+    const { tag, className, label, action } = refChipParts(name, options);
+    const chip = document.createElement(tag);
+    chip.className = className;
+    chip.dataset.tipText = label;
+    const text = document.createElement("span");
+    text.className = "git-ref-label";
+    text.textContent = label;
+    chip.append(text);
+    if (action) {
+      chip.setAttribute("data-ref-menu", action);
     }
-    if (copy === "sibling") {
-      chip.dataset.refCopy = name;
-    }
-    if (copy === "inline") {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "icon-btn git-ref-copy";
-      button.setAttribute("data-mb-copy", "text");
-      button.setAttribute("data-mb-copy-text", name);
-      ownDelegate(button);
-      const tip = `Copy ref ${name}`;
-      button.setAttribute("data-mb-copy-label", tip);
-      button.setAttribute("data-tip-text", tip);
-      button.setAttribute("aria-label", tip);
-      button.innerHTML = global.MetabrowserIcons?.copy ?? "";
-      chip.append(button);
+    if (tag === "button") {
+      configureRefTrigger(/** @type {HTMLButtonElement} */ (chip), label);
+      const caret = document.createElement("span");
+      caret.className = "git-ref-menu-caret";
+      caret.setAttribute("aria-hidden", "true");
+      caret.innerHTML = global.MetabrowserIcons?.toggle || "";
+      chip.append(caret);
     }
     return chip;
   }
@@ -867,18 +883,15 @@
    * from the source to the target in a right-to-left page too, and its order in the
    * document, source first, is the order a screen reader reads.
    *
-   * @param {{name: string, label?: string}} source The branch whose commits merge.
-   * @param {{name: string, label?: string}} target The branch they merge into.
-   * @param {{kind?: string, copy?: "inline"|"sibling"|false}} [options]
+   * @param {{name: string} & RefChipOptions} source The branch whose commits merge.
+   * @param {{name: string} & RefChipOptions} target The branch they merge into.
+   * @param {RefChipOptions} [options]
    * @returns {HTMLElement}
    */
   function mergeRefs(source, target, options = {}) {
-    /** @param {{name: string, label?: string}} side @param {string} role */
+    /** @param {{name: string} & RefChipOptions} side @param {string} role */
     const chip = (side, role) => {
-      const element = refChip(side.name, {
-        ...options,
-        ...(side.label === undefined ? {} : { label: side.label }),
-      });
+      const element = refChip(side.name, { ...options, ...side });
       element.classList.add(role);
       return element;
     };
@@ -897,26 +910,27 @@
     return group;
   }
 
-  /** Put secondary copy controls outside a primary row link/button. Each mounted row
-   * owns its controls and disposer; active global hide listeners are released on hide/dispose.
-   * Geometry is read only on entry. A scroll/resize while focus stays hides controls;
-   * the next pointer/focus entry positions them against the current chip boxes.
+  /** Overlay full-chip menu buttons as siblings of clickable rows and picker buttons.
+   * Read geometry on entry and remove its listeners when the controls are hidden or recycled.
    * @param {HTMLElement} primary
    * @param {HTMLElement} host
    * @returns {() => void}
    */
-  function mountRefCopies(primary, host) {
-    const chips = [...primary.querySelectorAll("[data-ref-copy]")];
+  function mountRefMenus(primary, host) {
+    const chips = [...primary.querySelectorAll("[data-ref-menu]")];
     if (!chips.length) {
       return () => {};
     }
-    host.classList.add("git-ref-copy-host");
+    host.classList.add("git-ref-menu-host");
     const layer = document.createElement("span");
-    layer.className = "git-ref-copy-layer";
+    layer.className = "git-ref-menu-layer";
     const buttons = chips.map((chip) => {
-      const button = /** @type {HTMLButtonElement} */ (
-        refChip(chip.getAttribute("data-ref-copy") ?? "").querySelector("button")
-      );
+      const button = document.createElement("button");
+      button.className = "git-ref-menu-hit disclosure-toggle";
+      const label = chip.getAttribute("data-tip-text") ?? "";
+      configureRefTrigger(button, label);
+      button.setAttribute("data-ref-menu", chip.getAttribute("data-ref-menu") ?? "");
+      button.innerHTML = refCaret();
       layer.append(button);
       return button;
     });
@@ -924,11 +938,18 @@
     let hiding = false;
     function hide() {
       hiding = true;
-      if (layer.contains(document.activeElement)) {
+      const active = document.activeElement;
+      const menu = activeRefMenu;
+      const owned = menu !== null && layer.contains(menu.trigger);
+      const restore = layer.contains(active) || (owned && menu.menu.contains(active));
+      if (owned) {
+        menu.close(false);
+      }
+      if (restore) {
         primary.focus({ preventScroll: true });
       }
       global.removeEventListener("resize", hide);
-      document.removeEventListener("scroll", hide, true);
+      document.removeEventListener("scroll", hideOnScroll, true);
       document.removeEventListener("pointerdown", outsidePointer, true);
       layer.hidden = true;
       for (const button of buttons) {
@@ -936,12 +957,21 @@
       }
       hiding = false;
     }
+    /** @param {Event} event */
+    function hideOnScroll(event) {
+      if (!insideRefMenu(event?.target ?? null)) {
+        hide();
+      }
+    }
     /** A pane splitter may prevent focus movement while changing the clipping box.
-     * Release an active copy before that drag; a pointer on the copy itself still works.
+     * Release the overlay before that drag. The open menu handles its own dismissal.
      * @param {PointerEvent} event
      */
     function outsidePointer(event) {
-      if (!host.contains(/** @type {Node | null} */ (event.target))) {
+      if (
+        !host.contains(/** @type {Node | null} */ (event.target)) &&
+        !insideRefMenu(event.target)
+      ) {
         hide();
       }
     }
@@ -971,42 +1001,52 @@
           }
         }
         const button = buttons[index];
-        button.hidden = rect.width < 20 || rect.right > right || rect.left < left;
-        const kind = chips[index].classList.contains("git-ref-tag")
-          ? "tag"
-          : chips[index].classList.contains("git-ref-remote")
-            ? "remote"
-            : "local";
-        button.style.setProperty(
-          "--git-ref-copy-ink",
-          chips[index].classList.contains("git-ref-trunk")
-            ? "var(--git-ref-bg)"
-            : `var(--git-ref-${kind})`,
-        );
-        button.style.left = `${rect.right - box.left - 16}px`;
-        button.style.top = `${rect.top - box.top + (rect.height - 16) / 2}px`;
+        const visibleLeft = Math.max(rect.left, left);
+        const visibleRight = Math.min(rect.right, right);
+        button.hidden = visibleRight <= visibleLeft;
+        button.style.left = `${visibleLeft - box.left}px`;
+        button.style.top = `${rect.top - box.top}px`;
+        button.style.width = `${Math.max(0, visibleRight - visibleLeft)}px`;
+        button.style.height = `${rect.height}px`;
         button.tabIndex = button.hidden ? -1 : 0;
       }
       global.addEventListener("resize", hide);
-      document.addEventListener("scroll", hide, true);
+      document.addEventListener("scroll", hideOnScroll, true);
       document.addEventListener("pointerdown", outsidePointer, true);
     }
     /** @param {FocusEvent | PointerEvent} event */
     function leave(event) {
       if (
         !host.contains(/** @type {Node | null} */ (event.relatedTarget)) &&
+        !insideRefMenu(event.relatedTarget) &&
+        !(activeRefMenu && layer.contains(activeRefMenu.trigger)) &&
         (event.type === "focusout" || !host.contains(document.activeElement))
       ) {
         hide();
       }
     }
+    /** @param {MouseEvent} event */
+    function openChip(event) {
+      const at = chips.findIndex((chip) =>
+        chip.contains(/** @type {Node | null} */ (event.target)),
+      );
+      if (at < 0) {
+        return;
+      }
+      event.stopPropagation();
+      event.preventDefault();
+      position();
+      buttons[at].click();
+    }
     hide();
+    primary.addEventListener("click", openChip, true);
     host.addEventListener("pointerenter", position);
     host.addEventListener("focusin", position);
     host.addEventListener("pointerleave", leave);
     host.addEventListener("focusout", leave);
     return () => {
       hide();
+      primary.removeEventListener("click", openChip, true);
       host.removeEventListener("pointerenter", position);
       host.removeEventListener("focusin", position);
       host.removeEventListener("pointerleave", leave);
@@ -1014,6 +1054,322 @@
       layer.remove();
     };
   }
+
+  /** @typedef {{name: string, label: string, kind: string, ref?: string,
+   * repository?: string | null, snapshot?: string}} RefMenuData */
+  /** @type {{ trigger: HTMLButtonElement, menu: HTMLElement, close(focus: boolean): void } | null} */
+  let activeRefMenu = null;
+  let refMenuIsSwitching = false;
+  let refMenuContextId = 0;
+
+  /** @param {EventTarget | null} target */
+  function insideRefMenu(target) {
+    return activeRefMenu !== null && target instanceof Node && activeRefMenu.menu.contains(target);
+  }
+
+  /** @param {RefMenuData} data */
+  function refDestination(data) {
+    const context =
+      global.METABROWSER_CHECKOUT_REF_CONTEXT ??
+      global.METABROWSER_REPOSITORY_CONTEXT ??
+      mb.repository;
+    const tag = data.kind === "tag";
+    const isMirror =
+      !global.METABROWSER_SOURCE_CHECKOUT &&
+      Boolean(
+        global.METABROWSER_SOURCE_PIN &&
+          global.document.querySelector(".header-path[data-mirror-location]"),
+      );
+    // A checkout's origin is the only remote in the shell context. Local tags carry
+    // no remote provenance. A GitHub pull's sides supply their own repository.
+    const origin = context?.host === "github.com" ? `${context.owner}/${context.name}` : null;
+    const originBranch = data.ref?.startsWith("refs/remotes/origin/");
+    const checkedOriginBranch =
+      data.ref === `refs/heads/${context?.branch}` && context?.branch_on_origin;
+    const hosted =
+      data.repository !== undefined
+        ? data.repository
+        : originBranch || checkedOriginBranch || (isMirror && tag)
+          ? origin
+          : null;
+    const name =
+      data.repository === undefined
+        ? (/^refs\/remotes\/[^/]+\/(.+)$/.exec(data.ref ?? "")?.[1] ?? data.name)
+        : data.name;
+    const parts = name.split("/");
+    const url =
+      hosted &&
+      /^[a-z0-9-]+\/[a-z0-9_.-]+$/i.test(hosted) &&
+      hosted.split("/").every((part) => part !== "." && part !== "..") &&
+      parts.every((part) => part !== "" && part !== "." && part !== ".." && !part.includes("\\"))
+        ? "https://github.com/" +
+          hosted +
+          "/tree/refs/" +
+          (tag ? "tags/" : "heads/") +
+          parts.map(encodeURIComponent).join("/")
+        : null;
+    return { name, url, origin, isMirror };
+  }
+
+  /** @param {RefMenuData} data @param {HTMLElement} status */
+  async function visitRef(data, status) {
+    if (!data.ref || refMenuIsSwitching) {
+      return;
+    }
+    refMenuIsSwitching = true;
+    status.textContent = "Opening…";
+    /** @type {(leaving: boolean) => void} */
+    let decided = () => {};
+    let leaving = false;
+    const held = global.MetabrowserSourcePinGuard?.hold(
+      new Promise((resolve) => {
+        decided = resolve;
+      }),
+    );
+    if (held === false) {
+      decided(false);
+      refMenuIsSwitching = false;
+      status.textContent = "A ref switch is already in progress.";
+      return;
+    }
+    try {
+      const selection = data.snapshot ? { oid: data.snapshot, under: data.ref } : { ref: data.ref };
+      const response = await global.fetch("/api/source/pin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify(selection),
+      });
+      if (response.status === 200) {
+        global.location.assign("/view/");
+        leaving = true;
+      } else {
+        const answer = await response.json().catch(() => null);
+        status.textContent =
+          response.status === 202
+            ? "Fetching this ref. Try again when the fetch ends."
+            : typeof answer?.error === "string"
+              ? answer.error
+              : "Could not open this ref.";
+      }
+    } catch {
+      status.textContent = "Could not open this ref.";
+    } finally {
+      decided(leaving);
+      if (!leaving) {
+        refMenuIsSwitching = false;
+      }
+    }
+  }
+
+  /** @param {HTMLButtonElement} trigger @param {boolean} last */
+  function openRefMenu(trigger, last = false) {
+    if (activeRefMenu?.trigger === trigger) {
+      activeRefMenu.close(true);
+      return;
+    }
+    activeRefMenu?.close(false);
+    const raw = trigger.getAttribute("data-ref-menu");
+    if (!raw) {
+      return;
+    }
+    const data = /** @type {RefMenuData} */ (JSON.parse(raw));
+    const tag = data.kind === "tag";
+    const kind = tag ? "Tag" : data.kind === "remote" ? "Remote branch" : "Local branch";
+    const { name, url, origin, isMirror } = refDestination(data);
+    const viewable = data.snapshot
+      ? isMirror
+      : (isMirror || global.METABROWSER_SOURCE_CHECKOUT) &&
+        (data.repository === undefined ||
+          (origin !== null && data.repository?.toLowerCase() === origin.toLowerCase()));
+    const doc = global.document;
+    const menu = doc.createElement("div");
+    menu.className = "menu git-ref-menu";
+    menu.setAttribute("data-ref-action-menu", "");
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("aria-label", `${kind} ${data.label}`);
+    const context = doc.createElement("div");
+    context.className = "menu-link-url";
+    const contextId = `git-ref-menu-${++refMenuContextId}`;
+    context.setAttribute("id", contextId);
+    context.setAttribute("aria-hidden", "true");
+    context.textContent = `${kind} · ${data.label}`;
+    const status = doc.createElement("div");
+    status.className = "git-ref-menu-status";
+    status.setAttribute("role", "status");
+    const copy = doc.createElement("button");
+    copy.type = "button";
+    renderLinkMenuItem(
+      copy,
+      tag ? "Copy Tag Name" : "Copy Branch Name",
+      global.MetabrowserIcons?.copy ?? "",
+    );
+    copy.addEventListener("click", async () => {
+      try {
+        if (!global.navigator.clipboard) {
+          throw new Error("Clipboard unavailable");
+        }
+        await global.navigator.clipboard.writeText(name);
+        status.textContent = tag ? "Tag name copied" : "Branch name copied";
+      } catch {
+        status.textContent = "Copy failed";
+      }
+    });
+    /** @type {HTMLElement[]} */
+    const items = [copy];
+    if (data.ref && viewable) {
+      const view = doc.createElement("button");
+      view.type = "button";
+      renderLinkMenuItem(
+        view,
+        data.snapshot ? "View PR Head in Metabrowser" : tag ? "View This Tag" : "View This Branch",
+        global.MetabrowserIcons?.toggle || "",
+      );
+      view.addEventListener("click", () => void visitRef(data, status));
+      items.push(view);
+    }
+    const destination = doc.createElement("div");
+    if (url) {
+      destination.className = "menu-link-url";
+      destination.textContent = url;
+      destination.setAttribute("id", `${contextId}-url`);
+      destination.setAttribute("aria-hidden", "true");
+      const open = externalLinkMenuItem(url, "Open on GitHub", () => close(true));
+      open.setAttribute("aria-describedby", `${contextId}-url`);
+      items.push(open);
+    }
+    for (const item of items) {
+      if (!item.hasAttribute("aria-describedby")) {
+        item.setAttribute("aria-describedby", contextId);
+      }
+    }
+    menu.append(context, ...items, status);
+    if (url) {
+      menu.insertBefore(destination, items.at(-1) ?? status);
+    }
+    doc.body.append(menu);
+
+    const controller = new AbortController();
+    const signal = controller.signal;
+    const observer = new MutationObserver(() => {
+      if (!trigger.isConnected) {
+        close(false);
+      }
+    });
+    observer.observe(doc.body, { childList: true, subtree: true });
+
+    /** @param {boolean} focus */
+    function close(focus) {
+      controller.abort();
+      observer.disconnect();
+      activeRefMenu = null;
+      menu.remove();
+      trigger.setAttribute("aria-expanded", "false");
+      if (focus && trigger.isConnected) {
+        trigger.focus({ preventScroll: true });
+      }
+    }
+    activeRefMenu = { trigger, menu, close };
+    trigger.setAttribute("aria-expanded", "true");
+    const rect = trigger.getBoundingClientRect();
+    const viewport = doc.documentElement;
+    const margin = 6;
+    menu.style.left =
+      Math.max(margin, Math.min(rect.left, viewport.clientWidth - menu.offsetWidth - margin)) +
+      "px";
+    menu.style.top = `${Math.max(
+      margin,
+      rect.bottom + margin + menu.offsetHeight <= viewport.clientHeight
+        ? rect.bottom + margin
+        : rect.top - menu.offsetHeight - margin,
+    )}px`;
+    items[last ? items.length - 1 : 0].focus({ preventScroll: true });
+    const outside = (/** @type {PointerEvent | FocusEvent} */ event) => {
+      if (
+        event.target instanceof Node &&
+        !menu.contains(event.target) &&
+        !trigger.contains(event.target)
+      ) {
+        close(false);
+      }
+    };
+    doc.addEventListener("pointerdown", outside, { capture: true, signal });
+    doc.addEventListener("focusin", outside, { signal });
+    doc.addEventListener(
+      "scroll",
+      (event) => {
+        if (!insideRefMenu(event.target)) {
+          close(true);
+        }
+      },
+      { capture: true, signal },
+    );
+    global.addEventListener("resize", () => close(true), { signal });
+    menu.addEventListener("keydown", (event) => {
+      if (event.key === "Tab") {
+        close(true);
+        return;
+      }
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+      const index = items.indexOf(/** @type {HTMLElement} */ (doc.activeElement));
+      const next =
+        event.key === "ArrowDown"
+          ? (index + 1) % items.length
+          : event.key === "ArrowUp"
+            ? (index + items.length - 1) % items.length
+            : event.key === "Home"
+              ? 0
+              : event.key === "End"
+                ? items.length - 1
+                : null;
+      if (event.key !== "Escape" && next === null) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (next === null) {
+        close(true);
+      } else {
+        items[next].focus({ preventScroll: true });
+      }
+    });
+  }
+
+  /** @param {Event} event */
+  function refTrigger(event) {
+    const target = /** @type {Element | null} */ (event.target);
+    const button = target?.closest?.("button[data-ref-menu]");
+    return button && global.MetabrowserPluginHost.isOwnedDelegate(button)
+      ? /** @type {HTMLButtonElement} */ (button)
+      : null;
+  }
+  global.document?.addEventListener?.("click", (event) => {
+    const trigger = refTrigger(event);
+    if (trigger) {
+      openRefMenu(trigger);
+    }
+  });
+  global.document?.addEventListener?.("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+      return;
+    }
+    const trigger = refTrigger(event);
+    if (!trigger) {
+      return;
+    }
+    event.preventDefault();
+    openRefMenu(trigger, event.key === "ArrowUp");
+  });
+  global.addEventListener?.("pageshow", (event) => {
+    if (event.persisted) {
+      refMenuIsSwitching = false;
+    }
+  });
 
   /**
    * The neutral person in an avatar's box where there is no avatar: Lucide 1.17.0's
@@ -1775,7 +2131,8 @@
     github:
       '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656"/></svg>',
     /* Lucide 1.17.0: circle-dot.svg and git-pull-request.svg, neutral entity marks, and
-     * circle-user-round.svg, the person in an actor identity's box (PERSON_GLYPH above).
+     * circle-user-round.svg, the person in an actor identity's box.
+     * arrow-up-right.svg marks the Open in Browser menu action.
      * https://github.com/lucide-icons/lucide/tree/896aba0d195a4fec38ad7c4a90d00cb3389ebfea/icons
      * ISC License
      * Copyright (c) 2026 Lucide Icons and Contributors
@@ -1793,6 +2150,8 @@
     issue:
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/></svg>',
     pull: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/></svg>',
+    arrowUpRight:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>',
   };
   /** @type {WeakMap<HTMLElement, {node: HTMLElement, kind: string, supplied: Element | undefined}>} */
   const linkMarks = new WeakMap();
@@ -1877,11 +2236,71 @@
     return anchor;
   }
 
+  /**
+   * Two menu rows for an external URL supplied by the host or a trusted view. The
+   * caller owns the menu's open state and focus, and may announce the copy result.
+   *
+   * @param {string} url
+   * @param {{onActivate?: () => void, onCopyResult?: (result: "copied" | "failed") => void}} [options]
+   * @returns {[HTMLButtonElement, HTMLAnchorElement]}
+   */
+  function externalLinkMenuItems(url, options = {}) {
+    if (!/^https?:\/\//i.test(url)) {
+      throw new TypeError("An external link menu needs an HTTP or HTTPS URL");
+    }
+    const doc = global.document;
+    const copy = doc.createElement("button");
+    renderLinkMenuItem(copy, "Copy Link", global.MetabrowserIcons?.copy ?? "");
+    copy.setAttribute("type", "button");
+    copy.addEventListener("click", () => {
+      options.onActivate?.();
+      const clipboard = global.navigator?.clipboard;
+      if (!clipboard || typeof clipboard.writeText !== "function") {
+        options.onCopyResult?.("failed");
+        return;
+      }
+      clipboard.writeText(url).then(
+        () => options.onCopyResult?.("copied"),
+        () => options.onCopyResult?.("failed"),
+      );
+    });
+    return [copy, externalLinkMenuItem(url, "Open in Browser", options.onActivate)];
+  }
+
+  /** @param {HTMLElement} item @param {string} text @param {string} glyph */
+  function renderLinkMenuItem(item, text, glyph) {
+    item.className = "menu-item";
+    item.setAttribute("role", "menuitem");
+    item.setAttribute("tabindex", "-1");
+    const icon = global.document.createElement("span");
+    icon.className = "menu-item-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = glyph;
+    const label = global.document.createElement("span");
+    label.className = "menu-item-label";
+    label.textContent = text;
+    item.append(icon, label);
+    mb.ownDelegate(item);
+  }
+
+  /** @param {string} url @param {string} label @param {(() => void) | undefined} activate */
+  function externalLinkMenuItem(url, label, activate) {
+    const external = global.document.createElement("a");
+    renderLinkMenuItem(external, label, destinationGlyphs.arrowUpRight);
+    external.setAttribute("data-web-view", "external");
+    external.setAttribute("href", url);
+    external.setAttribute("target", "_blank");
+    external.setAttribute("rel", "noopener");
+    external.addEventListener("click", () => activate?.());
+    return external;
+  }
+
   /** Each counterpart provider's mark, drawn before its label. */
   /** @type {Record<string, string>} */
   const counterpartMarks = { github: destinationGlyphs.github };
   /** How long a copied link's confirmation stays under the button, as a code copy's does. */
   const COUNTERPART_COPIED_MS = 1500;
+  let counterpartDestinationId = 0;
 
   /**
    * A page's external counterpart as a split button (docs/design-system.md, "View on
@@ -1890,11 +2309,12 @@
    * `GET /api/counterpart` answers, so the provider supplies the label and the URL, and
    * another provider draws the same control.
    *
-   * The markup is the macOS app's contract (mb-4wqh): the root carries
-   * `data-view-on-<provider>`, the link `data-view-on-<provider>="open"`, and the menu's
-   * Open in Browser `data-view-on-<provider>="external"`. In a browser the link opens the
-   * page in a new tab; the app shows a plain click on it in a popover of its own. Nothing
-   * here knows of the app.
+   * The root carries `data-view-on-<provider>`, which names the button. The links carry
+   * the macOS app's contract, which names no site (mb-730z): the link
+   * `data-web-view="open"`, and the menu's Open in Browser `data-web-view="external"`. In
+   * a browser the link opens the page in a new tab; the app shows a plain click on it in a
+   * web pane of its own, in a popover, when the page is on a site it knows. Nothing here
+   * knows of the app.
    *
    * The menu is a menu button's: the chevron opens it with focus on its first item, the
    * arrow keys, Home, and End move among the items, and Escape, a second click on the
@@ -1924,7 +2344,7 @@
     group.dataset.layout = "joined";
     const open = doc.createElement("a");
     open.className = "chip counterpart-open";
-    open.setAttribute(hook, "open");
+    open.setAttribute("data-web-view", "open");
     open.setAttribute("href", counterpart.url);
     open.setAttribute("target", "_blank");
     open.setAttribute("rel", "noopener");
@@ -1956,26 +2376,36 @@
     menu.setAttribute("role", "menu");
     menu.setAttribute("aria-label", counterpart.label);
     menu.hidden = true;
-    /** @param {HTMLElement} item @param {string} text */
-    const menuItem = (item, text) => {
-      item.className = "menu-item";
-      item.setAttribute("role", "menuitem");
-      item.setAttribute("tabindex", "-1");
-      const words = doc.createElement("span");
-      words.className = "menu-item-label";
-      words.textContent = text;
-      item.append(words);
-      return item;
-    };
-    const copy = menuItem(doc.createElement("button"), "Copy Link");
-    copy.setAttribute("type", "button");
+    const destination = doc.createElement("div");
+    destination.className = "menu-link-url";
+    const destinationId = `counterpart-url-${++counterpartDestinationId}`;
+    destination.setAttribute("id", destinationId);
+    destination.setAttribute("aria-hidden", "true");
+    destination.textContent = counterpart.url;
+    let copies = 0;
+    const [copy, external] = externalLinkMenuItems(counterpart.url, {
+      onActivate: () => close(true),
+      onCopyResult(result) {
+        const words = result === "copied" ? "Link copied" : "Copy failed";
+        const copied = ++copies;
+        status.dataset.result = result;
+        status.textContent = words;
+        more.dataset.tipText = words;
+        global.setTimeout(() => {
+          // A later copy's confirmation keeps its own time.
+          if (copied === copies) {
+            delete status.dataset.result;
+            status.textContent = "";
+            more.dataset.tipText = restingTip;
+          }
+        }, COUNTERPART_COPIED_MS);
+      },
+    });
     copy.dataset.counterpartAction = "copy";
-    const external = menuItem(doc.createElement("a"), "Open in Browser");
-    external.setAttribute(hook, "external");
-    external.setAttribute("href", counterpart.url);
-    external.setAttribute("target", "_blank");
-    external.setAttribute("rel", "noopener");
-    menu.append(copy, external);
+    for (const item of [copy, external]) {
+      item.setAttribute("aria-describedby", destinationId);
+    }
+    menu.append(destination, copy, external);
     // Empty until a copy, and in the page from the start: a live region made and filled at
     // once is not announced.
     const status = doc.createElement("span");
@@ -1983,6 +2413,7 @@
     status.setAttribute("role", "status");
     root.append(group, menu, status);
 
+    /** @type {HTMLElement[]} */
     const items = [copy, external];
     /** @type {((event: Event) => void) | null} */
     let outside = null;
@@ -2057,36 +2488,6 @@
         close(true);
       }
     });
-    let copies = 0;
-    copy.addEventListener("click", () => {
-      close(true);
-      /** @param {"copied" | "failed"} result */
-      const confirm = (result) => {
-        const words = result === "copied" ? "Link copied" : "Copy failed";
-        const copied = ++copies;
-        status.dataset.result = result;
-        status.textContent = words;
-        more.dataset.tipText = words;
-        global.setTimeout(() => {
-          // A later copy's confirmation keeps its own time.
-          if (copied === copies) {
-            delete status.dataset.result;
-            status.textContent = "";
-            more.dataset.tipText = restingTip;
-          }
-        }, COUNTERPART_COPIED_MS);
-      };
-      const clipboard = global.navigator?.clipboard;
-      if (!clipboard || typeof clipboard.writeText !== "function") {
-        confirm("failed");
-        return;
-      }
-      clipboard.writeText(counterpart.url).then(
-        () => confirm("copied"),
-        () => confirm("failed"),
-      );
-    });
-    external.addEventListener("click", () => close(true));
     return root;
   }
 
@@ -2246,9 +2647,9 @@
    */
   // A change set's size line, "77 commits · 83 files changed · 2.3 MB compressed (14.0 MB raw
   // diff)", the line a page header gives its change set above its Diff summary
-  // (docs/design-system.md, "Change Size Line"). A count summary, painted by the shell's one
-  // painter of them: its numbers bold in the line's own ink, a size's unit with its number,
-  // the words and parentheses regular, never a status's color. Here, not in a startup
+  // (docs/design-system.md, "Change Size Line"). The shared painter gives the counts
+  // their emphasis and the byte values the Files navigation's size style. The words
+  // and parentheses keep the line's weight and ink. Here, not in a startup
   // script: only a commit's or a pull request's page, and a commit's hover card, draw it.
 
   /**
@@ -2263,6 +2664,14 @@
   function changeSizeLine(change) {
     /** @param {number | null} count */
     const written = (count) => (count === null ? "?" : mb.formatInteger(count));
+    /**
+     * @param {number} bytes
+     * @returns {{number: string, sizeStyle: "size" | "size size-large"}}
+     */
+    const bytePart = (bytes) => ({
+      number: formatSize(bytes),
+      sizeStyle: mb.sizeClass(bytes) ? "size size-large" : "size",
+    });
     /** @type {Array<{parts: MetabrowserCountParts, words: string}>} */
     const groups = [];
     if (change.commits !== undefined) {
@@ -2281,15 +2690,15 @@
     let sizeParts = [];
     let tooltip = null;
     if (typeof change.pushedBytes === "number") {
-      const pushed = formatSize(change.pushedBytes);
-      sizeParts = [{ number: pushed }, " compressed"];
-      groups.push({ parts: [], words: `${pushed} compressed` });
-      tooltip = `${pushed} compressed: what Git pushes for this change.`;
+      const pushed = bytePart(change.pushedBytes);
+      sizeParts = [pushed, " compressed"];
+      groups.push({ parts: [], words: `${pushed.number} compressed` });
+      tooltip = `${pushed.number} compressed: what Git pushes for this change.`;
       if (typeof change.diffBytes === "number") {
-        const diff = formatSize(change.diffBytes);
-        sizeParts = [...sizeParts, " (", { number: diff }, " raw diff)"];
-        groups.push({ parts: [], words: `${diff} raw diff` });
-        tooltip += ` ${diff} raw diff: its patch, uncompressed.`;
+        const diff = bytePart(change.diffBytes);
+        sizeParts = [...sizeParts, " (", diff, " raw diff)"];
+        groups.push({ parts: [], words: `${diff.number} raw diff` });
+        tooltip += ` ${diff.number} raw diff: its patch, uncompressed.`;
       }
     }
     const separator = { separator: "·", spoken: ", " };
@@ -2406,13 +2815,15 @@
     changeSizeLineNodes,
     counterpartButton,
     decorateExternalLink,
+    externalLinkMenuItems,
     loadChangedFilesTree,
     mountCounterpart,
     prefetchCounterpart,
     refChipHtml,
     refChip,
     mergeRefs,
-    mountRefCopies,
+    mountRefMenus,
+    mountRefCopies: mountRefMenus,
     ageBucket,
     ageLabelHtml,
     highlightSyntax: highlightSyntax,

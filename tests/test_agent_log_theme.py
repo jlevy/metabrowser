@@ -6,19 +6,17 @@ import math
 import re
 from pathlib import Path
 
+from metabrowser.builtin_plugins.agents.kinds import KINDS, TOOL_FAMILIES
+
 ROOT = Path(__file__).resolve().parents[1]
 CORE_CSS = ROOT / "src" / "metabrowser" / "static" / "styles.css"
-PLUGIN_CSS = ROOT / "src" / "metabrowser" / "builtin_plugins" / "agent_log" / "styles.css"
+PLUGIN_CSS = ROOT / "src" / "metabrowser" / "builtin_plugins" / "agents" / "agent-log.css"
 
 MINIMUM_TEXT_CONTRAST = 4.5
-PALETTE_PAIRS = (
-    ("--agent-log-kind-neutral-text", "--agent-log-kind-neutral-bg"),
-    ("--agent-log-kind-muted-text", "--agent-log-kind-neutral-bg"),
-    ("--agent-log-kind-init-text", "--agent-log-kind-init-bg"),
-    ("--agent-log-kind-tool-text", "--agent-log-kind-tool-bg"),
-    ("--agent-log-kind-thinking-text", "--agent-log-kind-thinking-bg"),
-    ("--agent-log-kind-result-text", "--agent-log-kind-result-bg"),
-    ("--agent-log-kind-error-text", "--agent-log-kind-error-bg"),
+PALETTE_PAIRS = tuple(
+    (f"--agent-{family}-{name}-text", f"--agent-{family}-{name}-bg")
+    for family, names in (("kind", KINDS), ("tool", TOOL_FAMILIES))
+    for name in names
 )
 
 TOKEN_RE = re.compile(r"^\s*(--[\w-]+):\s*([^;]+);", re.MULTILINE)

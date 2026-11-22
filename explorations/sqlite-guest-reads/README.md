@@ -297,9 +297,11 @@ The plan’s access table keys on the write-ahead log’s size, a live journal, 
 count, and the resolved path, not on which sidecars exist.
 Every SQLite connection runs in a spawned reader process that opens nothing else while
 it is connected. A log with no `-shm`, or a file with a second name, is read through a
-validated private copy.
-A rollback-journal database is never locked: its page is validated, waiting out the
-owner, and its count is validated apart or replaced by an estimate.
+validated private copy, and so, after review A of the access layer, is a log whose
+`-shm` no live connection holds, since the table’s “owner killed” row shows `mode=ro`
+rewriting it.
+A rollback-journal database is never locked: its page is validated, waiting
+out the owner, and its count is validated apart or replaced by an estimate.
 Counts are capped subqueries under a wall-clock deadline and an interrupt, and never run
 under a lock.
 Sorts that would scan are refused past a measured size, and a sorted column
@@ -310,6 +312,11 @@ The authorizer admits built-in functions inside views; cells and keys use encodi
 these failures require; and the generation token includes the log header.
 [SQLite Source](../../docs/project/specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md#the-sqlite-source)
 states each rule.
+
+One limit follows from these records rather than being measured: a lock-free read of a
+rollback-journal database validates against the change counter and the journal file, and
+an owner using `journal_mode=MEMORY` or `OFF` keeps no journal file, so a read taken
+while it is stalled between page writes validates and shows a half-written commit.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

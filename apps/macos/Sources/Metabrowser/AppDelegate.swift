@@ -111,7 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var watchedRuntime: Runtime?
     private var watchedPaths: [String] = []
     private var isOfferingRestart = false
-    /// The login shell's `PATH` from the last search that read it, for the first-run steps.
+    /// The login shell's `PATH` from the last search that read it, for locating uv.
     private var lastLoginPath: [String]?
     private var guideRequests = 0
 
@@ -977,8 +977,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.answer = nil
             return
         }
-        let install = MetabInstall.of(executable: setup.runtime.executable)
-        model.upgrade = (MetabRequirement.upgradeCommand(for: install), install.note)
         model.isRunning = true
         checkSetupRun = Task { [weak self] in
             let result = await CommandRunner.run(
@@ -1047,8 +1045,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Works out the first-run steps from the last search and what is installed now,
-    /// asking uv, when there is one, where it puts `metab`.
+    /// Reports the last search and asks uv, when available, where to watch for metab.
     private func prepareGuide() async {
         guideRequests += 1
         let request = guideRequests
@@ -1070,14 +1067,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // A runtime that arrived meanwhile, or a newer request, makes this one moot.
         guard request == guideRequests, selection.setup == nil else { return }
-        let hasHomebrew = RuntimeDiscovery.homebrewBins.contains { FileChecks.isExecutableFile($0 + "/brew") }
-        let guide = SetupGuide(
-            tried: selection.tried, uv: uv.found, binDirectory: uv.binDirectory, home: env.home,
-            loginPath: lastLoginPath, hasHomebrew: hasHomebrew, refusedUv: uv.refused)
-        AppLog.app.info(
-            "first-run steps: \(guide.steps.map(\.command).joined(separator: "; "), privacy: .public); waiting for metab in \(uv.binDirectory, privacy: .public)"
-        )
-        runtimeModel.guide = guide
+        runtimeModel.guide = SetupGuide(
+            tried: selection.tried, binDirectory: uv.binDirectory, home: env.home, refusedUv: uv.refused)
         rewatch()
     }
 
@@ -1133,16 +1124,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - About and Help
 
     /// The standard About panel, which reads the version and build from the bundle,
-    /// with a line saying which build this is: both variants are named Metabrowser.
+    /// with the build variant and a link to the repository.
     @objc func showAbout(_ sender: Any?) {
         let centered = NSMutableParagraphStyle()
         centered.alignment = .center
-        let line = NSAttributedString(string: appIdentity.buildLine, attributes: [
-            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+        let font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        let credits = NSMutableAttributedString(string: appIdentity.buildLine + "\n\n", attributes: [
+            .font: font,
             .foregroundColor: NSColor.secondaryLabelColor,
             .paragraphStyle: centered,
         ])
-        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: appIdentity.name, .credits: line])
+        let repository = ProjectLinks.repository
+        credits.append(NSAttributedString(string: repository.absoluteString, attributes: [
+            .font: font,
+            .link: repository,
+            .paragraphStyle: centered,
+        ]))
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: appIdentity.name, .credits: credits])
     }
 
     /// Creates the folder first, since it holds nothing until a folder has been served.
@@ -1196,26 +1194,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(ProjectLinks.readme)
     }
 
-    // MARK: - GitHub data
+    // MARK: - Website data
 
-    /// Metabrowser > Clear GitHub Data…: empties the store every GitHub popover shares
-    /// (`GitHubDataStore`), which signs you out of GitHub in every window, then reloads each
-    /// open page's popover, signed out, whether a window shows the page or its folder is in
+    /// Metabrowser > Clear Website Data…: empties the store every web pane shares
+    /// (`WebDataStore`), for one site that stored something or for all of them, which signs
+    /// you out of each in every window, then reloads, signed out, each open page's popover
+    /// whose site's data was cleared, whether a window shows the page or its folder is in
     /// the background. Cancel is the default button, as for the clone question, so a stray
     /// Return keeps the sign-in.
-    @objc func clearGitHubData(_ sender: Any?) {
+    @objc func clearWebsiteData(_ sender: Any?) {
+        Task {
+            let sites = await WebDataStore.sites()
+            let clearing = askWhichWebsiteDataToClear(sites)
+            switch clearing {
+            case .cancelled: return
+            case .all: AppLog.app.info("clearing website data: every site")
+            case .sites: AppLog.app.info("clearing website data: one site")
+            }
+            await WebDataStore.clear(clearing)
+            for page in folderSessions.flatMap(\.pages) { page.reloadWebPopover(after: clearing) }
+        }
+    }
+
+    /// Asks which sites' data to clear, from a pop-up of `WebDataClearing.menu(sites)`.
+    private func askWhichWebsiteDataToClear(_ sites: [String]) -> WebDataClearing {
         let alert = NSAlert()
-        alert.messageText = "Clear GitHub data?"
+        alert.messageText = "Clear website data?"
         alert.informativeText =
-            "This signs you out of GitHub in Metabrowser’s View on GitHub popovers and removes the cookies, cache, and other data github.com stored there. It does not change your gh sign-in, your browser, or Metabrowser’s own settings."
+            "This signs you out of the websites Metabrowser shows in its own web views, such as View on GitHub, and removes the cookies, cache, and other data they stored there. It does not change your gh sign-in, your browser, or Metabrowser’s own settings."
+        let choice = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 26), pullsDown: false)
+        for title in WebDataClearing.menu(sites) {
+            choice.menu?.addItem(title.map { NSMenuItem(title: $0, action: nil, keyEquivalent: "") } ?? .separator())
+        }
+        choice.selectItem(at: 0)
+        alert.accessoryView = choice
         alert.addButton(withTitle: "Cancel")  // the first button is the default
         let clear = alert.addButton(withTitle: "Clear")
         clear.hasDestructiveAction = true
-        guard alert.runModal() == .alertSecondButtonReturn else { return }
-        AppLog.app.info("clearing the GitHub popovers' data")
-        Task {
-            await GitHubDataStore.clear()
-            for page in folderSessions.flatMap(\.pages) { page.reloadGitHubPopover() }
-        }
+        let confirmed = alert.runModal() == .alertSecondButtonReturn
+        return WebDataClearing(confirmed: confirmed, selected: choice.indexOfSelectedItem, sites: sites)
     }
 }

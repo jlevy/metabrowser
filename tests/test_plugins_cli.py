@@ -60,7 +60,7 @@ def test_plugins_list_json_emits_structured_output() -> None:
 def test_plugins_list_reports_partial_discovery_as_failure(tmp_path: Path) -> None:
     broken = tmp_path / "broken"
     broken.mkdir()
-    (broken / "manifest.toml").write_text('[plugin]\nname = "broken"\nsdk_version = "0.7"\n')
+    (broken / "manifest.toml").write_text('[plugin]\nname = "broken"\nsdk_version = "0.8"\n')
 
     table_result = _runner.invoke(
         _app,
@@ -176,7 +176,7 @@ def test_plugins_doctor_rejects_local_python_data_hook(tmp_path: Path) -> None:
         """
 [plugin]
 name = "broken"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[kind]]
 id = "x"
@@ -221,7 +221,7 @@ def test_plugins_doctor_reports_a_duplicate_view_key_across_manifests(tmp_path: 
         """
 [plugin]
 name = "alpha"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[kind]]
 id = "myk"
@@ -241,7 +241,7 @@ key = "m"
         """
 [plugin]
 name = "beta"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[view]]
 kind = "myk"
@@ -281,7 +281,7 @@ def test_plugins_doctor_names_the_override_that_takes_a_built_in_views_key(
         """
 [plugin]
 name = "steal"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[view]]
 kind = "markdown"
@@ -308,7 +308,7 @@ def test_plugins_diagnostics_do_not_advertise_disabled_local_hooks(tmp_path: Pat
         """
 [plugin]
 name = "local-demo"
-sdk_version = "0.7"
+sdk_version = "0.8"
 
 [[kind]]
 id = "x"

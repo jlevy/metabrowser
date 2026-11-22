@@ -27,7 +27,7 @@ $ metab root --show claude-transcript.jsonl
 show: claude-transcript.jsonl
 route: /view/claude-transcript.jsonl
 kind: agent-log
-views: log (default, key V), charts (key C), raw (key S)
+views: session (default, key E), log (key V), charts (key C), raw (key S)
 model: jsonl envelope; size=10570
 ? 0
 ```
@@ -39,7 +39,7 @@ $ metab root --show codex-rollout.jsonl
 show: codex-rollout.jsonl
 route: /view/codex-rollout.jsonl
 kind: agent-log
-views: log (default, key V), charts (key C), raw (key S)
+views: session (default, key E), log (key V), charts (key C), raw (key S)
 model: jsonl envelope; size=6611
 ? 0
 ```
@@ -49,8 +49,8 @@ model: jsonl envelope; size=6611
 Records without conversation count as `system`; each content block counts once.
 
 ```console
-$ metab root --api '/api/plugin/agent-log/charts?path=claude-transcript.jsonl'
-api: /api/plugin/agent-log/charts?path=claude-transcript.jsonl
+$ metab root --api '/api/plugin/agents/charts?path=claude-transcript.jsonl'
+api: /api/plugin/agents/charts?path=claude-transcript.jsonl
 status: 200
 {
   "summary": {
@@ -76,7 +76,7 @@ status: 200
       "series": [
         {
           "label": "system",
-          "color": "var(--agent-log-kind-muted-text)",
+          "color": "var(--agent-kind-control-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -86,7 +86,7 @@ status: 200
         },
         {
           "label": "text",
-          "color": "var(--agent-log-kind-neutral-text)",
+          "color": "var(--agent-kind-text-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -96,7 +96,7 @@ status: 200
         },
         {
           "label": "thinking",
-          "color": "var(--agent-log-kind-thinking-text)",
+          "color": "var(--agent-kind-thinking-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -106,7 +106,7 @@ status: 200
         },
         {
           "label": "tool_call",
-          "color": "var(--agent-log-kind-tool-text)",
+          "color": "var(--agent-kind-tool-call-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -116,7 +116,7 @@ status: 200
         },
         {
           "label": "tool_result",
-          "color": "var(--agent-log-kind-tool-result-fill)",
+          "color": "var(--agent-kind-tool-result-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -136,8 +136,8 @@ status: 200
 Commands run inside Codex’s `exec` tool count as tool calls of their own.
 
 ```console
-$ metab root --api '/api/plugin/agent-log/charts?path=codex-rollout.jsonl'
-api: /api/plugin/agent-log/charts?path=codex-rollout.jsonl
+$ metab root --api '/api/plugin/agents/charts?path=codex-rollout.jsonl'
+api: /api/plugin/agents/charts?path=codex-rollout.jsonl
 status: 200
 {
   "summary": {
@@ -170,7 +170,7 @@ status: 200
       "series": [
         {
           "label": "init",
-          "color": "var(--agent-log-kind-init-text)",
+          "color": "var(--agent-kind-context-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -184,7 +184,7 @@ status: 200
         },
         {
           "label": "system",
-          "color": "var(--agent-log-kind-muted-text)",
+          "color": "var(--agent-kind-control-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -198,7 +198,7 @@ status: 200
         },
         {
           "label": "text",
-          "color": "var(--agent-log-kind-neutral-text)",
+          "color": "var(--agent-kind-text-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -212,7 +212,7 @@ status: 200
         },
         {
           "label": "thinking",
-          "color": "var(--agent-log-kind-thinking-text)",
+          "color": "var(--agent-kind-thinking-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -226,7 +226,7 @@ status: 200
         },
         {
           "label": "tool_call",
-          "color": "var(--agent-log-kind-tool-text)",
+          "color": "var(--agent-kind-tool-call-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -240,7 +240,7 @@ status: 200
         },
         {
           "label": "tool_result",
-          "color": "var(--agent-log-kind-tool-result-fill)",
+          "color": "var(--agent-kind-tool-result-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -254,7 +254,7 @@ status: 200
         },
         {
           "label": "usage",
-          "color": "var(--agent-log-kind-muted-text)",
+          "color": "var(--agent-kind-unknown-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",
@@ -268,7 +268,7 @@ status: 200
         },
         {
           "label": "result",
-          "color": "var(--agent-log-kind-result-text)",
+          "color": "var(--agent-kind-metering-fill)",
           "data": [
             {
               "x": "2026-11-19T10:00:00+00:00",

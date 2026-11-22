@@ -20,6 +20,8 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_node
 
@@ -34,9 +36,10 @@ SERVER_START_TIMEOUT_S = 20
 # The server stops on SIGTERM well inside this, and is killed after it.
 SERVER_TERM_S = 5
 SERVER_KILL_S = 2
-# The longest the test can take; tests/test_process_group.py holds it under the suite's
-# 60 s per-test timeout, which ends the whole run when it fires.
+# The longest the test can take; tests/test_process_group.py holds it under its timeout,
+# which ends the whole run when it fires.
 LIFECYCLE_S = RUN_BUDGET_S + GROUP_STOP_S + SERVER_TERM_S + SERVER_KILL_S + PROFILE_TEARDOWN_S
+pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 _METAB = Path(sys.executable).with_name("metab")
 _TEXT = (
     "A reserved box keeps its place when the content that fills it arrives, and a face "

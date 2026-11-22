@@ -21,6 +21,7 @@ events, and how many connections it opens. The exploration records that.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -69,6 +70,7 @@ def test_the_session_runs_every_scenario(scenarios: dict[str, list[dict[str, Any
         UNLOADED,
         "a connecting stream is parked and restored",
         "initial streams become ready while the page is parked",
+        WATCHES,
     ]
 
 
@@ -275,3 +277,67 @@ def test_delayed_initial_streams_resume_once(scenarios: dict[str, list[dict[str,
     restored = _step(steps, RESTORED)
     assert _opened(restored) == [EVENTS, "/api/stream?path=run.jsonl&cursor=120"]
     assert restored["after"]["parked"] == 0
+
+
+WATCHES = "a page's file watches follow its event stream's connection"
+
+
+def _posts(step: dict[str, Any]) -> list[str]:
+    return [line.split(" ", 3)[3] for line in step["did"] if "POST /api/events/watch" in line]
+
+
+def test_a_watch_registers_on_the_connection_the_last_snapshot_named(
+    scenarios: dict[str, list[dict[str, Any]]],
+) -> None:
+    """The module loads after the snapshot, and still finds its connection."""
+
+    first = _step(scenarios[WATCHES], "a table read at g1 watches its file: registered on c1")
+    assert _posts(first) == ['{"connection":"c1","path":"people.csv","generation":"g1"}']
+    assert first["after"]["watches"][0]["state"] == "live"
+
+
+def test_a_change_is_told_once(scenarios: dict[str, list[dict[str, Any]]]) -> None:
+    changed = _step(
+        scenarios[WATCHES], "the file changes: file.changed on stream 1 tells the table once"
+    )
+    assert changed["did"] == ["table: people.csv is now g2"]
+
+
+def test_a_new_connection_registers_again_with_the_generation_held(
+    scenarios: dict[str, list[dict[str, Any]]],
+) -> None:
+    """A change while no stream was open reaches the reader through the answer."""
+
+    steps = scenarios[WATCHES]
+    again = _step(
+        steps,
+        "stream 2 sends the same tree for c2: the watch registers again with g2, and hears g3",
+    )
+    assert _posts(again) == ['{"connection":"c2","path":"people.csv","generation":"g2"}']
+    assert "table: people.csv is now g3" in again["did"]
+    restored = _step(steps, "pageshow, restored: stream 4 sends c4, and the watches move to it")
+    assert [json.loads(body)["connection"] for body in _posts(restored)] == ["c4", "c4"]
+
+
+def test_an_unknown_connection_waits_for_the_next_snapshot(
+    scenarios: dict[str, list[dict[str, Any]]],
+) -> None:
+    steps = scenarios[WATCHES]
+    refused = _step(steps, "a tree's container watches a deep file: c2 is refused, so it waits")
+    assert "tree: watch waiting (unknown_connection)" in refused["did"]
+    registered = _step(steps, "the reconnected stream 3 sends c3: both watches register on it")
+    assert [watch["state"] for watch in registered["after"]["watches"]] == ["live", "live"]
+
+
+def test_a_snapshot_differing_only_in_its_connection_is_the_same_tree(
+    scenarios: dict[str, list[dict[str, Any]]],
+) -> None:
+    unchanged = _step(
+        scenarios[WATCHES], "the reconnected stream 3 sends c3: both watches register on it"
+    )["did"]
+    assert "tree: snapshot of 1 entries applied" not in unchanged
+
+
+def test_a_disposed_watch_is_unregistered(scenarios: dict[str, list[dict[str, Any]]]) -> None:
+    disposed = _step(scenarios[WATCHES], "the table is disposed: its file is unregistered")
+    assert _posts(disposed) == ['{"connection":"c4","path":"people.csv","watch":false}']

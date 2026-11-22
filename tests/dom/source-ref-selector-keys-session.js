@@ -47,7 +47,7 @@ const context = {
   location: { pathname: "/view/", assign() {} },
   metabrowser: {
     formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
-    mountRefCopies: () => () => {},
+    mountRefMenus: () => () => {},
     refChip: (name) => element(document, "span", { class: "ref-chip" }, name),
   },
   METABROWSER_SOURCE_PIN: { ref: recorded.branches.body.ref, ref_name: "topic" },

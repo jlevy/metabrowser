@@ -594,6 +594,14 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         opened = steps["clicked"]
         assert not opened["hidden"] and opened["expanded"] == "true", f"{name}: {opened}"
         assert opened["focus"] == "Copy Link", f"{name}: {opened}"
+        trigger, caret = opened["triggerBox"], opened["caretBox"]
+        for start, end in (("left", "right"), ("top", "bottom")):
+            # The joined chip's 1 px separator is included in its border box.
+            offset = ((caret[start] + caret[end]) - (trigger[start] + trigger[end])) / 2
+            assert abs(offset) <= TOLERANCE_PX + 0.01, f"{name}: {trigger} {caret}"
+        assert opened["caretTransform"] == steps["closed"]["caretTransform"]
+        assert opened["destination"]["text"] == opened["link"]
+        assert opened["destination"]["box"]["bottom"] <= opened["items"][0]["top"]
         box, group = opened["menu"], opened["group"]
         assert box["top"] >= group["bottom"], f"{name}: {box} {group}"
         assert abs(box["right"] - group["right"]) <= TOLERANCE_PX, f"{name}: {box} {group}"

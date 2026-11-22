@@ -68,13 +68,11 @@ def test_index_js_no_legacy_stub_comments() -> None:
         assert needle not in src, f"stub-era language reappeared: {needle!r}"
 
 
-def test_index_js_exposes_builtins_namespace_for_other_plugins() -> None:
-    """Specialized document plugins reuse the markdown renderers via
-    mb.builtins.markdown.{mountRendered,renderSource}."""
+def test_index_js_exports_its_renderers_for_dependent_plugins() -> None:
+    """A plugin that requires Markdown reuses its renderers from the module's exports,
+    which ``mb.plugins.load("markdown")`` answers."""
     src = _index_js()
-    assert "mb.builtins.markdown" in src
-    assert "mountRendered" in src
-    assert "renderSource" in src
+    assert "export { drawRenderDiagrams as drawDiagrams, mountRendered, renderSource };" in src
 
 
 def test_index_js_has_no_client_side_markdown_renderer() -> None:

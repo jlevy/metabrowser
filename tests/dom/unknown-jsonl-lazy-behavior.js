@@ -3,6 +3,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
+// Generic JSONL registers its views before its provider, the agents plugin, has loaded,
+// draws with the agent-log renderers once `plugins.load` and the provider's
+// `loadLogRenderers` settle, and mounts nothing for a view disposed while that load was in
+// flight.
 (async () => {
   const registry = new Map();
   const calls = [];
@@ -14,12 +18,11 @@ const vm = require("node:vm");
     registerView(kind, view, spec) {
       registry.set(`${kind}/${view}`, spec);
     },
-    getRegisteredView(kind, view) {
-      return registry.get(`${kind}/${view}`);
-    },
-    ensureKindAssets(kind) {
-      assert.equal(kind, "agent-log");
-      return loaded;
+    plugins: {
+      load(name) {
+        assert.equal(name, "agents");
+        return Promise.resolve({ loadLogRenderers: () => loaded });
+      },
     },
   };
   const source = fs.readFileSync(
@@ -29,21 +32,21 @@ const vm = require("node:vm");
   vm.runInNewContext(source, { window: { metabrowser: mb }, console });
   const log = registry.get("unknown-jsonl/log");
   const raw = registry.get("unknown-jsonl/raw");
-  assert.ok(log && raw, "generic JSONL must register before agent-log has loaded");
+  assert.ok(log && raw, "generic JSONL must register before the agents plugin has loaded");
   const disposed = {};
   const pending = log.render(disposed, { path: "events.jsonl" });
   log.dispose(disposed);
-  for (const view of ["log", "raw"]) {
-    registry.set(`agent-log/${view}`, {
-      render(container, ctx) {
-        calls.push([view, container, ctx.path]);
-      },
-      dispose(container) {
-        calls.push(["dispose", container]);
-      },
-    });
-  }
-  finishLoad();
+  finishLoad({
+    renderLog(container, ctx) {
+      calls.push(["log", container, ctx.path]);
+    },
+    renderRaw(container, ctx) {
+      calls.push(["raw", container, ctx.path]);
+    },
+    disposeLog(container) {
+      calls.push(["dispose", container]);
+    },
+  });
   await pending;
   assert.deepEqual(calls, [], "disposed loading views must not mount late");
   const live = {};
@@ -55,7 +58,6 @@ const vm = require("node:vm");
     ["log", live, "events.jsonl"],
     ["dispose", live],
     ["raw", live, "other.jsonl"],
-    ["dispose", live],
   ]);
   console.log("unknown JSONL lazy loading OK");
 })().catch((error) => {

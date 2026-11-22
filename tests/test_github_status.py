@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -332,11 +333,13 @@ def test_the_doctors_github_section_never_changes_its_exit_status(
     assert doctor.exit_code == 0, doctor.stderr
     assert doctor.stderr == ""
     lines = doctor.stdout.splitlines()
-    assert lines[1] == "metab --doctor: 12 plugin(s) OK"
-    assert lines[2] == (
+    assert re.fullmatch(r"metab --doctor: [1-9][0-9]* plugin\(s\) OK", lines[1])
+    # The plugin requirements follow the verdict, then the GitHub section.
+    start = lines.index(next(line for line in lines if line.startswith("github: ")))
+    assert lines[start] == (
         "github: not_logged_in: GitHub CLI is not signed in to github.com. "
         "Run gh auth login --hostname github.com, then retry."
     )
     # The GitHub section ends at the first setup check (`cli/doctor.py`), which follows it.
-    section = lines[2 : lines.index(next(line for line in lines if line.startswith("metab: ")))]
+    section = lines[start : lines.index(next(line for line in lines if line.startswith("metab: ")))]
     assert section[-1] == "  fix: gh auth login --hostname github.com"

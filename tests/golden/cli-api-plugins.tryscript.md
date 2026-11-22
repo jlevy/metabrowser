@@ -18,7 +18,7 @@ env:
 before: >-
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
   mkdir -p hookroot rejplugin/rejdiff &&
-  printf '[plugin]\nname = "rejdiff"\nsdk_version = "0.7"\n[[kind]]\nid = "diff"\nmatch = { exts = [".rej"] }\npriority = 10\n' > rejplugin/rejdiff/manifest.toml &&
+  printf '[plugin]\nname = "rejdiff"\nsdk_version = "0.8"\n[[kind]]\nid = "diff"\nmatch = { exts = [".rej"] }\npriority = 10\n' > rejplugin/rejdiff/manifest.toml &&
   printf '// The built-in diff plugin draws the view.\n' > rejplugin/rejdiff/index.js &&
   cd hookroot &&
   printf '{"a": 1, "b": [2, 3]}\n' > data.json &&
@@ -233,8 +233,8 @@ Error: /api/plugin/binary/chunk?path=blob.bin&offset=2 returned HTTP 404
 ## Test: agent-log charts
 
 ```console
-$ metab hookroot --api '/api/plugin/agent-log/charts?path=session.jsonl'
-api: /api/plugin/agent-log/charts?path=session.jsonl
+$ metab hookroot --api '/api/plugin/agents/charts?path=session.jsonl'
+api: /api/plugin/agents/charts?path=session.jsonl
 status: 200
 {
   "summary": {

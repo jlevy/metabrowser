@@ -1302,7 +1302,10 @@ def test_a_served_overlay_names_its_checkout_only_where_it_names_its_location(
     with TestClient(server.app) as client:
         assert client.get(STATUS).json()["borrows"] == path
         shell = client.get("/view/")
-        assert f"borrowing objects from {path}:" in shell.text
+        assert 'data-mirror-tip="Bare Git mirror that shares objects with a local checkout."' in (
+            shell.text
+        )
+        assert path not in shell.text
         assert "content-security-policy" in shell.headers
         assert client.get("/api/capabilities").json()["capabilities"] == {
             "active_content": False,
@@ -1346,7 +1349,7 @@ def test_a_running_server_answers_by_name_when_the_checkout_goes(linear: _Stand)
         assert status["last_outcome"]["outcome"] == "lender_missing"
 
 
-def test_the_tooltip_names_the_checkout_beside_the_location(linear: _Stand) -> None:
+def test_the_source_tip_explains_that_the_mirror_shares_objects(linear: _Stand) -> None:
     from metabrowser.server import (
         _mirror_tip,  # pyright: ignore[reportPrivateUsage]
     )
@@ -1354,8 +1357,8 @@ def test_the_tooltip_names_the_checkout_beside_the_location(linear: _Stand) -> N
     checkout = clone_checkout(linear.replica, linear.tmp_path / "checkout")
     status = ok([PULL, "--checkout", str(checkout), "--api", STATUS]).payload()
     tip = _mirror_tip(status)
-    assert tip is not None
-    assert f"stored in {status['location']}, borrowing objects from {checkout.resolve()}:" in tip
+    assert status["borrows"] == str(checkout.resolve())
+    assert tip == "Bare Git mirror that shares objects with a local checkout."
 
 
 # ── A boundary commit's own diff ────────────────────────────────────

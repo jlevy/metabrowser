@@ -13,9 +13,9 @@ containment.
 `markup` is the button’s tree: a joined chip group of the link, the GitHub mark and its
 label, and the chevron, a menu button, then the menu of Copy Link and Open in Browser,
 hidden, and an empty status line, a polite live region.
-The root, the link, and Open in Browser carry the hooks the macOS app reads
-(`data-view-on-github`, `="open"`, and `="external"`), and both links open the
-counterpart in a new tab.
+The root carries `data-view-on-github`, which names the button, and the link and Open in
+Browser carry the hooks the macOS app reads, which name no site (`data-web-view="open"`
+and `="external"`), and both links open the counterpart in a new tab.
 
 `menu` walks it: a click on the chevron opens the menu with focus on Copy Link; the
 arrow keys, Home, and End move focus and wrap, and take the key’s default; another key
@@ -64,7 +64,7 @@ $ node tests/dom/counterpart-session.js
           {
             "tag": "a",
             "class": "chip counterpart-open",
-            "data-view-on-github": "open",
+            "data-web-view": "open",
             "href": "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/README.md",
             "target": "_blank",
             "rel": "noopener",
@@ -112,13 +112,30 @@ $ node tests/dom/counterpart-session.js
         "hidden": true,
         "children": [
           {
+            "tag": "div",
+            "class": "menu-link-url",
+            "id": "counterpart-url-1",
+            "aria-hidden": "true",
+            "children": [
+              "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/README.md"
+            ]
+          },
+          {
             "tag": "button",
             "class": "menu-item",
             "role": "menuitem",
             "tabindex": "-1",
+            "data-mb-owner": "(page owner)",
             "type": "button",
+            "aria-describedby": "counterpart-url-1",
             "dataset.counterpartAction": "copy",
             "children": [
+              {
+                "tag": "span",
+                "class": "menu-item-icon",
+                "aria-hidden": "true",
+                "html": "<svg data-icon=\"copy\"></svg>"
+              },
               {
                 "tag": "span",
                 "class": "menu-item-label",
@@ -133,11 +150,19 @@ $ node tests/dom/counterpart-session.js
             "class": "menu-item",
             "role": "menuitem",
             "tabindex": "-1",
-            "data-view-on-github": "external",
+            "data-mb-owner": "(page owner)",
+            "data-web-view": "external",
             "href": "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/README.md",
             "target": "_blank",
             "rel": "noopener",
+            "aria-describedby": "counterpart-url-1",
             "children": [
+              {
+                "tag": "span",
+                "class": "menu-item-icon",
+                "aria-hidden": "true",
+                "html": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"cur…"
+              },
               {
                 "tag": "span",
                 "class": "menu-item-label",

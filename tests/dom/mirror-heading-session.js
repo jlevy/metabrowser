@@ -1,13 +1,7 @@
 // Browserless session: what a page calls its served root, and where a mirror says it is.
 //
-// A folder's page is headed by the folder's name, and its main heading starts with the
-// folder's path. A served mirror's page showed the full commit ID in both places and
-// said nowhere that its files came out of the cache (mb-fndz). It is now headed by the
-// repository's name alone, as a checkout would be called, with a control after it that
-// copies the full commit, and its main heading ends with a note saying where the mirror
-// is kept, whose tooltip says what that directory is. The ref and the short commit that
-// followed the name are gone (mb-qq4e): the ref selector names the ref, and the
-// heading's tooltip the full commit.
+// The root summary uses the existing inventory. A mirror’s details retain the full
+// source address and commit. Its main heading names the directory that holds its store.
 //
 // The input is what the in-process application served, recorded in
 // tests/fixtures/mirror-heading-shell.json by tests/test_mirror_heading_session.py: for
@@ -17,21 +11,8 @@
 // static/mirror-heading.js, and the fields of /api/source/status the heading is
 // rendered from.
 //
-// Per subject, a fresh context is a page: mirror-heading.js runs first when the shell
-// carried it, as its inline script does, then the production SDK and its modules load
-// whole, the view header's builders (view-header.js) among them. The shell's own helpers
-// are lifted verbatim from app.js, which cannot load without a document, with the block
-// that wires the navigation heading's tooltip, and the builders are made over them as
-// loadViewComposition makes them. Nothing here composes a heading: every string below is
-// what that code returned or showed.
-//
-// The steps, each observed and printed:
-// - the page loads: DOMContentLoaded mounts the commit's copy control on a mirror;
-// - the main heading is rendered for the root folder and for a nested file;
-// - the pointer enters the navigation heading before and after the tree has loaded,
-//   then the root's name and the note in the main heading;
-// - the copy control is clicked, through the SDK's delegated listener.
-// `document.title` is watched across all of them: no step may write it.
+// Each subject uses the production view-header module and root details formatter.
+// The session watches the tab title while rendering the scope, stats, and headings.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -83,14 +64,10 @@ const LIFTED = [
   "_tipCount",
   "treeTooltipNameHtml",
   "folderTooltipHtml",
+  "rootDetailsStats",
 ];
 // Constants the lifted code reads, lifted verbatim too.
 const LIFTED_CONSTANTS = ["COMPRESSION_SUFFIX_BY_FORMAT"];
-// The statement that wires the navigation heading's tooltip, from its comment to its end.
-const TOOLTIP_BLOCK = /\n\/\/ Header hover tooltip[\s\S]*?\n\}\);\n/;
-
-// What the lifted code calls that does not branch on the subject. The tooltip is the
-// application's one tooltip, which mirror-heading.js reaches as plugins do.
 const COLLABORATORS = `
 var activeFiles = new Map();
 // The tree's icon resolver, which reads the file-type taxonomy: the name it was asked
@@ -98,13 +75,6 @@ var activeFiles = new Map();
 function getFileIcon(name) {
   return { svg: "", cls: "icon-for-" + name.replace(/[^A-Za-z0-9.]/g, "_"), style: "" };
 }
-function showTooltip(html, anchor) {
-  __shown.push({ html: html, anchor: anchor });
-}
-function hideTooltip() {
-  __shown.push(null);
-}
-window.MetabrowserTooltip = { show: showTooltip, hide: hideTooltip };
 `;
 
 // The view header's builders over the lifted helpers, as loadViewComposition makes them.
@@ -251,11 +221,6 @@ class FakeElement extends HTMLElement {
   }
 }
 
-/** The data attributes an element was served or given, by their dataset names. */
-function datasetOf(element) {
-  return Object.fromEntries(Object.keys(element.dataset).map((key) => [key, element.dataset[key]]));
-}
-
 function createPage(subject) {
   const { kind, title, dataset, pagePin, mirrorModule } = served[subject];
   const heading = new FakeElement("a", { class: "header-path" });
@@ -340,10 +305,8 @@ function createPage(subject) {
     load(name);
   }
   page.wiring = "app.js";
-  const tooltipBlock = appSource.match(TOOLTIP_BLOCK);
-  assert(tooltipBlock, "the navigation heading's tooltip block was not found in app.js");
   const lifted = [...LIFTED_CONSTANTS.map(liftConstant), ...LIFTED.map(lift)].join("\n");
-  vm.runInContext(`${COLLABORATORS}${lifted}${tooltipBlock[0]}${VIEW_HEADER}`, sandbox, {
+  vm.runInContext(`${COLLABORATORS}${lifted}${VIEW_HEADER}`, sandbox, {
     filename: "app.js (lifted)",
   });
   page.sandbox = sandbox;
@@ -351,40 +314,10 @@ function createPage(subject) {
   return page;
 }
 
-/** Fire the page's document listeners of *type* that *scripts* registered. */
-function dispatch(page, type, event, scripts) {
-  for (const { listener, by } of page.listeners[type] || []) {
-    if (!scripts || scripts.includes(by)) {
-      listener(event);
-    }
-  }
-}
-
-/** What the tooltip shows when the pointer enters *target*, or null. */
-function hover(page, target) {
-  page.shown.length = 0;
-  if (target === page.heading) {
-    for (const listener of page.heading.listeners.mouseenter || []) {
-      listener({ target });
-    }
-  } else {
-    dispatch(page, "mouseenter", { target }, ["mirror-heading.js"]);
-  }
-  const shown = page.shown.at(-1);
-  if (!shown) {
-    return null;
-  }
-  assert(shown.anchor === target, "a tooltip was anchored to another element");
-  return shown.html;
-}
-
 async function observe(subject) {
   const { kind, heading: servedHeading, status } = served[subject];
   const page = createPage(subject);
   const { sandbox } = page;
-
-  // The page loads.
-  dispatch(page, "DOMContentLoaded", {}, ["mirror-heading.js", "app.js"]);
 
   // The main heading, as the shell renders a folder's and a file's. Each control
   // carries the page's owner mark, which is drawn anew on every load.
@@ -439,29 +372,9 @@ async function observe(subject) {
     }),
   );
 
-  // The pointer enters the navigation heading, before and after the tree has loaded.
-  const tipBefore = hover(page, page.heading);
-  Object.assign(page.heading.dataset, { tipName: page.heading.dataset.servedRoot, ...TALLY });
-  const tipAfter = hover(page, page.heading);
-  // Then the root's name and the note, which the shell built above.
-  const tipName = hover(page, new FakeElement("span", { class: "file-header-root" }));
-  const tipNote = hover(page, new FakeElement("span", { class: "file-header-mirror-text" }));
-
-  // The copy control after the navigation heading, and a click on it.
-  const control = page.heading.nextElementSibling;
-  let commitCopy = null;
-  if (control) {
-    dispatch(page, "click", { target: control });
-    await Promise.resolve();
-    await Promise.resolve();
-    commitCopy = {
-      attributes: Object.fromEntries(
-        [...control.attributes].filter(([name]) => name !== "data-mb-owner"),
-      ),
-      ownerStamped: sandbox.MetabrowserPluginHost.isOwnedDelegate(control),
-      copied: [...page.copied],
-    };
-  }
+  const before = sandbox.rootDetailsStats(page.heading.dataset);
+  Object.assign(page.heading.dataset, TALLY);
+  const after = sandbox.rootDetailsStats(page.heading.dataset);
 
   return {
     subject,
@@ -472,19 +385,19 @@ async function observe(subject) {
       afterEveryStep: page.title(),
       writes: page.titleWrites,
     },
-    navigationHeading: { html: servedHeading, text: text(servedHeading), commitCopy },
+    navigationHeading: { html: servedHeading, text: text(servedHeading) },
     mainHeading: {
       root: text(root),
       file: { html: file.replaceAll(owner, " data-mb-owner"), text: text(file), title: fileTitle },
       fileHeaders,
     },
-    tooltips: {
-      navigationHeading: { served: text(tipBefore), afterTreeLoad: text(tipAfter) },
-      rootName: tipName === null ? null : text(tipName),
-      note: tipNote === null ? null : text(tipNote),
+    details: {
+      location: page.heading.dataset.mirrorLocation ?? page.heading.dataset.servedRoot,
+      source: page.heading.dataset.mirrorTip ?? null,
+      before: text(before),
+      after: text(after),
     },
-    // Kept out of the transcript: what the assertions below read.
-    raw: { root, file, tipAfter, tipName, tipNote, heading: datasetOf(page.heading) },
+    raw: { root, file },
   };
 }
 
@@ -516,17 +429,10 @@ async function main() {
     `a folder's eyebrow reads ${folder.mainHeading.file.text}`,
   );
   assert(
-    folder.tooltips.navigationHeading.served === `${folderRoot}` &&
-      folder.tooltips.navigationHeading.afterTreeLoad === `${folderRoot} 3 files 140 bytes`,
-    "a folder's tooltip changed",
+    folder.details.before === "" && folder.details.after === "3 files 140 bytes",
+    "folder stats",
   );
-  assert(
-    !/mirror/i.test(folder.raw.root + folder.raw.file + folder.raw.tipAfter) &&
-      folder.tooltips.rootName === null &&
-      folder.tooltips.note === null &&
-      folder.navigationHeading.commitCopy === null,
-    "a folder's page shows something of a mirror",
-  );
+  assert(folder.details.source === null, "a local folder has no mirror details");
 
   // A file's line: badges, then the size, then the age, last; no age without a time, and
   // a skeleton while the time is pending.
@@ -545,17 +451,17 @@ async function main() {
     );
   }
   for (const page of [mirror, hostile]) {
-    const { name, origin, location, pin, ref_name: ref } = page.status;
-    // The note names the store's directory; the tooltip and the status keep the bare
+    const { name, location, pin, ref_name: ref } = page.status;
+    // The note names the store's directory; the details and the status keep the bare
     // repository inside it, where `git -C` works.
     assert(location.endsWith("/repository.git"), `${page.subject}: the location is ${location}`);
     const directory = location.slice(0, -"/repository.git".length);
     const where = `mirror in ${directory}`;
-    const sentence = `Mirror of ${origin} at ${pin}, stored in ${location}: a bare Git repository, with no checked-out files.`;
+    const sentence = "Bare Git mirror with no checked-out files.";
     const { root, file } = page.mainHeading;
 
     // The repository's name is the root, in both headings. The navigation heading is the
-    // name alone: the ref selector names the ref, and the tooltip the commit (mb-qq4e).
+    // name alone: the ref selector names the ref.
     assert(
       page.navigationHeading.text === name && ref !== null,
       `${page.subject}: the navigation heading reads ${page.navigationHeading.text}`,
@@ -581,34 +487,9 @@ async function main() {
         `${page.subject}: a heading does not hold exactly one note`,
       );
     }
-    // The name, the note, and the navigation heading each say what the directory is.
-    assert(page.tooltips.rootName === sentence, `${page.subject}: the name's tooltip is wrong`);
-    assert(page.tooltips.note === sentence, `${page.subject}: the note's tooltip is wrong`);
-    const { served: before, afterTreeLoad: after } = page.tooltips.navigationHeading;
-    assert(before === `${name} ${sentence}`, `${page.subject}: tooltip: ${before}`);
-    assert(
-      after === `${name} 3 files 140 bytes ${sentence}`,
-      `${page.subject}: tooltip after the tree loads: ${after}`,
-    );
-    // The mirror's line of a tooltip is the one that wraps.
-    for (const html of [page.raw.tipAfter, page.raw.tipName, page.raw.tipNote]) {
-      assert(/class="(tip-detail )?tip-mirror"/.test(html), `${page.subject}: no tip-mirror line`);
-    }
-    // The full commit can be copied from beside the name, by the SDK's delegate.
-    const { commitCopy } = page.navigationHeading;
-    assert(commitCopy !== null, `${page.subject}: no copy control beside the heading`);
-    assert(
-      commitCopy.ownerStamped && commitCopy.attributes["data-mb-copy-text"] === pin,
-      `${page.subject}: the copy control does not carry the full commit`,
-    );
-    assert(
-      JSON.stringify(commitCopy.copied) === JSON.stringify([pin]),
-      `${page.subject}: a click copied ${JSON.stringify(commitCopy.copied)}`,
-    );
-    assert(
-      commitCopy.attributes["data-tip-text"] === "Copied!",
-      `${page.subject}: the copy control gave no feedback`,
-    );
+    assert(page.details.location === location, "details show the local mirror path");
+    assert(page.details.source === sentence, "the tip explains the mirror");
+    assert(page.details.after === "3 files 140 bytes", "mirror stats follow the tree");
   }
 
   // Markup in a name, an address, or a path is text wherever it is written: each stands
@@ -617,14 +498,9 @@ async function main() {
     const value = hostile.status[key];
     assert(escaped(value) !== value, `the hostile ${key} has no markup to escape: ${value}`);
     const written = {
-      name: [
-        hostile.raw.root,
-        hostile.raw.file,
-        hostile.raw.tipAfter,
-        hostile.navigationHeading.html,
-      ],
-      origin: [hostile.raw.tipAfter, hostile.raw.tipName, hostile.raw.tipNote],
-      location: [hostile.raw.root, hostile.raw.file, hostile.raw.tipAfter, hostile.raw.tipNote],
+      name: [hostile.raw.root, hostile.raw.file, hostile.navigationHeading.html],
+      origin: [],
+      location: [hostile.raw.root, hostile.raw.file],
     }[key];
     for (const html of written) {
       // The heading's note names the store's directory and the tooltips the bare

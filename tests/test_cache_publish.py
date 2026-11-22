@@ -183,7 +183,7 @@ def test_the_store_and_its_alias_are_published_under_both_locks(
         }
     )
     assert seen == [
-        ("rename repository-stores", both),
+        ("rename repos", both),
         ("write store-alias.yml", both),
         ("rename sources", both),
     ]

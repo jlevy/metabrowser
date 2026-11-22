@@ -26,7 +26,7 @@
  *   type?: "map" | "list", entries?: Entry[]
  * }} Entry */
 /** @typedef {MetabrowserStructuredTreeRow} Row */
-/** @typedef {Pick<MetabrowserStructuredBuiltins, "materializeRows" | "calculateOptimalExpansion" | "renderRowHtml" | "expansion">} TreeHelpers */
+/** @typedef {Pick<MetabrowserStructuredExports, "materializeRows" | "calculateOptimalExpansion" | "renderRowHtml" | "expansion">} TreeHelpers */
 /** @typedef {{open: Set<string>, shown: Map<string, number>, tree: TreeHelpers}} View */
 
 // Rows the first draw mounts. In document order, a modified mapping or list opens while

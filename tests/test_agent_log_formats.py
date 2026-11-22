@@ -14,6 +14,7 @@ from typing import Any
 from metabrowser.file_kinds import classify_file_kind
 from metabrowser.jsonl_view import parse_jsonl_bytes
 from metabrowser.logutil.parsing import LogEvent, create_parser, detect_adapter
+from metabrowser.server import _classify_with_plugins
 
 FIXTURES = Path(__file__).parent / "fixtures" / "agent-logs"
 
@@ -163,4 +164,5 @@ def test_a_rollout_without_usage_records_shows_token_count_usage() -> None:
 def test_both_codex_adapters_classify_as_agent_logs(tmp_path: Path) -> None:
     path = tmp_path / "rollout.jsonl"
     for adapter in ("codex", "codex-rollout"):
-        assert classify_file_kind(path, ".jsonl", adapter) == "agent-log"
+        assert _classify_with_plugins(path, ".jsonl", adapter) == "agent-log"
+        assert classify_file_kind(path, ".jsonl", adapter) == "unknown-jsonl"

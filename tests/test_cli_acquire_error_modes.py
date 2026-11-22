@@ -232,7 +232,7 @@ def test_log_level_debug_prints_a_pin_open_failure(
 def _plant_an_earlier_build_record(home: Path) -> None:
     """Rewrite the store records the way an earlier v0.12 development build wrote them."""
 
-    (store,) = (home / "repository-stores").iterdir()
+    (store,) = (home / "repos").iterdir()
     record = store / "store.yml"
     text = record.read_text(encoding="utf-8")
     record.write_text(

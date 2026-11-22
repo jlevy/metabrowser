@@ -92,8 +92,11 @@ flush error at exit.
    plugins at import. It then resolves KPress’s browser assets and the static asset
    stamps, so the first page request does not pay for them while the inventory walk
    competes for the CPU.
-6. **Port and root.** `find_available_local_port` walks `port_search_range` upward from
-   `--port`. The root attaches, and a concrete `--host` joins the Host allowlist.
+6. **Port and root.** `listen_on_available_local_port` walks `port_search_range` upward
+   from `--port` and returns a listening socket on the first free port, which Uvicorn
+   later serves on. The server holds its port from here, so the banner never names a port
+   another server can take while startup finishes.
+   The root attaches, and a concrete `--host` joins the Host allowlist.
 7. **Banner and browser.** The banner prints the canonical `/view/` URL, never the bare
    origin, which only redirects.
    A daemon thread runs `wait_for_http_ok_then` (`cli/http_readiness.py`), which polls

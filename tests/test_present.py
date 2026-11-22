@@ -965,6 +965,29 @@ def test_a_server_that_says_where_it_serves_runs_detached(
 
 
 @posix_only
+def test_a_checkout_is_recognized_as_the_server_that_answers_for_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A folder that holds a `.git` entry answers `kind` `git`, and `--present` still sees
+    its own server: it once waited its 20 s for a `folder` and reported `server_starting`."""
+
+    _server(monkeypatch, tmp_path, _SERVES)
+    target, value = _notes(tmp_path)
+    (tmp_path / "notes" / ".git").mkdir()
+
+    delivery = serve_detached(target, value, "")
+    try:
+        assert (delivery.delivered_to, delivery.code, delivery.exit_code) == (
+            "browser",
+            "server_started",
+            0,
+        )
+        assert delivery.url is not None and _LOOPBACK_VIEW.fullmatch(delivery.url)
+    finally:
+        _stop(delivery.pid)
+
+
+@posix_only
 def test_progress_and_an_overlong_line_do_not_hide_the_serving_line(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1133,6 +1156,9 @@ def test_an_address_that_answers_for_another_root_is_not_reported(
     ("answer", "target", "same"),
     [
         ({"kind": "folder", "full_name": "<notes>"}, "notes", True),
+        # A checkout's server says `git`, and is still the target's own.
+        ({"kind": "git", "full_name": "<notes>"}, "notes", True),
+        ({"kind": "git", "full_name": "<notes>/docs"}, "notes", False),
         ({"kind": "folder", "full_name": "<notes>/docs"}, "notes", False),
         ({"kind": "mirror", "full_name": "<notes>"}, "notes", False),
         ({"kind": "mirror", "full_name": "github.com/octo/demo@main"}, "demo", True),
@@ -1148,7 +1174,7 @@ def test_an_identity_answer_names_the_target_or_not(
     tmp_path: Path, answer: object, target: str, same: bool
 ) -> None:
     notes, _value = _notes(tmp_path)
-    if isinstance(answer, dict) and answer.get("kind") == "folder":
+    if isinstance(answer, dict) and answer.get("kind") in ("folder", "git"):
         # A folder outside the home folder is named by its path, as `folder_identity` says.
         answer = {**answer, "full_name": answer["full_name"].replace("<notes>", notes.root)}
     chosen = notes if target == "notes" else _DEMO

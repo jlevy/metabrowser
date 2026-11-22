@@ -8,8 +8,10 @@ Three modes on the ``metab`` CLI (parsing lives in
 * ``metab --doctor``: sanity-check every plugin, validating the
   manifest, confirming sidekick handlers import, and checking for
   asset and kind-id collisions across plugins and for view keys the
-  server drops from a kind's merged views. It also checks the
-  packaged cache record contracts. Exit code != 0 when any plugin
+  server drops from a kind's merged views. It reports the plugin
+  dependency graph (``requires``), whose unmet or cyclic edges
+  discovery has already refused, and checks the packaged cache
+  record contracts. Exit code != 0 when any plugin
   or contract is broken. After the verdict it reports each
   repository provider's tools, GitHub CLI's path, version,
   account, and scopes, which never change the exit code.
@@ -82,6 +84,7 @@ def _plugin_summary(plugin: LoadedPlugin) -> dict[str, object]:
         "source": plugin.source,
         "static_root": str(plugin.static_root),
         "kinds": sorted({kind.id for kind in plugin.manifest.kind}),
+        "requires": list(plugin.manifest.plugin.requires),
         "views": [view.id for view in plugin.manifest.view],
         "view_count": len(plugin.manifest.view),
         "data_hooks": [hook.route for hook in _active_data_hooks(plugin)],
@@ -109,12 +112,24 @@ def _plugin_details(plugin: LoadedPlugin) -> dict[str, object]:
         "sdk_version": plugin.manifest.plugin.sdk_version,
         "source": plugin.source,
         "static_root": str(plugin.static_root),
-        "kinds": [kind.model_dump(mode="json", exclude_none=True) for kind in plugin.manifest.kind],
-        "views": [view.model_dump(mode="json") for view in plugin.manifest.view],
+        "requires": list(plugin.manifest.plugin.requires),
+        # A field a manifest can leave out is shown only where the manifest declares it,
+        # so a plugin's details say what that plugin asks for.
+        "kinds": [
+            kind.model_dump(
+                mode="json", exclude_none=True, exclude=None if kind.binary else {"binary"}
+            )
+            for kind in plugin.manifest.kind
+        ],
+        "views": [
+            view.model_dump(mode="json", exclude=None if view.offer else {"offer"})
+            for view in plugin.manifest.view
+        ],
         "data_hooks": [hook.model_dump(mode="json") for hook in _active_data_hooks(plugin)],
         "disabled_data_hooks": [
             hook.model_dump(mode="json") for hook in _disabled_data_hooks(plugin)
         ],
+        "table_sources": [spec.model_dump(mode="json") for spec in plugin.manifest.table_source],
         "assets": _plugin_assets(plugin),
     }
 
@@ -150,11 +165,12 @@ def list_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = False
                 p.name,
                 p.source,
                 ",".join(kinds) if kinds else "-",
+                ",".join(p.manifest.plugin.requires) or "-",
                 str(len(p.manifest.view)),
                 ",".join(h.route for h in _active_data_hooks(p)) or "-",
             ]
         )
-    headers = ["NAME", "SOURCE", "KINDS", "VIEWS", "HOOKS"]
+    headers = ["NAME", "SOURCE", "KINDS", "REQUIRES", "VIEWS", "HOOKS"]
     if rows:
         typer.echo(_format_table(rows, headers))
     else:
@@ -203,6 +219,7 @@ def show_plugin(name: str, plugins_dir: list[Path] | None = None, *, as_json: bo
     typer.echo(f"sdk_version:  {plugin.manifest.plugin.sdk_version}")
     typer.echo(f"source:       {plugin.source}")
     typer.echo(f"static_root:  {plugin.static_root}")
+    typer.echo(f"requires:     {', '.join(plugin.manifest.plugin.requires) or '(none)'}")
     typer.echo("")
     typer.echo("kinds:")
     for k in plugin.manifest.kind:
@@ -228,6 +245,11 @@ def show_plugin(name: str, plugins_dir: list[Path] | None = None, *, as_json: bo
         typer.echo(f"  (disabled for operator-directory plugins: {routes})")
     elif not active_hooks:
         typer.echo("  (none)")
+    if plugin.manifest.table_source:
+        typer.echo("")
+        typer.echo("table sources:")
+        for spec in plugin.manifest.table_source:
+            typer.echo(f"  - {spec.kind} -> {spec.adapter}")
     typer.echo("")
     typer.echo("assets in static_root:")
     for asset in _plugin_assets(plugin):
@@ -299,6 +321,39 @@ def _view_key_problems(plugins: list[LoadedPlugin]) -> list[str]:
     return problems
 
 
+def _table_source_problems(plugin: LoadedPlugin) -> list[str]:
+    """What keeps a plugin's ``[[table_source]]`` adapters from serving.
+
+    An operator-directory plugin runs no Python, so the server ignores its declarations,
+    as it does its data hooks; any other plugin's adapter must import and be callable.
+    """
+    if not plugin.manifest.table_source:
+        return []
+    if plugin.source.startswith("local:"):
+        return [
+            f"plugin '{plugin.name}' declares table sources, but operator-directory plugins "
+            "are JavaScript-only; package the plugin behind an installed metabrowser.plugins "
+            "entry point"
+        ]
+    problems: list[str] = []
+    for spec in plugin.manifest.table_source:
+        module_name, _, attr = spec.adapter.partition(":")
+        try:
+            module = importlib.import_module(module_name)
+        except ImportError as exc:
+            problems.append(
+                f"plugin '{plugin.name}' table_source '{spec.kind}': "
+                f"cannot import '{module_name}': {exc}"
+            )
+            continue
+        if not callable(getattr(module, attr, None)):
+            problems.append(
+                f"plugin '{plugin.name}' table_source '{spec.kind}': "
+                f"'{spec.adapter}' is not a callable"
+            )
+    return problems
+
+
 def _provider_sections() -> tuple[ProviderStatus, ...]:
     """Each repository provider's report on its own tools, such as GitHub CLI's sign-in.
 
@@ -344,6 +399,12 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
 
     # Per-plugin: sidekick imports resolve.
     for p in result.plugins:
+        if p.source.startswith("local:") and p.manifest.plugin.register_module:
+            problems.append(
+                f"plugin '{p.name}' declares a Python register module, but operator-directory "
+                "plugins are JavaScript-only; package the plugin behind an installed "
+                "metabrowser.plugins entry point"
+            )
         if p.source.startswith("local:") and p.manifest.data_hook:
             problems.append(
                 f"plugin '{p.name}' declares Python data hooks, but operator-directory "
@@ -372,6 +433,10 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
                     f"'{module_name}:{attr}' is not callable"
                 )
 
+    # Per-plugin: table source adapters import, as the table routes import them.
+    for p in result.plugins:
+        problems.extend(_table_source_problems(p))
+
     # Per-plugin: index.js exists.
     for p in _plugins_with_index_check(result.plugins):
         problems.append(p)
@@ -392,6 +457,9 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
     checks = doctor_checks(
         plugin_count=len(result.plugins), plugin_problems=plugin_problems, open_in=open_in
     )
+    # The text report's; `--plugins --json` carries each plugin's `requires`, and the
+    # JSON report's checks are the macOS app's contract (`tests/golden/app-contract.txt`).
+    requirements = requirement_details(result.plugins)
     # The plugins' problems are listed already; open_in's are its own, less any the config
     # check reports at their cause; the setup checks add one line each.
     open_in_check = checks[1]
@@ -421,6 +489,7 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
         typer.echo(f"metab --doctor: {len(problems)} problem(s):", err=True)
         for problem in problems:
             typer.echo(f"  • {problem}", err=True)
+        _echo_requirements(requirements, err=True)
         _echo_sections(providers, setup, err=True)
         raise typer.Exit(code=1)
 
@@ -428,7 +497,30 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
     # the answer of a clean one.
     typer.echo(open_in.line)
     typer.echo(f"metab --doctor: {len(result.plugins)} plugin(s) OK")
+    _echo_requirements(requirements, err=False)
     _echo_sections(providers, setup, err=False)
+
+
+def requirement_details(plugins: list[LoadedPlugin]) -> tuple[tuple[str, str], ...]:
+    """The loaded plugins' dependency graph, one ``(plugin, "requires a, b")`` per
+    plugin that declares ``requires``, in discovery order.
+
+    Discovery has refused every plugin whose requirements cannot be met
+    (``plugin_loader.discovery.resolve_requirements``), so each provider named here is
+    loaded.
+    """
+    return tuple(
+        (plugin.name, "requires " + ", ".join(plugin.manifest.plugin.requires))
+        for plugin in plugins
+        if plugin.manifest.plugin.requires
+    )
+
+
+def _echo_requirements(requirements: tuple[tuple[str, str], ...], *, err: bool) -> None:
+    if requirements:
+        typer.echo("plugin requirements:", err=err)
+    for name, value in requirements:
+        typer.echo(f"  {name}: {value}", err=err)
 
 
 def _echo_sections(

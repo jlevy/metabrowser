@@ -285,6 +285,7 @@ def test_api_file_codex_turn_completed_without_usage_helper_crash(tmp_path: Path
     body = json.loads(bytes(resp.body))
     assert resp.status_code == 200
     assert body["type"] == "jsonl"
+    assert body["kind"] == "agent-log"
     assert body["summary"]["adapter"] == "codex"
     assert any(
         event["summary"] == "[result] DONE input=1686052 output=10890 cached=1465472"

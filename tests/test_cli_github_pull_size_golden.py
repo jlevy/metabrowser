@@ -55,7 +55,7 @@ def test_golden_a_pull_requests_size_is_measured_once_and_kept(
     assert size["commits"] >= 1 and size["diff_bytes"] > 0
 
     # The pushed size is the pack Git writes for the head against the merge base.
-    stores = sorted((session.home / "repository-stores").glob("*/repository.git"))
+    stores = sorted((session.home / "repos").glob("*/repository.git"))
     assert len(stores) == 1, stores
     pack = subprocess.run(
         ["git", "--git-dir", str(stores[0]), *PACK_ARGS],

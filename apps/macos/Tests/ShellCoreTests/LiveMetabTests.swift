@@ -353,6 +353,25 @@ struct LiveMetabTests {
         }
     }
 
+    @Test(arguments: [
+        "https://github.com/jlevy/metabrowser",
+        "github.com/jlevy/metabrowser",
+        "jlevy/metabrowser",
+    ])
+    func theOpenURLExamplesResolveToTheSameRepository(_ text: String) async throws {
+        let expected = try #require(URL(string: "https://github.com/jlevy/metabrowser"))
+        var panel = OpenURLPanel()
+        panel.edit(text)
+        let opened = panel.open()
+        let link = try #require(opened)
+        #expect(link == expected)
+        #expect(panel.text == expected.absoluteString)
+        let answer = try await dryRun(link.absoluteString)
+        let plan = panel.answered(answer, for: link, metab: "metab")
+        #expect(plan == PresentPlan(kind: .repository, repository: expected, link: expected))
+        #expect(panel.phase == .closed)
+    }
+
     /// The panel opens what `metab URL` opens as typed: the link the panel sends, its path
     /// encoded as a browser sends it, gets the plan `metab` gives the raw text, and text
     /// the panel refuses for a character `metab` refuses too (`OpenURLEntry.encoded`).

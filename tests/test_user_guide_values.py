@@ -52,7 +52,7 @@ from metabrowser.git.process import ACQUISITION_MINIMUM
 from metabrowser.gz_io import GZIP_SUFFIX, ZLIB_SUFFIX
 from metabrowser.home import application_cache, configuration_directory
 from metabrowser.inventory_engine.factory import InventoryProvider
-from metabrowser.logutil.parsing import _BUILTIN_ADAPTERS
+from metabrowser.logutil.parsing import registered_log_adapters
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 from metabrowser.settings import (
     DEFAULT_BROWSER_PORT,
@@ -65,7 +65,7 @@ from metabrowser.settings import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC = REPO_ROOT / "src" / "metabrowser"
 APP_SOURCES = REPO_ROOT / "apps" / "macos" / "Sources" / "ShellCore"
-AGENT_LOG_MANIFEST = SRC / "builtin_plugins" / "agent_log" / "manifest.toml"
+AGENT_LOG_MANIFEST = SRC / "builtin_plugins" / "agents" / "manifest.toml"
 
 # What a guide calls each JSONL adapter. A new adapter fails here until it has a name, so
 # that the guides can be told about it. Codex's two formats share a name.
@@ -124,7 +124,11 @@ def _series(names: list[str], conjunction: str = "and") -> str:
 
 def _manifest_adapters() -> set[str]:
     manifest = tomllib.loads(AGENT_LOG_MANIFEST.read_text(encoding="utf-8"))
-    return {str(kind["match"]["adapter"]) for kind in manifest["kind"]}
+    # The rules that name an adapter; a rule that claims a file by its path, such as a
+    # compressed rollout's, names none.
+    return {
+        str(kind["match"]["adapter"]) for kind in manifest["kind"] if "adapter" in kind["match"]
+    }
 
 
 def _charted_agents() -> str:
@@ -439,11 +443,12 @@ def test_user_guides_state_the_values_the_code_sets() -> None:
 
 
 def test_every_jsonl_adapter_has_a_name_the_guides_can_use() -> None:
-    assert _manifest_adapters() <= _BUILTIN_ADAPTERS
-    unnamed = sorted(_BUILTIN_ADAPTERS - AGENT_NAMES.keys())
+    adapters = frozenset(registered_log_adapters())
+    assert _manifest_adapters() <= adapters
+    unnamed = sorted(adapters - AGENT_NAMES.keys())
     assert not unnamed, f"name {unnamed} in AGENT_NAMES, then say which guides list it"
     # docs/working-with-agents.md says every recognized agent's logs open with Charts.
-    uncharted = sorted(_BUILTIN_ADAPTERS - _manifest_adapters())
+    uncharted = sorted(adapters - _manifest_adapters())
     assert not uncharted, (
         f"{uncharted} parse without Charts: say so in docs/working-with-agents.md and pin it"
     )

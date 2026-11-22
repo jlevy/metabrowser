@@ -28,12 +28,11 @@ else
   export NOTARIZE="${NOTARIZE:-auto}"
 fi
 
-# Why apps/macos may not match the commit, or empty. A failed `git status` is not a clean
-# tree, or an official build could skip the check that it was built from a commit.
-if ! tree_status="$(git status --porcelain -- . 2>&1)"; then
-  tree_problem="git status failed, so apps/macos may not match the commit: $tree_status"
-elif [[ -n "$tree_status" ]]; then
-  tree_problem="apps/macos has uncommitted changes"
+# A status failure or a change to an input invalidates the build's commit provenance.
+if ! input_status="$(app_build_input_status 2>&1)"; then
+  tree_problem="git status failed for app bundle inputs: $input_status"
+elif [[ -n "$input_status" ]]; then
+  tree_problem="app bundle inputs have uncommitted changes:"$'\n'"$input_status"
 else
   tree_problem=""
 fi

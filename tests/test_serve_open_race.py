@@ -36,6 +36,7 @@ from typer.testing import CliRunner
 from metabrowser.cli import http_readiness
 from metabrowser.cli import serve as serve_module
 from metabrowser.cli.main import _app
+from tests.held_port import listener_on
 
 # Breaks a deadlock in a broken build; it is not a latency budget. A passing
 # run never waits on it, and a slow machine waits far less than this.
@@ -363,7 +364,7 @@ def test_the_cli_opens_the_browser_only_after_its_server_answers(
         finally:
             clock.finish()
 
-    def run_in_place_of_uvicorn(_server: object) -> bool:
+    def run_in_place_of_uvicorn(_server: object, _listener: object) -> bool:
         # The address uvicorn was told to bind, which must be the one being polled.
         config = quiet_server.call_args.args[0]
         served.append((config.host, config.port))
@@ -373,7 +374,9 @@ def test_the_cli_opens_the_browser_only_after_its_server_answers(
         clock.release()
         return False
 
-    monkeypatch.setattr(serve_module, "find_available_local_port", lambda *_args: index.port)
+    monkeypatch.setattr(
+        serve_module, "listen_on_available_local_port", lambda *_args: listener_on(index.port)
+    )
     monkeypatch.setattr(serve_module, "_QuietForceExitServer", quiet_server)
     monkeypatch.setattr(serve_module, "_run_until_interrupted", run_in_place_of_uvicorn)
     monkeypatch.setattr(serve_module, "_wait_for_http_ok_then_open", wait_then_open_and_finish)

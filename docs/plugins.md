@@ -35,12 +35,15 @@ already belong to the active Python environment.
 When Metabrowser runs through uvx or as a uv tool, install the plugin distribution into
 that same isolated environment with uv’s `--with` option.
 
-Inspect discovery without starting the server:
+## Inspecting Plugins
+
+Use the plugin modes without starting a server.
 
 ```shell
-metab --plugins
-metab --plugin markdown
-metab --doctor
+metab --plugins                   # plugins accepted by discovery and any refusals
+metab --plugin agents             # resolved manifest for Agent Session Browser
+metab --doctor                    # check plugins and the rest of the setup
+metab --plugins --json            # inventory and discovery errors for scripts
 metab --doctor --plugins-dir ./examples
 ```
 
@@ -52,6 +55,31 @@ After the verdict it reports GitHub CLI’s state, which never changes the exit 
 write data to standard output and errors to standard error, and exit nonzero on any
 problem, including a discovery error beside plugins that loaded, so a script cannot
 mistake a partial registry for a complete one.
+
+The Mac app shows the same discovery inventory for its selected runtime under **Settings
+→ Information → Plugins**. This is what a new app server discovers.
+Browser renderers load as their views are needed.
+See [Mac app settings](macos-app.md#choosing-a-metab).
+
+## Built-in Agent Support
+
+**Agent Session Browser** is the built-in plugin with the ID `agents`. It owns Claude
+Code and Codex home detection, log adapters, session readers, the catalog, and the
+browsing views. Each reader interprets its provider’s on-disk formats and passes
+normalized session records and events to the shared views.
+The host supplies the plugin loader, scoped file access, and a generic JSONL parser
+registry. The same registry lets installed plugins register their own
+[JSONL adapters](#plugin-owned-jsonl-adapters).
+
+The manifest’s `requires = ["structured"]` declares the plugin used to render event
+payloads. The Codex provider reads known tables using Python’s SQLite library.
+The `sqlite` plugin separately provides general-purpose database browsing and requires
+`table`. The bundled `fsqlite` plugin adds store-specific views and requires both
+`sqlite` and `table`. `metab --plugins` lists these edges in its `REQUIRES` column.
+The Mac app shows them in Settings alongside each plugin.
+
+The [agent browsing guide](working-with-agents.md#browsing-agent-history) explains what
+Agents reads and how the session lists work.
 
 ## Path Identity
 
@@ -145,14 +173,16 @@ The `[plugin]` table supports:
 | `sdk_version` | no | Strongly recommended. It must equal `PLUGIN_SDK_VERSION`; an omitted value targets the original SDK, not the host’s current one, and is refused. |
 | `extra_scripts` | no | Plain JavaScript filenames loaded before `index.js`. |
 | `extra_styles` | no | Plain CSS filenames loaded before the plugin’s selected-kind renderer mounts. |
+| `requires` | no | Names of the plugins whose exports this plugin loads with `mb.plugins.load`, and `table` for a plugin with a `[[table_source]]`; see [Declared Dependencies](#declared-dependencies). |
 
 Extra asset entries may not contain slashes, traversal segments, or a leading dot.
 
 ### Plugin Asset Lifecycle
 
 The SDK loads a plugin when the browser first selects any kind declared by its
-`[[kind]]` or `[[view]]` entries, or when another plugin calls `ensureKindAssets(kind)`.
-Plugin CSS and module side effects therefore do not exist on an unrelated page.
+`[[kind]]` or `[[view]]` entries, when another plugin calls `ensureKindAssets(kind)`, or
+when a plugin that requires it calls `mb.plugins.load(name)`. Plugin CSS and module side
+effects therefore do not exist on an unrelated page.
 
 For one plugin, the host loads its automatically detected `styles.css` and every
 `extra_styles` entry in parallel and waits for them to settle.
@@ -173,8 +203,9 @@ stamp. An absolute `/plugin-static/<name>/<file>` URL is revalidated on every us
 module reached both ways is two instances with separate module state, so use one form.
 From a stamped module, `../other/x.js` stays inside your own plugin and is not found,
 while `../../other/x.js` reaches another plugin at its unstamped address; reach another
-plugin through `ensureKindAssets` instead, since plugins are not isolated from each
-other. A top-level directory whose name has a stamp’s form cannot be addressed.
+plugin through its exports ([Declared Dependencies](#declared-dependencies)) or
+`ensureKindAssets` instead, since plugins are not isolated from each other.
+A top-level directory whose name has a stamp’s form cannot be addressed.
 `src/metabrowser/asset_stamps.py` documents the policy.
 
 ### Kind Rules
@@ -196,6 +227,7 @@ Multiple rules may share an ID; they act as alternatives for the same kind.
 | `yaml_value_prefix` | Prefix required in the selected YAML value. |
 | `folder_marker` | Exact marker filename that also decorates its parent directory. |
 | `path_glob` | Gitignore-style pattern for the served-root-relative path. |
+| `magic` | `{offset, hex}`: bytes a binary format holds at an offset, in hexadecimal. |
 
 Fields within one rule combine with AND. Rules with the same kind ID combine with OR. At
 least one match field is required, and `ext` and `exts` are exclusive.
@@ -203,8 +235,29 @@ Built-ins normally use priority `0`; a specialized plugin can use a higher prior
 claim a narrower format.
 
 Kind rules apply to files Metabrowser reads as text and to JSONL streams.
-A file whose bytes sniff as binary, or whose extension is an image extension, keeps the
-built-in `binary` or `image` kind; a plugin can add a view to that kind instead.
+A file whose extension is an image extension keeps the built-in `image` kind, and one
+whose bytes sniff as binary keeps the built-in `binary` kind unless a `magic` rule or a
+`binary = true` rule claims it; a plugin can add a view to either instead.
+
+A `magic` rule claims a binary format by the bytes it starts with, whatever the file is
+called: every file that would otherwise be `binary` is checked against every magic rule,
+so a SQLite database named `History` is SQLite.
+It takes only `ext` or `exts` beside it, which decide the tree’s container chevron and
+do not narrow the match, and its bytes must end within the sniff prefix (`MAGIC_MAX_END`
+in `src/metabrowser/plugin_loader/manifest.py`). It is checked on the bytes on disk, so
+a compressed file keeps its kind:
+
+```toml
+[[kind]]
+id = "sqlite"
+match = { magic = { offset = 0, hex = "53514c69746520666f726d6174203300" }, exts = [".db"] }
+```
+
+A rule with `binary = true` is asked about a served file found to be binary that no
+magic rule claimed, and claims it by path, so a compressed format Metabrowser cannot
+read reaches the plugin’s views.
+It may use only `ext`, `exts`, `basename`, `folder_marker`, and `path_glob`, cannot be a
+container, and never matches a text file or a Git blob.
 A format whose reader needs a native library belongs in an installed plugin, so the
 dependency is never Metabrowser’s.
 
@@ -255,6 +308,15 @@ At most one view per kind may set `default = true`. A plugin may register a view
 kind declared by another plugin, which is useful for composing generic renderers.
 `render_runtime` documents whether the client or KPress renders the view, and a
 printable view declares a `print_profile` suited to documents or source code.
+
+A view of the `folder` kind may set `offer = "module:function"`, a Python predicate that
+receives the folder’s path.
+The view is served only on folders where it returns true, and an offered view with
+`default = true` is then the folder’s only default, so the page opens on it.
+The predicate runs for every folder page, off the event loop, and should read no more
+than a few directory entries; one that raises is logged and its view left out.
+A Git revision’s folders never offer a view, and an operator directory’s JavaScript-only
+plugin cannot declare one.
 
 `key` is an optional one-letter key for the view’s tab.
 A kind with more than one view should give each view one: `v` for a rendered view, `s`
@@ -374,6 +436,8 @@ async def summary_handler(request):
 - `resolve_content_container(identity, suffixes=(".patch",))` resolves a
   `<content>/<inner>` address for a container kind, scoped to the suffixes the hook
   claims, with the server’s own depth bound, `MAX_CONTAINER_INNER_DEPTH`.
+  `suffixes=None` claims any name, for a kind matched by its bytes whose hook checks the
+  content itself, as the SQLite plugin does.
 - Every failure is a `ContentReadError` with a stable `code` and the `http_status`
   Metabrowser’s own routes answer with, so one `except` covers a missing object, an
   oversized blob, an unreadable compressed stream, a timeout, and a subject that cannot
@@ -381,6 +445,126 @@ async def summary_handler(request):
 
 Reads run off the event loop on both kinds, so an `async def` handler stays responsive
 without arranging that itself.
+
+#### Table Sources
+
+A plugin whose files are tables lets the built-in `table` plugin serve them: it claims
+the kind, requires `table`, and names a Python adapter for the kind.
+
+```toml
+[plugin]
+name = "example-tables"
+requires = ["table"]
+
+[[kind]]
+id = "example-table"
+match = { ext = ".extable" }
+priority = 100
+
+[[table_source]]
+kind = "example-table"
+adapter = "example_plugin.tables:adapter"
+```
+
+The adapter takes a `TableHandle` and returns an object with the `TableSource` methods:
+`generation()`, `tables()`, `schema(table)`, `rows(table, query, budget)`,
+`record(table, key, budget)`, and `card(table, key, budget)`. They are synchronous and
+run on the route threadpool, and every file of the kind is then served by
+`/api/plugin/table/{tables,schema,rows,record,card}?path=` with no route of your own.
+`metabrowser.plugin_api` exports the types, the cell and token helpers, and the bounds;
+[Table Sources](project/architecture/arch-plugin-system.md#table-sources) describes the
+routes, and `builtin_plugins/delimited/source.py` is a complete source.
+`builtin_plugins/structured/records.py` is another, a Table view of a kind that has
+other views: it reads the plugin’s own parse of a JSON or YAML file and refuses, with
+`SourceUnreadableError` and its reason, any document that holds no table.
+
+- A `[[table_source]]` names one of its own plugin’s kinds, once, and its plugin must
+  require `table`; an operator-directory plugin’s are ignored, since it runs no Python.
+- Read through `handle.read_window(max_bytes=...)`, which answers on a folder and on a
+  Git pin alike; `handle.local_path` is the real path on a served folder, or None.
+- `generation()` only stats files and reads bounded headers.
+  `content_generation(handle)` is the file’s identity, size, and modification time, or a
+  pinned blob’s object id.
+  Key anything you cache by it.
+- A cell is a scalar or one of the envelopes `integer_cell`, `real_cell`, `text_cell`,
+  `blob_cell`, and `stored_cell` build, so a large integer keeps its digits, a long
+  value says its length, bytes are hex with their size, and a value whose stored type
+  differs from its field’s says so.
+  A text the source read only in part, whose length in characters it cannot know, is
+  `{text, bytes}`, the whole value’s size in bytes; one it could not preview is
+  `{length, preview: false}`. A reference is `{ref: {table, key, label}}`, and a value
+  naming a record that is not there is
+  `{ref: {table, key: null, label, missing: true}}`, drawn as its value marked missing.
+- A file of several tables is a navigation container whose children are its tables:
+  `<file>/<table>` reaches the source with `table` set to the inner path, so a source’s
+  table ids are its address segments, and its kind declares a `children` hook that lists
+  them
+  ([Navigation Containers](project/architecture/arch-plugin-system.md#navigation-containers)).
+  The SQLite source (`builtin_plugins/sqlite/`) is one, and the fsqlite store’s
+  (`builtin_plugins/fsqlite/`), whose file is a marker naming the database it reads.
+- Name a keyless row by its position with `position_key(n)`, counting from 1, and a
+  keyed one with `encode_key(values)`; mint cursors with `encode_cursor`, falling back
+  to `positional_cursor` past `TABLE_TOKEN_MAX_CHARS`. Every token is deterministic.
+  Put the query’s sort and order in a cursor and refuse one minted for another, and
+  check every part of a token before using it: a client can send any text.
+- Raise a `TableSourceError` subclass, such as `RecordNotFoundError`, to refuse; the
+  route answers its `code` and status.
+  A `TableQueryError` refuses a malformed parameter or token with `bad_query`.
+- Answer rows in the order the query asked for.
+  Stop a scan when `budget.expired()` and answer `complete=False` with the reason
+  `budget` and the rows found so far; a sort cannot be returned in part, so a sort the
+  budget cannot finish answers no rows, the reason `sort_budget`, and `sort_refused`
+  naming the field.
+- Carry at most `page_row_limit(query.limit, cells_per_row)` rows in a page, so a page
+  of wide rows stays within `TABLE_PAGE_CELLS_MAX` cells, and return that number as the
+  page’s `limit`.
+
+The table plugin also draws the table: its exports are
+`mountTable(container, {path, renderJson})`, which mounts the table view for the table
+at `path` and returns a handle with `ready`, `dispose()`, and `refresh()`. `refresh()`
+asks the current question again and draws the new answer in place, keeping the focused
+row, the row at the top of the view, and the selection by row key, for a source whose
+content changes while it is shown.
+`renderJson(element, value)`, optional, draws a JSON value (a `{json}` cell) into a
+record’s element and returns a handle with `dispose()`, which the view calls when the
+record goes; without it the value is its JSON text.
+The structured kind’s Table view passes the structured plugin’s inline tree (in
+`builtin_plugins/structured/index.js`). Give your kind a Table view that mounts it:
+
+```toml
+[[view]]
+kind = "example-table"
+id = "table"
+label = "Table"
+key = "v"
+default = true
+container_class = "content-body table-view-host"
+printable = true
+print_profile = "table"
+```
+
+```javascript
+const tables = mb.plugins.load("table"); // start the load as the plugin is evaluated
+mb.registerView("example-table", "table", {
+  async render(container, ctx) {
+    const { mountTable } = await tables;
+    return mountTable(container, { path: ctx.path });
+  },
+});
+```
+
+The view keeps its sort, filters, search, columns, and open record in the address’s
+query, in the rows route’s own names (`cols` repeated, one field each), so a link
+reproduces it. It takes the table’s id from the schema answer’s `table`, and builds a
+reference’s address from it.
+It draws what a source answers as the route defines it: a page shorter than asked is
+read on from `next_after`, a `sort_budget` page is a notice naming the field rather than
+an empty table, and `budget`, `source_truncated`, and `truncated` are notices above the
+rows. A `source_unreadable` refusal is the source’s own words in place of the table, so
+say there why the file holds no table, as the record lists say a document is not one.
+A plugin whose files always open in the Table view starts the load when its own module
+is evaluated, as above, so the table plugin’s module is on its way while the shell
+prepares the pane; one that shows it only sometimes asks for it in `render`.
 
 ## Browser SDK
 
@@ -447,17 +631,61 @@ size, frontmatter, body text where applicable, and the raw `/api/file` envelope.
 Use `mb.getRegisteredView` and `mb.listViewsForKind` for diagnostics, not the registry’s
 private storage.
 
-### Render-Time-Only Namespace Rule
+### Declared Dependencies
 
-A built-in plugin may publish helpers for others on `mb.builtins.<name>`, as Markdown
-publishes `mb.builtins.markdown` and structured data `mb.builtins.structured`, and the
-GitHub plugin `mb.builtins.github.pullStateIcon`, which the ref selector’s rows draw a
-branch’s pull request with.
-Read another plugin’s namespace only at render time, inside `render` or a handler, never
-while your `index.js` evaluates: plugins load on demand, so the other plugin may not
-have run yet. Await `ensureKindAssets(kind)` for that plugin’s kind first.
-`tests/test_plugin_e2e_render.py` fails when a plugin reads a missing namespace at load
-time.
+A plugin offers helpers to others by exporting them from its `index.js`, which is an ES
+module, as Markdown exports `mountRendered`, `renderSource`, and `drawDiagrams`,
+structured data exports `renderInlineTree` and the tree’s helpers, and GitHub exports
+`pullStateIcon`, which the shell’s ref selector draws a branch’s pull request with.
+A plugin that uses them names the provider in its manifest and asks for its exports:
+
+```toml
+[plugin]
+name = "readme-cards"
+requires = ["markdown"]
+```
+
+```javascript
+const markdown = await mb.plugins.load("markdown");
+markdown.mountRendered(container, ctx, { signal });
+```
+
+`mb.plugins.load(name)` resolves to the provider’s module namespace once its
+stylesheets, extra scripts, and `index.js` have run.
+It loads the provider on demand, the first time anything asks for it or selects one of
+its kinds, and once: every caller shares that load, so ask for it where you need it,
+usually in `render` or a handler, and the cost lands only on pages that use it.
+It rejects for a name that is not loaded, and when the provider’s stylesheets, scripts,
+or module failed; that failure is the answer to every later call until the page is
+reloaded, so a view shows its own error rather than asking again.
+The namespace is what `import()` answers, so a provider must not export a function named
+`then`: the promise would treat the namespace as a thenable and call it.
+A provider whose helpers are costly to fetch can export a function that loads them, so
+that its `index.js`, which every page showing one of its kinds loads, stays small: the
+agents plugin exports `loadLogRenderers`, which answers its agent-log renderers.
+
+Discovery refuses a plugin whose `requires` names a plugin that was not discovered or
+was itself refused, and every plugin on a cycle of requirements, since two modules that
+each wait for the other’s exports never finish.
+An operator plugin that replaces another by name and is refused for its requirements
+does not take the name away: like a replacement whose manifest is invalid, it is
+reported and the plugin it would have replaced is kept, so a typo in one manifest cannot
+refuse the built-ins that require the plugin it shadows.
+`metab --doctor` lists each refusal as a problem, causes before the refusals that follow
+from them, and reports the graph it kept, and `metab --plugins` and `--plugin NAME` show
+each plugin’s `requires`.
+
+Declare every provider you load and load every provider you declare, except `table`,
+which a plugin with a `[[table_source]]` requires because the table plugin’s routes
+serve it ([Table Sources](#table-sources)). `tests/test_plugin_requirements.py` holds
+the built-in plugins to that; nothing checks it for another plugin, because
+`mb.plugins.load` cannot tell which plugin called it, so an undeclared load works until
+the provider is missing and then fails at render instead of at discovery.
+`ensureKindAssets(kind)` and `getRegisteredView(kind, view)` reach a different thing: a
+kind’s view, from whichever plugin serves that kind, as the pull-request page draws the
+`diff` kind. That needs no declaration, and discovery and the doctor do not see it.
+To use one named plugin’s renderers, load its exports, as the generic JSONL and
+event-log views draw with the agents plugin’s `renderLog` and `renderRaw`.
 
 ### Rendering and Formatting
 
@@ -478,8 +706,10 @@ Useful helpers include:
   where `name` is the copy value, `label` the display, and `kind` is `local`, `remote`,
   or `tag`; pass `trunk` and `head` only from a Git ref’s `is_trunk` and `is_head`, and
   never restyle the chip ([Branch Chips](design-system.md#branch-chips)). Inside a link
-  or button, use `copy: "sibling"` with `mountRefCopies(primary, host)` and call its
-  disposer on unmount; `copy: false` is passive;
+  or button, use `menu: "sibling"` with `mountRefMenus(primary, host)` and call its
+  disposer on unmount.
+  Pass the full Git ref as `ref` to support browsing its source.
+  Use `menu: false` for passive chips;
 - `mergeRefs(source, target, options)` for a merge between two branches, the design
   system’s one notation ([Merge Direction](design-system.md#merge-direction));
 - `actorIdentity(name, options)` and `actorIdentityHtml(name, options)` for a person: an
@@ -672,6 +902,8 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
 
 - `fetchPluginData(plugin, route, params, options?)` calls a declared data hook with
   `GET`; pass `{ signal }` so a disposed view aborts its request.
+  A parameter whose value is an array is repeated, one value each, as the table rows
+  route takes `cols`; a `null` or `undefined` value is left out.
   A non-ok response rejects with an `Error` carrying `status` and the parsed `payload`.
   Call a `POST` hook with `fetch`.
 - `fetchJsonl(path, options)` requests a normalized JSONL envelope.
@@ -707,6 +939,8 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   default, without changing the URL. When the destination is the file already shown, it
   selects that view of it, as its tab does, which is how a view takes a person to
   another view of the same file.
+  `{ replace: true }` replaces the current history entry instead of pushing one, for a
+  step Back should not stop at, such as the text typed into a search field.
 - `navigation.current()` returns the current target, or `null` on the landing URL.
 - `fileCatalog.snapshot()` returns an immutable view of the files the shell knows, as
   canonical logical-file paths ordered by UTF-16 code units, with no global path-length
@@ -761,6 +995,19 @@ Folder aggregate views can use these bounded inventory helpers:
   It passes `null` when anything may have changed: the stream reconnected or
   resynchronized, or the first crawl finished.
   A host with no inventory stream never calls it.
+- `watchFile(path, {generation, onChange, onState})` watches one file through the page’s
+  event stream, whether or not the inventory reports it (an ignored file, a deep one, a
+  database whose owner writes through its log), and returns a disposer.
+  Pass the `generation` your read answered, such as a table page’s, so a change before
+  the watch is registered still reaches you; `onChange({path, generation})` is called
+  once for each change the server polls, with `generation` null when the file is gone.
+  `onState(state, reason)` says whether the watch is `waiting` for a connection, `live`,
+  or `refused`, as past the per-page bound `FILE_WATCH_MAX_PATHS`
+  (`src/metabrowser/file_watches.py`). A page with no stream, such as a pinned
+  revision’s, never calls either.
+  Call the disposer when the view goes; the shell registers every watch again on each
+  new connection
+  ([File Watches](project/architecture/arch-live-delivery.md#file-watches)).
 - Each `ext_tallies` row is
   `[extension, all_files, all_bytes, unignored_files, unignored_bytes]`. The empty
   extension is the aggregate **Other** tail; `(none)` is the extensionless category.
@@ -891,12 +1138,13 @@ unsubscribe on disposal.
 view defer hidden work, and a composite renderer calls
 `mb.setViewPrintState(container, state)` when its printability changes.
 
-`mb.builtins.markdown.mountRendered(container, ctx, {signal, pagePath, printIndicator})`
-mounts a Markdown document panel with the ordinary KPress presentation, its table of
-contents included.
-`pagePath` names the page that shows the document as its own when that
-is not the document’s path, as a folder’s Overview shows its README: the document’s
-fragment links and table-of-contents entries are then places on that page.
+The Markdown plugin’s
+`mountRendered(container, ctx, {signal, pagePath, printIndicator})`, from
+`await mb.plugins.load("markdown")` with `requires = ["markdown"]`, mounts a Markdown
+document panel with the ordinary KPress presentation, its table of contents included.
+`pagePath` names the page that shows the document as its own when that is not the
+document’s path, as a folder’s Overview shows its README: the document’s fragment links
+and table-of-contents entries are then places on that page.
 `printIndicator: true` puts a print button in the corner of the document’s card, for a
 view whose print is the document itself; it is off unless the host asks
 ([Print](design-system.md#print)). Its handle aborts its request and disposes its table
@@ -906,10 +1154,10 @@ Transclusions share depth, document, source-byte, cycle, abort, and disposal lim
 across the mounted document, and each embed’s time limit starts when that embed begins
 loading. Do not copy Markdown DOM or table-of-contents behavior into a contribution.
 
-`mb.builtins.markdown.drawDiagrams(root, {inert, isolated})` draws the Mermaid diagrams
-of a KPress render your plugin placed under `root`, as the Markdown view draws its own:
-an inert render’s `<pre lang="mermaid">` blocks become images, and only `inert: false`,
-for a render the reader trusts, puts the SVG in the page.
+Its `drawDiagrams(root, {inert, isolated})` draws the Mermaid diagrams of a KPress
+render your plugin placed under `root`, as the Markdown view draws its own: an inert
+render’s `<pre lang="mermaid">` blocks become images, and only `inert: false`, for a
+render the reader trusts, puts the SVG in the page.
 It returns null, and loads nothing, when `root` holds no diagram; otherwise its
 `dispose()` stops drawing and leaves the figures as drawn, so call it when you replace
 `root`. Mermaid lays an image out in a document before it becomes one, and there a
@@ -957,10 +1205,32 @@ Ensure the wheel includes the manifest, JavaScript, CSS, and any extra assets, a
 the built wheel in an isolated environment, since an editable checkout can conceal
 missing package data.
 
+### Python Registration Module
+
+A built-in or installed entry-point plugin that registers Python-side extensions, such
+as a JSONL adapter, names the module that does it in its manifest:
+
+```toml
+[plugin]
+name = "example-plugin"
+register = "example_plugin.adapters"
+```
+
+Discovery imports that module once, when it finds the plugin, so the module’s top-level
+calls (`register_log_adapter` and the like) run before the server mounts anything.
+A module that fails to import is a plugin load error, reported as the others are: the
+plugin is skipped and `metab --doctor` exits nonzero.
+An operator-directory plugin is JavaScript-only, so its `register` is ignored with a
+warning, and `metab --doctor` reports it.
+The module should import from `metabrowser.plugin_api` and do nothing but register.
+
 ### Plugin-Owned JSONL Adapters
 
 Plugins that recognize an additional JSONL event format can register a detector and
-parser factory when their entry-point module loads:
+parser factory when their `register` module loads
+([Python Registration Module](#python-registration-module)). The built-in `agents`
+plugin registers its Claude Code, Codex, Pi, and Gemini adapters the same way, so
+`registered_log_adapters()` lists every name in detection order:
 
 ```python
 from typing import Any
@@ -991,11 +1261,18 @@ register_log_adapter(
 
 The detector receives parsed objects from the beginning of the stream; keep it fast,
 deterministic, and free of filesystem or network work.
+A format whose stream opens with plain text can also pass `line_detector`, which
+receives each opening line that is not a JSON object.
+Detection asks each line’s detectors in registration order, the built-in `agents`
+plugin’s first, so a detector should recognize only its own format.
 A detector failure is logged and skipped, so one adapter cannot break detection for
-every JSONL file.
-Registering the same detector and factory again is idempotent; claiming
-another plugin’s adapter name raises an error, and built-in names cannot be replaced.
-The factory returns a fresh parser for each file or live stream.
+every JSONL file. Registering the same callables again is idempotent; claiming a name
+already registered, the built-in plugin’s or another plugin’s, raises an error.
+Adapters register when plugins are discovered, which the server does at startup, so a
+script that calls `detect_adapter` without starting the server sees only the adapters it
+registered itself. A log that no registered adapter recognizes gets the `unknown`
+adapter, whose parser turns each JSON object into an event of its `type`. The factory
+returns a fresh parser for each file or live stream.
 A `[[kind]]` rule with `match = { ext = ".jsonl", adapter = "example" }` then claims the
 files the detector recognizes.
 
@@ -1023,15 +1300,29 @@ which a CLI integration can catch to keep a command’s message and exit code, a
   transparently, within decompression limits, and raises `ArtifactCompressionError`,
   `ArtifactDecompressionLimitError`, or `ArtifactDecompressionTimeoutError` to separate
   malformed data from size and time limits.
-- **JSONL:** `LogEvent`, `LogParser`, `detect_adapter(lines)`, and
-  `register_log_adapter` are the adapter contract above.
+- **JSONL:** `LogEvent`, `LogParser`, `detect_adapter(lines)`, `create_parser(adapter)`,
+  `register_log_adapter`, and `registered_log_adapters()` are the adapter contract
+  above. Use `create_parser` to instantiate a registered adapter for each stream.
+  Built-in `agents` imports these from `metabrowser.plugin_api`, and
+  `tests/test_agents_import_boundary.py` holds it to that.
+  `jsonl_parse_max_bytes()` is the parser’s decompressed input limit, so a hook reads at
+  most that many bytes of a log.
   `extract_agent_charts_cached(path)` reuses the agent-log chart projection, returning
   `None` for an absent file and raising `JsonlParseLimitError` past the parser’s input
-  limit.
+  limit. `extract_agent_charts_bytes(data)` projects bytes already read, and
+  `lookup_agent_charts` and `remember_agent_charts` memoize a projection by a content
+  reference’s identity and fingerprint.
+- **Cache:** `plugin_cache_directory(name)` creates or verifies the plugin’s owner-only
+  directory under the application cache root and returns it.
+  It is a cache: a user may delete it at any time, so key what it holds by what it was
+  computed from. It raises `PluginCacheUnavailableError` when no private cache root can
+  be made.
 - **Lifecycle:** `register_root_callback(callback)` invalidates plugin caches when the
   served root changes.
-  Do not cache the resolved root, or import underscored helpers from
-  `metabrowser.paths_safe`.
+- **Table sources:** `TableSource`, `TableHandle`, and the types, errors, cell and token
+  helpers, and bounds a source implements, under [Table Sources](#table-sources).
+  The table routes’ own wiring stays in `metabrowser.table_source`. Do not cache the
+  resolved root, or import underscored helpers from `metabrowser.paths_safe`.
 
 The sidekick surface is provisional during the 0.x series, and release notes identify
 its changes. Plugin-loader and manifest types are available from their defining modules

@@ -10,7 +10,7 @@ env:
 patterns:
   TIMESTAMP: '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'
   APP_HOME: '[^\s"]+/home'
-  STORE_KEY: '[a-z0-9-]+--[0-9a-f]{16}'
+  STORE_KEY: '[a-z0-9-]+-[0-9a-z]{11}'
 before: >-
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
   METABROWSER_CONFIG_DIR="$PWD/config"
@@ -49,7 +49,7 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "file://[CWD]/origin.git",
-  "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+  "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
@@ -95,7 +95,7 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "file://[CWD]/origin.git",
-  "location": "~/repository-stores/[STORE_KEY]/repository.git",
+  "location": "~/repos/[STORE_KEY]/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
@@ -132,8 +132,9 @@ status: 200
   "short_name": "origin",
   "full_name": "[CWD]/origin.git@topic",
   "kind": "mirror",
-  "kind_label": "Cached mirror",
+  "kind_label": "Cloud mirror",
   "title": "origin • Metabrowser",
+  "kind_tip": "Cloud mirror",
   "repository": null
 }
 ? 0
@@ -149,8 +150,9 @@ status: 200
   "short_name": "origin",
   "full_name": "~/origin.git@topic",
   "kind": "mirror",
-  "kind_label": "Cached mirror",
+  "kind_label": "Cloud mirror",
   "title": "origin • Metabrowser",
+  "kind_tip": "Cloud mirror",
   "repository": null
 }
 ? 0
@@ -175,7 +177,7 @@ status: 200
     "ref_name": "feature",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
@@ -214,7 +216,7 @@ status: 200
     "ref_name": "v1",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
@@ -256,7 +258,7 @@ status: 200
     "ref_name": null,
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
@@ -300,7 +302,7 @@ status: 200
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
@@ -339,7 +341,7 @@ status: 200
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
@@ -557,7 +559,7 @@ status: 200
     "ref_name": "feature",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
@@ -599,7 +601,7 @@ status: 200
     "ref_name": "feature",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
@@ -649,7 +651,7 @@ status: 202
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
@@ -679,7 +681,7 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "file://[CWD]/origin.git",
-  "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+  "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,
@@ -725,7 +727,7 @@ status: 202
     "ref_name": "topic",
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
-    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
     "borrows": null,
     "shallow": false,
     "refreshable": true,
@@ -755,7 +757,7 @@ status: 200
   "ref_name": "topic",
   "name": "origin",
   "origin": "file://[CWD]/origin.git",
-  "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+  "location": "[APP_HOME]/repos/[STORE_KEY]/repository.git",
   "borrows": null,
   "shallow": false,
   "refreshable": true,

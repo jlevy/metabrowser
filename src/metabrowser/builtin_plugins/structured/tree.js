@@ -19,7 +19,7 @@
 //
 // renderInlineTree is the stable embedding contract that other
 // plugins (agent-log, future schema-aware variants) consume via
-// mb.builtins.structured.renderInlineTree. materializeRows, renderRowHtml, a row's
+// the exports of structured/index.js. materializeRows, renderRowHtml, a row's
 // fields (`change`, `text`, `hidden` and `changed` among them), and the "more" row are
 // internal to Metabrowser's own views (the rendered diff, diff-structured.js) and change
 // with them.

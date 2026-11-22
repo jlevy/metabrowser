@@ -42,7 +42,7 @@ class _EmptyContent:
         raise UnsupportedSourceCapabilityError("content")
 
     async def open_container(
-        self, identity: str, *, suffixes: tuple[str, ...]
+        self, identity: str, *, suffixes: tuple[str, ...] | None
     ) -> tuple[ContentRef, str] | None:
         raise UnsupportedSourceCapabilityError("content")
 
