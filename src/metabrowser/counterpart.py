@@ -1,7 +1,7 @@
 """The github.com page that shows what a Metabrowser page shows: ``GET /api/counterpart``.
 
 A page has a counterpart when the served repository is on github.com and github.com has
-a page for the same thing: a file or a folder at a commit github.com has, a pull
+a page for the same thing: a repository, a file or a folder origin has, a pull
 request's tab, a commit, or the repository's pull requests. ``GET
 /api/counterpart?page=<page>`` answers which, so a page's View on GitHub control and
 ``metab --api`` read one answer, and no page builds a github.com URL itself. :data:`PAGES`
@@ -45,8 +45,11 @@ commit, or else the working tree.
 
 "Origin has it" means a ``refs/remotes/origin/*`` ref reaches the commit, as the
 checkout last fetched it, and in a mirror any of its refs, which are all its origin's.
-Nothing is fetched to ask. A pull request's pages and the list map whenever the
-repository is on github.com, and a commit's page when origin has the commit.
+Nothing is fetched to ask. A named origin ref is used when it still contains the item.
+Otherwise a file or folder uses its commit. A repository root uses the repository URL
+for the default branch or without a named origin ref. A pull request's pages and the
+list map whenever the repository is on github.com, and a commit's page when origin
+has the commit.
 
 A path's reason comes before its commit's, since an untracked file stays untracked once
 its commit is pushed. Each question is one Git command, under the request-path
@@ -169,17 +172,17 @@ class PageCounterpart:
 PAGES: Final[dict[PageKind, PageCounterpart]] = {
     "file": PageCounterpart(
         "/view/<path>",
-        "blob/<sha>/<repo path>",
+        "blob/<ref>/<repo path>",
         ("uncommitted", "untracked", "ignored", "missing", "not_on_origin"),
     ),
     "folder": PageCounterpart(
         "/view/<path>/",
-        "tree/<sha>/<repo path>",
+        "tree/<ref>/<repo path>",
         ("uncommitted", "untracked", "ignored", "missing", "not_on_origin"),
     ),
     "root": PageCounterpart(
         "/view/",
-        "tree/<sha>/<served prefix>, or tree/<sha> at the repository root",
+        "tree/<ref>/<served prefix>, or repository URL or tree/<name> at the repository root",
         ("uncommitted", "untracked", "ignored", "missing", "not_on_origin"),
     ),
     "pull": PageCounterpart(
@@ -199,6 +202,9 @@ PAGES: Final[dict[PageKind, PageCounterpart]] = {
 # ``origin``, and every ref of a mirror, whose refs are all its origin's.
 _CHECKOUT_ORIGIN_REFS: Final = ("--remotes=origin",)
 _MIRROR_ORIGIN_REFS: Final = ("--all",)
+_ORIGIN_REF_PREFIX: Final = "refs/remotes/origin/"
+_LOCAL_BRANCH_PREFIX: Final = "refs/heads/"
+_TAG_PREFIX: Final = "refs/tags/"
 
 # What a working tree whose ``HEAD`` origin lacks maps at instead, in order: its merge
 # base with ``HEAD``'s upstream branch, and with origin's default branch. An upstream can
@@ -246,15 +252,24 @@ class _Page:
 class _Repository:
     """The served repository on github.com, and where to ask Git about its commits.
 
-    ``origin_refs`` are the ``rev-list`` arguments naming what origin has, and
-    ``pin_on_origin`` says a pin's commit is origin's without asking, as a mirror's is.
+    ``origin_refs`` are the ``rev-list`` arguments naming what origin has. The mirror
+    records the origin's default branch and holds only its refs.
     """
 
     context: RepositoryContext
     location: GitLocation
     origin_refs: tuple[str, ...]
     pin: GitRevisionSubject | None
-    pin_on_origin: bool
+    mirror: MirrorSession | None
+
+
+@dataclass(frozen=True, slots=True)
+class _OriginRef:
+    """A verified origin ref, its current commit, and its name in the web URL."""
+
+    commit: str
+    url_path: tuple[bytes, ...]
+    default: bool = False
 
 
 async def page_counterpart(page: str, mirror: MirrorSession | None) -> CounterpartAnswer:
@@ -354,16 +369,14 @@ async def _served_repository(
         context = await asyncio.to_thread(discover_repository_context, root)
         if context is None:
             return None
-        return _Repository(
-            context, GitLocation.filesystem(root), _CHECKOUT_ORIGIN_REFS, None, False
-        )
+        return _Repository(context, GitLocation.filesystem(root), _CHECKOUT_ORIGIN_REFS, None, None)
     location = GitLocation.revision(pin.command_target, pin.commit_oid)
     checkout = checkout_revisions()
     if checkout is not None and checkout.serves(pin):
         context = await asyncio.to_thread(discover_repository_context, checkout.root)
         if context is None:
             return None
-        return _Repository(context, location, _CHECKOUT_ORIGIN_REFS, pin, False)
+        return _Repository(context, location, _CHECKOUT_ORIGIN_REFS, pin, None)
     if mirror is None:
         return None
     from metabrowser.git.tree_source import ref_branch_name
@@ -373,7 +386,7 @@ async def _served_repository(
     )
     if context is None:
         return None
-    return _Repository(context, location, _MIRROR_ORIGIN_REFS, pin, True)
+    return _Repository(context, location, _MIRROR_ORIGIN_REFS, pin, mirror)
 
 
 async def _selection(
@@ -409,29 +422,136 @@ async def _selection(
 async def _item_selection(
     page: _Page, repository: _Repository
 ) -> RepositorySelection | CounterpartReason:
-    """A file's or a folder's counterpart, at the commit the page shows it from."""
+    """The published name of a view, or a commit for an item without a matching ref."""
 
     from metabrowser.cache.urls import RepositorySelection
 
     pin = repository.pin
+    if not page.path and not page.inside_file and not repository.context["served_prefix"]:
+        # The repo URL needs identity, not proof that origin has a private local commit.
+        if (
+            repository.mirror is not None
+            and pin is not None
+            and pin.ref is not None
+            and pin.ref == await repository.mirror.mirror.default_ref()
+        ):
+            return RepositorySelection()
+        named = await _origin_ref(repository, root=True)
+        if named is None or named.default:
+            return RepositorySelection()
+        return RepositorySelection(kind="tree", ref_and_path=named.url_path)
+
     if pin is not None:
-        found = await _pinned_kind(page, pin)
-        if found not in ("blob", "tree"):
-            return found
-        if not repository.pin_on_origin and not await _on_origin(repository, pin.commit_oid):
+        kind = await _pinned_kind(page, pin)
+        if kind not in ("blob", "tree"):
+            return kind
+        if repository.mirror is None and not await _on_origin(repository, pin.commit_oid):
             return "not_on_origin"
-        return RepositorySelection(
-            kind=found, ref_and_path=(pin.commit_oid.encode("ascii"), *page.path)
-        )
-    if git_executable() is None:
-        return "not_on_origin"
-    prefix = repository.context["served_prefix"]
-    path = (*(os.fsencode(prefix).split(b"/") if prefix else ()), *page.path)
-    located = await _working_tree_item(repository, path, page.logical)
-    if isinstance(located, str):
-        return located
-    commit, kind = located
+        commit = pin.commit_oid
+        path = page.path
+    else:
+        if git_executable() is None:
+            return "not_on_origin"
+        prefix = repository.context["served_prefix"]
+        path = (*(os.fsencode(prefix).split(b"/") if prefix else ()), *page.path)
+        located = await _working_tree_item(repository, path, page.logical)
+        if isinstance(located, str):
+            return located
+        commit, kind = located
+
+    named = await _origin_ref(repository)
+    if named is not None and (
+        named.commit == commit or await _tree_kind(repository.location, named.commit, path) == kind
+    ):
+        return RepositorySelection(kind=kind, ref_and_path=(*named.url_path, *path))
     return RepositorySelection(kind=kind, ref_and_path=(commit.encode("ascii"), *path))
+
+
+async def _origin_ref(repository: _Repository, *, root: bool = False) -> _OriginRef | None:
+    """The hosted branch or tag selected by the view, as last fetched."""
+
+    from metabrowser.cache.resolve import is_valid_ref_name
+
+    if git_executable() is None:
+        return None
+    if repository.pin is None:
+        branch = repository.context["branch"]
+        ref = _LOCAL_BRANCH_PREFIX + branch if branch is not None else None
+    else:
+        ref = repository.pin.ref
+    if ref is None or not is_valid_ref_name(ref):
+        return None
+
+    location = repository.location
+    if ref.startswith(_LOCAL_BRANCH_PREFIX):
+        branch = ref.removeprefix(_LOCAL_BRANCH_PREFIX)
+        upstream = await _ref_value(
+            location,
+            [
+                "rev-parse",
+                "--symbolic-full-name",
+                "--verify",
+                "--quiet",
+                "--end-of-options",
+                f"{branch}@{{upstream}}",
+            ],
+        )
+        ref = upstream or _ORIGIN_REF_PREFIX + branch
+    if ref == _ORIGIN_REF_PREFIX + "HEAD":
+        ref = await _ref_value(location, ["symbolic-ref", "--quiet", ref]) or ""
+    if ref.startswith(_ORIGIN_REF_PREFIX):
+        return await _origin_branch(
+            location, ref, include_default=root and repository.mirror is None
+        )
+    if repository.mirror is not None and ref.startswith(_TAG_PREFIX):
+        tip = await _ref_value(
+            location, ["rev-parse", "--verify", "--quiet", "--end-of-options", f"{ref}^{{commit}}"]
+        )
+        if tip is not None and is_full_revision(tip):
+            return _OriginRef(tip, tuple(os.fsencode(ref).split(b"/")))
+    return None
+
+
+async def _origin_branch(
+    location: GitLocation, ref: str, *, include_default: bool
+) -> _OriginRef | None:
+    """Read the branch, its same-named tag, and optionally origin HEAD together."""
+
+    name = ref.removeprefix(_ORIGIN_REF_PREFIX)
+    tag = _TAG_PREFIX + name
+    head = _ORIGIN_REF_PREFIX + "HEAD"
+    wanted = [ref, tag, *([head] if include_default else [])]
+    lines = await _ref_value(
+        location,
+        ["for-each-ref", "--count=8", "--format=%(refname)%00%(objectname)%00%(symref)", *wanted],
+    )
+    refs = {}
+    for line in (lines or "").splitlines():
+        fields = line.split("\0")
+        if len(fields) == 3 and fields[0] in wanted:
+            refs[fields[0]] = (fields[1], fields[2])
+    tip, _symbolic = refs.get(ref, ("", ""))
+    if not is_full_revision(tip):
+        return None
+    url_path = tuple(os.fsencode(name).split(b"/"))
+    if (
+        tag in refs
+        or url_path[:2] in ((b"refs", b"heads"), (b"refs", b"tags"))
+        or is_full_revision(name)
+    ):
+        url_path = (b"refs", b"heads", *url_path)
+    return _OriginRef(tip, url_path, default=refs.get(head, ("", ""))[1] == ref)
+
+
+async def _ref_value(location: GitLocation, args: list[str]) -> str | None:
+    """Read an optional ref or its tip without fetching."""
+
+    try:
+        raw = await run_git_at(args, location)
+    except GitCommandError as exc:
+        log.debug("counterpart ref not available: %s", failure_detail(exc))
+        return None
+    return os.fsdecode(raw).strip() or None
 
 
 async def _pinned_kind(

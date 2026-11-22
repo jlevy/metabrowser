@@ -56,6 +56,12 @@ before: >-
   git commit -q -m 'ahead' &&
   printf 'Edited here.\n' >> docs/guide.md &&
   cd .. &&
+  git clone -q checkout branch &&
+  cd branch &&
+  git remote set-url origin https://github.com/octo/demo.git &&
+  git update-ref refs/remotes/origin/feature/docs HEAD &&
+  git checkout -q -b local-docs --track origin/feature/docs &&
+  cd .. &&
   git clone -q checkout topic &&
   cd topic &&
   git remote set-url origin https://github.com/octo/demo.git &&
@@ -102,6 +108,7 @@ every machine:
   and `build/` are ignored.
 - `ahead`, a clone of `checkout` with the same `origin`, one commit past its upstream
   branch, with `docs/guide.md` edited.
+- `branch`, a clone whose local `local-docs` branch tracks the origin’s `feature/docs`.
 - `topic`, a clone on a branch with no upstream, one commit past the clone’s
   `origin/HEAD`.
 - `alone`, the same with no `origin/HEAD` either.
@@ -111,9 +118,10 @@ every machine:
 
 No command reaches the network, and `gh` fails every command.
 
-## Test: the working tree’s root and folders map to HEAD’s commit
+## Test: the working tree’s repository root opens the repository
 
-HEAD’s commit is on origin, so the served root is its tree.
+HEAD’s commit is on origin, but its local branch does not name an origin branch.
+The repository root opens the repository URL and its items open at the commit.
 A folder is told by the commit’s tree, with or without a trailing slash, and untracked
 and ignored files inside it do not stop it from mapping.
 
@@ -126,7 +134,7 @@ status: 200
   "counterpart": {
     "provider": "github",
     "label": "View on GitHub",
-    "url": "https://github.com/octo/demo/tree/6df6ba6b3b36f70b432b10b50b9a156ba27bc348"
+    "url": "https://github.com/octo/demo"
   },
   "reason": null
 }
@@ -367,7 +375,8 @@ status: 200
 
 `ahead`’s HEAD is a commit no `refs/remotes/origin/*` reaches, so its working tree maps
 at the merge base with its upstream branch, the commit origin has.
-The root, an unchanged file, and an edited file all map there, and a file only the
+The root opens the repository.
+An unchanged file and an edited file use their upstream branch, and a file only the
 unpushed commit added has no counterpart.
 Its pull-request pages map as they always do, since they do not depend on a commit.
 
@@ -380,7 +389,7 @@ status: 200
   "counterpart": {
     "provider": "github",
     "label": "View on GitHub",
-    "url": "https://github.com/octo/demo/tree/6df6ba6b3b36f70b432b10b50b9a156ba27bc348"
+    "url": "https://github.com/octo/demo"
   },
   "reason": null
 }
@@ -396,7 +405,7 @@ status: 200
   "counterpart": {
     "provider": "github",
     "label": "View on GitHub",
-    "url": "https://github.com/octo/demo/blob/6df6ba6b3b36f70b432b10b50b9a156ba27bc348/README.md"
+    "url": "https://github.com/octo/demo/blob/main/README.md"
   },
   "reason": null
 }
@@ -412,7 +421,7 @@ status: 200
   "counterpart": {
     "provider": "github",
     "label": "View on GitHub",
-    "url": "https://github.com/octo/demo/blob/6df6ba6b3b36f70b432b10b50b9a156ba27bc348/docs/guide.md"
+    "url": "https://github.com/octo/demo/blob/main/docs/guide.md"
   },
   "reason": null
 }
@@ -441,6 +450,66 @@ status: 200
     "provider": "github",
     "label": "View on GitHub",
     "url": "https://github.com/octo/demo/pull/7"
+  },
+  "reason": null
+}
+? 0
+```
+
+## Test: a named upstream supplies the branch link
+
+The checkout’s local branch has a different name.
+The root and file use its published branch, including the slash in that branch’s name.
+
+```console
+$ metab branch --api '/api/counterpart?page=/view/'
+api: /api/counterpart?page=/view/
+status: 200
+{
+  "page": "/view/",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/tree/feature/docs"
+  },
+  "reason": null
+}
+? 0
+```
+
+```console
+$ metab branch --api '/api/counterpart?page=/view/README.md'
+api: /api/counterpart?page=/view/README.md
+status: 200
+{
+  "page": "/view/README.md",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/blob/feature/docs/README.md"
+  },
+  "reason": null
+}
+? 0
+```
+
+GitHub’s explicit branch namespace distinguishes a same-named tag.
+
+```console
+$ git -C branch tag feature/docs HEAD
+? 0
+```
+
+```console
+$ metab branch --api '/api/counterpart?page=/view/'
+api: /api/counterpart?page=/view/
+status: 200
+{
+  "page": "/view/",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/tree/refs/heads/feature/docs"
   },
   "reason": null
 }
@@ -691,7 +760,7 @@ status: 200
 ? 0
 ```
 
-## Test: a mirror’s pin maps its files and folders to the pinned commit
+## Test: a mirror’s default branch names its files and folders
 
 A pin’s address names a path by its `GitPath` wire: `g1-ZG9jcw` is `docs`,
 `g1-Z3VpZGUubWQ` is `guide.md`, and `g1-bm9uZQ` is `none`, which the commit lacks.
@@ -708,7 +777,7 @@ status: 200
   "counterpart": {
     "provider": "github",
     "label": "View on GitHub",
-    "url": "https://github.com/octo/demo/blob/c691256511d05858850bc7684ae062fea0d41132/docs/guide.md"
+    "url": "https://github.com/octo/demo/blob/topic/docs/guide.md"
   },
   "reason": null
 }
@@ -724,7 +793,7 @@ status: 200
   "counterpart": {
     "provider": "github",
     "label": "View on GitHub",
-    "url": "https://github.com/octo/demo/tree/c691256511d05858850bc7684ae062fea0d41132/docs"
+    "url": "https://github.com/octo/demo/tree/topic/docs"
   },
   "reason": null
 }
@@ -771,9 +840,48 @@ status: 200
 ? 0
 ```
 
-## Test: a pull request’s head is a pin of a commit github.com has
+## Test: the mirrored root uses a repository or branch link
+
+The mirror knows `topic` is the default and `wip` is another branch.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/counterpart?page=/view/'
+api: /api/counterpart?page=/view/
+status: 200
+{
+  "page": "/view/",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo"
+  },
+  "reason": null
+}
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/tree/wip --api '/api/counterpart?page=/view/'
+selection: tree
+pin: 7a7d6596e515735d244dc1d942463c95851e139c (branch wip)
+api: /api/counterpart?page=/view/
+status: 200
+{
+  "page": "/view/",
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo/tree/wip"
+  },
+  "reason": null
+}
+? 0
+```
+
+## Test: a pull request’s detached head opens the repository at its root
 
 Pull request 7’s head is on a fork, which only `refs/pull/7/head` reaches.
+The Files root has no named branch on origin.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/counterpart?page=/view/'
@@ -787,18 +895,19 @@ status: 200
   "counterpart": {
     "provider": "github",
     "label": "View on GitHub",
-    "url": "https://github.com/octo/demo/tree/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+    "url": "https://github.com/octo/demo"
   },
   "reason": null
 }
 ? 0
 ```
 
-## Test: a checkout’s revision maps at its commit when origin has it
+## Test: a checkout’s revision keeps a clean root and maps files origin has
 
 A checkout served on a revision names paths as a pin does, and its working tree’s
 changes are not what the page shows.
 `local-work` is a commit no origin ref reaches.
+Its root still opens the repository.
 
 ```console
 $ metab checkout --ref main --api '/api/counterpart?page=/view/g1-UkVBRE1FLm1k'
@@ -822,8 +931,12 @@ api: /api/counterpart?page=/view/
 status: 200
 {
   "page": "/view/",
-  "counterpart": null,
-  "reason": "not_on_origin"
+  "counterpart": {
+    "provider": "github",
+    "label": "View on GitHub",
+    "url": "https://github.com/octo/demo"
+  },
+  "reason": null
 }
 ? 0
 ```

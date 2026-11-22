@@ -1107,9 +1107,12 @@ page builds a github.com URL itself.
 `PAGES` in that module is this table, and `tests/test_counterpart.py` holds the two
 together.
 
-Each counterpart is `https://github.com/<owner>/<repository>/` followed by the shape
-below. `<sha>` is the commit the page shows its content from: a pin’s, or, for the
-working tree, the newest commit origin has in `HEAD`’s history.
+Each counterpart starts with `https://github.com/<owner>/<repository>`. At the
+repository root, the default branch opens that URL and a named nondefault branch opens
+its branch tree.
+For a file or folder, `<ref>` is the branch or tag when the last fetched
+version has the path, and otherwise the commit.
+For a working tree, that commit is the newest one origin has in `HEAD`’s history.
 That is `HEAD`’s own commit once it is pushed, and before then its merge base with the
 upstream branch, or else with origin’s default branch.
 So neither unpushed commits nor a file’s local edits take a page’s button away: it links
@@ -1121,9 +1124,9 @@ Every page also has none when the served folder has no repository on github.com
 
 | Page | Counterpart | Other reasons it has none |
 | --- | --- | --- |
-| `/view/<path>` | `blob/<sha>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
-| `/view/<path>/` | `tree/<sha>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
-| `/view/` | `tree/<sha>/<served prefix>`, or `tree/<sha>` at the repository root | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
+| `/view/<path>` | `blob/<ref>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
+| `/view/<path>/` | `tree/<ref>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
+| `/view/` | `tree/<ref>/<served prefix>`, or repository URL or `tree/<name>` at the repository root | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
 | `/pull/<n>`, `/pull/<n>/files`, `/pull/<n>/checks` | `pull/<n>`, `pull/<n>/files`, `pull/<n>/checks` | None |
 | `/pull/<n>/files/<path>` | `pull/<n>/files#diff-<hash>` | None |
 | `/commit/<sha>` | `commit/<sha>` | `not_on_origin` |

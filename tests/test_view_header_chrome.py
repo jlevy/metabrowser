@@ -157,7 +157,8 @@ def _served(root: Path) -> tuple[Path, str]:
     _git(root, "commit", "-q", "-m", "Serve a long note")
     # Origin has the commit, as a fetch would have it, so every committed page has a
     # counterpart (src/metabrowser/counterpart.py).
-    _git(root, "update-ref", "refs/remotes/origin/trunk", "HEAD")
+    _git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    _git(root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
     commit = _git(root, "rev-parse", "HEAD")
     # A file the checkout does not track, which has none.
     (notes / "draft.txt").write_text("Not committed.\n", encoding="utf-8")
@@ -228,13 +229,13 @@ def test_the_corner_leaves_a_narrow_title_its_row() -> None:
 
 
 def _links(commit: str) -> dict[str, str]:
-    """Each page's counterpart: the item's tree or blob at the checkout's commit."""
+    """Each page's counterpart at the origin's default branch or an explicit commit."""
 
     return {
-        "file": f"{_REPOSITORY}/blob/{commit}/docs/notes/a-long-name-for-a-view-header-title.md",
-        "folder": f"{_REPOSITORY}/tree/{commit}/docs/notes",
-        "root": f"{_REPOSITORY}/tree/{commit}",
-        "wrapped": f"{_REPOSITORY}/blob/{commit}/docs/notes/{_WRAPPED}",
+        "file": f"{_REPOSITORY}/blob/main/docs/notes/a-long-name-for-a-view-header-title.md",
+        "folder": f"{_REPOSITORY}/tree/main/docs/notes",
+        "root": _REPOSITORY,
+        "wrapped": f"{_REPOSITORY}/blob/main/docs/notes/{_WRAPPED}",
         "commit": f"{_REPOSITORY}/commit/{commit}",
     }
 
