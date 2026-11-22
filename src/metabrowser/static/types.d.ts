@@ -3949,7 +3949,7 @@ declare global {
     /** The page's own pathname, sent so a switch can keep it. */
     currentView(): string | null;
     /** A switch is asked: *going* settles true when the page goes, false when it stays. */
-    hold?(going: Promise<boolean>): boolean | void;
+    hold?(going: Promise<boolean>): boolean | undefined;
   };
 
   /** The elements the ref selector paints into. */
