@@ -107,8 +107,9 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   so a file named `Design Notes.md` opens as it does with `metab URL`. Open checks the
   URL with `metab`. The panel shows progress until the repository window or tab opens.
   If Metabrowser is still finding or checking its server runtime, the panel waits for
-  it. If the URL cannot be opened, the panel keeps your text and shows the reason under
-  the field.
+  it. If the URL check fails, no server runtime is available, or Metabrowser cannot open
+  the repository window, the panel keeps your text and shows the reason under the field.
+  Server startup progress and errors appear in the repository window.
 - **Always the mirror:** a link opens Metabrowser’s own copy of the repository, its
   mirror in `metab`’s cache, never a checkout of it that you have open
   ([Open Modes](project/architecture/arch-open-modes.md)).

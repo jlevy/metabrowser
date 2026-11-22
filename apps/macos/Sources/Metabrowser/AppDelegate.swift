@@ -319,10 +319,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             session.showFrontWindow(page: target.page)
             return
         }
-        if let current = selection.setup?.runtime, !selection.isUnverified,
-           !current.isCurrent(fingerprint: FileFingerprint.of(current.executable)) {
-            beginRecheck()
-        }
+        recheckChangedRuntime()
         // A request waiting for a runtime is resolved again when one is found.
         let waiting = URL(filePath: path)
         guard selection.setupForOpening(waiting) != nil, let session = session(for: .folder(root)) else {
@@ -357,10 +354,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 message: "Metabrowser opens folders, files, and GitHub links",
                 detail: "\(GitHubLink.shown(url)) is not a folder, a file, or an https link to GitHub."))
         }
-        if let current = selection.setup?.runtime, !selection.isUnverified,
-           !current.isCurrent(fingerprint: FileFingerprint.of(current.executable)) {
-            beginRecheck()
-        }
+        recheckChangedRuntime()
         guard selection.setupForOpening(url) != nil else {
             if selection.droppedLinks > 0 { showNextLinkModal() }
             if !selection.isBusy { showSettings(nil) }
@@ -441,10 +435,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func checkEnteredLink(_ request: OpenURLPanel.Request) {
         guard !isQuitting else { return }
-        if let current = selection.setup?.runtime, !selection.isUnverified,
-           !current.isCurrent(fingerprint: FileFingerprint.of(current.executable)) {
-            beginRecheck()
-        }
+        recheckChangedRuntime()
         guard let setup = operations.launchableSetup() else {
             waitForEnteredRuntime(request)
             return
@@ -813,7 +804,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let repository = PresentPlan.repositoryURL(url.absoluteString) else {
             return request(url, into: window)
         }
-        lookForRuntimeChanges()
+        recheckChangedRuntime()
         let plan = PresentPlan(kind: .repository, repository: repository, link: repository)
         guard !openEntered(plan) else { return }
         _ = selection.setupForOpening(repository)
@@ -1081,6 +1072,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 self?.lookForRuntimeChanges()
             }
+        }
+    }
+
+    /// Open requests check immediately because the watch waits for files to settle.
+    private func recheckChangedRuntime() {
+        if let runtime = selection.setup?.runtime, !selection.isUnverified,
+           !runtime.isCurrent(fingerprint: FileFingerprint.of(runtime.executable)) {
+            beginRecheck()
         }
     }
 
