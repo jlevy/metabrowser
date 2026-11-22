@@ -5024,6 +5024,10 @@ a.tab-btn {
   inset-block-start: calc(100% + 4px);
   inset-inline-end: 0;
 }
+.counterpart-menu > .menu-link-url {
+  max-block-size: 5em;
+  overflow: auto;
+}
 .counterpart-menu[hidden] {
   display: none;
 }
