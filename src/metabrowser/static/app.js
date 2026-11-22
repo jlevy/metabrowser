@@ -2194,14 +2194,14 @@ function ensureTreeTruncationNote(maxFiles) {
   filesPanel.insertAdjacentHTML("afterbegin", treeTruncationNoteHtml(maxFiles));
 }
 
-// Populate the disclosure from the live root inventory.
+// Populate the menu's file count and size from the live root inventory.
 /** @param {DOMStringMap} dataset */
 function rootDetailsStats(dataset) {
   return folderTooltipHtml(
     "",
     parseTipNumber(dataset.tipFiles),
     parseTipNumber(dataset.tipSize),
-    parseTipNumber(dataset.tipMtime),
+    undefined,
     false,
   );
 }
@@ -2219,18 +2219,26 @@ function initRootDetails() {
     document.getElementById("root-details")
   );
   const trigger = details?.querySelector("summary");
-  const source = details?.querySelector(".root-details-source");
-  const actions = details?.querySelector(".root-details-actions");
   const status = details?.querySelector(".root-details-status");
-  if (!details || !trigger || !source || !actions || !status) {
+  if (!details || !trigger || !status) {
     return;
   }
   trigger.innerHTML = `<span aria-hidden="true">${ICONS.toggle ?? ""}</span>`;
-  const sourceText = queryHtml(".header-path")?.dataset.mirrorTip;
-  if (sourceText) {
+  const heading = queryHtml(".header-path");
+  const source = details.querySelector(".root-details-source");
+  const sourceText = heading?.dataset.mirrorTip;
+  if (source && sourceText) {
     source.textContent = sourceText;
     source.removeAttribute("hidden");
   }
+  const local = details.querySelector(".root-details-local");
+  const location = local?.querySelector(".root-details-location");
+  const mirrorLocation = heading?.dataset.mirrorLocation;
+  if (local && location && mirrorLocation) {
+    location.textContent = mirrorLocation;
+    local.removeAttribute("hidden");
+  }
+  const actions = details.querySelector(".root-details-actions");
   document.addEventListener("pointerdown", (event) => {
     if (details.open && event.target instanceof Node && !details.contains(event.target)) {
       details.open = false;
@@ -2268,7 +2276,7 @@ function initRootDetails() {
       status.textContent = "";
       return;
     }
-    if (!url || actions.childElementCount) {
+    if (!url || !actions || actions.childElementCount) {
       return;
     }
     try {
@@ -2284,6 +2292,7 @@ function initRootDetails() {
       for (const item of items) {
         item.removeAttribute("role");
         item.removeAttribute("tabindex");
+        item.setAttribute("aria-describedby", "root-repository-url");
       }
       actions.append(...items);
       actions.removeAttribute("hidden");

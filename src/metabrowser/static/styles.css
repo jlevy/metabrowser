@@ -1831,7 +1831,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* The root details disclosure sits beside Home and uses the shared menu rows. */
+/* The root details menu sits beside Home and uses the shared menu rows. */
 .root-details {
   margin-inline-start: -4px;
   flex: none;
@@ -1841,7 +1841,7 @@ body {
 }
 .root-details[open] > .root-details-trigger {
   background: var(--hover-bg);
-  border-color: var(--border);
+  color: var(--text);
 }
 .root-details-trigger::-webkit-details-marker {
   display: none;
@@ -1851,9 +1851,6 @@ body {
   height: var(--icon-glyph);
   display: block;
   rotate: 90deg;
-}
-.root-details[open] > .root-details-trigger svg {
-  rotate: -90deg;
 }
 .root-details-panel {
   position: absolute;
@@ -1884,9 +1881,8 @@ body {
 .root-details-status {
   color: var(--muted);
 }
-.root-details-actions {
+.root-details-links {
   border-top: 1px solid var(--border);
-  padding-top: 4px;
 }
 .app-header .root-details-panel a.menu-item {
   color: var(--text);
@@ -2191,6 +2187,7 @@ summary {
      .menu-select     a small native <select> for a short list that may grow
                       (the font-set picker), styled as a recessed field.
      .menu-version    the command-formatted build identity at the menu's foot.
+     .menu-link-url   the URL that the link actions beneath it use.
      .menu-separator  a divider between rows that no heading names.
      .menu-group      a named group of rows: role="group" with aria-labelledby
                       on its .group-heading. It draws its own divider above it
@@ -2211,6 +2208,12 @@ summary {
   z-index: var(--z-overlay);
   display: flex;
   flex-direction: column;
+}
+.menu-link-url {
+  padding: 6px var(--menu-row-inset);
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  overflow-wrap: anywhere;
 }
 .menu-item {
   display: flex;
@@ -4999,6 +5002,9 @@ a.tab-btn {
 .counterpart-more {
   padding-inline: 5px;
 }
+.counterpart-more > .chip-menu-caret {
+  margin-inline-end: 0;
+}
 .counterpart-more[aria-expanded="true"] {
   background: var(--hover-bg);
   color: var(--text);
@@ -5013,6 +5019,8 @@ a.tab-btn {
 /* The menu opens under the button, its right edge on the button's. */
 .counterpart-menu {
   position: absolute;
+  inline-size: max-content;
+  max-inline-size: max(100%, 28ch);
   inset-block-start: calc(100% + 4px);
   inset-inline-end: 0;
 }

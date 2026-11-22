@@ -716,10 +716,10 @@ def test_a_working_tree_page_is_refused_while_a_revision_is_served(served: TestC
     assert 'window.METABROWSER_SOURCE_CHECKOUT={"working_tree": false}' in revision_shell
     assert "MetabrowserSourcePinGuard" in revision_shell
     assert 'data-mirror-note="committed revision of"' in revision_shell
-    # Its heading is the folder's name alone, so the tooltip and the copy control after the
-    # name are what name its commit: the full ID in the sentence, and the inline module
-    # that mounts the control, which a working tree's page does not carry (mb-qq4e).
-    assert f'data-mirror-tip="Committed revision {pinned} of the checkout in ' in revision_shell
+    # The root menu describes the pinned source beside its local checkout path.
+    assert 'data-mirror-tip="Files come from a committed revision of this checkout."' in (
+        revision_shell
+    )
     assert "window.MetabrowserMirrorHeading" in revision_shell
     assert "window.MetabrowserMirrorHeading" not in shell
     # And the other way: the revision's page, once the working tree is served again.

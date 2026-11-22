@@ -1020,14 +1020,16 @@ header says what KPress lacks.
 The root name in the navigation column opens Home.
 The chevron beside it opens the root’s details.
 The folder glyph identifies a local folder, a Git checkout, or a cloud mirror.
-The disclosure shows the root’s location, file count, size, and latest file timestamp
-when available. Mirrors and pinned checkouts show the full commit and where the files
-come from.
+The menu shows the local path, file count, and size when available.
+Mirrors and pinned checkouts include a short note about where the files come from.
+A menu chevron points down at rest and while its menu is open.
+The trigger keeps its hover highlight while the menu is open.
+The macOS title-bar folder chooser follows the same convention with the platform’s
+chevron and fill.
 
-If the root has a recognized GitHub repository, **Copy Link** copies the repository URL
-and **Open in Browser** opens it in the default browser.
-A page’s **View on GitHub** menu uses the same action rows and icons with the current
-page’s URL.
+If the root has a recognized GitHub repository, its URL appears above **Copy Link** and
+**Open in Browser**. A page’s **View on GitHub** menu uses the same action rows and
+icons with the current page’s URL.
 
 ## View on GitHub
 
@@ -1040,6 +1042,7 @@ to it from its metadata.
 ```text
  ( [GitHub] View on GitHub | v )
                           +-----------------+
+                          | Page URL        |
                           | Copy Link       |
                           | Open in Browser |
                           +-----------------+
@@ -1052,7 +1055,8 @@ It is a split button, a [joined chip group](#control-families) of two parts:
   reader all get the address; in a browser it opens the page in a new tab, and its
   tooltip is the address.
 - **The chevron**, a chip menu’s trigger with the shell’s caret, muted until the pointer
-  is on it or its menu is open, whose menu holds **Copy Link** and **Open in Browser**.
+  is on it or its menu is open.
+  The menu shows the full destination URL above **Copy Link** and **Open in Browser**.
   Copy Link puts the address on the clipboard and says “Link copied”, or “Copy failed”,
   for a moment in a status line under the button, where the menu was, which a screen
   reader announces as a polite live region; Open in Browser is a link to the same
@@ -5720,10 +5724,9 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
 
 - **The button names the ref and the heading does not.** A served mirror’s navigation
   heading is the repository’s name alone, and a checkout’s revision’s is the folder’s
-  (`_pin_label_html` in `server.py`): this button names the ref, and the heading’s
-  tooltip the full commit, so a ref and a commit beside the name only repeated them, and
-  the owner found them clutter.
-  A pin with no mirror has no selector, so its heading is its ref and its short commit.
+  (`_pin_label_html` in `server.py`). The selector names the ref and its rows show the
+  short commit IDs. A pin with no mirror has no selector, so its heading is its ref and
+  its short commit.
 
 - **A branch that is a pull request’s head shows the pull request, on a second line.**
   The row’s own line, the chip, its badge, its commit, and its age, is every row’s;
@@ -5803,7 +5806,7 @@ A checkout adds three things, and each uses a primitive the control already had:
   On a revision it is the ref’s chip, as on a mirror, so the button is what tells a
   revision’s page from the working tree’s before the list is opened: both are headed by
   the folder’s name. The main heading’s note says “committed revision of” the folder, and
-  the navigation heading’s tooltip names the full commit.
+  the root menu describes the pinned source beside its local path.
 
 - **A page the server has moved on from says so at the foot of the pane,** in the
   freshness row a mirror offers its reload in, with one `.btn`, “Reload”

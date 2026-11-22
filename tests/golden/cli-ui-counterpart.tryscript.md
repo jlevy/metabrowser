@@ -112,12 +112,22 @@ $ node tests/dom/counterpart-session.js
         "hidden": true,
         "children": [
           {
+            "tag": "div",
+            "class": "menu-link-url",
+            "id": "counterpart-url-1",
+            "aria-hidden": "true",
+            "children": [
+              "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/README.md"
+            ]
+          },
+          {
             "tag": "button",
             "class": "menu-item",
             "role": "menuitem",
             "tabindex": "-1",
             "data-mb-owner": "(page owner)",
             "type": "button",
+            "aria-describedby": "counterpart-url-1",
             "dataset.counterpartAction": "copy",
             "children": [
               {
@@ -145,6 +155,7 @@ $ node tests/dom/counterpart-session.js
             "href": "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/README.md",
             "target": "_blank",
             "rel": "noopener",
+            "aria-describedby": "counterpart-url-1",
             "children": [
               {
                 "tag": "span",

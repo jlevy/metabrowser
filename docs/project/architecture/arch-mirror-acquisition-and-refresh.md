@@ -413,15 +413,13 @@ in sight:
   A pin with no mirror is headed by its ref and commit.
 - **Title:** `/api/identity` gives the tab and window title, and a `full_name` of the
   origin without its scheme and the pin, which never names the cache.
-- **Commit:** the heading is the name alone.
-  The ref selector in the Files toolbar names the ref, the heading’s tooltip names the
-  full commit, and a control after the name copies it (mb-qq4e).
-- **Location:** a note after the address names the store’s bare repository, with the
-  home directory as `~` when it is under it (`display_directory`). Nothing is checked
-  out, so the location is not drawn as the start of the address, and its tooltip says it
-  is a bare repository.
-  `static/mirror-heading.js` draws it, and the server writes it only into a mirror’s
-  page.
+- **Commit:** the navigation heading shows the name.
+  The ref selector in the Files toolbar names the ref and shows short commit IDs in its
+  rows.
+- **Location:** the root menu shows the local path to the bare repository with a short
+  source note. A separate note after the address shows the store directory.
+  Both abbreviate the home directory as `~` (`display_directory`).
+  `static/mirror-heading.js` draws the address note from data in the mirror’s page.
 
 An origin is untrusted: its name is display text that passes through `display_segment`,
 is cut when too long, and is escaped on the server and again in the page.

@@ -257,8 +257,10 @@ def test_the_button_is_one_menu_button_and_the_corner_follows_the_page() -> None
         "noopener",
     )
     assert (chevron["aria-haspopup"], chevron["aria-expanded"]) == ("menu", "false")
-    copy, external = menu["children"]
+    destination, copy, external = menu["children"]
     assert (menu["role"], menu.get("hidden")) == ("menu", True)
+    assert destination["children"] == [link["href"]]
+    assert copy["aria-describedby"] == external["aria-describedby"] == destination["id"]
     assert (copy["role"], external["role"]) == ("menuitem", "menuitem")
     assert (external["data-web-view"], external["target"], external["rel"]) == (
         "external",

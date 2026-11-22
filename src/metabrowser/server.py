@@ -1410,8 +1410,7 @@ def _pin_label_html(status: SourceStatus) -> str:
     the same `.path-base` emphasis: a served mirror by the repository's name, as a
     checkout of it would be called, and a revision a folder's server shows of its own
     checkout by the folder's name. The ref selector in the Files toolbar names the ref,
-    and the root details (`_mirror_tip`) the full commit, so the heading repeats
-    neither: the owner found them clutter beside the name (mb-qq4e).
+    so the heading can stay focused on the name (mb-qq4e).
 
     A pin with no mirror has no origin to take a name from, and no ref selector, so its
     heading is the only place that names it. Its ref stands as the name with the short
@@ -1436,37 +1435,22 @@ def _pin_label_html(status: SourceStatus) -> str:
 
 
 def _mirror_tip(status: SourceStatus) -> str | None:
-    """The location and commit the root details show for a mirror or a pinned checkout.
-
-    A page of a mirror looks like a page of a folder, and is not one: nothing is
-    checked out, and each file is read from a Git object at the pinned commit. So the
-    sentence says what the directory it names is, and does not leave the path to be
-    read as a folder of these files.
-    """
-
+    """Explain how the root's files are read, beside the separately displayed path."""
     if status["location"] is None:
         return None
     if status["origin"] is None:
-        # A revision of the served checkout: the directory is the reader's own folder, and
-        # the page is not the files in it.
-        return (
-            f"Committed revision {status['pin']} of the checkout in {status['location']}, "
-            "read from its Git objects: not the files in that folder now."
-        )
-    borrowing = f", borrowing objects from {status['borrows']}" if status["borrows"] else ""
-    return (
-        f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}"
-        f"{borrowing}: a bare Git repository, with no checked-out files."
-    )
+        return "Files come from a committed revision of this checkout."
+    if status["borrows"]:
+        return "Bare Git mirror that shares objects with a local checkout."
+    return "Bare Git mirror with no checked-out files."
 
 
 def _mirror_heading_attrs(status: SourceStatus) -> str:
     """The navigation heading's attributes that say where a served mirror is kept.
 
-    `data-mirror-location` is the status's `location` and `data-mirror-tip` the sentence
-    around it. `static/mirror-heading.js` reads both back, as the file header reads
-    `data-served-root`, which on a served mirror is the repository's name. These two
-    attributes of the page and the status envelope are the only places a response names
+    The root menu reads `data-mirror-location` for its local path and `data-mirror-tip`
+    for the source description. The file header uses the location for its inline note.
+    The location attribute and the status envelope are the only places a response names
     a path in the cache.
     """
 
@@ -1646,8 +1630,7 @@ def _source_ref_label_html(pin: GitRevisionSubject | None, *, checkout: bool) ->
         name = ref_short_name(pin.ref)
     if name:
         return html_escape(name)
-    # The short ID every line that names a commit shows (docs/design-system.md, "Short
-    # Commit IDs"); the navigation heading's tooltip has the full ID.
+    # Use the same short ID as the other commit labels (docs/design-system.md).
     return (
         f'Commit: <span class="git-commit-sha">{html_escape(short_commit(pin.commit_oid))}</span>'
     )
@@ -1710,8 +1693,7 @@ async def index(
         # what the file header's prefix and this heading's tooltip call the root.
         initial_root = html_escape(status["name"] or pin_oid, quote=True)
         mirror_attrs = _mirror_heading_attrs(status)
-        # What styles a mirror's headings apart from a folder's: its root is a name,
-        # which is cut at its end, and the details disclosure shows its commit.
+        # A mirror's root is a name rather than a path, so the heading cuts it at its end.
         mirror_class = " mirror-source" if mirror_attrs else ""
         # Core holds no provider URL grammar: the served mirror asks the installed
         # providers, and only a hosted repository's has an answer (a GitHub mirror's
@@ -1753,17 +1735,21 @@ async def index(
         and {tip_context["owner"], tip_context["name"]}.isdisjoint({".", ".."})
         else None
     )
-    root_repository_attr = root_repository_text = ""
+    root_repository_attr = root_repository_links = ""
     if root_repository_url is not None:
         safe_url = html_escape(root_repository_url, quote=True)
         root_repository_attr = f' data-repository-url="{safe_url}"'
-        root_repository_text = f'<div class="root-details-location">{safe_url}</div>'
+        root_repository_links = f"""
+            <div class="root-details-links">
+              <div class="menu-link-url" id="root-repository-url">{safe_url}</div>
+              <div class="root-details-actions" hidden></div>
+            </div>"""
     root_checkout_meta = ""
     if root_kind == "git" and pin is None and tip_context is not None:
         branch = tip_context["branch"]
         if branch is not None:
             root_checkout_meta += f"<div>Branch: {html_escape(branch)}</div>"
-        revision = html_escape(tip_context["revision"])
+        revision = html_escape(short_commit(tip_context["revision"]))
         root_checkout_meta += f"<div>Commit: <code>{revision}</code></div>"
     version_line = html_escape(display_version_line("metab", __version__))
     styles_url = _static_asset_url("styles.css")
@@ -2500,13 +2486,15 @@ async def index(
           <div class="menu root-details-panel">
             <div class="root-details-info">
               <strong>{root_kind_label}</strong>
-              <div class="root-details-location">{initial_root}</div>
-              {root_repository_text}
+              <div class="root-details-local"{" hidden" if git_pin else ""}>
+                Local path
+                <div class="root-details-location">{"" if git_pin else initial_root}</div>
+              </div>
               <div class="root-details-stats"></div>
               {root_checkout_meta}
               <div class="root-details-source" hidden></div>
             </div>
-            <div class="root-details-actions" hidden></div>
+            {root_repository_links}
             <div class="root-details-status" role="status"></div>
           </div>
         </details>

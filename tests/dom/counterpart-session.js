@@ -266,7 +266,8 @@ const open = button.querySelector(".counterpart-open");
 const more = button.querySelector(".counterpart-more");
 const menu = button.querySelector(".counterpart-menu");
 const status = button.querySelector(".counterpart-status");
-const [copy, external] = menu.childNodes;
+const [destination, copy, external] = menu.childNodes;
+assert.equal(destination.textContent, URL_OF_PAGE);
 const markup = describe(button);
 for (const item of [copy, external]) {
   assert.equal(sandbox.MetabrowserPluginHost.ownsElement(item), true);
