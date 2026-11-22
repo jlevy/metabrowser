@@ -5,7 +5,7 @@ title: "CI speed: finish the Fast CI plan and verify its phases"
 kind: epic
 status: in_progress
 priority: 2
-version: 17
+version: 20
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 refs:
   - kind: pr
@@ -35,6 +35,9 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/metabrowser/pull/669
     at: 2026-11-20T19:14:52.552Z
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/698
+    at: 2026-11-22T21:09:43.748Z
 labels:
   - linear
   - Improvement
@@ -51,8 +54,9 @@ child_order_hints:
   - is-01m7kh4k0qtd75277xcq14dt1b
   - is-01m7x3dt9bhf2vxgyng4cssa41
   - is-01m7pq9dk5hbfvrq38zv4v53zb
+  - is-01m82c8bd5hw5cyz98wty5qm63
 created_at: 2026-11-20T17:06:45.512Z
-updated_at: 2026-11-20T19:16:55.199Z
+updated_at: 2026-11-22T21:10:11.066Z
 extensions:
   linear:
     id: 1ece55fe-0ac1-49d4-bf60-5ea298d7306c
@@ -61,3 +65,7 @@ extensions:
 The owner asked on 2026-11-16 for a pull request's gate in 3 to 5 minutes at the same coverage. The assessment and plan merged in #496 (docs/project/specs/active/plan-2026-11-16-fast-ci.md); Phase 1 (#499, four processors) and Phase 2 (#504, parallel jobs with one ci-ok verdict) are merged, and the first measured pull requests took 4.7 to 5.5 minutes.
 
 What remains: finish Phase 1's 10-run acceptance (mb-g0xx), verify Phase 2 after the merge (mb-ohsk), the owner's branch ruleset requiring ci-ok (mb-m4ct), and Phase 3 (path classes mb-pvyg, the serial tier's fixed waits mb-37dw, the Chrome start retry and per-test allowances mb-sicb and mb-bl54). Flaky tests are tracked under mb-1qsn.
+
+## Notes
+
+2026-11-22 owner decisions in chat, verbatim: (1) "can you be sure these longer-lived tests are only run occasionally, not blocking CI on a routine basis?": slow Chrome tests (measured at 20 s or more) run on pushes to main, in the nightly soak and in the release gate, not on pull requests. (2) "We should aim to have a much faster routine CI cycle. 6 minutes is too long. It should be, ideally, more like 3. unless There's a really strong reason that that's difficult." (3) "we should not be paying Chrome testing costs on CI in terms of time if all we're changing is the CLI or backend things that may not need Chrome testing.": a PR that touches no browser-affecting path skips the Chrome tier, and main always runs the full tier. (4) The owner chose measured-weights shard balancing over a minimal split. Measured on PR run 45063672769: 7.0 min wall, set by chrome 1/4 at 6.2 min, then unit up to 5.3, goldens and serial up to 4.6, and admitted-git 2.8 to 4.2. Work: #698 (measured weights, mb-j5j2) plus a stacked PR for the fast PR path.
