@@ -87,7 +87,12 @@ def test_shell_appends_rather_than_rerendering() -> None:
     ]
 
     assert "sourceAppend.nextCacheValue(cached, chunk)" in load_more
-    assert "sourceAppend.appendSourceText(document, chunk.content" in load_more
+    # The append is told what was loaded before the chunk, so a CRLF the chunk boundary
+    # cut in two is one line ending (tests/dom/source-append-behavior.js).
+    assert (
+        'sourceAppend.appendSourceText(document, chunk.content || "", cached.content || "")'
+        in load_more
+    )
     assert "commitTextChunkCache(path, previewClaim, cached, nextCached, requested)" in load_more
     assert 'assets.ensureAsset("source-append")' in load_more
     assert "await Promise.all([" in load_more

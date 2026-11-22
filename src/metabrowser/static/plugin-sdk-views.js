@@ -139,6 +139,26 @@
   }
 
   /**
+   * A source view's text with every line ending as LF: CRLF and a lone CR each become
+   * one LF. It is what countLines counts and what a copy takes. A view's first render
+   * and each part Load more appends go through this one function, so the text reads
+   * the same however it was loaded.
+   *
+   * A file is loaded in parts cut at byte offsets, which can fall between a CR and its
+   * LF. `afterCarriageReturn` says the text loaded before this one ended with a CR,
+   * which was shown as a line ending already; an LF that starts this text is the rest
+   * of that ending and adds no line. So the parts of a text, each normalized with the
+   * flag for the part before it, join to the whole text normalized.
+   *
+   * @param {string} text
+   * @param {boolean} [afterCarriageReturn]
+   */
+  function normalizeLineEndings(text, afterCarriageReturn = false) {
+    const rest = afterCarriageReturn && text.startsWith("\n") ? text.slice(1) : text;
+    return rest.includes("\r") ? rest.replace(/\r\n?/g, "\n") : rest;
+  }
+
+  /**
    * The gutter's numbers for lines `from + 1` through `lines`, each on its own line.
    * After line `from`, the text starts with the newline that ends that line.
    *
@@ -755,6 +775,7 @@
     lineAt,
     mount,
     nextFragment,
+    normalizeLineEndings,
     parse,
     preferredView,
     refresh,
@@ -2018,7 +2039,8 @@
     }
     // Line numbers and #L anchors are part of a Source view's first paint.
     // The HTML parser turns CR and CRLF into LF, so the gutter counts the same text.
-    const normalize = (/** @type {string} */ text) => text.replace(/\r\n?/g, "\n");
+    // Load more appends text nodes, which no parser reads, through the same function.
+    const normalize = (/** @type {string} */ text) => lineAnchors.normalizeLineEndings(text);
     const text = normalize(content);
     // Each part starts on a line of its own, so every part but the last ends a line;
     // then the gutter's count of the whole text is the lines the parts show.
