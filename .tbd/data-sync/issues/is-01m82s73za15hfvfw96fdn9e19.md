@@ -5,7 +5,7 @@ title: "Address PR #709 reviews A and K: attended probes"
 kind: task
 status: open
 priority: 1
-version: 19
+version: 20
 spec_path: docs/project/specs/active/plan-2026-11-22-pull-request-update-cadence.md
 labels: []
 dependencies: []
@@ -30,5 +30,9 @@ child_order_hints:
   - is-01m82s9844yp3wt73csd6cmva6
   - is-01m82s9dazkkwgfnqzq839p031
 created_at: 2026-11-22T23:24:46.440Z
-updated_at: 2026-11-22T23:26:01.558Z
+updated_at: 2026-11-22T23:46:18.263Z
 ---
+
+## Notes
+
+Dispositions posted at aebc9cbb9: review A https://github.com/jlevy/metabrowser/pull/709#issuecomment-7087818876 and review K https://github.com/jlevy/metabrowser/pull/709#issuecomment-7087819131. Fixed in 7abc82fd9 and aebc9cbb9; A8 deferred as mb-jd08, K3 remainder as mb-et0k, BACKGROUND_FLOOR probe rule as mb-qngw. Waiting on CI at aebc9cbb9.
