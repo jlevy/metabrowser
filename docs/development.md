@@ -87,6 +87,22 @@ artifact contracts, parity, the macOS app’s contract, goldens, and changelog f
 `make lint-check` runs the same checks without changing files, plus the startup-script
 budget and a Flowmark check.
 
+### Keeping an Active Preview Current
+
+Before handing off a change for interactive testing, update the development app or
+browser preview if it is already running.
+Leave it closed if it was closed.
+
+- For the macOS app, quit normally when replacing the
+  [development bundle](../apps/macos/README.md#build-test-and-run) so saved folder
+  windows can reopen. Select the updated `metab` in Settings, then use **File → Restart
+  Server** for any affected window still using an old server.
+  Check the app build in **About Metabrowser** and the runtime in **Settings**.
+- For a browser preview, restart `metab` from the checkout under test and reload the
+  existing tab at the new server’s URL.
+
+Confirm the affected page loads from the restarted server before handing it over.
+
 ### The Verify Gate
 
 `make verify` runs `install`, `lint-check`, `test`, `audit`, and `build`, and
