@@ -48,9 +48,20 @@ final class OpenURLWindowController: NSWindowController, NSWindowDelegate, NSTex
     private func build(in window: NSWindow) {
         let inner = Self.width - 2 * Self.margin
         let prompt = NSTextField(wrappingLabelWithString:
-            "Enter the URL of a GitHub repository, pull request, commit, or file or folder. It opens in Metabrowser’s own copy of the repository.")
+            "Open a GitHub repository, pull request, commit, file, or folder in Metabrowser’s copy.")
         prompt.preferredMaxLayoutWidth = inner
-        field.placeholderString = "https://github.com/owner/repo/pull/123"
+        let examples = NSTextField(wrappingLabelWithString: """
+            https://github.com/jlevy/metabrowser
+            github.com/jlevy/metabrowser
+            jlevy/metabrowser
+            """)
+        examples.preferredMaxLayoutWidth = inner
+        examples.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        examples.textColor = .secondaryLabelColor
+        examples.setAccessibilityElement(true)
+        examples.setAccessibilityRole(.staticText)
+        field.placeholderString = "GitHub link or repository"
+        field.setAccessibilityLabel("GitHub link or repository")
         field.usesSingleLineMode = true
         field.cell?.isScrollable = true
         field.cell?.wraps = false
@@ -78,7 +89,8 @@ final class OpenURLWindowController: NSWindowController, NSWindowDelegate, NSTex
         content.alignment = .leading
         content.spacing = 12
         content.edgeInsets = NSEdgeInsets(top: Self.margin, left: Self.margin, bottom: Self.margin, right: Self.margin)
-        for view in [prompt, field, message, buttons] { content.addArrangedSubview(view) }
+        for view in [prompt, field, message, examples, buttons] { content.addArrangedSubview(view) }
+        content.setCustomSpacing(6, after: field)
         window.contentView = content
         window.initialFirstResponder = field
     }

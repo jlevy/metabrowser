@@ -3,13 +3,10 @@ import Foundation
 /// What File > Open URL… takes: a GitHub URL, which the panel hands to `metab` only once
 /// `GitHubLink` accepts it, the check every link sent to the app passes first.
 ///
-/// The panel opens nothing but GitHub URLs, so a GitHub URL typed without `https://` is
-/// written in full before it is checked (`corrected(_:)`): `github.com/owner/repo`, and an
-/// `http` or `//` URL on GitHub. The panel sends `metab` only the full URL, since
-/// `metab TARGET --present --dry-run` reads other text with no scheme as a local path.
-/// Other text with no scheme is refused: a path, another site's address, and a shorthand
-/// such as `owner/repo`, which the owner decided on 2026-11-18 the panel does not take
-/// (bead `mb-m4mg`) and on 2026-11-19 left so. Every other problem here is one `metab`
+/// The panel writes GitHub URLs without `https://` and bare `owner/repo` shortcuts in
+/// full before checking them (`corrected(_:)`). It passes the full URL to `metab`
+/// because `metab TARGET --present --dry-run` reads bare `owner/repo` as a local path.
+/// Other text without a scheme is refused. Every other problem here is one `metab`
 /// would refuse as well (`insecure_http`,
 /// `credentials_in_url`, `unsupported_source`, `control_or_whitespace`, `non_ascii`,
 /// `backslash`, `invalid_percent_encoding`); the panel says it first, in its own words,
@@ -27,9 +24,7 @@ public nonisolated enum OpenURLEntry {
         case empty
         /// Longer than `GitHubLink.maximumLength`, as typed or once encoded.
         case tooLong
-        /// No scheme, and not a GitHub URL with its scheme left out (`corrected(_:)`): a
-        /// local path, an SSH address, another site's address, or a shorthand such as
-        /// `owner/repo`.
+        /// No scheme and no GitHub URL or repository shortcut that `corrected(_:)` can expand.
         case notAFullURL
         /// A scheme other than `https`.
         case notHTTPS
@@ -56,7 +51,7 @@ public nonisolated enum OpenURLEntry {
             case .tooLong:
                 "This URL is longer than Metabrowser opens."
             case .notAFullURL:
-                "Enter the full URL, starting with https://github.com/: a repository, a pull request, a commit, or a file or folder."
+                "Enter a GitHub URL or an owner/repo shortcut."
             case .notHTTPS:
                 "Metabrowser opens only https URLs, such as https://github.com/owner/repo."
             case .credentials:
@@ -84,18 +79,16 @@ public nonisolated enum OpenURLEntry {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// `text`, trimmed, and written in full when it can only be a GitHub URL; anything else
-    /// as it is. The corrected text then opens, or is refused, as the full URL is:
+    /// `text`, trimmed and expanded when it is a GitHub URL or a repository shortcut.
+    /// The app checks the result as it would a full URL.
     ///
     /// - `github.com/owner/repo`: no scheme, and a GitHub host (`GitHubLink.hosts`, in any
     ///   letter case) before the first `/`, `?`, or `#`, gets `https://`.
     /// - `http://github.com/owner/repo` becomes `https://`, which is all GitHub serves.
     /// - `//github.com/owner/repo`, a URL with its scheme left out, gets `https:`.
+    /// - `owner/repo` gets `https://github.com/` if it matches the repository URL grammar.
     ///
-    /// A host that is not GitHub's, one with a user name, a password, or a port, and text
-    /// that starts with no host, such as `owner/repo` or `docs/macos-app.md`, are left alone,
-    /// so `link(_:)` refuses them as it did. The panel shows the corrected text
-    /// in its field (`OpenURLPanel.open()`), so what is checked is what the field holds.
+    /// The panel shows the corrected text in its field (`OpenURLPanel.open()`).
     public static func corrected(_ text: String) -> String {
         let text = trimmed(text)
         if let scheme = text.firstMatch(of: schemePattern)?.output.1 {
@@ -107,7 +100,9 @@ public nonisolated enum OpenURLEntry {
         if text.hasPrefix("//") {
             return startsWithGitHubHost(text.dropFirst(2)) ? "https:" + text : text
         }
-        return startsWithGitHubHost(text[...]) ? "https://" + text : text
+        if startsWithGitHubHost(text[...]) { return "https://" + text }
+        let repository = "https://github.com/" + text
+        return PresentPlan.repositoryURL(repository) != nil ? repository : text
     }
 
     /// Whether `rest`, a URL after its `scheme://`, or text with none, begins with a GitHub

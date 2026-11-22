@@ -307,17 +307,13 @@ only shows its state and passes on edits, Open, and Cancel.
 
 - **The text is checked first.** `OpenURLEntry` hands `metab` only a link `GitHubLink`
   accepts, the check every link sent to the app passes.
-- **An obvious GitHub URL is written in full.** The panel takes nothing but GitHub URLs,
-  so `OpenURLEntry.corrected` completes a GitHub URL typed without `https://` before it
-  is checked, as the owner asked on 2026-11-19: a GitHub host with no scheme, or after
-  `//`, gets `https://`, and `http://` on a GitHub host becomes `https://`, all GitHub
-  serves. Open puts the corrected text in the field, with no message, so a refusal is
-  about what the field shows.
-  A host with a user name, a password, or a port, another host, and text that starts
-  with no host are left as typed, and refused.
-  That includes a shorthand such as `owner/repo`, which the panel takes none of, as the
-  owner decided on 2026-11-18 and kept on 2026-11-19: it reads as a relative path such
-  as `docs/macos-app.md` does.
+- **GitHub URLs and repository shortcuts are written in full.** `OpenURLEntry.corrected`
+  puts `https://` in front of a GitHub host with no scheme or after `//`, and upgrades
+  `http://` on a GitHub host.
+  It expands a bare `owner/repo` to `https://github.com/owner/repo` using
+  `PresentPlan.repositoryURL`’s repository grammar.
+  A bare pair matching that grammar always refers to GitHub in this panel.
+  Open puts the expanded URL in the field so any refusal refers to what the field shows.
   `metab` gets only the full URL: `metab TARGET --present --dry-run` reads text with no
   scheme as a local path, and completes only a GitHub host that names nothing on disk
   (`_root_in_full` in `cli/main.py`). The panel’s other messages, for text it cannot
